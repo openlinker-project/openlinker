@@ -19,9 +19,29 @@
  * @see {@link SyncJobs.syncShipmentStatus}
  */
 import type { ApiClient } from '../api/api-client';
+import { ApiError } from '../api/api-error';
 import type { OrderRecord, RoutingRuleInput, Shipment } from '../api/api.types';
 import type { E2eEnv } from '../config/env';
+import { PlatformType, type World } from '../world/world';
 import type { SyncJobs } from './jobs';
+
+/**
+ * ShipX's own error when a courier (address-delivery) dispatch is attempted
+ * against an organization with no trucker/route assigned for pickup —
+ * confirmed live against `GET /v1/organizations` on the ShipX sandbox: the
+ * demo stack's organization enrolls only `inpost_locker`/`inpost_letter`
+ * carriers, no courier carrier, regardless of which valid API token
+ * authenticates against it. This is an external sandbox-organization
+ * provisioning gap, not something fixable by OL code, config, or a
+ * different token — courier scenarios detect it and skip cleanly instead
+ * of failing red.
+ */
+const COURIER_UNPROVISIONED_MARKER = 'trucker_ID_is_not_set_for_organization';
+
+/** True when `error` is ShipX's "no trucker assigned to this organization" rejection. */
+export function isCourierUnprovisionedError(error: unknown): boolean {
+  return error instanceof ApiError && JSON.stringify(error.body).includes(COURIER_UNPROVISIONED_MARKER);
+}
 
 export interface TrackingBackfillOptions {
   /** Total budget before giving up (ms). Default 120s. */
@@ -125,11 +145,37 @@ export function readShippingOrderSnapshot(order: OrderRecord): ShippingOrderSnap
 }
 
 /**
+ * Orders handed out by `resolveShippingTestOrder` in this worker process, so
+ * concurrent spec FILES (each independently resolving "the first ready
+ * order") don't collide on the same physical order — an order can only carry
+ * one active shipment, so two specs dispatching against the same order would
+ * have the second dispatch silently return/reuse the first's shipment
+ * instead of creating an independent one. Module-scoped state is safe here:
+ * the shipping project runs `workers: 1` (single Node process, serial).
+ */
+const claimedOrderIds = new Set<string>();
+
+/**
  * Resolve the order the shipping suite dispatches labels against. Prefers the
  * pinned `E2E_ORDER_ID` (deterministic — the escape hatch documented on
- * `E2eEnv.orderId`); otherwise falls back to the most recent `ready` order on
- * the stack. Returns `null` when neither resolves, so callers can
- * `test.skip` with a clear reason instead of failing on missing fixture data.
+ * `E2eEnv.orderId`); otherwise falls back to the first `ready` order on the
+ * stack that is BOTH not already claimed by an earlier call in this run (see
+ * `claimedOrderIds`) AND carries no pre-existing active shipment.
+ *
+ * The second check matters on a long-lived demo stack: `ShipmentDispatchService`
+ * has a deliberate idempotency guard — `generate-label` on an order that
+ * already has an active shipment returns that EXISTING shipment unconditionally
+ * (correct: a real order should not get two independent shipments), so an
+ * order left over from an earlier session's dispatch would silently hand back
+ * a stale (and possibly different-method) shipment instead of exercising a
+ * fresh dispatch. Skipping candidates with an active shipment avoids that.
+ *
+ * Returns `null` when no candidate resolves, so callers can `test.skip` with a
+ * clear reason instead of failing on missing fixture data.
+ *
+ * Call this once per INDEPENDENT dispatch a spec needs (e.g. once for a
+ * paczkomat scenario, once for a courier scenario in the same file) rather
+ * than resolving one order and reusing it for two dispatches.
  */
 export async function resolveShippingTestOrder(
   api: ApiClient,
@@ -143,7 +189,16 @@ export async function resolveShippingTestOrder(
     }
   }
   const page = await api.orders.list({ limit: 50 });
-  return page.items.find((o) => o.recordStatus === 'ready') ?? null;
+  for (const candidate of page.items) {
+    if (candidate.recordStatus !== 'ready' || claimedOrderIds.has(candidate.internalOrderId)) {
+      continue;
+    }
+    const active = await api.shipments.active(candidate.internalOrderId).catch(() => null);
+    if (active) continue;
+    claimedOrderIds.add(candidate.internalOrderId);
+    return candidate;
+  }
+  return null;
 }
 
 /**
@@ -172,6 +227,33 @@ export async function ensureCarrierRouting(
   await api.routingRules.replace(sourceConnectionId, items);
 }
 
+export interface ShippingTestOrderSetup {
+  order: OrderRecord;
+  deliveryMethodId: string;
+  inpostConnectionId: string;
+}
+
+/**
+ * Resolve an INDEPENDENT order + carrier routing for one shipping dispatch
+ * scenario. Call this once per dispatch a spec needs (a paczkomat scenario
+ * and a courier scenario in the same file each get their own call, hence
+ * their own order) rather than sharing one order across scenarios — see
+ * `resolveShippingTestOrder`'s claimed-order tracking.
+ */
+export async function setUpShippingTestOrder(
+  api: ApiClient,
+  world: World,
+  env: Pick<E2eEnv, 'orderId'>,
+): Promise<ShippingTestOrderSetup | null> {
+  const inpost = world.connectionFor(PlatformType.inpost);
+  if (!inpost) return null;
+  const order = await resolveShippingTestOrder(api, env);
+  if (!order) return null;
+  const deliveryMethodId = resolveOrderDeliveryMethodId(order);
+  await ensureCarrierRouting(api, order.sourceConnectionId, deliveryMethodId, inpost.id);
+  return { order, deliveryMethodId, inpostConnectionId: inpost.id };
+}
+
 /** The source-side delivery-method id recorded on the order (routing key). */
 export function resolveOrderDeliveryMethodId(order: OrderRecord): string {
   return readShippingOrderSnapshot(order).shipping?.methodId ?? 'default';
@@ -181,10 +263,13 @@ export function resolveOrderDeliveryMethodId(order: OrderRecord): string {
 export function buildPickupRecipient(order: OrderRecord): Record<string, unknown> {
   const snapshot = readShippingOrderSnapshot(order);
   return {
-    firstName: snapshot.shippingAddress?.firstName,
-    lastName: snapshot.shippingAddress?.lastName,
-    email: snapshot.customerEmail,
-    phone: snapshot.shippingAddress?.phone,
+    firstName: snapshot.shippingAddress?.firstName ?? 'Jan',
+    lastName: snapshot.shippingAddress?.lastName ?? 'Testowy',
+    email: snapshot.customerEmail ?? 'e2e-shipping@example.test',
+    // Synthesized REST-source test orders don't carry a phone number;
+    // InPost requires a non-empty one regardless of delivery mode — same
+    // fallback as `buildCourierRecipient` below.
+    phone: snapshot.shippingAddress?.phone ?? '500100200',
   };
 }
 

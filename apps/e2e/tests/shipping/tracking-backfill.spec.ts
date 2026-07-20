@@ -17,12 +17,10 @@
  * @module tests/shipping
  */
 import { test, expect } from '../../src/fixtures/test';
-import { PlatformType } from '../../src/world/world';
 import {
   buildCourierRecipient,
-  ensureCarrierRouting,
-  resolveOrderDeliveryMethodId,
-  resolveShippingTestOrder,
+  isCourierUnprovisionedError,
+  setUpShippingTestOrder,
   SYNTHETIC_COURIER_PARCEL,
   waitForTrackingBackfill,
 } from '../../src/support/shipments';
@@ -34,27 +32,28 @@ test.describe('shipping — tracking-number backfill (courier)', () => {
     env,
     jobs,
   }, testInfo) => {
-    const inpost = world.connectionFor(PlatformType.inpost);
-    test.skip(!inpost, 'no InPost connection on this stack');
+    const setup = await setUpShippingTestOrder(api, world, env);
+    test.skip(!setup, 'no InPost connection, or no ready order available (set E2E_ORDER_ID or run the golden path first)');
+    const { order, deliveryMethodId, inpostConnectionId } = setup!;
 
-    const order = await resolveShippingTestOrder(api, env);
-    test.skip(
-      !order,
-      'no ready order available (set E2E_ORDER_ID or run the golden path first)',
-    );
-
-    const deliveryMethodId = resolveOrderDeliveryMethodId(order!);
-    await ensureCarrierRouting(api, order!.sourceConnectionId, deliveryMethodId, inpost!.id);
-
-    const dispatch = await api.shipments.generateLabel({
-      sourceConnectionId: order!.sourceConnectionId,
-      sourceDeliveryMethodId: deliveryMethodId,
-      orderId: order!.internalOrderId,
-      deliveryIntent: 'address',
-      recipient: buildCourierRecipient(order!),
-      parcel: { ...SYNTHETIC_COURIER_PARCEL },
-    });
-    const shipment = dispatch.shipment ?? (await api.shipments.active(order!.internalOrderId));
+    let dispatch;
+    try {
+      dispatch = await api.shipments.generateLabel({
+        sourceConnectionId: order.sourceConnectionId,
+        sourceDeliveryMethodId: deliveryMethodId,
+        orderId: order.internalOrderId,
+        deliveryIntent: 'address',
+        recipient: buildCourierRecipient(order),
+        parcel: { ...SYNTHETIC_COURIER_PARCEL },
+      });
+    } catch (error) {
+      if (isCourierUnprovisionedError(error)) {
+        test.skip(true, 'ShipX sandbox organization has no courier carrier/trucker assigned (verified live via GET /v1/organizations)');
+        return;
+      }
+      throw error;
+    }
+    const shipment = dispatch.shipment ?? (await api.shipments.active(order.internalOrderId));
     expect(shipment, 'a courier shipment was created').toBeTruthy();
 
     // Identical poller to golden-path S6 (#1521 / PR #1681) — the ShipX
@@ -63,7 +62,7 @@ test.describe('shipping — tracking-number backfill (courier)', () => {
     const backfill = await waitForTrackingBackfill(
       api,
       jobs,
-      { shipmentId: shipment!.id, inpostConnectionId: inpost!.id },
+      { shipmentId: shipment!.id, inpostConnectionId },
       { timeoutMs: 120_000, intervalMs: 5_000 },
     );
     if (backfill.timedOut) {

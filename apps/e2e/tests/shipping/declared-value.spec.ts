@@ -12,83 +12,78 @@
  * @module tests/shipping
  */
 import { test, expect } from '../../src/fixtures/test';
-import { PlatformType } from '../../src/world/world';
 import { ApiError } from '../../src/api/api-error';
-import type { OrderRecord } from '../../src/api/api.types';
 import {
   buildCourierRecipient,
   buildPickupRecipient,
-  ensureCarrierRouting,
-  resolveOrderDeliveryMethodId,
-  resolveShippingTestOrder,
+  isCourierUnprovisionedError,
+  setUpShippingTestOrder,
   SYNTHETIC_COURIER_PARCEL,
 } from '../../src/support/shipments';
 
 test.describe('shipping — InPost declared value / insurance', () => {
-  let order: OrderRecord | null = null;
-  let inpostConnectionId: string | null = null;
-  let deliveryMethodId = 'default';
-
-  test.beforeAll(async ({ api, world, env }) => {
-    const inpost = world.connectionFor(PlatformType.inpost);
-    inpostConnectionId = inpost?.id ?? null;
-    order = await resolveShippingTestOrder(api, env);
-    if (order && inpostConnectionId) {
-      deliveryMethodId = resolveOrderDeliveryMethodId(order);
-      await ensureCarrierRouting(api, order.sourceConnectionId, deliveryMethodId, inpostConnectionId);
-    }
-  });
-
-  test('generates a paczkomat label with a declared value (insurance)', async ({ api, env }) => {
-    test.skip(!inpostConnectionId, 'no InPost connection on this stack');
-    test.skip(!order, 'no ready order available (set E2E_ORDER_ID or run the golden path first)');
+  test('generates a paczkomat label with a declared value (insurance)', async ({ api, world, env }) => {
+    const setup = await setUpShippingTestOrder(api, world, env);
+    test.skip(!setup, 'no InPost connection, or no ready order available (set E2E_ORDER_ID or run the golden path first)');
     test.skip(!env.paczkomatId, 'no locker id configured (set E2E_PACZKOMAT_ID)');
+    const { order, deliveryMethodId } = setup!;
 
     const dispatch = await api.shipments.generateLabel({
-      sourceConnectionId: order!.sourceConnectionId,
+      sourceConnectionId: order.sourceConnectionId,
       sourceDeliveryMethodId: deliveryMethodId,
-      orderId: order!.internalOrderId,
+      orderId: order.internalOrderId,
       deliveryIntent: 'pickup_point',
-      recipient: buildPickupRecipient(order!),
+      recipient: buildPickupRecipient(order),
       parcel: { template: 'small' },
       paczkomatId: env.paczkomatId!,
       insuredValue: { amount: '250.00', currency: 'PLN' },
     });
-    const shipment = dispatch.shipment ?? (await api.shipments.active(order!.internalOrderId));
+    const shipment = dispatch.shipment ?? (await api.shipments.active(order.internalOrderId));
     expect(shipment, 'an insured paczkomat shipment was created').toBeTruthy();
     expect(shipment!.shippingMethod).toBe('paczkomat');
   });
 
-  test('generates a courier label with a declared value (insurance)', async ({ api }) => {
-    test.skip(!inpostConnectionId, 'no InPost connection on this stack');
-    test.skip(!order, 'no ready order available (set E2E_ORDER_ID or run the golden path first)');
+  test('generates a courier label with a declared value (insurance)', async ({ api, world, env }) => {
+    const setup = await setUpShippingTestOrder(api, world, env);
+    test.skip(!setup, 'no InPost connection, or no ready order available (set E2E_ORDER_ID or run the golden path first)');
+    const { order, deliveryMethodId } = setup!;
 
-    const dispatch = await api.shipments.generateLabel({
-      sourceConnectionId: order!.sourceConnectionId,
-      sourceDeliveryMethodId: deliveryMethodId,
-      orderId: order!.internalOrderId,
-      deliveryIntent: 'address',
-      recipient: buildCourierRecipient(order!),
-      parcel: { ...SYNTHETIC_COURIER_PARCEL },
-      insuredValue: { amount: '400.00', currency: 'PLN' },
-    });
-    const shipment = dispatch.shipment ?? (await api.shipments.active(order!.internalOrderId));
+    let dispatch;
+    try {
+      dispatch = await api.shipments.generateLabel({
+        sourceConnectionId: order.sourceConnectionId,
+        sourceDeliveryMethodId: deliveryMethodId,
+        orderId: order.internalOrderId,
+        deliveryIntent: 'address',
+        recipient: buildCourierRecipient(order),
+        parcel: { ...SYNTHETIC_COURIER_PARCEL },
+        insuredValue: { amount: '400.00', currency: 'PLN' },
+      });
+    } catch (error) {
+      if (isCourierUnprovisionedError(error)) {
+        test.skip(true, 'ShipX sandbox organization has no courier carrier/trucker assigned (verified live via GET /v1/organizations)');
+        return;
+      }
+      throw error;
+    }
+    const shipment = dispatch.shipment ?? (await api.shipments.active(order.internalOrderId));
     expect(shipment, 'an insured courier shipment was created').toBeTruthy();
     expect(shipment!.shippingMethod).toBe('kurier');
   });
 
-  test('rejects a malformed insured-value amount at the API boundary (400)', async ({ api }) => {
-    test.skip(!inpostConnectionId, 'no InPost connection on this stack');
-    test.skip(!order, 'no ready order available (set E2E_ORDER_ID or run the golden path first)');
+  test('rejects a malformed insured-value amount at the API boundary (400)', async ({ api, world, env }) => {
+    const setup = await setUpShippingTestOrder(api, world, env);
+    test.skip(!setup, 'no InPost connection, or no ready order available (set E2E_ORDER_ID or run the golden path first)');
+    const { order, deliveryMethodId } = setup!;
 
     let caught: ApiError | undefined;
     try {
       await api.shipments.generateLabel({
-        sourceConnectionId: order!.sourceConnectionId,
+        sourceConnectionId: order.sourceConnectionId,
         sourceDeliveryMethodId: deliveryMethodId,
-        orderId: order!.internalOrderId,
+        orderId: order.internalOrderId,
         deliveryIntent: 'address',
-        recipient: buildCourierRecipient(order!),
+        recipient: buildCourierRecipient(order),
         parcel: { ...SYNTHETIC_COURIER_PARCEL },
         insuredValue: { amount: '12,50', currency: 'PLN' },
       });
@@ -99,18 +94,19 @@ test.describe('shipping — InPost declared value / insurance', () => {
     expect(caught!.status, `expected 400 (DTO validation), got ${caught!.status}`).toBe(400);
   });
 
-  test('rejects an unsupported insured-value currency (502, carrier preflight)', async ({ api }) => {
-    test.skip(!inpostConnectionId, 'no InPost connection on this stack');
-    test.skip(!order, 'no ready order available (set E2E_ORDER_ID or run the golden path first)');
+  test('rejects an unsupported insured-value currency (502, carrier preflight)', async ({ api, world, env }) => {
+    const setup = await setUpShippingTestOrder(api, world, env);
+    test.skip(!setup, 'no InPost connection, or no ready order available (set E2E_ORDER_ID or run the golden path first)');
+    const { order, deliveryMethodId } = setup!;
 
     let caught: ApiError | undefined;
     try {
       await api.shipments.generateLabel({
-        sourceConnectionId: order!.sourceConnectionId,
+        sourceConnectionId: order.sourceConnectionId,
         sourceDeliveryMethodId: deliveryMethodId,
-        orderId: order!.internalOrderId,
+        orderId: order.internalOrderId,
         deliveryIntent: 'address',
-        recipient: buildCourierRecipient(order!),
+        recipient: buildCourierRecipient(order),
         parcel: { ...SYNTHETIC_COURIER_PARCEL },
         // InPost insurance is domestic-PL only — a well-formed but non-PLN
         // currency passes DTO validation and is refused by the adapter's

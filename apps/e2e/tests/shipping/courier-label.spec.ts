@@ -16,12 +16,11 @@
  * @module tests/shipping
  */
 import { test, expect } from '../../src/fixtures/test';
-import { PlatformType } from '../../src/world/world';
+import { ApiError } from '../../src/api/api-error';
 import {
   buildCourierRecipient,
-  ensureCarrierRouting,
-  resolveOrderDeliveryMethodId,
-  resolveShippingTestOrder,
+  isCourierUnprovisionedError,
+  setUpShippingTestOrder,
   SYNTHETIC_COURIER_PARCEL,
 } from '../../src/support/shipments';
 
@@ -32,29 +31,30 @@ test.describe('shipping — InPost courier label', () => {
     env,
     poll,
   }) => {
-    const inpost = world.connectionFor(PlatformType.inpost);
-    test.skip(!inpost, 'no InPost connection on this stack');
+    const setup = await setUpShippingTestOrder(api, world, env);
+    test.skip(!setup, 'no InPost connection, or no ready order available (set E2E_ORDER_ID or run the golden path first)');
+    const { order, deliveryMethodId, inpostConnectionId } = setup!;
 
-    const order = await resolveShippingTestOrder(api, env);
-    test.skip(
-      !order,
-      'no ready order available (set E2E_ORDER_ID or run the golden path first)',
-    );
-
-    const deliveryMethodId = resolveOrderDeliveryMethodId(order!);
-    await ensureCarrierRouting(api, order!.sourceConnectionId, deliveryMethodId, inpost!.id);
-
-    const dispatch = await api.shipments.generateLabel({
-      sourceConnectionId: order!.sourceConnectionId,
-      sourceDeliveryMethodId: deliveryMethodId,
-      orderId: order!.internalOrderId,
-      deliveryIntent: 'address',
-      recipient: buildCourierRecipient(order!),
-      parcel: { ...SYNTHETIC_COURIER_PARCEL },
-    });
-    const shipment = dispatch.shipment ?? (await api.shipments.active(order!.internalOrderId));
+    let dispatch;
+    try {
+      dispatch = await api.shipments.generateLabel({
+        sourceConnectionId: order.sourceConnectionId,
+        sourceDeliveryMethodId: deliveryMethodId,
+        orderId: order.internalOrderId,
+        deliveryIntent: 'address',
+        recipient: buildCourierRecipient(order),
+        parcel: { ...SYNTHETIC_COURIER_PARCEL },
+      });
+    } catch (error) {
+      if (isCourierUnprovisionedError(error)) {
+        test.skip(true, 'ShipX sandbox organization has no courier carrier/trucker assigned (verified live via GET /v1/organizations)');
+        return;
+      }
+      throw error instanceof ApiError ? error : (error as Error);
+    }
+    const shipment = dispatch.shipment ?? (await api.shipments.active(order.internalOrderId));
     expect(shipment, 'a shipment was created for the courier dispatch').toBeTruthy();
-    expect(shipment!.connectionId, 'shipment routed to the InPost connection').toBe(inpost!.id);
+    expect(shipment!.connectionId, 'shipment routed to the InPost connection').toBe(inpostConnectionId);
     expect(shipment!.shippingMethod, 'resolved carrier method for deliveryIntent=address').toBe(
       'kurier',
     );

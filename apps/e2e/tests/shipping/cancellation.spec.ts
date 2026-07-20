@@ -13,13 +13,11 @@
  * @module tests/shipping
  */
 import { test, expect } from '../../src/fixtures/test';
-import { PlatformType } from '../../src/world/world';
 import { ApiError } from '../../src/api/api-error';
 import {
   buildCourierRecipient,
-  ensureCarrierRouting,
-  resolveOrderDeliveryMethodId,
-  resolveShippingTestOrder,
+  isCourierUnprovisionedError,
+  setUpShippingTestOrder,
   SYNTHETIC_COURIER_PARCEL,
 } from '../../src/support/shipments';
 
@@ -29,27 +27,28 @@ test.describe('shipping — InPost cancellation + regeneration', () => {
     world,
     env,
   }, testInfo) => {
-    const inpost = world.connectionFor(PlatformType.inpost);
-    test.skip(!inpost, 'no InPost connection on this stack');
+    const setup = await setUpShippingTestOrder(api, world, env);
+    test.skip(!setup, 'no InPost connection, or no ready order available (set E2E_ORDER_ID or run the golden path first)');
+    const { order, deliveryMethodId } = setup!;
 
-    const order = await resolveShippingTestOrder(api, env);
-    test.skip(
-      !order,
-      'no ready order available (set E2E_ORDER_ID or run the golden path first)',
-    );
-
-    const deliveryMethodId = resolveOrderDeliveryMethodId(order!);
-    await ensureCarrierRouting(api, order!.sourceConnectionId, deliveryMethodId, inpost!.id);
-
-    const dispatch = await api.shipments.generateLabel({
-      sourceConnectionId: order!.sourceConnectionId,
-      sourceDeliveryMethodId: deliveryMethodId,
-      orderId: order!.internalOrderId,
-      deliveryIntent: 'address',
-      recipient: buildCourierRecipient(order!),
-      parcel: { ...SYNTHETIC_COURIER_PARCEL },
-    });
-    const original = dispatch.shipment ?? (await api.shipments.active(order!.internalOrderId));
+    let dispatch;
+    try {
+      dispatch = await api.shipments.generateLabel({
+        sourceConnectionId: order.sourceConnectionId,
+        sourceDeliveryMethodId: deliveryMethodId,
+        orderId: order.internalOrderId,
+        deliveryIntent: 'address',
+        recipient: buildCourierRecipient(order),
+        parcel: { ...SYNTHETIC_COURIER_PARCEL },
+      });
+    } catch (error) {
+      if (isCourierUnprovisionedError(error)) {
+        test.skip(true, 'ShipX sandbox organization has no courier carrier/trucker assigned (verified live via GET /v1/organizations)');
+        return;
+      }
+      throw error;
+    }
+    const original = dispatch.shipment ?? (await api.shipments.active(order.internalOrderId));
     expect(original, 'a shipment was created to cancel').toBeTruthy();
 
     let cancelled;
@@ -90,15 +89,15 @@ test.describe('shipping — InPost cancellation + regeneration', () => {
     // Regenerate: a fresh dispatch on the SAME order succeeds and produces a
     // distinct shipment — cancellation does not strand the order.
     const redispatch = await api.shipments.generateLabel({
-      sourceConnectionId: order!.sourceConnectionId,
+      sourceConnectionId: order.sourceConnectionId,
       sourceDeliveryMethodId: deliveryMethodId,
-      orderId: order!.internalOrderId,
+      orderId: order.internalOrderId,
       deliveryIntent: 'address',
-      recipient: buildCourierRecipient(order!),
+      recipient: buildCourierRecipient(order),
       parcel: { ...SYNTHETIC_COURIER_PARCEL },
     });
     const regenerated =
-      redispatch.shipment ?? (await api.shipments.active(order!.internalOrderId));
+      redispatch.shipment ?? (await api.shipments.active(order.internalOrderId));
     expect(regenerated, 'a new shipment was dispatched after cancellation').toBeTruthy();
     expect(regenerated!.id, 'the regenerated shipment is a distinct row').not.toBe(original!.id);
   });
