@@ -162,4 +162,97 @@ describe('RoutingRulesPanel', () => {
     });
     expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
   });
+
+  describe('routing-split bar (#1739)', () => {
+    function legendEntry(container: HTMLElement, label: string): HTMLElement {
+      const entry = Array.from(
+        container.querySelectorAll<HTMLElement>('.routing-split__key'),
+      ).find((el) => (el.textContent ?? '').includes(label));
+      if (!entry) throw new Error(`No legend entry for ${label}`);
+      return entry;
+    }
+
+    it('counts saved rules per processor with the rest in the default bucket', async () => {
+      const rules: RoutingRule[] = [
+        {
+          id: 'r1',
+          sourceConnectionId: 'conn_1',
+          sourceDeliveryMethodId: 'm1',
+          processorKind: 'ol_managed_carrier',
+          processorConnectionId: 'conn_inpost',
+        },
+      ];
+      const { container } = renderWithProviders(
+        <RoutingRulesPanel
+          connectionId="conn_1"
+          deliveryMethods={DELIVERY_METHODS}
+          deliveryMethodsLoading={false}
+          deliveryMethodsError={null}
+        />,
+        { apiClient: buildApiClient({ rules }) },
+      );
+
+      await screen.findByRole('combobox', {
+        name: /Fulfillment processor for InPost Paczkomat/i,
+      });
+      await waitFor(() => {
+        expect(legendEntry(container, 'InPost')).toHaveTextContent('1');
+      });
+      // m2 has no rule → default bucket, labeled from the omp candidate.
+      expect(legendEntry(container, 'My Shop')).toHaveTextContent('1');
+    });
+
+    it('recomputes the split live when a selection changes, before saving', async () => {
+      const { container } = renderWithProviders(
+        <RoutingRulesPanel
+          connectionId="conn_1"
+          deliveryMethods={DELIVERY_METHODS}
+          deliveryMethodsLoading={false}
+          deliveryMethodsError={null}
+        />,
+        { apiClient: buildApiClient() },
+      );
+
+      const select = await screen.findByRole('combobox', {
+        name: /Fulfillment processor for InPost Paczkomat/i,
+      });
+      await waitFor(() => {
+        expect(legendEntry(container, 'My Shop')).toHaveTextContent('2');
+      });
+
+      fireEvent.change(select, { target: { value: 'ol_managed_carrier::conn_inpost' } });
+
+      expect(legendEntry(container, 'InPost')).toHaveTextContent('1');
+      expect(legendEntry(container, 'My Shop')).toHaveTextContent('1');
+      // Live preview only — nothing saved yet.
+      expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    });
+
+    it('renders Erli-shaped string method ids and saves their rules through the same flow', async () => {
+      const erliMethods: MappingOption[] = [
+        { value: 'erliPaczkomat', label: 'ERLI InPost Paczkomaty 24/7' },
+        { value: 'dpdCod', label: 'Kurier DPD Pobranie' },
+      ];
+      const replace = vi.fn().mockResolvedValue([]);
+      renderPanel(buildApiClient({ replace }), { deliveryMethods: erliMethods });
+
+      const select = await screen.findByRole('combobox', {
+        name: /Fulfillment processor for ERLI InPost Paczkomaty/i,
+      });
+      fireEvent.change(select, { target: { value: 'ol_managed_carrier::conn_inpost' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save routing' }));
+
+      await waitFor(() => {
+        expect(replace).toHaveBeenCalledWith('conn_1', {
+          items: [
+            {
+              sourceDeliveryMethodId: 'erliPaczkomat',
+              processorKind: 'ol_managed_carrier',
+              processorConnectionId: 'conn_inpost',
+            },
+          ],
+        });
+      });
+    });
+  });
 });

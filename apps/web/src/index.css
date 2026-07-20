@@ -268,6 +268,17 @@
   --status-info-fg: oklch(40% 0.12 245);
   --status-info-strong: oklch(40% 0.12 245);
 
+  /* ── Viz: categorical series (#1739) ──────────────────────────────────
+   * Small categorical palette for proportion visuals (routing-split bar).
+   * NOT status hues — a series colour distinguishes entities (carriers,
+   * connections), never encodes health. `--viz-cat-muted` is the neutral
+   * "default / unassigned" bucket. */
+  --viz-cat-1: oklch(75% 0.13 85);
+  --viz-cat-2: oklch(60% 0.15 20);
+  --viz-cat-3: oklch(58% 0.12 245);
+  --viz-cat-4: oklch(60% 0.13 150);
+  --viz-cat-muted: oklch(82% 0.008 80);
+
   /* ── Status: review / manual ──────────────────────────────────────── */
   --status-review: oklch(58% 0.16 290);
   --status-review-soft: oklch(96% 0.04 290);
@@ -430,6 +441,13 @@ html[data-theme='dark'] {
   --status-info-border: oklch(36% 0.10 245);
   --status-info-fg: oklch(86% 0.12 245);
   --status-info-strong: oklch(86% 0.12 245);
+
+  /* Viz — categorical series (#1739) */
+  --viz-cat-1: oklch(70% 0.12 85);
+  --viz-cat-2: oklch(62% 0.14 20);
+  --viz-cat-3: oklch(62% 0.11 245);
+  --viz-cat-4: oklch(62% 0.12 150);
+  --viz-cat-muted: oklch(42% 0.008 80);
 
   /* Status — review */
   --status-review: oklch(74% 0.14 290);
@@ -13522,4 +13540,58 @@ input.bulk-dispatch__num--wide {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-muted);
+}
+
+/* ── RoutingSplitBar (#1739) ──────────────────────────────────────────
+ * Segmented proportion bar on the Fulfillment tab: how many delivery
+ * methods route to each processor, recomputed live from unsaved edits.
+ * The bar is decorative (aria-hidden); the legend carries the counts. */
+.routing-split {
+  margin-bottom: var(--space-4);
+}
+
+.routing-split__bar {
+  display: flex;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+}
+
+.routing-split__seg {
+  transition: flex-grow var(--duration-normal) ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .routing-split__seg {
+    transition: none;
+  }
+}
+
+.routing-split__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin-top: var(--space-2);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.routing-split__key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.routing-split__swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.routing-split__count {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }
