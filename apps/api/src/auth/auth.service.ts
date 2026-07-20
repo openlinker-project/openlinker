@@ -32,8 +32,13 @@ export class AuthService implements IAuthService {
   private static readonly DUMMY_HASH =
     '$2b$10$AAAAAAAAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 
-  async validateUser(username: string, password: string): Promise<User | null> {
-    const user = await this.userRepository.findByUsername(username);
+  async validateUser(identifier: string, password: string): Promise<User | null> {
+    // Accept either a username or an email as the identifier. Username wins when
+    // both a username and someone else's email would match the same string; in
+    // practice usernames don't contain '@', so collisions are theoretical.
+    const user =
+      (await this.userRepository.findByUsername(identifier)) ??
+      (await this.userRepository.findByEmail(identifier));
     if (!user) {
       await bcrypt.compare(password, AuthService.DUMMY_HASH);
       return null;

@@ -35,6 +35,7 @@ describe('AuthService', () => {
   beforeEach(async () => {
     const mockUserRepository = {
       findByUsername: jest.fn(),
+      findByEmail: jest.fn().mockResolvedValue(null),
       findById: jest.fn(),
       save: jest.fn(),
     } as unknown as jest.Mocked<UserRepositoryPort>;
@@ -57,13 +58,41 @@ describe('AuthService', () => {
   });
 
   describe('validateUser', () => {
-    it('should return null when user is not found', async () => {
+    it('should return null when no user matches by username or email', async () => {
       userRepository.findByUsername.mockResolvedValue(null);
+      userRepository.findByEmail.mockResolvedValue(null);
 
       const result = await service.validateUser('unknown', 'password');
 
       expect(result).toBeNull();
       expect(userRepository.findByUsername).toHaveBeenCalledWith('unknown');
+      expect(userRepository.findByEmail).toHaveBeenCalledWith('unknown');
+    });
+
+    it('should authenticate by email when the identifier is not a username', async () => {
+      const plainPassword = 'secret123';
+      const user = makeUser({
+        email: 'admin@openlinker.local',
+        passwordHash: await bcrypt.hash(plainPassword, 10),
+      });
+      userRepository.findByUsername.mockResolvedValue(null);
+      userRepository.findByEmail.mockResolvedValue(user);
+
+      const result = await service.validateUser('admin@openlinker.local', plainPassword);
+
+      expect(result).toBe(user);
+      expect(userRepository.findByEmail).toHaveBeenCalledWith('admin@openlinker.local');
+    });
+
+    it('should prefer the username match and not fall back to email when a username matches', async () => {
+      const plainPassword = 'secret123';
+      const user = makeUser({ passwordHash: await bcrypt.hash(plainPassword, 10) });
+      userRepository.findByUsername.mockResolvedValue(user);
+
+      const result = await service.validateUser('admin', plainPassword);
+
+      expect(result).toBe(user);
+      expect(userRepository.findByEmail).not.toHaveBeenCalled();
     });
 
     it('should return null when password does not match', async () => {
