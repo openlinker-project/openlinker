@@ -158,6 +158,15 @@ export class CreateOfferOverridesDto {
   productCardId?: string;
 
   @ApiPropertyOptional({
+    description:
+      'Per-offer EAN/GTIN override (#1741). Falls back to the variant barcode. 8-14 digits at the boundary; GS1 checksum + batch-wide uniqueness to be enforced in BulkListingSubmitService (#1741, pending).',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{8,14}$/, { message: 'ean must be 8-14 digits' })
+  ean?: string;
+
+  @ApiPropertyOptional({
     nullable: true,
     isArray: true,
     type: String,

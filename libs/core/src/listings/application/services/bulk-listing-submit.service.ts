@@ -58,6 +58,11 @@ import {
 } from '@openlinker/core/inventory';
 
 import { EmptyBulkSubmissionException } from '../../domain/exceptions/empty-bulk-submission.exception';
+import { InvalidEanException } from '../../domain/exceptions/invalid-ean.exception';
+import { DuplicateBatchEanException } from '../../domain/exceptions/duplicate-batch-ean.exception';
+import { CurrencyMismatchException } from '../../domain/exceptions/currency-mismatch.exception';
+import { InvalidOverrideKeyException } from '../../domain/exceptions/invalid-override-key.exception';
+import { ExpandedOfferCeilingExceededException } from '../../domain/exceptions/expanded-offer-ceiling-exceeded.exception';
 import {
   BULK_LISTING_BATCH_REPOSITORY_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
@@ -71,6 +76,23 @@ import type {
   PerProductOverride,
 } from '../types/bulk-listing-submit.types';
 import type { EnqueueOfferCreationInput } from '../types/offer-creation-enqueue.types';
+
+/**
+ * Hard ceiling on the post-exclusion expanded offer count (#1741). The
+ * submitted-product cap is 100 (DTO), but per-variant fan-out multiplies that,
+ * so guard the total offers a single batch can create.
+ */
+const EXPANDED_OFFER_CEILING = 1000;
+
+/**
+ * Internal-variant-id shape used to gate override-map keys (#1741). Rejecting
+ * anything else is a prototype-pollution guard (`__proto__`, `constructor`)
+ * and closes off keys that can never resolve to a real variant.
+ */
+const INTERNAL_VARIANT_ID_RE = /^ol_variant_[a-f0-9]+$/;
+
+/** GTIN lengths that carry a trailing GS1 mod-10 check digit (EAN-8/13, UPC-A, GTIN-14). */
+const GTIN_LENGTHS = new Set([8, 12, 13, 14]);
 
 @Injectable()
 export class BulkListingSubmitService implements IBulkListingSubmitService {
@@ -95,6 +117,12 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     if (input.productIds.length === 0) {
       throw new EmptyBulkSubmissionException();
     }
+
+    // 0. Validate the override-map key shapes + per-row currency and strip any
+    //    per-variant categoryId (#1741). Runs first (before any IO) so a
+    //    prototype-pollution key or a divergent currency fails fast, and the
+    //    downstream `Record<>` lookups only ever see well-formed keys.
+    this.validateOverrideMaps(input);
 
     // 1. Resolve adapter + assert OfferCreator BEFORE persisting the batch.
     //    Doing the capability check first means a wrong-capability submit
@@ -126,7 +154,18 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     //    (#824); single-variant products and unknown ids pass through
     //    unchanged. Done before persisting the batch so `totalCount` matches
     //    the real fan-out the progress counters (#737) gate on.
-    const expandedJobs = await this.expandVariantJobs(input);
+    const { jobs: expandedJobs, variantsById } = await this.expandVariantJobs(input);
+    // Post-exclusion empty guard (#1741): every submitted variant excluded /
+    // unresolvable ⇒ no jobs ⇒ never persist a `totalCount:0` zombie batch
+    // that the #737 counter gate can never terminate.
+    if (expandedJobs.length === 0) {
+      throw new EmptyBulkSubmissionException();
+    }
+    // Identifier enforcement (#1741): GS1 check-digit on every included job's
+    // effective EAN + batch-wide effective-identifier uniqueness. Done before
+    // persisting so a bad/duplicate barcode never creates a batch row (the
+    // #742 retry rebuilds from the snapshot and does NOT re-validate).
+    this.enforceIdentifierRules(input, expandedJobs, variantsById);
     const masterStock = await this.resolveMasterStock(
       expandedJobs.filter((job) => job.useMasterStock).map((job) => job.variantId)
     );
@@ -148,9 +187,17 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
         `submitted=${input.productIds.length}, totalCount=${batch.totalCount})`
     );
 
-    // 4. Fan out enqueues. The first failing enqueue marks the batch failed
-    //    and re-throws — partial-success semantics aren't useful for a fresh
-    //    submission (the FE can't act on N successful + M missing jobs).
+    // 4. Fan out enqueues. On a mid-fan-out failure the batch is reconciled so
+    //    it can still reach a terminal status (#1741 partial-submit atomicity):
+    //    - if ≥1 job already reached the stream, reconcile `totalCount` down to
+    //      the number actually enqueued and advance to 'running' — the enqueued
+    //      children run normally and the #737 counter gate
+    //      (`succeeded + failed === totalCount`) terminates the batch. Un-enqueued
+    //      variants leave no orphan record (enqueueCreation persists per-record),
+    //      so nothing lingers waiting to be counted.
+    //    - if nothing enqueued, flip terminal 'failed' (no children to count).
+    //    The underlying enqueue error is still re-thrown so the operator learns
+    //    the submit was partial.
     const jobIds: string[] = [];
     try {
       for (const job of expandedJobs) {
@@ -159,18 +206,24 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
         jobIds.push(jobId);
       }
     } catch (error) {
+      const enqueued = jobIds.length;
       this.logger.error(
-        `Bulk batch ${batch.id} enqueue failed after ${jobIds.length}/${expandedJobs.length} jobs: ${(error as Error).message}`,
+        `Bulk batch ${batch.id} enqueue failed after ${enqueued}/${expandedJobs.length} jobs: ${(error as Error).message}`,
         (error as Error).stack
       );
-      // Best-effort terminal-status flip; if this also fails the underlying
-      // enqueue error still propagates and dominates the FE message.
+      // Best-effort reconciliation; if it also fails the underlying enqueue
+      // error still propagates and dominates the FE message.
       try {
-        await this.bulkBatchRepository.updateStatus(batch.id, BULK_BATCH_STATUS.Failed);
-      } catch (statusError) {
+        if (enqueued > 0) {
+          await this.bulkBatchRepository.updateTotalCount(batch.id, enqueued);
+          await this.bulkBatchRepository.updateStatus(batch.id, BULK_BATCH_STATUS.Running);
+        } else {
+          await this.bulkBatchRepository.updateStatus(batch.id, BULK_BATCH_STATUS.Failed);
+        }
+      } catch (reconcileError) {
         this.logger.error(
-          `Bulk batch ${batch.id} status flip to 'failed' also failed: ${(statusError as Error).message}`,
-          (statusError as Error).stack
+          `Bulk batch ${batch.id} partial-submit reconciliation also failed: ${(reconcileError as Error).message}`,
+          (reconcileError as Error).stack
         );
       }
       throw error;
@@ -218,7 +271,7 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
    */
   private async expandVariantJobs(
     input: BulkListingSubmitInput
-  ): Promise<ExpandedVariantJob[]> {
+  ): Promise<{ jobs: ExpandedVariantJob[]; variantsById: Map<string, ProductVariant | null> }> {
     const uniqueSelectedIds = [...new Set(input.productIds)];
 
     // Batch 1: resolve each submitted primary variant in parallel.
@@ -245,18 +298,31 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     );
 
     const jobs: ExpandedVariantJob[] = [];
+    // #1741: the resolved variant entity behind each job, so the caller's
+    // identifier enforcement can read `variant.ean ?? variant.gtin` without a
+    // second fetch. `null` for an unknown (stale-selection) passthrough job.
+    const variantsById = new Map<string, ProductVariant | null>();
     const seen = new Set<string>();
+    // #1741: variants the operator switched off — never enqueue these, and
+    // never resurrect an excluded seed via the defensive re-add below.
+    const excluded = new Set(input.excludedVariantIds ?? []);
+    // #1741: an operator-overridden EAN (per-variant) rescues a barcode-less
+    // sibling so it is no longer silently dropped by the barcode gate.
+    const overrideEan = (variantId: string): string | undefined =>
+      input.perVariantOverrides?.[variantId]?.overrides?.ean;
 
     for (const selectedId of uniqueSelectedIds) {
       if (seen.has(selectedId)) continue;
 
       const selectedVariant = selectedById.get(selectedId) ?? null;
       if (!selectedVariant) {
+        seen.add(selectedId);
+        if (excluded.has(selectedId)) continue;
         this.logger.warn(
           `Bulk submit: variant ${selectedId} not found — enqueuing as a single offer without expansion`
         );
         jobs.push({ variantId: selectedId, selectedId, useMasterStock: false, clearProductCard: false });
-        seen.add(selectedId);
+        variantsById.set(selectedId, null);
         continue;
       }
 
@@ -264,19 +330,23 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
       const siblings = variantsByProduct.get(productId) ?? [];
 
       if (siblings.length <= 1) {
-        jobs.push({ variantId: selectedId, selectedId, useMasterStock: false, clearProductCard: false });
         seen.add(selectedId);
+        if (excluded.has(selectedId)) continue;
+        jobs.push({ variantId: selectedId, selectedId, useMasterStock: false, clearProductCard: false });
+        variantsById.set(selectedId, selectedVariant);
         continue;
       }
 
       for (const sibling of siblings) {
         if (seen.has(sibling.id)) continue;
+        seen.add(sibling.id);
+        if (excluded.has(sibling.id)) continue;
         const isSelected = sibling.id === selectedId;
-        const hasBarcode = Boolean(sibling.ean ?? sibling.gtin);
+        const hasBarcode = Boolean(sibling.ean ?? sibling.gtin ?? overrideEan(sibling.id));
         if (!hasBarcode && !isSelected) {
           this.logger.warn(
             `Bulk submit: skipping variant ${sibling.id} of product ${productId} — ` +
-              `no EAN/GTIN, cannot link to an Allegro catalog product for variant grouping`
+              `no EAN/GTIN and no override, cannot link to an Allegro catalog product for variant grouping`
           );
           continue;
         }
@@ -286,19 +356,125 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
           useMasterStock: true,
           clearProductCard: !isSelected,
         });
-        seen.add(sibling.id);
+        variantsById.set(sibling.id, sibling);
       }
 
       // Defensive: a multi-variant product whose `getVariantsByProductId`
       // result somehow omits the selected variant must still list it — never
-      // silently drop a variant the operator explicitly picked.
-      if (!seen.has(selectedId)) {
+      // silently drop a variant the operator explicitly picked, UNLESS it was
+      // explicitly excluded (#1741).
+      if (!seen.has(selectedId) && !excluded.has(selectedId)) {
         jobs.push({ variantId: selectedId, selectedId, useMasterStock: true, clearProductCard: false });
+        variantsById.set(selectedId, selectedVariant);
         seen.add(selectedId);
       }
     }
 
-    return jobs;
+    if (jobs.length > EXPANDED_OFFER_CEILING) {
+      throw new ExpandedOfferCeilingExceededException(jobs.length, EXPANDED_OFFER_CEILING);
+    }
+
+    return { jobs, variantsById };
+  }
+
+  /**
+   * Validate override-map key shapes + per-row currency, and strip any
+   * per-variant `categoryId`, before expansion / persistence (#1741).
+   *
+   * - **Key shape**: every key of `perProductOverrides` / `perVariantOverrides`
+   *   and every `excludedVariantIds` entry must match the internal-variant-id
+   *   shape (`ol_variant_{hex}`); anything else (`__proto__`, `constructor`,
+   *   arbitrary strings) throws `InvalidOverrideKeyException` — a
+   *   prototype-pollution guard.
+   * - **Currency**: an override `price.currency` diverging from the batch
+   *   `sharedConfig.price.currency` throws `CurrencyMismatchException`
+   *   (currency is batch-wide).
+   * - **Category strip**: `categoryId` is grouping-determining and product-level,
+   *   so it is deleted from every `perVariantOverrides` value defensively (the
+   *   DTO already omits it via `OmitType`).
+   *
+   * Iterates with `Object.keys` (own enumerable keys only) so a JSON
+   * `__proto__` own-property key is enumerated + rejected and the prototype
+   * chain is never walked.
+   */
+  private validateOverrideMaps(input: BulkListingSubmitInput): void {
+    const batchCurrency = input.sharedConfig.price?.currency;
+    this.assertOverrideMap('perProductOverrides', input.perProductOverrides, batchCurrency, false);
+    this.assertOverrideMap('perVariantOverrides', input.perVariantOverrides, batchCurrency, true);
+    for (const id of input.excludedVariantIds ?? []) {
+      if (!INTERNAL_VARIANT_ID_RE.test(id)) {
+        throw new InvalidOverrideKeyException('excludedVariantIds', id);
+      }
+    }
+  }
+
+  private assertOverrideMap(
+    field: 'perProductOverrides' | 'perVariantOverrides',
+    map: Record<string, PerProductOverride> | undefined,
+    batchCurrency: string | undefined,
+    stripCategoryId: boolean
+  ): void {
+    if (!map) return;
+    for (const key of Object.keys(map)) {
+      if (!INTERNAL_VARIANT_ID_RE.test(key)) {
+        throw new InvalidOverrideKeyException(field, key);
+      }
+      const value = map[key];
+      const overrideCurrency = value?.price?.currency;
+      if (
+        batchCurrency !== undefined &&
+        overrideCurrency !== undefined &&
+        overrideCurrency !== batchCurrency
+      ) {
+        throw new CurrencyMismatchException(key, overrideCurrency, batchCurrency);
+      }
+      if (stripCategoryId && value?.overrides?.categoryId !== undefined) {
+        delete value.overrides.categoryId;
+      }
+    }
+  }
+
+  /**
+   * Enforce identifier integrity on the included fan-out (#1741). For each job
+   * the effective EAN is
+   * `perVariantOverrides[variantId].overrides.ean ?? variant.ean ?? variant.gtin`
+   * — the same value the offer builder self-links / category-resolves by:
+   *
+   * - a present EAN of GTIN length (8/12/13/14) with an invalid GS1 check digit
+   *   throws `InvalidEanException`;
+   * - two included variants (of the same or different products) resolving to the
+   *   same EAN throw `DuplicateBatchEanException` — they would otherwise collapse
+   *   onto one Allegro catalog card and lose their variant grouping.
+   *
+   * Null / barcode-less variants are skipped (a barcode-less sibling lists
+   * standalone). Runs before persistence because #742 retry rebuilds from the
+   * persisted snapshot and does not re-validate.
+   */
+  private enforceIdentifierRules(
+    input: BulkListingSubmitInput,
+    jobs: ExpandedVariantJob[],
+    variantsById: Map<string, ProductVariant | null>
+  ): void {
+    const firstSeenByEan = new Map<string, string>();
+    for (const job of jobs) {
+      const variant = variantsById.get(job.variantId) ?? null;
+      const ean =
+        input.perVariantOverrides?.[job.variantId]?.overrides?.ean ??
+        variant?.ean ??
+        variant?.gtin ??
+        null;
+      if (ean == null) continue;
+
+      if (GTIN_LENGTHS.has(ean.length) && !isValidGs1CheckDigit(ean)) {
+        throw new InvalidEanException(job.variantId, ean);
+      }
+
+      const firstVariantId = firstSeenByEan.get(ean);
+      if (firstVariantId !== undefined && firstVariantId !== job.variantId) {
+        throw new DuplicateBatchEanException(ean, [firstVariantId, job.variantId]);
+      }
+      firstSeenByEan.set(ean, job.variantId);
+    }
   }
 
   /**
@@ -323,11 +499,12 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
    * 0**, so an out-of-stock variant lists as 0 rather than being backfilled
    * with the operator's bulk quantity (which would publish phantom stock and
    * risk overselling). The operator quantity remains the source for
-   * single-variant / passthrough jobs, and a defensive fallback if a variant
-   * is somehow absent from the availability map (it is zero-filled in
-   * practice, so that fallback is effectively unreachable). Siblings also drop
-   * the FE-resolved `productCardId` so each self-links to its own catalog
-   * product by barcode.
+   * single-variant / passthrough jobs. A sibling absent from the availability
+   * map resolves to 0 (out-of-stock) - the `?? 0` case is reachable and
+   * intentional (no phantom stock, #1741): a variant with no master row lists
+   * as 0 rather than being backfilled with the operator's bulk quantity.
+   * Siblings also drop the FE-resolved `productCardId` so each self-links to
+   * its own catalog product by barcode.
    */
   private buildEnqueueInput(
     input: BulkListingSubmitInput,
@@ -335,20 +512,48 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     job: ExpandedVariantJob,
     masterStock: Map<string, number>
   ): EnqueueOfferCreationInput {
-    const override: PerProductOverride | undefined = input.perProductOverrides?.[job.selectedId];
-    const operatorStock = override?.stock ?? input.sharedConfig.stock;
+    // 3-way precedence (#1741): base sharedConfig → family (perProductOverrides
+    // by selectedId) → variant (perVariantOverrides by variantId); the variant
+    // layer wins field-by-field, INCLUDING the scalar fields below (not just the
+    // `overrides` object).
+    const familyOverride: PerProductOverride | undefined =
+      input.perProductOverrides?.[job.selectedId];
+    const variantOverride: PerProductOverride | undefined =
+      input.perVariantOverrides?.[job.variantId];
+
+    const operatorStock =
+      variantOverride?.stock ?? familyOverride?.stock ?? input.sharedConfig.stock;
+    // Master stock is authoritative for expanded siblings — including 0. A
+    // sibling absent from the availability map resolves to 0 (out-of-stock),
+    // never the nominal operator quantity (no phantom stock, #1741). The
+    // operator quantity is used only for single-variant / passthrough jobs.
     const masterAvailable = job.useMasterStock ? masterStock.get(job.variantId) : undefined;
-    const stock = masterAvailable ?? operatorStock;
+    const stock = job.useMasterStock ? (masterAvailable ?? 0) : operatorStock;
     const publishImmediately =
-      override?.publishImmediately ?? input.sharedConfig.publishImmediately;
-    const price = override?.price ?? input.sharedConfig.price;
-    // Layer per-product overrides on top of the batch-wide shared overrides.
-    // A wholesale `??` replacement silently dropped shared settings the wizard
-    // never repeats per row — notably `platformParams.deliveryPolicyId`, whose
-    // absence makes Allegro reject the offer with
-    // `DefaultShippingRatesNotFoundException`. (#808)
-    let overrides = this.mergeOverrides(input.sharedConfig.overrides, override?.overrides);
-    if (job.clearProductCard && overrides?.productCardId !== undefined) {
+      variantOverride?.publishImmediately ??
+      familyOverride?.publishImmediately ??
+      input.sharedConfig.publishImmediately;
+    const price = variantOverride?.price ?? familyOverride?.price ?? input.sharedConfig.price;
+    // #1741: a marketplace (Allegro) rejects ACTIVATING a 0-stock offer. A
+    // variant resolving to 0 stock is created as a draft (inactive) rather than
+    // failing at create; the operator activates it after restock. Applies to
+    // both master-authoritative 0 (expanded siblings) and an operator-entered 0.
+    const publishEffective = stock > 0 ? publishImmediately : false;
+    // Layer overrides base → family → variant; `platformParams` deep-merged
+    // across all three so shared keys (e.g. `deliveryPolicyId`, #808) survive.
+    let overrides = this.mergeOverrides(
+      input.sharedConfig.overrides,
+      familyOverride?.overrides,
+      variantOverride?.overrides
+    );
+    // Strip the wizard-resolved card for expanded siblings so each self-links
+    // by its own barcode — UNLESS the operator explicitly picked a per-variant
+    // card (multi-match candidate), which must survive (#1741).
+    if (
+      job.clearProductCard &&
+      overrides?.productCardId !== undefined &&
+      variantOverride?.overrides?.productCardId === undefined
+    ) {
       const withoutCard: CreateOfferOverrides = { ...overrides };
       delete withoutCard.productCardId;
       overrides = Object.keys(withoutCard).length > 0 ? withoutCard : undefined;
@@ -358,7 +563,7 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
       internalVariantId: job.variantId,
       connectionId: input.connectionId,
       stock,
-      publishImmediately,
+      publishImmediately: publishEffective,
       bulkBatchId,
       generateDescription: input.sharedConfig.generateDescription ?? false,
       ...(price !== undefined && { price }),
@@ -370,27 +575,54 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
   }
 
   /**
-   * Layer a per-product override on top of the batch-wide shared overrides.
-   * Scalar fields (title, categoryId, productCardId, imageUrls, …) take the
-   * per-product value when present; `platformParams` is **deep-merged** so
-   * shared keys (e.g. `deliveryPolicyId`) survive even when a row supplies its
-   * own platform tweaks. Returns `undefined` only when neither side has any
-   * overrides, so the enqueue input keeps omitting the field in that case.
+   * Layer overrides across the three precedence tiers base (`sharedConfig`) →
+   * family (`perProductOverrides`) → variant (`perVariantOverrides`), with the
+   * later tier winning field-by-field (#1741). Scalar + whole-array fields
+   * (title, productCardId, imageUrls, parameters, …) take the latest present
+   * value; `platformParams` is **deep-merged** across all three so shared keys
+   * (e.g. `deliveryPolicyId`, #808) survive even when a variant supplies its own
+   * platform tweaks. Returns `undefined` only when no tier has any overrides, so
+   * the enqueue input keeps omitting the field in that case.
    */
   private mergeOverrides(
     shared: CreateOfferOverrides | undefined,
-    perProduct: CreateOfferOverrides | undefined
+    family: CreateOfferOverrides | undefined,
+    variant: CreateOfferOverrides | undefined
   ): CreateOfferOverrides | undefined {
-    if (!shared && !perProduct) return undefined;
-    const merged: CreateOfferOverrides = { ...shared, ...perProduct };
-    if (shared?.platformParams || perProduct?.platformParams) {
+    if (!shared && !family && !variant) return undefined;
+    // Scalar + whole-array fields: later layer wins (base → family → variant).
+    // `parameters` / `imageUrls` are whole-array-replaced by design (#1741) —
+    // the FE emits the full effective array per variant.
+    const merged: CreateOfferOverrides = { ...shared, ...family, ...variant };
+    if (shared?.platformParams || family?.platformParams || variant?.platformParams) {
+      // `platformParams` is deep-merged across all three so shared keys
+      // (e.g. `deliveryPolicyId`, #808) survive a per-variant platform tweak.
       merged.platformParams = {
         ...shared?.platformParams,
-        ...perProduct?.platformParams,
+        ...family?.platformParams,
+        ...variant?.platformParams,
       };
     }
     return merged;
   }
+}
+
+/**
+ * GS1 mod-10 check-digit validation for a GTIN-8/12/13/14 (#1741). The trailing
+ * digit is the check digit; the preceding body digits are weighted 3,1,3,1,…
+ * from the rightmost body digit. Returns false for a non-numeric input. Pure.
+ */
+function isValidGs1CheckDigit(code: string): boolean {
+  if (!/^\d+$/.test(code)) return false;
+  const digits = [...code].map((c) => Number(c));
+  const check = digits[digits.length - 1];
+  const body = digits.slice(0, -1);
+  let sum = 0;
+  for (let i = body.length - 1, pos = 0; i >= 0; i--, pos++) {
+    sum += body[i] * (pos % 2 === 0 ? 3 : 1);
+  }
+  const computed = (10 - (sum % 10)) % 10;
+  return computed === check;
 }
 
 /*

@@ -18,6 +18,10 @@ import type { IInventoryQueryService } from '@openlinker/core/inventory';
 import type { OfferCreationRecord } from '../../../domain/entities/offer-creation-record.entity';
 import { BulkListingBatch } from '../../../domain/entities/bulk-listing-batch.entity';
 import { EmptyBulkSubmissionException } from '../../../domain/exceptions/empty-bulk-submission.exception';
+import { InvalidEanException } from '../../../domain/exceptions/invalid-ean.exception';
+import { DuplicateBatchEanException } from '../../../domain/exceptions/duplicate-batch-ean.exception';
+import { CurrencyMismatchException } from '../../../domain/exceptions/currency-mismatch.exception';
+import { InvalidOverrideKeyException } from '../../../domain/exceptions/invalid-override-key.exception';
 import type { BulkListingBatchRepositoryPort } from '../../../domain/ports/bulk-listing-batch-repository.port';
 import type { OfferCreationRecordRepositoryPort } from '../../../domain/ports/offer-creation-record-repository.port';
 import type { IOfferCreationEnqueueService } from '../../interfaces/offer-creation-enqueue.service.interface';
@@ -69,6 +73,9 @@ describe('BulkListingSubmitService', () => {
       incrementCounters: jest.fn(),
       updateStatus: jest.fn().mockImplementation((id: string, status: string) =>
         Promise.resolve(makeBatch({ id, status: status as never }))
+      ),
+      updateTotalCount: jest.fn().mockImplementation((id: string, totalCount: number) =>
+        Promise.resolve(makeBatch({ id, totalCount }))
       ),
     };
     offerCreationRecords = {
@@ -160,14 +167,14 @@ describe('BulkListingSubmitService', () => {
       await service.submit({
         connectionId,
         initiatedBy,
-        productIds: ['v-a', 'v-b'],
+        productIds: ['ol_variant_a', 'ol_variant_b'],
         sharedConfig: {
           stock: 5,
           publishImmediately: false,
           price: { amount: 10, currency: 'PLN' },
         },
         perProductOverrides: {
-          'v-b': {
+          ol_variant_b: {
             stock: 99,
             price: { amount: 20, currency: 'PLN' },
           },
@@ -175,12 +182,12 @@ describe('BulkListingSubmitService', () => {
       });
 
       expect(enqueueService.enqueueCreation.mock.calls[0][0]).toMatchObject({
-        internalVariantId: 'v-a',
+        internalVariantId: 'ol_variant_a',
         stock: 5,
         price: { amount: 10, currency: 'PLN' },
       });
       expect(enqueueService.enqueueCreation.mock.calls[1][0]).toMatchObject({
-        internalVariantId: 'v-b',
+        internalVariantId: 'ol_variant_b',
         stock: 99,
         price: { amount: 20, currency: 'PLN' },
       });
@@ -190,7 +197,7 @@ describe('BulkListingSubmitService', () => {
       await service.submit({
         connectionId,
         initiatedBy,
-        productIds: ['v-a', 'v-b'],
+        productIds: ['ol_variant_a', 'ol_variant_b'],
         sharedConfig: {
           stock: 5,
           publishImmediately: false,
@@ -202,15 +209,15 @@ describe('BulkListingSubmitService', () => {
           // Row override carries category/card but NO platformParams — the
           // shared deliveryPolicyId must still flow through (the bug: a
           // wholesale replace dropped it → DefaultShippingRatesNotFound).
-          'v-a': { overrides: { categoryId: '257933', productCardId: 'card-a' } },
+          ol_variant_a: { overrides: { categoryId: '257933', productCardId: 'card-a' } },
           // Row override with its own platformParams — deep-merged: per-product
           // key wins, shared sibling key survives.
-          'v-b': { overrides: { platformParams: { deliveryPolicyId: 'dp-b' } } },
+          ol_variant_b: { overrides: { platformParams: { deliveryPolicyId: 'dp-b' } } },
         },
       });
 
       expect(enqueueService.enqueueCreation.mock.calls[0][0]).toMatchObject({
-        internalVariantId: 'v-a',
+        internalVariantId: 'ol_variant_a',
         overrides: {
           categoryId: '257933',
           productCardId: 'card-a',
@@ -218,7 +225,7 @@ describe('BulkListingSubmitService', () => {
         },
       });
       expect(enqueueService.enqueueCreation.mock.calls[1][0]).toMatchObject({
-        internalVariantId: 'v-b',
+        internalVariantId: 'ol_variant_b',
         overrides: {
           platformParams: { deliveryPolicyId: 'dp-b', handlingTime: 'PT24H' },
         },
@@ -229,7 +236,7 @@ describe('BulkListingSubmitService', () => {
       await service.submit({
         connectionId,
         initiatedBy,
-        productIds: ['v-a', 'v-b'],
+        productIds: ['ol_variant_a', 'ol_variant_b'],
         sharedConfig: {
           stock: 5,
           publishImmediately: false,
@@ -239,19 +246,19 @@ describe('BulkListingSubmitService', () => {
         },
         perProductOverrides: {
           // No row params → inherit the shared parameters.
-          'v-a': { overrides: { categoryId: '257933' } },
+          ol_variant_a: { overrides: { categoryId: '257933' } },
           // Row params → REPLACE the shared set wholesale (a row supplies the
           // complete param set for its own category).
-          'v-b': { overrides: { parameters: [{ id: 'row-1', values: ['R'], section: 'product' }] } },
+          ol_variant_b: { overrides: { parameters: [{ id: 'row-1', values: ['R'], section: 'product' }] } },
         },
       });
 
       expect(enqueueService.enqueueCreation.mock.calls[0][0]).toMatchObject({
-        internalVariantId: 'v-a',
+        internalVariantId: 'ol_variant_a',
         overrides: { parameters: [{ id: 'shared-1', values: ['S'], section: 'offer' }] },
       });
       expect(enqueueService.enqueueCreation.mock.calls[1][0]).toMatchObject({
-        internalVariantId: 'v-b',
+        internalVariantId: 'ol_variant_b',
         overrides: { parameters: [{ id: 'row-1', values: ['R'], section: 'product' }] },
       });
     });
@@ -289,7 +296,7 @@ describe('BulkListingSubmitService', () => {
       expect(enqueueService.enqueueCreation).not.toHaveBeenCalled();
     });
 
-    it('marks the batch as failed and re-throws when an enqueue rejects mid-fan-out', async () => {
+    it('reconciles totalCount to the number enqueued + advances to running when an enqueue rejects mid-fan-out (#1741)', async () => {
       enqueueService.enqueueCreation
         .mockResolvedValueOnce({
           jobId: 'job-1',
@@ -306,9 +313,28 @@ describe('BulkListingSubmitService', () => {
         })
       ).rejects.toThrow('Redis Streams write failed');
 
+      // Partial fan-out (1 of 3 enqueued): totalCount reconciled to 1 so the
+      // #737 counter gate can terminate, then advanced to 'running' — never
+      // 'failed' (that would strand the one enqueued child's counters).
+      expect(bulkBatchRepo.updateTotalCount).toHaveBeenCalledWith('batch-1', 1);
+      expect(bulkBatchRepo.updateStatus).toHaveBeenCalledWith('batch-1', 'running');
+      expect(bulkBatchRepo.updateStatus).not.toHaveBeenCalledWith('batch-1', 'failed');
+    });
+
+    it('flips terminal failed when the very first enqueue rejects (nothing enqueued, #1741)', async () => {
+      enqueueService.enqueueCreation.mockRejectedValueOnce(new Error('Redis down'));
+
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['v-a', 'v-b'],
+          sharedConfig: { stock: 5, publishImmediately: false },
+        })
+      ).rejects.toThrow('Redis down');
+
       expect(bulkBatchRepo.updateStatus).toHaveBeenCalledWith('batch-1', 'failed');
-      // The running-status flip never reaches, only the failed-flip is observed.
-      expect(bulkBatchRepo.updateStatus).toHaveBeenCalledTimes(1);
+      expect(bulkBatchRepo.updateTotalCount).not.toHaveBeenCalled();
     });
 
     it('does not crash when the failed-status flip itself also fails (best-effort)', async () => {
@@ -534,6 +560,380 @@ describe('BulkListingSubmitService', () => {
       expect(enqueueService.enqueueCreation.mock.calls[1][0].overrides).toEqual({
         categoryId: 'cat-1',
       });
+    });
+  });
+
+  describe('per-variant configuration (#1741)', () => {
+    // A multi-variant product P with three siblings; helper to wire the mocks.
+    const wireMultiVariant = (
+      siblings: Array<Partial<ProductVariant> & Pick<ProductVariant, 'id'>>,
+      availability: Array<{ productVariantId: string; totalAvailable: number }>
+    ): void => {
+      const built = siblings.map((s) => variant({ productId: 'P', ...s }));
+      products.getVariant.mockImplementation((id: string) =>
+        Promise.resolve(built.find((v) => v.id === id) ?? built[0])
+      );
+      products.getVariantsByProductId.mockResolvedValue(built);
+      inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(
+        availability.map((a) => ({ ...a, locationCount: 1 }))
+      );
+    };
+
+    it('layers scalars 3-way: variant wins over family over base, and false is preserved', async () => {
+      // Two passthrough (unknown → single-offer) variants so selectedId === variantId.
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a', 'ol_variant_b'],
+        sharedConfig: { stock: 5, publishImmediately: true, price: { amount: 10, currency: 'PLN' } },
+        perProductOverrides: {
+          ol_variant_a: { publishImmediately: true, price: { amount: 20, currency: 'PLN' } },
+          ol_variant_b: { publishImmediately: true, price: { amount: 20, currency: 'PLN' } },
+        },
+        perVariantOverrides: {
+          // Variant layer wins: publish:false beats family/base true (false is
+          // preserved, not treated as "absent"); price 30 beats 20/10.
+          ol_variant_a: { publishImmediately: false, price: { amount: 30, currency: 'PLN' }, stock: 8 },
+        },
+      });
+
+      expect(enqueueService.enqueueCreation.mock.calls[0][0]).toMatchObject({
+        internalVariantId: 'ol_variant_a',
+        publishImmediately: false,
+        price: { amount: 30, currency: 'PLN' },
+        stock: 8,
+      });
+      // b has no per-variant entry → family layer wins over base.
+      expect(enqueueService.enqueueCreation.mock.calls[1][0]).toMatchObject({
+        internalVariantId: 'ol_variant_b',
+        publishImmediately: true,
+        price: { amount: 20, currency: 'PLN' },
+        stock: 5,
+      });
+    });
+
+    it('excludes a sibling and totalCount reflects the post-exclusion fan-out', async () => {
+      wireMultiVariant(
+        [
+          { id: 'ol_variant_a', ean: '111' },
+          { id: 'ol_variant_b', ean: '222' },
+          { id: 'ol_variant_c', ean: '333' },
+        ],
+        [
+          { productVariantId: 'ol_variant_a', totalAvailable: 3 },
+          { productVariantId: 'ol_variant_c', totalAvailable: 3 },
+        ]
+      );
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a'],
+        sharedConfig: { stock: 7, publishImmediately: false },
+        excludedVariantIds: ['ol_variant_b'],
+      });
+
+      expect(enqueueService.enqueueCreation.mock.calls.map((c) => c[0].internalVariantId)).toEqual([
+        'ol_variant_a',
+        'ol_variant_c',
+      ]);
+      expect(bulkBatchRepo.create).toHaveBeenCalledWith(expect.objectContaining({ totalCount: 2 }));
+    });
+
+    it('never resurrects an excluded seed/primary variant', async () => {
+      wireMultiVariant(
+        [
+          { id: 'ol_variant_a', ean: '111' },
+          { id: 'ol_variant_b', ean: '222' },
+          { id: 'ol_variant_c', ean: '333' },
+        ],
+        [
+          { productVariantId: 'ol_variant_b', totalAvailable: 1 },
+          { productVariantId: 'ol_variant_c', totalAvailable: 1 },
+        ]
+      );
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a'],
+        sharedConfig: { stock: 7, publishImmediately: false },
+        excludedVariantIds: ['ol_variant_a'],
+      });
+
+      const ids = enqueueService.enqueueCreation.mock.calls.map((c) => c[0].internalVariantId);
+      expect(ids).toEqual(['ol_variant_b', 'ol_variant_c']);
+      expect(ids).not.toContain('ol_variant_a');
+    });
+
+    it('keeps a barcode-less sibling rescued by an override EAN', async () => {
+      wireMultiVariant(
+        [
+          { id: 'ol_variant_a', ean: '111' },
+          { id: 'ol_variant_b' }, // no ean/gtin
+          { id: 'ol_variant_c', ean: '333' },
+        ],
+        [
+          { productVariantId: 'ol_variant_a', totalAvailable: 2 },
+          { productVariantId: 'ol_variant_b', totalAvailable: 2 },
+          { productVariantId: 'ol_variant_c', totalAvailable: 2 },
+        ]
+      );
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a'],
+        sharedConfig: { stock: 7, publishImmediately: false },
+        perVariantOverrides: {
+          ol_variant_b: { overrides: { ean: '5901234123457' } },
+        },
+      });
+
+      const ids = enqueueService.enqueueCreation.mock.calls.map((c) => c[0].internalVariantId);
+      expect(ids).toEqual(['ol_variant_a', 'ol_variant_b', 'ol_variant_c']);
+    });
+
+    it('keeps an explicit per-variant productCardId through clearProductCard', async () => {
+      wireMultiVariant(
+        [
+          { id: 'ol_variant_a', ean: '111' },
+          { id: 'ol_variant_b', ean: '222' },
+        ],
+        [
+          { productVariantId: 'ol_variant_a', totalAvailable: 3 },
+          { productVariantId: 'ol_variant_b', totalAvailable: 3 },
+        ]
+      );
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a'],
+        sharedConfig: {
+          stock: 7,
+          publishImmediately: false,
+          overrides: { categoryId: 'cat-1', productCardId: 'card-shared' },
+        },
+        perVariantOverrides: {
+          // Operator picked a specific card for the sibling (multi-match pick) —
+          // it must survive the clearProductCard strip.
+          ol_variant_b: { overrides: { productCardId: 'card-b-explicit' } },
+        },
+      });
+
+      // selected keeps shared card; sibling keeps its explicit card (not stripped).
+      expect(enqueueService.enqueueCreation.mock.calls[0][0].overrides).toEqual({
+        categoryId: 'cat-1',
+        productCardId: 'card-shared',
+      });
+      expect(enqueueService.enqueueCreation.mock.calls[1][0].overrides).toEqual({
+        categoryId: 'cat-1',
+        productCardId: 'card-b-explicit',
+      });
+    });
+
+    it('resolves a sibling absent from the availability map to 0 stock (no phantom stock)', async () => {
+      wireMultiVariant(
+        [
+          { id: 'ol_variant_a', ean: '111' },
+          { id: 'ol_variant_b', ean: '222' },
+        ],
+        // ol_variant_b entirely absent from the availability map.
+        [{ productVariantId: 'ol_variant_a', totalAvailable: 9 }]
+      );
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a'],
+        sharedConfig: { stock: 7, publishImmediately: false },
+      });
+
+      expect(enqueueService.enqueueCreation.mock.calls[0][0]).toMatchObject({
+        internalVariantId: 'ol_variant_a',
+        stock: 9,
+      });
+      expect(enqueueService.enqueueCreation.mock.calls[1][0]).toMatchObject({
+        internalVariantId: 'ol_variant_b',
+        stock: 0,
+      });
+    });
+
+    it('forces publishImmediately false for a 0-stock sibling (draft), true for in-stock (#1741)', async () => {
+      wireMultiVariant(
+        [
+          { id: 'ol_variant_a', ean: '111' },
+          { id: 'ol_variant_b', ean: '222' },
+        ],
+        [
+          { productVariantId: 'ol_variant_a', totalAvailable: 4 },
+          { productVariantId: 'ol_variant_b', totalAvailable: 0 },
+        ]
+      );
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a'],
+        sharedConfig: { stock: 7, publishImmediately: true },
+      });
+
+      expect(enqueueService.enqueueCreation.mock.calls[0][0]).toMatchObject({
+        internalVariantId: 'ol_variant_a',
+        stock: 4,
+        publishImmediately: true,
+      });
+      // 0-stock sibling cannot be activated → forced to draft.
+      expect(enqueueService.enqueueCreation.mock.calls[1][0]).toMatchObject({
+        internalVariantId: 'ol_variant_b',
+        stock: 0,
+        publishImmediately: false,
+      });
+    });
+
+    it('throws EmptyBulkSubmissionException (no batch row) when every variant is excluded', async () => {
+      wireMultiVariant(
+        [
+          { id: 'ol_variant_a', ean: '111' },
+          { id: 'ol_variant_b', ean: '222' },
+          { id: 'ol_variant_c', ean: '333' },
+        ],
+        []
+      );
+
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['ol_variant_a'],
+          sharedConfig: { stock: 7, publishImmediately: false },
+          excludedVariantIds: ['ol_variant_a', 'ol_variant_b', 'ol_variant_c'],
+        })
+      ).rejects.toBeInstanceOf(EmptyBulkSubmissionException);
+
+      expect(bulkBatchRepo.create).not.toHaveBeenCalled();
+      expect(enqueueService.enqueueCreation).not.toHaveBeenCalled();
+    });
+
+    it('rejects an effective EAN with an invalid GS1 check digit', async () => {
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['ol_variant_a'],
+          sharedConfig: { stock: 1, publishImmediately: false },
+          // Passthrough variant (unknown) + a 13-digit override EAN with a bad
+          // check digit (…457 is valid, …458 is not).
+          perVariantOverrides: { ol_variant_a: { overrides: { ean: '5901234123458' } } },
+        })
+      ).rejects.toBeInstanceOf(InvalidEanException);
+
+      expect(bulkBatchRepo.create).not.toHaveBeenCalled();
+      expect(enqueueService.enqueueCreation).not.toHaveBeenCalled();
+    });
+
+    it('rejects two included variants that resolve to the same effective EAN', async () => {
+      wireMultiVariant(
+        [
+          { id: 'ol_variant_a', ean: '5901234123457' },
+          { id: 'ol_variant_b', ean: '5901234123457' }, // duplicate barcode
+        ],
+        [
+          { productVariantId: 'ol_variant_a', totalAvailable: 1 },
+          { productVariantId: 'ol_variant_b', totalAvailable: 1 },
+        ]
+      );
+
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['ol_variant_a'],
+          sharedConfig: { stock: 1, publishImmediately: false },
+        })
+      ).rejects.toBeInstanceOf(DuplicateBatchEanException);
+
+      expect(bulkBatchRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('strips categoryId from a per-variant override', async () => {
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a'],
+        sharedConfig: { stock: 1, publishImmediately: false },
+        perVariantOverrides: {
+          ol_variant_a: { overrides: { categoryId: 'cat-x', title: 'Variant title' } },
+        },
+      });
+
+      const overrides = enqueueService.enqueueCreation.mock.calls[0][0].overrides;
+      expect(overrides).toEqual({ title: 'Variant title' });
+      expect(overrides).not.toHaveProperty('categoryId');
+    });
+
+    it('rejects a per-variant override whose price currency diverges from the batch currency', async () => {
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['ol_variant_a'],
+          sharedConfig: { stock: 1, publishImmediately: false, price: { amount: 10, currency: 'PLN' } },
+          perVariantOverrides: {
+            ol_variant_a: { price: { amount: 5, currency: 'EUR' } },
+          },
+        })
+      ).rejects.toBeInstanceOf(CurrencyMismatchException);
+
+      expect(bulkBatchRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects an override-map key that is not a valid internal variant id', async () => {
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['ol_variant_a'],
+          sharedConfig: { stock: 1, publishImmediately: false },
+          perVariantOverrides: { 'not-a-variant': { stock: 1 } },
+        })
+      ).rejects.toBeInstanceOf(InvalidOverrideKeyException);
+
+      expect(bulkBatchRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a prototype-pollution (__proto__) own key in an override map', async () => {
+      // JSON.parse creates an OWN "__proto__" property (unlike an object literal),
+      // which Object.keys enumerates and the shape guard rejects.
+      const polluted = JSON.parse('{"__proto__": {"stock": 1}}') as Record<
+        string,
+        { stock?: number }
+      >;
+
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['ol_variant_a'],
+          sharedConfig: { stock: 1, publishImmediately: false },
+          perVariantOverrides: polluted,
+        })
+      ).rejects.toBeInstanceOf(InvalidOverrideKeyException);
+    });
+
+    it('rejects a malformed excludedVariantIds entry', async () => {
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['ol_variant_a'],
+          sharedConfig: { stock: 1, publishImmediately: false },
+          excludedVariantIds: ['bad-id'],
+        })
+      ).rejects.toBeInstanceOf(InvalidOverrideKeyException);
+
+      expect(bulkBatchRepo.create).not.toHaveBeenCalled();
     });
   });
 

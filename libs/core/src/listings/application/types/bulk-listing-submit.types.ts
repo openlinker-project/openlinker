@@ -83,10 +83,24 @@ export interface BulkListingSubmitInput {
   /** Shared submission config applied to every product. */
   sharedConfig: BulkSharedConfig;
   /**
-   * Optional per-product overrides keyed by `productIds[i]`. Entries with
-   * unrecognised keys are ignored.
+   * Optional per-product overrides keyed by `productIds[i]` (the submitted
+   * primary/seed variant id). Applied to the whole variant family as the
+   * family-default layer. Entries with unrecognised keys are ignored.
    */
   perProductOverrides?: Record<string, PerProductOverride>;
+  /**
+   * Optional per-variant overrides keyed by the **actual** variant id of any
+   * sibling (#1741). Wins over the family layer field-by-field in
+   * `buildEnqueueInput`. Entries with unrecognised keys are ignored.
+   */
+  perVariantOverrides?: Record<string, PerProductOverride>;
+  /**
+   * Variant ids to exclude from the fan-out (#1741). `expandVariantJobs`
+   * skips these siblings (and never resurrects an excluded seed); `totalCount`
+   * reflects the post-exclusion count. A product whose every variant is
+   * excluded contributes zero jobs.
+   */
+  excludedVariantIds?: string[];
 }
 
 /**
