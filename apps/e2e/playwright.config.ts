@@ -18,6 +18,13 @@
  *                      verify -> record -> enqueue -> dedup. Self-configuring
  *                      (skips when no PrestaShop connection is present).
  *                      `retries: 0` (rotates the secret + enqueues a job).
+ *   - `lifecycle`    — unattended order-lifecycle + inventory-resilience
+ *                      coverage (#1574): webhook/poll idempotency, cross-
+ *                      channel stock propagation + oversell safety, stale-
+ *                      variant pruning (#1495). Self-configuring per spec.
+ *                      `retries: 0` — the propagation/pruning specs mutate
+ *                      real PrestaShop stock (propagation restores it in
+ *                      `afterAll`; pruning is opt-in and irreversible).
  *
  * Reporters: html + list. Retries are per-project: read-only projects (setup,
  * smoke) retry once; the mutating golden-path project runs with `retries: 0` —
@@ -100,6 +107,19 @@ export default defineConfig({
       // rotate the secret again and enqueue a second downstream job.
       name: 'webhooks',
       testMatch: /webhooks\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
+      // Order-lifecycle + inventory-resilience suite (#1574) — independent of
+      // the golden-path/full-flow/webhooks projects. `retries: 0`: the
+      // propagation spec mutates real PrestaShop stock (restored in
+      // `afterAll`) and the pruning spec is destructive/irreversible by
+      // design (opt-in via E2E_ALLOW_DESTRUCTIVE_PRUNE) — a silent retry
+      // would double-mutate or attempt to re-delete an already-gone variant.
+      name: 'lifecycle',
+      testMatch: /lifecycle\/.*\.spec\.ts/,
       retries: 0,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
