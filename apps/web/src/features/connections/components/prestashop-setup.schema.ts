@@ -22,9 +22,8 @@ export const PRESTASHOP_ADAPTER_KEY = 'prestashop.webservice.v1';
  * an intentionally minimal default. The ADR-024 shop-listing capabilities
  * (`ProductPublisher`, `CategoryProvisioner`) still render as checkboxes once
  * real adapter metadata loads, but start unchecked here; the operator opts in
- * explicitly rather than the wizard reseeding from the manifest (contrast with
- * `WoocommerceSetupForm`, which reseeds `enabledCapabilities` from the
- * adapter's `supportedCapabilities` on load).
+ * explicitly rather than the wizard reseeding from the manifest. The
+ * WooCommerce wizard follows the same opt-in model since #1727.
  */
 export const PRESTASHOP_FALLBACK_CAPABILITIES: CoreCapability[] = [
   'ProductMaster',

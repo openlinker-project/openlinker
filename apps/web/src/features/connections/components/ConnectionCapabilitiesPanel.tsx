@@ -11,6 +11,11 @@ import { useState, type ReactElement } from 'react';
 import type { Connection, CoreCapability } from '../api/connections.types';
 import { CORE_CAPABILITY_VALUES } from '../api/connections.types';
 import { useUpdateConnectionMutation } from '../hooks/use-update-connection-mutation';
+import {
+  CAPABILITY_HELP,
+  capabilityConflictMessage,
+  getCapabilityConflict,
+} from '../lib/capability-metadata';
 import { Alert } from '../../../shared/ui/alert';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { useToast } from '../../../shared/ui/toast-provider';
@@ -18,17 +23,6 @@ import { useToast } from '../../../shared/ui/toast-provider';
 interface ConnectionCapabilitiesPanelProps {
   connection: Connection;
 }
-
-const CAPABILITY_HELP: Record<CoreCapability, string> = {
-  ProductMaster: 'Read the product catalog (variants, attributes, categories) from this connection.',
-  InventoryMaster: 'Read stock levels from this connection as the inventory source of truth.',
-  OrderProcessorManager: 'Create and manage orders in this connection (typically the destination shop).',
-  OrderSource: 'Fetch new orders from this connection (e.g. a marketplace).',
-  OfferManager: 'Manage offers and listings on this marketplace connection.',
-  ProductPublisher: 'Publish and manage shop listings owned by this connection (cross-platform listing).',
-  CategoryProvisioner: 'Create or resolve destination categories when publishing listings to this connection.',
-  Invoicing: 'Issue and manage fiscal documents (invoices) through this connection.',
-};
 
 const CORE_CAPABILITY_SET = new Set<string>(CORE_CAPABILITY_VALUES);
 
@@ -128,6 +122,10 @@ export function ConnectionCapabilitiesPanel({
           {supported.map((capability) => {
             const id = `cap-${connection.id}-${capability}`;
             const isChecked = enabled.has(capability);
+            // Mutual-exclusion guard: the backend rejects the conflicting
+            // pair with a 400, so keep the invalid state unreachable here.
+            const conflict = getCapabilityConflict(enabled, capability);
+            const isBlocked = conflict !== null && !isChecked;
             return (
               <li key={capability} className="capability-list__item">
                 <label htmlFor={id} className="capability-list__label">
@@ -135,13 +133,15 @@ export function ConnectionCapabilitiesPanel({
                     id={id}
                     type="checkbox"
                     checked={isChecked}
-                    disabled={pending === capability || updateMutation.isPending}
+                    disabled={isBlocked || pending === capability || updateMutation.isPending}
                     onChange={(e) => void handleToggle(capability, e.target.checked)}
                   />
                   <span className="capability-list__name mono-text">{capability}</span>
                 </label>
                 <p className="capability-list__help muted-text">
-                  {CAPABILITY_HELP[capability]}
+                  {isBlocked && conflict
+                    ? capabilityConflictMessage(conflict)
+                    : CAPABILITY_HELP[capability]}
                 </p>
               </li>
             );
