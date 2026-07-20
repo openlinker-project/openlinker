@@ -14,6 +14,7 @@
 import {
   isCategoryBrowser,
   isCategoryParametersReader,
+  isOfferReader,
   isOfferStatusReader,
   OfferCreateRejectedException,
   OfferNotFoundOnMarketplaceException,
@@ -1038,6 +1039,86 @@ describe('ErliOfferManagerAdapter', () => {
 
     it('should reject a hostile externalOfferId before any GET', async () => {
       await expect(adapter.getOfferStatus('evil/../x')).rejects.toBeInstanceOf(ErliConfigException);
+      expect(httpClient.get).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getOffer (#464 — OfferReader)', () => {
+    // A representative live read-side product resource (shape verified against
+    // the sandbox GET /products/{externalId}): grosze price, public image url,
+    // breadcrumb-path categories, flat HTML externalDescription.
+    const productResource = {
+      externalId: VALID_ID,
+      name: 'Swieca sojowa zapachowa 200g Aura',
+      externalDescription: '<p>Naturalna swieca sojowa.</p>',
+      ean: '5900000000114',
+      price: 3490,
+      stock: 16,
+      status: 'active',
+      slug: 'swieca-sojowa-200g-aura',
+      marketplaceId: 843284,
+      images: [
+        { url: 'https://presta.demo.openlinker.io/img/p/1/6/16.jpg', internalUrl: 'https://cdn/1.webp' },
+        { url: 'https://presta.demo.openlinker.io/img/p/1/7/17.jpg' },
+      ],
+      categories: [[{ id: 1, name: 'Dom i Ogród' }, { id: 1013, name: 'Pozostałe' }]],
+    };
+
+    it('should be detectable as an OfferReader', () => {
+      expect(isOfferReader(adapter)).toBe(true);
+    });
+
+    it('should map the Erli product resource onto a neutral MarketplaceOffer', async () => {
+      httpClient.get.mockResolvedValueOnce({ status: 200, data: productResource });
+
+      const offer = await adapter.getOffer({ externalId: VALID_ID });
+
+      expect(httpClient.get).toHaveBeenCalledWith(`products/${VALID_ID}`);
+      expect(offer).toEqual({
+        externalId: VALID_ID,
+        title: 'Swieca sojowa zapachowa 200g Aura',
+        description: '<p>Naturalna swieca sojowa.</p>',
+        imageUrl: 'https://presta.demo.openlinker.io/img/p/1/6/16.jpg',
+        price: { amount: '34.90', currency: 'PLN' },
+        availableQuantity: 16,
+        status: 'active',
+        category: { id: '1013', name: 'Pozostałe' },
+      });
+    });
+
+    it('should default missing fields defensively (empty title, 0 price/qty)', async () => {
+      httpClient.get.mockResolvedValueOnce({ status: 200, data: {} });
+
+      const offer = await adapter.getOffer({ externalId: VALID_ID });
+
+      expect(offer.title).toBe('');
+      expect(offer.price).toEqual({ amount: '0.00', currency: 'PLN' });
+      expect(offer.availableQuantity).toBe(0);
+      expect(offer.status).toBe('unknown');
+      expect(offer.category).toBeUndefined();
+      expect(offer.imageUrl).toBeUndefined();
+    });
+
+    it('should throw OfferNotFoundOnMarketplaceException on a 404 (read-after-write lag / deleted)', async () => {
+      httpClient.get.mockRejectedValueOnce(new ErliApiException('not found', 404));
+
+      await expect(adapter.getOffer({ externalId: VALID_ID })).rejects.toBeInstanceOf(
+        OfferNotFoundOnMarketplaceException,
+      );
+    });
+
+    it('should propagate non-404 transport errors', async () => {
+      httpClient.get.mockRejectedValueOnce(new ErliApiException('server error', 500));
+
+      await expect(adapter.getOffer({ externalId: VALID_ID })).rejects.toBeInstanceOf(
+        ErliApiException,
+      );
+    });
+
+    it('should reject a hostile externalId before any GET', async () => {
+      await expect(adapter.getOffer({ externalId: 'evil/../x' })).rejects.toBeInstanceOf(
+        ErliConfigException,
+      );
       expect(httpClient.get).not.toHaveBeenCalled();
     });
   });
