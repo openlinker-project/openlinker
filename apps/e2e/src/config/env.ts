@@ -121,6 +121,14 @@ export interface E2eEnv {
    * `E2E_TEST_INPOST_WEBHOOK=true` (mirrors `E2E_TEST_RATE_LIMIT`).
    */
   testInpostWebhook: boolean;
+  /**
+   * Opt-in for the DESTRUCTIVE stale-variant-pruning lifecycle spec (#1495 /
+   * #1574): it deletes a real PrestaShop combination via the webservice with no
+   * undo. Off by default so an unconfigured run never mutates the catalogue;
+   * set `E2E_ALLOW_DESTRUCTIVE_PRUNE=true` on a stack you don't mind losing a
+   * variant on (mirrors the `E2E_TEST_RATE_LIMIT` opt-in precedent).
+   */
+  allowDestructivePrune: boolean;
 }
 
 const DEFAULTS = {
@@ -225,5 +233,6 @@ export function resolveEnv(): E2eEnv {
     wcAdminPass: process.env.OL_WC_ADMIN_PASS?.trim() || DEFAULTS.wcAdminPass,
     testRateLimit: process.env.E2E_TEST_RATE_LIMIT?.trim() === 'true',
     testInpostWebhook: process.env.E2E_TEST_INPOST_WEBHOOK?.trim() === 'true',
+    allowDestructivePrune: process.env.E2E_ALLOW_DESTRUCTIVE_PRUNE?.trim() === 'true',
   };
 }

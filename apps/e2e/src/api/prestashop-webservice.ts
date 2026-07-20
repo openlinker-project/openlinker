@@ -37,6 +37,12 @@ export interface PrestashopStockView {
   quantity: number;
 }
 
+/** A single product combination (variant), as read from `/api/combinations`. */
+export interface PrestashopCombinationView {
+  id: string;
+  ean13: string | null;
+}
+
 export interface PrestashopOrderRowView {
   productId: string | null;
   productAttributeId: string | null;
@@ -209,6 +215,52 @@ export class PrestashopWebserviceClient {
     return asArray(pick(body, 'combinations'))
       .map((row) => asStringOrNull(pick(asRecord(row), 'ean13')))
       .filter((ean): ean is string => !!ean && ean.trim().length > 0);
+  }
+
+  /**
+   * List a product's combinations (id + EAN-13), for the stale-variant-pruning
+   * lifecycle spec (#1495 / #1574): it needs a real combination `id` to DELETE
+   * (not just the EAN set `getCombinationEans` returns).
+   */
+  async listCombinations(productId: string): Promise<PrestashopCombinationView[]> {
+    const body = await this.get(
+      `/api/combinations?filter[id_product]=${productId}&display=full`,
+    );
+    return asArray(pick(body, 'combinations')).map((row) => {
+      const record = asRecord(row);
+      return {
+        id: String(pick(record, 'id')),
+        ean13: asStringOrNull(pick(record, 'ean13')),
+      };
+    });
+  }
+
+  /**
+   * Delete a combination (DESTRUCTIVE, irreversible via this client). Used by
+   * the stale-variant-pruning lifecycle spec to simulate a variant removed at
+   * the master — PrestaShop's webservice has no "undo", so callers must gate
+   * this behind an explicit opt-in (`E2E_ALLOW_DESTRUCTIVE_PRUNE`).
+   */
+  async deleteCombination(combinationId: string): Promise<void> {
+    const url = `${this.baseUrl}/api/combinations/${combinationId}?output_format=JSON`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'DELETE',
+        headers: { Authorization: this.authHeader, Accept: 'application/json' },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!response.ok) {
+      const raw = await response.text();
+      throw new Error(
+        `PrestaShop webservice DELETE /api/combinations/${combinationId} → HTTP ${response.status}: ${raw.slice(0, 300)}`,
+      );
+    }
   }
 
   /**
