@@ -22,6 +22,9 @@ import type {
   CategoryParametersResponse,
   Connection,
   ConnectionFilters,
+  CreateConnectionInput,
+  UpdateConnectionInput,
+  InstallWebhooksResult,
   DispatchResult,
   EnqueueSyncJobInput,
   EnqueueSyncJobResponse,
@@ -347,6 +350,18 @@ export class ApiClient {
       ),
     getById: (connectionId: string): Promise<Connection> =>
       this.request<Connection>(`/connections/${connectionId}`),
+    /** Create a connection (admin). Throws `ApiError` (400) on an invalid config/capability set. */
+    create: (input: CreateConnectionInput): Promise<Connection> =>
+      this.request<Connection>('/connections', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    /** Patch a connection (admin) — config, status, adapterKey, enabledCapabilities. */
+    update: (connectionId: string, input: UpdateConnectionInput): Promise<Connection> =>
+      this.request<Connection>(`/connections/${connectionId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      }),
     /**
      * Rotate the connection's webhook secret (admin). Returns the new plaintext
      * secret ONCE — the E2E webhook spec uses it to compute the OL-HMAC
@@ -357,6 +372,11 @@ export class ApiClient {
         `/connections/${connectionId}/webhooks/secret/rotate`,
         { method: 'POST' },
       ),
+    /** Auto-provision webhook config on the external platform for this connection (#168, #583). */
+    installWebhooks: (connectionId: string): Promise<InstallWebhooksResult> =>
+      this.request<InstallWebhooksResult>(`/connections/${connectionId}/webhooks/install`, {
+        method: 'POST',
+      }),
   };
 
   // ── Products ────────────────────────────────────────────────────────────
@@ -525,6 +545,19 @@ export class ApiClient {
         `/connections/${connectionId}/mappings/categories/${sourceCategoryId}`,
         { method: 'PUT', body: JSON.stringify(body) },
       ),
+  };
+
+  // ── Mapping options (#472 / #1551) ─────────────────────────────────────
+  mappingOptions = {
+    /**
+     * Destination-platform order-status vocabulary for the connection-mappings
+     * UI. `MappingOptionsController` resolves the destination side by pairing
+     * platformType — today only Allegro<->PrestaShop; other platforms (incl.
+     * `woocommerce`) 400. Used by the WooCommerce-parity suite to assert that
+     * documented gap explicitly rather than silently skip it (#1571 scenario 7).
+     */
+    getDestinationOrderStatuses: (connectionId: string): Promise<unknown[]> =>
+      this.request<unknown[]>(`/connections/${connectionId}/mappings/options/destination/order-statuses`),
   };
 
   // ── Routing rules ───────────────────────────────────────────────────────

@@ -18,6 +18,15 @@
  *                      verify -> record -> enqueue -> dedup. Self-configuring
  *                      (skips when no PrestaShop connection is present).
  *                      `retries: 0` (rotates the secret + enqueues a job).
+ *   - `woocommerce-parity` — WC as master catalogue, order destination,
+ *                      customer/address reuse, variant mapping, inbound
+ *                      webhooks, fulfillment-status read-back, and config
+ *                      validation (#1571). Fully unattended — orders are
+ *                      seeded via WC REST, not a live marketplace purchase.
+ *                      Self-configuring per test (skips when the stack has no
+ *                      WooCommerce connection with the relevant capability).
+ *                      `retries: 0` — mutates WC-native state (orders,
+ *                      webhook secrets, order status).
  *
  * Reporters: html + list. Retries are per-project: read-only projects (setup,
  * smoke) retry once; the mutating golden-path project runs with `retries: 0` —
@@ -100,6 +109,19 @@ export default defineConfig({
       // rotate the secret again and enqueue a second downstream job.
       name: 'webhooks',
       testMatch: /webhooks\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
+      // WooCommerce parity (#1571) — mutating (seeds WC-native orders,
+      // rotates the WC webhook secret, may create+disable a throwaway
+      // connection in the config-validation checks). Serial within the
+      // project (`workers: 1` global default already enforces this) so the
+      // order-destination tests' customer/address-reuse assumptions about
+      // per-test ordering hold.
+      name: 'woocommerce-parity',
+      testMatch: /woocommerce-parity\/.*\.spec\.ts/,
       retries: 0,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },

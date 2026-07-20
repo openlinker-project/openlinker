@@ -580,6 +580,33 @@ export interface ConnectionFilters {
   status?: string;
 }
 
+/** POST /connections request body. Exactly one of `credentials`/`credentialsRef` is required. */
+export interface CreateConnectionInput {
+  name: string;
+  platformType: string;
+  config: Record<string, unknown>;
+  credentials?: Record<string, unknown>;
+  credentialsRef?: string;
+  adapterKey?: string;
+  enabledCapabilities?: string[];
+}
+
+/** PATCH /connections/:id request body — all fields optional. */
+export interface UpdateConnectionInput {
+  name?: string;
+  status?: 'active' | 'disabled' | 'error';
+  config?: Record<string, unknown>;
+  adapterKey?: string;
+  enabledCapabilities?: string[];
+}
+
+/** POST /connections/:id/webhooks/install response (#583). */
+export interface InstallWebhooksResult {
+  webhooksConfigured: boolean;
+  testPingTriggered: boolean;
+  warning?: string;
+}
+
 export interface ListProductsQuery {
   search?: string;
   limit?: number;
