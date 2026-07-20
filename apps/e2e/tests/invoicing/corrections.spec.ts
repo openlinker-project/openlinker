@@ -63,10 +63,30 @@ test.describe('invoicing: correction (KOR) and correction-of-correction', () => 
       orderId: synthesized.order.internalOrderId,
       buyerTaxId: BUYER_TAX_ID,
     });
+    // A KSeF KOR must reference the ORIGINAL's authority-assigned KSeF number,
+    // so the original has to CLEAR (regulatoryStatus 'accepted' + a
+    // clearanceReference), not merely reach local 'issued', before it can be
+    // corrected — otherwise the correction is rejected 422 "the original
+    // invoice has not cleared KSeF yet". Clearance is asynchronous; re-trigger
+    // the idempotent reconcile job on each poll iteration rather than waiting on
+    // the 30-min cron (mirrors golden-path S8).
     const original = await poll.until(
-      () => api.invoices.getForOrder(synthesized.order.internalOrderId, ksef!.id),
-      (r) => r.status === 'issued' && !!r.providerInvoiceId && !!r.providerInvoiceNumber,
-      { message: 'KSeF invoice to be issued with a document number', timeoutMs: 60_000 },
+      async () => {
+        await jobs
+          .trigger({
+            connectionId: ksef!.id,
+            jobType: 'invoicing.regulatoryStatus.reconcile',
+            payload: { schemaVersion: 1 },
+          })
+          .catch(() => undefined);
+        return api.invoices.getForOrder(synthesized.order.internalOrderId, ksef!.id);
+      },
+      (r) => r.regulatoryStatus === 'accepted' && !!r.clearanceReference,
+      {
+        message: 'original KSeF invoice to clear (accepted + KSeF number) before correcting',
+        timeoutMs: 300_000,
+        intervalMs: 10_000,
+      },
     );
 
     const firstCorrection = await api.invoices.correct(original.id, {
@@ -80,6 +100,28 @@ test.describe('invoicing: correction (KOR) and correction-of-correction', () => 
       firstContent.buyer.taxId?.value,
       'first correction preserves the B2B buyer tax id',
     ).toBe(BUYER_TAX_ID.value);
+
+    // The correction-of-correction references the FIRST correction's own KSeF
+    // number, so the first correction must clear too before it can be
+    // corrected (same reason as the original above).
+    await poll.until(
+      async () => {
+        await jobs
+          .trigger({
+            connectionId: ksef!.id,
+            jobType: 'invoicing.regulatoryStatus.reconcile',
+            payload: { schemaVersion: 1 },
+          })
+          .catch(() => undefined);
+        return api.invoices.getById(firstCorrection.id);
+      },
+      (r) => r.regulatoryStatus === 'accepted' && !!r.clearanceReference,
+      {
+        message: 'first correction to clear (accepted + KSeF number) before correcting it',
+        timeoutMs: 300_000,
+        intervalMs: 10_000,
+      },
+    );
 
     const secondCorrection = await api.invoices.correct(firstCorrection.id, {
       reason: 'Further quantity adjustment (E2E #1573 scenario 4, correction-of-correction)',

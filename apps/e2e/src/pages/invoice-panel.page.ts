@@ -24,7 +24,9 @@ export class InvoicePanel {
 
   /** "View" action for the FA(3) document (KSeF invoice detail section). */
   get fa3ViewButton(): Locator {
-    return this.page.getByRole('button', { name: 'View' });
+    // `exact` so it doesn't also match the sibling "Preview" button (both are
+    // ghost buttons in the KSeF invoice detail section).
+    return this.page.getByRole('button', { name: 'View', exact: true });
   }
 
   /** The rendered FA(3) preview area (`.doc-preview`). */

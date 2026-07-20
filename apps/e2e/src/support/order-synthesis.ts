@@ -124,17 +124,20 @@ export async function synthesizeOrder(
 
   const countryId = (await ps.getCountryIdByIso('PL')) ?? '1';
   const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  // PrestaShop's `isName` validator (customer/address first+last name) rejects
+  // digits and most punctuation, so the unique `suffix` can't live in the
+  // name — it stays in the email and the address alias (validated by the more
+  // permissive `isGenericName`). Names are fixed, purely-alphabetic values.
+  const customerName = { firstName: 'Erik', lastName: 'Testowy' };
   const customer = await ps.createCustomer({
-    firstName: 'E2E',
-    lastName: `Invoicing-${suffix}`,
+    ...customerName,
     email: `e2e-invoicing-${suffix}@e2e.openlinker.test`,
     password: 'e2e-Password-123',
   });
   const address = await ps.createAddress({
     idCustomer: customer.id,
     alias: `e2e-${suffix}`,
-    firstName: 'E2E',
-    lastName: `Invoicing-${suffix}`,
+    ...customerName,
     address1: 'ul. Testowa 1',
     city: 'Warszawa',
     postcode: '00-001',
