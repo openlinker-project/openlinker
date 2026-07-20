@@ -426,6 +426,7 @@ export function createMockApiClient(
       getOrderStateMappings: vi.fn().mockResolvedValue([]),
       upsertOrderStateMappings: vi.fn().mockResolvedValue([]),
       getMappingOptions: vi.fn().mockResolvedValue([]),
+      getAllegroCategoryPath: vi.fn().mockResolvedValue([]),
       getRoutingRules: vi.fn().mockResolvedValue([]),
       replaceRoutingRules: vi.fn().mockResolvedValue([]),
       getRoutingCandidates: vi.fn().mockResolvedValue([]),

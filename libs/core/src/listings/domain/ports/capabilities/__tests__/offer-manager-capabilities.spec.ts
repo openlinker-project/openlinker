@@ -16,6 +16,7 @@ import { isOfferEventReader } from '../offer-event-reader.capability';
 import { isOfferQuantityBatchUpdater } from '../offer-quantity-batch-updater.capability';
 import { isOfferFieldUpdater } from '../offer-field-updater.capability';
 import { isCategoryBrowser } from '../category-browser.capability';
+import { isCategoryPathReader } from '../category-path-reader.capability';
 import { isCategoryBarcodeMatcher } from '../category-barcode-matcher.capability';
 import { isCategoryParametersReader } from '../category-parameters-reader.capability';
 import { isCatalogProductReader } from '../catalog-product-reader.capability';
@@ -31,6 +32,7 @@ const cases: ReadonlyArray<readonly [string, Guard, string]> = [
   ['OfferQuantityBatchUpdater', isOfferQuantityBatchUpdater, 'updateOfferQuantitiesBatch'],
   ['OfferFieldUpdater', isOfferFieldUpdater, 'updateOfferFields'],
   ['CategoryBrowser', isCategoryBrowser, 'fetchCategories'],
+  ['CategoryPathReader', isCategoryPathReader, 'getCategoryPath'],
   ['CategoryBarcodeMatcher', isCategoryBarcodeMatcher, 'matchCategoryByBarcode'],
   ['CategoryParametersReader', isCategoryParametersReader, 'fetchCategoryParameters'],
   ['OfferCreator', isOfferCreator, 'createOffer'],

@@ -199,7 +199,7 @@ describe('OfferBuilderService', () => {
 
     it('prefers overrides.ean over the variant barcode at BOTH the self-link and category-resolution sites (#1741)', async () => {
       // Variant carries its own barcode, but the operator supplied a corrected
-      // per-offer EAN — the builder must use the override at category resolution
+      // per-offer EAN - the builder must use the override at category resolution
       // (EanCategoryMatcher) AND on the top-level variantBarcode self-link.
       const result = await service.buildCreateOfferCommand({
         internalVariantId: VARIANT_ID,

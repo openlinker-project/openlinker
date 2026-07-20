@@ -131,6 +131,34 @@ describe('CategoriesCacheService', () => {
     });
   });
 
+  describe('getAllegroCategoryPath', () => {
+    it('resolves the OfferManager adapter and returns its breadcrumb', async () => {
+      const path = [
+        { id: '1', name: 'Electronics' },
+        { id: '10', name: 'Phones' },
+      ];
+      const getCategoryPath = jest.fn().mockResolvedValue(path);
+      integrationsService.getCapabilityAdapter.mockResolvedValue({ getCategoryPath });
+
+      const result = await service.getAllegroCategoryPath(CONNECTION_ID, '10');
+
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        'OfferManager'
+      );
+      expect(getCategoryPath).toHaveBeenCalledWith('10');
+      expect(result).toEqual(path);
+    });
+
+    it('returns an empty array when the adapter does not implement CategoryPathReader', async () => {
+      integrationsService.getCapabilityAdapter.mockResolvedValue({});
+
+      const result = await service.getAllegroCategoryPath(CONNECTION_ID, '10');
+
+      expect(result).toEqual([]);
+    });
+  });
+
   describe('invalidateCache', () => {
     it('should delete all cached entries for a connection', async () => {
       await service.invalidateCache(CONNECTION_ID);

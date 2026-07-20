@@ -1,18 +1,17 @@
 /**
- * BulkReviewStep tests (#792 PR 3)
+ * BulkReviewStep tests (#1741)
  *
- * Multi-chip status cell, computed-value provenance badges, currency-mismatch
- * price rendering, and the blockers-driven "Approve all" gate.
+ * Per-variant expandable review: tri-state parent include, per-variant chips,
+ * include/exclude gating, and the canApprove ("Create offers") gate.
  */
-import { beforeAll, describe, expect, it } from 'vitest';
-import { screen, within } from '@testing-library/react';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { fireEvent, screen } from '@testing-library/react';
 import { renderWithProviders } from '../../../../test/test-utils';
 import { BulkReviewStep } from './bulk-review-step';
-import type { BulkRowBlocker, BulkWizardRow, PricingPolicy, StockPolicy } from './bulk-wizard.types';
+import type { BulkRowBlocker, BulkVariantRow, BulkWizardConfig, BulkWizardRow } from './bulk-wizard.types';
 import type { Product, ProductVariant } from '../../../products';
 import type { Connection } from '../../../connections';
 
-// Allegro connection — no per-row platform section (these tests predate #1096).
 const connection: Connection = {
   id: 'conn_1',
   name: 'My Allegro',
@@ -21,12 +20,21 @@ const connection: Connection = {
   config: {},
   credentialsBacked: true,
   enabledCapabilities: ['OfferManager'],
-  supportedCapabilities: ['OfferManager'],
+  supportedCapabilities: ['OfferManager', 'EanCategoryMatcher', 'CategoryBrowser'],
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
+} as unknown as Connection;
+
+const config: BulkWizardConfig = {
+  connectionId: 'conn_1',
+  platformParams: {},
+  currency: 'PLN',
+  pricingPolicy: { mode: 'use-master' },
+  stockPolicy: { mode: 'use-master' },
+  publishImmediately: true,
+  generateDescription: false,
 };
 
-// jsdom has no matchMedia; force desktop (table, not card view) for the DataTable.
 beforeAll(() => {
   if (!window.matchMedia) {
     window.matchMedia = ((query: string) => ({
@@ -42,196 +50,119 @@ beforeAll(() => {
   }
 });
 
-function makeRow(
-  productId: string,
-  blockers: BulkRowBlocker[],
-  opts: {
-    masterPrice?: number | null;
-    masterStock?: number | null;
-    masterCurrency?: string | null;
-    resolvedCategoryId?: string | null;
-  } = {},
-): BulkWizardRow {
-  const variant: ProductVariant = {
-    id: `var_${productId}`,
-    productId,
-    sku: 'SKU',
-    attributes: null,
-    ean: '590',
+function variantRow(id: string, blockers: BulkRowBlocker[] = [], over: Partial<BulkVariantRow> = {}): BulkVariantRow {
+  const variant = {
+    id,
+    productId: 'prod_1',
+    sku: id,
+    attributes: { Rozmiar: id },
+    ean: '5901234123457',
     gtin: null,
-    price: opts.masterPrice ?? null,
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:00.000Z',
+    price: 39,
+  } as unknown as ProductVariant;
+  return {
+    variantId: id,
+    variant,
+    ean: variant.ean,
+    distinguishingAttributes: variant.attributes,
+    masterStock: 10,
+    masterPrice: 39,
+    masterCurrency: 'PLN',
+    included: true,
+    blockers,
+    resolvedCategoryId: 'cat-1',
+    resolvedProductCardId: 'card-1',
+    resolutionMethod: 'auto_detect',
+    categoryCandidates: [],
+    override: {},
+    ...over,
   };
-  const product: Product = {
-    id: productId,
-    name: `Product ${productId}`,
-    sku: 'SKU',
-    price: opts.masterPrice ?? null,
-    currency: opts.masterCurrency ?? 'PLN',
-    description: null,
-    images: null,
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:00.000Z',
-  };
+}
+
+function makeRow(productId: string, variants: BulkVariantRow[]): BulkWizardRow {
   return {
     productId,
-    product,
-    primaryVariant: variant,
-    blockers,
-    resolvedCategoryId: opts.resolvedCategoryId ?? (blockers.length === 0 ? 'cat-A' : null),
+    product: { id: productId, name: 'Doniczka Terra', images: ['a.jpg'] } as unknown as Product,
+    primaryVariant: variants[0]?.variant ?? null,
+    variants,
+    blockers: [],
+    resolvedCategoryId: null,
     resolvedProductCardId: null,
     resolutionMethod: null,
-    masterPrice: opts.masterPrice ?? null,
-    masterStock: opts.masterStock ?? null,
-    masterCurrency: opts.masterCurrency ?? 'PLN',
+    masterPrice: 39,
+    masterStock: null,
+    masterCurrency: 'PLN',
     categoryCandidates: [],
     override: {},
   };
 }
 
-// Allegro's migrated platform blocker chip (#1096) — supplied so the
-// add-product-params tests render the chip generically through the contribution.
-const ALLEGRO_CHIPS = [
-  { id: 'allegro:needs-product-parameters', tone: 'warning' as const, label: 'add product params' },
-];
-
-function renderReview(
-  rows: BulkWizardRow[],
-  pricingPolicy: PricingPolicy = { mode: 'use-master' },
-  stockPolicy: StockPolicy = { mode: 'use-master' },
-  paramsResolving = false,
-) {
-  return renderWithProviders(
-    <BulkReviewStep
-      rows={rows}
-      connection={connection}
-      pricingPolicy={pricingPolicy}
-      stockPolicy={stockPolicy}
-      currency="PLN"
-      publishImmediately
-      paramsResolving={paramsResolving}
-      platformBlockerChips={ALLEGRO_CHIPS}
-      canBrowseCategories={true}
-      onUpdateRow={() => undefined}
-      onApproveAll={() => undefined}
-      onBack={() => undefined}
-    />,
-  );
+function baseProps() {
+  return {
+    connection,
+    config,
+    paramsResolving: false,
+    platformBlockerChips: [],
+    canBrowseCategories: true,
+    demoReadOnly: false,
+    onSetVariantIncluded: vi.fn(),
+    onSetProductIncluded: vi.fn(),
+    onSaveEditor: vi.fn(),
+    onApproveAll: vi.fn(),
+    onBack: vi.fn(),
+  };
 }
 
 describe('BulkReviewStep', () => {
-  it('renders one chip per active blocker', () => {
-    renderReview([makeRow('a', ['no-ean', 'no-master-price'])]);
-    expect(screen.getByText('no EAN')).toBeInTheDocument();
-    expect(screen.getByText('no master price')).toBeInTheDocument();
-  });
-
-  it('renders a ready chip when a row has no blockers', () => {
-    renderReview([makeRow('a', [], { masterPrice: 12, masterStock: 5 })]);
-    // Scope to the table — the summary line also contains the word "ready".
-    expect(within(screen.getByRole('table')).getByText('ready')).toBeInTheDocument();
-  });
-
-  it('shows a POLICY provenance badge for a markup-computed price', () => {
-    renderReview(
-      [makeRow('a', [], { masterPrice: 12, masterStock: 5 })],
-      { mode: 'markup', percent: 10 },
+  it('enables Create offers when every included variant is ready', () => {
+    renderWithProviders(
+      <BulkReviewStep rows={[makeRow('prod_1', [variantRow('v1'), variantRow('v2')])]} {...baseProps()} />,
     );
-    expect(screen.getByText('13.20 PLN')).toBeInTheDocument();
-    expect(screen.getByText('POLICY')).toBeInTheDocument();
+    // Rendered three times (desktop top-right + two mobile copies); assert all enabled.
+    const create = screen.getAllByRole('button', { name: /Create offers \(2\)/ });
+    expect(create.length).toBeGreaterThan(0);
+    create.forEach((btn) => expect(btn).not.toBeDisabled());
   });
 
-  it('renders a currency-mismatch chip and dashes the price column', () => {
-    renderReview(
-      [makeRow('a', ['currency-mismatch'], { masterPrice: 200, masterStock: 5, masterCurrency: 'EUR' })],
-      { mode: 'markup', percent: 10 },
-    );
-    expect(screen.getByText('currency mismatch')).toBeInTheDocument();
-    // No converted figure rendered — the price column shows an em dash, never "EUR" / "PLN".
-    expect(screen.queryByText(/PLN/)).not.toBeInTheDocument();
-  });
-
-  it('disables Approve all while a listable row has blockers and enables it when all are ready', () => {
-    const { rerender } = renderReview([
-      makeRow('a', [], { masterPrice: 12, masterStock: 5 }),
-      makeRow('b', ['no-ean']),
-    ]);
-    expect(screen.getByRole('button', { name: /Approve all/ })).toBeDisabled();
-
-    rerender(
+  it('disables Create offers when an included variant needs attention', () => {
+    renderWithProviders(
       <BulkReviewStep
-        rows={[makeRow('a', [], { masterPrice: 12, masterStock: 5 })]}
-        connection={connection}
-        pricingPolicy={{ mode: 'use-master' }}
-        stockPolicy={{ mode: 'use-master' }}
-        currency="PLN"
-        publishImmediately
-        paramsResolving={false}
-        platformBlockerChips={ALLEGRO_CHIPS}
-        canBrowseCategories={true}
-        onUpdateRow={() => undefined}
-        onApproveAll={() => undefined}
-        onBack={() => undefined}
+        rows={[makeRow('prod_1', [variantRow('v1'), variantRow('v2', ['no-match'])])]}
+        {...baseProps()}
       />,
     );
-    expect(screen.getByRole('button', { name: /Approve all/ })).toBeEnabled();
+    screen
+      .getAllByRole('button', { name: /Create offers \(1\)/ })
+      .forEach((btn) => expect(btn).toBeDisabled());
   });
 
-  it('does not count no-variant rows as blocking the gate', () => {
-    const noVariantRow: BulkWizardRow = {
-      ...makeRow('skip', ['no-variant']),
-      primaryVariant: null,
-    };
-    renderReview([makeRow('a', [], { masterPrice: 12, masterStock: 5 }), noVariantRow]);
-    expect(screen.getByRole('button', { name: /Approve all/ })).toBeEnabled();
-  });
-
-  // #810/#1096 — Allegro's migrated platform blocker rendered via the contribution.
-  it('renders the add-product-params chip and a remediation hint', () => {
-    renderReview([
-      makeRow('a', ['allegro:needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
-    ]);
-    expect(screen.getByText('add product params')).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent(/Edit/);
-    expect(screen.getByRole('status')).toHaveTextContent(/attention/);
-  });
-
-  it('singularises the hint for one affected row and pluralises for many', () => {
-    const { rerender } = renderReview([
-      makeRow('a', ['allegro:needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
-    ]);
-    expect(screen.getByRole('status')).toHaveTextContent(/1\s+row needs/);
-
-    rerender(
+  it('tri-state parent toggle includes/excludes all variants', () => {
+    const onSetProductIncluded = vi.fn();
+    renderWithProviders(
       <BulkReviewStep
-        rows={[
-          makeRow('a', ['allegro:needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
-          makeRow('b', ['allegro:needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
-        ]}
-        connection={connection}
-        pricingPolicy={{ mode: 'use-master' }}
-        stockPolicy={{ mode: 'use-master' }}
-        currency="PLN"
-        publishImmediately
-        paramsResolving={false}
-        platformBlockerChips={ALLEGRO_CHIPS}
-        canBrowseCategories={true}
-        onUpdateRow={() => undefined}
-        onApproveAll={() => undefined}
-        onBack={() => undefined}
+        rows={[makeRow('prod_1', [variantRow('v1'), variantRow('v2')])]}
+        {...baseProps()}
+        onSetProductIncluded={onSetProductIncluded}
       />,
     );
-    expect(screen.getByRole('status')).toHaveTextContent(/2\s+rows need/);
+    fireEvent.click(screen.getByLabelText(/Include all Doniczka Terra variants/));
+    expect(onSetProductIncluded).toHaveBeenCalledWith('prod_1', false);
   });
 
-  it('disables Approve all while category-parameter schemas are still resolving', () => {
-    renderReview(
-      [makeRow('a', [], { masterPrice: 12, masterStock: 5 })],
-      { mode: 'use-master' },
-      { mode: 'use-master' },
-      true,
+  it('renders a fix chip as a button with the variant identity in its accessible name', () => {
+    renderWithProviders(
+      <BulkReviewStep rows={[makeRow('prod_1', [variantRow('v1', ['no-ean'])])]} {...baseProps()} />,
     );
-    expect(screen.getByRole('button', { name: /Approve all/ })).toBeDisabled();
+    // Single-variant product renders flat; its blocker chip is a fix button.
+    expect(screen.getByRole('button', { name: /Fix: no EAN - v1/ })).toBeInTheDocument();
+  });
+
+  it('opens the shared image lightbox from the product thumbnail (#1741)', () => {
+    renderWithProviders(
+      <BulkReviewStep rows={[makeRow('prod_1', [variantRow('v1'), variantRow('v2')])]} {...baseProps()} />,
+    );
+    expect(screen.queryByRole('button', { name: 'Close image' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Zoom image of Doniczka Terra/ }));
+    expect(screen.getByRole('button', { name: 'Close image' })).toBeInTheDocument();
   });
 });

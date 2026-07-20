@@ -314,7 +314,7 @@ describe('BulkListingSubmitService', () => {
       ).rejects.toThrow('Redis Streams write failed');
 
       // Partial fan-out (1 of 3 enqueued): totalCount reconciled to 1 so the
-      // #737 counter gate can terminate, then advanced to 'running' — never
+      // #737 counter gate can terminate, then advanced to 'running' - never
       // 'failed' (that would strand the one enqueued child's counters).
       expect(bulkBatchRepo.updateTotalCount).toHaveBeenCalledWith('batch-1', 1);
       expect(bulkBatchRepo.updateStatus).toHaveBeenCalledWith('batch-1', 'running');
@@ -716,7 +716,7 @@ describe('BulkListingSubmitService', () => {
           overrides: { categoryId: 'cat-1', productCardId: 'card-shared' },
         },
         perVariantOverrides: {
-          // Operator picked a specific card for the sibling (multi-match pick) —
+          // Operator picked a specific card for the sibling (multi-match pick) -
           // it must survive the clearProductCard strip.
           ol_variant_b: { overrides: { productCardId: 'card-b-explicit' } },
         },

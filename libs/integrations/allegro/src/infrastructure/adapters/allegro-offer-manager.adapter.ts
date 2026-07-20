@@ -15,6 +15,8 @@ import type {
   OfferEventReader,
   OfferFieldUpdater,
   CategoryBrowser,
+  CategoryPathReader,
+  CategoryPathNode,
   CategoryBarcodeMatcher,
   EanCategoryMatcher,
   BatchCategoryByEanInput,
@@ -78,6 +80,7 @@ import type {
   AllegroQuantityChangeCommandStatusResponse,
   AllegroCategoryParametersResponse,
   AllegroCategoriesResponse,
+  AllegroCategoryByIdResponse,
   AllegroOfferParameter,
   AllegroOfferPublicationStatus,
   AllegroProductOffer,
@@ -127,6 +130,16 @@ const ALLEGRO_CONDITION_VALUE_IDS: Record<OfferCondition, string> = {
 const DEFAULT_CAT_PARAMS_TTL_SEC = 24 * 60 * 60;
 /** Cache key prefix — global namespace; Allegro category schemas are public taxonomy. */
 const CAT_PARAMS_CACHE_PREFIX = 'allegro:cat-params:';
+
+/** Cache key prefix for resolved category breadcrumbs (`getCategoryPath`). */
+const CAT_PATH_CACHE_PREFIX = 'allegro:cat-path:';
+
+/**
+ * Upper bound on the parent-walk in `getCategoryPath`. Allegro's real tree is
+ * far shallower; the cap only guards against a malformed `parent.id` cycle so
+ * the loop can never run unbounded.
+ */
+const CAT_PATH_MAX_DEPTH = 12;
 
 /**
  * Variant key used when `matchCategoryByBarcode` delegates to the batch util
@@ -210,6 +223,7 @@ export class AllegroOfferManagerAdapter
     OfferEventReader,
     OfferFieldUpdater,
     CategoryBrowser,
+    CategoryPathReader,
     CategoryBarcodeMatcher,
     EanCategoryMatcher,
     CategoryParametersReader,
@@ -882,6 +896,68 @@ export class AllegroOfferManagerAdapter
       parentId: cat.parent?.id ?? null,
       leaf: cat.leaf,
     }));
+  }
+
+  /**
+   * CategoryPathReader.getCategoryPath (#1741).
+   *
+   * Resolve a category id to its ROOT -> LEAF breadcrumb by walking up the
+   * parent chain. Allegro's `GET /sale/categories/{id}` returns the node with
+   * only `parent.id` (no ancestor names), so we issue one call per level and
+   * prepend each node, stopping when a node has no parent (root) or the depth
+   * cap is hit (malformed-data guard).
+   *
+   * The resolved path is cached under a global key (`allegro:cat-path:{id}`),
+   * reusing the same distributed cache + TTL as `/sale/categories/{id}/
+   * parameters` - the taxonomy is public and identical for every seller.
+   *
+   * A 404 on the queried id (or any ancestor) collapses to an empty array
+   * rather than throwing: the caller (bulk-wizard chip) degrades to the raw
+   * id, so a missing breadcrumb must never break the flow.
+   */
+  async getCategoryPath(categoryId: string): Promise<CategoryPathNode[]> {
+    const cacheKey = `${CAT_PATH_CACHE_PREFIX}${categoryId}`;
+
+    if (this.cache) {
+      const cached = await this.cache.get<CategoryPathNode[]>(cacheKey);
+      if (cached) {
+        this.logger.debug(
+          `Category path cache HIT: connection=${this.connectionId} categoryId=${categoryId}`
+        );
+        return cached;
+      }
+    }
+
+    const path: CategoryPathNode[] = [];
+    let currentId: string | null = categoryId;
+
+    for (let depth = 0; currentId && depth < CAT_PATH_MAX_DEPTH; depth += 1) {
+      let node: AllegroCategoryByIdResponse;
+      try {
+        const response = await this.httpClient.get<AllegroCategoryByIdResponse>(
+          `/sale/categories/${currentId}`
+        );
+        node = response.data;
+      } catch (err) {
+        if (err instanceof AllegroApiException && err.statusCode === 404) {
+          this.logger.warn(
+            `Category path walk hit 404: connection=${this.connectionId} categoryId=${currentId}`
+          );
+          return [];
+        }
+        throw err;
+      }
+
+      // Prepend so the accumulated array stays ROOT -> LEAF as we climb.
+      path.unshift({ id: node.id, name: node.name });
+      currentId = node.parent?.id ?? null;
+    }
+
+    if (this.cache) {
+      await this.cache.set(cacheKey, path, this.catParamsTtlSec);
+    }
+
+    return path;
   }
 
   async matchCategoryByBarcode(barcode: string): Promise<string | null> {

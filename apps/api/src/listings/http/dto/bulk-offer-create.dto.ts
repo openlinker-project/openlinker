@@ -84,7 +84,7 @@ export class BulkSharedConfigDto {
 /**
  * Category-omitted offer-overrides shape (#1741). `categoryId` is
  * grouping-determining and product-level (base-only via `sharedConfig`), so it
- * is not overridable per-product / per-variant — `OmitType` drops it while
+ * is not overridable per-product / per-variant - `OmitType` drops it while
  * carrying every other nested validation rule (title MaxLength, imageUrls
  * IsUrl, price positivity, ean digit-shape, platformParams size cap, parameters
  * bounds).

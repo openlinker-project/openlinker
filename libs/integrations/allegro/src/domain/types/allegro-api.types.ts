@@ -425,6 +425,20 @@ export interface AllegroCategoriesResponse {
 }
 
 /**
+ * Allegro single-category response (from GET /sale/categories/{categoryId}).
+ *
+ * Returns the node directly (not wrapped in a `categories` array). `parent`
+ * carries only the parent id (no name), so building a full breadcrumb means
+ * walking up `parent.id` one call per ancestor level.
+ */
+export interface AllegroCategoryByIdResponse {
+  id: string;
+  name: string;
+  parent?: { id: string } | null;
+  leaf: boolean;
+}
+
+/**
  * Allegro category parameter — raw shape from
  * GET /sale/categories/{categoryId}/parameters
  *

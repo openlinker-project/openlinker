@@ -200,6 +200,9 @@ export { isOfferStockRestorer } from './domain/ports/capabilities/offer-stock-re
 export type { OfferStockRestoreTarget } from './domain/types/offer-stock-restore.types';
 export type { CategoryBrowser } from './domain/ports/capabilities/category-browser.capability';
 export { isCategoryBrowser } from './domain/ports/capabilities/category-browser.capability';
+export type { CategoryPathReader } from './domain/ports/capabilities/category-path-reader.capability';
+export { isCategoryPathReader } from './domain/ports/capabilities/category-path-reader.capability';
+export type { CategoryPathNode } from './domain/types/category-path.types';
 export type { CategoryBarcodeMatcher } from './domain/ports/capabilities/category-barcode-matcher.capability';
 export { isCategoryBarcodeMatcher } from './domain/ports/capabilities/category-barcode-matcher.capability';
 export type { EanCategoryMatcher } from './domain/ports/capabilities/ean-category-matcher.capability';

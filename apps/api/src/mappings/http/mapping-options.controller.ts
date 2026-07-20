@@ -68,6 +68,7 @@ import {
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { MappingOptionResponseDto } from './dto/mapping-option-response.dto';
 import { AllegroCategoryResponseDto } from './dto/allegro-category-response.dto';
+import { CategoryPathNodeResponseDto } from './dto/category-path-node-response.dto';
 import { ICategoriesCacheService } from '../../categories/categories-cache.service.interface';
 import { CATEGORIES_CACHE_SERVICE_TOKEN } from '../../categories/categories.tokens';
 
@@ -204,6 +205,21 @@ export class MappingOptionsController {
       parentId
     );
     return categories.map((c) => AllegroCategoryResponseDto.fromDomain(c));
+  }
+
+  @Get('source/categories/:categoryId/path')
+  @ApiOperation({
+    summary: 'Resolve a source-platform category id to its root-to-leaf breadcrumb (#1741)',
+  })
+  @ApiParam({ name: 'connectionId', type: String })
+  @ApiParam({ name: 'categoryId', type: String })
+  @ApiResponse({ status: 200, type: [CategoryPathNodeResponseDto] })
+  async getSourceCategoryPath(
+    @Param('connectionId') connectionId: string,
+    @Param('categoryId') categoryId: string
+  ): Promise<CategoryPathNodeResponseDto[]> {
+    const path = await this.categoriesCacheService.getAllegroCategoryPath(connectionId, categoryId);
+    return path.map((n) => CategoryPathNodeResponseDto.fromDomain(n));
   }
 
   // ── Private helpers (#472 §5.5 / #479) ──────────────────────────────────

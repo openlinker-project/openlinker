@@ -1,9 +1,8 @@
 /**
  * BulkConfirmModal tests
  *
- * Covers the demo read-only gate on the final "Create offers" submit (#1704):
- * a demo viewer sees the button rendered-but-disabled with a read-only
- * tooltip, while a permitted operator can confirm.
+ * Covers the demo read-only gate on the final "Create offers" submit (#1704)
+ * and the per-variant / per-product count copy + mixed-publish warning (#1741).
  */
 import { screen, fireEvent, cleanup } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -18,7 +17,10 @@ function renderModal(props: Partial<Parameters<typeof BulkConfirmModal>[0]> = {}
     <BulkConfirmModal
       open
       onOpenChange={vi.fn()}
-      rowCount={3}
+      offerCount={5}
+      productCount={2}
+      excludedCount={0}
+      mixedPublishWarning={false}
       connectionName="My Allegro"
       marketplaceName="Allegro"
       initialPublishImmediately
@@ -53,5 +55,38 @@ describe('BulkConfirmModal', () => {
 
     fireEvent.click(submit);
     expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the offer/product counts in title and summary', () => {
+    renderModal({ offerCount: 5, productCount: 2 });
+
+    expect(
+      screen.getByRole('heading', { name: /create 5 allegro offers\?/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/across/i)).toHaveTextContent('across 2 products');
+  });
+
+  it('mentions excluded variants only when excludedCount > 0', () => {
+    renderModal({ excludedCount: 3 });
+    expect(screen.getByText(/variant\(s\) excluded/i)).toBeInTheDocument();
+  });
+
+  it('omits the excluded-variant clause when excludedCount is 0', () => {
+    renderModal({ excludedCount: 0 });
+    expect(screen.queryByText(/variant\(s\) excluded/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the mixed-publish warning when a listing has publish + draft variants', () => {
+    renderModal({ mixedPublishWarning: true });
+    expect(
+      screen.getByText(/both published and draft variants/i),
+    ).toBeInTheDocument();
+  });
+
+  it('hides the mixed-publish warning when all variants share a publish state', () => {
+    renderModal({ mixedPublishWarning: false });
+    expect(
+      screen.queryByText(/both published and draft variants/i),
+    ).not.toBeInTheDocument();
   });
 });

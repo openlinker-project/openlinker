@@ -718,6 +718,79 @@ describe('AllegroOfferManagerAdapter', () => {
     });
   });
 
+  describe('getCategoryPath', () => {
+    it('walks the parent chain and returns nodes ROOT -> LEAF', async () => {
+      // Leaf first, then each ancestor, then root (parent: null).
+      httpClient.get
+        .mockResolvedValueOnce({
+          data: { id: '10', name: 'Smartphones', parent: { id: '2' }, leaf: true },
+          status: 200,
+          headers: {},
+        })
+        .mockResolvedValueOnce({
+          data: { id: '2', name: 'Phones', parent: { id: '1' }, leaf: false },
+          status: 200,
+          headers: {},
+        })
+        .mockResolvedValueOnce({
+          data: { id: '1', name: 'Electronics', parent: null, leaf: false },
+          status: 200,
+          headers: {},
+        });
+
+      const result = await adapter.getCategoryPath('10');
+
+      expect(result).toEqual([
+        { id: '1', name: 'Electronics' },
+        { id: '2', name: 'Phones' },
+        { id: '10', name: 'Smartphones' },
+      ]);
+      expect(httpClient.get).toHaveBeenNthCalledWith(1, '/sale/categories/10');
+      expect(httpClient.get).toHaveBeenNthCalledWith(2, '/sale/categories/2');
+      expect(httpClient.get).toHaveBeenNthCalledWith(3, '/sale/categories/1');
+    });
+
+    it('returns a single node for a root category', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        data: { id: '1', name: 'Electronics', parent: null, leaf: false },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter.getCategoryPath('1');
+
+      expect(result).toEqual([{ id: '1', name: 'Electronics' }]);
+    });
+
+    it('returns an empty array when the queried id 404s', async () => {
+      httpClient.get.mockRejectedValueOnce(new AllegroApiException('Not found', 404));
+
+      const result = await adapter.getCategoryPath('missing');
+
+      expect(result).toEqual([]);
+    });
+
+    it('rethrows non-404 upstream errors', async () => {
+      httpClient.get.mockRejectedValueOnce(new AllegroApiException('Server error', 500));
+
+      await expect(adapter.getCategoryPath('10')).rejects.toBeInstanceOf(AllegroApiException);
+    });
+
+    it('caps the walk at the max depth on a malformed self-referential parent', async () => {
+      // A category whose parent points at itself would loop forever without the cap.
+      httpClient.get.mockResolvedValue({
+        data: { id: '10', name: 'Loop', parent: { id: '10' }, leaf: true },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter.getCategoryPath('10');
+
+      expect(result).toHaveLength(12);
+      expect(httpClient.get).toHaveBeenCalledTimes(12);
+    });
+  });
+
   describe('matchCategoryByBarcode', () => {
     // Delegates to `resolveCategoriesForBatchByEan` (#735, #794) — these
     // tests assert the public boundary contract (categoryId | null) plus the

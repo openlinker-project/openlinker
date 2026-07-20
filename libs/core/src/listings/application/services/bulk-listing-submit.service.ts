@@ -190,7 +190,7 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     // 4. Fan out enqueues. On a mid-fan-out failure the batch is reconciled so
     //    it can still reach a terminal status (#1741 partial-submit atomicity):
     //    - if ≥1 job already reached the stream, reconcile `totalCount` down to
-    //      the number actually enqueued and advance to 'running' — the enqueued
+    //      the number actually enqueued and advance to 'running' - the enqueued
     //      children run normally and the #737 counter gate
     //      (`succeeded + failed === totalCount`) terminates the batch. Un-enqueued
     //      variants leave no orphan record (enqueueCreation persists per-record),
@@ -303,7 +303,7 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     // second fetch. `null` for an unknown (stale-selection) passthrough job.
     const variantsById = new Map<string, ProductVariant | null>();
     const seen = new Set<string>();
-    // #1741: variants the operator switched off — never enqueue these, and
+    // #1741: variants the operator switched off - never enqueue these, and
     // never resurrect an excluded seed via the defensive re-add below.
     const excluded = new Set(input.excludedVariantIds ?? []);
     // #1741: an operator-overridden EAN (per-variant) rescues a barcode-less
@@ -384,7 +384,7 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
    * - **Key shape**: every key of `perProductOverrides` / `perVariantOverrides`
    *   and every `excludedVariantIds` entry must match the internal-variant-id
    *   shape (`ol_variant_{hex}`); anything else (`__proto__`, `constructor`,
-   *   arbitrary strings) throws `InvalidOverrideKeyException` — a
+   *   arbitrary strings) throws `InvalidOverrideKeyException` - a
    *   prototype-pollution guard.
    * - **Currency**: an override `price.currency` diverging from the batch
    *   `sharedConfig.price.currency` throws `CurrencyMismatchException`
@@ -438,12 +438,12 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
    * Enforce identifier integrity on the included fan-out (#1741). For each job
    * the effective EAN is
    * `perVariantOverrides[variantId].overrides.ean ?? variant.ean ?? variant.gtin`
-   * — the same value the offer builder self-links / category-resolves by:
+   * - the same value the offer builder self-links / category-resolves by:
    *
    * - a present EAN of GTIN length (8/12/13/14) with an invalid GS1 check digit
    *   throws `InvalidEanException`;
    * - two included variants (of the same or different products) resolving to the
-   *   same EAN throw `DuplicateBatchEanException` — they would otherwise collapse
+   *   same EAN throw `DuplicateBatchEanException` - they would otherwise collapse
    *   onto one Allegro catalog card and lose their variant grouping.
    *
    * Null / barcode-less variants are skipped (a barcode-less sibling lists
@@ -523,7 +523,7 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
 
     const operatorStock =
       variantOverride?.stock ?? familyOverride?.stock ?? input.sharedConfig.stock;
-    // Master stock is authoritative for expanded siblings — including 0. A
+    // Master stock is authoritative for expanded siblings - including 0. A
     // sibling absent from the availability map resolves to 0 (out-of-stock),
     // never the nominal operator quantity (no phantom stock, #1741). The
     // operator quantity is used only for single-variant / passthrough jobs.
@@ -547,7 +547,7 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
       variantOverride?.overrides
     );
     // Strip the wizard-resolved card for expanded siblings so each self-links
-    // by its own barcode — UNLESS the operator explicitly picked a per-variant
+    // by its own barcode - UNLESS the operator explicitly picked a per-variant
     // card (multi-match candidate), which must survive (#1741).
     if (
       job.clearProductCard &&
@@ -591,7 +591,7 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
   ): CreateOfferOverrides | undefined {
     if (!shared && !family && !variant) return undefined;
     // Scalar + whole-array fields: later layer wins (base → family → variant).
-    // `parameters` / `imageUrls` are whole-array-replaced by design (#1741) —
+    // `parameters` / `imageUrls` are whole-array-replaced by design (#1741) -
     // the FE emits the full effective array per variant.
     const merged: CreateOfferOverrides = { ...shared, ...family, ...variant };
     if (shared?.platformParams || family?.platformParams || variant?.platformParams) {

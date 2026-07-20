@@ -22,6 +22,7 @@ import type {
   OrderStateMapping,
   CategoryMapping,
   AllegroCategory,
+  CategoryPathNode,
   PrestashopCategory,
   MappingOption,
   MappingSide,
@@ -65,6 +66,7 @@ export interface MappingsApi {
   upsertCategoryMapping: (connectionId: string, prestashopCategoryId: string, payload: UpsertCategoryMappingPayload) => Promise<CategoryMapping>;
   deleteCategoryMapping: (connectionId: string, prestashopCategoryId: string) => Promise<void>;
   getAllegroCategories: (connectionId: string, parentId?: string) => Promise<AllegroCategory[]>;
+  getAllegroCategoryPath: (connectionId: string, categoryId: string) => Promise<CategoryPathNode[]>;
   getPrestashopCategories: (connectionId: string) => Promise<PrestashopCategory[]>;
 
   // Fulfillment routing (#836) — sibling of /mappings, keyed on the source connection.
@@ -155,6 +157,13 @@ export function createMappingsApi(request: ApiRequest): MappingsApi {
         `/connections/${connectionId}/mappings/options/source/categories${qs}`,
       );
     },
+
+    getAllegroCategoryPath: (connectionId, categoryId) =>
+      request<CategoryPathNode[]>(
+        `/connections/${connectionId}/mappings/options/source/categories/${encodeURIComponent(
+          categoryId,
+        )}/path`,
+      ),
 
     getPrestashopCategories: (connectionId) =>
       request<PrestashopCategory[]>(

@@ -17,9 +17,9 @@ import type {
   PrestashopCategoryDto,
 } from './categories-cache.service.interface';
 import { AllegroCategoryCacheOrmEntity } from './persistence/allegro-category-cache.orm-entity';
-import { isCategoryBrowser } from '@openlinker/core/listings';
+import { isCategoryBrowser, isCategoryPathReader } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import type { OfferCategory, OfferManagerPort } from '@openlinker/core/listings';
+import type { OfferCategory, CategoryPathNode, OfferManagerPort } from '@openlinker/core/listings';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -66,6 +66,31 @@ export class CategoriesCacheService implements ICategoriesCacheService {
     await this.storeInCache(connectionId, categories);
 
     return categories;
+  }
+
+  async getAllegroCategoryPath(
+    connectionId: string,
+    categoryId: string
+  ): Promise<CategoryPathNode[]> {
+    // Same adapter resolution as getAllegroCategories: resolve the connection's
+    // OfferManager and narrow to the finer sub-capability. A connection whose
+    // adapter does not implement CategoryPathReader (e.g. a borrows-taxonomy
+    // destination) yields an empty path so the FE degrades to the raw id.
+    const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+      connectionId,
+      'OfferManager'
+    );
+
+    if (!isCategoryPathReader(adapter)) {
+      this.logger.warn(
+        `Marketplace adapter for connection ${connectionId} does not support getCategoryPath`
+      );
+      return [];
+    }
+
+    // The adapter owns caching (distributed cache, shared TTL) - no DB cache
+    // layer here, since a breadcrumb is a single opaque path, not a tree level.
+    return adapter.getCategoryPath(categoryId);
   }
 
   async getPrestashopCategories(connectionId: string): Promise<PrestashopCategoryDto[]> {
