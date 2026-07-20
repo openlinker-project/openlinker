@@ -258,9 +258,18 @@ export interface OrderRecord {
 }
 
 /** POST /invoices — server assembles lines/buyer from the order. */
+/** Scheme-tagged buyer tax id; presence drives B2B (company), absence B2C. */
+export interface BuyerTaxIdInput {
+  scheme: string;
+  value: string;
+}
+
 export interface IssueInvoiceInput {
   connectionId: string;
   orderId: string;
+  buyerTaxId?: BuyerTaxIdInput;
+  documentType?: string;
+  idempotencyKey?: string;
 }
 
 export interface InvoiceRecord {
@@ -643,4 +652,72 @@ export interface ListInvoicesQuery {
   regulatoryStatus?: string;
   limit?: number;
   offset?: number;
+}
+
+// ── Invoicing: bulk issue / correction / resend / email / mark-paid / bank accounts ──
+
+/** POST /invoices/bulk-issue request body (#1355). */
+export interface BulkIssueInvoicesInput {
+  connectionId: string;
+  orderIds: string[];
+}
+
+export type BulkIssueOutcome = 'issued' | 'skipped' | 'failed';
+
+export interface BulkIssueInvoiceResult {
+  orderId: string;
+  outcome: BulkIssueOutcome;
+  invoiceId?: string;
+  reason?: string;
+}
+
+export interface BulkIssueInvoicesResult {
+  issued: number;
+  skipped: number;
+  failed: number;
+  results: BulkIssueInvoiceResult[];
+}
+
+/** POST /invoices/:invoiceId/correct request line (#1241). */
+export interface IssueCorrectionLineInput {
+  originalLineNumber: number;
+  newQuantity?: number;
+  newUnitPriceGross?: number;
+}
+
+/** POST /invoices/:invoiceId/correct request body (#1241). */
+export interface IssueCorrectionInput {
+  reason?: string;
+  lines: IssueCorrectionLineInput[];
+  idempotencyKey?: string;
+}
+
+/** POST /invoices/:invoiceId/send-email request body (#1353). */
+export interface SendInvoiceEmailInput {
+  locale?: string;
+  sendCopy?: boolean;
+}
+
+/** POST /invoices/:invoiceId/send-email response (#1353). */
+export interface SendInvoiceEmailResult {
+  delivered: boolean;
+  recipient: string | null;
+}
+
+/** POST /invoices/:invoiceId/mark-paid request body (#1362). Bare `{}` marks paid today. */
+export interface MarkInvoicePaidInput {
+  paidDate?: string;
+}
+
+/** GET /connections/:connectionId/bank-accounts row (#1303 follow-up). */
+export interface InvoicingBankAccount {
+  id: string;
+  accountNumber: string;
+  bankName: string;
+  isDefault: boolean;
+}
+
+/** A raw binary response whose text body is also retained (source XML / documents). */
+export interface RawTextResponse extends RawResponse {
+  text: string;
 }

@@ -97,6 +97,76 @@ export interface CreateCategoryInput {
   parentId?: string;
 }
 
+/** Input for `createCustomer` — a minimal guest-capable customer record. */
+export interface CreateCustomerInput {
+  firstName: string;
+  lastName: string;
+  email: string;
+  /** Cleartext password (PrestaShop hashes internally); 5-72 chars. */
+  password: string;
+  /** Default customer group id. Defaults to `3` (the stock "Customer" group). */
+  idDefaultGroup?: string;
+  languageId?: string;
+}
+
+/** Input for `createAddress` — a delivery/invoice address for a customer. */
+export interface CreateAddressInput {
+  idCustomer: string;
+  alias: string;
+  firstName: string;
+  lastName: string;
+  address1: string;
+  city: string;
+  postcode: string;
+  /** PrestaShop country id (numeric). Resolve via `getCountryIdByIso`. */
+  idCountry: string;
+  phone?: string;
+}
+
+/** Input for `createOrder` — the minimal fields the webservice requires. */
+export interface CreateOrderInput {
+  idCustomer: string;
+  idAddressDelivery: string;
+  idAddressInvoice: string;
+  idCart: string;
+  /** Net (tax-excl) products subtotal. */
+  totalProducts: string;
+  /** Gross (tax-incl) products subtotal. */
+  totalProductsWt: string;
+  /** Net (tax-excl) order total, INCLUDING shipping. */
+  totalPaidTaxExcl: string;
+  /** Gross (tax-incl) order total, INCLUDING shipping — the buyer-paid amount. */
+  totalPaidTaxIncl: string;
+  /** Gross (tax-incl) shipping cost. */
+  totalShippingTaxIncl: string;
+  currencyId?: string;
+  languageId?: string;
+  carrierId?: string;
+  /** PrestaShop order state id. Defaults to `2` ("Payment accepted", stock install). */
+  currentState?: string;
+  /** Line rows — one per order_detail. */
+  rows: Array<{
+    productId: string;
+    /** Combination id, or `'0'` for a simple product. */
+    productAttributeId?: string;
+    quantity: number;
+    /** Unit gross (tax-incl) price the buyer pays for one unit. */
+    unitPriceTaxIncl: string;
+    productReference?: string;
+  }>;
+}
+
+/** Input for `createCart` — the cart an order references via `id_cart`. */
+export interface CreateCartInput {
+  idCustomer: string;
+  idAddressDelivery: string;
+  idAddressInvoice: string;
+  idCurrency?: string;
+  idLang?: string;
+  idCarrier?: string;
+  rows: Array<{ productId: string; productAttributeId?: string; quantity: number }>;
+}
+
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 export class PrestashopWebserviceClient {
@@ -297,6 +367,208 @@ export class PrestashopWebserviceClient {
     }
     await this.setStock(id, input.quantity);
     return { id, reference: input.reference };
+  }
+
+  /**
+   * Resolve a PrestaShop country id by its ISO 3166-1 alpha-2 code (e.g. `PL`).
+   * Used so address creation never hardcodes an id that varies by install.
+   */
+  async getCountryIdByIso(iso: string): Promise<string | null> {
+    const body = await this.get(`/api/countries?filter[iso_code]=${encodeURIComponent(iso)}`);
+    const countries = asArray(pick(body, 'countries'));
+    if (countries.length === 0) return null;
+    return asStringOrNull(pick(asRecord(countries[0]), 'id'));
+  }
+
+  /**
+   * Create a minimal customer record via the webservice (order synthesis,
+   * #1573 — no marketplace purchase; orders for the invoicing suite are
+   * created directly against PrestaShop as a REST order source). Needs live
+   * verification against a real webservice install (mirrors the same caveat
+   * already documented on `createProduct`).
+   */
+  async createCustomer(input: CreateCustomerInput): Promise<{ id: string }> {
+    const languageId = input.languageId ?? '1';
+    const idDefaultGroup = input.idDefaultGroup ?? '3';
+    const xml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<prestashop>',
+      '  <customer>',
+      `    <id_default_group>${escapeXml(idDefaultGroup)}</id_default_group>`,
+      `    <id_lang>${escapeXml(languageId)}</id_lang>`,
+      '    <active>1</active>',
+      `    <lastname>${escapeXml(input.lastName)}</lastname>`,
+      `    <firstname>${escapeXml(input.firstName)}</firstname>`,
+      `    <email>${escapeXml(input.email)}</email>`,
+      `    <passwd>${escapeXml(input.password)}</passwd>`,
+      '  </customer>',
+      '</prestashop>',
+    ].join('\n');
+
+    const body = await this.send('POST', '/api/customers', xml);
+    const customer = asRecord(pick(body, 'customer'));
+    const id = asStringOrNull(pick(customer, 'id'));
+    if (!id) {
+      throw new Error(
+        `PrestaShop createCustomer returned no id: ${JSON.stringify(body).slice(0, 200)}`,
+      );
+    }
+    return { id };
+  }
+
+  /** Create a delivery/invoice address for a customer (order synthesis, #1573). */
+  async createAddress(input: CreateAddressInput): Promise<{ id: string }> {
+    const xml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<prestashop>',
+      '  <address>',
+      `    <id_customer>${escapeXml(input.idCustomer)}</id_customer>`,
+      `    <alias>${escapeXml(input.alias)}</alias>`,
+      `    <lastname>${escapeXml(input.lastName)}</lastname>`,
+      `    <firstname>${escapeXml(input.firstName)}</firstname>`,
+      `    <address1>${escapeXml(input.address1)}</address1>`,
+      `    <city>${escapeXml(input.city)}</city>`,
+      `    <postcode>${escapeXml(input.postcode)}</postcode>`,
+      `    <id_country>${escapeXml(input.idCountry)}</id_country>`,
+      input.phone ? `    <phone>${escapeXml(input.phone)}</phone>` : '',
+      '  </address>',
+      '</prestashop>',
+    ]
+      .filter((line) => line.length > 0)
+      .join('\n');
+
+    const body = await this.send('POST', '/api/addresses', xml);
+    const address = asRecord(pick(body, 'address'));
+    const id = asStringOrNull(pick(address, 'id'));
+    if (!id) {
+      throw new Error(
+        `PrestaShop createAddress returned no id: ${JSON.stringify(body).slice(0, 200)}`,
+      );
+    }
+    return { id };
+  }
+
+  /**
+   * Create the cart an order references via `id_cart`. PrestaShop's order
+   * webservice resource requires an existing cart id even though the order
+   * body itself carries the authoritative line/total data (order synthesis,
+   * #1573).
+   */
+  async createCart(input: CreateCartInput): Promise<{ id: string }> {
+    const currencyId = input.idCurrency ?? '1';
+    const languageId = input.idLang ?? '1';
+    const carrierId = input.idCarrier ?? '1';
+    const cartRows = input.rows
+      .map(
+        (row) =>
+          '        <cart_row>' +
+          `<id_product>${escapeXml(row.productId)}</id_product>` +
+          `<id_product_attribute>${escapeXml(row.productAttributeId ?? '0')}</id_product_attribute>` +
+          `<quantity>${Math.trunc(row.quantity)}</quantity>` +
+          '</cart_row>',
+      )
+      .join('\n');
+    const xml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<prestashop>',
+      '  <cart>',
+      `    <id_currency>${escapeXml(currencyId)}</id_currency>`,
+      `    <id_lang>${escapeXml(languageId)}</id_lang>`,
+      `    <id_customer>${escapeXml(input.idCustomer)}</id_customer>`,
+      `    <id_address_delivery>${escapeXml(input.idAddressDelivery)}</id_address_delivery>`,
+      `    <id_address_invoice>${escapeXml(input.idAddressInvoice)}</id_address_invoice>`,
+      `    <id_carrier>${escapeXml(carrierId)}</id_carrier>`,
+      '    <recyclable>0</recyclable>',
+      '    <associations>',
+      '      <cart_rows>',
+      cartRows,
+      '      </cart_rows>',
+      '    </associations>',
+      '  </cart>',
+      '</prestashop>',
+    ].join('\n');
+
+    const body = await this.send('POST', '/api/carts', xml);
+    const cart = asRecord(pick(body, 'cart'));
+    const id = asStringOrNull(pick(cart, 'id'));
+    if (!id) {
+      throw new Error(`PrestaShop createCart returned no id: ${JSON.stringify(body).slice(0, 200)}`);
+    }
+    return { id };
+  }
+
+  /**
+   * Create an order directly against the webservice (order synthesis, #1573 —
+   * the invoicing E2E suite needs unattended orders with no marketplace
+   * purchase; PrestaShop is already a supported `OrderSourcePort`, so a
+   * webservice-created order is a real "REST source" the existing
+   * `marketplace.orders.poll` job ingests via the `date_upd` watermark).
+   *
+   * Needs live verification: the exact set of REQUIRED webservice fields for
+   * `POST /api/orders` is not otherwise exercised by this test-support client
+   * (unlike `createProduct`/`createCategory`, which are exercised by the
+   * golden path's fresh-product option) — see the caveat already documented on
+   * `createProduct`.
+   */
+  async createOrder(input: CreateOrderInput): Promise<{ id: string }> {
+    const currencyId = input.currencyId ?? '1';
+    const languageId = input.languageId ?? '1';
+    const carrierId = input.carrierId ?? '1';
+    const currentState = input.currentState ?? '2';
+    const orderRows = input.rows
+      .map(
+        (row, index) =>
+          '        <order_row>' +
+          `<id>${index + 1}</id>` +
+          `<product_id>${escapeXml(row.productId)}</product_id>` +
+          `<product_attribute_id>${escapeXml(row.productAttributeId ?? '0')}</product_attribute_id>` +
+          `<product_quantity>${Math.trunc(row.quantity)}</product_quantity>` +
+          `<product_price>${escapeXml(row.unitPriceTaxIncl)}</product_price>` +
+          `<product_reference>${escapeXml(row.productReference ?? '')}</product_reference>` +
+          '</order_row>',
+      )
+      .join('\n');
+    const xml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<prestashop>',
+      '  <order>',
+      `    <id_customer>${escapeXml(input.idCustomer)}</id_customer>`,
+      `    <id_address_delivery>${escapeXml(input.idAddressDelivery)}</id_address_delivery>`,
+      `    <id_address_invoice>${escapeXml(input.idAddressInvoice)}</id_address_invoice>`,
+      `    <id_cart>${escapeXml(input.idCart)}</id_cart>`,
+      `    <id_currency>${escapeXml(currencyId)}</id_currency>`,
+      `    <id_lang>${escapeXml(languageId)}</id_lang>`,
+      `    <id_carrier>${escapeXml(carrierId)}</id_carrier>`,
+      `    <current_state>${escapeXml(currentState)}</current_state>`,
+      '    <module>ps_checkpayment</module>',
+      '    <payment>Check payment</payment>',
+      '    <valid>1</valid>',
+      '    <conversion_rate>1.000000</conversion_rate>',
+      `    <total_paid>${escapeXml(input.totalPaidTaxIncl)}</total_paid>`,
+      `    <total_paid_tax_incl>${escapeXml(input.totalPaidTaxIncl)}</total_paid_tax_incl>`,
+      `    <total_paid_tax_excl>${escapeXml(input.totalPaidTaxExcl)}</total_paid_tax_excl>`,
+      `    <total_paid_real>${escapeXml(input.totalPaidTaxIncl)}</total_paid_real>`,
+      `    <total_products>${escapeXml(input.totalProducts)}</total_products>`,
+      `    <total_products_wt>${escapeXml(input.totalProductsWt)}</total_products_wt>`,
+      `    <total_shipping>${escapeXml(input.totalShippingTaxIncl)}</total_shipping>`,
+      `    <total_shipping_tax_incl>${escapeXml(input.totalShippingTaxIncl)}</total_shipping_tax_incl>`,
+      `    <total_shipping_tax_excl>${escapeXml(input.totalShippingTaxIncl)}</total_shipping_tax_excl>`,
+      '    <associations>',
+      '      <order_rows>',
+      orderRows,
+      '      </order_rows>',
+      '    </associations>',
+      '  </order>',
+      '</prestashop>',
+    ].join('\n');
+
+    const body = await this.send('POST', '/api/orders', xml);
+    const order = asRecord(pick(body, 'order'));
+    const id = asStringOrNull(pick(order, 'id'));
+    if (!id) {
+      throw new Error(`PrestaShop createOrder returned no id: ${JSON.stringify(body).slice(0, 200)}`);
+    }
+    return { id };
   }
 
   /**

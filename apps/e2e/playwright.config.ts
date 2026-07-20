@@ -35,6 +35,11 @@
  *                      purchase) — self-configuring, skips per-scenario when
  *                      the stack lacks the order/connection a test needs.
  *                      `retries: 0` (each spec dispatches real ShipX calls).
+ *   - `invoicing`    — inFakt provider run, payment marking, bulk issue/resend/
+ *                      e-mail, KOR corrections, FA(3) field parity + preview,
+ *                      and Transfer bank accounts (#1573). Unattended — orders
+ *                      are synthesized against PrestaShop's webservice, no
+ *                      marketplace purchase. `retries: 0` (mutating).
  *
  * Reporters: html + list. Retries are per-project: read-only projects (setup,
  * smoke) retry once; the mutating golden-path project runs with `retries: 0` —
@@ -153,6 +158,20 @@ export default defineConfig({
       // double-dispatch against the shared sandbox order.
       name: 'shipping',
       testMatch: /shipping\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
+      // Invoicing suite (#1573) — inFakt provider run, payment marking (both
+      // directions), bulk issue/resend/e-mail, KOR corrections, FA(3) field
+      // parity + rebuilt preview, and Transfer bank accounts. Fully unattended:
+      // orders are synthesized directly against PrestaShop's webservice (no
+      // marketplace purchase, no manual pause). `retries: 0` — every scenario
+      // mutates (issues/corrects/marks invoices, synthesizes orders), and a
+      // silent retry would double-issue or double-correct.
+      name: 'invoicing',
+      testMatch: /invoicing\/.*\.spec\.ts/,
       retries: 0,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },

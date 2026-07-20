@@ -19,6 +19,7 @@ export const PlatformType = {
   erli: 'erli',
   inpost: 'inpost',
   ksef: 'ksef',
+  infakt: 'infakt',
 } as const;
 
 export type KnownPlatformType = (typeof PlatformType)[keyof typeof PlatformType];

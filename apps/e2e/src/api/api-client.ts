@@ -17,6 +17,8 @@ import { ApiError } from './api-error';
 import type {
   ApproveUserInput,
   BulkBatchSummary,
+  BulkIssueInvoicesInput,
+  BulkIssueInvoicesResult,
   CategoryMappingInput,
   CategoryParameter,
   CategoryParametersResponse,
@@ -35,6 +37,8 @@ import type {
   InventoryAvailability,
   InventoryAvailabilityResponse,
   InvoiceRecord,
+  InvoicingBankAccount,
+  IssueCorrectionInput,
   IssueInvoiceInput,
   IssuedDocumentContent,
   ListInvoicesQuery,
@@ -43,6 +47,7 @@ import type {
   ListProductsQuery,
   ListUsersQuery,
   LoginResponse,
+  MarkInvoicePaidInput,
   MarketplaceOffer,
   MeResponse,
   OfferCreationStatus,
@@ -52,10 +57,13 @@ import type {
   Product,
   ProductVariant,
   RawResponse,
+  RawTextResponse,
   RegisterInput,
   RotateWebhookSecretResponse,
   RoutingRule,
   RoutingRuleInput,
+  SendInvoiceEmailInput,
+  SendInvoiceEmailResult,
   Shipment,
   SyncJob,
   SyncJobListQuery,
@@ -196,6 +204,43 @@ export class ApiClient {
     } catch {
       return raw;
     }
+  }
+
+  /**
+   * Fetch a binary endpoint and retain the decoded text body alongside the
+   * usual metadata — used where an assertion needs to inspect the actual
+   * bytes (e.g. grepping the FA(3) source XML for specific elements), unlike
+   * `requestRaw` which drains and discards the body.
+   */
+  private async requestRawText(path: string, isRetryAfterRelogin = false): Promise<RawTextResponse> {
+    const headers = new Headers();
+    if (this.accessToken !== null) {
+      headers.set('Authorization', `Bearer ${this.accessToken}`);
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${withApiVersion(path)}`, {
+        headers,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (response.status === 401 && !isRetryAfterRelogin && this.credentials) {
+      await response.text();
+      await this.relogin();
+      return this.requestRawText(path, true);
+    }
+    const text = await response.text();
+    return {
+      status: response.status,
+      ok: response.ok,
+      contentType: response.headers.get('content-type'),
+      byteLength: Buffer.byteLength(text, 'utf-8'),
+      text,
+    };
   }
 
   /**
@@ -532,6 +577,55 @@ export class ApiClient {
     /** Source FA(3) XML document — bytes-only check. */
     getSourceDocument: (invoiceId: string): Promise<RawResponse> =>
       this.requestRaw(`/invoices/${invoiceId}/document${buildQuery({ kind: 'source' })}`),
+    /**
+     * Source FA(3) XML document with its decoded text retained — used to grep
+     * for specific elements (P_6 / P_8A / P_9A, #1529) rather than just the
+     * byte-length proof `getSourceDocument` gives.
+     */
+    getSourceDocumentText: (invoiceId: string): Promise<RawTextResponse> =>
+      this.requestRawText(`/invoices/${invoiceId}/document${buildQuery({ kind: 'source' })}`),
+    /**
+     * Bulk-issue invoices for a set of orders on one connection (#1355). Fans
+     * out over the same single-order issue primitive `issue()` composes.
+     */
+    bulkIssue: (input: BulkIssueInvoicesInput): Promise<BulkIssueInvoicesResult> =>
+      this.request<BulkIssueInvoicesResult>('/invoices/bulk-issue', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    /** Issue a correction (KOR) of an already-issued document (#1241). */
+    correct: (invoiceId: string, input: IssueCorrectionInput): Promise<InvoiceRecord> =>
+      this.request<InvoiceRecord>(`/invoices/${invoiceId}/correct`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    /** Re-send a rejected document to the tax authority (#1121). */
+    resendToKsef: (invoiceId: string): Promise<InvoiceRecord> =>
+      this.request<InvoiceRecord>(`/invoices/${invoiceId}/resend-to-ksef`, { method: 'POST' }),
+    /** Trigger the provider to email the issued document to the buyer (#1353). */
+    sendEmail: (invoiceId: string, input: SendInvoiceEmailInput = {}): Promise<SendInvoiceEmailResult> =>
+      this.request<SendInvoiceEmailResult>(`/invoices/${invoiceId}/send-email`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    /** Push an authoritative "paid" state to the provider (#1362). */
+    markPaid: (invoiceId: string, input: MarkInvoicePaidInput = {}): Promise<InvoiceRecord> =>
+      this.request<InvoiceRecord>(`/invoices/${invoiceId}/mark-paid`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+  };
+
+  // ── Invoicing: bank accounts (#1303 follow-up) ─────────────────────────────
+  bankAccounts = {
+    /** List the connection's provider bank accounts (Transfer invoices). */
+    list: (connectionId: string): Promise<InvoicingBankAccount[]> =>
+      this.request<InvoicingBankAccount[]>(`/connections/${connectionId}/bank-accounts`),
+    /** Mark an account as the provider's own default. Returns 204 (no body). */
+    setDefault: (connectionId: string, accountId: string): Promise<void> =>
+      this.request<void>(`/connections/${connectionId}/bank-accounts/${accountId}/default`, {
+        method: 'POST',
+      }),
   };
 
   // ── Shipments ───────────────────────────────────────────────────────────
