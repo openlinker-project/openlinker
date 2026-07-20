@@ -8,9 +8,17 @@
  * capability (mirrors `WooCommerceOrderSourceAdapter`'s `date_upd` poll), and
  * then fanned out by `OrderSyncService` to every connection carrying
  * `OrderProcessorManager` — asserted generically by scanning `syncStatus` for
- * a WooCommerce-platform destination, so the test is correct whether the
- * stack pairs a single multi-capability WC connection (source == destination)
- * or two distinct WooCommerce connections.
+ * a WooCommerce-platform destination.
+ *
+ * Requires a genuinely DISTINCT destination WooCommerce connection (not the
+ * source connection itself): `OrderSyncService` never syncs an order back to
+ * its own source (verified live — pushing an order back into the shop it
+ * came from would be nonsensical), so a same-connection topology never
+ * produces a WooCommerce syncStatus entry at all. The destination connection
+ * must also already have the ordered product published to it (a real
+ * `ProductPublisher` publish, or its own master-catalogue mapping) — the
+ * order-processor adapter deliberately refuses to create "silent partial
+ * orders" for an unmapped product.
  *
  * Requires the catalogue to already be WC-mastered (run
  * `master-catalog.spec.ts` first, or in the same serial run) so the ordered
@@ -18,8 +26,8 @@
  * adapter can resolve into `line_items`.
  *
  * Self-configuring: skips with a clear reason when the stack has no
- * WooCommerce OrderSource + OrderProcessorManager connections, or no WC REST
- * credentials.
+ * WooCommerce OrderSource connection with a DISTINCT WooCommerce
+ * OrderProcessorManager connection, or no WC REST credentials.
  *
  * @module tests/woocommerce-parity
  */
@@ -62,7 +70,7 @@ test.describe('WooCommerce as order destination', () => {
     jobs,
   }) => {
     const ctx = await resolveContext(world);
-    test.skip(!ctx, 'no WooCommerce OrderSource + OrderProcessorManager connection, or missing REST credentials');
+    test.skip(!ctx, 'no WooCommerce OrderSource connection + a DISTINCT WooCommerce OrderProcessorManager connection, or missing REST credentials');
     const { wcSource, wc } = ctx!;
 
     const mapped = await findMappedProduct(api, world, wcSource.id);
@@ -99,7 +107,7 @@ test.describe('WooCommerce as order destination', () => {
     jobs,
   }) => {
     const ctx = await resolveContext(world);
-    test.skip(!ctx, 'no WooCommerce OrderSource + OrderProcessorManager connection, or missing REST credentials');
+    test.skip(!ctx, 'no WooCommerce OrderSource connection + a DISTINCT WooCommerce OrderProcessorManager connection, or missing REST credentials');
     const { wcSource, wc } = ctx!;
 
     const mapped = await findMappedProduct(api, world, wcSource.id);
@@ -146,7 +154,7 @@ test.describe('WooCommerce as order destination', () => {
     jobs,
   }) => {
     const ctx = await resolveContext(world);
-    test.skip(!ctx, 'no WooCommerce OrderSource + OrderProcessorManager connection, or missing REST credentials');
+    test.skip(!ctx, 'no WooCommerce OrderSource connection + a DISTINCT WooCommerce OrderProcessorManager connection, or missing REST credentials');
     const { wcSource, wc } = ctx!;
 
     const multiVariant = await world.findMultiVariantProduct(2, { requireEans: true });
@@ -186,10 +194,49 @@ interface OrderDestinationContext {
   wc: WooCommerceRestClient;
 }
 
+/**
+ * Resolve a WooCommerce connection for `capability`, preferring one with the
+ * capability actually ENABLED over `world.connectionWithCapability`'s looser
+ * enabled-OR-adapter-supported fallback. With a single WC connection on the
+ * stack this makes no difference; once a second WooCommerce connection exists
+ * the loose fallback can't tell "the connection actually configured for this
+ * role" from "any WC connection whose adapter merely can do it", and picks
+ * arbitrarily.
+ */
+function pickWooCommerceConnection(world: World, capability: string): Connection | undefined {
+  const candidates = world
+    .connectionsWithCapability(capability)
+    .filter((c) => c.platformType === 'woocommerce');
+  const enabled = candidates.filter((c) => c.enabledCapabilities.includes(capability));
+  return (enabled.length > 0 ? enabled : candidates)[0];
+}
+
+/**
+ * A genuinely distinct destination is required: `OrderSyncService` never
+ * syncs an order back to its own source connection (correctly — pushing an
+ * order back into the very shop it came from would be nonsensical), so a
+ * same-connection "source == destination" topology would never produce a
+ * WooCommerce syncStatus entry and this scenario would hang until its poll
+ * timeout rather than fail fast. This suite therefore requires two distinct
+ * WooCommerce connections (two independent stores, or one store registered
+ * twice under separate OL connections with the product genuinely published
+ * to the destination) and skips cleanly otherwise, rather than the earlier
+ * "works whether same or different connection" assumption which doesn't
+ * hold given the source-exclusion behavior.
+ */
+function pickDistinctWooCommerceDestination(world: World, excludeId: string): Connection | undefined {
+  const candidates = world
+    .connectionsWithCapability('OrderProcessorManager')
+    .filter((c) => c.platformType === 'woocommerce' && c.id !== excludeId);
+  const enabled = candidates.filter((c) => c.enabledCapabilities.includes('OrderProcessorManager'));
+  return (enabled.length > 0 ? enabled : candidates)[0];
+}
+
 async function resolveContext(world: World): Promise<OrderDestinationContext | null> {
-  const wcSource = world.connectionWithCapability('OrderSource', 'woocommerce');
-  const wcDestination = world.connectionWithCapability('OrderProcessorManager', 'woocommerce');
-  if (!wcSource || !wcDestination) return null;
+  const wcSource = pickWooCommerceConnection(world, 'OrderSource');
+  if (!wcSource) return null;
+  const wcDestination = pickDistinctWooCommerceDestination(world, wcSource.id);
+  if (!wcDestination) return null;
   const wc = buildWooCommerceClient(wcSource);
   if (!wc) return null;
   return { wcSource, wcDestination, wc };

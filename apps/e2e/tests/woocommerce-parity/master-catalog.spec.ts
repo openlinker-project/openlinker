@@ -92,17 +92,43 @@ test.describe('WooCommerce as master catalogue', () => {
         const match = wcVariations.find((v) => v.ean && norm(v.ean) === norm(variant.ean));
         expect(match, `OL variant EAN ${variant.ean} present on a WC variation`).toBeTruthy();
         if (match && hasInventoryMaster) {
-          const olAvailable = availability.find((a) => a.productVariantId === variant.id)?.totalAvailable;
+          const expectedStock = match.stockQuantity;
+          // master.inventory.syncAll (like master.product.syncAll) returns
+          // 'succeeded' as soon as it has fanned out per-variant sub-jobs, not
+          // once they've all landed — poll until the number actually converges
+          // rather than asserting a single-shot read right after the outer job.
+          const olAvailable = await poll.until(
+            async () => {
+              const [entry] = await api.inventory.availability([variant.id]);
+              return entry?.totalAvailable;
+            },
+            (value) => value === expectedStock,
+            {
+              message: `OL master stock for variant ${variant.id} to converge to WC stock_quantity ${String(expectedStock)}`,
+              timeoutMs: 60_000,
+            },
+          );
           expect(
             olAvailable,
             `OL master stock for variant ${variant.id} matches WC stock_quantity`,
-          ).toBe(match.stockQuantity ?? olAvailable);
+          ).toBe(expectedStock);
         }
       }
     } else if (hasInventoryMaster && wcView.stockQuantity !== null) {
-      const total = availability.reduce((sum, a) => sum + a.totalAvailable, 0);
+      const expectedStock = wcView.stockQuantity;
+      const total = await poll.until(
+        async () => {
+          const avail = await api.inventory.availability(variants.map((v) => v.id));
+          return avail.reduce((sum, a) => sum + a.totalAvailable, 0);
+        },
+        (value) => value === expectedStock,
+        {
+          message: `OL master total stock to converge to WC simple-product stock_quantity ${String(expectedStock)}`,
+          timeoutMs: 60_000,
+        },
+      );
       expect(total, 'OL master total stock matches WC simple-product stock_quantity').toBe(
-        wcView.stockQuantity,
+        expectedStock,
       );
     }
   });
