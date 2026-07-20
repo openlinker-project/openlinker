@@ -18,6 +18,14 @@
  *                      verify -> record -> enqueue -> dedup. Self-configuring
  *                      (skips when no PrestaShop connection is present).
  *                      `retries: 0` (rotates the secret + enqueues a job).
+ *   - `shipping`     — unattended InPost shipping coverage (#1572): courier +
+ *                      paczkomat labels, COD, declared-value insurance,
+ *                      dispatch protocol, cancellation, routing matrix,
+ *                      tracking backfill, inbound ShipX webhook (env-gated).
+ *                      Reuses an existing `ready` order (no marketplace
+ *                      purchase) — self-configuring, skips per-scenario when
+ *                      the stack lacks the order/connection a test needs.
+ *                      `retries: 0` (each spec dispatches real ShipX calls).
  *
  * Reporters: html + list. Retries are per-project: read-only projects (setup,
  * smoke) retry once; the mutating golden-path project runs with `retries: 0` —
@@ -113,6 +121,17 @@ export default defineConfig({
       name: 'access-control',
       testMatch: /access-control\/.*\.spec\.ts/,
       retries: 1,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
+      // Unattended InPost shipping coverage (#1572) — independent of the
+      // golden-path/full-flow projects. `retries: 0`: each spec dispatches a
+      // real ShipX label/cancel/protocol call, and a silent retry would
+      // double-dispatch against the shared sandbox order.
+      name: 'shipping',
+      testMatch: /shipping\/.*\.spec\.ts/,
+      retries: 0,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },

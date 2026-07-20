@@ -423,6 +423,12 @@ export interface Shipment {
   updatedAt: string;
 }
 
+/** Decimal-string money descriptor shared by COD and insured-value inputs. */
+export interface ShippingMoneyInput {
+  amount: string;
+  currency: string;
+}
+
 export interface GenerateLabelInput {
   sourceConnectionId: string;
   sourceDeliveryMethodId?: string;
@@ -431,7 +437,9 @@ export interface GenerateLabelInput {
   paczkomatId?: string;
   recipient?: Record<string, unknown>;
   parcel?: Record<string, unknown>;
-  cod?: { amount: string; currency: string };
+  cod?: ShippingMoneyInput;
+  /** Declared value to insure the parcel for (#1542). Carriers that don't support insurance ignore it. */
+  insuredValue?: ShippingMoneyInput;
 }
 
 export interface DispatchResult {

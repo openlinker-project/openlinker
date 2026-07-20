@@ -231,6 +231,48 @@ export class ApiClient {
   }
 
   /**
+   * POST variant of `requestRaw` for binary command endpoints (the handover
+   * protocol) — same metadata-only contract (bytes exist + content-type), just
+   * with a JSON request body. Kept separate from the JSON `request<T>` path
+   * because the response here is never JSON.
+   */
+  private async requestRawPost(
+    path: string,
+    body: unknown,
+    isRetryAfterRelogin = false,
+  ): Promise<RawResponse> {
+    const headers = new Headers({ 'Content-Type': 'application/json' });
+    if (this.accessToken !== null) {
+      headers.set('Authorization', `Bearer ${this.accessToken}`);
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${withApiVersion(path)}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (response.status === 401 && !isRetryAfterRelogin && this.credentials) {
+      await response.arrayBuffer();
+      await this.relogin();
+      return this.requestRawPost(path, body, true);
+    }
+    const buffer = await response.arrayBuffer();
+    return {
+      status: response.status,
+      ok: response.ok,
+      contentType: response.headers.get('content-type'),
+      byteLength: buffer.byteLength,
+    };
+  }
+
+  /**
    * The authenticated user's role + derived permissions (GET /auth/me).
    * Throws `ApiError` with status 401 when the client is not authenticated.
    */
@@ -488,6 +530,17 @@ export class ApiClient {
     /** Mark a shipment dispatched (mutating — attended run only). */
     notifyDispatched: (id: string): Promise<Shipment> =>
       this.request<Shipment>(`/shipments/${id}/notify-dispatched`, { method: 'POST' }),
+    /** Cancel a not-yet-dispatched shipment (mutating — attended run only). */
+    cancel: (id: string): Promise<Shipment> =>
+      this.request<Shipment>(`/shipments/${id}/cancel`, { method: 'POST' }),
+    /**
+     * Download the carrier handover protocol over a set of dispatched shipments
+     * (POST /shipments/bulk/protocol) — binary response, metadata-only like
+     * `getLabel`. The service derives the carrier connection from the shipment
+     * rows themselves, so the caller only supplies OL shipment ids.
+     */
+    generateProtocol: (shipmentIds: string[]): Promise<RawResponse> =>
+      this.requestRawPost('/shipments/bulk/protocol', { shipmentIds }),
   };
 
   // ── Sync jobs ───────────────────────────────────────────────────────────
