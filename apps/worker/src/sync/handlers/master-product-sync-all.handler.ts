@@ -34,7 +34,12 @@ import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 
 type SyncJob = SyncJobEntity;
 
-const DEFAULT_PAGE_SIZE = 200;
+// 100 is the lowest common denominator across ProductMasterPort adapters —
+// WooCommerce's REST API hard-caps `per_page` at 100 and rejects anything
+// higher with a 400, so a larger default permanently fails WC master syncs
+// (#1723). PrestaShop has no such cap; MAX_PAGES still bounds a full sweep
+// at 100,000 products.
+const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGES = 1000; // Safety guard against infinite loops.
 
 @Injectable()
