@@ -14,8 +14,18 @@ export interface IRegistrationService {
   /**
    * `clientIp` is only consulted when demo mode is enabled, to key the
    * per-IP registration rate limit (#1469). Omit it for non-demo callers.
+   *
+   * `analyticsConsent` records the account's opt-in for demo-only usage
+   * analytics captured on the registration form (#1743). Defaults to true
+   * (default-on) when omitted.
    */
-  register(username: string, email: string, password: string, clientIp?: string): Promise<void>;
+  register(
+    username: string,
+    email: string,
+    password: string,
+    clientIp?: string,
+    analyticsConsent?: boolean,
+  ): Promise<void>;
 }
 
 export const REGISTRATION_SERVICE_TOKEN = Symbol('IRegistrationService');

@@ -119,6 +119,57 @@ describe('RegisterForm', () => {
       expect(screen.getByRole('button', { name: /request access/i })).toBeInTheDocument();
     });
 
+    it('should render a pre-checked analytics consent checkbox in demo mode (#1743)', () => {
+      renderWithProviders(<RegisterForm demoMode />);
+
+      const checkbox = screen.getByRole('checkbox', { name: /share anonymous usage analytics/i });
+      expect(checkbox).toBeInTheDocument();
+      expect(checkbox).toBeChecked();
+    });
+
+    it('should not render the analytics consent checkbox outside demo mode', () => {
+      renderWithProviders(<RegisterForm />);
+
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    });
+
+    it('should submit analyticsConsent=true when the checkbox is left checked', async () => {
+      const registerFn = vi.fn().mockResolvedValue({ ok: true });
+      const mockApi = createMockApiClient({ auth: { register: registerFn } });
+      renderWithProviders(<RegisterForm demoMode />, { apiClient: mockApi });
+
+      await userEvent.type(screen.getByLabelText(/username/i), 'demo_user');
+      await userEvent.type(screen.getByLabelText(/email/i), 'demo@test.com');
+      await userEvent.type(screen.getByLabelText('Password'), 'password123');
+      await userEvent.type(screen.getByLabelText('Confirm password'), 'password123');
+      await userEvent.click(screen.getByRole('button', { name: /start exploring/i }));
+
+      await screen.findByText(/check your email to confirm your account/i);
+      expect(registerFn).toHaveBeenCalledWith(
+        expect.objectContaining({ username: 'demo_user', analyticsConsent: true }),
+      );
+    });
+
+    it('should submit analyticsConsent=false after the user unchecks it', async () => {
+      const registerFn = vi.fn().mockResolvedValue({ ok: true });
+      const mockApi = createMockApiClient({ auth: { register: registerFn } });
+      renderWithProviders(<RegisterForm demoMode />, { apiClient: mockApi });
+
+      await userEvent.type(screen.getByLabelText(/username/i), 'demo_user');
+      await userEvent.type(screen.getByLabelText(/email/i), 'demo@test.com');
+      await userEvent.type(screen.getByLabelText('Password'), 'password123');
+      await userEvent.type(screen.getByLabelText('Confirm password'), 'password123');
+      await userEvent.click(
+        screen.getByRole('checkbox', { name: /share anonymous usage analytics/i }),
+      );
+      await userEvent.click(screen.getByRole('button', { name: /start exploring/i }));
+
+      await screen.findByText(/check your email to confirm your account/i);
+      expect(registerFn).toHaveBeenCalledWith(
+        expect.objectContaining({ analyticsConsent: false }),
+      );
+    });
+
     it('should show demo success copy after registration in demo mode', async () => {
       const mockApi = createMockApiClient({
         auth: { register: vi.fn().mockResolvedValue({ ok: true }) },

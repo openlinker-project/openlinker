@@ -20,6 +20,10 @@ export class User {
     public readonly role: UserRole,
     public readonly status: UserStatus,
     public readonly createdAt: Date,
-    public readonly updatedAt: Date
+    public readonly updatedAt: Date,
+    // Opt-in for demo-only usage analytics, captured at registration (#1743).
+    // Defaults to true (default-on): accounts created before this field
+    // existed, and callers that don't set it, are treated as having consented.
+    public readonly analyticsConsent: boolean = true
   ) {}
 }

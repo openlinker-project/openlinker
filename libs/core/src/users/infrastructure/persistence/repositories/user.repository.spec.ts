@@ -29,6 +29,7 @@ describe('UserRepository', () => {
     passwordHash: 'hash',
     role: 'viewer',
     status: 'pending',
+    analyticsConsent: true,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -91,6 +92,33 @@ describe('UserRepository', () => {
 
       expect(ormRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({ email: 'alice@example.com' })
+      );
+    });
+
+    it('should default analyticsConsent to true when omitted and persist an explicit false (#1743)', async () => {
+      ormRepository.save.mockResolvedValue(buildOrm({}));
+
+      await repository.save({
+        username: 'alice',
+        email: 'alice@example.com',
+        passwordHash: 'hash',
+        role: 'viewer',
+        status: 'pending',
+      });
+      expect(ormRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ analyticsConsent: true }),
+      );
+
+      await repository.save({
+        username: 'bob',
+        email: 'bob@example.com',
+        passwordHash: 'hash',
+        role: 'viewer',
+        status: 'pending',
+        analyticsConsent: false,
+      });
+      expect(ormRepository.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({ analyticsConsent: false }),
       );
     });
 

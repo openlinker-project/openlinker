@@ -15,7 +15,12 @@ export interface UserRepositoryPort {
   findByEmail(email: string): Promise<User | null>;
   findById(id: string): Promise<User | null>;
   findAll(opts?: { status?: UserStatus; page?: number; pageSize?: number }): Promise<{ users: User[]; total: number }>;
-  save(user: Pick<User, 'username' | 'email' | 'passwordHash' | 'role' | 'status'>): Promise<User>;
+  save(
+    user: Pick<User, 'username' | 'email' | 'passwordHash' | 'role' | 'status'> &
+      // Optional so non-registration callers (e.g. bootstrap admin) don't have
+      // to opt in; the repository defaults it to true (default-on) when omitted.
+      Partial<Pick<User, 'analyticsConsent'>>
+  ): Promise<User>;
   updatePasswordHash(userId: string, passwordHash: string): Promise<void>;
   updateStatus(userId: string, status: UserStatus): Promise<void>;
   updateRole(userId: string, role: UserRole): Promise<void>;

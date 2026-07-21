@@ -31,7 +31,14 @@ export function RegisterForm({ demoMode = false }: RegisterFormProps): ReactElem
   const [submitted, setSubmitted] = useState(false);
 
   const form = useForm<RegisterFormValues>({
-    defaultValues: { username: '', email: '', password: '', confirmPassword: '' },
+    defaultValues: {
+      username: '',
+      email: '',
+      password: '',
+      confirmPassword: '',
+      // Default-on (#1743): pre-checked so consent is the no-effort path.
+      analyticsConsent: true,
+    },
     resolver: zodResolver(registerFormSchema),
   });
 
@@ -60,9 +67,9 @@ export function RegisterForm({ demoMode = false }: RegisterFormProps): ReactElem
     );
   }
 
-  const onSubmit = form.handleSubmit(async ({ username, email, password }) => {
+  const onSubmit = form.handleSubmit(async ({ username, email, password, analyticsConsent }) => {
     try {
-      await register.mutateAsync({ username, email, password });
+      await register.mutateAsync({ username, email, password, analyticsConsent });
       setSubmitted(true);
     } catch {
       return;
@@ -136,6 +143,23 @@ export function RegisterForm({ demoMode = false }: RegisterFormProps): ReactElem
           autoComplete="new-password"
         />
       </FormField>
+
+      {demoMode ? (
+        <label className="guest-form__consent" htmlFor="analyticsConsent">
+          <input
+            id="analyticsConsent"
+            type="checkbox"
+            {...form.register('analyticsConsent')}
+          />
+          <span className="guest-form__consent-text">
+            <strong>Share anonymous usage analytics</strong>
+            <span className="guest-form__consent-hint">
+              Helps us improve OpenLinker. Includes session recording with all inputs masked. You
+              can turn this off anytime after signing in.
+            </span>
+          </span>
+        </label>
+      ) : null}
 
       <Button type="submit" tone="primary" disabled={register.isPending}>
         {register.isPending

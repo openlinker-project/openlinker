@@ -277,10 +277,25 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
     })();
   }, [clearSession, showToast]);
 
+  // Seed analytics consent from the account (#1743). Consent is now decided
+  // once at registration and returned on the session, so there's no post-login
+  // prompt. localStorage is a per-browser cache of that decision (and the store
+  // for an in-session Disable): if the visitor already has an explicit local
+  // value we keep it, otherwise we mirror the account's default-on choice.
+  useEffect(() => {
+    if (!isReady || session.status !== 'authenticated' || analyticsConsent !== null) {
+      return;
+    }
+    const accountConsent = session.user?.analyticsConsent ?? true;
+    const seeded: DemoAnalyticsConsent = accountConsent ? 'accepted' : 'declined';
+    setDemoAnalyticsConsent(seeded);
+    setAnalyticsConsent(seeded);
+  }, [isReady, session, analyticsConsent]);
+
   // Demo-only analytics (#1301) — attempt init once the config query has
-  // settled and again whenever the visitor grants consent. The loader's own
-  // guards (demoMode, config presence, consent) make repeat calls a no-op,
-  // but hasInitializedAnalyticsRef avoids a redundant dynamic import.
+  // settled and once consent resolves to 'accepted'. The loader's own guards
+  // (demoMode, config presence, consent) make repeat calls a no-op, but
+  // hasInitializedAnalyticsRef avoids a redundant dynamic import.
   useEffect(() => {
     if (!systemConfigQuery.isSuccess || hasInitializedAnalyticsRef.current) {
       return;
@@ -292,12 +307,10 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
     void initDemoIntegrations(systemConfigQuery.data);
   }, [systemConfigQuery.isSuccess, systemConfigQuery.data, analyticsConsent]);
 
-  const handleAnalyticsConsentChange = useCallback((consent: DemoAnalyticsConsent): void => {
-    setDemoAnalyticsConsent(consent);
-    setAnalyticsConsent(consent);
-    if (consent === 'declined') {
-      disableDemoAnalytics();
-    }
+  const handleDisableAnalytics = useCallback((): void => {
+    setDemoAnalyticsConsent('declined');
+    setAnalyticsConsent('declined');
+    disableDemoAnalytics();
   }, []);
 
   const crumbs = resolveCrumbFromMatches(matches);
@@ -379,9 +392,8 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
 
         {demoMode && isViewerOnly ? (
           <DemoBanner
-            consentPending={Boolean(posthogConfig?.key) && analyticsConsent === null}
-            consentAccepted={Boolean(posthogConfig?.key) && analyticsConsent === 'accepted'}
-            onConsentChange={handleAnalyticsConsentChange}
+            analyticsActive={Boolean(posthogConfig?.key) && analyticsConsent === 'accepted'}
+            onDisableAnalytics={handleDisableAnalytics}
           />
         ) : null}
 

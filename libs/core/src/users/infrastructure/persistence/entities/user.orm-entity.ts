@@ -35,6 +35,9 @@ export class UserOrmEntity {
   @Column({ type: 'varchar', length: 20, default: 'active' })
   status!: string;
 
+  @Column({ name: 'analytics_consent', type: 'boolean', default: true })
+  analyticsConsent!: boolean;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 
