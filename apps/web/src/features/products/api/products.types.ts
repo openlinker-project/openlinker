@@ -47,6 +47,12 @@ export interface Product {
    * per-source-category mapping (#1522). Null/absent until a sync populates it.
    */
   categories?: string[] | null;
+  /**
+   * Source-platform product-level attributes (#1752), e.g. Brand / Material.
+   * Distinct from variant-distinguishing attributes (which show per-variant in
+   * the stock drawer). Absent/empty until a sync populates them.
+   */
+  features?: { name: string; value: string }[];
   createdAt: string;
   updatedAt: string;
   variants?: ProductVariant[];

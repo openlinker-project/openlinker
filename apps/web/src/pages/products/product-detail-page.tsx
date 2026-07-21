@@ -250,6 +250,19 @@ export function ProductDetailPage(): ReactElement {
             </div>
 
             <div className="product-detail__stack">
+              {product.features && product.features.length > 0 ? (
+                <section className="detail-section" aria-label="Attributes">
+                  <h3 className="detail-section__title">Attributes</h3>
+                  <div className="attr-chips">
+                    {product.features.map((feature) => (
+                      <span className="attr-chip" key={`${feature.name}:${feature.value}`}>
+                        <b>{feature.name}</b>
+                        {feature.value}
+                      </span>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
               <section className="detail-section">
                 <h3 className="detail-section__title">Source</h3>
                 <ProductSourceSection
