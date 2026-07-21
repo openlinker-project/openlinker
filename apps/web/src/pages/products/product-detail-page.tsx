@@ -16,7 +16,7 @@ import { useInventoryQuery } from '../../features/inventory/hooks/use-inventory-
 import { useConnectionsQuery, type Connection } from '../../features/connections';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
-import { VariantStockTable } from './variant-stock-table';
+import { VariantStockTable, VariantDetailPanel } from './variant-stock-table';
 import { MarketplacePickerModal } from './marketplace-picker-modal';
 import {
   DEFAULT_LOW_STOCK_THRESHOLD,
@@ -142,6 +142,21 @@ export function ProductDetailPage(): ReactElement {
   const availableTone = deriveAvailableTone(totalAvailable, oversoldCount);
   const stockStatus = deriveStockStatus(totalAvailable);
 
+  // Distinct stock locations across the product's inventory rows (fallback 1
+  // when the master reports no location). Feeds the Available KPI sub-line.
+  const distinctLocationCount =
+    new Set(
+      inventoryItems
+        .map((item) => item.locationId)
+        .filter((locationId): locationId is string => locationId !== null),
+    ).size || 1;
+  const availableDescription =
+    oversoldCount > 0
+      ? `${oversoldCount} oversold`
+      : `across ${distinctLocationCount} location${distinctLocationCount === 1 ? '' : 's'}`;
+
+  const isSingleVariant = variants.length === 1;
+
   const totalListings = variants.reduce(
     (sum, variant) => sum + (listingsCounts[variant.id] ?? 0),
     0,
@@ -168,20 +183,18 @@ export function ProductDetailPage(): ReactElement {
           <section className="product-detail-hero" aria-label="Product summary">
             <ProductGallery images={product.images ?? []} name={product.name} />
             <div className="product-detail-hero__body">
-              <div className="product-detail-hero__title-row">
-                <h3 className="product-detail-hero__title">{product.name}</h3>
-                <div className="product-detail-hero__badges">
-                  <StatusBadge compact withDot tone={STOCK_STATUS_BADGE_TONE[stockStatus]}>
-                    {STOCK_STATUS_LABEL[stockStatus]}
-                  </StatusBadge>
-                  <StatusBadge compact tone="neutral">
-                    {variants.length} variant{variants.length === 1 ? '' : 's'}
-                  </StatusBadge>
-                  <StatusBadge compact tone="info">
-                    {totalListings} listing{totalListings === 1 ? '' : 's'}
-                  </StatusBadge>
-                </div>
+              <div className="product-detail-hero__badges">
+                <StatusBadge compact withDot tone={STOCK_STATUS_BADGE_TONE[stockStatus]}>
+                  {STOCK_STATUS_LABEL[stockStatus]}
+                </StatusBadge>
+                <StatusBadge compact tone="neutral">
+                  {variants.length} variant{variants.length === 1 ? '' : 's'}
+                </StatusBadge>
+                <StatusBadge compact tone="info">
+                  {totalListings} listing{totalListings === 1 ? '' : 's'}
+                </StatusBadge>
               </div>
+              <h3 className="product-detail-hero__title">{product.name}</h3>
               <code className="product-detail-hero__id mono-text" title={product.id}>
                 {product.id}
               </code>
@@ -209,12 +222,16 @@ export function ProductDetailPage(): ReactElement {
           <section className="detail-section" aria-label="At a glance">
             <h3 className="detail-section__title">At a glance</h3>
             <div className="product-detail__kpi-row product-detail__kpi-row--cols-4">
-              <KpiCard label="Price" value={formatPrice(product.price, product.currency)} />
+              <KpiCard
+                label="Price"
+                value={formatPrice(product.price, product.currency)}
+                description={product.currency ?? undefined}
+              />
               <KpiCard
                 label="Available"
                 tone={availableTone}
                 value={totalAvailable}
-                description={oversoldCount > 0 ? `${oversoldCount} oversold` : undefined}
+                description={availableDescription}
               />
               <KpiCard label="Variants" value={variants.length} />
               <KpiCard label="Listings" value={totalListings} />
@@ -260,7 +277,9 @@ export function ProductDetailPage(): ReactElement {
           <section className="detail-section">
             <div className="detail-section__title-row">
               <h3 className="detail-section__title">
-                Variants &amp; stock{variants.length > 0 ? ` (${variants.length})` : ''}
+                {isSingleVariant
+                  ? 'Listed on'
+                  : `Variants & stock${variants.length > 0 ? ` (${variants.length})` : ''}`}
               </h3>
               {latestStockSync ? (
                 <span className="sync-freshness">
@@ -285,6 +304,13 @@ export function ProductDetailPage(): ReactElement {
               />
             ) : variants.length === 0 ? (
               <p className="text-muted">No variants found for this product.</p>
+            ) : isSingleVariant ? (
+              <VariantDetailPanel
+                variant={variants[0]!}
+                stock={stockByVariant.get(variants[0]!.id)}
+                connections={offerCreatorConnections}
+                onListingsCount={handleListingsCount}
+              />
             ) : (
               <VariantStockTable
                 variants={variants}
