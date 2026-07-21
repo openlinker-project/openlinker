@@ -108,6 +108,7 @@ import {
   type CreateOfferValidationError,
   type DeliveryPriceList,
   type DeliveryPriceListReader,
+  type MarketplaceOffer,
   type OfferCategory,
   type OfferCondition,
   type OfferCreator,
@@ -115,6 +116,7 @@ import {
   type OfferFieldUpdate,
   type OfferFieldUpdater,
   type OfferManagerPort,
+  type OfferReader,
   type OfferStatusReadResult,
   type OfferStatusReader,
   type OfferStockRestorer,
@@ -144,6 +146,9 @@ import type {
   ErliProductResource,
   ErliResponsibleProducerItem,
 } from './erli-product.types';
+
+/** Erli prices are PLN-only integers in minor units (grosze) — no currency field on the wire. */
+const ERLI_CURRENCY = 'PLN';
 
 /**
  * Maps OL patch-body keys to the Erli field name carried in
@@ -219,6 +224,7 @@ export class ErliOfferManagerAdapter
     OfferManagerPort,
     OfferCreator,
     OfferFieldUpdater,
+    OfferReader,
     OfferStatusReader,
     OfferStockRestorer,
     TaxonomyBorrower,
@@ -383,6 +389,59 @@ export class ErliOfferManagerAdapter
     // (handled above → OfferNotFoundOnMarketplaceException) never reaches here.
     await this.writeFrozenStockFlag(externalOfferId, product.frozenFields);
     return mapErliStatusToReadResult(product);
+  }
+
+  /**
+   * OfferReader (#464). Fetches the live Erli-side offer detail (title, image,
+   * price, qty, status, category, description) the listing-detail page surfaces
+   * above the raw mapping fields. Reuses {@link fetchErliProduct} — Erli
+   * represents an offer AS a product, so the same seller-keyed
+   * `GET /products/{externalId}` read backs it.
+   *
+   * A 404 (offer not yet visible on Erli — the ADR-025 §1 ~20-min read-after-write
+   * cache lag, or a deleted offer) becomes `OfferNotFoundOnMarketplaceException`,
+   * which the HTTP layer maps to the soft "live data unavailable" fallback rather
+   * than a hard error. Other transport errors propagate so the FE surfaces the
+   * retryable error state.
+   */
+  async getOffer(input: { externalId: string }): Promise<MarketplaceOffer> {
+    let product: ErliProductResource;
+    try {
+      product = await this.fetchErliProduct(input.externalId);
+    } catch (error) {
+      if (error instanceof ErliApiException && error.statusCode === 404) {
+        throw new OfferNotFoundOnMarketplaceException(input.externalId, this.connectionId);
+      }
+      throw error;
+    }
+    return this.toMarketplaceOffer(input.externalId, product);
+  }
+
+  /**
+   * Map a read-side Erli product resource onto the neutral {@link MarketplaceOffer}.
+   * Price is Erli's grosze integer → decimal string in PLN (Erli is PLN-only).
+   * Description prefers the flat `externalDescription` HTML over the structured
+   * `description.sections` tree. Category is the leaf of the first breadcrumb path.
+   * `marketplaceUrl` / `endsAt` are intentionally omitted — Erli exposes no stable
+   * buyer-facing offer URL on this read and has no fixed offer end date.
+   */
+  private toMarketplaceOffer(externalId: string, product: ErliProductResource): MarketplaceOffer {
+    const leafCategory = product.categories?.[0]?.at(-1);
+    return {
+      externalId: product.externalId ?? externalId,
+      title: product.name ?? '',
+      description: product.externalDescription,
+      imageUrl: product.images?.[0]?.url,
+      price: {
+        amount: ((product.price ?? 0) / 100).toFixed(2),
+        currency: ERLI_CURRENCY,
+      },
+      availableQuantity: product.stock ?? 0,
+      status: product.status ?? 'unknown',
+      category: leafCategory
+        ? { id: String(leafCategory.id), name: leafCategory.name }
+        : undefined,
+    };
   }
 
   /**

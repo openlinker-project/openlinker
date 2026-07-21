@@ -22,6 +22,7 @@ import {
   AdapterCapabilityNotSupportedException,
   CatalogProductNotFoundException,
   CategoryNotFoundException,
+  OfferNotFoundOnMarketplaceException,
 } from '@openlinker/core/listings';
 import {
   ConnectionNotFoundException,
@@ -430,6 +431,16 @@ describe('ListingsController', () => {
       integrationsService.getCapabilityAdapter.mockResolvedValue(makeOfferReaderAdapter(getOffer));
 
       await expect(controller.getMarketplaceOffer('uuid-1')).rejects.toThrow('Allegro 502');
+    });
+
+    it('should map OfferNotFoundOnMarketplaceException to a soft 404 (live data unavailable)', async () => {
+      repository.findById.mockResolvedValue(mockMapping);
+      const getOffer = jest
+        .fn()
+        .mockRejectedValue(new OfferNotFoundOnMarketplaceException('allegro-offer-456', 'conn-1'));
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeOfferReaderAdapter(getOffer));
+
+      await expect(controller.getMarketplaceOffer('uuid-1')).rejects.toThrow(NotFoundException);
     });
   });
 
