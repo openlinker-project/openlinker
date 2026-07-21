@@ -56,6 +56,26 @@ function resolveSameSite(): 'strict' | 'lax' | 'none' {
   return isProd() ? 'strict' : 'lax';
 }
 
+// Read an explicit cookie Domain from env for split-subdomain deploys (SPA on
+// app.example.com, API on api.example.com). Without a Domain the cookies are
+// host-only, so the SPA host can't read the non-HttpOnly ol_csrf cookie set by
+// the API host via document.cookie — the X-CSRF-Token mirror comes up empty and
+// every silent /auth/refresh after a full-page navigation (e.g. the OAuth
+// bounce back from allegro.pl) is rejected, logging the user out. Setting
+// OL_COOKIE_DOMAIN=.example.com scopes both cookies to the shared parent domain
+// so the SPA subdomain can read ol_csrf. Unset ⇒ host-only (unchanged). See
+// #1725. A Domain-scoped cookie can only be cleared with the same Domain, so
+// this value MUST also be threaded through every clearCookie() below.
+function resolveCookieDomain(): string | undefined {
+  const raw = process.env.OL_COOKIE_DOMAIN?.trim();
+  return raw && raw.length > 0 ? raw : undefined;
+}
+
+function domainOption(): Pick<CookieOptions, 'domain'> | undefined {
+  const domain = resolveCookieDomain();
+  return domain ? { domain } : undefined;
+}
+
 function refreshCookieOptions(): CookieOptions {
   return {
     httpOnly: true,
@@ -63,6 +83,7 @@ function refreshCookieOptions(): CookieOptions {
     sameSite: resolveSameSite(),
     path: REFRESH_COOKIE_PATH,
     maxAge: REFRESH_TOKEN_TTL_SECONDS * 1000,
+    ...domainOption(),
   };
 }
 
@@ -74,6 +95,7 @@ function csrfCookieOptions(): CookieOptions {
     sameSite: resolveSameSite(),
     path: CSRF_COOKIE_PATH,
     maxAge: REFRESH_TOKEN_TTL_SECONDS * 1000,
+    ...domainOption(),
   };
 }
 
@@ -104,8 +126,12 @@ export function setCsrfCookie(res: Response): string {
 }
 
 export function clearAuthCookies(res: Response): void {
-  res.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
-  res.clearCookie(CSRF_COOKIE_NAME, { path: CSRF_COOKIE_PATH });
+  // Current cookies may carry a Domain (OL_COOKIE_DOMAIN); a Domain-scoped
+  // cookie only clears when the clear carries the same Domain. The legacy
+  // /auth clears below stay host-only — those copies predate #1725 and were
+  // never Domain-scoped.
+  res.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_PATH, ...domainOption() });
+  res.clearCookie(CSRF_COOKIE_NAME, { path: CSRF_COOKIE_PATH, ...domainOption() });
   // Migration cleanup: ol_csrf was previously set at /auth (#748), ol_refresh
   // until #1327. Clear those copies too so stale cookies from the buggy
   // windows don't linger (csrf could even shadow the new /-scoped value).

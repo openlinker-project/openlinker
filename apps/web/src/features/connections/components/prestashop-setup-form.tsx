@@ -29,6 +29,7 @@ import {
 } from './prestashop-setup.schema';
 import { PrestashopSetupSummary } from './prestashop-setup-summary';
 import { CORE_CAPABILITY_VALUES, type CoreCapability } from '../api/connections.types';
+import { CAPABILITY_HELP } from '../lib/capability-metadata';
 import { useAdaptersQuery } from '../../adapters';
 import { Alert } from '../../../shared/ui/alert';
 import { BackLink } from '../../../shared/ui/back-link';
@@ -40,18 +41,6 @@ import { Select } from '../../../shared/ui/select';
 import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
 import { useToast } from '../../../shared/ui/toast-provider';
-
-const CAPABILITY_HELP: Record<CoreCapability, string> = {
-  ProductMaster: 'Read the product catalog (variants, attributes, categories) from this shop.',
-  InventoryMaster: 'Read stock levels from this shop as the inventory source of truth.',
-  OrderProcessorManager: 'Create and manage orders in this shop (typically the order destination).',
-  OrderSource:
-    'Fetch new orders from this shop (disable if orders come from a marketplace instead).',
-  OfferManager: 'Manage offers and listings on this marketplace.',
-  ProductPublisher: 'Publish and manage shop listings owned by this connection (cross-platform listing).',
-  CategoryProvisioner: 'Create or resolve destination categories when publishing listings to this connection.',
-  Invoicing: 'Issue and manage fiscal documents (invoices) through this connection.',
-};
 
 // "Verify credentials" rather than "Test connection": the PrestaShop `/test`
 // endpoint is only reachable after the connection is saved, so this step is a
