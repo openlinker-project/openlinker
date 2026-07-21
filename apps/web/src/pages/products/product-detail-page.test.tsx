@@ -166,6 +166,45 @@ describe('ProductDetailPage', () => {
     expect(screen.getByText('Master')).toBeInTheDocument();
   });
 
+  it('should render the product-level Attributes block when the product has features', async () => {
+    const mockApi = createMockApiClient({
+      products: {
+        getById: vi.fn().mockResolvedValue({
+          ...sampleProduct,
+          features: [
+            { name: 'Brand', value: 'Acme' },
+            { name: 'Material', value: 'Ceramic' },
+          ],
+        }),
+      },
+    });
+
+    renderDetailPage(mockApi);
+
+    const attributesSection = (await screen.findByRole('heading', { name: 'Attributes' })).closest(
+      '.detail-section',
+    ) as HTMLElement;
+    expect(within(attributesSection).getByText('Brand')).toBeInTheDocument();
+    expect(within(attributesSection).getByText('Acme')).toBeInTheDocument();
+    expect(within(attributesSection).getByText('Material')).toBeInTheDocument();
+    expect(within(attributesSection).getByText('Ceramic')).toBeInTheDocument();
+  });
+
+  it('should not render the product-level Attributes block when the product has no features', async () => {
+    const mockApi = createMockApiClient({
+      products: {
+        getById: vi.fn().mockResolvedValue(sampleProduct),
+      },
+    });
+
+    renderDetailPage(mockApi);
+
+    await screen.findByRole('heading', { name: 'Source' });
+    // No product-level Attributes *section* heading (the variant panel still
+    // renders its own "Attributes" metadata label, which is not a heading).
+    expect(screen.queryByRole('heading', { name: 'Attributes' })).not.toBeInTheDocument();
+  });
+
   it('should show error state when fetch fails', async () => {
     const mockApi = createMockApiClient({
       products: {

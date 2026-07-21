@@ -223,6 +223,9 @@ export class ProductRepository implements ProductRepositoryPort {
       // Source-platform category ids (#1034). DB `null` → omit (the field is
       // optional + non-null on the domain interface); `[]` is preserved.
       categories: entity.categories ?? undefined,
+      // Source-platform product-level attributes (#1752). DB `null` → omit
+      // (optional + non-null on the domain interface).
+      features: entity.features ?? undefined,
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,
     };
@@ -244,6 +247,7 @@ export class ProductRepository implements ProductRepositoryPort {
     entity.description = product.description;
     entity.images = product.images;
     entity.categories = product.categories ?? null;
+    entity.features = product.features ?? null;
     if (product.createdAt) entity.createdAt = product.createdAt;
     if (product.updatedAt) entity.updatedAt = product.updatedAt;
     return entity;
