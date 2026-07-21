@@ -24,6 +24,7 @@ import {
   OfferNotFoundOnMarketplaceException,
   isCatalogProductReader,
   isCategoryBrowser,
+  isCategoryPathReader,
   isEanCategoryMatcher,
   isOfferSmartClassificationReader,
   isOfferStatusReader,
@@ -718,6 +719,56 @@ describe('AllegroOfferManagerAdapter', () => {
     });
   });
 
+  describe('fetchCategoryPath (#1752)', () => {
+    it('declares the CategoryPathReader capability via the runtime guard', () => {
+      expect(isCategoryPathReader(adapter)).toBe(true);
+    });
+
+    it('walks up parent.id and returns the breadcrumb root -> leaf', async () => {
+      httpClient.get
+        .mockResolvedValueOnce({
+          data: { id: '10', name: 'Smartphones', parent: { id: '1' }, leaf: true },
+          status: 200,
+          headers: {},
+        })
+        .mockResolvedValueOnce({
+          data: { id: '1', name: 'Electronics', parent: null, leaf: false },
+          status: 200,
+          headers: {},
+        });
+
+      const result = await adapter.fetchCategoryPath('10');
+
+      expect(result).toEqual([
+        { id: '1', name: 'Electronics' },
+        { id: '10', name: 'Smartphones' },
+      ]);
+      expect(httpClient.get).toHaveBeenNthCalledWith(1, '/sale/categories/10');
+      expect(httpClient.get).toHaveBeenNthCalledWith(2, '/sale/categories/1');
+    });
+
+    it('returns a single segment for a root-level category', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        data: { id: '1', name: 'Electronics', parent: null, leaf: false },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter.fetchCategoryPath('1');
+
+      expect(result).toEqual([{ id: '1', name: 'Electronics' }]);
+      expect(httpClient.get).toHaveBeenCalledTimes(1);
+    });
+
+    it('translates Allegro 404 to CategoryNotFoundException', async () => {
+      httpClient.get.mockRejectedValueOnce(new AllegroApiException('not found', 404));
+
+      await expect(adapter.fetchCategoryPath('unknown')).rejects.toBeInstanceOf(
+        CategoryNotFoundException
+      );
+    });
+  });
+
   describe('matchCategoryByBarcode', () => {
     // Delegates to `resolveCategoriesForBatchByEan` (#735, #794) — these
     // tests assert the public boundary contract (categoryId | null) plus the
@@ -895,7 +946,8 @@ describe('AllegroOfferManagerAdapter', () => {
         availableQuantity: 3,
         status: 'ACTIVE',
         category: { id: '12345' },
-        marketplaceUrl: 'https://allegro.pl.allegrosandbox.pl/oferta/7781562863',
+        marketplaceUrl:
+          'https://allegro.pl.allegrosandbox.pl/oferta/vintage-camera-lens-50mm-f-1-4-7781562863',
         endsAt: '2026-05-15T12:00:00Z',
       });
     });
@@ -924,9 +976,26 @@ describe('AllegroOfferManagerAdapter', () => {
         availableQuantity: 0,
         status: 'UNKNOWN',
         category: undefined,
-        marketplaceUrl: 'https://allegro.pl/oferta/7781562864',
+        marketplaceUrl: 'https://allegro.pl/oferta/sparse-offer-7781562864',
         endsAt: undefined,
       });
+    });
+
+    it('should fall back to an id-only offer URL when the offer has no name', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          id: '7781562867',
+          sellingMode: { price: { amount: '10.00', currency: 'PLN' } },
+          stock: { available: 0 },
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const subject = buildAdapterWithStorefront('https://allegro.pl');
+      const result = await subject.getOffer({ externalId: '7781562867' });
+
+      expect(result.marketplaceUrl).toBe('https://allegro.pl/oferta/7781562867');
     });
 
     it('should map offer-section and product-section parameters with productSet linkage (#1482)', async () => {
