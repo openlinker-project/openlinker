@@ -1,10 +1,13 @@
 /**
  * WooCommerce REST client (thin)
  *
- * A minimal read-only client over the WooCommerce REST API (`/wp-json/wc/v3`),
- * used to assert field/amount parity directly against the WooCommerce store
- * (product name, SKU, price, category, attributes, stock) after OL publishes to
- * it.
+ * A minimal client over the WooCommerce REST API (`/wp-json/wc/v3`), used to
+ * assert field/amount parity directly against the WooCommerce store (product
+ * name, SKU, price, category, attributes, stock) after OL publishes to it —
+ * and, for the WooCommerce-parity suite (#1571), to seed WC-native state
+ * (orders, order status transitions) that the suite needs as an independent
+ * source of truth OL did not itself create, since there is no live-buyer
+ * purchase in an unattended run.
  *
  * Auth is the WooCommerce consumer key/secret, passed as query params (the
  * over-HTTP variant WooCommerce supports for local/dev stacks). Both are secrets
@@ -33,6 +36,19 @@ export interface WooCommerceProductView {
   stockQuantity: number | null;
   categories: WooCommerceCategoryView[];
   attributes: WooCommerceAttributeView[];
+  /** GTIN/EAN read from `meta_data` (`_ean`/`ean`/`_gtin`/`gtin`/`_barcode`/`barcode`) — mirrors `WooCommerceProductMapper`. */
+  ean: string | null;
+  type: string | null;
+}
+
+/** A single WC product variation, as read back for per-variant parity (#1571 scenario 1/4). */
+export interface WooCommerceVariationView {
+  id: number;
+  sku: string | null;
+  price: string | null;
+  stockQuantity: number | null;
+  ean: string | null;
+  attributes: Array<{ name: string; option: string }>;
 }
 
 export interface WooCommerceRestOptions {
@@ -41,6 +57,54 @@ export interface WooCommerceRestOptions {
   consumerKey: string;
   consumerSecret: string;
   requestTimeoutMs?: number;
+}
+
+/** A WC order line item, request or response shape (subset the suite reads/writes). */
+export interface WooCommerceOrderLineInput {
+  productId: number;
+  variationId?: number;
+  quantity: number;
+}
+
+export interface WooCommerceOrderLineView {
+  productId: number;
+  variationId: number | null;
+  quantity: number;
+  total: string | null;
+}
+
+export interface WooCommerceAddressInput {
+  firstName: string;
+  lastName: string;
+  address1: string;
+  city: string;
+  postcode: string;
+  country: string;
+  email?: string;
+}
+
+/** Request body for `createOrder` — mirrors what an external checkout would post. */
+export interface CreateWooCommerceOrderInput {
+  status?: string;
+  billing: WooCommerceAddressInput;
+  shipping?: WooCommerceAddressInput;
+  lineItems: WooCommerceOrderLineInput[];
+}
+
+export interface WooCommerceOrderView {
+  id: number;
+  status: string | null;
+  total: string | null;
+  currency: string | null;
+  customerId: number | null;
+  billingEmail: string | null;
+  lineItems: WooCommerceOrderLineView[];
+}
+
+export interface WooCommerceCustomerView {
+  id: number;
+  email: string | null;
+  billingAddress1: string | null;
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -88,6 +152,90 @@ export class WooCommerceRestClient {
     return rows.find((p) => p.name === name) ?? null;
   }
 
+  /**
+   * Create a native WC order directly against the store (test setup only) —
+   * the WooCommerce-parity suite's substitute for a live buyer purchase, since
+   * WC (unlike Allegro/Erli) exposes a writable order-creation endpoint the
+   * suite can call unattended. Returns the created order's numeric id + status.
+   */
+  async createOrder(input: CreateWooCommerceOrderInput): Promise<WooCommerceOrderView> {
+    const body = await this.post('/orders', {
+      status: input.status ?? 'processing',
+      billing: this.toWcAddress(input.billing),
+      shipping: this.toWcAddress(input.shipping ?? input.billing),
+      line_items: input.lineItems.map((line) => ({
+        product_id: line.productId,
+        ...(line.variationId !== undefined ? { variation_id: line.variationId } : {}),
+        quantity: line.quantity,
+      })),
+    });
+    return this.toOrderView(asRecord(body));
+  }
+
+  async getOrder(orderId: number | string): Promise<WooCommerceOrderView> {
+    const body = await this.get(`/orders/${orderId}`);
+    return this.toOrderView(asRecord(body));
+  }
+
+  /** Transition a WC order to a new status (e.g. `completed`) — test setup only. */
+  async updateOrderStatus(orderId: number | string, status: string): Promise<WooCommerceOrderView> {
+    const body = await this.put(`/orders/${orderId}`, { status });
+    return this.toOrderView(asRecord(body));
+  }
+
+  /** Find a WC customer by exact email, or null. Used to assert customer-reuse (#1571 scenario 3). */
+  async getCustomerByEmail(email: string): Promise<WooCommerceCustomerView | null> {
+    const body = await this.get(`/customers?email=${encodeURIComponent(email)}`);
+    const rows = asArray(body);
+    if (rows.length === 0) return null;
+    const record = asRecord(rows[0]);
+    const billing = asRecord(pick(record, 'billing'));
+    return {
+      id: Number(pick(record, 'id') ?? 0),
+      email: asStringOrNull(pick(record, 'email')),
+      billingAddress1: asStringOrNull(pick(billing, 'address_1')),
+    };
+  }
+
+  private toWcAddress(address: WooCommerceAddressInput): Record<string, unknown> {
+    return {
+      first_name: address.firstName,
+      last_name: address.lastName,
+      address_1: address.address1,
+      city: address.city,
+      postcode: address.postcode,
+      country: address.country,
+      ...(address.email ? { email: address.email } : {}),
+    };
+  }
+
+  private toOrderView(record: Record<string, unknown>): WooCommerceOrderView {
+    const billing = asRecord(pick(record, 'billing'));
+    return {
+      id: Number(pick(record, 'id') ?? 0),
+      status: asStringOrNull(pick(record, 'status')),
+      total: asStringOrNull(pick(record, 'total')),
+      currency: asStringOrNull(pick(record, 'currency')),
+      customerId: asNumberOrNull(pick(record, 'customer_id')),
+      billingEmail: asStringOrNull(pick(billing, 'email')),
+      lineItems: asArray(pick(record, 'line_items')).map((row) => {
+        const line = asRecord(row);
+        return {
+          productId: Number(pick(line, 'product_id') ?? 0),
+          variationId: asNumberOrNull(pick(line, 'variation_id')),
+          quantity: Number(pick(line, 'quantity') ?? 0),
+          total: asStringOrNull(pick(line, 'total')),
+        };
+      }),
+    };
+  }
+
+  /** Find the first product variation with an active (`type: 'variable'`) parent by product id. */
+  async getProductVariations(productId: number | string): Promise<WooCommerceVariationView[]> {
+    const body = await this.get(`/products/${productId}/variations?per_page=100`);
+    return asArray(body).map((row) => this.toVariationView(asRecord(row)));
+  }
+
   private toProductView(record: Record<string, unknown>): WooCommerceProductView {
     return {
       id: Number(pick(record, 'id') ?? 0),
@@ -96,6 +244,8 @@ export class WooCommerceRestClient {
       price: asStringOrNull(pick(record, 'price')),
       regularPrice: asStringOrNull(pick(record, 'regular_price')),
       stockQuantity: asNumberOrNull(pick(record, 'stock_quantity')),
+      type: asStringOrNull(pick(record, 'type')),
+      ean: this.extractEan(pick(record, 'meta_data')),
       categories: asArray(pick(record, 'categories')).map((c) => {
         const cat = asRecord(c);
         return { id: Number(pick(cat, 'id') ?? 0), name: String(pick(cat, 'name') ?? '') };
@@ -110,7 +260,53 @@ export class WooCommerceRestClient {
     };
   }
 
+  private toVariationView(record: Record<string, unknown>): WooCommerceVariationView {
+    return {
+      id: Number(pick(record, 'id') ?? 0),
+      sku: asStringOrNull(pick(record, 'sku')),
+      price: asStringOrNull(pick(record, 'price')),
+      stockQuantity: asNumberOrNull(pick(record, 'stock_quantity')),
+      ean: this.extractEan(pick(record, 'meta_data')),
+      attributes: asArray(pick(record, 'attributes')).map((a) => {
+        const attr = asRecord(a);
+        return { name: String(pick(attr, 'name') ?? ''), option: String(pick(attr, 'option') ?? '') };
+      }),
+    };
+  }
+
+  /** Mirrors `WooCommerceProductMapper`'s EAN_KEYS lookup over `meta_data`. */
+  private extractEan(metaData: unknown): string | null {
+    const keys = ['_ean', 'ean', '_gtin', 'gtin', '_barcode', 'barcode'];
+    for (const entry of asArray(metaData)) {
+      const meta = asRecord(entry);
+      const key = String(pick(meta, 'key') ?? '');
+      if (keys.includes(key)) {
+        const value = pick(meta, 'value');
+        if (value !== null && value !== undefined && String(value).length > 0) {
+          return String(value);
+        }
+      }
+    }
+    return null;
+  }
+
   private async get(path: string): Promise<unknown> {
+    return this.request('GET', path);
+  }
+
+  private async post(path: string, body: Record<string, unknown>): Promise<unknown> {
+    return this.request('POST', path, body);
+  }
+
+  private async put(path: string, body: Record<string, unknown>): Promise<unknown> {
+    return this.request('PUT', path, body);
+  }
+
+  private async request(
+    method: 'GET' | 'POST' | 'PUT',
+    path: string,
+    body?: Record<string, unknown>,
+  ): Promise<unknown> {
     const separator = path.includes('?') ? '&' : '?';
     const auth = `consumer_key=${encodeURIComponent(this.consumerKey)}&consumer_secret=${encodeURIComponent(
       this.consumerSecret,
@@ -121,7 +317,12 @@ export class WooCommerceRestClient {
     let response: Response;
     try {
       response = await fetch(url, {
-        headers: { Accept: 'application/json' },
+        method,
+        headers: {
+          Accept: 'application/json',
+          ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
         signal: controller.signal,
       });
     } finally {
@@ -129,12 +330,12 @@ export class WooCommerceRestClient {
     }
     const raw = await response.text();
     if (!response.ok) {
-      throw new Error(`WooCommerce GET ${path} → HTTP ${response.status}: ${raw.slice(0, 200)}`);
+      throw new Error(`WooCommerce ${method} ${path} → HTTP ${response.status}: ${raw.slice(0, 200)}`);
     }
     try {
       return JSON.parse(raw);
     } catch {
-      throw new Error(`WooCommerce GET ${path} returned non-JSON: ${raw.slice(0, 200)}`);
+      throw new Error(`WooCommerce ${method} ${path} returned non-JSON: ${raw.slice(0, 200)}`);
     }
   }
 }

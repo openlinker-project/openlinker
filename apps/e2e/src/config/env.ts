@@ -22,7 +22,13 @@ export interface E2eEnv {
   adminUser: string;
   /** Admin operator password. */
   adminPass: string;
-  /** Optional pinned order id for post-purchase segments (follow-up). */
+  /**
+   * Optional pinned order id for post-purchase segments (follow-up). Also the
+   * shipping suite's order source (`apps/e2e/tests/shipping/**`) — when unset,
+   * shipping specs fall back to the latest `ready` order on the stack (e.g.
+   * left behind by a prior golden-path run), since the shipping suite never
+   * performs its own marketplace purchase.
+   */
   orderId: string | null;
   /**
    * Pin the driver product by SKU (S0 escape hatch). When set, S0 selects this
@@ -107,6 +113,22 @@ export interface E2eEnv {
    * `E2E_TEST_RATE_LIMIT=true`.
    */
   testRateLimit: boolean;
+  /**
+   * Opt-in flag for the inbound ShipX status-webhook spec (shipping suite,
+   * scenario 8). The real receiver path requires InPost to reach OL's public
+   * ingress, which a local/CI stack normally cannot offer without an operator-
+   * run tunnel — so the signed-delivery assertion is skipped unless
+   * `E2E_TEST_INPOST_WEBHOOK=true` (mirrors `E2E_TEST_RATE_LIMIT`).
+   */
+  testInpostWebhook: boolean;
+  /**
+   * Opt-in for the DESTRUCTIVE stale-variant-pruning lifecycle spec (#1495 /
+   * #1574): it deletes a real PrestaShop combination via the webservice with no
+   * undo. Off by default so an unconfigured run never mutates the catalogue;
+   * set `E2E_ALLOW_DESTRUCTIVE_PRUNE=true` on a stack you don't mind losing a
+   * variant on (mirrors the `E2E_TEST_RATE_LIMIT` opt-in precedent).
+   */
+  allowDestructivePrune: boolean;
 }
 
 const DEFAULTS = {
@@ -210,5 +232,7 @@ export function resolveEnv(): E2eEnv {
     wcAdminUser: process.env.OL_WC_ADMIN_USER?.trim() || DEFAULTS.wcAdminUser,
     wcAdminPass: process.env.OL_WC_ADMIN_PASS?.trim() || DEFAULTS.wcAdminPass,
     testRateLimit: process.env.E2E_TEST_RATE_LIMIT?.trim() === 'true',
+    testInpostWebhook: process.env.E2E_TEST_INPOST_WEBHOOK?.trim() === 'true',
+    allowDestructivePrune: process.env.E2E_ALLOW_DESTRUCTIVE_PRUNE?.trim() === 'true',
   };
 }

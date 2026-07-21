@@ -70,6 +70,7 @@ pnpm --filter @openlinker/e2e test:e2e                       # full suite
 pnpm --filter @openlinker/e2e test:e2e -- --project=smoke    # smoke only (read-only)
 pnpm --filter @openlinker/e2e test:e2e -- --project=golden-path
 pnpm --filter @openlinker/e2e test:e2e -- --project=webhooks # signed inbound-webhook receiver path (#1512)
+pnpm --filter @openlinker/e2e test:e2e -- --project=woocommerce-parity # WC master/destination/webhooks/mapping (#1571)
 pnpm --filter @openlinker/e2e test:e2e:ui                    # Playwright UI mode
 pnpm --filter @openlinker/e2e test:e2e:headed                # headed browser
 pnpm --filter @openlinker/e2e test:e2e:report                # open last HTML report
@@ -190,3 +191,17 @@ Also delivered: the `webhooks` project (`tests/webhooks/inbound-webhook.spec.ts`
 -> dedup. The truly external platform-delivery round-trip stays a documented
 manual check: see
 [`docs/manual-testing/inbound-webhook-round-trip.md`](../../docs/manual-testing/inbound-webhook-round-trip.md).
+
+Also delivered: the `woocommerce-parity` project (`tests/woocommerce-parity/`,
+#1571) — WooCommerce as master catalogue (capability-resolved, not
+platform-hardcoded — see `World.connectionWithCapability`), as an order
+destination with customer/address reuse and variant mapping, inbound
+webhooks, the `FulfillmentStatusReader` read-back, and connection config
+validation (#1505/#1508). Fully unattended: orders are seeded directly via
+`WooCommerceRestClient`, not a live marketplace purchase. Two scenarios from
+the parent issue are intentionally not exercised (documented at the top of
+`tests/woocommerce-parity/fulfillment-and-mapping-options.spec.ts`): WC's
+`OrderStatusWriteback` direction has no HTTP entry point in this API surface
+today (it's relay-driven from the shipment-dispatch/order-ingestion flows),
+and the mapping UI's `DestinationOptionsReader` route is hardcoded to
+Allegro<->PrestaShop — that test asserts the current 400 as a documented gap.

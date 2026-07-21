@@ -19,6 +19,7 @@ export const PlatformType = {
   erli: 'erli',
   inpost: 'inpost',
   ksef: 'ksef',
+  infakt: 'infakt',
 } as const;
 
 export type KnownPlatformType = (typeof PlatformType)[keyof typeof PlatformType];
@@ -39,6 +40,20 @@ export interface World {
    * what the UI actually offers.
    */
   connectionsWithCapability(capability: string): Connection[];
+  /**
+   * First active connection carrying `capability` (optionally narrowed to
+   * `platformType`), or undefined. Unlike `connectionFor` (platformType-only),
+   * this resolves a connection BY WHAT IT DOES rather than by assuming a
+   * particular platform plays a role (#1571) — e.g. picking "the" master
+   * catalogue connection without hardcoding PrestaShop. When two connections
+   * of the same platformType exist with different capability sets (e.g. one
+   * WooCommerce connection kept as a publish target, another configured as
+   * ProductMaster), this still resolves the right one; `connectionFor` cannot
+   * disambiguate them.
+   */
+  connectionWithCapability(capability: string, platformType?: string): Connection | undefined;
+  /** Same as `connectionWithCapability`, throwing a descriptive error if absent. */
+  requireConnectionWithCapability(capability: string, platformType?: string): Connection;
   /** Fetch a page of master products (first `limit`). */
   listProducts(limit?: number): Promise<Product[]>;
   /**
@@ -112,17 +127,39 @@ export async function buildWorld(api: ApiClient): Promise<World> {
     return undefined;
   };
 
+  const connectionsWithCapability = (capability: string): Connection[] =>
+    connections.filter(
+      (c) =>
+        c.enabledCapabilities.includes(capability) || c.supportedCapabilities.includes(capability),
+    );
+
+  const connectionWithCapability = (
+    capability: string,
+    platformType?: string,
+  ): Connection | undefined => {
+    const candidates = connectionsWithCapability(capability).filter(
+      (c) => !platformType || c.platformType === platformType,
+    );
+    return candidates.find(isActive) ?? candidates[0];
+  };
+
+  const requireConnectionWithCapability = (capability: string, platformType?: string): Connection => {
+    const connection = connectionWithCapability(capability, platformType);
+    if (!connection) {
+      const scope = platformType ? ` on platformType "${platformType}"` : '';
+      throw new Error(`No connection found with capability "${capability}"${scope}.`);
+    }
+    return connection;
+  };
+
   return {
     connections,
     connectionFor,
     requireConnection,
     connectionsFor,
-    connectionsWithCapability: (capability: string): Connection[] =>
-      connections.filter(
-        (c) =>
-          c.enabledCapabilities.includes(capability) ||
-          c.supportedCapabilities.includes(capability),
-      ),
+    connectionsWithCapability,
+    connectionWithCapability,
+    requireConnectionWithCapability,
     listProducts,
     findMultiVariantProduct,
     variantsOf,

@@ -17,11 +17,16 @@ import { ApiError } from './api-error';
 import type {
   ApproveUserInput,
   BulkBatchSummary,
+  BulkIssueInvoicesInput,
+  BulkIssueInvoicesResult,
   CategoryMappingInput,
   CategoryParameter,
   CategoryParametersResponse,
   Connection,
   ConnectionFilters,
+  CreateConnectionInput,
+  UpdateConnectionInput,
+  InstallWebhooksResult,
   DispatchResult,
   EnqueueSyncJobInput,
   EnqueueSyncJobResponse,
@@ -32,6 +37,8 @@ import type {
   InventoryAvailability,
   InventoryAvailabilityResponse,
   InvoiceRecord,
+  InvoicingBankAccount,
+  IssueCorrectionInput,
   IssueInvoiceInput,
   IssuedDocumentContent,
   ListInvoicesQuery,
@@ -40,6 +47,7 @@ import type {
   ListProductsQuery,
   ListUsersQuery,
   LoginResponse,
+  MarkInvoicePaidInput,
   MarketplaceOffer,
   MeResponse,
   OfferCreationStatus,
@@ -49,10 +57,13 @@ import type {
   Product,
   ProductVariant,
   RawResponse,
+  RawTextResponse,
   RegisterInput,
   RotateWebhookSecretResponse,
   RoutingRule,
   RoutingRuleInput,
+  SendInvoiceEmailInput,
+  SendInvoiceEmailResult,
   Shipment,
   SyncJob,
   SyncJobListQuery,
@@ -196,6 +207,43 @@ export class ApiClient {
   }
 
   /**
+   * Fetch a binary endpoint and retain the decoded text body alongside the
+   * usual metadata — used where an assertion needs to inspect the actual
+   * bytes (e.g. grepping the FA(3) source XML for specific elements), unlike
+   * `requestRaw` which drains and discards the body.
+   */
+  private async requestRawText(path: string, isRetryAfterRelogin = false): Promise<RawTextResponse> {
+    const headers = new Headers();
+    if (this.accessToken !== null) {
+      headers.set('Authorization', `Bearer ${this.accessToken}`);
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${withApiVersion(path)}`, {
+        headers,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (response.status === 401 && !isRetryAfterRelogin && this.credentials) {
+      await response.text();
+      await this.relogin();
+      return this.requestRawText(path, true);
+    }
+    const text = await response.text();
+    return {
+      status: response.status,
+      ok: response.ok,
+      contentType: response.headers.get('content-type'),
+      byteLength: Buffer.byteLength(text, 'utf-8'),
+      text,
+    };
+  }
+
+  /**
    * Fetch a binary endpoint (label PDF, UPO/XML) and report metadata only. The
    * body is drained but not returned — the E2E assertions care that bytes exist
    * and the content-type is right, not the document contents.
@@ -220,6 +268,48 @@ export class ApiClient {
       await response.arrayBuffer();
       await this.relogin();
       return this.requestRaw(path, true);
+    }
+    const buffer = await response.arrayBuffer();
+    return {
+      status: response.status,
+      ok: response.ok,
+      contentType: response.headers.get('content-type'),
+      byteLength: buffer.byteLength,
+    };
+  }
+
+  /**
+   * POST variant of `requestRaw` for binary command endpoints (the handover
+   * protocol) — same metadata-only contract (bytes exist + content-type), just
+   * with a JSON request body. Kept separate from the JSON `request<T>` path
+   * because the response here is never JSON.
+   */
+  private async requestRawPost(
+    path: string,
+    body: unknown,
+    isRetryAfterRelogin = false,
+  ): Promise<RawResponse> {
+    const headers = new Headers({ 'Content-Type': 'application/json' });
+    if (this.accessToken !== null) {
+      headers.set('Authorization', `Bearer ${this.accessToken}`);
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${withApiVersion(path)}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (response.status === 401 && !isRetryAfterRelogin && this.credentials) {
+      await response.arrayBuffer();
+      await this.relogin();
+      return this.requestRawPost(path, body, true);
     }
     const buffer = await response.arrayBuffer();
     return {
@@ -347,6 +437,18 @@ export class ApiClient {
       ),
     getById: (connectionId: string): Promise<Connection> =>
       this.request<Connection>(`/connections/${connectionId}`),
+    /** Create a connection (admin). Throws `ApiError` (400) on an invalid config/capability set. */
+    create: (input: CreateConnectionInput): Promise<Connection> =>
+      this.request<Connection>('/connections', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    /** Patch a connection (admin) — config, status, adapterKey, enabledCapabilities. */
+    update: (connectionId: string, input: UpdateConnectionInput): Promise<Connection> =>
+      this.request<Connection>(`/connections/${connectionId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      }),
     /**
      * Rotate the connection's webhook secret (admin). Returns the new plaintext
      * secret ONCE — the E2E webhook spec uses it to compute the OL-HMAC
@@ -357,6 +459,11 @@ export class ApiClient {
         `/connections/${connectionId}/webhooks/secret/rotate`,
         { method: 'POST' },
       ),
+    /** Auto-provision webhook config on the external platform for this connection (#168, #583). */
+    installWebhooks: (connectionId: string): Promise<InstallWebhooksResult> =>
+      this.request<InstallWebhooksResult>(`/connections/${connectionId}/webhooks/install`, {
+        method: 'POST',
+      }),
   };
 
   // ── Products ────────────────────────────────────────────────────────────
@@ -470,6 +577,55 @@ export class ApiClient {
     /** Source FA(3) XML document — bytes-only check. */
     getSourceDocument: (invoiceId: string): Promise<RawResponse> =>
       this.requestRaw(`/invoices/${invoiceId}/document${buildQuery({ kind: 'source' })}`),
+    /**
+     * Source FA(3) XML document with its decoded text retained — used to grep
+     * for specific elements (P_6 / P_8A / P_9A, #1529) rather than just the
+     * byte-length proof `getSourceDocument` gives.
+     */
+    getSourceDocumentText: (invoiceId: string): Promise<RawTextResponse> =>
+      this.requestRawText(`/invoices/${invoiceId}/document${buildQuery({ kind: 'source' })}`),
+    /**
+     * Bulk-issue invoices for a set of orders on one connection (#1355). Fans
+     * out over the same single-order issue primitive `issue()` composes.
+     */
+    bulkIssue: (input: BulkIssueInvoicesInput): Promise<BulkIssueInvoicesResult> =>
+      this.request<BulkIssueInvoicesResult>('/invoices/bulk-issue', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    /** Issue a correction (KOR) of an already-issued document (#1241). */
+    correct: (invoiceId: string, input: IssueCorrectionInput): Promise<InvoiceRecord> =>
+      this.request<InvoiceRecord>(`/invoices/${invoiceId}/correct`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    /** Re-send a rejected document to the tax authority (#1121). */
+    resendToKsef: (invoiceId: string): Promise<InvoiceRecord> =>
+      this.request<InvoiceRecord>(`/invoices/${invoiceId}/resend-to-ksef`, { method: 'POST' }),
+    /** Trigger the provider to email the issued document to the buyer (#1353). */
+    sendEmail: (invoiceId: string, input: SendInvoiceEmailInput = {}): Promise<SendInvoiceEmailResult> =>
+      this.request<SendInvoiceEmailResult>(`/invoices/${invoiceId}/send-email`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    /** Push an authoritative "paid" state to the provider (#1362). */
+    markPaid: (invoiceId: string, input: MarkInvoicePaidInput = {}): Promise<InvoiceRecord> =>
+      this.request<InvoiceRecord>(`/invoices/${invoiceId}/mark-paid`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+  };
+
+  // ── Invoicing: bank accounts (#1303 follow-up) ─────────────────────────────
+  bankAccounts = {
+    /** List the connection's provider bank accounts (Transfer invoices). */
+    list: (connectionId: string): Promise<InvoicingBankAccount[]> =>
+      this.request<InvoicingBankAccount[]>(`/connections/${connectionId}/bank-accounts`),
+    /** Mark an account as the provider's own default. Returns 204 (no body). */
+    setDefault: (connectionId: string, accountId: string): Promise<void> =>
+      this.request<void>(`/connections/${connectionId}/bank-accounts/${accountId}/default`, {
+        method: 'POST',
+      }),
   };
 
   // ── Shipments ───────────────────────────────────────────────────────────
@@ -488,6 +644,17 @@ export class ApiClient {
     /** Mark a shipment dispatched (mutating — attended run only). */
     notifyDispatched: (id: string): Promise<Shipment> =>
       this.request<Shipment>(`/shipments/${id}/notify-dispatched`, { method: 'POST' }),
+    /** Cancel a not-yet-dispatched shipment (mutating — attended run only). */
+    cancel: (id: string): Promise<Shipment> =>
+      this.request<Shipment>(`/shipments/${id}/cancel`, { method: 'POST' }),
+    /**
+     * Download the carrier handover protocol over a set of dispatched shipments
+     * (POST /shipments/bulk/protocol) — binary response, metadata-only like
+     * `getLabel`. The service derives the carrier connection from the shipment
+     * rows themselves, so the caller only supplies OL shipment ids.
+     */
+    generateProtocol: (shipmentIds: string[]): Promise<RawResponse> =>
+      this.requestRawPost('/shipments/bulk/protocol', { shipmentIds }),
   };
 
   // ── Sync jobs ───────────────────────────────────────────────────────────
@@ -525,6 +692,19 @@ export class ApiClient {
         `/connections/${connectionId}/mappings/categories/${sourceCategoryId}`,
         { method: 'PUT', body: JSON.stringify(body) },
       ),
+  };
+
+  // ── Mapping options (#472 / #1551) ─────────────────────────────────────
+  mappingOptions = {
+    /**
+     * Destination-platform order-status vocabulary for the connection-mappings
+     * UI. `MappingOptionsController` resolves the destination side by pairing
+     * platformType — today only Allegro<->PrestaShop; other platforms (incl.
+     * `woocommerce`) 400. Used by the WooCommerce-parity suite to assert that
+     * documented gap explicitly rather than silently skip it (#1571 scenario 7).
+     */
+    getDestinationOrderStatuses: (connectionId: string): Promise<unknown[]> =>
+      this.request<unknown[]>(`/connections/${connectionId}/mappings/options/destination/order-statuses`),
   };
 
   // ── Routing rules ───────────────────────────────────────────────────────

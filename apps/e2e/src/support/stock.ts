@@ -62,6 +62,25 @@ export function assertStockDelta(
 }
 
 /**
+ * Poll OL availability until a variant reaches an ABSOLUTE target quantity (or
+ * time out). Used by the lifecycle suite (propagation fan-out, stale-variant
+ * pruning) where there is no "baseline - sold" relationship to lean on — just a
+ * known target the master was just synced to.
+ */
+export async function waitForAvailabilityValue(
+  api: ApiClient,
+  variantId: string,
+  target: number,
+  timeoutMs = 120_000,
+): Promise<void> {
+  await pollUntil(
+    () => api.inventory.availability([variantId]),
+    (rows) => rows.some((r) => r.productVariantId === variantId && r.totalAvailable === target),
+    { timeoutMs, message: `variant ${variantId} availability to reach ${target}` },
+  );
+}
+
+/**
  * Poll OL availability until a variant reaches `baseline - soldQty` (or time
  * out). Used after an order lands, since propagation is asynchronous.
  */

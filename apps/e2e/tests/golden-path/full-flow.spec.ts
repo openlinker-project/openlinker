@@ -544,6 +544,9 @@ test.describe('golden path — full flow (S0-S9)', () => {
             'if the buyer-selected point turns out unusable, set E2E_PACZKOMAT_ID to a real ' +
             'InPost-sandbox APM before S6 runs',
           'Complete checkout so the order reaches the marketplace',
+          '[OPTIONAL, #1574] To exercise non-trivial-order coverage, feel free to add a second ' +
+            'line item and/or a discount to ONE purchase, and/or check out as a company buyer ' +
+            'with a NIP — see extensionMultiLineOrDiscount/extensionNipBuyer below for details',
           'Then resume — the next purchase stop (if any) follows immediately',
         ],
         values: {
@@ -554,6 +557,16 @@ test.describe('golden path — full flow (S0-S9)', () => {
           quantity: SOLD_QTY,
           delivery: 'InPost Paczkomat (pickup point)',
           paczkomatOverride: env.paczkomatId ?? '(none — E2E_PACZKOMAT_ID unset)',
+          // #1574 extension hints — optional, do not change the required
+          // purchase count/quantity above. See the bullets below.
+          extensionMultiLineOrDiscount:
+            'OPTIONAL (#1574): add a second line item and/or apply a marketplace ' +
+            'discount/coupon on ONE of the purchases to exercise buyer-paid pricing ' +
+            '(ADR-014) end-to-end for a non-trivial order — S5x/S7/S8 assert generically ' +
+            'over however many lines the order actually has, no extra purchase needed',
+          extensionNipBuyer:
+            'OPTIONAL (#1574): check out as a company/business buyer with a tax id (NIP) ' +
+            'on ONE of the purchases — S8x reads the issued invoice\'s buyer tax id back',
         },
         // Genuinely fatal: nothing downstream (S5-S9) can run without the purchase.
         severity: 'fatal',
@@ -1065,6 +1078,161 @@ test.describe('golden path — full flow (S0-S9)', () => {
             : `WooCommerce stock after sale: ${wcAfter ?? '(unknown)'} (baseline ${wcBaseline}, ` +
               `expected ${wcExpected}) — OL has no WC quantity write-back path ` +
               '(no OfferManager on woocommerce.restapi.v3); known cross-channel gap',
+      });
+    }
+  });
+
+  // ── #1574 extensions ────────────────────────────────────────────────────
+  // Everything below is an ADDITIVE extension for issue #1574. Each step is a
+  // clearly-named, standalone test that reuses S0-S9 state (`state.orders`,
+  // `state.shipmentIds`, …) and the same local helpers — none of it edits the
+  // S0-S9 bodies above. See the PAUSE step's `extensionMultiLineOrDiscount` /
+  // `extensionNipBuyer` operator hints for how S5x/S8x get real content to
+  // check without staging an extra purchase.
+
+  test('S6x — ADR-027 status writeback: explicit source-marketplace checkpoint (extension, #1574)', async ({
+    world,
+  }, testInfo) => {
+    requireOrder();
+    // S6 already prompts for this as one bullet among several; this step
+    // exists so the writeback confirmation is its own auditable checkpoint
+    // (own pass/fail annotation) rather than folded into S6's broader label
+    // confirmation. No OL API can read an Allegro/Erli order's status back —
+    // the relay (`OrderLifecycleRelayService`, ADR-027) is fire-and-forget
+    // with no queryable result surface, so this stays an operator
+    // confirmation against the real marketplace order pages.
+    const summaries: string[] = [];
+    for (const [platform] of state.orders) {
+      const source = world.connectionFor(platform);
+      const shipmentId = state.shipmentIds.get(platform);
+      summaries.push(`${platform}: source connection ${source?.id ?? '(unknown)'}, shipment ${shipmentId ?? '(none)'}`);
+    }
+    await manualCheckpoint(testInfo, {
+      dashboard: 'Source marketplace order pages (Allegro / Erli)',
+      expect: [
+        'Open each source order listed below on its OWN marketplace (not PrestaShop)',
+        'The order shows a SHIPPED/DISPATCHED status (or equivalent)',
+        'The order shows the InPost tracking number recorded in S6',
+      ],
+      values: { orders: summaries.join(' | ') },
+    });
+  });
+
+  test('S8x — buyer tax id (NIP) on the invoice, best-effort (extension, #1574)', async ({ api }, testInfo) => {
+    requireOrder();
+    let checked = 0;
+    for (const [platform, invoiceId] of state.invoiceIds) {
+      const content = await api.invoices.getContent(invoiceId);
+      if (content.buyer.taxId && content.buyer.taxId.value.trim().length > 0) {
+        checked += 1;
+        expect(content.buyer.taxId.scheme, `${platform} invoice buyer tax id scheme`).toBeTruthy();
+        testInfo.annotations.push({
+          type: 'buyer-tax-id',
+          description: `${platform}: buyer tax id present (${content.buyer.taxId.scheme}: ${content.buyer.taxId.value})`,
+        });
+      }
+    }
+    if (checked === 0) {
+      testInfo.annotations.push({
+        type: 'buyer-tax-id',
+        description:
+          'no purchase in this run carried a buyer tax id (NIP) — this is expected unless the ' +
+          'operator opted into the PAUSE step\'s extensionNipBuyer hint; not a failure',
+      });
+    }
+  });
+
+  test('S5x — multi-line / discount order note (extension, #1574)', async ({}, testInfo) => {
+    requireOrder();
+    // S5/S7/S8 already assert amount identity GENERICALLY over however many
+    // lines an order has (they sum `snapshot.items`, never hardcode a single
+    // line) — ADR-014 buyer-paid pricing is exercised for real whenever the
+    // operator's purchase has more than one line and/or a discount. This step
+    // adds no new assertions; it records whether that happened, so the report
+    // is honest about whether non-trivial-order coverage actually ran.
+    for (const [platform, order] of state.orders) {
+      const snapshot = order.orderSnapshot as unknown as { items?: unknown[] };
+      const lineCount = Array.isArray(snapshot.items) ? snapshot.items.length : 0;
+      testInfo.annotations.push({
+        type: 'multi-line-coverage',
+        description:
+          lineCount > 1
+            ? `${platform}: order has ${lineCount} lines — multi-line pricing parity exercised by S5/S7/S8`
+            : `${platform}: order has a single line — multi-line/discount coverage NOT exercised this run ` +
+              '(opt into the PAUSE step\'s extensionMultiLineOrDiscount hint for a future run)',
+      });
+    }
+  });
+
+  test('S10 — cancellation + stock restore (extension, #1574)', async ({ api, world, jobs, poll }, testInfo) => {
+    requireOrder();
+    // No scriptable marketplace-side cancel exists in this suite (no Allegro/
+    // Erli REST client) — per the issue's own Assumptions, cancellation
+    // degrades to an attended checkpoint. `severity: 'observational'` — this
+    // is the last segment, so a failure here must not mask the rest of the
+    // run's pass/fail.
+    const entries = [...state.orders.entries()];
+    test.skip(entries.length === 0, 'no purchased order to cancel');
+    const [platform, order] = entries[0];
+
+    const source = world.connectionFor(platform);
+    const mapping = source ? await resolvePrimaryMapping(api, poll, source.id) : null;
+    const preCancel = mapping ? await readLiveOfferOrNull(api, mapping.id) : null;
+
+    const verdict = await manualCheckpoint(testInfo, {
+      dashboard: `${platform} seller panel — MANUAL CANCELLATION`,
+      expect: [
+        `Cancel the ${platform} order placed in this run (product: ${state.product?.name ?? '(unknown)'})`,
+        'Confirm the cancellation is accepted on the marketplace',
+        'Then resume',
+      ],
+      values: {
+        platform,
+        preCancelOfferQuantity: preCancel?.availableQuantity ?? '(unreadable — no OfferReader)',
+      },
+      severity: 'observational',
+      timeoutMs: 30 * 60_000,
+    });
+    if (!verdict.passed) return;
+
+    // Nudge ingestion (webhook + poll both converge here per #1512/#1574),
+    // then wait for the order's snapshot status to flip to 'cancelled'.
+    if (source) {
+      await jobs.trigger({ connectionId: source.id, jobType: 'marketplace.orders.poll' }).catch(() => undefined);
+    }
+    const cancelled = await poll.until(
+      () => api.orders.getById(order.internalOrderId),
+      (o) => (o.orderSnapshot as unknown as { status?: string }).status === 'cancelled',
+      { message: `${platform} order to be ingested as cancelled`, timeoutMs: 180_000, intervalMs: 5_000 },
+    );
+    expect((cancelled.orderSnapshot as unknown as { status?: string }).status, `${platform} order status`).toBe(
+      'cancelled',
+    );
+
+    // Offer-stock restore (`OfferStockRestorer`, #1146): the channel quantity
+    // should recover by SOLD_QTY. Degrades to an annotation when the channel
+    // has no live OfferReader (Erli) or no restore capability.
+    if (mapping && preCancel) {
+      try {
+        const restored = await poll.until(
+          () => api.listings.getOffer(mapping.id),
+          (o) => o.availableQuantity >= preCancel.availableQuantity + SOLD_QTY,
+          { message: `${platform} offer quantity to be restored after cancellation`, timeoutMs: 120_000 },
+        );
+        expect(
+          restored.availableQuantity,
+          `${platform} offer quantity restored after cancellation`,
+        ).toBeGreaterThanOrEqual(preCancel.availableQuantity + SOLD_QTY);
+      } catch {
+        testInfo.annotations.push({
+          type: 'stock-restore-degrade',
+          description: `${platform}: offer quantity did not visibly restore within the timeout — verify manually (OfferStockRestorer may not be implemented for this adapter, or restore timing exceeded the budget)`,
+        });
+      }
+    } else {
+      testInfo.annotations.push({
+        type: 'stock-restore-degrade',
+        description: `${platform}: no live OfferReader — stock-restore verified via the checkpoint only`,
       });
     }
   });

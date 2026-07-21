@@ -29,6 +29,7 @@ export const JobType = {
   invoicingIssue: 'invoicing.issue',
   invoicingRegulatoryStatusReconcile: 'invoicing.regulatoryStatus.reconcile',
   marketplaceShipmentStatusSync: 'marketplace.shipment.statusSync',
+  marketplaceFulfillmentStatusSync: 'marketplace.fulfillment.statusSync',
 } as const;
 
 /**
@@ -196,6 +197,34 @@ export class SyncJobs {
   /** Refresh OL master inventory from a shop's stock. */
   syncAllInventory(connectionId: string): Promise<string> {
     return this.trigger({ connectionId, jobType: JobType.masterInventorySyncAll });
+  }
+
+  /**
+   * Drive the branch-1 (OMP-fulfilled) `FulfillmentStatusReader` poll (#834):
+   * pages OL Order Records mirrored to this connection, reads each one's
+   * fulfillment status via the destination adapter, and projects a `Shipment`
+   * row. `cursorKey` defaults to `prestashop.fulfillmentStatus.scanOffset`
+   * server-side when omitted — the E2E caller always passes an explicit,
+   * connection-scoped key so a WooCommerce run's rolling offset never
+   * interleaves with PrestaShop's.
+   */
+  syncFulfillmentStatus(
+    connectionId: string,
+    options: TriggerAndWaitOptions & { cursorKey?: string; limit?: number } = {},
+  ): Promise<SyncJob> {
+    const { cursorKey, limit, ...triggerOptions } = options;
+    return this.triggerAndWait(
+      {
+        connectionId,
+        jobType: JobType.marketplaceFulfillmentStatusSync,
+        payload: {
+          schemaVersion: 1,
+          limit: limit ?? 50,
+          cursorKey: cursorKey ?? `e2e.${connectionId}.fulfillmentStatus.scanOffset`,
+        },
+      },
+      { expectSuccess: false, ...triggerOptions },
+    );
   }
 
   /** Reconcile a provider's regulatory (e.g. KSeF) clearance status into OL. */

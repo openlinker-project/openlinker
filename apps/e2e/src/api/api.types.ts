@@ -258,9 +258,18 @@ export interface OrderRecord {
 }
 
 /** POST /invoices — server assembles lines/buyer from the order. */
+/** Scheme-tagged buyer tax id; presence drives B2B (company), absence B2C. */
+export interface BuyerTaxIdInput {
+  scheme: string;
+  value: string;
+}
+
 export interface IssueInvoiceInput {
   connectionId: string;
   orderId: string;
+  buyerTaxId?: BuyerTaxIdInput;
+  documentType?: string;
+  idempotencyKey?: string;
 }
 
 export interface InvoiceRecord {
@@ -423,6 +432,12 @@ export interface Shipment {
   updatedAt: string;
 }
 
+/** Decimal-string money descriptor shared by COD and insured-value inputs. */
+export interface ShippingMoneyInput {
+  amount: string;
+  currency: string;
+}
+
 export interface GenerateLabelInput {
   sourceConnectionId: string;
   sourceDeliveryMethodId?: string;
@@ -431,7 +446,9 @@ export interface GenerateLabelInput {
   paczkomatId?: string;
   recipient?: Record<string, unknown>;
   parcel?: Record<string, unknown>;
-  cod?: { amount: string; currency: string };
+  cod?: ShippingMoneyInput;
+  /** Declared value to insure the parcel for (#1542). Carriers that don't support insurance ignore it. */
+  insuredValue?: ShippingMoneyInput;
 }
 
 export interface DispatchResult {
@@ -580,6 +597,33 @@ export interface ConnectionFilters {
   status?: string;
 }
 
+/** POST /connections request body. Exactly one of `credentials`/`credentialsRef` is required. */
+export interface CreateConnectionInput {
+  name: string;
+  platformType: string;
+  config: Record<string, unknown>;
+  credentials?: Record<string, unknown>;
+  credentialsRef?: string;
+  adapterKey?: string;
+  enabledCapabilities?: string[];
+}
+
+/** PATCH /connections/:id request body — all fields optional. */
+export interface UpdateConnectionInput {
+  name?: string;
+  status?: 'active' | 'disabled' | 'error';
+  config?: Record<string, unknown>;
+  adapterKey?: string;
+  enabledCapabilities?: string[];
+}
+
+/** POST /connections/:id/webhooks/install response (#583). */
+export interface InstallWebhooksResult {
+  webhooksConfigured: boolean;
+  testPingTriggered: boolean;
+  warning?: string;
+}
+
 export interface ListProductsQuery {
   search?: string;
   limit?: number;
@@ -608,4 +652,72 @@ export interface ListInvoicesQuery {
   regulatoryStatus?: string;
   limit?: number;
   offset?: number;
+}
+
+// ── Invoicing: bulk issue / correction / resend / email / mark-paid / bank accounts ──
+
+/** POST /invoices/bulk-issue request body (#1355). */
+export interface BulkIssueInvoicesInput {
+  connectionId: string;
+  orderIds: string[];
+}
+
+export type BulkIssueOutcome = 'issued' | 'skipped' | 'failed';
+
+export interface BulkIssueInvoiceResult {
+  orderId: string;
+  outcome: BulkIssueOutcome;
+  invoiceId?: string;
+  reason?: string;
+}
+
+export interface BulkIssueInvoicesResult {
+  issued: number;
+  skipped: number;
+  failed: number;
+  results: BulkIssueInvoiceResult[];
+}
+
+/** POST /invoices/:invoiceId/correct request line (#1241). */
+export interface IssueCorrectionLineInput {
+  originalLineNumber: number;
+  newQuantity?: number;
+  newUnitPriceGross?: number;
+}
+
+/** POST /invoices/:invoiceId/correct request body (#1241). */
+export interface IssueCorrectionInput {
+  reason?: string;
+  lines: IssueCorrectionLineInput[];
+  idempotencyKey?: string;
+}
+
+/** POST /invoices/:invoiceId/send-email request body (#1353). */
+export interface SendInvoiceEmailInput {
+  locale?: string;
+  sendCopy?: boolean;
+}
+
+/** POST /invoices/:invoiceId/send-email response (#1353). */
+export interface SendInvoiceEmailResult {
+  delivered: boolean;
+  recipient: string | null;
+}
+
+/** POST /invoices/:invoiceId/mark-paid request body (#1362). Bare `{}` marks paid today. */
+export interface MarkInvoicePaidInput {
+  paidDate?: string;
+}
+
+/** GET /connections/:connectionId/bank-accounts row (#1303 follow-up). */
+export interface InvoicingBankAccount {
+  id: string;
+  accountNumber: string;
+  bankName: string;
+  isDefault: boolean;
+}
+
+/** A raw binary response whose text body is also retained (source XML / documents). */
+export interface RawTextResponse extends RawResponse {
+  text: string;
 }
