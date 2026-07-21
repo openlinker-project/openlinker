@@ -19,6 +19,7 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import { createDpdShippingAdapter } from './application/dpd-adapter.factory';
 import { DpdAuthFailureClassifierAdapter } from './infrastructure/adapters/dpd-auth-failure-classifier.adapter';
 import { DpdConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/dpd-connection-config-shape-validator.adapter';
+import { DpdConnectionTesterAdapter } from './infrastructure/adapters/dpd-connection-tester.adapter';
 import { buildDpdSchedulerTasks } from './infrastructure/scheduler/dpd-scheduler-tasks';
 
 /**
@@ -50,6 +51,14 @@ export function createDpdPlugin(): AdapterPlugin {
       );
       // No credentials-shape validator: the `{ login, password }` shape is
       // enforced at adapter construction time by the factory.
+
+      // Connection tester (#1732): a cheap auth-only probe so the connection
+      // detail "Test connection" action verifies stored credentials instead of
+      // reporting "not supported".
+      host.connectionTesterRegistry.register(
+        dpdAdapterManifest.adapterKey,
+        new DpdConnectionTesterAdapter(),
+      );
 
       // Auth-failure classifier (#819 / #1103): a non-retryable 401/403 from
       // either DPD client flips the connection to `needs_reauth` on the
