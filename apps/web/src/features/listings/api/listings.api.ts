@@ -10,6 +10,7 @@ import type {
   CatalogProduct,
   CatalogProductMatchResult,
   CategoryParametersListResponse,
+  CategoryPathResponse,
   CreateOfferRequest,
   CreateOfferResponse,
   FindProductsByBarcodeRequest,
@@ -104,6 +105,16 @@ export interface ListingsApi {
     connectionId: string,
     categoryId: string,
   ) => Promise<CategoryParametersListResponse>;
+  /**
+   * Resolves a marketplace category id to its breadcrumb path (#1752), root ->
+   * leaf. Returns 404 if the category is unknown; 422 if the connection's
+   * adapter does not implement `CategoryPathReader`. Callers fall back to the
+   * raw id on either.
+   */
+  getCategoryPath: (
+    connectionId: string,
+    categoryId: string,
+  ) => Promise<CategoryPathResponse>;
   findProductsByBarcode: (
     connectionId: string,
     request: FindProductsByBarcodeRequest,
@@ -245,6 +256,11 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
     getCategoryParameters(connectionId, categoryId): Promise<CategoryParametersListResponse> {
       return request<CategoryParametersListResponse>(
         `/listings/connections/${connectionId}/categories/${categoryId}/parameters`,
+      );
+    },
+    getCategoryPath(connectionId, categoryId): Promise<CategoryPathResponse> {
+      return request<CategoryPathResponse>(
+        `/listings/connections/${connectionId}/categories/${categoryId}/path`,
       );
     },
     findProductsByBarcode(connectionId, body): Promise<CatalogProductMatchResult> {

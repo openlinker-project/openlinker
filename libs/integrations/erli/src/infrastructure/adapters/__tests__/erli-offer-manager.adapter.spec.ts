@@ -1086,6 +1086,51 @@ describe('ErliOfferManagerAdapter', () => {
       });
     });
 
+    it('should build the public marketplaceUrl when a web host, slug and marketplaceId are present', async () => {
+      const webAdapter = new ErliOfferManagerAdapter(
+        'conn-1',
+        ERLI_ADAPTER_KEY,
+        httpClient,
+        { period: 2, unit: 'day' },
+        undefined,
+        undefined,
+        'https://sandbox.erli.dev',
+      );
+      httpClient.get.mockResolvedValueOnce({ status: 200, data: productResource });
+
+      const offer = await webAdapter.getOffer({ externalId: VALID_ID });
+
+      expect(offer.marketplaceUrl).toBe('https://sandbox.erli.dev/produkt/swieca-sojowa-200g-aura,843284');
+    });
+
+    it('should omit marketplaceUrl when the slug or marketplaceId is missing (even with a web host)', async () => {
+      const webAdapter = new ErliOfferManagerAdapter(
+        'conn-1',
+        ERLI_ADAPTER_KEY,
+        httpClient,
+        { period: 2, unit: 'day' },
+        undefined,
+        undefined,
+        'https://sandbox.erli.dev',
+      );
+      httpClient.get.mockResolvedValueOnce({
+        status: 200,
+        data: { ...productResource, slug: undefined },
+      });
+
+      const offer = await webAdapter.getOffer({ externalId: VALID_ID });
+
+      expect(offer.marketplaceUrl).toBeUndefined();
+    });
+
+    it('should omit marketplaceUrl when no web host is wired', async () => {
+      httpClient.get.mockResolvedValueOnce({ status: 200, data: productResource });
+
+      const offer = await adapter.getOffer({ externalId: VALID_ID });
+
+      expect(offer.marketplaceUrl).toBeUndefined();
+    });
+
     it('should default missing fields defensively (empty title, 0 price/qty)', async () => {
       httpClient.get.mockResolvedValueOnce({ status: 200, data: {} });
 
