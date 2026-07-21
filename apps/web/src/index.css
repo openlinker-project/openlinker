@@ -12611,13 +12611,26 @@ input.bulk-dispatch__num--wide {
   font-weight: 500;
 }
 
+/* Identifier / external links in the drawer read as quiet primary text with
+   a faint underline; the brand accent appears only on hover (no off-palette
+   blue in this dense, status-coloured region). */
 .variant-listing-meta a {
-  color: var(--text-link);
-  text-decoration: none;
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 2px;
+  transition: color var(--duration-fast) var(--ease-out);
 }
 
 .variant-listing-meta a:hover {
-  text-decoration: underline;
+  color: var(--accent-primary-soft-strong);
+  text-decoration-color: currentColor;
+}
+
+.variant-listing-meta a:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-xs);
 }
 
 .variant-listing-card__note {
