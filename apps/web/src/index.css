@@ -7750,8 +7750,10 @@ a.kpi-card:focus-visible {
    Merged Shipment + money columns, per-label sort controls, the row items
    summary, the folded channel line, and the mobile card summary/facts. */
 
-/* Right-aligned two-line stack (the money column). */
-.orders-cell-stack--end { align-items: flex-end; text-align: right; }
+/* Right-aligned two-line stack (the money column). `min-width: 8rem`
+   co-anchors the body column width with the header sort buttons so the
+   column doesn't resize between sorts, matching the products table (#1747). */
+.orders-cell-stack--end { align-items: flex-end; text-align: right; min-width: 8rem; }
 .orders-money-total { font-weight: 640; }
 
 /* Row items summary: a truncating first-item name + a never-truncated "+N"
@@ -7838,11 +7840,22 @@ a.kpi-card:focus-visible {
 /* Per-label sort controls in the merged-column headers. */
 .orders-sortstack { display: inline-flex; flex-direction: column; gap: 4px; }
 .orders-sortstack--left { align-items: flex-start; }
-.orders-sortstack--right { align-items: flex-end; }
+/* `display: flex` + `width: 100%` makes the right-hand money stack fill the
+   entire <th> so `align-items: flex-end` reliably pins the buttons to the
+   right edge; the th's text-align alone left it content-width and off-edge.
+   Scoped to --right so the left/plain header stacks stay content-width (#1747). */
+.orders-sortstack--right { display: flex; width: 100%; align-items: flex-end; }
+/* Stable per-button width so the three labels line up flush-right with even
+   gaps, matching the products header (#1747, mirrors .sortbtn from #1720). */
+.orders-sortstack--right .orders-sortbtn { justify-content: flex-end; min-width: 8rem; }
 .orders-sortbtn {
   display: inline-flex;
   align-items: center;
   gap: 3px;
+  /* Opt out of the global `button { height: 2rem }` so the stacked sort
+     labels are content-height (~15px), not 32px each - otherwise the header
+     renders ~2x taller than the products table (#1747, mirrors .sortbtn). */
+  height: auto;
   padding: 0;
   border: none;
   background: none;
