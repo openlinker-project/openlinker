@@ -1,5 +1,5 @@
-import { useCallback, useState, type ReactElement, type ReactNode } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useCallback, useMemo, useState, type ReactElement, type ReactNode } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
@@ -11,9 +11,13 @@ import { TimeDisplay } from '../../shared/ui/time-display';
 import { ContentEditor } from '../../features/content/components/content-editor';
 import { useProductQuery } from '../../features/products/hooks/use-product-query';
 import { ProductGallery } from '../../features/products/components/product-gallery';
-import { ExternalIdChips } from '../../features/products/components/external-id-chips';
+import { ProductSourceSection } from '../../features/products/components/product-source-section';
 import { useInventoryQuery } from '../../features/inventory/hooks/use-inventory-query';
+import { useConnectionsQuery, type Connection } from '../../features/connections';
+import { useWriteAccess } from '../../shared/auth/use-permission';
+import { useDemoMode } from '../../features/system';
 import { VariantStockTable } from './variant-stock-table';
+import { MarketplacePickerModal } from './marketplace-picker-modal';
 import {
   DEFAULT_LOW_STOCK_THRESHOLD,
   deriveStockStatus,
@@ -70,6 +74,38 @@ export function ProductDetailPage(): ReactElement {
   const handleListingsCount = useCallback((variantId: string, count: number) => {
     setListingsCounts((prev) => (prev[variantId] === count ? prev : { ...prev, [variantId]: count }));
   }, []);
+
+  // Create-offer launch (mirrors products-list-page #1096): target connections
+  // by the OfferCreator capability — never a literal platformType. The CTA is
+  // gated on `listings:write` (demo viewers see it and hit the gated confirm).
+  const navigate = useNavigate();
+  const connectionsQuery = useConnectionsQuery();
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('listings:write', demoMode);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const offerCreatorConnections = useMemo<Connection[]>(
+    () =>
+      (connectionsQuery.data ?? [])
+        .filter((c) => c.status === 'active' && c.supportedCapabilities?.includes('OfferCreator'))
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [connectionsQuery.data],
+  );
+  const goToWizard = useCallback(
+    (connectionId?: string): void => {
+      const params = new URLSearchParams({ productIds: id });
+      if (connectionId) params.set('connectionId', connectionId);
+      void navigate(`/listings/bulk-create/wizard?${params.toString()}`);
+    },
+    [id, navigate],
+  );
+  const handleCreateOffers = useCallback((): void => {
+    if (offerCreatorConnections.length === 1) {
+      goToWizard(offerCreatorConnections[0]!.id);
+    } else if (offerCreatorConnections.length > 1) {
+      setPickerOpen(true);
+    }
+  }, [offerCreatorConnections, goToWizard]);
 
   if (query.isLoading) {
     return (
@@ -170,39 +206,53 @@ export function ProductDetailPage(): ReactElement {
             </div>
           </section>
 
+          <section className="detail-section" aria-label="At a glance">
+            <h3 className="detail-section__title">At a glance</h3>
+            <div className="product-detail__kpi-row product-detail__kpi-row--cols-4">
+              <KpiCard label="Price" value={formatPrice(product.price, product.currency)} />
+              <KpiCard
+                label="Available"
+                tone={availableTone}
+                value={totalAvailable}
+                description={oversoldCount > 0 ? `${oversoldCount} oversold` : undefined}
+              />
+              <KpiCard label="Variants" value={variants.length} />
+              <KpiCard label="Listings" value={totalListings} />
+            </div>
+          </section>
+
           <div className="product-detail__primary-grid--split">
             <div className="product-detail__stack">
               <section className="detail-section">
-                <h3 className="detail-section__title">Description</h3>
+                <div className="detail-section__title-row">
+                  <h3 className="detail-section__title">
+                    Description{' '}
+                    <StatusBadge tone="neutral" compact>
+                      Source · read-only
+                    </StatusBadge>
+                  </h3>
+                  <Link className="detail-section__edit-link" to="?view=content">
+                    Edit in Content →
+                  </Link>
+                </div>
                 {product.description ? (
                   <p className="description-block">{product.description}</p>
                 ) : (
-                  <p className="text-muted">No description available.</p>
+                  <p className="text-muted">
+                    No description synced from the source. Draft and publish one per channel in the
+                    Content tab.
+                  </p>
                 )}
               </section>
             </div>
 
             <div className="product-detail__stack">
-              <section className="detail-section" aria-label="At a glance">
-                <h3 className="detail-section__title">At a glance</h3>
-                <div className="product-detail__kpi-row product-detail__kpi-row--cols-1">
-                  <KpiCard label="Price" value={formatPrice(product.price, product.currency)} />
-                </div>
-                <div className="product-detail__kpi-row product-detail__kpi-row--cols-3">
-                  <KpiCard
-                    label="Available"
-                    tone={availableTone}
-                    value={totalAvailable}
-                    description={oversoldCount > 0 ? `${oversoldCount} oversold` : undefined}
-                  />
-                  <KpiCard label="Variants" value={variants.length} />
-                  <KpiCard label="Listings" value={totalListings} />
-                </div>
-              </section>
-
               <section className="detail-section">
-                <h3 className="detail-section__title">External IDs</h3>
-                <ExternalIdChips mappings={product.externalIds ?? []} />
+                <h3 className="detail-section__title">Source</h3>
+                <ProductSourceSection
+                  mappings={product.externalIds ?? []}
+                  connections={connectionsQuery.data ?? []}
+                />
               </section>
             </div>
           </div>
@@ -239,6 +289,10 @@ export function ProductDetailPage(): ReactElement {
               <VariantStockTable
                 variants={variants}
                 stockByVariant={stockByVariant}
+                currency={product.currency}
+                connections={offerCreatorConnections}
+                canCreateOffers={write.visible}
+                onCreateOffers={handleCreateOffers}
                 onListingsCount={handleListingsCount}
               />
             )}
@@ -249,6 +303,17 @@ export function ProductDetailPage(): ReactElement {
           <ContentEditor productId={product.id} />
         </TabsContent>
       </Tabs>
+
+      <MarketplacePickerModal
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        productCount={1}
+        connections={offerCreatorConnections}
+        onContinue={(connectionId) => {
+          setPickerOpen(false);
+          goToWizard(connectionId);
+        }}
+      />
     </PageLayout>
   );
 }
