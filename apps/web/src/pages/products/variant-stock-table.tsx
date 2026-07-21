@@ -11,7 +11,7 @@
  *
  * @module apps/web/src/pages/products
  */
-import { useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 import type { Connection } from '../../features/connections';
@@ -25,7 +25,6 @@ import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { useMediaQuery } from '../../shared/ui/use-media-query';
 import { usePlatforms } from '../../shared/plugins';
-import { useTranslation, getBcp47Locale } from '../../shared/i18n';
 import {
   deriveStockStatus,
   STOCK_STATUS_BADGE_TONE,
@@ -81,7 +80,6 @@ export function VariantStockTable(props: VariantStockTableProps): ReactElement {
             <th>Stock</th>
             <th>Listings</th>
             <th className="data-table__cell--right">Price</th>
-            <th className="data-table__cell--right">Updated</th>
           </tr>
         </thead>
         <tbody>
@@ -155,30 +153,6 @@ function variantMetaLine(variant: ProductVariant): string | null {
     variant.ean ? `EAN ${variant.ean}` : null,
   ].filter((part): part is string => Boolean(part));
   return parts.length > 0 ? parts.join(' · ') : null;
-}
-
-/** Two-line date stack for the table Updated column (no truncation). */
-function TwoLineDate({ iso }: { iso: string }): ReactElement {
-  const { locale } = useTranslation();
-  const { date, time } = useMemo(() => {
-    const bcp47 = getBcp47Locale(locale);
-    const parsed = new Date(iso);
-    return {
-      date: new Intl.DateTimeFormat(bcp47, {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      }).format(parsed),
-      time: new Intl.DateTimeFormat(bcp47, { hour: 'numeric', minute: '2-digit' }).format(parsed),
-    };
-  }, [iso, locale]);
-
-  return (
-    <span className="dt2">
-      <span className="dt2__date">{date}</span>
-      <span className="dt2__time">{time}</span>
-    </span>
-  );
 }
 
 function stockValueClass(availableQuantity: number): string {
@@ -540,7 +514,7 @@ function ListingDetailCard({
   }
   metaItems.push(
     <span key="updated" className="variant-listing-meta">
-      <b>Updated</b> <TimeDisplay iso={listing.updatedAt} />
+      <b>Offer updated</b> <TimeDisplay iso={listing.updatedAt} />
     </span>,
   );
 
@@ -655,12 +629,9 @@ function VariantStockRow({
         <td className="data-table__cell--right variant-stock-table__price">
           {formatPrice(variant.price, currency)}
         </td>
-        <td className="data-table__cell--right variant-stock-table__updated-cell">
-          <TwoLineDate iso={variant.updatedAt} />
-        </td>
       </tr>
       <tr className={`variant-stock-table__expand-row${isOpen ? ' is-open' : ''}`}>
-        <td colSpan={6}>
+        <td colSpan={5}>
           <div className="variant-stock-table__expand-content">
             <div className="variant-stock-table__expand-content-inner">
               <div className="variant-drawer">

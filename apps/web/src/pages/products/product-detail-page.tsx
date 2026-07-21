@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactElement, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactElement } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
@@ -28,20 +28,6 @@ import {
 const VIEW_PARAM = 'view';
 const VIEW_OVERVIEW = 'overview';
 const VIEW_CONTENT = 'content';
-
-function formatPrice(price: number | null, currency: string | null): ReactNode {
-  if (price === null) {
-    return <span className="text-muted">—</span>;
-  }
-  if (currency) {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(price);
-  }
-  return (
-    <span className="text-muted" title="Currency unknown">
-      {price.toFixed(2)}
-    </span>
-  );
-}
 
 function deriveAvailableTone(totalAvailable: number, oversoldCount: number): KpiCardTone {
   if (totalAvailable <= 0) return 'error';
@@ -224,7 +210,7 @@ export function ProductDetailPage(): ReactElement {
             <div className="product-detail__kpi-row product-detail__kpi-row--cols-4">
               <KpiCard
                 label="Price"
-                value={formatPrice(product.price, product.currency)}
+                value={product.price !== null ? product.price.toFixed(2) : '—'}
                 description={product.currency ?? undefined}
               />
               <KpiCard
@@ -255,7 +241,7 @@ export function ProductDetailPage(): ReactElement {
                 {product.description ? (
                   <p className="description-block">{product.description}</p>
                 ) : (
-                  <p className="text-muted">
+                  <p className="description-block text-muted">
                     No description synced from the source. Draft and publish one per channel in the
                     Content tab.
                   </p>
