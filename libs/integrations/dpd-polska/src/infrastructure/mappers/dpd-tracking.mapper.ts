@@ -27,6 +27,12 @@ import type { DpdWaybillEvent } from '../../domain/types/dpd-tracking.types';
 
 const logger = new Logger('DpdTrackingMapper');
 
+/** Carrier-of-record for every DPD shipment — DPD Polska self-delivers (no
+ * brokerage), so the neutral snapshot always advertises `'dpd'`. Lets the
+ * status-sync backfill populate `Shipment.carrier`, mirroring InPost's
+ * always-set `'inpost'` (#769). */
+const DPD_CARRIER = 'dpd';
+
 const DPD_TIMEZONE = 'Europe/Warsaw';
 const REDIRECT_CODE = '230402';
 const RETURN_CODES = new Set(['230403', '230408']);
@@ -129,7 +135,7 @@ function warsawOffsetMs(utcMs: number): number {
  */
 export function toTrackingSnapshot(events: DpdWaybillEvent[]): TrackingSnapshot {
   if (events.length === 0) {
-    return { status: 'generated' };
+    return { status: 'generated', carrier: DPD_CARRIER };
   }
 
   const unrecognized = new Set<string>();
@@ -177,6 +183,7 @@ export function toTrackingSnapshot(events: DpdWaybillEvent[]): TrackingSnapshot 
   const snapshot: TrackingSnapshot = {
     status: selected.status,
     providerStatus: selected.event.businessCode,
+    carrier: DPD_CARRIER,
   };
   // deliveredAt only when the snapshot is actually delivered — `selected` is the
   // delivered terminal in that case. A return-after-delivery resolves to

@@ -57,7 +57,14 @@ describe('parseDpdEventTime', () => {
 
 describe('toTrackingSnapshot', () => {
   it('returns generated for an empty history', () => {
-    expect(toTrackingSnapshot([])).toEqual({ status: 'generated' });
+    expect(toTrackingSnapshot([])).toEqual({ status: 'generated', carrier: 'dpd' });
+  });
+
+  it('stamps carrier "dpd" on every snapshot so the status-sync backfill populates Shipment.carrier', () => {
+    // Empty history and a folded event history both carry the carrier-of-record.
+    expect(toTrackingSnapshot([]).carrier).toBe('dpd');
+    const snap = toTrackingSnapshot([{ businessCode: '170101', eventTime: '2026-06-11T10:00:00' }]);
+    expect(snap.carrier).toBe('dpd');
   });
 
   it('takes the latest non-terminal event by time, regardless of input order', () => {
