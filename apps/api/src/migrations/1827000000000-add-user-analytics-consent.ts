@@ -4,9 +4,10 @@
  * Adds `analytics_consent` (boolean) to `users` (#1743). Captures, at
  * registration time, the account's opt-in for demo-only usage analytics
  * (PostHog session recording) — replacing the old post-login banner prompt.
- * Defaults `true` (default-on): the registration checkbox ships pre-checked,
- * and every pre-existing row backfills to "consented" so the change is
- * behaviour-preserving for accounts created before this column existed.
+ * Defaults `false` (opt-in): analytics is a true affirmative opt-in per
+ * GDPR/ePrivacy (CJEU Planet49, C-673/17), so the registration checkbox
+ * ships unchecked and every pre-existing row backfills to "not consented" —
+ * no account has analytics enabled without an active choice.
  *
  * Column name is snake_case (`analytics_consent`) to match the users table's
  * existing explicit-name columns (`password_hash`, `created_at`); the ORM
@@ -23,7 +24,7 @@ export class AddUserAnalyticsConsent1827000000000 implements MigrationInterface 
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "analytics_consent" boolean NOT NULL DEFAULT true`,
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "analytics_consent" boolean NOT NULL DEFAULT false`,
     );
   }
 

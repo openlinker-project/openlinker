@@ -22,8 +22,9 @@ export class User {
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
     // Opt-in for demo-only usage analytics, captured at registration (#1743).
-    // Defaults to true (default-on): accounts created before this field
-    // existed, and callers that don't set it, are treated as having consented.
-    public readonly analyticsConsent: boolean = true
+    // Defaults to false (opt-in): accounts created before this field existed,
+    // and callers that don't set it, are treated as NOT having consented, so
+    // analytics is never enabled without an affirmative choice.
+    public readonly analyticsConsent: boolean = false
   ) {}
 }

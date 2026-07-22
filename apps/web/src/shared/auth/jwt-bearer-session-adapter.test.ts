@@ -206,9 +206,9 @@ describe('JwtBearerSessionAdapter', () => {
           email: 'admin@example.com',
           role: 'admin',
           permissions: ['connections:read'],
-          // Default-on (#1743): the /auth/me mock omits the field, so the
-          // adapter fills it in as consent granted.
-          analyticsConsent: true,
+          // Opt-in (#1743): the /auth/me mock omits the field, so the adapter
+          // fills it in as no consent (analytics off without a choice).
+          analyticsConsent: false,
         },
       });
     });

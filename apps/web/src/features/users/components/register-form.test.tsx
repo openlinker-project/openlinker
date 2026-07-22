@@ -119,12 +119,12 @@ describe('RegisterForm', () => {
       expect(screen.getByRole('button', { name: /request access/i })).toBeInTheDocument();
     });
 
-    it('should render a pre-checked analytics consent checkbox in demo mode (#1743)', () => {
+    it('should render an unchecked analytics consent checkbox in demo mode (#1743)', () => {
       renderWithProviders(<RegisterForm demoMode />);
 
       const checkbox = screen.getByRole('checkbox', { name: /share anonymous usage analytics/i });
       expect(checkbox).toBeInTheDocument();
-      expect(checkbox).toBeChecked();
+      expect(checkbox).not.toBeChecked();
     });
 
     it('should not render the analytics consent checkbox outside demo mode', () => {
@@ -133,7 +133,7 @@ describe('RegisterForm', () => {
       expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     });
 
-    it('should submit analyticsConsent=true when the checkbox is left checked', async () => {
+    it('should submit analyticsConsent=false when the checkbox is left unchecked', async () => {
       const registerFn = vi.fn().mockResolvedValue({ ok: true });
       const mockApi = createMockApiClient({ auth: { register: registerFn } });
       renderWithProviders(<RegisterForm demoMode />, { apiClient: mockApi });
@@ -146,11 +146,11 @@ describe('RegisterForm', () => {
 
       await screen.findByText(/check your email to confirm your account/i);
       expect(registerFn).toHaveBeenCalledWith(
-        expect.objectContaining({ username: 'demo_user', analyticsConsent: true }),
+        expect.objectContaining({ username: 'demo_user', analyticsConsent: false }),
       );
     });
 
-    it('should submit analyticsConsent=false after the user unchecks it', async () => {
+    it('should submit analyticsConsent=true after the user checks it', async () => {
       const registerFn = vi.fn().mockResolvedValue({ ok: true });
       const mockApi = createMockApiClient({ auth: { register: registerFn } });
       renderWithProviders(<RegisterForm demoMode />, { apiClient: mockApi });
@@ -166,7 +166,7 @@ describe('RegisterForm', () => {
 
       await screen.findByText(/check your email to confirm your account/i);
       expect(registerFn).toHaveBeenCalledWith(
-        expect.objectContaining({ analyticsConsent: false }),
+        expect.objectContaining({ analyticsConsent: true }),
       );
     });
 

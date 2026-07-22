@@ -278,18 +278,21 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   }, [clearSession, showToast]);
 
   // Seed analytics consent from the account (#1743). Consent is now decided
-  // once at registration and returned on the session, so there's no post-login
-  // prompt. localStorage is a per-browser cache of that decision (and the store
-  // for an in-session Disable): if the visitor already has an explicit local
-  // value we keep it, otherwise we mirror the account's default-on choice.
+  // once at registration (opt-in) and returned on the session, so there's no
+  // post-login prompt. localStorage is a per-browser cache of that decision
+  // (and the store for an in-session Disable): if the visitor already has an
+  // explicit local value we keep it, otherwise we mirror the account choice.
   useEffect(() => {
     if (!isReady || session.status !== 'authenticated' || analyticsConsent !== null) {
       return;
     }
-    const accountConsent = session.user?.analyticsConsent ?? true;
+    const accountConsent = session.user?.analyticsConsent ?? false;
     const seeded: DemoAnalyticsConsent = accountConsent ? 'accepted' : 'declined';
-    setDemoAnalyticsConsent(seeded);
-    setAnalyticsConsent(seeded);
+    const persisted = setDemoAnalyticsConsent(seeded);
+    // If localStorage is unavailable the loader (which re-reads it) will decline
+    // to init, so surface 'declined' rather than a stale 'accepted' the banner
+    // would otherwise show while analytics stays off (fail-safe, consistent).
+    setAnalyticsConsent(persisted ? seeded : 'declined');
   }, [isReady, session, analyticsConsent]);
 
   // Demo-only analytics (#1301) — attempt init once the config query has

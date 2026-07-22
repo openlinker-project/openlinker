@@ -18,7 +18,7 @@ export interface UserRepositoryPort {
   save(
     user: Pick<User, 'username' | 'email' | 'passwordHash' | 'role' | 'status'> &
       // Optional so non-registration callers (e.g. bootstrap admin) don't have
-      // to opt in; the repository defaults it to true (default-on) when omitted.
+      // to set it; the repository defaults it to false (opt-in) when omitted.
       Partial<Pick<User, 'analyticsConsent'>>
   ): Promise<User>;
   updatePasswordHash(userId: string, passwordHash: string): Promise<void>;

@@ -183,12 +183,12 @@ describe('RegistrationService', () => {
       return { repo, service };
     };
 
-    it('should default analyticsConsent to true when the flag is omitted (default-on)', async () => {
+    it('should default analyticsConsent to false when the flag is omitted (opt-in)', async () => {
       const { repo, service } = makeActiveService();
 
       await service.register('alice', 'alice@test.com', 'pass123');
 
-      expect(repo.save.mock.calls[0][0].analyticsConsent).toBe(true);
+      expect(repo.save.mock.calls[0][0].analyticsConsent).toBe(false);
     });
 
     it('should persist analyticsConsent=false when the user opts out', async () => {

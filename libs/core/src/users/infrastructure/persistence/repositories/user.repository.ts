@@ -101,7 +101,7 @@ export class UserRepository implements UserRepositoryPort {
       passwordHash: user.passwordHash,
       role: user.role,
       status: user.status,
-      analyticsConsent: user.analyticsConsent ?? true,
+      analyticsConsent: user.analyticsConsent ?? false,
     });
     try {
       const saved = await this.ormRepository.save(entity);
@@ -177,7 +177,7 @@ export class UserRepository implements UserRepositoryPort {
       status,
       entity.createdAt,
       entity.updatedAt,
-      entity.analyticsConsent ?? true
+      entity.analyticsConsent ?? false
     );
   }
 }

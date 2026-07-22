@@ -35,8 +35,8 @@ export class RegisterDto {
 
   @ApiPropertyOptional({
     description:
-      'Opt-in for demo-only usage analytics. Omitted ⇒ treated as consent granted (default-on).',
-    default: true,
+      'Opt-in for demo-only usage analytics. Omitted ⇒ treated as no consent (opt-in default).',
+    default: false,
   })
   @IsBoolean()
   @IsOptional()

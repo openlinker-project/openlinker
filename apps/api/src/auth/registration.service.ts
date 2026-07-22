@@ -56,7 +56,7 @@ export class RegistrationService implements IRegistrationService {
     email: string,
     password: string,
     clientIp?: string,
-    analyticsConsent: boolean = true,
+    analyticsConsent: boolean = false,
   ): Promise<void> {
     const enabled = this.configService.get<string>('OL_REGISTRATION_ENABLED', 'false');
     if (enabled.trim().toLowerCase() !== 'true') {

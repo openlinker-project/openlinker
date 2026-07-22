@@ -36,8 +36,9 @@ export function RegisterForm({ demoMode = false }: RegisterFormProps): ReactElem
       email: '',
       password: '',
       confirmPassword: '',
-      // Default-on (#1743): pre-checked so consent is the no-effort path.
-      analyticsConsent: true,
+      // Opt-in (#1743): unchecked by default so consent is an affirmative
+      // action (GDPR/ePrivacy — a pre-ticked box is not valid consent).
+      analyticsConsent: false,
     },
     resolver: zodResolver(registerFormSchema),
   });
@@ -145,17 +146,13 @@ export function RegisterForm({ demoMode = false }: RegisterFormProps): ReactElem
       </FormField>
 
       {demoMode ? (
-        <label className="guest-form__consent" htmlFor="analyticsConsent">
-          <input
-            id="analyticsConsent"
-            type="checkbox"
-            {...form.register('analyticsConsent')}
-          />
+        <label className="guest-form__consent">
+          <input type="checkbox" {...form.register('analyticsConsent')} />
           <span className="guest-form__consent-text">
             <strong>Share anonymous usage analytics</strong>
             <span className="guest-form__consent-hint">
-              Helps us improve OpenLinker. Includes session recording with all inputs masked. You
-              can turn this off anytime after signing in.
+              Optional. Helps us improve OpenLinker. Includes session recording with all inputs
+              masked. Off unless you tick this; you can change it anytime after signing in.
             </span>
           </span>
         </label>

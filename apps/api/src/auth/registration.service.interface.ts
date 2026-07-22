@@ -16,8 +16,8 @@ export interface IRegistrationService {
    * per-IP registration rate limit (#1469). Omit it for non-demo callers.
    *
    * `analyticsConsent` records the account's opt-in for demo-only usage
-   * analytics captured on the registration form (#1743). Defaults to true
-   * (default-on) when omitted.
+   * analytics captured on the registration form (#1743). Defaults to false
+   * (opt-in) when omitted — analytics stays off without an affirmative choice.
    */
   register(
     username: string,

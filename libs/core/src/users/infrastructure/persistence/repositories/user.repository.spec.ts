@@ -95,7 +95,7 @@ describe('UserRepository', () => {
       );
     });
 
-    it('should default analyticsConsent to true when omitted and persist an explicit false (#1743)', async () => {
+    it('should default analyticsConsent to false when omitted and persist an explicit true (#1743)', async () => {
       ormRepository.save.mockResolvedValue(buildOrm({}));
 
       await repository.save({
@@ -106,7 +106,7 @@ describe('UserRepository', () => {
         status: 'pending',
       });
       expect(ormRepository.create).toHaveBeenCalledWith(
-        expect.objectContaining({ analyticsConsent: true }),
+        expect.objectContaining({ analyticsConsent: false }),
       );
 
       await repository.save({
@@ -115,10 +115,10 @@ describe('UserRepository', () => {
         passwordHash: 'hash',
         role: 'viewer',
         status: 'pending',
-        analyticsConsent: false,
+        analyticsConsent: true,
       });
       expect(ormRepository.create).toHaveBeenLastCalledWith(
-        expect.objectContaining({ analyticsConsent: false }),
+        expect.objectContaining({ analyticsConsent: true }),
       );
     });
 
