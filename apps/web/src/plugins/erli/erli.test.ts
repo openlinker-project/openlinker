@@ -32,10 +32,6 @@ describe('erliPlugin', () => {
     it('does NOT contribute API namespaces', () => {
       expect(erliPlugin.build?.apiNamespaces).toBeUndefined();
     });
-    it('contributes a single-offer wizard for the erli platform (#1096)', () => {
-      expect(erliPlugin.build?.offerCreationWizard?.platformType).toBe('erli');
-      expect(erliPlugin.build?.offerCreationWizard?.component).toBeDefined();
-    });
   });
 
   describe('platform contributions', () => {

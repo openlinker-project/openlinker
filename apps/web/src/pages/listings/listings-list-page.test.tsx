@@ -1,12 +1,19 @@
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi } from 'vitest';
+import type * as ReactRouterDom from 'react-router-dom';
 import { renderWithProviders, createMockApiClient, createAuthenticatedSessionAdapter } from '../../test/test-utils';
 import { ListingsListPage } from './listings-list-page';
 import type {
   CreateOfferRequest,
   PaginatedOfferMappings,
 } from '../../features/listings/api/listings.types';
+
+const navigateMock = vi.fn();
+vi.mock('react-router-dom', async (): Promise<typeof ReactRouterDom> => {
+  const actual = await vi.importActual<typeof ReactRouterDom>('react-router-dom');
+  return { ...actual, useNavigate: (): typeof navigateMock => navigateMock };
+});
 
 const sampleMappings: PaginatedOfferMappings = {
   items: [
@@ -40,6 +47,7 @@ const sampleMappings: PaginatedOfferMappings = {
 
 describe('ListingsListPage', () => {
   afterEach(cleanup);
+  afterEach(() => navigateMock.mockClear());
   it('should show loading state initially', () => {
     const mockApi = createMockApiClient({
       listings: {
@@ -154,7 +162,7 @@ describe('ListingsListPage', () => {
     expect(await screen.findByText('Pending')).toBeInTheDocument();
   });
 
-  it('should reopen the wizard pre-filled from the failed record when Retry is clicked', async () => {
+  it('navigates into the bulk wizard pre-seeded with the failed variant when Retry is clicked', async () => {
     const user = userEvent.setup();
     const sampleRequest: CreateOfferRequest = {
       internalVariantId: 'ol_variant_abc',
@@ -183,29 +191,14 @@ describe('ListingsListPage', () => {
           updatedAt: '2026-04-22T10:00:00Z',
           request: sampleRequest,
         }),
-        getSellerPolicies: vi.fn().mockResolvedValue({
-          deliveryPolicies: [{ id: 'del-1', name: 'Free shipping' }],
-          returnPolicies: [],
-          warranties: [],
-          impliedWarranties: [],
-        }),
       },
-      connections: {
-        list: vi.fn().mockResolvedValue([
-          {
-            id: 'conn_allegro_1',
-            name: 'Allegro sandbox',
-            platformType: 'allegro',
-            status: 'active',
-            config: {},
-            credentialsBacked: true,
-            adapterKey: 'allegro.publicapi.v1',
-            enabledCapabilities: ['OfferManager'],
-            supportedCapabilities: ['OfferManager', 'OfferCreator'],
-            createdAt: '2026-01-01T00:00:00Z',
-            updatedAt: '2026-01-01T00:00:00Z',
-          },
-        ]),
+      products: {
+        getVariant: vi.fn().mockResolvedValue({
+          id: 'ol_variant_abc',
+          productId: 'ol_product_xyz',
+          sku: 'SK-1',
+          ean: null,
+        }),
       },
     });
 
@@ -217,17 +210,14 @@ describe('ListingsListPage', () => {
     const retry = await screen.findByRole('button', { name: /retry/i });
     await user.click(retry);
 
-    // Wizard opens on Step 2 with values drawn from the failed record.
-    const title = await screen.findByLabelText<HTMLInputElement>(/^title$/i);
-    await waitFor(() => expect(title.value).toBe('Prior Title'));
-    // CategoryPicker pre-fill fallback: renders the raw id + a Change button
-    // rather than a text input with a value.
-    expect(screen.getByText('Current category ID')).toBeInTheDocument();
-    expect(screen.getByText('98765')).toBeInTheDocument();
-    expect(screen.getByLabelText<HTMLInputElement>(/^price$/i).value).toBe('120.50');
-    expect(screen.getByLabelText<HTMLInputElement>(/^stock$/i).value).toBe('7');
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledTimes(1));
+    const url = String(navigateMock.mock.calls.at(0)?.[0] ?? '');
+    const qs = new URLSearchParams(url.split('?')[1] ?? '');
+    expect(qs.get('productIds')).toBe('ol_product_xyz');
+    expect(qs.get('variantIds')).toBe('ol_variant_abc');
+    expect(qs.get('connectionId')).toBe('conn_allegro_1');
 
-    // The tracker URL params are dropped once Retry is pressed.
+    // The tracker URL params are dropped before navigating away.
     expect(screen.queryByText(/offer creation/i)).not.toBeInTheDocument();
   });
 

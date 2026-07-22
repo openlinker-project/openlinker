@@ -485,7 +485,6 @@ Every slot is optional.
 | `routes` | `RouteObject[]` | `root.route.tsx` | React Router route objects appended to the root route's children. |
 | `navItems` | `NavContribution[]` | `nav-registry.ts` | Sidebar nav items merged into existing nav groups by label. |
 | `apiNamespaces` | `(request) => Partial<PluginApiNamespaces>` | `createApiClient` | Factory that produces typed API client namespaces. Plugins extend `PluginApiNamespaces` via TS declaration merging. |
-| `offerCreationWizard` | `OfferCreationWizardContribution` | `useOfferCreationWizard` | Per-platform offer-creation wizard registered against the `OfferCreationLauncher` dispatch site (#608). |
 
 ### `PlatformContribution` slot reference
 

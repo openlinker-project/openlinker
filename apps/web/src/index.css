@@ -6214,6 +6214,74 @@ a.kpi-card:focus-visible {
   color: var(--text-primary);
 }
 
+/* ── Offer product picker (#1754) ── */
+.offer-product-picker__product-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  min-width: 0;
+}
+
+.offer-product-picker__product-row:hover {
+  background: var(--bg-surface-muted);
+  border-color: var(--border-subtle);
+}
+
+.offer-product-picker__expand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--space-1) 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.offer-product-picker__caret {
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+
+.offer-product-picker__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.offer-product-picker__variant-count {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+}
+
+.offer-product-picker__selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  margin-top: var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-muted);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.offer-product-picker__cap-hint {
+  margin-top: var(--space-1);
+  font-size: 0.75rem;
+}
+
 /*
  * Structured error rows (#448 / #486 / #607). Forensic-log aesthetic:
  * the panel context already implies error, so we don't drench every row

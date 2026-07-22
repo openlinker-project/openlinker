@@ -10,17 +10,17 @@ import { Input } from '../../shared/ui/input';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
-import { OfferCreationLauncher } from '../../features/listings/components/OfferCreationLauncher';
+import { OfferProductPickerModal } from '../../features/listings/components/offer-product-picker-modal';
 import { OfferCreationTracker } from '../../features/listings/components/OfferCreationTracker';
 import {
   ShopPublishLauncher,
   selectShopPublishConnections,
 } from '../../features/listings/components/ShopPublishLauncher';
 import { useConnectionsQuery } from '../../features/connections';
+import { useOfferCreationRetry } from '../../features/listings/hooks/use-offer-creation-retry';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import type {
-  CreateOfferRequest,
   ListingsFilters,
   OfferCreationStatusResponse,
   OfferMapping,
@@ -161,15 +161,7 @@ export function ListingsListPage(): ReactElement {
 
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [isShopPublishOpen, setIsShopPublishOpen] = useState(false);
-  // Retry-path hints passed to the wizard when the operator clicks Retry
-  // on a failed OfferCreationTracker. These mirror the record's snapshot
-  // so the wizard can pre-fill on open and land directly on Step 2.
-  const [retryInitialValues, setRetryInitialValues] = useState<CreateOfferRequest | undefined>(
-    undefined,
-  );
-  const [retryDefaultConnectionId, setRetryDefaultConnectionId] = useState<string | undefined>(
-    undefined,
-  );
+  const retryOfferCreation = useOfferCreationRetry();
 
   function dismissTracker(): void {
     setSearchParams((prev) => {
@@ -180,29 +172,12 @@ export function ListingsListPage(): ReactElement {
     });
   }
 
-  function handleOfferSubmitted(offerCreationRecordId: string, connectionId: string): void {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.set('offerCreationRecordId', offerCreationRecordId);
-      next.set('trackedConnectionId', connectionId);
-      return next;
-    });
-  }
-
-  function handleRetry(record: OfferCreationStatusResponse): void {
-    if (!record.request) return;
-    setRetryInitialValues(record.request);
-    setRetryDefaultConnectionId(record.connectionId);
-    setIsWizardOpen(true);
-    // Drop the old tracker from the URL — the new submit will re-install
-    // a fresh tracker for the new OfferCreationRecord via onSubmitted.
+  // Retry re-point (#1754): drop the tracker from the URL, then hand off to
+  // the feature hook that resolves the failed variant to its product and
+  // navigates into the unified bulk wizard pre-seeded with that single variant.
+  async function handleRetry(record: OfferCreationStatusResponse): Promise<void> {
     dismissTracker();
-  }
-
-  function closeWizard(): void {
-    setIsWizardOpen(false);
-    setRetryInitialValues(undefined);
-    setRetryDefaultConnectionId(undefined);
+    await retryOfferCreation(record);
   }
 
   return (
@@ -228,7 +203,7 @@ export function ListingsListPage(): ReactElement {
           connectionId={trackedConnectionId}
           offerCreationRecordId={trackedRecordId}
           onDismiss={dismissTracker}
-          onRetry={handleRetry}
+          onRetry={(record) => void handleRetry(record)}
         />
       ) : null}
 
@@ -337,12 +312,9 @@ export function ListingsListPage(): ReactElement {
         </>
       )}
 
-      <OfferCreationLauncher
+      <OfferProductPickerModal
         isOpen={isWizardOpen}
-        onClose={closeWizard}
-        defaultConnectionId={retryDefaultConnectionId ?? (debouncedConnectionId || undefined)}
-        initialValues={retryInitialValues}
-        onSubmitted={handleOfferSubmitted}
+        onClose={() => setIsWizardOpen(false)}
       />
 
       <ShopPublishLauncher open={isShopPublishOpen} onOpenChange={setIsShopPublishOpen} />

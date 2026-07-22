@@ -35,9 +35,6 @@ describe('prestashopPlugin', () => {
       expect(prestashopPlugin.build?.apiNamespaces).toBeUndefined();
     });
 
-    it('does NOT contribute an offer-creation wizard (no Allegro-style listing flow)', () => {
-      expect(prestashopPlugin.build?.offerCreationWizard).toBeUndefined();
-    });
   });
 
   describe('platform contributions', () => {
