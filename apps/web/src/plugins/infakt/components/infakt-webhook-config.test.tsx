@@ -46,7 +46,7 @@ describe('InfaktWebhookConfig', () => {
     });
     renderWithProviders(<InfaktWebhookConfig connection={infaktConnection} />, { apiClient });
 
-    expect(await screen.findByText('Verified · ping echoed')).toBeInTheDocument();
+    expect(await screen.findByText('Active · deliveries seen')).toBeInTheDocument();
     expect(screen.getByText('Not configured')).toBeInTheDocument();
   });
 

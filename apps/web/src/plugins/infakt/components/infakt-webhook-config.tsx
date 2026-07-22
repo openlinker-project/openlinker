@@ -36,8 +36,16 @@ import { CopyableId } from '../../../shared/ui/copyable-id';
 import { Input } from '../../../shared/ui/input';
 import { useToast } from '../../../shared/ui/toast-provider';
 
-const SUBSCRIBED_EVENTS = ['send_to_ksef_success', 'send_to_ksef_error'] as const;
-const OPTIONAL_EVENTS = ['invoice_marked_as_paid'] as const;
+// The events an operator ticks in inFakt's "Nowy webhook" form. Labels are
+// inFakt's own (its UI is Polish) so they match the checkboxes verbatim.
+// OpenLinker acts on the KSeF-clearance pair; the payment event feeds the
+// optional payment-status sync (#1354). Every other event inFakt can send is
+// accepted and ignored.
+const REQUIRED_INFAKT_EVENTS = [
+  'Faktura wysłana do KSeF',
+  'Błąd wysyłki faktury do KSeF',
+] as const;
+const OPTIONAL_INFAKT_EVENTS = ['Faktura oznaczona jako zapłacona'] as const;
 
 /**
  * Resolve the public OpenLinker host that serves inbound webhooks. Prefers an
@@ -55,8 +63,8 @@ function resolveApiBaseUrl(config: Connection['config']): string {
 
 function activationLabel(status: WebhookStatus): { tone: string; text: string } {
   return status.activation === 'verified'
-    ? { tone: 'ok', text: 'Verified · ping echoed' }
-    : { tone: 'warn', text: 'Awaiting registration' };
+    ? { tone: 'ok', text: 'Active · deliveries seen' }
+    : { tone: 'warn', text: 'Awaiting first event' };
 }
 
 function signatureLabel(status: WebhookStatus): { tone: string; text: string } {
@@ -151,8 +159,9 @@ export function InfaktWebhookConfig({ connection }: { connection: Connection }):
   return (
     <div className="infakt-webhook">
       <p className="infakt-webhook__intro muted-text">
-        inFakt signs each delivery and mints the secret itself — OpenLinker can&apos;t register it
-        for you. Register the endpoint in inFakt, then optionally paste the secret it shows you.
+        inFakt signs each delivery and mints the secret itself, so OpenLinker can&apos;t register
+        the webhook for you. Register the endpoint in inFakt, then optionally paste the secret it
+        shows you.
       </p>
 
       <StatusStrip connectionId={connection.id} />
@@ -160,42 +169,50 @@ export function InfaktWebhookConfig({ connection }: { connection: Connection }):
       <div className="infakt-webhook__exchange">
         <div className="infakt-webhook__lane">
           <span className="infakt-webhook__dir">
-            <span className="infakt-webhook__arrow" aria-hidden="true">
-              →
-            </span>{' '}
-            You register in inFakt
+            <span className="infakt-webhook__dir-badge">To inFakt</span>
+            You register
           </span>
           <p className="infakt-webhook__lane-label">Delivery endpoint</p>
           <CopyableId id={webhookUrl} />
-          <div className="infakt-webhook__events">
-            {SUBSCRIBED_EVENTS.map((event) => (
-              <span key={event} className="infakt-webhook__chip infakt-webhook__chip--on">
+
+          <p className="infakt-webhook__events-label">Enable these events in inFakt</p>
+          <ul className="infakt-webhook__events">
+            {REQUIRED_INFAKT_EVENTS.map((event) => (
+              <li key={event} className="infakt-webhook__event infakt-webhook__event--req">
+                <span className="infakt-webhook__event-mark" aria-hidden="true">
+                  ✓
+                </span>
                 {event}
-              </span>
+              </li>
             ))}
-            {OPTIONAL_EVENTS.map((event) => (
-              <span key={event} className="infakt-webhook__chip">
+            {OPTIONAL_INFAKT_EVENTS.map((event) => (
+              <li key={event} className="infakt-webhook__event infakt-webhook__event--opt">
+                <span className="infakt-webhook__event-mark" aria-hidden="true">
+                  +
+                </span>
                 {event}
-              </span>
+                <span className="infakt-webhook__event-note">optional · payment sync</span>
+              </li>
             ))}
-          </div>
+          </ul>
+
           <p className="infakt-webhook__hint muted-text">
-            Paste this in inFakt → Webhooks and click <strong>Zweryfikuj</strong>. inFakt sends a{' '}
+            Create the webhook, then open its details and click <strong>Weryfikuj</strong> (status{' '}
+            <em>Do weryfikacji</em> &rarr; <em>Aktywny</em>). inFakt POSTs a{' '}
             <code className="mono-text">verification_code</code>; OpenLinker echoes it back
-            automatically to activate the subscription.
+            automatically.
           </p>
         </div>
 
         <div className="infakt-webhook__seam" aria-hidden="true">
-          <span className="infakt-webhook__seam-glyph">⇄</span>
+          <span className="infakt-webhook__seam-glyph">&#8646;</span>
         </div>
 
         <div className="infakt-webhook__lane">
           <span className="infakt-webhook__dir">
-            <span className="infakt-webhook__arrow" aria-hidden="true">
-              ←
-            </span>{' '}
-            inFakt gives you <span className="infakt-webhook__tag">Optional</span>
+            <span className="infakt-webhook__dir-badge">From inFakt</span>
+            You paste back
+            <span className="infakt-webhook__tag">Optional</span>
           </span>
           <p className="infakt-webhook__lane-label">HMAC signing secret</p>
           <div className="infakt-webhook__field">
@@ -223,9 +240,10 @@ export function InfaktWebhookConfig({ connection }: { connection: Connection }):
             </Alert>
           ) : null}
           <p className="infakt-webhook__hint muted-text">
-            For extra security, open the webhook&apos;s details in inFakt, copy the auto-generated
-            secret, and paste it here. OpenLinker then verifies{' '}
+            For signed deliveries, open the webhook&apos;s details in inFakt &rarr;{' '}
+            <em>Sekretny klucz do HMAC</em> and paste that value here. OpenLinker then verifies{' '}
             <code className="mono-text">X-Infakt-Signature</code> and rejects mismatches with 401.
+            Leave blank to accept unsigned deliveries.
           </p>
         </div>
       </div>
