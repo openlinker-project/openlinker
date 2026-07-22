@@ -19,13 +19,20 @@ export const MAX_FROM_ADDRESS_LENGTH = 320;
 export const MAX_PASSWORD_LENGTH = 512;
 const MIN_PORT = 1;
 const MAX_PORT = 65535;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Excludes `<`/`>` (in addition to whitespace/`@`) so a stray bracket can't be
+// swallowed into the local-part or domain — e.g. `,<test@test.test` inside a
+// malformed `Test <,<test@test.test>` input would otherwise still satisfy this
+// pattern once the outer `<...>` wrapper is stripped off. The leading
+// `(?!.*\.\.)` lookahead rejects a consecutive `..` anywhere (e.g.
+// `test..test@test.pl`), and the local-part/domain each require a non-dot
+// first character so neither segment can start with a stray `.`.
+const EMAIL_PATTERN = /^(?!.*\.\.)[^\s@<>.][^\s@<>]*@[^\s@<>.][^\s@<>]*\.[^\s@<>]+$/;
 // Matches `Display Name <email@domain.com>` — nodemailer parses this form natively
 // into the `From:` header, and the backend DTO has no `@IsEmail()` gate, so this
 // client-side check only needs to confirm the bracketed part looks like an email.
 // The name segment excludes `<`/`>` so a second bracketed address (e.g.
 // `A <b@c.com> <d@e.com>`) fails the match instead of silently picking the last one.
-const NAME_AND_EMAIL_PATTERN = /^[^<>]+\s<([^\s@]+@[^\s@]+\.[^\s@]+)>$/;
+const NAME_AND_EMAIL_PATTERN = /^[^<>]+\s<([^\s@<>]+@[^\s@<>]+\.[^\s@<>]+)>$/;
 
 function isValidFromAddress(value: string): boolean {
   if (EMAIL_PATTERN.test(value)) {

@@ -99,6 +99,32 @@ describe('mailerSettingsFormSchema', () => {
     }
   });
 
+  it('should reject an address with consecutive dots in the local-part', () => {
+    const result = mailerSettingsFormSchema.safeParse({
+      ...validSmtpBase,
+      fromAddress: 'test..test@test.pl',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path.join('.') === 'fromAddress');
+      expect(issue?.message).toContain('Enter a valid email address');
+    }
+  });
+
+  it('should reject a malformed address with a stray angle bracket swallowed into the local-part', () => {
+    const result = mailerSettingsFormSchema.safeParse({
+      ...validSmtpBase,
+      fromAddress: 'Test <,<test@test.test>',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path.join('.') === 'fromAddress');
+      expect(issue?.message).toContain('Enter a valid email address');
+    }
+  });
+
   it('should reject a From address longer than the max length', () => {
     const tooLong = `${'a'.repeat(MAX_FROM_ADDRESS_LENGTH)}@example.com`;
     const result = mailerSettingsFormSchema.safeParse({
