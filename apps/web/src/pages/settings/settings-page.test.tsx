@@ -74,6 +74,7 @@ describe('SettingsPage', () => {
         email: 'viewer@example.com',
         role: 'viewer',
         permissions: [],
+        analyticsConsent: true,
       }),
     });
 
@@ -101,6 +102,7 @@ describe('SettingsPage', () => {
         email: 'viewer@example.com',
         role: 'viewer',
         permissions: [],
+        analyticsConsent: true,
       }),
     });
 

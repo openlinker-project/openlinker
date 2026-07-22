@@ -548,6 +548,7 @@ const DEFAULT_TEST_USER: SessionUser = {
     'ai:suggest',
     'invoices:read', 'invoices:write',
   ],
+  analyticsConsent: true,
 };
 
 export function createAuthenticatedSessionAdapter(

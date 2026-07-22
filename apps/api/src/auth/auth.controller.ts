@@ -146,7 +146,13 @@ export class AuthController {
   @ApiResponse({ status: 429, description: 'Too many registration attempts from this IP' })
   async register(@Body() dto: RegisterDto, @Req() req: Request): Promise<OkResponseDto> {
     try {
-      await this.registrationService.register(dto.username, dto.email, dto.password, req.ip);
+      await this.registrationService.register(
+        dto.username,
+        dto.email,
+        dto.password,
+        req.ip,
+        dto.analyticsConsent,
+      );
     } catch (error) {
       if (error instanceof RegistrationDisabledException) {
         throw new ForbiddenException(error.message);

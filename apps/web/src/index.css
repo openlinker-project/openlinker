@@ -11825,6 +11825,38 @@ input.bulk-dispatch__num--wide {
   color: var(--status-info-fg);
 }
 
+/* ── Registration analytics consent (#1743) ── */
+
+.guest-form__consent {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.guest-form__consent input[type='checkbox'] {
+  margin-top: 2px;
+  flex: none;
+  accent-color: var(--accent-primary);
+}
+
+.guest-form__consent-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.guest-form__consent-hint {
+  color: var(--text-secondary);
+}
+
 /* ── Product detail (#1304) ── */
 
 .product-detail-hero {

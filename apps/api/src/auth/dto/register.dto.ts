@@ -5,8 +5,17 @@
  *
  * @module apps/api/src/auth/dto
  */
-import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsBoolean,
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class RegisterDto {
   @ApiProperty({ description: 'Username (must not contain "@")', example: 'alice' })
@@ -28,4 +37,13 @@ export class RegisterDto {
   @MinLength(8)
   @MaxLength(72)
   password!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Opt-in for demo-only usage analytics. Omitted ⇒ treated as no consent (opt-in default).',
+    default: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  analyticsConsent?: boolean;
 }
