@@ -151,7 +151,7 @@ describe('OfferProductPickerModal', () => {
     const cb = await screen.findByLabelText<HTMLInputElement>('Select Product p1');
     fireEvent.click(cb);
     expect(cb.checked).toBe(true);
-    expect(screen.getByText(/1 item selected across/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 offer selected across/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
     const qs = continueUrlParams();
@@ -203,12 +203,12 @@ describe('OfferProductPickerModal', () => {
       apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]),
     });
     fireEvent.click(await screen.findByLabelText('Select Product p1'));
-    expect(screen.getByText(/1 item selected across.*1 product/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 offer selected across.*1 product/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /next page of products/i }));
     // p1 is no longer rendered, but the selection total persists.
     expect(await screen.findByText('Product p21')).toBeInTheDocument();
-    expect(screen.getByText(/1 item selected across.*1 product/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 offer selected across.*1 product/i)).toBeInTheDocument();
   });
 
   it('auto-resolves the sole eligible connection (no picker shown)', async () => {
@@ -296,13 +296,13 @@ describe('OfferProductPickerModal', () => {
       { apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]) },
     );
     fireEvent.click(await screen.findByLabelText('Select Product p1'));
-    expect(screen.getByText(/1 item selected across.*1 product/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 offer selected across.*1 product/i)).toBeInTheDocument();
 
     rerender(<OfferProductPickerModal isOpen={false} onClose={vi.fn()} />);
     rerender(<OfferProductPickerModal isOpen onClose={vi.fn()} />);
 
     expect(await screen.findByText('Product p1')).toBeInTheDocument();
-    expect(screen.getByText(/0 items selected across 0 products/i)).toBeInTheDocument();
+    expect(screen.getByText(/0 offers selected across 0 products/i)).toBeInTheDocument();
   });
 
   it('materializes an ALL product into an explicit subset when a variant is unchecked', async () => {
@@ -337,6 +337,35 @@ describe('OfferProductPickerModal', () => {
     // Confirming discards and closes.
     fireEvent.click(screen.getByRole('button', { name: /discard changes/i }));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the discard confirm on Escape and keeps the modal open on "Keep editing"', async () => {
+    const onClose = vi.fn();
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={onClose} />, {
+      apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]),
+    });
+    fireEvent.click(await screen.findByLabelText('Select Product p1'));
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(await screen.findByText('Discard changes?')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    // "Keep editing" dismisses the confirm without closing the modal.
+    fireEvent.click(screen.getByRole('button', { name: /keep editing/i }));
+    expect(screen.queryByText('Discard changes?')).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('shows a non-success EAN chip for a whole product whose loaded variants lack a barcode', async () => {
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+      apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]),
+    });
+    // Whole product picked but not yet expanded -> barcode state unknown.
+    fireEvent.click(await screen.findByLabelText('Select Product p1'));
+    expect(screen.getByText('not checked')).toBeInTheDocument();
+
+    // Expanding loads the variants (P1's variants carry no EAN/GTIN), so the
+    // whole-product chip and the need-EAN tile agree on the missing count.
+    fireEvent.click(screen.getByRole('button', { name: /expand product p1/i }));
+    expect(await screen.findByText('2 need EAN')).toBeInTheDocument();
   });
 
   it('closes directly on Cancel when nothing is selected', async () => {

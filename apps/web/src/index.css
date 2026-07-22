@@ -6305,11 +6305,6 @@ a.kpi-card:focus-visible {
   display: grid;
   gap: 2px;
   min-width: 0;
-  /* Product list scrolls inside the list region; search stays pinned at the
-     top and the pager at the bottom, so the modal keeps a fixed height. */
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
 }
 .offer-product-picker__prow {
   border-radius: var(--radius-md);
@@ -6385,7 +6380,7 @@ a.kpi-card:focus-visible {
   transform: rotate(90deg);
 }
 .offer-product-picker__prow--simple .offer-product-picker__chev {
-  visibility: hidden;
+  opacity: 0.4;
 }
 
 .offer-product-picker__vrows {

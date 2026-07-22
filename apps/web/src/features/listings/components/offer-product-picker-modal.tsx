@@ -37,7 +37,14 @@
  *
  * @module apps/web/src/features/listings/components
  */
-import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { Alert } from '../../../shared/ui/alert';
@@ -291,6 +298,13 @@ interface RailGroup {
   imageSrc: string | null;
   whole: boolean;
   totalVariants: number;
+  /**
+   * Barcode readiness for a whole-product pick, derived from loaded variant
+   * metadata; `null` for a subset pick (which shows per-variant chips instead).
+   * `loaded: false` means the product's variants have not been fetched yet, so
+   * the chip must read "not checked" rather than a confident "ready".
+   */
+  wholeEan: { loaded: boolean; needCount: number } | null;
   /** Selected variants for a subset pick; `null` for a whole-product pick. */
   selected: { id: string; label: string; hasBarcode: boolean }[] | null;
 }
@@ -313,6 +327,11 @@ export function OfferProductPickerModal({
   // selected then paged away still renders its name, image, and variant labels.
   const [productMeta, setProductMeta] = useState<Map<string, Product>>(new Map());
   const [variantMeta, setVariantMeta] = useState<Map<string, ProductVariant[]>>(new Map());
+
+  // Focus targets for the two-step wizard (<=1023px): moving focus on step
+  // change keeps keyboard / screen-reader users oriented.
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const railBackRef = useRef<HTMLButtonElement>(null);
 
   const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
 
@@ -480,12 +499,20 @@ export function OfferProductPickerModal({
       const totalVariants =
         variantCounts.get(productId) ?? meta?.variantCount ?? (variants.length || 1);
       if (entry === 'ALL') {
+        const loadedVariants = variantMeta.get(productId);
+        const wholeEan = loadedVariants
+          ? {
+              loaded: true,
+              needCount: loadedVariants.filter((v) => !variantHasBarcode(v)).length,
+            }
+          : { loaded: false, needCount: 0 };
         groups.push({
           productId,
           name: meta?.name ?? productId,
           imageSrc: firstImage(meta?.images),
           whole: true,
           totalVariants,
+          wholeEan,
           selected: null,
         });
         continue;
@@ -504,6 +531,7 @@ export function OfferProductPickerModal({
         imageSrc: firstImage(meta?.images),
         whole: false,
         totalVariants,
+        wholeEan: null,
         selected,
       });
     }
@@ -548,13 +576,22 @@ export function OfferProductPickerModal({
     else onClose();
   }, [selection.size, onClose]);
 
+  // Move focus to the region that just became active on a wizard step change
+  // (only meaningful <=1023px; on desktop `step` stays 'products'). Runs after
+  // the DOM updates so the focus target is present.
+  useEffect(() => {
+    if (!isOpen) return;
+    if (step === 'review') railBackRef.current?.focus();
+    else searchInputRef.current?.focus();
+  }, [step, isOpen]);
+
   if (!isOpen) return null;
 
   const pageEnd = Math.min(offset + PAGE_SIZE, total);
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
   const canContinue = selection.size > 0 && resolvedConnectionId !== null;
-  const selectionSummary = `${itemCount} ${itemCount === 1 ? 'item' : 'items'} selected across ${
+  const selectionSummary = `${itemCount} ${itemCount === 1 ? 'offer' : 'offers'} selected across ${
     selection.size
   } ${selection.size === 1 ? 'product' : 'products'}`;
 
@@ -570,16 +607,12 @@ export function OfferProductPickerModal({
           className="offer-product-picker"
           data-mstep={step === 'products' ? '1' : '2'}
           onEscapeKeyDown={(event) => {
-            if (selection.size > 0) {
-              event.preventDefault();
-              setDiscardOpen(true);
-            }
+            event.preventDefault();
+            requestClose();
           }}
           onInteractOutside={(event) => {
-            if (selection.size > 0) {
-              event.preventDefault();
-              setDiscardOpen(true);
-            }
+            event.preventDefault();
+            requestClose();
           }}
         >
           <button
@@ -590,6 +623,12 @@ export function OfferProductPickerModal({
           >
             ×
           </button>
+
+          <span className="sr-only" aria-live="polite">
+            {step === 'review'
+              ? 'Step 2 of 2: review your selection'
+              : 'Step 1 of 2: choose products'}
+          </span>
 
           <header className="offer-product-picker__head">
             <DialogTitle className="offer-product-picker__title">Create offers</DialogTitle>
@@ -603,6 +642,7 @@ export function OfferProductPickerModal({
             <section className="offer-product-picker__list-region" aria-label="Product picker">
               <div className="offer-product-picker__search">
                 <Input
+                  ref={searchInputRef}
                   value={searchInput}
                   onChange={(e) => {
                     setSearchInput(e.target.value);
@@ -638,7 +678,11 @@ export function OfferProductPickerModal({
                     {productsQuery.error.message}
                   </Alert>
                 ) : products.length === 0 ? (
-                  <p className="muted-text">No products match.</p>
+                  <p className="muted-text">
+                    {debouncedSearch.trim()
+                      ? `No products match "${debouncedSearch.trim()}".`
+                      : 'No products yet.'}
+                  </p>
                 ) : (
                   <ul className="offer-product-picker__prows">
                     {products.map((product) => (
@@ -668,41 +712,43 @@ export function OfferProductPickerModal({
                 ) : null}
               </div>
 
-              <div className="offer-product-picker__pager">
-                <span className="offer-product-picker__pager-count tabular">
-                  {offset + 1}–{pageEnd} of {total}
-                </span>
-                <div className="offer-product-picker__pager-nav">
-                  <Button
-                    tone="secondary"
-                    type="button"
-                    className="button--sm"
-                    aria-label="Previous page of products"
-                    disabled={offset === 0}
-                    onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}
-                  >
-                    Previous
-                  </Button>
-                  <span className="offer-product-picker__pager-page tabular">
-                    {currentPage} / {pageCount}
+              {total > 0 ? (
+                <div className="offer-product-picker__pager">
+                  <span className="offer-product-picker__pager-count tabular">
+                    {offset + 1}–{pageEnd} of {total}
                   </span>
-                  <Button
-                    tone="secondary"
-                    type="button"
-                    className="button--sm"
-                    aria-label="Next page of products"
-                    disabled={offset + PAGE_SIZE >= total}
-                    onClick={() => setOffset((o) => o + PAGE_SIZE)}
-                  >
-                    Next
-                  </Button>
+                  <div className="offer-product-picker__pager-nav">
+                    <Button
+                      tone="secondary"
+                      type="button"
+                      className="button--sm"
+                      aria-label="Previous page of products"
+                      disabled={offset === 0}
+                      onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}
+                    >
+                      Previous
+                    </Button>
+                    <span className="offer-product-picker__pager-page tabular">
+                      {currentPage} / {pageCount}
+                    </span>
+                    <Button
+                      tone="secondary"
+                      type="button"
+                      className="button--sm"
+                      aria-label="Next page of products"
+                      disabled={offset + PAGE_SIZE >= total}
+                      onClick={() => setOffset((o) => o + PAGE_SIZE)}
+                    >
+                      Next
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              ) : null}
 
               {/* Step-1 action bar - visible only on the <=1023px two-step layout. */}
               <div className="offer-product-picker__mstep-next">
                 <span className="offer-product-picker__mstep-count">
-                  <b>{itemCount}</b> {itemCount === 1 ? 'item' : 'items'} · {selection.size}{' '}
+                  <b>{itemCount}</b> {itemCount === 1 ? 'offer' : 'offers'} · {selection.size}{' '}
                   {selection.size === 1 ? 'product' : 'products'}
                 </span>
                 <Button type="button" onClick={() => setStep('review')}>
@@ -714,6 +760,7 @@ export function OfferProductPickerModal({
             <aside className="offer-product-picker__rail" aria-label="Selection">
               <div className="offer-product-picker__rail-head">
                 <button
+                  ref={railBackRef}
                   type="button"
                   className="offer-product-picker__rail-back"
                   aria-label="Back to products"
@@ -771,10 +818,22 @@ export function OfferProductPickerModal({
                           />
                           <b>{group.name}</b>
                           {group.whole ? (
-                            <span className="bulk-chip bulk-chip--success">
-                              <span className="bulk-chip__dot" />
-                              ready
-                            </span>
+                            group.wholeEan && !group.wholeEan.loaded ? (
+                              <span className="bulk-chip bulk-chip--neutral">
+                                <span className="bulk-chip__dot" />
+                                not checked
+                              </span>
+                            ) : group.wholeEan && group.wholeEan.needCount > 0 ? (
+                              <span className="bulk-chip bulk-chip--warning">
+                                <span className="bulk-chip__dot" />
+                                {group.wholeEan.needCount} need EAN
+                              </span>
+                            ) : (
+                              <span className="bulk-chip bulk-chip--success">
+                                <span className="bulk-chip__dot" />
+                                ready
+                              </span>
+                            )
                           ) : isPartial ? (
                             <span className="bulk-chip bulk-chip--warning">
                               <span className="bulk-chip__dot" />
@@ -903,8 +962,8 @@ export function OfferProductPickerModal({
                     // trigger and the button inside opts out of pointer events.
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <span className="offer-product-picker__continue-wrap">
-                          <Button type="button" disabled onClick={handleContinue}>
+                        <span className="offer-product-picker__continue-wrap" tabIndex={0}>
+                          <Button type="button" disabled>
                             Continue →
                           </Button>
                         </span>
