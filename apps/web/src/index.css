@@ -2517,6 +2517,34 @@ textarea,
   box-shadow: var(--shadow-focus);
 }
 
+/* Footer rail (bulk actions): a popover-style bar fixed to the viewport and
+   positioned by JS (see data-table.tsx) — anchored to the viewport bottom,
+   clamped to the table's top/bottom edges, and matched to the table's width, so
+   it stays on screen while the table is visible and never leaves the table's
+   box. Fixed (not sticky) because an ancestor's overflow would capture sticky.
+   top/left/width are set imperatively; the inner bar keeps its floating-card
+   look and drops its own positioning. */
+.data-table__footer-rail {
+  position: fixed;
+  z-index: 30;
+  /* The rail box spans the full table width and stays in the layout even when
+     the bar self-hides (count 0), so it must NOT catch pointer events itself —
+     otherwise an invisible fixed strip near the viewport bottom would swallow
+     clicks on the rows/pagination beneath it. Only the visible inner bar is a
+     click target. */
+  pointer-events: none;
+}
+.data-table__footer-rail .bulk-action-bar {
+  position: static;
+  margin: 0;
+  pointer-events: auto;
+}
+/* Re-assert inert when the bar has faded out at count 0 (equal specificity to
+   the rule above, so source order wins — keep this last). */
+.data-table__footer-rail .bulk-action-bar--hidden {
+  pointer-events: none;
+}
+
 /* Virtualized mode: the inner scroller owns both axes. */
 .data-table__container--virtual {
   overflow: visible;
@@ -2601,6 +2629,49 @@ textarea,
 
 .data-table tbody tr:last-child td {
   border-bottom: 0;
+}
+
+/* ── DataTable frozen leading columns (horizontal sticky) ────────────────
+   `stickyLeftColumns` pins the identity cluster (expander / checkbox / name)
+   to the left while the rest of the row scrolls under it. Frozen cells need
+   opaque backgrounds so scrolled content can't bleed through, and they mirror
+   the row hover/expanded tints (which are transparent bg-shell mixes over the
+   surface) with their opaque equivalents. The boundary itself stays inert
+   until content is actually hidden beneath it — see --sticky-scrolled. */
+.data-table__sticky-col {
+  position: sticky;
+  z-index: 2;
+  background: var(--bg-surface);
+}
+.data-table thead th.data-table__sticky-col {
+  /* Corner cells are sticky on both axes; keep them above the frozen body
+     column (2) and the plain sticky header (1). */
+  z-index: 3;
+  background: var(--bg-shell);
+}
+.data-table__row--linked:hover .data-table__sticky-col,
+.data-table__row--expandable:hover .data-table__sticky-col {
+  background: color-mix(in oklab, var(--bg-shell) 60%, var(--bg-surface));
+}
+.data-table__row--expanded .data-table__sticky-col {
+  background: color-mix(in oklab, var(--bg-shell) 45%, var(--bg-surface));
+}
+
+/* Boundary divider: no edge at rest (the frozen columns read as ordinary
+   columns), escalating to a soft signal-orange edge + a shadow cast rightward
+   only once the row is scrolled and content is actually hidden beneath it. */
+.data-table__sticky-col--last {
+  box-shadow: none;
+}
+.data-table--sticky-scrolled .data-table__sticky-col--last {
+  box-shadow:
+    inset -1px 0 0 color-mix(in oklab, var(--accent-primary) 42%, transparent),
+    6px 0 12px -6px color-mix(in oklab, var(--accent-primary) 22%, transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .data-table__sticky-col--last {
+    transition: box-shadow var(--duration-normal) var(--ease-out);
+  }
 }
 
 .data-table__row--linked {
@@ -2860,6 +2931,19 @@ textarea,
 }
 
 .data-table__detail {
+  /* Pin the expanded drawer to the viewport, not the (often wider,
+     horizontally-scrolled) table: it sticks to the left edge of the scroll
+     container and takes the container's visible width (--dt-visible-width,
+     published from JS). So the detail stays fully readable and never slides
+     under the frozen columns, however far the row columns are scrolled.
+     Applies to every expandable table, not just frozen-column ones: when a
+     table has no horizontal overflow (no `stickyLeftColumns`), `sticky; left:0`
+     resolves to the same position as static and `--dt-visible-width` equals the
+     table width, so the drawer renders identically to before — a safe no-op. */
+  position: sticky;
+  left: 0;
+  width: var(--dt-visible-width, 100%);
+  box-sizing: border-box;
   padding: var(--space-4) var(--space-4) var(--space-4) 2.75rem;
 }
 
