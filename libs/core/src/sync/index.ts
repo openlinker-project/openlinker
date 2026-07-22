@@ -72,6 +72,7 @@ export {
   MarketplaceOfferCreatePayloadV2,
   MarketplaceOfferPollCreationStatusPayloadV1,
   MarketplaceOfferStatusSyncPayloadV1,
+  MarketplaceOfferRefreshSnapshotPayloadV1,
   MarketplaceOfferStockRestorePayloadV1,
   MarketplaceShipmentStatusSyncPayloadV1,
   MarketplaceShipmentSyncByExternalIdPayloadV1,
@@ -79,6 +80,10 @@ export {
   OfferDescriptionTone,
 } from './domain/types/marketplace-job-payloads.types';
 export { OfferDescriptionToneValues } from './domain/types/marketplace-job-payloads.types';
+export {
+  OFFER_REFRESH_SNAPSHOT_DELAYS_SECONDS,
+  OFFER_REFRESH_SNAPSHOT_MAX_ATTEMPTS,
+} from './domain/types/marketplace-job-payloads.types';
 export {
   MasterProductSyncByExternalIdPayloadV1,
   MasterInventorySyncByExternalIdPayloadV1,
