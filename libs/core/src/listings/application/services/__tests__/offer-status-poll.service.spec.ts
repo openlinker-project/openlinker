@@ -218,7 +218,12 @@ describe('OfferStatusPollService', () => {
 
       expect(result.outcome).toBe('ok');
       expect(records.updateStatus).toHaveBeenCalledWith(RECORD_ID, 'draft', null);
-      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      // No further creation poll is enqueued, but a post-terminal snapshot
+      // reconcile is scheduled to catch a late Allegro activation (#1760).
+      expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
+      expect(syncJobs.schedule).toHaveBeenCalledWith(
+        expect.objectContaining({ jobType: 'marketplace.offer.refreshSnapshot' }),
+      );
     });
 
     it('INACTIVE with errors → record.status=failed (with errors), outcome=business_failure', async () => {
@@ -355,7 +360,11 @@ describe('OfferStatusPollService', () => {
       expect(recordId).toBe(RECORD_ID);
       expect(status).toBe('failed');
       expect(errors?.[0]).toMatchObject({ code: 'POLL_TIMEOUT' });
-      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      // No iteration-13 poll is enqueued; only a post-terminal snapshot
+      // reconcile is scheduled (#1760). Assert no further poll job specifically.
+      const scheduledJobTypes = syncJobs.schedule.mock.calls.map(([arg]) => arg.jobType);
+      expect(scheduledJobTypes).not.toContain('marketplace.offer.pollCreationStatus');
+      expect(scheduledJobTypes).toContain('marketplace.offer.refreshSnapshot');
     });
 
     it('pollAttempt > maxAttempts on entry (forward guard) → POLL_TIMEOUT, no marketplace call', async () => {

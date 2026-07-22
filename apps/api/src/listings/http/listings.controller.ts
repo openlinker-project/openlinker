@@ -42,11 +42,15 @@ import {
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   OFFER_MAPPING_REPOSITORY_TOKEN,
+  OFFER_STATUS_READ_SERVICE_TOKEN,
+  OFFER_STATUS_SYNC_SERVICE_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
   RESPONSIBLE_PRODUCER_SERVICE_TOKEN,
   DELIVERY_PRICE_LIST_SERVICE_TOKEN,
   ICategoryResolutionService,
   IOfferCreationEnqueueService,
+  IOfferStatusReadService,
+  IOfferStatusSyncService,
   ISellerPoliciesService,
   IResponsibleProducerService,
   IDeliveryPriceListService,
@@ -58,6 +62,7 @@ import type {
   CategoryPathSegment,
   OfferCreationRecord,
   OfferManagerPort,
+  OfferStatusSnapshot,
 } from '@openlinker/core/listings';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IIntegrationsService } from '@openlinker/core/integrations';
@@ -79,6 +84,11 @@ import {
 import { CreateOfferDto } from './dto/create-offer.dto';
 import { CreateOfferResponseDto } from './dto/create-offer-response.dto';
 import { OfferCreationStatusResponseDto } from './dto/offer-creation-status-response.dto';
+import {
+  OfferPublicationStatusResponseDto,
+  RefreshOfferPublicationStatusDto,
+  RefreshOfferPublicationStatusResponseDto,
+} from './dto/offer-publication-status-response.dto';
 import { SellerPoliciesResponseDto } from './dto/seller-policies-response.dto';
 import { ResponsibleProducersResponseDto } from './dto/responsible-producers-response.dto';
 import { DeliveryPriceListsResponseDto } from './dto/delivery-price-lists-response.dto';
@@ -121,7 +131,11 @@ export class ListingsController {
     @Inject(PRODUCT_VARIANT_REPOSITORY_TOKEN)
     private readonly productVariantRepository: ProductVariantRepositoryPort,
     @Inject(CATEGORY_RESOLUTION_SERVICE_TOKEN)
-    private readonly categoryResolution: ICategoryResolutionService
+    private readonly categoryResolution: ICategoryResolutionService,
+    @Inject(OFFER_STATUS_READ_SERVICE_TOKEN)
+    private readonly offerStatusRead: IOfferStatusReadService,
+    @Inject(OFFER_STATUS_SYNC_SERVICE_TOKEN)
+    private readonly offerStatusSync: IOfferStatusSyncService
   ) {}
 
   @Get()
@@ -407,6 +421,56 @@ export class ListingsController {
       throw new NotFoundException(`Offer creation record not found: ${offerCreationRecordId}`);
     }
     return this.toOfferCreationStatusDto(record);
+  }
+
+  @Roles('admin', 'operator', 'viewer')
+  @Get('products/:productId/offer-status')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'productId', description: 'Internal OL product id' })
+  @ApiOperation({
+    summary: 'Live marketplace publication status of a product’s offers',
+    description:
+      'Reads the persisted offer_status_snapshots for every offer mapped to a variant of the product (#1760). Steady-state live status, distinct from the one-shot creation lifecycle.',
+  })
+  @ApiResponse({ status: 200, type: [OfferPublicationStatusResponseDto] })
+  async getProductOfferStatus(
+    @Param('productId') productId: string,
+    @Query('connectionId') connectionId?: string
+  ): Promise<OfferPublicationStatusResponseDto[]> {
+    const snapshots = await this.offerStatusRead.getPublicationStatusForProduct(
+      productId,
+      connectionId
+    );
+    return snapshots.map((snapshot) => this.toOfferPublicationStatusDto(snapshot));
+  }
+
+  @Roles('admin', 'operator')
+  @Post('connections/:connectionId/offers/:externalOfferId/refresh-status')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
+  @ApiParam({ name: 'externalOfferId', description: 'Marketplace-native offer id' })
+  @ApiOperation({
+    summary: 'Force-refresh one offer’s live publication status',
+    description:
+      'Reads the offer’s live marketplace status now and upserts its snapshot (#1760). Returns 404 when the connection cannot read offer status or the offer is not found on the marketplace.',
+  })
+  @ApiResponse({ status: 200, type: RefreshOfferPublicationStatusResponseDto })
+  @ApiResponse({ status: 404, description: 'Status unavailable for this offer/connection' })
+  async refreshOfferStatus(
+    @Param('connectionId') connectionId: string,
+    @Param('externalOfferId') externalOfferId: string,
+    @Body() body: RefreshOfferPublicationStatusDto
+  ): Promise<RefreshOfferPublicationStatusResponseDto> {
+    const publicationStatus = await this.offerStatusSync.refreshOne(connectionId, {
+      externalOfferId,
+      internalVariantId: body.internalVariantId,
+    });
+    if (publicationStatus === null) {
+      throw new NotFoundException(
+        `Live status unavailable for offer ${externalOfferId} on connection ${connectionId}`
+      );
+    }
+    return { publicationStatus };
   }
 
   @Roles('admin', 'operator', 'viewer')
@@ -875,6 +939,22 @@ export class ListingsController {
       // Pass the snapshot through untouched. It's already the on-wire shape
       // (plain object in jsonb); no date fields or instance conversions to run.
       request: record.request,
+    };
+  }
+
+  private toOfferPublicationStatusDto(
+    snapshot: OfferStatusSnapshot
+  ): OfferPublicationStatusResponseDto {
+    return {
+      connectionId: snapshot.connectionId,
+      externalOfferId: snapshot.externalOfferId,
+      internalVariantId: snapshot.internalVariantId,
+      publicationStatus: snapshot.publicationStatus,
+      validationMessages: snapshot.statusDetails?.validationMessages,
+      lastStatusSyncedAt:
+        snapshot.lastStatusSyncedAt instanceof Date
+          ? snapshot.lastStatusSyncedAt.toISOString()
+          : snapshot.lastStatusSyncedAt,
     };
   }
 }

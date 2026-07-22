@@ -18,6 +18,7 @@ import { MarketplaceOfferCreateHandler } from './marketplace-offer-create.handle
 import { MarketplaceOfferPollCreationStatusHandler } from './marketplace-offer-poll-creation-status.handler';
 import { MarketplaceOffersSyncHandler } from './marketplace-offers-sync.handler';
 import { MarketplaceOfferStatusSyncHandler } from './marketplace-offer-status-sync.handler';
+import { MarketplaceOfferRefreshSnapshotHandler } from './marketplace-offer-refresh-snapshot.handler';
 import { MarketplaceOfferStockRestoreHandler } from './marketplace-offer-stock-restore.handler';
 import { MarketplaceShipmentStatusSyncHandler } from './marketplace-shipment-status-sync.handler';
 import { MarketplaceShipmentSyncByExternalIdHandler } from './marketplace-shipment-sync-by-external-id.handler';
@@ -48,6 +49,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceOfferPollCreationStatusHandler: MarketplaceOfferPollCreationStatusHandler,
     private readonly marketplaceOffersSyncHandler: MarketplaceOffersSyncHandler,
     private readonly marketplaceOfferStatusSyncHandler: MarketplaceOfferStatusSyncHandler,
+    private readonly marketplaceOfferRefreshSnapshotHandler: MarketplaceOfferRefreshSnapshotHandler,
     private readonly marketplaceOfferStockRestoreHandler: MarketplaceOfferStockRestoreHandler,
     private readonly marketplaceShipmentStatusSyncHandler: MarketplaceShipmentStatusSyncHandler,
     private readonly marketplaceShipmentSyncByExternalIdHandler: MarketplaceShipmentSyncByExternalIdHandler,
@@ -87,6 +89,10 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'marketplace.offer.statusSync',
       this.marketplaceOfferStatusSyncHandler
+    );
+    this.handlerRegistry.register(
+      'marketplace.offer.refreshSnapshot',
+      this.marketplaceOfferRefreshSnapshotHandler
     );
     this.handlerRegistry.register(
       'marketplace.offer.stockRestore',
