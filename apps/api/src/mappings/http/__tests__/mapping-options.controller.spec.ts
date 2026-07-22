@@ -7,8 +7,9 @@
  *   - 501: adapter resolved but doesn't implement the sub-capability
  *   - error propagation when getCapabilityAdapter throws
  *   - categories paths delegate to categoriesCacheService
- *   - #479 partner resolution: URL-is-Allegro / URL-is-PS / no pairing /
- *     ambiguous pairing / unsupported platform branches
+ *   - #479/#1738 partner resolution: pairing-first + capability-checked (no
+ *     platform literals) — source-URL / master-URL / no pairing / ambiguous
+ *     multi-source / capability-missing branches, including Erli as a source
  *
  * @module apps/api/src/mappings/http/__tests__
  */
@@ -43,6 +44,14 @@ describe('MappingOptionsController', () => {
 
   const ALLEGRO_CONNECTION_ID = 'conn-allegro-1';
   const PRESTASHOP_CONNECTION_ID = 'conn-ps-1';
+  const ERLI_CONNECTION_ID = 'conn-erli-1';
+
+  /**
+   * Advertised capabilities per connection id, served through the
+   * metadata-only `getAdapter` the #1738 resolution probes. Tests may extend
+   * or override entries per case.
+   */
+  let capabilitiesById: Record<string, string[]>;
 
   const fullDestinationAdapter: OrderProcessorManagerPort & DestinationOptionsReader = {
     createOrder: jest.fn(),
@@ -99,10 +108,38 @@ describe('MappingOptionsController', () => {
     id: PRESTASHOP_CONNECTION_ID,
     platformType: 'prestashop',
   });
+  const erliConnection = makeConnection({
+    id: ERLI_CONNECTION_ID,
+    platformType: 'erli',
+    config: { masterCatalogConnectionId: PRESTASHOP_CONNECTION_ID },
+  });
 
   beforeEach(async () => {
+    capabilitiesById = {
+      [ALLEGRO_CONNECTION_ID]: ['OrderSource', 'OfferManager'],
+      [ERLI_CONNECTION_ID]: ['OrderSource', 'OfferManager'],
+      [PRESTASHOP_CONNECTION_ID]: ['ProductMaster', 'OrderProcessorManager', 'OrderSource'],
+    };
     integrationsService = {
       getCapabilityAdapter: jest.fn(),
+      // Metadata-only capability probe (#1738): unknown ids reject, mirroring
+      // ConnectionNotFoundException from the real service.
+      getAdapter: jest.fn((id: string) => {
+        const capabilities = capabilitiesById[id];
+        if (!capabilities) {
+          return Promise.reject(new Error(`Connection not found: ${id}`));
+        }
+        return Promise.resolve({
+          connection: makeConnection({ id, platformType: 'test' }),
+          metadata: {
+            adapterKey: 'test.v1',
+            platformType: 'test',
+            supportedCapabilities: capabilities,
+            displayName: 'Test',
+            version: '1.0.0',
+          },
+        });
+      }),
     } as unknown as jest.Mocked<IIntegrationsService>;
     categoriesCache = {
       getPrestashopCategories: jest.fn(),
@@ -208,8 +245,8 @@ describe('MappingOptionsController', () => {
     });
   });
 
-  describe('partner resolution (#479)', () => {
-    it('URL is PrestaShop, side=destination → resolves to URL connection', async () => {
+  describe('partner resolution (#479 / #1738)', () => {
+    it('URL is PrestaShop (unpaired master), side=destination → resolves to URL connection', async () => {
       connectionPort.get.mockResolvedValueOnce(prestashopConnection);
       integrationsService.getCapabilityAdapter.mockResolvedValueOnce(fullDestinationAdapter);
 
@@ -221,41 +258,73 @@ describe('MappingOptionsController', () => {
       );
     });
 
-    it('URL is PrestaShop, side=source → reverse-resolves the paired Allegro', async () => {
+    it('URL is PrestaShop, side=source → reverse-resolves the single paired OrderSource connection', async () => {
       connectionPort.get.mockResolvedValueOnce(prestashopConnection);
       connectionPort.list.mockResolvedValueOnce([allegroConnection]);
       integrationsService.getCapabilityAdapter.mockResolvedValueOnce(fullSourceAdapter);
 
       await controller.getSourceOrderStatuses(PRESTASHOP_CONNECTION_ID);
 
-      // Reverse lookup filters Allegro connections to active ones.
-      expect(connectionPort.list).toHaveBeenCalledWith({
-        platformType: 'allegro',
-        status: 'active',
-      });
+      // Reverse lookup is capability-driven, not platform-filtered (#1738).
+      expect(connectionPort.list).toHaveBeenCalledWith({ status: 'active' });
       expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
         ALLEGRO_CONNECTION_ID,
         'OrderSource'
       );
     });
 
-    it('URL is Allegro with no masterCatalogConnectionId → 400 with operator message', async () => {
+    it('URL is Erli (paired source), side=source → resolves to the URL connection itself', async () => {
+      connectionPort.get.mockResolvedValueOnce(erliConnection);
+      integrationsService.getCapabilityAdapter.mockResolvedValueOnce(fullSourceAdapter);
+
+      await controller.getSourceDeliveryMethods(ERLI_CONNECTION_ID);
+
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
+        ERLI_CONNECTION_ID,
+        'OrderSource'
+      );
+    });
+
+    it('URL is Erli (paired source), side=destination → resolves to the paired master', async () => {
+      connectionPort.get.mockResolvedValueOnce(erliConnection);
+      integrationsService.getCapabilityAdapter.mockResolvedValueOnce(fullDestinationAdapter);
+
+      await controller.getDestinationCarriers(ERLI_CONNECTION_ID);
+
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
+        PRESTASHOP_CONNECTION_ID,
+        'OrderProcessorManager'
+      );
+    });
+
+    it('URL is a paired connection without OrderSource, side=source → 400 capability message', async () => {
+      capabilitiesById[ERLI_CONNECTION_ID] = ['OfferManager'];
+      connectionPort.get.mockResolvedValueOnce(erliConnection);
+
+      const promise = controller.getSourceDeliveryMethods(ERLI_CONNECTION_ID);
+      await expect(promise).rejects.toBeInstanceOf(BadRequestException);
+      await expect(promise).rejects.toThrow(/does not support OrderSource/);
+      expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
+    });
+
+    it('URL is an unpaired connection without OrderProcessorManager, side=destination → 400 capability message', async () => {
       const orphanedAllegro = makeConnection({
         id: 'orphan-allegro',
         platformType: 'allegro',
         config: {},
       });
+      capabilitiesById['orphan-allegro'] = ['OrderSource', 'OfferManager'];
       connectionPort.get.mockResolvedValueOnce(orphanedAllegro);
 
       const promise = controller.getDestinationCarriers('orphan-allegro');
       await expect(promise).rejects.toBeInstanceOf(BadRequestException);
-      await expect(promise).rejects.toThrow(/no destination paired/);
+      await expect(promise).rejects.toThrow(/does not support OrderProcessorManager/);
       expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
     });
 
-    it('URL is PrestaShop with zero paired Allegro connections → 400 with operator message', async () => {
+    it('URL is PrestaShop with zero paired source connections → 400 with operator message', async () => {
       connectionPort.get.mockResolvedValueOnce(prestashopConnection);
-      // No Allegro connection points at this PS.
+      // Nothing points at this PS.
       connectionPort.list.mockResolvedValueOnce([]);
 
       const promise = controller.getSourceOrderStatuses(PRESTASHOP_CONNECTION_ID);
@@ -264,46 +333,49 @@ describe('MappingOptionsController', () => {
       expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
     });
 
-    it('URL is PrestaShop with multiple paired Allegro connections → 400 listing the conflicting ids', async () => {
-      const allegroA = makeConnection({
-        id: 'allegro-a',
-        platformType: 'allegro',
-        config: { masterCatalogConnectionId: PRESTASHOP_CONNECTION_ID },
-      });
-      const allegroB = makeConnection({
-        id: 'allegro-b',
-        platformType: 'allegro',
-        config: { masterCatalogConnectionId: PRESTASHOP_CONNECTION_ID },
-      });
+    it('URL is PrestaShop with multiple paired OrderSource connections → 400 listing the conflicting ids', async () => {
       connectionPort.get.mockResolvedValueOnce(prestashopConnection);
-      connectionPort.list.mockResolvedValueOnce([allegroA, allegroB]);
+      connectionPort.list.mockResolvedValueOnce([allegroConnection, erliConnection]);
 
       const promise = controller.getSourceOrderStatuses(PRESTASHOP_CONNECTION_ID);
       await expect(promise).rejects.toBeInstanceOf(BadRequestException);
       await expect(promise).rejects.toThrow(
-        /multiple paired Allegro connections \(allegro-a, allegro-b\)/
+        new RegExp(
+          `multiple paired source connections \\(${ALLEGRO_CONNECTION_ID}, ${ERLI_CONNECTION_ID}\\)`
+        )
       );
     });
 
-    it('URL connection has unsupported platform → 400', async () => {
-      const shopify = makeConnection({ id: 'shopify-1', platformType: 'shopify' });
-      connectionPort.get.mockResolvedValueOnce(shopify);
+    it('URL is PrestaShop, side=source: a paired non-OrderSource connection is not counted', async () => {
+      const pairedCarrier = makeConnection({
+        id: 'conn-inpost-1',
+        platformType: 'inpost',
+        config: { masterCatalogConnectionId: PRESTASHOP_CONNECTION_ID },
+      });
+      capabilitiesById['conn-inpost-1'] = ['ShippingProviderManager'];
+      connectionPort.get.mockResolvedValueOnce(prestashopConnection);
+      connectionPort.list.mockResolvedValueOnce([pairedCarrier, allegroConnection]);
+      integrationsService.getCapabilityAdapter.mockResolvedValueOnce(fullSourceAdapter);
 
-      const promise = controller.getDestinationCarriers('shopify-1');
-      await expect(promise).rejects.toBeInstanceOf(BadRequestException);
-      await expect(promise).rejects.toThrow(/unsupported platform/);
+      await controller.getSourceOrderStatuses(PRESTASHOP_CONNECTION_ID);
+
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
+        ALLEGRO_CONNECTION_ID,
+        'OrderSource'
+      );
     });
 
-    it('URL is PrestaShop, side=source: ignores Allegro connections paired to other PS instances', async () => {
+    it('URL is PrestaShop, side=source: ignores connections paired to other masters', async () => {
       const otherPaired = makeConnection({
         id: 'allegro-other',
         platformType: 'allegro',
         config: { masterCatalogConnectionId: 'some-other-ps' },
       });
+      capabilitiesById['allegro-other'] = ['OrderSource'];
       connectionPort.get.mockResolvedValueOnce(prestashopConnection);
       connectionPort.list.mockResolvedValueOnce([otherPaired]);
 
-      // Same as zero-paired branch: 400 because no Allegro points at *this* PS.
+      // Same as zero-paired branch: 400 because nothing points at *this* PS.
       await expect(
         controller.getSourceOrderStatuses(PRESTASHOP_CONNECTION_ID)
       ).rejects.toBeInstanceOf(BadRequestException);

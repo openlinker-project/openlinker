@@ -24,6 +24,7 @@ import {
   OfferNotFoundOnMarketplaceException,
   isCatalogProductReader,
   isCategoryBrowser,
+  isCategoryPathReader,
   isEanCategoryMatcher,
   isOfferSmartClassificationReader,
   isOfferStatusReader,
@@ -718,17 +719,15 @@ describe('AllegroOfferManagerAdapter', () => {
     });
   });
 
-  describe('getCategoryPath', () => {
-    it('walks the parent chain and returns nodes ROOT -> LEAF', async () => {
-      // Leaf first, then each ancestor, then root (parent: null).
+  describe('fetchCategoryPath (#1752)', () => {
+    it('declares the CategoryPathReader capability via the runtime guard', () => {
+      expect(isCategoryPathReader(adapter)).toBe(true);
+    });
+
+    it('walks up parent.id and returns the breadcrumb root -> leaf', async () => {
       httpClient.get
         .mockResolvedValueOnce({
-          data: { id: '10', name: 'Smartphones', parent: { id: '2' }, leaf: true },
-          status: 200,
-          headers: {},
-        })
-        .mockResolvedValueOnce({
-          data: { id: '2', name: 'Phones', parent: { id: '1' }, leaf: false },
+          data: { id: '10', name: 'Smartphones', parent: { id: '1' }, leaf: true },
           status: 200,
           headers: {},
         })
@@ -738,56 +737,91 @@ describe('AllegroOfferManagerAdapter', () => {
           headers: {},
         });
 
-      const result = await adapter.getCategoryPath('10');
+      const result = await adapter.fetchCategoryPath('10');
 
       expect(result).toEqual([
         { id: '1', name: 'Electronics' },
-        { id: '2', name: 'Phones' },
         { id: '10', name: 'Smartphones' },
       ]);
       expect(httpClient.get).toHaveBeenNthCalledWith(1, '/sale/categories/10');
-      expect(httpClient.get).toHaveBeenNthCalledWith(2, '/sale/categories/2');
-      expect(httpClient.get).toHaveBeenNthCalledWith(3, '/sale/categories/1');
+      expect(httpClient.get).toHaveBeenNthCalledWith(2, '/sale/categories/1');
     });
 
-    it('returns a single node for a root category', async () => {
+    it('returns a single segment for a root-level category', async () => {
       httpClient.get.mockResolvedValueOnce({
         data: { id: '1', name: 'Electronics', parent: null, leaf: false },
         status: 200,
         headers: {},
       });
 
-      const result = await adapter.getCategoryPath('1');
+      const result = await adapter.fetchCategoryPath('1');
 
       expect(result).toEqual([{ id: '1', name: 'Electronics' }]);
+      expect(httpClient.get).toHaveBeenCalledTimes(1);
     });
 
-    it('returns an empty array when the queried id 404s', async () => {
-      httpClient.get.mockRejectedValueOnce(new AllegroApiException('Not found', 404));
+    it('translates Allegro 404 to CategoryNotFoundException', async () => {
+      httpClient.get.mockRejectedValueOnce(new AllegroApiException('not found', 404));
 
-      const result = await adapter.getCategoryPath('missing');
-
-      expect(result).toEqual([]);
+      await expect(adapter.fetchCategoryPath('unknown')).rejects.toBeInstanceOf(
+        CategoryNotFoundException
+      );
     });
 
-    it('rethrows non-404 upstream errors', async () => {
-      httpClient.get.mockRejectedValueOnce(new AllegroApiException('Server error', 500));
+    it('returns the partial breadcrumb when an ANCESTOR 404s mid-walk', async () => {
+      // Leaf resolves and points at a parent that no longer exists.
+      httpClient.get
+        .mockResolvedValueOnce({
+          data: { id: '10', name: 'Smartphones', parent: { id: '99' }, leaf: true },
+          status: 200,
+          headers: {},
+        })
+        .mockRejectedValueOnce(new AllegroApiException('gone', 404));
 
-      await expect(adapter.getCategoryPath('10')).rejects.toBeInstanceOf(AllegroApiException);
+      const result = await adapter.fetchCategoryPath('10');
+
+      // The leaf survives; the missing ancestor just truncates the breadcrumb.
+      expect(result).toEqual([{ id: '10', name: 'Smartphones' }]);
     });
 
-    it('caps the walk at the max depth on a malformed self-referential parent', async () => {
-      // A category whose parent points at itself would loop forever without the cap.
+    it('stops at the depth cap / cyclic parent chain instead of looping forever', async () => {
+      // A node whose parent points back at itself would loop without the guard.
       httpClient.get.mockResolvedValue({
         data: { id: '10', name: 'Loop', parent: { id: '10' }, leaf: true },
         status: 200,
         headers: {},
       });
 
-      const result = await adapter.getCategoryPath('10');
+      const result = await adapter.fetchCategoryPath('10');
 
-      expect(result).toHaveLength(12);
-      expect(httpClient.get).toHaveBeenCalledTimes(12);
+      expect(result).toEqual([{ id: '10', name: 'Loop' }]);
+      // `seen` short-circuits the self-reference after the first fetch.
+      expect(httpClient.get).toHaveBeenCalledTimes(1);
+    });
+
+    it('serves a category node from cache without re-hitting Allegro', async () => {
+      const cache: jest.Mocked<CachePort> = {
+        get: jest.fn(),
+        set: jest.fn(),
+        delete: jest.fn(),
+      };
+      const adapterWithCache = new AllegroOfferManagerAdapter(
+        connectionId,
+        httpClient,
+        uploadHttpClient,
+        identifierMapping,
+        connection,
+        undefined,
+        undefined,
+        cache
+      );
+      cache.get.mockResolvedValueOnce({ id: '1', name: 'Electronics', parent: null, leaf: false });
+
+      const result = await adapterWithCache.fetchCategoryPath('1');
+
+      expect(result).toEqual([{ id: '1', name: 'Electronics' }]);
+      expect(cache.get).toHaveBeenCalledWith('allegro:category-node:1');
+      expect(httpClient.get).not.toHaveBeenCalled();
     });
   });
 
@@ -968,7 +1002,8 @@ describe('AllegroOfferManagerAdapter', () => {
         availableQuantity: 3,
         status: 'ACTIVE',
         category: { id: '12345' },
-        marketplaceUrl: 'https://allegro.pl.allegrosandbox.pl/oferta/7781562863',
+        marketplaceUrl:
+          'https://allegro.pl.allegrosandbox.pl/oferta/vintage-camera-lens-50mm-f-1-4-7781562863',
         endsAt: '2026-05-15T12:00:00Z',
       });
     });
@@ -997,9 +1032,46 @@ describe('AllegroOfferManagerAdapter', () => {
         availableQuantity: 0,
         status: 'UNKNOWN',
         category: undefined,
-        marketplaceUrl: 'https://allegro.pl/oferta/7781562864',
+        marketplaceUrl: 'https://allegro.pl/oferta/sparse-offer-7781562864',
         endsAt: undefined,
       });
+    });
+
+    it('should fall back to an id-only offer URL when the offer has no name', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          id: '7781562867',
+          sellingMode: { price: { amount: '10.00', currency: 'PLN' } },
+          stock: { available: 0 },
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const subject = buildAdapterWithStorefront('https://allegro.pl');
+      const result = await subject.getOffer({ externalId: '7781562867' });
+
+      expect(result.marketplaceUrl).toBe('https://allegro.pl/oferta/7781562867');
+    });
+
+    it('should slug Polish stroke letters (ł/Ł) rather than dropping them', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          id: '7781562868',
+          name: 'Słuchawki Łódź',
+          sellingMode: { price: { amount: '10.00', currency: 'PLN' } },
+          stock: { available: 1 },
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const subject = buildAdapterWithStorefront('https://allegro.pl');
+      const result = await subject.getOffer({ externalId: '7781562868' });
+
+      // ł/Ł are single codepoints NFD does not decompose; they must map to `l`
+      // (not vanish, which would yield `s-uchawki`).
+      expect(result.marketplaceUrl).toBe('https://allegro.pl/oferta/sluchawki-lodz-7781562868');
     });
 
     it('should map offer-section and product-section parameters with productSet linkage (#1482)', async () => {

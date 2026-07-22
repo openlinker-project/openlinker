@@ -39,6 +39,14 @@ export class ProductOrmEntity {
   @Column({ type: 'jsonb', nullable: true })
   categories!: string[] | null;
 
+  /**
+   * Source-platform product-level attributes (#1752) — `{ name, value }[]`
+   * (e.g. Brand / Material), distinct from variant-distinguishing attributes.
+   * Null until a product sync populates it.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  features!: { name: string; value: string }[] | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

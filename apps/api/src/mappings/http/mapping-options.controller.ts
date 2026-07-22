@@ -73,16 +73,14 @@ import { ICategoriesCacheService } from '../../categories/categories-cache.servi
 import { CATEGORIES_CACHE_SERVICE_TOKEN } from '../../categories/categories.tokens';
 
 /**
- * Mapping-page partner platforms. The mappings UI is Allegro→PrestaShop only
- * today (FE labels say "Allegro status" → "PrestaShop status"). When a third
- * platform pair (Shopify→PS, etc.) gets added, this branching grows; for now
- * the literals match the de-facto convention used elsewhere in the codebase
- * (`Connection.platformType` is `string` per connection.types.ts:15 — once a
- * `PlatformTypeValues as const` lands per engineering-standards.md, swap
- * these literals for the constant references).
+ * Capabilities the resolved partner must advertise per side (#1738). Checked
+ * against adapter metadata (a metadata-only `getAdapter` lookup) so the
+ * resolution is capability-driven — no `platformType` literals — and a
+ * connection that can never serve the requested side fails with a clean 400
+ * instead of a downstream capability-gate error.
  */
-const PLATFORM_ALLEGRO = 'allegro';
-const PLATFORM_PRESTASHOP = 'prestashop';
+const SOURCE_CAPABILITY = 'OrderSource';
+const DESTINATION_CAPABILITY = 'OrderProcessorManager';
 
 type ResolvedSide = 'source' | 'destination';
 
@@ -274,24 +272,23 @@ export class MappingOptionsController {
 
   /**
    * Map the URL connection to the connection that actually carries the
-   * requested side's capability. The mappings page is hard-coded
-   * Allegro→PrestaShop today; the pairing is stored on the Allegro
-   * connection's `config.masterCatalogConnectionId` (set during OAuth).
+   * requested side's capability. Pairing-first + capability-checked (#1738 —
+   * previously a hard-coded Allegro→PrestaShop platform switch): the pairing
+   * key is `config.masterCatalogConnectionId`, stamped on every marketplace /
+   * shop connection that points at a master (Allegro, Erli, WooCommerce).
    *
    * Resolution table:
    *
-   * | URL platform | side          | Returns                                                |
-   * |--------------|---------------|--------------------------------------------------------|
-   * | allegro      | source        | URL connection                                         |
-   * | allegro      | destination   | `config.masterCatalogConnectionId` on URL connection   |
-   * | prestashop   | source        | the active Allegro whose `masterCatalogConnectionId` matches the URL id |
-   * | prestashop   | destination   | URL connection                                         |
-   * | other        | either        | 400 (unsupported platform)                             |
+   * | URL connection            | side        | Returns                                            |
+   * |---------------------------|-------------|-----------------------------------------------------|
+   * | has pairing key (source)  | source      | URL connection (must advertise OrderSource)         |
+   * | has pairing key (source)  | destination | the paired master from the pairing key              |
+   * | no pairing key (master)   | source      | the single active OrderSource paired at the URL id  |
+   * | no pairing key (master)   | destination | URL connection (must advertise OrderProcessorManager) |
    *
-   * Throws `BadRequestException` (NOT 501/404) for "no partner configured"
-   * and "ambiguous partner" — these are operator-input issues, not server
-   * faults, and the FE alert should point the operator at the connection-
-   * edit page rather than leaking internal capability terminology.
+   * Throws `BadRequestException` (NOT 501/404) for "no partner configured",
+   * "ambiguous partner", and "capability missing" — operator-input issues, not
+   * server faults; the FE alert should point at the connection-edit page.
    */
   private async resolvePartnerConnectionId(
     urlConnectionId: string,
@@ -300,59 +297,88 @@ export class MappingOptionsController {
     // ConnectionPort.get throws ConnectionNotFoundException for unknown ids;
     // that propagates through Nest as a 404 — existing behaviour.
     const url = await this.connectionPort.get(urlConnectionId);
+    const pairedMasterId = readMasterCatalogConnectionId(url);
 
-    if (url.platformType === PLATFORM_ALLEGRO) {
-      if (side === 'source') {
+    if (side === 'source') {
+      if (pairedMasterId) {
+        // The URL connection points at a master, so it IS the order source.
+        await this.assertAdvertisesCapability(url, SOURCE_CAPABILITY);
         return url.id;
       }
-      const partnerId = readMasterCatalogConnectionId(url);
-      if (!partnerId) {
-        throw new BadRequestException(
-          `Connection "${url.name}" (${shortId(url.id)}) has no destination paired. ` +
-            `Set the catalog connection on the connection-edit page and try again.`
-        );
-      }
-      return partnerId;
-    }
-
-    if (url.platformType === PLATFORM_PRESTASHOP) {
-      if (side === 'destination') {
-        return url.id;
-      }
-      // Reverse lookup: find the Allegro connection that points at this PS
-      // via `config.masterCatalogConnectionId`. Filter by `status: 'active'`
-      // because a disabled or errored Allegro pairing isn't a real partner —
-      // the mappings page would then call `getCapabilityAdapter` against it
-      // and fail downstream anyway.
+      // The URL connection is a master/destination: reverse-lookup the single
+      // active source paired to it. Filter by `status: 'active'` because a
+      // disabled pairing isn't a real partner, and by advertised capability so
+      // a paired non-source (another shop syncing the same catalog) is never
+      // offered as the source.
       // TODO(#479): when `ConnectionFilters` grows a `configKeyEquals` shape,
-      // push the filter into the repository instead of fetching all active
-      // Allegro connections and filtering in code.
-      const candidates = await this.connectionPort.list({
-        platformType: PLATFORM_ALLEGRO,
-        status: 'active',
-      });
-      const paired = candidates.filter((c) => readMasterCatalogConnectionId(c) === url.id);
+      // push the pairing filter into the repository.
+      const candidates = await this.connectionPort.list({ status: 'active' });
+      const pairedHere = candidates.filter((c) => readMasterCatalogConnectionId(c) === url.id);
+      const paired: Connection[] = [];
+      for (const candidate of pairedHere) {
+        if (await this.advertisesCapability(candidate.id, SOURCE_CAPABILITY)) {
+          paired.push(candidate);
+        }
+      }
       if (paired.length === 0) {
         throw new BadRequestException(
           `Connection "${url.name}" (${shortId(url.id)}) has no source paired. ` +
-            `Open the Allegro connection's edit page and set its catalog to this PrestaShop connection.`
+            `Open the marketplace connection's edit page and set its catalog to this connection.`
         );
       }
       if (paired.length > 1) {
         const ids = paired.map((c) => c.id).join(', ');
         throw new BadRequestException(
-          `Connection "${url.name}" (${shortId(url.id)}) has multiple paired Allegro connections (${ids}). ` +
-            `Multi-source mapping is not yet supported — disable the duplicates on the connection-edit page.`
+          `Connection "${url.name}" (${shortId(url.id)}) has multiple paired source connections (${ids}). ` +
+            `Open the mappings page from the source connection you want to configure.`
         );
       }
       const [only] = paired;
       return only.id;
     }
 
-    throw new BadRequestException(
-      `Connection "${url.name}" (${shortId(url.id)}) has unsupported platform "${url.platformType}" for the mappings page. ` +
-        `Today the mappings page is Allegro→PrestaShop only.`
-    );
+    // side === 'destination'
+    if (pairedMasterId) {
+      return pairedMasterId;
+    }
+    // No pairing key — the URL connection must itself be the destination.
+    await this.assertAdvertisesCapability(url, DESTINATION_CAPABILITY);
+    return url.id;
+  }
+
+  /**
+   * Metadata-only capability probe (`getAdapter` constructs no adapter
+   * instance — same lookup `FulfillmentRoutingService` uses for candidate
+   * enumeration). Returns `false` when the metadata can't be resolved (stale
+   * adapterKey / removed plugin) rather than failing the whole resolution.
+   */
+  private async advertisesCapability(connectionId: string, capability: string): Promise<boolean> {
+    try {
+      const { metadata } = await this.integrationsService.getAdapter(connectionId);
+      return metadata.supportedCapabilities.includes(capability);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * 400 with an operator-facing message when the connection can't serve the
+   * side. Unlike `advertisesCapability`, lifecycle exceptions from `getAdapter`
+   * (ConnectionNotFound → 404, ConnectionDisabled → 409 via the global
+   * `ConnectionExceptionFilter`) propagate unchanged — only a genuinely
+   * missing capability maps to 400.
+   */
+  private async assertAdvertisesCapability(
+    connection: Connection,
+    capability: string
+  ): Promise<void> {
+    const { metadata } = await this.integrationsService.getAdapter(connection.id);
+    if (!metadata.supportedCapabilities.includes(capability)) {
+      throw new BadRequestException(
+        `Connection "${connection.name}" (${shortId(connection.id)}) does not support ${capability}, ` +
+          `so it cannot serve this side of the mappings page.`
+      );
+    }
   }
 }
 

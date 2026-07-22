@@ -21,6 +21,7 @@ export const BULK_LISTING_SUBMIT_SERVICE_TOKEN = Symbol('IBulkListingSubmitServi
 export const BULK_LISTING_RETRY_SERVICE_TOKEN = Symbol('IBulkListingRetryService');
 export const OFFER_STATUS_POLL_SERVICE_TOKEN = Symbol('IOfferStatusPollService');
 export const OFFER_STATUS_SYNC_SERVICE_TOKEN = Symbol('IOfferStatusSyncService');
+export const OFFER_STATUS_READ_SERVICE_TOKEN = Symbol('IOfferStatusReadService');
 export const OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN = Symbol('OfferStatusSnapshotRepositoryPort');
 export const SELLER_POLICIES_SERVICE_TOKEN = Symbol('ISellerPoliciesService');
 export const SELLER_POLICIES_CACHE_TOKEN = Symbol('SellerPoliciesCacheRepositoryPort');

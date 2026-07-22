@@ -55,6 +55,33 @@ function buildErliOrder(overrides: Partial<ErliOrder> = {}): ErliOrder {
 }
 
 describe('mapErliOrderToIncomingOrder', () => {
+  it('should map delivery.typeId and name onto the neutral shipping reference when present', () => {
+    const result = mapErliOrderToIncomingOrder(
+      buildErliOrder({
+        delivery: { name: 'ERLI InPost Paczkomaty 24/7', typeId: 'erliPaczkomat', cod: false },
+      }),
+    );
+
+    expect(result.shipping).toEqual({
+      methodId: 'erliPaczkomat',
+      methodName: 'ERLI InPost Paczkomaty 24/7',
+    });
+  });
+
+  it('should keep shipping absent when delivery carries no typeId', () => {
+    const result = mapErliOrderToIncomingOrder(buildErliOrder({ delivery: { cod: false } }));
+
+    expect(result.shipping).toBeUndefined();
+  });
+
+  it('should omit methodName when delivery has a typeId but no name', () => {
+    const result = mapErliOrderToIncomingOrder(
+      buildErliOrder({ delivery: { typeId: 'dpd', cod: false } }),
+    );
+
+    expect(result.shipping).toEqual({ methodId: 'dpd' });
+  });
+
   it('should map a COD purchased order to processing + paymentStatus cod', () => {
     const result = mapErliOrderToIncomingOrder(
       buildErliOrder({ status: 'purchased', delivery: { cod: true } }),

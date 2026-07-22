@@ -297,6 +297,86 @@ describe('ErliOrderSourceAdapter', () => {
     });
   });
 
+  describe('SourceOptionsReader (#1738)', () => {
+    const DICT_PATH = 'dictionaries/deliveryMethods';
+    const DETAILS_PATH = 'delivery/priceListsDetails';
+
+    function mockDeliveryEndpoints(details: unknown, dictionary: unknown): void {
+      client.get.mockImplementation((path: string) => {
+        if (path === DETAILS_PATH) return Promise.resolve(ok(details));
+        if (path === DICT_PATH) return Promise.resolve(ok(dictionary));
+        return Promise.reject(new Error(`unexpected path: ${path}`));
+      });
+    }
+
+    it('should list the four documented Erli order statuses', async () => {
+      const statuses = await adapter.listOrderStatuses();
+      expect(statuses.map((s) => s.value)).toEqual([
+        'pending',
+        'purchased',
+        'cancelled',
+        'returned',
+      ]);
+    });
+
+    it('should list the two derivable payment methods (online + cod)', async () => {
+      const methods = await adapter.listPaymentMethods();
+      expect(methods.map((m) => m.value)).toEqual(['online', 'cod']);
+    });
+
+    it('should return active price-list methods labelled from the dictionary when both endpoints respond', async () => {
+      mockDeliveryEndpoints(
+        [
+          {
+            id: 298891,
+            name: 'Demo cennik',
+            prices: [
+              { deliveryMethod: { id: 'erliPaczkomat' } },
+              { deliveryMethod: { id: 'dpd' } },
+              // Duplicate across price rows — must dedupe by value.
+              { deliveryMethod: { id: 'erliPaczkomat' } },
+            ],
+          },
+        ],
+        [
+          { id: 'erliPaczkomat', name: 'ERLI InPost Paczkomaty 24/7', cod: false, vendor: 'inpost' },
+          { id: 'dpd', name: 'Kurier DPD', cod: false, vendor: 'dpd' },
+          { id: 'ups', name: 'Kurier UPS', cod: false, vendor: 'ups' },
+        ],
+      );
+
+      await expect(adapter.listDeliveryMethods()).resolves.toEqual([
+        { value: 'erliPaczkomat', label: 'ERLI InPost Paczkomaty 24/7' },
+        { value: 'dpd', label: 'Kurier DPD' },
+      ]);
+    });
+
+    it('should fall back to the raw method id when the dictionary misses it', async () => {
+      mockDeliveryEndpoints(
+        [{ id: 1, prices: [{ deliveryMethod: { id: 'someNewMethod' } }] }],
+        [],
+      );
+
+      await expect(adapter.listDeliveryMethods()).resolves.toEqual([
+        { value: 'someNewMethod', label: 'someNewMethod' },
+      ]);
+    });
+
+    it('should return empty when the shop has no price lists', async () => {
+      mockDeliveryEndpoints([], [{ id: 'dpd', name: 'Kurier DPD' }]);
+
+      await expect(adapter.listDeliveryMethods()).resolves.toEqual([]);
+    });
+
+    it('should throw ErliApiException when either delivery endpoint returns a non-array body', async () => {
+      mockDeliveryEndpoints({ message: 'No route' }, []);
+      await expect(adapter.listDeliveryMethods()).rejects.toThrow(ErliApiException);
+
+      mockDeliveryEndpoints([], { message: 'No route' });
+      await expect(adapter.listDeliveryMethods()).rejects.toThrow(ErliApiException);
+    });
+  });
+
   describe('getOrder', () => {
     it('should fetch the order and return mapErliOrderToIncomingOrder output (#994 composition)', async () => {
       client.get.mockResolvedValue(ok(buildErliOrder()));

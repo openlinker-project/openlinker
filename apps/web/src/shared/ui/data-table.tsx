@@ -13,6 +13,7 @@ import {
   Fragment,
   useCallback,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -21,6 +22,7 @@ import {
   type MouseEvent,
   type ReactElement,
   type ReactNode,
+  type UIEvent,
 } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMediaQuery } from './use-media-query';
@@ -107,6 +109,18 @@ interface DataTableProps<Row> {
   emptyState?: ReactNode;
   /** Per-row expandable detail panel (desktop accordion). See {@link DataTableExpandable}. */
   expandable?: DataTableExpandable<Row>;
+  /**
+   * Slot rendered as a bottom rail on the table — a bulk action bar is the
+   * canonical use. The rail is `position: fixed`, positioned imperatively and
+   * clamped to the table's box: it pins to the bottom of the viewport whenever
+   * any part of the table is on screen, and rests at the table's end (above
+   * whatever follows, e.g. pagination) once you scroll there — never below the
+   * table, never above its top. `fixed` (not `sticky`) because an ancestor's
+   * `overflow` would otherwise capture the sticky context. Typically a
+   * self-hiding bar (e.g. `BulkActionBar`, which goes `aria-hidden` + fades out
+   * at count 0) so the rail is inert when idle.
+   */
+  footer?: ReactNode;
   /** Per-row height estimate used by the virtualizer. Default 36. */
   estimateRowHeight?: number;
   /**
@@ -123,6 +137,25 @@ interface DataTableProps<Row> {
   rowKey: (row: Row) => Key;
   rows: Row[];
   sort?: SortingState;
+  /**
+   * Freeze the leading N data columns to the left edge while the rest of the
+   * row scrolls horizontally underneath them (desktop table layout only — the
+   * mobile card view ignores it). Counts entries in `columns`; the auto
+   * expander column, when `expandable` is set, is frozen alongside them as part
+   * of the identity cluster. `0` (default) keeps every column scrolling.
+   *
+   * The freeze boundary is inert until content is actually hidden beneath it:
+   * once the container is scrolled right, the last frozen column gains an
+   * accent hairline + a shadow cast rightward, so the affordance appears
+   * exactly when it carries meaning.
+   *
+   * **Works with `virtualize`.** The scroll handler that toggles the boundary
+   * is wired to the virtual scroller as well as the plain container, and the
+   * frozen cells use CSS `position: sticky` inside whichever scroll box is
+   * active — so freezing behaves identically in virtualized and non-virtualized
+   * tables. (It does not combine with the mobile card view, which ignores it.)
+   */
+  stickyLeftColumns?: number;
   /**
    * When true, the table body renders only rows visible inside a fixed-height
    * scroll container. Use for lists that commonly exceed ~200 rows.
@@ -152,6 +185,7 @@ export function DataTable<Row>({
   containerHeight = 560,
   emptyState,
   expandable,
+  footer,
   estimateRowHeight = 36,
   manualSorting = false,
   onSortChange,
@@ -159,10 +193,15 @@ export function DataTable<Row>({
   rowKey,
   rows,
   sort,
+  stickyLeftColumns = 0,
   virtualize = false,
 }: DataTableProps<Row>): ReactElement {
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const railRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const defs = useMemo(() => buildColumnDefs(columns), [columns]);
   const columnById = useMemo(() => {
     const map = new Map<string, DataTableColumn<Row>>();
@@ -189,6 +228,71 @@ export function DataTable<Row>({
   }, []);
   // Leading toggle column widens the desktop body/header/padding colSpans.
   const columnCount = columns.length + (expandable ? 1 : 0);
+
+  // ── Horizontal sticky (frozen) leading columns ──────────────────────────
+  // The expander cell (when present) leads the identity cluster, so it freezes
+  // together with the first `stickyLeftColumns` data columns. Left offsets are
+  // measured from the header row because column widths are content-driven.
+  const leadCellCount = expandable ? 1 : 0;
+  const stickyCount = Math.min(Math.max(stickyLeftColumns, 0), columns.length);
+  const stickyActive = stickyCount > 0 && !renderCards;
+  const frozenCellCount = stickyActive ? leadCellCount + stickyCount : 0;
+  const [stickyOffsets, setStickyOffsets] = useState<number[]>([]);
+  const [stickyScrolled, setStickyScrolled] = useState(false);
+
+  useLayoutEffect(() => {
+    if (!stickyActive) {
+      setStickyOffsets((prev) => (prev.length === 0 ? prev : []));
+      return;
+    }
+    const tableEl = tableRef.current;
+    if (!tableEl) return;
+    const measure = (): void => {
+      const headRow = tableEl.querySelector('thead tr');
+      if (!headRow) return;
+      const cells = Array.from(headRow.children) as HTMLElement[];
+      const offsets: number[] = [];
+      let acc = 0;
+      for (let i = 0; i < frozenCellCount && i < cells.length; i += 1) {
+        offsets.push(acc);
+        acc += cells[i].getBoundingClientRect().width;
+      }
+      setStickyOffsets((prev) =>
+        prev.length === offsets.length && prev.every((v, i) => v === offsets[i]) ? prev : offsets,
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(tableEl);
+    return () => {
+      observer.disconnect();
+    };
+  }, [stickyActive, frozenCellCount, columns, rows]);
+
+  const handleStickyScroll = useCallback(
+    (event: UIEvent<HTMLDivElement>): void => {
+      if (!stickyActive) return;
+      const next = event.currentTarget.scrollLeft > 0;
+      setStickyScrolled((prev) => (prev === next ? prev : next));
+    },
+    [stickyActive],
+  );
+
+  // `cellIndex` is the cell's position in the rendered row, counting the
+  // leading expander cell (when present) as index 0.
+  const stickyCellProps = useCallback(
+    (cellIndex: number): { className: string; style?: CSSProperties } => {
+      if (!stickyActive || cellIndex >= frozenCellCount) return { className: '' };
+      const isLast = cellIndex === frozenCellCount - 1;
+      return {
+        className: isLast
+          ? 'data-table__sticky-col data-table__sticky-col--last'
+          : 'data-table__sticky-col',
+        style: { left: stickyOffsets[cellIndex] ?? 0 },
+      };
+    },
+    [stickyActive, frozenCellCount, stickyOffsets],
+  );
 
   const table = useReactTable<Row>({
     data: rows,
@@ -224,6 +328,76 @@ export function DataTable<Row>({
   ]
     .filter(Boolean)
     .join(' ');
+
+  // Footer rail = a popover-style bar fixed to the viewport, clamped to the
+  // table's box. `position: sticky` can't be used because an ancestor
+  // (.shell-content, overflow-x: hidden) captures the sticky context and never
+  // scrolls. Instead the bar is `position: fixed` and positioned imperatively:
+  // anchored to the bottom of the viewport, then clamped so it never leaves the
+  // table's top/bottom edges, and matched to the table's left/width. Updated on
+  // scroll/resize by mutating style directly (no React re-render → smooth).
+  const hasFooter = footer != null;
+  useLayoutEffect(() => {
+    if (!hasFooter) return;
+    const wrap = wrapRef.current;
+    const rail = railRef.current;
+    if (!wrap || !rail) return;
+
+    const GAP = 12; // rest distance from the viewport bottom edge
+    const update = (): void => {
+      const box = wrap.getBoundingClientRect();
+      // No layout yet (or a non-rendering environment like jsdom, where every
+      // rect is 0) — leave the rail as-is (visible, unpositioned) so it stays in
+      // the accessibility tree; don't mistake "not measured" for "off-screen".
+      if (box.width === 0 && box.height === 0) return;
+      // Hide while the table is genuinely scrolled entirely off-screen.
+      if (box.bottom <= 0 || box.top >= window.innerHeight) {
+        rail.style.visibility = 'hidden';
+        return;
+      }
+      rail.style.visibility = 'visible';
+      const barHeight = rail.offsetHeight;
+      const bottomAnchored = window.innerHeight - barHeight - GAP;
+      // Clamp between the table's top edge and bottom edge.
+      const top = Math.min(Math.max(bottomAnchored, box.top), box.bottom - barHeight);
+      rail.style.top = `${Math.round(top)}px`;
+      rail.style.left = `${Math.round(box.left)}px`;
+      rail.style.width = `${Math.round(box.width)}px`;
+    };
+
+    update();
+    // Capture phase so scrolls in any scroll container (incl. .shell-content) fire.
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    const observer = new ResizeObserver(update);
+    observer.observe(wrap);
+    observer.observe(rail);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+      observer.disconnect();
+    };
+  }, [hasFooter, rows.length]);
+
+  // Publish the scroll container's visible width so an expanded accordion detail
+  // can pin itself to the viewport (sticky-left, that width) instead of stretching
+  // to the full — often horizontally-scrolled — table width. Keeps the drawer
+  // fully readable and out from under the frozen columns.
+  const hasExpandable = expandable != null;
+  useLayoutEffect(() => {
+    if (!hasExpandable || renderCards) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const publish = (): void => {
+      container.style.setProperty('--dt-visible-width', `${container.clientWidth}px`);
+    };
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(container);
+    return () => {
+      observer.disconnect();
+    };
+  }, [hasExpandable, renderCards, rows.length]);
 
   const emptyNode = emptyState ?? (
     <div className="empty-state">
@@ -285,7 +459,12 @@ export function DataTable<Row>({
     const bodyRow = (
       <tr key={key} className={rowClasses} onClick={onClick} style={style}>
         {expandable ? (
-          <td className="data-table__expand-cell">
+          <td
+            className={['data-table__expand-cell', stickyCellProps(0).className]
+              .filter(Boolean)
+              .join(' ')}
+            style={stickyCellProps(0).style}
+          >
             <button
               type="button"
               className="data-table__expand-toggle"
@@ -306,9 +485,11 @@ export function DataTable<Row>({
           </td>
         ) : null}
         {columns.map((column, index) => {
+          const sticky = stickyCellProps(leadCellCount + index);
           const cellClasses = [
             column.align ? `data-table__cell--${column.align}` : '',
             column.hideBelow ? `data-table__cell--hide-below-${column.hideBelow}` : '',
+            sticky.className,
           ]
             .filter(Boolean)
             .join(' ');
@@ -323,7 +504,7 @@ export function DataTable<Row>({
             );
 
           return (
-            <td key={column.id} className={cellClasses || undefined}>
+            <td key={column.id} className={cellClasses || undefined} style={sticky.style}>
               {content}
             </td>
           );
@@ -347,25 +528,40 @@ export function DataTable<Row>({
     );
   };
 
-  const renderTable = (): ReactElement => (
-    <table className="data-table">
+  const renderTable = (): ReactElement => {
+    const expanderSticky = stickyCellProps(0);
+    return (
+    <table
+      ref={tableRef}
+      className={['data-table', stickyScrolled ? 'data-table--sticky-scrolled' : '']
+        .filter(Boolean)
+        .join(' ')}
+    >
       {caption ? <caption className="sr-only">{caption}</caption> : null}
       <thead>
         {table.getHeaderGroups().map((headerGroup) => (
           <tr key={headerGroup.id}>
             {expandable ? (
-              <th scope="col" className="data-table__expand-cell">
+              <th
+                scope="col"
+                className={['data-table__expand-cell', expanderSticky.className]
+                  .filter(Boolean)
+                  .join(' ')}
+                style={expanderSticky.style}
+              >
                 <span className="sr-only">Expand row</span>
               </th>
             ) : null}
-            {headerGroup.headers.map((header) => {
+            {headerGroup.headers.map((header, headerIndex) => {
               const column = columnById.get(header.column.id);
               const canSort = column?.sortable ?? false;
               const sortDir = header.column.getIsSorted();
+              const sticky = stickyCellProps(leadCellCount + headerIndex);
               const classes = [
                 column?.align ? `data-table__cell--${column.align}` : '',
                 column?.hideBelow ? `data-table__cell--hide-below-${column.hideBelow}` : '',
                 canSort ? 'data-table__header--sortable' : '',
+                sticky.className,
               ]
                 .filter(Boolean)
                 .join(' ');
@@ -375,6 +571,7 @@ export function DataTable<Row>({
                   key={header.id}
                   scope="col"
                   className={classes || undefined}
+                  style={sticky.style}
                   aria-sort={
                     canSort
                       ? sortDir === 'asc'
@@ -419,7 +616,8 @@ export function DataTable<Row>({
         )}
       </tbody>
     </table>
-  );
+    );
+  };
 
   function renderVirtualRows(): ReactElement[] {
     const virtualItems = virtualizer.getVirtualItems();
@@ -455,9 +653,11 @@ export function DataTable<Row>({
 
   const plainScrollable = !renderCards && !virtualizeActive;
 
-  return (
+  const scrollRegion = (
     <div
+      ref={containerRef}
       className={containerClasses}
+      onScroll={stickyActive ? handleStickyScroll : undefined}
       tabIndex={plainScrollable ? 0 : undefined}
       role={plainScrollable ? 'region' : undefined}
       aria-label={
@@ -473,6 +673,7 @@ export function DataTable<Row>({
           <div
             ref={scrollRef}
             className="data-table__virtual-scroller"
+            onScroll={stickyActive ? handleStickyScroll : undefined}
             style={{ height: containerHeight }}
             tabIndex={0}
             role="region"
@@ -508,6 +709,26 @@ export function DataTable<Row>({
       ) : null}
     </div>
   );
+
+  // The footer rail is wrapped together with the table so the imperatively
+  // positioned `position: fixed` bar is clamped to the table's box: it pins to
+  // the viewport bottom whenever any part of the table is on screen, and rests
+  // at the table's end once scrolled there — never below the table, never above
+  // its top. `fixed` (not `sticky`) because .shell-content's overflow would
+  // capture the sticky context. Whatever the page puts after DataTable
+  // (pagination) sits outside the wrap, so it's never covered.
+  if (footer) {
+    return (
+      <div className="data-table__wrap" ref={wrapRef}>
+        {scrollRegion}
+        <div className="data-table__footer-rail" ref={railRef}>
+          {footer}
+        </div>
+      </div>
+    );
+  }
+
+  return scrollRegion;
 }
 
 interface DataTableCardProps<Row> {

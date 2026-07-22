@@ -26,15 +26,15 @@
  * Frozen-field ownership (#988, ADR-025 §4b): Erli marks seller-panel manual
  * edits `frozen`; OL must not overwrite them. `updateOfferFields` reads the
  * current product (`fetchErliProduct`) and DROPS any supplied field whose Erli
- * frozen-name is in `frozenFields` before issuing the PATCH (per-nested-field
- * granularity); an all-frozen update issues no PATCH.
+ * frozen-name reads `frozen[<erliName>] === true` before issuing the PATCH
+ * (per-nested-field granularity); an all-frozen update issues no PATCH.
  *
  * Frozen-`stock` on the hot path (#1066, ADR-025 §4b): `updateOfferQuantity`
  * runs on every inventory tick and deliberately does NOT pre-fetch — a per-tick
  * GET would double the tick's API calls. Frozen-`stock` is instead honored via a
  * per-offer cache flag populated by the steady-state `erli-offer-status-sync`
  * reconciliation (#989), which already GETs each mapped offer and sees
- * `frozenFields`. `getOfferStatus` (and opportunistically `updateOfferFields`)
+ * `frozen`. `getOfferStatus` (and opportunistically `updateOfferFields`)
  * writes that flag; `updateOfferQuantity` reads it and skips the stock PATCH when
  * set. A cache miss fails OPEN (push), preserving the pre-#1066 behaviour when the
  * flag is unknown. The honoring holds from the first reconciliation pass onward;
@@ -108,6 +108,7 @@ import {
   type CreateOfferValidationError,
   type DeliveryPriceList,
   type DeliveryPriceListReader,
+  type MarketplaceOffer,
   type OfferCategory,
   type OfferCondition,
   type OfferCreator,
@@ -115,6 +116,7 @@ import {
   type OfferFieldUpdate,
   type OfferFieldUpdater,
   type OfferManagerPort,
+  type OfferReader,
   type OfferStatusReadResult,
   type OfferStatusReader,
   type OfferStockRestorer,
@@ -145,20 +147,23 @@ import type {
   ErliResponsibleProducerItem,
 } from './erli-product.types';
 
+/** Erli prices are PLN-only integers in minor units (grosze) — no currency field on the wire. */
+const ERLI_CURRENCY = 'PLN';
+
 /**
- * Maps OL patch-body keys to the Erli field name carried in
- * {@link ErliProductResource.frozenFields} (#988, ADR-025 §4b). Only the keys a
+ * Maps OL patch-body keys to the Erli field name keyed in
+ * {@link ErliProductResource.frozen} (#988, ADR-025 §4b). Only the keys a
  * field-update can supply are listed; an unmapped key is never treated as frozen.
- * PROVISIONAL alongside the wire shape in `erli-product.types.ts` (#992): if the
- * confirmed frozen-name set differs, this is the single change point.
+ * The verified wire shape (#1737) is a `frozen` object — a field is frozen iff
+ * `frozen[<erliName>] === true`. This map is the single change point for the
+ * OL-key → Erli-name mapping.
  */
-// OL patch-key → Erli frozen-marker wire name. Provisional #992 wire vocabulary,
-// coupled to `ErliProductResource.frozenFields` (erli-product.types.ts) — reconcile
-// both against the sandbox together. `stock` is intentionally absent from THIS map:
-// it drives `dropFrozenFields` on the field-update path, which reads live
-// `frozenFields` per call — the quantity path doesn't read live frozen state. Frozen
-// `stock` IS now honored (#1066, ADR-025 §4b), but via the separate cache-flag check
-// in `updateOfferQuantity` (see {@link ERLI_FROZEN_STOCK_FIELD}), not this map.
+// OL patch-key → Erli frozen-object key name (#1737 verified shape). `stock` is
+// intentionally absent from THIS map: it drives `dropFrozenFields` on the
+// field-update path, which reads live `frozen` per call — the quantity path
+// doesn't read live frozen state. Frozen `stock` IS honored (#1066, ADR-025 §4b),
+// but via the separate cache-flag check in `updateOfferQuantity` (see
+// {@link ERLI_FROZEN_STOCK_FIELD}), not this map.
 const PATCH_KEY_TO_ERLI_FROZEN_NAME: Partial<Record<keyof ErliProductPatchBody, string>> = {
   price: 'price',
   name: 'name',
@@ -166,11 +171,11 @@ const PATCH_KEY_TO_ERLI_FROZEN_NAME: Partial<Record<keyof ErliProductPatchBody, 
 };
 
 /**
- * Erli `frozenFields` wire-name for stock (#1066, ADR-025 §4b). Looked for during
- * reconciliation to populate the per-offer frozen-stock cache flag the hot
- * `updateOfferQuantity` path reads. Colocated with {@link PATCH_KEY_TO_ERLI_FROZEN_NAME}
- * (the same provisional #992 wire vocabulary): if the sandbox spike confirms a
- * different name, this is the single change point alongside that map.
+ * Erli `frozen`-object key name for stock (#1066, ADR-025 §4b). Read during
+ * reconciliation (`frozen.stock === true`) to populate the per-offer frozen-stock
+ * cache flag the hot `updateOfferQuantity` path reads. Colocated with
+ * {@link PATCH_KEY_TO_ERLI_FROZEN_NAME} (the same #1737-verified wire vocabulary):
+ * if the wire name changes, this is the single change point alongside that map.
  */
 const ERLI_FROZEN_STOCK_FIELD = 'stock';
 
@@ -219,6 +224,7 @@ export class ErliOfferManagerAdapter
     OfferManagerPort,
     OfferCreator,
     OfferFieldUpdater,
+    OfferReader,
     OfferStatusReader,
     OfferStockRestorer,
     TaxonomyBorrower,
@@ -282,6 +288,14 @@ export class ErliOfferManagerAdapter
      * capability" case callers already handle.
      */
     allegroCategoryCatalog?: AllegroCategoryCatalogClient,
+    /**
+     * Buyer-facing web host (origin, e.g. `https://sandbox.erli.dev` /
+     * `https://erli.pl` — NOT the `/svc/shop-api` API base). Used to build the
+     * public offer URL in {@link toMarketplaceOffer}. Optional: when absent (unit
+     * tests, legacy callers) the offer URL is simply omitted, preserving the
+     * pre-fix behaviour.
+     */
+    private readonly webBaseUrl?: string,
   ) {
     if (allegroCategoryCatalog) {
       this.fetchCategories = (parentId?: string): Promise<OfferCategory[]> =>
@@ -346,11 +360,11 @@ export class ErliOfferManagerAdapter
         throw error;
       }
     }
-    // #1066: opportunistically refresh the frozen-stock cache flag — `frozenFields`
+    // #1066: opportunistically refresh the frozen-stock cache flag — `frozen`
     // is already in hand from the read above. On the 404 fail-open branch `current`
-    // is `{}` so `frozenFields` is undefined and the helper no-ops.
-    await this.writeFrozenStockFlag(cmd.externalOfferId, current.frozenFields);
-    const filtered = this.dropFrozenFields(body, current.frozenFields);
+    // is `{}` so `frozen` is undefined and the helper no-ops.
+    await this.writeFrozenStockFlag(cmd.externalOfferId, current.frozen);
+    const filtered = this.dropFrozenFields(body, current.frozen);
     if (Object.keys(filtered).length === 0) {
       this.logger.debug(
         `Erli field-update is a no-op — all supplied fields are frozen [connectionId=${this.connectionId}]`,
@@ -381,8 +395,68 @@ export class ErliOfferManagerAdapter
     // reconciliation sweep GETs every mapped offer here, so the hot quantity path
     // gets the flag without its own GET. Written before mapping/returning; a 404
     // (handled above → OfferNotFoundOnMarketplaceException) never reaches here.
-    await this.writeFrozenStockFlag(externalOfferId, product.frozenFields);
+    await this.writeFrozenStockFlag(externalOfferId, product.frozen);
     return mapErliStatusToReadResult(product);
+  }
+
+  /**
+   * OfferReader (#464). Fetches the live Erli-side offer detail (title, image,
+   * price, qty, status, category, description) the listing-detail page surfaces
+   * above the raw mapping fields. Reuses {@link fetchErliProduct} — Erli
+   * represents an offer AS a product, so the same seller-keyed
+   * `GET /products/{externalId}` read backs it.
+   *
+   * A 404 (offer not yet visible on Erli — the ADR-025 §1 ~20-min read-after-write
+   * cache lag, or a deleted offer) becomes `OfferNotFoundOnMarketplaceException`,
+   * which the HTTP layer maps to the soft "live data unavailable" fallback rather
+   * than a hard error. Other transport errors propagate so the FE surfaces the
+   * retryable error state.
+   */
+  async getOffer(input: { externalId: string }): Promise<MarketplaceOffer> {
+    let product: ErliProductResource;
+    try {
+      product = await this.fetchErliProduct(input.externalId);
+    } catch (error) {
+      if (error instanceof ErliApiException && error.statusCode === 404) {
+        throw new OfferNotFoundOnMarketplaceException(input.externalId, this.connectionId);
+      }
+      throw error;
+    }
+    return this.toMarketplaceOffer(input.externalId, product);
+  }
+
+  /**
+   * Map a read-side Erli product resource onto the neutral {@link MarketplaceOffer}.
+   * Price is Erli's grosze integer → decimal string in PLN (Erli is PLN-only).
+   * Description prefers the flat `externalDescription` HTML over the structured
+   * `description.sections` tree. Category is the leaf of the first breadcrumb path.
+   * `marketplaceUrl` is the public `{webBaseUrl}/produkt/{slug},{marketplaceId}`
+   * when the read carries both a `slug` and a numeric `marketplaceId` (and a web
+   * host is wired); otherwise it is omitted — Erli exposes no stable buyer-facing
+   * URL for such reads. `endsAt` is always omitted (Erli has no fixed offer end date).
+   */
+  private toMarketplaceOffer(externalId: string, product: ErliProductResource): MarketplaceOffer {
+    const leafCategory = product.categories?.[0]?.at(-1);
+    const marketplaceUrl =
+      this.webBaseUrl && product.slug && product.marketplaceId !== undefined
+        ? `${this.webBaseUrl}/produkt/${product.slug},${product.marketplaceId}`
+        : undefined;
+    return {
+      externalId: product.externalId ?? externalId,
+      title: product.name ?? '',
+      description: product.externalDescription,
+      imageUrl: product.images?.[0]?.url,
+      price: {
+        amount: ((product.price ?? 0) / 100).toFixed(2),
+        currency: ERLI_CURRENCY,
+      },
+      availableQuantity: product.stock ?? 0,
+      status: product.status ?? 'unknown',
+      category: leafCategory
+        ? { id: String(leafCategory.id), name: leafCategory.name }
+        : undefined,
+      marketplaceUrl,
+    };
   }
 
   /**
@@ -485,7 +559,7 @@ export class ErliOfferManagerAdapter
     const res = await this.httpClient.get<ErliProductResource>(this.productPath(externalId));
     // The client returns `data: undefined` for a 204 / empty-body 2xx. Treat a
     // bodyless read as "no frozen info known" (empty resource) so the PATCH still
-    // proceeds rather than throwing on `current.frozenFields` (review #1061).
+    // proceeds rather than throwing on `current.frozen` (review #1061).
     return res.data ?? {};
   }
 
@@ -497,18 +571,17 @@ export class ErliOfferManagerAdapter
    */
   private dropFrozenFields(
     body: ErliProductPatchBody,
-    frozenFields: string[] | undefined,
+    frozen: Record<string, boolean> | undefined,
   ): ErliProductPatchBody {
-    if (!frozenFields || frozenFields.length === 0) {
+    if (!frozen) {
       return body;
     }
-    const frozen = new Set(frozenFields);
     // Shallow-copy then delete frozen keys — avoids a per-key index-write cast
     // while preserving each value's own type.
     const result: ErliProductPatchBody = { ...body };
     for (const key of Object.keys(result) as (keyof ErliProductPatchBody)[]) {
       const erliName = PATCH_KEY_TO_ERLI_FROZEN_NAME[key];
-      if (erliName !== undefined && frozen.has(erliName)) {
+      if (erliName !== undefined && frozen[erliName] === true) {
         this.logger.debug(
           `Skipping frozen Erli field "${erliName}" on field-update [connectionId=${this.connectionId}]`,
         );
@@ -596,16 +669,16 @@ export class ErliOfferManagerAdapter
    * Write-on-frozen-only: stock frozen → `set(true)`; stock NOT frozen →
    * `delete` (unfreeze transition) — "known not-frozen" and "unknown" both read
    * as fail-open, so storing `false` buys nothing but write amplification. A
-   * bodyless 2xx leaves `frozenFields` `undefined` (GET carried no frozen info):
+   * bodyless 2xx leaves `frozen` `undefined` (GET carried no frozen info):
    * leave the cache untouched so a previously-cached `true` is not clobbered.
    * Cache errors are swallowed at debug — a cache write must never break
    * reconciliation.
    */
   private async writeFrozenStockFlag(
     externalOfferId: string,
-    frozenFields: string[] | undefined,
+    frozen: Record<string, boolean> | undefined,
   ): Promise<void> {
-    if (!this.cache || frozenFields === undefined) {
+    if (!this.cache || frozen === undefined) {
       return;
     }
     const key = this.frozenStockCacheKey(externalOfferId);
@@ -613,7 +686,7 @@ export class ErliOfferManagerAdapter
       return;
     }
     try {
-      if (frozenFields.includes(ERLI_FROZEN_STOCK_FIELD)) {
+      if (frozen[ERLI_FROZEN_STOCK_FIELD] === true) {
         await this.cache.set(key, true, ERLI_FROZEN_STOCK_CACHE_TTL_SEC);
       } else {
         await this.cache.delete(key);

@@ -10,12 +10,19 @@
  * @module libs/core/src/listings/application/services
  */
 import type { OfferStatusSyncResult } from '../../domain/types/offer-status-snapshot.types';
+import type { OfferPublicationStatus } from '../../domain/types/offer-status-read.types';
 
 export interface OfferStatusSyncOptions {
   /** Page size: number of mapped offers to refresh this run. */
   limit: number;
   /** Scan offset into the connection's offer mappings. Defaults to 0. */
   offset?: number;
+}
+
+/** Target of a single-offer snapshot refresh ({@link IOfferStatusSyncService.refreshOne}). */
+export interface OfferStatusRefreshTarget {
+  externalOfferId: string;
+  internalVariantId: string;
 }
 
 export type { OfferStatusSyncResult };
@@ -28,4 +35,15 @@ export interface IOfferStatusSyncService {
    * `OfferStatusReader` are skipped with a zeroed result.
    */
   sync(connectionId: string, options: OfferStatusSyncOptions): Promise<OfferStatusSyncResult>;
+
+  /**
+   * Re-read and upsert the snapshot for a single offer (#1760). Returns the
+   * observed publication status, or `null` when the adapter does not support
+   * `OfferStatusReader` or the marketplace reports the offer as not found.
+   * Backs both the post-terminal reconcile job and the manual refresh action.
+   */
+  refreshOne(
+    connectionId: string,
+    target: OfferStatusRefreshTarget
+  ): Promise<OfferPublicationStatus | null>;
 }

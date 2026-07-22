@@ -1,31 +1,29 @@
 /**
  * Category Path Reader Capability
  *
- * Optional sub-capability of `OfferManagerPort` - adapters that can resolve a
- * marketplace category id to its full root-to-leaf ancestor breadcrumb declare
- * `implements CategoryPathReader`. Complements `CategoryBrowser` (which walks
- * the tree downward one level at a time): this one walks a known leaf id
- * upward so a category auto-resolved from a variant EAN can be shown as a
- * human breadcrumb instead of a bare id.
+ * Optional sub-capability of `OfferManagerPort` — adapters that can resolve a
+ * single category id to its full ancestor breadcrumb declare
+ * `implements CategoryPathReader`. Used by the listing-detail drawer to render
+ * a human "Root > ... > Leaf" trail for an offer whose payload carries only
+ * `category.id` (Allegro).
  *
- * See `offer-lister.capability.ts` for the shared naming convention.
+ * See `category-browser.capability.ts` for the shared naming convention.
  *
  * @module libs/core/src/listings/domain/ports/capabilities
  */
-import type { CategoryPathNode } from '../../types/category-path.types';
+import type { CategoryPathSegment } from '../../types/category.types';
 import type { OfferManagerPort } from '../offer-manager.port';
 
 export interface CategoryPathReader {
   /**
-   * Resolve a category id to its ancestor breadcrumb, ordered ROOT -> LEAF
-   * (the queried category itself is the last element). Returns an empty array
-   * when the id cannot be resolved.
+   * Resolve `categoryId` to its full breadcrumb, ordered root -> leaf
+   * (the leaf being `categoryId` itself).
    */
-  getCategoryPath(categoryId: string): Promise<CategoryPathNode[]>;
+  fetchCategoryPath(categoryId: string): Promise<CategoryPathSegment[]>;
 }
 
 export function isCategoryPathReader(
   adapter: OfferManagerPort,
 ): adapter is OfferManagerPort & CategoryPathReader {
-  return typeof (adapter as Partial<CategoryPathReader>).getCategoryPath === 'function';
+  return typeof (adapter as Partial<CategoryPathReader>).fetchCategoryPath === 'function';
 }

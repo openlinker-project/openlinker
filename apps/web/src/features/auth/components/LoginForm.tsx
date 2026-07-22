@@ -54,10 +54,14 @@ export function LoginForm({ demoMode = false }: LoginFormProps): ReactElement {
         </Alert>
       ) : null}
 
-      <FormField label="Username" name="username" error={form.formState.errors.username?.message}>
+      <FormField
+        label="Username or email"
+        name="username"
+        error={form.formState.errors.username?.message}
+      >
         <Input
           {...form.register('username')}
-          placeholder="Enter your username"
+          placeholder="Username or email"
           autoComplete="username"
           invalid={Boolean(form.formState.errors.username)}
         />

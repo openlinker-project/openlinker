@@ -32,7 +32,7 @@ const cases: ReadonlyArray<readonly [string, Guard, string]> = [
   ['OfferQuantityBatchUpdater', isOfferQuantityBatchUpdater, 'updateOfferQuantitiesBatch'],
   ['OfferFieldUpdater', isOfferFieldUpdater, 'updateOfferFields'],
   ['CategoryBrowser', isCategoryBrowser, 'fetchCategories'],
-  ['CategoryPathReader', isCategoryPathReader, 'getCategoryPath'],
+  ['CategoryPathReader', isCategoryPathReader, 'fetchCategoryPath'],
   ['CategoryBarcodeMatcher', isCategoryBarcodeMatcher, 'matchCategoryByBarcode'],
   ['CategoryParametersReader', isCategoryParametersReader, 'fetchCategoryParameters'],
   ['OfferCreator', isOfferCreator, 'createOffer'],

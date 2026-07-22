@@ -164,7 +164,7 @@ export type {
   UpdateOfferQuantitiesBatchFailure,
 } from './domain/types/offer-quantity-update.types';
 export type { UpdateOfferFieldsCommand } from './domain/types/offer-fields-update.types';
-export type { OfferCategory } from './domain/types/category.types';
+export type { OfferCategory, CategoryPathSegment } from './domain/types/category.types';
 export { CreateOfferResultStatusValues, OfferConditionValues } from './domain/types/offer-create.types';
 export type {
   CreateOfferCommand,
@@ -202,7 +202,6 @@ export type { CategoryBrowser } from './domain/ports/capabilities/category-brows
 export { isCategoryBrowser } from './domain/ports/capabilities/category-browser.capability';
 export type { CategoryPathReader } from './domain/ports/capabilities/category-path-reader.capability';
 export { isCategoryPathReader } from './domain/ports/capabilities/category-path-reader.capability';
-export type { CategoryPathNode } from './domain/types/category-path.types';
 export type { CategoryBarcodeMatcher } from './domain/ports/capabilities/category-barcode-matcher.capability';
 export { isCategoryBarcodeMatcher } from './domain/ports/capabilities/category-barcode-matcher.capability';
 export type { EanCategoryMatcher } from './domain/ports/capabilities/ean-category-matcher.capability';
@@ -272,6 +271,7 @@ export type {
   IOfferStatusSyncService,
   OfferStatusSyncOptions,
 } from './application/services/offer-status-sync.service.interface';
+export type { IOfferStatusReadService } from './application/services/offer-status-read.service.interface';
 export type { IOfferStockRestoreService } from './application/interfaces/offer-stock-restore.service.interface';
 export { OfferPollNotSupportedException } from './domain/exceptions/offer-poll-not-supported.exception';
 export { OfferNotFoundOnMarketplaceException } from './domain/exceptions/offer-not-found-on-marketplace.exception';

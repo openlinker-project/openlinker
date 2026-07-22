@@ -17,9 +17,17 @@ import type {
   PrestashopCategoryDto,
 } from './categories-cache.service.interface';
 import { AllegroCategoryCacheOrmEntity } from './persistence/allegro-category-cache.orm-entity';
-import { isCategoryBrowser, isCategoryPathReader } from '@openlinker/core/listings';
+import {
+  isCategoryBrowser,
+  isCategoryPathReader,
+  CategoryNotFoundException,
+} from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import type { OfferCategory, CategoryPathNode, OfferManagerPort } from '@openlinker/core/listings';
+import type {
+  OfferCategory,
+  CategoryPathSegment,
+  OfferManagerPort,
+} from '@openlinker/core/listings';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -71,7 +79,7 @@ export class CategoriesCacheService implements ICategoriesCacheService {
   async getAllegroCategoryPath(
     connectionId: string,
     categoryId: string
-  ): Promise<CategoryPathNode[]> {
+  ): Promise<CategoryPathSegment[]> {
     // Same adapter resolution as getAllegroCategories: resolve the connection's
     // OfferManager and narrow to the finer sub-capability. A connection whose
     // adapter does not implement CategoryPathReader (e.g. a borrows-taxonomy
@@ -83,14 +91,26 @@ export class CategoriesCacheService implements ICategoriesCacheService {
 
     if (!isCategoryPathReader(adapter)) {
       this.logger.warn(
-        `Marketplace adapter for connection ${connectionId} does not support getCategoryPath`
+        `Marketplace adapter for connection ${connectionId} does not support fetchCategoryPath`
       );
       return [];
     }
 
     // The adapter owns caching (distributed cache, shared TTL) - no DB cache
     // layer here, since a breadcrumb is a single opaque path, not a tree level.
-    return adapter.getCategoryPath(categoryId);
+    // A genuine not-found (unlike a borrows-taxonomy adapter gap above) also
+    // degrades to an empty path rather than surfacing as a 5xx to the wizard.
+    try {
+      return await adapter.fetchCategoryPath(categoryId);
+    } catch (err) {
+      if (err instanceof CategoryNotFoundException) {
+        this.logger.warn(
+          `Category ${categoryId} not found (connection: ${connectionId}), degrading to empty path`
+        );
+        return [];
+      }
+      throw err;
+    }
   }
 
   async getPrestashopCategories(connectionId: string): Promise<PrestashopCategoryDto[]> {

@@ -6,7 +6,7 @@
  * @module apps/api/src/categories
  */
 
-import type { OfferCategory, CategoryPathNode } from '@openlinker/core/listings';
+import type { OfferCategory, CategoryPathSegment } from '@openlinker/core/listings';
 
 export interface PrestashopCategoryDto {
   id: string;
@@ -29,13 +29,14 @@ export interface ICategoriesCacheService {
   /**
    * Resolve an Allegro category id to its root-to-leaf breadcrumb via the
    * connection's `CategoryPathReader` adapter. Returns an empty array when the
-   * adapter does not implement the capability (graceful - the caller falls
-   * back to rendering the raw id).
+   * adapter does not implement the capability, or when the category cannot be
+   * resolved (`CategoryNotFoundException`) - graceful in both cases, since the
+   * caller falls back to rendering the raw id.
    *
    * @param connectionId - Connection UUID
    * @param categoryId - Marketplace (Allegro) category id
    */
-  getAllegroCategoryPath(connectionId: string, categoryId: string): Promise<CategoryPathNode[]>;
+  getAllegroCategoryPath(connectionId: string, categoryId: string): Promise<CategoryPathSegment[]>;
 
   /**
    * Get PrestaShop categories for a connection.

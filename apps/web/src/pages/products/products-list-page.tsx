@@ -1055,6 +1055,33 @@ export function ProductsListPage(): ReactElement {
             columns={columns}
             rows={items}
             rowKey={(product) => product.id}
+            stickyLeftColumns={2}
+            footer={
+              <BulkActionBar
+                count={selectedIds.size}
+                itemNoun="product"
+                hint={
+                  atCap
+                    ? `Max ${BULK_SELECTION_CAP} per batch`
+                    : `Max ${BULK_SELECTION_CAP} per batch · ${BULK_SELECTION_CAP - selectedIds.size} more available`
+                }
+                actions={
+                  <>
+                    <Button tone="ghost" className="button--sm" onClick={clearSelection}>
+                      Clear
+                    </Button>
+                    {/* Capability-gated (#1096): hidden with 0 OfferManager connections. */}
+                    {offerManagerConnections.length > 0 && write.visible ? (
+                      <Button tone="primary" onClick={handleCreateOffers}>
+                        {soleConnectionName
+                          ? `Create ${soleConnectionName} offers (${selectedIds.size.toLocaleString()})`
+                          : `Create offers (${selectedIds.size.toLocaleString()})`}
+                      </Button>
+                    ) : null}
+                  </>
+                }
+              />
+            }
             manualSorting
             sort={sortingState}
             onSortChange={(updater) => {
@@ -1169,31 +1196,6 @@ export function ProductsListPage(): ReactElement {
               </Button>
             </div>
           </div>
-
-          <BulkActionBar
-            count={selectedIds.size}
-            itemNoun="product"
-            hint={
-              atCap
-                ? `Max ${BULK_SELECTION_CAP} per batch`
-                : `Max ${BULK_SELECTION_CAP} per batch · ${BULK_SELECTION_CAP - selectedIds.size} more available`
-            }
-            actions={
-              <>
-                <Button tone="ghost" className="button--sm" onClick={clearSelection}>
-                  Clear
-                </Button>
-                {/* Capability-gated (#1096): hidden with 0 OfferManager connections. */}
-                {offerManagerConnections.length > 0 && write.visible ? (
-                  <Button tone="primary" onClick={handleCreateOffers}>
-                    {soleConnectionName
-                      ? `Create ${soleConnectionName} offers (${selectedIds.size.toLocaleString()})`
-                      : `Create offers (${selectedIds.size.toLocaleString()})`}
-                  </Button>
-                ) : null}
-              </>
-            }
-          />
 
           <MarketplacePickerModal
             open={pickerOpen}

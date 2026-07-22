@@ -84,6 +84,23 @@ export class OfferStatusSnapshotRepository implements OfferStatusSnapshotReposit
     return result;
   }
 
+  async findByVariantIds(
+    internalVariantIds: string[],
+    connectionId?: string
+  ): Promise<OfferStatusSnapshot[]> {
+    if (internalVariantIds.length === 0) {
+      return [];
+    }
+    const query = this.ormRepository
+      .createQueryBuilder('snapshot')
+      .where('snapshot.internalVariantId IN (:...internalVariantIds)', { internalVariantIds });
+    if (connectionId !== undefined) {
+      query.andWhere('snapshot.connectionId = :connectionId', { connectionId });
+    }
+    const entities = await query.getMany();
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
   private toDomain(entity: OfferStatusSnapshotOrmEntity): OfferStatusSnapshot {
     return new OfferStatusSnapshot({
       id: entity.id,

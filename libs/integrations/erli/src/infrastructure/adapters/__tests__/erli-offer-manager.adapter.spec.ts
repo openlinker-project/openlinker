@@ -14,6 +14,7 @@
 import {
   isCategoryBrowser,
   isCategoryParametersReader,
+  isOfferReader,
   isOfferStatusReader,
   OfferCreateRejectedException,
   OfferNotFoundOnMarketplaceException,
@@ -69,7 +70,7 @@ describe('ErliOfferManagerAdapter', () => {
   beforeEach(() => {
     httpClient = {
       // Default read: no frozen fields, so field-updates PATCH everything supplied.
-      get: jest.fn().mockResolvedValue({ status: 200, data: { frozenFields: [] } }),
+      get: jest.fn().mockResolvedValue({ status: 200, data: { frozen: {} } }),
       post: jest.fn().mockResolvedValue({ status: 202, data: undefined }),
       patch: jest.fn().mockResolvedValue({ status: 202, data: undefined }),
       put: jest.fn().mockResolvedValue({ status: 202, data: undefined }),
@@ -871,7 +872,7 @@ describe('ErliOfferManagerAdapter', () => {
       });
 
       it('should drop a supplied field that is frozen and patch the rest', async () => {
-        httpClient.get.mockResolvedValue({ status: 200, data: { frozenFields: ['price'] } });
+        httpClient.get.mockResolvedValue({ status: 200, data: { frozen: { price: true } } });
 
         await adapter.updateOfferFields({
           externalOfferId: VALID_ID,
@@ -884,7 +885,7 @@ describe('ErliOfferManagerAdapter', () => {
 
       it('should patch the full body when the GET returns an empty body (no frozen info)', async () => {
         // The client yields `data: undefined` for a 204 / empty-body 2xx; the read
-        // must degrade to "nothing frozen" rather than throwing on current.frozenFields (#1061).
+        // must degrade to "nothing frozen" rather than throwing on current.frozen (#1061).
         httpClient.get.mockResolvedValue({ status: 200, data: undefined });
 
         await adapter.updateOfferFields({
@@ -899,7 +900,10 @@ describe('ErliOfferManagerAdapter', () => {
       });
 
       it('should patch every supplied field when none are frozen', async () => {
-        httpClient.get.mockResolvedValue({ status: 200, data: { frozenFields: [] } });
+        httpClient.get.mockResolvedValue({
+          status: 200,
+          data: { frozen: { name: false, price: false } },
+        });
 
         await adapter.updateOfferFields({
           externalOfferId: VALID_ID,
@@ -912,10 +916,28 @@ describe('ErliOfferManagerAdapter', () => {
         });
       });
 
+      it('should drop only the true-valued keys of a full frozen object (#1737 live shape)', async () => {
+        // The live GET returns a full object with explicit false for un-frozen
+        // fields; only `frozen[key] === true` must drop the key (#1737).
+        httpClient.get.mockResolvedValue({
+          status: 200,
+          data: {
+            frozen: { name: false, price: true, description: false, stock: false },
+          },
+        });
+
+        await adapter.updateOfferFields({
+          externalOfferId: VALID_ID,
+          fields: { title: 'Keep me', price: { amount: '79.00', currency: 'PLN' } },
+        });
+
+        expect(httpClient.patch).toHaveBeenCalledWith(`products/${VALID_ID}`, { name: 'Keep me' });
+      });
+
       it('should issue NO patch when every supplied field is frozen', async () => {
         httpClient.get.mockResolvedValue({
           status: 200,
-          data: { frozenFields: ['name', 'price'] },
+          data: { frozen: { name: true, price: true } },
         });
 
         await adapter.updateOfferFields({
@@ -1042,6 +1064,131 @@ describe('ErliOfferManagerAdapter', () => {
     });
   });
 
+  describe('getOffer (#464 — OfferReader)', () => {
+    // A representative live read-side product resource (shape verified against
+    // the sandbox GET /products/{externalId}): grosze price, public image url,
+    // breadcrumb-path categories, flat HTML externalDescription.
+    const productResource = {
+      externalId: VALID_ID,
+      name: 'Swieca sojowa zapachowa 200g Aura',
+      externalDescription: '<p>Naturalna swieca sojowa.</p>',
+      ean: '5900000000114',
+      price: 3490,
+      stock: 16,
+      status: 'active',
+      slug: 'swieca-sojowa-200g-aura',
+      marketplaceId: 843284,
+      images: [
+        { url: 'https://presta.demo.openlinker.io/img/p/1/6/16.jpg', internalUrl: 'https://cdn/1.webp' },
+        { url: 'https://presta.demo.openlinker.io/img/p/1/7/17.jpg' },
+      ],
+      categories: [[{ id: 1, name: 'Dom i Ogród' }, { id: 1013, name: 'Pozostałe' }]],
+    };
+
+    it('should be detectable as an OfferReader', () => {
+      expect(isOfferReader(adapter)).toBe(true);
+    });
+
+    it('should map the Erli product resource onto a neutral MarketplaceOffer', async () => {
+      httpClient.get.mockResolvedValueOnce({ status: 200, data: productResource });
+
+      const offer = await adapter.getOffer({ externalId: VALID_ID });
+
+      expect(httpClient.get).toHaveBeenCalledWith(`products/${VALID_ID}`);
+      expect(offer).toEqual({
+        externalId: VALID_ID,
+        title: 'Swieca sojowa zapachowa 200g Aura',
+        description: '<p>Naturalna swieca sojowa.</p>',
+        imageUrl: 'https://presta.demo.openlinker.io/img/p/1/6/16.jpg',
+        price: { amount: '34.90', currency: 'PLN' },
+        availableQuantity: 16,
+        status: 'active',
+        category: { id: '1013', name: 'Pozostałe' },
+      });
+    });
+
+    it('should build the public marketplaceUrl when a web host, slug and marketplaceId are present', async () => {
+      const webAdapter = new ErliOfferManagerAdapter(
+        'conn-1',
+        ERLI_ADAPTER_KEY,
+        httpClient,
+        { period: 2, unit: 'day' },
+        undefined,
+        undefined,
+        'https://sandbox.erli.dev',
+      );
+      httpClient.get.mockResolvedValueOnce({ status: 200, data: productResource });
+
+      const offer = await webAdapter.getOffer({ externalId: VALID_ID });
+
+      expect(offer.marketplaceUrl).toBe('https://sandbox.erli.dev/produkt/swieca-sojowa-200g-aura,843284');
+    });
+
+    it('should omit marketplaceUrl when the slug or marketplaceId is missing (even with a web host)', async () => {
+      const webAdapter = new ErliOfferManagerAdapter(
+        'conn-1',
+        ERLI_ADAPTER_KEY,
+        httpClient,
+        { period: 2, unit: 'day' },
+        undefined,
+        undefined,
+        'https://sandbox.erli.dev',
+      );
+      httpClient.get.mockResolvedValueOnce({
+        status: 200,
+        data: { ...productResource, slug: undefined },
+      });
+
+      const offer = await webAdapter.getOffer({ externalId: VALID_ID });
+
+      expect(offer.marketplaceUrl).toBeUndefined();
+    });
+
+    it('should omit marketplaceUrl when no web host is wired', async () => {
+      httpClient.get.mockResolvedValueOnce({ status: 200, data: productResource });
+
+      const offer = await adapter.getOffer({ externalId: VALID_ID });
+
+      expect(offer.marketplaceUrl).toBeUndefined();
+    });
+
+    it('should default missing fields defensively (empty title, 0 price/qty)', async () => {
+      httpClient.get.mockResolvedValueOnce({ status: 200, data: {} });
+
+      const offer = await adapter.getOffer({ externalId: VALID_ID });
+
+      expect(offer.title).toBe('');
+      expect(offer.price).toEqual({ amount: '0.00', currency: 'PLN' });
+      expect(offer.availableQuantity).toBe(0);
+      expect(offer.status).toBe('unknown');
+      expect(offer.category).toBeUndefined();
+      expect(offer.imageUrl).toBeUndefined();
+    });
+
+    it('should throw OfferNotFoundOnMarketplaceException on a 404 (read-after-write lag / deleted)', async () => {
+      httpClient.get.mockRejectedValueOnce(new ErliApiException('not found', 404));
+
+      await expect(adapter.getOffer({ externalId: VALID_ID })).rejects.toBeInstanceOf(
+        OfferNotFoundOnMarketplaceException,
+      );
+    });
+
+    it('should propagate non-404 transport errors', async () => {
+      httpClient.get.mockRejectedValueOnce(new ErliApiException('server error', 500));
+
+      await expect(adapter.getOffer({ externalId: VALID_ID })).rejects.toBeInstanceOf(
+        ErliApiException,
+      );
+    });
+
+    it('should reject a hostile externalId before any GET', async () => {
+      await expect(adapter.getOffer({ externalId: 'evil/../x' })).rejects.toBeInstanceOf(
+        ErliConfigException,
+      );
+      expect(httpClient.get).not.toHaveBeenCalled();
+    });
+  });
+
   describe('frozen-stock cache flag (#1066)', () => {
     let cache: jest.Mocked<CachePort>;
     let cachedAdapter: ErliOfferManagerAdapter;
@@ -1069,7 +1216,7 @@ describe('ErliOfferManagerAdapter', () => {
       cache.get.mockImplementation((key) => Promise.resolve((store.get(key) ?? null) as never));
       httpClient.get.mockResolvedValueOnce({
         status: 200,
-        data: { status: 'active', frozenFields: ['stock'] },
+        data: { status: 'active', frozen: { stock: true } },
       });
 
       await cachedAdapter.getOfferStatus(VALID_ID);
@@ -1128,7 +1275,7 @@ describe('ErliOfferManagerAdapter', () => {
     it('should set the flag with the TTL when reconciliation sees a frozen stock', async () => {
       httpClient.get.mockResolvedValueOnce({
         status: 200,
-        data: { status: 'active', frozenFields: ['stock'] },
+        data: { status: 'active', frozen: { stock: true } },
       });
 
       await cachedAdapter.getOfferStatus(VALID_ID);
@@ -1140,7 +1287,7 @@ describe('ErliOfferManagerAdapter', () => {
     it('should delete the flag (not store false) when reconciliation sees stock not frozen', async () => {
       httpClient.get.mockResolvedValueOnce({
         status: 200,
-        data: { status: 'active', frozenFields: [] },
+        data: { status: 'active', frozen: { stock: false } },
       });
 
       await cachedAdapter.getOfferStatus(VALID_ID);
@@ -1149,7 +1296,7 @@ describe('ErliOfferManagerAdapter', () => {
       expect(cache.set).not.toHaveBeenCalled();
     });
 
-    it('should leave the cache untouched on a bodyless 2xx (frozenFields undefined)', async () => {
+    it('should leave the cache untouched on a bodyless 2xx (frozen undefined)', async () => {
       httpClient.get.mockResolvedValueOnce({ status: 200, data: undefined });
 
       await cachedAdapter.getOfferStatus(VALID_ID);
@@ -1169,7 +1316,7 @@ describe('ErliOfferManagerAdapter', () => {
     });
 
     it('should opportunistically set the flag from updateOfferFields (secondary writer)', async () => {
-      httpClient.get.mockResolvedValue({ status: 200, data: { frozenFields: ['stock'] } });
+      httpClient.get.mockResolvedValue({ status: 200, data: { frozen: { stock: true } } });
 
       await cachedAdapter.updateOfferFields({ externalOfferId: VALID_ID, fields: { title: 'T' } });
 

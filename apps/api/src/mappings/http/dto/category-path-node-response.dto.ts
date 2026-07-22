@@ -9,7 +9,7 @@
  */
 
 import { ApiProperty } from '@nestjs/swagger';
-import type { CategoryPathNode } from '@openlinker/core/listings';
+import type { CategoryPathSegment } from '@openlinker/core/listings';
 
 export class CategoryPathNodeResponseDto {
   @ApiProperty({ example: '258066' })
@@ -18,7 +18,7 @@ export class CategoryPathNodeResponseDto {
   @ApiProperty({ example: 'Smartphones' })
   name!: string;
 
-  static fromDomain(node: CategoryPathNode): CategoryPathNodeResponseDto {
+  static fromDomain(node: CategoryPathSegment): CategoryPathNodeResponseDto {
     const dto = new CategoryPathNodeResponseDto();
     dto.id = node.id;
     dto.name = node.name;
