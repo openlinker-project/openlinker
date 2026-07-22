@@ -160,6 +160,9 @@ export class DpdShippingAdapter
    * recoverable cause. The raw body carries no secrets (it's a status +
    * validation-info envelope, never credentials or the echoed request), so
    * logging it in full is safe, and `traceId` is the handle DPD support keys on.
+   * (One caveat: a rejection `validationInfo` can echo an order-derived value
+   * such as a receiver postcode — buyer-PII-adjacent — but it stays in WARN logs
+   * only, never in `providerDetails` / the API 502 body.)
    * The rethrown exception is enriched with `providerDetails.traceId` so the
    * operator can quote it without a log dive.
    */
