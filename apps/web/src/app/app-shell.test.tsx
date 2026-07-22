@@ -154,6 +154,7 @@ describe('AppShell', () => {
       email: 'viewer@example.com',
       role: 'viewer',
       permissions: [],
+      analyticsConsent: true,
     });
     renderShell({ pathname: '/', sessionAdapter: viewerAdapter });
     // Wait for the viewer username to land in the DOM — a reliable signal
@@ -173,6 +174,7 @@ describe('AppShell', () => {
       email: 'viewer@example.com',
       role: 'viewer',
       permissions: [],
+      analyticsConsent: true,
     });
     const demoApiClient = createMockApiClient({
       system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
@@ -219,6 +221,7 @@ describe('AppShell', () => {
       email: 'viewer@example.com',
       role: 'viewer',
       permissions: [],
+      analyticsConsent: true,
     });
     const demoApiClient = createMockApiClient({
       system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },

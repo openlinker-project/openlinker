@@ -159,7 +159,7 @@ export type {
   UpdateOfferQuantitiesBatchFailure,
 } from './domain/types/offer-quantity-update.types';
 export type { UpdateOfferFieldsCommand } from './domain/types/offer-fields-update.types';
-export type { OfferCategory } from './domain/types/category.types';
+export type { OfferCategory, CategoryPathSegment } from './domain/types/category.types';
 export { CreateOfferResultStatusValues, OfferConditionValues } from './domain/types/offer-create.types';
 export type {
   CreateOfferCommand,
@@ -195,6 +195,8 @@ export { isOfferStockRestorer } from './domain/ports/capabilities/offer-stock-re
 export type { OfferStockRestoreTarget } from './domain/types/offer-stock-restore.types';
 export type { CategoryBrowser } from './domain/ports/capabilities/category-browser.capability';
 export { isCategoryBrowser } from './domain/ports/capabilities/category-browser.capability';
+export type { CategoryPathReader } from './domain/ports/capabilities/category-path-reader.capability';
+export { isCategoryPathReader } from './domain/ports/capabilities/category-path-reader.capability';
 export type { CategoryBarcodeMatcher } from './domain/ports/capabilities/category-barcode-matcher.capability';
 export { isCategoryBarcodeMatcher } from './domain/ports/capabilities/category-barcode-matcher.capability';
 export type { EanCategoryMatcher } from './domain/ports/capabilities/ean-category-matcher.capability';

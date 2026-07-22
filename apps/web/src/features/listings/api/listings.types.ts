@@ -524,6 +524,19 @@ export interface CategoryParametersListResponse {
 }
 
 /**
+ * One node of a category breadcrumb, ordered root -> leaf (#1752). Mirrors the
+ * BE `CategoryPathResponseDto` 1:1.
+ */
+export interface CategoryPathSegment {
+  id: string;
+  name: string;
+}
+
+export interface CategoryPathResponse {
+  path: CategoryPathSegment[];
+}
+
+/**
  * Catalog product types — mirror the neutral BE shapes from
  * `@openlinker/core/listings` (#633). Preserve backend `camelCase`.
  */

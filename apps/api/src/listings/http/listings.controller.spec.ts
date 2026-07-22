@@ -758,6 +758,59 @@ describe('ListingsController', () => {
     });
   });
 
+  describe('getCategoryPath (#1752)', () => {
+    const samplePath = [
+      { id: '1', name: 'Electronics' },
+      { id: '10', name: 'Smartphones' },
+    ];
+
+    function makeAdapter(
+      withCategoryPathReader: boolean,
+      fetch: jest.Mock = jest.fn().mockResolvedValue(samplePath)
+    ): OfferManagerPort {
+      const base = { updateOfferQuantity: jest.fn() } as unknown as OfferManagerPort;
+      if (withCategoryPathReader) {
+        return Object.assign(base, { fetchCategoryPath: fetch });
+      }
+      return base;
+    }
+
+    it('returns the breadcrumb wrapped under `path`, root -> leaf', async () => {
+      const fetch = jest.fn().mockResolvedValue(samplePath);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(true, fetch));
+
+      const result = await controller.getCategoryPath('conn-1', '10');
+
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith('conn-1', 'OfferManager');
+      expect(fetch).toHaveBeenCalledWith('10');
+      expect(result.path).toEqual(samplePath);
+    });
+
+    it('throws 422 when the adapter does not implement CategoryPathReader', async () => {
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(false));
+
+      await expect(controller.getCategoryPath('conn-1', '10')).rejects.toBeInstanceOf(
+        UnprocessableEntityException
+      );
+    });
+
+    it('translates CategoryNotFoundException to a 404 NotFoundException', async () => {
+      const fetch = jest.fn().mockRejectedValue(new CategoryNotFoundException('999999', 'allegro'));
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(true, fetch));
+
+      await expect(controller.getCategoryPath('conn-1', '999999')).rejects.toBeInstanceOf(
+        NotFoundException
+      );
+    });
+
+    it('propagates upstream errors that are not CategoryNotFoundException', async () => {
+      const fetch = jest.fn().mockRejectedValue(new Error('upstream-503'));
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(true, fetch));
+
+      await expect(controller.getCategoryPath('conn-1', '10')).rejects.toThrow('upstream-503');
+    });
+  });
+
   describe('resolveCategory (#631)', () => {
     // Opaque adapter — the integration-service mock returns it just to satisfy
     // the pre-flight connection-validity check; the resolveCategory service

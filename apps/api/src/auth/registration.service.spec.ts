@@ -164,6 +164,50 @@ describe('RegistrationService', () => {
     expect(emailConfirmationService.sendConfirmation).not.toHaveBeenCalled();
   });
 
+  describe('analytics consent (#1743)', () => {
+    const makeActiveService = (): {
+      repo: jest.Mocked<UserRepositoryPort>;
+      service: RegistrationService;
+    } => {
+      const repo = makeRepo();
+      repo.findByUsername.mockResolvedValue(null);
+      repo.findByEmail.mockResolvedValue(null);
+      repo.save.mockImplementation((u) => Promise.resolve(makeUser(u.username)));
+      const service = new RegistrationService(
+        repo,
+        makeConfig({ OL_REGISTRATION_ENABLED: 'true' }),
+        makeDemoService(true),
+        new InMemoryCacheAdapter(),
+        makeEmailConfirmationService(),
+      );
+      return { repo, service };
+    };
+
+    it('should default analyticsConsent to false when the flag is omitted (opt-in)', async () => {
+      const { repo, service } = makeActiveService();
+
+      await service.register('alice', 'alice@test.com', 'pass123');
+
+      expect(repo.save.mock.calls[0][0].analyticsConsent).toBe(false);
+    });
+
+    it('should persist analyticsConsent=false when the user opts out', async () => {
+      const { repo, service } = makeActiveService();
+
+      await service.register('alice', 'alice@test.com', 'pass123', '1.2.3.4', false);
+
+      expect(repo.save.mock.calls[0][0].analyticsConsent).toBe(false);
+    });
+
+    it('should persist analyticsConsent=true when explicitly granted', async () => {
+      const { repo, service } = makeActiveService();
+
+      await service.register('alice', 'alice@test.com', 'pass123', '1.2.3.4', true);
+
+      expect(repo.save.mock.calls[0][0].analyticsConsent).toBe(true);
+    });
+  });
+
   describe('rate limiting (#1469)', () => {
     it('should throw RegistrationRateLimitedException after the configured limit is reached', async () => {
       const repo = makeRepo();

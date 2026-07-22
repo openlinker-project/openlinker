@@ -31,6 +31,9 @@ export const listingsQueryKeys = {
       connectionId,
       categoryId,
     ] as const,
+  // #1752 — category breadcrumb resolution for the listing-detail drawer.
+  categoryPath: (connectionId: string, categoryId: string) =>
+    ['listings', 'categoryPath', connectionId, categoryId] as const,
   catalogProductMatch: (connectionId: string, barcode: string, categoryId: string) =>
     ['listings', 'catalogProductMatch', connectionId, barcode, categoryId] as const,
   catalogProduct: (connectionId: string, productId: string) =>
