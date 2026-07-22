@@ -36,6 +36,11 @@ export class UserResponseDto {
   })
   permissions!: Permission[];
 
+  @ApiProperty({
+    description: 'Whether the account opted in to demo-only usage analytics (#1743)',
+  })
+  analyticsConsent!: boolean;
+
   static fromDomain(user: User): UserResponseDto {
     const dto = new UserResponseDto();
     dto.id = user.id;
@@ -44,6 +49,7 @@ export class UserResponseDto {
     dto.role = user.role;
     // ?? [] guards against DB role values that violate the UserRole type contract at runtime
     dto.permissions = [...(ROLE_PERMISSIONS[user.role] ?? [])];
+    dto.analyticsConsent = user.analyticsConsent;
     return dto;
   }
 }

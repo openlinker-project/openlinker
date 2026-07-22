@@ -31,6 +31,8 @@ import { isAllowedErliBaseUrl } from '../domain/policies/erli-base-url.policy';
 import {
   ERLI_DEFAULT_BASE_URL,
   ERLI_SANDBOX_BASE_URL,
+  ERLI_DEFAULT_WEB_BASE_URL,
+  ERLI_SANDBOX_WEB_BASE_URL,
   type ErliConnectionConfig,
   type ErliCredentials,
 } from '../domain/types/erli-connection.types';
@@ -85,6 +87,8 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
     const allegroCategoryCatalog = this.buildAllegroCategoryCatalog(credentials, config, cache);
     // Construct the offer manager first so its reference can be shared with the
     // order-source adapter (which needs it for the `cancelled` stock-restore path).
+    const webBaseUrl =
+      config.environment === 'sandbox' ? ERLI_SANDBOX_WEB_BASE_URL : ERLI_DEFAULT_WEB_BASE_URL;
     const offerManager = new ErliOfferManagerAdapter(
       connection.id,
       ERLI_ADAPTER_KEY,
@@ -92,6 +96,7 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
       config.defaultDispatchTime,
       cache,
       allegroCategoryCatalog,
+      webBaseUrl,
     );
     return {
       offerManager,
