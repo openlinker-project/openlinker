@@ -129,6 +129,10 @@ export function createJwtBearerSessionAdapter({
           email: data.email,
           role: data.role ?? '',
           permissions: data.permissions ?? [],
+          // Opt-in (#1743): a payload from an API predating this field reads
+          // as no consent, matching the backend default (analytics stays off
+          // without an affirmative choice).
+          analyticsConsent: data.analyticsConsent ?? false,
         };
         return {
           status: 'authenticated',

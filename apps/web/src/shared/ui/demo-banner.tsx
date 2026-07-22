@@ -5,26 +5,25 @@
  * deployment is running in demo mode (OL_DEMO_MODE=true). Not dismissible —
  * persists for the session as a constant visual reminder.
  *
- * Optionally renders an analytics-consent CTA (#1301) when the host passes
- * `consentPending`, or a compact revoke affordance when the host passes
- * `consentAccepted`. This component stays feature-agnostic — it does not
- * read or write consent storage itself (that lives in `features/demo`, which
- * `shared/ui` must not import) — the host wires `onConsentChange`.
+ * Analytics consent is captured once at registration (#1743) — this banner no
+ * longer prompts for it. When analytics is active it renders a quiet
+ * "Analytics on" status with a Disable affordance so opt-out stays reachable.
+ * This component stays feature-agnostic — it does not read or write consent
+ * storage itself (that lives in `features/demo`, which `shared/ui` must not
+ * import) — the host wires `onDisableAnalytics`.
  */
 import { forwardRef, type ComponentPropsWithoutRef } from 'react';
 import { Button } from './button';
 
 export interface DemoBannerProps extends ComponentPropsWithoutRef<'div'> {
-  /** True when the visitor hasn't yet accepted or declined demo analytics. */
-  consentPending?: boolean;
-  /** True when the visitor has already accepted demo analytics (shows a revoke affordance). */
-  consentAccepted?: boolean;
-  /** Called with the visitor's choice when the consent CTA or revoke affordance is used. */
-  onConsentChange?: (consent: 'accepted' | 'declined') => void;
+  /** True when demo analytics is currently active (shows a Disable affordance). */
+  analyticsActive?: boolean;
+  /** Called when the visitor uses the Disable affordance to opt out for this browser. */
+  onDisableAnalytics?: () => void;
 }
 
 export const DemoBanner = forwardRef<HTMLDivElement, DemoBannerProps>(function DemoBanner(
-  { className = '', consentPending = false, consentAccepted = false, onConsentChange, ...props },
+  { className = '', analyticsActive = false, onDisableAnalytics, ...props },
   ref,
 ) {
   const classes = ['demo-banner', className].filter(Boolean).join(' ');
@@ -35,33 +34,10 @@ export const DemoBanner = forwardRef<HTMLDivElement, DemoBannerProps>(function D
         <strong>Demo mode — read-only.</strong> You can explore all data; write actions are
         disabled.
       </span>
-      {consentPending ? (
-        <span className="demo-banner__consent">
-          <span>This demo uses session recording to improve the product.</span>
-          <Button
-            className="button--xs"
-            tone="secondary"
-            onClick={() => onConsentChange?.('accepted')}
-          >
-            Accept analytics
-          </Button>
-          <Button
-            className="button--xs"
-            tone="ghost"
-            onClick={() => onConsentChange?.('declined')}
-          >
-            Decline
-          </Button>
-        </span>
-      ) : null}
-      {consentAccepted ? (
+      {analyticsActive ? (
         <span className="demo-banner__consent">
           <span>Analytics on.</span>
-          <Button
-            className="button--xs"
-            tone="ghost"
-            onClick={() => onConsentChange?.('declined')}
-          >
+          <Button className="button--xs" tone="ghost" onClick={() => onDisableAnalytics?.()}>
             Disable
           </Button>
         </span>
