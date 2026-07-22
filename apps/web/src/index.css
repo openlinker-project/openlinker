@@ -268,6 +268,17 @@
   --status-info-fg: oklch(40% 0.12 245);
   --status-info-strong: oklch(40% 0.12 245);
 
+  /* ── Viz: categorical series (#1739) ──────────────────────────────────
+   * Small categorical palette for proportion visuals (routing-split bar).
+   * NOT status hues — a series colour distinguishes entities (carriers,
+   * connections), never encodes health. `--viz-cat-muted` is the neutral
+   * "default / unassigned" bucket. */
+  --viz-cat-1: oklch(75% 0.13 85);
+  --viz-cat-2: oklch(60% 0.15 20);
+  --viz-cat-3: oklch(58% 0.12 245);
+  --viz-cat-4: oklch(60% 0.13 150);
+  --viz-cat-muted: oklch(82% 0.008 80);
+
   /* ── Status: review / manual ──────────────────────────────────────── */
   --status-review: oklch(58% 0.16 290);
   --status-review-soft: oklch(96% 0.04 290);
@@ -430,6 +441,13 @@ html[data-theme='dark'] {
   --status-info-border: oklch(36% 0.10 245);
   --status-info-fg: oklch(86% 0.12 245);
   --status-info-strong: oklch(86% 0.12 245);
+
+  /* Viz — categorical series (#1739) */
+  --viz-cat-1: oklch(70% 0.12 85);
+  --viz-cat-2: oklch(62% 0.14 20);
+  --viz-cat-3: oklch(62% 0.11 245);
+  --viz-cat-4: oklch(62% 0.12 150);
+  --viz-cat-muted: oklch(42% 0.008 80);
 
   /* Status — review */
   --status-review: oklch(74% 0.14 290);
@@ -7750,8 +7768,10 @@ a.kpi-card:focus-visible {
    Merged Shipment + money columns, per-label sort controls, the row items
    summary, the folded channel line, and the mobile card summary/facts. */
 
-/* Right-aligned two-line stack (the money column). */
-.orders-cell-stack--end { align-items: flex-end; text-align: right; }
+/* Right-aligned two-line stack (the money column). `min-width: 8rem`
+   co-anchors the body column width with the header sort buttons so the
+   column doesn't resize between sorts, matching the products table (#1747). */
+.orders-cell-stack--end { align-items: flex-end; text-align: right; min-width: 8rem; }
 .orders-money-total { font-weight: 640; }
 
 /* Row items summary: a truncating first-item name + a never-truncated "+N"
@@ -7838,11 +7858,22 @@ a.kpi-card:focus-visible {
 /* Per-label sort controls in the merged-column headers. */
 .orders-sortstack { display: inline-flex; flex-direction: column; gap: 4px; }
 .orders-sortstack--left { align-items: flex-start; }
-.orders-sortstack--right { align-items: flex-end; }
+/* `display: flex` + `width: 100%` makes the right-hand money stack fill the
+   entire <th> so `align-items: flex-end` reliably pins the buttons to the
+   right edge; the th's text-align alone left it content-width and off-edge.
+   Scoped to --right so the left/plain header stacks stay content-width (#1747). */
+.orders-sortstack--right { display: flex; width: 100%; align-items: flex-end; }
+/* Stable per-button width so the three labels line up flush-right with even
+   gaps, matching the products header (#1747, mirrors .sortbtn from #1720). */
+.orders-sortstack--right .orders-sortbtn { justify-content: flex-end; min-width: 8rem; }
 .orders-sortbtn {
   display: inline-flex;
   align-items: center;
   gap: 3px;
+  /* Opt out of the global `button { height: 2rem }` so the stacked sort
+     labels are content-height (~15px), not 32px each - otherwise the header
+     renders ~2x taller than the products table (#1747, mirrors .sortbtn). */
+  height: auto;
   padding: 0;
   border: none;
   background: none;
@@ -12181,12 +12212,10 @@ input.bulk-dispatch__num--wide {
   font-weight: 600;
 }
 
-/* Forces horizontal scroll (via the shared .data-table__container overflow-x)
-   instead of crushing cells into vertical per-character wraps when this table
-   is embedded in a narrow context - the products cockpit's mobile card
-   disclosure and expandable drawer (#1720). */
+/* Full-width variant table (#1752). Below 640px it folds into stacked
+   accordion cards (see the v2 section), so no min-width scroll is needed. */
 .variant-stock-table {
-  min-width: 640px;
+  width: 100%;
 }
 
 .variant-stock-table th,
@@ -12344,6 +12373,424 @@ input.bulk-dispatch__num--wide {
 
 .listings-subtable__link:hover {
   text-decoration: underline;
+}
+
+/* ── Product detail v2 (#1752) ─────────────────────────────────────────────
+   Full-width variants table in the products-cockpit row language, a rich
+   per-listing accordion drawer, a renamed "Source" section, a unified 4-tile
+   KPI strip, and a genuine mobile layout (stacking hero + table→cards). Reuses
+   the global `.coverage-pill`, `.channel-pill`, `.products-row-cta`,
+   `.status-badge`, and `.products-cell-stack` primitives — this block only adds
+   the detail-page-specific chrome. */
+
+/* Unified 4-tile KPI strip (replaces the split cols-1 + cols-3). */
+.product-detail__kpi-row--cols-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+@media (max-width: 899.98px) {
+  .product-detail__kpi-row--cols-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Hero stacks under 768px so the facts get full width — kills the
+   one-character-per-line wrap the fixed 8rem gallery used to force. */
+@media (max-width: 767.98px) {
+  .product-detail-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .product-gallery {
+    width: 100%;
+  }
+
+  .product-gallery__main {
+    aspect-ratio: 16 / 10;
+  }
+
+  .product-detail-hero__fact {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.125rem;
+  }
+
+  .product-detail-hero__fact-label {
+    min-width: 0;
+  }
+}
+
+/* Description section header — read-only source vs editable Content. */
+.detail-section__edit-link {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent-primary-soft-strong);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.detail-section__edit-link:hover {
+  text-decoration: underline;
+}
+
+/* Source section (renamed from "External IDs"): the master origin gets a
+   Master tag; any further per-connection mappings list beneath. */
+.product-source {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.product-source__primary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+
+.product-source__primary:hover .product-source__conn {
+  color: var(--accent-primary-soft-strong);
+}
+
+.product-source__primary:focus-visible {
+  box-shadow: var(--shadow-focus);
+}
+
+.product-source__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.product-source__conn {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.product-source__ref {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.product-source__tag {
+  margin-left: auto;
+}
+
+.product-source__more {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.product-source__more-label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Variant table cells in cockpit language. */
+.variant-stock-table__name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.variant-stock-table__sku {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.variant-stock-table__meta {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.variant-stock-table__stock {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+}
+
+.variant-stock-table__stock-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.variant-stock-table__stock-reserved {
+  margin-left: 4px;
+  font-size: 0.6875rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.variant-stock-table__listings-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  align-items: center;
+  white-space: normal;
+}
+
+.variant-stock-table__price {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Expanded drawer — the products-row-detail inset look, filled with listings. */
+.variant-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0 var(--space-4) var(--space-4) calc(2.25rem + var(--space-4));
+  padding: var(--space-4);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.variant-drawer__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.variant-drawer__label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.variant-listing-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.variant-listing-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  padding: var(--space-3) var(--space-4);
+}
+
+.variant-listing-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.variant-listing-card__left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.variant-listing-card__price {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.variant-listing-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.variant-listing-meta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.variant-listing-meta b {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* Identifier / external links in the drawer read as quiet primary text with
+   a faint underline; the brand accent appears only on hover (no off-palette
+   blue in this dense, status-coloured region). */
+.variant-listing-meta a {
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 2px;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.variant-listing-meta a:hover {
+  color: var(--accent-primary-soft-strong);
+  text-decoration-color: currentColor;
+}
+
+.variant-listing-meta a:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-xs);
+}
+
+.variant-listing-card__note {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+/* Mobile: the table folds into stacked accordion cards (<640px). The
+   component swaps markup via useMediaQuery; these style the card variant. */
+.variant-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.variant-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.variant-card__header {
+  /* Full reset — the global `button, .button {}` base (accent background,
+     fixed 2rem height, border, box-shadow) otherwise survives and both
+     collapses the header height (content overflows) and paints it orange on
+     hover/active. Mirrors the .products-card-disclosure reset (#1720). */
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  height: auto;
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.variant-card__header:hover,
+.variant-card__header:active {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  color: inherit;
+}
+
+.variant-card__header:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.variant-card__aside {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+
+.variant-card__disclosure {
+  width: 1.5rem;
+  height: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+
+.variant-card__disclosure svg {
+  width: 11px;
+  height: 11px;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.variant-card__header[aria-expanded='true'] .variant-card__disclosure svg {
+  transform: rotate(90deg);
+}
+
+.variant-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+.variant-card__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.variant-card__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.variant-card__cell--full {
+  grid-column: 1 / -1;
+}
+
+.variant-card__cell-label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.variant-card__cell-value {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* Inside a mobile card the drawer needs no inset margin. */
+.variant-card__body .variant-drawer {
+  margin: 0;
+  padding: var(--space-3);
 }
 
 .guest-form__demo-callout-icon {
@@ -13522,4 +13969,58 @@ input.bulk-dispatch__num--wide {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-muted);
+}
+
+/* ── RoutingSplitBar (#1739) ──────────────────────────────────────────
+ * Segmented proportion bar on the Fulfillment tab: how many delivery
+ * methods route to each processor, recomputed live from unsaved edits.
+ * The bar is decorative (aria-hidden); the legend carries the counts. */
+.routing-split {
+  margin-bottom: var(--space-4);
+}
+
+.routing-split__bar {
+  display: flex;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+}
+
+.routing-split__seg {
+  transition: flex-grow var(--duration-normal) ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .routing-split__seg {
+    transition: none;
+  }
+}
+
+.routing-split__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin-top: var(--space-2);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.routing-split__key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.routing-split__swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.routing-split__count {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }

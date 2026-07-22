@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState, type ReactElement, type ReactNode } from 
 import { Button } from '../../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { ConnectionEntityLabel, useConnectionsQuery } from '../../connections';
+import { RoutingSplitBar, type RoutingSplitBucket } from './routing-split-bar';
 import {
   useRoutingRulesQuery,
   useRoutingCandidatesQuery,
@@ -142,6 +143,45 @@ export function RoutingRulesPanel({
     (m) => (selections[m.value] ?? DEFAULT_KEY) !== (savedKeyByMethod.get(m.value) ?? DEFAULT_KEY),
   );
 
+  // Routing-split buckets (#1739): methods-per-processor derived from the
+  // CURRENT selections (not the saved rules), so the bar moves live while the
+  // operator edits and before "Save routing". One bucket per live divert
+  // candidate (kept even at 0 so its colour slot stays stable), one bucket per
+  // saved-but-unavailable selection, and the default bucket last.
+  const splitBuckets = useMemo<RoutingSplitBucket[]>(() => {
+    const nameFor = (id: string): string => connectionNameById.get(id) ?? shortValue(id);
+    const counts = new Map<string, number>();
+    for (const method of rowMethods) {
+      const key = selections[method.value] ?? DEFAULT_KEY;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+
+    const buckets: RoutingSplitBucket[] = candidates
+      .filter((c) => c.processorKind !== 'omp_fulfilled')
+      .map((c) => {
+        const key = `${c.processorKind}::${c.processorConnectionId}`;
+        return { key, label: nameFor(c.processorConnectionId), count: counts.get(key) ?? 0 };
+      });
+
+    for (const [key, count] of counts) {
+      if (key === DEFAULT_KEY || buckets.some((b) => b.key === key)) continue;
+      const parsed = parseSelectionKey(key);
+      buckets.push({
+        key,
+        label: parsed ? `${nameFor(parsed.connectionId)} (unavailable)` : key,
+        count,
+      });
+    }
+
+    buckets.push({
+      key: DEFAULT_KEY,
+      label: defaultLabel,
+      count: counts.get(DEFAULT_KEY) ?? 0,
+      isDefault: true,
+    });
+    return buckets;
+  }, [rowMethods, selections, candidates, defaultLabel, connectionNameById]);
+
   function optionsForRow(currentKey: string): DivertOption[] {
     const base: DivertOption[] = [{ key: DEFAULT_KEY, label: defaultLabel }, ...divertOptions];
     // Keep a saved selection visible even when it is no longer a live candidate
@@ -253,6 +293,8 @@ export function RoutingRulesPanel({
           default until you add a carrier-managed or marketplace-delivery connection.
         </p>
       )}
+
+      {rowMethods.length > 0 && <RoutingSplitBar buckets={splitBuckets} />}
 
       {rowMethods.length === 0 ? (
         <p className="muted-text" role="status" aria-live="polite">

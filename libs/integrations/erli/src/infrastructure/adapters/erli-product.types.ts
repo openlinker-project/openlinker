@@ -212,6 +212,17 @@ export interface ErliDeliveryPriceListItem {
   name: string;
 }
 
+/**
+ * One category-breadcrumb node on the read-side product resource. Erli returns
+ * `categories` as an array of breadcrumb paths (`[[{ id, name }, ...]]`); the
+ * leaf of the first path is the most-specific category the offer sits under.
+ * `id` is a numeric marketplace category id; `name` is the human-readable label.
+ */
+export interface ErliProductCategoryNode {
+  id: number;
+  name?: string;
+}
+
 export interface ErliProductResource {
   /**
    * Erli field names the seller has frozen via manual panel edits (#988). May
@@ -224,4 +235,31 @@ export interface ErliProductResource {
   status?: ErliProductStatus;
   /** Rejection / inactivation detail Erli supplies, when present (#989). */
   statusReason?: string;
+
+  // ── Read-side offer-detail fields (OfferReader.getOffer) ──
+  // Verified live against the sandbox GET /products/{externalId}: money is an
+  // INTEGER in minor units (grosze, PLN-only), `images[].url` is a public URL,
+  // and `categories` is an array of breadcrumb paths.
+  /** Seller-keyed product id echoed back (the OL variant id used as the offer id). */
+  externalId?: string;
+  /** Offer title. */
+  name?: string;
+  /**
+   * Rendered HTML description Erli returns alongside the structured
+   * `description.sections` object. Preferred for the detail-page preview
+   * because it is a flat string rather than a section tree.
+   */
+  externalDescription?: string;
+  ean?: string;
+  sku?: string;
+  /** Price in INTEGER minor units (grosze). PLN-only — no currency field. */
+  price?: number;
+  stock?: number;
+  images?: ErliProductImage[];
+  /** Category breadcrumb paths; the first path's leaf is the offer's category. */
+  categories?: ErliProductCategoryNode[][];
+  /** Buyer-facing offer slug (e.g. `swieca-sojowa-200g`). */
+  slug?: string;
+  /** Numeric Erli marketplace offer id (distinct from the seller-keyed `externalId`). */
+  marketplaceId?: number;
 }

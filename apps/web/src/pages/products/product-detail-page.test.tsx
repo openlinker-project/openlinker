@@ -2,7 +2,11 @@ import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
+import {
+  renderWithProviders,
+  createMockApiClient,
+  createAuthenticatedSessionAdapter,
+} from '../../test/test-utils';
 import { ProductDetailPage } from './product-detail-page';
 import type { Product } from '../../features/products/api/products.types';
 import type { InventoryItem, PaginatedInventory } from '../../features/inventory/api/inventory.types';
@@ -128,14 +132,15 @@ describe('ProductDetailPage', () => {
     expect(screen.getByText('29.99')).toBeInTheDocument();
     expect(screen.getByText('A test product')).toBeInTheDocument();
 
-    // Variant & stock table
+    // Variant & stock table — SKU headline + combined EAN/attributes meta line
     expect(screen.getByText('SKU-001-M')).toBeInTheDocument();
-    expect(screen.getByText('1234567890123')).toBeInTheDocument();
-    expect(screen.getByText('size: M, color: blue')).toBeInTheDocument();
+    expect(screen.getByText(/EAN 1234567890123/)).toBeInTheDocument();
+    expect(screen.getByText(/size: M, color: blue/)).toBeInTheDocument();
 
-    // External IDs (rendered as chips)
-    expect(screen.getByText('prestashop')).toBeInTheDocument();
-    expect(screen.getByText('10')).toBeInTheDocument();
+    // Source section (renamed from External IDs) — master origin with ref
+    expect(screen.getByRole('heading', { name: 'Source' })).toBeInTheDocument();
+    expect(screen.getByText('prestashop · 10')).toBeInTheDocument();
+    expect(screen.getByText('Master')).toBeInTheDocument();
   });
 
   it('should show error state when fetch fails', async () => {
@@ -250,7 +255,7 @@ describe('ProductDetailPage', () => {
     expect(within(kpiCard).getByText('1 oversold')).toBeInTheDocument();
   });
 
-  it('should toggle the "Listings using this stock" panel and render the matching listings subtable', async () => {
+  it('should toggle the variant drawer and render the matching per-listing detail', async () => {
     const user = userEvent.setup();
     const listingsList = vi.fn().mockResolvedValue(
       paginatedListings([
@@ -272,8 +277,48 @@ describe('ProductDetailPage', () => {
     await user.click(toggle);
 
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(await screen.findByText('allegro')).toBeInTheDocument();
-    expect(screen.getByText('ALG-1')).toBeInTheDocument();
+    // Drawer label + per-listing detail card (offer-id link).
+    expect(await screen.findByText('Listings (1)')).toBeInTheDocument();
+    expect(screen.getByText(/ALG-1/)).toBeInTheDocument();
+  });
+
+  it('should render a "+ Create offer" CTA when an OfferCreator connection has no listing for the variant', async () => {
+    const mockApi = createMockApiClient({
+      products: {
+        getById: vi.fn().mockResolvedValue(sampleProduct),
+      },
+      connections: {
+        list: vi.fn().mockResolvedValue([
+          {
+            id: 'conn_allegro',
+            name: 'Allegro sandbox',
+            platformType: 'allegro',
+            status: 'active',
+            adapterKey: 'allegro.publicapi.v1',
+            supportedCapabilities: ['OfferManager', 'OfferCreator'],
+            enabledCapabilities: ['OfferManager', 'OfferCreator'],
+            config: {},
+            createdAt: '2026-01-15T10:00:00.000Z',
+            updatedAt: '2026-01-15T10:00:00.000Z',
+          },
+        ]),
+      },
+      listings: { list: vi.fn().mockResolvedValue(paginatedListings([])) },
+    });
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/products/:id" element={<ProductDetailPage />} />
+      </Routes>,
+      {
+        apiClient: mockApi,
+        route: '/products/ol_product_abc123',
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      },
+    );
+
+    await screen.findByText('SKU-001-M');
+    expect(await screen.findByRole('button', { name: '+ Create offer' })).toBeInTheDocument();
   });
 
   it('should show the empty listings message when a variant has no matching listings', async () => {

@@ -141,6 +141,13 @@ export const tokens = {
   'status-info-border': 'var(--status-info-border)',
   'status-info-fg': 'var(--status-info-fg)',
 
+  // ── Viz — categorical series (#1739) ─────────────────────────────
+  'viz-cat-1': 'var(--viz-cat-1)',
+  'viz-cat-2': 'var(--viz-cat-2)',
+  'viz-cat-3': 'var(--viz-cat-3)',
+  'viz-cat-4': 'var(--viz-cat-4)',
+  'viz-cat-muted': 'var(--viz-cat-muted)',
+
   // ── Status — review (manual review / pending operator action) ───
   'status-review': 'var(--status-review)',
   'status-review-strong': 'var(--status-review-strong)',
