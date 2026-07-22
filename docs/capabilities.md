@@ -115,7 +115,7 @@ The canonical OL-owned order-lifecycle state machine (authoritative
 | `PickupPointFinder` | Search the carrier's pickup points / lockers (e.g. Paczkomat). | `findPickupPoints` | `isPickupPointFinder` |
 | `ShipmentCanceller` | Cancel / void a registered shipment. | `cancelShipment` | `isShipmentCanceller` |
 
-### `InvoicingPort` (invoicing) — 12
+### `InvoicingPort` (invoicing) — 13
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
@@ -131,6 +131,7 @@ The canonical OL-owned order-lifecycle state machine (authoritative
 | `PaymentStatusReader` | Authoritative re-read of a document's payment state (a provider payment webhook is only a trigger, never trusted as the system of record). | `getPaymentStatus` | `isPaymentStatusReader` |
 | `PaymentMarker` | Push an authoritative "paid" state to the provider for an order settled elsewhere (e.g. a marketplace order the seller's bank statement can't auto-match). | `markPaid` | `isPaymentMarker` |
 | `InvoiceEmailSender` | Trigger the provider to render and email the already-issued invoice to the buyer. | `sendByEmail` | `isInvoiceEmailSender` |
+| `DocumentNumberConsumer` | Marker: the adapter relies on OpenLinker to allocate the legal, sequential document number from the connection's numbering series (OL-numbered provider, e.g. KSeF FA(3) `P_2`). Providers that number documents themselves (inFakt/Subiekt) do NOT implement it. | `consumesDocumentNumber` (marker) · `numberingTimeZone` · `maxDocumentNumberLength?` | `isDocumentNumberConsumer` |
 
 See [ADR-026](./architecture/adrs/026-country-agnostic-invoicing-domain.md) for
 the country-agnostic invoicing design.

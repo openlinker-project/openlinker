@@ -43,6 +43,14 @@ carries no independent retry/timing semantics of its own the way a true
 `InfaktInvoicingAdapter` implements `InvoicingPort` + `RegulatoryStatusReader` +
 `CorrectionIssuer` — **not** `RegulatoryTransmitter`.
 
+> This ADR's decision is scoped to the `RegulatoryStatusReader`-vs-`RegulatoryTransmitter`
+> split. The adapter has since accreted further sub-capabilities post-decision
+> (`RegulatoryResubmitter`, `PaymentStatusReader`, `PaymentMarker`, `InvoiceEmailSender`,
+> `BankAccountsReader`, `BankAccountDefaultSetter`, `RegulatoryDocumentReader`); the full,
+> code-synced roster lives in the [inFakt README](../../../libs/integrations/infakt/README.md)
+> and [architecture-overview §14](../../architecture-overview.md#14-invoicing) rather than
+> being restated here.
+
 - **No public `submitForClearance()`.** OL retains an out-of-port `sendToKsef` trigger
   (called inline by `issueInvoice`/`issueCorrection`, not exposed as a standalone port
   method) and does not surface it as a `RegulatoryTransmitter` method because clearance
