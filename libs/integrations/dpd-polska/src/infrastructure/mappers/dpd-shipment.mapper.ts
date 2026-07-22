@@ -54,6 +54,19 @@ import {
 const DPD_BRAND = 'dpd';
 
 /**
+ * DPD rejects a sender postal code that is syntactically `NN-NNN` but not a real
+ * deliverable code for the configured sender city (e.g. `Warszawa` + `22-213`, a
+ * Lublin-region code) as `INCORRECT_SENDER_POSTAL_CODE`. Unlike the receiver
+ * postcode (which comes from the order), the sender postcode is stored on the
+ * DPD connection config, so the remedy is an operator action on the connection.
+ */
+const DPD_SENDER_POSTAL_CODE_ERROR_CODE = 'INCORRECT_SENDER_POSTAL_CODE';
+const DPD_SENDER_POSTAL_CODE_HINT =
+  "The connection's sender postal code is not a deliverable DPD code for the sender city. " +
+  'Correct the sender address on the DPD connection (the postal code must be a real code that ' +
+  'matches the city, not merely the NN-NNN format).';
+
+/**
  * Build the create-packages request for the command (v1: one package, one
  * parcel). Branches on shipping method: `kurier` → courier `receiver` (street
  * address); `pickup` → `pudoReceiver` + the `DPD_PICKUP` service (ship to a DPD
@@ -377,13 +390,27 @@ function resolveRecipientName(recipient: ShipmentRecipient): string | undefined 
  * the full set is carried on `providerDetails.validationInfo` so a future
  * `NOT_PROCESSED` surfaces the field-level reason in structured logs / the API
  * response without a debug probe (#1104).
+ *
+ * When any collected entry is an `INCORRECT_SENDER_POSTAL_CODE`, the operator-
+ * readable message is enriched with an actionable hint (#1778): the sender
+ * postcode lives on the connection config, so the fix is an operator action —
+ * a bare `NN-NNN` format is not enough, the code must actually be deliverable
+ * for the configured city. The `providerCode` discriminator and structured
+ * `providerDetails` are left untouched (parcel-first precedence preserved).
  */
 function reject(allInfos: DpdValidationInfo[], fallback: string): ShippingProviderRejectionException {
   const first = allInfos[0];
+  const baseMessage = first?.info ?? fallback;
+  const hasSenderPostalCodeIssue = allInfos.some(
+    (info) => info.errorCode === DPD_SENDER_POSTAL_CODE_ERROR_CODE,
+  );
+  const message = hasSenderPostalCodeIssue
+    ? `${baseMessage}. ${DPD_SENDER_POSTAL_CODE_HINT}`
+    : baseMessage;
   return new ShippingProviderRejectionException(
     DPD_BRAND,
     first?.errorCode ?? null,
-    first?.info ?? fallback,
+    message,
     allInfos.length > 0
       ? { errorCode: first.errorCode, info: first.info, validationInfo: allInfos }
       : undefined,
