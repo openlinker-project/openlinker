@@ -2,8 +2,11 @@
  * Bulk Offer Creation Submit Service Tests (#736)
  *
  * Covers happy-path fan-out, partial-enqueue failure → batch flipped to
- * `'failed'`, capability check propagation, empty-productIds guard, and
- * the `getBatch` read.
+ * `'failed'`, the level-triggered terminal-status derivation on a partial
+ * reconcile (#1741 review #1), capability check propagation, empty-productIds
+ * guard, the per-variant #1741 branches (precedence, exclusion, identifier
+ * enforcement incl. zero-padded GTIN collision, expanded-offer ceiling,
+ * override-key/currency guards), and the `getBatch` read.
  *
  * @module libs/core/src/listings/application/services/__tests__
  */
@@ -22,6 +25,7 @@ import { InvalidEanException } from '../../../domain/exceptions/invalid-ean.exce
 import { DuplicateBatchEanException } from '../../../domain/exceptions/duplicate-batch-ean.exception';
 import { CurrencyMismatchException } from '../../../domain/exceptions/currency-mismatch.exception';
 import { InvalidOverrideKeyException } from '../../../domain/exceptions/invalid-override-key.exception';
+import { ExpandedOfferCeilingExceededException } from '../../../domain/exceptions/expanded-offer-ceiling-exceeded.exception';
 import type { BulkListingBatchRepositoryPort } from '../../../domain/ports/bulk-listing-batch-repository.port';
 import type { OfferCreationRecordRepositoryPort } from '../../../domain/ports/offer-creation-record-repository.port';
 import type { OfferMappingRepositoryPort } from '../../../domain/ports/offer-mapping-repository.port';
@@ -337,6 +341,65 @@ describe('BulkListingSubmitService', () => {
       expect(bulkBatchRepo.updateTotalCount).toHaveBeenCalledWith('batch-1', 1);
       expect(bulkBatchRepo.updateStatus).toHaveBeenCalledWith('batch-1', 'running');
       expect(bulkBatchRepo.updateStatus).not.toHaveBeenCalledWith('batch-1', 'failed');
+    });
+
+    it('derives the terminal status (level-triggered) when every enqueued child already terminated before reconcile (#1741 review #1)', async () => {
+      // 1 of 3 enqueued, then the 2nd enqueue rejects. By the time the catch
+      // reconciles totalCount down to 1, the one enqueued child has ALREADY
+      // terminated (succeeded) — the edge-triggered #737 gate never re-fires,
+      // so the reconcile path must itself derive + set the terminal status
+      // instead of flipping to 'running' (which would strand the batch).
+      enqueueService.enqueueCreation
+        .mockResolvedValueOnce({
+          jobId: 'job-1',
+          offerCreationRecord: {} as unknown as OfferCreationRecord,
+        })
+        .mockRejectedValueOnce(new Error('stream down'));
+      bulkBatchRepo.updateTotalCount.mockResolvedValueOnce(
+        makeBatch({ id: 'batch-1', totalCount: 1, succeededCount: 1, failedCount: 0 })
+      );
+
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['v-a', 'v-b', 'v-c'],
+          sharedConfig: { stock: 5, publishImmediately: false },
+        })
+      ).rejects.toThrow('stream down');
+
+      expect(bulkBatchRepo.updateTotalCount).toHaveBeenCalledWith('batch-1', 1);
+      // Batch reached its terminal state, not left in 'running'.
+      expect(bulkBatchRepo.updateStatus).toHaveBeenCalledWith('batch-1', 'completed');
+      expect(bulkBatchRepo.updateStatus).not.toHaveBeenCalledWith('batch-1', 'running');
+    });
+
+    it('derives partially-failed (level-triggered) for a mixed finished reconcile (#1741 review #1)', async () => {
+      enqueueService.enqueueCreation
+        .mockResolvedValueOnce({
+          jobId: 'job-1',
+          offerCreationRecord: {} as unknown as OfferCreationRecord,
+        })
+        .mockResolvedValueOnce({
+          jobId: 'job-2',
+          offerCreationRecord: {} as unknown as OfferCreationRecord,
+        })
+        .mockRejectedValueOnce(new Error('stream down'));
+      bulkBatchRepo.updateTotalCount.mockResolvedValueOnce(
+        makeBatch({ id: 'batch-1', totalCount: 2, succeededCount: 1, failedCount: 1 })
+      );
+
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['v-a', 'v-b', 'v-c'],
+          sharedConfig: { stock: 5, publishImmediately: false },
+        })
+      ).rejects.toThrow('stream down');
+
+      expect(bulkBatchRepo.updateStatus).toHaveBeenCalledWith('batch-1', 'partially-failed');
+      expect(bulkBatchRepo.updateStatus).not.toHaveBeenCalledWith('batch-1', 'running');
     });
 
     it('flips terminal failed when the very first enqueue rejects (nothing enqueued, #1741)', async () => {
@@ -873,6 +936,57 @@ describe('BulkListingSubmitService', () => {
       ).rejects.toBeInstanceOf(DuplicateBatchEanException);
 
       expect(bulkBatchRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('collides zero-padded GTIN identities (05901234123457 === 5901234123457) as a duplicate EAN', async () => {
+      // The 13-digit and its GTIN-14 zero-padded form are the SAME GS1 identity;
+      // enforceIdentifierRules normalises both to 14 digits and must reject them
+      // as a duplicate (they would otherwise collapse onto one catalog card).
+      wireMultiVariant(
+        [
+          { id: 'ol_variant_a', ean: '5901234123457' },
+          { id: 'ol_variant_b', ean: '05901234123457' },
+        ],
+        [
+          { productVariantId: 'ol_variant_a', totalAvailable: 1 },
+          { productVariantId: 'ol_variant_b', totalAvailable: 1 },
+        ]
+      );
+
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['ol_variant_a'],
+          sharedConfig: { stock: 1, publishImmediately: false },
+        })
+      ).rejects.toBeInstanceOf(DuplicateBatchEanException);
+
+      expect(bulkBatchRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a fan-out that exceeds the expanded-offer ceiling (no batch row)', async () => {
+      // A single multi-variant product whose sibling count exceeds the 1000
+      // ceiling — the guard fires during expansion, before any persistence.
+      const siblings = Array.from({ length: 1001 }, (_, i) => ({
+        id: `ol_variant_${i.toString(16)}`,
+        // Truthy non-GTIN-length barcode so no sibling is dropped and the
+        // GS1 checksum gate is skipped (ceiling throws first anyway).
+        ean: `BC-${i}`,
+      }));
+      wireMultiVariant(siblings, []);
+
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['ol_variant_0'],
+          sharedConfig: { stock: 1, publishImmediately: false },
+        })
+      ).rejects.toBeInstanceOf(ExpandedOfferCeilingExceededException);
+
+      expect(bulkBatchRepo.create).not.toHaveBeenCalled();
+      expect(enqueueService.enqueueCreation).not.toHaveBeenCalled();
     });
 
     it('strips categoryId from a per-variant override', async () => {

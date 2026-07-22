@@ -43,6 +43,8 @@ import {
   OfferCreationRecordRepositoryPort,
   OfferMappingRepositoryPort} from '@openlinker/core/listings';
 import type {
+  BulkBatchStatus,
+  BulkListingBatch,
   CreateOfferOverrides,
   OfferManagerPort,
 } from '@openlinker/core/listings';
@@ -249,8 +251,25 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
       try {
         await this.deleteOrphanRecords(batch.id, enqueuedRecordIds);
         if (enqueued > 0) {
-          await this.bulkBatchRepository.updateTotalCount(batch.id, enqueued);
-          await this.bulkBatchRepository.updateStatus(batch.id, BULK_BATCH_STATUS.Running);
+          // Reconcile `totalCount` down to what actually reached the stream,
+          // then perform a LEVEL-triggered terminal check (#1741 review #1).
+          // The #737 counter gate is edge-triggered — it only fires when a
+          // child terminates. If every enqueued child already terminated
+          // before this reconcile ran, no callback ever re-evaluates the gate
+          // against the new `totalCount`, and a blind flip to 'running' would
+          // strand the batch there forever (no sweep reconciles stuck
+          // 'running' batches; retry only reopens terminal ones). Re-reading
+          // the counters here and deriving the terminal status when
+          // `succeeded + failed === totalCount` closes that race regardless of
+          // completion timing (`updateTotalCount` returns the post-update row
+          // with a fresh counter read; `updateStatus` is idempotent, so a
+          // child that terminates concurrently and also derives the terminal
+          // status is harmless).
+          const reconciled = await this.bulkBatchRepository.updateTotalCount(batch.id, enqueued);
+          const nextStatus = isBatchFinished(reconciled)
+            ? deriveTerminalStatus(reconciled)
+            : BULK_BATCH_STATUS.Running;
+          await this.bulkBatchRepository.updateStatus(batch.id, nextStatus);
         } else {
           await this.bulkBatchRepository.updateStatus(batch.id, BULK_BATCH_STATUS.Failed);
         }
@@ -718,6 +737,26 @@ function stripVariantCategoryId(
   const rest: CreateOfferOverrides = { ...overrides };
   delete rest.categoryId;
   return rest;
+}
+
+/**
+ * True once every child of the batch has terminated
+ * (`succeededCount + failedCount === totalCount`) — the #737 counter gate.
+ */
+function isBatchFinished(batch: BulkListingBatch): boolean {
+  return batch.succeededCount + batch.failedCount === batch.totalCount;
+}
+
+/**
+ * Derive the terminal batch status from its post-reconcile counters (#1741
+ * review #1). Same rule as the #737 `BulkListingProgressService`: all-succeeded
+ * ⇒ completed, all-failed ⇒ failed, mixed ⇒ partially-failed. Call only when
+ * {@link isBatchFinished} holds.
+ */
+function deriveTerminalStatus(batch: BulkListingBatch): BulkBatchStatus {
+  if (batch.failedCount === 0) return BULK_BATCH_STATUS.Completed;
+  if (batch.succeededCount === 0) return BULK_BATCH_STATUS.Failed;
+  return BULK_BATCH_STATUS.PartiallyFailed;
 }
 
 /**

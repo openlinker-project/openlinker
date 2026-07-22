@@ -74,10 +74,10 @@ export interface BulkListingSubmitInput {
    */
   initiatedBy: string;
   /**
-   * OL internal variant ids to fan out across. Validated by the
-   * controller DTO (length 1..100 + UUID-each); the service throws
-   * `EmptyBulkSubmissionException` if the array is empty as a second
-   * line of defense.
+   * OL internal variant ids (`ol_variant_*`) to fan out across. Validated
+   * by the controller DTO (length 1..100 + non-empty string each — NOT
+   * UUIDs); the service throws `EmptyBulkSubmissionException` if the array
+   * is empty as a second line of defense.
    */
   productIds: string[];
   /** Shared submission config applied to every product. */
