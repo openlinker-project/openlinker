@@ -296,7 +296,7 @@ Then follow [`docs/getting-started.md`](./docs/getting-started.md) — a walkthr
 
 - Node.js 18+ (LTS), pnpm 10+
 - Docker + Docker Compose (dev stack + integration tests)
-- An [Allegro sandbox account](https://apps.developer.allegro.pl.allegrosandbox.pl/) if you want to exercise the marketplace path
+- An [Allegro sandbox account](http://web.archive.org/web/20210730142507/https://apps.developer.allegro.pl.allegrosandbox.pl/) if you want to exercise the marketplace path
 
 The dev stack starts PostgreSQL, Redis, MySQL, PrestaShop, and WooCommerce in containers — you do not need any of those installed locally.
 
