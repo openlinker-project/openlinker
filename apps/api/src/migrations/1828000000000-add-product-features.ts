@@ -13,8 +13,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddProductFeatures1827000000000 implements MigrationInterface {
-  name = 'AddProductFeatures1827000000000';
+export class AddProductFeatures1828000000000 implements MigrationInterface {
+  name = 'AddProductFeatures1828000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "features" jsonb`);

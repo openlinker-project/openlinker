@@ -55,6 +55,7 @@ import {
 } from '@openlinker/core/listings';
 import type {
   CategoryParameter,
+  CategoryPathSegment,
   OfferCreationRecord,
   OfferManagerPort,
 } from '@openlinker/core/listings';
@@ -580,7 +581,7 @@ export class ListingsController {
       );
     }
 
-    let path: { id: string; name: string }[];
+    let path: CategoryPathSegment[];
     try {
       path = await adapter.fetchCategoryPath(categoryId);
     } catch (err) {

@@ -100,4 +100,42 @@ describe('PrestashopShopCurrencyResolver', () => {
 
     await expect(resolver.resolveDefaultCurrencyIso('conn-1', client)).resolves.toBeNull();
   });
+
+  it('should NOT poison the cache for 24h on a transient failure — the next call retries', async () => {
+    // First call: a transient WS blip resolves to null.
+    client.listResources.mockRejectedValueOnce(new Error('timeout'));
+    const first = await resolver.resolveDefaultCurrencyIso('conn-1', client);
+    expect(first).toBeNull();
+
+    // A short-TTL failure entry must not survive; jump past FAILURE_CACHE_TTL_MS.
+    const realNow = Date.now;
+    const past = realNow();
+    jest.spyOn(Date, 'now').mockReturnValue(past + 61 * 1000);
+    try {
+      // Second call: the client is healthy again → resolves the real ISO,
+      // proving the transient null was not cached under the full 24h TTL.
+      const second = await resolver.resolveDefaultCurrencyIso('conn-1', client);
+      expect(second).toBe('PLN');
+    } finally {
+      (Date.now as jest.Mock).mockRestore();
+    }
+    expect(client.listResources).toHaveBeenCalledTimes(2);
+  });
+
+  it('should cache a definitive absence for the full TTL (no short-TTL retry)', async () => {
+    client.listResources.mockResolvedValueOnce([]);
+    const first = await resolver.resolveDefaultCurrencyIso('conn-1', client);
+    expect(first).toBeNull();
+
+    // Past the failure TTL but well within the 24h definitive TTL: no refetch.
+    const past = Date.now();
+    jest.spyOn(Date, 'now').mockReturnValue(past + 61 * 1000);
+    try {
+      const second = await resolver.resolveDefaultCurrencyIso('conn-1', client);
+      expect(second).toBeNull();
+    } finally {
+      (Date.now as jest.Mock).mockRestore();
+    }
+    expect(client.listResources).toHaveBeenCalledTimes(1);
+  });
 });

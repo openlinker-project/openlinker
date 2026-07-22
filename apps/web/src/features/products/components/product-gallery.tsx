@@ -27,10 +27,12 @@ export function ProductGallery({ images, name }: ProductGalleryProps): ReactElem
   const initial = name.trim().charAt(0).toUpperCase() || '?';
 
   // No photos: render the same bordered square the gallery uses, with a
-  // neutral initial placeholder — never a clipped/broken-image box.
+  // neutral initial placeholder — never a clipped/broken-image box. No
+  // `role="group"` here: its only child is decorative (`aria-hidden`), so a
+  // labelled group would announce as empty to screen readers.
   if (images.length === 0) {
     return (
-      <div className="product-gallery" role="group" aria-label="Product photos">
+      <div className="product-gallery">
         <div className="product-gallery__main product-gallery__main--static" aria-hidden="true">
           <span className="product-gallery__placeholder">{initial}</span>
         </div>
@@ -57,7 +59,7 @@ export function ProductGallery({ images, name }: ProductGalleryProps): ReactElem
             </span>
             <img
               src={activeImage}
-              alt=""
+              alt={name}
               className={isActiveBroken ? 'is-broken' : undefined}
               onError={() => setBrokenImages((prev) => ({ ...prev, [activeImage]: true }))}
             />
@@ -78,7 +80,13 @@ export function ProductGallery({ images, name }: ProductGalleryProps): ReactElem
                 onClick={() => setActiveIndex(index)}
                 aria-label={`Photo ${index + 1} of ${images.length}`}
               >
-                <img src={image} alt="" loading="lazy" />
+                <img
+                  src={image}
+                  alt=""
+                  loading="lazy"
+                  className={brokenImages[image] ? 'is-broken' : undefined}
+                  onError={() => setBrokenImages((prev) => ({ ...prev, [image]: true }))}
+                />
               </button>
             ))}
           </div>

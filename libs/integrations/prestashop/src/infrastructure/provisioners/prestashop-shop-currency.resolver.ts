@@ -34,10 +34,28 @@ const DEFAULT_CURRENCY_CONFIG_KEY = 'PS_CURRENCY_DEFAULT';
  */
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Short TTL (60s) for a transient-failure `null`. A network blip / 5xx during
+ * the first product sync must NOT pin `currency: null` for the whole 24h TTL —
+ * the next sync re-attempts within a minute. A *definitive* resolution (a real
+ * ISO, or a genuinely absent `PS_CURRENCY_DEFAULT`) still caches for the full
+ * `CACHE_TTL_MS`.
+ */
+const FAILURE_CACHE_TTL_MS = 60 * 1000;
+
 interface CacheEntry {
   /** Resolved default ISO, or `null` when resolution failed / was absent. */
   iso: string | null;
+  /** Per-entry TTL; short for transient failures, full for definitive results. */
+  ttlMs: number;
   timestamp: number;
+}
+
+/** Distinguishes a definitive resolution from a transient-failure `null`. */
+interface ResolutionResult {
+  iso: string | null;
+  /** `true` when `iso === null` came from a transient error (short TTL). */
+  transient: boolean;
 }
 
 export class PrestashopShopCurrencyResolver {
@@ -57,14 +75,18 @@ export class PrestashopShopCurrencyResolver {
   ): Promise<string | null> {
     const cached = this.cache.get(connectionId);
     if (cached !== undefined) {
-      if (Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      if (Date.now() - cached.timestamp < cached.ttlMs) {
         return cached.iso;
       }
       this.cache.delete(connectionId);
     }
 
-    const iso = await this.fetchDefaultCurrencyIso(connectionId, client);
-    this.cache.set(connectionId, { iso, timestamp: Date.now() });
+    const { iso, transient } = await this.fetchDefaultCurrencyIso(connectionId, client);
+    this.cache.set(connectionId, {
+      iso,
+      ttlMs: transient ? FAILURE_CACHE_TTL_MS : CACHE_TTL_MS,
+      timestamp: Date.now(),
+    });
     return iso;
   }
 
@@ -80,8 +102,13 @@ export class PrestashopShopCurrencyResolver {
   private async fetchDefaultCurrencyIso(
     connectionId: string,
     client: IPrestashopWebserviceClient
-  ): Promise<string | null> {
+  ): Promise<ResolutionResult> {
     try {
+      // NOTE (multistore): on a multistore PrestaShop, `PS_CURRENCY_DEFAULT`
+      // can carry per-shop / per-shop-group rows. `limit=1` here takes an
+      // arbitrary one, which can mislabel the currency for the shop the
+      // connection's products actually come from. Correct for the common
+      // single-store case; shop-scoping this read is a documented follow-up.
       const configs = await client.listResources<PrestashopConfiguration>(
         'configurations',
         { custom: { name: DEFAULT_CURRENCY_CONFIG_KEY } },
@@ -94,7 +121,8 @@ export class PrestashopShopCurrencyResolver {
           `No ${DEFAULT_CURRENCY_CONFIG_KEY} configured in PrestaShop (connection: ${connectionId}); ` +
             `product currency stays null`
         );
-        return null;
+        // Definitive absence — cache for the full TTL.
+        return { iso: null, transient: false };
       }
 
       const currency = await client.getResource<PrestashopCurrency>('currencies', currencyId);
@@ -104,19 +132,21 @@ export class PrestashopShopCurrencyResolver {
           `Default currency ${currencyId} has no iso_code in PrestaShop (connection: ${connectionId}); ` +
             `product currency stays null`
         );
-        return null;
+        // Definitive (malformed data, not a transient blip) — full TTL.
+        return { iso: null, transient: false };
       }
 
       this.logger.debug(
         `Resolved PrestaShop default currency for connection ${connectionId}: ${iso}`
       );
-      return iso;
+      return { iso, transient: false };
     } catch (error) {
       this.logger.warn(
         `Failed to resolve PrestaShop default currency (connection: ${connectionId}); ` +
           `product currency stays null: ${(error as Error).message}`
       );
-      return null;
+      // Transient failure (WS timeout / 5xx) — short TTL so the next sync retries.
+      return { iso: null, transient: true };
     }
   }
 }

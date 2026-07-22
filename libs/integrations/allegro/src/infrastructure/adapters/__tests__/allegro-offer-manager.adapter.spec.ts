@@ -767,6 +767,62 @@ describe('AllegroOfferManagerAdapter', () => {
         CategoryNotFoundException
       );
     });
+
+    it('returns the partial breadcrumb when an ANCESTOR 404s mid-walk', async () => {
+      // Leaf resolves and points at a parent that no longer exists.
+      httpClient.get
+        .mockResolvedValueOnce({
+          data: { id: '10', name: 'Smartphones', parent: { id: '99' }, leaf: true },
+          status: 200,
+          headers: {},
+        })
+        .mockRejectedValueOnce(new AllegroApiException('gone', 404));
+
+      const result = await adapter.fetchCategoryPath('10');
+
+      // The leaf survives; the missing ancestor just truncates the breadcrumb.
+      expect(result).toEqual([{ id: '10', name: 'Smartphones' }]);
+    });
+
+    it('stops at the depth cap / cyclic parent chain instead of looping forever', async () => {
+      // A node whose parent points back at itself would loop without the guard.
+      httpClient.get.mockResolvedValue({
+        data: { id: '10', name: 'Loop', parent: { id: '10' }, leaf: true },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter.fetchCategoryPath('10');
+
+      expect(result).toEqual([{ id: '10', name: 'Loop' }]);
+      // `seen` short-circuits the self-reference after the first fetch.
+      expect(httpClient.get).toHaveBeenCalledTimes(1);
+    });
+
+    it('serves a category node from cache without re-hitting Allegro', async () => {
+      const cache: jest.Mocked<CachePort> = {
+        get: jest.fn(),
+        set: jest.fn(),
+        delete: jest.fn(),
+      };
+      const adapterWithCache = new AllegroOfferManagerAdapter(
+        connectionId,
+        httpClient,
+        uploadHttpClient,
+        identifierMapping,
+        connection,
+        undefined,
+        undefined,
+        cache
+      );
+      cache.get.mockResolvedValueOnce({ id: '1', name: 'Electronics', parent: null, leaf: false });
+
+      const result = await adapterWithCache.fetchCategoryPath('1');
+
+      expect(result).toEqual([{ id: '1', name: 'Electronics' }]);
+      expect(cache.get).toHaveBeenCalledWith('allegro:category-node:1');
+      expect(httpClient.get).not.toHaveBeenCalled();
+    });
   });
 
   describe('matchCategoryByBarcode', () => {
@@ -996,6 +1052,26 @@ describe('AllegroOfferManagerAdapter', () => {
       const result = await subject.getOffer({ externalId: '7781562867' });
 
       expect(result.marketplaceUrl).toBe('https://allegro.pl/oferta/7781562867');
+    });
+
+    it('should slug Polish stroke letters (ł/Ł) rather than dropping them', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          id: '7781562868',
+          name: 'Słuchawki Łódź',
+          sellingMode: { price: { amount: '10.00', currency: 'PLN' } },
+          stock: { available: 1 },
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const subject = buildAdapterWithStorefront('https://allegro.pl');
+      const result = await subject.getOffer({ externalId: '7781562868' });
+
+      // ł/Ł are single codepoints NFD does not decompose; they must map to `l`
+      // (not vanish, which would yield `s-uchawki`).
+      expect(result.marketplaceUrl).toBe('https://allegro.pl/oferta/sluchawki-lodz-7781562868');
     });
 
     it('should map offer-section and product-section parameters with productSet linkage (#1482)', async () => {

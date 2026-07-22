@@ -302,7 +302,8 @@ function VariantMetaGrid({
           <span className="attr-chips">
             {Object.entries(variant.attributes as Record<string, string>).map(([key, value]) => (
               <span key={key} className="attr-chip">
-                <b>{key}</b> {value}
+                <b>{key}</b>
+                {value}
               </span>
             ))}
           </span>
