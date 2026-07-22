@@ -345,6 +345,27 @@ export function InfaktSetupForm(): ReactElement {
               {testConnection.error.message}
             </Alert>
           ) : null}
+
+          {/* Delivery webhooks are post-create (they need the connection id and
+              a live endpoint for inFakt's verification ping). The setup modal
+              lives on the connection's Actions tab — a feature can't import the
+              inFakt plugin's dialog (ESLint boundary), so we route there. */}
+          <Alert tone="info" title="Set up delivery webhooks (optional)">
+            Get KSeF clearance updates from inFakt in real time. Finish this on the connection&apos;s
+            Actions tab: register the endpoint and, optionally, paste inFakt&apos;s signing secret.
+            <div className="form-actions" style={{ marginTop: 'var(--space-3)' }}>
+              <Button
+                type="button"
+                tone="secondary"
+                onClick={() =>
+                  void navigate(`/connections/${createdConnection.id}?tab=actions`)
+                }
+              >
+                Set up webhooks
+              </Button>
+            </div>
+          </Alert>
+
           <div className="form-actions">
             <Button type="button" onClick={() => void onTest()} disabled={testConnection.isPending}>
               {testConnection.isPending ? 'Testing…' : 'Test connection'}

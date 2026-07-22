@@ -81,4 +81,34 @@ describe('WebhookSecretService', () => {
     await expect(subject.rotate('prestashop', connectionId)).rejects.toThrow('nope');
     expect(repository.update).not.toHaveBeenCalled();
   });
+
+  describe('set', () => {
+    it('persists the caller-supplied secret and invalidates the cache', async () => {
+      await subject.set('prestashop', connectionId, 'pasted-secret', 'user-1');
+
+      expect(repository.update).toHaveBeenCalledWith(`webhook-secret:${connectionId}`, {
+        credentialsJson: { webhookSecret: 'pasted-secret' },
+      });
+      expect(secretProvider.invalidate).toHaveBeenCalledWith('prestashop', connectionId);
+    });
+
+    it('creates the credential when missing', async () => {
+      repository.update.mockRejectedValueOnce(new CredentialNotFoundException('x'));
+
+      await subject.set('prestashop', connectionId, 'pasted-secret');
+
+      expect(repository.create).toHaveBeenCalledWith({
+        ref: `webhook-secret:${connectionId}`,
+        platformType: 'prestashop',
+        credentialsJson: { webhookSecret: 'pasted-secret' },
+      });
+    });
+
+    it('propagates connection lookup failures without writing', async () => {
+      connectionPort.get.mockRejectedValue(new Error('nope'));
+
+      await expect(subject.set('prestashop', connectionId, 's')).rejects.toThrow('nope');
+      expect(repository.update).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -11,6 +11,8 @@
  *   - the write-only credentials panel (single API key rotation)
  *   - the per-provider invoice detail section (KSeF number + clearance status)
  *   - the per-provider invoice correction flow (KOR)
+ *   - the connection-actions webhook-config modal (endpoint + optional signing
+ *     secret paste, #1770)
  *
  * Per ADR-026, the FE never reasons about inFakt specifics through
  * `platformType === 'infakt'` string-matching in shared components — every
@@ -25,6 +27,7 @@ import { InfaktCredentialsPanel } from './components/infakt-credentials-panel';
 import { InfaktInvoiceCorrectionFlow } from './components/infakt-invoice-correction-flow';
 import { InfaktInvoiceDetailSection } from './components/infakt-invoice-detail-section';
 import { InfaktStructuredSection } from './components/infakt-structured-section';
+import { InfaktWebhookConnectionActions } from './components/infakt-webhook-config';
 import { infaktSetupRoute } from './infakt-setup.route';
 
 export const infaktPlugin: OpenLinkerPlugin = definePlugin({
@@ -43,6 +46,7 @@ export const infaktPlugin: OpenLinkerPlugin = definePlugin({
     },
     StructuredConfigSection: InfaktStructuredSection,
     CredentialsPanel: InfaktCredentialsPanel,
+    ConnectionActions: InfaktWebhookConnectionActions,
     invoiceDetailSection: InfaktInvoiceDetailSection,
     invoiceCorrectionFlow: InfaktInvoiceCorrectionFlow,
   },

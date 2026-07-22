@@ -20,6 +20,9 @@ export type {
   RecentJobSummary,
   InstallWebhooksResult,
   RotateWebhookSecretResult,
+  WebhookStatus,
+  WebhookActivation,
+  WebhookSignatureState,
   CreateConnectionInput,
   UpdateConnectionInput,
   PlatformType,
@@ -33,6 +36,8 @@ export { useCreateConnectionMutation } from './hooks/use-create-connection-mutat
 export { useProductMasterConnections } from './hooks/use-product-master-connections';
 export { useConfigureWebhooksMutation } from './hooks/use-configure-webhooks-mutation';
 export { useRotateWebhookSecretMutation } from './hooks/use-rotate-webhook-secret-mutation';
+export { useSetWebhookSecretMutation } from './hooks/use-set-webhook-secret-mutation';
+export { useWebhookStatusQuery } from './hooks/use-webhook-status-query';
 export { useUpdateConnectionCredentialsMutation } from './hooks/use-update-connection-credentials-mutation';
 export { useUpdateConnectionMutation } from './hooks/use-update-connection-mutation';
 export { useBankAccountsQuery } from './hooks/use-bank-accounts-query';

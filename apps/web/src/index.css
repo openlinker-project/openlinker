@@ -15191,3 +15191,180 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
 }
+
+/* ── inFakt webhook config modal (#1770) ── */
+.infakt-webhook {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.infakt-webhook__intro {
+  margin: 0;
+  max-width: 66ch;
+}
+.infakt-webhook__status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.infakt-webhook__status-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.infakt-webhook__status-key {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.infakt-webhook__status-val {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+.infakt-webhook__status-val--ok {
+  color: var(--status-success);
+}
+.infakt-webhook__status-val--warn {
+  color: var(--status-warning-fg);
+}
+.infakt-webhook__status-val--err {
+  color: var(--status-error);
+}
+.infakt-webhook__status-val--muted {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.infakt-webhook__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  flex: none;
+}
+.infakt-webhook__exchange {
+  display: grid;
+  grid-template-columns: 1fr 1px 1fr;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.infakt-webhook__lane {
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.infakt-webhook__seam {
+  position: relative;
+  background: var(--border-subtle);
+}
+.infakt-webhook__seam-glyph {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.infakt-webhook__dir {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.infakt-webhook__arrow {
+  color: var(--accent-primary);
+  font-weight: 700;
+}
+.infakt-webhook__tag {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-muted);
+  border: 1px solid var(--border-default);
+  color: var(--text-muted);
+}
+.infakt-webhook__lane-label {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.infakt-webhook__events {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.infakt-webhook__chip {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+.infakt-webhook__chip--on {
+  border-color: var(--status-success-border);
+  background: var(--status-success-soft);
+  color: var(--status-success-fg);
+}
+.infakt-webhook__field {
+  display: flex;
+  gap: var(--space-2);
+}
+.infakt-webhook__field > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.infakt-webhook__hint {
+  margin: 0;
+  font-size: 11.5px;
+}
+.infakt-webhook__why {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-3);
+}
+.infakt-webhook__why summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.infakt-webhook__why p {
+  margin: var(--space-2) 0 0;
+  max-width: 72ch;
+}
+@media (max-width: 640px) {
+  .infakt-webhook__exchange {
+    grid-template-columns: 1fr;
+  }
+  .infakt-webhook__seam {
+    height: 1px;
+    width: 100%;
+  }
+  .infakt-webhook__seam-glyph {
+    transform: translate(-50%, -50%) rotate(90deg);
+  }
+}

@@ -69,6 +69,22 @@ export class CredentialsWebhookSecretAdapter implements WebhookSecretProviderPor
     );
   }
 
+  async has(provider: string, connectionId: string): Promise<boolean> {
+    if ((await this.tryLoadFromDb(connectionId)) !== null) {
+      return true;
+    }
+    // Env presence only — deliberately not routed through `tryLoadFromEnv`,
+    // whose one-time deprecation warning would be suppressed for the later
+    // real `getSecret` read if it fired here first.
+    const connectionKey = `OPENLINKER_WEBHOOK_SECRET__${provider.toUpperCase()}__${connectionId.toUpperCase()}`;
+    const providerKey = `OPENLINKER_WEBHOOK_SECRET__${provider.toUpperCase()}`;
+    return (
+      (this.configService.get<string>(connectionKey) ??
+        this.configService.get<string>(providerKey) ??
+        null) !== null
+    );
+  }
+
   invalidate(provider: string, connectionId: string): void {
     this.cache.delete(`${provider}:${connectionId}`);
   }

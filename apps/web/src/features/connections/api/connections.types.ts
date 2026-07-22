@@ -172,6 +172,23 @@ export interface RotateWebhookSecretResult {
   warning: string;
 }
 
+/**
+ * Operator-facing webhook state for a connection (`GET
+ * /connections/:id/webhooks/status`, #1770). `activation` is inferred from
+ * delivery history; `signature` reflects whether HMAC verification is
+ * configured (optional). Backs the inFakt webhook-config modal.
+ */
+export type WebhookActivation = 'not-registered' | 'verified';
+export type WebhookSignatureState = 'off' | 'configured' | 'mismatch';
+
+export interface WebhookStatus {
+  activation: WebhookActivation;
+  signature: WebhookSignatureState;
+  lastDeliveryAt: string | null;
+  lastDeliveryEvent: string | null;
+  lastDeliveryResult: string | null;
+}
+
 export interface ConnectionDiagnostics {
   connectionId: string;
   connectionName: string;

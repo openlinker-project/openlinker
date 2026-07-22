@@ -19,6 +19,7 @@ import {
   INTEGRATIONS_SERVICE_TOKEN,
   WEBHOOK_SECRET_SERVICE_TOKEN,
 } from '@openlinker/core/integrations';
+import { WEBHOOK_STATUS_SERVICE_TOKEN } from '../application/interfaces/webhook-status.service.interface';
 import type { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import type { AuthenticatedUser } from '../../auth/auth.types';
@@ -32,6 +33,8 @@ describe('ConnectionController', () => {
   let service: jest.Mocked<ConnectionService>;
   let syncJobRepository: jest.Mocked<SyncJobRepositoryPort>;
   let demoModeService: jest.Mocked<IDemoModeService>;
+  let webhookSecretService: { rotate: jest.Mock; set: jest.Mock };
+  let webhookStatusService: { getStatus: jest.Mock };
 
   const mockConnection = new Connection(
     'connection-123',
@@ -122,7 +125,22 @@ describe('ConnectionController', () => {
         },
         {
           provide: WEBHOOK_SECRET_SERVICE_TOKEN,
-          useValue: { rotate: jest.fn().mockResolvedValue({ secret: 'deadbeef' }) },
+          useValue: {
+            rotate: jest.fn().mockResolvedValue({ secret: 'deadbeef' }),
+            set: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: WEBHOOK_STATUS_SERVICE_TOKEN,
+          useValue: {
+            getStatus: jest.fn().mockResolvedValue({
+              activation: 'verified',
+              signature: 'configured',
+              lastDeliveryAt: '2026-07-22T09:14:02.000Z',
+              lastDeliveryEvent: 'send_to_ksef_success',
+              lastDeliveryResult: 'published',
+            }),
+          },
         },
         {
           provide: DEMO_MODE_SERVICE_TOKEN,
@@ -135,6 +153,34 @@ describe('ConnectionController', () => {
     service = module.get(ConnectionService);
     syncJobRepository = module.get(SYNC_JOB_REPOSITORY_TOKEN);
     demoModeService = module.get(DEMO_MODE_SERVICE_TOKEN);
+    webhookSecretService = module.get(WEBHOOK_SECRET_SERVICE_TOKEN);
+    webhookStatusService = module.get(WEBHOOK_STATUS_SERVICE_TOKEN);
+  });
+
+  describe('setWebhookSecret', () => {
+    it('resolves the connection and forwards the pasted secret to the service', async () => {
+      service.get.mockResolvedValue(mockConnection);
+
+      await controller.setWebhookSecret('connection-123', { secret: 'pasted-secret' }, mockAdminUser);
+
+      expect(webhookSecretService.set).toHaveBeenCalledWith(
+        'prestashop',
+        'connection-123',
+        'pasted-secret',
+        'user-1'
+      );
+    });
+  });
+
+  describe('getWebhookStatus', () => {
+    it('returns the derived webhook status', async () => {
+      const result = await controller.getWebhookStatus('connection-123');
+
+      expect(webhookStatusService.getStatus).toHaveBeenCalledWith('connection-123');
+      expect(result.activation).toBe('verified');
+      expect(result.signature).toBe('configured');
+      expect(result.lastDeliveryEvent).toBe('send_to_ksef_success');
+    });
   });
 
   describe('create', () => {

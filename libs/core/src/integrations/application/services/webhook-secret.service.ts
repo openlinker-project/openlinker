@@ -48,27 +48,9 @@ export class WebhookSecretService implements IWebhookSecretService {
     actorUserId?: string
   ): Promise<RotateWebhookSecretResult> {
     const connection = await this.connectionPort.get(connectionId);
-
     const secret = randomBytes(SECRET_BYTES).toString('hex');
-    const ref = webhookSecretRef(connectionId);
 
-    // Plaintext at this layer — the repository encrypts on write (#709).
-    try {
-      await this.credentialRepository.update(ref, {
-        credentialsJson: { webhookSecret: secret },
-      });
-    } catch (error) {
-      if (error instanceof CredentialNotFoundException) {
-        await this.credentialRepository.create({
-          ref,
-          platformType: connection.platformType,
-          credentialsJson: { webhookSecret: secret },
-        });
-      } else {
-        throw error;
-      }
-    }
-
+    await this.persist(connection.platformType, connectionId, secret);
     this.secretProvider.invalidate(provider, connectionId);
 
     this.logger.log('webhook_secret.rotated', {
@@ -78,5 +60,51 @@ export class WebhookSecretService implements IWebhookSecretService {
     });
 
     return { secret };
+  }
+
+  async set(
+    provider: string,
+    connectionId: string,
+    secret: string,
+    actorUserId?: string
+  ): Promise<void> {
+    const connection = await this.connectionPort.get(connectionId);
+
+    await this.persist(connection.platformType, connectionId, secret);
+    this.secretProvider.invalidate(provider, connectionId);
+
+    this.logger.log('webhook_secret.set', {
+      connectionId,
+      provider,
+      actor: actorUserId ?? 'system',
+    });
+  }
+
+  /**
+   * Upsert the plaintext secret into the encrypted credentials store
+   * (the repository encrypts on write, #709). Shared by `rotate` (generated)
+   * and `set` (caller-supplied).
+   */
+  private async persist(
+    platformType: string,
+    connectionId: string,
+    secret: string
+  ): Promise<void> {
+    const ref = webhookSecretRef(connectionId);
+    try {
+      await this.credentialRepository.update(ref, {
+        credentialsJson: { webhookSecret: secret },
+      });
+    } catch (error) {
+      if (error instanceof CredentialNotFoundException) {
+        await this.credentialRepository.create({
+          ref,
+          platformType,
+          credentialsJson: { webhookSecret: secret },
+        });
+      } else {
+        throw error;
+      }
+    }
   }
 }
