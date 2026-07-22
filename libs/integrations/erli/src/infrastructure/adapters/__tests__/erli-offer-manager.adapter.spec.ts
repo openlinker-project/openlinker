@@ -70,7 +70,7 @@ describe('ErliOfferManagerAdapter', () => {
   beforeEach(() => {
     httpClient = {
       // Default read: no frozen fields, so field-updates PATCH everything supplied.
-      get: jest.fn().mockResolvedValue({ status: 200, data: { frozenFields: [] } }),
+      get: jest.fn().mockResolvedValue({ status: 200, data: { frozen: {} } }),
       post: jest.fn().mockResolvedValue({ status: 202, data: undefined }),
       patch: jest.fn().mockResolvedValue({ status: 202, data: undefined }),
       put: jest.fn().mockResolvedValue({ status: 202, data: undefined }),
@@ -872,7 +872,7 @@ describe('ErliOfferManagerAdapter', () => {
       });
 
       it('should drop a supplied field that is frozen and patch the rest', async () => {
-        httpClient.get.mockResolvedValue({ status: 200, data: { frozenFields: ['price'] } });
+        httpClient.get.mockResolvedValue({ status: 200, data: { frozen: { price: true } } });
 
         await adapter.updateOfferFields({
           externalOfferId: VALID_ID,
@@ -885,7 +885,7 @@ describe('ErliOfferManagerAdapter', () => {
 
       it('should patch the full body when the GET returns an empty body (no frozen info)', async () => {
         // The client yields `data: undefined` for a 204 / empty-body 2xx; the read
-        // must degrade to "nothing frozen" rather than throwing on current.frozenFields (#1061).
+        // must degrade to "nothing frozen" rather than throwing on current.frozen (#1061).
         httpClient.get.mockResolvedValue({ status: 200, data: undefined });
 
         await adapter.updateOfferFields({
@@ -900,7 +900,10 @@ describe('ErliOfferManagerAdapter', () => {
       });
 
       it('should patch every supplied field when none are frozen', async () => {
-        httpClient.get.mockResolvedValue({ status: 200, data: { frozenFields: [] } });
+        httpClient.get.mockResolvedValue({
+          status: 200,
+          data: { frozen: { name: false, price: false } },
+        });
 
         await adapter.updateOfferFields({
           externalOfferId: VALID_ID,
@@ -913,10 +916,28 @@ describe('ErliOfferManagerAdapter', () => {
         });
       });
 
+      it('should drop only the true-valued keys of a full frozen object (#1737 live shape)', async () => {
+        // The live GET returns a full object with explicit false for un-frozen
+        // fields; only `frozen[key] === true` must drop the key (#1737).
+        httpClient.get.mockResolvedValue({
+          status: 200,
+          data: {
+            frozen: { name: false, price: true, description: false, stock: false },
+          },
+        });
+
+        await adapter.updateOfferFields({
+          externalOfferId: VALID_ID,
+          fields: { title: 'Keep me', price: { amount: '79.00', currency: 'PLN' } },
+        });
+
+        expect(httpClient.patch).toHaveBeenCalledWith(`products/${VALID_ID}`, { name: 'Keep me' });
+      });
+
       it('should issue NO patch when every supplied field is frozen', async () => {
         httpClient.get.mockResolvedValue({
           status: 200,
-          data: { frozenFields: ['name', 'price'] },
+          data: { frozen: { name: true, price: true } },
         });
 
         await adapter.updateOfferFields({
@@ -1195,7 +1216,7 @@ describe('ErliOfferManagerAdapter', () => {
       cache.get.mockImplementation((key) => Promise.resolve((store.get(key) ?? null) as never));
       httpClient.get.mockResolvedValueOnce({
         status: 200,
-        data: { status: 'active', frozenFields: ['stock'] },
+        data: { status: 'active', frozen: { stock: true } },
       });
 
       await cachedAdapter.getOfferStatus(VALID_ID);
@@ -1254,7 +1275,7 @@ describe('ErliOfferManagerAdapter', () => {
     it('should set the flag with the TTL when reconciliation sees a frozen stock', async () => {
       httpClient.get.mockResolvedValueOnce({
         status: 200,
-        data: { status: 'active', frozenFields: ['stock'] },
+        data: { status: 'active', frozen: { stock: true } },
       });
 
       await cachedAdapter.getOfferStatus(VALID_ID);
@@ -1266,7 +1287,7 @@ describe('ErliOfferManagerAdapter', () => {
     it('should delete the flag (not store false) when reconciliation sees stock not frozen', async () => {
       httpClient.get.mockResolvedValueOnce({
         status: 200,
-        data: { status: 'active', frozenFields: [] },
+        data: { status: 'active', frozen: { stock: false } },
       });
 
       await cachedAdapter.getOfferStatus(VALID_ID);
@@ -1275,7 +1296,7 @@ describe('ErliOfferManagerAdapter', () => {
       expect(cache.set).not.toHaveBeenCalled();
     });
 
-    it('should leave the cache untouched on a bodyless 2xx (frozenFields undefined)', async () => {
+    it('should leave the cache untouched on a bodyless 2xx (frozen undefined)', async () => {
       httpClient.get.mockResolvedValueOnce({ status: 200, data: undefined });
 
       await cachedAdapter.getOfferStatus(VALID_ID);
@@ -1295,7 +1316,7 @@ describe('ErliOfferManagerAdapter', () => {
     });
 
     it('should opportunistically set the flag from updateOfferFields (secondary writer)', async () => {
-      httpClient.get.mockResolvedValue({ status: 200, data: { frozenFields: ['stock'] } });
+      httpClient.get.mockResolvedValue({ status: 200, data: { frozen: { stock: true } } });
 
       await cachedAdapter.updateOfferFields({ externalOfferId: VALID_ID, fields: { title: 'T' } });
 
