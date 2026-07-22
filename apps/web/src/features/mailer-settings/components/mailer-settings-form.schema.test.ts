@@ -99,6 +99,32 @@ describe('mailerSettingsFormSchema', () => {
     }
   });
 
+  it('should reject a display-name address carrying an embedded CRLF (header injection)', () => {
+    const result = mailerSettingsFormSchema.safeParse({
+      ...validSmtpBase,
+      fromAddress: 'Foo\r\nBcc: attacker@evil.com <a@b.com>',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path.join('.') === 'fromAddress');
+      expect(issue?.message).toContain('Enter a valid email address');
+    }
+  });
+
+  it('should reject a display-name address carrying an embedded bare LF (header injection)', () => {
+    const result = mailerSettingsFormSchema.safeParse({
+      ...validSmtpBase,
+      fromAddress: 'Foo\nBcc: x@evil.com <a@b.com>',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path.join('.') === 'fromAddress');
+      expect(issue?.message).toContain('Enter a valid email address');
+    }
+  });
+
   it('should reject an address with consecutive dots in the local-part', () => {
     const result = mailerSettingsFormSchema.safeParse({
       ...validSmtpBase,

@@ -32,7 +32,10 @@ const EMAIL_PATTERN = /^(?!.*\.\.)[^\s@<>.][^\s@<>]*@[^\s@<>.][^\s@<>]*\.[^\s@<>
 // client-side check only needs to confirm the bracketed part looks like an email.
 // The name segment excludes `<`/`>` so a second bracketed address (e.g.
 // `A <b@c.com> <d@e.com>`) fails the match instead of silently picking the last one.
-const NAME_AND_EMAIL_PATTERN = /^[^<>]+\s<([^\s@<>]+@[^\s@<>]+\.[^\s@<>]+)>$/;
+// It also excludes CR/LF: unlike the bare-email path (where `\s` already blocks
+// them), `[^<>]` alone would let a CRLF-carrying name through — the classic
+// email-header-injection shape (`From:` value smuggling a second header).
+const NAME_AND_EMAIL_PATTERN = /^[^<>\r\n]+\s<([^\s@<>]+@[^\s@<>]+\.[^\s@<>]+)>$/;
 
 function isValidFromAddress(value: string): boolean {
   if (EMAIL_PATTERN.test(value)) {
