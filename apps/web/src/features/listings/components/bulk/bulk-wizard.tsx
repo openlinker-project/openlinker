@@ -703,12 +703,15 @@ function seedRow(product: Product, preSelectedVariantIds?: ReadonlySet<string>):
   // A product is "variant-scoped" only when the picker checked SOME of its
   // variants (#1754). Whole-product picks (and the /products entry point) leave
   // the set empty for this product, so every variant seeds included.
-  const variantScoped =
+  // Capture the set only when the product is variant-scoped (else null for a
+  // whole-product pick), so the closure narrows without a non-null assertion.
+  const scopedIds =
     preSelectedVariantIds !== undefined &&
     preSelectedVariantIds.size > 0 &&
-    variants.some((v) => preSelectedVariantIds.has(v.id));
-  const isIncluded = (v: ProductVariant): boolean =>
-    !variantScoped || preSelectedVariantIds!.has(v.id);
+    variants.some((v) => preSelectedVariantIds.has(v.id))
+      ? preSelectedVariantIds
+      : null;
+  const isIncluded = (v: ProductVariant): boolean => scopedIds === null || scopedIds.has(v.id);
   // The primary is a representative for row-level resolve mapping - prefer the
   // first INCLUDED variant so a variant-scoped product represents a checked one.
   const primaryVariant: ProductVariant | null =
