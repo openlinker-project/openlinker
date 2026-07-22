@@ -582,4 +582,120 @@ describe('DataTable', () => {
       restore();
     }
   });
+
+  // ── Frozen leading columns (#1755) ──────────────────────────────────────
+  const FREEZE_COLUMNS = [
+    { id: 'name', header: 'Name', cell: (row: TestRow): string => row.name },
+    { id: 'created', header: 'Created', cell: (row: TestRow): string => row.createdAt },
+    { id: 'id', header: 'Ident', cell: (row: TestRow): string => row.id },
+  ];
+
+  it('applies the sticky-col class to the first N columns and marks the last frozen one (#1755)', () => {
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        columns={FREEZE_COLUMNS}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+        stickyLeftColumns={2}
+      />,
+    );
+
+    const headerCells = Array.from(container.querySelectorAll('thead th'));
+    // First two columns are frozen; the third is not.
+    expect(headerCells[0]).toHaveClass('data-table__sticky-col');
+    expect(headerCells[1]).toHaveClass('data-table__sticky-col', 'data-table__sticky-col--last');
+    expect(headerCells[2]).not.toHaveClass('data-table__sticky-col');
+
+    // Same freeze pattern on the body cells of the first row.
+    const firstBodyRow = container.querySelector('tbody tr');
+    const bodyCells = Array.from(firstBodyRow?.querySelectorAll('td') ?? []);
+    expect(bodyCells[0]).toHaveClass('data-table__sticky-col');
+    expect(bodyCells[1]).toHaveClass('data-table__sticky-col', 'data-table__sticky-col--last');
+    expect(bodyCells[2]).not.toHaveClass('data-table__sticky-col');
+  });
+
+  it('freezes the expander cell alongside the data columns when expandable (#1755)', () => {
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        columns={FREEZE_COLUMNS}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+        stickyLeftColumns={1}
+        expandable={{ renderDetail: (row): string => `detail ${row.id}` }}
+      />,
+    );
+
+    const headerCells = Array.from(container.querySelectorAll('thead th'));
+    // The leading expander cell freezes as part of the identity cluster, and the
+    // single frozen data column after it is the boundary.
+    expect(headerCells[0]).toHaveClass('data-table__expand-cell', 'data-table__sticky-col');
+    expect(headerCells[1]).toHaveClass('data-table__sticky-col', 'data-table__sticky-col--last');
+    expect(headerCells[2]).not.toHaveClass('data-table__sticky-col');
+  });
+
+  it('does not apply any sticky-col class when stickyLeftColumns is 0 (default) (#1755)', () => {
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        columns={FREEZE_COLUMNS}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+      />,
+    );
+
+    expect(container.querySelector('.data-table__sticky-col')).toBeNull();
+  });
+
+  it('marks the table as sticky-scrolled once the container is scrolled horizontally (#1755)', () => {
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        columns={FREEZE_COLUMNS}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+        stickyLeftColumns={2}
+      />,
+    );
+
+    const scrollContainer = container.querySelector('.data-table__container') as HTMLElement;
+    const table = container.querySelector('.data-table') as HTMLElement;
+    expect(table).not.toHaveClass('data-table--sticky-scrolled');
+
+    Object.defineProperty(scrollContainer, 'scrollLeft', { configurable: true, value: 120 });
+    fireEvent.scroll(scrollContainer);
+    expect(table).toHaveClass('data-table--sticky-scrolled');
+  });
+
+  // ── Pinned footer rail (#1755) ──────────────────────────────────────────
+  it('wraps the table and renders the footer rail when a footer is provided (#1755)', () => {
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        columns={FREEZE_COLUMNS}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+        footer={<div data-testid="bulk-bar">Bulk actions</div>}
+      />,
+    );
+
+    const wrap = container.querySelector('.data-table__wrap');
+    expect(wrap).not.toBeNull();
+    const rail = wrap?.querySelector('.data-table__footer-rail');
+    expect(rail).not.toBeNull();
+    // The footer content renders inside the rail, and the scroll region is a
+    // sibling of the rail inside the wrap (so page content after DataTable is
+    // never covered).
+    expect(within(rail as HTMLElement).getByTestId('bulk-bar')).toBeInTheDocument();
+    expect(wrap?.querySelector('.data-table__container')).not.toBeNull();
+  });
+
+  it('does not wrap the table when no footer is provided (#1755)', () => {
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        columns={FREEZE_COLUMNS}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+      />,
+    );
+
+    expect(container.querySelector('.data-table__wrap')).toBeNull();
+    expect(container.querySelector('.data-table__footer-rail')).toBeNull();
+  });
 });

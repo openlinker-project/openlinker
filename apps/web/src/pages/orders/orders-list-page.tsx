@@ -1111,6 +1111,28 @@ export function OrdersListPage(): ReactElement {
             columns={columns}
             rows={query.data?.items ?? []}
             rowKey={(order) => order.internalOrderId}
+            stickyLeftColumns={2}
+            footer={
+              <BulkActionBar
+                count={selectedOrders.length}
+                itemNoun="order"
+                hint={
+                  distinctSelectedSources > 1
+                    ? `${distinctSelectedSources} sources · max ${BULK_DISPATCH_MAX_ITEMS} per source`
+                    : `Max ${BULK_DISPATCH_MAX_ITEMS} per source`
+                }
+                actions={
+                  <>
+                    <Button tone="ghost" onClick={clearSelection}>
+                      Clear
+                    </Button>
+                    <Button tone="primary" onClick={() => { setBulkOpen(true); }}>
+                      Dispatch {selectedOrders.length}
+                    </Button>
+                  </>
+                }
+              />
+            }
             expandable={{
               // Non-essential fields (order ref, items, exact ship-by, carrier,
               // created, payment, addresses) live in the accordion (#1620); the
@@ -1347,29 +1369,6 @@ export function OrdersListPage(): ReactElement {
               </Button>
             </div>
           </div>
-
-          {/* Bulk dispatch (#1109) — multi-select → batch generate-labels. The
-              cap is per source; a selection may span sources (dispatched in
-              per-source groups). */}
-          <BulkActionBar
-            count={selectedOrders.length}
-            itemNoun="order"
-            hint={
-              distinctSelectedSources > 1
-                ? `${distinctSelectedSources} sources · max ${BULK_DISPATCH_MAX_ITEMS} per source`
-                : `Max ${BULK_DISPATCH_MAX_ITEMS} per source`
-            }
-            actions={
-              <>
-                <Button tone="ghost" onClick={clearSelection}>
-                  Clear
-                </Button>
-                <Button tone="primary" onClick={() => { setBulkOpen(true); }}>
-                  Dispatch {selectedOrders.length}
-                </Button>
-              </>
-            }
-          />
         </>
       )}
 
