@@ -25,6 +25,7 @@ import {
 } from './products.tokens';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
+import { EventsModule } from '@openlinker/core/events';
 
 // Re-export tokens for convenience
 export {
@@ -39,6 +40,7 @@ export {
     TypeOrmModule.forFeature([ProductOrmEntity, ProductVariantOrmEntity]),
     IntegrationsModule,
     IdentifierMappingModule,
+    EventsModule,
   ],
   providers: [
     // Provide classes directly first

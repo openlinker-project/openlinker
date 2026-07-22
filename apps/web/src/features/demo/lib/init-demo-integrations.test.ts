@@ -15,7 +15,14 @@ vi.mock('./demo-analytics-consent', () => ({
 
 const configuredPosthog: SystemConfig = {
   demoMode: true,
-  demoIntegrations: { posthog: { key: 'phc_abc', host: 'https://eu.posthog.com' } },
+  demoIntegrations: {
+    posthog: {
+      key: 'phc_abc',
+      host: 'https://eu.posthog.com',
+      autocapture: true,
+      sessionRecording: true,
+    },
+  },
 };
 
 describe('initDemoIntegrations', () => {
@@ -53,19 +60,38 @@ describe('initDemoIntegrations', () => {
     expect(posthogInit).not.toHaveBeenCalled();
   });
 
-  it('should init with masking options when all gates pass', async () => {
+  it('should init with masking options and the resolved autocapture/sessionRecording when all gates pass', async () => {
     getDemoAnalyticsConsent.mockReturnValue('accepted');
     await initDemoIntegrations(configuredPosthog);
     expect(posthogInit).toHaveBeenCalledWith('phc_abc', {
       api_host: 'https://eu.posthog.com',
       person_profiles: 'identified_only',
-      autocapture: false,
+      autocapture: true,
       capture_pageview: true,
       session_recording: {
         maskAllInputs: true,
         maskTextSelector: '*',
       },
     });
+  });
+
+  it('should omit session_recording entirely when the resolved config disables it', async () => {
+    getDemoAnalyticsConsent.mockReturnValue('accepted');
+    await initDemoIntegrations({
+      demoMode: true,
+      demoIntegrations: {
+        posthog: {
+          key: 'phc_abc',
+          host: 'https://eu.posthog.com',
+          autocapture: false,
+          sessionRecording: false,
+        },
+      },
+    });
+    expect(posthogInit).toHaveBeenCalledWith(
+      'phc_abc',
+      expect.objectContaining({ autocapture: false, session_recording: undefined }),
+    );
   });
 });
 

@@ -1,6 +1,8 @@
 export interface PosthogDemoIntegration {
   key: string;
   host: string;
+  autocapture: boolean;
+  sessionRecording: boolean;
 }
 
 export interface DemoIntegrations {

@@ -15,14 +15,18 @@ import type { ReactElement } from 'react';
 import type { Connection } from '../../../features/connections';
 import { useConfigureWebhooksMutation } from '../../../features/connections';
 import { Button } from '../../../shared/ui/button';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { useToast } from '../../../shared/ui/toast-provider';
 
 interface ErliConnectionActionsProps {
   connection: Connection;
+  readOnly?: boolean;
 }
 
 export function ErliConnectionActions({
   connection,
+  readOnly = false,
 }: ErliConnectionActionsProps): ReactElement {
   const configureWebhooks = useConfigureWebhooksMutation();
   const { showToast } = useToast();
@@ -87,17 +91,19 @@ export function ErliConnectionActions({
         )}
       </div>
       {hasCallbackBaseUrl && (
-        <Button
-          tone={webhooksConfigured ? 'secondary' : 'primary'}
-          disabled={configureWebhooks.isPending}
-          onClick={() => void handleConfigureWebhooks()}
-        >
-          {configureWebhooks.isPending
-            ? 'Configuring...'
-            : webhooksConfigured
-              ? 'Re-configure webhooks'
-              : 'Configure webhooks'}
-        </Button>
+        <ReadOnlyLock active={readOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <Button
+            tone={webhooksConfigured ? 'secondary' : 'primary'}
+            disabled={configureWebhooks.isPending || readOnly}
+            onClick={() => void handleConfigureWebhooks()}
+          >
+            {configureWebhooks.isPending
+              ? 'Configuring...'
+              : webhooksConfigured
+                ? 'Re-configure webhooks'
+                : 'Configure webhooks'}
+          </Button>
+        </ReadOnlyLock>
       )}
     </div>
   );

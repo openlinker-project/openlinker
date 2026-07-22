@@ -44,6 +44,8 @@ export {
   InventoryPagination,
   PaginatedInventoryItems,
   VariantAvailability,
+  ProductStockAggregate,
+  PruneStaleVariantsResult,
 } from './domain/types/inventory.types';
 
 // ORM entities are exposed on the host-only `@openlinker/core/inventory/orm-entities`

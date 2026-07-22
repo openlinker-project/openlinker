@@ -115,7 +115,7 @@ The canonical OL-owned order-lifecycle state machine (authoritative
 | `PickupPointFinder` | Search the carrier's pickup points / lockers (e.g. Paczkomat). | `findPickupPoints` | `isPickupPointFinder` |
 | `ShipmentCanceller` | Cancel / void a registered shipment. | `cancelShipment` | `isShipmentCanceller` |
 
-### `InvoicingPort` (invoicing) — 10
+### `InvoicingPort` (invoicing) — 12
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
@@ -124,6 +124,8 @@ The canonical OL-owned order-lifecycle state machine (authoritative
 | `RegulatoryResubmitter` | Re-trigger transmission of an ALREADY-ISSUED document (e.g. the operator "resend to KSeF" action on a rejected document) — flat, not `extends RegulatoryStatusReader`. | `resubmitForClearance` | `isRegulatoryResubmitter` |
 | `RegulatoryDocumentReader` | Retrieve the authority's confirmation document (e.g. the PL UPO) or a rendered view for a cleared document. | `getRegulatoryDocument` | `isRegulatoryDocumentReader` |
 | `CorrectionIssuer` | Issue a correcting document (e.g. KSeF `KOR`) against an original. | `issueCorrection` | `isCorrectionIssuer` |
+| `OfflineResubmitter` | Retransmit a document issued with legal effect during a clearance-authority outage (degraded-mode `pending-submission`) once the authority recovers. | `resubmit` | `isOfflineResubmitter` |
+| `RegulatoryRecordLocator` | Last-resort crash-recovery lookup: query the authority by business coordinates (seller id, document number, issue-date window) to learn whether an interrupted submit actually landed. | `locateByQuery` | `isRegulatoryRecordLocator` |
 | `BankAccountsReader` | List the seller's payable bank accounts known to the provider (live picker for Transfer invoices). | `listBankAccounts` | `isBankAccountsReader` |
 | `BankAccountDefaultSetter` *(extends `BankAccountsReader`)* | Mark an account as the provider's own default, keeping it in sync with the account OL stamps on Transfer invoices. | `setDefaultBankAccount` | `isBankAccountDefaultSetter` |
 | `PaymentStatusReader` | Authoritative re-read of a document's payment state (a provider payment webhook is only a trigger, never trusted as the system of record). | `getPaymentStatus` | `isPaymentStatusReader` |

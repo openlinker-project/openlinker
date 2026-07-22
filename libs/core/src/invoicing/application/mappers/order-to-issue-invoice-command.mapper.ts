@@ -41,6 +41,13 @@ export interface OrderToIssueInvoiceCommandInput {
   documentType?: string;
   idempotencyKey?: string;
   /**
+   * Optional neutral order-origin (#1694) — the source connection's
+   * `platformType` — threaded onto the command's `source` axis for numbering
+   * routing. Caller-resolved (the `Order` carries no origin platformType);
+   * absent = numbering falls back past the source axis.
+   */
+  source?: string;
+  /**
    * Optional override for the shipping-line label on a fiscal document. Core has
    * no locale, so a caller that does (or that translates for a target market)
    * can supply a localized name here; when absent the neutral English
@@ -67,7 +74,7 @@ export interface OrderToIssueInvoiceCommandInput {
 export function toIssueInvoiceCommand(
   input: OrderToIssueInvoiceCommandInput,
 ): IssueInvoiceCommand {
-  const { order, connectionId, buyerTaxId, documentType, idempotencyKey, shippingLineName } =
+  const { order, connectionId, buyerTaxId, documentType, idempotencyKey, shippingLineName, source } =
     input;
 
   // GROSS-only MVP: an `exclusive` (net) order would mislabel net as gross.
@@ -112,6 +119,11 @@ export function toIssueInvoiceCommand(
   }
   if (idempotencyKey !== undefined) {
     command.idempotencyKey = idempotencyKey;
+  }
+  // #1694: order-origin numbering axis. Pass-through only — a blank/absent value
+  // stays undefined so routing falls back past the source axis.
+  if (source !== undefined && source.trim().length > 0) {
+    command.source = source;
   }
 
   return command;

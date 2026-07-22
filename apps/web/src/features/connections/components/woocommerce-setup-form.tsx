@@ -1,24 +1,30 @@
 /**
  * WooCommerce Setup Form
  *
- * Single-step wizard for creating a WooCommerce connection. Collects:
- *   - Connection name
- *   - Site URL (HTTPS)
- *   - Consumer key (ck_...)
- *   - Consumer secret (cs_...)
+ * Multi-step wizard for creating a WooCommerce connection. Steps:
+ *   1. Store details — connection name, site URL (HTTPS)
+ *   2. API credentials — consumer key (ck_...), consumer secret (cs_...)
+ *   3. Capabilities — which roles this connection will fulfil, with the
+ *      InventoryMaster/OfferManager mutual exclusivity enforced via a
+ *      disable-guard (the backend rejects the pair with a 400)
+ *   4. Review & create — final summary before submit
  *
- * Simpler than the PrestaShop 4-step wizard — no stepper, no capabilities
- * step (capabilities are seeded silently from the adapter registry, falling
- * back to the manifest's full set). Abandon-prevention triggers a native
- * confirm dialog when the form is dirty and the tab is closed.
+ * Per-step validation runs on Next so the operator cannot advance with
+ * invalid fields. Abandon-prevention triggers a native confirm dialog
+ * when the form is dirty and the tab is closed.
  */
-import { useEffect, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { useForm, type Path } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { useAdaptersQuery } from '../../adapters';
 import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
 import { CORE_CAPABILITY_VALUES, type CoreCapability } from '../api/connections.types';
+import {
+  CAPABILITY_HELP,
+  capabilityConflictMessage,
+  getCapabilityConflict,
+} from '../lib/capability-metadata';
 import {
   WOOCOMMERCE_ADAPTER_KEY,
   WOOCOMMERCE_FALLBACK_CAPABILITIES,
@@ -34,7 +40,28 @@ import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
+import { SetupStepper } from '../../../shared/ui/setup-stepper';
+import { WizardLayout } from '../../../shared/ui/wizard-layout';
 import { useToast } from '../../../shared/ui/toast-provider';
+
+const STEP_LABELS = [
+  'Store details',
+  'API credentials',
+  'Capabilities',
+  'Review & create',
+] as const;
+
+const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<WoocommerceSetupFormValues>>> = [
+  ['name', 'siteUrl'],
+  ['consumerKey', 'consumerSecret'],
+  ['enabledCapabilities'],
+  [],
+];
+
+function maskKey(key: string): string {
+  if (key.length <= 4) return '•'.repeat(key.length);
+  return `${'•'.repeat(Math.max(0, key.length - 4))}${key.slice(-4)}`;
+}
 
 export function WoocommerceSetupForm(): ReactElement {
   const createConnection = useCreateConnectionMutation();
@@ -48,16 +75,8 @@ export function WoocommerceSetupForm(): ReactElement {
     mode: 'onBlur',
   });
 
-  // Seed enabledCapabilities from the adapter registry once loaded.
-  useEffect(() => {
-    const adapter = adaptersQuery.data?.find((a) => a.adapterKey === WOOCOMMERCE_ADAPTER_KEY);
-    const capabilities: CoreCapability[] = (
-      adapter?.supportedCapabilities ?? WOOCOMMERCE_FALLBACK_CAPABILITIES
-    ).filter((cap): cap is CoreCapability =>
-      (CORE_CAPABILITY_VALUES as readonly string[]).includes(cap),
-    );
-    form.setValue('enabledCapabilities', capabilities);
-  }, [adaptersQuery.data, form]);
+  const [stepIndex, setStepIndex] = useState(0);
+  const [completedSteps, setCompletedSteps] = useState<ReadonlySet<number>>(new Set());
 
   // Abandon-prevention.
   useEffect(() => {
@@ -70,9 +89,33 @@ export function WoocommerceSetupForm(): ReactElement {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [form.formState.isDirty]);
 
+  const adapterMetadata = adaptersQuery.data?.find((a) => a.adapterKey === WOOCOMMERCE_ADAPTER_KEY);
+  // The checkbox list is gated on the well-known core capabilities: the
+  // create-connection request DTO is still strict on `CoreCapabilityValues`
+  // (#576), so the wizard only exposes core caps today.
+  const supportedCapabilities: CoreCapability[] = (
+    adapterMetadata?.supportedCapabilities ?? WOOCOMMERCE_FALLBACK_CAPABILITIES
+  ).filter((capability): capability is CoreCapability =>
+    (CORE_CAPABILITY_VALUES as readonly string[]).includes(capability),
+  );
+
   const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
     error?.message ? [String(error.message)] : [],
   );
+
+  async function goNext(): Promise<void> {
+    const fields = STEP_FIELDS[stepIndex];
+    if (fields.length > 0) {
+      const valid = await form.trigger([...fields]);
+      if (!valid) return;
+    }
+    setCompletedSteps((prev) => new Set(prev).add(stepIndex));
+    setStepIndex((i) => Math.min(i + 1, STEP_LABELS.length - 1));
+  }
+
+  function goBack(): void {
+    setStepIndex((i) => Math.max(i - 1, 0));
+  }
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
@@ -89,88 +132,175 @@ export function WoocommerceSetupForm(): ReactElement {
     }
   });
 
+  const values = form.watch();
+  const selectedCapabilities = values.enabledCapabilities ?? [];
+
   return (
-    <form className="wizard-card" onSubmit={(event) => void onSubmit(event)} noValidate>
-      <BackLink to="/connections/new" label="Connections" className="wizard-card__back" />
+    <WizardLayout
+      stepper={
+        <SetupStepper steps={STEP_LABELS} currentStep={stepIndex} completedSteps={completedSteps} />
+      }
+    >
+      <form className="wizard-card" onSubmit={(event) => void onSubmit(event)} noValidate>
+        <BackLink to="/connections/new" label="Connections" className="wizard-card__back" />
 
-      {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
-        <FormErrorSummary errors={validationMessages} />
-      ) : null}
-      {createConnection.error ? (
-        <Alert tone="error" title="Unable to create connection">
-          {createConnection.error.message}
-        </Alert>
-      ) : null}
+        {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
+          <FormErrorSummary errors={validationMessages} />
+        ) : null}
+        {createConnection.error ? (
+          <Alert tone="error" title="Unable to create connection">
+            {createConnection.error.message}
+          </Alert>
+        ) : null}
 
-      <Alert tone="info" title="Before you start">
-        In your WooCommerce admin, go to <strong>WooCommerce → Settings → Advanced → REST API</strong>{' '}
-        and generate a key with <strong>Read/Write</strong> permissions. Copy the consumer key and
-        consumer secret below — they are only shown once.
-      </Alert>
+        {stepIndex === 0 ? (
+          <>
+            <FormField
+              label="Connection name"
+              name="name"
+              error={form.formState.errors.name?.message}
+              description="A label to identify this store in OpenLinker."
+            >
+              <Input
+                {...form.register('name')}
+                placeholder="My WooCommerce Store"
+                autoComplete="off"
+                invalid={Boolean(form.formState.errors.name)}
+              />
+            </FormField>
 
-      <FormField
-        label="Connection name"
-        name="name"
-        error={form.formState.errors.name?.message}
-        description="A label to identify this store in OpenLinker."
-      >
-        <Input
-          {...form.register('name')}
-          placeholder="My WooCommerce Store"
-          autoComplete="off"
-          invalid={Boolean(form.formState.errors.name)}
-        />
-      </FormField>
+            <FormField
+              label="Site URL"
+              name="siteUrl"
+              error={form.formState.errors.siteUrl?.message}
+              description="The root URL of your WooCommerce store. Must use HTTPS."
+            >
+              <Input
+                {...form.register('siteUrl')}
+                className="mono-text"
+                placeholder="https://shop.example.com"
+                autoComplete="off"
+                invalid={Boolean(form.formState.errors.siteUrl)}
+              />
+            </FormField>
+          </>
+        ) : null}
 
-      <FormField
-        label="Site URL"
-        name="siteUrl"
-        error={form.formState.errors.siteUrl?.message}
-        description="The root URL of your WooCommerce store. Must use HTTPS."
-      >
-        <Input
-          {...form.register('siteUrl')}
-          placeholder="https://shop.example.com"
-          autoComplete="off"
-          invalid={Boolean(form.formState.errors.siteUrl)}
-        />
-      </FormField>
+        {stepIndex === 1 ? (
+          <>
+            <Alert tone="info" title="Before you start">
+              In your WooCommerce admin, go to{' '}
+              <strong>WooCommerce → Settings → Advanced → REST API</strong> and generate a key with{' '}
+              <strong>Read/Write</strong> permissions. Copy the consumer key and consumer secret
+              below — they are only shown once.
+            </Alert>
 
-      <FormField
-        label="Consumer key"
-        name="consumerKey"
-        error={form.formState.errors.consumerKey?.message}
-        description="Starts with ck_ — generated in WooCommerce REST API settings."
-      >
-        <Input
-          {...form.register('consumerKey')}
-          type="password"
-          placeholder="ck_••••••••••••••••••••••••••••••••••••••••"
-          autoComplete="off"
-          invalid={Boolean(form.formState.errors.consumerKey)}
-        />
-      </FormField>
+            <FormField
+              label="Consumer key"
+              name="consumerKey"
+              error={form.formState.errors.consumerKey?.message}
+              description="Starts with ck_ — generated in WooCommerce REST API settings."
+            >
+              <Input
+                {...form.register('consumerKey')}
+                className="mono-text"
+                type="password"
+                placeholder="ck_••••••••••••••••••••••••••••••••••••••••"
+                autoComplete="off"
+                invalid={Boolean(form.formState.errors.consumerKey)}
+              />
+            </FormField>
 
-      <FormField
-        label="Consumer secret"
-        name="consumerSecret"
-        error={form.formState.errors.consumerSecret?.message}
-        description="Starts with cs_ — generated alongside the consumer key."
-      >
-        <Input
-          {...form.register('consumerSecret')}
-          type="password"
-          placeholder="cs_••••••••••••••••••••••••••••••••••••••••"
-          autoComplete="off"
-          invalid={Boolean(form.formState.errors.consumerSecret)}
-        />
-      </FormField>
+            <FormField
+              label="Consumer secret"
+              name="consumerSecret"
+              error={form.formState.errors.consumerSecret?.message}
+              description="Starts with cs_ — generated alongside the consumer key."
+            >
+              <Input
+                {...form.register('consumerSecret')}
+                className="mono-text"
+                type="password"
+                placeholder="cs_••••••••••••••••••••••••••••••••••••••••"
+                autoComplete="off"
+                invalid={Boolean(form.formState.errors.consumerSecret)}
+              />
+            </FormField>
+          </>
+        ) : null}
 
-      <div className="form-actions">
-        <Button type="submit" disabled={createConnection.isPending}>
-          {createConnection.isPending ? 'Connecting…' : 'Connect WooCommerce'}
-        </Button>
-      </div>
-    </form>
+        {stepIndex === 2 ? (
+          <fieldset className="capability-fieldset">
+            <legend className="capability-fieldset__legend">Capabilities</legend>
+            <p className="muted-text capability-fieldset__help">
+              Pick which roles this connection should fulfil. You can change this later on the
+              connection&rsquo;s detail page.
+            </p>
+            <ul className="capability-list">
+              {supportedCapabilities.map((capability) => {
+                const id = `new-cap-${capability}`;
+                const conflict = getCapabilityConflict(selectedCapabilities, capability);
+                const isBlocked = conflict !== null && !selectedCapabilities.includes(capability);
+                return (
+                  <li key={capability} className="capability-list__item">
+                    <label htmlFor={id} className="capability-list__label">
+                      <input
+                        id={id}
+                        type="checkbox"
+                        value={capability}
+                        disabled={isBlocked}
+                        {...form.register('enabledCapabilities')}
+                      />
+                      <span className="capability-list__name mono-text">{capability}</span>
+                    </label>
+                    <p className="capability-list__help muted-text">
+                      {isBlocked && conflict
+                        ? capabilityConflictMessage(conflict)
+                        : CAPABILITY_HELP[capability]}
+                    </p>
+                  </li>
+                );
+              })}
+            </ul>
+          </fieldset>
+        ) : null}
+
+        {stepIndex === 3 ? (
+          <dl className="wizard-review-list">
+            <dt>Name</dt>
+            <dd>{values.name || '—'}</dd>
+            <dt>Site URL</dt>
+            <dd className="mono-text">{values.siteUrl || '—'}</dd>
+            <dt>Consumer key</dt>
+            <dd className="mono-text">{values.consumerKey ? maskKey(values.consumerKey) : '—'}</dd>
+            <dt>Capabilities</dt>
+            <dd>
+              {selectedCapabilities.length > 0 ? selectedCapabilities.join(', ') : 'None selected'}
+            </dd>
+          </dl>
+        ) : null}
+
+        <div className="wizard-actions">
+          <div className="wizard-actions__group">
+            {stepIndex > 0 ? (
+              <Button tone="secondary" type="button" onClick={goBack}>
+                Back
+              </Button>
+            ) : null}
+          </div>
+          <div className="wizard-actions__group">
+            {stepIndex < STEP_LABELS.length - 1 ? (
+              <Button type="button" onClick={() => void goNext()}>
+                Next
+              </Button>
+            ) : (
+              <Button type="submit" disabled={createConnection.isPending}>
+                {createConnection.isPending ? 'Creating...' : 'Create connection'}
+              </Button>
+            )}
+          </div>
+        </div>
+      </form>
+    </WizardLayout>
   );
 }

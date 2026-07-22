@@ -50,15 +50,31 @@
  * the service assigns the real persisted identity. Callers must invoke this once
  * per issuance intent (the dedup gate above guarantees that).
  *
+ * OUTAGE RESILIENCE (#1701 / mini-epic #1585, ADR-035): the adapter also
+ * implements `OfflineResubmitter` + `RegulatoryRecordLocator`. When KSeF is
+ * unavailable while opening/submitting a session (network failure / 429 / 5xx —
+ * `isKsefUnavailable`), `issueInvoice` does NOT throw: the FA(3) is already
+ * structurally issued locally, so it returns a neutral `pending-submission`
+ * record (no `providerInvoiceId` — nothing landed) carrying the FA(3) XML as its
+ * source document. A background sweep (#1121) later calls `resubmit` to open a
+ * fresh session from that XML, and `locateByQuery` is the last-resort authority
+ * lookup after a crash mid-submit. A content/validation rejection is still
+ * terminal (it can never clear on resubmit) — offline mode is reserved for a
+ * genuine outage (fiscal safety: never enter offline for a content rejection,
+ * never fabricate a `providerInvoiceId`).
+ *
  * @module libs/integrations/ksef/src/infrastructure/adapters
  * @see {@link InvoicingPort}
  * @see {@link RegulatoryTransmitter}
+ * @see {@link OfflineResubmitter}
+ * @see {@link RegulatoryRecordLocator}
  */
 import { createHash } from 'crypto';
 import { Logger } from '@openlinker/shared/logging';
 import type {
   CorrectionIssuer,
   CorrectionLine,
+  DocumentNumberConsumer,
   RegulatoryClearanceResult,
   DocumentType,
   GetInvoiceQuery,
@@ -69,9 +85,14 @@ import type {
   IssueInvoiceCommand,
   IssueInvoiceResult,
   IssuedDocumentSeller,
+  OfflineResubmitResult,
+  OfflineResubmitter,
   RegulatoryDocument,
   RegulatoryDocumentKind,
   RegulatoryDocumentReader,
+  RegulatoryLocateCriteria,
+  RegulatoryLocateResult,
+  RegulatoryRecordLocator,
   RegulatoryTransmitter,
   StoredDocument,
   UpsertCustomerCommand,
@@ -94,9 +115,13 @@ import { decodeProviderInvoiceId, encodeProviderInvoiceId } from './ksef-provide
 import { KsefSessionException } from '../../domain/exceptions/ksef-session.exception';
 import { KsefUnsupportedDocumentTypeException } from '../../domain/exceptions/ksef-unsupported-document-type.exception';
 import { KsefInvalidCorrectionException } from '../../domain/exceptions/ksef-invalid-correction.exception';
+import { KsefMissingDocumentNumberException } from '../../domain/exceptions/ksef-missing-document-number.exception';
 import {
   KSEF_NUMBER_PATTERN,
   KSEF_STATUS_SUCCESS,
+  type InvoiceMetadataItem,
+  type InvoiceMetadataQueryRequest,
+  type InvoiceMetadataQueryResponse,
   type InvoiceStatusResponse,
   type OnlineSessionStatusResponse,
   type OpenOnlineSessionRequest,
@@ -105,22 +130,68 @@ import {
   type SendInvoiceResponse,
 } from './ksef-session.types';
 import { mapKsefStatusToRegulatoryStatus } from './ksef-clearance-status.mapper';
+import { isKsefUnavailable, NON_RETRYABLE_KSEF_STATUS_CODES } from './ksef-availability';
+import { KsefApiException } from '../../domain/exceptions/ksef-api.exception';
 import type { KsefInvoicingAdapterOptions } from './ksef-invoicing-adapter.types';
 
 /** Neutral document types KSeF issues. Open-world `DocumentType` is narrowed to these two. */
 const SUPPORTED_DOCUMENT_TYPES: DocumentType[] = ['invoice', 'corrected'];
 
+/**
+ * Max length of the FA(3) `P_2` document number (the KSeF/FA(3) schema caps it
+ * at 256 chars). Declared to the core numbering allocation (#11) so an
+ * over-length rendered number is rejected in OpenLinker before the session opens.
+ */
+const FA3_P2_MAX_LENGTH = 256;
+
+/**
+ * Default IANA timezone the numbering date variables + period-reset bucket
+ * resolve in (#7) when the connection config carries none. Poland's zone: FA(3)
+ * document dates are the seller's local dates, so an issuance just after local
+ * midnight at a month/year boundary must number in the local calendar day.
+ */
+const DEFAULT_NUMBERING_TIME_ZONE = 'Europe/Warsaw';
+
 /** Content type assumed for a UPO when KSeF omits the response `content-type` (the UPO is XML). */
 const DEFAULT_UPO_CONTENT_TYPE = 'application/xml';
+
+/**
+ * Max length of a raw KSeF error string this adapter writes to a log line
+ * (#1585 S1). Mirrors the core sweeps' `MAX_ERROR_MESSAGE_LENGTH` so an
+ * unbounded authority error can't flood the logs. Truncates, does not redact —
+ * KSeF error messages are PII-free today.
+ */
+const MAX_LOGGED_ERROR_LENGTH = 500;
 
 export class KsefInvoicingAdapter
   implements
     InvoicingPort,
     RegulatoryTransmitter,
     RegulatoryDocumentReader,
-    CorrectionIssuer
+    CorrectionIssuer,
+    DocumentNumberConsumer,
+    OfflineResubmitter,
+    RegulatoryRecordLocator
 {
   private readonly logger = new Logger(KsefInvoicingAdapter.name);
+
+  /**
+   * Marks KSeF as an OpenLinker-numbered provider (#1575): the core
+   * `InvoiceService` allocates the FA(3) `P_2` from the connection's numbering
+   * series and passes it as `IssueInvoiceCommand.documentNumber`. Read by
+   * `isDocumentNumberConsumer`.
+   */
+  readonly consumesDocumentNumber = true as const;
+
+  /**
+   * IANA timezone (#7) the core numbering allocation resolves the FA(3) date
+   * variables + period-reset bucket in. Resolved by the factory from the
+   * connection config (`Europe/Warsaw` default); read by the core `InvoiceService`.
+   */
+  readonly numberingTimeZone: string;
+
+  /** FA(3) `P_2` max length (#11) declared to the core numbering allocation. */
+  readonly maxDocumentNumberLength = FA3_P2_MAX_LENGTH;
 
   /**
    * Resolved connection-level payment defaults (#1311) — `undefined` when the
@@ -159,6 +230,7 @@ export class KsefInvoicingAdapter
     this.payment = options.payment;
     this.defaultLineUnit = options.defaultLineUnit;
     this.now = options.now ?? ((): Date => new Date());
+    this.numberingTimeZone = options.numberingTimeZone ?? DEFAULT_NUMBERING_TIME_ZONE;
   }
 
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
@@ -173,26 +245,20 @@ export class KsefInvoicingAdapter
     // the wrong document. Assert the two agree, terminally, before any build/send.
     this.assertCorrectionConsistency(cmd);
 
-    const issuedAt = this.now();
-    // The FA(3) P_2 document number. Single source for BOTH the XML builder's
+    // Single issuance instant (#1692): the core `InvoiceService` threads ONE
+    // `issuedAt` so the FA(3) `P_1` (legal issue date) and the allocated `P_2`
+    // number's date variables/period resolve from the SAME instant. Fall back to
+    // the injected clock only for a direct adapter call that does not thread one.
+    const issuedAt = cmd.issuedAt ?? this.now();
+    // The FA(3) P_2 document number (#1575). KSeF is a `DocumentNumberConsumer`:
+    // the core `InvoiceService` allocates a real per-seller sequential number
+    // from the connection's numbering series and passes it as
+    // `cmd.documentNumber`. Single source for BOTH the XML builder's
     // `invoiceNumber` and the persisted `InvoiceRecord.providerInvoiceNumber` —
     // the correction precondition (#1289) matches on the persisted value, so the
-    // two must never diverge (#1338).
-    // TODO: replace the orderId placeholder with a real per-seller sequential
-    // FA(3) invoice-number source (P_2 must be a unique invoice number, not an
-    // order id) before prod. Owned by the core InvoiceService numbering
-    // follow-up (#1118), not the C6 clearance-read (#1150).
-    //
-    // #1364 interim fix: a correction MUST NOT reuse the original document's
-    // P_2 — KSeF rejects it live with "Duplikat faktury" (confirmed against
-    // the real test environment) once the same order is corrected a second
-    // time. Give every correction a distinct suffix so it never collides with
-    // the document it corrects (or an earlier correction of the same order).
-    // Not the real sequential-numbering source #1364 ultimately wants — just
-    // enough to stop the collision until that lands.
-    const documentNumber = cmd.correction
-      ? this.buildCorrectionDocumentNumber(cmd.orderId, cmd.idempotencyKey, issuedAt)
-      : cmd.orderId;
+    // two must never diverge (#1338). Corrections draw a distinct number from the
+    // correction series upstream, so no per-correction suffix hack is needed here.
+    const documentNumber = this.resolveDocumentNumber(cmd);
     this.logger.log(
       `Issuing KSeF document (connection ${this.connectionId}, order ${cmd.orderId}, lines ${cmd.lines.length})`,
     );
@@ -213,8 +279,23 @@ export class KsefInvoicingAdapter
     );
 
     // 2. Open session → encrypt → submit → close (one invoice per session).
-    const cryptoContext = await this.sessionCrypto.initializeSession(issuedAt);
-    const sessionRef = await this.openOnlineSession(cryptoContext);
+    //    Establishing the session (crypto init + open) can fail because KSeF is
+    //    unreachable (network / 429 / 5xx). The document is already structurally
+    //    issued locally, so an OUTAGE here (#1701) does not fail issuance: it
+    //    falls into the neutral offline (`pending-submission`) window for a later
+    //    resubmit. A content/validation rejection still throws terminally.
+    let cryptoContext: SessionCryptoContext;
+    let sessionRef: string;
+    try {
+      cryptoContext = await this.sessionCrypto.initializeSession(issuedAt);
+      sessionRef = await this.openOnlineSession(cryptoContext);
+    } catch (error) {
+      if (isKsefUnavailable(error)) {
+        return this.buildOfflineResult(cmd, xml, issuedAt, documentNumber, error);
+      }
+      throw error;
+    }
+
     let invoiceReference: string;
     let submitError: unknown;
     try {
@@ -224,21 +305,16 @@ export class KsefInvoicingAdapter
       // it: on a failed submit a subsequent close failure is logged + swallowed,
       // preserving the original (more actionable) submit error.
       submitError = error;
+      if (isKsefUnavailable(error)) {
+        // OUTAGE mid-submit (#1701): the session opened but the document never
+        // transmitted, so nothing landed at KSeF. Return the neutral offline
+        // record — the finally below still closes the session best-effort, and
+        // with `submitError` set a close failure is swallowed (never masks this).
+        return this.buildOfflineResult(cmd, xml, issuedAt, documentNumber, error);
+      }
       throw error;
     } finally {
-      try {
-        await this.closeSession(sessionRef);
-      } catch (closeError) {
-        if (submitError === undefined) {
-          // Submit succeeded — a close failure is the real (and only) error, so
-          // surface it rather than silently dropping it.
-          throw closeError;
-        }
-        this.logger.warn(
-          `KSeF session close failed after a failed submit (session ref ${sessionRef}); ` +
-            `keeping the original submit error. Close error: ${this.describeError(closeError)}`,
-        );
-      }
+      await this.closeSessionPreservingSubmitError(sessionRef, submitError);
     }
 
     // 3. KSeF rejects-with-zero-valid is reported on the session status, not the
@@ -283,21 +359,315 @@ export class KsefInvoicingAdapter
   }
 
   /**
-   * #1364 interim fix: derive a P_2 for a correction that is distinct from the
-   * original document's P_2 (`orderId`) and from any earlier correction of the
-   * same order. Keyed off `idempotencyKey` when the caller supplied one (stable
-   * across retries of the SAME correction attempt — a retry must reuse the same
-   * P_2, not mint a new one), else falls back to the issue timestamp. Not the
-   * real per-seller sequential FA(3) numbering source #1364 ultimately wants —
-   * just enough to stop the live "Duplikat faktury" collision until that lands.
+   * `OfflineResubmitter.resubmit` (#1701). Retransmit a document that was issued
+   * into the offline (`pending-submission`) window during a KSeF outage. Opens a
+   * FRESH online session from the record's persisted FA(3) source XML and submits
+   * it — the same online-session mechanism `issueInvoice` uses, minus its
+   * offline-catch: if KSeF is STILL unavailable this THROWS (a transport/infra
+   * failure) so the crash-recovery sweep (#1121) backs off and the record stays
+   * `pending-submission` for the next tick, never silently lost.
+   *
+   * On accept-into-session it returns the neutral triple the sweep persists via
+   * `updateOutcome`: the fresh `providerInvoiceId` (`{sessionRef}:{invoiceRef}`
+   * composite — now knowable, unlike at offline-issue time), `regulatoryStatus`
+   * `submitted` (the KSeF number is still assigned asynchronously — C6 reconciles
+   * it to `accepted`), and `clearanceReference` null until then.
    */
-  private buildCorrectionDocumentNumber(
-    orderId: string,
-    idempotencyKey: string | undefined,
+  async resubmit(record: InvoiceRecordType): Promise<OfflineResubmitResult> {
+    const xml = this.decodeOfflineDocument(record);
+    // The resubmit only TRANSMITS the already-built FA(3): its legal `P_1`
+    // issue date is baked into the stored XML at offline-issue time, so the
+    // original `issuedAt` must NOT feed the fresh session's crypto init. The
+    // session is established NOW, so `transmitToSession` opens it with
+    // `this.now()`; passing the days-old `issuedAt` would yield a session-key
+    // TTL / `expiresAt` in the past and (given the AES-session-timestamp
+    // sensitivity behind status 430) could fail every resubmit outright (#1585 I4).
+    this.logger.log(
+      `Resubmitting offline KSeF document (connection ${this.connectionId}, order ${record.orderId})`,
+    );
+
+    let sessionRef: string;
+    let invoiceReference: string;
+    try {
+      ({ sessionRef, invoiceReference } = await this.transmitToSession(xml));
+    } catch (error) {
+      // A resubmit that LANDS but is deterministically REJECTED (a processed
+      // zero-valid session, or a non-retryable content 4xx such as 422) must
+      // TERMINALIZE, not loop forever (#1585 F2). Carrying `rejected` back as data
+      // lets the offline sweep's `persistResubmitOutcome` record it terminally;
+      // if the adapter re-threw, the sweep would treat every throw as transient
+      // and retry the same content-invalid document every tick indefinitely.
+      // Transient / receipt-ambiguous / unknown failures still throw, leaving the
+      // record `pending-submission` for the next run.
+      if (this.isContentRejection(error)) {
+        this.logger.warn(
+          `KSeF resubmit was rejected on content (connection ${this.connectionId}, ` +
+            `order ${record.orderId}): ${this.describeError(error)}; recording as terminal rejected.`,
+        );
+        return {
+          regulatoryStatus: 'rejected',
+          providerInvoiceId: null,
+          clearanceReference: null,
+        };
+      }
+      throw error;
+    }
+
+    this.logger.log(
+      `KSeF offline document resubmitted (connection ${this.connectionId}, ` +
+        `session ref ${sessionRef}, invoice ref ${invoiceReference})`,
+    );
+    return {
+      regulatoryStatus: 'submitted',
+      providerInvoiceId: encodeProviderInvoiceId(sessionRef, invoiceReference),
+      clearanceReference: null,
+    };
+  }
+
+  /**
+   * True when a resubmit failure is a DETERMINISTIC content rejection — the
+   * document reached KSeF and was refused, so retrying the same bytes can never
+   * succeed. Two shapes qualify: a `KsefSessionException` (the terminal
+   * zero-valid / business-rejection type) and a `KsefApiException` carrying a
+   * non-retryable content status code (400/403/404/405/409/415/422, shared with
+   * the retry classifier). Disjoint from `isKsefUnavailable` by construction, so
+   * a transient outage / receipt-ambiguous timeout is never mistaken for a
+   * rejection (#1585 F2).
+   */
+  private isContentRejection(error: unknown): boolean {
+    if (error instanceof KsefSessionException) {
+      return true;
+    }
+    if (error instanceof KsefApiException && error.statusCode !== undefined) {
+      return NON_RETRYABLE_KSEF_STATUS_CODES.has(error.statusCode);
+    }
+    return false;
+  }
+
+  /**
+   * `RegulatoryRecordLocator.locateByQuery` (#1701). The last-resort crash-recovery
+   * lookup: after a process died mid-submit, OL cannot know from its own state
+   * whether KSeF received the document, so this queries the authority
+   * (`POST /invoices/query/metadata`) by seller NIP + issue-date window + document
+   * number and reports whether a match exists.
+   *
+   * Returns a neutral `RegulatoryLocateResult` on a match — `accepted` +
+   * `clearanceReference` ONLY when the hit carries a valid KSeF number, else the
+   * non-terminal `pending-submission` with a null reference (#1585 I6/F3: a doc
+   * present but still processing must not be stamped terminally cleared with no
+   * number, NOR promoted to a `submitted` whose clearance poll needs a composite
+   * id the metadata query cannot supply — `pending-submission` is excluded from
+   * the poller and re-checked by the offline sweep) — or
+   * `null` when the authority holds none (the caller then treats the interrupted
+   * attempt as never having landed and re-issues). A positive match REQUIRES an
+   * exact `documentNumber` hit (#1585 B1):
+   * without one this returns `null` rather than trusting a lone date-window result,
+   * which could belong to an unrelated invoice. `providerInvoiceId` is `null`: the metadata query does not expose
+   * the `{sessionRef}:{invoiceRef}` composite this adapter's own id packs, and the
+   * contract permits returning only what is available. A transport failure throws.
+   */
+  async locateByQuery(criteria: RegulatoryLocateCriteria): Promise<RegulatoryLocateResult | null> {
+    // Filter by the seller NIP the sweep supplies, falling back to this
+    // connection's own configured seller identity. `criteria.sellerTaxId` is a
+    // neutral scheme-tagged value (ADR-026) — for KSeF it is the bare NIP.
+    const sellerNip = criteria.sellerTaxId ?? this.seller.nip;
+    const body: InvoiceMetadataQueryRequest = {
+      subjectType: 'subject1',
+      sellerNip,
+      invoiceNumber: criteria.documentNumber,
+      dateRange:
+        criteria.issuedFrom || criteria.issuedTo
+          ? {
+              from: criteria.issuedFrom?.toISOString(),
+              to: criteria.issuedTo?.toISOString(),
+            }
+          : undefined,
+    };
+    this.logger.log(
+      `Locating KSeF document by metadata query (connection ${this.connectionId}, ` +
+        `documentNumber ${criteria.documentNumber ?? 'any'})`,
+    );
+
+    const response = await this.httpClient.post<InvoiceMetadataQueryResponse>(
+      '/invoices/query/metadata',
+      body as unknown as Record<string, unknown>,
+    );
+    const match = this.selectMetadataMatch(response.data.invoices, criteria.documentNumber);
+    if (!match) {
+      return null;
+    }
+    // A metadata hit is only TERMINALLY `accepted` when it carries a valid,
+    // authority-assigned KSeF number (#1585 I6). A document present in the index
+    // but still processing (no `ksefNumber`) must NOT be marked `accepted` with a
+    // null reference (a "cleared" invoice that never reconciles to a real number).
+    //
+    // It also must NOT be promoted to `submitted` (#1585 F3): the metadata query
+    // cannot reconstruct the `{sessionRef}:{invoiceRef}` composite this adapter's
+    // clearance poll needs, so `providerInvoiceId` stays null - and a
+    // `submitted`+null record is exactly what `findIssuedNonTerminal` selects and
+    // `getClearanceStatus` then throws on every tick (a perpetual stuck-poll).
+    // Instead report the non-terminal `pending-submission`: it is EXCLUDED from
+    // the clearance poller, and the offline-resubmission sweep re-checks it (its
+    // confirm-non-receipt gate finds the same landed document and reconciles
+    // without resubmitting), promoting it to `accepted` once the KSeF number
+    // appears. No double-issue, no stranded poll.
+    const hasValidKsefNumber = Boolean(match.ksefNumber && KSEF_NUMBER_PATTERN.test(match.ksefNumber));
+    return {
+      // The metadata query surface does not carry the session-scoped composite
+      // this adapter packs into its own `providerInvoiceId`; null is acceptable.
+      providerInvoiceId: null,
+      regulatoryStatus: hasValidKsefNumber ? 'accepted' : 'pending-submission',
+      clearanceReference: hasValidKsefNumber ? (match.ksefNumber ?? null) : null,
+    };
+  }
+
+  /**
+   * Pick the metadata item that matches the requested document number. A positive
+   * match REQUIRES an exact document-number hit (#1585 B1, fiscal safety):
+   *   - No document number supplied -> return `null`. The query is then scoped
+   *     only by seller + issue-date window, and a lone date-window result can be
+   *     an UNRELATED invoice the seller happened to issue in that window; trusting
+   *     it would silently mis-attribute someone else's authority reference to an
+   *     orphaned record. The caller resolves such a record to in-doubt instead.
+   *   - Document number supplied -> match on it exactly client-side even when the
+   *     server returned a single result, defending against a wire that ignores the
+   *     `invoiceNumber` filter (a loose server-side filter never yields a
+   *     wrong-positive).
+   */
+  private selectMetadataMatch(
+    invoices: InvoiceMetadataItem[] | undefined,
+    documentNumber: string | undefined,
+  ): InvoiceMetadataItem | null {
+    if (!documentNumber) {
+      return null;
+    }
+    const items = invoices ?? [];
+    return items.find((item) => item.invoiceNumber === documentNumber) ?? null;
+  }
+
+  /**
+   * Build the neutral offline (`pending-submission`) result (#1701) for a document
+   * issued during a KSeF outage: `status='issued'` (the FA(3) is structurally,
+   * legally issued locally) with `regulatoryStatus='pending-submission'` and
+   * `providerInvoiceId=null` (no session landed — NEVER fabricate a reference).
+   * The FA(3) XML rides back as the neutral source document so the sweep can
+   * resubmit it (`resubmit`) without a rebuild.
+   */
+  private buildOfflineResult(
+    cmd: IssueInvoiceCommand,
+    xml: string,
     issuedAt: Date,
-  ): string {
-    const suffix = idempotencyKey ? idempotencyKey.slice(0, 16) : issuedAt.getTime().toString(36);
-    return `${orderId}-KOR-${suffix}`;
+    documentNumber: string,
+    cause: unknown,
+  ): IssueInvoiceResult {
+    this.logger.warn(
+      `KSeF unavailable during issuance (connection ${this.connectionId}, order ${cmd.orderId}); ` +
+        `document issued into the offline pending-submission window for later resubmission. ` +
+        `Cause: ${this.describeError(cause)}`,
+    );
+    const record = new InvoiceRecord(
+      '', // persistence id is assigned by the core InvoiceService (#1118), not here.
+      cmd.connectionId,
+      cmd.orderId,
+      'ksef',
+      this.resolveDocumentType(cmd.documentType),
+      'issued',
+      null, // no session landed → no providerInvoiceId (fiscal safety: never fabricate one).
+      documentNumber,
+      'pending-submission',
+      null,
+      cmd.idempotencyKey ?? null,
+      null,
+      issuedAt,
+      null,
+      issuedAt,
+      issuedAt,
+    );
+    return { record, seller: this.toNeutralSeller(), sourceDocument: this.toSourceDocument(xml) };
+  }
+
+  /**
+   * Decode the FA(3) source XML persisted on an offline record (#1701). A record
+   * with no source document cannot be resubmitted (nothing to transmit) — a
+   * terminal precondition failure, so the sweep does not spin retrying it.
+   */
+  private decodeOfflineDocument(record: InvoiceRecordType): string {
+    const source = record.sourceDocument;
+    if (!source || !source.contentBase64) {
+      throw new KsefSessionException(
+        `Cannot resubmit KSeF offline document for order ${record.orderId}: ` +
+          'the record carries no source-document XML to retransmit',
+      );
+    }
+    return Buffer.from(source.contentBase64, 'base64').toString('utf-8');
+  }
+
+  /**
+   * Open a fresh online session, submit the FA(3) XML, close it, and assert the
+   * session was accepted — the throwing online-transmit primitive shared by
+   * `resubmit`. Preserves the same submit-vs-close error precedence as
+   * `issueInvoice` (a close failure never masks a submit failure). Unlike
+   * `issueInvoice` it has NO offline-catch: every failure propagates.
+   */
+  private async transmitToSession(
+    xml: string,
+  ): Promise<{ sessionRef: string; invoiceReference: string }> {
+    // The session is established NOW — its crypto init anchors the session-key
+    // TTL on the current instant, never the document's (possibly days-old) legal
+    // issue date (#1585 I4). The FA(3) `P_1` already lives in `xml`.
+    const cryptoContext = await this.sessionCrypto.initializeSession(this.now());
+    const sessionRef = await this.openOnlineSession(cryptoContext);
+    let invoiceReference: string;
+    let submitError: unknown;
+    try {
+      invoiceReference = await this.submitInvoice(sessionRef, xml, cryptoContext);
+    } catch (error) {
+      submitError = error;
+      throw error;
+    } finally {
+      await this.closeSessionPreservingSubmitError(sessionRef, submitError);
+    }
+    await this.assertSessionAccepted(sessionRef);
+    return { sessionRef, invoiceReference };
+  }
+
+  /**
+   * Close the session in a finally block while preserving submit-error precedence:
+   * a close failure after a SUCCESSFUL submit (`submitError === undefined`) is the
+   * real (and only) error, so it is rethrown; a close failure after a FAILED
+   * submit is logged + swallowed so it never masks the more actionable submit
+   * error. Factored so `issueInvoice` and `transmitToSession` cannot drift.
+   */
+  private async closeSessionPreservingSubmitError(
+    sessionRef: string,
+    submitError: unknown,
+  ): Promise<void> {
+    try {
+      await this.closeSession(sessionRef);
+    } catch (closeError) {
+      if (submitError === undefined) {
+        throw closeError;
+      }
+      this.logger.warn(
+        `KSeF session close failed after a failed submit (session ref ${sessionRef}); ` +
+          `keeping the original submit error. Close error: ${this.describeError(closeError)}`,
+      );
+    }
+  }
+
+  /**
+   * Resolve the FA(3) `P_2` from the core-allocated `cmd.documentNumber` (#1575).
+   * KSeF is a `DocumentNumberConsumer`, so the core `InvoiceService` always
+   * allocates and supplies it; a missing value is a wiring invariant violation,
+   * thrown terminally before any session/XML work so the service records a
+   * failure rather than the adapter emitting a document with no legal number.
+   */
+  private resolveDocumentNumber(cmd: IssueInvoiceCommand): string {
+    const documentNumber = cmd.documentNumber?.trim();
+    if (!documentNumber) {
+      throw new KsefMissingDocumentNumberException(cmd.orderId);
+    }
+    return documentNumber;
   }
 
   /** Wrap the built FA(3) XML as a neutral, jsonb-persistable {@link StoredDocument}. */
@@ -352,13 +722,31 @@ export class KsefInvoicingAdapter
           'has no reconstructable document snapshot (buyer/currency/lines) to rebuild the corrected FA(3) from.',
       );
     }
+    // A KSeF KOR must reference the original's authority-assigned KSeF number
+    // (#1585 I9). The offline lifecycle introduced a route where a resubmitted
+    // record is `submitted` with a `providerInvoiceId` set but NO cleared KSeF
+    // number yet, so the controller's `providerInvoiceId != null` precondition
+    // (#1289) passes. Guard here: a correction of an original that never cleared
+    // (no `originalClearanceReference`) is terminal — KSeF cannot link the KOR.
+    if (!cmd.originalDocument.clearanceReference) {
+      throw new KsefInvalidCorrectionException(
+        `Cannot issue a KSeF correction for order ${cmd.orderId}: the original invoice has not ` +
+          'cleared KSeF yet (no authority-assigned KSeF number) — a KOR must reference the original ' +
+          'KSeF number. Wait for the original to reach accepted before correcting.',
+      );
+    }
     const correctedLines = this.applyCorrectionDeltas(cmd.originalDocument.lines, cmd.lines);
-    // #1364: `issueInvoice` below stamps a distinct P_2 whenever `correction` is
-    // present (see `buildCorrectionDocumentNumber`), so delegating with the same
-    // `orderId` here no longer collides with the original document's P_2.
+    // #1575: the correction's own P_2 is the number the core `InvoiceService`
+    // allocated from the connection's CORRECTION series and passed as
+    // `cmd.documentNumber`. Threaded onto the delegated `issueInvoice` so the KOR
+    // carries a distinct, series-owned number — no per-correction suffix hack.
     const issueCmd: IssueInvoiceCommand = {
       connectionId: cmd.connectionId,
       orderId: cmd.orderId,
+      documentNumber: cmd.documentNumber,
+      // Thread the single issuance instant (#1692) onto the delegated issue so
+      // the KOR's `P_1` matches the instant its correction number was allocated at.
+      issuedAt: cmd.issuedAt,
       buyer: cmd.originalDocument.buyer,
       currency: cmd.originalDocument.currency,
       // Deliberately the UNMODIFIED original lines, NOT `correctedLines` — per
@@ -604,7 +992,7 @@ export class KsefInvoicingAdapter
       return upo.data.upoDownloadUrl ?? upo.data.downloadUrl ?? null;
     } catch (error) {
       this.logger.warn(
-        `KSeF UPO pointer fetch failed for a cleared invoice (connection ${this.connectionId}): ${(error as Error).message}`,
+        `KSeF UPO pointer fetch failed for a cleared invoice (connection ${this.connectionId}): ${this.describeError(error)}`,
       );
       return null;
     }
@@ -703,34 +1091,44 @@ export class KsefInvoicingAdapter
       `/sessions/${encodeURIComponent(sessionRef)}`,
     );
     const { status, successfulInvoiceCount, failedInvoiceCount } = response.data;
+    const code = status?.code;
     // Zero-valid terminal failure: a session that KSeF has *processed* yet cleared
     // *zero* invoices is the terminal failure for this synchronous path — there is
     // nothing to reconcile later. `noSuccesses` already folds an absent count to 0,
     // so the failed-count / strict-zero qualifiers were redundant (when noSuccesses
     // holds, successfulInvoiceCount === 0 always coalesces true).
     //
-    // ASSUMPTION (TODO confirm before prod): we gate "processed" on the session
-    // status code === KSEF_STATUS_SUCCESS (200). The KSeF v2 OpenAPI documents 200
-    // as the success/terminal code on the analogous auth-session status, but does
-    // NOT publish a dedicated online-document-session status-code catalogue, so we
-    // cannot definitively confirm the session-PROCESSED terminal code differs from
-    // the per-invoice 200. If a distinct session-PROCESSED code surfaces in the
-    // CIRFMF catalogue, introduce a `KSEF_SESSION_PROCESSED` constant and gate on
-    // it here instead of reusing `KSEF_STATUS_SUCCESS`. We deliberately do NOT
-    // guess a new number.
-    const processed = status?.code === KSEF_STATUS_SUCCESS;
+    // SAFETY NET (#1701, replaces the former pre-prod ASSUMPTION): we gate
+    // "processed" on the session status code === KSEF_STATUS_SUCCESS (200). The
+    // KSeF v2 OpenAPI documents 200 as the terminal success code on the analogous
+    // auth-session status but does NOT publish a dedicated online-document-session
+    // status-code catalogue, so a distinct session-PROCESSED code could in
+    // principle exist. RESOLVED DECISION: keep the 200 gate (we deliberately do
+    // NOT guess a new number) and treat any non-200 session as "submitted,
+    // reconcile later" — but emit a structured WARN so the crash-recovery sweep
+    // (#1121) monitors how often a non-terminal session slips through this
+    // synchronous close, surfacing a stuck session in logs/metrics instead of
+    // failing silently.
+    const processed = code === KSEF_STATUS_SUCCESS;
     const noSuccesses = (successfulInvoiceCount ?? 0) === 0;
     if (processed && noSuccesses) {
       throw new KsefSessionException(
         `KSeF session processed with zero valid invoices (successful ${successfulInvoiceCount ?? 0}, failed ${failedInvoiceCount ?? 0})`,
-        status?.code,
+        code,
         sessionRef,
       );
     }
-    // Any processed session without the zero-valid count signature is
-    // intentionally treated as "submitted, reconcile later": the KSeF number is
-    // assigned asynchronously, so the cleared status (and a count-based accept
-    // gate) is C6's concern, not this synchronous issuance path's.
+    if (!processed) {
+      // Non-terminal (still processing / unrecognised code): the KSeF number is
+      // assigned asynchronously, so the cleared status is C6's concern. Monitored
+      // here so a session that never reaches 200 is observable, not silent.
+      this.logger.warn(
+        `KSeF session non-terminal at issuance close; deferring to reconciliation ` +
+          `(sessionRef=${sessionRef}, code=${code ?? 'none'}, ` +
+          `successfulInvoiceCount=${successfulInvoiceCount ?? 0}, ` +
+          `failedInvoiceCount=${failedInvoiceCount ?? 0})`,
+      );
+    }
   }
 
   /**
@@ -796,7 +1194,16 @@ export class KsefInvoicingAdapter
   }
 
   private describeError(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
+    // Length-bounded (#1585 S1): a KSeF authority error string is unbounded, so
+    // cap it before it reaches a log line — the same defence-in-depth + log-volume
+    // discipline the core sweeps apply via their `sanitizeError` helper. KSeF
+    // error messages are PII-free today; this truncates, it does not redact.
+    const raw = error instanceof Error ? error.message : String(error);
+    if (raw.length <= MAX_LOGGED_ERROR_LENGTH) {
+      return raw;
+    }
+    const marker = '…[truncated]';
+    return raw.slice(0, MAX_LOGGED_ERROR_LENGTH - marker.length) + marker;
   }
 
   private toIsoDate(date: Date): string {

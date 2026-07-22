@@ -34,6 +34,9 @@ import type {
   IncomingOrderAddress,
   IncomingOrderItem,
   IncomingOrderTotals,
+  OrderPickupPoint,
+  OrderPickupPointType,
+  OrderShipping,
   OrderStatus,
   PaymentStatus,
 } from '@openlinker/core/orders';
@@ -41,7 +44,9 @@ import type {
 import type {
   ErliOrder,
   ErliOrderAddress,
+  ErliOrderDelivery,
   ErliOrderItem,
+  ErliOrderPickupPlace,
   ErliOrderStatus,
 } from './erli-order.types';
 
@@ -69,6 +74,8 @@ export function mapErliOrderToIncomingOrder(order: ErliOrder): IncomingOrder {
     totals: mapTotals(order),
     shippingAddress: mapAddress(order.user.deliveryAddress),
     billingAddress: mapAddress(order.user.invoiceAddress),
+    shipping: mapShipping(order.delivery),
+    pickupPoint: mapPickupPoint(order.delivery.pickupPlace),
     paymentStatus: derivePaymentStatus(order.status, order.delivery.cod),
     placedAt: order.purchasedAt,
     createdAt: order.created ?? nowIso,
@@ -183,6 +190,25 @@ function round2(value: number): number {
 }
 
 /**
+ * Maps Erli's `delivery.typeId`/`name` onto the neutral `OrderShipping`
+ * reference (#1738). `methodId` is the routing-rule lookup key consumed by
+ * `FulfillmentRoutingService.resolve` (via the order snapshot), so an Erli
+ * order can divert to an OL-managed carrier per delivery method exactly like
+ * an Allegro order. Returns `undefined` when Erli reports no `typeId` (older
+ * orders / edge payloads) so the optional `shipping` key stays absent and
+ * routing falls back to the omp_fulfilled default.
+ */
+function mapShipping(delivery: ErliOrderDelivery): OrderShipping | undefined {
+  if (!delivery.typeId) {
+    return undefined;
+  }
+  return {
+    methodId: delivery.typeId,
+    ...(delivery.name !== undefined && { methodName: delivery.name }),
+  };
+}
+
+/**
  * Maps an Erli address onto the neutral `IncomingOrderAddress`. `address1` uses
  * Erli's full formatted street line when present, else composes
  * `street buildingNumber`; `flatNumber` (when not already folded into the full
@@ -214,4 +240,57 @@ function mapAddress(address?: ErliOrderAddress): IncomingOrderAddress | undefine
     country: address.country ?? '',
     phone: address.phone,
   };
+}
+
+/**
+ * Projects Erli's `delivery.pickupPlace` onto the neutral `OrderPickupPoint`,
+ * mirroring the shape produced by Allegro's `resolvePickupPoint`. The neutral
+ * `id` is the buyer-selected locker code — Erli's `externalId` (the carrier-side
+ * point code, e.g. `POZ08A`) when present, else the numeric internal `id`
+ * stringified. Returns `undefined` for courier / home-delivery orders (no
+ * `pickupPlace`) or when no locker id is resolvable, so the optional
+ * `pickupPoint` field stays absent.
+ *
+ * `pointType` is classified from Erli's free-form `type`/`provider` when a
+ * signal is present; absent a signal it is left unset (best-effort, mirroring
+ * Allegro — the authoritative InPost classification happens downstream when the
+ * point is resolved against `/v1/points`).
+ */
+function mapPickupPoint(pickupPlace?: ErliOrderPickupPlace): OrderPickupPoint | undefined {
+  if (!pickupPlace) {
+    return undefined;
+  }
+
+  const id = pickupPlace.externalId ?? (pickupPlace.id !== undefined ? String(pickupPlace.id) : undefined);
+  if (!id) {
+    return undefined;
+  }
+
+  return {
+    id,
+    name: pickupPlace.name,
+    description: pickupPlace.address,
+    pointType: classifyPickupPointType(id, pickupPlace.type, pickupPlace.name),
+  };
+}
+
+/**
+ * Best-effort InPost point-kind classification from Erli's free-form
+ * `type`/`name`/id signals: a `pop`/`paczkopunkt` marker ⇒ `pop`, an
+ * `apm`/`paczkomat`/`locker` marker ⇒ `apm`. Returns `undefined` when nothing
+ * is classifiable — the neutral field then stays unset rather than guessing.
+ */
+function classifyPickupPointType(
+  id: string,
+  type?: string,
+  name?: string,
+): OrderPickupPointType | undefined {
+  const haystack = `${id} ${type ?? ''} ${name ?? ''}`.toLowerCase();
+  if (haystack.includes('pop') || haystack.includes('paczkopunkt')) {
+    return 'pop';
+  }
+  if (haystack.includes('apm') || haystack.includes('paczkomat') || haystack.includes('locker')) {
+    return 'apm';
+  }
+  return undefined;
 }

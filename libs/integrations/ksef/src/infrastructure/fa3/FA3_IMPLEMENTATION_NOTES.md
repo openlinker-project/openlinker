@@ -175,6 +175,30 @@ blank for a new invoice — not a connection default). See
 [#1311](https://github.com/openlinker-project/openlinker/issues/1311) for the
 full field-scope audit and design mockup.
 
+## Session-lifecycle resilience (offline24 + crash recovery, epic #1585)
+
+Two failure modes of the online-session issuance flow are handled by neutral core
+sweeps (see the [setup guide](../../../docs/setup-guide.md#session-lifecycle-resilience-offline24--crash-recovery-epic-1585)
+for the full flow). Both stay country-agnostic in core (ADR-026) - the KSeF
+specifics live only in this adapter package.
+
+- **Offline24 degraded-mode issuance + resubmission (#1700 / #1701 / #1702).** When
+  KSeF is unreachable at issue time the FA(3) is issued locally with legal effect;
+  `buildOfflineResult` returns `status='issued'`, `regulatoryStatus='pending-submission'`,
+  `providerInvoiceId=null` (a reference is never fabricated), and rides the FA(3)
+  XML back as the neutral source document. The `OfflineResubmitter.resubmit`
+  sub-capability retransmits that XML once KSeF recovers.
+- **Crash recovery via query-metadata fallback (#1701 / #1703).** After a process
+  died between submit and `closeSession`, `RegulatoryRecordLocator.locateByQuery`
+  queries `POST /invoices/query/metadata` (seller NIP + issue-date window +
+  document number) to learn whether the interrupted document actually landed.
+  Found → reconcile to `accepted`; not found → fiscal-safe `failed` (`in-doubt`)
+  for manual review, **never** an automatic re-issue (double-issue guard).
+- **Status-code safety net.** The P_status mapping treats unknown clearance codes
+  as non-terminal (keep polling) and only `400`/`440`/`445` as terminal-rejected,
+  so a transient KSeF response can never strand a document in a wrong terminal
+  state; the crash-recovery sweep is the second-layer net.
+
 ## Known limitations / deferred work
 
 - ⏸ Reconcile the neutral tax-rate code set (UNCL 5305 vs OpenLinker-custom) —
@@ -209,3 +233,22 @@ full field-scope audit and design mockup.
   server-side decryption (the observed status-430 rejection of per-document IVs).
 - ⏸ Money rounding rule + decimal-place contract (to finalise with the builder).
 - ⏸ Emitting OL variant attributes as explicit distinguishing parameters.
+- ⏸ MF-announced `offline` (planned-outage) and `awaria` (declared-failure) regimes
+  as distinct modes, plus legal deadline-window enforcement (next-business-day
+  transmission within a bounded grace period). The offline24 path (#1700–#1703) is
+  shipped; a still-unreachable authority currently just leaves the record
+  `pending-submission` for the next resubmit run, with no deadline tracking.
+- ⏸ Continuous-supply / period-of-service invoicing (`OkresFa` — [#1597](https://github.com/openlinker-project/openlinker/issues/1597)).
+  Art. 106e ust. 1 pkt 6 requires a supply-period *range* (`P_6_Od` / `P_6_Do`) rather
+  than a single `P_6` date for continuous/recurring services (subscriptions, SaaS,
+  digital-content access). The vendored XSD defines the alternative
+  `OkresFa { P_6_Od, P_6_Do }` (`schema/schemat_fa3_v1-0e.xsd`), but the builder only
+  emits single-date `P_6` from `IssueInvoiceCommand.saleDate`, and neither
+  `IssueInvoiceCommand`/`InvoiceLine` nor the `Order`/`OrderItem` domain carries any
+  period-start/period-end concept — the whole pipeline models a discrete-delivery sale.
+  **Dormant**: no current OL order source produces a recurring/subscription order, so this
+  is unreachable today. When one is added to `libs/core/src/orders/` (e.g. a WooCommerce
+  Subscriptions source or SaaS-billing integration), revisit before shipping to a
+  KSeF-connected seller: add an optional `supplyPeriod { from, to }` to the neutral
+  invoice command/line and have `fa3-xml.builder.ts` emit `OkresFa` in place of `P_6`
+  when a period is present.

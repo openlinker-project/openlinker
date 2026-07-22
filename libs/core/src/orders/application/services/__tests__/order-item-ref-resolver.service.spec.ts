@@ -1,6 +1,7 @@
 import { OrderItemRefResolverService } from '../order-item-ref-resolver.service';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import { MissingOrderItemMappingError } from '../../../domain/exceptions/missing-order-item-mapping.error';
+import { StaleOrderItemError } from '../../../domain/exceptions/stale-order-item.error';
 import type { IProductsService, ProductVariant } from '@openlinker/core/products';
 
 function makeVariant(id: string, productId: string): ProductVariant {
@@ -14,6 +15,10 @@ function makeVariant(id: string, productId: string): ProductVariant {
     createdAt: new Date(),
     updatedAt: new Date(),
   };
+}
+
+function makeStaleVariant(id: string, productId: string): ProductVariant {
+  return { ...makeVariant(id, productId), isStale: true, staleAt: new Date() };
 }
 
 describe('OrderItemRefResolverService', () => {
@@ -111,6 +116,57 @@ describe('OrderItemRefResolverService', () => {
     await expect(
       service.resolve(connectionId, { type: 'sku', externalId: 'SKU-2' })
     ).resolves.toEqual({ internalProductId: 'ol_product_1' });
+  });
+
+  describe('stale variant guard (#1599)', () => {
+    it('throws StaleOrderItemError when an offer resolves to a stale variant', async () => {
+      identifierMapping.getInternalId.mockResolvedValueOnce('ol_variant_1');
+      productsService.getVariant.mockResolvedValueOnce(
+        makeStaleVariant('ol_variant_1', 'ol_product_1')
+      );
+
+      await expect(
+        service.resolve(connectionId, { type: 'offer', externalId: 'offer-1' })
+      ).rejects.toBeInstanceOf(StaleOrderItemError);
+    });
+
+    it('throws StaleOrderItemError when a variant ref resolves to a stale variant', async () => {
+      identifierMapping.getInternalId.mockResolvedValueOnce('ol_variant_1');
+      productsService.getVariant.mockResolvedValueOnce(
+        makeStaleVariant('ol_variant_1', 'ol_product_1')
+      );
+
+      await expect(
+        service.resolve(connectionId, { type: 'variant', externalId: 'v-1' })
+      ).rejects.toBeInstanceOf(StaleOrderItemError);
+    });
+
+    it('throws StaleOrderItemError when a sku resolves to a stale variant', async () => {
+      identifierMapping.getInternalId.mockResolvedValueOnce('ol_variant_1');
+      productsService.getVariant.mockResolvedValueOnce(
+        makeStaleVariant('ol_variant_1', 'ol_product_1')
+      );
+
+      await expect(
+        service.resolve(connectionId, { type: 'sku', externalId: 'SKU-1' })
+      ).rejects.toBeInstanceOf(StaleOrderItemError);
+    });
+
+    it('tryResolve surfaces a stale variant as resolved=false with a message-rich reason', async () => {
+      identifierMapping.getInternalId.mockResolvedValueOnce('ol_variant_1');
+      productsService.getVariant.mockResolvedValueOnce(
+        makeStaleVariant('ol_variant_1', 'ol_product_1')
+      );
+
+      const productRef = { type: 'offer' as const, externalId: 'offer-1' };
+      const result = await service.tryResolve(connectionId, productRef);
+
+      expect(result.resolved).toBe(false);
+      if (!result.resolved) {
+        expect(result.productRef).toEqual(productRef);
+        expect(result.reason).toContain('deleted at the master');
+      }
+    });
   });
 
   describe('tryResolve', () => {

@@ -42,6 +42,8 @@ import { PickupPointRefreshHandler } from './handlers/pickup-point-refresh.handl
 import { ShopProductPublishHandler } from './handlers/shop-product-publish.handler';
 import { InvoicingIssueHandler } from './handlers/invoicing-issue.handler';
 import { RegulatoryStatusReconcileHandler } from './handlers/regulatory-status-reconcile.handler';
+import { OfflineResubmitHandler } from './handlers/offline-resubmit.handler';
+import { PendingRecoveryHandler } from './handlers/pending-recovery.handler';
 import { PaymentStatusRefreshHandler } from './handlers/payment-status-refresh.handler';
 import { HandlerRegistrationService } from './handlers/handler-registration.service';
 
@@ -84,6 +86,8 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     ShopProductPublishHandler,
     InvoicingIssueHandler,
     RegulatoryStatusReconcileHandler,
+    OfflineResubmitHandler,
+    PendingRecoveryHandler,
     PaymentStatusRefreshHandler,
     HandlerRegistrationService,
   ],

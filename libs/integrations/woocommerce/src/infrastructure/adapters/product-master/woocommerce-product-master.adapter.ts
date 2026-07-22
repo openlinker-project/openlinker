@@ -30,6 +30,7 @@ import type {
   ProductVariantCreate,
   Category,
 } from '@openlinker/core/products';
+import { MasterProductNotFoundError } from '@openlinker/core/products';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
@@ -78,36 +79,46 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
 
   async getProduct(productId: string): Promise<Product> {
     this.logger.debug(`Getting product: ${productId} (connection: ${this.connection.id})`);
-    const externalIds = await this.identifierMapping.getExternalIds(
-      CORE_ENTITY_TYPE.Product,
-      productId,
-    );
-    const mapping = externalIds.find((e) => e.connectionId === this.connection.id);
-    if (!mapping) {
-      throw new WooCommerceResourceNotFoundException(
-        `Product not found: ${productId} (no mapping for connection ${this.connection.id})`,
+    try {
+      const externalIds = await this.identifierMapping.getExternalIds(
         CORE_ENTITY_TYPE.Product,
         productId,
-        this.connection.id,
       );
-    }
-    let p: WooCommerceProduct;
-    try {
-      p = await this.httpClient.get<WooCommerceProduct>(
-        `/wp-json/wc/v3/products/${mapping.externalId}`,
-      );
-    } catch (err) {
-      if (err instanceof WooCommerceHttpResponseException && err.statusCode === 404) {
+      const mapping = externalIds.find((e) => e.connectionId === this.connection.id);
+      if (!mapping) {
         throw new WooCommerceResourceNotFoundException(
-          `WooCommerce product ${mapping.externalId} not found (deleted?)`,
+          `Product not found: ${productId} (no mapping for connection ${this.connection.id})`,
           CORE_ENTITY_TYPE.Product,
           productId,
           this.connection.id,
         );
       }
-      throw err;
+      let p: WooCommerceProduct;
+      try {
+        p = await this.httpClient.get<WooCommerceProduct>(
+          `/wp-json/wc/v3/products/${mapping.externalId}`,
+        );
+      } catch (err) {
+        if (err instanceof WooCommerceHttpResponseException && err.statusCode === 404) {
+          throw new WooCommerceResourceNotFoundException(
+            `WooCommerce product ${mapping.externalId} not found (deleted?)`,
+            CORE_ENTITY_TYPE.Product,
+            productId,
+            this.connection.id,
+          );
+        }
+        throw err;
+      }
+      return { ...this.mapper.mapProduct(p), id: productId };
+    } catch (error) {
+      // Translate the platform not-found (missing mapping OR a 404, i.e. deleted
+      // at the master) into the neutral core error so core services can
+      // distinguish deletion from a transient failure (#1599).
+      if (error instanceof WooCommerceResourceNotFoundException) {
+        throw new MasterProductNotFoundError(productId, this.connection.id, error);
+      }
+      throw error;
     }
-    return { ...this.mapper.mapProduct(p), id: productId };
   }
 
   async getProducts(filters?: ProductFilters): Promise<Product[]> {

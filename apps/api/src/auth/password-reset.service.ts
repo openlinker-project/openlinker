@@ -61,7 +61,20 @@ export class PasswordResetService implements IPasswordResetService {
     const expiresAt = new Date(now.getTime() + this.ttlMinutes * 60 * 1000);
 
     await this.tokenRepository.save({ userId: user.id, tokenHash, expiresAt });
-    await this.notifier.notifyResetRequested(user, rawToken);
+
+    try {
+      await this.notifier.notifyResetRequested(user, rawToken);
+    } catch (error) {
+      // Never let a transport failure (e.g. SMTP down) change this endpoint's
+      // response shape/status — AuthController.forgotPassword always returns
+      // 200 to prevent user enumeration. A thrown error here would otherwise
+      // propagate as a 500, distinguishing "known email + SMTP hiccup" from
+      // "unknown email", which is exactly the oracle this flow must avoid.
+      this.logger.error(
+        'Failed to send password reset notification',
+        (error as Error).stack
+      );
+    }
   }
 
   async resetPassword(token: string, newPassword: string): Promise<void> {

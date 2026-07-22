@@ -14,9 +14,14 @@ import { OfferMappingRepositoryPort } from '../../domain/ports/offer-mapping-rep
 import type {
   OfferMappingPagination,
   PaginatedOfferMappings,
+  ProductListingsCoverage,
 } from '../../domain/types/offer-mapping.types';
 import { OFFER_MAPPING_REPOSITORY_TOKEN } from '../../listings.tokens';
 import type { IOfferMappingsService } from './offer-mappings.service.interface';
+
+// Per-call input cap for the per-product coverage read (#1720) - keeps the
+// grouped identifier_mappings query page-scoped.
+const MAX_COVERAGE_PRODUCT_IDS = 200;
 
 @Injectable()
 export class OfferMappingsService implements IOfferMappingsService {
@@ -39,5 +44,20 @@ export class OfferMappingsService implements IOfferMappingsService {
   ): Promise<Map<string, number>> {
     if (variantIds.length === 0) return new Map();
     return this.repository.countByConnectionAndVariants(connectionId, variantIds);
+  }
+
+  async countListedVariantsByProducts(
+    productIds: readonly string[]
+  ): Promise<readonly ProductListingsCoverage[]> {
+    // Empty input short-circuits without a repo call; the size cap protects
+    // the grouped query from unbounded IN-lists - callers page their input
+    // (#1720; mirrors the inventory aggregate seam's cap).
+    if (productIds.length === 0) return [];
+    if (productIds.length > MAX_COVERAGE_PRODUCT_IDS) {
+      throw new Error(
+        `countListedVariantsByProducts accepts at most ${String(MAX_COVERAGE_PRODUCT_IDS)} productIds per call (got ${String(productIds.length)})`
+      );
+    }
+    return this.repository.countListedVariantsByProducts(productIds);
   }
 }

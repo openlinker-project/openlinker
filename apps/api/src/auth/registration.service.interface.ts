@@ -2,7 +2,8 @@
  * Registration Service Interface
  *
  * Contract for self-service user registration. Validates uniqueness, hashes
- * passwords, and persists new users in the pending state for admin approval.
+ * passwords, and persists new users pending either admin approval (normal
+ * mode) or email confirmation (demo mode, #1624).
  *
  * Gated by the OL_REGISTRATION_ENABLED env flag (default: false).
  *

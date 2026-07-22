@@ -1,0 +1,993 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>#1304 v5 — Product detail (Products/Inventory merge, trimmed) · UI Mockups</title>
+<!--
+  Standalone, framework-free mockup for the Product-detail Overview tab —
+  v5, built directly on top of v3's layout (gallery + expandable "Listings
+  using this stock" rows, docs/plans/mockups/product-detail-redesign-v3.html).
+  This version is a deliberate TRIM, not a new feature: per conversation,
+  it removes the two sections that were flagged as "proposed"/out of scope
+  for the Products+Inventory UI-merge decision, keeping everything else
+  exactly as v3 shipped it:
+
+    1. "Category mapping" section — REMOVED. It's a separate concern
+       (taxonomy/attribute mapping to marketplace categories) unrelated to
+       the ProductMaster-vs-InventoryMaster merge this mockup family exists
+       to validate; folding it in muddied the comparison.
+
+    2. "Total income" KPI card — REMOVED. It's an Orders-context aggregate
+       (not ProductMaster or InventoryMaster data) and was never wired to
+       real data in this mockup family — v3 hardcoded it with no
+       "proposed" flag at all, which is itself misleading. Dropping it
+       here means every remaining figure on the page traces to a real,
+       already-shipped query. The "Price" card that shared its row now
+       sits alone — see the CSS note above .kpi-strip--cols-1.
+
+  Everything else — the docked photo gallery + lightbox, the Available/
+  Variants/Listings KPI row, External IDs, and the merged Variants & stock
+  table with per-row expandable "Listings using this stock" — is carried
+  over unchanged from v3, including its "zero new backend fields" status:
+  all of it reads data that already exists end-to-end today.
+
+  ONE ADDITION, not a trim: the hero's "Updated" fact is renamed to
+  "Catalog updated", and a second, independent "Stock synced …" badge
+  is added next to the Variants & stock heading. Both timestamps were
+  collapsed into one "Updated" field before, which implied the whole
+  card — including stock — was current as of that single moment. In
+  reality ProductMaster and InventoryMaster run on separate sync jobs
+  with separate cadences (~15-20 min each), so stock can legitimately
+  be a few minutes older or newer than the catalog fields above it.
+  Naming the two clocks separately tells that story honestly instead of
+  faking one coherent snapshot.
+
+  SECOND ADDITION: each row inside "Listings using this stock" gains two
+  real links instead of static text. The platform name links to that
+  listing's own detail page inside OpenLinker (internal — reuses whatever
+  route /listings/:id already resolves to); a small external-link icon at
+  the row's end opens the live listing on the marketplace itself in a new
+  tab (external — Allegro/Erli's own listing URL). Two separate links, not
+  one row-level link, because they go to two genuinely different places.
+
+  Sample data is the same CANON PowerShot SX740 HS / 3-variant (silver,
+  black, red) product v1–v3 already used, so this reads as one continuous,
+  cross-referenced mockup family rather than an unrelated one.
+-->
+<style>
+  /* ══════════════════════ 1. TOKENS (verbatim from v1/v2 — same design system) ══════════════════════ */
+  :root {
+    --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+    --bg-canvas: oklch(99% 0.003 80);
+    --bg-shell: oklch(97.5% 0.004 80);
+    --bg-surface: #ffffff;
+    --bg-surface-elevated: oklch(99% 0.003 80);
+    --bg-muted: oklch(96% 0.005 80);
+    --bg-surface-muted: oklch(96% 0.005 80);
+    --bg-surface-hover: oklch(93% 0.006 80);
+    --bg-strong: oklch(93% 0.006 80);
+
+    --border-subtle: oklch(93.5% 0.006 80);
+    --border-default: oklch(88% 0.008 80);
+    --border-strong: oklch(78% 0.010 80);
+    --border-focus: oklch(68% 0.18 50);
+
+    --text-primary: oklch(20% 0.012 80);
+    --text-secondary: oklch(38% 0.010 80);
+    --text-muted: oklch(52% 0.008 80);
+    --text-disabled: oklch(70% 0.005 80);
+    --text-on-primary: oklch(18% 0.012 50);
+    --text-inverse: oklch(96% 0.005 80);
+    --text-link: oklch(50% 0.14 250);
+
+    --accent-primary: oklch(68% 0.18 50);
+    --accent-primary-hover: oklch(62% 0.19 50);
+    --accent-primary-active: oklch(56% 0.20 50);
+    --accent-primary-soft: oklch(96% 0.04 60);
+    --accent-primary-soft-strong: oklch(40% 0.16 50);
+    --accent-primary-border: oklch(85% 0.10 55);
+    --accent-focus: oklch(68% 0.18 50);
+    --accent-ring: oklch(68% 0.18 50 / 0.30);
+
+    --status-success: oklch(54% 0.14 150);
+    --status-success-soft: oklch(96% 0.04 150);
+    --status-success-border: oklch(85% 0.08 150);
+    --status-success-fg: oklch(36% 0.12 150);
+    --status-success-strong: oklch(36% 0.12 150);
+
+    --status-warning: oklch(72% 0.16 85);
+    --status-warning-soft: oklch(96% 0.05 85);
+    --status-warning-border: oklch(85% 0.10 85);
+    --status-warning-fg: oklch(42% 0.12 80);
+    --status-warning-strong: oklch(42% 0.12 80);
+
+    --status-error: oklch(58% 0.20 25);
+    --status-error-soft: oklch(96% 0.04 25);
+    --status-error-border: oklch(85% 0.10 25);
+    --status-error-fg: oklch(42% 0.16 25);
+    --status-error-strong: oklch(42% 0.16 25);
+
+    --status-info: oklch(56% 0.14 245);
+    --status-info-soft: oklch(96% 0.03 245);
+    --status-info-border: oklch(85% 0.08 245);
+    --status-info-fg: oklch(40% 0.12 245);
+    --status-info-strong: oklch(40% 0.12 245);
+
+    --status-disabled: oklch(55% 0.008 80);
+    --status-disabled-soft: oklch(95% 0.005 80);
+    --status-disabled-border: oklch(85% 0.008 80);
+    --status-disabled-fg: oklch(38% 0.010 80);
+    --status-disabled-strong: oklch(38% 0.010 80);
+
+    --status-review: oklch(58% 0.16 290);
+    --status-review-soft: oklch(96% 0.04 290);
+    --status-review-border: oklch(85% 0.08 290);
+    --status-review-fg: oklch(42% 0.14 290);
+    --status-review-strong: oklch(42% 0.14 290);
+
+    --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+    --shadow-sm: 0 1px 2px rgb(15 18 26 / 0.04), 0 1px 3px rgb(15 18 26 / 0.06);
+    --shadow-md: 0 2px 4px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.08);
+    --shadow-lg: 0 6px 12px rgb(15 18 26 / 0.06), 0 16px 32px rgb(15 18 26 / 0.10);
+    --shadow-focus: 0 0 0 3px var(--accent-ring);
+    --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.6);
+    --overlay-scrim: rgb(15 18 26 / 0.55);
+
+    --button-primary-bg-hover: oklch(62% 0.19 50);
+
+    --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem; --space-4: 1rem;
+    --space-5: 1.5rem; --space-6: 2rem; --space-7: 3rem;
+
+    --radius-xs: 4px; --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px; --radius-xl: 14px; --radius-pill: 9999px;
+
+    --duration-fast: 120ms; --duration-normal: 180ms;
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+    --tracking-tight: -0.012em; --tracking-normal: 0; --tracking-wide: 0.02em; --tracking-caps: 0.08em;
+
+    color-scheme: light;
+  }
+
+  html[data-theme='dark'] {
+    color-scheme: dark;
+    --bg-canvas: oklch(14% 0.005 270);
+    --bg-shell: oklch(16% 0.006 270);
+    --bg-surface: oklch(19% 0.007 270);
+    --bg-surface-elevated: oklch(22% 0.008 270);
+    --bg-muted: oklch(24% 0.009 270);
+    --bg-surface-muted: oklch(24% 0.009 270);
+    --bg-surface-hover: oklch(28% 0.010 270);
+    --bg-strong: oklch(28% 0.010 270);
+    --border-subtle: oklch(24% 0.010 270);
+    --border-default: oklch(30% 0.012 270);
+    --border-strong: oklch(42% 0.014 270);
+    --border-focus: oklch(72% 0.18 50);
+    --text-primary: oklch(96% 0.006 270);
+    --text-secondary: oklch(78% 0.010 270);
+    --text-muted: oklch(60% 0.012 270);
+    --text-disabled: oklch(42% 0.012 270);
+    --text-on-primary: oklch(16% 0.012 50);
+    --text-inverse: oklch(20% 0.012 80);
+    --text-link: oklch(76% 0.14 245);
+    --accent-primary: oklch(72% 0.18 50);
+    --accent-primary-hover: oklch(78% 0.18 50);
+    --accent-primary-active: oklch(84% 0.16 50);
+    --accent-primary-soft: oklch(28% 0.08 50);
+    --accent-primary-soft-strong: oklch(86% 0.14 60);
+    --accent-primary-border: oklch(40% 0.14 55);
+    --accent-focus: oklch(72% 0.18 50);
+    --accent-ring: oklch(72% 0.18 50 / 0.40);
+    --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150);
+    --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150); --status-success-strong: oklch(86% 0.14 150);
+    --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85);
+    --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85); --status-warning-strong: oklch(88% 0.14 85);
+    --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25);
+    --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25); --status-error-strong: oklch(86% 0.14 25);
+    --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245);
+    --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245); --status-info-strong: oklch(86% 0.12 245);
+    --status-disabled: oklch(65% 0.010 270); --status-disabled-soft: oklch(24% 0.010 270);
+    --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270); --status-disabled-strong: oklch(82% 0.010 270);
+    --status-review: oklch(74% 0.14 290); --status-review-soft: oklch(28% 0.06 290);
+    --status-review-border: oklch(38% 0.10 290); --status-review-fg: oklch(88% 0.12 290); --status-review-strong: oklch(88% 0.12 290);
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+    --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+    --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+    --shadow-focus: 0 0 0 3px var(--accent-ring);
+    --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+    --overlay-scrim: rgb(0 0 0 / 0.72);
+    --button-primary-bg-hover: oklch(78% 0.18 50);
+  }
+
+  /* ══════════════════════ base + mockup scaffold ══════════════════════ */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: var(--bg-canvas); color: var(--text-primary); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+  .mono-text { font-family: var(--font-mono); letter-spacing: -0.01em; overflow-wrap: anywhere; }
+  .tabular { font-variant-numeric: tabular-nums; }
+  .text-muted { color: var(--text-muted); }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+  .sheet { max-width: 1400px; margin: 0 auto; padding: var(--space-6) var(--space-5) var(--space-7); }
+  .sheet__title { font-size: 26px; line-height: 32px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 var(--space-1); }
+  .sheet__sub { color: var(--text-secondary); margin: 0 0 var(--space-4); max-width: 76ch; line-height: 1.6; }
+  .sheet__note {
+    display: flex; gap: var(--space-3); align-items: flex-start; font-size: 0.78125rem; color: var(--text-secondary); line-height: 1.6;
+    background: var(--bg-surface-muted); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+    padding: var(--space-3) var(--space-4); margin: 0 0 var(--space-6);
+  }
+  .sheet__note b { color: var(--text-primary); font-weight: 600; }
+  .sheet__note code { font-family: var(--font-mono); font-size: 0.75em; }
+  .sheet__note svg { width: 16px; height: 16px; flex: 0 0 auto; color: var(--accent-primary); margin-top: 1px; }
+
+  .controls {
+    position: sticky; top: 0; z-index: 50; display: flex; gap: var(--space-2); align-items: center; justify-content: flex-end;
+    padding: var(--space-3) var(--space-5); background: color-mix(in oklab, var(--bg-shell) 88%, transparent);
+    backdrop-filter: blur(8px); border-bottom: 1px solid var(--border-subtle);
+  }
+  .controls__label { margin-right: auto; font-size: 11px; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
+  .toggle-btn { border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-secondary); border-radius: var(--radius-md); padding: 5px 10px; font-size: 0.75rem; cursor: pointer; font-family: var(--font-sans); }
+  .toggle-btn:hover { background: var(--bg-surface-hover); }
+
+  .viewport-frame { margin: 0 0 var(--space-7); }
+  .viewport-frame__label { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; margin: 0 0 var(--space-3); padding-bottom: var(--space-2); border-bottom: 1px dashed var(--border-default); }
+  .viewport-frame__label .eyebrow-mono { font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--accent-primary-hover); }
+  .viewport-frame__label b { font-size: 0.875rem; font-weight: 600; color: var(--text-primary); }
+  .viewport-frame__label span.caption { font-size: 0.75rem; color: var(--text-muted); }
+  .viewport-frame__scroll { overflow-x: auto; padding: var(--space-4); background: var(--bg-shell); border-radius: var(--radius-xl); }
+  .viewport-frame__inset { margin: 0 auto; background: var(--bg-canvas); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); overflow: hidden; container: viewport / inline-size; }
+  .viewport-frame__inset--1360 { width: 1360px; }
+  .viewport-frame__inset--360 { width: 360px; }
+  .viewport-frame__page { padding: var(--space-6) var(--space-5) var(--space-7); }
+
+  /* ══════════════════════ 2. Real component CSS (verbatim / ported from v1-v2) ══════════════════════ */
+  .page-section { display: grid; gap: 0.75rem; }
+  .page-header { display: grid; gap: 0.45rem; }
+  .page-header--split { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 0.45rem; }
+  .back-link { display: inline-flex; align-items: center; gap: 0.375rem; justify-self: start; font-size: 0.8125rem; color: var(--text-muted); text-decoration: none; padding: 0.25rem 0; }
+  .back-link:hover { color: var(--text-primary); }
+  .eyebrow { margin: 0; font-size: 0.76rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-primary-hover); }
+  .page-title { margin: 0; font-size: 1.375rem; font-weight: 650; letter-spacing: var(--tracking-tight); color: var(--text-primary); }
+
+  .tabs-row { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--border-subtle); }
+  .tab-trigger { padding: var(--space-2) var(--space-3); font-size: 0.8125rem; font-weight: 500; color: var(--text-muted); border: 0; background: none; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab-trigger--active { color: var(--text-primary); border-bottom-color: var(--accent-primary); }
+
+  .button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); border: 1px solid var(--accent-primary-border); border-radius: var(--radius-md); padding: 0 var(--space-4); height: 2rem; background: var(--accent-primary); color: var(--text-on-primary); font-family: inherit; font-size: 0.8125rem; font-weight: 500; cursor: pointer; text-decoration: none; white-space: nowrap; box-shadow: var(--shadow-xs), var(--shadow-inset-top); }
+  .button--secondary { border-color: var(--border-default); background: var(--bg-surface); color: var(--text-primary); }
+  .button--secondary:hover { background: var(--bg-surface-muted); border-color: var(--border-strong); }
+
+  .status-badge { display: inline-flex; align-items: center; gap: var(--space-2); padding: 2px var(--space-2); border: 1px solid var(--status-disabled-border); border-radius: var(--radius-sm); background: var(--status-disabled-soft); color: var(--status-disabled-fg); font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500; letter-spacing: var(--tracking-wide); text-transform: uppercase; white-space: nowrap; }
+  .status-badge--compact { padding: 1px var(--space-2); font-size: 0.625rem; }
+  .status-badge__dot { width: 0.375rem; height: 0.375rem; border-radius: 999px; background: currentColor; flex-shrink: 0; opacity: 0.75; }
+  .status-badge--warning { border-color: var(--status-warning-border); background: var(--status-warning-soft); color: var(--status-warning-fg); }
+  .status-badge--success { border-color: var(--status-success-border); background: var(--status-success-soft); color: var(--status-success-fg); }
+  .status-badge--neutral { border-color: var(--status-disabled-border); background: var(--status-disabled-soft); color: var(--status-disabled-fg); }
+  .status-badge--info { border-color: var(--status-info-border); background: var(--status-info-soft); color: var(--status-info-fg); }
+  .status-badge--review { border-color: var(--status-review-border); background: var(--status-review-soft); color: var(--status-review-fg); }
+
+  .category-mapping-list { display: flex; flex-direction: column; gap: var(--space-2); }
+  .category-mapping-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); }
+  .category-mapping-row__connection { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 0 0 auto; }
+  .category-mapping-row__platform { font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); }
+  .category-mapping-row__conn-name { font-size: 0.6875rem; color: var(--text-muted); }
+  .category-mapping-row__path { flex: 1; min-width: 0; font-size: 0.8125rem; color: var(--text-secondary); overflow-wrap: anywhere; }
+  .category-mapping-row__sep { color: var(--text-disabled); margin: 0 0.375rem; }
+  .category-mapping-row__crumb { color: var(--text-primary); }
+
+  .product-thumbnail { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid var(--border-subtle); border-radius: 0.375rem; background: var(--bg-surface-muted); overflow: hidden; }
+  .product-thumbnail--md { width: 2.75rem; height: 2.75rem; }
+  .product-thumbnail img, .product-thumbnail .photo-panel { width: 100%; height: 100%; }
+
+  .product-hero { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 1rem; align-items: start; padding: 1rem 1.125rem; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); }
+  .product-hero__body { display: grid; gap: 0.375rem; min-width: 0; }
+  .product-hero__title-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+  .product-hero__title { margin: 0; font-size: 1.125rem; font-weight: 600; line-height: 1.25; color: var(--text-primary); }
+  .product-hero__badges { display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap; }
+  .product-hero__meta { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 0.8125rem; color: var(--text-secondary); }
+  .product-hero__id { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-muted); }
+  .copybtn { border: 1px solid var(--border-subtle); background: var(--bg-surface-muted); color: var(--text-muted); border-radius: var(--radius-sm); padding: 1px 6px; font-size: 0.6875rem; cursor: pointer; font-family: var(--font-sans); }
+
+  /* NEW — SKU/created/updated folded into the hero, alongside the internal-id line
+     (moved out of their own boxed section per feedback: this is "record metadata",
+     it belongs with the other identity facts, not a separate card). */
+  .product-hero__facts { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; margin-top: 0.125rem; }
+  .product-hero__facts--stacked { flex-direction: column; gap: 0.125rem; }
+  .product-hero__fact { display: inline-flex; align-items: baseline; gap: 0.3rem; font-size: 0.75rem; color: var(--text-secondary); }
+  .product-hero__fact-label { font-family: var(--font-mono); font-size: 0.75rem; font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); }
+
+  .detail-section { display: grid; gap: 0.75rem; }
+  .detail-section__title { margin: 0; font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; }
+  .detail-section__muted { margin: 0; font-size: 0.6875rem; line-height: 1.5; color: var(--text-muted); }
+
+  /* NEW — "Stock synced …" freshness badge, paired with the Variants & stock heading.
+     Exists because the hero's single "Catalog updated" timestamp covers ProductMaster
+     data only; InventoryMaster runs its own, independent sync job on its own cadence
+     (~15-20 min), so stock can legitimately be a few minutes older or newer than the
+     catalog fields above it. Naming it separately — instead of one shared "Updated" —
+     stops the page from implying a single consistent snapshot that doesn't exist. */
+  .detail-section__title-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+  .sync-freshness { display: inline-flex; align-items: center; gap: 0.375rem; font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text-muted); }
+  .sync-freshness__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--status-success); flex: 0 0 auto; }
+  .description-block { margin: 0; font-size: 0.875rem; line-height: 1.65; color: var(--text-primary); padding: var(--space-4); background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+
+  .key-value-list { display: grid; grid-template-columns: minmax(140px, max-content) 1fr; gap: 0; margin: 0; padding: 0; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; }
+  .key-value-list__label, .key-value-list__value { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-subtle); margin: 0; }
+  .key-value-list__label { font-family: var(--font-mono); font-size: 0.8125rem; font-weight: 500; color: var(--text-muted); letter-spacing: var(--tracking-caps); text-transform: uppercase; background: var(--bg-shell); }
+  .key-value-list__value { color: var(--text-primary); font-size: 0.8125rem; }
+  .key-value-list > :nth-child(-n+2) { border-top: 0; }
+
+  /* Two explicit rows instead of one 4-col grid — row 1 (Price, alone since v5 dropped
+     Total income) is a single full-width card, row 2 (Available, Variants, Listings) is
+     3 narrower cards. Same structure on mobile; both rows fit at 360px without wrapping. */
+  .kpi-rows { display: grid; gap: var(--space-3); }
+  .kpi-strip { display: grid; gap: var(--space-3); }
+  .kpi-strip--cols-1 { grid-template-columns: 1fr; }
+  .kpi-strip--cols-2 { grid-template-columns: repeat(2, 1fr); }
+  .kpi-strip--cols-3 { grid-template-columns: repeat(3, 1fr); }
+  .kpi-card { position: relative; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); color: var(--text-primary); text-decoration: none; box-shadow: var(--shadow-xs); min-height: 6rem; }
+  .kpi-card__label-text { display: inline-flex; align-items: center; gap: var(--space-2); font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500; color: var(--text-muted); letter-spacing: var(--tracking-caps); text-transform: uppercase; }
+  .kpi-card__value { font-size: 1.75rem; line-height: 1; font-weight: 600; letter-spacing: var(--tracking-tight); font-variant-numeric: tabular-nums; color: var(--text-primary); }
+  .kpi-card__value--sm { font-size: 1.25rem; }
+  .kpi-card__description { font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text-secondary); }
+  .kpi-card--warning { background: var(--status-warning-soft); border-color: var(--status-warning-border); }
+  .kpi-card--warning .kpi-card__label-text, .kpi-card--warning .kpi-card__value, .kpi-card--warning .kpi-card__description { color: var(--status-warning-strong); }
+  .kpi-card--dimmed { opacity: 0.6; }
+
+  .id-chip-row { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+  .id-chip { display: inline-flex; align-items: center; gap: 0.25rem; height: 1.375rem; padding: 0 0.5rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-pill); background: var(--bg-surface-muted); color: var(--text-secondary); font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500; }
+  .id-chip__platform { color: var(--text-muted); text-transform: uppercase; letter-spacing: var(--tracking-wide); }
+
+  .product-detail__primary-grid--split { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr); gap: var(--space-5); align-items: start; }
+  .product-detail__stack { display: grid; gap: var(--space-5); align-content: start; }
+
+  /* — data-table — */
+  .data-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+  .data-table__container { overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: var(--shadow-xs); }
+  .data-table th, .data-table td { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-subtle); text-align: left; vertical-align: middle; }
+  .data-table thead th { border-top: 0; border-bottom: 1px solid var(--border-subtle); color: var(--text-muted); font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500; letter-spacing: var(--tracking-caps); text-transform: uppercase; background: var(--bg-shell); }
+  .data-table tbody td { color: var(--text-primary); }
+  .stock-cell--error { color: var(--status-error-fg); font-weight: 600; }
+  .stock-cell--warning { color: var(--status-warning-fg); font-weight: 600; }
+
+  /* NEW — per-row expand chevron (proposed DataTable capability) */
+  .data-table__expand-cell { width: 2.25rem; padding-left: var(--space-3); padding-right: 0; }
+  .data-table__expand-btn {
+    width: 1.5rem; height: 1.5rem; display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border-default); background: var(--bg-surface); border-radius: var(--radius-sm);
+    cursor: pointer; color: var(--text-secondary); padding: 0;
+  }
+  .data-table__expand-btn:hover { background: var(--bg-surface-hover); border-color: var(--border-strong); }
+  .data-table__expand-btn svg { width: 11px; height: 11px; transition: transform var(--duration-fast) var(--ease-out); }
+  .data-table__expand-btn[aria-expanded="true"] svg { transform: rotate(90deg); }
+  .data-table__row--variant td { vertical-align: middle; }
+  .data-table__row--variant-photo { display: flex; align-items: center; gap: var(--space-2); }
+
+  /* Expand row slides open in place (grid-rows 0fr → 1fr) instead of the old
+     display:none/table-row hard cut — this is the "wysuwanie" (slide-down)
+     behaviour, ported from the flatter look approved in feedback. No border/
+     background shows while collapsed, so a closed row leaves zero visual trace. */
+  .data-table__expand-row > td { padding: 0; border-top: 0; }
+  .data-table__expand-content { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--duration-normal) var(--ease-out); background: var(--bg-shell); }
+  .data-table__expand-row.is-open > td { border-top: 1px solid var(--border-subtle); }
+  .data-table__expand-row.is-open .data-table__expand-content { grid-template-rows: 1fr; }
+  .data-table__expand-content-inner { overflow: hidden; }
+  .listings-panel { padding: var(--space-3) var(--space-4) var(--space-4) calc(2.25rem + var(--space-4)); }
+  .listings-panel__title { margin: 0 0 var(--space-2); font-size: 0.6875rem; font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); }
+  .listings-subtable { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+  .listings-subtable th, .listings-subtable td { padding: var(--space-2) var(--space-3); text-align: left; }
+  .listings-subtable thead th { color: var(--text-muted); font-family: var(--font-mono); text-transform: uppercase; letter-spacing: var(--tracking-caps); font-size: 0.625rem; border-bottom: 1px solid var(--border-subtle); }
+  .listings-subtable tbody tr + tr td { border-top: 1px solid var(--border-subtle); }
+  .listings-subtable__empty { padding: var(--space-3); color: var(--text-muted); font-style: italic; }
+  .listings-subtable__ext-col { width: 1.75rem; padding-left: 0; }
+
+  /* NEW — two links per listing row: the platform name opens OL's own listing
+     detail page (internal); the trailing icon opens the live marketplace URL
+     in a new tab (external). Kept as two distinct affordances rather than one
+     row-level link, since they go to genuinely different destinations. */
+  .listings-subtable__link { color: var(--text-link); text-decoration: none; font-weight: 500; }
+  .listings-subtable__link:hover { text-decoration: underline; }
+  .listings-subtable__ext-btn {
+    display: inline-flex; align-items: center; justify-content: center; width: 1.375rem; height: 1.375rem;
+    border-radius: var(--radius-sm); color: var(--text-muted); text-decoration: none;
+  }
+  .listings-subtable__ext-btn:hover { background: var(--bg-surface-hover); color: var(--text-secondary); }
+  .listings-subtable__ext-btn svg { width: 11px; height: 11px; }
+
+  .data-table__cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .data-table__card { padding: 12px 14px; border: 1px solid var(--border-default); border-radius: 10px; background: var(--bg-surface); display: grid; gap: 8px; }
+  .data-table__card-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .data-table__card-main { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+  .data-table__card-title { font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
+  .data-table__card-subtitle { font-size: 12px; color: var(--text-muted); }
+  .data-table__card-meta { display: flex; align-items: center; gap: 6px; flex-shrink: 0; font-size: 12px; color: var(--text-secondary); }
+  /* Same slide-open treatment as .data-table__expand-content, ported to the mobile card. */
+  .card-expand { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--duration-normal) var(--ease-out); }
+  .card-expand.is-open { grid-template-rows: 1fr; }
+  .card-expand__inner { overflow: hidden; padding-top: 4px; }
+
+  /* ══════════════════════ NEW — photo panels (placeholder "product photography") ══════════════════════ */
+  .photo-panel { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.375rem; color: #fff; }
+  .photo-panel svg { width: 34%; height: 34%; opacity: 0.9; }
+  .photo-panel__label { font-size: 0.6875rem; font-weight: 600; letter-spacing: var(--tracking-wide); text-transform: uppercase; opacity: 0.85; }
+  .photo-panel--1 { background: linear-gradient(135deg, #7a7f88, #454850); }
+  .photo-panel--2 { background: linear-gradient(135deg, #33373e, #15171b); }
+  .photo-panel--3 { background: linear-gradient(135deg, #8a5a3c, #52351f); }
+  .photo-panel--4 { background: linear-gradient(135deg, #3a5978, #1b2a3a); }
+  .photo-panel--thumb svg { width: 30%; height: 30%; }
+  .photo-panel--thumb .photo-panel__label { display: none; }
+
+  /* ══════════════════════ NEW — compact gallery: main photo + scrolling thumb strip ══════════════════════ */
+  /* Docked in the hero next to the title (image-1 reference). Fixed footprint —
+     the thumb row scrolls horizontally instead of wrapping, so 4 photos and 12
+     photos take up exactly the same amount of page space. */
+  .product-gallery { display: grid; gap: 0.5rem; width: 8.5rem; flex: 0 0 auto; }
+  .product-gallery__main {
+    position: relative; width: 100%; aspect-ratio: 1 / 1; padding: 0; cursor: zoom-in;
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); overflow: hidden;
+    background: var(--bg-surface-muted); box-shadow: var(--shadow-xs);
+  }
+  .product-gallery__main:focus-visible { outline: 2px solid var(--accent-focus); outline-offset: 2px; }
+  .product-gallery__main .photo-panel { position: absolute; inset: 0; opacity: 0; visibility: hidden; transition: opacity var(--duration-normal) var(--ease-out); }
+  .product-gallery__main .photo-panel.is-active { opacity: 1; visibility: visible; }
+  .product-gallery__expand-hint {
+    position: absolute; top: 0.375rem; right: 0.375rem; width: 1.375rem; height: 1.375rem; border-radius: 50%;
+    background: rgb(15 18 26 / 0.45); color: #fff; display: flex; align-items: center; justify-content: center;
+  }
+  .product-gallery__expand-hint svg { width: 11px; height: 11px; }
+  .product-gallery__thumbs { display: flex; gap: 0.375rem; overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; }
+  .product-gallery__thumb {
+    position: relative; width: 1.875rem; height: 1.875rem; flex: 0 0 auto; padding: 0; cursor: pointer;
+    border: 1.5px solid transparent; border-radius: var(--radius-sm); overflow: hidden; background: var(--bg-surface-muted);
+  }
+  .product-gallery__thumb.is-active { border-color: var(--accent-primary); }
+  .product-gallery__thumb:focus-visible { outline: 2px solid var(--accent-focus); outline-offset: 1px; }
+  .product-gallery__thumb .photo-panel { width: 100%; height: 100%; }
+
+  .lightbox-overlay { position: fixed; inset: 0; background: var(--overlay-scrim); display: none; align-items: center; justify-content: center; z-index: 300; padding: var(--space-6); }
+  .lightbox-overlay.is-open { display: flex; }
+  .lightbox { position: relative; width: min(760px, 100%); display: grid; gap: var(--space-3); }
+  .lightbox__frame { position: relative; width: 100%; aspect-ratio: 16/10; border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-lg); }
+  .lightbox__frame .photo-panel { position: absolute; inset: 0; opacity: 0; visibility: hidden; transition: opacity var(--duration-normal) var(--ease-out); }
+  .lightbox__frame .photo-panel.is-active { opacity: 1; visibility: visible; }
+  .lightbox__nav { position: absolute; top: 50%; transform: translateY(-50%); width: 2.5rem; height: 2.5rem; border-radius: 50%; background: rgb(255 255 255 / 0.14); border: 1px solid rgb(255 255 255 / 0.3); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.1rem; }
+  .lightbox__nav:hover { background: rgb(255 255 255 / 0.24); }
+  .lightbox__nav--prev { left: var(--space-3); }
+  .lightbox__nav--next { right: var(--space-3); }
+  .lightbox__close { position: absolute; top: -2.75rem; right: 0; width: 2.25rem; height: 2.25rem; border-radius: 50%; background: rgb(255 255 255 / 0.12); border: 1px solid rgb(255 255 255 / 0.3); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1rem; }
+  .lightbox__close:hover { background: rgb(255 255 255 / 0.22); }
+  .lightbox__caption { text-align: center; color: var(--text-inverse); font-size: 0.8125rem; }
+  .lightbox__caption .mono-text { opacity: 0.7; }
+</style>
+</head>
+<body>
+
+<div class="controls">
+  <span class="controls__label">#1304 v5 · Product detail — trimmed (no category mapping, no total income)</span>
+  <button class="toggle-btn" onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme==='dark'?'light':'dark'">Toggle theme</button>
+</div>
+
+<div class="sheet">
+  <h1 class="sheet__title">Product detail — v5: same as v3, minus Category mapping and Total income</h1>
+  <p class="sheet__sub">
+    Identical to v3 (docked photo gallery + lightbox, expandable <b>Listings using this stock</b> rows on the
+    merged <b>Variants &amp; stock</b> table) with two sections removed per feedback — neither belongs in the
+    Products/Inventory merge this mockup exists to validate:
+  </p>
+  <div class="sheet__note">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>
+    <div>
+      <b>1. Category mapping</b> — removed. Taxonomy/attribute mapping to marketplace categories is a separate
+      concern from ProductMaster-vs-InventoryMaster; keeping it here diluted the comparison. <br/>
+      <b>2. Total income</b> — removed. It's an Orders-context aggregate, not ProductMaster or InventoryMaster
+      data, and v3 rendered it as a hardcoded figure with no "proposed" flag — misleading on a page whose whole
+      point is showing only real, already-shipped data. The <b>Price</b> card that shared its row now stands
+      alone. <br/>
+      <b>3. Two clocks, named separately</b> — the hero's timestamp is now <b>Catalog updated</b>, and a second
+      <b>Stock synced …</b> badge sits next to the Variants &amp; stock heading. ProductMaster and InventoryMaster
+      run on independent sync jobs, so the two figures can legitimately differ by a few minutes — one shared
+      "Updated" field used to hide that. <br/>
+      <b>4. Listing rows are now links</b> — the platform name opens that listing's own detail page inside
+      OpenLinker; the small ↗ icon opens the live listing on Allegro/Erli itself, in a new tab. <br/>
+      Everything else — gallery, lightbox, <b>Available</b>/<b>Variants</b>/<b>Listings</b> KPIs, External IDs,
+      the merged stock table and its per-row expand — is unchanged from v3. Click a variant row's chevron to see:
+      row 1 opens with 2 listings, row 2 has 1, row 3 demonstrates the empty state.
+    </div>
+  </div>
+
+  <!-- ░░░░░░░░░░░░░░░░░░░ DESKTOP FRAME ░░░░░░░░░░░░░░░░░░░ -->
+  <div class="viewport-frame">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">Screen 1 of 2</span>
+      <b>1360 × auto · Desktop</b>
+      <span class="caption">fully interactive — click the gallery and the row chevrons</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="viewport-frame__inset viewport-frame__inset--1360">
+        <div class="viewport-frame__page">
+
+          <section class="page-section">
+            <a class="back-link" href="#"><span aria-hidden="true">←</span> Products</a>
+            <div class="page-header page-header--split">
+              <div>
+                <p class="eyebrow">Product</p>
+                <h2 class="page-title">Aparat cyfrowy CANON PowerShot SX740 HS</h2>
+              </div>
+              <a class="button button--secondary" href="#">Edit in catalog</a>
+            </div>
+
+            <nav class="tabs-row" aria-label="Product detail views">
+              <button class="tab-trigger tab-trigger--active">Overview</button>
+              <button class="tab-trigger">Content</button>
+            </nav>
+
+            <!-- Hero — gallery docked next to the title (proposed: Product.images[] rendered as a
+                 main photo + scrolling thumb strip; today only the first element renders, as a small
+                 list-page thumbnail. Zero new backend fields needed.) -->
+            <section class="product-hero" aria-label="Product summary">
+              <div class="product-gallery" role="group" aria-label="Product photos">
+                <button class="product-gallery__main" onclick="openLightbox(galleryIdx)" aria-label="Open photo viewer">
+                  <span class="photo-panel photo-panel--1 is-active" data-gallery-index="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7l1.5-3h5L16 7"/><circle cx="12" cy="13.5" r="3.2"/></svg></span>
+                  <span class="photo-panel photo-panel--2" data-gallery-index="1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="6" width="10" height="14" rx="2"/><circle cx="10" cy="12" r="2.4"/></svg></span>
+                  <span class="photo-panel photo-panel--3" data-gallery-index="2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg></span>
+                  <span class="photo-panel photo-panel--4" data-gallery-index="3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2.3"/></svg></span>
+                  <span class="product-gallery__expand-hint" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/></svg></span>
+                </button>
+                <div class="product-gallery__thumbs">
+                  <button class="product-gallery__thumb is-active" data-gallery-index="0" onclick="selectGalleryPhoto(0)" aria-label="Photo 1 of 4 — Front"><span class="photo-panel photo-panel--1 photo-panel--thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="7" width="18" height="13" rx="2"/><circle cx="12" cy="13.5" r="3.2"/></svg></span></button>
+                  <button class="product-gallery__thumb" data-gallery-index="1" onclick="selectGalleryPhoto(1)" aria-label="Photo 2 of 4 — Side profile"><span class="photo-panel photo-panel--2 photo-panel--thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="6" width="10" height="14" rx="2"/><circle cx="10" cy="12" r="2.4"/></svg></span></button>
+                  <button class="product-gallery__thumb" data-gallery-index="2" onclick="selectGalleryPhoto(2)" aria-label="Photo 3 of 4 — In the box"><span class="photo-panel photo-panel--3 photo-panel--thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg></span></button>
+                  <button class="product-gallery__thumb" data-gallery-index="3" onclick="selectGalleryPhoto(3)" aria-label="Photo 4 of 4 — Lens detail"><span class="photo-panel photo-panel--4 photo-panel--thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2.3"/></svg></span></button>
+                </div>
+              </div>
+              <div class="product-hero__body">
+                <div class="product-hero__title-row">
+                  <h3 class="product-hero__title">Aparat cyfrowy CANON PowerShot SX740 HS</h3>
+                  <div class="product-hero__badges">
+                    <span class="status-badge status-badge--warning"><span class="status-badge__dot" aria-hidden="true"></span>Low stock</span>
+                    <span class="status-badge status-badge--neutral">3 variants</span>
+                    <span class="status-badge status-badge--info">3 listings</span>
+                  </div>
+                </div>
+                <div class="product-hero__meta"><span class="mono-text">CANON-SX740-HS</span></div>
+                <code class="product-hero__id mono-text">ol_product_9c3f1a2b7d4e…a5c7 <button class="copybtn">⧉ copy</button></code>
+                <div class="product-hero__facts product-hero__facts--stacked">
+                  <span class="product-hero__fact"><span class="product-hero__fact-label">SKU</span><span class="mono-text">OL-CANON-SX740HS</span></span>
+                  <span class="product-hero__fact"><span class="product-hero__fact-label">Created</span><span class="mono-text tabular">12 Jan 2026, 09:04</span></span>
+                  <span class="product-hero__fact"><span class="product-hero__fact-label">Catalog updated</span><span class="mono-text tabular">31 May 2026, 16:42</span></span>
+                </div>
+              </div>
+            </section>
+
+            <div class="product-detail__primary-grid--split">
+              <div class="product-detail__stack">
+
+                <section class="detail-section">
+                  <h3 class="detail-section__title">Description</h3>
+                  <p class="description-block">
+                    Kompaktowy aparat cyfrowy z 40-krotnym zoomem optycznym, stabilizacją obrazu i łącznością
+                    Wi-Fi/Bluetooth do szybkiego przesyłania zdjęć. Idealny do podróży — mieści się w kieszeni,
+                    a tryb automatyczny dobiera ustawienia w każdych warunkach oświetleniowych.
+                  </p>
+                </section>
+
+              </div>
+
+              <div class="product-detail__stack">
+                <section class="detail-section" aria-label="At a glance">
+                  <h3 class="detail-section__title">At a glance</h3>
+                  <div class="kpi-rows">
+                    <div class="kpi-strip kpi-strip--cols-1">
+                      <div class="kpi-card">
+                        <span class="kpi-card__label-text">Price</span>
+                        <span class="kpi-card__value kpi-card__value--sm">1 499,00 zł</span>
+                      </div>
+                    </div>
+                    <div class="kpi-strip kpi-strip--cols-3">
+                      <div class="kpi-card kpi-card--warning">
+                        <span class="kpi-card__label-text">Available</span>
+                        <span class="kpi-card__value">3</span>
+                        <span class="kpi-card__description">1 oversold</span>
+                      </div>
+                      <div class="kpi-card">
+                        <span class="kpi-card__label-text">Variants</span>
+                        <span class="kpi-card__value">3</span>
+                      </div>
+                      <a class="kpi-card kpi-card--dimmed" href="#">
+                        <span class="kpi-card__label-text">Listings</span>
+                        <span class="kpi-card__value">3</span>
+                      </a>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="detail-section">
+                  <h3 class="detail-section__title">External IDs</h3>
+                  <div class="id-chip-row">
+                    <span class="id-chip"><span class="id-chip__platform">prestashop</span> 25</span>
+                    <span class="id-chip"><span class="id-chip__platform">allegro</span> 771122334</span>
+                  </div>
+                </section>
+              </div>
+            </div>
+
+            <!-- Variants & stock — ONE table, now with expandable "Listings" rows -->
+            <section class="detail-section" style="margin-top: var(--space-5)">
+              <div class="detail-section__title-row">
+                <h3 class="detail-section__title">Variants &amp; stock (3)</h3>
+                <span class="sync-freshness"><span class="sync-freshness__dot" aria-hidden="true"></span>Stock synced 3 Jul 2026, 14:20</span>
+              </div>
+              <div class="data-table__container">
+                <table class="data-table">
+                  <caption class="sr-only">Product variants, stock levels, and marketplace listings</caption>
+                  <thead>
+                    <tr><th></th><th>Variant</th><th>EAN</th><th>Attributes</th><th>Available</th><th>Reserved</th><th>Listings</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr class="data-table__row--variant">
+                      <td class="data-table__expand-cell"><button class="data-table__expand-btn" id="exp-btn-v1" aria-expanded="true" aria-label="Toggle listings" onclick="toggleExpand('v1')"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2l4 4-4 4"/></svg></button></td>
+                      <td>
+                        <div class="data-table__row--variant-photo">
+                          <span class="product-thumbnail" style="width:1.75rem;height:1.75rem"><span class="photo-panel photo-panel--1 photo-panel--thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="7" width="18" height="13" rx="2"/><circle cx="12" cy="13.5" r="3.2"/></svg></span></span>
+                          <span class="mono-text">CANON-SX740-SLV</span>
+                        </div>
+                      </td>
+                      <td class="mono-text">5901234123457</td>
+                      <td class="mono-text">color: silver</td>
+                      <td class="tabular stock-cell--warning">3</td>
+                      <td class="tabular">1</td>
+                      <td><span class="status-badge status-badge--info status-badge--compact">2</span></td>
+                    </tr>
+                    <tr class="data-table__expand-row is-open" id="exp-row-v1">
+                      <td colspan="7">
+                        <div class="data-table__expand-content"><div class="data-table__expand-content-inner">
+                        <div class="listings-panel">
+                          <p class="listings-panel__title">Listings using this stock (2)</p>
+                          <table class="listings-subtable">
+                            <thead><tr><th>Platform</th><th>Connection</th><th>External ID</th><th>Updated</th><th class="listings-subtable__ext-col"></th></tr></thead>
+                            <tbody>
+                              <tr>
+                                <td><a class="listings-subtable__link" href="#" title="Open listing detail in OpenLinker">allegro</a></td>
+                                <td>Allegro sandbox</td><td class="mono-text">771122334</td><td class="mono-text tabular">3 Jul 2026, 14:02</td>
+                                <td class="listings-subtable__ext-col"><a class="listings-subtable__ext-btn" href="#" target="_blank" rel="noopener noreferrer" aria-label="Open on Allegro" title="Open on Allegro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg></a></td>
+                              </tr>
+                              <tr>
+                                <td><a class="listings-subtable__link" href="#" title="Open listing detail in OpenLinker">erli</a></td>
+                                <td>Erli marketplace</td><td class="mono-text">ERL-4471</td><td class="mono-text tabular">2 Jul 2026, 09:15</td>
+                                <td class="listings-subtable__ext-col"><a class="listings-subtable__ext-btn" href="#" target="_blank" rel="noopener noreferrer" aria-label="Open on Erli" title="Open on Erli"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg></a></td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                        </div></div>
+                      </td>
+                    </tr>
+
+                    <tr class="data-table__row--variant">
+                      <td class="data-table__expand-cell"><button class="data-table__expand-btn" id="exp-btn-v2" aria-expanded="false" aria-label="Toggle listings" onclick="toggleExpand('v2')"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2l4 4-4 4"/></svg></button></td>
+                      <td>
+                        <div class="data-table__row--variant-photo">
+                          <span class="product-thumbnail" style="width:1.75rem;height:1.75rem"><span class="photo-panel photo-panel--2 photo-panel--thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="6" width="10" height="14" rx="2"/><circle cx="10" cy="12" r="2.4"/></svg></span></span>
+                          <span class="mono-text">CANON-SX740-BLK</span>
+                        </div>
+                      </td>
+                      <td class="mono-text">5901234123464</td>
+                      <td class="mono-text">color: black</td>
+                      <td class="tabular stock-cell--warning">2</td>
+                      <td class="tabular text-muted">0</td>
+                      <td><span class="status-badge status-badge--info status-badge--compact">1</span></td>
+                    </tr>
+                    <tr class="data-table__expand-row" id="exp-row-v2">
+                      <td colspan="7">
+                        <div class="data-table__expand-content"><div class="data-table__expand-content-inner">
+                        <div class="listings-panel">
+                          <p class="listings-panel__title">Listings using this stock (1)</p>
+                          <table class="listings-subtable">
+                            <thead><tr><th>Platform</th><th>Connection</th><th>External ID</th><th>Updated</th><th class="listings-subtable__ext-col"></th></tr></thead>
+                            <tbody>
+                              <tr>
+                                <td><a class="listings-subtable__link" href="#" title="Open listing detail in OpenLinker">allegro</a></td>
+                                <td>Allegro sandbox</td><td class="mono-text">771129981</td><td class="mono-text tabular">30 Jun 2026, 11:40</td>
+                                <td class="listings-subtable__ext-col"><a class="listings-subtable__ext-btn" href="#" target="_blank" rel="noopener noreferrer" aria-label="Open on Allegro" title="Open on Allegro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg></a></td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                        </div></div>
+                      </td>
+                    </tr>
+
+                    <tr class="data-table__row--variant">
+                      <td class="data-table__expand-cell"><button class="data-table__expand-btn" id="exp-btn-v3" aria-expanded="false" aria-label="Toggle listings" onclick="toggleExpand('v3')"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2l4 4-4 4"/></svg></button></td>
+                      <td>
+                        <div class="data-table__row--variant-photo">
+                          <span class="product-thumbnail" style="width:1.75rem;height:1.75rem"><span class="photo-panel photo-panel--3 photo-panel--thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg></span></span>
+                          <span class="mono-text">CANON-SX740-RED</span>
+                        </div>
+                      </td>
+                      <td class="mono-text">5901234123471</td>
+                      <td class="mono-text">color: red</td>
+                      <td class="tabular stock-cell--error">-2</td>
+                      <td class="tabular">1</td>
+                      <td><span class="status-badge status-badge--neutral status-badge--compact">0</span></td>
+                    </tr>
+                    <tr class="data-table__expand-row" id="exp-row-v3">
+                      <td colspan="7">
+                        <div class="data-table__expand-content"><div class="data-table__expand-content-inner">
+                        <div class="listings-panel">
+                          <p class="listings-panel__title">Listings using this stock (0)</p>
+                          <p class="listings-subtable__empty">No marketplace listings reference this variant yet.</p>
+                        </div>
+                        </div></div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p class="detail-section__muted">Click a row's chevron to load that variant's listings inline — same query that powers <span class="mono-text">/inventory/:id</span>'s "Listings using this stock" today, called per-row instead of on a separate page.</p>
+            </section>
+          </section>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ░░░░░░░░░░░░░░░░░░░ MOBILE FRAME — same two ideas, narrow width ░░░░░░░░░░░░░░░░░░░ -->
+  <!-- Previously this frame only carried the gallery + variant cards, dropping every other
+       section the desktop frame has (hero meta/badges, KPIs, description, category mapping,
+       external IDs) — fixed by carrying all of it over, stacked single-column. -->
+  <div class="viewport-frame">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">Screen 2 of 2</span>
+      <b>360 × auto · Mobile</b>
+      <span class="caption">same content as desktop, stacked single-column · gallery thumbs scroll horizontally · table becomes cards, each with its own "Listings" toggle</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="viewport-frame__inset viewport-frame__inset--360">
+        <div class="viewport-frame__page">
+
+          <section class="page-section">
+            <a class="back-link" href="#"><span aria-hidden="true">←</span> Products</a>
+            <div class="page-header">
+              <p class="eyebrow">Product</p>
+              <h2 class="page-title">Aparat cyfrowy CANON PowerShot SX740 HS</h2>
+            </div>
+
+            <section class="product-hero" aria-label="Product summary">
+              <div class="product-gallery" role="group" aria-label="Product photos">
+                <button class="product-gallery__main" onclick="openLightbox(galleryIdx)" aria-label="Open photo viewer">
+                  <span class="photo-panel photo-panel--1 is-active" data-gallery-index="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7l1.5-3h5L16 7"/><circle cx="12" cy="13.5" r="3.2"/></svg></span>
+                  <span class="photo-panel photo-panel--2" data-gallery-index="1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="6" width="10" height="14" rx="2"/><circle cx="10" cy="12" r="2.4"/></svg></span>
+                  <span class="photo-panel photo-panel--3" data-gallery-index="2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg></span>
+                  <span class="photo-panel photo-panel--4" data-gallery-index="3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2.3"/></svg></span>
+                  <span class="product-gallery__expand-hint" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/></svg></span>
+                </button>
+                <div class="product-gallery__thumbs">
+                  <button class="product-gallery__thumb is-active" data-gallery-index="0" onclick="selectGalleryPhoto(0)" aria-label="Photo 1 of 4 — Front"><span class="photo-panel photo-panel--1 photo-panel--thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="7" width="18" height="13" rx="2"/></svg></span></button>
+                  <button class="product-gallery__thumb" data-gallery-index="1" onclick="selectGalleryPhoto(1)" aria-label="Photo 2 of 4 — Side profile"><span class="photo-panel photo-panel--2 photo-panel--thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="6" width="10" height="14" rx="2"/></svg></span></button>
+                  <button class="product-gallery__thumb" data-gallery-index="2" onclick="selectGalleryPhoto(2)" aria-label="Photo 3 of 4 — In the box"><span class="photo-panel photo-panel--3 photo-panel--thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/></svg></span></button>
+                  <button class="product-gallery__thumb" data-gallery-index="3" onclick="selectGalleryPhoto(3)" aria-label="Photo 4 of 4 — Lens detail"><span class="photo-panel photo-panel--4 photo-panel--thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="6"/></svg></span></button>
+                </div>
+              </div>
+              <div class="product-hero__body">
+                <div class="product-hero__title-row">
+                  <div class="product-hero__badges">
+                    <span class="status-badge status-badge--warning status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span>Low stock</span>
+                    <span class="status-badge status-badge--neutral status-badge--compact">3 variants</span>
+                    <span class="status-badge status-badge--info status-badge--compact">3 listings</span>
+                  </div>
+                </div>
+                <div class="product-hero__meta"><span class="mono-text">CANON-SX740-HS</span></div>
+                <code class="product-hero__id mono-text">ol_product_9c3f1a…a5c7 <button class="copybtn">⧉</button></code>
+              </div>
+            </section>
+
+            <section class="detail-section" aria-label="At a glance" style="margin-top: var(--space-4)">
+              <h3 class="detail-section__title">At a glance</h3>
+              <div class="kpi-rows">
+                <div class="kpi-strip kpi-strip--cols-1">
+                  <div class="kpi-card">
+                    <span class="kpi-card__label-text">Price</span>
+                    <span class="kpi-card__value kpi-card__value--sm">1 499,00 zł</span>
+                  </div>
+                </div>
+                <div class="kpi-strip kpi-strip--cols-3">
+                  <div class="kpi-card kpi-card--warning">
+                    <span class="kpi-card__label-text">Available</span>
+                    <span class="kpi-card__value">3</span>
+                    <span class="kpi-card__description">1 oversold</span>
+                  </div>
+                  <div class="kpi-card">
+                    <span class="kpi-card__label-text">Variants</span>
+                    <span class="kpi-card__value">3</span>
+                  </div>
+                  <a class="kpi-card kpi-card--dimmed" href="#">
+                    <span class="kpi-card__label-text">Listings</span>
+                    <span class="kpi-card__value">3</span>
+                  </a>
+                </div>
+              </div>
+            </section>
+
+            <section class="detail-section" style="margin-top: var(--space-4)">
+              <div class="key-value-list">
+                <div class="key-value-list__label">SKU</div>
+                <div class="key-value-list__value mono-text">OL-CANON-SX740HS</div>
+                <div class="key-value-list__label">Created</div>
+                <div class="key-value-list__value mono-text tabular">12 Jan 2026, 09:04</div>
+                <div class="key-value-list__label">Catalog updated</div>
+                <div class="key-value-list__value mono-text tabular">31 May 2026, 16:42</div>
+              </div>
+            </section>
+
+            <section class="detail-section" style="margin-top: var(--space-4)">
+              <h3 class="detail-section__title">Description</h3>
+              <p class="description-block">
+                Kompaktowy aparat cyfrowy z 40-krotnym zoomem optycznym, stabilizacją obrazu i łącznością
+                Wi-Fi/Bluetooth do szybkiego przesyłania zdjęć. Idealny do podróży — mieści się w kieszeni,
+                a tryb automatyczny dobiera ustawienia w każdych warunkach oświetleniowych.
+              </p>
+            </section>
+
+            <section class="detail-section" style="margin-top: var(--space-4)">
+              <h3 class="detail-section__title">External IDs</h3>
+              <div class="id-chip-row">
+                <span class="id-chip"><span class="id-chip__platform">prestashop</span> 25</span>
+                <span class="id-chip"><span class="id-chip__platform">allegro</span> 771122334</span>
+              </div>
+            </section>
+
+            <section class="detail-section" style="margin-top: var(--space-4)">
+              <div class="detail-section__title-row">
+                <h3 class="detail-section__title">Variants &amp; stock (3)</h3>
+                <span class="sync-freshness"><span class="sync-freshness__dot" aria-hidden="true"></span>Stock synced 3 Jul 2026, 14:20</span>
+              </div>
+              <ul class="data-table__cards">
+                <li class="data-table__card">
+                  <div class="data-table__card-top">
+                    <div class="data-table__card-main">
+                      <span class="product-thumbnail" style="width:1.75rem;height:1.75rem"><span class="photo-panel photo-panel--1 photo-panel--thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="7" width="18" height="13" rx="2"/></svg></span></span>
+                      <div><div class="data-table__card-title">CANON-SX740-SLV</div><div class="data-table__card-subtitle">color: silver</div></div>
+                    </div>
+                    <span class="data-table__card-meta stock-cell--warning">3 avail.</span>
+                  </div>
+                  <button class="button button--secondary" style="height:1.75rem; font-size:0.75rem" id="exp-btn-c1" aria-expanded="false" onclick="toggleExpand('c1')">Listings (2) ▾</button>
+                  <div class="card-expand" id="exp-row-c1"><div class="card-expand__inner">
+                    <table class="listings-subtable">
+                      <thead><tr><th>Platform</th><th>Ext. ID</th><th class="listings-subtable__ext-col"></th></tr></thead>
+                      <tbody>
+                        <tr>
+                          <td><a class="listings-subtable__link" href="#" title="Open listing detail in OpenLinker">allegro</a></td><td class="mono-text">771122334</td>
+                          <td class="listings-subtable__ext-col"><a class="listings-subtable__ext-btn" href="#" target="_blank" rel="noopener noreferrer" aria-label="Open on Allegro" title="Open on Allegro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg></a></td>
+                        </tr>
+                        <tr>
+                          <td><a class="listings-subtable__link" href="#" title="Open listing detail in OpenLinker">erli</a></td><td class="mono-text">ERL-4471</td>
+                          <td class="listings-subtable__ext-col"><a class="listings-subtable__ext-btn" href="#" target="_blank" rel="noopener noreferrer" aria-label="Open on Erli" title="Open on Erli"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg></a></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div></div>
+                </li>
+                <li class="data-table__card">
+                  <div class="data-table__card-top">
+                    <div class="data-table__card-main">
+                      <span class="product-thumbnail" style="width:1.75rem;height:1.75rem"><span class="photo-panel photo-panel--2 photo-panel--thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="6" width="10" height="14" rx="2"/></svg></span></span>
+                      <div><div class="data-table__card-title">CANON-SX740-BLK</div><div class="data-table__card-subtitle">color: black</div></div>
+                    </div>
+                    <span class="data-table__card-meta stock-cell--warning">2 avail.</span>
+                  </div>
+                  <button class="button button--secondary" style="height:1.75rem; font-size:0.75rem" id="exp-btn-c2" aria-expanded="false" onclick="toggleExpand('c2')">Listings (1) ▾</button>
+                  <div class="card-expand" id="exp-row-c2"><div class="card-expand__inner">
+                    <table class="listings-subtable">
+                      <thead><tr><th>Platform</th><th>Ext. ID</th><th class="listings-subtable__ext-col"></th></tr></thead>
+                      <tbody>
+                        <tr>
+                          <td><a class="listings-subtable__link" href="#" title="Open listing detail in OpenLinker">allegro</a></td><td class="mono-text">771129981</td>
+                          <td class="listings-subtable__ext-col"><a class="listings-subtable__ext-btn" href="#" target="_blank" rel="noopener noreferrer" aria-label="Open on Allegro" title="Open on Allegro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg></a></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div></div>
+                </li>
+                <li class="data-table__card">
+                  <div class="data-table__card-top">
+                    <div class="data-table__card-main">
+                      <span class="product-thumbnail" style="width:1.75rem;height:1.75rem"><span class="photo-panel photo-panel--3 photo-panel--thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg></span></span>
+                      <div><div class="data-table__card-title">CANON-SX740-RED</div><div class="data-table__card-subtitle">color: red</div></div>
+                    </div>
+                    <span class="data-table__card-meta stock-cell--error">-2 avail.</span>
+                  </div>
+                  <button class="button button--secondary" style="height:1.75rem; font-size:0.75rem" id="exp-btn-c3" aria-expanded="false" onclick="toggleExpand('c3')">Listings (0) ▾</button>
+                  <div class="card-expand" id="exp-row-c3"><div class="card-expand__inner">
+                    <p class="listings-subtable__empty">No marketplace listings reference this variant yet.</p>
+                  </div></div>
+                </li>
+              </ul>
+            </section>
+          </section>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Lightbox (shared by both frames; tracks a single photo index) -->
+<div class="lightbox-overlay" id="lightbox" role="dialog" aria-modal="true" aria-label="Product photo viewer" onclick="if(event.target===this) closeLightbox()">
+  <div class="lightbox">
+    <button class="lightbox__close" type="button" aria-label="Close" onclick="closeLightbox()">✕</button>
+    <div class="lightbox__frame">
+      <span class="photo-panel photo-panel--1" data-index="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3" y="7" width="18" height="13" rx="2"/><circle cx="12" cy="13.5" r="3.4"/></svg><span class="photo-panel__label">Front</span></span>
+      <span class="photo-panel photo-panel--2" data-index="1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="5" y="6" width="10" height="14" rx="2"/><circle cx="10" cy="12" r="2.4"/></svg><span class="photo-panel__label">Side profile</span></span>
+      <span class="photo-panel photo-panel--3" data-index="2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg><span class="photo-panel__label">In the box</span></span>
+      <span class="photo-panel photo-panel--4" data-index="3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2.3"/></svg><span class="photo-panel__label">Lens detail</span></span>
+      <button class="lightbox__nav lightbox__nav--prev" type="button" aria-label="Previous photo" onclick="navLightbox(-1)">‹</button>
+      <button class="lightbox__nav lightbox__nav--next" type="button" aria-label="Next photo" onclick="navLightbox(1)">›</button>
+    </div>
+    <p class="lightbox__caption" id="lightbox-caption">1 / 4 — Front</p>
+  </div>
+</div>
+
+<script>
+  var PHOTO_LABELS = ['Front', 'Side profile', 'In the box', 'Lens detail'];
+  var lightboxIdx = 0;
+  var galleryIdx = 0;
+
+  // Both viewport frames render their own copy of .product-gallery — updating
+  // every instance on the page keeps the desktop and mobile previews in sync.
+  function selectGalleryPhoto(idx) {
+    galleryIdx = idx;
+    document.querySelectorAll('.product-gallery__thumb').forEach(function (el) {
+      el.classList.toggle('is-active', Number(el.dataset.galleryIndex) === idx);
+    });
+    document.querySelectorAll('.product-gallery__main .photo-panel').forEach(function (el) {
+      el.classList.toggle('is-active', Number(el.dataset.galleryIndex) === idx);
+    });
+  }
+
+  function openLightbox(idx) {
+    lightboxIdx = idx;
+    renderLightbox();
+    document.getElementById('lightbox').classList.add('is-open');
+  }
+
+  function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('is-open');
+    selectGalleryPhoto(lightboxIdx);
+  }
+
+  function navLightbox(delta) {
+    lightboxIdx = (lightboxIdx + delta + 4) % 4;
+    renderLightbox();
+    selectGalleryPhoto(lightboxIdx);
+  }
+
+  function renderLightbox() {
+    document.querySelectorAll('.lightbox__frame .photo-panel').forEach(function (el) {
+      el.classList.toggle('is-active', Number(el.dataset.index) === lightboxIdx);
+    });
+    document.getElementById('lightbox-caption').textContent =
+      (lightboxIdx + 1) + ' / 4 — ' + PHOTO_LABELS[lightboxIdx];
+  }
+
+  function toggleExpand(id) {
+    var btn = document.getElementById('exp-btn-' + id);
+    var row = document.getElementById('exp-row-' + id);
+    var open = row.classList.toggle('is-open');
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (!document.getElementById('lightbox').classList.contains('is-open')) return;
+    if (e.key === 'Escape') closeLightbox();
+    if (e.key === 'ArrowLeft') navLightbox(-1);
+    if (e.key === 'ArrowRight') navLightbox(1);
+  });
+</script>
+
+</body>
+</html>

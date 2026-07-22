@@ -49,9 +49,9 @@ export interface ShipXCourierParcel {
 
 /**
  * ShipX cash-on-delivery descriptor on a create-shipment request. `amount` is
- * a JSON number (not the OL decimal string) — the mapper converts. Present only
- * for COD-capable services (courier); a green shipment without this object is a
- * regular prepaid parcel.
+ * a JSON number (not the OL decimal string) — the mapper converts. Emitted as an
+ * add-on on both the courier and locker standard services (#1541 / #1554); a
+ * shipment without this object is a regular prepaid parcel.
  */
 export interface ShipXCod {
   amount: number;

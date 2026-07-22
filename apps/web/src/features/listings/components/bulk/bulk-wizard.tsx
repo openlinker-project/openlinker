@@ -14,7 +14,8 @@ import { useNavigate } from 'react-router-dom';
 import { Alert, PageLayout, SetupStepper } from '../../../../shared/ui';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import { usePlatforms, type OfferRowValidationInput } from '../../../../shared/plugins';
-import { usePermission } from '../../../../shared/auth/use-permission';
+import { useWriteAccess } from '../../../../shared/auth/use-permission';
+import { useDemoMode } from '../../../system';
 import { useConnectionsQuery } from '../../../connections';
 import { useBulkSubmitMutation } from '../../hooks/use-bulk-submit-mutation';
 import { useBulkRequiredProductParams } from '../../hooks/use-bulk-required-product-params';
@@ -74,7 +75,15 @@ export function BulkWizard({
   // confirm step submit reuse it; remount mints a fresh one.
   const idempotencyKeyRef = useRef<string>(crypto.randomUUID());
 
-  const canGenerateDescription = usePermission('listings:write');
+  const demoMode = useDemoMode();
+  // Belt-and-suspenders submit-time enforcement (#1668, following the
+  // `useWriteAccess` pattern from bulk-config-step.tsx): only a session that
+  // truly holds `listings:write` can carry `generateDescription: true` into
+  // the request — a demo viewer's `demoReadOnly` toggle in the Config step is
+  // already forced off, but this re-derives from the real permission
+  // regardless of what `config` snapshot reached this point.
+  const write = useWriteAccess('listings:write', demoMode);
+  const canGenerateDescription = write.canWrite;
   const [step, setStep] = useState<BulkWizardStep>('config');
   const [config, setConfig] = useState<BulkWizardConfig | null>(null);
   const [rows, setRows] = useState<BulkWizardRow[]>(() => seedRows(products));
@@ -405,6 +414,7 @@ export function BulkWizard({
             marketplaceName={marketplaceName}
             initialPublishImmediately={config.publishImmediately}
             isSubmitting={mutation.isPending}
+            demoReadOnly={write.demoReadOnly}
             errorMessage={mutation.error ? mutation.error.message : null}
             onConfirm={(publishImmediately) => {
               void handleSubmit(publishImmediately);

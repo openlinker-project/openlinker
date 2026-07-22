@@ -36,8 +36,8 @@ function renderDrawer(
   renderWithProviders(
     <EditOfferDrawer isOpen={isOpen} onClose={onClose} mapping={mapping} />,
     // Authenticated (admin) session — `SuggestionDialog`'s "Suggest with AI"
-    // trigger is gated on the `ai:suggest` permission (#1379 re-scope), not
-    // demo mode, so the AI-suggest tests below need a permitted session.
+    // trigger is gated on the `ai:suggest` permission via `useWriteAccess`
+    // (#1668), so the AI-suggest tests below need a permitted session.
     { apiClient: mockApi, sessionAdapter: createAuthenticatedSessionAdapter() },
   );
   return { mockApi, onClose };
@@ -147,14 +147,18 @@ describe('EditOfferDrawer', () => {
   });
 
   describe('AI suggest (#485)', () => {
-    it('should render the Suggest button when linkedProductId and platformType resolve to a channel', () => {
+    it('should render the Suggest button when linkedProductId and platformType resolve to a channel', async () => {
       const mappingWithLink: OfferMapping = {
         ...mockMapping,
         linkedProductId: 'ol_product_xyz789',
       };
       renderDrawer(true, {}, undefined, mappingWithLink);
+      // The trigger is gated via `useWriteAccess('ai:suggest', …)` (#1668),
+      // which renders nothing until the session hydrates from anonymous to
+      // the authenticated admin adapter — await it rather than asserting
+      // synchronously.
       expect(
-        screen.getByRole('button', { name: /suggest with ai/i }),
+        await screen.findByRole('button', { name: /suggest with ai/i }),
       ).toBeInTheDocument();
     });
 

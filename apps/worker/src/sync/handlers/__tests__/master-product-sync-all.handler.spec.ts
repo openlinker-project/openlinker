@@ -78,7 +78,7 @@ describe('MasterProductSyncAllHandler', () => {
   });
 
   it('should paginate through multiple pages until a short page is returned', async () => {
-    const fullPage = Array.from({ length: 200 }, (_, i) => String(i));
+    const fullPage = Array.from({ length: 100 }, (_, i) => String(i));
     productMaster.listExternalIds
       .mockResolvedValueOnce(fullPage)
       .mockResolvedValueOnce(['x1', 'x2']);
@@ -87,22 +87,22 @@ describe('MasterProductSyncAllHandler', () => {
     await handler.execute(createJob('conn-1'));
 
     expect(productMaster.listExternalIds).toHaveBeenCalledTimes(2);
-    expect(productMaster.listExternalIds).toHaveBeenNthCalledWith(1, { limit: 200, offset: 0 });
-    expect(productMaster.listExternalIds).toHaveBeenNthCalledWith(2, { limit: 200, offset: 200 });
-    expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(202);
+    expect(productMaster.listExternalIds).toHaveBeenNthCalledWith(1, { limit: 100, offset: 0 });
+    expect(productMaster.listExternalIds).toHaveBeenNthCalledWith(2, { limit: 100, offset: 100 });
+    expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(102);
   });
 
   it('should deduplicate external ids repeated across pages', async () => {
-    const fullPage = Array.from({ length: 200 }, (_, i) => String(i));
+    const fullPage = Array.from({ length: 100 }, (_, i) => String(i));
     // Second page overlaps with first — defensive dedupe should keep the count honest.
     productMaster.listExternalIds
       .mockResolvedValueOnce(fullPage)
-      .mockResolvedValueOnce(['199', '200']);
+      .mockResolvedValueOnce(['99', '100']);
     jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'j', isExisting: false });
 
     await handler.execute(createJob('conn-1'));
 
-    expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(201);
+    expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(101);
   });
 
   it('should handle empty catalog gracefully', async () => {

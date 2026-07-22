@@ -95,6 +95,7 @@ demo-safe values. Listed here so you know what's in play if you want to override
 | `NODE_ENV` | `production` | Production posture for the app tier. |
 | `OL_BOOTSTRAP_ADMIN_PASSWORD` | `admin` | Keeps the seeded admin login `admin` / `admin` under `NODE_ENV=production`. |
 | `OL_CORS_ORIGIN` | `http://localhost:8090` | API CORS allow-list — must match the UI origin or login fails with a CORS "NetworkError". |
+| `WEB_URL` | `http://localhost:8090` (tracks `WEB_HOST_PORT`) | Base URL used to build confirm-email / reset-password links emailed to users - stays in sync with the `web` service's published port instead of a second hardcoded default. |
 | `VITE_API_BASE_URL` | `http://localhost:3000` | Baked into the UI bundle **at build time** — the browser-reachable API origin. |
 | `DB_*` / `REDIS_*` | `postgres` / `redis` (service names) | App tier reaches Postgres/Redis over the Compose network. |
 | `JWT_SECRET`, `JWT_EXPIRES_IN` | dev values | Auth token signing. |

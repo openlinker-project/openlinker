@@ -45,6 +45,10 @@ export const JobTypeValues = [
   'invoicing.regulatoryStatus.reconcile',
   // By-id payment-status refresh triggered by a provider payment webhook (#1354).
   'invoicing.paymentStatus.refreshByExternalId',
+  // Degraded-mode offline-submission resubmission sweep (#1702).
+  'invoicing.offlineSubmission.resubmit',
+  // Crash-recovery sweep for invoices stuck mid-issuance (#1703).
+  'invoicing.pendingRecovery.sweep',
 
   // Internal orchestration (core-owned policies; executed by worker)
   'inventory.propagateToMarketplaces',

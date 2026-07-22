@@ -41,6 +41,16 @@ export interface ProductVariantRepositoryPort {
   findByProductId(productId: string): Promise<ProductVariant[]>;
 
   /**
+   * Count variants per product for the given product IDs (#1720).
+   * Returns a Map<productId, count>; products with zero variants are
+   * omitted. Empty input returns an empty Map without a storage round-trip.
+   *
+   * @param productIds - Internal OpenLinker product IDs
+   * @returns Map of productId to variant count
+   */
+  countByProductIds(productIds: readonly string[]): Promise<Map<string, number>>;
+
+  /**
    * Find variant by SKU
    *
    * @param sku - SKU string
@@ -98,4 +108,19 @@ export interface ProductVariantRepositoryPort {
     filters: ProductVariantListFilters,
     pagination: ProductPagination
   ): Promise<PaginatedProductVariants>;
+
+  /**
+   * Soft-mark every live variant of `productId` NOT in `keepVariantIds` as
+   * stale (#1599 — deleted at the master). An empty keep-set marks all live
+   * variants (the product-fully-deleted / 404 path). Returns the ids actually
+   * flipped (already-stale rows are skipped, preserving their `staleAt`).
+   *
+   * @param productId - Internal OpenLinker product ID
+   * @param keepVariantIds - Variant ids present in the current master response
+   * @returns Ids of the variants newly marked stale
+   */
+  markStaleExceptVariants(
+    productId: string,
+    keepVariantIds: readonly string[]
+  ): Promise<string[]>;
 }

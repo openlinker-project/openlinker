@@ -94,6 +94,49 @@ export interface ProductVariantCreate {
 // ---------------------------------------------------------------------------
 
 /**
+ * Product stock-bucket filter values (#1720 - products catalog cockpit).
+ *
+ * Buckets are derived from the product's total available stock summed across
+ * its inventory rows: `out` = 0 (including products with no inventory rows),
+ * `low` = 0 < total <= LOW_STOCK_THRESHOLD, `oversold` = total < 0.
+ */
+export const ProductStockFilterValues = ['out', 'low', 'oversold'] as const;
+export type ProductStockFilter = (typeof ProductStockFilterValues)[number];
+
+/**
+ * Sortable fields for the products list read (#1720). `stock` sorts on the
+ * aggregated total available quantity; the rest map to product columns.
+ */
+export const ProductListSortFieldValues = [
+  'name',
+  'sku',
+  'price',
+  'createdAt',
+  'updatedAt',
+  'stock',
+] as const;
+export type ProductListSortField = (typeof ProductListSortFieldValues)[number];
+
+/** Sort direction for the products list read (#1720). */
+export const ProductListSortDirectionValues = ['asc', 'desc'] as const;
+export type ProductListSortDirection = (typeof ProductListSortDirectionValues)[number];
+
+/**
+ * Sort specification for the products list read (#1720). Omitting the whole
+ * spec preserves the historical default ordering (createdAt DESC).
+ */
+export interface ProductListSort {
+  field: ProductListSortField;
+  dir: ProductListSortDirection;
+}
+
+/**
+ * Low-stock boundary for the `low` stock bucket (#1720) - mirrors the FE
+ * DEFAULT_LOW_STOCK_THRESHOLD so BE filtering and FE badge derivation agree.
+ */
+export const LOW_STOCK_THRESHOLD = 5;
+
+/**
  * Product list filters
  *
  * Criteria for querying the internal product store. All fields are optional —
@@ -102,6 +145,21 @@ export interface ProductVariantCreate {
 export interface ProductListFilters {
   /** Case-insensitive search on product name or SKU */
   search?: string;
+
+  /** Stock bucket derived from aggregated available quantity (#1720) */
+  stock?: ProductStockFilter;
+
+  /**
+   * Match products having at least one variant with no Offer mapping for at
+   * least one of the given connection IDs (#1720 - "listing gaps").
+   */
+  unlistedOnConnectionIds?: readonly string[];
+
+  /**
+   * Match products that have a Product identifier mapping for this
+   * connection (#1720 - source filter).
+   */
+  sourceConnectionId?: string;
 }
 
 /**

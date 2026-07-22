@@ -1245,11 +1245,14 @@ describe('AllegroCreateOfferWizard', () => {
           onCancel={vi.fn()}
           onSubmitted={vi.fn()}
         />,
-        { apiClient: mockApi },
+        // Authenticated (admin) session — the trigger is gated via
+        // `useWriteAccess('ai:suggest', …)` (#1668) and renders nothing for
+        // the default anonymous/noop session.
+        { apiClient: mockApi, sessionAdapter: createAuthenticatedSessionAdapter() },
       );
 
       await advanceToStep2();
-      expect(screen.getByRole('button', { name: /suggest with ai/i })).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: /suggest with ai/i })).toBeInTheDocument();
     });
 
     // Note: this test does not assert the `shouldDirty: true` flag that the
@@ -1506,6 +1509,43 @@ describe('AllegroCreateOfferWizard', () => {
         within(resolvedRow as HTMLElement).getByRole('button', { name: /^select$/i }),
       ).toBeInTheDocument();
       expect(screen.queryByText(/Matched from/i)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('demo read-only viewer (#1663)', () => {
+    it('reaches the Review step with every field editable but disables the final Create offer submit', async () => {
+      const createOffer = vi.fn();
+      const mockApi = defaultMocks({
+        listings: { createOffer, getSellerPolicies: vi.fn().mockResolvedValue(policies) },
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      });
+
+      renderWithProviders(
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await advanceToStep2();
+      await pickFirstLeafCategory();
+      fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
+      fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+      await advanceThroughEmptyParameters();
+
+      const deliverySelect = await screen.findByLabelText(/delivery policy/i);
+      fireEvent.change(deliverySelect, { target: { value: 'del-1' } });
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+      // Review step reached — the wizard was fully walkable in demo mode.
+      const submitButton = await screen.findByRole('button', { name: /create offer/i });
+      expect(submitButton).toBeDisabled();
+
+      fireEvent.click(submitButton);
+      expect(createOffer).not.toHaveBeenCalled();
     });
   });
 });

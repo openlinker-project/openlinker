@@ -28,13 +28,12 @@
  * `timestamp.body`). The two are incompatible, so end-to-end inbound
  * authentication requires a WooCommerce-specific `InboundWebhookDecoderPort`
  * (the ADR-021 seam, exactly like `ErliInboundWebhookDecoderAdapter`) that
- * verifies the base64 signature and omits the replay-timestamp. That decoder is
- * a scoped follow-up (tracked in #1563); this adapter provisions the store side
- * so the decoder can verify against the same rotated secret when it lands. Until
- * then the `WooCommerceOrderSourceAdapter` poll remains the reconciliation
- * backstop, and inbound deliveries fail host signature verification (WooCommerce
- * may auto-disable the store-side webhook after repeated failures — re-run
- * install once #1563 ships).
+ * verifies the base64 signature and omits the replay-timestamp. That decoder
+ * ships as `WooCommerceInboundWebhookDecoderAdapter` (#1563), registered by the
+ * plugin against the `woocommerce` provider key; it verifies against the same
+ * rotated secret this adapter hands to WooCommerce, so store-side deliveries
+ * authenticate end-to-end. The `WooCommerceOrderSourceAdapter` poll remains the
+ * reconciliation backstop.
  *
  * TEST PING: WooCommerce has no synchronous, verifiable test-ping round-trip
  * (its own "ping" on webhook creation is delivered asynchronously and cannot be

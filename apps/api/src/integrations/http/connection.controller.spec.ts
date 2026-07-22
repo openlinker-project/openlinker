@@ -22,11 +22,16 @@ import {
 import type { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import type { AuthenticatedUser } from '../../auth/auth.types';
+import {
+  DEMO_MODE_SERVICE_TOKEN,
+  type IDemoModeService,
+} from '../../auth/demo-mode.service.interface';
 
 describe('ConnectionController', () => {
   let controller: ConnectionController;
   let service: jest.Mocked<ConnectionService>;
   let syncJobRepository: jest.Mocked<SyncJobRepositoryPort>;
+  let demoModeService: jest.Mocked<IDemoModeService>;
 
   const mockConnection = new Connection(
     'connection-123',
@@ -88,6 +93,7 @@ describe('ConnectionController', () => {
       markDead: jest.fn(),
       requeueStuckJobs: jest.fn(),
       requeueDeadJob: jest.fn(),
+      requeueDeadByIdempotencyKey: jest.fn(),
       findRecentByConnectionId: jest.fn(),
       findGroupedByStatus: jest.fn(),
       requeueDeadJobsInGroup: jest.fn(),
@@ -118,12 +124,17 @@ describe('ConnectionController', () => {
           provide: WEBHOOK_SECRET_SERVICE_TOKEN,
           useValue: { rotate: jest.fn().mockResolvedValue({ secret: 'deadbeef' }) },
         },
+        {
+          provide: DEMO_MODE_SERVICE_TOKEN,
+          useValue: { isDemoModeEnabled: jest.fn().mockReturnValue(false) },
+        },
       ],
     }).compile();
 
     controller = module.get<ConnectionController>(ConnectionController);
     service = module.get(ConnectionService);
     syncJobRepository = module.get(SYNC_JOB_REPOSITORY_TOKEN);
+    demoModeService = module.get(DEMO_MODE_SERVICE_TOKEN);
   });
 
   describe('create', () => {
@@ -177,6 +188,45 @@ describe('ConnectionController', () => {
       expect(result).toBeInstanceOf(ConnectionResponseDto);
       expect(result.id).toBe('connection-123');
       expect(service.get).toHaveBeenCalledWith('connection-123');
+    });
+
+    it('should return real config for a viewer when demo mode is enabled (#1616)', async () => {
+      demoModeService.isDemoModeEnabled.mockReturnValue(true);
+      service.get.mockResolvedValue(mockConnection);
+
+      const result = await controller.get('connection-123', {
+        id: 'user-2',
+        username: 'demo-viewer',
+        role: 'viewer',
+      });
+
+      expect(result.config).toEqual({ baseUrl: 'https://example.com' });
+    });
+
+    it('should keep config blanked for a production viewer when demo mode is disabled (#1124)', async () => {
+      demoModeService.isDemoModeEnabled.mockReturnValue(false);
+      service.get.mockResolvedValue(mockConnection);
+
+      const result = await controller.get('connection-123', {
+        id: 'user-2',
+        username: 'viewer',
+        role: 'viewer',
+      });
+
+      expect(result.config).toEqual({});
+    });
+
+    it('should keep config blanked for an operator even when demo mode is enabled (#1124)', async () => {
+      demoModeService.isDemoModeEnabled.mockReturnValue(true);
+      service.get.mockResolvedValue(mockConnection);
+
+      const result = await controller.get('connection-123', {
+        id: 'user-2',
+        username: 'operator',
+        role: 'operator',
+      });
+
+      expect(result.config).toEqual({});
     });
   });
 

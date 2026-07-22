@@ -11,7 +11,7 @@ import { Controller, Get, Inject } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator';
 import { SYSTEM_SERVICE_TOKEN, type ISystemService } from './system.service.interface';
-import { SystemConfigDto } from './dto/system-config.dto';
+import type { SystemConfigDto } from './dto/system-config.dto';
 
 @ApiTags('System')
 @Controller('system')
@@ -24,7 +24,7 @@ export class SystemController {
   @Get('config')
   @Public()
   @ApiOperation({ summary: 'Get server-driven runtime configuration' })
-  getConfig(): SystemConfigDto {
+  async getConfig(): Promise<SystemConfigDto> {
     return this.systemService.getConfig();
   }
 }

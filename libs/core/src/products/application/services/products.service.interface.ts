@@ -13,6 +13,7 @@ import type {
   ProductListFilters,
   ProductVariantListFilters,
   ProductPagination,
+  ProductListSort,
   PaginatedProducts,
   PaginatedProductVariants,
 } from '../../domain/types/product.types';
@@ -90,12 +91,23 @@ export interface IProductsService {
   ): Promise<ProductVariant[]>;
 
   /**
-   * List products with optional filters and pagination
+   * List products with optional filters, pagination, and sort (#1720).
+   * Omitting `sort` preserves the historical default ordering
+   * (createdAt DESC).
    */
   listProducts(
     filters: ProductListFilters,
-    pagination: ProductPagination
+    pagination: ProductPagination,
+    sort?: ProductListSort
   ): Promise<PaginatedProducts>;
+
+  /**
+   * Count variants per product for the given product IDs (#1720 - list-page
+   * display enrichment). Returns a Map<productId, count>; products with zero
+   * variants are omitted. Empty input returns an empty Map without a DB
+   * round-trip.
+   */
+  getVariantCountsByProductIds(productIds: readonly string[]): Promise<Map<string, number>>;
 
   /**
    * List product variants with optional filters and pagination
@@ -104,4 +116,13 @@ export interface IProductsService {
     filters: ProductVariantListFilters,
     pagination: ProductPagination
   ): Promise<PaginatedProductVariants>;
+
+  /**
+   * Soft-mark every live variant of `productId` NOT in `keepVariantIds` as
+   * stale — deleted at the master (#1599). An empty keep-set marks all live
+   * variants (product fully removed / 404). Returns the ids newly flipped so
+   * the caller can emit a master-deletion event. Un-staling happens implicitly
+   * on the next successful upsert of a reappearing variant.
+   */
+  markVariantsStaleExcept(productId: string, keepVariantIds: readonly string[]): Promise<string[]>;
 }

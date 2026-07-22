@@ -51,14 +51,19 @@ const lazyRoutes = collectLazyRoutes([
  * the parameterized test below is meant to catch.
  *
  * Today's breakdown (49 total):
- *   - 36 authenticated children (under `coreChildren`, counting per-children-node
- *     because grouped routes like orders/customers/inventory expose multiple
+ *   - 34 authenticated children (under `coreChildren`, counting per-children-node
+ *     because grouped routes like orders/customers expose multiple
  *     lazy nodes — includes `/dev/ui` design-system page (#775), `/shipments` (#770),
- *     `/users` user-management page (#1125), and `/invoices/:invoiceId` detail (#1240))
- *   - 3 guest routes (forgot-password, reset-password, register — login stays eager)
- *   - 10 plugin routes (allegro callback + setup, prestashop setup, dpd setup,
- *     woocommerce setup, erli setup, subiekt setup (#1199), ksef setup, inpost setup,
- *     infakt setup (#1282))
+ *     `/users` user-management page (#1125), and `/invoices/:invoiceId` detail (#1240);
+ *     the former `/inventory/:id` detail route was removed (#1305/#1609) once
+ *     `product-detail-page.tsx` subsumed per-item stock detail, and the
+ *     `/inventory` list route was removed (#1720) when the products cockpit
+ *     absorbed cross-catalog stock browsing)
+ *   - 4 guest routes (forgot-password, reset-password, register, confirm-email (#1624)
+ *     — login stays eager)
+ *   - 11 plugin routes (allegro callback + setup, prestashop setup, dpd setup,
+ *     woocommerce setup, erli setup, subiekt setup (#1199), ksef setup, ksef
+ *     invoice numbering (#1577), inpost setup, infakt setup (#1282))
  *
  * Routes that are intentionally eager (no page module to defer):
  *   - login (first-paint optimization — see `login.route.tsx`)

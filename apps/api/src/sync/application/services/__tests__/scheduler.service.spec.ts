@@ -98,6 +98,8 @@ describe('SchedulerService', () => {
         'OL_PRODUCT_SYNC_CRON',
         'OL_PICKUP_POINT_REFRESH_CRON',
         'OL_REGULATORY_RECONCILE_CRON',
+        'OL_OFFLINE_RESUBMIT_CRON',
+        'OL_PENDING_RECOVERY_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';
@@ -172,9 +174,40 @@ describe('SchedulerService', () => {
       expect(registeredJobs.sort()).toEqual([
         'master-inventory-sync',
         'master-product-sync',
+        'offline-resubmit',
+        'pending-recovery',
         'pickup-point-refresh',
         'regulatory-status-reconcile',
       ]);
+    });
+
+    it('should NOT register the offline-resubmit task by default - it is opt-in (#1585 B1)', () => {
+      // Honour the descriptor default when the env var is unset (defaultConfigGet
+      // otherwise hardcodes 'true' for every enable key).
+      configService.get.mockImplementation((key: string, defaultValue?: unknown) => {
+        if (key === 'OL_OFFLINE_RESUBMIT_ENABLED') return defaultValue;
+        return defaultConfigGet(key, defaultValue);
+      });
+
+      service.onApplicationBootstrap();
+
+      const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
+      expect(registeredJobs).not.toContain('offline-resubmit');
+      // The always-on invoicing sweeps still register.
+      expect(registeredJobs).toContain('pending-recovery');
+      expect(registeredJobs).toContain('regulatory-status-reconcile');
+    });
+
+    it('should register the offline-resubmit task when explicitly enabled (#1585 B1)', () => {
+      configService.get.mockImplementation((key: string, defaultValue?: unknown) => {
+        if (key === 'OL_OFFLINE_RESUBMIT_ENABLED') return 'true';
+        return defaultConfigGet(key, defaultValue);
+      });
+
+      service.onApplicationBootstrap();
+
+      const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
+      expect(registeredJobs).toContain('offline-resubmit');
     });
 
     it('should skip a registry-contributed task whose enabledEnvVar resolves to false', () => {
@@ -357,6 +390,8 @@ describe('SchedulerService', () => {
         'OL_PRODUCT_SYNC_CRON',
         'OL_PICKUP_POINT_REFRESH_CRON',
         'OL_REGULATORY_RECONCILE_CRON',
+        'OL_OFFLINE_RESUBMIT_CRON',
+        'OL_PENDING_RECOVERY_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';

@@ -25,6 +25,18 @@ export { ProductVariantRepositoryPort } from './domain/ports/product-variant-rep
 export { Product } from './domain/entities/product.entity';
 export { ProductVariant } from './domain/entities/product-variant.entity';
 
+// Domain Exceptions
+export { MasterProductNotFoundError } from './domain/exceptions/master-product-not-found.error';
+
+// Master-deletion event contract (#1599)
+export {
+  MASTER_DELETION_EVENT_STREAM,
+  MASTER_VARIANT_STALE_EVENT,
+  MASTER_PRODUCT_STALE_EVENT,
+  MASTER_DELETION_EVENT_SCHEMA_VERSION,
+  MasterDeletionEventPayload,
+} from './domain/types/master-deletion-events.types';
+
 // Domain Utils
 export { normalizeBarcode, normalizeToEan13 } from './domain/utils/barcode-normalization';
 export { coverImageUrl } from './domain/utils/product-cover-image';
@@ -51,6 +63,14 @@ export {
   ProductPagination,
   PaginatedProducts,
   PaginatedProductVariants,
+  ProductStockFilter,
+  ProductStockFilterValues,
+  ProductListSortField,
+  ProductListSortFieldValues,
+  ProductListSortDirection,
+  ProductListSortDirectionValues,
+  ProductListSort,
+  LOW_STOCK_THRESHOLD,
 } from './domain/types/product.types';
 
 // ORM entities are exposed on the host-only `@openlinker/core/products/orm-entities`

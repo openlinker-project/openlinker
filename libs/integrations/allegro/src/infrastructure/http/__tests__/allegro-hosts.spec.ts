@@ -5,7 +5,11 @@
  * here rather than silently shipping to one environment, and asserts the
  * unknown-environment defaults stay aligned between the two resolvers.
  */
-import { getAllegroWebBaseUrl, getAllegroRestApiBaseUrl } from '../allegro-hosts';
+import {
+  getAllegroWebBaseUrl,
+  getAllegroRestApiBaseUrl,
+  getAllegroSalesCenterOrderUrl,
+} from '../allegro-hosts';
 
 describe('allegro-hosts', () => {
   describe('getAllegroWebBaseUrl', () => {
@@ -41,5 +45,25 @@ describe('allegro-hosts', () => {
     // environment while resolving REST calls against another.
     expect(getAllegroWebBaseUrl('???')).toContain('allegrosandbox.pl');
     expect(getAllegroRestApiBaseUrl('???')).toContain('allegrosandbox.pl');
+  });
+
+  describe('getAllegroSalesCenterOrderUrl (#1713)', () => {
+    it('should build a production Sales Center order URL', () => {
+      expect(getAllegroSalesCenterOrderUrl('production', 'abc-123')).toBe(
+        'https://salescenter.allegro.pl/orders/abc-123',
+      );
+    });
+
+    it('should build a sandbox URL for the sandbox environment', () => {
+      expect(getAllegroSalesCenterOrderUrl('sandbox', 'abc-123')).toBe(
+        'https://salescenter.allegro.pl.allegrosandbox.pl/orders/abc-123',
+      );
+    });
+
+    it('should default to sandbox for an absent/unknown environment', () => {
+      expect(getAllegroSalesCenterOrderUrl('', 'abc-123')).toBe(
+        'https://salescenter.allegro.pl.allegrosandbox.pl/orders/abc-123',
+      );
+    });
   });
 });

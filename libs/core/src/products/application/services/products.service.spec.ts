@@ -57,12 +57,14 @@ describe('ProductsService', () => {
   const mockVariantRepo: jest.Mocked<ProductVariantRepositoryPort> = {
     findById: jest.fn(),
     findByProductId: jest.fn(),
+    countByProductIds: jest.fn(),
     findBySku: jest.fn(),
     findBySkuIn: jest.fn(),
     findByEanOrGtinIn: jest.fn(),
     upsert: jest.fn(),
     upsertMany: jest.fn(),
     findMany: jest.fn(),
+    markStaleExceptVariants: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -191,7 +193,7 @@ describe('ProductsService', () => {
 
       expect(result.items).toHaveLength(2);
       expect(result.total).toBe(2);
-      expect(productRepo.findMany).toHaveBeenCalledWith({}, { limit: 20, offset: 0 });
+      expect(productRepo.findMany).toHaveBeenCalledWith({}, { limit: 20, offset: 0 }, undefined);
     });
 
     it('should pass search filter to repository', async () => {
@@ -201,8 +203,55 @@ describe('ProductsService', () => {
 
       expect(productRepo.findMany).toHaveBeenCalledWith(
         { search: 'shirt' },
-        { limit: 10, offset: 5 }
+        { limit: 10, offset: 5 },
+        undefined
       );
+    });
+
+    it('should pass stock/unlisted/source filters and sort through to the repository (#1720)', async () => {
+      productRepo.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await service.listProducts(
+        {
+          stock: 'low',
+          unlistedOnConnectionIds: ['conn-1', 'conn-2'],
+          sourceConnectionId: 'conn-src',
+        },
+        { limit: 20, offset: 0 },
+        { field: 'stock', dir: 'asc' }
+      );
+
+      expect(productRepo.findMany).toHaveBeenCalledWith(
+        {
+          stock: 'low',
+          unlistedOnConnectionIds: ['conn-1', 'conn-2'],
+          sourceConnectionId: 'conn-src',
+        },
+        { limit: 20, offset: 0 },
+        { field: 'stock', dir: 'asc' }
+      );
+    });
+  });
+
+  describe('getVariantCountsByProductIds (#1720)', () => {
+    it('should return an empty Map on empty input without hitting the repository', async () => {
+      const result = await service.getVariantCountsByProductIds([]);
+
+      expect(result).toEqual(new Map());
+      expect(variantRepo.countByProductIds).not.toHaveBeenCalled();
+    });
+
+    it('should delegate to the variant repository and return its Map verbatim', async () => {
+      const counts = new Map([
+        ['ol_product_1', 3],
+        ['ol_product_2', 1],
+      ]);
+      variantRepo.countByProductIds.mockResolvedValue(counts);
+
+      const result = await service.getVariantCountsByProductIds(['ol_product_1', 'ol_product_2']);
+
+      expect(variantRepo.countByProductIds).toHaveBeenCalledWith(['ol_product_1', 'ol_product_2']);
+      expect(result).toBe(counts);
     });
   });
 
@@ -233,6 +282,19 @@ describe('ProductsService', () => {
         { search: '1234567890123' },
         { limit: 20, offset: 0 }
       );
+    });
+  });
+
+  describe('markVariantsStaleExcept', () => {
+    it('delegates to the repository and returns the flagged variant ids (#1599)', async () => {
+      variantRepo.markStaleExceptVariants.mockResolvedValue(['ol_variant_gone']);
+
+      const marked = await service.markVariantsStaleExcept('ol_product_1', ['ol_variant_keep']);
+
+      expect(variantRepo.markStaleExceptVariants).toHaveBeenCalledWith('ol_product_1', [
+        'ol_variant_keep',
+      ]);
+      expect(marked).toEqual(['ol_variant_gone']);
     });
   });
 });

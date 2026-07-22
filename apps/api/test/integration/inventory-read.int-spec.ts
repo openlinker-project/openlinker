@@ -3,7 +3,9 @@
  *
  * Vertical slice tests for the inventory read API:
  * GET /inventory — list with pagination and filters
- * GET /inventory/:id — detail view
+ *
+ * (The `GET /inventory/:id` detail endpoint was removed as dead code in #1720;
+ * its tests were dropped with it.)
  *
  * Uses real Postgres via Testcontainers.
  *
@@ -183,40 +185,6 @@ describe('Inventory Read API Integration', () => {
       const body = response.body.items.find((row: { id: string }) => row.id === item.id);
       expect(body).toBeDefined();
       expect(body.productImageUrl).toBeNull();
-    });
-  });
-
-  describe('GET /inventory/:id', () => {
-    it('should return inventory item detail by id', async () => {
-      const http = harness.getHttp();
-      const dataSource = harness.getDataSource();
-      const token = await loginAsAdmin(http, dataSource);
-
-      const item = await createTestInventoryItem(dataSource, { availableQuantity: 7 });
-
-      const response = await http
-        .get(`/v1/inventory/${item.id}`)
-        .set('Authorization', `Bearer ${token}`)
-        .expect(200);
-
-      expect(response.body.id).toBe(item.id);
-      expect(response.body.availableQuantity).toBe(7);
-    });
-
-    it('should return 404 for non-existent inventory item', async () => {
-      const http = harness.getHttp();
-      const dataSource = harness.getDataSource();
-      const token = await loginAsAdmin(http, dataSource);
-
-      await http
-        .get('/v1/inventory/ol_inventory_nonexistent')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(404);
-    });
-
-    it('should return 401 without token', async () => {
-      const http = harness.getHttp();
-      await http.get('/v1/inventory/ol_inventory_nonexistent').expect(401);
     });
   });
 });

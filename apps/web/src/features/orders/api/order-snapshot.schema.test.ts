@@ -227,4 +227,42 @@ describe('parseOrderSnapshot', () => {
     expect(parsed.items[0]?.id).toBe('i1');
     expect(parsed.parseWarnings).toHaveLength(0);
   });
+
+  it('parses the invoice projection when present, warns on a malformed one (#1713)', () => {
+    const parsed = parseOrderSnapshot({
+      invoice: {
+        invoiceId: 'rec-1',
+        status: 'issued',
+        regulatoryStatus: 'accepted',
+        clearanceReference: 'KSEF-123',
+        confirmationDocumentAvailable: true,
+      },
+    });
+    expect(parsed.invoice).toEqual({
+      invoiceId: 'rec-1',
+      status: 'issued',
+      regulatoryStatus: 'accepted',
+      clearanceReference: 'KSEF-123',
+      confirmationDocumentAvailable: true,
+    });
+
+    expect(parseOrderSnapshot({}).invoice).toBeUndefined();
+
+    // A malformed invoice sub-tree is dropped with a warning, never crashes.
+    const bad = parseOrderSnapshot({ invoice: { invoiceId: 'x', status: 'bogus' } });
+    expect(bad.invoice).toBeUndefined();
+    expect(bad.parseWarnings.some((w) => w.field === 'invoice')).toBe(true);
+  });
+
+  it('reads the source deep link when present and omits it otherwise (#1713)', () => {
+    const withUrl = parseOrderSnapshot({
+      sourceExternalUrl: 'https://salescenter.allegro.pl/orders/abc',
+    });
+    expect(withUrl.sourceExternalUrl).toBe('https://salescenter.allegro.pl/orders/abc');
+
+    expect(parseOrderSnapshot({}).sourceExternalUrl).toBeUndefined();
+    // A non-string / empty value is treated as absent, never crashes.
+    expect(parseOrderSnapshot({ sourceExternalUrl: '' }).sourceExternalUrl).toBeUndefined();
+    expect(parseOrderSnapshot({ sourceExternalUrl: 42 }).sourceExternalUrl).toBeUndefined();
+  });
 });

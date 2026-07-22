@@ -1,157 +1,54 @@
-import { useCallback, type ReactElement } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useCallback, useMemo, useState, type ReactElement, type ReactNode } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
-import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
-import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
+import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { EntityLabel } from '../../shared/ui/entity-label';
-import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
+import { KpiCard, type KpiCardTone } from '../../shared/ui/kpi-card';
+import { StatusBadge } from '../../shared/ui/status-badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { ContentEditor } from '../../features/content/components/content-editor';
 import { useProductQuery } from '../../features/products/hooks/use-product-query';
-import { ExternalIdsList } from '../../features/products/components/ExternalIdsList';
+import { ProductGallery } from '../../features/products/components/product-gallery';
+import { ProductSourceSection } from '../../features/products/components/product-source-section';
 import { useInventoryQuery } from '../../features/inventory/hooks/use-inventory-query';
-import type { ProductVariant } from '../../features/products/api/products.types';
-import type { InventoryItem } from '../../features/inventory/api/inventory.types';
+import { useConnectionsQuery, type Connection } from '../../features/connections';
+import { useWriteAccess } from '../../shared/auth/use-permission';
+import { useDemoMode } from '../../features/system';
+import { VariantStockTable } from './variant-stock-table';
+import { MarketplacePickerModal } from './marketplace-picker-modal';
+import {
+  DEFAULT_LOW_STOCK_THRESHOLD,
+  deriveStockStatus,
+  STOCK_STATUS_BADGE_TONE,
+  STOCK_STATUS_LABEL,
+} from './product-stock-status';
 
 const VIEW_PARAM = 'view';
 const VIEW_OVERVIEW = 'overview';
 const VIEW_CONTENT = 'content';
 
-function buildProductItems(product: {
-  id: string;
-  sku: string | null;
-  price: number | null;
-  createdAt: string;
-  updatedAt: string;
-  description?: string | null;
-}): KeyValueItem[] {
-  const items: KeyValueItem[] = [
-    { id: 'productId', label: 'Product ID', value: product.id, mono: true },
-    {
-      id: 'sku',
-      label: 'SKU',
-      value: product.sku ?? <span className="text-muted">—</span>,
-      mono: Boolean(product.sku),
-    },
-    {
-      id: 'price',
-      label: 'Price',
-      value:
-        product.price !== null ? product.price.toFixed(2) : <span className="text-muted">—</span>,
-    },
-    { id: 'createdAt', label: 'Created', value: <TimeDisplay iso={product.createdAt} /> },
-    { id: 'updatedAt', label: 'Updated', value: <TimeDisplay iso={product.updatedAt} /> },
-  ];
-  if (product.description) {
-    items.push({ id: 'description', label: 'Description', value: product.description });
+function formatPrice(price: number | null, currency: string | null): ReactNode {
+  if (price === null) {
+    return <span className="text-muted">—</span>;
   }
-  return items;
+  if (currency) {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(price);
+  }
+  return (
+    <span className="text-muted" title="Currency unknown">
+      {price.toFixed(2)}
+    </span>
+  );
 }
 
-const STOCK_COLUMNS: DataTableColumn<InventoryItem>[] = [
-  {
-    id: 'productVariantId',
-    header: 'Variant ID',
-    cell: (item) =>
-      item.productVariantId ? (
-        <span className="mono-text">{item.productVariantId}</span>
-      ) : (
-        <span className="text-muted">—</span>
-      ),
-  },
-  {
-    id: 'availableQuantity',
-    header: 'Available',
-    align: 'right',
-    cell: (item) => item.availableQuantity,
-  },
-  {
-    id: 'reservedQuantity',
-    header: 'Reserved',
-    align: 'right',
-    cell: (item) =>
-      item.reservedQuantity > 0 ? (
-        item.reservedQuantity
-      ) : (
-        <span className="text-muted">0</span>
-      ),
-  },
-  {
-    id: 'locationId',
-    header: 'Location',
-    cell: (item) =>
-      item.locationId ? (
-        <span className="mono-text">{item.locationId}</span>
-      ) : (
-        <span className="text-muted">default</span>
-      ),
-  },
-];
-
-const VARIANT_COLUMNS: DataTableColumn<ProductVariant>[] = [
-  {
-    id: 'sku',
-    header: 'SKU',
-    cell: (v) =>
-      v.sku ? (
-        <span className="mono-text">{v.sku}</span>
-      ) : (
-        <span className="text-muted">—</span>
-      ),
-  },
-  {
-    id: 'ean',
-    header: 'EAN',
-    cell: (v) =>
-      v.ean ? (
-        <span className="mono-text">{v.ean}</span>
-      ) : (
-        <span className="text-muted">—</span>
-      ),
-  },
-  {
-    id: 'gtin',
-    header: 'GTIN',
-    cell: (v) =>
-      v.gtin ? (
-        <span className="mono-text">{v.gtin}</span>
-      ) : (
-        <span className="text-muted">—</span>
-      ),
-  },
-  {
-    id: 'attributes',
-    header: 'Attributes',
-    cell: (v) => {
-      if (!v.attributes || Object.keys(v.attributes).length === 0) {
-        return <span className="text-muted">—</span>;
-      }
-      return (
-        <span className="mono-text">
-          {Object.entries(v.attributes)
-            .map(([key, val]) => `${key}: ${String(val)}`)
-            .join(', ')}
-        </span>
-      );
-    },
-  },
-  {
-    id: 'externalIds',
-    header: 'External IDs',
-    cell: (v) => {
-      if (!v.externalIds || v.externalIds.length === 0) {
-        return <span className="text-muted">—</span>;
-      }
-      return (
-        <span className="mono-text">
-          {v.externalIds.map((e) => `${e.platformType}:${e.externalId}`).join(', ')}
-        </span>
-      );
-    },
-  },
-];
+function deriveAvailableTone(totalAvailable: number, oversoldCount: number): KpiCardTone {
+  if (totalAvailable <= 0) return 'error';
+  if (oversoldCount > 0) return 'warning';
+  if (totalAvailable <= DEFAULT_LOW_STOCK_THRESHOLD) return 'warning';
+  return 'success';
+}
 
 export function ProductDetailPage(): ReactElement {
   const { id = '' } = useParams<{ id: string }>();
@@ -172,6 +69,43 @@ export function ProductDetailPage(): ReactElement {
     },
     [searchParams, setSearchParams],
   );
+
+  const [listingsCounts, setListingsCounts] = useState<Record<string, number>>({});
+  const handleListingsCount = useCallback((variantId: string, count: number) => {
+    setListingsCounts((prev) => (prev[variantId] === count ? prev : { ...prev, [variantId]: count }));
+  }, []);
+
+  // Create-offer launch (mirrors products-list-page #1096): target connections
+  // by the OfferCreator capability — never a literal platformType. The CTA is
+  // gated on `listings:write` (demo viewers see it and hit the gated confirm).
+  const navigate = useNavigate();
+  const connectionsQuery = useConnectionsQuery();
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('listings:write', demoMode);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const offerCreatorConnections = useMemo<Connection[]>(
+    () =>
+      (connectionsQuery.data ?? [])
+        .filter((c) => c.status === 'active' && c.supportedCapabilities?.includes('OfferCreator'))
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [connectionsQuery.data],
+  );
+  const goToWizard = useCallback(
+    (connectionId?: string): void => {
+      const params = new URLSearchParams({ productIds: id });
+      if (connectionId) params.set('connectionId', connectionId);
+      void navigate(`/listings/bulk-create/wizard?${params.toString()}`);
+    },
+    [id, navigate],
+  );
+  const handleCreateOffers = useCallback((): void => {
+    if (offerCreatorConnections.length === 1) {
+      goToWizard(offerCreatorConnections[0]!.id);
+    } else if (offerCreatorConnections.length > 1) {
+      setPickerOpen(true);
+    }
+  }, [offerCreatorConnections, goToWizard]);
 
   if (query.isLoading) {
     return (
@@ -196,6 +130,27 @@ export function ProductDetailPage(): ReactElement {
   }
 
   const product = query.data;
+  const variants = product.variants ?? [];
+  const inventoryItems = inventoryQuery.data?.items ?? [];
+
+  const stockByVariant = new Map(
+    inventoryItems.filter((item) => item.productVariantId !== null).map((item) => [item.productVariantId as string, item]),
+  );
+
+  const totalAvailable = inventoryItems.reduce((sum, item) => sum + item.availableQuantity, 0);
+  const oversoldCount = inventoryItems.filter((item) => item.availableQuantity < 0).length;
+  const availableTone = deriveAvailableTone(totalAvailable, oversoldCount);
+  const stockStatus = deriveStockStatus(totalAvailable);
+
+  const totalListings = variants.reduce(
+    (sum, variant) => sum + (listingsCounts[variant.id] ?? 0),
+    0,
+  );
+
+  const latestStockSync = inventoryItems.reduce<string | null>((latest, item) => {
+    if (!latest || item.updatedAt > latest) return item.updatedAt;
+    return latest;
+  }, null);
 
   return (
     <PageLayout
@@ -210,37 +165,110 @@ export function ProductDetailPage(): ReactElement {
         </TabsList>
 
         <TabsContent value={VIEW_OVERVIEW}>
-          {/* Product metadata */}
-          <section className="detail-section">
-            <KeyValueList items={buildProductItems(product)} />
+          <section className="product-detail-hero" aria-label="Product summary">
+            <ProductGallery images={product.images ?? []} name={product.name} />
+            <div className="product-detail-hero__body">
+              <div className="product-detail-hero__title-row">
+                <h3 className="product-detail-hero__title">{product.name}</h3>
+                <div className="product-detail-hero__badges">
+                  <StatusBadge compact withDot tone={STOCK_STATUS_BADGE_TONE[stockStatus]}>
+                    {STOCK_STATUS_LABEL[stockStatus]}
+                  </StatusBadge>
+                  <StatusBadge compact tone="neutral">
+                    {variants.length} variant{variants.length === 1 ? '' : 's'}
+                  </StatusBadge>
+                  <StatusBadge compact tone="info">
+                    {totalListings} listing{totalListings === 1 ? '' : 's'}
+                  </StatusBadge>
+                </div>
+              </div>
+              <code className="product-detail-hero__id mono-text" title={product.id}>
+                {product.id}
+              </code>
+              <div className="product-detail-hero__facts">
+                <span className="product-detail-hero__fact">
+                  <span className="product-detail-hero__fact-label">SKU</span>
+                  {product.sku ? (
+                    <span className="mono-text">{product.sku}</span>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
+                </span>
+                <span className="product-detail-hero__fact">
+                  <span className="product-detail-hero__fact-label">Created</span>
+                  <TimeDisplay className="mono-text tabular" iso={product.createdAt} />
+                </span>
+                <span className="product-detail-hero__fact">
+                  <span className="product-detail-hero__fact-label">Catalog updated</span>
+                  <TimeDisplay className="mono-text tabular" iso={product.updatedAt} />
+                </span>
+              </div>
+            </div>
           </section>
 
-          {/* External IDs */}
-          <section className="detail-section">
-            <h3 className="detail-section__title">External IDs</h3>
-            <ExternalIdsList mappings={product.externalIds ?? []} />
-          </section>
-
-          {/* Variants */}
-          <section className="detail-section">
-            <h3 className="detail-section__title">
-              Variants{product.variants ? ` (${product.variants.length})` : ''}
-            </h3>
-            {product.variants && product.variants.length > 0 ? (
-              <DataTable
-                caption="Product variants"
-                columns={VARIANT_COLUMNS}
-                rows={product.variants}
-                rowKey={(v) => v.id}
+          <section className="detail-section" aria-label="At a glance">
+            <h3 className="detail-section__title">At a glance</h3>
+            <div className="product-detail__kpi-row product-detail__kpi-row--cols-4">
+              <KpiCard label="Price" value={formatPrice(product.price, product.currency)} />
+              <KpiCard
+                label="Available"
+                tone={availableTone}
+                value={totalAvailable}
+                description={oversoldCount > 0 ? `${oversoldCount} oversold` : undefined}
               />
-            ) : (
-              <p className="text-muted">No variants found for this product.</p>
-            )}
+              <KpiCard label="Variants" value={variants.length} />
+              <KpiCard label="Listings" value={totalListings} />
+            </div>
           </section>
 
-          {/* Stock */}
+          <div className="product-detail__primary-grid--split">
+            <div className="product-detail__stack">
+              <section className="detail-section">
+                <div className="detail-section__title-row">
+                  <h3 className="detail-section__title">
+                    Description{' '}
+                    <StatusBadge tone="neutral" compact>
+                      Source · read-only
+                    </StatusBadge>
+                  </h3>
+                  <Link className="detail-section__edit-link" to="?view=content">
+                    Edit in Content →
+                  </Link>
+                </div>
+                {product.description ? (
+                  <p className="description-block">{product.description}</p>
+                ) : (
+                  <p className="text-muted">
+                    No description synced from the source. Draft and publish one per channel in the
+                    Content tab.
+                  </p>
+                )}
+              </section>
+            </div>
+
+            <div className="product-detail__stack">
+              <section className="detail-section">
+                <h3 className="detail-section__title">Source</h3>
+                <ProductSourceSection
+                  mappings={product.externalIds ?? []}
+                  connections={connectionsQuery.data ?? []}
+                />
+              </section>
+            </div>
+          </div>
+
           <section className="detail-section">
-            <h3 className="detail-section__title">Stock</h3>
+            <div className="detail-section__title-row">
+              <h3 className="detail-section__title">
+                Variants &amp; stock{variants.length > 0 ? ` (${variants.length})` : ''}
+              </h3>
+              {latestStockSync ? (
+                <span className="sync-freshness">
+                  <span className="sync-freshness__dot" aria-hidden="true"></span>
+                  Stock synced <TimeDisplay iso={latestStockSync} />
+                </span>
+              ) : null}
+            </div>
             {inventoryQuery.isLoading ? (
               <LoadingState
                 liveRegion="off"
@@ -255,19 +283,17 @@ export function ProductDetailPage(): ReactElement {
                   <Button onClick={() => { void inventoryQuery.refetch(); }}>Retry</Button>
                 }
               />
-            ) : (inventoryQuery.data?.items.length ?? 0) === 0 ? (
-              // No action: stock is sourced from the product master and not editable here.
-              <EmptyState
-                liveRegion="off"
-                title="No stock records"
-                message="No inventory records found for this product."
-              />
+            ) : variants.length === 0 ? (
+              <p className="text-muted">No variants found for this product.</p>
             ) : (
-              <DataTable
-                caption="Stock levels"
-                columns={STOCK_COLUMNS}
-                rows={inventoryQuery.data?.items ?? []}
-                rowKey={(item) => item.id}
+              <VariantStockTable
+                variants={variants}
+                stockByVariant={stockByVariant}
+                currency={product.currency}
+                connections={offerCreatorConnections}
+                canCreateOffers={write.visible}
+                onCreateOffers={handleCreateOffers}
+                onListingsCount={handleListingsCount}
               />
             )}
           </section>
@@ -277,6 +303,17 @@ export function ProductDetailPage(): ReactElement {
           <ContentEditor productId={product.id} />
         </TabsContent>
       </Tabs>
+
+      <MarketplacePickerModal
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        productCount={1}
+        connections={offerCreatorConnections}
+        onContinue={(connectionId) => {
+          setPickerOpen(false);
+          goToWizard(connectionId);
+        }}
+      />
     </PageLayout>
   );
 }

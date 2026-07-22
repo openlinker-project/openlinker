@@ -40,4 +40,21 @@ export class SyncJobsService implements ISyncJobsService {
       { runAfter: input.runAfter }
     );
   }
+
+  async requeueDeadByIdempotencyKey(idempotencyKey: string): Promise<boolean> {
+    // Single guarded UPDATE in the repo (#1585 S3): the status='dead' predicate is
+    // part of the write, so overlapping recovery runs cannot both observe `dead`
+    // and both requeue. Only a `dead` job needs re-driving; a queued/running one
+    // re-drives itself, and an absent key is a no-op (returns false).
+    //
+    // CROSS-ENTITY KEY COUPLING (#1585 S4): the caller (`PendingRecoveryService`)
+    // passes the INVOICE RECORD's `idempotencyKey` to re-drive its ISSUE sync job.
+    // This works only because the invoice record and its `invoicing.issue` job are
+    // created with the SAME key (both `invoice:{connectionId}:{orderId}` today).
+    // That equality is an implicit invariant spanning the invoicing and sync
+    // contexts: if either side's key format drifts, this re-drive silently no-ops
+    // (returns false), leaving the record `pending` (still claimable) rather than
+    // misbehaving - safe, but the coupling must be kept in lock-step.
+    return this.syncJobRepository.requeueDeadByIdempotencyKey(idempotencyKey);
+  }
 }

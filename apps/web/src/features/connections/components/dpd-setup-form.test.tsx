@@ -50,6 +50,18 @@ describe('DpdSetupForm', () => {
     expect(screen.queryByLabelText('Address')).toBeNull();
   });
 
+  it('shows the DPD COD currencies as read-only info on the account step (#1569)', () => {
+    const { container } = renderWithProviders(<DpdSetupForm />);
+
+    expect(screen.getByText('Supported COD currencies')).toBeInTheDocument();
+    const support = container.querySelector('.cod-currency-support') as HTMLElement;
+    expect(support).not.toBeNull();
+    expect(within(support).getByText('PLN')).toBeInTheDocument();
+    expect(within(support).getByText('EUR')).toBeInTheDocument();
+    expect(within(support).getByText('RON')).toBeInTheDocument();
+    expect(within(support).getByText('CZK')).toBeInTheDocument();
+  });
+
   it('advances to the sender-address step once the account step is valid', async () => {
     const { container } = renderWithProviders(<DpdSetupForm />);
     fillAccountStep(container, { name: 'DPD — main', login: 'ol_12345', password: 'secret', payerFid: '1495' });

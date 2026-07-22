@@ -10,7 +10,9 @@ import {
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
+  Fragment,
   useCallback,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -44,6 +46,55 @@ export interface DataTableCardView<Row> {
   meta?: (row: Row) => ReactNode;
   subtitle?: (row: Row) => ReactNode;
   title: (row: Row) => ReactNode;
+  /**
+   * Leading selection slot (e.g. a checkbox), rendered outside the card's
+   * navigation Link so toggling it never navigates. Keeps multi-select usable
+   * in the mobile card layout (#1620).
+   */
+  select?: (row: Row) => ReactNode;
+  /**
+   * Full field set for the card body — the mobile counterpart of the desktop
+   * expandable detail panel. Rendered below the meta row so a card shows every
+   * field without an expand step (#1620), unless `collapsibleDetail` is set.
+   */
+  detail?: (row: Row) => ReactNode;
+  /**
+   * Always-visible summary block rendered between the meta row and the detail
+   * (#1713) — the handful of facts worth showing before expanding. Distinct
+   * from `detail`, which carries the full long-form field set.
+   */
+  summary?: (row: Row) => ReactNode;
+  /**
+   * When true, `detail` is collapsed behind a "View full details" disclosure
+   * (#1713) instead of always rendered — so the card leads with `title` /
+   * `subtitle` / `meta` / `summary` and the long field set is opt-in. Defaults
+   * to false: existing consumers keep the always-expanded card body.
+   */
+  collapsibleDetail?: boolean;
+}
+
+/**
+ * Per-row expandable detail (#1620). When provided, the desktop table renders a
+ * leading toggle column; clicking a row (or its toggle) reveals `renderDetail`
+ * in an accordion panel beneath the row instead of navigating. Interactive
+ * elements inside the row (links, buttons, checkboxes) still short-circuit the
+ * toggle. Expandable takes precedence over `rowHref` for the row-level click.
+ *
+ * **Not supported together with `virtualize`.** The virtualizer forces every
+ * row to a fixed `estimateRowHeight`, which a variable-height detail panel
+ * would break. Rather than silently rendering a toggle that does nothing,
+ * `DataTable` disables virtualization (falls back to rendering every row) for
+ * as long as `expandable` is set, and logs a dev-only console warning so a
+ * future caller who reaches for both on the same table notices immediately
+ * instead of shipping a table whose expand affordance quietly does nothing.
+ * If a future table genuinely needs both at once, teach the virtualizer to
+ * measure dynamic row heights (e.g. `virtualizer.measureElement`) rather than
+ * re-enabling this combination as-is.
+ */
+export interface DataTableExpandable<Row> {
+  renderDetail: (row: Row) => ReactNode;
+  /** aria-label for the per-row toggle button. */
+  toggleLabel?: (row: Row, expanded: boolean) => string;
 }
 
 interface DataTableProps<Row> {
@@ -54,6 +105,8 @@ interface DataTableProps<Row> {
   /** Fixed scroll-container height when virtualize is enabled. Default 560. */
   containerHeight?: number;
   emptyState?: ReactNode;
+  /** Per-row expandable detail panel (desktop accordion). See {@link DataTableExpandable}. */
+  expandable?: DataTableExpandable<Row>;
   /** Per-row height estimate used by the virtualizer. Default 36. */
   estimateRowHeight?: number;
   /**
@@ -98,6 +151,7 @@ export function DataTable<Row>({
   columns,
   containerHeight = 560,
   emptyState,
+  expandable,
   estimateRowHeight = 36,
   manualSorting = false,
   onSortChange,
@@ -122,6 +176,20 @@ export function DataTable<Row>({
   const isMobile = useMediaQuery('(max-width: 767.98px)');
   const renderCards = Boolean(cardView) && isMobile;
 
+  // Expansion state (#1620) — keyed by `rowKey`, so it survives re-sorts and
+  // page-data churn as long as the same row stays present.
+  const [expandedKeys, setExpandedKeys] = useState<Set<Key>>(new Set());
+  const toggleExpanded = useCallback((key: Key): void => {
+    setExpandedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+  // Leading toggle column widens the desktop body/header/padding colSpans.
+  const columnCount = columns.length + (expandable ? 1 : 0);
+
   const table = useReactTable<Row>({
     data: rows,
     columns: defs,
@@ -134,9 +202,20 @@ export function DataTable<Row>({
     ...(manualSorting ? {} : { getSortedRowModel: getSortedRowModel() }),
   });
 
+  if (import.meta.env.DEV && expandable && virtualize) {
+    // eslint-disable-next-line no-console -- dev-only guard, see DataTableExpandable JSDoc
+    console.warn(
+      '[DataTable] `expandable` and `virtualize` were both provided; `virtualize` is ' +
+        'ignored while `expandable` is set (a variable-height detail row cannot live ' +
+        'inside a fixed-height virtualized row). See the DataTableExpandable JSDoc in ' +
+        'data-table.tsx.',
+    );
+  }
+
   const tableRows = table.getRowModel().rows;
   const isEmpty = tableRows.length === 0;
-  const virtualizeActive = virtualize && !renderCards && !isEmpty;
+  // `expandable` wins over `virtualize` — see the DataTableExpandable JSDoc.
+  const virtualizeActive = virtualize && !renderCards && !isEmpty && !expandable;
   const containerClasses = [
     'data-table__container',
     cardView ? 'data-table__container--with-cards' : '',
@@ -162,6 +241,15 @@ export function DataTable<Row>({
     [navigate],
   );
 
+  const makeRowExpandHandler = useCallback(
+    (key: Key) =>
+      (event: MouseEvent<HTMLTableRowElement>): void => {
+        if (shouldIgnoreRowClick(event)) return;
+        toggleExpanded(key);
+      },
+    [toggleExpanded],
+  );
+
   const virtualizer = useVirtualizer({
     count: virtualizeActive ? tableRows.length : 0,
     getScrollElement: () => scrollRef.current,
@@ -169,16 +257,54 @@ export function DataTable<Row>({
     overscan: 8,
   });
 
-  const renderBodyRow = (tanstackRow: TanStackRow<Row>, style?: CSSProperties): ReactElement => {
+  const renderBodyRow = (
+    tanstackRow: TanStackRow<Row>,
+    style?: CSSProperties,
+    withDetail = true,
+  ): ReactElement => {
     const row = tanstackRow.original;
+    const key = rowKey(row);
     const href = rowHref?.(row);
-    return (
-      <tr
-        key={rowKey(row)}
-        className={href ? 'data-table__row data-table__row--linked' : 'data-table__row'}
-        onClick={href ? makeRowClickHandler(href) : undefined}
-        style={style}
-      >
+    // Expandable takes precedence over rowHref for the row-level click.
+    const expanded = expandable ? expandedKeys.has(key) : false;
+    // Auto-link the first cell only in pure-navigation mode (no expand toggle).
+    const linkifyFirstCell = Boolean(href) && !expandable;
+    const rowClasses = [
+      'data-table__row',
+      expandable ? 'data-table__row--expandable' : href ? 'data-table__row--linked' : '',
+      expanded ? 'data-table__row--expanded' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const onClick = expandable
+      ? makeRowExpandHandler(key)
+      : href
+        ? makeRowClickHandler(href)
+        : undefined;
+
+    const bodyRow = (
+      <tr key={key} className={rowClasses} onClick={onClick} style={style}>
+        {expandable ? (
+          <td className="data-table__expand-cell">
+            <button
+              type="button"
+              className="data-table__expand-toggle"
+              aria-expanded={expanded}
+              aria-label={
+                expandable.toggleLabel?.(row, expanded) ??
+                (expanded ? 'Collapse row details' : 'Expand row details')
+              }
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleExpanded(key);
+              }}
+            >
+              <span className="data-table__expand-icon" aria-hidden="true">
+                {expanded ? '▾' : '▸'}
+              </span>
+            </button>
+          </td>
+        ) : null}
         {columns.map((column, index) => {
           const cellClasses = [
             column.align ? `data-table__cell--${column.align}` : '',
@@ -188,7 +314,7 @@ export function DataTable<Row>({
             .join(' ');
 
           const content =
-            href && index === 0 ? (
+            linkifyFirstCell && href && index === 0 ? (
               <Link to={href} className="data-table__row-link">
                 {column.cell(row)}
               </Link>
@@ -204,6 +330,21 @@ export function DataTable<Row>({
         })}
       </tr>
     );
+
+    if (!expandable || !withDetail) return bodyRow;
+
+    return (
+      <Fragment key={key}>
+        {bodyRow}
+        {expanded ? (
+          <tr className="data-table__detail-row">
+            <td className="data-table__detail-cell" colSpan={columnCount}>
+              <div className="data-table__detail">{expandable.renderDetail(row)}</div>
+            </td>
+          </tr>
+        ) : null}
+      </Fragment>
+    );
   };
 
   const renderTable = (): ReactElement => (
@@ -212,6 +353,11 @@ export function DataTable<Row>({
       <thead>
         {table.getHeaderGroups().map((headerGroup) => (
           <tr key={headerGroup.id}>
+            {expandable ? (
+              <th scope="col" className="data-table__expand-cell">
+                <span className="sr-only">Expand row</span>
+              </th>
+            ) : null}
             {headerGroup.headers.map((header) => {
               const column = columnById.get(header.column.id);
               const canSort = column?.sortable ?? false;
@@ -262,7 +408,7 @@ export function DataTable<Row>({
       <tbody>
         {isEmpty ? (
           <tr className="data-table__empty-row">
-            <td className="data-table__empty-cell" colSpan={columns.length}>
+            <td className="data-table__empty-cell" colSpan={columnCount}>
               {emptyNode}
             </td>
           </tr>
@@ -286,18 +432,21 @@ export function DataTable<Row>({
     if (paddingTop > 0) {
       rows.push(
         <tr key="__padding_top" aria-hidden="true" style={{ height: paddingTop }}>
-          <td colSpan={columns.length} />
+          <td colSpan={columnCount} />
         </tr>,
       );
     }
     for (const virtualItem of virtualItems) {
       const tanstackRow = tableRows[virtualItem.index];
-      rows.push(renderBodyRow(tanstackRow, { height: virtualItem.size }));
+      // This path only runs when `expandable` is absent (virtualizeActive is
+      // forced false while `expandable` is set — see the DataTableExpandable
+      // JSDoc), so `withDetail=false` here is defensive, not load-bearing.
+      rows.push(renderBodyRow(tanstackRow, { height: virtualItem.size }, false));
     }
     if (paddingBottom > 0) {
       rows.push(
         <tr key="__padding_bottom" aria-hidden="true" style={{ height: paddingBottom }}>
-          <td colSpan={columns.length} />
+          <td colSpan={columnCount} />
         </tr>,
       );
     }
@@ -344,41 +493,105 @@ export function DataTable<Row>({
             tableRows.map((tanstackRow) => {
               const row = tanstackRow.original;
               const href = rowHref?.(row);
-
-              const mainContent = (
-                <>
-                  <strong className="data-table__card-title">{cardView.title(row)}</strong>
-                  {cardView.subtitle ? (
-                    <span className="data-table__card-subtitle">{cardView.subtitle(row)}</span>
-                  ) : null}
-                </>
-              );
-
               return (
-                <li
+                <DataTableCard
                   key={rowKey(row)}
-                  className={
-                    href ? 'data-table__card data-table__card--linked' : 'data-table__card'
-                  }
+                  row={row}
+                  cardView={cardView}
+                  href={href}
                   onClick={href ? makeRowClickHandler(href) : undefined}
-                >
-                  {href ? (
-                    <Link to={href} className="data-table__card-main data-table__card-main--link">
-                      {mainContent}
-                    </Link>
-                  ) : (
-                    <div className="data-table__card-main">{mainContent}</div>
-                  )}
-                  {cardView.meta ? (
-                    <div className="data-table__card-meta">{cardView.meta(row)}</div>
-                  ) : null}
-                </li>
+                />
               );
             })
           )}
         </ul>
       ) : null}
     </div>
+  );
+}
+
+interface DataTableCardProps<Row> {
+  row: Row;
+  cardView: DataTableCardView<Row>;
+  href?: string;
+  onClick?: (event: MouseEvent<HTMLLIElement>) => void;
+}
+
+/**
+ * One mobile card (#1713). Holds its own `detailOpen` state so the full detail
+ * can collapse behind a "View full details" disclosure when
+ * `cardView.collapsibleDetail` is set; otherwise the detail renders inline as
+ * before. The always-visible `summary` sits between the meta row and the
+ * disclosure.
+ */
+function DataTableCard<Row>({
+  row,
+  cardView,
+  href,
+  onClick,
+}: DataTableCardProps<Row>): ReactElement {
+  const [detailOpen, setDetailOpen] = useState(false);
+  const detailId = useId();
+  const detail = cardView.detail;
+  const collapsible = cardView.collapsibleDetail ?? false;
+  const showDetail = detail !== undefined && (!collapsible || detailOpen);
+
+  const mainContent = (
+    <>
+      <strong className="data-table__card-title">{cardView.title(row)}</strong>
+      {cardView.subtitle ? (
+        <span className="data-table__card-subtitle">{cardView.subtitle(row)}</span>
+      ) : null}
+    </>
+  );
+
+  return (
+    <li
+      className={href ? 'data-table__card data-table__card--linked' : 'data-table__card'}
+      onClick={onClick}
+    >
+      <div className="data-table__card-head">
+        {cardView.select ? (
+          <div className="data-table__card-select">{cardView.select(row)}</div>
+        ) : null}
+        {href ? (
+          <Link to={href} className="data-table__card-main data-table__card-main--link">
+            {mainContent}
+          </Link>
+        ) : (
+          <div className="data-table__card-main">{mainContent}</div>
+        )}
+        {cardView.meta ? (
+          <div className="data-table__card-meta">{cardView.meta(row)}</div>
+        ) : null}
+      </div>
+      {cardView.summary ? (
+        <div className="data-table__card-summary">{cardView.summary(row)}</div>
+      ) : null}
+      {detail !== undefined && collapsible ? (
+        <button
+          type="button"
+          className="data-table__card-disclosure"
+          aria-expanded={detailOpen}
+          aria-controls={detailId}
+          onClick={(event) => {
+            // Never bubble to the card-level navigation handler.
+            event.stopPropagation();
+            setDetailOpen((open) => !open);
+          }}
+        >
+          <span className="data-table__card-disclosure-chev" aria-hidden="true">
+            {detailOpen ? '⌄' : '›'}
+          </span>
+          {detailOpen ? 'Hide details' : 'View full details'}
+        </button>
+      ) : null}
+      {showDetail && detail ? (
+        <div id={detailId} className="data-table__card-detail">
+          {detail(row)}
+        </div>
+      ) : null}
+    </li>
   );
 }
 

@@ -128,6 +128,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         // F4: compose the deterministic key ONCE and thread it into BOTH the
         // job-row idempotencyKey AND payload.idempotencyKey.
         const idempotencyKey = `invoice:${connection.id}:${order.id}`;
+        // #1694: resolve the source connection's neutral platformType for the
+        // per-source numbering axis. Best-effort — a lookup failure leaves it
+        // absent (routing falls back past the source axis), never aborting issuance.
+        const sourcePlatformType = await this.resolveSourcePlatformType(sourceConnectionId);
         const payload = this.composePayload(
           order,
           connection.id,
@@ -136,6 +140,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           sourceConnectionId,
           sourceEventId,
           this.readShippingLineName(connection),
+          sourcePlatformType,
         );
 
         await this.syncJobs.schedule({
@@ -233,6 +238,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceConnectionId: string,
     sourceEventId?: string,
     shippingLineName?: string,
+    sourcePlatformType?: string,
   ): InvoicingIssuePayloadV1 {
     // The mapper owns the neutral Order->command rules and may surface
     // InvalidBuyerProfileError / UnsupportedPriceTreatmentError (both PII-clean).
@@ -278,6 +284,11 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     if (sourceEventId !== undefined) {
       payload.sourceEventId = sourceEventId;
     }
+    // #1694: carry the resolved order-origin platformType so the worker can
+    // thread it onto the command's `source` numbering axis.
+    if (sourcePlatformType !== undefined && sourcePlatformType.trim().length > 0) {
+      payload.source = sourcePlatformType;
+    }
 
     return payload;
   }
@@ -289,5 +300,28 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
    */
   private readShippingLineName(connection: Connection): string | undefined {
     return normalizeShippingLineName(connection.config.invoicing?.shippingLineName);
+  }
+
+  /**
+   * Resolve the source connection's neutral `platformType` for the per-source
+   * numbering axis (#1694). Best-effort: any lookup failure returns `undefined`
+   * (the source axis is simply not applied) rather than breaking issuance — the
+   * downstream numbering resolution degrades gracefully past a missing source.
+   */
+  private async resolveSourcePlatformType(
+    sourceConnectionId: string,
+  ): Promise<string | undefined> {
+    try {
+      const connection = await this.connectionPort.get(sourceConnectionId);
+      const platformType = connection.platformType.trim();
+      return platformType.length > 0 ? platformType : undefined;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.debug(
+        `Source platformType lookup failed for connection ${sourceConnectionId}; ` +
+          `per-source numbering axis not applied: ${message}`,
+      );
+      return undefined;
+    }
   }
 }

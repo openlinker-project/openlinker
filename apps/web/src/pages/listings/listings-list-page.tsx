@@ -17,7 +17,8 @@ import {
   selectShopPublishConnections,
 } from '../../features/listings/components/ShopPublishLauncher';
 import { useConnectionsQuery } from '../../features/connections';
-import { usePermission } from '../../shared/auth/use-permission';
+import { useWriteAccess } from '../../shared/auth/use-permission';
+import { useDemoMode } from '../../features/system';
 import type {
   CreateOfferRequest,
   ListingsFilters,
@@ -152,7 +153,11 @@ export function ListingsListPage(): ReactElement {
   const connectionsQuery = useConnectionsQuery();
   const shopPublishConnections = selectShopPublishConnections(connectionsQuery.data ?? []);
   const canPublishToShop = shopPublishConnections.length > 0;
-  const canWrite = usePermission('listings:write');
+  const demoMode = useDemoMode();
+  // "Create offer" and "Publish to shop" both open a wizard first — visible
+  // (enabled) for a demo viewer per the useWriteAccess + ReadOnlyLock pattern
+  // (#1615/#1613); the wizards themselves gate their own final submit (#1663).
+  const write = useWriteAccess('listings:write', demoMode);
 
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [isShopPublishOpen, setIsShopPublishOpen] = useState(false);
@@ -206,7 +211,7 @@ export function ListingsListPage(): ReactElement {
       title="Listings"
       description="Offer mapping workbench — browse offer-to-variant identifier mappings across platforms."
       actions={
-        canWrite ? (
+        write.visible ? (
           <>
             <Button onClick={() => setIsWizardOpen(true)}>Create offer</Button>
             {canPublishToShop ? (

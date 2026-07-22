@@ -268,6 +268,17 @@
   --status-info-fg: oklch(40% 0.12 245);
   --status-info-strong: oklch(40% 0.12 245);
 
+  /* ── Viz: categorical series (#1739) ──────────────────────────────────
+   * Small categorical palette for proportion visuals (routing-split bar).
+   * NOT status hues — a series colour distinguishes entities (carriers,
+   * connections), never encodes health. `--viz-cat-muted` is the neutral
+   * "default / unassigned" bucket. */
+  --viz-cat-1: oklch(75% 0.13 85);
+  --viz-cat-2: oklch(60% 0.15 20);
+  --viz-cat-3: oklch(58% 0.12 245);
+  --viz-cat-4: oklch(60% 0.13 150);
+  --viz-cat-muted: oklch(82% 0.008 80);
+
   /* ── Status: review / manual ──────────────────────────────────────── */
   --status-review: oklch(58% 0.16 290);
   --status-review-soft: oklch(96% 0.04 290);
@@ -430,6 +441,13 @@ html[data-theme='dark'] {
   --status-info-border: oklch(36% 0.10 245);
   --status-info-fg: oklch(86% 0.12 245);
   --status-info-strong: oklch(86% 0.12 245);
+
+  /* Viz — categorical series (#1739) */
+  --viz-cat-1: oklch(70% 0.12 85);
+  --viz-cat-2: oklch(62% 0.14 20);
+  --viz-cat-3: oklch(62% 0.11 245);
+  --viz-cat-4: oklch(62% 0.12 150);
+  --viz-cat-muted: oklch(42% 0.008 80);
 
   /* Status — review */
   --status-review: oklch(74% 0.14 290);
@@ -1874,6 +1892,20 @@ textarea,
   gap: 0.75rem;
 }
 
+/* `.page-section` gets no `grid-template-columns` above, so its single
+   implicit column uses the default `auto` track-sizing function — which
+   sizes to the MAX-CONTENT of the widest descendant across every row, not
+   the container's own width (#1646). A wide-enough child (e.g. the orders
+   page's 5-segment health-summary row) can blow that column out past the
+   page's actual width; downstream `.shell-content`'s `overflow-x: hidden`
+   then clips the excess invisibly instead of showing a scrollbar, so the
+   card silently loses its right edge at narrow viewports. `minmax(0, 1fr)`
+   makes the column a real stretchy track capped at the container's width,
+   which every `.page-section` consumer needs regardless of what it renders. */
+.page-section {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .page-header {
   gap: 0.45rem;
 }
@@ -1966,6 +1998,11 @@ textarea,
 
 .panel__header {
   justify-content: space-between;
+  /* Breathing room below the eyebrow + section-title block so panel titles
+     don't sit flush against their content. Single shared rule so every panel
+     header (dashboard sections, connection config, etc.) stays consistent;
+     eyebrow -> title stays tight (both margin: 0), the gap is title -> content. */
+  margin-bottom: var(--space-3);
 }
 
 .activity-list__item,
@@ -2321,6 +2358,14 @@ textarea,
   }
 }
 
+/* Honour reduced-motion (#1585 S7): the pulse is decorative — the tone-tinted
+   dot + mono label already carry the status without animation. */
+@media (prefers-reduced-motion: reduce) {
+  .status-badge--pulse .status-badge__dot {
+    animation: none;
+  }
+}
+
 .state-card {
   border: 1px solid var(--border-default);
   border-radius: 0.5rem;
@@ -2663,8 +2708,8 @@ textarea,
 
 .data-table__card {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
   gap: 12px;
   padding: 12px 14px;
   border: 1px solid var(--border-default);
@@ -2685,7 +2730,8 @@ textarea,
   flex-direction: column;
   gap: 4px;
   min-width: 0;
-  flex: 1;
+  grid-column: 2;
+  grid-row: 1;
 }
 
 .data-table__card-main--link {
@@ -2714,10 +2760,23 @@ textarea,
 .data-table__card-meta {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
-  flex-shrink: 0;
+  min-width: 0;
   font-size: 12px;
   color: var(--text-secondary);
+  grid-column: 2;
+  grid-row: 2;
+}
+
+/* Shared badge-row slot content (products cockpit + orders cockpit mobile
+   cards) had no gap at all - badges/pills ran edge-to-edge with no
+   breathing room (#1720 review). */
+.data-table__badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 
 .data-table__cards-empty {
@@ -2726,6 +2785,147 @@ textarea,
   color: var(--text-muted);
   border: 1px dashed var(--border-default);
   border-radius: 10px;
+}
+
+/* ── Expandable rows (#1620) ─────────────────────────────────────────── */
+
+.data-table__expand-cell {
+  width: 2.25rem;
+  padding-left: var(--space-2) !important;
+  padding-right: 0 !important;
+  text-align: center;
+}
+
+.data-table__expand-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.data-table__expand-toggle:hover {
+  color: var(--text-primary);
+  background: color-mix(in oklab, var(--bg-shell) 70%, transparent);
+}
+
+.data-table__expand-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.data-table__expand-icon {
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.data-table__row--expandable {
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.data-table__row--expandable:hover {
+  background: color-mix(in oklab, var(--bg-shell) 60%, transparent);
+}
+
+.data-table__row--expanded {
+  background: color-mix(in oklab, var(--bg-shell) 45%, transparent);
+}
+
+.data-table__detail-row > .data-table__detail-cell {
+  padding: 0;
+  background: var(--bg-shell);
+  border-top: 0;
+}
+
+.data-table__detail {
+  padding: var(--space-4) var(--space-4) var(--space-4) 2.75rem;
+}
+
+/* Detail field grid — shared by the desktop accordion and the mobile card.
+   Inset "drawer" (#1713): a recessed panel (the muted surface token reads
+   recessed in both light and dark, matching the mobile facts grid) with side
+   padding, set apart from the row above. */
+.orders-detail {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-4) var(--space-5);
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+/* Full-width detail row (the itemised line list) spanning the auto-fill grid. */
+.orders-detail__field--wide {
+  grid-column: 1 / -1;
+}
+
+.orders-detail__field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.orders-detail__label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.orders-detail__value {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.orders-detail__address,
+.orders-detail__items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* ── Mobile card select + detail (#1620) ─────────────────────────────── */
+
+/* Grid (not flex row) so the badge/meta row (#1662) drops onto its own line
+   under the id/title, indented to column 2 - the same column the title
+   starts in, whether or not a select checkbox occupies column 1. A plain
+   flex row here forces select + title + badges to share one non-wrapping
+   line, which overlaps at narrow (~375px) mobile widths. */
+.data-table__card-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  column-gap: 12px;
+  row-gap: 6px;
+  width: 100%;
+}
+
+.data-table__card-select {
+  grid-column: 1;
+  grid-row: 1;
+  padding-top: 2px;
+}
+
+.data-table__card-detail {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
 }
 
 /* DataTableSkeleton — shimmer placeholder that mirrors .data-table shape. */
@@ -2870,6 +3070,16 @@ textarea,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Mobile card title (#1720 review): no fixed column width to truncate
+   against, so wrap the full product name onto further lines instead of
+   hard-clipping it with no visible "...". */
+.product-row__name--wrap {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .product-row__name--link {
@@ -3222,13 +3432,88 @@ textarea,
   display: inline-block;
   margin-top: 0.5rem;
   font-size: 0.875rem;
-  color: var(--accent-text);
+  color: var(--accent-primary);
   text-align: center;
   text-decoration: none;
 }
 
 .guest-form__secondary:hover {
   text-decoration: underline;
+}
+
+/*
+ * Confirm-email states (#1650) — pending / success / error outcomes of
+ * consuming a single-use email-confirmation token. A small tone-colored
+ * "seal" glyph gives each outcome an at-a-glance signal above the text;
+ * success stays unboxed (light touch — good news needs no container),
+ * error stays boxed in `.alert` (dynamic, server-supplied message gets the
+ * stronger, accessible treatment). `.confirm-email__actions` is a plain
+ * vertical stack, deliberately generic, so a future "Resend confirmation
+ * email" action can slot in below the existing two without a redesign.
+ */
+.confirm-email {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  text-align: center;
+}
+
+.confirm-email--pending {
+  padding: var(--space-4) 0;
+}
+
+.confirm-email__seal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.confirm-email__seal--success {
+  background: var(--status-success-soft);
+  border-color: var(--status-success-border);
+  color: var(--status-success-fg);
+}
+
+.confirm-email__seal--error {
+  background: var(--status-error-soft);
+  border-color: var(--status-error-border);
+  color: var(--status-error-fg);
+}
+
+.confirm-email__heading {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.confirm-email__message {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.confirm-email .alert {
+  width: 100%;
+  text-align: left;
+}
+
+.confirm-email__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.confirm-email__actions .button {
+  width: 100%;
 }
 
 /* Badge group (inline badge list) */
@@ -3255,6 +3540,12 @@ textarea,
 
 .action-list__item:last-child {
   border-bottom: none;
+}
+
+/* Keeps a disabled write button wrapped by ReadOnlyLock (#1615) aligned with
+   the un-wrapped variant inside flex action rows and form action bars. */
+.read-only-lock {
+  display: inline-flex;
 }
 
 /* ── InPost webhook runbook (#1473) ── */
@@ -5684,6 +5975,58 @@ a.kpi-card:focus-visible {
   color: var(--text-primary);
 }
 
+/*
+ * ── Mailer Settings (#1644) ─────────────────────────────────────────
+ * The dialog renders inside the shared `Dialog` primitive; this covers the
+ * SMTP-secure checkbox label, same shape as `.create-offer-checkbox`.
+ */
+.mailer-settings-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  margin: 0.75rem 0;
+}
+
+/*
+ * ── PostHog Analytics Settings (#1685) ──────────────────────────────
+ * The dialog renders inside the shared `Dialog` primitive; these cover the
+ * tile's status-chip row and the autocapture/session-recording checkbox
+ * labels, same shape as `.mailer-settings-checkbox`.
+ */
+.posthog-settings-tile__badges {
+  margin-bottom: 0.5rem;
+}
+
+.posthog-settings-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  margin: 0.75rem 0;
+}
+
+.posthog-settings-test-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.posthog-settings-test-result {
+  font-size: 0.8125rem;
+}
+
+.posthog-settings-hint {
+  font-size: 0.8125rem;
+  margin-top: 0.5rem;
+}
+
 .create-offer-variant-picker {
   display: grid;
   gap: 0.5rem;
@@ -7358,12 +7701,22 @@ a.kpi-card:focus-visible {
 .orders-segment {
   display: block;
   width: 100%;
+  min-width: 0;
   padding: 0;
   border: none;
   background: none;
   text-align: left;
   cursor: pointer;
   border-radius: var(--radius-lg);
+  /* Undo the global `button { white-space: nowrap }` (#1646) — it inherits
+     into `.metric-card__label`, forcing labels like "Awaiting mapping" onto
+     one unbreakable line. At narrow widths the bare `1fr` grid-column
+     fallback (≤480px) has no `minmax(0, …)` floor, so the track grows to fit
+     that unbroken label and the whole segment card silently overflows past
+     the viewport — clipped invisibly by `.shell-content`'s `overflow-x:
+     hidden` rather than producing a scrollbar. Restoring wrap here lets the
+     label break across lines instead. */
+  white-space: normal;
 }
 .orders-segment > .metric-card { height: 100%; }
 .orders-segment:focus-visible {
@@ -7387,6 +7740,15 @@ a.kpi-card:focus-visible {
   white-space: nowrap;
 }
 
+/* Items preview under the Order cell (#1646) — a glance at contents before
+   expanding the row; truncates long/multi-item snapshots on one line. */
+.orders-items-preview {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Ghost (capture-gap) columns — Ship-by (#927), Payment (#928): the layout
    reserves their space so they drop in with zero rework once captured. */
 .orders-ghost {
@@ -7402,11 +7764,251 @@ a.kpi-card:focus-visible {
   padding: 1px 7px;
 }
 
+/* ── Orders list redesign (#1713) ────────────────────────────────────
+   Merged Shipment + money columns, per-label sort controls, the row items
+   summary, the folded channel line, and the mobile card summary/facts. */
+
+/* Right-aligned two-line stack (the money column). `min-width: 8rem`
+   co-anchors the body column width with the header sort buttons so the
+   column doesn't resize between sorts, matching the products table (#1747). */
+.orders-cell-stack--end { align-items: flex-end; text-align: right; min-width: 8rem; }
+.orders-money-total { font-weight: 640; }
+
+/* Row items summary: a truncating first-item name + a never-truncated "+N"
+   count chip, so a multi-item order never reads as a single-item one. */
+.orders-items-line { display: inline-flex; align-items: center; gap: 6px; max-width: 250px; min-width: 0; }
+.orders-items-line .orders-items-preview { flex: 0 1 auto; min-width: 0; }
+.orders-more-count {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0 5px;
+}
+
+/* Inline row action shown in place of a status pill when the next step is
+   unstarted — "Generate label" (no shipment) / "Issue invoice" (no invoice).
+   Neutral/ghost at rest so the accent stays reserved (#1713 review): a plain
+   outline that lifts to the accent on hover/focus. `min-height: 24px` meets the
+   WCAG 2.5.8 target size without enlarging the visible text. */
+.orders-row-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 1px 8px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.orders-row-cta:hover,
+.orders-row-cta:focus-visible {
+  border-color: var(--accent-primary-border);
+  color: var(--accent-primary-soft-strong);
+}
+.orders-row-cta:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.orders-row-cta__plus { color: var(--text-muted); font-weight: 700; }
+
+/* Inline Retry under the order name (#1713). Sits in the Order cell rather than
+   a trailing column so a rare failed row can't widen the whole table. Carries an
+   error tint because it only ever appears on a failed sync — a ghost button read
+   as decoration next to the row's error badge. */
+.orders-row-retry {
+  min-height: 24px;
+  margin-top: 2px;
+  padding: 1px 8px;
+  border: 1px solid var(--status-error-border);
+  border-radius: var(--radius-sm);
+  background: var(--status-error-soft);
+  color: var(--status-error-strong);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.orders-row-retry:hover:not(:disabled) {
+  border-color: var(--status-error-strong);
+  background: var(--status-error-soft);
+  color: var(--status-error-strong);
+}
+
+/* Ship-by badge + live countdown share one line inside the Shipment cell. */
+.orders-shipby-row { display: inline-flex; align-items: center; gap: 6px; }
+.orders-carrier { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Channel folds under the order name below the Channel column's 1024px hide
+   breakpoint — hidden on wide screens where the standalone column shows. */
+.orders-order-channel { display: none; align-items: center; gap: 6px; }
+@media (max-width: 1023.98px) {
+  .orders-order-channel { display: inline-flex; }
+}
+
+/* Per-label sort controls in the merged-column headers. */
+.orders-sortstack { display: inline-flex; flex-direction: column; gap: 4px; }
+.orders-sortstack--left { align-items: flex-start; }
+/* `display: flex` + `width: 100%` makes the right-hand money stack fill the
+   entire <th> so `align-items: flex-end` reliably pins the buttons to the
+   right edge; the th's text-align alone left it content-width and off-edge.
+   Scoped to --right so the left/plain header stacks stay content-width (#1747). */
+.orders-sortstack--right { display: flex; width: 100%; align-items: flex-end; }
+/* Stable per-button width so the three labels line up flush-right with even
+   gaps, matching the products header (#1747, mirrors .sortbtn from #1720). */
+.orders-sortstack--right .orders-sortbtn { justify-content: flex-end; min-width: 8rem; }
+.orders-sortbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  /* Opt out of the global `button { height: 2rem }` so the stacked sort
+     labels are content-height (~15px), not 32px each - otherwise the header
+     renders ~2x taller than the products table (#1747, mirrors .sortbtn). */
+  height: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.orders-sortbtn:hover { color: var(--text-secondary); }
+.orders-sortbtn:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-xs); }
+.orders-sortbtn--active { color: var(--text-secondary); }
+.orders-sortbtn__ind { color: var(--text-muted); font-size: 0.625rem; }
+.orders-sortbtn--active .orders-sortbtn__ind { color: var(--accent-primary); }
+
+/* Accordion "Open order" links strip + itemised line list. */
+.orders-detail__links {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px dashed var(--border-default);
+}
+.orders-ext-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color var(--duration-fast), color var(--duration-fast);
+}
+.orders-ext-link:hover { border-color: var(--accent-primary-border); color: var(--accent-primary-soft-strong); }
+.orders-ext-link:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.orders-ext-link::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+.orders-ext-link[data-channel='allegro']::before { background: oklch(70% 0.18 35); }
+.orders-ext-link[data-channel='prestashop']::before { background: oklch(60% 0.18 250); }
+.orders-ext-link[data-channel='erli']::before { background: oklch(66% 0.17 320); }
+.orders-ext-link__arrow { color: var(--accent-primary); }
+.orders-ext-link--internal { border-color: var(--accent-primary-border); color: var(--accent-primary-soft-strong); font-weight: 600; }
+.orders-ext-link--internal::before { background: var(--accent-primary); }
+
+.orders-detail__invoice { display: inline-flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.orders-detail__items-list { display: flex; flex-direction: column; gap: 6px; }
+.orders-line-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: var(--space-3);
+  padding: 7px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+.orders-line-item__qty { color: var(--text-muted); font-size: 0.75rem; }
+.orders-line-item__name { min-width: 0; font-size: 0.8125rem; color: var(--text-secondary); }
+.orders-line-item__sku { display: block; font-size: 0.6875rem; color: var(--text-muted); }
+.orders-line-item__price { font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; }
+
+/* Mobile card: subtitle (channel + relative time), always-visible summary +
+   facts grid, and the collapsible-detail disclosure. */
+.orders-card-sub { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.orders-card-summary { display: flex; flex-direction: column; gap: var(--space-3); }
+.orders-card-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3) var(--space-4);
+  margin: 0;
+  padding: var(--space-3);
+  background: var(--bg-surface-muted);
+  border-radius: var(--radius-md);
+}
+.orders-card-facts > div { min-width: 0; }
+.orders-card-facts__wide { grid-column: 1 / -1; }
+.orders-card-facts dt {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+.orders-card-facts dd { margin: 0; font-size: 0.8125rem; color: var(--text-secondary); }
+
+.data-table__card-summary { margin-top: var(--space-3); }
+.data-table__card-disclosure {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--space-3);
+  padding: 4px 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-muted);
+}
+.data-table__card-disclosure:hover { color: var(--text-secondary); }
+.data-table__card-disclosure:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-xs); }
+.data-table__card-disclosure-chev { color: var(--accent-primary); }
+
 /* ── Orders list filter/sort bar (#939) ─────────────────────────────── */
 .orders-toolbar {
   flex-wrap: wrap;
   gap: var(--space-3);
   margin-bottom: var(--space-3);
+}
+/* The `flex-wrap: wrap` above lives on `.orders-toolbar` itself, but its
+   only DOM child is `.toolbar__group` (a nested flex row holding the
+   actual source/date/SLA/fulfillment controls) — a single flex item never
+   wraps. `.toolbar__group` (shared with connections/products/etc.) stays
+   `nowrap` by default because those simpler toolbars fit in one row; the
+   5-control orders bar needs it to wrap so the controls can drop onto
+   their own line(s) instead of shrinking past their native min-content
+   width and overflowing the viewport on mobile (#1669).
+*/
+.orders-toolbar .toolbar__group {
+  flex-wrap: wrap;
 }
 /* Inline date field: small mono-caps label sitting left of the native input. */
 .orders-toolbar__field {
@@ -8028,13 +8630,22 @@ html[data-density='compact'] .status-badge {
   color: var(--text-disabled);
 }
 
-.bulk-dispatch__num {
+/* `input.bulk-dispatch__num` (not `.bulk-dispatch__num` alone) is required to
+ * out-specificity the base `input[type='number'] { width: 100%; }` rule: that
+ * rule combines an element-type selector with an attribute selector (0,1,1),
+ * which beats a bare class selector (0,1,0) regardless of source order; adding
+ * the `input` element-type selector here brings this rule to the same
+ * specificity tier so it wins on source order instead - otherwise these
+ * compact dimension/weight fields silently stretch to share the row's flex
+ * space instead of staying at their intended width (#1658). */
+input.bulk-dispatch__num {
   width: 52px;
+  flex-shrink: 0;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
 
-.bulk-dispatch__num--wide {
+input.bulk-dispatch__num--wide {
   width: 68px;
 }
 
@@ -8066,7 +8677,7 @@ html[data-density='compact'] .status-badge {
 
 .bulk-dispatch__row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+  grid-template-columns: minmax(140px, 1fr) auto auto auto auto;
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
@@ -8079,7 +8690,7 @@ html[data-density='compact'] .status-badge {
 
 .bulk-dispatch__row--ineligible {
   background: var(--bg-canvas);
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(140px, 1fr) auto auto;
 }
 
 .bulk-dispatch__row-id {
@@ -8107,6 +8718,13 @@ html[data-density='compact'] .status-badge {
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
+  /* Without `nowrap`, `overflow-wrap: anywhere` (inherited from `.mono`)
+   * breaks this unbroken internal order id one character per line once its
+   * squeezed grid column runs low on width - inflating the row (and, once
+   * clipped by `.bulk-dispatch__rows`' max-height, the whole dialog) to
+   * hundreds of pixels of apparent empty space (#1658). `nowrap` lets the
+   * already-declared ellipsis truncate it on one line instead. */
+  white-space: nowrap;
 }
 
 .bulk-dispatch__buyer {
@@ -9053,14 +9671,6 @@ html[data-density='compact'] .status-badge {
   }
 }
 
-/* COD composite (#966) — amount input + currency select; amount takes the
- * remaining width, currency is sized to its content. */
-.generate-label-form__cod {
-  display: grid;
-  grid-template-columns: 1fr 7rem;
-  gap: var(--space-2);
-}
-
 /* ── COD payment panel (#1435) ──────────────────────────────────────────────
  * Payment-status-driven COD surface. Neutral recap container shared by the
  * read-only "from Allegro" amount and the fallback manual input, so both read
@@ -9097,8 +9707,83 @@ html[data-density='compact'] .status-badge {
   color: var(--text-muted);
 }
 
-.generate-label-form__cod-panel .generate-label-form__cod {
+/* ── Generate-label COD money field (#1569) ──────────────────────────────────
+ * Amount + currency as a single control: a bordered row wrapping a borderless
+ * amount input and a currency segment. The segment is a borderless select for a
+ * multi-currency carrier, or a static suffix for a single-currency carrier. */
+.generate-label-form__money {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
   margin-top: var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+}
+.generate-label-form__money:focus-within {
+  box-shadow: var(--shadow-focus);
+}
+.generate-label-form__money-amount.control {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.generate-label-form__money-amount.control:focus-visible {
+  box-shadow: none;
+}
+.generate-label-form__money-ccy.control {
+  width: auto;
+  flex: 0 0 auto;
+  border: 0;
+  border-left: 1px solid var(--border-subtle);
+  border-radius: 0;
+  box-shadow: none;
+  background-color: var(--bg-muted);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+.generate-label-form__money-ccy.control:focus-visible {
+  box-shadow: none;
+}
+.generate-label-form__money-ccy--static {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  height: 2rem;
+  padding: 0 var(--space-3);
+  border-left: 1px solid var(--border-subtle);
+  background: var(--bg-muted);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+.generate-label-form__cod-caption {
+  margin: var(--space-2) 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* ── COD currency support (read-only carrier info, #1569) ────────────────────
+ * Chips listing a carrier's supported COD currencies on its connection setup —
+ * informational, not a control (the carrier API decides, not the operator). */
+.cod-currency-support {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.cod-currency-support__chip {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+  background: var(--bg-muted);
+  color: var(--text-secondary);
 }
 
 /* ── Declared-value / insurance panel (#1542) ───────────────────────────────
@@ -10261,6 +10946,33 @@ html[data-density='compact'] .status-badge {
   flex: 1;
 }
 
+/* ─ Not-issued action row (#1622) ─
+   The document-type picker fills the row and the signal-orange primary
+   "Issue invoice" action anchors to the right, matching the panel mockup
+   (demo epic #1606, section 02). `flex-wrap` lets the button drop under a
+   full-width picker on narrow (mobile) panels rather than crushing either. */
+.order-invoice-panel__actions--issue {
+  flex-wrap: wrap;
+}
+
+.order-invoice-panel__doc-type {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.order-invoice-panel__actions--issue .button {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 480px) {
+  .order-invoice-panel__doc-type {
+    flex-basis: 100%;
+  }
+  .order-invoice-panel__actions--issue .button {
+    flex: 1 1 auto;
+  }
+}
+
 /* ─ Skeletons (shared shimmer for panel + detail page) ─ */
 .order-invoice-panel__skeleton,
 .invoice-detail__skeleton {
@@ -11016,6 +11728,13 @@ html[data-density='compact'] .status-badge {
   color: var(--status-info-fg);
   font-size: 12px;
   flex-shrink: 0;
+  /* Stick directly below the sticky topbar (height: 52px) so the demo-mode
+     reminder stays visible while shell content scrolls. z-index sits above
+     scrolled .shell-content but below the topbar (z-index: 10) so the two
+     header blocks never overlap. */
+  position: sticky;
+  top: 52px;
+  z-index: 9;
 }
 
 .demo-banner__icon {
@@ -11093,8 +11812,2215 @@ html[data-density='compact'] .status-badge {
   color: var(--status-info-fg);
 }
 
+/* ── Product detail (#1304) ── */
+
+.product-detail-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+  padding: 1rem 1.125rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.product-detail-hero__body {
+  display: grid;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.product-detail-hero__title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.product-detail-hero__title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--text-primary);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.product-detail-hero__badges {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-wrap: wrap;
+}
+
+.product-detail-hero__id {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.product-detail-hero__facts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  margin-top: 0.125rem;
+}
+
+.product-detail-hero__fact {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.product-detail-hero__fact-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  min-width: 6.5rem;
+}
+
+.product-gallery {
+  display: grid;
+  gap: 0.5rem;
+  width: 8rem;
+  flex: 0 0 auto;
+}
+
+.product-gallery__main {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  cursor: zoom-in;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--bg-surface-muted);
+  box-shadow: var(--shadow-xs);
+}
+
+.product-gallery__main:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+
+.product-gallery__main img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.product-gallery__expand-hint {
+  position: absolute;
+  top: 0.375rem;
+  right: 0.375rem;
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: 50%;
+  background: rgb(15 18 26 / 0.45);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.product-gallery__expand-hint svg {
+  width: 11px;
+  height: 11px;
+}
+
+.product-gallery__thumbs {
+  display: flex;
+  gap: 0.375rem;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.product-gallery__thumb {
+  position: relative;
+  display: block;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  padding: 0;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-surface-muted);
+}
+
+.product-gallery__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.product-gallery__thumb.is-active {
+  border-color: var(--accent-primary);
+}
+
+.product-gallery__thumb:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 1px;
+}
+
+/* Lightbox now renders through shared/ui/dialog.tsx's Dialog/DialogContent
+   (Radix) — these two modifiers strip the default `.dialog__content` card
+   chrome (background/border/shadow/radius) back to a transparent frame for
+   the `.lightbox` markup below, but deliberately keep `.dialog__content`'s
+   own `position:fixed; top:50%; left:50%; transform:translate(-50%,-50%)`
+   centering (content-sized, not viewport-spanning) — Overlay and Content
+   are portal SIBLINGS, not parent/child, so Content can't be centered via
+   the Overlay. A viewport-spanning Content (the original #1537-review fix
+   attempt) made every click "inside" Content, which silently broke
+   click-outside-to-close; this stays a small, content-sized box instead. */
+.lightbox-dialog-overlay {
+  z-index: 300;
+}
+
+.lightbox-dialog-content {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  width: min(880px, 92vw);
+  max-width: none;
+  max-height: none;
+  padding: var(--space-6);
+  overflow: visible;
+  z-index: 300;
+  outline: none;
+}
+
+.lightbox {
+  position: relative;
+  width: min(760px, 100%);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.lightbox__frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  background: var(--bg-surface-muted);
+}
+
+.lightbox__frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: var(--bg-shell);
+}
+
+.lightbox__nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: rgb(15 18 26 / 0.55);
+  border: 1px solid rgb(255 255 255 / 0.55);
+  box-shadow: var(--shadow-md);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1.1rem;
+}
+
+.lightbox__nav:hover {
+  background: rgb(15 18 26 / 0.75);
+  border-color: rgb(255 255 255 / 0.8);
+}
+
+.lightbox__nav--prev {
+  left: var(--space-3);
+}
+
+.lightbox__nav--next {
+  right: var(--space-3);
+}
+
+.lightbox__close {
+  position: absolute;
+  top: -2.75rem;
+  right: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: rgb(15 18 26 / 0.55);
+  border: 1px solid rgb(255 255 255 / 0.55);
+  box-shadow: var(--shadow-md);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.lightbox__close:hover {
+  background: rgb(15 18 26 / 0.75);
+  border-color: rgb(255 255 255 / 0.8);
+}
+
+.lightbox__caption {
+  text-align: center;
+  color: var(--text-inverse);
+  font-size: 0.8125rem;
+}
+
+.product-detail__primary-grid--split {
+  display: grid;
+  gap: var(--space-5);
+}
+
+@media (min-width: 1024px) {
+  .product-detail__primary-grid--split {
+    grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr);
+    align-items: start;
+  }
+}
+
+.product-detail__stack {
+  display: grid;
+  gap: var(--space-5);
+  align-content: start;
+}
+
+.product-detail__kpi-row {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.product-detail__kpi-row--cols-1 {
+  grid-template-columns: 1fr;
+}
+
+.product-detail__kpi-row--cols-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+@media (max-width: 479.98px) {
+  .product-detail__kpi-row--cols-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.description-block {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.65;
+  color: var(--text-primary);
+  padding: var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.id-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.id-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 1.375rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+}
+
+.id-chip__platform {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
+
+.id-chip--link {
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.id-chip--link:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-surface-hover);
+  color: var(--accent-primary);
+}
+
+.id-chip--link:focus-visible {
+  box-shadow: var(--shadow-focus);
+}
+
+.detail-section__title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.sync-freshness {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.sync-freshness__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-success);
+  flex: 0 0 auto;
+}
+
+.stock-cell--warning {
+  color: var(--status-warning-fg);
+  font-weight: 600;
+}
+
+.stock-cell--error {
+  color: var(--status-error-fg);
+  font-weight: 600;
+}
+
+/* Full-width variant table (#1752). Below 640px it folds into stacked
+   accordion cards (see the v2 section), so no min-width scroll is needed. */
+.variant-stock-table {
+  width: 100%;
+}
+
+.variant-stock-table th,
+.variant-stock-table td {
+  white-space: nowrap;
+}
+
+.variant-stock-table__expand-cell {
+  width: 2.25rem;
+  padding-left: var(--space-3);
+  padding-right: 0;
+}
+
+.variant-stock-table__expand-btn {
+  width: 1.5rem;
+  height: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 0;
+}
+
+.variant-stock-table__expand-btn:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-strong);
+}
+
+.variant-stock-table__expand-btn svg {
+  width: 11px;
+  height: 11px;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.variant-stock-table__expand-btn[aria-expanded='true'] svg {
+  transform: rotate(90deg);
+}
+
+.variant-stock-table__variant-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.variant-stock-table__expand-row > td {
+  padding: 0;
+  border-top: 0;
+}
+
+.variant-stock-table__expand-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--duration-normal) var(--ease-out);
+  background: var(--bg-shell);
+}
+
+.variant-stock-table__expand-row.is-open > td {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.variant-stock-table__expand-row.is-open .variant-stock-table__expand-content {
+  grid-template-rows: 1fr;
+}
+
+.variant-stock-table__expand-content-inner {
+  overflow: hidden;
+}
+
+.listings-panel {
+  padding: var(--space-3) var(--space-4) var(--space-4) calc(2.25rem + var(--space-4));
+}
+
+.listings-panel__title {
+  margin: 0 0 var(--space-2);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.listings-subtable {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+
+.listings-subtable th,
+.listings-subtable td {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.listings-subtable th:nth-child(1),
+.listings-subtable td:nth-child(1) {
+  width: 16%;
+}
+
+.listings-subtable th:nth-child(2),
+.listings-subtable td:nth-child(2) {
+  width: 34%;
+}
+
+.listings-subtable th:nth-child(3),
+.listings-subtable td:nth-child(3) {
+  width: 25%;
+}
+
+.listings-subtable th:nth-child(4),
+.listings-subtable td:nth-child(4) {
+  width: 25%;
+}
+
+/* Beats `.data-table td .mono-text` (2399) which otherwise clips this
+   nested table's own mono-text cells to 20ch — they sit inside a <td> of
+   the outer Variants & stock .data-table. */
+.listings-panel .listings-subtable td.mono-text {
+  display: table-cell;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.listings-subtable thead th {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  font-size: 0.625rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.listings-subtable tbody tr + tr td {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.listings-subtable__empty {
+  padding: var(--space-3);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.listings-subtable__link {
+  color: var(--text-link);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.listings-subtable__link:hover {
+  text-decoration: underline;
+}
+
+/* ── Product detail v2 (#1752) ─────────────────────────────────────────────
+   Full-width variants table in the products-cockpit row language, a rich
+   per-listing accordion drawer, a renamed "Source" section, a unified 4-tile
+   KPI strip, and a genuine mobile layout (stacking hero + table→cards). Reuses
+   the global `.coverage-pill`, `.channel-pill`, `.products-row-cta`,
+   `.status-badge`, and `.products-cell-stack` primitives — this block only adds
+   the detail-page-specific chrome. */
+
+/* Unified 4-tile KPI strip (replaces the split cols-1 + cols-3). */
+.product-detail__kpi-row--cols-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+@media (max-width: 899.98px) {
+  .product-detail__kpi-row--cols-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Hero stacks under 768px so the facts get full width — kills the
+   one-character-per-line wrap the fixed 8rem gallery used to force. */
+@media (max-width: 767.98px) {
+  .product-detail-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .product-gallery {
+    width: 100%;
+  }
+
+  .product-gallery__main {
+    aspect-ratio: 16 / 10;
+  }
+
+  .product-detail-hero__fact {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.125rem;
+  }
+
+  .product-detail-hero__fact-label {
+    min-width: 0;
+  }
+}
+
+/* Description section header — read-only source vs editable Content. */
+.detail-section__edit-link {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent-primary-soft-strong);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.detail-section__edit-link:hover {
+  text-decoration: underline;
+}
+
+/* Source section (renamed from "External IDs"): the master origin gets a
+   Master tag; any further per-connection mappings list beneath. */
+.product-source {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.product-source__primary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+
+.product-source__primary:hover .product-source__conn {
+  color: var(--accent-primary-soft-strong);
+}
+
+.product-source__primary:focus-visible {
+  box-shadow: var(--shadow-focus);
+}
+
+.product-source__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.product-source__conn {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.product-source__ref {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.product-source__tag {
+  margin-left: auto;
+}
+
+.product-source__more {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.product-source__more-label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Variant table cells in cockpit language. */
+.variant-stock-table__name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.variant-stock-table__sku {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.variant-stock-table__meta {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.variant-stock-table__stock {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+}
+
+.variant-stock-table__stock-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.variant-stock-table__stock-reserved {
+  margin-left: 4px;
+  font-size: 0.6875rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.variant-stock-table__listings-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  align-items: center;
+  white-space: normal;
+}
+
+.variant-stock-table__price {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Expanded drawer — the products-row-detail inset look, filled with listings. */
+.variant-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0 var(--space-4) var(--space-4) calc(2.25rem + var(--space-4));
+  padding: var(--space-4);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.variant-drawer__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.variant-drawer__label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.variant-listing-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.variant-listing-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  padding: var(--space-3) var(--space-4);
+}
+
+.variant-listing-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.variant-listing-card__left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.variant-listing-card__price {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.variant-listing-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.variant-listing-meta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.variant-listing-meta b {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* Identifier / external links in the drawer read as quiet primary text with
+   a faint underline; the brand accent appears only on hover (no off-palette
+   blue in this dense, status-coloured region). */
+.variant-listing-meta a {
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 2px;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.variant-listing-meta a:hover {
+  color: var(--accent-primary-soft-strong);
+  text-decoration-color: currentColor;
+}
+
+.variant-listing-meta a:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-xs);
+}
+
+.variant-listing-card__note {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+/* Mobile: the table folds into stacked accordion cards (<640px). The
+   component swaps markup via useMediaQuery; these style the card variant. */
+.variant-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.variant-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.variant-card__header {
+  /* Full reset — the global `button, .button {}` base (accent background,
+     fixed 2rem height, border, box-shadow) otherwise survives and both
+     collapses the header height (content overflows) and paints it orange on
+     hover/active. Mirrors the .products-card-disclosure reset (#1720). */
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  height: auto;
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.variant-card__header:hover,
+.variant-card__header:active {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  color: inherit;
+}
+
+.variant-card__header:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.variant-card__aside {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+
+.variant-card__disclosure {
+  width: 1.5rem;
+  height: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+
+.variant-card__disclosure svg {
+  width: 11px;
+  height: 11px;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.variant-card__header[aria-expanded='true'] .variant-card__disclosure svg {
+  transform: rotate(90deg);
+}
+
+.variant-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+.variant-card__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.variant-card__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.variant-card__cell--full {
+  grid-column: 1 / -1;
+}
+
+.variant-card__cell-label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.variant-card__cell-value {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* Inside a mobile card the drawer needs no inset margin. */
+.variant-card__body .variant-drawer {
+  margin: 0;
+  padding: var(--space-3);
+}
+
 .guest-form__demo-callout-icon {
   font-size: 14px;
   flex-shrink: 0;
   line-height: 1.3;
+}
+
+/* ── Invoice numbering (#1527 / #1577) ─────────────────────────────────── */
+
+.numbering-status-warning {
+  color: var(--status-warning-fg);
+  font-weight: 500;
+}
+
+/* Actions-row status placeholder — a skeleton pill, never an empty tail */
+.numbering-status-skeleton {
+  display: inline-block;
+  width: 8rem;
+  height: 0.7em;
+  vertical-align: middle;
+  border-radius: var(--radius-sm);
+  background: var(--bg-muted);
+}
+
+/* Series tab */
+.numbering-series-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.numbering-series-tab__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.numbering-series-tab__toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.numbering-series-tab__heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.numbering-series-tab__subtitle {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+/* Empty-state glyph */
+.numbering-empty-glyph {
+  margin: 0 auto var(--space-3);
+  width: 3.5rem;
+  height: 3.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 1.75rem;
+  color: var(--accent-primary);
+  background: var(--accent-primary-soft);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: 50%;
+}
+
+/* Tables (series + audit) */
+.numbering-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.numbering-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.numbering-table thead th {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-surface-muted);
+  border-bottom: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.numbering-table tbody td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.numbering-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.numbering-table__pattern {
+  padding: var(--space-1) var(--space-2);
+  background: var(--bg-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.numbering-table__actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.numbering-table__empty {
+  text-align: center;
+  padding: var(--space-5);
+}
+
+/* Document routing card */
+.numbering-routing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+}
+
+.numbering-routing__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.numbering-routing__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.numbering-routing__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border-subtle);
+  flex-wrap: wrap;
+}
+
+.numbering-routing__row:first-child {
+  border-top: none;
+}
+
+.numbering-routing__label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+
+.numbering-routing__code {
+  grid-row: span 2;
+  align-self: center;
+  padding: var(--space-1) var(--space-2);
+  background: var(--bg-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.numbering-routing__name {
+  font-weight: 600;
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* Register/entity scope tag on a routing row */
+.numbering-routing__scope {
+  padding: 0 var(--space-1);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.numbering-routing__hint {
+  grid-column: 2;
+  font-size: 0.8125rem;
+}
+
+.numbering-routing__row .control--select {
+  max-width: 20rem;
+  flex: 0 1 20rem;
+}
+
+/* ── Routing axes: multi-axis table + add-route + resolution panel (#1694) ── */
+.numbering-routing__table-wrap {
+  overflow-x: auto;
+}
+
+.numbering-routing__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.numbering-routing__table thead th {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-default);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.numbering-routing__table tbody td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+
+.numbering-routing__table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.numbering-routing__table .control--select {
+  max-width: 22rem;
+}
+
+.numbering-routing__add {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.numbering-routing__add-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.numbering-routing__add-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-3);
+}
+
+.numbering-routing__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.numbering-routing__field-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.numbering-routing__add-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* Resolution-order panel: the most-specific-match-wins fallback visualization */
+.numbering-resolution {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--bg-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.numbering-resolution__heading {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.numbering-resolution__inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-3);
+}
+
+.numbering-resolution__steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  counter-reset: resolution-step;
+}
+
+.numbering-resolution__step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.numbering-resolution__step--winner {
+  border-color: var(--accent-primary-border);
+  background: var(--accent-primary-soft);
+}
+
+.numbering-resolution__step--dropped {
+  opacity: 0.55;
+}
+
+.numbering-resolution__step-label {
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 7rem;
+}
+
+.numbering-resolution__step-key {
+  flex: 1 1 auto;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.numbering-resolution__step-result {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.numbering-resolution__step--winner .numbering-resolution__step-result {
+  color: var(--status-success-fg);
+}
+
+.numbering-resolution__none {
+  margin: 0;
+}
+
+/* Number audit tab */
+.numbering-audit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.numbering-audit__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.numbering-audit__picker {
+  flex: 1 1 18rem;
+  max-width: 28rem;
+}
+
+.numbering-audit__gaps-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.numbering-audit__summary {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.numbering-audit__row--gap td {
+  background: var(--status-warning-soft);
+}
+
+.numbering-audit__note {
+  color: var(--text-primary);
+}
+
+/* ── Oświadczenie o pominięciu numeru — printable document (#1695) ──
+   The overlay chrome (portal + toolbar) is themed; the sheet is deliberately
+   theme-independent (paper) and always renders light — it is a print artifact.
+   Literal colours on the sheet are intentional, not token drift. */
+.oswiadczenie-portal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background: var(--overlay-scrim);
+}
+
+.oswiadczenie-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-default);
+  flex-wrap: wrap;
+}
+
+.oswiadczenie-toolbar__group {
+  display: inline-flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.oswiadczenie-scroll {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: var(--space-6) var(--space-4);
+  display: flex;
+  justify-content: center;
+}
+
+.oswiadczenie-sheet {
+  /* Paper sheet — fixed light presentation regardless of app theme. */
+  width: 100%;
+  max-width: 48rem;
+  min-height: 60vh;
+  padding: 3.5rem 3rem;
+  background: #ffffff;
+  color: #1a1a1a;
+  border-radius: 2px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.oswiadczenie-sheet__seller {
+  margin-bottom: 2.5rem;
+}
+
+.oswiadczenie-sheet__seller-name {
+  margin: 0;
+  font-weight: 700;
+}
+
+.oswiadczenie-sheet__seller-line {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.oswiadczenie-sheet__seller-missing {
+  margin: 0;
+  font-style: italic;
+  color: #6b6b6b;
+  font-size: 0.9375rem;
+}
+
+.oswiadczenie-sheet__place-date {
+  margin: 0 0 2.5rem;
+  text-align: right;
+}
+
+.oswiadczenie-sheet__title {
+  margin: 0 0 2rem;
+  text-align: center;
+  font-size: 1.375rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.oswiadczenie-sheet__body,
+.oswiadczenie-sheet__reason,
+.oswiadczenie-sheet__continuity {
+  margin: 0 0 1.5rem;
+  text-align: justify;
+}
+
+.oswiadczenie-sheet__reason-label {
+  font-weight: 700;
+}
+
+.oswiadczenie-sheet__series {
+  margin: 2rem 0;
+  padding: 1rem 1.25rem;
+  border: 1px solid #d4d4d4;
+  border-radius: 2px;
+  display: grid;
+  gap: 0.5rem;
+  font-size: 0.9375rem;
+}
+
+.oswiadczenie-sheet__series div {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.oswiadczenie-sheet__series dt {
+  min-width: 9rem;
+  margin: 0;
+  color: #555555;
+}
+
+.oswiadczenie-sheet__series dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.oswiadczenie-sheet__mono {
+  font-family: 'Courier New', monospace;
+}
+
+.oswiadczenie-sheet__signature {
+  margin-top: 4rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.oswiadczenie-sheet__signature-line {
+  display: block;
+  width: 16rem;
+  border-top: 1px solid #1a1a1a;
+}
+
+.oswiadczenie-sheet__signature-caption {
+  font-size: 0.8125rem;
+  color: #555555;
+}
+
+@media print {
+  /* Hide the whole app; print only the sheet. The portal is a direct body
+     child (createPortal → document.body), so #root is a sibling to hide. */
+  body > *:not(.oswiadczenie-portal) {
+    display: none !important;
+  }
+  .oswiadczenie-portal {
+    position: static;
+    background: none;
+  }
+  .oswiadczenie-toolbar {
+    display: none;
+  }
+  .oswiadczenie-scroll {
+    overflow: visible;
+    padding: 0;
+    display: block;
+  }
+  .oswiadczenie-sheet {
+    max-width: none;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+    min-height: 0;
+  }
+}
+
+/* Editor: two-column form + preview */
+.numbering-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 22rem);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.numbering-editor__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.numbering-editor__chips {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: calc(var(--space-2) * -1);
+}
+
+/* Plain insert-action chips (NOT toggle semantics) */
+.numbering-chip {
+  padding: var(--space-1) var(--space-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.numbering-chip:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.numbering-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.numbering-editor__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-3);
+}
+
+.numbering-editor__actions {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+}
+
+.numbering-preview__errors {
+  margin: 0;
+  padding-left: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.numbering-editor__preview {
+  position: sticky;
+  top: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* The signature: live preview panel (the one bold surface) */
+.numbering-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  background: var(--accent-primary-soft);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-lg);
+}
+
+.numbering-preview__eyebrow {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-primary);
+}
+
+.numbering-preview__caption-top {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+.numbering-preview__number {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1.1;
+  word-break: break-all;
+}
+
+.numbering-preview__number--empty {
+  color: var(--text-muted);
+}
+
+.numbering-preview__token--seq {
+  color: var(--accent-primary);
+}
+
+.numbering-preview__token--date {
+  color: var(--text-secondary);
+}
+
+.numbering-preview__token--literal {
+  color: var(--text-primary);
+}
+
+.numbering-preview__caption {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+/* Rendered-length meter vs the FA(3) P_2 limit */
+.numbering-preview__meter {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.numbering-preview__meter-track {
+  height: 4px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-muted);
+  overflow: hidden;
+}
+
+.numbering-preview__meter-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent-primary);
+}
+
+.numbering-preview__meter--over .numbering-preview__meter-fill {
+  background: var(--status-error-fg);
+}
+
+.numbering-preview__meter-caption {
+  margin: 0;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.numbering-preview__meter--over .numbering-preview__meter-caption {
+  color: var(--status-error-fg);
+}
+
+.numbering-preview__then {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.numbering-preview__then-label {
+  margin: 0;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.numbering-preview__then-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.numbering-preview__legend {
+  margin: var(--space-2) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  border-top: 1px solid var(--accent-primary-border);
+  padding-top: var(--space-3);
+}
+
+.numbering-preview__legend-row {
+  display: flex;
+  gap: var(--space-2);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.numbering-preview__legend-row dt {
+  min-width: 4rem;
+  color: var(--text-primary);
+}
+
+.numbering-preview__legend-row dd {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .numbering-editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* Live preview sits above the form (and its actions) so it stays visible
+     while typing on a narrow viewport. */
+  .numbering-editor__preview {
+    position: static;
+    order: -1;
+  }
+}
+
+/* ── Products cockpit (#1720) ─────────────────────────────────────── */
+/* KPI tiles double as clickable stock/coverage filters - mirrors the orders
+   `.orders-segment` mechanic (a reset button wraps a MetricCard; the active
+   segment gets the chip-active accent treatment). Kept page-namespaced like
+   the orders section; generalizing the pattern is out of scope for #1720. */
+.products-segments { margin-bottom: var(--space-4); grid-auto-rows: minmax(5.5rem, auto); }
+.products-segment {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-lg);
+  /* Undo the global `button { white-space: nowrap }` so multi-word tile
+     labels ("Out of stock") can wrap instead of overflowing the track. */
+  white-space: normal;
+}
+.products-segment > .metric-card { height: 100%; }
+.products-segment:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.products-segment--active .metric-card {
+  border-color: var(--accent-primary-border);
+  box-shadow: var(--shadow-focus);
+}
+
+/* Two-line table cells (product identity / source / stock). */
+.products-cell-stack { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.products-cell-stack--end { align-items: flex-end; min-width: 8rem; }
+/* Money-column date sub-lines: smaller and never wrapped - "upd. Jul 16,
+   2026" breaking onto two lines left-hung a stray "2026" (#1720 review). */
+.products-cell-sub--date { font-size: 0.6875rem; white-space: nowrap; }
+.products-cell-sub { font-size: 0.75rem; color: var(--text-muted); }
+.products-stock-value { font-weight: 600; }
+
+/* Merged Price / Updated / Created header (#1720) - one column, three
+   independent per-label sort buttons, mirrors the orders cockpit's stacked
+   Total/Payment/Created sortstack so money-ish facts read as one group
+   instead of three separate columns competing for width. */
+.sortstack {
+  /* `width: 100%` + `display: flex` (not inline-flex) makes this fill the
+     entire <th> regardless of the cell's own text-align, so `align-items:
+     flex-end` reliably pins the buttons to the right edge - relying on the
+     th's text-align alone put the stack dead center (#1720 review). */
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.sortbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  /* Stable width so the column doesn't visibly resize as different sorts
+     bring different-width row content into view (#1720 review). */
+  min-width: 8rem;
+  height: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.sortbtn:hover { color: var(--text-secondary); }
+.sortbtn:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.sortbtn--active { color: var(--text-secondary); }
+.sortbtn__ind { color: var(--text-disabled); font-size: 0.625rem; }
+.sortbtn--active .sortbtn__ind { color: var(--accent-primary); }
+
+/* Per-row "+ Create offers" mini-CTA in the Listings column. */
+/* Re-skinned as a filled mono-caps pill (the mockup's `.row-cta`) instead of
+   the shared Button component's ghost/ghost-sm look - a plain-text CTA read
+   as inert next to the coverage pills it sits below. */
+.products-row-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: auto;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary-soft-strong);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  box-shadow: none;
+}
+.products-row-cta:hover {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary-soft-strong);
+}
+
+/* Listings coverage pills - one per active OfferCreator connection. Reuses
+   the channel-pill silhouette (mono pill + platform-colored dot) with a
+   status-toned surface for full / partial / none coverage. */
+.coverage-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.coverage-pill {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+.coverage-pill::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.coverage-pill[data-channel='allegro']::before    { background: oklch(70% 0.18 35); }
+.coverage-pill[data-channel='prestashop']::before { background: oklch(60% 0.18 250); }
+.coverage-pill[data-channel='amazon']::before     { background: oklch(72% 0.16 75); }
+.coverage-pill[data-channel='shopify']::before    { background: oklch(64% 0.16 150); }
+.coverage-pill--full {
+  border-color: var(--status-success-border);
+  background: var(--status-success-soft);
+  color: var(--status-success-fg);
+}
+.coverage-pill--partial {
+  border-color: var(--status-warning-border);
+  background: var(--status-warning-soft);
+  color: var(--status-warning-fg);
+}
+.coverage-pill--none { color: var(--text-muted); }
+.coverage-pill__count { font-weight: 600; }
+
+/* Expandable drawer body: variant stock table + links strip. Link chips
+   mirror the orders-drawer `.ext-link` silhouette (bordered pill, leading
+   dot, trailing arrow) - the internal links get the accent-outlined
+   treatment, same as "Open order" on the orders cockpit. */
+/* Inset "drawer" panel matching the orders cockpit's `.orders-detail`
+   recessed treatment (#1720 review) - a muted-surface box set apart from
+   the row above, instead of sitting flush against the shared
+   `.data-table__detail` background with no boundary of its own. */
+.products-row-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+/* 4-up field grid (Internal ID / Source external ID / Currency / Stock
+   synced) - same shape as the orders drawer's detail field grid. */
+.products-detail-fields {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3) var(--space-5);
+}
+@media (max-width: 1023.98px) {
+  .products-detail-fields { grid-template-columns: repeat(2, 1fr); }
+}
+.products-detail-field__label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+.products-detail-field__value { font-size: 0.8125rem; color: var(--text-secondary); }
+
+.products-detail-variants { display: flex; flex-direction: column; gap: var(--space-2); }
+
+/* Compact per-variant row - attrs/EAN left, stock badge, available/reserved,
+   listings count right. Deliberately NOT the dense VariantStockTable grid
+   (kept for the product-detail page's own accordion); the cockpit's
+   expandable drawer and mobile card need a lighter, flatter row. */
+.products-variant-list { display: flex; flex-direction: column; gap: 6px; }
+.products-variant-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) auto auto auto;
+  align-items: center;
+  column-gap: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+}
+@media (max-width: 767.98px) {
+  /* A 2-column grid with 4 DOM children (id / badge / stock / listings)
+     auto-wraps unpredictably - badge and stock ended up squeezed against a
+     wrapping id/meta line. Stack every field as its own full-width line
+     instead - more vertical space, but nothing overlaps or wraps oddly
+     (#1720 review). */
+  .products-variant-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .products-variant-row__id { width: 100%; }
+  .products-variant-row__listings { width: 100%; justify-content: flex-start; }
+}
+.products-variant-row__id { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.products-variant-row__attrs { font-size: 0.8125rem; font-weight: 550; color: var(--text-secondary); }
+.products-variant-row__meta { font-size: 0.6875rem; color: var(--text-muted); }
+.products-variant-row__stock { font-size: 0.8125rem; color: var(--text-secondary); white-space: nowrap; }
+.products-variant-row__stock-reserved { margin-left: 4px; font-size: 0.6875rem; color: var(--text-muted); }
+.products-variant-row__listings {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+.products-detail-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.products-detail-links__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color 0.12s, color 0.12s;
+}
+.products-detail-links__link::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+.products-detail-links__link:hover {
+  border-color: var(--accent-primary-border);
+  color: var(--accent-primary-soft-strong);
+}
+.products-detail-links__link--internal {
+  border-color: var(--accent-primary-border);
+  color: var(--accent-primary-soft-strong);
+  font-weight: 600;
+}
+.products-detail-links__link--internal::before { background: var(--accent-primary); }
+.products-detail-links__link[data-channel='prestashop']::before { background: oklch(60% 0.18 250); }
+.products-detail-links__link[data-channel='allegro']::before { background: oklch(70% 0.18 35); }
+.products-detail-links__link[data-channel='woocommerce']::before { background: oklch(64% 0.16 150); }
+.products-detail-links__link .products-detail-links__arrow { color: var(--accent-primary); font-size: 0.75rem; }
+
+/* Mobile card disclosure toggle (#1720) - the heavy per-variant detail (its
+   own queries + the wide variant-stock table) stays collapsed by default;
+   only the tapped card mounts it, mirroring the orders card's chevron. */
+.products-card-disclosure {
+  /* Full reset - the global `button, .button {}` base (height, box-shadow,
+     border, background) otherwise survives and reads as a boxed pill
+     instead of plain disclosure text (#1720 review). */
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: auto;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+.products-card-disclosure:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.products-card-disclosure__chev { color: var(--accent-primary); }
+.products-card-disclosure[aria-expanded='true'] + .products-row-detail {
+  margin-top: var(--space-3);
+}
+
+/* Narrow-viewport (<1024px) filter collapse: a "Filters" toggle in the
+   toolbar opens a stacked panel with Stock / Listings / Source / Sort
+   groups (the chip rail would otherwise wrap into a tall block above the
+   table, and the hidden sortable columns lose their headers). */
+.products-filter-toggle {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+.products-filter-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.products-filter-toggle--active {
+  border-color: var(--accent-primary-border);
+  color: var(--text-primary);
+}
+.products-filter-toggle__count {
+  min-width: 1.25rem;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--accent-primary);
+  color: var(--text-inverse);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  text-align: center;
+}
+.products-filter-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  margin-bottom: var(--space-3);
+}
+.products-filter-panel__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+.products-filter-panel__label {
+  font-size: 0.6875rem;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+/* ── RoutingSplitBar (#1739) ──────────────────────────────────────────
+ * Segmented proportion bar on the Fulfillment tab: how many delivery
+ * methods route to each processor, recomputed live from unsaved edits.
+ * The bar is decorative (aria-hidden); the legend carries the counts. */
+.routing-split {
+  margin-bottom: var(--space-4);
+}
+
+.routing-split__bar {
+  display: flex;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+}
+
+.routing-split__seg {
+  transition: flex-grow var(--duration-normal) ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .routing-split__seg {
+    transition: none;
+  }
+}
+
+.routing-split__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin-top: var(--space-2);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.routing-split__key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.routing-split__swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.routing-split__count {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }

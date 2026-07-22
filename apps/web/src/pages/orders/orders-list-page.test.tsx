@@ -95,6 +95,24 @@ const emptySummary: OrderHealthSummary = {
   awaitingDispatch: 0,
 };
 
+/** Forces the mobile (cardView) breakpoint for the DataTable (#1620). */
+function mockMobileViewport(): { restore: () => void } {
+  const spy = vi.spyOn(window, 'matchMedia').mockImplementation(
+    (query) =>
+      ({
+        matches: query.includes('max-width'),
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }) as MediaQueryList,
+  );
+  return { restore: () => spy.mockRestore() };
+}
+
 describe('OrdersListPage', () => {
   afterEach(cleanup);
 
@@ -233,7 +251,7 @@ describe('OrdersListPage', () => {
     expect(within(row).getByText('Awaiting dispatch')).toBeInTheDocument();
   });
 
-  it('should render customer and item-count columns parsed from the snapshot (#929)', async () => {
+  it('should render customer columns parsed from the snapshot (#929)', async () => {
     const mockApi = createMockApiClient({
       orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
       connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
@@ -245,7 +263,78 @@ describe('OrdersListPage', () => {
     const row = container.querySelector('.data-table__row') as HTMLElement;
     expect(within(row).getByText('Anna Kowalska')).toBeInTheDocument();
     expect(within(row).getByText('Warszawa')).toBeInTheDocument();
-    expect(within(row).getByText('1 item')).toBeInTheDocument();
+  });
+
+  it('should expand the row detail with the item count when the row is clicked (#1620)', async () => {
+    const user = userEvent.setup();
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    expect(container.querySelector('.data-table__detail-row')).toBeNull();
+
+    const row = container.querySelector('.data-table__row') as HTMLElement;
+    await user.click(row);
+
+    const detailRow = container.querySelector('.data-table__detail-row') as HTMLElement;
+    expect(detailRow).not.toBeNull();
+    // The accordion now leads with an itemised list headed "Items (N)" (#1713).
+    expect(within(detailRow).getByText('Items (1)')).toBeInTheDocument();
+    expect(row).toHaveAttribute('class', expect.stringContaining('data-table__row--expanded'));
+
+    await user.click(row);
+    expect(container.querySelector('.data-table__detail-row')).toBeNull();
+  });
+
+  it('should not expand the row when the select checkbox is clicked (#1620)', async () => {
+    const user = userEvent.setup();
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const checkbox = screen.getByRole('checkbox', { name: 'Select ol_order_synced' });
+    await user.click(checkbox);
+
+    expect(container.querySelector('.data-table__detail-row')).toBeNull();
+    expect(checkbox).toBeChecked();
+  });
+
+  it('should expose a working select checkbox and full field detail in the mobile card view (#1620)', async () => {
+    const viewport = mockMobileViewport();
+    try {
+      const user = userEvent.setup();
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findAllByText('ALG-882414');
+      expect(container.querySelector('table')).toBeNull();
+
+      const card = container.querySelector('.data-table__card') as HTMLElement;
+      expect(card).not.toBeNull();
+      // The full field set is collapsed behind a "View full details" disclosure
+      // now (#1713); the summary shows up front. Expand it, then assert a field.
+      const disclosure = within(card).getByRole('button', { name: /view full details/i });
+      await user.click(disclosure);
+      expect(within(card).getByText('Items (1)')).toBeInTheDocument();
+
+      const checkbox = within(card).getByRole('checkbox', { name: 'Select ol_order_synced' });
+      await user.click(checkbox);
+      expect(checkbox).toBeChecked();
+    } finally {
+      viewport.restore();
+    }
   });
 
   it('should render a channel-pill resolved from the connection platformType', async () => {
@@ -417,12 +506,37 @@ describe('OrdersListPage', () => {
 
     await screen.findByText('ALG-882414');
     // Total's first-click default direction is descending (biggest first).
-    await user.click(screen.getByRole('button', { name: 'Total' }));
+    // The sort button's accessible name now carries its sorted state (#1713).
+    await user.click(screen.getByRole('button', { name: /^Total,/ }));
 
     await vi.waitFor(() => {
       const called = list.mock.calls.some(([filters]) => {
         const f = filters as { sort?: string; dir?: string } | undefined;
         return f?.sort === 'total' && f?.dir === 'desc';
+      });
+      expect(called).toBe(true);
+    });
+  });
+
+  it('should server-sort by payment and drop the offset when the Payment header is clicked (#1713)', async () => {
+    const user = userEvent.setup();
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+    const mockApi = createMockApiClient({
+      orders: { list },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    // Start on page 2 so the re-sort's offset-drop is observable.
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi, route: '/orders?offset=20' });
+
+    await screen.findByText('ALG-882414');
+    await user.click(screen.getByRole('button', { name: /^Payment/ }));
+
+    await vi.waitFor(() => {
+      const called = list.mock.calls.some(([filters, pagination]) => {
+        const f = filters as { sort?: string; dir?: string } | undefined;
+        const p = pagination as { offset?: number } | undefined;
+        return f?.sort === 'payment' && f?.dir === 'asc' && p?.offset === 0;
       });
       expect(called).toBe(true);
     });
@@ -443,7 +557,9 @@ describe('OrdersListPage', () => {
     });
 
     await screen.findByText('ALG-882414');
-    await user.click(screen.getByRole('button', { name: 'Ship-by' }));
+    // `/^Ship-by,/` targets the sort button (aria-label "Ship-by, sorted …"),
+    // not the "Ship-by ≤ 24h / overdue" chip (#1713).
+    await user.click(screen.getByRole('button', { name: /^Ship-by,/ }));
 
     await vi.waitFor(() => {
       const called = list.mock.calls.some(([filters]) => {
@@ -533,5 +649,198 @@ describe('OrdersListPage', () => {
     await screen.findByText('ALG-NONAME');
     const row = container.querySelector('.data-table__row') as HTMLElement;
     expect(within(row).getByText('buyer@allegromail.pl')).toBeInTheDocument();
+  });
+
+  it('should preview the single item name in the collapsed row (#1646)', async () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const row = container.querySelector('.data-table__row') as HTMLElement;
+    expect(within(row).getByText('Filtr kubełkowy AquaPro')).toBeInTheDocument();
+    // Collapsed — the full "N item(s)" detail summary isn't rendered yet.
+    expect(container.querySelector('.data-table__detail-row')).toBeNull();
+  });
+
+  describe('demo read-only viewer (#1667)', () => {
+    const viewerSession = createAuthenticatedSessionAdapter({
+      id: 'u2',
+      username: 'viewer',
+      email: null,
+      role: 'viewer',
+      permissions: ['orders:read'],
+    });
+
+    it('renders the per-row Retry visible but disabled with a read-only tooltip for a demo viewer', async () => {
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([failedOrder])) },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      });
+
+      renderWithProviders(<OrdersListPage />, { apiClient: mockApi, sessionAdapter: viewerSession });
+
+      await screen.findByText('ALG-FAIL');
+      const retryButton = await screen.findByRole('button', { name: 'Retry' });
+      expect(retryButton).toBeDisabled();
+    });
+
+    it('renders the mobile card Retry visible but disabled for a demo viewer', async () => {
+      const viewport = mockMobileViewport();
+      try {
+        const mockApi = createMockApiClient({
+          orders: { list: vi.fn().mockResolvedValue(paginated([failedOrder])) },
+          connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+          system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+        });
+
+        renderWithProviders(<OrdersListPage />, { apiClient: mockApi, sessionAdapter: viewerSession });
+
+        await screen.findAllByText('ALG-FAIL');
+        const retryButton = await screen.findByRole('button', { name: 'Retry' });
+        expect(retryButton).toBeDisabled();
+      } finally {
+        viewport.restore();
+      }
+    });
+
+    it('keeps the existing hide-when-missing behaviour for an unauthorized non-demo viewer', async () => {
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([failedOrder])) },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+      });
+
+      renderWithProviders(<OrdersListPage />, { apiClient: mockApi, sessionAdapter: viewerSession });
+
+      await screen.findByText('ALG-FAIL');
+      expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+    });
+  });
+
+  it('should preview the first item name plus a "+N more" suffix for multi-item orders (#1646)', async () => {
+    const multiItemOrder: OrderRecord = {
+      ...syncedOrder,
+      internalOrderId: 'ol_order_multi',
+      orderSnapshot: {
+        ...syncedOrder.orderSnapshot,
+        items: [
+          { id: 'i1', quantity: 1, price: 40, name: 'Filtr kubełkowy AquaPro' },
+          { id: 'i2', quantity: 2, price: 22.1, name: 'Wkład węglowy' },
+          { id: 'i3', quantity: 1, price: 22.1, name: 'Uszczelka' },
+        ],
+      },
+    };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([multiItemOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const row = container.querySelector('.data-table__row') as HTMLElement;
+    // The first item name truncates in its own span; the "+N" count is a separate
+    // never-truncated chip now (#1713), so assert the two pieces independently.
+    expect(within(row).getByText('Filtr kubełkowy AquaPro')).toBeInTheDocument();
+    expect(within(row).getByText('+2')).toBeInTheDocument();
+  });
+
+  it('should not render an items preview line when the snapshot has no named items (#1646)', async () => {
+    const noItemsOrder: OrderRecord = {
+      ...syncedOrder,
+      internalOrderId: 'ol_order_noitems',
+      orderSnapshot: { ...syncedOrder.orderSnapshot, items: [] },
+    };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([noItemsOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const row = container.querySelector('.data-table__row') as HTMLElement;
+    expect(within(row).queryByText(/more$/)).not.toBeInTheDocument();
+  });
+
+  it('should offer "Issue invoice" and "Generate label" actions for an order with neither yet (#1713)', async () => {
+    // Explicit not-shipped order (the Generate-label gate needs it explicit,
+    // never undefined — #1713) with no invoice, plus an invoicing-capable
+    // connection so the "Issue invoice" CTA is offered rather than an em dash.
+    const notShippedOrder: OrderRecord = { ...syncedOrder, fulfillmentState: 'not-shipped' };
+    const invoicingConnection: Connection = {
+      ...sampleConnection,
+      id: 'conn_invoicing_1',
+      name: 'KSeF',
+      enabledCapabilities: ['Invoicing'],
+    };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([notShippedOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const row = container.querySelector('.data-table__row') as HTMLElement;
+
+    const invoiceCta = within(row).getByRole('link', { name: /issue invoice/i });
+    expect(invoiceCta).toHaveAttribute('href', '/orders/ol_order_synced#invoicing');
+    const labelCta = within(row).getByRole('link', { name: /generate label/i });
+    expect(labelCta).toHaveAttribute('href', '/orders/ol_order_synced#shipment');
+  });
+
+  it('should show an em dash for "Issue invoice" when no connection can issue invoices (#1713)', async () => {
+    const notShippedOrder: OrderRecord = { ...syncedOrder, fulfillmentState: 'not-shipped' };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([notShippedOrder])) },
+      // sampleConnection has no Invoicing capability.
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const row = container.querySelector('.data-table__row') as HTMLElement;
+
+    expect(within(row).queryByRole('link', { name: /issue invoice/i })).not.toBeInTheDocument();
+    // Generate label is still offered — it isn't invoicing-gated.
+    expect(within(row).getByRole('link', { name: /generate label/i })).toBeInTheDocument();
+  });
+
+  it('should show status pills (not actions) once an invoice exists and the order is dispatched (#1713)', async () => {
+    const richOrder: OrderRecord = {
+      ...syncedOrder,
+      internalOrderId: 'ol_order_rich',
+      fulfillmentState: 'dispatched',
+      orderSnapshot: {
+        ...syncedOrder.orderSnapshot,
+        invoice: {
+          invoiceId: 'rec-1',
+          status: 'issued',
+          regulatoryStatus: 'accepted',
+          clearanceReference: 'KSEF-1',
+          confirmationDocumentAvailable: true,
+        },
+      },
+    };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([richOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const row = container.querySelector('.data-table__row') as HTMLElement;
+
+    expect(within(row).queryByRole('link', { name: /issue invoice/i })).not.toBeInTheDocument();
+    expect(within(row).queryByRole('link', { name: /generate label/i })).not.toBeInTheDocument();
+    expect(within(row).getByText('Cleared')).toBeInTheDocument();
+    expect(within(row).getByText('Dispatched')).toBeInTheDocument();
   });
 });

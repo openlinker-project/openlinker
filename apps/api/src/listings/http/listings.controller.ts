@@ -37,6 +37,7 @@ import {
   isCatalogProductReader,
   isCategoryParametersReader,
   isOfferReader,
+  OfferNotFoundOnMarketplaceException,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   OFFER_MAPPING_REPOSITORY_TOKEN,
@@ -245,8 +246,19 @@ export class ListingsController {
       );
     }
 
-    const offer = await adapter.getOffer({ externalId: mapping.externalId });
-    return MarketplaceOfferResponseDto.fromDomain(offer);
+    try {
+      const offer = await adapter.getOffer({ externalId: mapping.externalId });
+      return MarketplaceOfferResponseDto.fromDomain(offer);
+    } catch (error) {
+      // The offer isn't (yet) retrievable on the marketplace — e.g. Erli's
+      // read-after-write cache lag or a deleted offer. Map to 404 so the FE
+      // renders the soft "live data unavailable" fallback rather than a hard
+      // error, keeping the rest of the detail page rendering.
+      if (error instanceof OfferNotFoundOnMarketplaceException) {
+        throw new NotFoundException(error.message);
+      }
+      throw error;
+    }
   }
 
   @Roles('admin', 'operator')
@@ -394,7 +406,7 @@ export class ListingsController {
     return this.toOfferCreationStatusDto(record);
   }
 
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
   @Get('connections/:connectionId/seller-policies')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -413,7 +425,7 @@ export class ListingsController {
     return this.sellerPolicies.getSellerPolicies(connectionId);
   }
 
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
   @Get('connections/:connectionId/responsible-producers')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -441,7 +453,7 @@ export class ListingsController {
     return { responsibleProducers };
   }
 
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
   @Get('connections/:connectionId/delivery-price-lists')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -468,7 +480,7 @@ export class ListingsController {
     return { deliveryPriceLists };
   }
 
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
   @Get('connections/:connectionId/categories/:categoryId/parameters')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -524,7 +536,7 @@ export class ListingsController {
     return { parameters: parameters.map((p) => this.toCategoryParameterResponseDto(p)) };
   }
 
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
   @Post('connections/:connectionId/categories/resolve')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -575,7 +587,7 @@ export class ListingsController {
     };
   }
 
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
   @Post('connections/:connectionId/categories/resolve-batch')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -639,7 +651,7 @@ export class ListingsController {
   // appears (e.g. a future bulk-prefill worker), promote to a service.
   // -----------------------------------------------------------------
 
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
   @Post('connections/:connectionId/products/find-by-barcode')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -692,7 +704,7 @@ export class ListingsController {
     return { kind: 'no_match' };
   }
 
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
   @Get('connections/:connectionId/products/:productId')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })

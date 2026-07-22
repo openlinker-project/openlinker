@@ -73,10 +73,12 @@
  * @module libs/integrations/erli/src/infrastructure/adapters
  * @implements {OrderSourcePort}
  * @implements {OrderStatusWriteback}
+ * @implements {SourceOptionsReader}
  */
 import type {
   DispatchCarrierHint,
   IncomingOrder,
+  MappingOption,
   OrderFeedEventType,
   OrderFeedInput,
   OrderFeedItem,
@@ -85,6 +87,7 @@ import type {
   OrderSourcePort,
   OrderStatusWriteback,
   OrderWritebackResult,
+  SourceOptionsReader,
 } from '@openlinker/core/orders';
 import type { IInventoryQueryService } from '@openlinker/core/inventory';
 import type {
@@ -116,6 +119,12 @@ import {
   type ErliInboxMarkReadRequest,
   type ErliInboxMessage,
 } from './erli-inbox.types';
+import {
+  ERLI_DELIVERY_METHODS_DICT_PATH,
+  ERLI_PRICE_LISTS_DETAILS_PATH,
+  type ErliDeliveryMethodDictEntry,
+  type ErliPriceListDetails,
+} from './erli-delivery.types';
 
 /** The two order-relevant inbox event literals (#992 / Q-INBOX-3). */
 const ERLI_ORDER_EVENT_TYPES: ReadonlySet<string> = new Set([
@@ -130,7 +139,17 @@ const ERLI_ORDER_STATUSES: ReadonlySet<ErliOrderStatus> = new Set<ErliOrderStatu
   'returned',
 ]);
 
-export class ErliOrderSourceAdapter implements OrderSourcePort, OrderStatusWriteback {
+/** Operator-facing labels for the Erli order-status enum (SourceOptionsReader). */
+const ERLI_ORDER_STATUS_LABELS: ReadonlyArray<{ value: ErliOrderStatus; label: string }> = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'purchased', label: 'Purchased' },
+  { value: 'cancelled', label: 'Cancelled' },
+  { value: 'returned', label: 'Returned' },
+];
+
+export class ErliOrderSourceAdapter
+  implements OrderSourcePort, OrderStatusWriteback, SourceOptionsReader
+{
   private readonly logger = new Logger(ErliOrderSourceAdapter.name);
 
   /**
@@ -275,6 +294,95 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderStatusWrite
 
     const order = assertErliOrder(response.data);
     return mapErliOrderToIncomingOrder(order);
+  }
+
+  // ── SourceOptionsReader (#1738) ──────────────────────────────────────────
+  // Populates the source-side dropdowns of the connection-mappings page
+  // (`MappingOptionsController` narrows via `isSourceOptionsReader`). Mirrors
+  // the Allegro shape: statuses + payment methods are static documented
+  // vocabularies; delivery methods are the only live lookup.
+
+  /** Static list from the documented Erli order-status enum (`erli-order.types.ts`). */
+  listOrderStatuses(): Promise<MappingOption[]> {
+    return Promise.resolve(ERLI_ORDER_STATUS_LABELS.map(({ value, label }) => ({ value, label })));
+  }
+
+  /**
+   * Erli exposes no payment-method vocabulary — payment is derivable only from
+   * the `delivery.cod` boolean on orders (see `derivePaymentStatus` in the
+   * mapper). The two derivable values are surfaced so operators can still map
+   * COD vs online if a destination needs it.
+   */
+  listPaymentMethods(): Promise<MappingOption[]> {
+    return Promise.resolve([
+      { value: 'online', label: 'Online payment' },
+      { value: 'cod', label: 'Cash on delivery' },
+    ]);
+  }
+
+  /**
+   * Live lookup: the shop's ACTIVE delivery methods — the intersection of the
+   * seller's price lists (`GET /delivery/priceListsDetails`, the methods orders
+   * can actually arrive with) and the platform dictionary
+   * (`GET /dictionaries/deliveryMethods`, the labels). Returned `value`s are the
+   * same tokens Erli stamps on orders as `delivery.typeId`, i.e. the routing-rule
+   * lookup keys. A method missing from the dictionary keeps its raw id as the
+   * label (best-effort). Deduped by value; price-list order preserved.
+   */
+  async listDeliveryMethods(): Promise<MappingOption[]> {
+    const [priceLists, dictionary] = await Promise.all([
+      this.fetchPriceListDetails(),
+      this.fetchDeliveryMethodDictionary(),
+    ]);
+
+    const labelById = new Map(dictionary.map((entry) => [entry.id, entry.name]));
+
+    const options: MappingOption[] = [];
+    const seen = new Set<string>();
+    for (const priceList of priceLists) {
+      for (const price of priceList.prices ?? []) {
+        const methodId = price.deliveryMethod?.id;
+        if (!methodId || seen.has(methodId)) {
+          continue;
+        }
+        seen.add(methodId);
+        options.push({ value: methodId, label: labelById.get(methodId) ?? methodId });
+      }
+    }
+
+    if (options.length === 0) {
+      this.logger.warn(
+        `Erli returned no active delivery methods for connection ${this.connectionId} — ` +
+          `listDeliveryMethods is empty. Operator likely needs to configure a price list first.`,
+      );
+    }
+    return options;
+  }
+
+  /** `GET /delivery/priceListsDetails` with an array-shape guard (no PII bodies logged). */
+  private async fetchPriceListDetails(): Promise<ErliPriceListDetails[]> {
+    const response = await this.httpClient.get<unknown>(ERLI_PRICE_LISTS_DETAILS_PATH);
+    if (!Array.isArray(response.data)) {
+      throw new ErliApiException(
+        'Erli price-lists-details response is not an array',
+        response.status,
+      );
+    }
+    return response.data as ErliPriceListDetails[];
+  }
+
+  /** `GET /dictionaries/deliveryMethods` with an array-shape guard; drops malformed entries. */
+  private async fetchDeliveryMethodDictionary(): Promise<ErliDeliveryMethodDictEntry[]> {
+    const response = await this.httpClient.get<unknown>(ERLI_DELIVERY_METHODS_DICT_PATH);
+    if (!Array.isArray(response.data)) {
+      throw new ErliApiException(
+        'Erli delivery-methods dictionary response is not an array',
+        response.status,
+      );
+    }
+    return (response.data as ErliDeliveryMethodDictEntry[]).filter(
+      (entry) => typeof entry?.id === 'string' && typeof entry?.name === 'string',
+    );
   }
 
   /**

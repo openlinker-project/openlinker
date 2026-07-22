@@ -1199,6 +1199,7 @@ graph LR
   integrations --> identifier-mapping
   shipping --> integrations
   shipping --> mappings
+  mailer --> integrations
 ```
 
 `identifier-mapping`, `integrations`, and `events` form the most-depended-upon "infrastructure spine" (each used by 5+ siblings). `users`, `webhooks`, and `mappings` have minimal outbound coupling.

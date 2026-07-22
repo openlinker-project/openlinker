@@ -25,6 +25,8 @@ import type {
   InventoryPagination,
   PaginatedInventoryItems,
   VariantAvailability,
+  ProductStockAggregate,
+  PruneStaleVariantsResult,
 } from '../../../domain/types/inventory.types';
 
 @Injectable()
@@ -64,11 +66,6 @@ export class InventoryRepository implements InventoryRepositoryPort {
     }
 
     return this.toDomain(entity);
-  }
-
-  async findById(id: string): Promise<InventoryItem | null> {
-    const entity = await this.repository.findOne({ where: { id } });
-    return entity ? this.toDomain(entity) : null;
   }
 
   async findMany(
@@ -130,10 +127,44 @@ export class InventoryRepository implements InventoryRepositoryPort {
     }));
   }
 
+  async findStockAggregatesByProductIds(
+    productIds: readonly string[]
+  ): Promise<readonly ProductStockAggregate[]> {
+    if (productIds.length === 0) return [];
+
+    const rows = await this.repository
+      .createQueryBuilder('inv')
+      .select('inv.productId', 'productId')
+      .addSelect('COALESCE(SUM(inv.availableQuantity), 0)', 'totalAvailable')
+      .addSelect('COALESCE(SUM(inv.reservedQuantity), 0)', 'totalReserved')
+      .addSelect('MAX(inv.updatedAt)', 'stockUpdatedAt')
+      .where('inv.productId IN (:...productIds)', { productIds: [...productIds] })
+      // Exclude soft-deleted rows so aggregates never count dead stock (#1478),
+      // mirroring findAvailabilityByVariantIds.
+      .andWhere('inv.isStale = false')
+      .groupBy('inv.productId')
+      .getRawMany<{
+        productId: string;
+        totalAvailable: string;
+        totalReserved: string;
+        stockUpdatedAt: Date | string;
+      }>();
+
+    // SUM comes back as numeric (string) through TypeORM's raw-query path;
+    // MAX(timestamptz) comes back as a Date via the pg driver but is defensively
+    // normalised in case the driver hands back a string.
+    return rows.map((row) => ({
+      productId: row.productId,
+      totalAvailable: Number(row.totalAvailable),
+      totalReserved: Number(row.totalReserved),
+      stockUpdatedAt: row.stockUpdatedAt instanceof Date ? row.stockUpdatedAt : new Date(row.stockUpdatedAt),
+    }));
+  }
+
   async markStaleExceptVariants(
     productId: string,
     keepVariantIds: readonly (string | null)[]
-  ): Promise<number> {
+  ): Promise<PruneStaleVariantsResult> {
     const nonNullKeep = keepVariantIds.filter((v): v is string => v !== null);
     const keepNull = keepVariantIds.includes(null);
 
@@ -161,9 +192,17 @@ export class InventoryRepository implements InventoryRepositoryPort {
           }
         })
       )
+      .returning(['productVariantId'])
       .execute();
 
-    return result.affected ?? 0;
+    // RETURNING yields one raw row per flagged inventory row; distinct non-null
+    // variant ids feed the master-deletion event payload (#1599). Product-level
+    // rows carry a NULL variant id and are counted but not surfaced as ids.
+    const raw = result.raw as { productVariantId: string | null }[];
+    const variantIds = [
+      ...new Set(raw.map((r) => r.productVariantId).filter((v): v is string => v !== null)),
+    ];
+    return { markedCount: result.affected ?? raw.length, variantIds };
   }
 
   async upsert(item: InventoryItem): Promise<InventoryItem> {

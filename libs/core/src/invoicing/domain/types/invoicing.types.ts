@@ -93,9 +93,19 @@ export type InvoiceFailureCode = (typeof InvoiceFailureCodeValues)[number];
  * Neutral Continuous-Transaction-Controls clearance lifecycle. The adapter maps
  * a regime's native states (KSeF, IT SDI, ES SII…) onto these. `not-applicable`
  * is the default for providers without regulatory transmission.
+ *
+ * `pending-submission` (#1700) is the deferred-submission window: a document
+ * that has been ISSUED with legal effect but not yet transmitted to the
+ * authority, because the authority was unreachable at issuance and the regime
+ * permits a bounded degraded-mode grace period. It is regime-neutral by design
+ * — several CTC regimes offer an analogous outage-tolerance window, so the
+ * name deliberately avoids any single regime's label. It is NON-terminal: a
+ * background sweep later resubmits the document and advances it to `submitted`
+ * (see {@link OfflineResubmitter}).
  */
 export const RegulatoryStatusValues = [
   'not-applicable',
+  'pending-submission',
   'submitted',
   'cleared',
   'accepted',
@@ -121,6 +131,56 @@ export interface RegulatoryClearanceResult {
    * a reference a prior submit could not. `null`/absent until assigned.
    */
   clearanceReference?: string | null;
+}
+
+/**
+ * Outcome of an offline-resubmission attempt (#1700). Returned by
+ * `OfflineResubmitter.resubmit` when a background sweep retransmits a document
+ * that was issued during a degraded-mode outage (`pending-submission`). Carries
+ * the full triple the caller persists via `updateOutcome` so no field is lost
+ * when a resubmit both advances the status AND surfaces the authority reference
+ * the original offline issuance could not know. A business verdict (incl.
+ * `rejected`) is carried as data; a transport/infra failure throws.
+ */
+export interface OfflineResubmitResult {
+  /** Neutral CTC clearance lifecycle the resubmit yielded (`submitted`/`cleared`/…). */
+  regulatoryStatus: RegulatoryStatus;
+  /** Provider-native document id assigned at (re)submission, or `null` if unchanged. */
+  providerInvoiceId: string | null;
+  /** Authority-assigned reference now known, or `null` until the authority assigns one. */
+  clearanceReference: string | null;
+}
+
+/**
+ * Neutral criteria for the last-resort "find it on the authority's side" lookup
+ * (#1700). Backs crash recovery: after a process died mid-submit, OL cannot know
+ * from its own state whether the authority actually received the document, so it
+ * queries the authority by whatever business coordinates it holds. Every field is
+ * optional — an adapter uses the subset its provider's query surface supports.
+ * Country/regulatory-agnostic: `sellerTaxId` is a scheme-tagged identifier value
+ * the adapter interprets, never a named national id.
+ */
+export interface RegulatoryLocateCriteria {
+  sellerTaxId?: string;
+  documentNumber?: string;
+  issuedFrom?: Date;
+  issuedTo?: Date;
+}
+
+/**
+ * Outcome of a {@link RegulatoryLocateCriteria} lookup (#1700). Returned by
+ * `RegulatoryRecordLocator.locateByQuery` when the authority holds a matching
+ * document, or `null` when it does not (the caller then treats the original
+ * attempt as never having landed). Mirrors the persist-triple shape so the
+ * recovery sweep reconciles OL's record with no translation.
+ */
+export interface RegulatoryLocateResult {
+  /** Provider-native document id the authority reports for the match, or `null`. */
+  providerInvoiceId: string | null;
+  /** Neutral CTC clearance lifecycle the authority reports for the located document. */
+  regulatoryStatus: RegulatoryStatus;
+  /** Authority-assigned reference for the located document, or `null` if none yet. */
+  clearanceReference: string | null;
 }
 
 /**
@@ -424,9 +484,44 @@ export interface IssueInvoiceCommand {
    * not carry a placement date; adapters omit the corresponding wire field.
    */
   saleDate?: string;
+  /**
+   * Single issuance instant (#1692). Set by the core `InvoiceService` so BOTH
+   * the allocated document number's date variables/period AND the provider's
+   * legal issue date resolve from ONE instant (no day/period-boundary
+   * divergence). A `DocumentNumberConsumer` adapter (KSeF) stamps its legal
+   * issue date from this value; absent (e.g. a direct adapter call in a test)
+   * the adapter falls back to its own clock.
+   */
+  issuedAt?: Date;
   /** Correction linkage + reason; present only for a correcting document. */
   correction?: CorrectionReference;
   idempotencyKey?: string;
+  /**
+   * Optional neutral register / entity-scope label (#10). Routes numbering to
+   * the connection's series for `(documentType, register)`; when absent the
+   * register-less default series for the document type is used. Ignored by
+   * providers that number documents themselves.
+   */
+  register?: string;
+  /**
+   * Optional neutral order-origin axis for numbering routing (#1694) — the
+   * source connection's `platformType` / marketplace-of-origin. Routes numbering
+   * to the connection's series scoped to this source; when absent the routing
+   * falls back past the source axis (source is the most-specific, first-dropped
+   * axis). Country-agnostic (ADR-026): an opaque neutral string, never a
+   * hardcoded marketplace name. Ignored by providers that number documents
+   * themselves.
+   */
+  source?: string;
+  /**
+   * OpenLinker-allocated legal document number (#1575). Set by the core
+   * `InvoiceService` ONLY when the resolved adapter passes
+   * `isDocumentNumberConsumer` (today: KSeF) — the adapter then uses it for its
+   * legal number (KSeF FA(3) `P_2`) and echoes it as
+   * `InvoiceRecord.providerInvoiceNumber` (single source, #1338). Absent for a
+   * provider that numbers documents itself (inFakt/Subiekt).
+   */
+  documentNumber?: string;
 }
 
 /**
@@ -506,9 +601,38 @@ export interface IssueCorrectionCommand {
   documentType?: string;
   reason?: string;
   lines: CorrectionLine[];
+  /**
+   * Single issuance instant for the correction document (#1692). Set by the core
+   * `InvoiceService` so the correction's allocated number and the provider's
+   * legal issue date resolve from ONE instant. See {@link IssueInvoiceCommand.issuedAt}.
+   */
+  issuedAt?: Date;
   idempotencyKey?: string;
+  /**
+   * Optional neutral register / entity-scope label (#10). Routes the correction's
+   * numbering to the connection's series for `(documentType, register)`; when
+   * absent the register-less default correction series is used.
+   */
+  register?: string;
+  /**
+   * Optional neutral order-origin axis for numbering routing (#1694) — the
+   * source connection's `platformType` / marketplace-of-origin. Routes the
+   * correction's numbering to the series scoped to this source; falls back past
+   * the source axis when absent. Country-agnostic (ADR-026). The correction's
+   * currency axis is taken from `originalDocument.currency`.
+   */
+  source?: string;
   /** Caller-assembled full original-document snapshot; see {@link OriginalDocumentSnapshot}. */
   originalDocument?: OriginalDocumentSnapshot;
+  /**
+   * OpenLinker-allocated legal document number for the CORRECTION document
+   * (#1575). Set by the core `InvoiceService` from the connection's correction
+   * series ONLY when the resolved adapter passes `isDocumentNumberConsumer`. The
+   * adapter uses it for the corrected document's own legal number (KSeF FA(3)
+   * `P_2` on the KOR) — corrections draw from their own series, never reusing the
+   * original's number. Absent for a self-numbering provider.
+   */
+  documentNumber?: string;
 }
 
 /**

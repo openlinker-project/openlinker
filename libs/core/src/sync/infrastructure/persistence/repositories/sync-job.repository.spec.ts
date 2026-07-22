@@ -192,4 +192,40 @@ describe('SyncJobRepository', () => {
       await expect(repo.requeueDeadJob('job-1')).rejects.toThrow(InvalidSyncJobStateError);
     });
   });
+
+  describe('requeueDeadByIdempotencyKey (#1585 S3)', () => {
+    function mockUpdate(affected: number): { where: jest.Mock } {
+      const where = jest.fn().mockReturnThis();
+      const qb = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where,
+        execute: jest.fn().mockResolvedValue({ affected }),
+      };
+      ormRepo.createQueryBuilder.mockReturnValue(qb as never);
+      return { where };
+    }
+
+    it('returns true when the single guarded UPDATE requeued a dead job', async () => {
+      const { where } = mockUpdate(1);
+
+      const result = await repo.requeueDeadByIdempotencyKey('invoice:c:o');
+
+      expect(result).toBe(true);
+      // The status='dead' guard is IN the write (no separate read).
+      expect(where).toHaveBeenCalledWith(
+        'idempotencyKey = :idempotencyKey AND status = :status',
+        { idempotencyKey: 'invoice:c:o', status: 'dead' },
+      );
+      expect(ormRepo.findOne).not.toHaveBeenCalled();
+    });
+
+    it('returns false when no dead job matched the key (absent / non-dead)', async () => {
+      mockUpdate(0);
+
+      const result = await repo.requeueDeadByIdempotencyKey('invoice:c:o');
+
+      expect(result).toBe(false);
+    });
+  });
 });

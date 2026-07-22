@@ -8,7 +8,11 @@
  */
 import { screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../../../test/test-utils';
+import {
+  renderWithProviders,
+  createMockApiClient,
+  createAuthenticatedSessionAdapter,
+} from '../../../../test/test-utils';
 import { ErliCreateOfferWizard } from './erli-create-offer-wizard';
 import type { Connection } from '../../../connections';
 import type { Product } from '../../../products';
@@ -353,6 +357,61 @@ describe('ErliCreateOfferWizard', () => {
       ).toBeInTheDocument();
       // Still on the Category step — Category-parameters never rendered.
       expect(screen.queryByText(/no additional parameters required/i)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('demo read-only viewer (#1704)', () => {
+    /** Step 0 → Review: pick a variant, fill price/stock, advance past details. */
+    async function advanceToReview(): Promise<void> {
+      await pickVariantAndAdvance();
+      fireEvent.change(await screen.findByLabelText(/^price \(PLN\)$/i), {
+        target: { value: '99.99' },
+      });
+      fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+    }
+
+    it('reaches Review with editable fields but disables the final Create offer submit', async () => {
+      const mockApi = mocks(productWith(['https://cdn.example.com/a.jpg']), {
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      });
+
+      // Default noop session holds no permissions → demo read-only viewer.
+      renderWithProviders(
+        <ErliCreateOfferWizard
+          connection={erliConnection}
+          onCancel={vi.fn()}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await advanceToReview();
+
+      const submitButton = await screen.findByRole('button', { name: /create offer/i });
+      expect(submitButton).toBeDisabled();
+
+      fireEvent.click(submitButton);
+      expect(vi.mocked(mockApi.listings.createOffer)).not.toHaveBeenCalled();
+    });
+
+    it('keeps the Create offer submit enabled for a permitted session in demo mode', async () => {
+      const mockApi = mocks(productWith(['https://cdn.example.com/a.jpg']), {
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      });
+
+      renderWithProviders(
+        <ErliCreateOfferWizard
+          connection={erliConnection}
+          onCancel={vi.fn()}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi, sessionAdapter: createAuthenticatedSessionAdapter() },
+      );
+
+      await advanceToReview();
+
+      expect(await screen.findByRole('button', { name: /create offer/i })).toBeEnabled();
     });
   });
 });

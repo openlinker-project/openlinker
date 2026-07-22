@@ -116,6 +116,7 @@ export function createMockApiClient(
       register: vi.fn().mockResolvedValue({ ok: true }),
       forgotPassword: vi.fn().mockResolvedValue({ ok: true }),
       resetPassword: vi.fn().mockResolvedValue({ ok: true }),
+      confirmEmail: vi.fn().mockResolvedValue({ ok: true }),
       ...overrides.auth,
     } as ApiClient['auth'],
     connections: {
@@ -230,7 +231,6 @@ export function createMockApiClient(
         limit: 20,
         offset: 0,
       }),
-      getById: vi.fn().mockResolvedValue(null),
       ...overrides.inventory,
     } as ApiClient['inventory'],
     invoicing: {
@@ -352,6 +352,40 @@ export function createMockApiClient(
       }),
       ...overrides.listings,
     } as ApiClient['listings'],
+    mailerSettings: {
+      get: vi.fn().mockResolvedValue({
+        transport: 'console',
+        smtpHost: null,
+        smtpPort: null,
+        smtpSecure: false,
+        fromAddress: null,
+        smtpPasswordConfigured: false,
+        updatedAt: null,
+        updatedBy: null,
+      }),
+      update: vi.fn().mockResolvedValue(undefined),
+      setCredentials: vi.fn().mockResolvedValue(undefined),
+      clearCredentials: vi.fn().mockResolvedValue(undefined),
+      ...overrides.mailerSettings,
+    } as ApiClient['mailerSettings'],
+    posthogSettings: {
+      get: vi.fn().mockResolvedValue({
+        enabled: false,
+        region: 'eu',
+        customHost: null,
+        autocapture: false,
+        sessionRecording: false,
+        apiKeyConfigured: false,
+        wouldOverrideEnv: false,
+        overriddenEnvVars: [],
+        updatedAt: null,
+        updatedBy: null,
+      }),
+      update: vi.fn().mockResolvedValue(undefined),
+      setCredentials: vi.fn().mockResolvedValue(undefined),
+      clearCredentials: vi.fn().mockResolvedValue(undefined),
+      ...overrides.posthogSettings,
+    } as ApiClient['posthogSettings'],
     products: {
       list: vi.fn().mockResolvedValue({
         items: [],
@@ -509,6 +543,7 @@ const DEFAULT_TEST_USER: SessionUser = {
     'inventory:read', 'inventory:write',
     'listings:read', 'listings:write',
     'ai:suggest',
+    'invoices:read', 'invoices:write',
   ],
 };
 
