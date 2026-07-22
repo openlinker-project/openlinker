@@ -91,7 +91,8 @@ export class UserRepository implements UserRepositoryPort {
   }
 
   async save(
-    user: Pick<User, 'username' | 'email' | 'passwordHash' | 'role' | 'status'>
+    user: Pick<User, 'username' | 'email' | 'passwordHash' | 'role' | 'status'> &
+      Partial<Pick<User, 'analyticsConsent'>>
   ): Promise<User> {
     const normalizedEmail = this.normalizeEmail(user.email);
     const entity = this.ormRepository.create({
@@ -100,6 +101,7 @@ export class UserRepository implements UserRepositoryPort {
       passwordHash: user.passwordHash,
       role: user.role,
       status: user.status,
+      analyticsConsent: user.analyticsConsent ?? false,
     });
     try {
       const saved = await this.ormRepository.save(entity);
@@ -174,7 +176,8 @@ export class UserRepository implements UserRepositoryPort {
       role,
       status,
       entity.createdAt,
-      entity.updatedAt
+      entity.updatedAt,
+      entity.analyticsConsent ?? false
     );
   }
 }

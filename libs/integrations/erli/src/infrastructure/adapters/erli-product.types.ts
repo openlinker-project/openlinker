@@ -263,6 +263,13 @@ export interface ErliProductResource {
   images?: ErliProductImage[];
   /** Category breadcrumb paths; the first path's leaf is the offer's category. */
   categories?: ErliProductCategoryNode[][];
+  // ── Buyer-facing URL fields (#1752) ──
+  // PROVISIONAL: unlike the read-side fields above, these two are NOT yet
+  // confirmed against a live sandbox `GET /products/{externalId}` response.
+  // The public offer URL (`{host}/produkt/{slug},{marketplaceId}`) is built
+  // only when BOTH are present, so an absent field just omits the URL (safe
+  // fallback, no broken link) rather than mislabelling anything. Confirm the
+  // live read returns them before treating the URL as a guaranteed feature.
   /** Buyer-facing offer slug (e.g. `swieca-sojowa-200g`). */
   slug?: string;
   /** Numeric Erli marketplace offer id (distinct from the seller-keyed `externalId`). */

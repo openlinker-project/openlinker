@@ -110,3 +110,16 @@ export interface PrestashopCurrency {
   id: string;
   iso_code?: string;
 }
+
+/**
+ * PrestaShop Configuration Data
+ *
+ * Represents a single `/configurations` row (a global key/value setting, e.g.
+ * `PS_CURRENCY_DEFAULT`). `value` carries the setting payload — for
+ * `PS_CURRENCY_DEFAULT` it is the numeric id of the shop's default currency.
+ */
+export interface PrestashopConfiguration {
+  id: string;
+  name?: string;
+  value?: string;
+}

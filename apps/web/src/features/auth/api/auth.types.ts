@@ -2,6 +2,8 @@ export interface RegisterRequest {
   username: string;
   email: string;
   password: string;
+  /** Opt-in for demo-only usage analytics, chosen on the register form (#1743). */
+  analyticsConsent: boolean;
 }
 
 export interface LoginRequest {

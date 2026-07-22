@@ -288,6 +288,14 @@ export class ErliOfferManagerAdapter
      * capability" case callers already handle.
      */
     allegroCategoryCatalog?: AllegroCategoryCatalogClient,
+    /**
+     * Buyer-facing web host (origin, e.g. `https://sandbox.erli.dev` /
+     * `https://erli.pl` — NOT the `/svc/shop-api` API base). Used to build the
+     * public offer URL in {@link toMarketplaceOffer}. Optional: when absent (unit
+     * tests, legacy callers) the offer URL is simply omitted, preserving the
+     * pre-fix behaviour.
+     */
+    private readonly webBaseUrl?: string,
   ) {
     if (allegroCategoryCatalog) {
       this.fetchCategories = (parentId?: string): Promise<OfferCategory[]> =>
@@ -422,11 +430,17 @@ export class ErliOfferManagerAdapter
    * Price is Erli's grosze integer → decimal string in PLN (Erli is PLN-only).
    * Description prefers the flat `externalDescription` HTML over the structured
    * `description.sections` tree. Category is the leaf of the first breadcrumb path.
-   * `marketplaceUrl` / `endsAt` are intentionally omitted — Erli exposes no stable
-   * buyer-facing offer URL on this read and has no fixed offer end date.
+   * `marketplaceUrl` is the public `{webBaseUrl}/produkt/{slug},{marketplaceId}`
+   * when the read carries both a `slug` and a numeric `marketplaceId` (and a web
+   * host is wired); otherwise it is omitted — Erli exposes no stable buyer-facing
+   * URL for such reads. `endsAt` is always omitted (Erli has no fixed offer end date).
    */
   private toMarketplaceOffer(externalId: string, product: ErliProductResource): MarketplaceOffer {
     const leafCategory = product.categories?.[0]?.at(-1);
+    const marketplaceUrl =
+      this.webBaseUrl && product.slug && product.marketplaceId !== undefined
+        ? `${this.webBaseUrl}/produkt/${product.slug},${product.marketplaceId}`
+        : undefined;
     return {
       externalId: product.externalId ?? externalId,
       title: product.name ?? '',
@@ -441,6 +455,7 @@ export class ErliOfferManagerAdapter
       category: leafCategory
         ? { id: String(leafCategory.id), name: leafCategory.name }
         : undefined,
+      marketplaceUrl,
     };
   }
 
