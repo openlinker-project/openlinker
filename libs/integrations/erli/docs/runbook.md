@@ -48,6 +48,13 @@ Read these before relying on the integration in production.
   to populate the frozen-stock cache.
 - **Static API key.** No OAuth/refresh — rotate by replacing the key in the Erli
   seller panel and updating the connection credentials in OpenLinker.
+- **No ship-by deadline on orders.** Erli's order payload exposes no per-order
+  dispatch deadline, so the orders list/detail **Ship-by** field is intentionally
+  blank for Erli orders (only sources with a per-order dispatch window — Allegro —
+  populate it). Erli's dispatch time is a shop-wide offer handling-time OpenLinker
+  applies on offer create, not a per-order value Erli returns. The delivery-method
+  label still shows whenever the Erli order carries a delivery method; when it
+  doesn't, the order-detail **Carrier** row surfaces the booked shipment's carrier.
 
 ---
 

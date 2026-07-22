@@ -219,6 +219,12 @@ export class OrderRecordService implements IOrderRecordService {
    * column and SLA surfaces degrade gracefully. Re-run on every persist (both
    * the `awaiting_mapping` and `ready` paths) so a re-pulled order with a
    * changed window updates the column.
+   *
+   * Ship-by is populated only for sources that expose a per-order dispatch
+   * window on the incoming order (#1776): Allegro maps `delivery.time.dispatch`.
+   * Erli and WooCommerce order payloads carry no per-order dispatch deadline, so
+   * their `dispatchTime` is absent and ship-by stays `null` by design — the
+   * source of truth is the source adapter, this method never fabricates one.
    */
   private deriveDispatchByAt(window: OrderDispatchWindow | undefined): Date | null {
     const to = window?.to;

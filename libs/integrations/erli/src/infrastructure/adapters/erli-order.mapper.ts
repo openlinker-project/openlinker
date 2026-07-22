@@ -16,6 +16,16 @@
  *  - Status enum is `pending | purchased | cancelled | returned`.
  *  - Erli reports buyer-paid GROSS prices → `taxTreatment: 'inclusive'`.
  *
+ * Ship-by / dispatch deadline (#1776): the Erli order resource exposes NO
+ * per-order dispatch deadline, so `dispatchTime` is intentionally left unmapped
+ * and the derived ship-by (`OrderRecord.dispatchByAt`) stays blank by design —
+ * matching the FE's present-only ship-by row (no fabrication). Erli's dispatch
+ * time (`defaultDispatchTime` / per-offer `dispatchTime`) is an OUTBOUND,
+ * shop-wide offer handling-time OL applies on offer create; it is not a value
+ * Erli returns per order, so it cannot back a per-order ship-by. Only sources
+ * that expose a per-order dispatch window (Allegro `delivery.time.dispatch`)
+ * populate ship-by.
+ *
  * Identity resolution is DEFERRED to #995 and happens downstream in core
  * (`OrderIngestionService`) — this mapper carries buyer email + the line-item
  * product reference through RAW (external-only), never emitting internal `ol_*`

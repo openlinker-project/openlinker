@@ -98,6 +98,11 @@ export function OrderDeliveryPanel({
   }
   // Always rendered (unlike the fields above) — "-" fallback per #1617 so the
   // operator can tell "no carrier resolved" apart from "field doesn't exist".
+  // This row is also the documented delivery-method fallback (#1776): when the
+  // source order carried no delivery method (so the Method row above is absent —
+  // e.g. Erli/WooCommerce orders with no shipping line), the booked shipment's
+  // carrier still surfaces here, so the panel always answers "how is this
+  // shipping?" without duplicating a Method row.
   items.push({ id: 'carrier', label: 'Carrier', value: carrier ?? '-' });
 
   const pickupCaption =

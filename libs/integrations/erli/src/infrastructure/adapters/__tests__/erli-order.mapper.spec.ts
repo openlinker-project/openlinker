@@ -82,6 +82,25 @@ describe('mapErliOrderToIncomingOrder', () => {
     expect(result.shipping).toEqual({ methodId: 'dpd' });
   });
 
+  it('should map methodName from delivery.name so the delivery-method label populates (#1776)', () => {
+    const result = mapErliOrderToIncomingOrder(
+      buildErliOrder({ delivery: { name: 'DPD Kurier', typeId: 'dpd', cod: false } }),
+    );
+
+    expect(result.shipping?.methodName).toBe('DPD Kurier');
+  });
+
+  it('should not map a per-order dispatch deadline — Erli exposes none, ship-by stays blank (#1776)', () => {
+    const result = mapErliOrderToIncomingOrder(
+      buildErliOrder({
+        status: 'purchased',
+        delivery: { name: 'DPD Kurier', typeId: 'dpd', cod: false },
+      }),
+    );
+
+    expect(result.dispatchTime).toBeUndefined();
+  });
+
   it('should map a COD purchased order to processing + paymentStatus cod', () => {
     const result = mapErliOrderToIncomingOrder(
       buildErliOrder({ status: 'purchased', delivery: { cod: true } }),
