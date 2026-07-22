@@ -264,6 +264,7 @@ export type {
   IOfferStatusSyncService,
   OfferStatusSyncOptions,
 } from './application/services/offer-status-sync.service.interface';
+export type { IOfferStatusReadService } from './application/services/offer-status-read.service.interface';
 export type { IOfferStockRestoreService } from './application/interfaces/offer-stock-restore.service.interface';
 export { OfferPollNotSupportedException } from './domain/exceptions/offer-poll-not-supported.exception';
 export { OfferNotFoundOnMarketplaceException } from './domain/exceptions/offer-not-found-on-marketplace.exception';
