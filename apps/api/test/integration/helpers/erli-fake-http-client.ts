@@ -27,6 +27,7 @@
  * @module apps/api/test/integration/helpers
  */
 import { ErliApiException } from '@openlinker/integrations-erli';
+import type { ErliProductResource } from '@openlinker/integrations-erli/infrastructure/adapters/erli-product.types';
 import type { IErliHttpClient } from '@openlinker/integrations-erli/infrastructure/http/erli-http-client.interface';
 import type {
   ErliHttpResponse,
@@ -64,7 +65,7 @@ export class ErliFakeHttpClient implements IErliHttpClient {
    * it (unless a sequenced response is queued, which wins). Pass `undefined` to
    * model a bodyless 2xx.
    */
-  setProduct(externalId: string, resource: unknown): void {
+  setProduct(externalId: string, resource: Partial<ErliProductResource> | undefined): void {
     this.stickyByPath.set(this.pathFor(externalId), resource);
   }
 
@@ -73,7 +74,7 @@ export class ErliFakeHttpClient implements IErliHttpClient {
    * modelling). Each `get` shifts the next entry; once drained, falls back to a
    * sticky product (if any). Replaces any previously-queued sequence for the id.
    */
-  enqueueGet(externalId: string, responses: unknown[]): void {
+  enqueueGet(externalId: string, responses: Array<Partial<ErliProductResource> | undefined>): void {
     this.queuedByPath.set(this.pathFor(externalId), [...responses]);
   }
 
