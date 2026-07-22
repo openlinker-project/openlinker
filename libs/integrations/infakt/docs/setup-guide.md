@@ -128,34 +128,42 @@ auto-provisioning). Set it up manually:
    to confirm the endpoint is live. OL's webhook decoder echoes the same code back
    automatically; the subscription activates once inFakt sees the matching echo.
 5. **Secret**: as the subscription-creation form below shows, inFakt's "Nowy webhook"
-   form has **no secret field** — only the account fields (URL, description, payload
+   form has **no secret field** - only the account fields (URL, description, payload
    content, event checkboxes) plus your inFakt **account password**, required to
    confirm the action. inFakt instead **auto-generates a secret per subscription**
    after creation, visible in that subscription's details view in the inFakt
-   dashboard. Open the newly-created webhook's details, copy the generated secret, and
-   set it as OL's webhook secret for this connection so `X-Infakt-Signature`
-   verification matches.
+   dashboard. Open the newly-created webhook's details and copy the generated secret -
+   this is the value OL verifies `X-Infakt-Signature` against (HMAC-SHA256 hex over the
+   raw request body). The direction is fixed by inFakt: **inFakt generates the secret,
+   you paste it into OL** (OL never pushes a secret to inFakt - there is no inFakt
+   webhook-provisioning API). See the box below for how to inject it into OL.
 
 ![inFakt webhooks list](./assets/if3-infakt-webhooks-list.png)
 
 ![inFakt webhook subscription form](./assets/if4-infakt-webhook-form.png)
 
-> **Known gap**: there is currently no OL admin-UI affordance for webhook secrets on
-> the inFakt connection page (unlike PrestaShop/Erli, which push an OL-generated
-> secret out to the platform). OL's rotate endpoint only **generates a new random
-> secret server-side** — there is no endpoint to set it to an arbitrary caller-supplied
-> value, such as the one inFakt just generated:
+> **Injecting inFakt's secret into OL.** Because inFakt generates the secret (and has
+> no API to accept an externally-supplied one), give OL that exact value via
+> environment variable, read by OL's webhook-secret resolver:
 >
 > ```bash
-> curl -X POST "https://<your-ol-host>/v1/connections/{connectionId}/webhooks/secret/rotate" \
->   -H "Authorization: Bearer <your-ol-jwt>"
-> # => { "secret": "...", "revealedOnce": true, "warning": "..." } (shown once, copy immediately)
+> # per-connection (preferred):
+> OPENLINKER_WEBHOOK_SECRET__INFAKT__<CONNECTION_ID_UPPERCASE>=<secret-from-infakt-ui>
+> # or provider-wide (all inFakt connections):
+> OPENLINKER_WEBHOOK_SECRET__INFAKT=<secret-from-infakt-ui>
 > ```
 >
-> The returned `secret` will **not** match the one inFakt generated for the
-> subscription, so signature verification fails until either an FE affordance or a
-> "set secret" endpoint ships. See [Troubleshooting](#troubleshooting) for the
-> resulting symptom.
+> This is the same mechanism OL's webhook-ingestion integration test uses to make
+> `X-Infakt-Signature` verification pass. Do **not** use the
+> `POST /connections/{connectionId}/webhooks/secret/rotate` endpoint for inFakt: it
+> generates a *new random* server-side secret that inFakt would never know, so
+> verification would fail.
+>
+> **Residual limitation**: the env-var resolver is marked deprecated in code (it emits
+> a one-time warning), and there is no OL admin-UI affordance yet to set an inFakt
+> connection's webhook secret to a caller-supplied value. Until a first-class "set
+> webhook secret" endpoint / FE affordance for inFakt-style providers ships, the env
+> var is the supported way to make verification pass.
 
 ---
 
@@ -254,7 +262,7 @@ the others.
 | Symptom | Cause | Fix |
 |---|---|---|
 | Connection test fails immediately | Wrong or revoked API key, or `baseUrl` pointed at the wrong environment | Re-check the API key in inFakt account settings; confirm `baseUrl` is blank (production) or the correct sandbox host. |
-| Webhook deliveries return 401 | `X-Infakt-Signature` doesn't match — inFakt auto-generates the subscription's secret and OL has no endpoint to set its own secret to that same value (known gap, see [Webhook configuration](#2-webhook-configuration)) | Re-check the secret copied from inFakt's webhook-details view against whatever value was last set on the OL side; until a "set secret" endpoint or FE affordance ships, this requires a manual DB/API workaround per connection. |
+| Webhook deliveries return 401 | `X-Infakt-Signature` (HMAC-SHA256 hex of the raw body) doesn't match the secret OL resolved | Copy the secret from inFakt's webhook-details view and set `OPENLINKER_WEBHOOK_SECRET__INFAKT__<CONNECTION_ID_UPPERCASE>` (or `OPENLINKER_WEBHOOK_SECRET__INFAKT`); do **not** use the `secret/rotate` endpoint for inFakt (it generates a random secret inFakt doesn't know). See [Webhook configuration](#2-webhook-configuration). |
 | Webhook subscription never activates | The verification-ping echo didn't reach inFakt (host unreachable, TLS issue, or the connection ID in the URL is wrong) | Confirm the URL path matches `POST /webhooks/infakt/{connectionId}` exactly and the host is publicly reachable from inFakt's servers. |
 | Invoice stays `submitted` forever, never reaches `accepted` | KSeF itself rejected the document after inFakt submitted it, or (less likely, since OL's `sendToKsef` call would normally fail outright at issuance time if this were disabled) KSeF integration is off in inFakt's account settings | Check inFakt's own invoice/KSeF status in its dashboard first — `ksef_data.status: error` there means inFakt attempted submission and KSeF rejected it (fix the underlying document data and re-issue). If `getClearanceStatus()` keeps returning `not-applicable` with no `ksef_data` at all, confirm KSeF integration is enabled in inFakt's account settings (the [Prerequisites](#prerequisites) requirement). |
 | Rate limiting / `429` from inFakt | Sandbox and low-tier plans enforce API rate limits | Space out bulk issuance; inFakt's retry classifier (`InfaktRetryClassifierAdapter`) already treats `429` as retryable in the worker's job runner. |
