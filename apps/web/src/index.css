@@ -2514,10 +2514,22 @@ textarea,
 .data-table__footer-rail {
   position: fixed;
   z-index: 30;
+  /* The rail box spans the full table width and stays in the layout even when
+     the bar self-hides (count 0), so it must NOT catch pointer events itself —
+     otherwise an invisible fixed strip near the viewport bottom would swallow
+     clicks on the rows/pagination beneath it. Only the visible inner bar is a
+     click target. */
+  pointer-events: none;
 }
 .data-table__footer-rail .bulk-action-bar {
   position: static;
   margin: 0;
+  pointer-events: auto;
+}
+/* Re-assert inert when the bar has faded out at count 0 (equal specificity to
+   the rule above, so source order wins — keep this last). */
+.data-table__footer-rail .bulk-action-bar--hidden {
+  pointer-events: none;
 }
 
 /* Virtualized mode: the inner scroller owns both axes. */
@@ -2910,7 +2922,11 @@ textarea,
      horizontally-scrolled) table: it sticks to the left edge of the scroll
      container and takes the container's visible width (--dt-visible-width,
      published from JS). So the detail stays fully readable and never slides
-     under the frozen columns, however far the row columns are scrolled. */
+     under the frozen columns, however far the row columns are scrolled.
+     Applies to every expandable table, not just frozen-column ones: when a
+     table has no horizontal overflow (no `stickyLeftColumns`), `sticky; left:0`
+     resolves to the same position as static and `--dt-visible-width` equals the
+     table width, so the drawer renders identically to before — a safe no-op. */
   position: sticky;
   left: 0;
   width: var(--dt-visible-width, 100%);

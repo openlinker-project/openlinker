@@ -111,12 +111,14 @@ interface DataTableProps<Row> {
   expandable?: DataTableExpandable<Row>;
   /**
    * Slot rendered as a bottom rail on the table — a bulk action bar is the
-   * canonical use. The rail is `position: sticky`, clamped to the table's box:
-   * it pins to the bottom of the viewport whenever any part of the table is on
-   * screen, and rests at the table's end (above whatever follows, e.g.
-   * pagination) once you scroll there — never below the table, never above its
-   * top. Typically a self-hiding bar (e.g. `BulkActionBar`, which goes
-   * `aria-hidden` + fades out at count 0) so the rail is inert when idle.
+   * canonical use. The rail is `position: fixed`, positioned imperatively and
+   * clamped to the table's box: it pins to the bottom of the viewport whenever
+   * any part of the table is on screen, and rests at the table's end (above
+   * whatever follows, e.g. pagination) once you scroll there — never below the
+   * table, never above its top. `fixed` (not `sticky`) because an ancestor's
+   * `overflow` would otherwise capture the sticky context. Typically a
+   * self-hiding bar (e.g. `BulkActionBar`, which goes `aria-hidden` + fades out
+   * at count 0) so the rail is inert when idle.
    */
   footer?: ReactNode;
   /** Per-row height estimate used by the virtualizer. Default 36. */
@@ -146,6 +148,12 @@ interface DataTableProps<Row> {
    * once the container is scrolled right, the last frozen column gains an
    * accent hairline + a shadow cast rightward, so the affordance appears
    * exactly when it carries meaning.
+   *
+   * **Works with `virtualize`.** The scroll handler that toggles the boundary
+   * is wired to the virtual scroller as well as the plain container, and the
+   * frozen cells use CSS `position: sticky` inside whichever scroll box is
+   * active — so freezing behaves identically in virtualized and non-virtualized
+   * tables. (It does not combine with the mobile card view, which ignores it.)
    */
   stickyLeftColumns?: number;
   /**
@@ -702,11 +710,13 @@ export function DataTable<Row>({
     </div>
   );
 
-  // The footer rail is wrapped together with the table so its `position: sticky`
-  // is clamped to the table's box: it pins to the viewport bottom whenever any
-  // part of the table is on screen, and rests at the table's end once scrolled
-  // there — never below the table, never above its top. Whatever the page puts
-  // after DataTable (pagination) sits outside the wrap, so it's never covered.
+  // The footer rail is wrapped together with the table so the imperatively
+  // positioned `position: fixed` bar is clamped to the table's box: it pins to
+  // the viewport bottom whenever any part of the table is on screen, and rests
+  // at the table's end once scrolled there — never below the table, never above
+  // its top. `fixed` (not `sticky`) because .shell-content's overflow would
+  // capture the sticky context. Whatever the page puts after DataTable
+  // (pagination) sits outside the wrap, so it's never covered.
   if (footer) {
     return (
       <div className="data-table__wrap" ref={wrapRef}>
