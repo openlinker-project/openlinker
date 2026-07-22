@@ -20,6 +20,18 @@ export const MAX_PASSWORD_LENGTH = 512;
 const MIN_PORT = 1;
 const MAX_PORT = 65535;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Matches `Display Name <email@domain.com>` — nodemailer parses this form natively
+// into the `From:` header, and the backend DTO has no `@IsEmail()` gate, so this
+// client-side check only needs to confirm the bracketed part looks like an email.
+const NAME_AND_EMAIL_PATTERN = /^.+\s<([^\s@]+@[^\s@]+\.[^\s@]+)>$/;
+
+function isValidFromAddress(value: string): boolean {
+  if (EMAIL_PATTERN.test(value)) {
+    return true;
+  }
+  const match = NAME_AND_EMAIL_PATTERN.exec(value);
+  return match !== null && EMAIL_PATTERN.test(match[1]);
+}
 
 export const mailerSettingsFormSchema = z
   .object({
@@ -72,11 +84,11 @@ export const mailerSettingsFormSchema = z
         path: ['fromAddress'],
         message: 'From address is required for SMTP transport',
       });
-    } else if (!EMAIL_PATTERN.test(values.fromAddress)) {
+    } else if (!isValidFromAddress(values.fromAddress)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['fromAddress'],
-        message: 'Enter a valid email address',
+        message: 'Enter a valid email address, optionally with a display name (e.g. "OpenLinker <noreply@example.com>")',
       });
     }
   });
