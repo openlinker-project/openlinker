@@ -64,6 +64,11 @@ export type {
   EditConnectionFormValues,
 } from './components/edit-connection.schema';
 
+export {
+  InfaktWebhookConfig,
+  InfaktWebhookConfigDialog,
+} from './components/infakt-webhook-config';
+
 export { ConnectionEntityLabel } from './components/ConnectionEntityLabel';
 export { AllegroSellerDefaultsSection } from './components/allegro-seller-defaults-section';
 export { CapabilityTogglesSection } from './components/CapabilityTogglesSection';
