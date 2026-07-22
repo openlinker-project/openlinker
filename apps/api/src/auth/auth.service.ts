@@ -33,12 +33,15 @@ export class AuthService implements IAuthService {
     '$2b$10$AAAAAAAAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 
   async validateUser(identifier: string, password: string): Promise<User | null> {
-    // Accept either a username or an email as the identifier. Username wins when
-    // both a username and someone else's email would match the same string; in
-    // practice usernames don't contain '@', so collisions are theoretical.
-    const user =
-      (await this.userRepository.findByUsername(identifier)) ??
-      (await this.userRepository.findByEmail(identifier));
+    // Accept either a username or an email as the identifier. The presence of
+    // '@' disambiguates the two: usernames are forbidden from containing '@'
+    // (enforced by RegisterDto), so an identifier with '@' is an email and one
+    // without is a username. Branching this way makes the username<->email
+    // collision impossible rather than merely unlikely, and collapses lookup to
+    // a single query on every path.
+    const user = identifier.includes('@')
+      ? await this.userRepository.findByEmail(identifier)
+      : await this.userRepository.findByUsername(identifier);
     if (!user) {
       await bcrypt.compare(password, AuthService.DUMMY_HASH);
       return null;
