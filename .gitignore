@@ -67,3 +67,4 @@ Thumbs.db
 .claude/scheduled_tasks.lock
 .claude/*.lock
 
+.env.ol1770
