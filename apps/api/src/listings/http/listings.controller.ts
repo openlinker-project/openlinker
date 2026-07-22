@@ -37,6 +37,7 @@ import {
   isCatalogProductReader,
   isCategoryParametersReader,
   isOfferReader,
+  OfferNotFoundOnMarketplaceException,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   OFFER_MAPPING_REPOSITORY_TOKEN,
@@ -245,8 +246,19 @@ export class ListingsController {
       );
     }
 
-    const offer = await adapter.getOffer({ externalId: mapping.externalId });
-    return MarketplaceOfferResponseDto.fromDomain(offer);
+    try {
+      const offer = await adapter.getOffer({ externalId: mapping.externalId });
+      return MarketplaceOfferResponseDto.fromDomain(offer);
+    } catch (error) {
+      // The offer isn't (yet) retrievable on the marketplace — e.g. Erli's
+      // read-after-write cache lag or a deleted offer. Map to 404 so the FE
+      // renders the soft "live data unavailable" fallback rather than a hard
+      // error, keeping the rest of the detail page rendering.
+      if (error instanceof OfferNotFoundOnMarketplaceException) {
+        throw new NotFoundException(error.message);
+      }
+      throw error;
+    }
   }
 
   @Roles('admin', 'operator')

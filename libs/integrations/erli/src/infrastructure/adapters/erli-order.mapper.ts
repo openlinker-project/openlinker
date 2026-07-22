@@ -36,6 +36,7 @@ import type {
   IncomingOrderTotals,
   OrderPickupPoint,
   OrderPickupPointType,
+  OrderShipping,
   OrderStatus,
   PaymentStatus,
 } from '@openlinker/core/orders';
@@ -43,6 +44,7 @@ import type {
 import type {
   ErliOrder,
   ErliOrderAddress,
+  ErliOrderDelivery,
   ErliOrderItem,
   ErliOrderPickupPlace,
   ErliOrderStatus,
@@ -72,6 +74,7 @@ export function mapErliOrderToIncomingOrder(order: ErliOrder): IncomingOrder {
     totals: mapTotals(order),
     shippingAddress: mapAddress(order.user.deliveryAddress),
     billingAddress: mapAddress(order.user.invoiceAddress),
+    shipping: mapShipping(order.delivery),
     pickupPoint: mapPickupPoint(order.delivery.pickupPlace),
     paymentStatus: derivePaymentStatus(order.status, order.delivery.cod),
     placedAt: order.purchasedAt,
@@ -184,6 +187,25 @@ function mapTotals(order: ErliOrder): IncomingOrderTotals {
 /** Round a monetary amount to 2 decimals (guards IEEE-754 residue). */
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+/**
+ * Maps Erli's `delivery.typeId`/`name` onto the neutral `OrderShipping`
+ * reference (#1738). `methodId` is the routing-rule lookup key consumed by
+ * `FulfillmentRoutingService.resolve` (via the order snapshot), so an Erli
+ * order can divert to an OL-managed carrier per delivery method exactly like
+ * an Allegro order. Returns `undefined` when Erli reports no `typeId` (older
+ * orders / edge payloads) so the optional `shipping` key stays absent and
+ * routing falls back to the omp_fulfilled default.
+ */
+function mapShipping(delivery: ErliOrderDelivery): OrderShipping | undefined {
+  if (!delivery.typeId) {
+    return undefined;
+  }
+  return {
+    methodId: delivery.typeId,
+    ...(delivery.name !== undefined && { methodName: delivery.name }),
+  };
 }
 
 /**
