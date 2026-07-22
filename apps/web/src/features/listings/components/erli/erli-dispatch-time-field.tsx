@@ -3,12 +3,12 @@
  *
  * Shared, content-only field group for Erli's dispatch (handling) time —
  * the Erli-specific control that replaces Allegro's delivery-policy step.
- * Consumed by BOTH `ErliCreateOfferWizard` (single) and
- * `ErliBulkConfigSection` (bulk) so the field never drifts (#1096).
+ * Consumed by `ErliBulkConfigSection` (batch default) and `ErliBulkRowSection`
+ * (per-row override) so the field never drifts (#1096).
  *
  * Controlled via `value` + `onChange` rather than bound to a specific RHF
- * form, so each host wires it into its own form state (single wizard's RHF,
- * bulk section's parent form). Renders a period segmented control (preset
+ * form, so each host wires it into its own form state. Renders a period
+ * segmented control (preset
  * quick-picks + a free-entry input) and a unit `<Select>`, with a "connection
  * default" badge while the value is unchanged from the shop default.
  *

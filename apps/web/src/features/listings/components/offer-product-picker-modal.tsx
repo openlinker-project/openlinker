@@ -74,8 +74,8 @@ function selectOfferCreatorConnections(all: ReadonlyArray<Connection>): Connecti
 
 function variantLabel(product: Product, variant: ProductVariant): string {
   const attrs = variant.attributes ? Object.values(variant.attributes).join(' · ') : '';
-  if (attrs) return `${product.name} — ${attrs}`;
-  if (variant.sku) return `${product.name} — ${variant.sku}`;
+  if (attrs) return `${product.name} - ${attrs}`;
+  if (variant.sku) return `${product.name} - ${variant.sku}`;
   return product.name;
 }
 
@@ -178,6 +178,24 @@ function PickerProductRow({
         <ul className="create-offer-variant-picker__variants">
           {detailQuery.isLoading ? (
             <li className="muted-text">Loading variants…</li>
+          ) : detailQuery.error ? (
+            <li>
+              <Alert
+                tone="error"
+                title="Unable to load variants"
+                action={
+                  <Button
+                    tone="secondary"
+                    type="button"
+                    onClick={() => void detailQuery.refetch()}
+                  >
+                    Retry
+                  </Button>
+                }
+              >
+                {detailQuery.error.message}
+              </Alert>
+            </li>
           ) : loadedVariants.length === 0 ? (
             <li className="muted-text">No variants on this product.</li>
           ) : (
@@ -270,12 +288,23 @@ export function OfferProductPickerModal({
     });
   }, []);
 
-  const selectAllProduct = useCallback((productId: string) => {
+  const selectAllProduct = useCallback((productId: string, variantCount?: number) => {
     setSelection((prev) => {
       const next = new Map(prev);
       next.set(productId, 'ALL');
       return next;
     });
+    // Seed the item-count total with the product's known variant count so the
+    // selection bar is accurate for a whole product picked without expanding
+    // it (expansion later overwrites this with the exact loaded count).
+    if (typeof variantCount === 'number') {
+      setVariantCounts((prev) => {
+        if (prev.get(productId) === variantCount) return prev;
+        const next = new Map(prev);
+        next.set(productId, variantCount);
+        return next;
+      });
+    }
   }, []);
 
   const clearProduct = useCallback((productId: string) => {
@@ -383,6 +412,22 @@ export function OfferProductPickerModal({
         <div className="create-offer-variant-picker">
           {productsQuery.isLoading ? (
             <p className="muted-text">Loading products…</p>
+          ) : productsQuery.error ? (
+            <Alert
+              tone="error"
+              title="Unable to load products"
+              action={
+                <Button
+                  tone="secondary"
+                  type="button"
+                  onClick={() => void productsQuery.refetch()}
+                >
+                  Retry
+                </Button>
+              }
+            >
+              {productsQuery.error.message}
+            </Alert>
           ) : products.length === 0 ? (
             <p className="muted-text">No products match.</p>
           ) : (
@@ -395,7 +440,7 @@ export function OfferProductPickerModal({
                   entry={selection.get(product.id)}
                   capBlocked={capReached && !selection.has(product.id)}
                   onToggleExpand={() => toggleExpand(product.id)}
-                  onSelectAll={() => selectAllProduct(product.id)}
+                  onSelectAll={() => selectAllProduct(product.id, product.variantCount)}
                   onClear={() => clearProduct(product.id)}
                   onToggleVariant={(variantId, loadedVariantIds) =>
                     toggleVariant(product.id, variantId, loadedVariantIds)
@@ -460,6 +505,22 @@ export function OfferProductPickerModal({
 
         {connectionsQuery.isLoading ? (
           <p className="muted-text">Loading marketplace connections…</p>
+        ) : connectionsQuery.error ? (
+          <Alert
+            tone="error"
+            title="Unable to load connections"
+            action={
+              <Button
+                tone="secondary"
+                type="button"
+                onClick={() => void connectionsQuery.refetch()}
+              >
+                Retry
+              </Button>
+            }
+          >
+            {connectionsQuery.error.message}
+          </Alert>
         ) : eligibleConnections.length === 0 ? (
           <Alert tone="warning" title="No marketplace connections available">
             Add an active connection that supports offer creation before publishing offers.
@@ -479,7 +540,12 @@ export function OfferProductPickerModal({
               ))}
             </Select>
           </FormField>
-        ) : null}
+        ) : (
+          <p className="muted-text offer-product-picker__resolved-connection">
+            Publishing to: <strong>{eligibleConnections[0]!.name}</strong> (
+            {eligibleConnections[0]!.platformType})
+          </p>
+        )}
 
         <div className="wizard-actions">
           <div className="wizard-actions__group">

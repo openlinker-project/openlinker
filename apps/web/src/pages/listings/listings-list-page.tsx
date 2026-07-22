@@ -7,6 +7,7 @@ import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
 import { Input } from '../../shared/ui/input';
+import { useToast } from '../../shared/ui/toast-provider';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
@@ -162,6 +163,7 @@ export function ListingsListPage(): ReactElement {
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [isShopPublishOpen, setIsShopPublishOpen] = useState(false);
   const retryOfferCreation = useOfferCreationRetry();
+  const { showToast } = useToast();
 
   function dismissTracker(): void {
     setSearchParams((prev) => {
@@ -172,12 +174,23 @@ export function ListingsListPage(): ReactElement {
     });
   }
 
-  // Retry re-point (#1754): drop the tracker from the URL, then hand off to
-  // the feature hook that resolves the failed variant to its product and
-  // navigates into the unified bulk wizard pre-seeded with that single variant.
+  // Retry re-point (#1754): resolve the failed variant to its product and
+  // navigate into the unified bulk wizard pre-seeded with that single variant.
+  // The tracker is dismissed only after the resolve+navigate succeeds - a
+  // rejection (e.g. the variant fetch fails) keeps the tracker in place and
+  // surfaces a toast rather than stranding the operator on an empty page.
   async function handleRetry(record: OfferCreationStatusResponse): Promise<void> {
+    try {
+      await retryOfferCreation(record);
+    } catch {
+      showToast({
+        tone: 'error',
+        title: 'Retry failed',
+        description: 'Could not load the variant for this offer. Please try again.',
+      });
+      return;
+    }
     dismissTracker();
-    await retryOfferCreation(record);
   }
 
   return (

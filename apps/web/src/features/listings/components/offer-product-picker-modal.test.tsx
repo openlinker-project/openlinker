@@ -47,6 +47,26 @@ function conn(id: string, name: string, platformType: string): Connection {
   } as unknown as Connection;
 }
 
+function customConn(overrides: {
+  id: string;
+  status?: 'active' | 'disabled';
+  capabilities?: string[];
+}): Connection {
+  return {
+    id: overrides.id,
+    name: overrides.id,
+    platformType: 'allegro',
+    status: overrides.status ?? 'active',
+    config: {},
+    credentialsBacked: true,
+    adapterKey: 'allegro.v1',
+    enabledCapabilities: ['OfferManager'],
+    supportedCapabilities: overrides.capabilities ?? ['OfferManager', 'OfferCreator'],
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  } as unknown as Connection;
+}
+
 function makeProduct(id: string, variantIds: string[]): Product {
   return {
     id,
@@ -233,5 +253,72 @@ describe('OfferProductPickerModal', () => {
     expect(
       await screen.findByText(/no marketplace connections available/i),
     ).toBeInTheDocument();
+  });
+
+  it('excludes an active connection lacking OfferCreator and auto-resolves the sole eligible one', async () => {
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+      apiClient: mocks([
+        customConn({ id: 'eligible', capabilities: ['OfferManager', 'OfferCreator'] }),
+        customConn({ id: 'noCreator', capabilities: ['OfferManager'] }),
+      ]),
+    });
+    await screen.findByText('Product p1');
+    // Exactly one eligible → no picker, read-only "Publishing to" line instead.
+    expect(screen.queryByLabelText(/marketplace connection/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/publishing to:/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Select Product p1'));
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    expect(continueUrlParams().get('connectionId')).toBe('eligible');
+  });
+
+  it('shows the zero-eligible warning when the only OfferCreator connection is disabled', async () => {
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+      apiClient: mocks([
+        customConn({
+          id: 'disabledCreator',
+          status: 'disabled',
+          capabilities: ['OfferManager', 'OfferCreator'],
+        }),
+      ]),
+    });
+    expect(
+      await screen.findByText(/no marketplace connections available/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/marketplace connection/i)).not.toBeInTheDocument();
+  });
+
+  it('resets selection when the dialog is closed and reopened', async () => {
+    const { rerender } = renderWithProviders(
+      <OfferProductPickerModal isOpen onClose={vi.fn()} />,
+      { apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]) },
+    );
+    fireEvent.click(await screen.findByLabelText('Select Product p1'));
+    expect(screen.getByText(/1 item selected across.*1 product/i)).toBeInTheDocument();
+
+    rerender(<OfferProductPickerModal isOpen={false} onClose={vi.fn()} />);
+    rerender(<OfferProductPickerModal isOpen onClose={vi.fn()} />);
+
+    expect(await screen.findByText('Product p1')).toBeInTheDocument();
+    expect(screen.getByText(/0 items selected across 0 products/i)).toBeInTheDocument();
+  });
+
+  it('materializes an ALL product into an explicit subset when a variant is unchecked', async () => {
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+      apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]),
+    });
+    // Whole 2-variant product, then expand and uncheck one variant.
+    fireEvent.click(await screen.findByLabelText('Select Product p1'));
+    fireEvent.click(screen.getByRole('button', { name: /expand product p1/i }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: /v1a/i }));
+
+    const productCb = screen.getByLabelText<HTMLInputElement>('Select Product p1');
+    expect(productCb.checked).toBe(false);
+    expect(productCb.indeterminate).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    const qs = continueUrlParams();
+    expect(qs.get('productIds')).toBe('p1');
+    expect(qs.get('variantIds')).toBe('v1b');
   });
 });

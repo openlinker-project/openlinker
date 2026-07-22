@@ -22,7 +22,7 @@ import {
   type OfferCreationStatusResponse,
 } from '../api/listings.types';
 import { buildAllegroSellerPanelUrl } from '../lib/allegro-seller-panel-url';
-import { canReadCreateOfferRequestSnapshot } from './create-offer-request-to-form-values';
+import { canReadCreateOfferRequestSnapshot } from './offer-creation-snapshot';
 import { OfferCreationStatusBadge } from './OfferCreationStatusBadge';
 import { OfferCreationErrorList } from './OfferCreationErrorList';
 
