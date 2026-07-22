@@ -73,6 +73,24 @@ and update the connection config if so.
 | DPD | — | — | not created — skipped, no sandbox credentials |
 | KSeF | `9dfadf50-454d-459a-b0c6-6db62e5a4058` | Demo KSEf | active — test environment |
 
+### Scheduler flags (demo worker env)
+
+Several poll-based flows are gated by env flags read by the **worker**. They must be set on the
+demo worker or the corresponding flow silently never runs. Defaults differ per flag, so set them
+explicitly rather than relying on the default:
+
+| Env flag | Flow | Default | Demo value |
+|---|---|---|---|
+| `OL_ERLI_ORDERS_POLL_SCHEDULER_ENABLED` | Erli order ingestion (`erli-orders-poll`, ~5 min) | **OFF** | `true` |
+| `OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED` | Erli offer-status / frozen-stock sync | **OFF** | `true` |
+| `OL_ERLI_DISPATCH_WRITEBACK_ENABLED` | Erli dispatch/tracking write-back (else reports `unsupported`) | **OFF** | `true` (if dispatch write-back is wanted) |
+| `OL_WOOCOMMERCE_POLL_SCHEDULER_ENABLED` | WooCommerce order ingestion (poll-only, no webhook, ~5 min) | **OFF** | `true` |
+| `OL_DPD_SHIPMENT_STATUS_SYNC_SCHEDULER_ENABLED` | DPD tracking poll (`dpd-shipment-status-sync`, ~30 min; DPD has no webhook) | **ON** (`(env ?? 'true') !== 'false'`) | leave unset / `true` |
+
+Allegro and PrestaShop schedulers are on by their own defaults and need no demo-specific flag.
+PrestaShop and InPost also deliver via webhook (see each integration's walkthrough); DPD and
+WooCommerce are poll-only.
+
 ## How we're running this
 
 1. For each integration doc, I write out the concrete steps (what page, what button, what to
