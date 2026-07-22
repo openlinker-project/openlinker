@@ -125,6 +125,7 @@ describe('BulkListingRetryService', () => {
       updateExternalOfferId: jest.fn(),
       updateExternalIdAndStatus: jest.fn(),
       findByBulkBatchId: jest.fn(),
+      deleteById: jest.fn(),
       updateClassificationReport: jest.fn(),
       resetForRetry: jest.fn().mockImplementation((id: string) =>
         Promise.resolve(makeRecord(id, VARIANT_A, 'pending'))

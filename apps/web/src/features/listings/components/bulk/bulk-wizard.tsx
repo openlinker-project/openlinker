@@ -269,6 +269,13 @@ export function BulkWizard({
     async (publishImmediately: boolean) => {
       if (!config) return;
 
+      // Fresh idempotency key per confirm-click (#1741 review). A retry after a
+      // partial/failed submit must be a distinct request, otherwise the batch
+      // dedup gate would return the earlier partial batch instead of re-running.
+      // The confirm button is disabled while a submit is in flight, so this can
+      // never split a single deliberate click into two batches.
+      idempotencyKeyRef.current = crypto.randomUUID();
+
       // productIds = one primary/seed variant id per product that has >=1
       // included, ready sibling. The BE fans each out; per-variant data + the
       // exclusions drive the exact set (#1741).
@@ -296,8 +303,30 @@ export function BulkWizard({
         if (includedReady.length === 0) continue;
         const primaryId = (row.primaryVariant ?? row.variants[0].variant).id;
         productIds.push(primaryId);
-        if (row.override.overrides || row.override.price || row.override.publishImmediately !== undefined) {
-          perProductOverrides[primaryId] = row.override;
+
+        // #1741 review #1: for a multi-variant product, pin the shared category
+        // at the family tier so every sibling groups under the SAME category.
+        // Allegro only groups same-category siblings; without this pin each
+        // sibling would resolve its category independently by its own barcode
+        // and two divergent resolutions would split the very listing this flow
+        // unifies. Operator-pinned base category wins, else the resolved primary
+        // category. Single-variant products list standalone, so no pin.
+        const isMulti = row.variants.length > 1;
+        const familyCategoryId =
+          row.override.overrides?.categoryId ?? row.resolvedCategoryId ?? undefined;
+        const familyOverride: BulkPerProductOverride =
+          isMulti && familyCategoryId
+            ? {
+                ...row.override,
+                overrides: { ...(row.override.overrides ?? {}), categoryId: familyCategoryId },
+              }
+            : row.override;
+        if (
+          familyOverride.overrides ||
+          familyOverride.price ||
+          familyOverride.publishImmediately !== undefined
+        ) {
+          perProductOverrides[primaryId] = familyOverride;
         }
       }
 
@@ -313,6 +342,12 @@ export function BulkWizard({
         connectionId: config.connectionId,
         productIds,
         sharedConfig: {
+          // Nominal batch-wide floor only. Every emitted offer carries its own
+          // resolved stock: multi-variant siblings use master inventory (BE,
+          // #823/#824) and single-variant offers carry a per-variant `stock`
+          // override, so this value is never the effective stock today. Kept as
+          // a safe non-zero default so a future passthrough path can't publish 0
+          // (#1741 review suggestion).
           stock: 1,
           publishImmediately,
           generateDescription: canGenerateDescription ? config.generateDescription : false,

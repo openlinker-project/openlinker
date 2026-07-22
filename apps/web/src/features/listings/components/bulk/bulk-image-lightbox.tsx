@@ -3,15 +3,28 @@
  *
  * Medium-style click-to-zoom overlay: dark backdrop, the image scaled up and
  * centered (up to 90vh), fade + scale in, closing on backdrop click, the X, or
- * Escape. Body scroll is locked while open and reduced-motion is respected.
+ * Escape. Reduced-motion is respected.
+ *
+ * Built on Radix Dialog (the project overlay primitive) so it gets a real focus
+ * trap + focus restore and per-layer Escape handling for free (#1741 review #8):
+ * when opened from inside the bulk Edit modal (itself a Radix Dialog), Escape
+ * dismisses only the lightbox — Radix's dismissable-layer stack stops the event
+ * before it reaches the edit modal's own discard-guard. Radix also locks body
+ * scroll while open, so no manual `overflow` toggle is needed. The content sits
+ * at a z-index above the modal tier, so it renders above the edit modal.
  *
  * Shared by the bulk Review step (product thumbnail) and the bulk Edit modal
- * (offer/variant image strips). It is a plain fixed overlay with a z-index above
- * the modal tier, so it renders above the edit modal when opened from there.
+ * (offer/variant image strips).
  *
  * @module apps/web/src/features/listings/components/bulk
  */
-import { useEffect, type ReactElement } from 'react';
+import type { ReactElement } from 'react';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTitle,
+} from '../../../../shared/ui/dialog';
 
 export function BulkImageLightbox({
   src,
@@ -22,43 +35,30 @@ export function BulkImageLightbox({
   name: string;
   onClose: () => void;
 }): ReactElement {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [onClose]);
-
   return (
-    <div
-      className="bulk-image-lightbox"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${name} image`}
-      onClick={onClose}
+    <Dialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
     >
-      <img
-        className="bulk-image-lightbox__img"
-        src={src}
-        alt={name}
-        onClick={(e) => {
-          e.stopPropagation();
-        }}
-      />
-      <button
-        type="button"
-        className="bulk-image-lightbox__close"
-        aria-label="Close image"
-        onClick={onClose}
+      {/* Reuses the shared `.lightbox-dialog-*` modifiers that strip the default
+          dialog card chrome. Clicking the dark overlay (a portal sibling) closes
+          via Radix's dismissable layer; the image inside the content does not. */}
+      <DialogContent
+        className="lightbox-dialog-content"
+        overlayClassName="lightbox-dialog-overlay"
+        aria-label={`${name} image`}
+        aria-describedby={undefined}
       >
-        &#10005;
-      </button>
-    </div>
+        <DialogTitle className="sr-only">{name} image</DialogTitle>
+        <img className="bulk-image-lightbox__img" src={src} alt={name} />
+        <DialogClose asChild>
+          <button type="button" className="bulk-image-lightbox__close" aria-label="Close image">
+            &#10005;
+          </button>
+        </DialogClose>
+      </DialogContent>
+    </Dialog>
   );
 }

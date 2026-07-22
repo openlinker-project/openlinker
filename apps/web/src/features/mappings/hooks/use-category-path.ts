@@ -24,7 +24,7 @@ export function useCategoryPathQuery(
   const apiClient = useApiClient();
   return useQuery({
     queryKey: mappingsQueryKeys.allegroCategoryPath(connectionId, categoryId),
-    queryFn: () => apiClient.mappings.getAllegroCategoryPath(connectionId, categoryId),
+    queryFn: () => apiClient.mappings.getCategoryPath(connectionId, categoryId),
     enabled: connectionId.length > 0 && categoryId.length > 0,
     staleTime: CATEGORY_PATH_STALE_TIME_MS,
   });

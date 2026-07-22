@@ -55,6 +55,7 @@ export function BulkConfirmModal({
   productCount,
   excludedCount,
   mixedPublishWarning,
+  connectionName,
   marketplaceName,
   initialPublishImmediately,
   isSubmitting,
@@ -75,10 +76,11 @@ export function BulkConfirmModal({
     <Dialog open={open} onOpenChange={isSubmitting ? undefined : onOpenChange}>
       <DialogContent>
         <DialogTitle>
-          Create {offerCount} {marketplaceName} offers?
+          Create {offerCount} {marketplaceName} offers on {connectionName}?
         </DialogTitle>
         <DialogDescription>
-          You're about to create <strong>{offerCount} offers</strong> across{' '}
+          You're about to create <strong>{offerCount} offers</strong> on{' '}
+          <strong>{connectionName}</strong> ({marketplaceName}) across{' '}
           <strong>{productCount} products</strong>
           {excludedCount > 0 ? (
             <>

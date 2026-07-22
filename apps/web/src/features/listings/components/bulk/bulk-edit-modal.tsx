@@ -65,6 +65,7 @@ import {
 } from '../category-parameters-step';
 import { BulkCategoryChooseModal } from './bulk-category-choose-modal';
 import { BulkImageLightbox } from './bulk-image-lightbox';
+import { blockerLabel, isVariantScopeFixable } from './bulk-blockers';
 import { ErliDeliveryPriceListOverrideField } from '../erli/erli-delivery-price-list-override-field';
 import { useCategoryParametersQuery } from '../../hooks/use-category-parameters-query';
 import { useCategoryPathQuery } from '../../../mappings';
@@ -1909,14 +1910,27 @@ function VariantScopeForm({
         </div>
       ) : null}
 
-      {variant.blockers.map((blocker) => (
-        <div key={blocker} className="bulk-editor__banner bulk-editor__banner--error">
-          <b>{blocker}.</b> Resolve this blocker for the variant, or exclude it.{' '}
-          <Button tone="ghost" type="button" className="button--sm" onClick={onFixOnBase}>
-            Fix on base
-          </Button>
-        </div>
-      ))}
+      {variant.blockers.map((blocker) => {
+        // Friendly label (shared with the Review step, #1741 review #11) and a
+        // context-aware CTA: a per-variant field (e.g. no-ean) is fixed in this
+        // same panel, so it points down to the fields rather than to the base.
+        const variantScope = isVariantScopeFixable(blocker);
+        return (
+          <div key={blocker} className="bulk-editor__banner bulk-editor__banner--error">
+            <b>{blockerLabel(blocker)}.</b>{' '}
+            {variantScope ? (
+              <>Set it in this variant&apos;s fields below, or exclude the variant.</>
+            ) : (
+              <>
+                Resolve this blocker for the variant, or exclude it.{' '}
+                <Button tone="ghost" type="button" className="button--sm" onClick={onFixOnBase}>
+                  Fix on base
+                </Button>
+              </>
+            )}
+          </div>
+        );
+      })}
 
       <div className="eyebrow" style={{ marginBottom: 'var(--space-3)' }}>
         Per-variant

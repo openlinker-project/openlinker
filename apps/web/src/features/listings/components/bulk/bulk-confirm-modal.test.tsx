@@ -61,7 +61,7 @@ describe('BulkConfirmModal', () => {
     renderModal({ offerCount: 5, productCount: 2 });
 
     expect(
-      screen.getByRole('heading', { name: /create 5 allegro offers\?/i }),
+      screen.getByRole('heading', { name: /create 5 allegro offers on my allegro\?/i }),
     ).toBeInTheDocument();
     expect(screen.getByText(/across/i)).toHaveTextContent('across 2 products');
   });

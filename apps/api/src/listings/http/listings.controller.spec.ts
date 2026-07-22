@@ -111,6 +111,7 @@ describe('ListingsController', () => {
       findByBulkBatchId: jest.fn(),
       updateClassificationReport: jest.fn(),
       resetForRetry: jest.fn(),
+      deleteById: jest.fn(),
     };
     offerCreationEnqueue = {
       enqueueCreation: jest.fn(),

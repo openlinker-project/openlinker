@@ -9658,7 +9658,7 @@ input.bulk-dispatch__num--wide {
   right: var(--space-4);
   width: 2.25rem;
   height: 2.25rem;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-pill);
   border: 1px solid var(--border-subtle);
   background: var(--bg-surface);
   color: var(--text-primary);
@@ -9690,6 +9690,18 @@ input.bulk-dispatch__num--wide {
   display: inline-block;
 }
 .bulk-review__prow--open .bulk-review__caret { transform: rotate(90deg); }
+.bulk-review__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: inherit;
+}
+.bulk-review__toggle:focus-visible { box-shadow: var(--shadow-focus); }
 .bulk-review__chk { width: 16px; height: 16px; accent-color: var(--accent-primary); cursor: pointer; flex: none; }
 
 .bulk-review__name { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }

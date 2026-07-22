@@ -154,7 +154,9 @@ describe('BulkReviewStep', () => {
       <BulkReviewStep rows={[makeRow('prod_1', [variantRow('v1', ['no-ean'])])]} {...baseProps()} />,
     );
     // Single-variant product renders flat; its blocker chip is a fix button.
-    expect(screen.getByRole('button', { name: /Fix: no EAN - v1/ })).toBeInTheDocument();
+    // The accessible name carries the human variant label (distinguishing attr),
+    // never the raw ol_variant id (#1741 review).
+    expect(screen.getByRole('button', { name: /Fix: no EAN - Rozmiar: v1/ })).toBeInTheDocument();
   });
 
   it('opens the shared image lightbox from the product thumbnail (#1741)', () => {

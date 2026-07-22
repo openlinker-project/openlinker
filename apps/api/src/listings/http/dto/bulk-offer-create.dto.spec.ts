@@ -98,4 +98,26 @@ describe('BulkOfferCreateRequestDto map-value validation (#1741)', () => {
     );
     expect(errs).toContain('validateRecordValues');
   });
+
+  it('rejects an override value carrying an unknown property (forbidNonWhitelisted)', async () => {
+    const errs = await constraintKeysFor(
+      baseRequest({
+        perVariantOverrides: {
+          ol_variant_a: { stock: 1, junk: 'should-not-pass' },
+        },
+      })
+    );
+    expect(errs).toContain('validateRecordValues');
+  });
+
+  it('rejects a null override value rather than treating it as an empty instance', async () => {
+    const errs = await constraintKeysFor(
+      baseRequest({
+        perVariantOverrides: {
+          ol_variant_a: null,
+        },
+      })
+    );
+    expect(errs).toContain('validateRecordValues');
+  });
 });

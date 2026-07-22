@@ -24,6 +24,7 @@ import { CurrencyMismatchException } from '../../../domain/exceptions/currency-m
 import { InvalidOverrideKeyException } from '../../../domain/exceptions/invalid-override-key.exception';
 import type { BulkListingBatchRepositoryPort } from '../../../domain/ports/bulk-listing-batch-repository.port';
 import type { OfferCreationRecordRepositoryPort } from '../../../domain/ports/offer-creation-record-repository.port';
+import type { OfferMappingRepositoryPort } from '../../../domain/ports/offer-mapping-repository.port';
 import type { IOfferCreationEnqueueService } from '../../interfaces/offer-creation-enqueue.service.interface';
 import { BulkListingSubmitService } from '../bulk-listing-submit.service';
 
@@ -31,6 +32,7 @@ describe('BulkListingSubmitService', () => {
   let service: BulkListingSubmitService;
   let bulkBatchRepo: jest.Mocked<BulkListingBatchRepositoryPort>;
   let offerCreationRecords: jest.Mocked<OfferCreationRecordRepositoryPort>;
+  let offerMappings: jest.Mocked<Pick<OfferMappingRepositoryPort, 'countByConnectionAndVariants'>>;
   let enqueueService: jest.Mocked<IOfferCreationEnqueueService>;
   let integrations: jest.Mocked<IIntegrationsService>;
   let products: jest.Mocked<Pick<IProductsService, 'getVariant' | 'getVariantsByProductId'>>;
@@ -39,9 +41,19 @@ describe('BulkListingSubmitService', () => {
   const connectionId = 'conn-1';
   const initiatedBy = 'user-1';
 
-  const adapterWith = (createOffer: jest.Mock | undefined): OfferManagerPort =>
+  // Default adapters advertise the catalog-product-reader capability
+  // (findProductsByBarcode + getProduct) so they behave like Allegro — a catalog
+  // auto-grouper that drops barcode-less siblings. Pass `catalogReader: false`
+  // for the explicit-grouping (Erli) case.
+  const adapterWith = (
+    createOffer: jest.Mock | undefined,
+    opts: { catalogReader?: boolean } = {}
+  ): OfferManagerPort =>
     ({
       ...(createOffer ? { createOffer } : {}),
+      ...((opts.catalogReader ?? true)
+        ? { findProductsByBarcode: jest.fn(), getProduct: jest.fn() }
+        : {}),
     }) as unknown as OfferManagerPort;
 
   const variant = (overrides: Partial<ProductVariant> & Pick<ProductVariant, 'id' | 'productId'>): ProductVariant => ({
@@ -89,6 +101,11 @@ describe('BulkListingSubmitService', () => {
       findByBulkBatchId: jest.fn().mockResolvedValue([]),
       updateClassificationReport: jest.fn(),
       resetForRetry: jest.fn(),
+      deleteById: jest.fn().mockResolvedValue(undefined),
+    };
+    offerMappings = {
+      // Default: nothing already listed on the connection.
+      countByConnectionAndVariants: jest.fn().mockResolvedValue(new Map<string, number>()),
     };
     enqueueService = {
       enqueueCreation: jest
@@ -125,6 +142,7 @@ describe('BulkListingSubmitService', () => {
     service = new BulkListingSubmitService(
       bulkBatchRepo,
       offerCreationRecords,
+      offerMappings as unknown as OfferMappingRepositoryPort,
       enqueueService,
       integrations,
       products as unknown as IProductsService,
@@ -934,6 +952,106 @@ describe('BulkListingSubmitService', () => {
       ).rejects.toBeInstanceOf(InvalidOverrideKeyException);
 
       expect(bulkBatchRepo.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('grouping strategy + re-list + orphan cleanup (#1741 review)', () => {
+    it('keeps barcode-less siblings for an explicit-grouping (non-catalog) destination', async () => {
+      // Erli-like adapter: OfferCreator but NOT a CatalogProductReader → groups
+      // via its own command field, so a barcode-less sibling must not be dropped.
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        adapterWith(jest.fn(), { catalogReader: false })
+      );
+      products.getVariant.mockResolvedValue(variant({ id: 'v-a', productId: 'P', ean: '111' }));
+      products.getVariantsByProductId.mockResolvedValue([
+        variant({ id: 'v-a', productId: 'P', ean: '111' }),
+        variant({ id: 'v-b', productId: 'P' }), // no barcode — kept for Erli
+      ]);
+      inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
+        { productVariantId: 'v-a', totalAvailable: 1, locationCount: 1 },
+        { productVariantId: 'v-b', totalAvailable: 1, locationCount: 1 },
+      ]);
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['v-a'],
+        sharedConfig: { stock: 7, publishImmediately: false },
+      });
+
+      expect(enqueueService.enqueueCreation.mock.calls.map((c) => c[0].internalVariantId)).toEqual([
+        'v-a',
+        'v-b',
+      ]);
+    });
+
+    it('skips a variant that already has an active offer mapping on the connection', async () => {
+      products.getVariant.mockResolvedValue(variant({ id: 'v-a', productId: 'P', ean: '111' }));
+      products.getVariantsByProductId.mockResolvedValue([
+        variant({ id: 'v-a', productId: 'P', ean: '111' }),
+        variant({ id: 'v-b', productId: 'P', ean: '222' }),
+      ]);
+      inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
+        { productVariantId: 'v-b', totalAvailable: 1, locationCount: 1 },
+      ]);
+      // v-a already listed → skipped; only v-b enqueues.
+      offerMappings.countByConnectionAndVariants.mockResolvedValue(new Map([['v-a', 1]]));
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['v-a'],
+        sharedConfig: { stock: 7, publishImmediately: false },
+      });
+
+      expect(enqueueService.enqueueCreation.mock.calls.map((c) => c[0].internalVariantId)).toEqual([
+        'v-b',
+      ]);
+      expect(bulkBatchRepo.create).toHaveBeenCalledWith(expect.objectContaining({ totalCount: 1 }));
+    });
+
+    it('throws EmptyBulkSubmissionException when every variant is already listed', async () => {
+      offerMappings.countByConnectionAndVariants.mockResolvedValue(new Map([['v-a', 2]]));
+
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['v-a'],
+          sharedConfig: { stock: 1, publishImmediately: false },
+        })
+      ).rejects.toBeInstanceOf(EmptyBulkSubmissionException);
+
+      expect(bulkBatchRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('deletes the orphaned pre-created record when an enqueue fails mid-fan-out (#6)', async () => {
+      enqueueService.enqueueCreation
+        .mockResolvedValueOnce({
+          jobId: 'job-1',
+          offerCreationRecord: { id: 'record-1' } as unknown as OfferCreationRecord,
+        })
+        .mockRejectedValueOnce(new Error('stream down'));
+      // Batch has two persisted records: the enqueued one + the orphan whose
+      // stream write threw after its record was persisted.
+      offerCreationRecords.findByBulkBatchId.mockResolvedValue([
+        { id: 'record-1' } as unknown as OfferCreationRecord,
+        { id: 'record-2-orphan' } as unknown as OfferCreationRecord,
+      ]);
+
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['v-a', 'v-b'],
+          sharedConfig: { stock: 5, publishImmediately: false },
+        })
+      ).rejects.toThrow('stream down');
+
+      // Only the orphan (not the enqueued record) is deleted.
+      expect(offerCreationRecords.deleteById).toHaveBeenCalledWith('record-2-orphan');
+      expect(offerCreationRecords.deleteById).not.toHaveBeenCalledWith('record-1');
+      expect(bulkBatchRepo.updateTotalCount).toHaveBeenCalledWith('batch-1', 1);
     });
   });
 

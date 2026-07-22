@@ -433,9 +433,14 @@ export function distinguishingLabel(variant: BulkVariantRow, index: number): str
   return `Variant ${index + 1}`;
 }
 
-/** GS1 mod-10 check-digit validation for a GTIN-8/12/13/14 (#1741). Mirrors the BE. */
+/**
+ * GS1 mod-10 check-digit validation for a GTIN-8/12/13/14 (#1741). Only true
+ * GTIN lengths are accepted (8, 12, 13, 14) so the FE and the request DTO agree
+ * on the EAN contract — a 9/10/11-digit value is not a GTIN and is rejected on
+ * both sides rather than checksummed (#1741 review #4).
+ */
 export function isValidGtin(code: string): boolean {
-  if (!/^\d{8,14}$/.test(code)) return false;
+  if (!/^(\d{8}|\d{12,14})$/.test(code)) return false;
   const digits = [...code].map(Number);
   const check = digits[digits.length - 1];
   const body = digits.slice(0, -1);

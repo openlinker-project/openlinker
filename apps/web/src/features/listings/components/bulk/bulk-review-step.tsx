@@ -34,6 +34,11 @@ import type {
 } from './bulk-wizard.types';
 import { BulkEditModal } from './bulk-edit-modal';
 import { BulkImageLightbox } from './bulk-image-lightbox';
+import {
+  FALLBACK_CHIP,
+  NEUTRAL_BLOCKER_CHIPS,
+  type ChipDescriptor,
+} from './bulk-blockers';
 
 interface BulkReviewStepProps {
   rows: BulkWizardRow[];
@@ -57,22 +62,6 @@ interface BulkReviewStepProps {
   onApproveAll: () => void;
   onBack: () => void;
 }
-
-type ChipDescriptor = { tone: StatusBadgeTone; label: string; fixable: boolean };
-
-/** Host-neutral blocker chips - labels + tones verbatim from the design. */
-const NEUTRAL_BLOCKER_CHIPS: Record<string, ChipDescriptor> = {
-  'no-variant': { tone: 'neutral', label: 'no variant', fixable: false },
-  'no-ean': { tone: 'error', label: 'no EAN', fixable: true },
-  'no-match': { tone: 'error', label: 'manual category', fixable: true },
-  'multi-match': { tone: 'warning', label: 'choose category', fixable: true },
-  'no-master-price': { tone: 'error', label: 'no master price', fixable: true },
-  'no-master-stock': { tone: 'error', label: 'no master stock', fixable: true },
-  'currency-mismatch': { tone: 'warning', label: 'currency mismatch', fixable: true },
-  'already-listed': { tone: 'neutral', label: 'already listed', fixable: false },
-};
-
-const FALLBACK_CHIP: ChipDescriptor = { tone: 'warning', label: 'needs attention', fixable: true };
 
 /** Products per page in the Review table (keeps a large batch from rendering every row at once). */
 const REVIEW_PAGE_SIZE = 20;
@@ -131,6 +120,11 @@ export function BulkReviewStep({
     null,
   );
   const [zoom, setZoom] = useState<{ src: string; name: string } | null>(null);
+  // "Jump to next flagged" cursor + deferred scroll target so the jump can cross
+  // pagination boundaries: it advances a cursor through the flagged set, flips to
+  // the target's page, then scrolls once that page has rendered (#1741 review #10).
+  const [jumpIndex, setJumpIndex] = useState(-1);
+  const [pendingScroll, setPendingScroll] = useState<string | null>(null);
 
   const counts = useMemo(() => countBatch(rows), [rows]);
   const canApprove =
@@ -157,6 +151,7 @@ export function BulkReviewStep({
   const [page, setPage] = useState(0);
   useEffect(() => {
     setPage(0);
+    setJumpIndex(-1);
   }, [filter, onlyFlagged]);
   const total = filteredRows.length;
   const pageCount = Math.max(1, Math.ceil(total / REVIEW_PAGE_SIZE));
@@ -180,12 +175,29 @@ export function BulkReviewStep({
     });
   }
 
-  function jumpToNextFlagged(): void {
-    const flagged = rows.find((r) => r.variants.some((v) => v.included && v.blockers.length > 0));
-    if (!flagged) return;
-    setExpanded((prev) => new Set(prev).add(flagged.productId));
-    const el = document.querySelector(`[data-product-row="${flagged.productId}"]`);
+  // Scroll to the deferred target once its page has rendered. Depends on
+  // `safePage` so a jump that changed the page runs after the new page mounts.
+  useEffect(() => {
+    if (pendingScroll === null) return;
+    const el = document.querySelector(`[data-product-row="${pendingScroll}"]`);
     el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    setPendingScroll(null);
+  }, [pendingScroll, safePage]);
+
+  function jumpToNextFlagged(): void {
+    // Flagged rows in current filter/display order, so "next" is relative to the
+    // whole list, not just the rendered page.
+    const flagged = filteredRows.filter((r) =>
+      r.variants.some((v) => v.included && v.blockers.length > 0),
+    );
+    if (flagged.length === 0) return;
+    const nextIndex = (jumpIndex + 1) % flagged.length;
+    const target = flagged[nextIndex];
+    const targetPage = Math.floor(filteredRows.indexOf(target) / REVIEW_PAGE_SIZE);
+    setJumpIndex(nextIndex);
+    setExpanded((prev) => new Set(prev).add(target.productId));
+    setPage(targetPage);
+    setPendingScroll(target.productId);
   }
 
   if (rows.length === 0) {
@@ -292,7 +304,9 @@ export function BulkReviewStep({
       </div>
 
       <div className="bulk-review__table">
-        <div className="bulk-review__grid bulk-review__head" aria-hidden="true">
+        {/* Header is announced (not aria-hidden) so screen-reader users get the
+            column labels for the rows below (#1741 review #9). */}
+        <div className="bulk-review__grid bulk-review__head">
           <span className="bulk-review__c-lead" />
           <span>Product</span>
           <span className="bulk-review__c-status">Status</span>
@@ -467,22 +481,11 @@ function ProductRow({
       className={open ? 'bulk-review__prow bulk-review__prow--open' : 'bulk-review__prow'}
       data-product-row={row.productId}
     >
-      <div
-        className={mainClass}
-        role={isMulti ? 'button' : undefined}
-        tabIndex={isMulti ? 0 : undefined}
-        onClick={isMulti ? onToggleExpand : undefined}
-        onKeyDown={
-          isMulti
-            ? (e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  onToggleExpand();
-                }
-              }
-            : undefined
-        }
-      >
+      {/* The whole row is no longer a role="button": it wrapped a checkbox, a
+          zoom button, chip buttons and an Edit button, which is an ARIA
+          nested-interactive violation. Expand/collapse is now a dedicated toggle
+          button on the caret (#1741 review #9). */}
+      <div className={mainClass}>
         <span className="bulk-review__c-lead bulk-review__lead">
           {noVariants ? null : (
             <CheckboxCell
@@ -493,7 +496,17 @@ function ProductRow({
               }}
             />
           )}
-          {isMulti ? <span className="bulk-review__caret" aria-hidden="true">&#9656;</span> : null}
+          {isMulti ? (
+            <button
+              type="button"
+              className="bulk-review__toggle"
+              aria-expanded={open}
+              aria-label={`${open ? 'Collapse' : 'Expand'} ${row.product?.name ?? 'product'} variants`}
+              onClick={onToggleExpand}
+            >
+              <span className="bulk-review__caret" aria-hidden="true">&#9656;</span>
+            </button>
+          ) : null}
         </span>
         <div className="bulk-review__name">
           {row.product?.images?.[0] ? (
@@ -539,6 +552,7 @@ function ProductRow({
             <VariantChips
               variant={row.variants[0]}
               chips={chips}
+              label={distinguishingLabel(row.variants[0], 0)}
               onFix={() => {
                 onEdit(row.variants[0].variantId);
               }}
@@ -659,7 +673,7 @@ function VariantRow({
         </div>
       </div>
       <div className="bulk-review__c-status bulk-review__chips">
-        <VariantChips variant={variant} chips={chips} onFix={onEdit} />
+        <VariantChips variant={variant} chips={chips} onFix={onEdit} label={label} />
       </div>
       <div className="bulk-review__c-stock tabular">{stock.value ?? '-'}</div>
       <div className="bulk-review__c-price tabular">
@@ -678,10 +692,13 @@ function VariantChips({
   variant,
   chips,
   onFix,
+  label,
 }: {
   variant: BulkVariantRow;
   chips: Record<string, ChipDescriptor>;
   onFix: () => void;
+  /** Human variant label ("Colour: Red" / "Variant 2") — never the raw ol_variant id. */
+  label: string;
 }): ReactElement {
   if (!variant.included) {
     return <Chip descriptor={{ tone: 'neutral', label: 'excluded', fixable: false }} />;
@@ -689,9 +706,6 @@ function VariantChips({
   if (variant.blockers.length === 0) {
     return <Chip descriptor={{ tone: 'success', label: 'ready', fixable: false }} />;
   }
-  const label = variant.distinguishingAttributes
-    ? Object.values(variant.distinguishingAttributes)[0] ?? variant.variantId
-    : variant.variantId;
   return (
     <>
       {variant.blockers.map((b) => {

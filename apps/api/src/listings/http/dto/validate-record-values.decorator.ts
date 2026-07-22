@@ -14,6 +14,14 @@
  * property if any value has a constraint violation. Iterates with `Object.keys`
  * (own enumerable keys only), so it never walks the prototype chain.
  *
+ * Validation runs with `whitelist` + `forbidNonWhitelisted`, so an entry
+ * carrying an unknown property (`{ stock: 1, junk: "…" }`) is rejected at the
+ * boundary rather than flowing through to `mergeOverrides` and the adapter.
+ * Each entry must itself be a plain object — `null`, arrays, and primitives are
+ * rejected up front (`plainToInstance(cls, null)` would otherwise yield an
+ * all-optional empty instance that passes). The failing key + child constraint
+ * are surfaced in the 400 message so the rejection is debuggable (#1741 review #5).
+ *
  * @module apps/api/src/listings/http/dto
  */
 import { plainToInstance } from 'class-transformer';
@@ -26,11 +34,22 @@ import {
 
 type ClassConstructor = new () => object;
 
+function isPlainObjectEntry(entry: unknown): entry is Record<string, unknown> {
+  return typeof entry === 'object' && entry !== null && !Array.isArray(entry);
+}
+
 export function ValidateRecordValues(
   typeFactory: () => ClassConstructor,
   validationOptions?: ValidationOptions
 ): PropertyDecorator {
   return (object: object, propertyName: string | symbol): void => {
+    // Per-property closure holding the most recent failure detail so
+    // `defaultMessage` can name the offending key/field/constraint. A shared
+    // literal across concurrent requests can only ever mislabel the advisory
+    // message (never the pass/fail verdict), which is an acceptable trade for a
+    // debuggable 400.
+    let failureDetail: string | null = null;
+
     registerDecorator({
       name: 'validateRecordValues',
       target: object.constructor,
@@ -39,20 +58,37 @@ export function ValidateRecordValues(
       options: validationOptions,
       validator: {
         async validate(value: unknown, args: ValidationArguments): Promise<boolean> {
+          failureDetail = null;
           if (value === undefined || value === null) return true;
-          if (typeof value !== 'object' || Array.isArray(value)) return false;
+          if (!isPlainObjectEntry(value)) return false;
           const [factory] = args.constraints as [() => ClassConstructor];
           const cls = factory();
-          for (const key of Object.keys(value as Record<string, unknown>)) {
-            const entry = (value as Record<string, unknown>)[key];
+          for (const key of Object.keys(value)) {
+            const entry = value[key];
+            if (!isPlainObjectEntry(entry)) {
+              failureDetail = `["${key}"] must be an object`;
+              return false;
+            }
             const instance = plainToInstance(cls, entry);
-            const errors = await validate(instance, { whitelist: true });
-            if (errors.length > 0) return false;
+            const errors = await validate(instance, {
+              whitelist: true,
+              forbidNonWhitelisted: true,
+            });
+            if (errors.length > 0) {
+              const first = errors[0];
+              const constraint = first.constraints
+                ? Object.values(first.constraints)[0]
+                : 'invalid value';
+              failureDetail = `["${key}"].${first.property}: ${constraint}`;
+              return false;
+            }
           }
           return true;
         },
         defaultMessage(args: ValidationArguments): string {
-          return `${args.property} contains an invalid override value`;
+          return failureDetail !== null
+            ? `${args.property}${failureDetail}`
+            : `${args.property} contains an invalid override value`;
         },
       },
     });
