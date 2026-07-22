@@ -12,7 +12,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { IProductsService, PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
 import type { OfferStatusSnapshot } from '../../domain/entities/offer-status-snapshot.entity';
-import type { OfferStatusSnapshotRepositoryPort } from '../../domain/ports/offer-status-snapshot-repository.port';
+import { OfferStatusSnapshotRepositoryPort } from '../../domain/ports/offer-status-snapshot-repository.port';
 import {
   OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
 } from '../../listings.tokens';

@@ -144,6 +144,7 @@ describe('MappingOptionsController', () => {
     categoriesCache = {
       getPrestashopCategories: jest.fn(),
       getAllegroCategories: jest.fn(),
+      getAllegroCategoryPath: jest.fn(),
     } as unknown as jest.Mocked<ICategoriesCacheService>;
     connectionPort = {
       get: jest.fn(),
@@ -401,6 +402,21 @@ describe('MappingOptionsController', () => {
         ALLEGRO_CONNECTION_ID,
         'parent-42'
       );
+    });
+
+    it('getSourceCategoryPath delegates to categoriesCacheService.getAllegroCategoryPath and maps nodes', async () => {
+      categoriesCache.getAllegroCategoryPath.mockResolvedValueOnce([
+        { id: '1', name: 'Electronics' },
+        { id: '10', name: 'Phones' },
+      ]);
+
+      const result = await controller.getSourceCategoryPath(ALLEGRO_CONNECTION_ID, '10');
+
+      expect(categoriesCache.getAllegroCategoryPath).toHaveBeenCalledWith(ALLEGRO_CONNECTION_ID, '10');
+      expect(result).toEqual([
+        { id: '1', name: 'Electronics' },
+        { id: '10', name: 'Phones' },
+      ]);
     });
   });
 });

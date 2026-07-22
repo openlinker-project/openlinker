@@ -74,16 +74,18 @@ export interface CreateAllegroPluginDeps {
 export const allegroAdapterManifest: AdapterMetadata = {
   adapterKey: 'allegro.publicapi.v1',
   platformType: 'allegro',
-  // `CategoryBrowser` + `EanCategoryMatcher` are `OfferManager` sub-capabilities
-  // that `AllegroOfferManagerAdapter` implements. They are advertised here — the
+  // `CategoryBrowser` + `CategoryPathReader` + `EanCategoryMatcher` are
+  // `OfferManager` sub-capabilities that `AllegroOfferManagerAdapter`
+  // implements. They are advertised here - the
   // same way PrestaShop advertises `ProductPublisher` / `CategoryProvisioner`
   // (#1367) — so host-side discovery (the connection response's
   // `supportedCapabilities`) can tell a browsable-taxonomy destination (Allegro:
   // category tree + per-category parameters) from a borrows-taxonomy one (Erli:
   // manual category id, no parameter step). Runtime dispatch is unaffected:
   // both sub-capabilities are resolved by narrowing the `OfferManager` adapter
-  // with `isCategoryBrowser` / `isEanCategoryMatcher`, never via
-  // `getCapabilityAdapter('CategoryBrowser')`, so no dispatch-table entry is needed.
+  // with `isCategoryBrowser` / `isCategoryPathReader` / `isEanCategoryMatcher`,
+  // never via `getCapabilityAdapter('CategoryBrowser')`, so no dispatch-table
+  // entry is needed.
   //
   // `OfferCreator` + `OfferEventReader` (#1498) follow the same pattern:
   // `AllegroOfferManagerAdapter` implements both, and the FE gates

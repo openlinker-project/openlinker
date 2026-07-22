@@ -137,6 +137,23 @@ export class OfferCreationRecordRepository implements OfferCreationRecordReposit
     return this.toDomain(saved);
   }
 
+  async deleteById(id: string): Promise<void> {
+    try {
+      await this.repository.delete({ id });
+    } catch (error) {
+      // A malformed (non-UUID) id can never match a row — treat as a no-op
+      // rather than surfacing an infrastructure error for a best-effort cleanup.
+      if (
+        error instanceof QueryFailedError &&
+        'code' in error &&
+        error.code === '22P02' // PostgreSQL invalid input syntax error code
+      ) {
+        return;
+      }
+      throw error;
+    }
+  }
+
   async findByBulkBatchId(bulkBatchId: string): Promise<OfferCreationRecord[]> {
     const entities = await this.repository.find({
       where: { bulkBatchId },
