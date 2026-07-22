@@ -1,72 +1,70 @@
 # Manual walkthrough — DPD Polska
 
-Shipping provider connection — no connection exists yet in this demo instance, this walkthrough
-starts from scratch. Full field reference: `libs/integrations/dpd-polska/docs/setup-guide.md`.
+Shipping provider connection. Full field reference: `libs/integrations/dpd-polska/docs/setup-guide.md`.
 
 ⚠️ **Prerequisite**: you need real DPD sandbox credentials (login/password + payer FID) issued by
 DPD — nothing is seeded/hardcoded in the repo for this. If you don't have sandbox credentials
 handy, skip this walkthrough for now and note it as blocked rather than guessing values.
 
+> ⚠️ **Sender postal code must be real, deliverable, and consistent with the sender city.**
+> A syntactically valid but out-of-region code (e.g. `city: Warszawa` + `postalCode: 22-213`)
+> passes OL's format validation but DPD rejects **every** shipment with
+> `INCORRECT_SENDER_POSTAL_CODE`, surfaced opaquely as `NOT_PROCESSED`. Use a code matching the
+> sender city (e.g. Warsaw `02-222`). Tracked in #1778 (validate at setup) and #1777 (surface the
+> real reason).
+
 ## Part A — Create the connection
 
-- [ ] Go to http://localhost:8090/connections/new
-- [ ] Pick **DPD Polska** from the platform picker
-
-```
-[SCREENSHOT: connection platform picker showing DPD Polska card]
-```
-
-- [ ] Step through the 3-step wizard, filling:
-  - Connection name (e.g. `DPD Polska (demo)`)
+- [x] Go to `/connections/new`
+- [x] Pick **DPD Polska** from the platform picker
+- [x] Step through the 3-step wizard, filling:
+  - Connection name (e.g. `DPD Demo`)
   - `login` / `password` (DPD Basic-auth credentials)
   - `environment` = **sandbox**
-  - `payerFid` (numeric DPD account/payer id)
+  - `payerFid` (numeric DPD account/payer id, e.g. `1495`)
   - `masterFid` (leave blank unless you have a multi-account setup)
-  - Sender address block: company/name (optional), street address, city, postal code
-    (`NN-NNN` format), country code (defaults `PL`), phone/email (optional)
+  - Sender address block: company/name (optional), street address, city, **postal code
+    consistent with the city** (`NN-NNN`), country code (defaults `PL`), phone/email (optional)
+- [x] Submit, confirm the connection is created and shows **Active**
+- [x] Go to the **Actions** tab, click **Test connection** → green success
 
-```
-[SCREENSHOT: DPD setup wizard, all three steps filled before submit]
-```
-
-- [ ] Submit, confirm the connection is created and shows **Active**
-
-```
-[SCREENSHOT: DPD connection detail page after creation]
-```
-
-- [ ] Go to the **Actions** tab, click **Test connection** → expect a green success result
-
-```
-[SCREENSHOT: DPD connection detail page, Actions tab, Test connection = success]
-```
-
-> **Finding:** _(fill in if anything here doesn't match expectations — e.g. the
-> `payerFid must be a numeric string` / postal-code-format validation errors documented in the
-> setup guide's troubleshooting section)_
+> **Finding:** Connection created and Active; Test connection succeeds. **Gotcha confirmed live:**
+> the demo connection was initially saved with `city: Warszawa` + `postalCode: 22-213` (Lublin
+> region). It passed OL's `NN-NNN` format validation and Test connection (auth is independent of
+> the sender address), but every label generation then failed at DPD (see Part B). Fixing the
+> sender postal code to `02-222` (valid Warsaw) resolved it. OL does not currently validate
+> deliverability at setup — filed as #1778.
 
 ## Part B — Generate a shipping label
 
 Same pattern as InPost — needs an existing order to attach a shipment to.
 
-- [ ] Go to **Orders**, open an order
-- [ ] Find the shipment panel / **Generate label** action
-- [ ] Select DPD as the carrier, fill in any required fields
-- [ ] Submit, confirm the label is generated (PDF/label reference appears)
+- [x] Go to **Orders**, open an order
+- [x] Find the shipment panel / **Generate label** action
+- [x] Select DPD (courier / `address` delivery intent), fill in required fields
+- [x] Submit, confirm the label is generated (waybill / tracking reference appears)
 
-```
-[SCREENSHOT: order shipment panel showing the generated DPD label + tracking number]
-```
+> **Finding:** ✅ Works end-to-end after the sender postal-code fix. Generating a label via
+> `POST /shipments/generate-label` (Erli order `ol_order_162bc9…`, `sourceDeliveryMethodId: "dpd"`,
+> `deliveryIntent: "address"`) returned `kind: dispatched` with a real DPD waybill
+> (`0000876013430Q`), shipment status `generated`. The OL request shape and adapter are correct —
+> confirmed by replaying the exact request against the DPD demo (real waybills returned for a valid
+> Warsaw sender; rejected only for the bad `22-213` code).
+>
+> **Two gaps observed on the generated DPD shipment:**
+> - The Delivery panel shows `CARRIER: — (awaiting)` and never resolves the carrier (DPD tracking
+>   mapper doesn't emit `carrier` on the snapshot) — filed as #1775.
+> - On an Erli-sourced order the orders list/detail omit the delivery-method label + ship-by
+>   (Erli order snapshot carries no `shipping.methodName` / `dispatchByAt`) — filed as #1776.
 
-> **Finding:** _(fill in if anything here doesn't match expectations)_
+## Part C — Tracking status sync
 
-## Part C — Tracking status sync (optional)
+- [x] Wait for the `dpd-shipment-status-sync` scheduled job (every 30 min) or trigger manually
+- [x] Confirm the SOAP tracking path reaches DPD
 
-- [ ] Wait for the `dpd-shipment-status-sync` scheduled job (every 30 min) or trigger manually
-- [ ] Confirm the shipment status updates in OpenLinker
-
-```
-[SCREENSHOT: order shipment panel showing an updated tracking status]
-```
-
-> **Finding:** _(fill in if anything here doesn't match expectations)_
+> **Finding:** ✅ Scheduler `dpd-shipment-status-sync` fires every 30 min (`succeeded`). The DPD
+> InfoServices SOAP **demo** host `dpdinfoservicesdemo.dpd.com.pl` (previously carrying a
+> `// TODO confirm against the demo WSDL` note) is confirmed reachable: `getEventsForWaybillV1`
+> returns HTTP 200 with a valid `getEventsForWaybillV1Response` (`confirmId 0`, no events yet for a
+> freshly-generated waybill — expected). Host, SOAP client, and auth all work. Carrier backfill from
+> the tracking snapshot does not happen for DPD (see #1775).
