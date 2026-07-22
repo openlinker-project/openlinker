@@ -315,6 +315,7 @@ export class ProductsController {
       description: product.description,
       images: product.images,
       categories: product.categories ?? null,
+      ...(product.features ? { features: product.features } : {}),
       createdAt: product.createdAt!.toISOString(),
       updatedAt: product.updatedAt!.toISOString(),
     };
