@@ -2,11 +2,13 @@
  * Bulk listing wizard page (#740)
  *
  * Route entry point — hydrates the selected products + their variants from
- * `?productIds=` and mounts the `BulkWizard` controller. When an optional
- * `?variantIds=` param is present (#1754), each hydrated product is narrowed
- * to the selected variant subset before the wizard seeds it; a product with
- * no matching entry keeps all its variants (whole-product pick). Handles the
- * three boundary states before the wizard can render:
+ * `?productIds=` and mounts the `BulkWizard` controller. An optional
+ * `?variantIds=` param (#1754) is threaded to the wizard as the pre-checked
+ * set: a product with some of its variants in the set still seeds ALL its
+ * variants (staying a multi-variant, expandable row) but only the set members
+ * start included; a product with no match keeps every variant included
+ * (whole-product pick). Handles the boundary states before the wizard can
+ * render:
  *   - empty productIds  → redirect back to /products
  *   - >100 productIds   → redirect back to /products with an alert
  *   - loading           → LoadingState
@@ -27,26 +29,6 @@ import { useProductsBatchQuery } from '../../features/products';
 import type { Product } from '../../features/products';
 
 const MAX_PRODUCTS = 100;
-
-/**
- * Narrow each product to the selected variant subset (#1754). For a product
- * with ≥1 of its variants in `variantIds`, return a copy whose `variants` is
- * filtered to that subset; a product with no match is returned unchanged
- * (whole-product pick → the wizard seeds all its variants). An empty set
- * returns the products unchanged (byte-identical to the `/products` path).
- */
-export function filterProductsToSelectedVariants(
-  products: Product[],
-  variantIds: Set<string>,
-): Product[] {
-  if (variantIds.size === 0) return products;
-  return products.map((product) => {
-    const variants = product.variants ?? [];
-    const matching = variants.filter((v) => variantIds.has(v.id));
-    if (matching.length === 0) return product;
-    return { ...product, variants: matching };
-  });
-}
 
 export function BulkCreateWizardPage(): ReactElement {
   const [searchParams] = useSearchParams();
@@ -127,10 +109,9 @@ export function BulkCreateWizardPage(): ReactElement {
     );
   }
 
-  const hydratedProducts: Product[] = productQueries
+  const products: Product[] = productQueries
     .map((q) => q.data)
     .filter((p): p is Product => p !== undefined);
-  const products = filterProductsToSelectedVariants(hydratedProducts, selectedVariantIds);
 
   if (products.length === 0) {
     return (
@@ -144,6 +125,7 @@ export function BulkCreateWizardPage(): ReactElement {
   return (
     <BulkWizard
       products={products}
+      preSelectedVariantIds={selectedVariantIds}
       preselectedConnectionId={searchParams.get('connectionId') ?? undefined}
       resolveConnectionName={(connectionId) =>
         connectionsQuery.data?.find((c) => c.id === connectionId)?.name ??
