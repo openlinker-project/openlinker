@@ -95,6 +95,7 @@ export const allegroAdapterManifest: AdapterMetadata = {
     'OfferManager',
     'ShippingProviderManager',
     'CategoryBrowser',
+    'CategoryPathReader',
     'EanCategoryMatcher',
     'OfferCreator',
     'OfferEventReader',

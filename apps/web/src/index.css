@@ -279,6 +279,19 @@
   --viz-cat-4: oklch(60% 0.13 150);
   --viz-cat-muted: oklch(82% 0.008 80);
 
+  /* ── Channel brand hues (#1752) ──────────────────────────────────────
+   * Per-marketplace dot/pill identity colours, previously copy-pasted as raw
+   * oklch literals across the orders, coverage, channel-pill, product-detail,
+   * and variant-drawer rulesets. Brand identity, NOT status — a channel hue
+   * distinguishes the platform, never encodes health. Single definition
+   * (identical in light/dark), mirroring the viz categorical set. */
+  --channel-allegro: oklch(70% 0.18 35);
+  --channel-prestashop: oklch(60% 0.18 250);
+  --channel-erli: oklch(66% 0.17 320);
+  --channel-woocommerce: oklch(64% 0.16 150);
+  --channel-amazon: oklch(72% 0.16 75);
+  --channel-shopify: oklch(64% 0.16 150);
+
   /* ── Status: review / manual ──────────────────────────────────────── */
   --status-review: oklch(58% 0.16 290);
   --status-review-soft: oklch(96% 0.04 290);
@@ -7924,9 +7937,9 @@ a.kpi-card:focus-visible {
   background: var(--text-muted);
   flex-shrink: 0;
 }
-.orders-ext-link[data-channel='allegro']::before { background: oklch(70% 0.18 35); }
-.orders-ext-link[data-channel='prestashop']::before { background: oklch(60% 0.18 250); }
-.orders-ext-link[data-channel='erli']::before { background: oklch(66% 0.17 320); }
+.orders-ext-link[data-channel='allegro']::before { background: var(--channel-allegro); }
+.orders-ext-link[data-channel='prestashop']::before { background: var(--channel-prestashop); }
+.orders-ext-link[data-channel='erli']::before { background: var(--channel-erli); }
 .orders-ext-link__arrow { color: var(--accent-primary); }
 .orders-ext-link--internal { border-color: var(--accent-primary-border); color: var(--accent-primary-soft-strong); font-weight: 600; }
 .orders-ext-link--internal::before { background: var(--accent-primary); }
@@ -8187,10 +8200,10 @@ a.kpi-card:focus-visible {
   border-radius: 50%;
   background: var(--text-muted);
 }
-.channel-pill[data-channel='allegro']::before    { background: oklch(70% 0.18 35); }
-.channel-pill[data-channel='prestashop']::before { background: oklch(60% 0.18 250); }
-.channel-pill[data-channel='amazon']::before     { background: oklch(72% 0.16 75); }
-.channel-pill[data-channel='shopify']::before    { background: oklch(64% 0.16 150); }
+.channel-pill[data-channel='allegro']::before    { background: var(--channel-allegro); }
+.channel-pill[data-channel='prestashop']::before { background: var(--channel-prestashop); }
+.channel-pill[data-channel='amazon']::before     { background: var(--channel-amazon); }
+.channel-pill[data-channel='shopify']::before    { background: var(--channel-shopify); }
 
 /* ── Patterns: entity label (thumb + name + sub-id) ──────────────── */
 .entity-label { display: inline-flex; align-items: center; gap: var(--space-2); }
@@ -11863,13 +11876,6 @@ input.bulk-dispatch__num--wide {
   min-width: 0;
 }
 
-.product-detail-hero__title-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
 .product-detail-hero__title {
   margin: 0;
   font-size: 1.125rem;
@@ -11894,18 +11900,18 @@ input.bulk-dispatch__num--wide {
 }
 
 .product-detail-hero__facts {
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 0.5rem;
+  row-gap: 0.125rem;
+  align-items: baseline;
   margin-top: 0.125rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
 }
 
 .product-detail-hero__fact {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.3rem;
-  font-size: 0.75rem;
-  color: var(--text-secondary);
+  display: contents;
 }
 
 .product-detail-hero__fact-label {
@@ -11915,7 +11921,6 @@ input.bulk-dispatch__num--wide {
   letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
   color: var(--text-muted);
-  min-width: 6.5rem;
 }
 
 .product-gallery {
@@ -11940,15 +11945,39 @@ input.bulk-dispatch__num--wide {
   box-shadow: var(--shadow-xs);
 }
 
+.product-gallery__main--static {
+  cursor: default;
+}
+
 .product-gallery__main:focus-visible {
   outline: 2px solid var(--accent-focus);
   outline-offset: 2px;
 }
 
 .product-gallery__main img {
+  position: absolute;
+  inset: 0;
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.product-gallery__main img.is-broken {
+  display: none;
+}
+
+.product-gallery__placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-surface-muted);
 }
 
 .product-gallery__expand-hint {
@@ -12440,16 +12469,6 @@ input.bulk-dispatch__num--wide {
   .product-gallery__main {
     aspect-ratio: 16 / 10;
   }
-
-  .product-detail-hero__fact {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.125rem;
-  }
-
-  .product-detail-hero__fact-label {
-    min-width: 0;
-  }
 }
 
 /* Description section header — read-only source vs editable Content. */
@@ -12591,17 +12610,164 @@ input.bulk-dispatch__num--wide {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  margin: 0 var(--space-4) var(--space-4) calc(2.25rem + var(--space-4));
+  margin: var(--space-3) var(--space-4) var(--space-4) calc(2.25rem + var(--space-4));
   padding: var(--space-4);
   background: var(--bg-surface-muted);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
 }
 
+/* Single-product "Listed on" panel: same drawer chrome, no row-aligned inset. */
+.variant-drawer--flush {
+  margin: 0;
+}
+
 .variant-drawer__links {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+/* Top-of-drawer channel deep-link pills (mirrors .products-detail-links__link):
+   1px accent-bordered pill, channel-hued leading dot, accent arrow. */
+.variant-drawer__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px var(--space-3);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--accent-primary-soft-strong);
+  font-size: 0.75rem;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.variant-drawer__link:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.variant-drawer__link:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.variant-drawer__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.variant-drawer__link[data-channel='allegro'] .variant-drawer__dot {
+  background: var(--channel-allegro);
+}
+.variant-drawer__link[data-channel='erli'] .variant-drawer__dot {
+  background: var(--channel-erli);
+}
+.variant-drawer__link[data-channel='prestashop'] .variant-drawer__dot {
+  background: var(--channel-prestashop);
+}
+.variant-drawer__link[data-channel='woocommerce'] .variant-drawer__dot {
+  background: var(--channel-woocommerce);
+}
+
+.variant-drawer__arrow {
+  color: var(--accent-primary);
+  font-size: 0.75rem;
+}
+
+/* Variant metadata grid — 4 mono-caps-labelled cells above the listings. */
+.variant-drawer__meta {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3) var(--space-5);
+}
+
+@media (max-width: 1023.98px) {
+  .variant-drawer__meta {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.variant-drawer__meta-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.variant-drawer__meta-label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.variant-drawer__meta-value {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.variant-drawer__meta-value--wrap {
+  overflow-wrap: anywhere;
+}
+
+.variant-drawer__meta-muted {
+  color: var(--text-muted);
+}
+
+/* Attribute chips — small mono pills in the Attributes cell. */
+.attr-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.attr-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-secondary);
+}
+
+.attr-chip b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* Listings block sits below the metadata grid with its own top gap. */
+.variant-drawer__listings {
+  margin-top: var(--space-4);
+}
+
+.listings-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+/* Muted separator between meta / summary items. */
+.lmeta__sep {
+  color: var(--text-muted);
 }
 
 .variant-drawer__label {
@@ -13776,10 +13942,10 @@ input.bulk-dispatch__num--wide {
   border-radius: 50%;
   background: var(--text-muted);
 }
-.coverage-pill[data-channel='allegro']::before    { background: oklch(70% 0.18 35); }
-.coverage-pill[data-channel='prestashop']::before { background: oklch(60% 0.18 250); }
-.coverage-pill[data-channel='amazon']::before     { background: oklch(72% 0.16 75); }
-.coverage-pill[data-channel='shopify']::before    { background: oklch(64% 0.16 150); }
+.coverage-pill[data-channel='allegro']::before    { background: var(--channel-allegro); }
+.coverage-pill[data-channel='prestashop']::before { background: var(--channel-prestashop); }
+.coverage-pill[data-channel='amazon']::before     { background: var(--channel-amazon); }
+.coverage-pill[data-channel='shopify']::before    { background: var(--channel-shopify); }
 .coverage-pill--full {
   border-color: var(--status-success-border);
   background: var(--status-success-soft);
@@ -13911,9 +14077,9 @@ input.bulk-dispatch__num--wide {
   font-weight: 600;
 }
 .products-detail-links__link--internal::before { background: var(--accent-primary); }
-.products-detail-links__link[data-channel='prestashop']::before { background: oklch(60% 0.18 250); }
-.products-detail-links__link[data-channel='allegro']::before { background: oklch(70% 0.18 35); }
-.products-detail-links__link[data-channel='woocommerce']::before { background: oklch(64% 0.16 150); }
+.products-detail-links__link[data-channel='prestashop']::before { background: var(--channel-prestashop); }
+.products-detail-links__link[data-channel='allegro']::before { background: var(--channel-allegro); }
+.products-detail-links__link[data-channel='woocommerce']::before { background: var(--channel-woocommerce); }
 .products-detail-links__link .products-detail-links__arrow { color: var(--accent-primary); font-size: 0.75rem; }
 
 /* Mobile card disclosure toggle (#1720) - the heavy per-variant detail (its

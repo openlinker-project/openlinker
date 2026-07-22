@@ -13,3 +13,13 @@ export interface OfferCategory {
   parentId: string | null;
   leaf: boolean;
 }
+
+/**
+ * One node of a category breadcrumb path, ordered root -> leaf.
+ * Returned by `CategoryPathReader.fetchCategoryPath` so the FE can render a
+ * human-readable "Root > ... > Leaf" trail instead of the raw category id.
+ */
+export interface CategoryPathSegment {
+  id: string;
+  name: string;
+}
