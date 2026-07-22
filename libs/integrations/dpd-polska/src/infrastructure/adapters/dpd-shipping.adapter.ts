@@ -161,8 +161,10 @@ export class DpdShippingAdapter
    * validation-info envelope, never credentials or the echoed request), so
    * logging it in full is safe, and `traceId` is the handle DPD support keys on.
    * (One caveat: a rejection `validationInfo` can echo an order-derived value
-   * such as a receiver postcode — buyer-PII-adjacent — but it stays in WARN logs
-   * only, never in `providerDetails` / the API 502 body.)
+   * such as a receiver postcode — buyer-PII-adjacent. The FULL raw body logged
+   * here stays in WARN logs only; the already-mapped `validationInfo` may
+   * separately reach `providerDetails` → the 502 body via the pre-existing #1104
+   * path, but this WARN log adds no exposure beyond what #1104 already surfaces.)
    * The rethrown exception is enriched with `providerDetails.traceId` so the
    * operator can quote it without a log dive.
    */
@@ -190,8 +192,16 @@ function withTraceId(
   error: ShippingProviderRejectionException,
   traceId: string,
 ): ShippingProviderRejectionException {
-  return new ShippingProviderRejectionException(error.providerName, error.providerCode, error.message, {
-    ...(error.providerDetails ?? {}),
-    traceId,
-  });
+  const enriched = new ShippingProviderRejectionException(
+    error.providerName,
+    error.providerCode,
+    error.message,
+    { ...(error.providerDetails ?? {}), traceId },
+  );
+  // Preserve the original throw site (the mapper assert) rather than the stack
+  // captured here, so triage points at where the rejection actually originated.
+  if (error.stack) {
+    enriched.stack = error.stack;
+  }
+  return enriched;
 }

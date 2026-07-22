@@ -391,20 +391,21 @@ function resolveRecipientName(recipient: ShipmentRecipient): string | undefined 
  * `NOT_PROCESSED` surfaces the field-level reason in structured logs / the API
  * response without a debug probe (#1104).
  *
- * When any collected entry is an `INCORRECT_SENDER_POSTAL_CODE`, the operator-
- * readable message is enriched with an actionable hint (#1778): the sender
- * postcode lives on the connection config, so the fix is an operator action —
- * a bare `NN-NNN` format is not enough, the code must actually be deliverable
- * for the configured city. The `providerCode` discriminator and structured
- * `providerDetails` are left untouched (parcel-first precedence preserved).
+ * When the primary (parcel-first) entry is an `INCORRECT_SENDER_POSTAL_CODE`,
+ * the operator-readable message is enriched with an actionable hint (#1778):
+ * the sender postcode lives on the connection config, so the fix is an operator
+ * action — a bare `NN-NNN` format is not enough, the code must actually be
+ * deliverable for the configured city. The hint is gated on the SAME entry that
+ * drives `providerCode`/`message` (not any collected entry) so a mixed
+ * rejection whose primary reason is a different error never gets a mismatched
+ * "Incorrect receiver postal code… {sender hint}" pairing. The `providerCode`
+ * discriminator and structured `providerDetails` are left untouched.
  */
 function reject(allInfos: DpdValidationInfo[], fallback: string): ShippingProviderRejectionException {
   const first = allInfos[0];
   const baseMessage = first?.info ?? fallback;
-  const hasSenderPostalCodeIssue = allInfos.some(
-    (info) => info.errorCode === DPD_SENDER_POSTAL_CODE_ERROR_CODE,
-  );
-  const message = hasSenderPostalCodeIssue
+  const isSenderPostalCodeIssue = first?.errorCode === DPD_SENDER_POSTAL_CODE_ERROR_CODE;
+  const message = isSenderPostalCodeIssue
     ? `${baseMessage}. ${DPD_SENDER_POSTAL_CODE_HINT}`
     : baseMessage;
   return new ShippingProviderRejectionException(

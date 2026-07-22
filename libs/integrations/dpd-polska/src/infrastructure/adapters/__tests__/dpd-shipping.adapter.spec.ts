@@ -178,13 +178,18 @@ describe('DpdShippingAdapter', () => {
     });
   });
 
-  it('should not fail when a rejected response carries no traceId', async () => {
+  it('should rethrow the original rejection unenriched when the response carries no traceId', async () => {
     jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     http.request.mockResolvedValueOnce({ status: 'PROTOCOL_ERROR' });
 
-    await expect(
-      adapter.generateProtocol({ providerShipmentIds: ['WB1'] }),
-    ).rejects.toBeInstanceOf(ShippingProviderRejectionException);
+    const error = await adapter
+      .generateProtocol({ providerShipmentIds: ['WB1'] })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ShippingProviderRejectionException);
+    // No traceId on the response → the `response.traceId ? … : error` branch
+    // rethrows the original exception, so providerDetails carries no traceId.
+    expect((error as ShippingProviderRejectionException).providerDetails?.traceId).toBeUndefined();
   });
 
   it('should propagate an HTTP-level rejection from the client', async () => {
