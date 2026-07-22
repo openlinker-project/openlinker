@@ -35,6 +35,7 @@ describe('AuthService', () => {
   beforeEach(async () => {
     const mockUserRepository = {
       findByUsername: jest.fn(),
+      findByEmail: jest.fn().mockResolvedValue(null),
       findById: jest.fn(),
       save: jest.fn(),
     } as unknown as jest.Mocked<UserRepositoryPort>;
@@ -57,13 +58,51 @@ describe('AuthService', () => {
   });
 
   describe('validateUser', () => {
-    it('should return null when user is not found', async () => {
+    it('should return null and use only the username lookup when a "@"-free identifier misses', async () => {
       userRepository.findByUsername.mockResolvedValue(null);
 
       const result = await service.validateUser('unknown', 'password');
 
       expect(result).toBeNull();
       expect(userRepository.findByUsername).toHaveBeenCalledWith('unknown');
+      expect(userRepository.findByEmail).not.toHaveBeenCalled();
+    });
+
+    it('should return null and use only the email lookup when a "@"-bearing identifier misses', async () => {
+      userRepository.findByEmail.mockResolvedValue(null);
+
+      const result = await service.validateUser('unknown@example.com', 'password');
+
+      expect(result).toBeNull();
+      expect(userRepository.findByEmail).toHaveBeenCalledWith('unknown@example.com');
+      expect(userRepository.findByUsername).not.toHaveBeenCalled();
+    });
+
+    it('should authenticate by email and skip the username lookup when the identifier contains "@"', async () => {
+      const plainPassword = 'secret123';
+      const user = makeUser({
+        email: 'admin@openlinker.local',
+        passwordHash: await bcrypt.hash(plainPassword, 10),
+      });
+      userRepository.findByEmail.mockResolvedValue(user);
+
+      const result = await service.validateUser('admin@openlinker.local', plainPassword);
+
+      expect(result).toBe(user);
+      expect(userRepository.findByEmail).toHaveBeenCalledWith('admin@openlinker.local');
+      expect(userRepository.findByUsername).not.toHaveBeenCalled();
+    });
+
+    it('should authenticate by username and skip the email lookup when the identifier has no "@"', async () => {
+      const plainPassword = 'secret123';
+      const user = makeUser({ passwordHash: await bcrypt.hash(plainPassword, 10) });
+      userRepository.findByUsername.mockResolvedValue(user);
+
+      const result = await service.validateUser('admin', plainPassword);
+
+      expect(result).toBe(user);
+      expect(userRepository.findByUsername).toHaveBeenCalledWith('admin');
+      expect(userRepository.findByEmail).not.toHaveBeenCalled();
     });
 
     it('should return null when password does not match', async () => {

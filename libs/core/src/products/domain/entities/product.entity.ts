@@ -49,7 +49,8 @@ export interface Product {
    * Master-derived product features (e.g. `{ name: 'Material', value: 'Ceramic' }`),
    * distinct from variant-distinguishing attributes (#1096, F2). A destination
    * that accepts shop-native attributes (Erli `source:"shop"` `externalAttributes`)
-   * emits these. Absent/empty ⇒ no features. Not persisted on the products table.
+   * emits these. Absent/empty ⇒ no features. Persisted on the `products.features`
+   * jsonb column (#1752).
    */
   features?: { name: string; value: string }[];
 }

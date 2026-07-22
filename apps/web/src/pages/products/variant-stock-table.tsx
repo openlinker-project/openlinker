@@ -17,6 +17,7 @@ import { ConnectionEntityLabel } from '../../features/connections/components/Con
 import type { Connection } from '../../features/connections';
 import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
 import { useListingMarketplaceOfferQuery } from '../../features/listings/hooks/use-listing-marketplace-offer-query';
+import { useCategoryPathQuery } from '../../features/listings/hooks/use-category-path-query';
 import type { OfferMapping } from '../../features/listings/api/listings.types';
 import type { ProductVariant } from '../../features/products/api/products.types';
 import type { InventoryItem } from '../../features/inventory/api/inventory.types';
@@ -79,7 +80,6 @@ export function VariantStockTable(props: VariantStockTableProps): ReactElement {
             <th>Stock</th>
             <th>Listings</th>
             <th className="data-table__cell--right">Price</th>
-            <th className="data-table__cell--right">Updated</th>
           </tr>
         </thead>
         <tbody>
@@ -129,18 +129,28 @@ function statusTone(status: string): StatusBadgeTone {
   return 'neutral';
 }
 
+function variantHasAttributes(variant: ProductVariant): boolean {
+  return Boolean(variant.attributes && Object.keys(variant.attributes).length > 0);
+}
+
+/**
+ * Row/card headline. When the variant carries distinguishing attributes we lead
+ * with their joined values ("Black · M") — the human-meaningful identity — and
+ * demote the SKU to the meta line. Otherwise the SKU (or id) stays the headline.
+ */
+function variantHeadline(variant: ProductVariant): string {
+  if (variantHasAttributes(variant)) {
+    return Object.values(variant.attributes as Record<string, string>).join(' · ');
+  }
+  return variant.sku ?? variant.id;
+}
+
 function variantMetaLine(variant: ProductVariant): string | null {
-  const attrs =
-    variant.attributes && Object.keys(variant.attributes).length > 0
-      ? Object.entries(variant.attributes)
-          .map(([key, value]: [string, string]) => `${key}: ${value}`)
-          .join(', ')
-      : null;
+  const hasAttrs = variantHasAttributes(variant);
   const parts = [
+    // SKU appears on the meta line only when attributes took the headline.
+    hasAttrs && variant.sku ? `SKU ${variant.sku}` : null,
     variant.ean ? `EAN ${variant.ean}` : null,
-    // Show the SKU on the meta line only when it isn't already the headline.
-    variant.sku ? `SKU ${variant.sku}` : null,
-    attrs,
   ].filter((part): part is string => Boolean(part));
   return parts.length > 0 ? parts.join(' · ') : null;
 }
@@ -238,13 +248,142 @@ function VariantCoverage({
 
 // ── Rich per-listing drawer ──────────────────────────────────────────────────
 
-function VariantDrawer({
+/**
+ * Top-of-drawer deep-link pill for one listing that resolves a marketplace URL.
+ * Runs the same `useListingMarketplaceOfferQuery` as its `ListingDetailCard`
+ * sibling — TanStack Query dedupes by queryKey, so the two share ONE network
+ * request. Renders nothing until (and unless) the offer exposes a URL.
+ */
+function DrawerChannelLink({
+  listing,
+  enabled,
+}: {
+  listing: OfferMapping;
+  enabled: boolean;
+}): ReactElement | null {
+  const platforms = usePlatforms();
+  const isOffer = listing.entityType === 'Offer';
+  const offerQuery = useListingMarketplaceOfferQuery(listing.id, { enabled: enabled && isOffer });
+  const url = offerQuery.data?.marketplaceUrl;
+  if (!url) return null;
+  const label =
+    platforms.find((p) => p.platformType === listing.platformType)?.displayName ??
+    listing.platformType;
+  return (
+    <a
+      className="variant-drawer__link"
+      data-channel={listing.platformType}
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+    >
+      <span className="variant-drawer__dot" aria-hidden="true"></span>
+      Open on {label} <span className="variant-drawer__arrow" aria-hidden="true">↗</span>
+    </a>
+  );
+}
+
+/** Attribute chips + variant identity metadata grid, above the listings block. */
+function VariantMetaGrid({
+  variant,
+  available,
+  reserved,
+}: {
+  variant: ProductVariant;
+  available: number;
+  reserved: number;
+}): ReactElement {
+  const hasAttrs = variantHasAttributes(variant);
+  return (
+    <div className="variant-drawer__meta">
+      {hasAttrs ? (
+        <div className="variant-drawer__meta-cell">
+          <span className="variant-drawer__meta-label">Attributes</span>
+          <span className="attr-chips">
+            {Object.entries(variant.attributes as Record<string, string>).map(([key, value]) => (
+              <span key={key} className="attr-chip">
+                <b>{key}</b>
+                {value}
+              </span>
+            ))}
+          </span>
+        </div>
+      ) : null}
+      <div className="variant-drawer__meta-cell">
+        <span className="variant-drawer__meta-label">Variant ID</span>
+        <span className="variant-drawer__meta-value variant-drawer__meta-value--wrap mono-text">
+          {variant.id}
+        </span>
+      </div>
+      <div className="variant-drawer__meta-cell">
+        <span className="variant-drawer__meta-label">EAN / GTIN</span>
+        <span className="variant-drawer__meta-value mono-text">
+          {variant.ean ?? variant.gtin ?? '—'}
+        </span>
+      </div>
+      <div className="variant-drawer__meta-cell">
+        <span className="variant-drawer__meta-label">Stock</span>
+        <span className="variant-drawer__meta-value mono-text tabular">
+          {available}
+          <span className="variant-drawer__meta-muted"> / res {reserved}</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Honest "n listed · m gap · Channels" summary under the Listings label. */
+function ListingsSummary({
+  listings,
+  connections,
+}: {
+  listings: OfferMapping[];
+  connections: readonly Connection[];
+}): ReactElement {
+  const platforms = usePlatforms();
+  const platformLabel = (platformType: string): string =>
+    platforms.find((p) => p.platformType === platformType)?.displayName ?? platformType;
+  const listedConnectionIds = new Set(listings.map((l) => l.connectionId));
+  const gapConnections = connections.filter((c) => !listedConnectionIds.has(c.id));
+  const gapChannels = Array.from(
+    new Set(gapConnections.map((c) => platformLabel(c.platformType))),
+  );
+
+  return (
+    <div className="listings-summary">
+      <span>{listings.length} listed</span>
+      {gapConnections.length > 0 ? (
+        <>
+          <span className="lmeta__sep" aria-hidden="true">·</span>
+          <span>{gapConnections.length} gap</span>
+          <span className="lmeta__sep" aria-hidden="true">·</span>
+          <span>{gapChannels.join(', ')}</span>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Shared drawer body used by the expanded table row, the mobile card, and the
+ * single-product "Listed on" section. Order: (1) channel-link strip, (2)
+ * variant metadata grid, (3) listings block (label + summary + detail cards).
+ */
+function VariantDetailBody({
+  variant,
+  available,
+  reserved,
+  connections,
   listings,
   total,
   isLoading,
   isError,
   open,
 }: {
+  variant: ProductVariant;
+  available: number;
+  reserved: number;
+  connections: readonly Connection[];
   listings: OfferMapping[];
   total: number;
   isLoading: boolean;
@@ -252,23 +391,74 @@ function VariantDrawer({
   open: boolean;
 }): ReactElement {
   return (
-    <div className="variant-drawer">
-      <div className="variant-drawer__label">Listings{total > 0 ? ` (${total})` : ''}</div>
-      {isLoading ? (
-        <p className="variant-listing-card__note">Loading listings…</p>
-      ) : isError ? (
-        <p className="variant-listing-card__note">Couldn&rsquo;t load listings.</p>
-      ) : listings.length === 0 ? (
-        <p className="variant-listing-card__note">
-          No marketplace listings reference this variant yet.
-        </p>
-      ) : (
-        <div className="variant-listing-cards">
+    <>
+      {listings.length > 0 ? (
+        <div className="variant-drawer__links">
           {listings.map((listing) => (
-            <ListingDetailCard key={listing.id} listing={listing} enabled={open} />
+            <DrawerChannelLink key={listing.id} listing={listing} enabled={open} />
           ))}
         </div>
-      )}
+      ) : null}
+
+      <VariantMetaGrid variant={variant} available={available} reserved={reserved} />
+
+      <div className="variant-drawer__listings">
+        <div className="variant-drawer__label">Listings{total > 0 ? ` (${total})` : ''}</div>
+        {isLoading ? (
+          <p className="variant-listing-card__note">Loading listings…</p>
+        ) : isError ? (
+          <p className="variant-listing-card__note">Couldn&rsquo;t load listings.</p>
+        ) : (
+          <>
+            <ListingsSummary listings={listings} connections={connections} />
+            {listings.length === 0 ? (
+              <p className="variant-listing-card__note">
+                No marketplace listings reference this variant yet.
+              </p>
+            ) : (
+              <div className="variant-listing-cards">
+                {listings.map((listing) => (
+                  <ListingDetailCard key={listing.id} listing={listing} enabled={open} />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
+/**
+ * Single-product panel — the same drawer body, always expanded, for the
+ * `variants.length === 1` "Listed on" section. Owns the per-variant listings
+ * query so `onListingsCount` still feeds the Listings KPI.
+ */
+export function VariantDetailPanel({
+  variant,
+  stock,
+  connections,
+  onListingsCount,
+}: {
+  variant: ProductVariant;
+  stock: InventoryItem | undefined;
+  connections: readonly Connection[];
+  onListingsCount: (variantId: string, count: number) => void;
+}): ReactElement {
+  const { listings, total, isLoading, isError } = useVariantListings(variant, onListingsCount);
+  return (
+    <div className="variant-drawer variant-drawer--flush">
+      <VariantDetailBody
+        variant={variant}
+        available={stock?.availableQuantity ?? 0}
+        reserved={stock?.reservedQuantity ?? 0}
+        connections={connections}
+        listings={listings}
+        total={total}
+        isLoading={isLoading}
+        isError={isError}
+        open
+      />
     </div>
   );
 }
@@ -287,9 +477,59 @@ function ListingDetailCard({
   // per listing, retry-off, 30s stale (see the hook).
   const offerQuery = useListingMarketplaceOfferQuery(listing.id, { enabled: enabled && isOffer });
   const offer = offerQuery.data;
+  // Resolve the offer's raw category id to a human breadcrumb (#1752). The
+  // offer payload carries only `category.id`; fall back to the raw id / name
+  // while loading or on 404/422.
+  const categoryPathQuery = useCategoryPathQuery(listing.connectionId, offer?.category?.id, {
+    enabled: enabled && Boolean(offer?.category?.id),
+  });
+  const categoryBreadcrumb =
+    categoryPathQuery.data && categoryPathQuery.data.length > 0
+      ? categoryPathQuery.data.map((segment) => segment.name).join(' › ')
+      : null;
   const label =
     platforms.find((p) => p.platformType === listing.platformType)?.displayName ??
     listing.platformType;
+
+  // Meta items are conditional (Qty / Category only when the live offer
+  // resolves). Build the rendered nodes first, then interleave a muted `·`
+  // separator so we never emit a leading / trailing / double separator.
+  const metaItems: ReactNode[] = [
+    <span key="offer" className="variant-listing-meta">
+      Offer <Link to={`/listings/${listing.id}`}>{listing.externalId} ↗</Link>
+    </span>,
+  ];
+  if (offer) {
+    metaItems.push(
+      <span key="qty" className="variant-listing-meta">
+        <b>Qty</b> {offer.availableQuantity}
+      </span>,
+    );
+  }
+  if (offer?.category) {
+    metaItems.push(
+      <span key="category" className="variant-listing-meta">
+        <b>Category</b> {categoryBreadcrumb ?? offer.category.name ?? offer.category.id}
+      </span>,
+    );
+  }
+  metaItems.push(
+    <span key="updated" className="variant-listing-meta">
+      <b>Offer updated</b> <TimeDisplay iso={listing.updatedAt} />
+    </span>,
+  );
+
+  const metaWithSeparators: ReactNode[] = [];
+  metaItems.forEach((node, index) => {
+    if (index > 0) {
+      metaWithSeparators.push(
+        <span key={`sep-${index}`} className="lmeta__sep" aria-hidden="true">
+          ·
+        </span>,
+      );
+    }
+    metaWithSeparators.push(node);
+  });
 
   return (
     <div className="variant-listing-card">
@@ -311,34 +551,7 @@ function ListingDetailCard({
           </span>
         ) : null}
       </div>
-      <div className="variant-listing-card__meta">
-        <span className="variant-listing-meta">
-          Offer{' '}
-          <Link to={`/listings/${listing.id}`}>
-            {listing.externalId} ↗
-          </Link>
-        </span>
-        {offer ? (
-          <span className="variant-listing-meta">
-            <b>Qty</b> {offer.availableQuantity}
-          </span>
-        ) : null}
-        {offer?.category ? (
-          <span className="variant-listing-meta">
-            <b>Category</b> {offer.category.name ?? offer.category.id}
-          </span>
-        ) : null}
-        {offer?.marketplaceUrl ? (
-          <span className="variant-listing-meta">
-            <a href={offer.marketplaceUrl} target="_blank" rel="noreferrer">
-              Open on marketplace ↗
-            </a>
-          </span>
-        ) : null}
-        <span className="variant-listing-meta">
-          <b>Updated</b> <TimeDisplay iso={listing.updatedAt} />
-        </span>
-      </div>
+      <div className="variant-listing-card__meta">{metaWithSeparators}</div>
       {enabled && offerQuery.isLoading ? (
         <p className="variant-listing-card__note">Loading live marketplace data…</p>
       ) : null}
@@ -391,7 +604,7 @@ function VariantStockRow({
         </td>
         <td>
           <div className="variant-stock-table__name">
-            <span className="variant-stock-table__sku mono-text">{variant.sku ?? variant.id}</span>
+            <span className="variant-stock-table__sku mono-text">{variantHeadline(variant)}</span>
             {meta ? <span className="variant-stock-table__meta">{meta}</span> : null}
           </div>
         </td>
@@ -417,21 +630,24 @@ function VariantStockRow({
         <td className="data-table__cell--right variant-stock-table__price">
           {formatPrice(variant.price, currency)}
         </td>
-        <td className="data-table__cell--right">
-          <TimeDisplay className="mono-text tabular" iso={variant.updatedAt} />
-        </td>
       </tr>
       <tr className={`variant-stock-table__expand-row${isOpen ? ' is-open' : ''}`}>
-        <td colSpan={6}>
+        <td colSpan={5}>
           <div className="variant-stock-table__expand-content">
             <div className="variant-stock-table__expand-content-inner">
-              <VariantDrawer
-                listings={listings}
-                total={total}
-                isLoading={isLoading}
-                isError={isError}
-                open={isOpen}
-              />
+              <div className="variant-drawer">
+                <VariantDetailBody
+                  variant={variant}
+                  available={available}
+                  reserved={reserved}
+                  connections={connections}
+                  listings={listings}
+                  total={total}
+                  isLoading={isLoading}
+                  isError={isError}
+                  open={isOpen}
+                />
+              </div>
             </div>
           </div>
         </td>
@@ -477,7 +693,7 @@ function VariantStockCard({
         onClick={() => setOpen((prev) => !prev)}
       >
         <span className="variant-stock-table__name">
-          <span className="variant-stock-table__sku mono-text">{variant.sku ?? variant.id}</span>
+          <span className="variant-stock-table__sku mono-text">{variantHeadline(variant)}</span>
           {meta ? <span className="variant-stock-table__meta">{meta}</span> : null}
         </span>
         <span className="variant-card__aside">
@@ -514,13 +730,19 @@ function VariantStockCard({
               />
             </span>
           </div>
-          <VariantDrawer
-            listings={listings}
-            total={total}
-            isLoading={isLoading}
-            isError={isError}
-            open={isOpen}
-          />
+          <div className="variant-drawer">
+            <VariantDetailBody
+              variant={variant}
+              available={available}
+              reserved={reserved}
+              connections={connections}
+              listings={listings}
+              total={total}
+              isLoading={isLoading}
+              isError={isError}
+              open={isOpen}
+            />
+          </div>
         </div>
       ) : null}
     </div>

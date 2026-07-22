@@ -36,6 +36,7 @@ import {
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
   isCatalogProductReader,
   isCategoryParametersReader,
+  isCategoryPathReader,
   isOfferReader,
   OfferNotFoundOnMarketplaceException,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
@@ -54,6 +55,7 @@ import {
 } from '@openlinker/core/listings';
 import type {
   CategoryParameter,
+  CategoryPathSegment,
   OfferCreationRecord,
   OfferManagerPort,
 } from '@openlinker/core/listings';
@@ -82,6 +84,7 @@ import { ResponsibleProducersResponseDto } from './dto/responsible-producers-res
 import { DeliveryPriceListsResponseDto } from './dto/delivery-price-lists-response.dto';
 import type { CategoryParameterResponseDto } from './dto/category-parameter-response.dto';
 import { CategoryParametersListResponseDto } from './dto/category-parameter-response.dto';
+import { CategoryPathResponseDto } from './dto/category-path-response.dto';
 import { ResolveCategoryRequestDto, ResolveCategoryResponseDto } from './dto/resolve-category.dto';
 import {
   ResolveCategoryBatchRequestDto,
@@ -534,6 +537,63 @@ export class ListingsController {
     }
 
     return { parameters: parameters.map((p) => this.toCategoryParameterResponseDto(p)) };
+  }
+
+  @Roles('admin', 'operator', 'viewer')
+  @Get('connections/:connectionId/categories/:categoryId/path')
+  @HttpCode(HttpStatus.OK)
+  // Category breadcrumbs are effectively immutable public taxonomy — let the
+  // browser cache them for a day so re-opening the listing drawer never re-hits
+  // the marketplace.
+  @Header('Cache-Control', 'public, max-age=86400')
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
+  @ApiParam({ name: 'categoryId', description: 'Marketplace category ID (Allegro-issued).' })
+  @ApiOperation({
+    summary: 'Resolve a category id to its breadcrumb path (#1752)',
+    description:
+      "Returns the category's full ancestor breadcrumb ordered root -> leaf. The listing-detail drawer renders this instead of the raw category id Allegro's offer payload carries.",
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Breadcrumb segments wrapped under `path`.',
+    type: CategoryPathResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Connection or category not found.' })
+  @ApiResponse({ status: 409, description: 'Connection disabled.' })
+  @ApiResponse({
+    status: 422,
+    description: 'Adapter does not support category-path reading.',
+  })
+  async getCategoryPath(
+    @Param('connectionId') connectionId: string,
+    @Param('categoryId') categoryId: string
+  ): Promise<CategoryPathResponseDto> {
+    // Throws ConnectionNotFoundException (404) / ConnectionDisabledException (409) /
+    // CapabilityNotSupportedException (422) for upstream connection-level issues.
+    const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+      connectionId,
+      'OfferManager'
+    );
+
+    if (!isCategoryPathReader(adapter)) {
+      throw new UnprocessableEntityException(
+        `Adapter for connection ${connectionId} does not support category-path reading`
+      );
+    }
+
+    let path: CategoryPathSegment[];
+    try {
+      path = await adapter.fetchCategoryPath(categoryId);
+    } catch (err) {
+      if (err instanceof CategoryNotFoundException) {
+        throw new NotFoundException(
+          `Category ${categoryId} not found on connection ${connectionId}`
+        );
+      }
+      throw err;
+    }
+
+    return { path: path.map((segment) => ({ id: segment.id, name: segment.name })) };
   }
 
   @Roles('admin', 'operator', 'viewer')

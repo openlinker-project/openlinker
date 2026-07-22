@@ -43,6 +43,27 @@ const sampleProduct: Product = {
   ],
 };
 
+// A 2-variant product exercises the variants table (single-variant products
+// render the "Listed on" panel instead).
+const multiVariantProduct: Product = {
+  ...sampleProduct,
+  variants: [
+    sampleProduct.variants![0],
+    {
+      id: 'ol_product_var2',
+      productId: 'ol_product_abc123',
+      sku: 'SKU-001-L',
+      attributes: { size: 'L' },
+      ean: null,
+      gtin: null,
+      price: null,
+      createdAt: '2026-01-15T10:00:00.000Z',
+      updatedAt: '2026-01-15T10:00:00.000Z',
+      externalIds: [],
+    },
+  ],
+};
+
 function inventoryItem(overrides: Partial<InventoryItem>): InventoryItem {
   return {
     id: 'ol_inv_1',
@@ -132,15 +153,56 @@ describe('ProductDetailPage', () => {
     expect(screen.getByText('29.99')).toBeInTheDocument();
     expect(screen.getByText('A test product')).toBeInTheDocument();
 
-    // Variant & stock table — SKU headline + combined EAN/attributes meta line
-    expect(screen.getByText('SKU-001-M')).toBeInTheDocument();
-    expect(screen.getByText(/EAN 1234567890123/)).toBeInTheDocument();
-    expect(screen.getByText(/size: M, color: blue/)).toBeInTheDocument();
+    // Single variant → "Listed on" panel (no variants table). The metadata
+    // grid surfaces attribute chips, the variant id, and the EAN/GTIN.
+    expect(screen.getByRole('heading', { name: 'Listed on' })).toBeInTheDocument();
+    expect(screen.getByText('Attributes')).toBeInTheDocument();
+    expect(screen.getByText('ol_product_var1')).toBeInTheDocument();
+    expect(screen.getByText('1234567890123')).toBeInTheDocument();
 
     // Source section (renamed from External IDs) — master origin with ref
     expect(screen.getByRole('heading', { name: 'Source' })).toBeInTheDocument();
     expect(screen.getByText('prestashop · 10')).toBeInTheDocument();
     expect(screen.getByText('Master')).toBeInTheDocument();
+  });
+
+  it('should render the product-level Attributes block when the product has features', async () => {
+    const mockApi = createMockApiClient({
+      products: {
+        getById: vi.fn().mockResolvedValue({
+          ...sampleProduct,
+          features: [
+            { name: 'Brand', value: 'Acme' },
+            { name: 'Material', value: 'Ceramic' },
+          ],
+        }),
+      },
+    });
+
+    renderDetailPage(mockApi);
+
+    const attributesSection = (await screen.findByRole('heading', { name: 'Attributes' })).closest(
+      '.detail-section',
+    ) as HTMLElement;
+    expect(within(attributesSection).getByText('Brand')).toBeInTheDocument();
+    expect(within(attributesSection).getByText('Acme')).toBeInTheDocument();
+    expect(within(attributesSection).getByText('Material')).toBeInTheDocument();
+    expect(within(attributesSection).getByText('Ceramic')).toBeInTheDocument();
+  });
+
+  it('should not render the product-level Attributes block when the product has no features', async () => {
+    const mockApi = createMockApiClient({
+      products: {
+        getById: vi.fn().mockResolvedValue(sampleProduct),
+      },
+    });
+
+    renderDetailPage(mockApi);
+
+    await screen.findByRole('heading', { name: 'Source' });
+    // No product-level Attributes *section* heading (the variant panel still
+    // renders its own "Attributes" metadata label, which is not a heading).
+    expect(screen.queryByRole('heading', { name: 'Attributes' })).not.toBeInTheDocument();
   });
 
   it('should show error state when fetch fails', async () => {
@@ -189,7 +251,7 @@ describe('ProductDetailPage', () => {
   it('should render the variant stock cell as out-of-stock (not low-stock) when available is exactly zero', async () => {
     const mockApi = createMockApiClient({
       products: {
-        getById: vi.fn().mockResolvedValue(sampleProduct),
+        getById: vi.fn().mockResolvedValue(multiVariantProduct),
       },
       inventory: {
         list: vi.fn().mockResolvedValue(
@@ -205,7 +267,7 @@ describe('ProductDetailPage', () => {
       { apiClient: mockApi, route: '/products/ol_product_abc123' },
     );
 
-    await screen.findByText('SKU-001-M');
+    await screen.findByText(/SKU-001-M/);
     const stockCell = container.querySelector('.stock-cell--error, .stock-cell--warning');
     expect(stockCell).not.toBeNull();
     expect(stockCell).toHaveClass('stock-cell--error');
@@ -257,14 +319,22 @@ describe('ProductDetailPage', () => {
 
   it('should toggle the variant drawer and render the matching per-listing detail', async () => {
     const user = userEvent.setup();
-    const listingsList = vi.fn().mockResolvedValue(
-      paginatedListings([
-        offerMapping({ id: 'ol_offer_1', platformType: 'allegro', externalId: 'ALG-1' }),
-      ]),
-    );
+    // Key listings to the first variant only so the second table row (var2)
+    // resolves an empty set — keeps "Listings (1)" and the ALG-1 link unique.
+    const listingsList = vi
+      .fn()
+      .mockImplementation((filters?: { internalId?: string }) =>
+        Promise.resolve(
+          paginatedListings(
+            filters?.internalId === 'ol_product_var1'
+              ? [offerMapping({ id: 'ol_offer_1', platformType: 'allegro', externalId: 'ALG-1' })]
+              : [],
+          ),
+        ),
+      );
     const mockApi = createMockApiClient({
       products: {
-        getById: vi.fn().mockResolvedValue(sampleProduct),
+        getById: vi.fn().mockResolvedValue(multiVariantProduct),
       },
       listings: { list: listingsList },
     });
@@ -285,7 +355,7 @@ describe('ProductDetailPage', () => {
   it('should render a "+ Create offer" CTA when an OfferCreator connection has no listing for the variant', async () => {
     const mockApi = createMockApiClient({
       products: {
-        getById: vi.fn().mockResolvedValue(sampleProduct),
+        getById: vi.fn().mockResolvedValue(multiVariantProduct),
       },
       connections: {
         list: vi.fn().mockResolvedValue([
@@ -317,12 +387,12 @@ describe('ProductDetailPage', () => {
       },
     );
 
-    await screen.findByText('SKU-001-M');
-    expect(await screen.findByRole('button', { name: '+ Create offer' })).toBeInTheDocument();
+    await screen.findByText(/SKU-001-M/);
+    // One CTA per gap row (both variants lack the Allegro listing).
+    expect((await screen.findAllByRole('button', { name: '+ Create offer' })).length).toBeGreaterThan(0);
   });
 
   it('should show the empty listings message when a variant has no matching listings', async () => {
-    const user = userEvent.setup();
     const mockApi = createMockApiClient({
       products: {
         getById: vi.fn().mockResolvedValue(sampleProduct),
@@ -332,12 +402,49 @@ describe('ProductDetailPage', () => {
 
     renderDetailPage(mockApi);
 
-    const toggle = await screen.findByRole('button', { name: 'Toggle listings for SKU-001-M' });
-    await user.click(toggle);
-
+    // Single-variant products render the always-expanded "Listed on" panel, so
+    // the empty message shows without a toggle.
     expect(
       await screen.findByText('No marketplace listings reference this variant yet.'),
     ).toBeInTheDocument();
+  });
+
+  it('should render the "Listed on" panel (no variants table) for a single-variant product', async () => {
+    const mockApi = createMockApiClient({
+      products: {
+        getById: vi.fn().mockResolvedValue(sampleProduct),
+      },
+    });
+
+    const { container } = renderWithProviders(
+      <Routes>
+        <Route path="/products/:id" element={<ProductDetailPage />} />
+      </Routes>,
+      { apiClient: mockApi, route: '/products/ol_product_abc123' },
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Listed on' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /Variants & stock/ })).not.toBeInTheDocument();
+    expect(container.querySelector('.variant-stock-table')).toBeNull();
+  });
+
+  it('should render the variants table for a multi-variant product', async () => {
+    const mockApi = createMockApiClient({
+      products: {
+        getById: vi.fn().mockResolvedValue(multiVariantProduct),
+      },
+    });
+
+    const { container } = renderWithProviders(
+      <Routes>
+        <Route path="/products/:id" element={<ProductDetailPage />} />
+      </Routes>,
+      { apiClient: mockApi, route: '/products/ol_product_abc123' },
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Variants & stock (2)' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Listed on' })).not.toBeInTheDocument();
+    expect(container.querySelector('.variant-stock-table')).not.toBeNull();
   });
 
   it('should open the gallery lightbox, navigate with the keyboard, and close it', async () => {
