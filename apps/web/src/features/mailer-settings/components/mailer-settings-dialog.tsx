@@ -211,9 +211,10 @@ export function MailerSettingsDialog({
               <FormField
                 label="From address"
                 name="fromAddress"
+                description='Also accepts a display name, e.g. "OpenLinker <orders@example.com>".'
                 error={form.formState.errors.fromAddress?.message}
               >
-                <Input type="email" placeholder="orders@example.com" {...form.register('fromAddress')} />
+                <Input type="text" placeholder="orders@example.com" {...form.register('fromAddress')} />
               </FormField>
 
               <FormField

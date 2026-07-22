@@ -86,6 +86,19 @@ describe('mailerSettingsFormSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('should reject an address with two bracketed emails rather than silently picking one', () => {
+    const result = mailerSettingsFormSchema.safeParse({
+      ...validSmtpBase,
+      fromAddress: 'A <b@example.com> <d@example.com>',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path.join('.') === 'fromAddress');
+      expect(issue?.message).toContain('Enter a valid email address');
+    }
+  });
+
   it('should reject a From address longer than the max length', () => {
     const tooLong = `${'a'.repeat(MAX_FROM_ADDRESS_LENGTH)}@example.com`;
     const result = mailerSettingsFormSchema.safeParse({

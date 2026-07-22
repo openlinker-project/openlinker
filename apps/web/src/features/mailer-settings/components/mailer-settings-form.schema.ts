@@ -23,7 +23,9 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Matches `Display Name <email@domain.com>` — nodemailer parses this form natively
 // into the `From:` header, and the backend DTO has no `@IsEmail()` gate, so this
 // client-side check only needs to confirm the bracketed part looks like an email.
-const NAME_AND_EMAIL_PATTERN = /^.+\s<([^\s@]+@[^\s@]+\.[^\s@]+)>$/;
+// The name segment excludes `<`/`>` so a second bracketed address (e.g.
+// `A <b@c.com> <d@e.com>`) fails the match instead of silently picking the last one.
+const NAME_AND_EMAIL_PATTERN = /^[^<>]+\s<([^\s@]+@[^\s@]+\.[^\s@]+)>$/;
 
 function isValidFromAddress(value: string): boolean {
   if (EMAIL_PATTERN.test(value)) {
