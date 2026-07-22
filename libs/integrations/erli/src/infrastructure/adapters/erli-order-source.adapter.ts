@@ -79,6 +79,7 @@ import type {
   DispatchCarrierHint,
   IncomingOrder,
   MappingOption,
+  OrderDispatchWindow,
   OrderFeedEventType,
   OrderFeedInput,
   OrderFeedItem,
@@ -96,7 +97,9 @@ import type {
   OfferStockRestoreTarget,
 } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
+import { addWorkingDays } from '@openlinker/shared/date';
 import type { ErliDispatchTime } from '../../domain/types/erli-connection.types';
+import type { ErliProductResource } from './erli-product.types';
 import { ERLI_PRODUCT_ID_PATTERN } from '../../erli.constants';
 import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
 import { ErliOrderDispatchRejectedException } from '../../domain/exceptions/erli-order-dispatch-rejected.exception';
@@ -169,9 +172,10 @@ export class ErliOrderSourceAdapter
     private readonly inventoryQuery?: IInventoryQueryService,
     /**
      * Shop-wide default dispatch (handling) time from the connection config
-     * (#1776). Threaded into the order mapper so an Erli order's ship-by is
-     * derived as `purchasedAt + defaultDispatchTime`. Optional — absent leaves
-     * the derived ship-by blank (no fabrication).
+     * (#1776). Used by `deriveDispatchWindow` as the per-line fallback when a
+     * per-offer `dispatchTime` isn't readable off `GET /products/{externalId}`.
+     * Optional — absent (and no per-offer time) leaves the derived ship-by blank
+     * (no fabrication).
      */
     private readonly defaultDispatchTime?: ErliDispatchTime,
   ) {}
@@ -301,7 +305,102 @@ export class ErliOrderSourceAdapter
     }
 
     const order = assertErliOrder(response.data);
-    return mapErliOrderToIncomingOrder(order, this.defaultDispatchTime);
+    const incoming = mapErliOrderToIncomingOrder(order);
+    // Ship-by (#1776) is derived HERE, post-mapping, because resolving the
+    // authoritative per-offer handling time needs per-offer product GETs (I/O) —
+    // the mapper stays pure. Absent inputs leave the window unmapped (no
+    // fabrication); the derived window is marked `estimated: true`.
+    const dispatchTime = await this.deriveDispatchWindow(order);
+    return dispatchTime !== undefined ? { ...incoming, dispatchTime } : incoming;
+  }
+
+  /**
+   * Derive the neutral, ESTIMATED ship-by window (#1776) for an Erli order.
+   *
+   * Per line, the handling time is the per-offer `dispatchTime` read back from
+   * `GET /products/{externalId}` when present, else the connection-wide
+   * `defaultDispatchTime` (robust whether or not Erli echoes the per-offer field
+   * — absent everywhere ⇒ behaviour == the connection-default derivation, no
+   * regression). Each line's deadline is `purchasedAt + handlingTime`; the window
+   * takes the MIN (soonest) deadline across lines — the first breachable
+   * obligation, matching the list's soonest-first SLA sort.
+   *
+   * Fail-safe / never-fabricate: returns `undefined` (ship-by stays blank) when
+   * `purchasedAt` is missing/unparseable, or when ANY line has no resolvable
+   * handling time (no per-offer value AND no connection default). A per-offer GET
+   * failure degrades that line to the connection default rather than failing
+   * ingestion.
+   */
+  private async deriveDispatchWindow(order: ErliOrder): Promise<OrderDispatchWindow | undefined> {
+    const purchasedAt = order.purchasedAt;
+    if (!purchasedAt) {
+      return undefined;
+    }
+    const from = new Date(purchasedAt);
+    if (Number.isNaN(from.getTime())) {
+      return undefined;
+    }
+    if (order.items.length === 0) {
+      return undefined;
+    }
+
+    // Cache per-offer reads within this order so split lines sharing an offer id
+    // don't re-fetch the same product.
+    const handlingCache = new Map<string, ErliDispatchTime | undefined>();
+    let minDeadline: Date | undefined;
+
+    for (const item of order.items) {
+      const offerId = item.externalId;
+      let perOffer: ErliDispatchTime | undefined;
+      if (handlingCache.has(offerId)) {
+        perOffer = handlingCache.get(offerId);
+      } else {
+        perOffer = await this.fetchOfferDispatchTime(offerId);
+        handlingCache.set(offerId, perOffer);
+      }
+
+      const handling = perOffer ?? this.defaultDispatchTime;
+      if (!handling) {
+        // Guard: a line with no resolvable handling time ⇒ never fabricate.
+        return undefined;
+      }
+
+      const deadline = computeErliDispatchDeadline(from, handling);
+      if (minDeadline === undefined || deadline.getTime() < minDeadline.getTime()) {
+        minDeadline = deadline;
+      }
+    }
+
+    if (minDeadline === undefined) {
+      return undefined;
+    }
+    return { from: from.toISOString(), to: minDeadline.toISOString(), estimated: true };
+  }
+
+  /**
+   * Read a single offer's per-offer `dispatchTime` off `GET /products/{externalId}`
+   * (#1776). Only OL-managed ids (matching {@link ERLI_PRODUCT_ID_PATTERN}) are
+   * fetched — a non-matching id (e.g. a pre-existing Erli listing) returns
+   * `undefined` so the caller falls back to the connection default. A GET failure
+   * is warn-logged (no PII / id) and degrades to `undefined` (connection default)
+   * rather than failing ingestion.
+   */
+  private async fetchOfferDispatchTime(offerId: string): Promise<ErliDispatchTime | undefined> {
+    if (!ERLI_PRODUCT_ID_PATTERN.test(offerId)) {
+      return undefined;
+    }
+    try {
+      const res = await this.httpClient.get<ErliProductResource>(
+        `products/${encodeURIComponent(offerId)}`,
+      );
+      return res.data?.dispatchTime;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to read Erli per-offer dispatch time for ship-by estimate — ` +
+          `falling back to connection default (connection: ${this.connectionId}): ${(error as Error).message}`,
+      );
+      return undefined;
+    }
   }
 
   // ── SourceOptionsReader (#1738) ──────────────────────────────────────────
@@ -701,6 +800,35 @@ export class ErliOrderSourceAdapter
 /** Map the known Erli inbox event literals onto the neutral `OrderFeedEventType`. */
 function mapErliInboxEventType(type: string): OrderFeedEventType {
   return type === ERLI_INBOX_ORDER_CREATED ? 'created' : 'updated';
+}
+
+/**
+ * Pure ship-by deadline (#1776): `from + handlingTime`.
+ *
+ * Unit semantics:
+ *  - `day` (Erli's default unit): add `period` Polish WORKING days — weekends
+ *    AND PL public holidays skipped, day boundaries anchored at Europe/Warsaw
+ *    (see `@openlinker/shared/date`).
+ *  - `hour`: add `period` calendar hours.
+ *  - `month`: add `period` calendar months.
+ */
+function computeErliDispatchDeadline(from: Date, handling: ErliDispatchTime): Date {
+  const { period, unit } = handling;
+  switch (unit ?? 'day') {
+    case 'hour': {
+      const to = new Date(from);
+      to.setUTCHours(to.getUTCHours() + period);
+      return to;
+    }
+    case 'month': {
+      const to = new Date(from);
+      to.setUTCMonth(to.getUTCMonth() + period);
+      return to;
+    }
+    case 'day':
+    default:
+      return addWorkingDays(from, period);
+  }
 }
 
 /**

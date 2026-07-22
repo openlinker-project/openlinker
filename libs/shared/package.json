@@ -53,6 +53,10 @@
       "types": "./dist/money/index.d.ts",
       "require": "./dist/money/index.js"
     },
+    "./date": {
+      "types": "./dist/date/index.d.ts",
+      "require": "./dist/date/index.js"
+    },
     "./worker": {
       "types": "./dist/worker/index.d.ts",
       "require": "./dist/worker/index.js"

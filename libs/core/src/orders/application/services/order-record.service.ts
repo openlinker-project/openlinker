@@ -222,9 +222,12 @@ export class OrderRecordService implements IOrderRecordService {
    *
    * Ship-by is populated only for sources whose adapter maps a dispatch window
    * onto the incoming order (#1776): Allegro maps the per-order
-   * `delivery.time.dispatch`; Erli DERIVES one from `purchasedAt +
-   * connection.defaultDispatchTime` (working-day math in the Erli mapper) as a
-   * best-effort per-order estimate. WooCommerce carries no per-order dispatch
+   * `delivery.time.dispatch` (marketplace-authoritative); Erli DERIVES one in
+   * `ErliOrderSourceAdapter.getOrder` from `purchasedAt` + the per-offer handling
+   * time (read back from `GET /products/{externalId}`, falling back to the
+   * connection's `defaultDispatchTime`), taking the soonest deadline across lines
+   * — Polish working-day math (weekends + PL public holidays, Europe/Warsaw) — and
+   * flags the window `estimated: true`. WooCommerce carries no per-order dispatch
    * deadline and OL owns no WC handling time, so its `dispatchTime` is absent and
    * ship-by stays `null` by design. The source of truth is the source adapter;
    * this method never fabricates a window.

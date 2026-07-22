@@ -90,72 +90,19 @@ describe('mapErliOrderToIncomingOrder', () => {
     expect(result.shipping?.methodName).toBe('DPD Kurier');
   });
 
-  describe('derived ship-by from defaultDispatchTime (#1776)', () => {
-    it('should derive dispatchTime.to = purchasedAt + N working days (unit day)', () => {
-      // purchasedAt 2026-06-16 (Tue) + 2 working days → 2026-06-18 (Thu).
-      const result = mapErliOrderToIncomingOrder(
-        buildErliOrder({ purchasedAt: '2026-06-16T09:59:00.000Z' }),
-        { period: 2, unit: 'day' },
-      );
-
-      expect(result.dispatchTime).toEqual({
-        from: '2026-06-16T09:59:00.000Z',
-        to: '2026-06-18T09:59:00.000Z',
-      });
-    });
-
-    it('should default to working days when unit is omitted', () => {
-      const result = mapErliOrderToIncomingOrder(
-        buildErliOrder({ purchasedAt: '2026-06-16T09:59:00.000Z' }),
-        { period: 2 },
-      );
-
-      expect(result.dispatchTime?.to).toBe('2026-06-18T09:59:00.000Z');
-    });
-
-    it('should skip weekends when the window spans a Saturday/Sunday', () => {
-      // purchasedAt 2026-06-19 (Fri) + 2 working days → skip Sat/Sun → 2026-06-23 (Tue).
-      const result = mapErliOrderToIncomingOrder(
-        buildErliOrder({ purchasedAt: '2026-06-19T09:59:00.000Z' }),
-        { period: 2, unit: 'day' },
-      );
-
-      expect(result.dispatchTime?.to).toBe('2026-06-23T09:59:00.000Z');
-    });
-
-    it('should add calendar hours for unit hour', () => {
-      const result = mapErliOrderToIncomingOrder(
-        buildErliOrder({ purchasedAt: '2026-06-16T09:00:00.000Z' }),
-        { period: 6, unit: 'hour' },
-      );
-
-      expect(result.dispatchTime?.to).toBe('2026-06-16T15:00:00.000Z');
-    });
-
-    it('should add calendar months for unit month', () => {
-      const result = mapErliOrderToIncomingOrder(
-        buildErliOrder({ purchasedAt: '2026-06-16T09:00:00.000Z' }),
-        { period: 1, unit: 'month' },
-      );
-
-      expect(result.dispatchTime?.to).toBe('2026-07-16T09:00:00.000Z');
-    });
-
-    it('should leave dispatchTime absent when no defaultDispatchTime is supplied', () => {
-      const result = mapErliOrderToIncomingOrder(
-        buildErliOrder({ purchasedAt: '2026-06-16T09:59:00.000Z' }),
-      );
-
-      expect(result.dispatchTime).toBeUndefined();
-    });
-
-    it('should leave dispatchTime absent when purchasedAt is missing', () => {
-      const result = mapErliOrderToIncomingOrder(
-        buildErliOrder({ purchasedAt: undefined }),
-        { period: 2, unit: 'day' },
-      );
-
-      expect(result.dispatchTime).toBeUndefined();
+  describe('ship-by derivation moved out of the pure mapper (#1776)', () => {
+    // Ship-by is now derived in ErliOrderSourceAdapter.getOrder (needs per-offer
+    // GETs → I/O), so the pure mapper never sets dispatchTime — regardless of
+    // whether purchasedAt is present. See the order-source adapter spec for the
+    // per-offer + MIN + estimated + graceful-degrade coverage.
+    it('should never set dispatchTime (derivation lives in the order-source adapter)', () => {
+      expect(
+        mapErliOrderToIncomingOrder(buildErliOrder({ purchasedAt: '2026-06-16T09:59:00.000Z' }))
+          .dispatchTime,
+      ).toBeUndefined();
+      expect(
+        mapErliOrderToIncomingOrder(buildErliOrder({ purchasedAt: undefined })).dispatchTime,
+      ).toBeUndefined();
     });
   });
 

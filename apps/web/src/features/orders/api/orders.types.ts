@@ -86,6 +86,15 @@ export interface OrderRecord {
    */
   dispatchByAt?: string | null;
   /**
+   * True when `dispatchByAt` is an OL-side ESTIMATE rather than a
+   * marketplace-authoritative commitment (#1776). Erli derives its ship-by from
+   * per-offer (falling back to connection-default) handling time and marks it
+   * estimated; Allegro leaves it false/absent. The list + detail render a subtle
+   * "~" qualifier next to the ship-by badge when true. Optional for graceful
+   * degradation on older payloads.
+   */
+  dispatchByEstimated?: boolean;
+  /**
    * Per-order fulfillment rollup (#1108). Optional on the FE contract so
    * older/absent payloads degrade gracefully (treated as `not-shipped`).
    */

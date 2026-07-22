@@ -693,6 +693,10 @@ export function OrdersListPage(): ReactElement {
           const sla = slaBadge(order.slaState);
           const due = order.dispatchByAt ?? null;
           const view = formatShipBy(due);
+          // Estimated ship-by qualifier (#1776): a subtle "~" prefix when the
+          // deadline is an OL-side estimate (Erli), absent for authoritative
+          // marketplace commitments (Allegro).
+          const estPrefix = order.dispatchByEstimated ? '~' : '';
           // Carrier at row level (#1617): the list can't fetch per-order
           // shipments, so `shipping.methodName` (the source's stated delivery
           // method) is the best signal, then the raw method id (#1776), then
@@ -731,11 +735,15 @@ export function OrdersListPage(): ReactElement {
                     {sla.label}
                   </StatusBadge>
                   {view ? (
-                    <span className="text-muted orders-cell-sub mono tabular">{view.remaining}</span>
+                    <span className="text-muted orders-cell-sub mono tabular">
+                      {estPrefix}
+                      {view.remaining}
+                    </span>
                   ) : null}
                 </span>
               ) : due && view ? (
                 <StatusBadge tone={SHIP_BY_TONE[view.level]} withDot compact>
+                  {estPrefix}
                   {view.remaining}
                 </StatusBadge>
               ) : null}
@@ -1342,6 +1350,7 @@ export function OrdersListPage(): ReactElement {
                       </StatusBadge>
                     ) : shipBy ? (
                       <StatusBadge tone={SHIP_BY_TONE[shipBy.level]} withDot compact>
+                        {order.dispatchByEstimated ? '~' : ''}
                         {shipBy.remaining}
                       </StatusBadge>
                     ) : null}

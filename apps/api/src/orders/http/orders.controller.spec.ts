@@ -294,6 +294,29 @@ describe('OrdersController', () => {
       expect(result.items[0].dispatchByAt).toBe('2026-04-02T16:00:00.000Z');
       expect(result.items[1].dispatchByAt).toBeNull();
     });
+
+    it('should derive dispatchByEstimated from the snapshot dispatch window (#1776)', async () => {
+      const estimatedOrder = new OrderRecord(
+        'ol_order_est',
+        null,
+        'conn-source-001',
+        null,
+        { dispatchTime: { from: '2026-04-01T00:00:00Z', to: '2026-04-03T00:00:00Z', estimated: true } },
+        [],
+        'ready',
+        new Date('2026-04-01T00:00:00Z'),
+        new Date('2026-04-01T00:00:00Z'),
+        [],
+        new Date('2026-04-03T00:00:00Z')
+      );
+      repository.findMany.mockResolvedValue({ items: [estimatedOrder, mockOrder], total: 2 });
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      // Erli-style estimated window → true; authoritative/absent window → false.
+      expect(result.items[0].dispatchByEstimated).toBe(true);
+      expect(result.items[1].dispatchByEstimated).toBe(false);
+    });
   });
 
   describe('statusSummary', () => {

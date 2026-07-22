@@ -75,6 +75,16 @@ export class OrderRecordResponseDto {
   dispatchByAt!: string | null;
 
   @ApiProperty({
+    description:
+      'True when `dispatchByAt` is an OL-side ESTIMATE rather than a marketplace-authoritative ' +
+      'commitment (#1776). Derived from the snapshot dispatch window\'s `estimated` flag: Erli derives ' +
+      'its ship-by from per-offer (falling back to connection-default) handling time and marks it estimated; ' +
+      'Allegro carries the platform-authoritative dispatch time and leaves it false. The FE renders a subtle ' +
+      '"~" qualifier next to the ship-by badge when true.',
+  })
+  dispatchByEstimated!: boolean;
+
+  @ApiProperty({
     enum: FulfillmentRollupStateValues,
     description:
       'Per-order fulfillment rollup (#1108) of the order\'s shipment lifecycle. "not-shipped" when no shipment has progressed (also the default for orders with no shipments).',

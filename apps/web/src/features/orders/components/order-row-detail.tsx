@@ -141,7 +141,24 @@ export function OrderRowDetail({
       </Field>
       <Field label="Destination">{destLabel ?? EMPTY}</Field>
       <Field label="Ship-by">
-        {order.dispatchByAt ? <TimeDisplay iso={order.dispatchByAt} format="datetime" /> : EMPTY}
+        {order.dispatchByAt ? (
+          <span className="orders-detail__shipby">
+            <TimeDisplay iso={order.dispatchByAt} format="datetime" />
+            {/* Estimated ship-by qualifier (#1776) — OL-side estimate (Erli), */}
+            {/* absent for authoritative marketplace commitments (Allegro). */}
+            {order.dispatchByEstimated ? (
+              <span
+                className="text-muted"
+                title="OpenLinker estimate — not a marketplace-confirmed deadline"
+              >
+                {' '}
+                (est.)
+              </span>
+            ) : null}
+          </span>
+        ) : (
+          EMPTY
+        )}
       </Field>
       <Field label="Invoice">
         {parsed.invoice ? (

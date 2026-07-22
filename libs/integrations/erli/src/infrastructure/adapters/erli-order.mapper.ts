@@ -17,18 +17,11 @@
  *  - Erli reports buyer-paid GROSS prices → `taxTreatment: 'inclusive'`.
  *
  * Ship-by / dispatch deadline (#1776): the Erli order resource exposes no
- * per-order dispatch deadline field, so the ship-by is DERIVED from the
- * connection's shop-wide `defaultDispatchTime` (the same handling-time OL
- * applies on offer create): `dispatchTime = { from: purchasedAt, to:
- * purchasedAt + defaultDispatchTime }`. Core's `deriveDispatchByAt` +
- * `slaState` pipeline then lights up unchanged. This is a best-effort per-order
- * estimate: a per-offer `dispatchTime` override isn't visible on the order, so
- * the connection default is the only signal available; when the order carries a
- * per-offer override that diverges from the default, the derived ship-by can be
- * off by that difference. When either `purchasedAt` or `defaultDispatchTime` is
- * absent, `dispatchTime` stays unmapped and ship-by stays blank (no
- * fabrication). `unit: 'day'` counts WORKING days (weekends skipped; PL public
- * holidays are out of scope for v1 — see `resolveDispatchTime`).
+ * per-order dispatch deadline field. Because deriving one requires per-offer
+ * `GET /products/{externalId}` reads (I/O), the derivation lives in
+ * `ErliOrderSourceAdapter.getOrder` (post-mapping), NOT here — this mapper stays
+ * pure and never sets `dispatchTime`. The adapter stamps `estimated: true` on
+ * the derived window.
  *
  * Identity resolution is DEFERRED to #995 and happens downstream in core
  * (`OrderIngestionService`) — this mapper carries buyer email + the line-item
@@ -48,15 +41,12 @@ import type {
   IncomingOrderAddress,
   IncomingOrderItem,
   IncomingOrderTotals,
-  OrderDispatchWindow,
   OrderPickupPoint,
   OrderPickupPointType,
   OrderShipping,
   OrderStatus,
   PaymentStatus,
 } from '@openlinker/core/orders';
-
-import type { ErliDispatchTime } from '../../domain/types/erli-connection.types';
 
 import type {
   ErliOrder,
@@ -77,13 +67,9 @@ function toMajorUnits(minor: number | undefined): number {
  *
  * Raw passthrough only — no identifier mapping (#995). Pure + total.
  */
-export function mapErliOrderToIncomingOrder(
-  order: ErliOrder,
-  defaultDispatchTime?: ErliDispatchTime,
-): IncomingOrder {
+export function mapErliOrderToIncomingOrder(order: ErliOrder): IncomingOrder {
   const items = order.items.map(mapItem);
   const nowIso = new Date().toISOString();
-  const dispatchTime = resolveDispatchTime(order.purchasedAt, defaultDispatchTime);
 
   return {
     externalOrderId: order.id,
@@ -99,9 +85,8 @@ export function mapErliOrderToIncomingOrder(
     pickupPoint: mapPickupPoint(order.delivery.pickupPlace),
     paymentStatus: derivePaymentStatus(order.status, order.delivery.cod),
     placedAt: order.purchasedAt,
-    // Derived ship-by (#1776) — present only when both purchasedAt and the
-    // connection's defaultDispatchTime are available (see resolveDispatchTime).
-    ...(dispatchTime !== undefined && { dispatchTime }),
+    // Derived ship-by (#1776) is attached by ErliOrderSourceAdapter.getOrder
+    // (needs per-offer GETs → I/O), never in this pure mapper.
     createdAt: order.created ?? nowIso,
     updatedAt: order.updated ?? nowIso,
     // Non-PII breadcrumb only — the seller-side status. Buyer email is kept OFF
@@ -296,71 +281,6 @@ function mapPickupPoint(pickupPlace?: ErliOrderPickupPlace): OrderPickupPoint | 
     description: pickupPlace.address,
     pointType: classifyPickupPointType(id, pickupPlace.type, pickupPlace.name),
   };
-}
-
-/**
- * Derives the neutral ship-by window (#1776) from the buyer's purchase time and
- * the connection's shop-wide default dispatch (handling) time:
- * `{ from: purchasedAt, to: purchasedAt + defaultDispatchTime }`.
- *
- * Returns `undefined` when either input is missing (no `purchasedAt`, or no
- * `defaultDispatchTime` configured on the connection) or when `purchasedAt` is
- * unparseable — the caller then leaves `dispatchTime` unmapped and core's
- * `dispatchByAt` stays null. Pure + total; never fabricates.
- *
- * Unit semantics:
- *  - `day` (Erli's default unit): add `period` WORKING days (Saturdays and
- *    Sundays skipped). PL public holidays are OUT OF SCOPE for v1 — a holiday
- *    is counted as a working day, so the estimate can be optimistic across one.
- *  - `hour`: add `period` calendar hours.
- *  - `month`: add `period` calendar months.
- */
-export function resolveDispatchTime(
-  purchasedAt: string | undefined,
-  defaultDispatchTime: ErliDispatchTime | undefined,
-): OrderDispatchWindow | undefined {
-  if (!purchasedAt || !defaultDispatchTime) {
-    return undefined;
-  }
-  const from = new Date(purchasedAt);
-  if (Number.isNaN(from.getTime())) {
-    return undefined;
-  }
-
-  const { period, unit } = defaultDispatchTime;
-  const to = new Date(from);
-  switch (unit ?? 'day') {
-    case 'hour':
-      to.setUTCHours(to.getUTCHours() + period);
-      break;
-    case 'month':
-      to.setUTCMonth(to.getUTCMonth() + period);
-      break;
-    case 'day':
-    default:
-      addWorkingDays(to, period);
-      break;
-  }
-
-  return { from: from.toISOString(), to: to.toISOString() };
-}
-
-/**
- * Advances `date` in place by `count` working days, skipping Saturdays and
- * Sundays. PL public holidays are intentionally NOT considered (v1 scope,
- * #1776) — only weekends are treated as non-working. A non-positive `count`
- * leaves the date unchanged.
- */
-function addWorkingDays(date: Date, count: number): void {
-  let remaining = Math.max(0, Math.trunc(count));
-  while (remaining > 0) {
-    date.setUTCDate(date.getUTCDate() + 1);
-    const day = date.getUTCDay();
-    // 0 = Sunday, 6 = Saturday — weekend days don't count against the tally.
-    if (day !== 0 && day !== 6) {
-      remaining -= 1;
-    }
-  }
 }
 
 /**

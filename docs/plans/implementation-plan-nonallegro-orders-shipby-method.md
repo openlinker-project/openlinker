@@ -7,18 +7,22 @@ orders. Root cause (verified in the issue by two code traces): both fields are
 produced by the **source** adapter at ingestion, not by the shipping carrier.
 
 Resolution (expanded scope): always show the delivery-method label with a
-shipment-derived fallback; DERIVE an Erli ship-by from the connection's default
-dispatch time (working-day math); keep WooCommerce blank by design.
+shipment-derived fallback; DERIVE an Erli ship-by from the per-offer handling time
+(falling back to the connection default) as a Polish working-day estimate with PL
+public holidays, marked `estimated`; keep WooCommerce blank by design.
 
 - `order.dispatchByAt` (ship-by) is derived from `IncomingOrder.dispatchTime.to`
   (`order-record.service.ts` `deriveDispatchByAt`). Allegro maps `dispatchTime`
-  from the per-order window; Erli now DERIVES one from the connection default
-  (see §3); WooCommerce still maps none.
+  from the per-order window; Erli now DERIVES one in the order-source adapter from
+  the per-offer handling time / connection default (see §3), flagged `estimated`;
+  WooCommerce still maps none.
 - `orderSnapshot.shipping.methodName` was rendered present-only on the FE, so the
   Method row went blank when the source order carried no delivery line.
 
-**Layer**: Integration (Erli order mapper/adapter/factory — functional) + CORE
-(orders record service, doc only) + Frontend (orders detail + list — functional).
+**Layer**: Integration (Erli order adapter/factory + product types — functional) +
+Shared (pure `pl-working-days` date helper) + CORE (`OrderDispatchWindow.estimated`
++ record-service doc) + API (derived `dispatchByEstimated`) + Frontend (orders
+detail + list — functional).
 
 ## 2. Investigation findings (what the source payloads actually expose)
 
@@ -60,24 +64,38 @@ Three functional changes.
    the detail page fills from the booked shipment (`activeShipment.carrier` /
    `SHIPPING_METHOD_LABEL[activeShipment.shippingMethod]`), and the Method row is
    now always rendered.
-2. **Erli derived ship-by**: `dispatchTime = { from: purchasedAt, to: purchasedAt
-   + defaultDispatchTime }`, emitted by the Erli order mapper so core's
-   `deriveDispatchByAt` + `slaState` pipeline lights up with ZERO core change. The
-   connection's `defaultDispatchTime` is threaded factory → order-source adapter →
-   mapper. Working-day math for `unit: 'day'` (weekends skipped; PL public holidays
-   OUT OF SCOPE for v1); calendar hours/months for the other units. Never
-   fabricated — when `purchasedAt` or `defaultDispatchTime` is missing the window
-   is absent and ship-by stays blank. Surfaced UNLABELED (same as Allegro's
-   server-computed window). This REVISES the earlier "blank by design for Erli"
-   conclusion.
+2. **Erli derived ship-by** (v2, fuller): the window is derived in
+   `ErliOrderSourceAdapter.getOrder` (post-mapping, NOT in the pure mapper —
+   deriving it needs per-offer I/O). Per line, handling time = the **per-offer**
+   `dispatchTime` read back from `GET /products/{externalId}`, falling back to the
+   connection's `defaultDispatchTime` when the read carries none (defensive:
+   behaviour degrades to the connection-default derivation with no regression if
+   Erli never echoes the field). Each line's deadline is `purchasedAt +
+   handlingTime`; the window takes the **soonest (MIN)** deadline across lines (first
+   breachable obligation, matching the list's soonest-first SLA sort). For `unit:
+   'day'` the math is **Polish working days** — weekends AND PL public holidays
+   skipped, day boundaries at **Europe/Warsaw** — via the pure, tested
+   `@openlinker/shared/date` helper (`addWorkingDays` + Easter computus); calendar
+   hours/months for the other units. The window is flagged **`estimated: true`**
+   (new optional field on `OrderDispatchWindow`), surfaced by the API as a derived
+   `dispatchByEstimated` boolean and rendered as a subtle `~` / `est.` qualifier
+   next to the ship-by badge (Allegro leaves it absent → authoritative, no
+   qualifier). Never fabricated — when `purchasedAt` is missing, or ANY line has no
+   resolvable handling time, the window is absent and ship-by stays blank; a failed
+   per-offer GET degrades that line to the connection default rather than failing
+   ingestion. Core's `deriveDispatchByAt` + `slaState` pipeline lights up unchanged.
+   This REVISES the earlier "blank by design for Erli" conclusion.
 3. **WooCommerce stays blank by design** (UNCHANGED): no per-order SLA, no
    placedAt-equivalent handling time OL owns → genuinely underivable. Its
    docs/tests are left as-is.
 
-No new ports, tokens, ORM entities, DTOs, or contract-surface changes. No core
-type change (`OrderShipping.methodId` stays required — it is the fulfillment
-routing key; the `typeId` guard in Erli's `mapShipping` is intentional). The
-derived window reuses the existing neutral `OrderDispatchWindow` shape.
+No new ports, tokens, ORM entities, or migrations. One additive contract change:
+`OrderDispatchWindow` gains an optional `estimated?: boolean` (rides the JSONB
+snapshot verbatim — no core-service change, no column) and the order-record
+response DTO gains a derived `dispatchByEstimated: boolean`. `OrderShipping.methodId`
+stays required — it is the fulfillment routing key; the `typeId` guard in Erli's
+`mapShipping` is intentional. A new pure `@openlinker/shared/date` helper
+(`pl-working-days`) hosts the working-day + PL-holiday + Warsaw-offset math.
 
 ## 4. Steps
 
@@ -91,19 +109,32 @@ derived window reuses the existing neutral `OrderDispatchWindow` shape.
 3. `apps/web/src/pages/orders/orders-list-page.tsx` — add the `methodId` rung to
    the row + mobile carrier cells (snapshot-only).
 4. `order-delivery-panel.test.tsx` — fallback-chain tests.
-5. `libs/integrations/erli/.../erli-order.mapper.ts` — pure `resolveDispatchTime`
-   + `addWorkingDays` helpers; emit `dispatchTime` present-only; revise header doc.
-6. `libs/integrations/erli/.../erli-order-source.adapter.ts` — `defaultDispatchTime`
-   ctor field, threaded into the mapper call.
-7. `libs/integrations/erli/.../erli-adapter.factory.ts` — pass
-   `config.defaultDispatchTime` into `ErliOrderSourceAdapter`.
-8. `libs/integrations/erli/.../erli-order.mapper.spec.ts` — derived ship-by tests
-   (working days, weekend-spanning, hour/month, absent-input).
-9. `libs/core/src/orders/application/services/order-record.service.ts` — revise the
-   `deriveDispatchByAt` doc note (Erli now derives; WC still blank).
-10. `libs/integrations/erli/docs/runbook.md` — revise the ship-by quirk to
-    "estimated ship-by from the connection default".
-11. WooCommerce mapper/adapter + tests: LEFT UNCHANGED (blank by design holds).
+5. `libs/shared/src/date/pl-working-days.ts` (+ `index.ts`, `__tests__`, package
+   `./date` export) — pure `addWorkingDays` / `isPlPublicHoliday` / `easterSunday`
+   with Europe/Warsaw anchoring; weekend + fixed + computus-holiday + DST tests.
+6. `libs/core/src/orders/domain/types/order.types.ts` — add optional
+   `estimated?: boolean` to `OrderDispatchWindow`.
+7. `libs/integrations/erli/.../erli-order.mapper.ts` — REMOVE the ship-by
+   derivation (mapper stays pure; no `dispatchTime`, no `defaultDispatchTime` arg);
+   revise header doc.
+8. `libs/integrations/erli/.../erli-product.types.ts` — add optional
+   `dispatchTime?: ErliDispatchTime` to the read-side `ErliProductResource`.
+9. `libs/integrations/erli/.../erli-order-source.adapter.ts` — derive the window in
+   `getOrder`: per-offer `GET /products/{externalId}` (cached, guarded, degrade on
+   failure) → fallback to connection default → MIN across lines → `estimated: true`.
+10. `libs/integrations/erli/.../erli-adapter.factory.ts` — pass
+    `config.defaultDispatchTime` into `ErliOrderSourceAdapter` (unchanged from v1).
+11. `apps/api/.../orders.controller.ts` + `dto/order-record-response.dto.ts` — emit
+    derived `dispatchByEstimated` off the snapshot dispatch window.
+12. FE: `orders.types.ts` (`dispatchByEstimated?`), `orders-list-page.tsx`
+    (desktop + mobile badges), `order-detail-page.tsx`, `order-row-detail.tsx` —
+    render the `~` / `est.` qualifier when estimated.
+13. Tests: erli mapper spec (mapper no longer sets dispatchTime), erli order-source
+    spec (per-offer + MIN + estimated + graceful-degrade), API controller spec
+    (`dispatchByEstimated`), FE row-detail spec (est. qualifier).
+14. `libs/core/.../order-record.service.ts` + `libs/integrations/erli/docs/runbook.md`
+    — revise the ship-by doc notes to the v2 per-offer working-day estimate.
+15. WooCommerce mapper/adapter + tests: LEFT UNCHANGED (blank by design holds).
 
 ## 5. Validation
 

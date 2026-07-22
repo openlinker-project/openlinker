@@ -14,4 +14,5 @@ export * from './redis';
 export * from './cache';
 export * from './types';
 export * from './crypto';
+export * from './date';
 
