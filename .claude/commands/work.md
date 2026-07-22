@@ -128,6 +128,39 @@ It greps the **live repo** for reuse collisions (a port / service / DI token / O
 
 ---
 
+## Phase 4.5 — Documentation (mandatory — do not skip)
+
+Reference docs drift because this step gets silently omitted. It is not optional: you **must** produce an explicit doc-impact statement before shipping — either edits, or a justified "no change". A silent skip is a defect.
+
+1. **Start from the issue's `## Docs impact` section** (written by `/create-issue`). Treat it as the hypothesis, not the final answer — the real implementation may have touched more or less than predicted.
+2. **Run the classifier** against what you actually built. Documentation lives at three levels — check **all three**, not just the central docs:
+
+   **(a) Central reference docs** (`docs/`):
+
+   | If the change introduced/altered… | Update |
+   |---|---|
+   | a port / capability / sub-capability | `docs/architecture-overview.md` (+ `docs/capabilities.md`) |
+   | a cross-context dependency edge, bounded context, or data-flow | `docs/architecture-overview.md` |
+   | a naming/file convention, DI-token or import-alias rule | `docs/engineering-standards.md` |
+   | a schema change / new migration workflow step | `docs/migrations.md` |
+   | a FE state-ownership or module pattern | `docs/frontend-architecture.md` |
+   | a shared UI/interaction pattern | `docs/frontend-ui-style-guide.md` |
+   | a new test harness or pattern | `docs/testing-guide.md` |
+   | a recurring pitfall / correction worth recording | `docs/lessons.md` |
+
+   **(b) Package-local docs** — documentation lives closest to the code it describes, so **whatever package you touched, check its own docs too**: the package `README.md`, its `docs/` folder (`setup-guide.md`, `runbook.md`, `tutorial.md`, `manual-testing-guide.md`), and any in-tree implementation notes (e.g. `libs/integrations/ksef/src/**/*_NOTES.md`). Integration adapters (`libs/integrations/<plugin>/`), `apps/web/`, and the root `README.md` all carry docs that go stale when their code changes — an adapter that gains a capability, changes its wire contract, adds an env var, or changes setup steps must update its own README/setup-guide, not only `architecture-overview.md`.
+
+   **(c) Architecture Decision Records** — if the change embodies a *decision with trade-offs* (a choice affecting multiple contexts or the plugin contract, where an alternative was seriously considered), add or supersede an ADR under `docs/architecture/adrs/` per `docs/architecture/adrs/README.md`. Skip for local refactors, bugfixes, and routine feature work.
+
+   **(d) In-code comments** — a `why` comment sitting next to code you changed can become false or misleading. Scan the diff's surrounding comments and fix any that your change contradicts. (Never *add* comments that explain *what* the code does — but keeping existing `why` comments truthful is part of this step.)
+
+3. **Edit everything that applies.** Match the existing style of each doc (e.g. architecture-overview.md and package docs annotate changes with the issue number — `(#NNN)`). Update *intent and current state*, not a changelog of your diff. Do **not** add docs for things already covered.
+4. **Write the doc-impact statement** — a short list of `path → what changed`, covering all levels touched (central docs, package docs, ADRs, corrected comments), or `None — <one-line reason>` for a genuinely doc-neutral change (e.g. an internal bugfix with no contract/pattern/setup change). This statement is carried into the PR body in Phase 5.
+
+Re-run `pnpm lint` if any doc has a linked invariant (rare); otherwise no quality-gate rerun is needed for prose-only edits.
+
+---
+
 ## Phase 5 — Review & Ship
 
 1. **Self-review** all changes (architecture, standards, code quality, tests, security) following `docs/code-review-guide.md`
@@ -141,7 +174,7 @@ It greps the **live repo** for reuse collisions (a port / service / DI token / O
 - Review the diff themselves
 
 If the user says to ship it:
-5. Push the branch and create a PR with `Closes #N` in the body
+5. Push the branch and create a PR with `Closes #N` in the body. The body **must** include a `## Docs` section carrying the Phase 4.5 doc-impact statement (`path → what changed`, or `None — <reason>`) so the documentation decision is visible in review.
 6. Output the PR URL
 7. **Release the claim**: remove the `in-progress` label (if it was applied) via `issue_write`. The PR's `Closes #N` handles closure on merge — never close the issue manually. If work is **abandoned** instead of shipped, also release the label so another session can pick the issue up.
 
@@ -152,6 +185,7 @@ If the user says to ship it:
 - Never force-push to `main`
 - Never skip `--no-verify` hooks
 - Never close an issue manually — only via `Closes #N` in the PR body
+- Never skip Phase 4.5 — a PR without a `## Docs` statement is incomplete
 - If a migration is needed, follow `docs/migrations.md`
 - If the quality gate fails, fix the root cause — do not work around it
 - If $ARGUMENTS is provided, skip Phase 1 and use it as the issue selection
