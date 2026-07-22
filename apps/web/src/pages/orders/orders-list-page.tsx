@@ -695,8 +695,13 @@ export function OrdersListPage(): ReactElement {
           const view = formatShipBy(due);
           // Carrier at row level (#1617): the list can't fetch per-order
           // shipments, so `shipping.methodName` (the source's stated delivery
-          // method) is the best signal, falling back to the pickup-point name.
-          const carrier = parsed.shipping?.methodName ?? parsed.pickupPoint?.name ?? null;
+          // method) is the best signal, then the raw method id (#1776), then
+          // the pickup-point name. Snapshot-only is the correct ceiling here.
+          const carrier =
+            parsed.shipping?.methodName ??
+            parsed.shipping?.methodId ??
+            parsed.pickupPoint?.name ??
+            null;
           // Offer "Generate label" ONLY when fulfillment is EXPLICITLY not-shipped
           // and the order isn't cancelled (#1713). An undefined fulfillmentState
           // (genuinely unknown) or a cancelled order shows the passive fulfillment
@@ -1214,7 +1219,12 @@ export function OrdersListPage(): ReactElement {
                 const items = itemsSummary(parsed.items);
                 const pay = paymentBadge(parsed.paymentStatus);
                 const cust = customerName(parsed);
-                const carrier = parsed.shipping?.methodName ?? parsed.pickupPoint?.name ?? null;
+                // Snapshot-only (#1776): method name → method id → pickup name.
+                const carrier =
+                  parsed.shipping?.methodName ??
+                  parsed.shipping?.methodId ??
+                  parsed.pickupPoint?.name ??
+                  null;
                 const inv = parsed.invoice ? invoiceBadge(parsed.invoice) : null;
                 const fulfillment = fulfillmentBadge(order.fulfillmentState);
                 // Offer "Generate label" ONLY when explicitly not-shipped and not

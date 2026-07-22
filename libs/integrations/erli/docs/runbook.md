@@ -48,13 +48,19 @@ Read these before relying on the integration in production.
   to populate the frozen-stock cache.
 - **Static API key.** No OAuth/refresh — rotate by replacing the key in the Erli
   seller panel and updating the connection credentials in OpenLinker.
-- **No ship-by deadline on orders.** Erli's order payload exposes no per-order
-  dispatch deadline, so the orders list/detail **Ship-by** field is intentionally
-  blank for Erli orders (only sources with a per-order dispatch window — Allegro —
-  populate it). Erli's dispatch time is a shop-wide offer handling-time OpenLinker
-  applies on offer create, not a per-order value Erli returns. The delivery-method
-  label still shows whenever the Erli order carries a delivery method; when it
-  doesn't, the order-detail **Carrier** row surfaces the booked shipment's carrier.
+- **Estimated ship-by on orders.** Erli's order payload has no per-order dispatch
+  deadline field, so OpenLinker DERIVES the orders list/detail **Ship-by** from the
+  connection's shop-wide **default dispatch time** (`config.defaultDispatchTime`):
+  `ship-by = purchasedAt + defaultDispatchTime`. For the `day` unit the period is
+  counted in **working days** (weekends skipped; PL public holidays are not yet
+  accounted for). This is a best-effort per-order estimate — a per-offer dispatch
+  override isn't visible on the order, so an offer with a non-default dispatch time
+  will have a ship-by off by that difference. If no `defaultDispatchTime` is
+  configured (or the order has no `purchasedAt`), the Ship-by field stays blank
+  rather than being fabricated. The delivery-method label shows whenever the Erli
+  order carries a delivery method; when it doesn't, the order-detail **Method** row
+  falls back to the booked shipment's carrier/method and the **Carrier** row still
+  surfaces the carrier of record.
 
 ---
 

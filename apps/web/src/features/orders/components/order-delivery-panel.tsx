@@ -46,6 +46,14 @@ interface OrderDeliveryPanelProps {
    * nothing (no shipment carrier and no snapshot method name).
    */
   carrier?: string | null;
+  /**
+   * Fallback delivery-method label (#1776) rendered on the always-present
+   * Method row when the snapshot carried no `shipping.methodName`/`methodId`.
+   * Callers derive it from the booked shipment (carrier / mapped method) so a
+   * source order with no delivery line still shows a method. The Method row
+   * chain is `shipping.methodName ?? shipping.methodId ?? methodFallback ?? '-'`.
+   */
+  methodFallback?: string | null;
 }
 
 function addressLines(address: ParsedAddress): ReactElement {
@@ -85,6 +93,7 @@ export function OrderDeliveryPanel({
   pickupPoint,
   sourcePlatformType,
   carrier,
+  methodFallback,
 }: OrderDeliveryPanelProps): ReactElement {
   // Resolved unconditionally (never inside a branch) — see #893.
   const sourcePlatform = usePlatform(sourcePlatformType ?? undefined);
@@ -93,9 +102,15 @@ export function OrderDeliveryPanel({
   if (shippingAddress) {
     items.push({ id: 'ship-to', label: 'Ship to', value: addressLines(shippingAddress) });
   }
-  if (shipping?.methodName ?? shipping?.methodId) {
-    items.push({ id: 'method', label: 'Method', value: shipping.methodName ?? shipping.methodId });
-  }
+  // Always rendered (#1776) — the delivery-method label is a core "where it's
+  // going" fact, so it must not blank out when the source order carried no
+  // shipping line. Precedence: source method name → source method id →
+  // caller-supplied fallback (shipment-derived carrier/method) → "-".
+  items.push({
+    id: 'method',
+    label: 'Method',
+    value: shipping?.methodName ?? shipping?.methodId ?? methodFallback ?? '-',
+  });
   // Always rendered (unlike the fields above) — "-" fallback per #1617 so the
   // operator can tell "no carrier resolved" apart from "field doesn't exist".
   // This row is also the documented delivery-method fallback (#1776): when the

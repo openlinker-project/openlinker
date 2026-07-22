@@ -108,6 +108,9 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
         httpClient,
         offerManager,
         inventoryQuery,
+        // Shop-wide default dispatch time (#1776) backs the derived per-order
+        // ship-by — same config value the offer adapter uses on create.
+        config.defaultDispatchTime,
       ),
     };
   }

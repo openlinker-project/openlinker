@@ -96,6 +96,7 @@ import type {
   OfferStockRestoreTarget,
 } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
+import type { ErliDispatchTime } from '../../domain/types/erli-connection.types';
 import { ERLI_PRODUCT_ID_PATTERN } from '../../erli.constants';
 import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
 import { ErliOrderDispatchRejectedException } from '../../domain/exceptions/erli-order-dispatch-rejected.exception';
@@ -166,6 +167,13 @@ export class ErliOrderSourceAdapter
     private readonly httpClient: IErliHttpClient,
     private readonly offerManager?: OfferManagerPort & OfferStockRestorer,
     private readonly inventoryQuery?: IInventoryQueryService,
+    /**
+     * Shop-wide default dispatch (handling) time from the connection config
+     * (#1776). Threaded into the order mapper so an Erli order's ship-by is
+     * derived as `purchasedAt + defaultDispatchTime`. Optional — absent leaves
+     * the derived ship-by blank (no fabrication).
+     */
+    private readonly defaultDispatchTime?: ErliDispatchTime,
   ) {}
 
   /**
@@ -293,7 +301,7 @@ export class ErliOrderSourceAdapter
     }
 
     const order = assertErliOrder(response.data);
-    return mapErliOrderToIncomingOrder(order);
+    return mapErliOrderToIncomingOrder(order, this.defaultDispatchTime);
   }
 
   // ── SourceOptionsReader (#1738) ──────────────────────────────────────────

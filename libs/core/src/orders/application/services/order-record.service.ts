@@ -220,11 +220,14 @@ export class OrderRecordService implements IOrderRecordService {
    * the `awaiting_mapping` and `ready` paths) so a re-pulled order with a
    * changed window updates the column.
    *
-   * Ship-by is populated only for sources that expose a per-order dispatch
-   * window on the incoming order (#1776): Allegro maps `delivery.time.dispatch`.
-   * Erli and WooCommerce order payloads carry no per-order dispatch deadline, so
-   * their `dispatchTime` is absent and ship-by stays `null` by design — the
-   * source of truth is the source adapter, this method never fabricates one.
+   * Ship-by is populated only for sources whose adapter maps a dispatch window
+   * onto the incoming order (#1776): Allegro maps the per-order
+   * `delivery.time.dispatch`; Erli DERIVES one from `purchasedAt +
+   * connection.defaultDispatchTime` (working-day math in the Erli mapper) as a
+   * best-effort per-order estimate. WooCommerce carries no per-order dispatch
+   * deadline and OL owns no WC handling time, so its `dispatchTime` is absent and
+   * ship-by stays `null` by design. The source of truth is the source adapter;
+   * this method never fabricates a window.
    */
   private deriveDispatchByAt(window: OrderDispatchWindow | undefined): Date | null {
     const to = window?.to;

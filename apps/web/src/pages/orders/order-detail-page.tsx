@@ -27,7 +27,12 @@ import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/us
 import type { OrderSyncStatusValue } from '../../features/orders/api/orders.types';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 import { useConnectionsQuery } from '../../features/connections';
-import { useOrderShipmentsQuery, pickActiveShipment, getCarrierDisplayName } from '../../features/shipments';
+import {
+  useOrderShipmentsQuery,
+  pickActiveShipment,
+  getCarrierDisplayName,
+  SHIPPING_METHOD_LABEL,
+} from '../../features/shipments';
 import { OrderCustomerCard } from '../../features/orders/components/order-customer-card';
 import { OrderActivityTimeline } from '../../features/orders/components/order-activity-timeline';
 import { OrderShipmentPanel } from '../../features/orders/components/order-shipment-panel';
@@ -159,7 +164,18 @@ export function OrderDetailPage(): ReactElement {
   // and to `null` (rendered "-") when neither is available.
   const activeShipment = pickActiveShipment(shipmentsQuery.data?.items ?? null);
   const carrier =
-    getCarrierDisplayName(activeShipment?.carrier ?? null) ?? snapshot.shipping?.methodName ?? null;
+    getCarrierDisplayName(activeShipment?.carrier ?? null) ??
+    snapshot.shipping?.methodName ??
+    // Pickup-only orders (#1776) carry no method name but do name the point;
+    // surface it so the Carrier row isn't a bare "-".
+    snapshot.pickupPoint?.name ??
+    null;
+  // Shipment-derived delivery-method fallback (#1776) for the always-present
+  // Method row: when the snapshot carried no shipping line, fall back to the
+  // booked shipment's carrier, then its mapped `shippingMethod` label.
+  const methodFallback =
+    getCarrierDisplayName(activeShipment?.carrier ?? null) ??
+    (activeShipment ? SHIPPING_METHOD_LABEL[activeShipment.shippingMethod] : null);
   const sourcePlatformType =
     connections.find((c) => c.id === order.sourceConnectionId)?.platformType ?? null;
 
@@ -314,6 +330,7 @@ export function OrderDetailPage(): ReactElement {
             pickupPoint={snapshot.pickupPoint}
             sourcePlatformType={sourcePlatformType}
             carrier={carrier}
+            methodFallback={methodFallback}
           />
           {/* Anchor wrappers (#1713) for the orders-list deep-link CTAs
               (`/orders/{id}#shipment`, `/orders/{id}#invoicing`). Page-level

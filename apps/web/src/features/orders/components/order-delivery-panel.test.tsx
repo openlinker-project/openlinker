@@ -4,11 +4,13 @@ import { renderWithProviders } from '../../../test/test-utils';
 import { OrderDeliveryPanel } from './order-delivery-panel';
 
 describe('OrderDeliveryPanel', () => {
-  it('should always render the panel with a Carrier field, "-" when there is no delivery data (#1617)', () => {
+  it('should always render the panel with Method and Carrier fields, "-" when there is no delivery data (#1617/#1776)', () => {
     renderWithProviders(<OrderDeliveryPanel />);
     expect(screen.getByRole('region', { name: 'Delivery' })).toBeInTheDocument();
+    expect(screen.getByText('Method')).toBeInTheDocument();
     expect(screen.getByText('Carrier')).toBeInTheDocument();
-    expect(screen.getByText('-')).toBeInTheDocument();
+    // Both value cells fall back to "-" when nothing is resolvable.
+    expect(screen.getAllByText('-')).toHaveLength(2);
   });
 
   it('should render the address, method and pickup code when they are present', () => {
@@ -71,6 +73,40 @@ describe('OrderDeliveryPanel', () => {
       renderWithProviders(<OrderDeliveryPanel carrier="InPost" />);
       expect(screen.getByRole('region', { name: 'Delivery' })).toBeInTheDocument();
       expect(screen.getByText('InPost')).toBeInTheDocument();
+    });
+  });
+
+  describe('method field fallback chain (#1776)', () => {
+    it('should prefer the snapshot method name over every fallback', () => {
+      renderWithProviders(
+        <OrderDeliveryPanel
+          shipping={{ methodId: 'm1', methodName: 'InPost Paczkomat' }}
+          methodFallback="Kurier"
+        />,
+      );
+      expect(screen.getByText('InPost Paczkomat')).toBeInTheDocument();
+      expect(screen.queryByText('Kurier')).not.toBeInTheDocument();
+    });
+
+    it('should fall back to the method id when the method name is absent', () => {
+      renderWithProviders(
+        <OrderDeliveryPanel shipping={{ methodId: 'MID-42' }} methodFallback="Kurier" />,
+      );
+      expect(screen.getByText('MID-42')).toBeInTheDocument();
+      expect(screen.queryByText('Kurier')).not.toBeInTheDocument();
+    });
+
+    it('should fall back to the caller-supplied methodFallback when the snapshot has no shipping', () => {
+      renderWithProviders(<OrderDeliveryPanel methodFallback="Paczkomat" />);
+      expect(screen.getByText('Method')).toBeInTheDocument();
+      expect(screen.getByText('Paczkomat')).toBeInTheDocument();
+    });
+
+    it('should render "-" for Method when neither snapshot nor fallback resolves', () => {
+      renderWithProviders(<OrderDeliveryPanel carrier="InPost" />);
+      expect(screen.getByText('Method')).toBeInTheDocument();
+      // Only the Method value falls back to "-"; Carrier shows InPost.
+      expect(screen.getByText('-')).toBeInTheDocument();
     });
   });
 });
