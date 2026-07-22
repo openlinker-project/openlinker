@@ -14,6 +14,7 @@ import {
   ShippingProviderRejectionException,
   type GenerateLabelCommand,
 } from '@openlinker/core/shipping';
+import { Logger } from '@openlinker/shared/logging';
 import type { DpdConnectionConfig } from '../../../domain/types/dpd-config.types';
 import type { IDpdHttpClient } from '../../http/dpd-http-client.interface';
 import type { IDpdInfoSoapClient } from '../../http/dpd-info-soap-client.interface';
@@ -141,6 +142,49 @@ describe('DpdShippingAdapter', () => {
     });
 
     await expect(adapter.generateLabel(makeCmd())).rejects.toBeInstanceOf(ShippingProviderRejectionException);
+  });
+
+  it('should log the full raw DPD body keyed by traceId when a create is rejected', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    http.request.mockResolvedValueOnce({
+      status: 'NOT_PROCESSED',
+      traceId: 'trace-abc-123',
+      packages: [{ status: 'NOT_PROCESSED', parcels: [] }],
+    });
+
+    await expect(adapter.generateLabel(makeCmd())).rejects.toBeInstanceOf(
+      ShippingProviderRejectionException,
+    );
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    const logged = warn.mock.calls[0][0] as string;
+    expect(logged).toContain('trace-abc-123');
+    expect(logged).toContain('NOT_PROCESSED');
+    // The full raw body is logged verbatim so an errorCode-less rejection is diagnosable.
+    expect(logged).toContain(JSON.stringify({ status: 'NOT_PROCESSED', traceId: 'trace-abc-123', packages: [{ status: 'NOT_PROCESSED', parcels: [] }] }));
+    warn.mockRestore();
+  });
+
+  it('should surface DPD traceId on the rejection providerDetails for recovery', async () => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    http.request.mockResolvedValueOnce({
+      status: 'NOT_PROCESSED',
+      traceId: 'trace-xyz-789',
+      packages: [{ status: 'NOT_PROCESSED', parcels: [] }],
+    });
+
+    await expect(adapter.generateLabel(makeCmd())).rejects.toMatchObject({
+      providerDetails: { traceId: 'trace-xyz-789' },
+    });
+  });
+
+  it('should not fail when a rejected response carries no traceId', async () => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    http.request.mockResolvedValueOnce({ status: 'PROTOCOL_ERROR' });
+
+    await expect(
+      adapter.generateProtocol({ providerShipmentIds: ['WB1'] }),
+    ).rejects.toBeInstanceOf(ShippingProviderRejectionException);
   });
 
   it('should propagate an HTTP-level rejection from the client', async () => {

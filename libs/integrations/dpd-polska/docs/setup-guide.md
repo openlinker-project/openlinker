@@ -57,6 +57,7 @@ connection that generates labels + handover protocols over the REST
 - **`postalCode must match the PL format NN-NNN`** — sender postcode must be `NN-NNN`.
 - **Auth / `needs_reauth`** — login, password, or environment mismatch; the DPD auth-failure classifier flags the connection for re-auth. Re-check credentials against the issued environment.
 - **Labels generate but tracking is empty** — tracking is a *separate* SOAP host (`DPDInfoServices`); verify it's reachable independently of the REST endpoint.
+- **Shipment create fails with `NOT_PROCESSED` and an empty `providerCode`** — DPD returns business rejections as HTTP 200 with a non-OK body status, and sometimes without a field-level `errorCode`. The adapter now logs the **full raw DPD response body** at `WARN` (search the API/worker logs for `DPD create rejected`), keyed by DPD's `traceId`, and surfaces that `traceId` on the error's `providerDetails`. Quote the `traceId` to DPD support to recover the underlying cause.
 
 ## Related
 

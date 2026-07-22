@@ -31,6 +31,8 @@ import type {
   ShippingProviderManagerPort,
   TrackingSnapshot,
 } from '@openlinker/core/shipping';
+import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
+import { Logger } from '@openlinker/shared/logging';
 import type { DpdConnectionConfig } from '../../domain/types/dpd-config.types';
 import type {
   DpdGeneratePackagesNumbersResponse,
@@ -72,6 +74,8 @@ export class DpdShippingAdapter
     PickupPointFinder,
     DispatchProtocolReader
 {
+  private readonly logger = new Logger(DpdShippingAdapter.name);
+
   constructor(
     private readonly http: IDpdHttpClient,
     private readonly config: DpdConnectionConfig,
@@ -91,7 +95,9 @@ export class DpdShippingAdapter
       path: CREATE_PATH,
       body,
     });
-    const waybill = assertCreateSucceededAndExtractWaybill(response);
+    const waybill = this.assertResponseOk('create', response, () =>
+      assertCreateSucceededAndExtractWaybill(response),
+    );
     return toGenerateLabelResult(waybill);
   }
 
@@ -105,7 +111,7 @@ export class DpdShippingAdapter
       body,
       idempotent: true,
     });
-    return decodeLabelDocument(response);
+    return this.assertResponseOk('label', response, () => decodeLabelDocument(response));
   }
 
   async generateProtocol(input: { providerShipmentIds: string[] }): Promise<LabelDocument> {
@@ -118,7 +124,7 @@ export class DpdShippingAdapter
       body,
       idempotent: true,
     });
-    return decodeProtocolDocument(response);
+    return this.assertResponseOk('protocol', response, () => decodeProtocolDocument(response));
   }
 
   async findPickupPoints(query: FindPickupPointsQuery): Promise<PickupPoint[]> {
@@ -142,4 +148,47 @@ export class DpdShippingAdapter
     });
     return toTrackingSnapshot(events);
   }
+
+  /**
+   * Run a mapper assert/decode over a create/label/protocol response and, on a
+   * rejection, log the FULL raw DPD response body at warn keyed by DPD's
+   * `traceId` before rethrowing (#1777).
+   *
+   * DPD surfaces business rejections as HTTP 200 with a non-OK body status and
+   * sometimes only `info: "NOT_PROCESSED"` with no field-level `errorCode`, so
+   * the operator otherwise sees `NOT_PROCESSED` / `providerCode: null` with no
+   * recoverable cause. The raw body carries no secrets (it's a status +
+   * validation-info envelope, never credentials or the echoed request), so
+   * logging it in full is safe, and `traceId` is the handle DPD support keys on.
+   * The rethrown exception is enriched with `providerDetails.traceId` so the
+   * operator can quote it without a log dive.
+   */
+  private assertResponseOk<T>(
+    operation: string,
+    response: { readonly status: string; readonly traceId?: string },
+    assert: () => T,
+  ): T {
+    try {
+      return assert();
+    } catch (error) {
+      if (error instanceof ShippingProviderRejectionException) {
+        this.logger.warn(
+          `DPD ${operation} rejected (status=${response.status}) [traceId=${response.traceId ?? 'none'}]; raw response: ${JSON.stringify(response)}`,
+        );
+        throw response.traceId ? withTraceId(error, response.traceId) : error;
+      }
+      throw error;
+    }
+  }
+}
+
+/** Return a copy of the rejection with DPD's `traceId` merged into `providerDetails`. */
+function withTraceId(
+  error: ShippingProviderRejectionException,
+  traceId: string,
+): ShippingProviderRejectionException {
+  return new ShippingProviderRejectionException(error.providerName, error.providerCode, error.message, {
+    ...(error.providerDetails ?? {}),
+    traceId,
+  });
 }
