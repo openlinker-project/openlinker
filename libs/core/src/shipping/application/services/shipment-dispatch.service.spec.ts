@@ -135,6 +135,7 @@ describe('ShipmentDispatchService', () => {
       getCandidateProcessors: jest.fn(),
       replaceRules: jest.fn(),
       resolve: jest.fn(),
+      resolveBatch: jest.fn(),
     };
     adapter = {
       generateLabel: jest.fn(),

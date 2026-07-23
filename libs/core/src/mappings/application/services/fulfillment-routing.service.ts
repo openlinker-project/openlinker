@@ -150,16 +150,64 @@ export class FulfillmentRoutingService implements IFulfillmentRoutingService {
     if (sourceDeliveryMethodId) {
       const rule = await this.repository.findRule(sourceConnectionId, sourceDeliveryMethodId);
       if (rule) {
-        return {
-          processorKind: rule.processorKind,
-          processorConnectionId: rule.processorConnectionId,
-          source: 'rule',
-        };
+        return this.toResolution(rule);
       }
     }
 
-    // No rule (or no method): today's PrestaShop-fulfilled default. Under
-    // fan-out there is no single fulfilling OMP, so processorConnectionId is null.
+    return this.defaultResolution();
+  }
+
+  /**
+   * Batched counterpart to {@link resolve} (#1791) — resolves many orders'
+   * `(source, method)` pairs in one pass, avoiding an N+1 repository round
+   * trip for a page of orders. Groups queries by distinct `sourceConnectionId`
+   * (typically 1-3 per page) and fetches each connection's full rule set once
+   * via `findBySourceConnectionId` — the same read `getRules` uses — instead
+   * of one `findRule` call per order. Returns resolutions in the same order
+   * as `queries`, one-to-one.
+   */
+  async resolveBatch(
+    queries: FulfillmentRoutingQuery[],
+  ): Promise<FulfillmentRoutingResolution[]> {
+    const connectionIds = Array.from(
+      new Set(
+        queries.filter((q) => q.sourceDeliveryMethodId !== null).map((q) => q.sourceConnectionId),
+      ),
+    );
+
+    const ruleSets = await Promise.all(
+      connectionIds.map((id) => this.repository.findBySourceConnectionId(id)),
+    );
+    const rulesByConnection = new Map(connectionIds.map((id, i) => [id, ruleSets[i]]));
+
+    return queries.map((query) => {
+      if (query.sourceDeliveryMethodId) {
+        const rule = (rulesByConnection.get(query.sourceConnectionId) ?? []).find(
+          (r) => r.sourceDeliveryMethodId === query.sourceDeliveryMethodId,
+        );
+        if (rule) {
+          return this.toResolution(rule);
+        }
+      }
+      return this.defaultResolution();
+    });
+  }
+
+  /** Shared rule → resolution mapping between {@link resolve} and {@link resolveBatch}. */
+  private toResolution(rule: FulfillmentRoutingRule): FulfillmentRoutingResolution {
+    return {
+      processorKind: rule.processorKind,
+      processorConnectionId: rule.processorConnectionId,
+      source: 'rule',
+    };
+  }
+
+  /**
+   * Shared default fallback between {@link resolve} and {@link resolveBatch}:
+   * today's PrestaShop-fulfilled default. Under fan-out there is no single
+   * fulfilling OMP, so `processorConnectionId` is null.
+   */
+  private defaultResolution(): FulfillmentRoutingResolution {
     return {
       processorKind: FULFILLMENT_PROCESSOR_KIND.OmpFulfilled,
       processorConnectionId: null,

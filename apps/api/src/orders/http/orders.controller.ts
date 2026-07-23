@@ -44,6 +44,11 @@ import {
   IInvoiceService,
 } from '@openlinker/core/invoicing';
 import type { InvoiceRecord } from '@openlinker/core/invoicing';
+import {
+  FULFILLMENT_ROUTING_SERVICE_TOKEN,
+  IFulfillmentRoutingService,
+} from '@openlinker/core/mappings';
+import type { FulfillmentRoutingResolution } from '@openlinker/core/mappings';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
 import { OrderHealthSummaryQueryDto } from './dto/order-health-summary-query.dto';
 import { OrderHealthSummaryResponseDto } from './dto/order-health-summary-response.dto';
@@ -54,6 +59,7 @@ import type { SyncAttemptResponseDto } from './dto/sync-attempt-response.dto';
 import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto';
 import { RetryOrderDestinationResponseDto } from './dto/retry-order-destination-response.dto';
 import type { OrderInvoiceProjectionDto } from './dto/order-invoice-projection.dto';
+import type { OrderDeliveryResolutionDto } from './dto/order-delivery-resolution.dto';
 
 @ApiBearerAuth()
 @ApiTags('orders')
@@ -65,7 +71,9 @@ export class OrdersController {
     @Inject(ORDER_DESTINATION_RETRY_SERVICE_TOKEN)
     private readonly destinationRetryService: IOrderDestinationRetryService,
     @Inject(INVOICE_SERVICE_TOKEN)
-    private readonly invoiceService: IInvoiceService
+    private readonly invoiceService: IInvoiceService,
+    @Inject(FULFILLMENT_ROUTING_SERVICE_TOKEN)
+    private readonly fulfillmentRouting: IFulfillmentRoutingService
   ) {}
 
   @Get()
@@ -126,12 +134,23 @@ export class OrdersController {
     );
     const invoiceByOrderId = new Map(invoices.map((invoice) => [invoice.orderId, invoice]));
 
+    // Batch the delivery-routing-resolution projection for the whole page
+    // (#1791): one `resolveBatch` call (one repository read per distinct
+    // sourceConnectionId — typically 1-3 per page), not an N+1 of per-row
+    // `resolve`. Only orders that carry a source delivery method are queried;
+    // the rest simply have no `deliveryResolution` on their DTO.
+    const resolutionByOrderId = await this.resolveDeliveryForOrders(items);
+
     return {
       items: items.map((order) => {
         const dto = this.toDto(order);
         const invoice = invoiceByOrderId.get(order.internalOrderId);
         if (invoice) {
           dto.orderSnapshot = { ...dto.orderSnapshot, invoice: this.toInvoiceProjection(invoice) };
+        }
+        const deliveryResolution = resolutionByOrderId.get(order.internalOrderId);
+        if (deliveryResolution) {
+          dto.deliveryResolution = deliveryResolution;
         }
         return dto;
       }),
@@ -214,6 +233,18 @@ export class OrdersController {
     );
     if (invoiceRecord) {
       dto.orderSnapshot = { ...dto.orderSnapshot, invoice: this.toInvoiceProjection(invoiceRecord) };
+    }
+    // Delivery-routing-resolution projection (#1791): a single-order counterpart
+    // to the list read's batched resolution below. Absent when the order carries
+    // no source delivery method — resolving would just echo the omp_fulfilled
+    // default with no delivery method to route.
+    if (order.sourceDeliveryMethodId) {
+      dto.deliveryResolution = this.toDeliveryResolutionDto(
+        await this.fulfillmentRouting.resolve({
+          sourceConnectionId: order.sourceConnectionId,
+          sourceDeliveryMethodId: order.sourceDeliveryMethodId,
+        })
+      );
     }
     return dto;
   }
@@ -309,6 +340,49 @@ export class OrdersController {
       regulatoryStatus: record.regulatoryStatus,
       clearanceReference: record.clearanceReference,
       confirmationDocumentAvailable,
+    };
+  }
+
+  /**
+   * Batched delivery-routing resolution for a page of orders (#1791). Queries
+   * `IFulfillmentRoutingService.resolveBatch` once for every order that
+   * carries a source delivery method (`OrderRecord.sourceDeliveryMethodId`,
+   * the same key the shipping dispatch seam resolves against) — the service
+   * itself further collapses that into one repository read per distinct
+   * `sourceConnectionId`, so this stays a small, fixed number of DB round
+   * trips regardless of page size, not an N+1 per order.
+   */
+  private async resolveDeliveryForOrders(
+    orders: OrderRecord[]
+  ): Promise<Map<string, OrderDeliveryResolutionDto>> {
+    const ordersWithMethod = orders.filter(
+      (order): order is OrderRecord & { sourceDeliveryMethodId: string } =>
+        order.sourceDeliveryMethodId !== null
+    );
+    if (ordersWithMethod.length === 0) {
+      return new Map();
+    }
+    const resolutions = await this.fulfillmentRouting.resolveBatch(
+      ordersWithMethod.map((order) => ({
+        sourceConnectionId: order.sourceConnectionId,
+        sourceDeliveryMethodId: order.sourceDeliveryMethodId,
+      }))
+    );
+    return new Map(
+      ordersWithMethod.map((order, i) => [
+        order.internalOrderId,
+        this.toDeliveryResolutionDto(resolutions[i]),
+      ])
+    );
+  }
+
+  private toDeliveryResolutionDto(
+    resolution: FulfillmentRoutingResolution
+  ): OrderDeliveryResolutionDto {
+    return {
+      source: resolution.source,
+      processorKind: resolution.processorKind,
+      processorConnectionId: resolution.processorConnectionId,
     };
   }
 

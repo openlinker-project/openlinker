@@ -66,3 +66,26 @@ describe('OrderRecord.codToCollect (#1435)', () => {
     expect(makeRecord({ codToCollect: { amount: 510.94, currency: 'PLN' } }).codToCollect).toBeUndefined();
   });
 });
+
+describe('OrderRecord.sourceDeliveryMethodId (#1791)', () => {
+  it('returns the methodId from a well-formed shipping snapshot', () => {
+    expect(
+      makeRecord({ shipping: { methodId: 'courier-standard', methodName: 'Standard' } })
+        .sourceDeliveryMethodId,
+    ).toBe('courier-standard');
+  });
+
+  it('returns null when the snapshot has no shipping key', () => {
+    expect(makeRecord({}).sourceDeliveryMethodId).toBeNull();
+  });
+
+  it('returns null when shipping is not an object', () => {
+    expect(makeRecord({ shipping: 'courier-standard' }).sourceDeliveryMethodId).toBeNull();
+    expect(makeRecord({ shipping: null }).sourceDeliveryMethodId).toBeNull();
+  });
+
+  it('returns null when methodId is missing or non-string', () => {
+    expect(makeRecord({ shipping: {} }).sourceDeliveryMethodId).toBeNull();
+    expect(makeRecord({ shipping: { methodId: 42 } }).sourceDeliveryMethodId).toBeNull();
+  });
+});
