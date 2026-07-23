@@ -47,8 +47,14 @@ import type { InvoiceRecord } from '@openlinker/core/invoicing';
 import {
   FULFILLMENT_ROUTING_SERVICE_TOKEN,
   IFulfillmentRoutingService,
+  DELIVERY_RIDER_SERVICE_TOKEN,
+  IDeliveryRiderService,
 } from '@openlinker/core/mappings';
-import type { FulfillmentRoutingResolution } from '@openlinker/core/mappings';
+import type {
+  FulfillmentRoutingResolution,
+  DeliveryRiderInput,
+  DeliveryRiderResolution,
+} from '@openlinker/core/mappings';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
 import { OrderHealthSummaryQueryDto } from './dto/order-health-summary-query.dto';
 import { OrderHealthSummaryResponseDto } from './dto/order-health-summary-response.dto';
@@ -60,6 +66,7 @@ import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto'
 import { RetryOrderDestinationResponseDto } from './dto/retry-order-destination-response.dto';
 import type { OrderInvoiceProjectionDto } from './dto/order-invoice-projection.dto';
 import type { OrderDeliveryResolutionDto } from './dto/order-delivery-resolution.dto';
+import type { OrderDeliveryRiderDto } from './dto/order-delivery-rider.dto';
 
 @ApiBearerAuth()
 @ApiTags('orders')
@@ -73,7 +80,9 @@ export class OrdersController {
     @Inject(INVOICE_SERVICE_TOKEN)
     private readonly invoiceService: IInvoiceService,
     @Inject(FULFILLMENT_ROUTING_SERVICE_TOKEN)
-    private readonly fulfillmentRouting: IFulfillmentRoutingService
+    private readonly fulfillmentRouting: IFulfillmentRoutingService,
+    @Inject(DELIVERY_RIDER_SERVICE_TOKEN)
+    private readonly deliveryRider: IDeliveryRiderService
   ) {}
 
   @Get()
@@ -134,12 +143,13 @@ export class OrdersController {
     );
     const invoiceByOrderId = new Map(invoices.map((invoice) => [invoice.orderId, invoice]));
 
-    // Batch the delivery-routing-resolution projection for the whole page
-    // (#1791): one `resolveBatch` call (one repository read per distinct
-    // sourceConnectionId — typically 1-3 per page), not an N+1 of per-row
-    // `resolve`. Only orders that carry a source delivery method are queried;
-    // the rest simply have no `deliveryResolution` on their DTO.
-    const resolutionByOrderId = await this.resolveDeliveryForOrders(items);
+    // Batch the delivery-routing-resolution + rider projection for the whole
+    // page (#1791/#1792): one `resolveBatch` per service (each collapsing to a
+    // small, fixed number of reads — the rider's carrier-state read is
+    // order-independent and happens once), not an N+1 of per-row calls. Only
+    // orders that carry a source delivery method are queried; the rest simply
+    // have no `deliveryResolution` / `deliveryRider` on their DTO.
+    const deliveryByOrderId = await this.resolveDeliveryForOrders(items);
 
     return {
       items: items.map((order) => {
@@ -148,9 +158,10 @@ export class OrdersController {
         if (invoice) {
           dto.orderSnapshot = { ...dto.orderSnapshot, invoice: this.toInvoiceProjection(invoice) };
         }
-        const deliveryResolution = resolutionByOrderId.get(order.internalOrderId);
-        if (deliveryResolution) {
-          dto.deliveryResolution = deliveryResolution;
+        const delivery = deliveryByOrderId.get(order.internalOrderId);
+        if (delivery) {
+          dto.deliveryResolution = delivery.resolution;
+          dto.deliveryRider = delivery.rider;
         }
         return dto;
       }),
@@ -234,16 +245,18 @@ export class OrdersController {
     if (invoiceRecord) {
       dto.orderSnapshot = { ...dto.orderSnapshot, invoice: this.toInvoiceProjection(invoiceRecord) };
     }
-    // Delivery-routing-resolution projection (#1791): a single-order counterpart
-    // to the list read's batched resolution below. Absent when the order carries
-    // no source delivery method — resolving would just echo the omp_fulfilled
-    // default with no delivery method to route.
+    // Delivery-routing-resolution + rider projection (#1791/#1792): a
+    // single-order counterpart to the list read's batched resolution below.
+    // Absent when the order carries no source delivery method — resolving would
+    // just echo the omp_fulfilled default with no delivery method to route.
     if (order.sourceDeliveryMethodId) {
-      dto.deliveryResolution = this.toDeliveryResolutionDto(
-        await this.fulfillmentRouting.resolve({
-          sourceConnectionId: order.sourceConnectionId,
-          sourceDeliveryMethodId: order.sourceDeliveryMethodId,
-        })
+      const resolution = await this.fulfillmentRouting.resolve({
+        sourceConnectionId: order.sourceConnectionId,
+        sourceDeliveryMethodId: order.sourceDeliveryMethodId,
+      });
+      dto.deliveryResolution = this.toDeliveryResolutionDto(resolution);
+      dto.deliveryRider = this.toDeliveryRiderDto(
+        await this.deliveryRider.resolve(this.toRiderInput(order, resolution))
       );
     }
     return dto;
@@ -354,7 +367,9 @@ export class OrdersController {
    */
   private async resolveDeliveryForOrders(
     orders: OrderRecord[]
-  ): Promise<Map<string, OrderDeliveryResolutionDto>> {
+  ): Promise<
+    Map<string, { resolution: OrderDeliveryResolutionDto; rider: OrderDeliveryRiderDto }>
+  > {
     const ordersWithMethod = orders.filter(
       (order): order is OrderRecord & { sourceDeliveryMethodId: string } =>
         order.sourceDeliveryMethodId !== null
@@ -368,10 +383,19 @@ export class OrdersController {
         sourceDeliveryMethodId: order.sourceDeliveryMethodId,
       }))
     );
+    // Rider inputs carry each order's resolution `source` (#1791) — the rider
+    // only fires on `default`. The service reads carrier state once for the
+    // whole batch (it is order-independent), so this stays cheap.
+    const riders = await this.deliveryRider.resolveBatch(
+      ordersWithMethod.map((order, i) => this.toRiderInput(order, resolutions[i]))
+    );
     return new Map(
       ordersWithMethod.map((order, i) => [
         order.internalOrderId,
-        this.toDeliveryResolutionDto(resolutions[i]),
+        {
+          resolution: this.toDeliveryResolutionDto(resolutions[i]),
+          rider: this.toDeliveryRiderDto(riders[i]),
+        },
       ])
     );
   }
@@ -383,6 +407,32 @@ export class OrdersController {
       source: resolution.source,
       processorKind: resolution.processorKind,
       processorConnectionId: resolution.processorConnectionId,
+    };
+  }
+
+  /**
+   * Build the delivery-rider input (#1792) from an order + its #1791 routing
+   * resolution. The rider's `resolutionSource` is the resolution's `source`, so
+   * a `rule`-resolved order short-circuits to `none` inside the service.
+   */
+  private toRiderInput(
+    order: OrderRecord,
+    resolution: FulfillmentRoutingResolution
+  ): DeliveryRiderInput {
+    return {
+      sourceConnectionId: order.sourceConnectionId,
+      sourceDeliveryMethod: {
+        name: order.sourceDeliveryMethodName,
+        typeId: order.sourceDeliveryMethodId,
+      },
+      resolutionSource: resolution.source,
+    };
+  }
+
+  private toDeliveryRiderDto(rider: DeliveryRiderResolution): OrderDeliveryRiderDto {
+    return {
+      rider: rider.rider,
+      ...(rider.candidateCarrier ? { candidateCarrier: rider.candidateCarrier } : {}),
     };
   }
 

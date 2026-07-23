@@ -89,3 +89,26 @@ describe('OrderRecord.sourceDeliveryMethodId (#1791)', () => {
     expect(makeRecord({ shipping: { methodId: 42 } }).sourceDeliveryMethodId).toBeNull();
   });
 });
+
+describe('OrderRecord.sourceDeliveryMethodName (#1792)', () => {
+  it('returns the methodName from a well-formed shipping snapshot', () => {
+    expect(
+      makeRecord({ shipping: { methodId: 'ai-1', methodName: 'Allegro Paczkomat InPost' } })
+        .sourceDeliveryMethodName,
+    ).toBe('Allegro Paczkomat InPost');
+  });
+
+  it('returns null when the snapshot has no shipping key', () => {
+    expect(makeRecord({}).sourceDeliveryMethodName).toBeNull();
+  });
+
+  it('returns null when shipping is not an object', () => {
+    expect(makeRecord({ shipping: 'x' }).sourceDeliveryMethodName).toBeNull();
+    expect(makeRecord({ shipping: null }).sourceDeliveryMethodName).toBeNull();
+  });
+
+  it('returns null when methodName is missing or non-string (id present, no label)', () => {
+    expect(makeRecord({ shipping: { methodId: 'ai-1' } }).sourceDeliveryMethodName).toBeNull();
+    expect(makeRecord({ shipping: { methodName: 7 } }).sourceDeliveryMethodName).toBeNull();
+  });
+});
