@@ -19,6 +19,7 @@
 import type { PostHog } from 'posthog-js';
 import type { SystemConfig } from '../../system';
 import { getDemoAnalyticsConsent } from './demo-analytics-consent';
+import type { DemoEventName, DemoEventProps } from './demo-events';
 
 let posthogInstance: PostHog | null = null;
 
@@ -55,4 +56,17 @@ export async function initDemoIntegrations(config: SystemConfig | undefined): Pr
  */
 export function disableDemoAnalytics(): void {
   posthogInstance?.opt_out_capturing();
+}
+
+/**
+ * Emits a named demo business event to PostHog. A no-op whenever PostHog was
+ * never initialized this session (not demo mode, no key, or consent not
+ * accepted) — mirrors `disableDemoAnalytics`'s gate on the same module-local
+ * `posthogInstance`.
+ */
+export function captureDemoEvent<E extends DemoEventName>(
+  event: E,
+  props: DemoEventProps<E>
+): void {
+  posthogInstance?.capture(event, props);
 }

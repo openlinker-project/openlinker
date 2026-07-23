@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SystemConfig } from '../../system';
-import { disableDemoAnalytics, initDemoIntegrations } from './init-demo-integrations';
+import { captureDemoEvent, disableDemoAnalytics, initDemoIntegrations } from './init-demo-integrations';
 
 const posthogInit = vi.fn();
 const posthogOptOut = vi.fn();
+const posthogCapture = vi.fn();
 vi.mock('posthog-js', () => ({
-  default: { init: posthogInit, opt_out_capturing: posthogOptOut },
+  default: { init: posthogInit, opt_out_capturing: posthogOptOut, capture: posthogCapture },
 }));
 
 const getDemoAnalyticsConsent = vi.fn();
@@ -25,10 +26,47 @@ const configuredPosthog: SystemConfig = {
   },
 };
 
+describe('captureDemoEvent', () => {
+  beforeEach(() => {
+    posthogInit.mockClear();
+    posthogOptOut.mockClear();
+    posthogCapture.mockClear();
+    getDemoAnalyticsConsent.mockReset();
+  });
+
+  it('should not call posthog.capture when PostHog was never initialized', () => {
+    captureDemoEvent('demo_viewer_locked_action_clicked', { actionName: 'a', surface: 'b' });
+
+    expect(posthogCapture).not.toHaveBeenCalled();
+  });
+
+  it('should not call posthog.capture when initialization was gated out (consent declined)', async () => {
+    getDemoAnalyticsConsent.mockReturnValue('declined');
+    await initDemoIntegrations(configuredPosthog);
+
+    captureDemoEvent('demo_viewer_locked_action_clicked', { actionName: 'a', surface: 'b' });
+
+    expect(posthogCapture).not.toHaveBeenCalled();
+  });
+
+  it('should call posthog.capture with the event name and props once PostHog is initialized', async () => {
+    getDemoAnalyticsConsent.mockReturnValue('accepted');
+    await initDemoIntegrations(configuredPosthog);
+
+    captureDemoEvent('demo_viewer_locked_action_clicked', { actionName: 'a', surface: 'b' });
+
+    expect(posthogCapture).toHaveBeenCalledWith('demo_viewer_locked_action_clicked', {
+      actionName: 'a',
+      surface: 'b',
+    });
+  });
+});
+
 describe('initDemoIntegrations', () => {
   beforeEach(() => {
     posthogInit.mockClear();
     posthogOptOut.mockClear();
+    posthogCapture.mockClear();
     getDemoAnalyticsConsent.mockReset();
   });
 
@@ -99,6 +137,7 @@ describe('disableDemoAnalytics', () => {
   beforeEach(() => {
     posthogInit.mockClear();
     posthogOptOut.mockClear();
+    posthogCapture.mockClear();
     getDemoAnalyticsConsent.mockReset();
   });
 
