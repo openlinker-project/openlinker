@@ -11046,6 +11046,63 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   margin: 0;
 }
 
+/* #1800 — persisted rejection message + failedAt on a revisited failed shipment */
+.order-shipment-panel__error-message {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.order-shipment-panel__error-meta {
+  margin: var(--space-1) 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* ── Shipments list — failed-rejection hint in the status cell (#1800) ── */
+.shipment-status-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  align-items: flex-start;
+}
+
+.shipment-status-cell__error {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 32ch;
+}
+
+.shipment-status-cell__error-message {
+  font-size: 0.75rem;
+  color: var(--status-error-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shipment-status-cell__error-time {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+/* #1800 — mobile card view. The dense desktop table row keeps the reason on
+   one truncated line (density budget) with the full text on native `title`
+   hover; a card has vertical room and no hover on touch, so let the reason
+   wrap to full text there — otherwise triage-from-phone can only read a
+   clamped fragment. `overflow-wrap: anywhere` keeps a long unbroken token
+   (e.g. a traceId embedded in the message) from overflowing the card. */
+.data-table__card .shipment-status-cell__error {
+  max-width: 100%;
+}
+
+.data-table__card .shipment-status-cell__error-message {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+
 /* Loading-state skeleton (avoids CLS on first paint while connections
  * settle — tech-review SUGGESTION). Reserves the same vertical footprint
  * the populated panel will occupy. */
@@ -11363,6 +11420,28 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .generate-label-form__missing,
 .generate-label-form__error {
   margin: 0;
+}
+
+/* #1806 — per-field carrier validation breakdown under the generic message */
+.generate-label-form__error-message {
+  margin: 0;
+}
+
+.generate-label-form__error .structured-error-list {
+  margin-top: var(--space-2);
+}
+
+/* #1800 — carrier support reference (traceId) under the error breakdown.
+   The mono id + copy affordance come from the shared CopyableId primitive;
+   this rule only spaces + tones the wrapping line. */
+.generate-label-form__error-trace {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
 }
 
 .generate-label-form__missing-list {

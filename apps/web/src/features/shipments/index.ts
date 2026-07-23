@@ -50,3 +50,5 @@ export { useProtocolDownload } from './hooks/use-protocol-download';
 export { ShipmentStatusBadge } from './components/shipment-status-badge';
 export { buildCarrierTrackingUrl, getCarrierDisplayName } from './lib/carrier-tracking-url';
 export { pickActiveShipment } from './lib/pick-active-shipment';
+export { extractShippingFieldErrors } from './lib/extract-shipping-field-errors';
+export { extractShippingTraceId } from './lib/extract-shipping-trace-id';

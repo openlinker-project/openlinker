@@ -402,3 +402,53 @@ describe('OrderShipmentPanel — action button matrix (§3.4)', () => {
     vi.restoreAllMocks();
   });
 });
+
+describe('OrderShipmentPanel — persisted rejection (#1800)', () => {
+  it('should render the persisted errorMessage and failedAt for a failed shipment', async () => {
+    const shipment = makeShipment({
+      status: 'failed',
+      errorMessage: 'DPD rejected the shipment: sender postal code is not serviceable.',
+      failedAt: '2026-05-28T12:30:00.000Z',
+      trackingNumber: null,
+      carrier: 'dpd',
+    });
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, { apiClient });
+
+    expect(
+      await screen.findByText(/sender postal code is not serviceable/i),
+    ).toBeInTheDocument();
+    // failedAt renders as a relative/absolute time — the "Failed" label anchors it.
+    expect(screen.getByText(/^Failed/)).toBeInTheDocument();
+  });
+
+  it('should not render a persisted-error Alert for a non-failed shipment carrying a stale errorMessage', async () => {
+    // A shipment that failed once then recovered keeps its old errorMessage;
+    // gating on status === 'failed' prevents surfacing it as a current error.
+    const shipment = makeShipment({
+      status: 'dispatched',
+      errorMessage: 'previous transient error',
+      failedAt: '2026-05-28T12:30:00.000Z',
+    });
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    const { container } = renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, {
+      apiClient,
+    });
+
+    await screen.findByText('Shipment');
+    expect(screen.queryByText('previous transient error')).toBeNull();
+    expect(container.querySelector('.order-shipment-panel__error')).toBeNull();
+  });
+});

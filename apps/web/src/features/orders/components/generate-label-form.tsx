@@ -30,6 +30,7 @@ import { useConnectionsQuery } from '../../connections';
 import { usePlatform } from '../../../shared/plugins';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
+import { CopyableId } from '../../../shared/ui/copyable-id';
 import { FieldError } from '../../../shared/ui/field-error';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
@@ -38,6 +39,7 @@ import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-li
 import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { Select } from '../../../shared/ui/select';
 import { StatusBadge } from '../../../shared/ui/status-badge';
+import { StructuredErrorList } from '../../../shared/ui/structured-error-list';
 import { useToast } from '../../../shared/ui/toast-provider';
 
 import type { OrderRecord } from '../api/orders.types';
@@ -47,6 +49,8 @@ import {
 } from '../api/order-snapshot.schema';
 import { ordersQueryKeys } from '../api/orders.query-keys';
 import {
+  extractShippingFieldErrors,
+  extractShippingTraceId,
   useGenerateLabelMutation,
   useLabelDownload,
   type GenerateLabelInput,
@@ -473,10 +477,18 @@ export function GenerateLabelForm({
         </Alert>
       ) : null}
 
-      {/* API error at top */}
+      {/* API error at top (#1806) — the generic carrier message always
+          renders; a structured per-field breakdown (e.g. ShipX
+          `details.fieldErrors`) is appended underneath when the mutation
+          error carries one, so the operator knows exactly what to fix.
+          A carrier support reference (`traceId`, e.g. DPD's undiagnosable
+          `NOT_PROCESSED`, #1800) renders last when present, so the operator
+          can quote it to carrier support without a log dive. */}
       {mutation.error ? (
         <Alert tone="error" className="generate-label-form__error">
-          {mutation.error.message}
+          <p className="generate-label-form__error-message">{mutation.error.message}</p>
+          <StructuredErrorList errors={extractShippingFieldErrors(mutation.error)} />
+          <ShippingTraceReference traceId={extractShippingTraceId(mutation.error)} />
         </Alert>
       ) : null}
 
@@ -786,4 +798,21 @@ function collectValidationMessages(
     if (typeof message === 'string') messages.push(message);
   }
   return messages;
+}
+
+/**
+ * Carrier support reference (#1800). Renders the carrier-assigned `traceId`
+ * (e.g. DPD's, surfaced on an undiagnosable `NOT_PROCESSED` rejection) via the
+ * shared `CopyableId` primitive so the operator can copy it and quote it to
+ * carrier support. Renders nothing when the error carries no trace id, so the
+ * caller can pass `extractShippingTraceId(...)` unconditionally.
+ */
+function ShippingTraceReference({ traceId }: { traceId: string | null }): ReactElement | null {
+  if (traceId === null) return null;
+
+  return (
+    <p className="generate-label-form__error-trace">
+      Reference for carrier support: <CopyableId id={traceId} />
+    </p>
+  );
 }
