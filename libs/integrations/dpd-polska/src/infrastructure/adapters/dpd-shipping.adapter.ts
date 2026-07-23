@@ -167,7 +167,11 @@ export class DpdShippingAdapter
    * label/protocol responses is stripped before serialization — a future or
    * malformed response pairing a non-OK status with a populated document would
    * otherwise dump a full base64 PDF into structured logs (log-hygiene, not a
-   * secrets leak). (One caveat: a rejection `validationInfo` can echo an
+   * secrets leak). Note: this strip is a *targeted omission* of the one known
+   * heavy/binary field, not a general-purpose denylist. Any new field added to
+   * the DPD response types that could carry sensitive or bulky data must be
+   * reviewed against this log line and stripped explicitly - nothing is
+   * auto-redacted. (One caveat: a rejection `validationInfo` can echo an
    * order-derived value such as a receiver postcode — buyer-PII-adjacent. The
    * body logged here stays in WARN logs only; the already-mapped
    * `validationInfo` may separately reach `providerDetails` → the 502 body via
