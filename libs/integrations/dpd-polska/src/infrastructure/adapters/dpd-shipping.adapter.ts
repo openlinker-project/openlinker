@@ -18,19 +18,21 @@
  *
  * @module libs/integrations/dpd-polska/src/infrastructure/adapters
  */
-import type {
-  DispatchProtocolReader,
-  FindPickupPointsQuery,
-  GenerateLabelCommand,
-  GenerateLabelResult,
-  LabelDocument,
-  LabelDocumentReader,
-  PickupPoint,
-  PickupPointFinder,
-  ShippingMethod,
-  ShippingProviderManagerPort,
-  TrackingSnapshot,
+import {
+  type DispatchProtocolReader,
+  type FindPickupPointsQuery,
+  type GenerateLabelCommand,
+  type GenerateLabelResult,
+  type LabelDocument,
+  type LabelDocumentReader,
+  type PickupPoint,
+  type PickupPointFinder,
+  type ShippingMethod,
+  type ShippingProviderManagerPort,
+  ShippingProviderRejectionException,
+  type TrackingSnapshot,
 } from '@openlinker/core/shipping';
+import { Logger } from '@openlinker/shared/logging';
 import type { DpdConnectionConfig } from '../../domain/types/dpd-config.types';
 import type {
   DpdGeneratePackagesNumbersResponse,
@@ -55,6 +57,10 @@ import { toTrackingSnapshot } from '../mappers/dpd-tracking.mapper';
 
 const SUPPORTED_METHODS: readonly ShippingMethod[] = ['kurier', 'pickup'];
 
+// The three call sites of `assertResponseOk` are known statically; a literal
+// union catches a typo'd operation string before it ever lands in a log line.
+type DpdAssertOperation = 'create' | 'label' | 'protocol';
+
 const CREATE_PATH = '/public/shipment/v1/generatePackagesNumbers';
 const LABEL_PATH = '/public/shipment/v1/generateSpedLabels';
 // OQ-1 (#964 plan): exact protocol path/request/response confirmed against the
@@ -72,6 +78,8 @@ export class DpdShippingAdapter
     PickupPointFinder,
     DispatchProtocolReader
 {
+  private readonly logger = new Logger(DpdShippingAdapter.name);
+
   constructor(
     private readonly http: IDpdHttpClient,
     private readonly config: DpdConnectionConfig,
@@ -91,7 +99,9 @@ export class DpdShippingAdapter
       path: CREATE_PATH,
       body,
     });
-    const waybill = assertCreateSucceededAndExtractWaybill(response);
+    const waybill = this.assertResponseOk('create', response, () =>
+      assertCreateSucceededAndExtractWaybill(response),
+    );
     return toGenerateLabelResult(waybill);
   }
 
@@ -105,7 +115,7 @@ export class DpdShippingAdapter
       body,
       idempotent: true,
     });
-    return decodeLabelDocument(response);
+    return this.assertResponseOk('label', response, () => decodeLabelDocument(response));
   }
 
   async generateProtocol(input: { providerShipmentIds: string[] }): Promise<LabelDocument> {
@@ -118,7 +128,7 @@ export class DpdShippingAdapter
       body,
       idempotent: true,
     });
-    return decodeProtocolDocument(response);
+    return this.assertResponseOk('protocol', response, () => decodeProtocolDocument(response));
   }
 
   async findPickupPoints(query: FindPickupPointsQuery): Promise<PickupPoint[]> {
@@ -142,4 +152,82 @@ export class DpdShippingAdapter
     });
     return toTrackingSnapshot(events);
   }
+
+  /**
+   * Run a mapper assert/decode over a create/label/protocol response and, on a
+   * rejection, log the raw DPD response body at warn keyed by DPD's `traceId`
+   * before rethrowing (#1777).
+   *
+   * DPD surfaces business rejections as HTTP 200 with a non-OK body status and
+   * sometimes only `info: "NOT_PROCESSED"` with no field-level `errorCode`, so
+   * the operator otherwise sees `NOT_PROCESSED` / `providerCode: null` with no
+   * recoverable cause. The body is a status + validation-info envelope (never
+   * credentials or the echoed request), so logging it is safe, and `traceId` is
+   * the handle DPD support keys on. The base64 `documentData` field carried on
+   * label/protocol responses is stripped before serialization — a future or
+   * malformed response pairing a non-OK status with a populated document would
+   * otherwise dump a full base64 PDF into structured logs (log-hygiene, not a
+   * secrets leak). Note: this strip is a *targeted omission* of the one known
+   * heavy/binary field, not a general-purpose denylist. Any new field added to
+   * the DPD response types that could carry sensitive or bulky data must be
+   * reviewed against this log line and stripped explicitly - nothing is
+   * auto-redacted. (One caveat: a rejection `validationInfo` can echo an
+   * order-derived value such as a receiver postcode — buyer-PII-adjacent. The
+   * body logged here stays in WARN logs only; the already-mapped
+   * `validationInfo` may separately reach `providerDetails` → the 502 body via
+   * the pre-existing #1104 path, but this WARN log adds no exposure beyond what
+   * #1104 already surfaces.) The rethrown exception is enriched with
+   * `providerDetails.traceId` so the operator can quote it without a log dive.
+   */
+  private assertResponseOk<T>(
+    operation: DpdAssertOperation,
+    response: { readonly status: string; readonly traceId?: string },
+    assert: () => T,
+  ): T {
+    try {
+      return assert();
+    } catch (error) {
+      if (error instanceof ShippingProviderRejectionException) {
+        // Strip the base64 `documentData` (present on label/protocol responses)
+        // before serializing: a malformed DPD response pairing a non-OK status
+        // with a populated document would otherwise dump a full base64 PDF into
+        // structured logs. Only status + validation-info envelope is loggable.
+        const loggable = { ...(response as Record<string, unknown>) };
+        delete loggable.documentData;
+        this.logger.warn(
+          `DPD ${operation} rejected (status=${response.status}) [traceId=${response.traceId ?? 'none'}]; raw response: ${JSON.stringify(loggable)}`,
+        );
+        throw response.traceId ? withTraceId(error, response.traceId) : error;
+      }
+      throw error;
+    }
+  }
+}
+
+/** Return a copy of the rejection with DPD's `traceId` merged into `providerDetails`. */
+function withTraceId(
+  error: ShippingProviderRejectionException,
+  traceId: string,
+): ShippingProviderRejectionException {
+  // Reconstruct through the constructor so Error's non-enumerable `message`
+  // semantics are preserved, then backfill every own enumerable field from the
+  // original via Object.assign — so a future field added to the exception (e.g.
+  // an `isRetryable` flag) is carried through automatically instead of being
+  // silently dropped here. `providerDetails` is re-applied last with the
+  // traceId merged in, so it wins over the copied original.
+  const enriched = new ShippingProviderRejectionException(
+    error.providerName,
+    error.providerCode,
+    error.message,
+    error.providerDetails,
+  );
+  Object.assign(enriched, error, {
+    providerDetails: { ...(error.providerDetails ?? {}), traceId },
+  });
+  // Preserve the original throw site (the mapper assert) rather than the stack
+  // captured here, so triage points at where the rejection actually originated.
+  if (error.stack) {
+    enriched.stack = error.stack;
+  }
+  return enriched;
 }
