@@ -10488,6 +10488,16 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   margin: 0;
 }
 
+/* #1800 — persisted rejection reason on a Failed shipment (revisit view) */
+.order-shipment-panel__error-message {
+  margin: 0;
+}
+
+.order-shipment-panel__error-meta {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-sm);
+}
+
 /* Loading-state skeleton (avoids CLS on first paint while connections
  * settle — tech-review SUGGESTION). Reserves the same vertical footprint
  * the populated panel will occupy. */
@@ -10523,6 +10533,27 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 
 /* ── Shipment action buttons (#769) ────────────────────────────────────── */
+
+/* ── Shipments list — failed-shipment reason under the status badge (#1800) ── */
+.shipment-status-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  align-items: flex-start;
+}
+
+.shipment-status-cell__error {
+  max-width: 32ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--status-error-fg);
+  font-size: var(--font-size-sm);
+}
+
+.shipment-status-cell__failed-at {
+  font-size: var(--font-size-sm);
+}
 
 .shipment-action-buttons {
   display: flex;
@@ -10814,6 +10845,13 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 
 .generate-label-form__error .structured-error-list {
   margin-top: var(--space-2);
+}
+
+/* #1800 — carrier support-reference (traceId) line under the error breakdown */
+.generate-label-form__error-trace {
+  margin: var(--space-2) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
 }
 
 .generate-label-form__missing-list {

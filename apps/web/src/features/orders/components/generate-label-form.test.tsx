@@ -1031,3 +1031,61 @@ describe('GenerateLabelForm — #1806 carrier field-error breakdown', () => {
     expect(document.querySelector('.structured-error-list')).toBeNull();
   });
 });
+
+// ── #1800 — surface the carrier support-reference (traceId) in the Alert ──
+
+describe('GenerateLabelForm — #1800 carrier support-reference (traceId)', () => {
+  function fillParcelAndSubmit(): void {
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+  }
+
+  it('renders the generic message plus the support-reference line when the 502 carries a traceId', async () => {
+    const apiClient = createMockApiClient({
+      shipments: {
+        generateLabel: vi.fn().mockRejectedValue(
+          new ApiError('DPD create was rejected (status=NOT_PROCESSED).', 502, {
+            providerCode: 'NOT_PROCESSED',
+            details: { traceId: 'trace-xyz-789' },
+          }),
+        ),
+      },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+    fillParcelAndSubmit();
+
+    // Generic message still renders (never replaced, only augmented).
+    expect(
+      await screen.findByText(/DPD create was rejected \(status=NOT_PROCESSED\)/i),
+    ).toBeInTheDocument();
+    // Support-reference line renders with the trace id.
+    expect(screen.getByText(/Reference for carrier support:/i)).toBeInTheDocument();
+    expect(screen.getByText('trace-xyz-789')).toBeInTheDocument();
+  });
+
+  it('does not render the support-reference line when the error carries no traceId', async () => {
+    const apiClient = createMockApiClient({
+      shipments: {
+        generateLabel: vi.fn().mockRejectedValue(
+          new ApiError('DPD create was rejected.', 502, { providerCode: 'NOT_PROCESSED' }),
+        ),
+      },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+    fillParcelAndSubmit();
+
+    expect(await screen.findByText('DPD create was rejected.')).toBeInTheDocument();
+    expect(screen.queryByText(/Reference for carrier support:/i)).not.toBeInTheDocument();
+  });
+});

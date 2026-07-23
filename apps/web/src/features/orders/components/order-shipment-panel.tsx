@@ -177,6 +177,21 @@ function OrderShipmentPanelBody({
   return (
     <div className="order-shipment-panel__body">
       <KeyValueList items={items} />
+      {/* Persisted rejection (#1800) — the richer `errorMessage` / `failedAt`
+          the dispatch service stored on a failed shipment. Without this the
+          reason was visible only synchronously during the failing
+          generate-label mutation, never on a later revisit to a Failed
+          shipment. */}
+      {shipment.status === 'failed' && shipment.errorMessage ? (
+        <Alert tone="error" className="order-shipment-panel__error">
+          <p className="order-shipment-panel__error-message">{shipment.errorMessage}</p>
+          {shipment.failedAt ? (
+            <p className="order-shipment-panel__error-meta text-muted">
+              Failed at {new Date(shipment.failedAt).toLocaleString()}
+            </p>
+          ) : null}
+        </Alert>
+      ) : null}
       {mutationError ? (
         <Alert tone="error" className="order-shipment-panel__error">
           {mutationError}

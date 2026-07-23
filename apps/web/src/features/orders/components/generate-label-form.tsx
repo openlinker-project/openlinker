@@ -49,6 +49,7 @@ import {
 import { ordersQueryKeys } from '../api/orders.query-keys';
 import {
   extractShippingFieldErrors,
+  extractShippingTraceId,
   useGenerateLabelMutation,
   useLabelDownload,
   type GenerateLabelInput,
@@ -150,6 +151,11 @@ export function GenerateLabelForm({
   const mutation = useGenerateLabelMutation();
   const labelDownload = useLabelDownload();
   const { showToast } = useToast();
+
+  // Carrier support-reference (#1800). Non-ApiError / traceId-less errors
+  // resolve to null, so the reference line stays absent until a carrier that
+  // attaches one (today DPD, #1781) rejects the label.
+  const errorTraceId = extractShippingTraceId(mutation.error);
 
   // AC-3 retry hint (#839) — when the order is Allegro-sourced + the
   // buyer's pickup-point hasn't been resolved yet + the order is young
@@ -478,11 +484,20 @@ export function GenerateLabelForm({
       {/* API error at top (#1806) — the generic carrier message always
           renders; a structured per-field breakdown (e.g. ShipX
           `details.fieldErrors`) is appended underneath when the mutation
-          error carries one, so the operator knows exactly what to fix. */}
+          error carries one, so the operator knows exactly what to fix. A
+          carrier support-reference (`traceId`, e.g. DPD's — #1800) renders
+          last, so the operator can quote it to carrier support without a log
+          dive. */}
       {mutation.error ? (
         <Alert tone="error" className="generate-label-form__error">
           <p className="generate-label-form__error-message">{mutation.error.message}</p>
           <StructuredErrorList errors={extractShippingFieldErrors(mutation.error)} />
+          {errorTraceId ? (
+            <p className="generate-label-form__error-trace">
+              Reference for carrier support:{' '}
+              <span className="mono-text">{errorTraceId}</span>
+            </p>
+          ) : null}
         </Alert>
       ) : null}
 

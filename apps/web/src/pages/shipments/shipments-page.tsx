@@ -56,6 +56,34 @@ function inclusiveEndOfDay(dateOnly: string): string {
   return dateOnly.includes('T') ? dateOnly : `${dateOnly}T23:59:59.999Z`;
 }
 
+/**
+ * Status column / mobile-card-meta renderer (#1800). For a failed shipment the
+ * persisted rejection reason renders under the badge — clamped to one line with
+ * the full message on hover — plus when it failed, so the operator sees why on a
+ * later revisit rather than only synchronously during the failing
+ * generate-label call. Shared between the table cell and the mobile card `meta`
+ * slot (the DataTable renders one or the other by viewport) so the reason has
+ * list parity at every breakpoint.
+ */
+function ShipmentStatusCell({ shipment }: { shipment: Shipment }): ReactElement {
+  const showError = shipment.status === 'failed' && shipment.errorMessage;
+  return (
+    <div className="shipment-status-cell">
+      <ShipmentStatusBadge status={shipment.status} />
+      {showError ? (
+        <span className="shipment-status-cell__error" title={shipment.errorMessage ?? undefined}>
+          {shipment.errorMessage}
+        </span>
+      ) : null}
+      {shipment.status === 'failed' && shipment.failedAt ? (
+        <span className="shipment-status-cell__failed-at text-muted">
+          <TimeDisplay iso={shipment.failedAt} />
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export function ShipmentsPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const { sort, setSort } = useTableSort([{ id: 'createdAt', desc: true }]);
@@ -187,7 +215,7 @@ export function ShipmentsPage(): ReactElement {
     {
       id: 'status',
       header: 'Status',
-      cell: (s) => <ShipmentStatusBadge status={s.status} />,
+      cell: (s) => <ShipmentStatusCell shipment={s} />,
       accessor: (s) => s.status,
       sortable: true,
     },
@@ -397,7 +425,7 @@ export function ShipmentsPage(): ReactElement {
                 ) : (
                   <EntityLabel id={s.orderId} to={`/orders/${s.orderId}`} showId />
                 ),
-              meta: (s) => <ShipmentStatusBadge status={s.status} />,
+              meta: (s) => <ShipmentStatusCell shipment={s} />,
             }}
           />
 

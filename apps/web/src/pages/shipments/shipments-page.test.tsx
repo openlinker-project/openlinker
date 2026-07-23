@@ -33,6 +33,26 @@ function page(items: Shipment[]): PaginatedShipments {
   return { items, total: items.length, limit: 20, offset: 0 };
 }
 
+/** Forces the DataTable's `useMediaQuery('(max-width: 767.98px)')` to report a
+ * mobile viewport so the card view (not the table) renders. Mirrors the
+ * `mockMobileViewport` helper in `data-table.test.tsx`. */
+function mockMobileViewport(): { restore: () => void } {
+  const spy = vi.spyOn(window, 'matchMedia').mockImplementation(
+    (query) =>
+      ({
+        matches: query.includes('max-width'),
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }) as MediaQueryList,
+  );
+  return { restore: () => spy.mockRestore() };
+}
+
 function makeConnection(overrides: Partial<Connection> = {}): Connection {
   return {
     id: 'conn_inpost',
@@ -74,6 +94,79 @@ describe('ShipmentsPage', () => {
     // Status word renders in both the table cell and the mobile card meta.
     expect((await screen.findAllByText('generated')).length).toBeGreaterThan(0);
     expect(screen.getByText('Shipments')).toBeInTheDocument();
+  });
+
+  it('should render the persisted rejection reason under the status for a Failed shipment (#1800)', async () => {
+    const mockApi = createMockApiClient({
+      shipments: {
+        list: vi.fn().mockResolvedValue(
+          page([
+            makeShipment({
+              status: 'failed',
+              trackingNumber: null,
+              failedAt: '2026-05-28T12:34:56.000Z',
+              errorMessage: 'DPD rejected the shipment (NOT_PROCESSED).',
+            }),
+          ]),
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+    // The persisted reason renders in the status cell (table + mobile card).
+    expect(
+      (await screen.findAllByText('DPD rejected the shipment (NOT_PROCESSED).')).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('should render the persisted rejection reason in the mobile card view too (#1800)', async () => {
+    // The DataTable renders the card view (not the table) on a mobile
+    // viewport, so the failure reason must reach the card `meta` slot as well —
+    // triage-from-phone parity per frontend-ui-style-guide § Responsive.
+    const viewport = mockMobileViewport();
+    try {
+      const mockApi = createMockApiClient({
+        shipments: {
+          list: vi.fn().mockResolvedValue(
+            page([
+              makeShipment({
+                status: 'failed',
+                trackingNumber: null,
+                failedAt: '2026-05-28T12:34:56.000Z',
+                errorMessage: 'DPD rejected the shipment (NOT_PROCESSED).',
+              }),
+            ]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([]) },
+      });
+
+      const { container } = renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+      await screen.findByText('DPD rejected the shipment (NOT_PROCESSED).');
+      // Confirm it rendered inside a card, not a table row.
+      expect(container.querySelector('.data-table__card')).not.toBeNull();
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it('should not render an error line for a non-failed shipment (#1800)', async () => {
+    const mockApi = createMockApiClient({
+      shipments: {
+        list: vi.fn().mockResolvedValue(
+          page([makeShipment({ status: 'delivered', errorMessage: 'stale earlier failure' })]),
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+    expect((await screen.findAllByText('delivered')).length).toBeGreaterThan(0);
+    expect(screen.queryByText('stale earlier failure')).not.toBeInTheDocument();
   });
 
   it('should pass URL filters through to the query (incl. hasTracking=false coercion)', async () => {

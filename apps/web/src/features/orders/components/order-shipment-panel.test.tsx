@@ -179,6 +179,52 @@ describe('OrderShipmentPanel — populated state', () => {
     expect(screen.getByText(/operator-selected/i)).toBeInTheDocument();
   });
 
+  it('should render the persisted rejection reason and failed-at for a Failed shipment (#1800)', async () => {
+    const shipment = makeShipment({
+      status: 'failed',
+      trackingNumber: null,
+      carrier: 'dpd',
+      failedAt: '2026-05-28T12:34:56.000Z',
+      errorMessage: 'DPD rejected the shipment (NOT_PROCESSED). traceId=trace-xyz-789',
+    });
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, { apiClient });
+
+    expect(
+      await screen.findByText(/DPD rejected the shipment \(NOT_PROCESSED\)\. traceId=trace-xyz-789/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Failed at/i)).toBeInTheDocument();
+  });
+
+  it('should not render a persisted-error Alert for a non-failed shipment even if errorMessage is set (#1800)', async () => {
+    // Defensive: only the `failed` status gates the persisted-error Alert, so
+    // a stale errorMessage on a recovered shipment never re-surfaces.
+    const shipment = makeShipment({
+      status: 'delivered',
+      errorMessage: 'stale message from an earlier failed attempt',
+    });
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    const { container } = renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, {
+      apiClient,
+    });
+
+    await screen.findByText('InPost');
+    expect(container.querySelector('.order-shipment-panel__error')).toBeNull();
+    expect(screen.queryByText(/stale message from an earlier failed attempt/i)).not.toBeInTheDocument();
+  });
+
   it('should label the paczkomat as buyer-selected via Allegro when the shipping connection is Allegro', async () => {
     const shipment = makeShipment({ connectionId: 'conn-allegro-delivery' });
     const apiClient = createMockApiClient({
