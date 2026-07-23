@@ -18,6 +18,8 @@ import {
 } from '../../domain/ports/webhook-secret-provider.port';
 import { IntegrationCredentialRepositoryPort } from '../../domain/ports/integration-credential-repository.port';
 import { CredentialNotFoundException } from '../../domain/exceptions/credential-not-found.exception';
+import { CallerSuppliedWebhookSecretNotSupportedException } from '../../domain/exceptions/caller-supplied-webhook-secret-not-supported.exception';
+import { acceptsCallerSuppliedWebhookSecret } from '../../domain/types/webhook-secret.types';
 import {
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
   WEBHOOK_SECRET_PROVIDER_TOKEN,
@@ -69,6 +71,15 @@ export class WebhookSecretService implements IWebhookSecretService {
     actorUserId?: string
   ): Promise<void> {
     const connection = await this.connectionPort.get(connectionId);
+
+    // Guard (#1770 review): `set` accepts an arbitrary caller-supplied value,
+    // so it's only safe for platforms that mint their own secret externally.
+    // Any other connection's secret is server-rotated only - accepting a
+    // pasted value here would silently desync it from what that platform
+    // actually signs with.
+    if (!acceptsCallerSuppliedWebhookSecret(connection.platformType)) {
+      throw new CallerSuppliedWebhookSecretNotSupportedException(connection.platformType);
+    }
 
     await this.persist(connection.platformType, connectionId, secret);
     this.secretProvider.invalidate(provider, connectionId);

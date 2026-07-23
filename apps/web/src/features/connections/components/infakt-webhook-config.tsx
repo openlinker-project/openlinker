@@ -4,8 +4,9 @@
  * Operator UI to finish inFakt webhook setup (#1770). inFakt owns the exchange:
  * it has no webhook-provisioning API and mints the HMAC secret itself, so the
  * operator registers OL's endpoint in the inFakt dashboard (activation is the
- * `verification_code` ping OL echoes automatically) and, optionally, pastes the
- * inFakt-generated signing secret back into OL. This replaces the deprecated
+ * `verification_code` ping OL echoes automatically) and pastes the
+ * inFakt-generated signing secret back into OL - required, since an unsigned
+ * delivery is rejected outright. This replaces the deprecated
  * `OPENLINKER_WEBHOOK_SECRET__INFAKT` env var.
  *
  * Lives in the connections feature (not the inFakt plugin) so both the plugin's
@@ -19,14 +20,25 @@
  * @module features/connections/components
  */
 import { useMemo, useState, type ReactElement } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
 import { useSetWebhookSecretMutation } from '../hooks/use-set-webhook-secret-mutation';
 import { useWebhookStatusQuery } from '../hooks/use-webhook-status-query';
 import type { Connection, WebhookStatus } from '../api/connections.types';
+import {
+  INFAKT_WEBHOOK_SECRET_DEFAULT_VALUES,
+  infaktWebhookSecretSchema,
+  type InfaktWebhookSecretFormSubmission,
+  type InfaktWebhookSecretFormValues,
+} from './infakt-webhook-secret.schema';
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from '../../../shared/ui/dialog';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
+import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { CopyableId } from '../../../shared/ui/copyable-id';
+import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
+import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import { useToast } from '../../../shared/ui/toast-provider';
 
 // The events an operator ticks in inFakt's "Nowy webhook" form. Labels are
@@ -54,42 +66,49 @@ function resolveApiBaseUrl(config: Connection['config']): string {
   return window.location.origin;
 }
 
-function activationLabel(status: WebhookStatus): { tone: string; text: string } {
+// Exported so the plugin's ConnectionActions row (#1770) can render the same
+// humanized labels instead of leaking the raw `WebhookStatus` enum values.
+export function activationLabel(status: WebhookStatus): { tone: StatusBadgeTone; text: string } {
   return status.activation === 'verified'
-    ? { tone: 'ok', text: 'Active · deliveries seen' }
-    : { tone: 'warn', text: 'Awaiting first event' };
+    ? { tone: 'success', text: 'Active · deliveries seen' }
+    : { tone: 'warning', text: 'Awaiting first event' };
 }
 
-function signatureLabel(status: WebhookStatus): { tone: string; text: string } {
-  switch (status.signature) {
-    case 'configured':
-      return { tone: 'ok', text: 'Configured' };
-    case 'mismatch':
-      return { tone: 'err', text: 'Signature mismatch' };
-    default:
-      return { tone: 'warn', text: 'Not configured' };
-  }
+export function signatureLabel(status: WebhookStatus): { tone: StatusBadgeTone; text: string } {
+  return status.signature === 'configured'
+    ? { tone: 'success', text: 'Configured' }
+    : { tone: 'warning', text: 'Not configured' };
 }
 
-function StatusStrip({ connectionId }: { connectionId: string }): ReactElement {
-  const statusQuery = useWebhookStatusQuery(connectionId);
-
-  if (statusQuery.isLoading) {
+function StatusStrip({
+  status,
+  isLoading,
+  isError,
+  onRetry,
+}: {
+  status: WebhookStatus | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
+}): ReactElement {
+  if (isLoading) {
     return (
       <div className="infakt-webhook__status" aria-live="polite">
         <span className="muted-text">Checking webhook status…</span>
       </div>
     );
   }
-  if (statusQuery.error || !statusQuery.data) {
+  if (isError || !status) {
     return (
       <div className="infakt-webhook__status">
         <span className="muted-text">Couldn&apos;t load webhook status.</span>
+        <Button tone="secondary" type="button" onClick={onRetry}>
+          Retry
+        </Button>
       </div>
     );
   }
 
-  const status = statusQuery.data;
   const activation = activationLabel(status);
   const signature = signatureLabel(status);
 
@@ -97,23 +116,21 @@ function StatusStrip({ connectionId }: { connectionId: string }): ReactElement {
     <div className="infakt-webhook__status">
       <div className="infakt-webhook__status-item">
         <span className="infakt-webhook__status-key">Activation</span>
-        <span className={`infakt-webhook__status-val infakt-webhook__status-val--${activation.tone}`}>
-          <span className="infakt-webhook__dot" aria-hidden="true" />
+        <StatusBadge tone={activation.tone} withDot>
           {activation.text}
-        </span>
+        </StatusBadge>
       </div>
       <div className="infakt-webhook__status-item">
-        <span className="infakt-webhook__status-key">Signature (optional)</span>
-        <span className={`infakt-webhook__status-val infakt-webhook__status-val--${signature.tone}`}>
-          <span className="infakt-webhook__dot" aria-hidden="true" />
+        <span className="infakt-webhook__status-key">Signature</span>
+        <StatusBadge tone={signature.tone} withDot>
           {signature.text}
-        </span>
+        </StatusBadge>
       </div>
       {status.lastDeliveryAt ? (
         <div className="infakt-webhook__status-item">
           <span className="infakt-webhook__status-key">Last delivery</span>
           <span className="infakt-webhook__status-val infakt-webhook__status-val--muted mono-text">
-            {status.lastDeliveryEvent ?? 'event'} · {status.lastDeliveryResult ?? 'ok'}
+            {status.lastDeliveryEvent ?? 'event'} · {status.lastDeliveryResult ?? 'unknown'}
           </span>
         </div>
       ) : null}
@@ -124,40 +141,61 @@ function StatusStrip({ connectionId }: { connectionId: string }): ReactElement {
 export function InfaktWebhookConfig({ connection }: { connection: Connection }): ReactElement {
   const { showToast } = useToast();
   const setSecret = useSetWebhookSecretMutation();
-  const [secret, setSecret_] = useState('');
+  const statusQuery = useWebhookStatusQuery(connection.id);
+  const [pendingOverwriteOpen, setPendingOverwriteOpen] = useState(false);
 
   const webhookUrl = useMemo(
     () => `${resolveApiBaseUrl(connection.config)}/webhooks/infakt/${connection.id}`,
     [connection.config, connection.id],
   );
 
-  async function handleSaveSecret(): Promise<void> {
+  const form = useForm<InfaktWebhookSecretFormValues, undefined, InfaktWebhookSecretFormSubmission>({
+    defaultValues: INFAKT_WEBHOOK_SECRET_DEFAULT_VALUES,
+    resolver: zodResolver(infaktWebhookSecretSchema),
+  });
+
+  async function persistSecret(values: InfaktWebhookSecretFormSubmission): Promise<void> {
     try {
-      await setSecret.mutateAsync({ connectionId: connection.id, secret });
-      setSecret_('');
+      await setSecret.mutateAsync({ connectionId: connection.id, secret: values.secret });
+      form.reset(INFAKT_WEBHOOK_SECRET_DEFAULT_VALUES);
       showToast({
         tone: 'success',
         title: 'Signing secret saved',
         description: 'OpenLinker will now verify inFakt delivery signatures.',
       });
-    } catch (error) {
-      showToast({
-        tone: 'error',
-        title: 'Could not save the signing secret',
-        description: (error as Error).message,
-      });
+    } catch {
+      // Surfaced inline via setSecret.error below - a single error channel.
     }
+  }
+
+  const onSubmit = form.handleSubmit((values) => {
+    // A secret already exists: confirm before overwriting, since the new
+    // value breaks deliveries until the operator re-syncs inFakt to match.
+    if (statusQuery.data?.signature === 'configured') {
+      setPendingOverwriteOpen(true);
+      return;
+    }
+    void persistSecret(values);
+  });
+
+  async function confirmOverwrite(): Promise<void> {
+    setPendingOverwriteOpen(false);
+    await persistSecret(form.getValues());
   }
 
   return (
     <div className="infakt-webhook">
       <p className="infakt-webhook__intro muted-text">
         inFakt signs each delivery and mints the secret itself, so OpenLinker can&apos;t register
-        the webhook for you. Register the endpoint in inFakt, then optionally paste the secret it
-        shows you.
+        the webhook for you. Register the endpoint in inFakt, then paste the secret it shows you.
       </p>
 
-      <StatusStrip connectionId={connection.id} />
+      <StatusStrip
+        status={statusQuery.data}
+        isLoading={statusQuery.isLoading}
+        isError={Boolean(statusQuery.error)}
+        onRetry={() => void statusQuery.refetch()}
+      />
 
       <div className="infakt-webhook__exchange">
         <div className="infakt-webhook__lane">
@@ -205,38 +243,37 @@ export function InfaktWebhookConfig({ connection }: { connection: Connection }):
           <span className="infakt-webhook__dir">
             <span className="infakt-webhook__dir-badge">From inFakt</span>
             You paste back
-            <span className="infakt-webhook__tag">Optional</span>
           </span>
           <p className="infakt-webhook__lane-label">HMAC signing secret</p>
-          <div className="infakt-webhook__field">
-            <Input
-              type="password"
-              value={secret}
-              onChange={(event) => setSecret_(event.target.value)}
-              placeholder="Paste secret from inFakt…"
-              autoComplete="off"
-              aria-label="inFakt webhook signing secret"
-              className="mono-text"
-            />
-            <Button
-              tone="primary"
-              type="button"
-              onClick={() => void handleSaveSecret()}
-              disabled={setSecret.isPending || secret.trim().length === 0}
+          <form className="infakt-webhook__field" onSubmit={(event) => void onSubmit(event)} noValidate>
+            <FormField
+              label="Signing secret"
+              name="secret"
+              error={form.formState.errors.secret?.message}
             >
+              <Input
+                {...form.register('secret')}
+                type="password"
+                placeholder="Paste secret from inFakt…"
+                autoComplete="off"
+                className="mono-text"
+                invalid={Boolean(form.formState.errors.secret)}
+              />
+            </FormField>
+            <Button tone="primary" type="submit" disabled={setSecret.isPending}>
               {setSecret.isPending ? 'Saving…' : 'Save secret'}
             </Button>
-          </div>
+          </form>
           {setSecret.error ? (
             <Alert tone="error" title="Could not save the signing secret">
               {setSecret.error.message}
             </Alert>
           ) : null}
           <p className="infakt-webhook__hint muted-text">
-            For signed deliveries, open the webhook&apos;s details in inFakt &rarr;{' '}
-            <em>Sekretny klucz do HMAC</em> and paste that value here. OpenLinker then verifies{' '}
+            A signing secret is required for OpenLinker to accept deliveries: open the
+            webhook&apos;s details in inFakt &rarr; <em>Sekretny klucz do HMAC</em> and paste that
+            value here. OpenLinker then verifies{' '}
             <code className="mono-text">X-Infakt-Signature</code> and rejects mismatches with 401.
-            Leave blank to accept unsigned deliveries.
           </p>
         </div>
       </div>
@@ -250,6 +287,16 @@ export function InfaktWebhookConfig({ connection }: { connection: Connection }):
           a new server-side value inFakt would never know, breaking every delivery.
         </p>
       </details>
+
+      <ConfirmDialog
+        open={pendingOverwriteOpen}
+        onOpenChange={setPendingOverwriteOpen}
+        title="Replace signing secret?"
+        description="This breaks deliveries until inFakt is updated to match."
+        confirmLabel="Replace secret"
+        isConfirming={setSecret.isPending}
+        onConfirm={() => void confirmOverwrite()}
+      />
     </div>
   );
 }

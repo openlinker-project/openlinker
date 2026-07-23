@@ -67,6 +67,8 @@ export type {
 export {
   InfaktWebhookConfig,
   InfaktWebhookConfigDialog,
+  activationLabel as infaktWebhookActivationLabel,
+  signatureLabel as infaktWebhookSignatureLabel,
 } from './components/infakt-webhook-config';
 
 export { ConnectionEntityLabel } from './components/ConnectionEntityLabel';

@@ -15,12 +15,12 @@ import {
   WebhookSecretProviderPort,
   WEBHOOK_SECRET_PROVIDER_TOKEN,
 } from '@openlinker/core/integrations';
-import type { IWebhookStatusService } from '../interfaces/webhook-status.service.interface';
-import type { WebhookStatus } from '../types/webhook-status.types';
 import {
   WEBHOOK_DELIVERY_QUERY_SERVICE_TOKEN,
   type IWebhookDeliveryQueryService,
-} from '../../../webhooks/application/interfaces/webhook-delivery-query.service.interface';
+} from '@openlinker/api/webhooks/application/interfaces/webhook-delivery-query.service.interface';
+import type { IWebhookStatusService } from '../interfaces/webhook-status.service.interface';
+import type { WebhookStatus } from '../types/webhook-status.types';
 
 @Injectable()
 export class WebhookStatusService implements IWebhookStatusService {
@@ -46,11 +46,10 @@ export class WebhookStatusService implements IWebhookStatusService {
 
     return {
       activation: latest ? 'verified' : 'not-registered',
-      signature: !hasSecret
-        ? 'off'
-        : latest?.signatureValid === false
-          ? 'mismatch'
-          : 'configured',
+      // No `mismatch` branch (#1770 review): a failed signature check is
+      // rejected before any delivery row is written, so `signatureValid` is
+      // never recorded as false here - see the type doc for the follow-up.
+      signature: hasSecret ? 'configured' : 'off',
       lastDeliveryAt: latest ? latest.receivedAt.toISOString() : null,
       lastDeliveryEvent: latest?.eventType ?? null,
       lastDeliveryResult: latest?.status ?? null,

@@ -27,7 +27,7 @@ import { InfaktCredentialsPanel } from './components/infakt-credentials-panel';
 import { InfaktInvoiceCorrectionFlow } from './components/infakt-invoice-correction-flow';
 import { InfaktInvoiceDetailSection } from './components/infakt-invoice-detail-section';
 import { InfaktStructuredSection } from './components/infakt-structured-section';
-import { InfaktWebhookConnectionActions } from './components/infakt-webhook-config';
+import { InfaktWebhookConnectionActions } from './components/infakt-webhook-connection-actions';
 import { infaktSetupRoute } from './infakt-setup.route';
 
 export const infaktPlugin: OpenLinkerPlugin = definePlugin({

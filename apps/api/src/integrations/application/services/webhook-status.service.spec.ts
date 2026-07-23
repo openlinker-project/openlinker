@@ -7,7 +7,7 @@ import type { ConnectionPort, Connection } from '@openlinker/core/identifier-map
 import type { WebhookSecretProviderPort } from '@openlinker/core/integrations';
 import type { WebhookDelivery, PaginatedWebhookDeliveries } from '@openlinker/core/webhooks';
 import { WebhookStatusService } from './webhook-status.service';
-import type { IWebhookDeliveryQueryService } from '../../../webhooks/application/interfaces/webhook-delivery-query.service.interface';
+import type { IWebhookDeliveryQueryService } from '@openlinker/api/webhooks/application/interfaces/webhook-delivery-query.service.interface';
 
 describe('WebhookStatusService', () => {
   const connectionId = 'conn-1';
@@ -75,18 +75,22 @@ describe('WebhookStatusService', () => {
     });
   });
 
-  it('reports mismatch when a secret is stored but the last delivery failed signature', async () => {
+  it('reports configured when a secret is stored, regardless of the recorded delivery (#1770 review)', async () => {
+    // `signatureValid` is only ever recorded as `true` (a failed check is
+    // rejected before any row is written) - `signature` derives from
+    // `hasSecret` alone. `delivery(false)` here documents that a
+    // hypothetically-false stored value still doesn't flip the result.
     deliveryQuery.list.mockResolvedValue(page([delivery(false)]));
     secretProvider.has.mockResolvedValue(true);
 
     const status = await subject.getStatus(connectionId);
 
-    expect(status.signature).toBe('mismatch');
+    expect(status.signature).toBe('configured');
     expect(status.activation).toBe('verified');
   });
 
-  it('reports off (not mismatch) when the last delivery failed but no secret is stored', async () => {
-    deliveryQuery.list.mockResolvedValue(page([delivery(false)]));
+  it('reports off when no secret is stored', async () => {
+    deliveryQuery.list.mockResolvedValue(page([delivery(true)]));
     secretProvider.has.mockResolvedValue(false);
 
     const status = await subject.getStatus(connectionId);

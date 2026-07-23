@@ -12,10 +12,13 @@
 import { useState, type ReactElement } from 'react';
 import {
   InfaktWebhookConfigDialog,
+  infaktWebhookActivationLabel,
+  infaktWebhookSignatureLabel,
   useWebhookStatusQuery,
   type Connection,
 } from '../../../features/connections';
 import { Button } from '../../../shared/ui/button';
+import { StatusBadge } from '../../../shared/ui/status-badge';
 
 export function InfaktWebhookConnectionActions({
   connection,
@@ -37,21 +40,16 @@ export function InfaktWebhookConnectionActions({
           optionally, verify delivery signatures.
         </p>
         {summary ? (
-          <div className="infakt-webhook__events" style={{ marginTop: 'var(--space-2)' }}>
-            <span
-              className={`infakt-webhook__chip ${
-                summary.activation === 'verified' ? 'infakt-webhook__chip--on' : ''
-              }`}
-            >
-              Activation: {summary.activation === 'verified' ? 'verified' : 'pending'}
-            </span>
-            <span
-              className={`infakt-webhook__chip ${
-                summary.signature === 'configured' ? 'infakt-webhook__chip--on' : ''
-              }`}
-            >
-              Signature: {summary.signature}
-            </span>
+          <div
+            className="infakt-webhook__events"
+            style={{ marginTop: 'var(--space-2)', display: 'flex', gap: 'var(--space-2)' }}
+          >
+            <StatusBadge tone={infaktWebhookActivationLabel(summary).tone} withDot compact>
+              Activation: {infaktWebhookActivationLabel(summary).text}
+            </StatusBadge>
+            <StatusBadge tone={infaktWebhookSignatureLabel(summary).tone} withDot compact>
+              Signature: {infaktWebhookSignatureLabel(summary).text}
+            </StatusBadge>
           </div>
         ) : null}
       </div>

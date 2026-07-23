@@ -7,6 +7,7 @@
  * @module apps/api/src/integrations/http
  */
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
@@ -30,7 +31,11 @@ import { RotateWebhookSecretResponseDto } from './dto/rotate-webhook-secret-resp
 import { InstallWebhooksResponseDto } from './dto/install-webhooks-response.dto';
 import { SetWebhookSecretDto } from './dto/set-webhook-secret.dto';
 import { WebhookStatusResponseDto } from './dto/webhook-status-response.dto';
-import { IWebhookSecretService, WEBHOOK_SECRET_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import {
+  IWebhookSecretService,
+  WEBHOOK_SECRET_SERVICE_TOKEN,
+  CallerSuppliedWebhookSecretNotSupportedException,
+} from '@openlinker/core/integrations';
 import {
   IWebhookStatusService,
   WEBHOOK_STATUS_SERVICE_TOKEN,
@@ -289,7 +294,17 @@ export class ConnectionController {
     @CurrentUser() user: AuthenticatedUser
   ): Promise<void> {
     const connection = await this.connectionService.get(id);
-    await this.webhookSecretService.set(connection.platformType, id, dto.secret, user?.id);
+    try {
+      await this.webhookSecretService.set(connection.platformType, id, dto.secret, user?.id);
+    } catch (error) {
+      // Domain guard (#1770 review): `set` only accepts a caller-supplied
+      // secret for platforms that mint one themselves (inFakt) - every other
+      // connection's secret is server-rotated only. Map to 400, not 500.
+      if (error instanceof CallerSuppliedWebhookSecretNotSupportedException) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
   }
 
   /**

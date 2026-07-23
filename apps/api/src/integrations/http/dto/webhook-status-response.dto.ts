@@ -7,12 +7,12 @@
  * @module apps/api/src/integrations/http/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
-import type { WebhookStatus } from '../../application/types/webhook-status.types';
 import {
   WebhookActivationValues,
   WebhookSignatureStateValues,
   type WebhookActivation,
   type WebhookSignatureState,
+  type WebhookStatus,
 } from '../../application/types/webhook-status.types';
 
 export class WebhookStatusResponseDto {

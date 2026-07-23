@@ -18,6 +18,7 @@ import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 import {
   INTEGRATIONS_SERVICE_TOKEN,
   WEBHOOK_SECRET_SERVICE_TOKEN,
+  CallerSuppliedWebhookSecretNotSupportedException,
 } from '@openlinker/core/integrations';
 import { WEBHOOK_STATUS_SERVICE_TOKEN } from '../application/interfaces/webhook-status.service.interface';
 import type { SyncJobRepositoryPort } from '@openlinker/core/sync';
@@ -169,6 +170,17 @@ describe('ConnectionController', () => {
         'pasted-secret',
         'user-1'
       );
+    });
+
+    it('maps CallerSuppliedWebhookSecretNotSupportedException to BadRequestException (#1770 review)', async () => {
+      service.get.mockResolvedValue(mockConnection);
+      webhookSecretService.set.mockRejectedValue(
+        new CallerSuppliedWebhookSecretNotSupportedException('prestashop')
+      );
+
+      await expect(
+        controller.setWebhookSecret('connection-123', { secret: 'pasted-secret' }, mockAdminUser)
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

@@ -78,11 +78,13 @@ export class CredentialsWebhookSecretAdapter implements WebhookSecretProviderPor
     // real `getSecret` read if it fired here first.
     const connectionKey = `OPENLINKER_WEBHOOK_SECRET__${provider.toUpperCase()}__${connectionId.toUpperCase()}`;
     const providerKey = `OPENLINKER_WEBHOOK_SECRET__${provider.toUpperCase()}`;
-    return (
-      (this.configService.get<string>(connectionKey) ??
-        this.configService.get<string>(providerKey) ??
-        null) !== null
-    );
+    // `||` (not `??`) so an empty-string env value - e.g.
+    // `OPENLINKER_WEBHOOK_SECRET__INFAKT=""` - falls through to the
+    // provider-level key / absent, rather than short-circuiting truthy just
+    // because it's non-null (#1770 review).
+    const value =
+      this.configService.get<string>(connectionKey) || this.configService.get<string>(providerKey);
+    return Boolean(value && value.length > 0);
   }
 
   invalidate(provider: string, connectionId: string): void {

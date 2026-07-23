@@ -179,7 +179,7 @@ export interface RotateWebhookSecretResult {
  * configured (optional). Backs the inFakt webhook-config modal.
  */
 export type WebhookActivation = 'not-registered' | 'verified';
-export type WebhookSignatureState = 'off' | 'configured' | 'mismatch';
+export type WebhookSignatureState = 'off' | 'configured';
 
 export interface WebhookStatus {
   activation: WebhookActivation;
