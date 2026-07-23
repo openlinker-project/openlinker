@@ -400,6 +400,14 @@ function resolveRecipientName(recipient: ShipmentRecipient): string | undefined 
  * rejection whose primary reason is a different error never gets a mismatched
  * "Incorrect receiver postal code… {sender hint}" pairing. The `providerCode`
  * discriminator and structured `providerDetails` are left untouched.
+ *
+ * Decision (reviewed): the gate stays keyed to the primary entry only — a
+ * sender-postcode issue appearing as a SECONDARY entry is intentionally NOT
+ * narrated in the prose message. Narrating a non-primary hint would risk the
+ * mismatched-prose pairing above, and DPD's parcel-first precedence means a
+ * true sender-postcode blocker surfaces as the primary entry in practice. The
+ * secondary entry is never lost: the full ordered set (including any
+ * sender-postcode entry) is always carried on `providerDetails.validationInfo`.
  */
 function reject(allInfos: DpdValidationInfo[], fallback: string): ShippingProviderRejectionException {
   const first = allInfos[0];
