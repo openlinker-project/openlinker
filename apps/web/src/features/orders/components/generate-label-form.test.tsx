@@ -1031,3 +1031,60 @@ describe('GenerateLabelForm — #1806 carrier field-error breakdown', () => {
     expect(document.querySelector('.structured-error-list')).toBeNull();
   });
 });
+
+// ── #1800 — surface carrier support reference (traceId) in the error Alert ──
+
+describe('GenerateLabelForm — #1800 carrier support reference', () => {
+  function fillParcelAndSubmit(): void {
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+  }
+
+  it('should render a copyable carrier support reference when the 502 nests a traceId on providerDetails', async () => {
+    const apiClient = createMockApiClient({
+      shipments: {
+        generateLabel: vi.fn().mockRejectedValue(
+          // Real DPD envelope: traceId merged into providerDetails →
+          // controller wraps it as `{ message, providerCode, details }`, so on
+          // the FE it lands at ApiError.details.details.traceId.
+          new ApiError('DPD could not process the shipment.', 502, {
+            providerCode: 'NOT_PROCESSED',
+            details: { errorCode: null, info: 'rejected', traceId: 'trace-xyz-789' },
+          }),
+        ),
+      },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+    fillParcelAndSubmit();
+
+    expect(await screen.findByText(/DPD could not process the shipment/i)).toBeInTheDocument();
+    expect(screen.getByText(/Reference for carrier support/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Copy support reference trace-xyz-789' }),
+    ).toBeInTheDocument();
+  });
+
+  it('should not render the support-reference line when the mutation error carries no traceId', async () => {
+    const apiClient = createMockApiClient({
+      shipments: {
+        generateLabel: vi.fn().mockRejectedValue(new ApiError('Carrier is unreachable', 502, null)),
+      },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+    fillParcelAndSubmit();
+
+    expect(await screen.findByText('Carrier is unreachable')).toBeInTheDocument();
+    expect(screen.queryByText(/Reference for carrier support/i)).toBeNull();
+  });
+});

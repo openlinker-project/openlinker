@@ -49,6 +49,7 @@ import {
 import { ordersQueryKeys } from '../api/orders.query-keys';
 import {
   extractShippingFieldErrors,
+  extractShippingTraceId,
   useGenerateLabelMutation,
   useLabelDownload,
   type GenerateLabelInput,
@@ -478,11 +479,15 @@ export function GenerateLabelForm({
       {/* API error at top (#1806) — the generic carrier message always
           renders; a structured per-field breakdown (e.g. ShipX
           `details.fieldErrors`) is appended underneath when the mutation
-          error carries one, so the operator knows exactly what to fix. */}
+          error carries one, so the operator knows exactly what to fix.
+          A carrier support reference (`traceId`, e.g. DPD's undiagnosable
+          `NOT_PROCESSED`, #1800) renders last when present, so the operator
+          can quote it to carrier support without a log dive. */}
       {mutation.error ? (
         <Alert tone="error" className="generate-label-form__error">
           <p className="generate-label-form__error-message">{mutation.error.message}</p>
           <StructuredErrorList errors={extractShippingFieldErrors(mutation.error)} />
+          <ShippingTraceReference traceId={extractShippingTraceId(mutation.error)} />
         </Alert>
       ) : null}
 
@@ -792,4 +797,39 @@ function collectValidationMessages(
     if (typeof message === 'string') messages.push(message);
   }
   return messages;
+}
+
+/**
+ * Carrier support reference (#1800). Renders the carrier-assigned `traceId`
+ * (e.g. DPD's, surfaced on an undiagnosable `NOT_PROCESSED` rejection) with a
+ * click-to-copy affordance so the operator can quote it to carrier support.
+ * Renders nothing when the error carries no trace id, so the caller can pass
+ * `extractShippingTraceId(...)` unconditionally.
+ */
+function ShippingTraceReference({ traceId }: { traceId: string | null }): ReactElement | null {
+  const [copied, setCopied] = useState(false);
+
+  if (traceId === null) return null;
+
+  const handleCopy = (): void => {
+    void navigator.clipboard?.writeText(traceId).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
+  return (
+    <p className="generate-label-form__error-trace">
+      Reference for carrier support:{' '}
+      <button
+        type="button"
+        className="generate-label-form__error-trace-id mono-text"
+        onClick={handleCopy}
+        aria-label={copied ? `Copied ${traceId}` : `Copy support reference ${traceId}`}
+      >
+        {traceId}
+        {copied ? <span className="generate-label-form__error-trace-copied">copied</span> : null}
+      </button>
+    </p>
+  );
 }

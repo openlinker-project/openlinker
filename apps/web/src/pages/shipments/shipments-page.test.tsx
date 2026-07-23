@@ -297,3 +297,42 @@ describe('ShipmentsPage', () => {
     expect(filters).toMatchObject({ hasProviderShipmentId: true });
   });
 });
+
+describe('ShipmentsPage — failed-shipment hint (#1800)', () => {
+  afterEach(cleanup);
+
+  it('should render the persisted errorMessage for a failed shipment', async () => {
+    const failed = makeShipment({
+      id: 'ol_shipment_failed',
+      status: 'failed',
+      errorMessage: 'DPD rejected: sender postal code not serviceable',
+      failedAt: '2026-05-20T12:00:00.000Z',
+      trackingNumber: null,
+    });
+    const mockApi = createMockApiClient({
+      shipments: { list: vi.fn().mockResolvedValue(page([failed])) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+    // The message renders in the status cell (table + mobile card => >=1).
+    expect(
+      (await screen.findAllByText(/sender postal code not serviceable/i)).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('should not render an error hint for a non-failed shipment', async () => {
+    const mockApi = createMockApiClient({
+      shipments: {
+        list: vi.fn().mockResolvedValue(page([makeShipment({ status: 'delivered', errorMessage: null })])),
+      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    const { container } = renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+    expect((await screen.findAllByText('delivered')).length).toBeGreaterThan(0);
+    expect(container.querySelector('.shipment-status-cell__error')).toBeNull();
+  });
+});
