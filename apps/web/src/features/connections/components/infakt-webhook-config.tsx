@@ -183,9 +183,15 @@ export function InfaktWebhookConfig({ connection }: { connection: Connection }):
   }
 
   const onSubmit = form.handleSubmit((values) => {
-    // A secret already exists: confirm before overwriting, since the new
-    // value breaks deliveries until the operator re-syncs inFakt to match.
-    if (statusQuery.data?.signature === 'configured') {
+    // A working secret already exists: confirm before overwriting, since the
+    // new value breaks deliveries until the operator re-syncs inFakt to match.
+    // Skip the confirm when `activation === 'auth-failing'`: the stored secret
+    // is wrong (every delivery is being rejected), so re-pasting the correct
+    // one is the repair the red alert asks for - there is nothing to break.
+    if (
+      statusQuery.data?.signature === 'configured' &&
+      statusQuery.data?.activation !== 'auth-failing'
+    ) {
       setPendingOverwriteOpen(true);
       return;
     }

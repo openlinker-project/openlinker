@@ -24,7 +24,6 @@ export function InfaktWebhookConnectionActions({
   connection,
 }: {
   connection: Connection;
-  readOnly?: boolean;
 }): ReactElement {
   const [open, setOpen] = useState(false);
   const statusQuery = useWebhookStatusQuery(connection.id, { enabled: !open });
@@ -36,8 +35,8 @@ export function InfaktWebhookConnectionActions({
       <div>
         <strong>Webhook setup</strong>
         <p className="muted-text">
-          Deliver KSeF clearance events from inFakt in real time. Register the endpoint and,
-          optionally, verify delivery signatures.
+          Deliver KSeF clearance events from inFakt in real time. Register the endpoint and paste
+          its signing secret.
         </p>
         {summary ? (
           <div

@@ -149,6 +149,33 @@ describe('InfaktWebhookConfig', () => {
     expect(await findToastTitle('Signing secret saved')).toBeInTheDocument();
   });
 
+  it('saves directly without the overwrite confirm when repairing an auth-failing secret (#1814)', async () => {
+    // In auth-failing the stored secret is wrong (deliveries are being rejected),
+    // so re-pasting the correct one is a repair - the break-warning must not fire.
+    const setWebhookSecret = vi.fn().mockResolvedValue(undefined);
+    const apiClient = createMockApiClient({
+      connections: {
+        getWebhookStatus: vi
+          .fn()
+          .mockResolvedValue(status({ activation: 'auth-failing', signature: 'configured' })),
+        setWebhookSecret,
+      },
+    });
+    renderWithProviders(<InfaktWebhookConfig connection={infaktConnection} />, { apiClient });
+
+    await screen.findByText('Deliveries failing · check secret');
+    fireEvent.change(screen.getByLabelText('Signing secret'), {
+      target: { value: 'whsec_repaired_value' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save secret' }));
+
+    await waitFor(() =>
+      expect(setWebhookSecret).toHaveBeenCalledWith('conn-if-1', 'whsec_repaired_value'),
+    );
+    expect(screen.queryByText('Replace signing secret?')).not.toBeInTheDocument();
+    expect(await findToastTitle('Signing secret saved')).toBeInTheDocument();
+  });
+
   it('surfaces a mutation error inline instead of as a toast', async () => {
     const setWebhookSecret = vi.fn().mockRejectedValue(new Error('inFakt rejected the secret'));
     const apiClient = createMockApiClient({
