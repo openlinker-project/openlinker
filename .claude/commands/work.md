@@ -25,8 +25,8 @@ Follow each phase below in sequence. **Pause for user input** at the decision po
 After the user picks the issue(s), **before** creating the worktree, run a lightweight claim-lock so parallel sessions don't collide. All GitHub operations use the MCP GitHub tools (`gh` CLI is not installed).
 
 1. **Verify the issue is still actionable** — for each picked issue:
-   - `issue_read` — confirm it is still `OPEN` (skip if closed).
-   - Confirm it isn't already fixed: search merged PRs (`list_pull_requests` / `search_pull_requests`) and `git log origin/main --grep "#<n>"` for work that already landed. If it looks fixed, surface that and stop rather than duplicating it.
+   - `get_issue` — confirm it is still `OPEN` (skip if closed).
+   - Confirm it isn't already fixed: search merged PRs (`list_pull_requests`) and `git log origin/main --grep "#<n>"` for work that already landed. If it looks fixed, surface that and stop rather than duplicating it.
 
 2. **Check for an existing claim** — note that parallel OpenLinker sessions all authenticate as the **same** GitHub account, so the GitHub *actor* cannot tell two sessions apart. The lock therefore keys on the **branch name**, not the assignee:
    - Read the issue's comments for a marker of the form
@@ -37,7 +37,7 @@ After the user picks the issue(s), **before** creating the worktree, run a light
 
 3. **Post the claim** via the MCP GitHub tools:
    - `add_issue_comment` with `🤖 claimed for work by branch \`<issue>-<slug>\` at <ISO-timestamp>`.
-   - If the repo has an `in-progress` label (verify once with `get_label`; if it doesn't exist, ask the user to create it or fall back to comment-only locking), add it via `issue_write`.
+   - If the repo has an `in-progress` label (check the issue's current labels via `get_issue`; if the label doesn't exist in the repo, ask the user to create it or fall back to comment-only locking), add it via `update_issue`.
 
 > The claim is advisory — it prevents accidental double-work, not malicious races. Never block on it silently; always tell the user what you found.
 
@@ -180,7 +180,7 @@ No quality-gate rerun is needed for prose-only doc edits (`check:invariants` tar
 If the user says to ship it:
 5. Push the branch and create a PR with `Closes #N` in the body. The body **must** include a `## Docs` section carrying the Phase 4.5 doc-impact statement (`path → what changed`, or `None — <reason>`) so the documentation decision is visible in review.
 6. Output the PR URL
-7. **Release the claim**: remove the `in-progress` label (if it was applied) via `issue_write`. The PR's `Closes #N` handles closure on merge — never close the issue manually. If work is **abandoned** instead of shipped, also release the label so another session can pick the issue up.
+7. **Release the claim**: remove the `in-progress` label (if it was applied) via `update_issue`. The PR's `Closes #N` handles closure on merge — never close the issue manually. If work is **abandoned** instead of shipped, also release the label so another session can pick the issue up.
 
 ---
 
