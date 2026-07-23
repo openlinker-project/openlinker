@@ -115,4 +115,21 @@ export class OrderRecord {
     const { methodId } = shipping as Record<string, unknown>;
     return typeof methodId === 'string' ? methodId : null;
   }
+
+  /**
+   * Typed, fail-safe read of the source-side delivery method's human label
+   * (#1792) from the snapshot (`orderSnapshot.shipping.methodName`). Pure
+   * derivation of an already-loaded field (ADR-011): no I/O, no mutation.
+   * Mirrors {@link sourceDeliveryMethodId} — the delivery-rider heuristic keys
+   * mainly on this label (a marketplace method id is typically opaque). Returns
+   * `null` when the source exposed no label or the snapshot predates the field.
+   */
+  get sourceDeliveryMethodName(): string | null {
+    const shipping = this.orderSnapshot.shipping;
+    if (typeof shipping !== 'object' || shipping === null) {
+      return null;
+    }
+    const { methodName } = shipping as Record<string, unknown>;
+    return typeof methodName === 'string' ? methodName : null;
+  }
 }

@@ -18,6 +18,7 @@ import { OrderSyncStatusResponseDto } from './order-sync-status-response.dto';
 import { SyncAttemptResponseDto } from './sync-attempt-response.dto';
 import type { OrderInvoiceProjectionDto } from './order-invoice-projection.dto';
 import { OrderDeliveryResolutionDto } from './order-delivery-resolution.dto';
+import { OrderDeliveryRiderDto } from './order-delivery-rider.dto';
 
 export class OrderRecordResponseDto {
   @ApiProperty({ description: 'Internal order ID (e.g. ol_order_...)' })
@@ -108,4 +109,26 @@ export class OrderRecordResponseDto {
       'routing behaviour — a pure derived read.',
   })
   deliveryResolution?: OrderDeliveryResolutionDto;
+
+  @ApiPropertyOptional({
+    type: OrderDeliveryRiderDto,
+    description:
+      'Read-only actionable delivery hint (#1792) for a "default"-resolved order — Add mapping / ' +
+      'Connect {carrier} / nothing. Present alongside deliveryResolution when the order carries a ' +
+      'source delivery method; absent otherwise. The heuristic only picks which hint to show — it ' +
+      'never influences routing/dispatch.',
+  })
+  deliveryRider?: OrderDeliveryRiderDto;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Source delivery method id (#1791) — the Add-mapping deep-link target.',
+  })
+  sourceDeliveryMethodId?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Source delivery method label (#1791).',
+  })
+  sourceDeliveryMethodName?: string | null;
 }
