@@ -61,6 +61,7 @@ function renderPanel(
   renderWithProviders(
     <RoutingRulesPanel
       connectionId="conn_1"
+      sourceLabel="Allegro"
       deliveryMethods={DELIVERY_METHODS}
       deliveryMethodsLoading={false}
       deliveryMethodsError={null}
@@ -185,6 +186,7 @@ describe('RoutingRulesPanel', () => {
       const { container } = renderWithProviders(
         <RoutingRulesPanel
           connectionId="conn_1"
+          sourceLabel="Allegro"
           deliveryMethods={DELIVERY_METHODS}
           deliveryMethodsLoading={false}
           deliveryMethodsError={null}
@@ -206,6 +208,7 @@ describe('RoutingRulesPanel', () => {
       const { container } = renderWithProviders(
         <RoutingRulesPanel
           connectionId="conn_1"
+          sourceLabel="Allegro"
           deliveryMethods={DELIVERY_METHODS}
           deliveryMethodsLoading={false}
           deliveryMethodsError={null}

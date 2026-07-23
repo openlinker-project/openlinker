@@ -33,7 +33,16 @@ interface MappingPanelProps {
   saveError: Error | null;
   optionsLoading: boolean;
   optionsError: Error | null;
+  /**
+   * Suffix appended to `kind === 'dynamic'` options to explain the runtime
+   * behaviour (#517). Platform-neutral (#1784): the caller passes the resolved
+   * source label, e.g. ` - exact Allegro cost`. Defaults to a generic cue so
+   * the dynamic option is still distinguishable if a caller omits it.
+   */
+  dynamicOptionSuffix?: string;
 }
+
+const DEFAULT_DYNAMIC_OPTION_SUFFIX = ' - dynamic';
 
 /**
  * Truncates a long stable id (Allegro UUIDs are 36 chars) to 8 + "…" so it
@@ -50,28 +59,20 @@ function optionByValue(options: MappingOption[], value: string): MappingOption |
 }
 
 /**
- * Suffix appended to `kind === 'dynamic'` options to distinguish them from
- * static carriers (#517). Native `<option>` is text-only so the cue lives
- * in the label string itself; the cockpit-style separator is the em-dash
- * established elsewhere in OpenLinker FE copy. Keep this short — it
- * appends to a 32 px-tall native select cell at 13.5 px IBM Plex Sans.
- */
-const DYNAMIC_OPTION_SUFFIX = ' — exact Allegro cost';
-
-/**
  * Renders a `MappingOption` with the human label as the primary text and a
  * faded mono id-hint when the value differs from the label (#474). When
- * `value === label` (degraded data — adapter fell back to using the id as
+ * `value === label` (degraded data - adapter fell back to using the id as
  * the name), render a single label and skip the redundant hint.
  *
- * Dynamic-kind options (#517) carry a muted suffix explaining the runtime
- * behaviour. Suffix lives outside the mono id-hint span so it stays in
- * the body sans, not the monospace id treatment.
+ * Dynamic-kind options (#517) carry a muted `suffix` explaining the runtime
+ * behaviour. The suffix is resolved by the caller (platform-neutral, #1784)
+ * and lives outside the mono id-hint span so it stays in the body sans, not
+ * the monospace id treatment.
  */
-function renderOptionLabel(option: MappingOption): ReactNode {
+function renderOptionLabel(option: MappingOption, suffix: string): ReactNode {
   const dynamicSuffix =
     option.kind === 'dynamic' ? (
-      <span className="mapping-option__dynamic-suffix">{DYNAMIC_OPTION_SUFFIX}</span>
+      <span className="mapping-option__dynamic-suffix">{suffix}</span>
     ) : null;
 
   if (option.label === option.value) {
@@ -96,12 +97,12 @@ function renderOptionLabel(option: MappingOption): ReactNode {
  * styled children, so the id chip is approximated as parenthesised text
  * and the dynamic-kind cue is appended as a label suffix (#517).
  */
-function optionPlainText(option: MappingOption): string {
+function optionPlainText(option: MappingOption, suffix: string): string {
   const base =
     option.label === option.value
       ? option.label
       : `${option.label} (${shortValue(option.value)})`;
-  return option.kind === 'dynamic' ? `${base}${DYNAMIC_OPTION_SUFFIX}` : base;
+  return option.kind === 'dynamic' ? `${base}${suffix}` : base;
 }
 
 export function MappingPanel({
@@ -117,6 +118,7 @@ export function MappingPanel({
   saveError,
   optionsLoading,
   optionsError,
+  dynamicOptionSuffix = DEFAULT_DYNAMIC_OPTION_SUFFIX,
 }: MappingPanelProps): ReactElement {
   const [localRows, setLocalRows] = useState<MappingRow[]>(savedRows);
   const [pendingSource, setPendingSource] = useState('');
@@ -191,7 +193,7 @@ export function MappingPanel({
           No mappings configured yet. Orders may sync with default values. Add one below.
         </p>
       ) : (
-        <table className="data-table" aria-label={`${title} mappings`}>
+        <table className="data-table data-table--stackable" aria-label={`${title} mappings`}>
           <thead>
             <tr>
               <th>{sourceLabel}</th>
@@ -205,21 +207,21 @@ export function MappingPanel({
               const targetOption = optionByValue(targetOptions, row.targetValue);
               return (
                 <tr key={row.sourceValue}>
-                  <td>
+                  <td data-label={sourceLabel}>
                     {sourceOption ? (
-                      renderOptionLabel(sourceOption)
+                      renderOptionLabel(sourceOption, dynamicOptionSuffix)
                     ) : (
                       <span className="mono-text">{row.sourceValue}</span>
                     )}
                   </td>
-                  <td>
+                  <td data-label={targetLabel}>
                     {targetOption ? (
-                      renderOptionLabel(targetOption)
+                      renderOptionLabel(targetOption, dynamicOptionSuffix)
                     ) : (
                       <span className="mono-text">{row.targetValue}</span>
                     )}
                   </td>
-                  <td>
+                  <td className="data-table__cell--actions">
                     <Button
                       tone="ghost"
                       aria-label={`Remove mapping for ${sourceOption?.label ?? 'orphaned source'}`}
@@ -243,9 +245,9 @@ export function MappingPanel({
           onChange={(e) => { setPendingSource(e.target.value); }}
           disabled={availableSourceOptions.length === 0}
         >
-          <option value="">— {sourceLabel} —</option>
+          <option value="">Select {sourceLabel}</option>
           {availableSourceOptions.map((o) => (
-            <option key={o.value} value={o.value}>{optionPlainText(o)}</option>
+            <option key={o.value} value={o.value}>{optionPlainText(o, dynamicOptionSuffix)}</option>
           ))}
         </select>
 
@@ -254,9 +256,9 @@ export function MappingPanel({
           value={pendingTarget}
           onChange={(e) => { setPendingTarget(e.target.value); }}
         >
-          <option value="">— {targetLabel} —</option>
+          <option value="">Select {targetLabel}</option>
           {targetOptions.map((o) => (
-            <option key={o.value} value={o.value}>{optionPlainText(o)}</option>
+            <option key={o.value} value={o.value}>{optionPlainText(o, dynamicOptionSuffix)}</option>
           ))}
         </select>
 

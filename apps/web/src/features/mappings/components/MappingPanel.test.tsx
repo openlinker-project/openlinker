@@ -23,6 +23,8 @@ const baseProps = {
   saveError: null,
   optionsLoading: false,
   optionsError: null,
+  // Suffix is caller-provided (#1784); pass the resolved-source form the page uses.
+  dynamicOptionSuffix: ' - exact Allegro cost',
 };
 
 const ALLEGRO_PACZKOMAT: MappingOption = {
@@ -140,8 +142,8 @@ describe('MappingPanel', () => {
       const options = within(targetSelect).getAllByRole('option');
       // Static option: bare label + (id) — no behaviour suffix.
       expect(options[1]).toHaveTextContent('InPost Paczkomat (5)');
-      // Dynamic option: same shape + " — exact Allegro cost" suffix.
-      expect(options[2]).toHaveTextContent('OpenLinker Dynamic (99) — exact Allegro cost');
+      // Dynamic option: same shape + " - exact Allegro cost" suffix.
+      expect(options[2]).toHaveTextContent('OpenLinker Dynamic (99) - exact Allegro cost');
     });
 
     it('decorates dynamic-kind options in the saved-row table cell (#517)', () => {
@@ -166,7 +168,7 @@ describe('MappingPanel', () => {
       // <option> renders flat text. Scope the assertion to the styled
       // span by class so we only catch the cell instance.
       const styledSuffixes = screen
-        .getAllByText(/— exact Allegro cost/)
+        .getAllByText(/- exact Allegro cost/)
         .filter((el) => el.classList.contains('mapping-option__dynamic-suffix'));
       expect(styledSuffixes).toHaveLength(1);
     });

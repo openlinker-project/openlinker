@@ -1,19 +1,25 @@
 /**
  * Connection Mappings Page
  *
- * Provides three tabbed panels for configuring Allegro → PrestaShop mappings
- * per connection: order statuses, delivery carriers, and payment methods.
+ * Tabbed editor for the order mappings between a marketplace source and its
+ * paired shop destination (order statuses, carriers, payments, fulfillment
+ * routing, and the outbound order-state override). The source/destination
+ * pair is resolved from the connection's config-stamped pairing via
+ * `useMappingPairing` and shown as a route strip under the title; all copy
+ * uses the resolved platform labels rather than hardcoded platform names.
  *
  * @module apps/web/src/pages/connections
  */
 
 import type { ReactElement, ReactNode } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
 import { Alert } from '../../shared/ui/alert';
 import { MappingPanel, type MappingRow } from '../../features/mappings/components/MappingPanel';
 import { RoutingRulesPanel } from '../../features/mappings/components/routing-rules-panel';
+import { MappingPairingBar } from '../../features/mappings/components/mapping-pairing-bar';
+import { useMappingPairing } from '../../features/mappings/hooks/use-mapping-pairing';
 import { useStatusMappingsQuery, useUpsertStatusMappings } from '../../features/mappings/hooks/use-status-mappings';
 import { useCarrierMappingsQuery, useUpsertCarrierMappings } from '../../features/mappings/hooks/use-carrier-mappings';
 import { usePaymentMappingsQuery, useUpsertPaymentMappings } from '../../features/mappings/hooks/use-payment-mappings';
@@ -24,9 +30,10 @@ import {
 import { useRoutingRulesQuery } from '../../features/mappings/hooks/use-routing-rules';
 import { useMappingOptions } from '../../features/mappings/hooks/use-mapping-options';
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
+import { usePlatforms } from '../../shared/plugins';
+import type { Connection } from '../../features/connections';
 import { OL_ORDER_STATUS_OPTIONS, type MappingOption } from '../../features/mappings/api/mappings.types';
-import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
-import { DesktopOnlyBanner } from '../../shared/ui/desktop-only-banner';
+import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 
 type TabId = 'fulfillment' | 'status' | 'carriers' | 'payments' | 'order-states';
 
@@ -43,20 +50,24 @@ interface FallbackBannerSpec {
  *
  * `unmappedCount` is routing-aware (#836): methods diverted to a non-OMP
  * processor (Allegro Delivery, OL-managed carrier) never flow through PS
- * carrier mapping, so the caller excludes them before counting — the
+ * carrier mapping, so the caller excludes them before counting - the
  * banner only warns about methods that genuinely still need a PS carrier.
  *
+ * `sourceLabel` is the resolved source-platform label (#1784) used in the
+ * OpenLinker-Dynamic copy, instead of a hardcoded platform name.
+ *
  * Decision tree mirrors the BE adapter's resolution chain (#516):
- *   (1) `defaultCarrierId` set        → "using fallback: {name}"   info
- *   (2) OL Dynamic carrier installed   → "using OpenLinker Dynamic" info
- *   (3) neither                        → "sync will fail …"         warning
+ *   (1) `defaultCarrierId` set        -> "using fallback: {name}"   info
+ *   (2) OL Dynamic carrier installed   -> "using OpenLinker Dynamic" info
+ *   (3) neither                        -> "sync will fail ..."       warning
  */
 function deriveCarrierFallbackBanner(args: {
   unmappedCount: number;
   defaultCarrierId: string | null;
   carriers: MappingOption[];
+  sourceLabel: string;
 }): FallbackBannerSpec | null {
-  const { unmappedCount, defaultCarrierId, carriers } = args;
+  const { unmappedCount, defaultCarrierId, carriers, sourceLabel } = args;
   if (unmappedCount <= 0) return null;
 
   const count = (
@@ -64,7 +75,7 @@ function deriveCarrierFallbackBanner(args: {
   );
   const noun = unmappedCount === 1 ? 'method' : 'methods';
 
-  // Case 1 — explicit fallback configured. Resolve the carrier name from
+  // Case 1 - explicit fallback configured. Resolve the carrier name from
   // the loaded options. If the saved id no longer exists in the live
   // options (operator deleted the carrier in BO), fall through to the
   // "no fallback" warning so the operator notices.
@@ -75,33 +86,32 @@ function deriveCarrierFallbackBanner(args: {
         tone: 'info',
         message: (
           <>
-            {count} {noun} unmapped — using fallback: {fallback.label}.
+            {count} {noun} unmapped - using fallback: {fallback.label}.
           </>
         ),
       };
     }
   }
 
-  // Case 2 — OL Dynamic is installed and runtime will fall back to it.
+  // Case 2 - OL Dynamic is installed and runtime will fall back to it.
   const hasDynamic = carriers.some((c) => c.kind === 'dynamic');
   if (hasDynamic) {
     return {
       tone: 'info',
       message: (
         <>
-          {count} {noun} unmapped — using OpenLinker Dynamic (exact Allegro
-          cost) at sync time.
+          {count} {noun} unmapped - using OpenLinker Dynamic (exact {sourceLabel} cost) at sync time.
         </>
       ),
     };
   }
 
-  // Case 3 — no fallback at all. Operator-actionable warning.
+  // Case 3 - no fallback at all. Operator-actionable warning.
   return {
     tone: 'warning',
     message: (
       <>
-        {count} {noun} unmapped — sync will fail until a mapping or fallback
+        {count} {noun} unmapped - sync will fail until a mapping or fallback
         is configured.
       </>
     ),
@@ -110,6 +120,12 @@ function deriveCarrierFallbackBanner(args: {
 
 export function ConnectionMappingsPage(): ReactElement {
   const { connectionId = '' } = useParams();
+  const navigate = useNavigate();
+  const platforms = usePlatforms();
+
+  // Resolve the config-stamped source -> destination pairing (#1784). Drives
+  // both the route strip and every platform label on the page.
+  const pairing = useMappingPairing(connectionId);
 
   const statusQuery = useStatusMappingsQuery(connectionId);
   const carrierQuery = useCarrierMappingsQuery(connectionId);
@@ -117,7 +133,7 @@ export function ConnectionMappingsPage(): ReactElement {
   const orderStateQuery = useOrderStateMappingsQuery(connectionId);
   const { options, isLoading: optionsLoading, errors: optionsErrors } = useMappingOptions(connectionId);
   // Connection config carries `defaultCarrierId` which the carrier
-  // fallback-banner copy depends on (#517). Errors are tolerated — if we
+  // fallback-banner copy depends on (#517). Errors are tolerated - if we
   // can't load the connection we just suppress the banner; the BE still
   // does the right thing at sync time per #516.
   const connectionQuery = useConnectionQuery(connectionId);
@@ -128,7 +144,7 @@ export function ConnectionMappingsPage(): ReactElement {
   const supportsOrderSource =
     connectionQuery.data?.supportedCapabilities.includes('OrderSource') ?? false;
 
-  // The Order-States tab is the OUTBOUND OL→destination override (#862) — it
+  // The Order-States tab is the OUTBOUND OL->destination override (#862) - it
   // belongs to a destination (OrderProcessorManager) connection's own state
   // catalogue, so it's capability-gated to those connections (PrestaShop today),
   // mirroring how Fulfillment is gated to OrderSource. Capability-based, never
@@ -141,29 +157,105 @@ export function ConnectionMappingsPage(): ReactElement {
   // exist otherwise); deduped with the panel's own subscription.
   const routingRulesQuery = useRoutingRulesQuery(connectionId, { enabled: supportsOrderSource });
 
-  // Per-panel error isolation (#484): a failure in one bundle key must not
-  // block the other tabs. Each panel only watches the two keys it actually
-  // reads from.
-  const statusOptionsError =
-    optionsErrors.allegroOrderStatuses ?? optionsErrors.prestashopOrderStatuses ?? null;
-  const carrierOptionsError =
-    optionsErrors.allegroDeliveryMethods ?? optionsErrors.prestashopCarriers ?? null;
-  const paymentOptionsError =
-    optionsErrors.allegroPaymentProviders ?? optionsErrors.prestashopPaymentModules ?? null;
-
   const upsertStatus = useUpsertStatusMappings(connectionId);
   const upsertCarrier = useUpsertCarrierMappings(connectionId);
   const upsertPayment = useUpsertPaymentMappings(connectionId);
   const upsertOrderState = useUpsertOrderStateMappings(connectionId);
 
-  // Outbound OL→PS order-state panel (#862): only the destination dropdown
-  // (prestashopOrderStatuses) loads from the bundle — the source axis is the
-  // fixed OL OrderStatus list. So its options-readiness tracks only that key.
-  const orderStateOptionsError = optionsErrors.prestashopOrderStatuses ?? null;
+  const labelOf = (connection: Connection): string =>
+    platforms.find((p) => p.platformType === connection.platformType)?.displayName ??
+    connection.platformType;
 
-  // Wait for the connection too so the capability-gated Fulfillment tab doesn't
-  // pop in after load. A connection *error* is still tolerated below (the tab
-  // simply stays hidden), matching the carrier-banner's error tolerance.
+  // Resolved platform labels for all page copy (#1784). Neutral fallbacks keep
+  // the labels sensible while the pair is not `ready`.
+  const sourceLabel = pairing.status === 'ready' ? labelOf(pairing.source) : 'the marketplace';
+  const destinationLabel =
+    pairing.status === 'ready' ? labelOf(pairing.destination) : 'the connected shop';
+
+  const backTo = { to: `/connections/${connectionId}`, label: 'Connection' } as const;
+
+  // ── Pairing-driven states (evaluated after all hooks) ───────────────────
+
+  if (pairing.status === 'loading') {
+    return (
+      <PageLayout eyebrow="Connection" title="Mapping Configuration" description="Loading mapping configuration…">
+        <LoadingState liveRegion="off" title="Loading mappings" message="Fetching configured mappings for this connection." />
+      </PageLayout>
+    );
+  }
+
+  if (pairing.status === 'error') {
+    return (
+      <PageLayout backTo={backTo} eyebrow="Connection" title="Mapping Configuration" description="Unable to load mapping configuration.">
+        <ErrorState title="Unable to load mappings" message={pairing.error.message} />
+      </PageLayout>
+    );
+  }
+
+  if (pairing.status === 'unsupported') {
+    const unsupportedLabel = labelOf(pairing.source);
+    return (
+      <PageLayout
+        backTo={backTo}
+        eyebrow="Connection"
+        title="Mapping Configuration"
+        description={`${unsupportedLabel} order mapping isn't supported yet.`}
+      >
+        <MappingPairingBar pairing={pairing} onPickSource={() => undefined} />
+        <EmptyState
+          title={`Mapping isn't available for ${unsupportedLabel} connections yet`}
+          message="Order mapping is available for Allegro to PrestaShop and Erli to PrestaShop today. Support for more platforms is planned."
+        />
+      </PageLayout>
+    );
+  }
+
+  if (pairing.status === 'no-source') {
+    return (
+      <PageLayout
+        backTo={backTo}
+        eyebrow="Connection"
+        title="Mapping Configuration"
+        description={`No marketplace is paired with ${pairing.master.name} yet.`}
+      >
+        <MappingPairingBar pairing={pairing} onPickSource={() => undefined} />
+        <EmptyState
+          title="No marketplace is paired with this shop"
+          message="Order mappings are configured from the marketplace side. Open a marketplace connection (Allegro or Erli) and set its catalog to this shop to pair them."
+          action={
+            <Link className="button button--secondary" to="/connections">
+              Go to connections
+            </Link>
+          }
+        />
+      </PageLayout>
+    );
+  }
+
+  if (pairing.status === 'pick-source') {
+    return (
+      <PageLayout
+        backTo={backTo}
+        eyebrow="Connection"
+        title="Mapping Configuration"
+        description={`Choose a marketplace to configure ${pairing.master.name} mappings.`}
+      >
+        <MappingPairingBar
+          pairing={pairing}
+          onPickSource={(sourceConnectionId) => {
+            void navigate(`/connections/${sourceConnectionId}/mappings`);
+          }}
+        />
+        <EmptyState
+          title="Choose which marketplace to configure"
+          message={`Order mappings belong to a marketplace. Choose which of the ${pairing.candidates.length} paired marketplaces you want to configure against ${pairing.master.name}.`}
+        />
+      </PageLayout>
+    );
+  }
+
+  // ── Ready: the pair is resolved and supported. Load the mapping data. ────
+
   const isLoading =
     statusQuery.isLoading ||
     carrierQuery.isLoading ||
@@ -172,6 +264,22 @@ export function ConnectionMappingsPage(): ReactElement {
     connectionQuery.isLoading;
   const loadError =
     statusQuery.error ?? carrierQuery.error ?? paymentQuery.error ?? orderStateQuery.error ?? null;
+
+  if (isLoading) {
+    return (
+      <PageLayout backTo={backTo} eyebrow="Connection" title="Mapping Configuration" description="Loading mapping configuration…">
+        <LoadingState liveRegion="off" title="Loading mappings" message="Fetching configured mappings for this connection." />
+      </PageLayout>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <PageLayout backTo={backTo} eyebrow="Connection" title="Mapping Configuration" description="Unable to load mapping configuration.">
+        <ErrorState title="Unable to load mappings" message={loadError.message} />
+      </PageLayout>
+    );
+  }
 
   const tabs: { id: TabId; label: string }[] = [
     ...(supportsOrderSource ? [{ id: 'fulfillment' as const, label: 'Fulfillment' }] : []),
@@ -182,21 +290,19 @@ export function ConnectionMappingsPage(): ReactElement {
   ];
   const defaultTab = tabs[0].id;
 
-  if (isLoading) {
-    return (
-      <PageLayout eyebrow="Connection" title="Mappings" description="Loading mapping configuration…">
-        <LoadingState liveRegion="off" title="Loading mappings" message="Fetching configured mappings for this connection." />
-      </PageLayout>
-    );
-  }
-
-  if (loadError) {
-    return (
-      <PageLayout eyebrow="Connection" title="Mappings" description="Unable to load mapping configuration.">
-        <ErrorState title="Unable to load mappings" message={loadError.message} />
-      </PageLayout>
-    );
-  }
+  // Per-panel error isolation (#484): a failure in one bundle key must not
+  // block the other tabs. Each panel only watches the two keys it actually
+  // reads from.
+  const statusOptionsError =
+    optionsErrors.allegroOrderStatuses ?? optionsErrors.prestashopOrderStatuses ?? null;
+  const carrierOptionsError =
+    optionsErrors.allegroDeliveryMethods ?? optionsErrors.prestashopCarriers ?? null;
+  const paymentOptionsError =
+    optionsErrors.allegroPaymentProviders ?? optionsErrors.prestashopPaymentModules ?? null;
+  // Outbound OL->PS order-state panel (#862): only the destination dropdown
+  // (prestashopOrderStatuses) loads from the bundle - the source axis is the
+  // fixed OL OrderStatus list. So its options-readiness tracks only that key.
+  const orderStateOptionsError = optionsErrors.prestashopOrderStatuses ?? null;
 
   const statusRows: MappingRow[] = (statusQuery.data ?? []).map((m) => ({
     sourceValue: m.allegroStatus,
@@ -208,15 +314,10 @@ export function ConnectionMappingsPage(): ReactElement {
     targetValue: m.prestashopCarrierId,
   }));
 
-  // Carrier-fallback banner (#517) — single banner above the carrier panel
-  // summarising the BE runtime fallback chain (#516). Computed up here
-  // rather than inline in the JSX so the conditions (loading/errored/no
-  // unmapped methods) read top-to-bottom. Suppressed when any required
-  // input isn't ready; the BE still does the right thing at sync time.
-  // Routing-aware unmapped count (#836): a method is "unmapped" for the carrier
-  // banner only if it has neither a PS carrier mapping NOR a routing rule
-  // diverting it to a non-PS processor. Subtraction by id (not length) is exact
-  // even when saved rows reference methods no longer in the live options.
+  // Carrier-fallback banner (#517) - single banner above the carrier panel
+  // summarising the BE runtime fallback chain (#516). Routing-aware unmapped
+  // count (#836): a method is "unmapped" only if it has neither a PS carrier
+  // mapping NOR a routing rule diverting it to a non-PS processor.
   const divertedMethodIds = new Set(
     (routingRulesQuery.data ?? []).map((r) => r.sourceDeliveryMethodId),
   );
@@ -243,12 +344,18 @@ export function ConnectionMappingsPage(): ReactElement {
             ? String(connectionConfig.defaultCarrierId)
             : null,
         carriers: options.prestashopCarriers,
+        sourceLabel,
       })
     : null;
 
   const paymentRows: MappingRow[] = (paymentQuery.data ?? []).map((m) => ({
     sourceValue: m.allegroPaymentProvider,
     targetValue: m.prestashopPaymentModule,
+  }));
+
+  const orderStateRows: MappingRow[] = (orderStateQuery.data ?? []).map((m) => ({
+    sourceValue: m.olStatus,
+    targetValue: m.externalStateId,
   }));
 
   function handleSaveStatus(rows: MappingRow[]): void {
@@ -269,11 +376,6 @@ export function ConnectionMappingsPage(): ReactElement {
     });
   }
 
-  const orderStateRows: MappingRow[] = (orderStateQuery.data ?? []).map((m) => ({
-    sourceValue: m.olStatus,
-    targetValue: m.externalStateId,
-  }));
-
   function handleSaveOrderStates(rows: MappingRow[]): void {
     upsertOrderState.mutate({
       items: rows.map((r) => ({ olStatus: r.sourceValue, externalStateId: r.targetValue })),
@@ -282,15 +384,12 @@ export function ConnectionMappingsPage(): ReactElement {
 
   return (
     <PageLayout
-      backTo={{ to: `/connections/${connectionId}`, label: 'Connection' }}
+      backTo={backTo}
       eyebrow="Connection"
       title="Mapping Configuration"
-      description="Configure Allegro → PrestaShop mappings for order statuses, delivery carriers, and payment methods."
+      description={`Configure ${sourceLabel} → ${destinationLabel} mappings for order statuses, delivery carriers, and payment methods.`}
     >
-      <DesktopOnlyBanner>
-        Mapping editors are designed for desktop. On smaller screens the controls below are still
-        visible but large tables may overflow horizontally.
-      </DesktopOnlyBanner>
+      <MappingPairingBar pairing={pairing} onPickSource={() => undefined} />
 
       <Tabs defaultValue={defaultTab} aria-label="Mapping types">
         <TabsList>
@@ -305,6 +404,7 @@ export function ConnectionMappingsPage(): ReactElement {
           <TabsContent value="fulfillment">
             <RoutingRulesPanel
               connectionId={connectionId}
+              sourceLabel={sourceLabel}
               deliveryMethods={options.allegroDeliveryMethods}
               deliveryMethodsLoading={optionsLoading}
               deliveryMethodsError={optionsErrors.allegroDeliveryMethods ?? null}
@@ -315,9 +415,9 @@ export function ConnectionMappingsPage(): ReactElement {
         <TabsContent value="status">
           <MappingPanel
             title="Order Status Mappings"
-            description="Map Allegro order statuses to the corresponding PrestaShop order status IDs."
-            sourceLabel="Allegro status"
-            targetLabel="PrestaShop status"
+            description={`Map ${sourceLabel} order statuses to the corresponding ${destinationLabel} order status IDs.`}
+            sourceLabel={`${sourceLabel} status`}
+            targetLabel={`${destinationLabel} status`}
             sourceOptions={options.allegroOrderStatuses}
             targetOptions={options.prestashopOrderStatuses}
             savedRows={statusRows}
@@ -340,9 +440,9 @@ export function ConnectionMappingsPage(): ReactElement {
           ) : null}
           <MappingPanel
             title="Carrier Mappings"
-            description="Map Allegro delivery method IDs to the corresponding PrestaShop carrier IDs."
-            sourceLabel="Allegro delivery method"
-            targetLabel="PrestaShop carrier"
+            description={`Map ${sourceLabel} delivery method IDs to the corresponding ${destinationLabel} carrier IDs.`}
+            sourceLabel={`${sourceLabel} delivery method`}
+            targetLabel={`${destinationLabel} carrier`}
             sourceOptions={options.allegroDeliveryMethods}
             targetOptions={options.prestashopCarriers}
             savedRows={carrierRows}
@@ -351,15 +451,16 @@ export function ConnectionMappingsPage(): ReactElement {
             saveError={upsertCarrier.error}
             optionsLoading={optionsLoading}
             optionsError={carrierOptionsError}
+            dynamicOptionSuffix={` - exact ${sourceLabel} cost`}
           />
         </TabsContent>
 
         <TabsContent value="payments">
           <MappingPanel
             title="Payment Mappings"
-            description="Map Allegro payment provider names to the corresponding PrestaShop payment module names."
-            sourceLabel="Allegro payment provider"
-            targetLabel="PrestaShop payment module"
+            description={`Map ${sourceLabel} payment provider names to the corresponding ${destinationLabel} payment module names.`}
+            sourceLabel={`${sourceLabel} payment provider`}
+            targetLabel={`${destinationLabel} payment module`}
             sourceOptions={options.allegroPaymentProviders}
             targetOptions={options.prestashopPaymentModules}
             savedRows={paymentRows}
@@ -375,9 +476,9 @@ export function ConnectionMappingsPage(): ReactElement {
           <TabsContent value="order-states">
             <MappingPanel
               title="Order-State Mappings"
-              description="Override which PrestaShop order state each OpenLinker status transitions to. Customised shops (renamed/added states) map here; unmapped statuses use the default-install state."
+              description={`Override which ${destinationLabel} order state each OpenLinker status transitions to. Customised shops (renamed or added states) map here; unmapped statuses use the default-install state.`}
               sourceLabel="OpenLinker status"
-              targetLabel="PrestaShop order state"
+              targetLabel={`${destinationLabel} order state`}
               sourceOptions={OL_ORDER_STATUS_OPTIONS}
               targetOptions={options.prestashopOrderStatuses}
               savedRows={orderStateRows}

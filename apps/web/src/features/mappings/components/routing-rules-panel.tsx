@@ -30,7 +30,9 @@ import {
 
 interface RoutingRulesPanelProps {
   connectionId: string;
-  /** Source delivery methods to route — owned by the page's `useMappingOptions`. */
+  /** Resolved source-platform label for user-facing copy (#1784), e.g. "Allegro". */
+  sourceLabel: string;
+  /** Source delivery methods to route - owned by the page's `useMappingOptions`. */
   deliveryMethods: MappingOption[];
   deliveryMethodsLoading: boolean;
   deliveryMethodsError: Error | null;
@@ -71,6 +73,7 @@ interface DivertOption {
 
 export function RoutingRulesPanel({
   connectionId,
+  sourceLabel,
   deliveryMethods,
   deliveryMethodsLoading,
   deliveryMethodsError,
@@ -277,7 +280,7 @@ export function RoutingRulesPanel({
       </div>
 
       <p className="muted-text" style={{ marginBottom: 'var(--space-4)' }}>
-        Choose how each marketplace delivery method is fulfilled. Methods stay with the default
+        Choose how each {sourceLabel} delivery method is fulfilled. Methods stay with the default
         order-management platform unless you divert them to a connected carrier or
         marketplace-delivery processor.
       </p>
@@ -302,10 +305,10 @@ export function RoutingRulesPanel({
           the source exposes delivery methods.
         </p>
       ) : (
-        <table className="data-table" aria-label="Fulfillment routing rules">
+        <table className="data-table data-table--stackable" aria-label="Fulfillment routing rules">
           <thead>
             <tr>
-              <th>Delivery method</th>
+              <th>{sourceLabel} delivery method</th>
               <th>Routed to</th>
               <th>Change</th>
             </tr>
@@ -315,9 +318,9 @@ export function RoutingRulesPanel({
               const currentKey = selections[method.value] ?? DEFAULT_KEY;
               return (
                 <tr key={method.value}>
-                  <td>{renderMethodLabel(method)}</td>
-                  <td>{renderRoutedTo(currentKey)}</td>
-                  <td>
+                  <td data-label={`${sourceLabel} delivery method`}>{renderMethodLabel(method)}</td>
+                  <td data-label="Routed to">{renderRoutedTo(currentKey)}</td>
+                  <td data-label="Change">
                     <select
                       aria-label={`Fulfillment processor for ${method.label}`}
                       value={currentKey}
