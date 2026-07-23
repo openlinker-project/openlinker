@@ -50,8 +50,8 @@ Use the format below. Be specific. Reference actual file paths. Do not repeat ar
 
 ### Step 5 — Create and assign it
 
-Create the issue on GitHub, then:
-- **Assign it to the requesting user** (`--assignee @me`).
+Create the issue on GitHub using the MCP GitHub tools (consistent with `work.md`, which notes all GitHub operations go through MCP because the `gh` CLI is not installed). Then:
+- **Assign it to the requesting user** - set the assignee via the MCP `update_issue` tool. Do not use `gh` CLI syntax such as `--assignee @me`.
 
 Output the issue URL.
 
@@ -78,23 +78,27 @@ Do **not** apply the `in-progress` label here. That label marks *active work* an
 
 ## Docs impact
 
-[Which documentation the implementation will likely make stale, and why. Cover all three levels — not just the central docs:
+[Which documentation the implementation will likely make stale, and why. Cover all three levels — not just the central docs.
+
+The canonical routing map for the central reference docs is the **Reference Documentation table in `CLAUDE.md`** - treat that table as the single source of truth for which topic lives in which doc. The list below is a diagnosis-time convenience derived from it (`/work` Phase 4.5 carries the same routing); if the two ever appear to disagree, `CLAUDE.md` wins.
 
 **Central reference docs (`docs/`):**
 - `docs/architecture-overview.md` — new port / capability / sub-capability, new cross-context dependency edge, new bounded context, changed data-flow
-- `docs/capabilities.md` — new or changed port sub-capability
+- `docs/capabilities.md` — new or changed port sub-capability. This is the **authoritative, code-synced full inventory** of every sub-capability; `architecture-overview.md` only carries a curated highlight subset. Always update `capabilities.md` for a capability change, even if you also touch the overview.
 - `docs/engineering-standards.md` — new naming/file convention, new DI-token or import-alias rule
 - `docs/migrations.md` — schema change / new migration workflow step
 - `docs/frontend-architecture.md` — new FE state-ownership or module pattern
 - `docs/frontend-ui-style-guide.md` — new shared UI/interaction pattern
 - `docs/testing-guide.md` — new test harness or pattern
-- `docs/lessons.md` — a recurring pitfall worth recording
+- `docs/lessons.md` — a recurring *empirical* pitfall/gotcha worth recording. If what you'd record is actually an architectural *rule*, put it in the canonical doc above (e.g. `engineering-standards.md`) and leave only a pointer here - don't graduate a rule into the regression ledger (matches `lessons.md`'s own preamble).
 
 **Package-local docs** — the touched package's own `README.md`, its `docs/` folder (`setup-guide.md`, `runbook.md`, `tutorial.md`, …), and in-tree notes. Especially relevant for integration adapters (`libs/integrations/<plugin>/`), `apps/web/`, and the root `README.md` when a wire contract, capability, env var, or setup step changes.
 
 **ADR** — if the work embodies a decision with trade-offs affecting multiple contexts or the plugin contract, note that a new/superseding ADR under `docs/architecture/adrs/` will be needed.
 
-If none is expected, write "None expected — <one-line reason>". Do not edit docs now; this section is the pointer `/work` consumes.]
+If none is expected, write "None expected — <one-line reason>". Do not edit docs now; this section is the pointer `/work` consumes.
+
+Note the naming: this issue section is `## Docs impact` (a prediction); the eventual PR carries a `## Docs` section (the realized outcome). The PR `## Docs` is the realized version of this `## Docs impact` - they are deliberately named differently because one is the hypothesis and the other is the confirmed result.]
 
 ## Dependencies
 
