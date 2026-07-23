@@ -709,12 +709,16 @@ export function OrdersListPage(): ReactElement {
             parsed.pickupPoint?.name ??
             null;
           // Mapping-aware delivery chip (#1793): outcome + rider stacked. The
-          // list can't fetch shipments, so `fulfillmentState` (dispatched /
-          // delivered) stands in for "label exists"; the rider comes straight
-          // off the order response (BE-gated to `default` resolutions).
+          // rider comes straight off the order response (BE-gated to `default`
+          // resolutions).
           const deliveryOutcome = deriveDeliveryOutcome({
             processorKind: order.deliveryResolution?.processorKind,
-            hasMethod: carrier != null,
+            // Use the typed #1792 source-method fields (not the snapshot carrier
+            // proxy) so the list agrees with the detail for methodId-only orders.
+            hasMethod: Boolean(order.sourceDeliveryMethodId ?? order.sourceDeliveryMethodName),
+            // Snapshot-only divergence (documented, not silent): the list uses
+            // the rollup `fulfillmentState` because it can't fetch per-row
+            // shipments, whereas the detail uses booked-shipment presence.
             isFulfilled:
               order.fulfillmentState === 'dispatched' || order.fulfillmentState === 'delivered',
           });
@@ -1246,11 +1250,16 @@ export function OrdersListPage(): ReactElement {
                   parsed.shipping?.methodId ??
                   parsed.pickupPoint?.name ??
                   null;
-                // Mapping-aware delivery chip (#1793) — same snapshot-only
-                // derivation as the desktop cell.
+                // Mapping-aware delivery chip (#1793) — same derivation as the
+                // desktop cell.
                 const deliveryOutcome = deriveDeliveryOutcome({
                   processorKind: order.deliveryResolution?.processorKind,
-                  hasMethod: carrier != null,
+                  // Typed #1792 source-method fields, to match the detail (see desktop cell).
+                  hasMethod: Boolean(
+                    order.sourceDeliveryMethodId ?? order.sourceDeliveryMethodName,
+                  ),
+                  // Snapshot-only divergence (documented): list uses the rollup
+                  // fulfillmentState; detail uses booked-shipment presence.
                   isFulfilled:
                     order.fulfillmentState === 'dispatched' ||
                     order.fulfillmentState === 'delivered',

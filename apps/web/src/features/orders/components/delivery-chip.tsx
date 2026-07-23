@@ -16,9 +16,10 @@
  *
  * Colours reuse the design tokens via `StatusBadge`: green (`success`) =
  * resolved, blue (`info`) = awaiting-label, grey (`neutral`, dashed) = no
- * method / shop-fulfilled, amber (`warning`) = unmapped, signal-orange
- * (`--accent-primary`, via a className override) = not-connected. Colour is
- * never the only signal — every chip carries its text label + tone dot.
+ * method / shop-fulfilled, amber (`warning`) = unmapped, semantic conflict
+ * orange (`--status-conflict`, via a className override — distinct from the
+ * brand accent) = not-connected. Colour is never the only signal — every
+ * chip carries its text label + tone dot.
  *
  * @module apps/web/src/features/orders/components
  */
