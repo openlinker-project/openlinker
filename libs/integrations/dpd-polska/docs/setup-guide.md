@@ -36,7 +36,11 @@ connection that generates labels + handover protocols over the REST
 2. Platform: **DPD**.
 3. Fill the **sender address**:
    - `address`, `city`
-   - `postalCode` — PL format `NN-NNN`
+   - `postalCode` — PL format `NN-NNN`. **It must be a real, deliverable DPD
+     code that matches the sender `city`** — OpenLinker only checks the `NN-NNN`
+     format, not deliverability. A syntactically-valid but out-of-region code
+     (e.g. `Warszawa` + `22-213`, a Lublin-region code) is accepted at save time
+     but rejected by DPD on every shipment (see Troubleshooting).
    - `countryCode` — ISO 3166-1 alpha-2 (e.g. `PL`)
    - `company` / `name` / `phone` / `email` (optional)
 4. **Payer FID**: your numeric `payerFid` (**required**). Set **Master FID**
@@ -55,8 +59,10 @@ connection that generates labels + handover protocols over the REST
 
 - **`payerFid must be a numeric string`** / **`masterFid must be a numeric string`** — strip any non-digit characters from the FID (`payerFid` is required, `masterFid` optional).
 - **`postalCode must match the PL format NN-NNN`** — sender postcode must be `NN-NNN`.
+- **Shipments fail with `INCORRECT_SENDER_POSTAL_CODE` (surfaced as `NOT_PROCESSED`)** — the sender postcode is a valid `NN-NNN` string but is not a deliverable DPD code for the configured sender `city` (e.g. `Warszawa` paired with a Lublin-region `22-213`). The connection saves fine because OpenLinker validates only the `NN-NNN` format, but DPD rejects every `generatePackagesNumbers` call. Fix the sender `postalCode` on the DPD connection to a real code that matches the city (e.g. a Warsaw `02-222`), then retry the shipment. OpenLinker now appends an actionable hint to this rejection so the message names the sender-address config as the fix.
 - **Auth / `needs_reauth`** — login, password, or environment mismatch; the DPD auth-failure classifier flags the connection for re-auth. Re-check credentials against the issued environment.
 - **Labels generate but tracking is empty** — tracking is a *separate* SOAP host (`DPDInfoServices`); verify it's reachable independently of the REST endpoint.
+- **Shipment create fails with `NOT_PROCESSED` and an empty `providerCode`** — DPD returns business rejections as HTTP 200 with a non-OK body status, and sometimes without a field-level `errorCode`. The adapter now logs the **raw DPD response body, minus any binary document payload** (the base64 `documentData` field is stripped before logging), at `WARN` (search the API/worker logs for `DPD create rejected`), keyed by DPD's `traceId`, and surfaces that `traceId` on the error's `providerDetails`. Quote the `traceId` to DPD support to recover the underlying cause.
 
 ## Related
 
