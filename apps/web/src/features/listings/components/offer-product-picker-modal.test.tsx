@@ -9,7 +9,7 @@
  *   - connection auto-resolve (1) vs picker (2+)
  *   - Continue disabled with no selection
  */
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as ReactRouterDom from 'react-router-dom';
 import type { ApiClient } from '../../../app/api/api-client';
@@ -377,6 +377,67 @@ describe('OfferProductPickerModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
     expect(screen.queryByText('Discard changes?')).not.toBeInTheDocument();
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  describe('query error + retry branches', () => {
+    const oneProductPage = (): PaginatedProductsShape => ({
+      items: [P1],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    });
+
+    it('shows an error with Retry when the products query fails, and Retry refetches', async () => {
+      const list = vi.fn().mockRejectedValue(new Error('products boom'));
+      const mockApi = createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([conn('conn_a', 'Allegro', 'allegro')]) },
+        products: { list },
+      });
+      renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+        apiClient: mockApi,
+      });
+
+      expect(await screen.findByText(/unable to load products/i)).toBeInTheDocument();
+      const before = list.mock.calls.length;
+      fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+      await waitFor(() => expect(list.mock.calls.length).toBeGreaterThan(before));
+    });
+
+    it('shows an error with Retry when the connections query fails, and Retry refetches', async () => {
+      const connectionsList = vi.fn().mockRejectedValue(new Error('connections down'));
+      const mockApi = createMockApiClient({
+        connections: { list: connectionsList },
+        products: { list: vi.fn().mockResolvedValue(oneProductPage()) },
+      });
+      renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+        apiClient: mockApi,
+      });
+
+      expect(await screen.findByText(/unable to load connections/i)).toBeInTheDocument();
+      const before = connectionsList.mock.calls.length;
+      fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+      await waitFor(() => expect(connectionsList.mock.calls.length).toBeGreaterThan(before));
+    });
+
+    it('shows an error with Retry when a product variant query fails, and Retry refetches', async () => {
+      const getById = vi.fn().mockRejectedValue(new Error('variant nope'));
+      const mockApi = createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([conn('conn_a', 'Allegro', 'allegro')]) },
+        products: {
+          list: vi.fn().mockResolvedValue(oneProductPage()),
+          getById,
+        },
+      });
+      renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+        apiClient: mockApi,
+      });
+
+      fireEvent.click(await screen.findByRole('button', { name: /expand product p1/i }));
+      expect(await screen.findByText(/unable to load variants/i)).toBeInTheDocument();
+      const before = getById.mock.calls.length;
+      fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+      await waitFor(() => expect(getById.mock.calls.length).toBeGreaterThan(before));
+    });
   });
 
   it('navigates between the product list and review steps (two-step wizard)', async () => {

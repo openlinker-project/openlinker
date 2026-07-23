@@ -34,7 +34,6 @@ describe('prestashopPlugin', () => {
     it('does NOT contribute an API namespace (PS goes through generic core APIs)', () => {
       expect(prestashopPlugin.build?.apiNamespaces).toBeUndefined();
     });
-
   });
 
   describe('platform contributions', () => {

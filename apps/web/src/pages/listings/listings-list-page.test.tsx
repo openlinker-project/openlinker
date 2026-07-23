@@ -1,13 +1,10 @@
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import type * as ReactRouterDom from 'react-router-dom';
 import { renderWithProviders, createMockApiClient, createAuthenticatedSessionAdapter } from '../../test/test-utils';
 import { ListingsListPage } from './listings-list-page';
-import type {
-  CreateOfferRequest,
-  PaginatedOfferMappings,
-} from '../../features/listings/api/listings.types';
+import type { PaginatedOfferMappings } from '../../features/listings/api/listings.types';
 
 const navigateMock = vi.fn();
 vi.mock('react-router-dom', async (): Promise<typeof ReactRouterDom> => {
@@ -133,112 +130,6 @@ describe('ListingsListPage', () => {
     const cta = await screen.findByRole('button', { name: /create offer/i });
     expect(cta).toBeInTheDocument();
     expect(cta).not.toBeDisabled();
-  });
-
-  it('should render OfferCreationTracker when both URL params are present', async () => {
-    const mockApi = createMockApiClient({
-      listings: {
-        list: vi.fn().mockResolvedValue(sampleMappings),
-        getOfferCreationStatus: vi.fn().mockResolvedValue({
-          id: 'rec-1',
-          connectionId: 'conn_allegro_1',
-          internalVariantId: 'ol_variant_abc',
-          externalOfferId: null,
-          status: 'pending',
-          errors: null,
-          publishImmediately: false,
-          createdAt: '2026-04-22T10:00:00Z',
-          updatedAt: '2026-04-22T10:00:00Z',
-        }),
-      },
-    });
-
-    renderWithProviders(<ListingsListPage />, {
-      apiClient: mockApi,
-      route: '/listings?offerCreationRecordId=rec-1&trackedConnectionId=conn_allegro_1',
-    });
-
-    expect(await screen.findByText(/offer creation/i)).toBeInTheDocument();
-    expect(await screen.findByText('Pending')).toBeInTheDocument();
-  });
-
-  it('navigates into the bulk wizard pre-seeded with the failed variant when Retry is clicked', async () => {
-    const user = userEvent.setup();
-    const sampleRequest: CreateOfferRequest = {
-      internalVariantId: 'ol_variant_abc',
-      stock: 7,
-      publishImmediately: false,
-      price: { amount: 120.5, currency: 'PLN' },
-      overrides: {
-        title: 'Prior Title',
-        categoryId: '98765',
-        description: null,
-        platformParams: { deliveryPolicyId: 'del-1' },
-      },
-    };
-    const mockApi = createMockApiClient({
-      listings: {
-        list: vi.fn().mockResolvedValue(sampleMappings),
-        getOfferCreationStatus: vi.fn().mockResolvedValue({
-          id: 'rec-1',
-          connectionId: 'conn_allegro_1',
-          internalVariantId: 'ol_variant_abc',
-          externalOfferId: null,
-          status: 'failed',
-          errors: [{ code: 'X', message: 'boom' }],
-          publishImmediately: false,
-          createdAt: '2026-04-22T10:00:00Z',
-          updatedAt: '2026-04-22T10:00:00Z',
-          request: sampleRequest,
-        }),
-      },
-      products: {
-        getVariant: vi.fn().mockResolvedValue({
-          id: 'ol_variant_abc',
-          productId: 'ol_product_xyz',
-          sku: 'SK-1',
-          ean: null,
-        }),
-      },
-    });
-
-    renderWithProviders(<ListingsListPage />, {
-      apiClient: mockApi,
-      route: '/listings?offerCreationRecordId=rec-1&trackedConnectionId=conn_allegro_1',
-    });
-
-    const retry = await screen.findByRole('button', { name: /retry/i });
-    await user.click(retry);
-
-    await waitFor(() => expect(navigateMock).toHaveBeenCalledTimes(1));
-    const url = String(navigateMock.mock.calls.at(0)?.[0] ?? '');
-    const qs = new URLSearchParams(url.split('?')[1] ?? '');
-    expect(qs.get('productIds')).toBe('ol_product_xyz');
-    expect(qs.get('variantIds')).toBe('ol_variant_abc');
-    expect(qs.get('connectionId')).toBe('conn_allegro_1');
-
-    // The tracker URL params are dropped before navigating away.
-    expect(screen.queryByText(/offer creation/i)).not.toBeInTheDocument();
-  });
-
-  it('should not render OfferCreationTracker when only one URL param is present', async () => {
-    const getOfferCreationStatus = vi.fn();
-    const mockApi = createMockApiClient({
-      listings: {
-        list: vi.fn().mockResolvedValue(sampleMappings),
-        getOfferCreationStatus,
-      },
-    });
-
-    renderWithProviders(<ListingsListPage />, {
-      apiClient: mockApi,
-      route: '/listings?offerCreationRecordId=rec-1',
-    });
-
-    // Wait for table to render so the page has mounted fully
-    await screen.findByText('allegro-offer-999');
-    expect(screen.queryByText(/offer creation/i)).not.toBeInTheDocument();
-    expect(getOfferCreationStatus).not.toHaveBeenCalled();
   });
 
   it('hides the "Publish to shop" CTA when no ProductPublisher connection exists', async () => {

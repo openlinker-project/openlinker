@@ -1,28 +1,24 @@
 /**
  * OfferCreationTracker
  *
- * Inline card on the listings list page that polls an OfferCreationRecord
- * until terminal status. On `active` it shows the external offer id and
- * the `listings` cache has already been invalidated by the create-offer
- * mutation. On `failed` it renders the structured error list.
+ * Inline card that polls an OfferCreationRecord until terminal status. On
+ * `active` it shows the external offer id; on `failed`/`draft` it renders the
+ * structured error list. Today it is mounted read-only on the sync-job detail
+ * page (a job whose payload carries an `offerCreationRecordId`) — no `onDismiss`,
+ * so the error path renders inline rather than offering an action.
  *
- * Lives only for the session — the list page stores the active tracker
- * in URL search params (`offerCreationRecordId`, `connectionId`) so it
- * survives accidental drawer close / client-side navigation. Refreshing
- * the page clears the tracker; the record itself is persisted server
- * side and can be re-tracked when a "Recent creations" view is added.
+ * Steady-state bulk offer creation is tracked on the bulk-batch progress page
+ * (`/listings/bulk-batches/:batchId`), which owns its own status polling and the
+ * "Retry all failed" affordance (#1754); this component no longer carries a
+ * per-record Retry action.
  *
  * @module apps/web/src/features/listings/components
  */
 import type { ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { useOfferCreationStatusQuery } from '../hooks/use-offer-creation-status-query';
-import {
-  TERMINAL_OFFER_CREATION_STATUSES,
-  type OfferCreationStatusResponse,
-} from '../api/listings.types';
+import { TERMINAL_OFFER_CREATION_STATUSES } from '../api/listings.types';
 import { buildAllegroSellerPanelUrl } from '../lib/allegro-seller-panel-url';
-import { canReadCreateOfferRequestSnapshot } from './offer-creation-snapshot';
 import { OfferCreationStatusBadge } from './OfferCreationStatusBadge';
 import { OfferCreationErrorList } from './OfferCreationErrorList';
 
@@ -44,10 +40,6 @@ interface OfferCreationTrackerProps {
    *  message — matches the "gracefully shows nothing" guarantee that
    *  read-only consumers expect (#391). */
   onDismiss?: () => void;
-  /** Invoked when the operator clicks Retry on a failed record. Only
-   *  rendered when the record has a non-null `request` snapshot — without
-   *  the snapshot the wizard cannot pre-fill, so we hide the action. */
-  onRetry?: (record: OfferCreationStatusResponse) => void;
 }
 
 export function OfferCreationTracker({
@@ -56,7 +48,6 @@ export function OfferCreationTracker({
   marketplacePlatformType,
   marketplaceEnvironment,
   onDismiss,
-  onRetry,
 }: OfferCreationTrackerProps): ReactElement {
   const query = useOfferCreationStatusQuery(connectionId, offerCreationRecordId);
 
@@ -107,15 +98,6 @@ export function OfferCreationTracker({
     marketplaceEnvironment,
     record.externalOfferId,
   );
-  // Hide Retry when the snapshot is absent (old records) or carries a
-  // schemaVersion this client does not know how to read. A server newer
-  // than the client can persist v2+ snapshots; we must not silently
-  // map them with v1 semantics.
-  const canRetry =
-    record.status === 'failed' &&
-    onRetry !== undefined &&
-    record.request != null &&
-    canReadCreateOfferRequestSnapshot(record.request);
   const showDismiss = isTerminal && onDismiss !== undefined;
 
   return (
@@ -129,11 +111,6 @@ export function OfferCreationTracker({
         <span className="mono-text offer-creation-tracker__id" title={record.id}>
           {record.id}
         </span>
-        {canRetry ? (
-          <Button tone="secondary" onClick={() => onRetry?.(record)}>
-            Retry
-          </Button>
-        ) : null}
         {showDismiss ? (
           <Button tone="ghost" onClick={onDismiss}>
             Dismiss

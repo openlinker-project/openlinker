@@ -192,17 +192,22 @@ function PickerProductRow({
   return (
     <li className={rowClasses}>
       <div className="offer-product-picker__prow-main">
-        <CheckboxCell
-          state={checkboxState}
-          onToggle={handleToggleProduct}
-          disabled={capBlocked}
-          ariaLabel={`Select ${product.name}`}
-          tooltip={
-            capBlocked
-              ? `Maximum ${OFFER_PICKER_PRODUCT_CAP} products per batch reached`
-              : undefined
-          }
-        />
+        {/* Full 44px hit area for whole-product selection so it matches the
+            variant rows' tap target on mobile (a bare checkbox is ~16px). The
+            wrapping label toggles the nested checkbox natively. */}
+        <label className="offer-product-picker__prow-check">
+          <CheckboxCell
+            state={checkboxState}
+            onToggle={handleToggleProduct}
+            disabled={capBlocked}
+            ariaLabel={`Select ${product.name}`}
+            tooltip={
+              capBlocked
+                ? `Maximum ${OFFER_PICKER_PRODUCT_CAP} products per batch reached`
+                : undefined
+            }
+          />
+        </label>
         <button
           type="button"
           className="offer-product-picker__prow-toggle"
@@ -971,7 +976,9 @@ export function OfferProductPickerModal({
                       <TooltipContent>
                         {selection.size === 0
                           ? 'Select at least one product, then choose a connection.'
-                          : 'Choose a connection to publish to first.'}
+                          : eligibleConnections.length === 0
+                            ? 'Add an active connection that supports offer creation before publishing.'
+                            : 'Choose a connection to publish to first.'}
                       </TooltipContent>
                     </Tooltip>
                   )}

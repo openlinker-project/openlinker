@@ -7,23 +7,19 @@ import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
 import { Input } from '../../shared/ui/input';
-import { useToast } from '../../shared/ui/toast-provider';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
 import { OfferProductPickerModal } from '../../features/listings/components/offer-product-picker-modal';
-import { OfferCreationTracker } from '../../features/listings/components/OfferCreationTracker';
 import {
   ShopPublishLauncher,
   selectShopPublishConnections,
 } from '../../features/listings/components/ShopPublishLauncher';
 import { useConnectionsQuery } from '../../features/connections';
-import { useOfferCreationRetry } from '../../features/listings/hooks/use-offer-creation-retry';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import type {
   ListingsFilters,
-  OfferCreationStatusResponse,
   OfferMapping,
 } from '../../features/listings/api/listings.types';
 
@@ -147,10 +143,6 @@ export function ListingsListPage(): ReactElement {
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
 
-  const trackedRecordId = searchParams.get('offerCreationRecordId') ?? '';
-  const trackedConnectionId = searchParams.get('trackedConnectionId') ?? '';
-  const hasTracker = Boolean(trackedRecordId && trackedConnectionId);
-
   const connectionsQuery = useConnectionsQuery();
   const shopPublishConnections = selectShopPublishConnections(connectionsQuery.data ?? []);
   const canPublishToShop = shopPublishConnections.length > 0;
@@ -162,36 +154,6 @@ export function ListingsListPage(): ReactElement {
 
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [isShopPublishOpen, setIsShopPublishOpen] = useState(false);
-  const retryOfferCreation = useOfferCreationRetry();
-  const { showToast } = useToast();
-
-  function dismissTracker(): void {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.delete('offerCreationRecordId');
-      next.delete('trackedConnectionId');
-      return next;
-    });
-  }
-
-  // Retry re-point (#1754): resolve the failed variant to its product and
-  // navigate into the unified bulk wizard pre-seeded with that single variant.
-  // The tracker is dismissed only after the resolve+navigate succeeds - a
-  // rejection (e.g. the variant fetch fails) keeps the tracker in place and
-  // surfaces a toast rather than stranding the operator on an empty page.
-  async function handleRetry(record: OfferCreationStatusResponse): Promise<void> {
-    try {
-      await retryOfferCreation(record);
-    } catch {
-      showToast({
-        tone: 'error',
-        title: 'Retry failed',
-        description: 'Could not load the variant for this offer. Please try again.',
-      });
-      return;
-    }
-    dismissTracker();
-  }
 
   return (
     <PageLayout
@@ -211,15 +173,6 @@ export function ListingsListPage(): ReactElement {
         ) : null
       }
     >
-      {hasTracker ? (
-        <OfferCreationTracker
-          connectionId={trackedConnectionId}
-          offerCreationRecordId={trackedRecordId}
-          onDismiss={dismissTracker}
-          onRetry={(record) => void handleRetry(record)}
-        />
-      ) : null}
-
       <div className="toolbar toolbar--compact">
         <Input
           aria-label="Search by external ID"

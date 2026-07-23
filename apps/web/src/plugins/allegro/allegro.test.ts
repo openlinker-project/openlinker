@@ -40,7 +40,6 @@ describe('allegroPlugin', () => {
       expect(namespaces).toBeDefined();
       expect(namespaces && 'allegro' in namespaces).toBe(true);
     });
-
   });
 
   describe('platform contributions', () => {
