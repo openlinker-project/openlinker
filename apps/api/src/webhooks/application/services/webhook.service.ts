@@ -27,6 +27,8 @@ import type { WebhookDeliveryUpsertInput } from '@openlinker/core/webhooks';
 import {
   WebhookDeliveryRepositoryPort,
   WEBHOOK_DELIVERY_REPOSITORY_TOKEN,
+  WebhookAuthRejectionRepositoryPort,
+  WEBHOOK_AUTH_REJECTION_REPOSITORY_TOKEN,
 } from '@openlinker/core/webhooks';
 
 @Injectable()
@@ -41,7 +43,9 @@ export class WebhookService implements IWebhookService {
     @Inject(INBOUND_WEBHOOK_DECODER_REGISTRY_TOKEN)
     private readonly decoderRegistry: InboundWebhookDecoderRegistryService,
     @Inject(WEBHOOK_DELIVERY_REPOSITORY_TOKEN)
-    private readonly deliveryRepository: WebhookDeliveryRepositoryPort
+    private readonly deliveryRepository: WebhookDeliveryRepositoryPort,
+    @Inject(WEBHOOK_AUTH_REJECTION_REPOSITORY_TOKEN)
+    private readonly authRejectionRepository: WebhookAuthRejectionRepositoryPort
   ) {}
 
   private async recordDelivery(input: WebhookDeliveryUpsertInput): Promise<void> {
@@ -50,6 +54,27 @@ export class WebhookService implements IWebhookService {
     } catch (error) {
       this.logger.warn(
         `Failed to record webhook delivery (non-fatal): provider=${input.provider}, connectionId=${input.connectionId}, eventId=${input.eventId}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  /**
+   * Record a signature-rejected delivery attempt (#1814). Deliberately non-fatal
+   * — a failure here must never change the 401 the caller is about to receive.
+   * Written to `webhook_auth_rejections`, NOT `webhook_deliveries` (which stays
+   * reserved for verified deliveries, ADR-005), so the status projection can
+   * tell an actively-failing connection apart from one that never registered.
+   */
+  private async recordAuthRejection(
+    provider: string,
+    connectionId: string,
+    reason: string
+  ): Promise<void> {
+    try {
+      await this.authRejectionRepository.recordRejection({ provider, connectionId, reason });
+    } catch (error) {
+      this.logger.warn(
+        `Failed to record webhook auth rejection (non-fatal): provider=${provider}, connectionId=${connectionId}: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }
@@ -90,6 +115,9 @@ export class WebhookService implements IWebhookService {
       this.logger.warn(
         `Invalid webhook signature: provider=${provider}, connectionId=${connectionId}`
       );
+      // Durable auth-rejection signal (#1814) — recorded here, before the throw,
+      // because the delivery never reaches `webhook_deliveries` (nothing verified).
+      await this.recordAuthRejection(provider, connectionId, 'invalid_signature');
       throw new WebhookAuthenticationException('Invalid webhook signature', provider, connectionId);
     }
     if (verifyResult.timestampMs !== undefined) {
