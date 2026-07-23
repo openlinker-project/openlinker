@@ -305,13 +305,23 @@ const ALLOW_LIST = new Map([
     'apps/api/src/webhooks/application/services/__tests__/webhook-delivery-query.service.spec.ts',
     new Set(['WebhookDeliveryRepositoryPort']),
   ],
+  // WebhookAuthRejectionRepositoryPort added for the auth-failing signal (#1814).
   [
     'apps/api/src/webhooks/application/services/webhook.service.ts',
-    new Set(['WebhookDeliveryRepositoryPort']),
+    new Set(['WebhookDeliveryRepositoryPort', 'WebhookAuthRejectionRepositoryPort']),
   ],
   [
     'apps/api/src/webhooks/application/services/webhook.service.spec.ts',
-    new Set(['WebhookDeliveryRepositoryPort']),
+    new Set(['WebhookDeliveryRepositoryPort', 'WebhookAuthRejectionRepositoryPort']),
+  ],
+  // apps → webhooks.WebhookAuthRejectionRepositoryPort (#1814) — rewire via IWebhooksService
+  [
+    'apps/api/src/integrations/application/services/webhook-status.service.ts',
+    new Set(['WebhookAuthRejectionRepositoryPort']),
+  ],
+  [
+    'apps/api/src/integrations/application/services/webhook-status.service.spec.ts',
+    new Set(['WebhookAuthRejectionRepositoryPort']),
   ],
 
   // apps + plugin → customers.CustomerProjectionRepositoryPort — rewire via ICustomersService
