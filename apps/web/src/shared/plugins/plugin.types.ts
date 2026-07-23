@@ -5,7 +5,7 @@
  * to two lifecycles via namespaced sub-records:
  *
  *   - `build` — composed at module load by the host: routes, nav items,
- *     API client namespaces, offer-creation wizard contributions. Iterated
+ *     API client namespaces, shop-publish wizard contributions. Iterated
  *     by `createApiClient`, the router, and `nav-registry.ts`.
  *
  *   - `platform` — resolved at render time via React context: setup card,
@@ -35,7 +35,6 @@ import type { Role } from '../../app/nav-registry.types';
 import type { Connection } from '../../features/connections/api/connections.types';
 import type { EditConnectionFormValues } from '../../features/connections/components/edit-connection.schema';
 import type { InvoiceRecord } from '../../features/invoicing';
-import type { CreateOfferRequest } from '../../features/listings';
 import type { StructuredError } from '../types/structured-error.types';
 
 /**
@@ -83,42 +82,7 @@ export interface NavContribution {
 export type PluginApiNamespacesFactory = (request: ApiRequest) => Partial<PluginApiNamespaces>;
 
 /**
- * Props every per-platform offer-creation wizard receives. The launcher
- * (`features/listings/components/OfferCreationLauncher.tsx`) resolves the
- * connection up front and owns the surrounding Dialog chrome — so each
- * contributed wizard is **content-only**, knows its platform via
- * `connection.platformType`, and never renders its own Dialog or
- * connection picker (#608).
- *
- * `defaultVariantId` / `initialValues` carry retry-path hints.
- */
-export interface OfferCreationWizardProps {
-  connection: Connection;
-  defaultVariantId?: string;
-  initialValues?: CreateOfferRequest;
-  /** Fired by the wizard's Cancel/Close affordance — the launcher uses
-   *  this to close the surrounding Dialog. */
-  onCancel: () => void;
-  onSubmitted: (offerCreationRecordId: string, connectionId: string) => void;
-}
-
-/**
- * Plugin contribution for capability-shaped offer creation (#608).
- *
- * `component` is a pre-bound React component, not a render fn — keeps the
- * contribution a pure value at module load, plays nicely with test mocks,
- * and matches how React expects to consume components at JSX time
- * (`<contribution.component {...props} />`).
- */
-export interface OfferCreationWizardContribution {
-  /** Connection `platformType` this wizard handles, e.g. 'allegro'. */
-  platformType: string;
-  component: ComponentType<OfferCreationWizardProps>;
-}
-
-/**
- * Props every per-platform shop-publish wizard receives (#1044). Mirrors
- * `OfferCreationWizardProps` — the launcher
+ * Props every per-platform shop-publish wizard receives (#1044). The launcher
  * (`features/listings/components/ShopPublishLauncher.tsx`) resolves the shop
  * connection up front and owns the surrounding Dialog chrome, so each
  * contributed wizard is **content-only**, knows its platform via
@@ -143,9 +107,8 @@ export interface ShopProductPublishWizardProps {
 /**
  * Plugin contribution for capability-shaped shop publishing (#1044).
  *
- * `component` is a pre-bound React component, not a render fn — same shape
- * as `OfferCreationWizardContribution`, keeping the contribution a pure
- * value at module load.
+ * `component` is a pre-bound React component, not a render fn — keeps the
+ * contribution a pure value at module load.
  */
 export interface ShopProductPublishWizardContribution {
   /** Connection `platformType` this wizard handles, e.g. 'woocommerce'. */
@@ -458,9 +421,6 @@ export interface BuildContribution {
   navItems?: NavContribution[];
   /** Factory that produces typed API client namespaces. */
   apiNamespaces?: PluginApiNamespacesFactory;
-  /** Per-platform offer-creation wizard registered against the
-   *  `OfferCreationLauncher` dispatch site (#608). */
-  offerCreationWizard?: OfferCreationWizardContribution;
   /** Per-platform shop-publish wizard registered against the
    *  `ShopPublishLauncher` dispatch site (#1044). */
   shopProductPublishWizard?: ShopProductPublishWizardContribution;
@@ -557,11 +517,8 @@ export interface PlatformContribution {
    * Bulk offer creation: render the platform-specific bulk-config section
    * inside `bulk-config-step` (#1096). Same altitude as `StructuredConfigSection`
    * — a render-time, per-platform config form section resolved via
-   * `usePlatform(platformType)`. (Contrast `build.offerCreationWizard`, which
-   * is in `build` only because its launcher reaches it through an `app/`-tier
-   * hook to dodge a `features → plugins` import; our consumers live in
-   * `features/` and can call `usePlatform` directly.) Absent ⇒ the bulk-config
-   * step renders a "marketplace not supported for bulk" fallback.
+   * `usePlatform(platformType)`. Absent ⇒ the bulk-config step renders a
+   * "marketplace not supported for bulk" fallback.
    */
   bulkOfferConfigSection?: BulkOfferConfigSectionContribution;
   /**
@@ -581,10 +538,9 @@ export interface PlatformContribution {
    * true for a `borrows`-taxonomy destination like Erli, whose category
    * browsing is a *dynamic per-connection* toggle
    * (`config.allegroCategoryAccessEnabled`, set via the credentials panel),
-   * not a capability the adapter always has. The single-offer
-   * `ErliCreateOfferWizard` already reads this config flag directly; this
-   * slot lets the bulk flow reach the same per-connection signal without a
-   * `platformType ===` check in the shared bulk components. ORed with the
+   * not a capability the adapter always has. This slot lets the bulk flow
+   * reach the same per-connection signal without a `platformType ===` check
+   * in the shared bulk components. ORed with the
    * static capability check, never replacing it — a real `CategoryBrowser`
    * adapter (Allegro) keeps working with no contribution needed. Absent ⇒
    * only the static capability decides.

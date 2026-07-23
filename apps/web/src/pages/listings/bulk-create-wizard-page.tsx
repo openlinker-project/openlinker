@@ -2,8 +2,13 @@
  * Bulk listing wizard page (#740)
  *
  * Route entry point — hydrates the selected products + their variants from
- * `?productIds=` and mounts the `BulkWizard` controller. Handles the
- * three boundary states before the wizard can render:
+ * `?productIds=` and mounts the `BulkWizard` controller. An optional
+ * `?variantIds=` param (#1754) is threaded to the wizard as the pre-checked
+ * set: a product with some of its variants in the set still seeds ALL its
+ * variants (staying a multi-variant, expandable row) but only the set members
+ * start included; a product with no match keeps every variant included
+ * (whole-product pick). Handles the boundary states before the wizard can
+ * render:
  *   - empty productIds  → redirect back to /products
  *   - >100 productIds   → redirect back to /products with an alert
  *   - loading           → LoadingState
@@ -45,6 +50,17 @@ export function BulkCreateWizardPage(): ReactElement {
       void navigate('/products', { replace: true });
     }
   }, [ids, navigate]);
+
+  const selectedVariantIds = useMemo<Set<string>>(() => {
+    const raw = searchParams.get('variantIds') ?? '';
+    if (raw.trim() === '') return new Set();
+    return new Set(
+      raw
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0),
+    );
+  }, [searchParams]);
 
   const productQueries = useProductsBatchQuery(ids, {
     enabled: ids.length > 0 && ids.length <= MAX_PRODUCTS,
@@ -109,6 +125,7 @@ export function BulkCreateWizardPage(): ReactElement {
   return (
     <BulkWizard
       products={products}
+      preSelectedVariantIds={selectedVariantIds}
       preselectedConnectionId={searchParams.get('connectionId') ?? undefined}
       resolveConnectionName={(connectionId) =>
         connectionsQuery.data?.find((c) => c.id === connectionId)?.name ??

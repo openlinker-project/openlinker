@@ -34,10 +34,6 @@ describe('prestashopPlugin', () => {
     it('does NOT contribute an API namespace (PS goes through generic core APIs)', () => {
       expect(prestashopPlugin.build?.apiNamespaces).toBeUndefined();
     });
-
-    it('does NOT contribute an offer-creation wizard (no Allegro-style listing flow)', () => {
-      expect(prestashopPlugin.build?.offerCreationWizard).toBeUndefined();
-    });
   });
 
   describe('platform contributions', () => {
