@@ -130,7 +130,7 @@ export function MappingPairingBar({ pairing, onPickSource }: MappingPairingBarPr
                   const isDisabled = c.status !== 'active';
                   return (
                     <option key={c.id} value={c.id}>
-                      {c.name} ({labelFor(c)}){isDisabled ? ' — disabled' : ''}
+                      {c.name} ({labelFor(c)}){isDisabled ? ' - disabled' : ''}
                     </option>
                   );
                 })}

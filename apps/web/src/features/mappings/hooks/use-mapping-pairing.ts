@@ -71,7 +71,7 @@ export function resolveMappingPairing(
   // allowlist). Disabled paired sources are INCLUDED (#1784 follow-up S11) so a
   // shop with only a disabled-but-paired marketplace is not misreported as
   // `no-source`; the page surfaces a non-active note instead, and the
-  // pick-source picker greys the disabled candidates.
+  // pick-source picker labels the disabled candidates (they stay selectable).
   const supportedSources = allConnections.filter(
     (c) =>
       readMasterCatalogConnectionId(c) === urlConnection.id &&
