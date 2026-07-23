@@ -115,6 +115,10 @@ export class DeliveryRiderService implements IDeliveryRiderService {
    * "supported carrier" source (#1792), never a hardcoded list.
    */
   private async loadCarrierState(): Promise<CarrierState> {
+    // "Connected" deliberately means the connection has ShippingProviderManager
+    // *enabled* (listCapabilityAdapters gates on connection.enabledCapabilities,
+    // not just adapter support), so a carrier-type connection that hasn't
+    // enabled shipping is intentionally treated as `not-connected`, not `unmapped`.
     const connected = await this.integrations.listCapabilityAdapters<unknown>({
       capability: SHIPPING_PROVIDER_MANAGER_CAPABILITY,
       lazy: true,

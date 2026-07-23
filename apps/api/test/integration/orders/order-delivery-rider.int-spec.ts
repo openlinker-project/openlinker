@@ -76,6 +76,9 @@ describe('Order delivery-rider projection (#1792)', () => {
       rider: 'unmapped',
       candidateCarrier: { platformType: 'inpost', displayName: 'InPost' },
     });
+    // Typed source-method projection (#1791/#1792) for the #1794 deep link.
+    expect(detail.body.sourceDeliveryMethodId).toBe('ai-inpost-1');
+    expect(detail.body.sourceDeliveryMethodName).toBe('Allegro Paczkomat InPost');
 
     const list = await http
       .get(`/v1/orders?sourceConnectionId=${sourceId}`)

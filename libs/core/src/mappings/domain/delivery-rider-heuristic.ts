@@ -9,11 +9,26 @@
  *
  * @module libs/core/src/mappings/domain
  */
-import {
-  CANDIDATE_CARRIER_HEURISTICS,
-  type CandidateCarrier,
-  type RiderSourceDeliveryMethod,
+import type {
+  CandidateCarrier,
+  CarrierHeuristicEntry,
+  RiderSourceDeliveryMethod,
 } from './types/delivery-rider.types';
+
+/**
+ * The single-source-of-truth heuristic table mapping a raw source delivery
+ * method to a candidate carrier `platformType`. Seeded with the carriers OL
+ * supports today; adding a carrier is a one-line entry here.
+ *
+ * Match semantics: a case-insensitive substring test of any keyword against the
+ * method's `name` + `typeId`. `platformType` MUST match the carrier adapter's
+ * manifest `platformType` (`inpost`, `dpd`) so the connection/registry lookups
+ * key correctly.
+ */
+export const CANDIDATE_CARRIER_HEURISTICS: readonly CarrierHeuristicEntry[] = [
+  { platformType: 'inpost', displayName: 'InPost', keywords: ['paczkomat', 'inpost'] },
+  { platformType: 'dpd', displayName: 'DPD', keywords: ['dpd'] },
+];
 
 /**
  * Map a source delivery method to a candidate carrier via keyword/alias match,

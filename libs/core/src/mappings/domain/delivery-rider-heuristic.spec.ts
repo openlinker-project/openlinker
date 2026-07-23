@@ -3,8 +3,7 @@
  *
  * @module libs/core/src/mappings/domain
  */
-import { matchCandidateCarrier } from './delivery-rider-heuristic';
-import { CANDIDATE_CARRIER_HEURISTICS } from './types/delivery-rider.types';
+import { matchCandidateCarrier, CANDIDATE_CARRIER_HEURISTICS } from './delivery-rider-heuristic';
 
 describe('matchCandidateCarrier', () => {
   it('maps a "paczkomat" method name to InPost', () => {

@@ -429,8 +429,13 @@ describe('OrdersController', () => {
         rider: 'unmapped',
         candidateCarrier: { platformType: 'inpost', displayName: 'InPost' },
       });
-      // No method on mockOrder → no rider attached.
+      // Typed source-method projection (#1791/#1792) for the #1794 deep link.
+      expect(result.items[0].sourceDeliveryMethodId).toBe('ai-inpost-1');
+      expect(result.items[0].sourceDeliveryMethodName).toBe('Allegro Paczkomat InPost');
+      // No method on mockOrder → no rider attached; method fields null.
       expect(result.items[1].deliveryRider).toBeUndefined();
+      expect(result.items[1].sourceDeliveryMethodId).toBeNull();
+      expect(result.items[1].sourceDeliveryMethodName).toBeNull();
     });
 
     it('should omit candidateCarrier from the rider DTO when the rider is "none" (#1792)', async () => {

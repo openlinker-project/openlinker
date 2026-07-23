@@ -72,25 +72,12 @@ export interface DeliveryRiderResolution {
 
 /**
  * One entry of the carrier heuristic table: a candidate carrier plus the
- * lowercase substrings that identify it in a source method's name/typeId.
+ * lowercase substrings that identify it in a source method's name/typeId. The
+ * runtime table itself lives co-located with `matchCandidateCarrier` in
+ * `delivery-rider-heuristic.ts`.
  */
 export interface CarrierHeuristicEntry {
   platformType: string;
   displayName: string;
   keywords: readonly string[];
 }
-
-/**
- * The single-source-of-truth heuristic table mapping a raw source delivery
- * method to a candidate carrier `platformType`. Seeded with the carriers OL
- * supports today; adding a carrier is a one-line entry here.
- *
- * Match semantics: a case-insensitive substring test of any keyword against the
- * method's `name` + `typeId`. `platformType` MUST match the carrier adapter's
- * manifest `platformType` (`inpost`, `dpd`) so the connection/registry lookups
- * key correctly.
- */
-export const CANDIDATE_CARRIER_HEURISTICS: readonly CarrierHeuristicEntry[] = [
-  { platformType: 'inpost', displayName: 'InPost', keywords: ['paczkomat', 'inpost'] },
-  { platformType: 'dpd', displayName: 'DPD', keywords: ['dpd'] },
-];

@@ -119,4 +119,16 @@ export class OrderRecordResponseDto {
       'never influences routing/dispatch.',
   })
   deliveryRider?: OrderDeliveryRiderDto;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Source delivery method id (#1791) — the Add-mapping deep-link target.',
+  })
+  sourceDeliveryMethodId?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Source delivery method label (#1791).',
+  })
+  sourceDeliveryMethodName?: string | null;
 }

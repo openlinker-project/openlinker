@@ -334,6 +334,11 @@ export class OrdersController {
       // BE-owned SLA bucket (#1108): single source of truth so the list filter +
       // badge agree. The FE renders only the live countdown off dispatchByAt.
       slaState: deriveSlaState(order.dispatchByAt, order.fulfillmentState, new Date()),
+      // Typed projection of the source delivery method (#1791/#1792) so the
+      // #1794 Add-mapping deep link reads named fields, not the untyped
+      // orderSnapshot blob. Read off the OrderRecord getters; null when absent.
+      sourceDeliveryMethodId: order.sourceDeliveryMethodId,
+      sourceDeliveryMethodName: order.sourceDeliveryMethodName,
     };
   }
 
