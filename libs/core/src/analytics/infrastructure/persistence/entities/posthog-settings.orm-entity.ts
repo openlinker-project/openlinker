@@ -31,6 +31,12 @@ export class PosthogSettingsOrmEntity {
   @Column({ type: 'boolean', name: 'session_recording', default: false })
   sessionRecording!: boolean;
 
+  @Column({ type: 'boolean', name: 'product_events_enabled', default: false })
+  productEventsEnabled!: boolean;
+
+  @Column({ type: 'jsonb', name: 'enabled_event_groups', default: () => "'[]'" })
+  enabledEventGroups!: string[];
+
   @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
   updatedAt!: Date;
 

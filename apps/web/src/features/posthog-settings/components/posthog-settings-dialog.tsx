@@ -39,6 +39,7 @@ import { PosthogRegionValues, type PosthogRegion, type PosthogSettingsView } fro
 import { useClearPosthogCredentialsMutation } from '../hooks/use-clear-posthog-credentials-mutation';
 import { useSetPosthogCredentialsMutation } from '../hooks/use-set-posthog-credentials-mutation';
 import { useUpdatePosthogSettingsMutation } from '../hooks/use-update-posthog-settings-mutation';
+import { ProductEventsSection } from './product-events-section';
 import {
   posthogSettingsFormSchema,
   type PosthogSettingsFormSubmission,
@@ -71,6 +72,8 @@ function toFormValues(view: PosthogSettingsView): PosthogSettingsFormValues {
     customHost: view.customHost ?? '',
     autocapture: view.autocapture,
     sessionRecording: view.sessionRecording,
+    productEventsEnabled: view.productEventsEnabled,
+    enabledEventGroups: view.enabledEventGroups,
     apiKey: '',
   };
 }
@@ -130,6 +133,8 @@ export function PosthogSettingsDialog({
         customHost: values.region === 'custom' ? values.customHost : null,
         autocapture: values.autocapture,
         sessionRecording: values.sessionRecording,
+        productEventsEnabled: values.productEventsEnabled,
+        enabledEventGroups: values.enabledEventGroups,
       });
 
       if (values.apiKey.length > 0) {
@@ -156,6 +161,8 @@ export function PosthogSettingsDialog({
         customHost: view.customHost,
         autocapture: view.autocapture,
         sessionRecording: view.sessionRecording,
+        productEventsEnabled: false,
+        enabledEventGroups: [],
       });
       form.setValue('apiKey', '');
       form.setValue('enabled', false);
@@ -307,6 +314,11 @@ export function PosthogSettingsDialog({
             <input type="checkbox" {...form.register('sessionRecording')} />
             <span>Session recording (all text/inputs always masked)</span>
           </label>
+
+          <ProductEventsSection
+            form={form}
+            disabled={!enabled || !form.watch('productEventsEnabled')}
+          />
 
           <div className="posthog-settings-test-row">
             <Button

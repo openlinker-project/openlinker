@@ -378,6 +378,8 @@ export function createMockApiClient(
         customHost: null,
         autocapture: false,
         sessionRecording: false,
+        productEventsEnabled: false,
+        enabledEventGroups: [],
         apiKeyConfigured: false,
         wouldOverrideEnv: false,
         overriddenEnvVars: [],

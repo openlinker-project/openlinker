@@ -7,6 +7,12 @@
  * catalog, never hand-maintained. Props must stay low-cardinality — bounded
  * strings/numbers/booleans only, never PII, free text, or entity ids.
  *
+ * `props` values are placeholders (empty string / 0 / false per field), not
+ * real data — they exist so the settings panel's read-only catalog view
+ * (#1787) can introspect prop *names* via `Object.keys` at runtime, while
+ * `DemoEventProps<E>` still gives callers the real value types via the `as`
+ * cast.
+ *
  * @module features/demo/lib
  */
 
@@ -15,7 +21,7 @@ export const DemoEventCatalog = {
     description:
       'Viewer clicked a locked (read-only) write action — the primary intent-to-convert signal for a read-only demo session',
     group: 'conversion-intent',
-    props: {} as { actionName: string; surface: string },
+    props: { actionName: '', surface: '' } as { actionName: string; surface: string },
   },
 } as const;
 

@@ -25,6 +25,8 @@ export const posthogSettingsFormSchema = z
     customHost: z.string().trim().max(MAX_HOST_LENGTH, `Host is too long (max ${MAX_HOST_LENGTH} characters)`),
     autocapture: z.boolean(),
     sessionRecording: z.boolean(),
+    productEventsEnabled: z.boolean(),
+    enabledEventGroups: z.array(z.string()),
     apiKey: z
       .string()
       .trim()
