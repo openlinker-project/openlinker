@@ -69,7 +69,7 @@ test.describe('WooCommerce as order destination', () => {
     world,
     jobs,
   }) => {
-    const ctx = await resolveContext(world);
+    const ctx = resolveContext(world);
     test.skip(!ctx, 'no WooCommerce OrderSource connection + a DISTINCT WooCommerce OrderProcessorManager connection, or missing REST credentials');
     const { wcSource, wc } = ctx!;
 
@@ -106,7 +106,7 @@ test.describe('WooCommerce as order destination', () => {
     world,
     jobs,
   }) => {
-    const ctx = await resolveContext(world);
+    const ctx = resolveContext(world);
     test.skip(!ctx, 'no WooCommerce OrderSource connection + a DISTINCT WooCommerce OrderProcessorManager connection, or missing REST credentials');
     const { wcSource, wc } = ctx!;
 
@@ -153,7 +153,7 @@ test.describe('WooCommerce as order destination', () => {
     world,
     jobs,
   }) => {
-    const ctx = await resolveContext(world);
+    const ctx = resolveContext(world);
     test.skip(!ctx, 'no WooCommerce OrderSource connection + a DISTINCT WooCommerce OrderProcessorManager connection, or missing REST credentials');
     const { wcSource, wc } = ctx!;
 
@@ -232,7 +232,7 @@ function pickDistinctWooCommerceDestination(world: World, excludeId: string): Co
   return (enabled.length > 0 ? enabled : candidates)[0];
 }
 
-async function resolveContext(world: World): Promise<OrderDestinationContext | null> {
+function resolveContext(world: World): OrderDestinationContext | null {
   const wcSource = pickWooCommerceConnection(world, 'OrderSource');
   if (!wcSource) return null;
   const wcDestination = pickDistinctWooCommerceDestination(world, wcSource.id);

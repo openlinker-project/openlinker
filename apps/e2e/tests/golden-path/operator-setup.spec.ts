@@ -68,12 +68,12 @@ test.describe('operator setup (S1-S4)', () => {
     const woocommerce = world.connectionsWithCapability('ProductPublisher')[0];
     test.skip(!woocommerce, 'no ProductPublisher (shop) connection on this stack');
 
-    const beforeCount = (await api.listings.list({ connectionId: woocommerce!.id, limit: 1 }))
+    const beforeCount = (await api.listings.list({ connectionId: woocommerce.id, limit: 1 }))
       .total;
 
     await pages.listingsList.goto();
     const dialog = await pages.listingsList.openPublishToShop();
-    await dialog.chooseConnection(woocommerce!.name);
+    await dialog.chooseConnection(woocommerce.name);
 
     // Select the first product's variant (row-scoped) and drive the wizard to publish.
     const firstProduct = (await api.products.list({ limit: 1 })).items[0];
@@ -89,7 +89,7 @@ test.describe('operator setup (S1-S4)', () => {
     // the count must strictly grow past the pre-publish baseline.
     const after = await test.step('poll OL listings for the new shop mapping', async () =>
       poll.until(
-        () => api.listings.list({ connectionId: woocommerce!.id, limit: 1 }),
+        () => api.listings.list({ connectionId: woocommerce.id, limit: 1 }),
         (page) => page.total > beforeCount,
         { message: 'a new WooCommerce listing mapping to appear', timeoutMs: 120_000 },
       ));

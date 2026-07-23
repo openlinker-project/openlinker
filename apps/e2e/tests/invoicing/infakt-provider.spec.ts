@@ -17,6 +17,7 @@
 import { test, expect } from '../../src/fixtures/test';
 import { PlatformType } from '../../src/world/world';
 import { synthesizeOrder, buildPrestashopWebserviceClient } from '../../src/support/order-synthesis';
+import { narrowOrderSnapshot } from '../../src/support/order-snapshot';
 import { assertInvoiceAmounts, toMinorUnits } from '../../src/support/parity';
 
 interface OrderTotalsShape {
@@ -76,7 +77,7 @@ test.describe('invoicing: inFakt provider run', () => {
     expect(cleared.status).toBe('issued');
 
     const content = await api.invoices.getContent(cleared.id);
-    const snapshot = order.orderSnapshot as unknown as OrderSnapshotShape;
+    const snapshot = narrowOrderSnapshot<OrderSnapshotShape>(order);
     const currency = snapshot.totals.currency;
 
     // Shipping line (#1567): the order carries a positive shipping amount

@@ -722,7 +722,7 @@ export class PrestashopWebserviceClient {
       throw new Error(`PrestaShop webservice GET ${path} → HTTP ${response.status}: ${raw.slice(0, 200)}`);
     }
     try {
-      return JSON.parse(raw);
+      return JSON.parse(raw) as unknown;
     } catch {
       throw new Error(`PrestaShop webservice GET ${path} returned non-JSON: ${raw.slice(0, 200)}`);
     }
@@ -756,7 +756,7 @@ export class PrestashopWebserviceClient {
       );
     }
     try {
-      return JSON.parse(raw);
+      return JSON.parse(raw) as unknown;
     } catch {
       throw new Error(
         `PrestaShop webservice ${method} ${path} returned non-JSON: ${raw.slice(0, 200)}`,

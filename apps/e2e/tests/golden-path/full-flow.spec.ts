@@ -43,6 +43,7 @@ import { buildFreshProductImages } from '../../src/api/generate-image';
 import { WooCommerceRestClient } from '../../src/api/woocommerce-rest';
 import { captureStock, assertStockDelta, waitForStockDelta, type StockSnapshot } from '../../src/support/stock';
 import { snapshotOrderIds, waitForOrder, type OrderIdSnapshot } from '../../src/support/orders';
+import { narrowOrderSnapshot } from '../../src/support/order-snapshot';
 import { manualCheckpoint } from '../../src/support/manual-checkpoint';
 import { waitForTrackingBackfill } from '../../src/support/shipments';
 import {
@@ -86,6 +87,13 @@ const state: FlowState = {
 test.describe.configure({ mode: 'serial' });
 
 test.describe('golden path — full flow (S0-S9)', () => {
+  // Belt-and-suspenders attended opt-in. The `test:e2e` default script already
+  // excludes `full-flow`, and `test:e2e:full-flow` sets E2E_ATTENDED=1 — but a
+  // bare `playwright test --project=full-flow` (or a developer running the whole
+  // suite by hand) must not silently enter the 2h-per-purchase manual pause.
+  // Set E2E_ATTENDED=1 to run this heavily-mutating, human-driven flow.
+  test.skip(!process.env.E2E_ATTENDED, 'attended flow — set E2E_ATTENDED=1 to run');
+
   test('S0 — baseline: sync master catalogue and snapshot stock', async ({ api, world, jobs, poll, env }) => {
     const prestashop = world.connectionFor(PlatformType.prestashop);
     test.skip(!prestashop, 'no PrestaShop connection on this stack');
@@ -161,7 +169,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
           { timeoutMs: 60_000 },
         );
         await poll.until(
-          () => api.inventory.availability(state.variantIds!),
+          () => api.inventory.availability(state.variantIds),
           (rows) => rows.some((r) => r.totalAvailable > 0),
           {
             message: 'fresh product master availability after inventory sync',
@@ -271,7 +279,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
     const shop = world.connectionsWithCapability('ProductPublisher')[0] ?? world.connectionFor(PlatformType.woocommerce);
     test.skip(!shop, 'no WooCommerce/ProductPublisher connection on this stack');
 
-    await publishToShop(pages, api, shop!.name, state.product!.name);
+    await publishToShop(pages, api, shop.name, state.product!.name);
 
     // WooCommerce is a ProductPublisher, not an OfferManager — publishing
     // creates a PRODUCT on the shop (async, via the shop.product.publish
@@ -379,7 +387,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
         expect(directory.length, 'Allegro category exposes parameters').toBeGreaterThan(0);
 
         const byId = new Map(directory.map((p) => [p.id, p]));
-        const attributes = (state.primaryVariant!.attributes ?? {}) as Record<string, unknown>;
+        const attributes = (state.primaryVariant!.attributes ?? {});
         for (const param of submitted) {
           const dirEntry = byId.get(param.id);
           expect(
@@ -625,9 +633,12 @@ test.describe('golden path — full flow (S0-S9)', () => {
         `order total identity (${treatment} tax treatment, ${source.platformType})`,
       ).toBe(expectedTotalMinor);
 
-      // Channel stock delta: the source marketplace offer went down by SOLD_QTY.
-      // Each source only sees its OWN sale here — the cross-channel push to the
-      // other marketplaces happens in S9's propagation step.
+      // Channel stock delta: the SOURCE marketplace offer went down by SOLD_QTY.
+      // This is the marketplace's OWN native decrement (it sold a unit) read
+      // back through OL — NOT OL propagating a stock change to it. OL-driven
+      // cross-channel write-back to the OTHER marketplaces is what S9's
+      // propagation step exercises; here we only observe the selling channel
+      // reflecting its own sale.
       const sourceKey = source.platformType;
       const channelBefore = state.channelBaseline.get(sourceKey);
       if (channelBefore !== undefined) {
@@ -1001,7 +1012,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
     expect(anchor, 'a connection to anchor the propagation job on').toBeTruthy();
     await jobs.triggerAndWait(
       {
-        connectionId: anchor!.id,
+        connectionId: anchor.id,
         jobType: 'inventory.propagateToMarketplaces',
         payload: {
           productId: state.product!.id,
@@ -1056,9 +1067,15 @@ test.describe('golden path — full flow (S0-S9)', () => {
     }
 
     // WooCommerce stock re-check after the purchase (#14): the S2 baseline is
-    // read back through the WC REST API. OL ships no WC quantity write-back
-    // today (woocommerce.restapi.v3 has no OfferManager), so a stale value is
-    // annotated as a known cross-channel gap rather than failed.
+    // read back through the WC REST API. #1498 added base-port quantity
+    // write-back on woocommerce.restapi.v3 (WooCommerceOfferManagerAdapter,
+    // OfferManager) via ShopProduct mappings — but it is default-OFF on new
+    // connections and mutually exclusive with InventoryMaster per connection.
+    // In the golden path the WC connection is the master catalogue
+    // (InventoryMaster), so write-back is not active on it and a stale value is
+    // annotated as expected rather than failed. Exercising the write-back delta
+    // needs a dedicated non-master WC connection with write-back enabled — a
+    // Phase-2 follow-up, not part of this master-catalogue flow.
     const wc = buildWooClient(world);
     const wcBaseline = state.channelBaseline.get('woocommerce');
     if (wc && wcBaseline !== undefined && state.wcProductId !== undefined) {
@@ -1076,8 +1093,9 @@ test.describe('golden path — full flow (S0-S9)', () => {
           wcAfter === wcExpected
             ? `WooCommerce stock reflects the sale: ${wcAfter} (baseline ${wcBaseline} - sold ${totalSold})`
             : `WooCommerce stock after sale: ${wcAfter ?? '(unknown)'} (baseline ${wcBaseline}, ` +
-              `expected ${wcExpected}) — OL has no WC quantity write-back path ` +
-              '(no OfferManager on woocommerce.restapi.v3); known cross-channel gap',
+              `expected ${wcExpected}) - WC quantity write-back (#1498) is default-OFF and ` +
+              'mutually exclusive with InventoryMaster, so it is not active on this master-catalogue ' +
+              'WC connection; not a failure (write-back delta is a Phase-2 follow-up)',
       });
     }
   });
@@ -1142,7 +1160,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
     }
   });
 
-  test('S5x — multi-line / discount order note (extension, #1574)', async ({}, testInfo) => {
+  test('S5x — multi-line / discount order note (extension, #1574)', ({}, testInfo) => {
     requireOrder();
     // S5/S7/S8 already assert amount identity GENERICALLY over however many
     // lines an order has (they sum `snapshot.items`, never hardcode a single
@@ -1151,7 +1169,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
     // adds no new assertions; it records whether that happened, so the report
     // is honest about whether non-trivial-order coverage actually ran.
     for (const [platform, order] of state.orders) {
-      const snapshot = order.orderSnapshot as unknown as { items?: unknown[] };
+      const snapshot = narrowOrderSnapshot<{ items?: unknown[] }>(order);
       const lineCount = Array.isArray(snapshot.items) ? snapshot.items.length : 0;
       testInfo.annotations.push({
         type: 'multi-line-coverage',
@@ -1202,10 +1220,10 @@ test.describe('golden path — full flow (S0-S9)', () => {
     }
     const cancelled = await poll.until(
       () => api.orders.getById(order.internalOrderId),
-      (o) => (o.orderSnapshot as unknown as { status?: string }).status === 'cancelled',
+      (o) => narrowOrderSnapshot<{ status?: string }>(o).status === 'cancelled',
       { message: `${platform} order to be ingested as cancelled`, timeoutMs: 180_000, intervalMs: 5_000 },
     );
-    expect((cancelled.orderSnapshot as unknown as { status?: string }).status, `${platform} order status`).toBe(
+    expect(narrowOrderSnapshot<{ status?: string }>(cancelled).status, `${platform} order status`).toBe(
       'cancelled',
     );
 
@@ -1458,7 +1476,7 @@ interface OrderSnapshotShape {
 }
 
 function readOrderSnapshot(order: OrderRecord): OrderSnapshotShape {
-  const snapshot = order.orderSnapshot as unknown as Partial<OrderSnapshotShape>;
+  const snapshot = narrowOrderSnapshot<Partial<OrderSnapshotShape>>(order);
   expect(Array.isArray(snapshot.items), 'order snapshot has items').toBe(true);
   expect(snapshot.totals, 'order snapshot has totals').toBeTruthy();
   return {

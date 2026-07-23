@@ -16,11 +16,11 @@ test.describe('substrate', () => {
     expect(health.status).toBe('ok');
   });
 
-  test('node API client authenticates via bearer login', async ({ api }) => {
+  test('node API client authenticates via bearer login', ({ api }) => {
     expect(api.isAuthenticated).toBe(true);
   });
 
-  test('world resolves at least one connection from the API', async ({ world }) => {
+  test('world resolves at least one connection from the API', ({ world }) => {
     expect(world.connections.length).toBeGreaterThan(0);
   });
 

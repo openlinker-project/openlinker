@@ -101,7 +101,7 @@ export class BulkOfferWizard {
     await expect(select).toBeEnabled({ timeout: 30_000 });
     const value = await select.locator('option:not([value=""])').first().getAttribute('value');
     expect(value, assertion).toBeTruthy();
-    await select.selectOption(value!);
+    await select.selectOption(value);
     // Confirm the controlled select actually committed the value into the form.
     await expect(select).toHaveValue(value!);
   }
@@ -652,7 +652,6 @@ export class BulkOfferWizard {
   private async logRequiredParamReadback(requiredFieldset: Locator): Promise<void> {
     try {
       if ((await requiredFieldset.count()) === 0) {
-        // eslint-disable-next-line no-console
         console.log('[e2e][param-readback] no required fieldset present');
         return;
       }
@@ -670,7 +669,6 @@ export class BulkOfferWizard {
           tag === 'button' ? (await c.innerText()).trim() : await c.inputValue().catch(() => '?');
         readback.push(`${label}=${JSON.stringify(value)}`);
       }
-      // eslint-disable-next-line no-console
       console.log(`[e2e][param-readback] required controls (${n}): ${readback.join(', ')}`);
     } catch {
       // Diagnostic only — never let it affect the run.

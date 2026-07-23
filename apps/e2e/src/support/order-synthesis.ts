@@ -64,7 +64,7 @@ export function buildPrestashopWebserviceClient(world: World): PrestashopWebserv
   const key = process.env.OL_PS_WEBSERVICE_KEY?.trim();
   const baseUrl =
     process.env.OL_PS_ADMIN_URL?.trim() ||
-    (typeof connection?.config?.['baseUrl'] === 'string' ? (connection.config['baseUrl'] as string) : null);
+    (typeof connection?.config?.['baseUrl'] === 'string' ? (connection.config['baseUrl']) : null);
   if (!connection || !key || !baseUrl) return null;
   return new PrestashopWebserviceClient({ baseUrl, apiKey: key });
 }

@@ -31,7 +31,7 @@ test.describe('invoicing: Transfer payments + bank accounts', () => {
     const accounts = await api.bankAccounts.list(infakt!.id);
     test.skip(accounts.length === 0, 'inFakt reports no bank accounts on this sandbox account');
 
-    const target = accounts.find((a) => !a.isDefault) ?? accounts[0]!;
+    const target = accounts.find((a) => !a.isDefault) ?? accounts[0];
     await api.bankAccounts.setDefault(infakt!.id, target.id);
 
     const refreshed = await api.bankAccounts.list(infakt!.id);

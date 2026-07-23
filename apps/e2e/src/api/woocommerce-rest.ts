@@ -333,7 +333,7 @@ export class WooCommerceRestClient {
       throw new Error(`WooCommerce ${method} ${path} → HTTP ${response.status}: ${raw.slice(0, 200)}`);
     }
     try {
-      return JSON.parse(raw);
+      return JSON.parse(raw) as unknown;
     } catch {
       throw new Error(`WooCommerce ${method} ${path} returned non-JSON: ${raw.slice(0, 200)}`);
     }

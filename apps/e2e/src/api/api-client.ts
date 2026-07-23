@@ -153,6 +153,52 @@ export class ApiClient {
     return this.reloginPromise;
   }
 
+  /**
+   * `fetch()` with the client's per-request timeout applied via an
+   * `AbortController` (aborts + always clears the timer). The single place the
+   * timeout plumbing lives — every request path funnels through here so the
+   * `setTimeout`/`finally clearTimeout` dance can't drift between methods.
+   */
+  private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    try {
+      return await fetch(url, { ...init, signal: controller.signal });
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  /** Headers with the bearer `Authorization` set when a token has been acquired. */
+  private authHeaders(extra?: HeadersInit): Headers {
+    const headers = new Headers(extra);
+    if (this.accessToken !== null) {
+      headers.set('Authorization', `Bearer ${this.accessToken}`);
+    }
+    return headers;
+  }
+
+  /**
+   * Raw fetch that re-logins once on a 401 (shared by the binary/text paths
+   * that don't parse JSON or throw `ApiError`). `drain` frees the socket by
+   * reading the 401 body in the kind the caller will read (text vs arrayBuffer)
+   * before the retry, which re-issues the request with a freshly-minted token.
+   * Retries at most once — a 401 on the retried request is returned as-is.
+   */
+  private async fetchRawWithRelogin(
+    url: string,
+    init: RequestInit,
+    drain: (response: Response) => Promise<unknown>,
+  ): Promise<Response> {
+    const response = await this.fetchWithTimeout(url, { ...init, headers: this.authHeaders(init.headers) });
+    if (response.status === 401 && this.credentials) {
+      await drain(response);
+      await this.relogin();
+      return this.fetchWithTimeout(url, { ...init, headers: this.authHeaders(init.headers) });
+    }
+    return response;
+  }
+
   private async request<T>(
     path: string,
     init: RequestInit & { skipAuth?: boolean } = {},
@@ -160,27 +206,16 @@ export class ApiClient {
   ): Promise<T> {
     const { skipAuth, ...requestInit } = init;
     const method = requestInit.method ?? 'GET';
-    const headers = new Headers(requestInit.headers);
+    const headers = skipAuth ? new Headers(requestInit.headers) : this.authHeaders(requestInit.headers);
     headers.set('Accept', 'application/json');
     if (requestInit.body !== undefined && !headers.has('Content-Type')) {
       headers.set('Content-Type', 'application/json');
     }
-    if (!skipAuth && this.accessToken !== null) {
-      headers.set('Authorization', `Bearer ${this.accessToken}`);
-    }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
-    let response: Response;
-    try {
-      response = await fetch(`${this.baseUrl}${withApiVersion(path)}`, {
-        ...requestInit,
-        headers,
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
+    const response = await this.fetchWithTimeout(`${this.baseUrl}${withApiVersion(path)}`, {
+      ...requestInit,
+      headers,
+    });
 
     const raw = await response.text();
     const body: unknown = raw.length > 0 ? this.tryParseJson(raw) : undefined;
@@ -212,27 +247,12 @@ export class ApiClient {
    * bytes (e.g. grepping the FA(3) source XML for specific elements), unlike
    * `requestRaw` which drains and discards the body.
    */
-  private async requestRawText(path: string, isRetryAfterRelogin = false): Promise<RawTextResponse> {
-    const headers = new Headers();
-    if (this.accessToken !== null) {
-      headers.set('Authorization', `Bearer ${this.accessToken}`);
-    }
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
-    let response: Response;
-    try {
-      response = await fetch(`${this.baseUrl}${withApiVersion(path)}`, {
-        headers,
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
-    if (response.status === 401 && !isRetryAfterRelogin && this.credentials) {
-      await response.text();
-      await this.relogin();
-      return this.requestRawText(path, true);
-    }
+  private async requestRawText(path: string): Promise<RawTextResponse> {
+    const response = await this.fetchRawWithRelogin(
+      `${this.baseUrl}${withApiVersion(path)}`,
+      {},
+      (r) => r.text(),
+    );
     const text = await response.text();
     return {
       status: response.status,
@@ -248,27 +268,12 @@ export class ApiClient {
    * body is drained but not returned — the E2E assertions care that bytes exist
    * and the content-type is right, not the document contents.
    */
-  private async requestRaw(path: string, isRetryAfterRelogin = false): Promise<RawResponse> {
-    const headers = new Headers();
-    if (this.accessToken !== null) {
-      headers.set('Authorization', `Bearer ${this.accessToken}`);
-    }
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
-    let response: Response;
-    try {
-      response = await fetch(`${this.baseUrl}${withApiVersion(path)}`, {
-        headers,
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
-    if (response.status === 401 && !isRetryAfterRelogin && this.credentials) {
-      await response.arrayBuffer();
-      await this.relogin();
-      return this.requestRaw(path, true);
-    }
+  private async requestRaw(path: string): Promise<RawResponse> {
+    const response = await this.fetchRawWithRelogin(
+      `${this.baseUrl}${withApiVersion(path)}`,
+      {},
+      (r) => r.arrayBuffer(),
+    );
     const buffer = await response.arrayBuffer();
     return {
       status: response.status,
@@ -284,33 +289,16 @@ export class ApiClient {
    * with a JSON request body. Kept separate from the JSON `request<T>` path
    * because the response here is never JSON.
    */
-  private async requestRawPost(
-    path: string,
-    body: unknown,
-    isRetryAfterRelogin = false,
-  ): Promise<RawResponse> {
-    const headers = new Headers({ 'Content-Type': 'application/json' });
-    if (this.accessToken !== null) {
-      headers.set('Authorization', `Bearer ${this.accessToken}`);
-    }
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
-    let response: Response;
-    try {
-      response = await fetch(`${this.baseUrl}${withApiVersion(path)}`, {
+  private async requestRawPost(path: string, body: unknown): Promise<RawResponse> {
+    const response = await this.fetchRawWithRelogin(
+      `${this.baseUrl}${withApiVersion(path)}`,
+      {
         method: 'POST',
-        headers,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
-    if (response.status === 401 && !isRetryAfterRelogin && this.credentials) {
-      await response.arrayBuffer();
-      await this.relogin();
-      return this.requestRawPost(path, body, true);
-    }
+      },
+      (r) => r.arrayBuffer(),
+    );
     const buffer = await response.arrayBuffer();
     return {
       status: response.status,
@@ -358,19 +346,14 @@ export class ApiClient {
       rawBody: string,
       headers: Record<string, string>,
     ): Promise<InboundWebhookResult> => {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
-      let response: Response;
-      try {
-        response = await fetch(`${this.baseUrl}/webhooks/${provider}/${connectionId}`, {
+      const response = await this.fetchWithTimeout(
+        `${this.baseUrl}/webhooks/${provider}/${connectionId}`,
+        {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...headers },
           body: rawBody,
-          signal: controller.signal,
-        });
-      } finally {
-        clearTimeout(timeout);
-      }
+        },
+      );
       const raw = await response.text();
       return {
         status: response.status,

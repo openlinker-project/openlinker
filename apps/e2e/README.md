@@ -21,20 +21,26 @@ up from OL state, they do not automate external buyer sites.
 
 ```
 apps/e2e/
-  playwright.config.ts    # projects (setup / smoke / golden-path), reporters, retries, storageState
-  .env.example            # OL_WEB_URL, OL_API_URL, OL_ADMIN_USER/PASS, E2E_ORDER_ID
+  playwright.config.ts    # 10 projects (see Projects table), reporters, retries, storageState
+  .eslintrc.cjs           # self-contained lint config (own tsconfig) so the pkg joins `pnpm -r lint`
+  .env.example            # OL_WEB_URL, OL_API_URL, OL_ADMIN_USER/PASS, per-suite secrets/flags
   src/
     config/               # resolveEnv() with localhost defaults + package-local .env loader
-    api/                  # node typed API client: login()->bearer, connections, products, listings, orders, invoices, sync jobs, routing rules
-    world/                # buildWorld(api): connections indexed by platformType + master product/variant helpers
+    api/                  # node typed API client: login()->bearer, connections, products, listings, orders, invoices, sync jobs, routing rules; PS/WC REST helpers
+    world/                # buildWorld(api): connections indexed by platformType + capability + master product/variant helpers
     fixtures/             # the extended Playwright `test` exposing { page, api, world, jobs, poll, pages }
     pages/                # page objects (kebab-case files, PascalCase exports)
-    support/              # poller (pollUntil), jobs (trigger helpers), selector helpers
+    support/              # poller (pollUntil), jobs (trigger helpers), selectors, stock/orders/shipments/parity helpers, manual-checkpoint
   tests/
     auth.setup.ts         # global-setup auth project → writes .auth/admin.json
     smoke/                # health + login + connections list (proves the substrate)
-    golden-path/          # operator-setup.spec (S1-S4)
+    golden-path/          # operator-setup.spec (S1-S4, unattended) + full-flow.spec (S0-S9, attended)
     webhooks/             # real signed inbound-webhook receiver path (#1512)
+    woocommerce-parity/   # WC master / order destination / mapping / webhooks / config validation (#1571)
+    shipping/             # unattended InPost coverage: labels, COD, insurance, protocol, tracking (#1572)
+    invoicing/            # inFakt provider run, KOR, FA(3) parity, bank accounts (#1573)
+    lifecycle/            # order-lifecycle idempotency + inventory propagation + stale-variant pruning (#1574)
+    access-control/       # demo mode, registration, RBAC, UI-reflection checks
   .auth/                  # storageState (gitignored)
 ```
 
@@ -64,35 +70,82 @@ apps/e2e/
 All scripts are under `test:e2e*` — there is intentionally **no `test` script**,
 so the suite is never swept into the root `pnpm -r test` unit gate.
 
+> ⚠️ **`test:e2e` runs only the UNATTENDED projects** (everything except
+> `full-flow`). The attended S0-S9 `full-flow` project blocks on a manual buyer
+> purchase (up to 2h per purchase platform) and mutates external systems, so it
+> is **never** part of the default command — run it explicitly with
+> `test:e2e:full-flow` (which sets `E2E_ATTENDED=1`; `full-flow` also self-skips
+> without that flag, belt-and-suspenders).
+
 ```bash
 # From the repo root:
-pnpm --filter @openlinker/e2e test:e2e                       # full suite
+pnpm --filter @openlinker/e2e test:e2e                       # all UNATTENDED projects (safe default)
+pnpm --filter @openlinker/e2e test:e2e:unattended            # same as above, explicit
+pnpm --filter @openlinker/e2e test:e2e:full-flow             # ATTENDED S0-S9 (headed; E2E_ATTENDED=1)
 pnpm --filter @openlinker/e2e test:e2e -- --project=smoke    # smoke only (read-only)
 pnpm --filter @openlinker/e2e test:e2e -- --project=golden-path
 pnpm --filter @openlinker/e2e test:e2e -- --project=webhooks # signed inbound-webhook receiver path (#1512)
 pnpm --filter @openlinker/e2e test:e2e -- --project=woocommerce-parity # WC master/destination/webhooks/mapping (#1571)
+pnpm --filter @openlinker/e2e test:e2e -- --project=shipping  # unattended InPost coverage (#1572)
+pnpm --filter @openlinker/e2e test:e2e -- --project=invoicing # inFakt provider / KSeF parity (#1573)
+pnpm --filter @openlinker/e2e test:e2e -- --project=lifecycle # lifecycle + inventory resilience (#1574)
+pnpm --filter @openlinker/e2e test:e2e -- --project=access-control
 pnpm --filter @openlinker/e2e test:e2e:ui                    # Playwright UI mode
 pnpm --filter @openlinker/e2e test:e2e:headed                # headed browser
 pnpm --filter @openlinker/e2e test:e2e:report                # open last HTML report
+pnpm --filter @openlinker/e2e lint
 pnpm --filter @openlinker/e2e type-check
 ```
 
 ### Projects
 
-| Project | What it does | Mutates the stack? |
-|---|---|---|
-| `setup` | Logs in via the `/login` UI once, writes `.auth/admin.json`. | No |
-| `smoke` | Health + node login + world + connections page render. | **No — safe on a shared stack** |
-| `golden-path` | Operator setup S1-S4 (product sync, WooCommerce publish, Allegro + Erli bulk offers). | **Yes** |
-| `full-flow` | Attended S0-S9 full golden path across all 6 systems, field/amount parity. | **Yes — heavily** |
+`playwright.config.ts` ships **10** projects. All except `full-flow` are
+unattended (no human-in-the-loop) and run under `test:e2e`. "Mutates?" means it
+changes stack/marketplace state (offers, orders, invoices, stock, webhook
+secrets); "Attended?" means it needs a human (manual buyer purchase + external
+dashboard checkpoints).
 
-> ⚠️ **The `golden-path` and `full-flow` projects mutate the stack** (publish
-> products, create offers, generate labels, issue invoices). Run them only against
-> a stack you control, in a coordinated session — never unattended against a
-> shared demo stack in active manual use. The `full-flow` project additionally
-> drives a **manual buyer purchase** and external-dashboard checkpoints, so it is
-> **attended** (`retries: 0`, run headed). The `smoke` project is read-only and
-> safe to run anytime.
+| Project | What it does | Mutates? | Attended? |
+|---|---|---|---|
+| `setup` | Logs in via the `/login` UI once, writes `.auth/admin.json`. | No | No |
+| `smoke` | Health + node login + world + connections page render. | **No — safe on a shared stack** | No |
+| `golden-path` | Operator setup S1-S4 (product sync, WooCommerce publish, Allegro + Erli bulk offers). | **Yes** | No |
+| `full-flow` | S0-S9 full golden path across all 6 systems, field/amount parity. | **Yes — heavily** | **Yes** |
+| `webhooks` | Fires a real signed inbound webhook, asserts verify → record → enqueue → dedup (#1512). | Yes (rotates secret, enqueues a job) | No |
+| `woocommerce-parity` | WC as master / order destination / mapping / inbound webhooks / config validation (#1571). | Yes (WC-native orders, webhook secret, throwaway connection) | No |
+| `shipping` | Unattended InPost: courier + paczkomat labels, COD, insurance, protocol, cancellation, tracking, ShipX webhook (#1572). | Yes (real ShipX calls) | No |
+| `invoicing` | inFakt run, payment marking, bulk issue/resend/e-mail, KOR corrections, FA(3) parity + preview, Transfer bank accounts (#1573). | Yes (issues/corrects invoices, synthesizes orders) | No |
+| `lifecycle` | Order-lifecycle idempotency, cross-channel stock propagation + oversell safety, stale-variant pruning (#1574). | Yes (real PS stock; pruning is destructive, opt-in) | No |
+| `access-control` | Demo mode, registration, RBAC, and UI-reflection checks. | Provisions fresh viewers (idempotent) | No |
+
+> ⚠️ **Every project except `smoke`/`setup` mutates the stack** (publishes
+> products, creates offers, generates labels, issues invoices, rotates webhook
+> secrets, dispatches ShipX calls). Run them only against a stack you control, in
+> a coordinated session — never against a shared demo stack in active manual use.
+> The `full-flow` project additionally drives a **manual buyer purchase** and
+> external-dashboard checkpoints, so it is **attended** (`retries: 0`, run headed,
+> guarded on `E2E_ATTENDED=1`) and is excluded from the default `test:e2e`. The
+> `smoke` project is read-only and safe to run anytime.
+
+### Project → required env
+
+Every value has a localhost default (`src/config/env.ts`), so `setup`/`smoke`
+and the UI-driven mutating projects run with no `.env`. The columns below list
+what a project additionally needs for its **deep** assertions (a missing secret
+self-skips the affected scenarios, never fails). See `.env.example` for the full
+annotated list.
+
+| Project | Additional env it uses |
+|---|---|
+| `setup`, `smoke` | none (localhost defaults) |
+| `golden-path` | `OL_PS_WEBSERVICE_KEY` (PS field parity); `E2E_FRESH_PRODUCT` + `E2E_FRESH_*` (opt-in fresh product) |
+| `full-flow` | **`E2E_ATTENDED=1`** (gate); `OL_PS_WEBSERVICE_KEY`, `OL_WC_CONSUMER_KEY`/`OL_WC_CONSUMER_SECRET` (field parity); `E2E_SOURCE_PLATFORM` / `E2E_PURCHASE_PLATFORMS`, `E2E_PACZKOMAT_ID`, `E2E_RESUME_DIR`, `E2E_PRODUCT_SKU`, `E2E_FRESH_*` |
+| `webhooks` | none (rotates the PS connection's secret itself); skips without a PrestaShop connection |
+| `woocommerce-parity` | `OL_WC_CONSUMER_KEY`, `OL_WC_CONSUMER_SECRET` (WC REST seeding); skips without a WooCommerce connection |
+| `shipping` | `E2E_ORDER_ID` (or a golden-path `ready` order); `E2E_TEST_INPOST_WEBHOOK=true` (opt-in inbound ShipX webhook); `E2E_PACZKOMAT_ID`; skips without an InPost connection |
+| `invoicing` | `OL_PS_WEBSERVICE_KEY` (order synthesis); skips without an invoicing (inFakt) connection |
+| `lifecycle` | `OL_PS_WEBSERVICE_KEY` (stock/pruning); **`E2E_ALLOW_DESTRUCTIVE_PRUNE=true`** (opt-in irreversible pruning spec) |
+| `access-control` | `E2E_TEST_RATE_LIMIT=true` (opt-in destructive register-429 assertion, demo mode only) |
 
 The full S0-S9 flow — segments, automated-vs-manual split, expected-value
 sources, how to run headed, and how to extend — is documented in

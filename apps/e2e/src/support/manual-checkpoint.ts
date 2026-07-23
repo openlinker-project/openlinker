@@ -138,7 +138,6 @@ function printBanner(
   lines.push('  To record a FAIL:   `echo reason > ' + failFile + '` (or write "fail …" into resume)');
   lines.push('════════════════════════════════════════════════════════════════════');
   lines.push('');
-  // eslint-disable-next-line no-console -- attended-run operator prompt, not app logging
   console.log(lines.join('\n'));
 }
 
