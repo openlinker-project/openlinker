@@ -10488,6 +10488,46 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   margin: 0;
 }
 
+/* #1800 — persisted rejection message + failedAt on a revisited failed shipment */
+.order-shipment-panel__error-message {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.order-shipment-panel__error-meta {
+  margin: var(--space-1) 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* ── Shipments list — failed-rejection hint in the status cell (#1800) ── */
+.shipment-status-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  align-items: flex-start;
+}
+
+.shipment-status-cell__error {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 32ch;
+}
+
+.shipment-status-cell__error-message {
+  font-size: 0.75rem;
+  color: var(--status-error-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shipment-status-cell__error-time {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
 /* Loading-state skeleton (avoids CLS on first paint while connections
  * settle — tech-review SUGGESTION). Reserves the same vertical footprint
  * the populated panel will occupy. */
@@ -10814,6 +10854,38 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 
 .generate-label-form__error .structured-error-list {
   margin-top: var(--space-2);
+}
+
+/* #1800 — carrier support reference (traceId) under the error breakdown */
+.generate-label-form__error-trace {
+  margin: var(--space-2) 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.generate-label-form__error-trace-id {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-muted);
+  color: var(--text-primary);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.generate-label-form__error-trace-id:focus-visible {
+  box-shadow: var(--shadow-focus);
+  outline: none;
+}
+
+.generate-label-form__error-trace-copied {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  color: var(--text-muted);
 }
 
 .generate-label-form__missing-list {
