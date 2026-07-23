@@ -69,8 +69,17 @@ tell me and I'll restart the tunnel + update the connection config.
 ## Part C — Order ingestion (not applicable for this connection)
 
 **Skip this** — the WooCommerce connection in this demo only has `ProductPublisher` +
-`CategoryProvisioner` enabled, not `OrderSource`. There's no polling job or ingestion path wired
-up for it, so a test order placed in WooCommerce admin would never appear in OpenLinker's Orders
-list. If you want to exercise WooCommerce as an order source, that requires a *separate* connection
-configured with the `OrderSource`/`OrderProcessorManager` capabilities enabled — out of scope for
-this demo instance.
+`CategoryProvisioner` enabled, not `OrderSource`.
+
+The WooCommerce order-poll job *does* exist and *does* run: the `woocommerce-orders-poll` scheduler
+task (backed by `WooCommerceOrderSourceAdapter`) is gated by `OL_WOOCOMMERCE_POLL_SCHEDULER_ENABLED=true`
+(set on the demo worker — see the README scheduler-flags table). But that task declares
+`requiredCapability: 'OrderSource'`, so at tick time it only polls connections that have `OrderSource`
+enabled. This connection doesn't (it's a destination shop), so it's skipped —
+`listCapabilityAdapters('OrderSource')` never returns it. A test order placed in WooCommerce admin
+therefore never appears in OpenLinker's Orders list *for this connection*.
+
+So this is a not-enabled-on-this-connection situation, not a missing/unimplemented poll path. To
+exercise WooCommerce as an order source you'd enable `OrderSource` on a WooCommerce connection (or
+use a *separate* connection configured with `OrderSource`/`OrderProcessorManager`) — out of scope
+for this demo instance.

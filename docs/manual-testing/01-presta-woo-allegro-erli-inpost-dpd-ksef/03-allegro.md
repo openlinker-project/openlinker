@@ -28,6 +28,11 @@ Products page's bulk-select action opens by default. Config → Resolving → Re
 
 - [x] Select the adidas tee product, launch **Bulk marketplace offer creation**, target = Allegro
       connection
+
+> **Finding (real bug, fixed — #1438):** in the marketplace-picker modal that opens when launching
+> the flow, the connection-name line rendered nearly invisible (insufficient contrast against the
+> modal background), making it hard to confirm you'd picked the right target connection. **Fixed**
+> in the FE; noted here because the bulk-offer picker is the entry point for this walkthrough.
 - [x] Config step: pricing policy = **Use master price**, stock policy = **Use master stock**,
       **Publish immediately** checked
 
@@ -79,23 +84,25 @@ image-fetch failure surfaces clearly per-variant in the batch tracker instead of
 > summary reports "Offers live on marketplace" / SUCCEEDED 100%. Likely `DRAFT` here just reflects
 > OL's own listing-record lifecycle state distinct from Allegro's publication status (`active` /
 > `activating`), not a real publish-immediately regression — but worth confirming against Allegro
-> sandbox directly if this resurfaces.
+> sandbox directly if this resurfaces. **Not exercised in this run:** turning this into an explicit
+> assertion — open the product drawer, read the live offer-status snapshot (`OfferStatusReader`,
+> #816/#1760), and confirm it reconciles from `activating` to `active` — is tracked as a Phase-2
+> step in **[#1799](https://github.com/openlinker-project/openlinker/issues/1799)**.
 
-## Part C — Order ingestion from Allegro (optional, requires placing a real sandbox order)
+## Part C — Order ingestion from Allegro (not run — no sandbox order-create API)
+
+Not exercised in this run: the Allegro sandbox has no order-create API, so orders can only enter
+by a real buyer placing them. Driving that requires live sandbox buyer access. The steps below are
+what the flow *would* be; they were left unchecked deliberately.
 
 - [ ] If you have Allegro sandbox buyer access, place a test order against the offer created
       above
-- [ ] Wait for the `allegro-orders-poll` scheduled job (every 5 min) or trigger manually
+- [ ] Wait for the `allegro-orders-poll` scheduled job (every 5 min) or trigger manually (see the
+      README "Troubleshooting" section)
 - [ ] Confirm the order appears in OpenLinker's **Orders** list
 
-```
-[SCREENSHOT: OpenLinker Orders list showing the Allegro order]
-```
+_(screenshot pending — step not run)_
 
 - [ ] Confirm the order was created on the PrestaShop side too (destination shop)
 
-```
-[SCREENSHOT: PrestaShop admin order list showing the same order]
-```
-
-> **Finding:** _(fill in if anything here doesn't match expectations)_
+_(screenshot pending — step not run)_

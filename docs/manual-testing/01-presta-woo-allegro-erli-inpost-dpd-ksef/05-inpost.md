@@ -54,14 +54,16 @@ Allegro Paczkomaty InPost delivery method, pickup point `OLS31A` already resolve
 > **Finding:** none — the whole generate-label → download → mark-dispatched flow worked cleanly
 > end to end, including the new `ShipmentLifecycleRail` UI from #1429.
 
-## Part C — Tracking status sync (optional)
+## Part C — Tracking status sync (not run — sandbox limitation)
+
+Not exercised in this run: as the Finding below explains, InPost's sandbox does not appear to
+surface tracking progression at all, so this step can't be meaningfully confirmed there. Left
+unchecked deliberately.
 
 - [ ] Wait for the `inpost-shipment-status-sync` scheduled job (every 30 min) or trigger manually
 - [ ] Confirm the shipment status updates in OpenLinker
 
-```
-[SCREENSHOT: order shipment panel showing an updated tracking status]
-```
+_(screenshot pending — step not run; see Finding below)_
 
 > **Finding — sandbox tracking limitation (verified, not "custom integration"-specific):** the
 > shipment above doesn't appear in InPost's own web dashboard. Initially suspected this was
