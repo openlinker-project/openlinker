@@ -29,7 +29,7 @@ REST API rejects Basic-Auth over plain HTTP, see issue #1416 / PR #1421 fix).
 ![Test connection success, "Connection OK (287ms)"](screenshots/woocommerce/02-test-connection-success.png)
 
 ⚠️ If this fails with a 401, the cloudflared tunnel likely dropped and the `siteUrl` is stale —
-tell me and I'll restart the tunnel + update the connection config.
+restart the tunnel and update the connection config's `siteUrl` to the new tunnel URL.
 
 ## Part B — Publish a product to WooCommerce
 
