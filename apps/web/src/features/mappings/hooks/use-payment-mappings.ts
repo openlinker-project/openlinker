@@ -15,9 +15,13 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 import { mappingsQueryKeys } from '../api/mappings.query-keys';
 import type { PaymentMapping, UpsertPaymentMappingsPayload } from '../api/mappings.types';
 
-export function usePaymentMappingsQuery(connectionId: string): UseQueryResult<PaymentMapping[]> {
+export function usePaymentMappingsQuery(
+  connectionId: string,
+  options?: { enabled?: boolean },
+): UseQueryResult<PaymentMapping[]> {
   const apiClient = useApiClient();
   return useQuery({
+    enabled: connectionId.length > 0 && (options?.enabled ?? true),
     queryKey: mappingsQueryKeys.payments(connectionId),
     queryFn: () => apiClient.mappings.getPaymentMappings(connectionId),
   });

@@ -48,11 +48,26 @@ const QUERY_SPEC: Array<{
   { side: 'destination', kind: 'payment-methods', bundleKey: 'prestashopPaymentModules' },
 ];
 
-export function useMappingOptions(connectionId: string): UseMappingOptionsResult {
+export function useMappingOptions(
+  connectionId: string,
+  /**
+   * Which bundle keys to actually fetch (#1784 follow-up: lazy-load per tab).
+   * A key absent from the set has its query disabled, so option lists are
+   * fetched only for the tab(s) the operator has visited. `undefined` keeps
+   * the original "fetch all" behaviour for any caller that doesn't opt in.
+   */
+  enabledKeys?: ReadonlySet<keyof MappingOptions>,
+): UseMappingOptionsResult {
   const apiClient = useApiClient();
 
   const results = useQueries({
-    queries: QUERY_SPEC.map(({ side, kind }) => ({
+    queries: QUERY_SPEC.map(({ side, kind, bundleKey }) => ({
+      enabled: connectionId.length > 0 && (enabledKeys?.has(bundleKey) ?? true),
+      // Option dictionaries are near-static; a short staleTime forced refetches
+      // against slow destination-shop endpoints on every remount/refocus (#1784
+      // follow-up). Treat them as effectively immutable per session.
+      staleTime: Infinity,
+      gcTime: 60 * 60 * 1000,
       queryKey: mappingsQueryKeys.option(connectionId, side, kind),
       queryFn: () => apiClient.mappings.getMappingOptions(connectionId, side, kind),
     })),

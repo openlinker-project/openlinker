@@ -8,7 +8,7 @@
  * @module apps/web/src/features/mappings/components
  */
 
-import { useState, useEffect, type ReactElement, type ReactNode } from 'react';
+import { useState, useEffect, useMemo, type ReactElement, type ReactNode } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import type { MappingOption } from '../api/mappings.types';
@@ -159,6 +159,18 @@ export function MappingPanel({
     onSave(localRows);
   }
 
+  // Source options not already mapped. Memoized so the O(rows x options)
+  // filter doesn't re-run on unrelated re-renders (#1784 follow-up). Declared
+  // before the early returns so the hook order stays stable across renders.
+  const mappedSourceValues = useMemo(
+    () => new Set(localRows.map((r) => r.sourceValue)),
+    [localRows],
+  );
+  const availableSourceOptions = useMemo(
+    () => sourceOptions.filter((o) => !mappedSourceValues.has(o.value)),
+    [sourceOptions, mappedSourceValues],
+  );
+
   if (optionsLoading) {
     return <LoadingState liveRegion="off" title={`Loading ${title.toLowerCase()} options`} message="Fetching available values…" />;
   }
@@ -166,11 +178,6 @@ export function MappingPanel({
   if (optionsError) {
     return <ErrorState title="Unable to load options" message={optionsError.message} />;
   }
-
-  // Source options not already mapped
-  const availableSourceOptions = sourceOptions.filter(
-    (o) => !localRows.some((r) => r.sourceValue === o.value),
-  );
 
   return (
     <div className="panel panel--dense">

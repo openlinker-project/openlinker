@@ -11,7 +11,7 @@
  * @module apps/web/src/pages/connections
  */
 
-import type { ReactElement, ReactNode } from 'react';
+import { useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
@@ -32,10 +32,31 @@ import { useMappingOptions } from '../../features/mappings/hooks/use-mapping-opt
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
 import { usePlatforms } from '../../shared/plugins';
 import type { Connection } from '../../features/connections';
-import { OL_ORDER_STATUS_OPTIONS, type MappingOption } from '../../features/mappings/api/mappings.types';
+import {
+  OL_ORDER_STATUS_OPTIONS,
+  type MappingOption,
+  type MappingOptions,
+} from '../../features/mappings/api/mappings.types';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 
 type TabId = 'fulfillment' | 'status' | 'carriers' | 'payments' | 'order-states';
+
+const ALL_TABS: TabId[] = ['fulfillment', 'status', 'carriers', 'payments', 'order-states'];
+
+/**
+ * Which option-bundle keys each tab consumes (#1784 follow-up: lazy-load per
+ * tab). Used to fetch only the option lists the visited tabs actually need,
+ * instead of the whole 6-list bundle on page load. Order-states' source axis
+ * is the static `OL_ORDER_STATUS_OPTIONS`, so it only needs the destination
+ * status list.
+ */
+const OPTION_KEYS_BY_TAB: Record<TabId, (keyof MappingOptions)[]> = {
+  fulfillment: ['allegroDeliveryMethods'],
+  status: ['allegroOrderStatuses', 'prestashopOrderStatuses'],
+  carriers: ['allegroDeliveryMethods', 'prestashopCarriers'],
+  payments: ['allegroPaymentProviders', 'prestashopPaymentModules'],
+  'order-states': ['prestashopOrderStatuses'],
+};
 
 interface FallbackBannerSpec {
   tone: 'info' | 'warning';
@@ -127,11 +148,6 @@ export function ConnectionMappingsPage(): ReactElement {
   // both the route strip and every platform label on the page.
   const pairing = useMappingPairing(connectionId);
 
-  const statusQuery = useStatusMappingsQuery(connectionId);
-  const carrierQuery = useCarrierMappingsQuery(connectionId);
-  const paymentQuery = usePaymentMappingsQuery(connectionId);
-  const orderStateQuery = useOrderStateMappingsQuery(connectionId);
-  const { options, isLoading: optionsLoading, errors: optionsErrors } = useMappingOptions(connectionId);
   // Connection config carries `defaultCarrierId` which the carrier
   // fallback-banner copy depends on (#517). Errors are tolerated - if we
   // can't load the connection we just suppress the banner; the BE still
@@ -152,10 +168,55 @@ export function ConnectionMappingsPage(): ReactElement {
   const supportsOrderProcessor =
     connectionQuery.data?.supportedCapabilities.includes('OrderProcessorManager') ?? false;
 
+  // Lazy-load per tab (#1784 follow-up): only the tab that is open on load
+  // (`defaultTab`) plus tabs the operator has visited fetch their data, instead
+  // of firing every mapping query + the full options bundle at page mount.
+  // `supportsOrderSource`/`defaultTab` are only meaningful once the connection
+  // has loaded; until then they read as their provisional (false / 'status')
+  // values. Gating tab-activeness on `connectionReady` prevents the transient
+  // default from firing the wrong tab's queries during the connection load
+  // window (#1784 follow-up).
+  const connectionReady = connectionQuery.data !== undefined;
+  const defaultTab: TabId = supportsOrderSource ? 'fulfillment' : 'status';
+  const [visitedTabs, setVisitedTabs] = useState<ReadonlySet<TabId>>(new Set());
+  const isTabActive = (tab: TabId): boolean =>
+    connectionReady && (tab === defaultTab || visitedTabs.has(tab));
+  function markVisited(tab: string): void {
+    setVisitedTabs((prev) =>
+      prev.has(tab as TabId) ? prev : new Set(prev).add(tab as TabId),
+    );
+  }
+
+  const statusQuery = useStatusMappingsQuery(connectionId, { enabled: isTabActive('status') });
+  const carrierQuery = useCarrierMappingsQuery(connectionId, { enabled: isTabActive('carriers') });
+  const paymentQuery = usePaymentMappingsQuery(connectionId, { enabled: isTabActive('payments') });
+  const orderStateQuery = useOrderStateMappingsQuery(connectionId, {
+    enabled: isTabActive('order-states'),
+  });
+
+  // Fetch only the option lists the visited tabs need (#1784 follow-up).
+  const enabledOptionKeys = useMemo<ReadonlySet<keyof MappingOptions>>(() => {
+    const keys = new Set<keyof MappingOptions>();
+    if (!connectionReady) return keys;
+    for (const tab of ALL_TABS) {
+      if (tab === defaultTab || visitedTabs.has(tab)) {
+        OPTION_KEYS_BY_TAB[tab].forEach((key) => keys.add(key));
+      }
+    }
+    return keys;
+  }, [connectionReady, defaultTab, visitedTabs]);
+  const {
+    options,
+    isLoading: optionsLoading,
+    errors: optionsErrors,
+  } = useMappingOptions(connectionId, enabledOptionKeys);
+
   // Routing rules feed two things: the Fulfillment tab and the routing-aware
-  // carrier-banner count (#836). Gated to OrderSource connections (no rules
-  // exist otherwise); deduped with the panel's own subscription.
-  const routingRulesQuery = useRoutingRulesQuery(connectionId, { enabled: supportsOrderSource });
+  // carrier-banner count (#836). Gated to OrderSource connections and to the
+  // tabs that actually read them; deduped with the panel's own subscription.
+  const routingRulesQuery = useRoutingRulesQuery(connectionId, {
+    enabled: supportsOrderSource && (isTabActive('fulfillment') || isTabActive('carriers')),
+  });
 
   const upsertStatus = useUpsertStatusMappings(connectionId);
   const upsertCarrier = useUpsertCarrierMappings(connectionId);
@@ -256,12 +317,12 @@ export function ConnectionMappingsPage(): ReactElement {
 
   // ── Ready: the pair is resolved and supported. Load the mapping data. ────
 
-  const isLoading =
-    statusQuery.isLoading ||
-    carrierQuery.isLoading ||
-    paymentQuery.isLoading ||
-    orderStateQuery.isLoading ||
-    connectionQuery.isLoading;
+  // The pairing gate already waited on the connection, so nothing blocks the
+  // page shell here anymore. Per-tab mapping data loads lazily (#1784 follow-up)
+  // and each panel renders its own loading/error state, so mapping queries are
+  // intentionally NOT part of a full-page gate. loadError still surfaces a hard
+  // failure of a tab the operator is actually on (enabled queries only).
+  const isLoading = connectionQuery.isLoading;
   const loadError =
     statusQuery.error ?? carrierQuery.error ?? paymentQuery.error ?? orderStateQuery.error ?? null;
 
@@ -288,7 +349,6 @@ export function ConnectionMappingsPage(): ReactElement {
     { id: 'payments' as const, label: 'Payments' },
     ...(supportsOrderProcessor ? [{ id: 'order-states' as const, label: 'Order States' }] : []),
   ];
-  const defaultTab = tabs[0].id;
 
   // Per-panel error isolation (#484): a failure in one bundle key must not
   // block the other tabs. Each panel only watches the two keys it actually
@@ -391,7 +451,7 @@ export function ConnectionMappingsPage(): ReactElement {
     >
       <MappingPairingBar pairing={pairing} onPickSource={() => undefined} />
 
-      <Tabs defaultValue={defaultTab} aria-label="Mapping types">
+      <Tabs defaultValue={defaultTab} onValueChange={markVisited} aria-label="Mapping types">
         <TabsList>
           {tabs.map((tab) => (
             <TabsTrigger key={tab.id} value={tab.id}>

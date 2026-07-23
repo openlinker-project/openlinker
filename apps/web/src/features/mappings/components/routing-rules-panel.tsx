@@ -13,6 +13,7 @@
 
 import { useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import { Button } from '../../../shared/ui/button';
+import { DataTable } from '../../../shared/ui/data-table';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { ConnectionEntityLabel, useConnectionsQuery } from '../../connections';
 import { RoutingSplitBar, type RoutingSplitBucket } from './routing-split-bar';
@@ -265,6 +266,25 @@ export function RoutingRulesPanel({
     );
   }
 
+  function renderProcessorSelect(method: MappingOption): ReactNode {
+    const currentKey = selections[method.value] ?? DEFAULT_KEY;
+    return (
+      <select
+        aria-label={`Fulfillment processor for ${method.label}`}
+        value={currentKey}
+        onChange={(e) => {
+          handleSelect(method.value, e.target.value);
+        }}
+      >
+        {optionsForRow(currentKey).map((o) => (
+          <option key={o.key} value={o.key}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
   return (
     <div className="panel panel--dense">
       <div className="panel__header">
@@ -305,39 +325,36 @@ export function RoutingRulesPanel({
           the source exposes delivery methods.
         </p>
       ) : (
-        <table className="data-table data-table--stackable" aria-label="Fulfillment routing rules">
-          <thead>
-            <tr>
-              <th>{sourceLabel} delivery method</th>
-              <th>Routed to</th>
-              <th>Change</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rowMethods.map((method) => {
-              const currentKey = selections[method.value] ?? DEFAULT_KEY;
-              return (
-                <tr key={method.value}>
-                  <td data-label={`${sourceLabel} delivery method`}>{renderMethodLabel(method)}</td>
-                  <td data-label="Routed to">{renderRoutedTo(currentKey)}</td>
-                  <td data-label="Change">
-                    <select
-                      aria-label={`Fulfillment processor for ${method.label}`}
-                      value={currentKey}
-                      onChange={(e) => { handleSelect(method.value, e.target.value); }}
-                    >
-                      {optionsForRow(currentKey).map((o) => (
-                        <option key={o.key} value={o.key}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        // Virtualized so hundreds of source delivery methods (Allegro) render
+        // without lag (#1784 follow-up). DataTable auto-disables virtualization
+        // and renders its `cardView` on narrow viewports, so the mobile layout
+        // is preserved without the raw-table `.data-table--stackable` transform.
+        <DataTable
+          caption="Fulfillment routing rules"
+          rows={rowMethods}
+          rowKey={(m) => m.value}
+          virtualize
+          estimateRowHeight={52}
+          containerHeight={520}
+          columns={[
+            {
+              id: 'method',
+              header: `${sourceLabel} delivery method`,
+              cell: (m) => renderMethodLabel(m),
+            },
+            {
+              id: 'routed',
+              header: 'Routed to',
+              cell: (m) => renderRoutedTo(selections[m.value] ?? DEFAULT_KEY),
+            },
+            { id: 'change', header: 'Change', cell: (m) => renderProcessorSelect(m) },
+          ]}
+          cardView={{
+            title: (m) => renderMethodLabel(m),
+            subtitle: (m) => renderRoutedTo(selections[m.value] ?? DEFAULT_KEY),
+            detail: (m) => renderProcessorSelect(m),
+          }}
+        />
       )}
 
       {replaceMutation.error && (
