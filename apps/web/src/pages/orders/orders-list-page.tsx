@@ -54,6 +54,8 @@ import { useDemoMode } from '../../features/system';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
 import { itemsSummary, paymentBadge, invoiceBadge } from '../../features/orders/lib/order-row';
+import { deriveDeliveryOutcome } from '../../features/orders/lib/delivery-outcome';
+import { DeliveryChip } from '../../features/orders/components/delivery-chip';
 import { capSelectionPerSource, sourcesAtCap } from '../../features/orders/lib/dispatch-input';
 import { BulkDispatchDialog } from '../../features/orders/components/bulk-dispatch-dialog';
 import { OrderRowDetail } from '../../features/orders/components/order-row-detail';
@@ -706,6 +708,20 @@ export function OrdersListPage(): ReactElement {
             parsed.shipping?.methodId ??
             parsed.pickupPoint?.name ??
             null;
+          // Mapping-aware delivery chip (#1793): outcome + rider stacked. The
+          // rider comes straight off the order response (BE-gated to `default`
+          // resolutions).
+          const deliveryOutcome = deriveDeliveryOutcome({
+            processorKind: order.deliveryResolution?.processorKind,
+            // Use the typed #1792 source-method fields (not the snapshot carrier
+            // proxy) so the list agrees with the detail for methodId-only orders.
+            hasMethod: Boolean(order.sourceDeliveryMethodId ?? order.sourceDeliveryMethodName),
+            // Snapshot-only divergence (documented, not silent): the list uses
+            // the rollup `fulfillmentState` because it can't fetch per-row
+            // shipments, whereas the detail uses booked-shipment presence.
+            isFulfilled:
+              order.fulfillmentState === 'dispatched' || order.fulfillmentState === 'delivered',
+          });
           // Offer "Generate label" ONLY when fulfillment is EXPLICITLY not-shipped
           // and the order isn't cancelled (#1713). An undefined fulfillmentState
           // (genuinely unknown) or a cancelled order shows the passive fulfillment
@@ -747,6 +763,7 @@ export function OrdersListPage(): ReactElement {
                   {view.remaining}
                 </StatusBadge>
               ) : null}
+              <DeliveryChip outcome={deliveryOutcome} rider={order.deliveryRider} />
               {carrier ? (
                 <span className="text-muted orders-cell-sub orders-carrier" title={carrier}>
                   {carrier}
@@ -1233,6 +1250,20 @@ export function OrdersListPage(): ReactElement {
                   parsed.shipping?.methodId ??
                   parsed.pickupPoint?.name ??
                   null;
+                // Mapping-aware delivery chip (#1793) — same derivation as the
+                // desktop cell.
+                const deliveryOutcome = deriveDeliveryOutcome({
+                  processorKind: order.deliveryResolution?.processorKind,
+                  // Typed #1792 source-method fields, to match the detail (see desktop cell).
+                  hasMethod: Boolean(
+                    order.sourceDeliveryMethodId ?? order.sourceDeliveryMethodName,
+                  ),
+                  // Snapshot-only divergence (documented): list uses the rollup
+                  // fulfillmentState; detail uses booked-shipment presence.
+                  isFulfilled:
+                    order.fulfillmentState === 'dispatched' ||
+                    order.fulfillmentState === 'delivered',
+                });
                 const inv = parsed.invoice ? invoiceBadge(parsed.invoice) : null;
                 const fulfillment = fulfillmentBadge(order.fulfillmentState);
                 // Offer "Generate label" ONLY when explicitly not-shipped and not
@@ -1316,6 +1347,10 @@ export function OrdersListPage(): ReactElement {
                               <StatusBadge tone={fulfillment.tone} withDot compact>
                                 {fulfillment.label}
                               </StatusBadge>
+                              <DeliveryChip
+                                outcome={deliveryOutcome}
+                                rider={order.deliveryRider}
+                              />
                               {carrier ? (
                                 <span className="text-muted orders-cell-sub">{carrier}</span>
                               ) : null}

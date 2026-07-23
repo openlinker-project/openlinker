@@ -42,6 +42,7 @@ import { OrderHealthSummary } from '../../features/orders/components/order-healt
 import { OrderPricingPanel } from '../../features/orders/components/order-pricing-panel';
 import { OrderDeliveryPanel } from '../../features/orders/components/order-delivery-panel';
 import { deriveFulfillment } from '../../features/orders/lib/order-health';
+import { deriveDeliveryOutcome } from '../../features/orders/lib/delivery-outcome';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
 
 const RAW_SNAPSHOT_ANCHOR_ID = 'order-raw-snapshot';
@@ -176,6 +177,22 @@ export function OrderDetailPage(): ReactElement {
   const methodFallback =
     getCarrierDisplayName(activeShipment?.carrier ?? null) ??
     (activeShipment ? SHIPPING_METHOD_LABEL[activeShipment.shippingMethod] : null);
+  // Mapping-aware delivery outcome (#1793): map the BE-computed routing kind +
+  // whether a shipment (label/tracking) is booked onto a physical outcome. A
+  // booked `activeShipment` means the carrier-driven path has a label
+  // (resolved); its absence reads as awaiting-label. `hasMethod` gates the
+  // shop-fulfilled vs no-method distinction on the default path.
+  const deliveryHasMethod = Boolean(
+    snapshot.shipping?.methodName ??
+      snapshot.shipping?.methodId ??
+      methodFallback ??
+      snapshot.pickupPoint?.name,
+  );
+  const deliveryOutcome = deriveDeliveryOutcome({
+    processorKind: order.deliveryResolution?.processorKind,
+    hasMethod: deliveryHasMethod,
+    isFulfilled: Boolean(activeShipment),
+  });
   const sourcePlatformType =
     connections.find((c) => c.id === order.sourceConnectionId)?.platformType ?? null;
 
@@ -337,6 +354,8 @@ export function OrderDetailPage(): ReactElement {
             sourcePlatformType={sourcePlatformType}
             carrier={carrier}
             methodFallback={methodFallback}
+            deliveryOutcome={deliveryOutcome}
+            deliveryRider={order.deliveryRider}
           />
           {/* Anchor wrappers (#1713) for the orders-list deep-link CTAs
               (`/orders/{id}#shipment`, `/orders/{id}#invoicing`). Page-level

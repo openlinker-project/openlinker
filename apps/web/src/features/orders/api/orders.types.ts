@@ -66,6 +66,52 @@ export type FulfillmentRollupStateValue = (typeof FulfillmentRollupStateValues)[
 export const SlaStateValues = ['none', 'on_track', 'at_risk', 'overdue'] as const;
 export type SlaStateValue = (typeof SlaStateValues)[number];
 
+// ── Mapping-aware delivery (epic #1776) ─────────────────────────────────────
+// Hand-mirrored from the BE order response DTOs (`OrderDeliveryResolutionDto`
+// #1791, `OrderDeliveryRiderDto` #1792) and the `@openlinker/core/mappings`
+// unions, per the FE-001 contract strategy — keep in sync with the backend.
+
+// How fulfillment routing resolved for the order's delivery method (#1791):
+// `rule` = a configured routing rule matched; `default` = the omp_fulfilled
+// fallback (shop-fulfilled). The rider only fires on a `default` resolution.
+export const FulfillmentRoutingSourceValues = ['rule', 'default'] as const;
+export type FulfillmentRoutingSource = (typeof FulfillmentRoutingSourceValues)[number];
+
+// Where the fulfilling connection sits (#1791). Mirrors the `mappings` feature's
+// `FulfillmentProcessorKind`; re-declared here so `orders` stays decoupled.
+export const FulfillmentProcessorKindValues = [
+  'omp_fulfilled',
+  'ol_managed_carrier',
+  'source_brokered',
+] as const;
+export type FulfillmentProcessorKind = (typeof FulfillmentProcessorKindValues)[number];
+
+/** Read-only projection of how fulfillment routing resolved for an order (#1791). */
+export interface OrderDeliveryResolution {
+  source: FulfillmentRoutingSource;
+  processorKind: FulfillmentProcessorKind;
+  processorConnectionId: string | null;
+}
+
+// Actionable delivery hint on a `default`-resolved order (#1792): `unmapped`
+// (a supported carrier is connected → Add mapping), `not-connected` (OL supports
+// the carrier but none is connected → Connect), `none` (show nothing).
+export const DeliveryRiderValues = ['unmapped', 'not-connected', 'none'] as const;
+export type DeliveryRiderValue = (typeof DeliveryRiderValues)[number];
+
+/** Heuristic-matched candidate carrier for an actionable rider (#1792). */
+export interface DeliveryRiderCandidateCarrier {
+  platformType: string;
+  displayName: string;
+}
+
+/** Delivery rider projection (#1792) — present alongside a `default` resolution. */
+export interface OrderDeliveryRider {
+  rider: DeliveryRiderValue;
+  /** Present only for the actionable riders (`unmapped` / `not-connected`). */
+  candidateCarrier?: DeliveryRiderCandidateCarrier;
+}
+
 export interface OrderRecord {
   internalOrderId: string;
   customerId: string | null;
@@ -105,6 +151,20 @@ export interface OrderRecord {
    * `dispatchByAt`. Optional for graceful degradation.
    */
   slaState?: SlaStateValue;
+  /**
+   * How fulfillment routing resolved for this order's delivery method (#1791).
+   * Optional — older/absent payloads degrade to a snapshot-only chip.
+   */
+  deliveryResolution?: OrderDeliveryResolution;
+  /**
+   * Actionable delivery hint on a defaulted order (#1792). Present only
+   * alongside a `default` resolution; `rider: 'none'` renders nothing.
+   */
+  deliveryRider?: OrderDeliveryRider;
+  /** Source delivery-method id (#1791) — the #1794 Add-mapping deep-link target. */
+  sourceDeliveryMethodId?: string | null;
+  /** Source delivery-method label (#1791). */
+  sourceDeliveryMethodName?: string | null;
 }
 
 // Result ordering for the orders list (#927, extended #944). Mirrors

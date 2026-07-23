@@ -102,11 +102,49 @@ describe('OrderDeliveryPanel', () => {
       expect(screen.getByText('Paczkomat')).toBeInTheDocument();
     });
 
+    it('should fall back to the pickup-point name when no method or fallback resolves (#1793)', () => {
+      renderWithProviders(
+        <OrderDeliveryPanel pickupPoint={{ id: 'OLS06A', name: 'Paczkomat OLS06A' }} />,
+      );
+      expect(screen.getByText('Method')).toBeInTheDocument();
+      expect(screen.getByText('Paczkomat OLS06A')).toBeInTheDocument();
+    });
+
     it('should render "-" for Method when neither snapshot nor fallback resolves', () => {
       renderWithProviders(<OrderDeliveryPanel carrier="InPost" />);
       expect(screen.getByText('Method')).toBeInTheDocument();
       // Only the Method value falls back to "-"; Carrier shows InPost.
       expect(screen.getByText('-')).toBeInTheDocument();
+    });
+  });
+
+  describe('mapping-aware delivery outcome + rider (#1793)', () => {
+    it('should render the delivery outcome chip in the Carrier row', () => {
+      renderWithProviders(<OrderDeliveryPanel carrier="InPost" deliveryOutcome="resolved" />);
+      expect(screen.getByText('InPost')).toBeInTheDocument();
+      expect(screen.getByText('Resolved')).toBeInTheDocument();
+    });
+
+    it('should render the rider banner with a fix-it slot when a rider is actionable', () => {
+      renderWithProviders(
+        <OrderDeliveryPanel
+          deliveryOutcome="shop-fulfilled"
+          deliveryRider={{
+            rider: 'unmapped',
+            candidateCarrier: { platformType: 'inpost', displayName: 'InPost' },
+          }}
+        />,
+      );
+      expect(screen.getByText('Shop-fulfilled')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Add mapping' })).toBeDisabled();
+    });
+
+    it('should not render a rider banner when the rider is "none"', () => {
+      renderWithProviders(
+        <OrderDeliveryPanel deliveryOutcome="shop-fulfilled" deliveryRider={{ rider: 'none' }} />,
+      );
+      expect(screen.getByText('Shop-fulfilled')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Add mapping|Connect/ })).not.toBeInTheDocument();
     });
   });
 });
