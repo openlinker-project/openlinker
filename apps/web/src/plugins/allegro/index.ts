@@ -2,9 +2,9 @@
  * Allegro plugin
  *
  * Unified contribution (#702) — Allegro contributes both build-time
- * affordances (routes, typed API namespace, offer-creation wizard) and
- * platform-side affordances (setup card, GPSR extra section, listing-edit
- * gate, content-publish error extractor).
+ * affordances (routes, typed API namespace) and platform-side affordances
+ * (setup card, GPSR extra section, listing-edit gate, content-publish error
+ * extractor, bulk-offer config + validation).
  *
  * @module plugins/allegro
  */
@@ -12,7 +12,6 @@ import { lazy } from 'react';
 
 import { createAllegroApi, type AllegroApi } from '../../features/allegro';
 import {
-  AllegroCreateOfferWizard,
   allegroBulkConfigIsComplete,
   allegroOfferValidation,
 } from '../../features/listings';
@@ -41,13 +40,6 @@ export const allegroPlugin: OpenLinkerPlugin = definePlugin({
   build: {
     routes: [allegroCallbackRoute, allegroSetupRoute],
     apiNamespaces: (request) => ({ allegro: createAllegroApi(request) }),
-    // Capability-shaped offer creation (#608): the listings page resolves
-    // this contribution via `useOfferCreationWizard('allegro')` and renders
-    // the wizard inside the launcher's Dialog.
-    offerCreationWizard: {
-      platformType: 'allegro',
-      component: AllegroCreateOfferWizard,
-    },
   },
   platform: {
     displayName: 'Allegro',

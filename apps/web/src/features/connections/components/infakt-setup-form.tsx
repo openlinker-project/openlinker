@@ -41,6 +41,14 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from '../../../shared/ui/dialog';
+import { InfaktWebhookConfigDialog } from './infakt-webhook-config';
 
 export function InfaktSetupForm(): ReactElement {
   const createConnection = useCreateConnectionMutation();
@@ -49,6 +57,10 @@ export function InfaktSetupForm(): ReactElement {
   const { showToast } = useToast();
   const navigate = useNavigate();
   const [createdConnection, setCreatedConnection] = useState<Connection | null>(null);
+  // Post-create webhook flow (#1770): a prompt fires once on successful create;
+  // choosing "Configure webhooks" closes it and opens the full config dialog.
+  const [webhookPromptOpen, setWebhookPromptOpen] = useState(false);
+  const [webhookConfigOpen, setWebhookConfigOpen] = useState(false);
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
   const [selectedBankAccountId, setSelectedBankAccountId] = useState<string | null>(null);
   // inFakt reported zero bank accounts, so the auto-apply effect forced the
@@ -102,6 +114,7 @@ export function InfaktSetupForm(): ReactElement {
       const created = await createConnection.mutateAsync(toCreateConnectionInput(values));
       form.reset(values, { keepValues: true, keepDirty: false });
       setCreatedConnection(created);
+      setWebhookPromptOpen(true);
       showToast({
         tone: 'success',
         title: 'Connection created',
@@ -345,6 +358,19 @@ export function InfaktSetupForm(): ReactElement {
               {testConnection.error.message}
             </Alert>
           ) : null}
+
+          {/* Delivery webhooks (#1770) — optional and post-create (they need the
+              connection id + a live endpoint). A prompt opens the config dialog
+              automatically on create; this row reopens it after a dismiss. */}
+          <Alert tone="info" title="Delivery webhooks (optional)">
+            Get KSeF clearance updates from inFakt in real time.
+            <div className="form-actions" style={{ marginTop: 'var(--space-3)' }}>
+              <Button type="button" tone="secondary" onClick={() => setWebhookConfigOpen(true)}>
+                Configure webhooks…
+              </Button>
+            </div>
+          </Alert>
+
           <div className="form-actions">
             <Button type="button" onClick={() => void onTest()} disabled={testConnection.isPending}>
               {testConnection.isPending ? 'Testing…' : 'Test connection'}
@@ -353,6 +379,53 @@ export function InfaktSetupForm(): ReactElement {
               Done
             </Button>
           </div>
+
+          {/* Fires once on successful create: offer webhooks now, or point to
+              where they live later. "Configure" closes this and opens the
+              full config dialog (#1770). */}
+          <Dialog open={webhookPromptOpen} onOpenChange={setWebhookPromptOpen}>
+            <DialogContent aria-describedby={undefined}>
+              <DialogTitle>Set up delivery webhooks now?</DialogTitle>
+              <DialogDescription>
+                Webhooks let inFakt tell OpenLinker the moment an invoice clears KSeF, instead of
+                waiting for the next poll. It&apos;s optional and takes a minute in the inFakt
+                dashboard. You can always set this up later from the connection&apos;s Actions tab.
+              </DialogDescription>
+              <DialogFooter>
+                <Button
+                  tone="secondary"
+                  type="button"
+                  onClick={() => {
+                    setWebhookPromptOpen(false);
+                    showToast({
+                      tone: 'success',
+                      title: 'Connection ready',
+                      description:
+                        'Configure webhooks anytime from the connection Actions tab.',
+                    });
+                  }}
+                >
+                  Not now
+                </Button>
+                <Button
+                  tone="primary"
+                  type="button"
+                  onClick={() => {
+                    setWebhookPromptOpen(false);
+                    setWebhookConfigOpen(true);
+                  }}
+                >
+                  Configure webhooks
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <InfaktWebhookConfigDialog
+            connection={createdConnection}
+            open={webhookConfigOpen}
+            onOpenChange={setWebhookConfigOpen}
+          />
         </>
       ) : (
         <div className="form-actions">

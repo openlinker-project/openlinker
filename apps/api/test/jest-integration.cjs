@@ -27,6 +27,7 @@ module.exports = {
   // comment, which explicitly relies on this global hook to do it (#1285).
   globalTeardown: '<rootDir>/test/integration/teardown.ts',
   moduleNameMapper: {
+    '^@openlinker/api/(.*)$': path.resolve(__dirname, '../src/$1'),
     '^@openlinker/core$': path.resolve(__dirname, '../../../libs/core/src/index.ts'),
     '^@openlinker/core/(.*)$': path.resolve(__dirname, '../../../libs/core/src/$1'),
     '^@openlinker/shared$': path.resolve(__dirname, '../../../libs/shared/src/index.ts'),
