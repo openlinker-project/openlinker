@@ -47,4 +47,13 @@ export interface IFulfillmentRoutingService {
    * when no rule matches or the order carries no delivery method.
    */
   resolve(query: FulfillmentRoutingQuery): Promise<FulfillmentRoutingResolution>;
+
+  /**
+   * Batched counterpart to {@link resolve} (#1791): resolves many orders'
+   * `(source, method)` pairs in one pass — one repository read per distinct
+   * `sourceConnectionId` rather than one per order — so a page of orders can
+   * carry a `deliveryResolution` projection without an N+1. Returns
+   * resolutions positionally aligned with `queries`.
+   */
+  resolveBatch(queries: FulfillmentRoutingQuery[]): Promise<FulfillmentRoutingResolution[]>;
 }

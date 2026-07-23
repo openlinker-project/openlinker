@@ -134,6 +134,62 @@ describe('FulfillmentRoutingService', () => {
     });
   });
 
+  describe('resolveBatch (#1791)', () => {
+    it('should resolve rule hits, default fallbacks, and no-method orders positionally', async () => {
+      repository.findBySourceConnectionId.mockResolvedValue([
+        makeRule({
+          sourceConnectionId: SOURCE,
+          sourceDeliveryMethodId: 'method-x',
+          processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier,
+          processorConnectionId: INPOST,
+        }),
+      ]);
+
+      const results = await service.resolveBatch([
+        { sourceConnectionId: SOURCE, sourceDeliveryMethodId: 'method-x' },
+        { sourceConnectionId: SOURCE, sourceDeliveryMethodId: 'method-unmapped' },
+        { sourceConnectionId: SOURCE, sourceDeliveryMethodId: null },
+      ]);
+
+      expect(results).toEqual([
+        { processorKind: 'ol_managed_carrier', processorConnectionId: INPOST, source: 'rule' },
+        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default' },
+        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default' },
+      ]);
+    });
+
+    it('should read each distinct source connection at most once (no N+1)', async () => {
+      repository.findBySourceConnectionId.mockResolvedValue([]);
+
+      await service.resolveBatch([
+        { sourceConnectionId: SOURCE, sourceDeliveryMethodId: 'method-a' },
+        { sourceConnectionId: SOURCE, sourceDeliveryMethodId: 'method-b' },
+        { sourceConnectionId: SOURCE, sourceDeliveryMethodId: 'method-c' },
+        { sourceConnectionId: PS, sourceDeliveryMethodId: 'method-d' },
+      ]);
+
+      expect(repository.findBySourceConnectionId).toHaveBeenCalledTimes(2);
+      expect(repository.findBySourceConnectionId).toHaveBeenCalledWith(SOURCE);
+      expect(repository.findBySourceConnectionId).toHaveBeenCalledWith(PS);
+    });
+
+    it('should skip the repository entirely for an empty batch', async () => {
+      const results = await service.resolveBatch([]);
+
+      expect(results).toEqual([]);
+      expect(repository.findBySourceConnectionId).not.toHaveBeenCalled();
+    });
+
+    it('should not query connections whose orders all carry no delivery method', async () => {
+      const results = await service.resolveBatch([
+        { sourceConnectionId: SOURCE, sourceDeliveryMethodId: null },
+      ]);
+
+      expect(results).toEqual([{ processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default' }]);
+      expect(repository.findBySourceConnectionId).not.toHaveBeenCalled();
+    });
+  });
+
   describe('replaceRules', () => {
     it('should persist an omp_fulfilled rule when the processor declares OrderProcessorManager', async () => {
       declareCapabilities(PS, ['OrderProcessorManager']);

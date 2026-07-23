@@ -17,6 +17,7 @@ import { OrderRecordStatus, SlaState, FulfillmentRollupState } from '@openlinker
 import { OrderSyncStatusResponseDto } from './order-sync-status-response.dto';
 import { SyncAttemptResponseDto } from './sync-attempt-response.dto';
 import type { OrderInvoiceProjectionDto } from './order-invoice-projection.dto';
+import { OrderDeliveryResolutionDto } from './order-delivery-resolution.dto';
 
 export class OrderRecordResponseDto {
   @ApiProperty({ description: 'Internal order ID (e.g. ol_order_...)' })
@@ -97,4 +98,15 @@ export class OrderRecordResponseDto {
       'Ship-by SLA bucket (#1108), server-derived from dispatchByAt + fulfillmentState (cleared to "none" once shipped). The single source of truth the list badge + filter agree on; the FE renders only the live countdown from dispatchByAt.',
   })
   slaState!: SlaState;
+
+  @ApiPropertyOptional({
+    type: OrderDeliveryResolutionDto,
+    nullable: true,
+    description:
+      'Read-only projection (#1791) of how fulfillment routing resolved for this order\'s delivery ' +
+      'method — the outcome IFulfillmentRoutingService.resolve computes. Present on both the list and ' +
+      'detail reads when the order carries a source delivery method; absent otherwise. Never changes ' +
+      'routing behaviour — a pure derived read.',
+  })
+  deliveryResolution?: OrderDeliveryResolutionDto | null;
 }

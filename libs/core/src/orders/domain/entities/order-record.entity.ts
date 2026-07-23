@@ -95,4 +95,24 @@ export class OrderRecord {
       ? { amount, currency }
       : undefined;
   }
+
+  /**
+   * Typed, fail-safe read of the source-side delivery method id (#1791) from
+   * the snapshot. Pure derivation of an already-loaded field (ADR-011): no
+   * I/O, no mutation. Mirrors {@link paymentStatus} / {@link codToCollect} —
+   * centralises the `orderSnapshot.shipping.methodId` key so cross-context
+   * consumers (the delivery-routing-resolution projection) bind to a typed
+   * contract, not the JSON layout. Same key the shipping dispatch seam
+   * (`ShipmentDispatchInput.sourceDeliveryMethodId`) resolves against.
+   * Returns `null` when the order carries no shipping method (the source
+   * didn't expose one, or the snapshot predates the field).
+   */
+  get sourceDeliveryMethodId(): string | null {
+    const shipping = this.orderSnapshot.shipping;
+    if (typeof shipping !== 'object' || shipping === null) {
+      return null;
+    }
+    const { methodId } = shipping as Record<string, unknown>;
+    return typeof methodId === 'string' ? methodId : null;
+  }
 }
