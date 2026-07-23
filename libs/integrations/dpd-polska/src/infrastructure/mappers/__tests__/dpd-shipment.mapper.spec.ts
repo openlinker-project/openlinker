@@ -380,6 +380,56 @@ describe('assertCreateSucceededAndExtractWaybill', () => {
       { errorCode: 'INCORRECT_RECEIVER_POSTAL_CODE', info: 'Incorrect receiver postal code: (60-001)' },
       { errorCode: 'INCORRECT_SENDER_POSTAL_CODE', info: 'Incorrect sender postal code: (01-612)' },
     ]);
+    // Mixed case: the primary (parcel-first) entry is the RECEIVER postcode, so the
+    // sender hint is gated OFF — no mismatched "Incorrect receiver… {sender hint}".
+    expect((error as ShippingProviderRejectionException).message).not.toContain(
+      'sender address on the DPD connection',
+    );
+  });
+
+  it('should enrich the message with an actionable sender-address hint on INCORRECT_SENDER_POSTAL_CODE (#1778)', () => {
+    // A syntactically-valid NN-NNN sender postcode that DPD rejects as out of
+    // region (e.g. Warszawa + 22-213). DPD surfaces it behind a top-level
+    // NOT_PROCESSED with the field reason at the PACKAGE level.
+    const res: DpdGeneratePackagesNumbersResponse = {
+      status: 'NOT_PROCESSED',
+      packages: [
+        {
+          status: 'INCORRECT_DATA',
+          validationInfo: [
+            { errorCode: 'INCORRECT_SENDER_POSTAL_CODE', info: 'Incorrect sender postal code: (22-213)' },
+          ],
+          parcels: [{ status: 'NOT_PROCESSED', validationInfo: [] }],
+        },
+      ],
+    };
+
+    const error = run(() => assertCreateSucceededAndExtractWaybill(res)) as ShippingProviderRejectionException;
+    expect(error).toBeInstanceOf(ShippingProviderRejectionException);
+    // Discriminator + structured details stay verbatim (parcel-first precedence).
+    expect(error.providerCode).toBe('INCORRECT_SENDER_POSTAL_CODE');
+    // Message keeps DPD's raw reason and appends the operator-actionable hint.
+    expect(error.message).toContain('Incorrect sender postal code: (22-213)');
+    expect(error.message).toContain('sender address on the DPD connection');
+  });
+
+  it('should not add the sender hint when only a receiver postal code is rejected (#1778)', () => {
+    const res: DpdGeneratePackagesNumbersResponse = {
+      status: 'NOT_PROCESSED',
+      packages: [
+        {
+          status: 'INCORRECT_DATA',
+          validationInfo: [
+            { errorCode: 'INCORRECT_RECEIVER_POSTAL_CODE', info: 'Incorrect receiver postal code: (60-001)' },
+          ],
+          parcels: [{ status: 'NOT_PROCESSED', validationInfo: [] }],
+        },
+      ],
+    };
+
+    const error = run(() => assertCreateSucceededAndExtractWaybill(res)) as ShippingProviderRejectionException;
+    expect(error.message).toBe('Incorrect receiver postal code: (60-001)');
+    expect(error.message).not.toContain('sender address on the DPD connection');
   });
 });
 
