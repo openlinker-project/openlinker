@@ -188,7 +188,8 @@ export class DpdShippingAdapter
         // before serializing: a malformed DPD response pairing a non-OK status
         // with a populated document would otherwise dump a full base64 PDF into
         // structured logs. Only status + validation-info envelope is loggable.
-        const { documentData: _documentData, ...loggable } = response as Record<string, unknown>;
+        const loggable = { ...(response as Record<string, unknown>) };
+        delete loggable.documentData;
         this.logger.warn(
           `DPD ${operation} rejected (status=${response.status}) [traceId=${response.traceId ?? 'none'}]; raw response: ${JSON.stringify(loggable)}`,
         );
