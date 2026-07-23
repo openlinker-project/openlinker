@@ -25,7 +25,8 @@ verification checklist.
 5. [Boot the stack with the proxy overlay](#5-boot-the-stack-with-the-proxy-overlay)
 6. [Local verification (no real DNS needed)](#6-local-verification-no-real-dns-needed)
 7. [Post-deploy verification checklist](#7-post-deploy-verification-checklist)
-8. [Troubleshooting](#8-troubleshooting)
+8. [Manual post-deploy configuration](#8-manual-post-deploy-configuration)
+9. [Troubleshooting](#9-troubleshooting)
 
 ---
 
@@ -258,7 +259,21 @@ Run through this after every deployment (initial or credential rotation):
   password pairs, `ADMIN_PASSWD`, `OL_BOOTSTRAP_ADMIN_PASSWORD`, `JWT_SECRET`
   are all non-default values in `.env`.
 
-## 8. Troubleshooting
+## 8. Manual post-deploy configuration
+
+Some connection-level configuration is **not** seeded automatically and must be
+applied once per deployment (via the UI or the API) before the corresponding
+flow works end to end. Track these as manual standup steps:
+
+- **Erli fulfillment routing** - an Erli source connection ingests orders out of
+  the box, but **dispatch / label generation has no carrier until routing rules
+  are configured** (Erli delivery method -> InPost/DPD connection). Configure
+  them on the connection's **Mappings -> Fulfillment routing** panel, or via
+  `PUT /connections/:connectionId/routing-rules`. See the
+  [Erli setup guide → Fulfillment routing](../libs/integrations/erli/docs/setup-guide.md#11-fulfillment-routing-dispatch--labels)
+  for the UI path and a `curl` example.
+
+## 9. Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
