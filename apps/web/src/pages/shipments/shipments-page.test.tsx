@@ -1,6 +1,7 @@
-import { cleanup, screen } from '@testing-library/react';
+import { cleanup, screen, within } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
+import { mockMobileViewport } from '../../test/viewport';
 import { ShipmentsPage } from './shipments-page';
 import type { PaginatedShipments, Shipment } from '../../features/shipments/api/shipments.types';
 import type { Connection } from '../../features/connections/api/connections.types';
@@ -320,6 +321,42 @@ describe('ShipmentsPage — failed-shipment hint (#1800)', () => {
     expect(
       (await screen.findAllByText(/sender postal code not serviceable/i)).length,
     ).toBeGreaterThan(0);
+  });
+
+  it('should render the persisted rejection reason in the mobile card view too', async () => {
+    // `ShipmentStatusCell` is shared between the table cell and the mobile card
+    // `meta` slot, and the DataTable renders one OR the other by viewport — so
+    // this locks the card-view path (which the desktop-only assertion above
+    // never exercises), keeping triage-from-phone parity (frontend-ui-style-guide
+    // § Responsive) from silently regressing.
+    const viewport = mockMobileViewport();
+    try {
+      const failed = makeShipment({
+        id: 'ol_shipment_failed_mobile',
+        status: 'failed',
+        errorMessage: 'DPD rejected: sender postal code not serviceable',
+        failedAt: '2026-05-20T12:00:00.000Z',
+        trackingNumber: null,
+      });
+      const mockApi = createMockApiClient({
+        shipments: { list: vi.fn().mockResolvedValue(page([failed])) },
+        connections: { list: vi.fn().mockResolvedValue([]) },
+      });
+
+      const { container } = renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+      await screen.findByText(/sender postal code not serviceable/i);
+      // Assert the reason rendered *inside* a card (not merely somewhere on the
+      // page) — in mobile mode the table isn't rendered, so scoping to the card
+      // pins the card-view path specifically.
+      const card = container.querySelector('.data-table__card');
+      expect(card).not.toBeNull();
+      expect(
+        within(card as HTMLElement).getByText(/sender postal code not serviceable/i),
+      ).toBeInTheDocument();
+    } finally {
+      viewport.restore();
+    }
   });
 
   it('should not render an error hint for a non-failed shipment', async () => {
