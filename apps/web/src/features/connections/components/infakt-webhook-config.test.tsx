@@ -57,6 +57,20 @@ describe('InfaktWebhookConfig', () => {
     expect(screen.getByText('Not configured')).toBeInTheDocument();
   });
 
+  it('shows the failing badge and re-check-secret alert when activation is auth-failing (#1814)', async () => {
+    const apiClient = createMockApiClient({
+      connections: {
+        getWebhookStatus: vi.fn().mockResolvedValue(
+          status({ activation: 'auth-failing', signature: 'configured' }),
+        ),
+      },
+    });
+    renderWithProviders(<InfaktWebhookConfig connection={infaktConnection} />, { apiClient });
+
+    expect(await screen.findByText('Deliveries failing · check secret')).toBeInTheDocument();
+    expect(screen.getByText('inFakt deliveries are being rejected')).toBeInTheDocument();
+  });
+
   it('shows a retry affordance when the status query fails', async () => {
     const apiClient = createMockApiClient({
       connections: { getWebhookStatus: vi.fn().mockRejectedValue(new Error('network down')) },

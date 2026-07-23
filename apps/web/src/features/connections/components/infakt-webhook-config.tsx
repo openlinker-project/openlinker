@@ -69,9 +69,16 @@ function resolveApiBaseUrl(config: Connection['config']): string {
 // Exported so the plugin's ConnectionActions row (#1770) can render the same
 // humanized labels instead of leaking the raw `WebhookStatus` enum values.
 export function activationLabel(status: WebhookStatus): { tone: StatusBadgeTone; text: string } {
-  return status.activation === 'verified'
-    ? { tone: 'success', text: 'Active · deliveries seen' }
-    : { tone: 'warning', text: 'Awaiting first event' };
+  switch (status.activation) {
+    case 'verified':
+      return { tone: 'success', text: 'Active · deliveries seen' };
+    case 'auth-failing':
+      // Deliveries ARE arriving but every one is rejected at signature check
+      // (#1814) — distinct from the inert "never registered" case below.
+      return { tone: 'error', text: 'Deliveries failing · check secret' };
+    default:
+      return { tone: 'warning', text: 'Awaiting first event' };
+  }
 }
 
 export function signatureLabel(status: WebhookStatus): { tone: StatusBadgeTone; text: string } {
@@ -133,6 +140,13 @@ function StatusStrip({
             {status.lastDeliveryEvent ?? 'event'} · {status.lastDeliveryResult ?? 'unknown'}
           </span>
         </div>
+      ) : null}
+      {status.activation === 'auth-failing' ? (
+        <Alert tone="error" title="inFakt deliveries are being rejected">
+          OpenLinker is receiving deliveries but rejecting every one because the signature
+          doesn&apos;t match. Re-copy the HMAC signing secret from inFakt below — the stored secret
+          is missing or out of date.
+        </Alert>
       ) : null}
     </div>
   );

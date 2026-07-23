@@ -175,10 +175,11 @@ export interface RotateWebhookSecretResult {
 /**
  * Operator-facing webhook state for a connection (`GET
  * /connections/:id/webhooks/status`, #1770). `activation` is inferred from
- * delivery history; `signature` reflects whether HMAC verification is
- * configured (optional). Backs the inFakt webhook-config modal.
+ * delivery + rejection history (`auth-failing` = deliveries arriving but every
+ * one rejected at signature check, #1814); `signature` reflects whether HMAC
+ * verification is configured (optional). Backs the inFakt webhook-config modal.
  */
-export type WebhookActivation = 'not-registered' | 'verified';
+export type WebhookActivation = 'not-registered' | 'verified' | 'auth-failing';
 export type WebhookSignatureState = 'off' | 'configured';
 
 export interface WebhookStatus {
