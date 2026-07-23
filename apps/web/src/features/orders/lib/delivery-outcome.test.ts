@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { deriveDeliveryOutcome } from './delivery-outcome';
+import { deriveDeliveryOutcome, hasLiveOlCarrierRoute } from './delivery-outcome';
+import type { OrderDeliveryResolution } from '../api/orders.types';
 
 describe('deriveDeliveryOutcome', () => {
   it('should be "resolved" for a carrier-driven order with a booked label', () => {
@@ -85,5 +86,42 @@ describe('deriveDeliveryOutcome', () => {
         processorAvailable: true,
       }),
     ).toBe('resolved');
+  });
+});
+
+describe('hasLiveOlCarrierRoute (#1799)', () => {
+  const res = (o: Partial<OrderDeliveryResolution>): OrderDeliveryResolution => ({
+    source: 'rule',
+    processorKind: 'ol_managed_carrier',
+    processorConnectionId: 'conn-x',
+    processorAvailable: true,
+    ...o,
+  });
+
+  it('is true for an available ol_managed_carrier / source_brokered route', () => {
+    expect(hasLiveOlCarrierRoute(res({ processorKind: 'ol_managed_carrier' }))).toBe(true);
+    expect(
+      hasLiveOlCarrierRoute(res({ processorKind: 'source_brokered', processorConnectionId: 'conn-x' })),
+    ).toBe(true);
+  });
+
+  it('is false for a disabled processor (processorAvailable false)', () => {
+    expect(hasLiveOlCarrierRoute(res({ processorAvailable: false }))).toBe(false);
+  });
+
+  it('is false for the omp_fulfilled default (shop-fulfilled)', () => {
+    expect(
+      hasLiveOlCarrierRoute(res({ source: 'default', processorKind: 'omp_fulfilled', processorConnectionId: null })),
+    ).toBe(false);
+  });
+
+  it('is false when there is no resolution (no method / older payload)', () => {
+    expect(hasLiveOlCarrierRoute(undefined)).toBe(false);
+    expect(hasLiveOlCarrierRoute(null)).toBe(false);
+  });
+
+  it('treats an absent processorAvailable (older payload) as available', () => {
+    const legacy = { source: 'rule', processorKind: 'ol_managed_carrier', processorConnectionId: 'c' } as OrderDeliveryResolution;
+    expect(hasLiveOlCarrierRoute(legacy)).toBe(true);
   });
 });

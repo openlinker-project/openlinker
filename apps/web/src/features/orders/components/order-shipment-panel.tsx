@@ -26,14 +26,33 @@ import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-li
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { Button } from '../../../shared/ui/button';
 
-import type { OrderRecord } from '../api/orders.types';
+import type { OrderDeliveryRider, OrderRecord } from '../api/orders.types';
 import { parseOrderSnapshot, type PaymentStatus } from '../api/order-snapshot.schema';
+import { hasLiveOlCarrierRoute } from '../lib/delivery-outcome';
 import { GenerateLabelForm } from './generate-label-form';
 import { ShipmentActionButtons } from './shipment-action-buttons';
 import { ShipmentLifecycleRail } from './shipment-lifecycle-rail';
 import { ShipmentTrackingLink } from './shipment-tracking-link';
 
 const SHIPPING_CAPABILITY = 'ShippingProviderManager';
+
+/**
+ * Empty-state copy when OpenLinker has no live own-carrier route for the order
+ * (#1799), keyed on the delivery rider so the operator is told exactly what to
+ * fix. `none` (shop-fulfilled / no-method) means the shop ships it — no OL label.
+ */
+function noOlCarrierRouteMessage(rider: OrderDeliveryRider | undefined): string {
+  switch (rider?.rider) {
+    case 'disabled':
+      return "This order's delivery method routes to a disabled carrier connection. Enable it (see Delivery) before generating a label.";
+    case 'unmapped':
+      return "This delivery method isn't mapped to an OpenLinker carrier yet. Map it (see Delivery) to generate a label here.";
+    case 'not-connected':
+      return 'This delivery method needs a carrier OpenLinker isn’t connected to yet. Connect it (see Delivery) to generate a label here.';
+    default:
+      return 'This order is fulfilled by the shop — there is no OpenLinker label to generate here.';
+  }
+}
 
 interface OrderShipmentPanelProps {
   order: OrderRecord;
@@ -52,13 +71,13 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
     [order.orderSnapshot],
   );
 
-  // Disabled-carrier route (#1799): a rule maps this order's delivery method to
-  // a carrier connection that is currently disabled. Dispatching is a dead end
-  // until it's re-enabled, so the Generate-label CTAs below are blocked (the
-  // Delivery panel shows the "Enable {carrier}" rider).
-  const routeUnavailable =
-    order.deliveryResolution?.source === 'rule' &&
-    order.deliveryResolution?.processorAvailable === false;
+  // OpenLinker only generates a label when routing resolves to a LIVE own-carrier
+  // route (#1799). A shop-fulfilled / no-method / unmapped / not-connected /
+  // disabled-carrier order has no OL label to generate, so the Generate-label
+  // CTAs are suppressed and the operator is pointed at delivery routing instead
+  // (the Delivery panel's rider, or a "fulfilled by the shop" note here).
+  const olCarrierRoute = hasLiveOlCarrierRoute(order.deliveryResolution);
+  const noRouteMessage = olCarrierRoute ? null : noOlCarrierRouteMessage(order.deliveryRider);
 
   // AC-8 — global capability gate. If no connection declares
   // ShippingProviderManager, render nothing (the operator has no way to
@@ -132,11 +151,8 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
             mutationError={null /* surfaced via the action-buttons own state */}
           />
         </>
-      ) : formOpen ? null : routeUnavailable ? (
-        <EmptyState
-          title="No shipment yet"
-          message="This order's delivery method routes to a disabled carrier connection. Enable it (see Delivery) before generating a label."
-        />
+      ) : formOpen ? null : noRouteMessage ? (
+        <EmptyState title="No shipment yet" message={noRouteMessage} />
       ) : (
         <EmptyState
           title="No shipment yet"
@@ -150,13 +166,14 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
       )}
 
       {/* Active-state action row (omitted in the empty state — the EmptyState
-          owns its own CTA). */}
+          owns its own CTA). Generate/re-generate is blocked when there's no live
+          OL carrier route (#1799); Cancel / Download / Mark-dispatched stay. */}
       {activeShipment ? (
         <ShipmentActionButtons
           shipment={activeShipment}
           paymentStatus={paymentStatus}
           onGenerateLabelClick={() => setFormOpen(true)}
-          routeUnavailable={routeUnavailable}
+          routeUnavailable={!olCarrierRoute}
         />
       ) : null}
 

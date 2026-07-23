@@ -54,7 +54,7 @@ import { useDemoMode } from '../../features/system';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
 import { itemsSummary, paymentBadge, invoiceBadge } from '../../features/orders/lib/order-row';
-import { deriveDeliveryOutcome } from '../../features/orders/lib/delivery-outcome';
+import { deriveDeliveryOutcome, hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
 import { DeliveryChip } from '../../features/orders/components/delivery-chip';
 import { capSelectionPerSource, sourcesAtCap } from '../../features/orders/lib/dispatch-input';
 import { BulkDispatchDialog } from '../../features/orders/components/bulk-dispatch-dialog';
@@ -733,22 +733,16 @@ export function OrdersListPage(): ReactElement {
               order.fulfillmentState === 'dispatched' || order.fulfillmentState === 'delivered',
             processorAvailable: order.deliveryResolution?.processorAvailable,
           });
-          // A carrier route to a disabled connection (#1799) is not a live route:
-          // the delivery chip degrades to shop-fulfilled and the `disabled` rider
-          // ("Enable {carrier}") shows, so offering "Generate label" here would be
-          // a dead end — suppress the CTA for that case.
-          const routeUnavailable =
-            order.deliveryResolution?.source === 'rule' &&
-            order.deliveryResolution?.processorAvailable === false;
-          // Offer "Generate label" ONLY when fulfillment is EXPLICITLY not-shipped
-          // and the order isn't cancelled (#1713), and the routed carrier isn't a
-          // disabled connection (#1799). An undefined fulfillmentState (genuinely
-          // unknown) or a cancelled order shows the passive fulfillment badge
-          // instead — never a dead-end action.
+          // "Generate label" is offered ONLY when OpenLinker has a live own-carrier
+          // route (#1799): fulfillment EXPLICITLY not-shipped, the order isn't
+          // cancelled (#1713), and routing resolved to an available OL carrier.
+          // Shop-fulfilled / no-method / unmapped / not-connected / disabled-carrier
+          // orders have no OL label to generate — the passive fulfillment badge (and
+          // the delivery rider) show instead, never a dead-end action.
           const canGenerateLabel =
             order.fulfillmentState === 'not-shipped' &&
             parsed.status !== 'cancelled' &&
-            !routeUnavailable;
+            hasLiveOlCarrierRoute(order.deliveryResolution);
           return (
             <span className="orders-cell-stack">
               {/* When the row offers "Generate label" the CTA is deferred to sit
@@ -1293,18 +1287,13 @@ export function OrdersListPage(): ReactElement {
                 });
                 const inv = parsed.invoice ? invoiceBadge(parsed.invoice) : null;
                 const fulfillment = fulfillmentBadge(order.fulfillmentState);
-                // Disabled-carrier route (#1799): suppress the dead-end CTA, same
-                // as the desktop cell.
-                const routeUnavailable =
-                  order.deliveryResolution?.source === 'rule' &&
-                  order.deliveryResolution?.processorAvailable === false;
-                // Offer "Generate label" ONLY when explicitly not-shipped and not
-                // cancelled (#1713), and the routed carrier isn't disabled (#1799)
-                // — otherwise the passive fulfillment badge.
+                // "Generate label" only when there's a live OL carrier route
+                // (#1799), same gate as the desktop cell — otherwise the passive
+                // fulfillment badge (shop-fulfilled / unmapped / disabled / etc.).
                 const canGenerateLabel =
                   order.fulfillmentState === 'not-shipped' &&
                   parsed.status !== 'cancelled' &&
-                  !routeUnavailable;
+                  hasLiveOlCarrierRoute(order.deliveryResolution);
                 return (
                   <div className="orders-card-summary">
                     {items ? (

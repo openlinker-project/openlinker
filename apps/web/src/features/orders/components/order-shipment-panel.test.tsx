@@ -42,6 +42,15 @@ function makeOrder(overrides: Partial<OrderRecord> = {}): OrderRecord {
     recordStatus: 'ready',
     createdAt: '2026-05-28T09:00:00.000Z',
     updatedAt: '2026-05-28T09:30:00.000Z',
+    // Live OL carrier route by default (#1799) so "Generate label" is offered;
+    // individual tests override deliveryResolution to exercise the suppressed
+    // shop-fulfilled / disabled paths.
+    deliveryResolution: {
+      source: 'rule',
+      processorKind: 'ol_managed_carrier',
+      processorConnectionId: 'conn-inpost',
+      processorAvailable: true,
+    },
     ...overrides,
   };
 }
@@ -143,6 +152,51 @@ describe('OrderShipmentPanel — empty state', () => {
 
     expect(await screen.findByText('No shipment yet')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Generate label/i })).toBeInTheDocument();
+  });
+
+  it('should suppress the Generate-label CTA and explain shop fulfilment for an omp_fulfilled order (#1799)', async () => {
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+      },
+    });
+    const order = makeOrder({
+      deliveryResolution: {
+        source: 'default',
+        processorKind: 'omp_fulfilled',
+        processorConnectionId: null,
+        processorAvailable: true,
+      },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={order} />, { apiClient });
+
+    expect(await screen.findByText(/fulfilled by the shop/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Generate label/i })).not.toBeInTheDocument();
+  });
+
+  it('should suppress the Generate-label CTA and point to Delivery for a disabled-carrier route (#1799)', async () => {
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+      },
+    });
+    const order = makeOrder({
+      deliveryResolution: {
+        source: 'rule',
+        processorKind: 'ol_managed_carrier',
+        processorConnectionId: 'conn-inpost',
+        processorAvailable: false,
+      },
+      deliveryRider: { rider: 'disabled', candidateCarrier: { platformType: 'inpost', displayName: 'InPost' } },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={order} />, { apiClient });
+
+    expect(await screen.findByText(/disabled carrier connection/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Generate label/i })).not.toBeInTheDocument();
   });
 });
 

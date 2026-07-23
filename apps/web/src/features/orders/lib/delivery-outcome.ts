@@ -12,7 +12,7 @@
  *
  * @module apps/web/src/features/orders/lib
  */
-import type { FulfillmentProcessorKind } from '../api/orders.types';
+import type { FulfillmentProcessorKind, OrderDeliveryResolution } from '../api/orders.types';
 
 export const DeliveryOutcomeValues = [
   'resolved',
@@ -61,4 +61,25 @@ export function deriveDeliveryOutcome({
     return isFulfilled ? 'resolved' : 'awaiting-label';
   }
   return hasMethod ? 'shop-fulfilled' : 'no-method';
+}
+
+/**
+ * Whether OpenLinker has a LIVE own-carrier route for the order — i.e. routing
+ * resolved to a label-generating processor kind (`ol_managed_carrier` /
+ * `source_brokered`) whose connection is available (#1799 processorAvailable).
+ *
+ * This is the single gate for offering "Generate label": an order that is
+ * shop-fulfilled (`omp_fulfilled`/default), carries no method, is unmapped /
+ * not-connected, or routes to a disabled carrier has NO OL label to generate,
+ * so the CTA is suppressed and the operator is pointed at the delivery routing
+ * config instead (the delivery rider / "Fulfilled by the shop" note).
+ */
+export function hasLiveOlCarrierRoute(
+  resolution: OrderDeliveryResolution | undefined | null,
+): boolean {
+  if (!resolution) return false;
+  const carrierRouted =
+    resolution.processorKind === 'ol_managed_carrier' ||
+    resolution.processorKind === 'source_brokered';
+  return carrierRouted && resolution.processorAvailable !== false;
 }

@@ -771,7 +771,17 @@ describe('OrdersListPage', () => {
     // Explicit not-shipped order (the Generate-label gate needs it explicit,
     // never undefined — #1713) with no invoice, plus an invoicing-capable
     // connection so the "Issue invoice" CTA is offered rather than an em dash.
-    const notShippedOrder: OrderRecord = { ...syncedOrder, fulfillmentState: 'not-shipped' };
+    const notShippedOrder: OrderRecord = {
+      ...syncedOrder,
+      fulfillmentState: 'not-shipped',
+      // Live OL carrier route so the Generate-label CTA is offered (#1799).
+      deliveryResolution: {
+        source: 'rule',
+        processorKind: 'ol_managed_carrier',
+        processorConnectionId: 'conn-inpost',
+        processorAvailable: true,
+      },
+    };
     const invoicingConnection: Connection = {
       ...sampleConnection,
       id: 'conn_invoicing_1',
@@ -795,7 +805,17 @@ describe('OrdersListPage', () => {
   });
 
   it('should show an em dash for "Issue invoice" when no connection can issue invoices (#1713)', async () => {
-    const notShippedOrder: OrderRecord = { ...syncedOrder, fulfillmentState: 'not-shipped' };
+    const notShippedOrder: OrderRecord = {
+      ...syncedOrder,
+      fulfillmentState: 'not-shipped',
+      // Live OL carrier route so the Generate-label CTA is offered (#1799).
+      deliveryResolution: {
+        source: 'rule',
+        processorKind: 'ol_managed_carrier',
+        processorConnectionId: 'conn-inpost',
+        processorAvailable: true,
+      },
+    };
     const mockApi = createMockApiClient({
       orders: { list: vi.fn().mockResolvedValue(paginated([notShippedOrder])) },
       // sampleConnection has no Invoicing capability.
@@ -810,6 +830,31 @@ describe('OrdersListPage', () => {
     expect(within(row).queryByRole('link', { name: /issue invoice/i })).not.toBeInTheDocument();
     // Generate label is still offered — it isn't invoicing-gated.
     expect(within(row).getByRole('link', { name: /generate label/i })).toBeInTheDocument();
+  });
+
+  it('should NOT offer "Generate label" for a not-shipped shop-fulfilled order with no OL carrier route (#1799)', async () => {
+    const shopFulfilled: OrderRecord = {
+      ...syncedOrder,
+      fulfillmentState: 'not-shipped',
+      // omp_fulfilled default → no OpenLinker label to generate.
+      deliveryResolution: {
+        source: 'default',
+        processorKind: 'omp_fulfilled',
+        processorConnectionId: null,
+        processorAvailable: true,
+      },
+    };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([shopFulfilled])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const row = container.querySelector('.data-table__row') as HTMLElement;
+
+    expect(within(row).queryByRole('link', { name: /generate label/i })).not.toBeInTheDocument();
   });
 
   it('should show status pills (not actions) once an invoice exists and the order is dispatched (#1713)', async () => {
