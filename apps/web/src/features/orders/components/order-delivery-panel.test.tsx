@@ -147,4 +147,39 @@ describe('OrderDeliveryPanel', () => {
       expect(screen.queryByRole('button', { name: /Add mapping|Connect/ })).not.toBeInTheDocument();
     });
   });
+
+  describe('fix-it deep-link wiring (#1794)', () => {
+    it('should render the real Add-mapping deep link when sourceConnectionId is provided', () => {
+      renderWithProviders(
+        <OrderDeliveryPanel
+          deliveryOutcome="shop-fulfilled"
+          deliveryRider={{
+            rider: 'unmapped',
+            candidateCarrier: { platformType: 'inpost', displayName: 'InPost' },
+          }}
+          sourceConnectionId="conn-abc"
+          sourceDeliveryMethodId="method-xyz"
+          sourceDeliveryMethodName="InPost Paczkomat"
+        />,
+      );
+      const link = screen.getByRole('link', { name: 'Add mapping' });
+      expect(link.getAttribute('href')).toContain('/connections/conn-abc/mappings');
+      expect(link.getAttribute('href')).toContain('method=method-xyz');
+      expect(screen.queryByRole('button', { name: 'Add mapping' })).not.toBeInTheDocument();
+    });
+
+    it('should fall back to the disabled placeholder when sourceConnectionId is absent', () => {
+      renderWithProviders(
+        <OrderDeliveryPanel
+          deliveryOutcome="shop-fulfilled"
+          deliveryRider={{
+            rider: 'unmapped',
+            candidateCarrier: { platformType: 'inpost', displayName: 'InPost' },
+          }}
+        />,
+      );
+      expect(screen.getByRole('button', { name: 'Add mapping' })).toBeDisabled();
+      expect(screen.queryByRole('link', { name: 'Add mapping' })).not.toBeInTheDocument();
+    });
+  });
 });

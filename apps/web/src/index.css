@@ -2452,6 +2452,36 @@ textarea,
   cursor: not-allowed;
 }
 
+/* Fix-it deep-link buttons render as links (#1794) — reset anchor styling so
+   they read as buttons, matching the disabled placeholder they replace. */
+a.delivery-rider-banner__button {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+a.delivery-rider-banner__button:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+a.delivery-rider-banner__button:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* Deep-link pre-focus on the mappings add-row (#1794). */
+.mapping-panel__focus-hint {
+  margin: var(--space-3) 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.mapping-panel__source-select--focus {
+  border-color: var(--accent-primary);
+  box-shadow: var(--shadow-focus);
+}
+
 .order-delivery__carrier {
   display: inline-flex;
   align-items: center;

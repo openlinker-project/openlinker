@@ -36,6 +36,7 @@ import type {
 import type { OrderDeliveryRider } from '../api/orders.types';
 import type { DeliveryOutcome } from '../lib/delivery-outcome';
 import { DeliveryOutcomeChip, DeliveryRiderBanner } from './delivery-chip';
+import { DeliveryRiderAction } from './delivery-rider-action';
 
 interface OrderDeliveryPanelProps {
   shippingAddress?: ParsedAddress;
@@ -66,10 +67,19 @@ interface OrderDeliveryPanelProps {
   deliveryOutcome?: DeliveryOutcome;
   /**
    * Actionable delivery rider (#1793/#1792). When actionable
-   * (`unmapped` / `not-connected`) an inline banner + fix-it button SLOT
-   * renders beneath the delivery fields; navigation is wired in #1794.
+   * (`unmapped` / `not-connected`) an inline banner + fix-it deep-link button
+   * (#1794) renders beneath the delivery fields.
    */
   deliveryRider?: OrderDeliveryRider | null;
+  /**
+   * Source connection id (#1794) — the Add-mapping deep-link target. When
+   * absent the rider banner falls back to its disabled placeholder button.
+   */
+  sourceConnectionId?: string | null;
+  /** Unmapped source delivery-method id (#1791) — Add-mapping pre-focus target. */
+  sourceDeliveryMethodId?: string | null;
+  /** Source delivery-method label (#1791) — Add-mapping pre-focus copy. */
+  sourceDeliveryMethodName?: string | null;
 }
 
 function addressLines(address: ParsedAddress): ReactElement {
@@ -112,6 +122,9 @@ export function OrderDeliveryPanel({
   methodFallback,
   deliveryOutcome,
   deliveryRider,
+  sourceConnectionId,
+  sourceDeliveryMethodId,
+  sourceDeliveryMethodName,
 }: OrderDeliveryPanelProps): ReactElement {
   // Resolved unconditionally (never inside a branch) — see #893.
   const sourcePlatform = usePlatform(sourcePlatformType ?? undefined);
@@ -171,7 +184,21 @@ export function OrderDeliveryPanel({
       <h3 className="detail-section__title">Delivery</h3>
       <div className="order-delivery__card">
         <KeyValueList items={items} />
-        {deliveryRider ? <DeliveryRiderBanner rider={deliveryRider} /> : null}
+        {deliveryRider ? (
+          <DeliveryRiderBanner
+            rider={deliveryRider}
+            actionSlot={
+              sourceConnectionId ? (
+                <DeliveryRiderAction
+                  rider={deliveryRider}
+                  sourceConnectionId={sourceConnectionId}
+                  sourceDeliveryMethodId={sourceDeliveryMethodId}
+                  sourceDeliveryMethodName={sourceDeliveryMethodName}
+                />
+              ) : undefined
+            }
+          />
+        ) : null}
         {pickupPoint ? (
           <div className="order-delivery__pickup">
             <div className="order-delivery__pickup-code mono-text">

@@ -300,4 +300,64 @@ describe('MappingPanel', () => {
       expect(onSave).toHaveBeenCalledWith([]);
     });
   });
+
+  describe('deep-link pre-focus (#1794)', () => {
+    it('pre-selects an unmapped, known focusSourceValue and shows the hint', () => {
+      render(
+        <MappingPanel
+          {...baseProps}
+          sourceOptions={[ALLEGRO_PACZKOMAT, ALLEGRO_KURIER]}
+          targetOptions={[PS_INPOST]}
+          savedRows={[]}
+          onSave={vi.fn()}
+          focusSourceValue={ALLEGRO_PACZKOMAT.value}
+          focusSourceName="Allegro Paczkomaty InPost"
+        />,
+      );
+
+      expect(
+        screen.getByText((_, element) => element?.textContent === 'Map Allegro Paczkomaty InPost to a prestashop carrier below.'),
+      ).toBeInTheDocument();
+      const select = screen.getByRole('combobox', { name: /select allegro delivery method/i });
+      expect(select).toHaveValue(ALLEGRO_PACZKOMAT.value);
+    });
+
+    it('does not pre-select or show the hint when focusSourceValue is already mapped', () => {
+      render(
+        <MappingPanel
+          {...baseProps}
+          sourceOptions={[ALLEGRO_PACZKOMAT]}
+          targetOptions={[PS_INPOST]}
+          savedRows={[{ sourceValue: ALLEGRO_PACZKOMAT.value, targetValue: PS_INPOST.value }]}
+          onSave={vi.fn()}
+          focusSourceValue={ALLEGRO_PACZKOMAT.value}
+          focusSourceName="Allegro Paczkomaty InPost"
+        />,
+      );
+
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      const select = screen.getByRole('combobox', { name: /select allegro delivery method/i });
+      expect(select).toHaveValue('');
+    });
+
+    it('does not pre-select or show the hint when focusSourceValue is absent from sourceOptions', () => {
+      render(
+        <MappingPanel
+          {...baseProps}
+          sourceOptions={[ALLEGRO_KURIER]}
+          targetOptions={[PS_INPOST]}
+          savedRows={[]}
+          onSave={vi.fn()}
+          focusSourceValue="unknown-method-id"
+          focusSourceName="Unknown method"
+        />,
+      );
+
+      // Scoped to the deep-link hint specifically — the panel's pre-existing
+      // "no mappings configured yet" empty state also renders role="status".
+      expect(screen.queryByText(/Unknown method/)).not.toBeInTheDocument();
+      const select = screen.getByRole('combobox', { name: /select allegro delivery method/i });
+      expect(select).toHaveValue('');
+    });
+  });
 });

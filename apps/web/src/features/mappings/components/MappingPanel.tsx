@@ -8,7 +8,7 @@
  * @module apps/web/src/features/mappings/components
  */
 
-import { useState, useEffect, type ReactElement, type ReactNode } from 'react';
+import { useState, useEffect, useRef, type ReactElement, type ReactNode } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import type { MappingOption } from '../api/mappings.types';
@@ -33,6 +33,15 @@ interface MappingPanelProps {
   saveError: Error | null;
   optionsLoading: boolean;
   optionsError: Error | null;
+  /**
+   * Deep-link pre-focus (#1794): a source value to pre-select in the add-row
+   * form and scroll/highlight, so an operator arriving from the order-detail
+   * "Add mapping" fix-it link lands on the exact unmapped method. Ignored when
+   * the value is already mapped or absent from the loaded source options.
+   */
+  focusSourceValue?: string | null;
+  /** Human label for `focusSourceValue`, used in the pre-focus hint copy. */
+  focusSourceName?: string | null;
 }
 
 /**
@@ -117,11 +126,15 @@ export function MappingPanel({
   saveError,
   optionsLoading,
   optionsError,
+  focusSourceValue,
+  focusSourceName,
 }: MappingPanelProps): ReactElement {
   const [localRows, setLocalRows] = useState<MappingRow[]>(savedRows);
   const [pendingSource, setPendingSource] = useState('');
   const [pendingTarget, setPendingTarget] = useState('');
   const [addError, setAddError] = useState<string | null>(null);
+  const [focusApplied, setFocusApplied] = useState(false);
+  const sourceSelectRef = useRef<HTMLSelectElement>(null);
 
   // Track dirty state by comparing local rows to saved rows
   const isDirty =
@@ -136,6 +149,23 @@ export function MappingPanel({
   useEffect(() => {
     setLocalRows(savedRows);
   }, [savedRows]);
+
+  // Deep-link pre-focus (#1794): once options have loaded, pre-select the
+  // requested source value in the add-row form and scroll/focus it. Runs at
+  // most once, and no-ops when the method is already mapped or unknown.
+  useEffect(() => {
+    if (focusApplied || !focusSourceValue || optionsLoading || optionsError) return;
+    setFocusApplied(true);
+    const inSource = sourceOptions.some((o) => o.value === focusSourceValue);
+    const alreadyMapped = savedRows.some((r) => r.sourceValue === focusSourceValue);
+    if (!inSource || alreadyMapped) return;
+    setPendingSource(focusSourceValue);
+    const el = sourceSelectRef.current;
+    if (el) {
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      el.focus();
+    }
+  }, [focusApplied, focusSourceValue, optionsLoading, optionsError, sourceOptions, savedRows]);
 
   function handleAddRow(): void {
     if (!pendingSource || !pendingTarget) return;
@@ -169,6 +199,15 @@ export function MappingPanel({
   const availableSourceOptions = sourceOptions.filter(
     (o) => !localRows.some((r) => r.sourceValue === o.value),
   );
+
+  // Deep-link pre-focus target (#1794) is "actionable" only while it remains an
+  // unmapped, known source value — drives the hint copy + select highlight.
+  const focusActionable = Boolean(
+    focusSourceValue &&
+      sourceOptions.some((o) => o.value === focusSourceValue) &&
+      !localRows.some((r) => r.sourceValue === focusSourceValue),
+  );
+  const focusLabel = focusSourceName ?? focusSourceValue ?? '';
 
   return (
     <div className="panel panel--dense">
@@ -235,10 +274,19 @@ export function MappingPanel({
         </table>
       )}
 
+      {/* Deep-link pre-focus hint (#1794) */}
+      {focusActionable && (
+        <p className="mapping-panel__focus-hint" role="status" aria-live="polite">
+          Map <strong>{focusLabel}</strong> to a {targetLabel.toLowerCase()} below.
+        </p>
+      )}
+
       {/* Add row form */}
       <div className="toolbar" style={{ marginTop: '1rem', gap: '0.5rem', flexWrap: 'wrap' }}>
         <select
+          ref={sourceSelectRef}
           aria-label={`Select ${sourceLabel}`}
+          className={focusActionable ? 'mapping-panel__source-select--focus' : undefined}
           value={pendingSource}
           onChange={(e) => { setPendingSource(e.target.value); }}
           disabled={availableSourceOptions.length === 0}
