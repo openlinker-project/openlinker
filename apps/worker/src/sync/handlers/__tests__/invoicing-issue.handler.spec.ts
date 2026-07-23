@@ -112,6 +112,43 @@ describe('InvoicingIssueHandler', () => {
     });
   });
 
+  describe('buyer.email (#1797)', () => {
+    it('reconstructs BuyerProfile.email from payload.buyer.email', async () => {
+      await handler.execute(
+        makeJob(
+          makePayload({
+            buyer: { ...makePayload().buyer, email: 'buyer@example.com' },
+          }),
+        ),
+      );
+      const cmd = invoiceService.issueInvoice.mock.calls[0][0];
+      expect(cmd.buyer.email).toBe('buyer@example.com');
+    });
+
+    it('normalizes a missing buyer.email (pre-#1797 payload shape) to null', async () => {
+      const payload = makePayload();
+      // Simulate a job persisted before this field existed: no `email` key at all.
+      delete (payload.buyer as { email?: string | null }).email;
+
+      const result = await handler.execute(makeJob(payload));
+
+      expect(result).toEqual({ outcome: 'ok' });
+      expect(invoiceService.issueInvoice.mock.calls[0][0].buyer.email).toBeNull();
+    });
+
+    it('a present-but-non-string, non-null buyer.email ⇒ business_failure (F5)', async () => {
+      const result = await handler.execute(
+        makeJob(
+          makePayload({
+            buyer: { ...makePayload().buyer, email: 42 as unknown as string },
+          }),
+        ),
+      );
+      expect(result).toEqual({ outcome: 'business_failure' });
+      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+    });
+  });
+
   describe('deep payload validation ⇒ business_failure (F5)', () => {
     const cases: Array<[string, unknown]> = [
       ['wrong schemaVersion', makePayload({ schemaVersion: 2 as unknown as 1 })],

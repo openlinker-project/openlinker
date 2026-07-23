@@ -122,6 +122,16 @@ export class InfaktHttpClient implements IInfaktHttpClient {
 
   private async parse<T>(res: Response, method: string, path: string): Promise<T> {
     const text = await res.text();
+
+    // A successful response with an empty body (e.g. `deliver_via_email.json`
+    // replies `202 Accepted` with nothing to echo back — it's a fire-and-forget
+    // async job on Infakt's side, #1797) is valid and must not be treated as a
+    // parse failure. Only a 2xx status qualifies; an empty error body still
+    // falls through to the non-JSON branch below.
+    if (res.ok && text.trim().length === 0) {
+      return undefined as T;
+    }
+
     let json: unknown;
     try {
       json = JSON.parse(text);

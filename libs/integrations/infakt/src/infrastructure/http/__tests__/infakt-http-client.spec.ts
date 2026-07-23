@@ -175,6 +175,23 @@ describe('InfaktHttpClient', () => {
     });
   });
 
+  describe('empty-body success responses (#1797)', () => {
+    it('does not throw on a 202 Accepted with an empty body (e.g. deliver_via_email.json)', async () => {
+      fetchMock.mockResolvedValue(fakeResponse(202, ''));
+      await expect(client.post('invoices/x/deliver_via_email.json', {})).resolves.toBeUndefined();
+    });
+
+    it('does not throw on a 204 No Content with a whitespace-only body', async () => {
+      fetchMock.mockResolvedValue(fakeResponse(204, '   '));
+      await expect(client.get('some/path.json')).resolves.toBeUndefined();
+    });
+
+    it('still throws on a non-JSON body when the status is a 2xx WITH content', async () => {
+      fetchMock.mockResolvedValue(fakeResponse(200, '<html>not json</html>'));
+      await expect(client.get('some/path.json')).rejects.toBeInstanceOf(InfaktApiError);
+    });
+  });
+
   describe('error handling', () => {
     it('should throw InfaktApiError on a non-2xx JSON response', async () => {
       fetchMock.mockResolvedValue(fakeResponse(422, '{"error":"invalid nip"}'));

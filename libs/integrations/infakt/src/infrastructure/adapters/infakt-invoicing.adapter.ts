@@ -361,10 +361,14 @@ export class InfaktInvoicingAdapter
     // (2026-07-01): the API wants `company_name` / `postal_code`, not the
     // `name` / `post_code` this previously sent — the latter is silently
     // rejected/ignored, so first-time client creation always 422'd.
+    // #1797: without `email`, Infakt creates the client with no address on
+    // file, so a later `deliver_via_email.json` call 422s ("adres e-mail
+    // Klienta jest nieznany") — confirmed live against the sandbox.
     const payload = {
       client: {
         company_name: buyer.name,
         nip: nip ?? undefined,
+        email: buyer.email ?? undefined,
         city: buyer.address.city,
         street: buyer.address.line1,
         postal_code: buyer.address.postalCode,

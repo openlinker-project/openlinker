@@ -157,6 +157,16 @@ export class InvoicingIssueHandler implements SyncJobHandler {
       if (!isNonEmptyString(buyer.taxId.scheme)) return fail('buyer.taxId.scheme');
       if (!isNonEmptyString(buyer.taxId.value)) return fail('buyer.taxId.value');
     }
+    // Optional additive field (#1797): a payload persisted before this field
+    // existed has `buyer.email === undefined` — that's valid. Only reject a
+    // present-but-wrong-shaped value.
+    if (
+      buyer.email !== undefined &&
+      buyer.email !== null &&
+      typeof buyer.email !== 'string'
+    ) {
+      return fail('buyer.email');
+    }
 
     return p as InvoicingIssuePayloadV1;
   }
@@ -168,11 +178,14 @@ export class InvoicingIssueHandler implements SyncJobHandler {
    */
   private toCommand(payload: InvoicingIssuePayloadV1): IssueInvoiceCommand {
     // #12: rebuild the BuyerProfile class from the PLAIN payload buyer.
+    // #1797: `buyer.email` is `undefined` on a payload persisted before this
+    // field existed — normalize to `null` rather than requiring the key.
     const buyer = new BuyerProfile(
       payload.buyer.name,
       payload.buyer.taxId,
       payload.buyer.address,
       payload.buyer.type,
+      payload.buyer.email ?? null,
     );
 
     const command: IssueInvoiceCommand = {

@@ -72,6 +72,14 @@ export function orderFromReadySnapshot(record: OrderRecord): Order {
   if (typeof snapshot.customerId === 'string') {
     order.customerId = snapshot.customerId;
   }
+  // #1797: without this, a manually re-issued/bulk-issued/corrected invoice
+  // (every path that goes through `rehydrateOrder` → `orderFromReadySnapshot`)
+  // silently drops the buyer's e-mail even though the snapshot has it, so
+  // `BuyerProfile.email` ends up `null` and `sendByEmail` 422s regardless of
+  // the mapper fix.
+  if (typeof snapshot.customerEmail === 'string') {
+    order.customerEmail = snapshot.customerEmail;
+  }
   if (billingAddress) {
     order.billingAddress = billingAddress;
   }
