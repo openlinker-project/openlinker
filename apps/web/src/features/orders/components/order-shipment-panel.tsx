@@ -44,13 +44,13 @@ const SHIPPING_CAPABILITY = 'ShippingProviderManager';
 function noOlCarrierRouteMessage(rider: OrderDeliveryRider | undefined): string {
   switch (rider?.rider) {
     case 'disabled':
-      return "This order's delivery method routes to a disabled carrier connection. Enable it (see Delivery) before generating a label.";
+      return 'This delivery method routes to a disabled carrier connection. Enable it (see Delivery) to generate a label here.';
     case 'unmapped':
       return "This delivery method isn't mapped to an OpenLinker carrier yet. Map it (see Delivery) to generate a label here.";
     case 'not-connected':
-      return 'This delivery method needs a carrier OpenLinker isn’t connected to yet. Connect it (see Delivery) to generate a label here.';
+      return "This delivery method needs a carrier OpenLinker isn't connected to yet. Connect it (see Delivery) to generate a label here.";
     default:
-      return 'This order is fulfilled by the shop — there is no OpenLinker label to generate here.';
+      return 'This order is fulfilled by the shop - there is no OpenLinker label to generate here.';
   }
 }
 
@@ -117,6 +117,12 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
     ? (connectionsQuery.data ?? []).find((c) => c.id === activeShipment.connectionId)
     : undefined;
 
+  // No OL shipment row but the rollup already reads dispatched/delivered → the
+  // order was fulfilled outside OpenLinker; there is no label to generate here.
+  const dispatchedOutsideOl =
+    !activeShipment &&
+    (order.fulfillmentState === 'dispatched' || order.fulfillmentState === 'delivered');
+
   return (
     <section className="detail-section order-shipment-panel">
       <header className="order-shipment-panel__header">
@@ -151,7 +157,16 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
             mutationError={null /* surfaced via the action-buttons own state */}
           />
         </>
-      ) : formOpen ? null : noRouteMessage ? (
+      ) : formOpen ? null : dispatchedOutsideOl ? (
+        // No OL shipment row, yet the rollup says the order is already
+        // dispatched/delivered → it was fulfilled outside OpenLinker. Show a
+        // passive note instead of an active "Generate a label" CTA (this takes
+        // precedence over the normal live-route empty state).
+        <EmptyState
+          title="Dispatched outside OpenLinker"
+          message="Dispatched outside OpenLinker - no label to generate here."
+        />
+      ) : noRouteMessage ? (
         <EmptyState title="No shipment yet" message={noRouteMessage} />
       ) : (
         <EmptyState
@@ -164,6 +179,16 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
           }
         />
       )}
+
+      {/* When a shipment already exists but routing has no live OL carrier route
+          (#1799), surface the reason inline so it's visible without hovering the
+          disabled Generate-label button. The EmptyState already carries this copy
+          on the no-shipment path, so this only fires alongside an active shipment. */}
+      {activeShipment && noRouteMessage ? (
+        <Alert tone="info" className="order-shipment-panel__route-note">
+          {noRouteMessage}
+        </Alert>
+      ) : null}
 
       {/* Active-state action row (omitted in the empty state — the EmptyState
           owns its own CTA). Generate/re-generate is blocked when there's no live

@@ -193,6 +193,7 @@ export function OrderDetailPage(): ReactElement {
     hasMethod: deliveryHasMethod,
     isFulfilled: Boolean(activeShipment),
     processorAvailable: order.deliveryResolution?.processorAvailable,
+    cancelled: snapshot.status === 'cancelled',
   });
   const sourcePlatformType =
     connections.find((c) => c.id === order.sourceConnectionId)?.platformType ?? null;

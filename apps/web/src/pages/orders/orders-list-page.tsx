@@ -732,6 +732,7 @@ export function OrdersListPage(): ReactElement {
             isFulfilled:
               order.fulfillmentState === 'dispatched' || order.fulfillmentState === 'delivered',
             processorAvailable: order.deliveryResolution?.processorAvailable,
+            cancelled: parsed.status === 'cancelled',
           });
           // "Generate label" is offered ONLY when OpenLinker has a live own-carrier
           // route (#1799): fulfillment EXPLICITLY not-shipped, the order isn't
@@ -772,7 +773,14 @@ export function OrdersListPage(): ReactElement {
                   {view.remaining}
                 </StatusBadge>
               ) : null}
-              <DeliveryChip outcome={deliveryOutcome} rider={order.deliveryRider} />
+              {/* On the list the rider chip is a non-actionable label (the
+                  actionable banner + button live on the order-detail Delivery
+                  panel), so it's suppressed on shop-fulfilled rows to keep the
+                  triage queue quiet - the rider only co-occurs with shop-fulfilled. */}
+              <DeliveryChip
+                outcome={deliveryOutcome}
+                rider={deliveryOutcome === 'shop-fulfilled' ? null : order.deliveryRider}
+              />
               {canGenerateLabel ? (
                 <Link
                   className="orders-row-cta"
@@ -1284,6 +1292,7 @@ export function OrdersListPage(): ReactElement {
                     order.fulfillmentState === 'dispatched' ||
                     order.fulfillmentState === 'delivered',
                   processorAvailable: order.deliveryResolution?.processorAvailable,
+                  cancelled: parsed.status === 'cancelled',
                 });
                 const inv = parsed.invoice ? invoiceBadge(parsed.invoice) : null;
                 const fulfillment = fulfillmentBadge(order.fulfillmentState);
@@ -1364,9 +1373,14 @@ export function OrdersListPage(): ReactElement {
                                 {fulfillment.label}
                               </StatusBadge>
                             )}
+                            {/* Rider chip suppressed on shop-fulfilled list rows
+                                (non-actionable label; the actionable banner lives
+                                on order-detail) - mirrors the desktop cell. */}
                             <DeliveryChip
                               outcome={deliveryOutcome}
-                              rider={order.deliveryRider}
+                              rider={
+                                deliveryOutcome === 'shop-fulfilled' ? null : order.deliveryRider
+                              }
                             />
                             {canGenerateLabel ? (
                               <Link
@@ -1380,7 +1394,9 @@ export function OrdersListPage(): ReactElement {
                               </Link>
                             ) : null}
                             {carrier ? (
-                              <span className="text-muted orders-cell-sub">{carrier}</span>
+                              <span className="text-muted orders-cell-sub" title={carrier}>
+                                {carrier}
+                              </span>
                             ) : null}
                           </span>
                         </dd>

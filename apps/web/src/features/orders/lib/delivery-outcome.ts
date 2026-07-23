@@ -36,6 +36,12 @@ export interface DeliveryOutcomeInput {
    * Defaults to available (older payloads / non-rule resolutions).
    */
   processorAvailable?: boolean;
+  /**
+   * Whether the order is cancelled (#1713). A cancelled order has nothing to
+   * dispatch, so it never reads as a carrier-driven (`resolved`/`awaiting-label`)
+   * outcome - it short-circuits to `shop-fulfilled`. Defaults to not-cancelled.
+   */
+  cancelled?: boolean;
 }
 
 /**
@@ -46,6 +52,8 @@ export interface DeliveryOutcomeInput {
  * - a carrier route to a DISABLED processor (#1799) is not live — it falls
  *   through to the shop-default branch so the chip pairs with the `disabled`
  *   rider rather than promising a label;
+ * - a cancelled order (#1713) has nothing to dispatch, so it never reads as
+ *   carrier-driven - it short-circuits to `shop-fulfilled`;
  * - otherwise (`omp_fulfilled` / unknown): `shop-fulfilled` when a method
  *   exists, else `no-method`.
  */
@@ -54,7 +62,11 @@ export function deriveDeliveryOutcome({
   hasMethod,
   isFulfilled,
   processorAvailable = true,
+  cancelled = false,
 }: DeliveryOutcomeInput): DeliveryOutcome {
+  if (cancelled) {
+    return 'shop-fulfilled';
+  }
   const carrierRouted =
     processorKind === 'ol_managed_carrier' || processorKind === 'source_brokered';
   if (carrierRouted && processorAvailable) {

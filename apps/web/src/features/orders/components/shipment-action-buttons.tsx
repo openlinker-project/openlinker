@@ -137,11 +137,16 @@ export function ShipmentActionButtons({
           aria-label={
             canGenerate
               ? 'Generate shipping label'
-              : routeUnavailable
-                ? 'Routed carrier is disabled — enable it to dispatch'
-                : paymentBlocksDispatch
-                  ? "Awaiting payment — can't dispatch yet"
-                  : 'Generate label not available in this state'
+              : // A shipment already past the regenerate-able states (e.g. label
+                // generated / dispatched) reports its state first - the route
+                // reason is irrelevant once a label exists.
+                !CAN_GENERATE.has(status)
+                ? 'Generate label not available in this state'
+                : routeUnavailable
+                  ? "Routed carrier isn't available to dispatch - resolve delivery routing first."
+                  : paymentBlocksDispatch
+                    ? "Awaiting payment — can't dispatch yet"
+                    : 'Generate label not available in this state'
           }
         >
           Generate label

@@ -77,6 +77,18 @@ describe('deriveDeliveryOutcome', () => {
     ).toBe('no-method');
   });
 
+  it('should short-circuit to "shop-fulfilled" for a cancelled order even on a live carrier route (#1713)', () => {
+    expect(
+      deriveDeliveryOutcome({
+        processorKind: 'ol_managed_carrier',
+        hasMethod: true,
+        isFulfilled: true,
+        processorAvailable: true,
+        cancelled: true,
+      }),
+    ).toBe('shop-fulfilled');
+  });
+
   it('should stay carrier-driven when the processor is available (explicit true)', () => {
     expect(
       deriveDeliveryOutcome({

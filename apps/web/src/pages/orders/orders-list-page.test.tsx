@@ -857,6 +857,42 @@ describe('OrdersListPage', () => {
     expect(within(row).queryByRole('link', { name: /generate label/i })).not.toBeInTheDocument();
   });
 
+  it('should render the Shop-fulfilled chip but SUPPRESS the rider chip on the list (rider is non-actionable here)', async () => {
+    const shopFulfilledWithRider: OrderRecord = {
+      ...syncedOrder,
+      fulfillmentState: 'not-shipped',
+      // A source delivery method exists → the omp_fulfilled default reads as
+      // shop-fulfilled (not no-method).
+      sourceDeliveryMethodName: 'Kurier InPost',
+      // omp_fulfilled default → shop-fulfilled outcome.
+      deliveryResolution: {
+        source: 'default',
+        processorKind: 'omp_fulfilled',
+        processorConnectionId: null,
+        processorAvailable: true,
+      },
+      // A rider is present, but on the list it's a non-actionable label - the
+      // actionable banner + button live on the order-detail Delivery panel.
+      deliveryRider: {
+        rider: 'unmapped',
+        candidateCarrier: { platformType: 'inpost', displayName: 'InPost' },
+      },
+    };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([shopFulfilledWithRider])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const row = container.querySelector('.data-table__row') as HTMLElement;
+
+    // The outcome chip is present, the rider chip label is not.
+    expect(within(row).getByText('Shop-fulfilled')).toBeInTheDocument();
+    expect(within(row).queryByText('Unmapped')).not.toBeInTheDocument();
+  });
+
   it('should show status pills (not actions) once an invoice exists and the order is dispatched (#1713)', async () => {
     const richOrder: OrderRecord = {
       ...syncedOrder,

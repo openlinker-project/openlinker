@@ -110,14 +110,16 @@ export class DeliveryRiderService implements IDeliveryRiderService {
 
   /**
    * The `disabled` rider (#1799): a rule mapped the method to a carrier whose
-   * connection is now disabled. The carrier label comes from the same
-   * method-name heuristic the default path uses; when it can't identify one the
-   * rider degrades to `none` (never a wrong hint), matching the service's
-   * fail-safe invariant.
+   * connection is now disabled. A disabled route must never be invisible, so
+   * this ALWAYS returns `{ rider: 'disabled' }`. The carrier label comes from
+   * the same method-name heuristic the default path uses; when it matches we
+   * enrich the rider with the `candidateCarrier`, but when it does not we still
+   * surface the `disabled` rider (without a carrier name) - the operator must
+   * always be told the route is a dead end, even if we can't name the carrier.
    */
   private disabledRider(input: DeliveryRiderInput): DeliveryRiderResolution {
     const candidate = matchCandidateCarrier(input.sourceDeliveryMethod);
-    return candidate ? { rider: 'disabled', candidateCarrier: candidate } : { rider: 'none' };
+    return candidate ? { rider: 'disabled', candidateCarrier: candidate } : { rider: 'disabled' };
   }
 
   /** Map a matched candidate + carrier state to the rider decision. */

@@ -66,11 +66,17 @@ export function DeliveryRiderAction({
   }
 
   if (rider.rider === 'disabled') {
-    // The carrier connection exists but is disabled — send the operator to the
-    // connections list to re-enable it (the payload carries no connection id).
-    const label = candidate ? `Enable ${candidate.displayName}` : 'Enable carrier';
+    // The carrier connection exists but is disabled - send the operator to the
+    // connections list pre-filtered to the disabled carrier so they can find and
+    // re-enable it. The connections list reads `platformType` + `status` from
+    // the query string; when the heuristic couldn't name the carrier we fall
+    // back to the unfiltered list.
+    const label = candidate ? `Enable ${candidate.displayName}` : 'Enable';
+    const to = candidate
+      ? `/connections?platformType=${encodeURIComponent(candidate.platformType)}&status=disabled`
+      : '/connections';
     return (
-      <Link to="/connections" className="delivery-rider-banner__button">
+      <Link to={to} className="delivery-rider-banner__button">
         {label}
       </Link>
     );

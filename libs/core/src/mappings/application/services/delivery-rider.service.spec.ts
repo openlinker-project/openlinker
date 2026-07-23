@@ -145,7 +145,7 @@ describe('DeliveryRiderService', () => {
       expect(registry.listAdapters).not.toHaveBeenCalled();
     });
 
-    it('degrades a disabled-carrier rule to "none" when the method maps to no known carrier (#1799)', async () => {
+    it('still surfaces "disabled" (no candidateCarrier) when the method maps to no known carrier (#1799)', async () => {
       const result = await service.resolve(
         defaultInput({
           resolutionSource: 'rule',
@@ -154,7 +154,9 @@ describe('DeliveryRiderService', () => {
         })
       );
 
-      expect(result).toEqual({ rider: 'none' });
+      // A disabled route must never be invisible - the rider stays `disabled`
+      // even when the heuristic can't name the carrier.
+      expect(result).toEqual({ rider: 'disabled' });
     });
   });
 

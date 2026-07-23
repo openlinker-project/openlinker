@@ -63,7 +63,7 @@ describe('DeliveryRiderAction (#1794)', () => {
     );
 
     const link = screen.getByRole('link', { name: 'Enable InPost' });
-    expect(link.getAttribute('href')).toBe('/connections');
+    expect(link.getAttribute('href')).toBe('/connections?platformType=inpost&status=disabled');
   });
 
   it('should render nothing for a non-actionable rider', () => {

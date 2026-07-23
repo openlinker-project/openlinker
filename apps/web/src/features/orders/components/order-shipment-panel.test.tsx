@@ -198,6 +198,49 @@ describe('OrderShipmentPanel — empty state', () => {
     expect(await screen.findByText(/disabled carrier connection/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Generate label/i })).not.toBeInTheDocument();
   });
+
+  it('should render a passive "Dispatched outside OpenLinker" note when there is no shipment but the rollup is dispatched (#1799)', async () => {
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+      },
+    });
+    const order = makeOrder({ fulfillmentState: 'dispatched' });
+
+    renderWithProviders(<OrderShipmentPanel order={order} />, { apiClient });
+
+    expect(await screen.findByText('Dispatched outside OpenLinker')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Generate label/i })).not.toBeInTheDocument();
+  });
+
+  it('should surface the no-live-route reason inline when an active shipment exists on a disabled-carrier route (#1799)', async () => {
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [makeShipment()], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+    const order = makeOrder({
+      deliveryResolution: {
+        source: 'rule',
+        processorKind: 'ol_managed_carrier',
+        processorConnectionId: 'conn-inpost',
+        processorAvailable: false,
+      },
+      deliveryRider: {
+        rider: 'disabled',
+        candidateCarrier: { platformType: 'inpost', displayName: 'InPost' },
+      },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={order} />, { apiClient });
+
+    // Populated state (carrier row) plus the inline route note - the reason is
+    // visible without hovering the disabled Generate-label button.
+    expect(await screen.findByText('InPost')).toBeInTheDocument();
+    expect(screen.getByText(/disabled carrier connection/i)).toBeInTheDocument();
+  });
 });
 
 describe('OrderShipmentPanel — populated state', () => {

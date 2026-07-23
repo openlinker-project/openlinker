@@ -144,19 +144,25 @@ export function DeliveryChip({
   );
 }
 
-const RIDER_BANNER_TEXT: Record<ActionableRider, (carrier: string) => string> = {
+// Banner copy branches on whether the heuristic could name the candidate
+// carrier (`carrier` is `null` when it couldn't). The `disabled` rider must
+// always render a usable sentence - never "the a carrier connection" - so it
+// switches structure on carrier presence rather than leaning on a fallback word.
+const RIDER_BANNER_TEXT: Record<ActionableRider, (carrier: string | null) => string> = {
   unmapped: (carrier) =>
-    `This delivery method isn't mapped to a carrier. Map it to ${carrier} so OpenLinker generates the label.`,
+    `This delivery method isn't mapped to a carrier. Map it to ${carrier ?? 'a carrier'} so OpenLinker generates the label.`,
   'not-connected': (carrier) =>
-    `OpenLinker supports ${carrier}, but no ${carrier} connection is set up. Connect one to fulfil this delivery.`,
+    `OpenLinker supports ${carrier ?? 'a carrier'}, but no ${carrier ?? 'carrier'} connection is set up. Connect one to fulfil this delivery.`,
   disabled: (carrier) =>
-    `This delivery method routes to ${carrier}, but the ${carrier} connection is disabled. Enable it so OpenLinker can generate the label.`,
+    carrier
+      ? `This delivery method routes to ${carrier}, but the ${carrier} connection is disabled. Enable it so OpenLinker can generate the label.`
+      : 'This delivery method routes to a disabled carrier connection. Enable it so OpenLinker can generate the label.',
 };
 
-const RIDER_ACTION_LABEL: Record<ActionableRider, (carrier: string) => string> = {
+const RIDER_ACTION_LABEL: Record<ActionableRider, (carrier: string | null) => string> = {
   unmapped: () => 'Add mapping',
-  'not-connected': (carrier) => `Connect ${carrier}`,
-  disabled: (carrier) => `Enable ${carrier}`,
+  'not-connected': (carrier) => (carrier ? `Connect ${carrier}` : 'Connect'),
+  disabled: (carrier) => (carrier ? `Enable ${carrier}` : 'Enable'),
 };
 
 interface DeliveryRiderBannerProps {
@@ -177,12 +183,13 @@ export function DeliveryRiderBanner({
   if (!isActionableRider(rider)) {
     return null;
   }
-  const carrier = rider.candidateCarrier?.displayName ?? 'a carrier';
+  const carrier = rider.candidateCarrier?.displayName ?? null;
   return (
     <div
       className={cx(
         'delivery-rider-banner',
-        rider.rider === 'not-connected' && 'delivery-rider-banner--not-connected',
+        (rider.rider === 'not-connected' || rider.rider === 'disabled') &&
+          'delivery-rider-banner--not-connected',
         className,
       )}
       role="note"
@@ -195,7 +202,7 @@ export function DeliveryRiderBanner({
             className="delivery-rider-banner__button"
             disabled
             aria-disabled="true"
-            title="Coming soon (#1794)"
+            title="Coming soon"
           >
             {RIDER_ACTION_LABEL[rider.rider](carrier)}
           </button>
