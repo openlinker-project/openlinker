@@ -57,6 +57,16 @@ interface BulkWizardProps {
   resolveConnectionName: (connectionId: string) => string;
   /** Connection preselected from the entry-point picker / URL (#1096). */
   preselectedConnectionId?: string;
+  /**
+   * Variant ids pre-checked from the `/listings` picker (#1754). When a product
+   * has ANY of its variants in this set, ALL its variants are still seeded (so
+   * the product stays a multi-variant, expandable row and siblings can be
+   * re-included in Review) but only the set members start `included`; the rest
+   * seed excluded. A product with none of its variants in the set (whole-product
+   * pick, or an empty/absent set) seeds every variant included - byte-identical
+   * to the `/products` entry point.
+   */
+  preSelectedVariantIds?: ReadonlySet<string>;
 }
 
 const WIZARD_STEPS: { id: BulkWizardStep; label: string }[] = [
@@ -73,6 +83,7 @@ export function BulkWizard({
   products,
   resolveConnectionName,
   preselectedConnectionId,
+  preSelectedVariantIds,
 }: BulkWizardProps): ReactElement {
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -87,7 +98,7 @@ export function BulkWizard({
   const canGenerateDescription = write.canWrite;
   const [step, setStep] = useState<BulkWizardStep>('config');
   const [config, setConfig] = useState<BulkWizardConfig | null>(null);
-  const [rows, setRows] = useState<BulkWizardRow[]>(() => seedRows(products));
+  const [rows, setRows] = useState<BulkWizardRow[]>(() => seedRows(products, preSelectedVariantIds));
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   // Sync row state when the products list changes (dedup by product id so a
@@ -99,9 +110,9 @@ export function BulkWizard({
   useEffect(() => {
     setRows((prev) => {
       const byId = new Map(prev.map((r) => [r.productId, r]));
-      return dedupedProducts.map((p) => byId.get(p.id) ?? seedRow(p));
+      return dedupedProducts.map((p) => byId.get(p.id) ?? seedRow(p, preSelectedVariantIds));
     });
-  }, [productsSignature, dedupedProducts]);
+  }, [productsSignature, dedupedProducts, preSelectedVariantIds]);
 
   // Distinct categories of INCLUDED variants that submit WITHOUT a card link
   // (#810 / #1741). Only these can hit the missing-product-parameters 422.
@@ -656,11 +667,18 @@ export function mergeResolveOutcomes(
   });
 }
 
-function seedRows(products: Product[]): BulkWizardRow[] {
-  return dedupById(products).map(seedRow);
+export function seedRows(
+  products: Product[],
+  preSelectedVariantIds?: ReadonlySet<string>,
+): BulkWizardRow[] {
+  return dedupById(products).map((product) => seedRow(product, preSelectedVariantIds));
 }
 
-function seedVariantRow(variant: ProductVariant, product: Product): BulkVariantRow {
+function seedVariantRow(
+  variant: ProductVariant,
+  product: Product,
+  included: boolean,
+): BulkVariantRow {
   const barcode = variant.ean ?? variant.gtin ?? null;
   return {
     variantId: variant.id,
@@ -670,7 +688,7 @@ function seedVariantRow(variant: ProductVariant, product: Product): BulkVariantR
     masterStock: null,
     masterPrice: variant.price,
     masterCurrency: product.currency ?? null,
-    included: true,
+    included,
     blockers: [],
     resolvedCategoryId: null,
     resolvedProductCardId: null,
@@ -680,14 +698,29 @@ function seedVariantRow(variant: ProductVariant, product: Product): BulkVariantR
   };
 }
 
-function seedRow(product: Product): BulkWizardRow {
+function seedRow(product: Product, preSelectedVariantIds?: ReadonlySet<string>): BulkWizardRow {
   const variants = product.variants ?? [];
-  const primaryVariant: ProductVariant | null = variants[0] ?? null;
+  // A product is "variant-scoped" only when the picker checked SOME of its
+  // variants (#1754). Whole-product picks (and the /products entry point) leave
+  // the set empty for this product, so every variant seeds included.
+  // Capture the set only when the product is variant-scoped (else null for a
+  // whole-product pick), so the closure narrows without a non-null assertion.
+  const scopedIds =
+    preSelectedVariantIds !== undefined &&
+    preSelectedVariantIds.size > 0 &&
+    variants.some((v) => preSelectedVariantIds.has(v.id))
+      ? preSelectedVariantIds
+      : null;
+  const isIncluded = (v: ProductVariant): boolean => scopedIds === null || scopedIds.has(v.id);
+  // The primary is a representative for row-level resolve mapping - prefer the
+  // first INCLUDED variant so a variant-scoped product represents a checked one.
+  const primaryVariant: ProductVariant | null =
+    variants.find(isIncluded) ?? variants[0] ?? null;
   return {
     productId: product.id,
     product,
     primaryVariant,
-    variants: variants.map((v) => seedVariantRow(v, product)),
+    variants: variants.map((v) => seedVariantRow(v, product, isIncluded(v))),
     blockers: primaryVariant ? [] : ['no-variant'],
     resolvedCategoryId: null,
     resolvedProductCardId: null,

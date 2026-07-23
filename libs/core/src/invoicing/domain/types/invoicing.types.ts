@@ -301,6 +301,16 @@ export interface IssuedSnapshotBuyer {
   taxId: TaxIdentifier | null;
   address: BuyerAddress;
   type: BuyerType;
+  /**
+   * Buyer e-mail, or `null` when unknown (#1797). `InvoiceService` persists
+   * `IssuedLineSnapshot.buyer` verbatim from the issue command's `BuyerProfile`
+   * (no field-by-field recomputation), so this field round-trips through jsonb
+   * for free once `BuyerProfile` carries it — declared here so the type stays
+   * honest about what's actually persisted. Not read back into a real send
+   * flow: the correction path that rebuilds a `BuyerProfile` from this shape
+   * never calls `sendByEmail`.
+   */
+  email: string | null;
 }
 
 /**
