@@ -101,12 +101,11 @@ export class OrderRecordResponseDto {
 
   @ApiPropertyOptional({
     type: OrderDeliveryResolutionDto,
-    nullable: true,
     description:
       'Read-only projection (#1791) of how fulfillment routing resolved for this order\'s delivery ' +
       'method — the outcome IFulfillmentRoutingService.resolve computes. Present on both the list and ' +
       'detail reads when the order carries a source delivery method; absent otherwise. Never changes ' +
       'routing behaviour — a pure derived read.',
   })
-  deliveryResolution?: OrderDeliveryResolutionDto | null;
+  deliveryResolution?: OrderDeliveryResolutionDto;
 }
