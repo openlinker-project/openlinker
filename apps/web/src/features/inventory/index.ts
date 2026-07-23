@@ -24,3 +24,6 @@ export type {
 } from './api/inventory.types';
 
 export { useInventoryAvailabilityBatchQuery } from './hooks/use-inventory-availability-batch-query';
+// Query-key factory re-exported so the bulk wizard's chunked per-variant
+// availability fan-out (#1741) shares cache entries with the batch hook above.
+export { inventoryQueryKeys } from './api/inventory.query-keys';

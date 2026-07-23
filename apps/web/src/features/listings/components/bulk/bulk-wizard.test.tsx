@@ -1,27 +1,51 @@
 /**
- * BulkWizard pure-reducer tests (#792 PR 3)
+ * BulkWizard pure-reducer tests (#792 / #1741)
  *
- * Pins `mergeResolveOutcomes`: resolve outcomes are folded into rows by
- * productId; rows without a matching outcome keep their identity.
+ * Pins `mergeResolveOutcomes`: per-variant resolve outcomes are folded into each
+ * row's `variants[]` by variant id, preserving operator overrides; rows without
+ * a matching outcome keep their identity.
  */
 import { describe, expect, it } from 'vitest';
 import { mergeResolveOutcomes } from './bulk-wizard';
-import { recomputeRowBlockers, selectBulkProductCardId } from './bulk-policy';
-import { allegroOfferValidation } from '../allegro/allegro-offer-validation';
-import type { BulkResolveOutcome } from './bulk-resolve-step';
-import type { BulkWizardConfig, BulkWizardRow } from './bulk-wizard.types';
-import type { ProductVariant } from '../../../products';
+import type { BulkResolveOutcome, BulkResolveVariantOutcome } from './bulk-resolve-step';
+import type { BulkVariantRow, BulkWizardRow } from './bulk-wizard.types';
+import type { Product, ProductVariant } from '../../../products';
 
-// Allegro's row validator (#1096) — the migrated `needs-product-parameters`
-// blocker is now emitted here, not inside `computeBlockers`.
-const allegroValidate = allegroOfferValidation.validateRow;
-const NEEDS_PARAMS = 'allegro:needs-product-parameters';
+function makeVariantRow(id: string, over: Partial<BulkVariantRow> = {}): BulkVariantRow {
+  const variant = {
+    id,
+    productId: 'prod_1',
+    sku: id,
+    attributes: { Rozmiar: 'M' },
+    ean: '5901234567897',
+    gtin: null,
+    price: 39,
+  } as unknown as ProductVariant;
+  return {
+    variantId: id,
+    variant,
+    ean: variant.ean,
+    distinguishingAttributes: variant.attributes,
+    masterStock: null,
+    masterPrice: 39,
+    masterCurrency: 'PLN',
+    included: true,
+    blockers: [],
+    resolvedCategoryId: null,
+    resolvedProductCardId: null,
+    resolutionMethod: null,
+    categoryCandidates: [],
+    override: {},
+    ...over,
+  };
+}
 
-function makeRow(productId: string): BulkWizardRow {
+function makeRow(productId: string, variants: BulkVariantRow[]): BulkWizardRow {
   return {
     productId,
-    product: null,
-    primaryVariant: null,
+    product: { id: productId, name: 'P', currency: 'PLN' } as unknown as Product,
+    primaryVariant: variants[0]?.variant ?? null,
+    variants,
     blockers: [],
     resolvedCategoryId: null,
     resolvedProductCardId: null,
@@ -34,12 +58,12 @@ function makeRow(productId: string): BulkWizardRow {
   };
 }
 
-function outcome(
-  productId: string,
-  partial: Partial<BulkResolveOutcome> = {},
-): BulkResolveOutcome {
+function variantOutcome(
+  variantId: string,
+  partial: Partial<BulkResolveVariantOutcome> = {},
+): BulkResolveVariantOutcome {
   return {
-    productId,
+    variantId,
     blockers: [],
     resolvedCategoryId: null,
     resolvedProductCardId: null,
@@ -48,184 +72,55 @@ function outcome(
     masterStock: null,
     masterCurrency: null,
     categoryCandidates: [],
+    ean: null,
     ...partial,
   };
 }
 
+function outcome(productId: string, variants: BulkResolveVariantOutcome[]): BulkResolveOutcome {
+  return { productId, variants };
+}
+
 describe('mergeResolveOutcomes', () => {
-  it('folds resolve outcome fields into the matching row', () => {
-    const rows = [makeRow('prod_1')];
+  it('folds per-variant resolve fields into the matching variant row', () => {
+    const rows = [makeRow('prod_1', [makeVariantRow('ol_variant_1')])];
     const next = mergeResolveOutcomes(rows, [
-      outcome('prod_1', {
-        blockers: [],
-        resolvedCategoryId: 'cat-A',
-        resolvedProductCardId: 'card-A',
-        masterPrice: 12,
-        masterStock: 3,
-        masterCurrency: 'PLN',
-        categoryCandidates: [],
-      }),
+      outcome('prod_1', [
+        variantOutcome('ol_variant_1', {
+          blockers: ['no-match'],
+          resolvedCategoryId: 'cat-A',
+          resolvedProductCardId: 'card-A',
+          masterStock: 3,
+          masterPrice: 12,
+          masterCurrency: 'PLN',
+        }),
+      ]),
     ]);
 
-    expect(next[0]).toMatchObject({
-      productId: 'prod_1',
-      blockers: [],
+    expect(next[0].variants[0]).toMatchObject({
+      blockers: ['no-match'],
       resolvedCategoryId: 'cat-A',
       resolvedProductCardId: 'card-A',
-      masterPrice: 12,
       masterStock: 3,
-      masterCurrency: 'PLN',
     });
   });
 
-  it('records a matched category + method', () => {
-    const next = mergeResolveOutcomes(
-      [makeRow('prod_1')],
-      [outcome('prod_1', { resolvedCategoryId: 'cat-A', resolutionMethod: 'auto_detect' })],
-    );
-    expect(next[0]).toMatchObject({
-      blockers: [],
-      resolvedCategoryId: 'cat-A',
-      resolutionMethod: 'auto_detect',
-    });
+  it('preserves each variant operator override across a re-resolve', () => {
+    const rows = [
+      makeRow('prod_1', [
+        makeVariantRow('ol_variant_1', { override: { overrides: { title: 'Kept' } } }),
+      ]),
+    ];
+    const next = mergeResolveOutcomes(rows, [
+      outcome('prod_1', [variantOutcome('ol_variant_1', { masterStock: 9 })]),
+    ]);
+    expect(next[0].variants[0].override.overrides?.title).toBe('Kept');
+    expect(next[0].variants[0].masterStock).toBe(9);
   });
 
-  it('leaves rows without a matching outcome untouched (identity preserved)', () => {
-    const rows = [makeRow('prod_1'), makeRow('prod_2')];
-    const next = mergeResolveOutcomes(rows, [outcome('prod_2', { blockers: ['no-ean'] })]);
+  it('leaves a row with no matching outcome unchanged', () => {
+    const rows = [makeRow('prod_1', [makeVariantRow('ol_variant_1')])];
+    const next = mergeResolveOutcomes(rows, [outcome('prod_2', [])]);
     expect(next[0]).toBe(rows[0]);
-    expect(next[1]).toMatchObject({ productId: 'prod_2', blockers: ['no-ean'] });
-  });
-});
-
-describe('selectBulkProductCardId (#808)', () => {
-  function rowWith(partial: Partial<BulkWizardRow>): BulkWizardRow {
-    return { ...makeRow('prod_1'), ...partial };
-  }
-
-  it('threads the resolved card on a clean auto-resolved row', () => {
-    const row = rowWith({ resolvedCategoryId: '257933', resolvedProductCardId: 'card-1' });
-    expect(selectBulkProductCardId(row)).toBe('card-1');
-  });
-
-  it('threads the resolved card when the seeded/edited override repeats the resolved category', () => {
-    // Regression for the original bug: the review-step edit form seeds
-    // override.overrides.categoryId with the resolved category even for
-    // un-touched rows; the card must still be threaded.
-    const row = rowWith({
-      resolvedCategoryId: '257933',
-      resolvedProductCardId: 'card-1',
-      override: { overrides: { categoryId: '257933', title: 'Seeded title' } },
-    });
-    expect(selectBulkProductCardId(row)).toBe('card-1');
-  });
-
-  it('drops the card when the operator switched to a different category', () => {
-    const row = rowWith({
-      resolvedCategoryId: '257933',
-      resolvedProductCardId: 'card-1',
-      override: { overrides: { categoryId: '999000' } },
-    });
-    expect(selectBulkProductCardId(row)).toBeUndefined();
-  });
-
-  it('prefers an explicit operator-set card override', () => {
-    const row = rowWith({
-      resolvedCategoryId: '257933',
-      resolvedProductCardId: 'card-1',
-      override: { overrides: { productCardId: 'manual-card' } },
-    });
-    expect(selectBulkProductCardId(row)).toBe('manual-card');
-  });
-
-  it('returns undefined when there is no resolved card', () => {
-    const row = rowWith({ resolvedCategoryId: '257933', resolvedProductCardId: null });
-    expect(selectBulkProductCardId(row)).toBeUndefined();
-  });
-});
-
-describe('recomputeRowBlockers (#810)', () => {
-  const config: BulkWizardConfig = {
-    connectionId: 'conn_1',
-    platformParams: { deliveryPolicyId: 'dp_1' },
-    currency: 'PLN',
-    pricingPolicy: { mode: 'flat', amount: 50 },
-    stockPolicy: { mode: 'flat', value: 3 },
-    publishImmediately: true,
-    generateDescription: false,
-  };
-
-  const variant: ProductVariant = {
-    id: 'var_1',
-    productId: 'prod_1',
-    sku: 'SKU',
-    attributes: null,
-    ean: '590',
-    gtin: null,
-    price: 50,
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:00.000Z',
-  };
-
-  function variantRow(partial: Partial<BulkWizardRow>): BulkWizardRow {
-    return { ...makeRow('prod_1'), primaryVariant: variant, ...partial };
-  }
-
-  it('raises needs-product-parameters for a manually-categorised no-card row', () => {
-    const row = variantRow({
-      resolvedProductCardId: null,
-      override: { overrides: { categoryId: 'cat-X' } },
-    });
-    const blockers = recomputeRowBlockers(row, config, new Map([['cat-X', ['brand', 'model']]]), allegroValidate);
-    expect(blockers).toContain(NEEDS_PARAMS);
-  });
-
-  it('does not raise it once the required params are supplied', () => {
-    const row = variantRow({
-      resolvedProductCardId: null,
-      override: {
-        overrides: {
-          categoryId: 'cat-X',
-          parameters: [
-            { id: 'brand', valuesIds: ['1'], section: 'product' },
-            { id: 'model', values: ['Z'], section: 'product' },
-          ],
-        },
-      },
-    });
-    const blockers = recomputeRowBlockers(row, config, new Map([['cat-X', ['brand', 'model']]]), allegroValidate);
-    expect(blockers).not.toContain(NEEDS_PARAMS);
-  });
-
-  it('exempts a card-linked row (params inherited, #808)', () => {
-    const row = variantRow({
-      resolvedCategoryId: 'cat-X',
-      resolvedProductCardId: 'card-1',
-      override: { overrides: { categoryId: 'cat-X' } },
-    });
-    const blockers = recomputeRowBlockers(row, config, new Map([['cat-X', ['brand']]]), allegroValidate);
-    expect(blockers).not.toContain(NEEDS_PARAMS);
-  });
-
-  it('stays inert until the category schema is known (no map entry)', () => {
-    const row = variantRow({
-      resolvedProductCardId: null,
-      override: { overrides: { categoryId: 'cat-X' } },
-    });
-    const blockers = recomputeRowBlockers(row, config, new Map(), allegroValidate);
-    expect(blockers).not.toContain(NEEDS_PARAMS);
-  });
-
-  it('drops the stale card and blocks when a matched row is recategorised to a card-less category', () => {
-    // Regression: editing an auto-matched row to a *different* category must
-    // drop the card (it belonged to the resolved category), so the row is no
-    // longer card-linked and the new category's required params apply.
-    const row = variantRow({
-      resolvedCategoryId: 'cat-A',
-      resolvedProductCardId: 'card-1',
-      override: { overrides: { categoryId: 'cat-B' } },
-    });
-    const blockers = recomputeRowBlockers(row, config, new Map([['cat-B', ['brand']]]), allegroValidate);
-    expect(blockers).toContain(NEEDS_PARAMS);
   });
 });

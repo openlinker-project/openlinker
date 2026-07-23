@@ -100,6 +100,11 @@ export type {
 export type { BulkListingBatchRepositoryPort } from './domain/ports/bulk-listing-batch-repository.port';
 export { BulkListingBatchNotFoundException } from './domain/exceptions/bulk-listing-batch-not-found.exception';
 export { EmptyBulkSubmissionException } from './domain/exceptions/empty-bulk-submission.exception';
+export { InvalidEanException } from './domain/exceptions/invalid-ean.exception';
+export { DuplicateBatchEanException } from './domain/exceptions/duplicate-batch-ean.exception';
+export { CurrencyMismatchException } from './domain/exceptions/currency-mismatch.exception';
+export { InvalidOverrideKeyException } from './domain/exceptions/invalid-override-key.exception';
+export { ExpandedOfferCeilingExceededException } from './domain/exceptions/expanded-offer-ceiling-exceeded.exception';
 export { BulkBatchAdvancement } from './domain/entities/bulk-batch-advancement.entity';
 export type { BulkBatchAdvancementRepositoryPort } from './domain/ports/bulk-batch-advancement-repository.port';
 export { BulkChildOutcomeValues } from './domain/types/bulk-child-outcome.types';

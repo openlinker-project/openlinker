@@ -94,6 +94,7 @@ describe('OfferStatusPollService', () => {
       findByBulkBatchId: jest.fn(),
       updateClassificationReport: jest.fn(),
       resetForRetry: jest.fn(),
+      deleteById: jest.fn(),
     };
 
     syncJobs = {
