@@ -6323,16 +6323,22 @@ a.kpi-card:focus-visible {
 .offer-product-picker__prow-main:hover {
   background: var(--bg-surface-hover);
 }
-/* Whole-product selection tap target (>=44px on mobile), mirroring the
-   full-row hit area of the variant rows below. */
+/* Whole-product selection tap target, mirroring the full-row hit area of
+   the variant rows below. The 44px touch floor is applied only on
+   coarse-pointer (touch) devices so it doesn't inflate row height on
+   desktop, where the checkbox keeps its natural size. */
 .offer-product-picker__prow-check {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 44px;
-  min-height: 44px;
   margin: 0;
   cursor: pointer;
+}
+@media (pointer: coarse) {
+  .offer-product-picker__prow-check {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 .offer-product-picker__prow-check input[disabled] {
   cursor: not-allowed;
