@@ -38,6 +38,7 @@ import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-li
 import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { Select } from '../../../shared/ui/select';
 import { StatusBadge } from '../../../shared/ui/status-badge';
+import { StructuredErrorList } from '../../../shared/ui/structured-error-list';
 import { useToast } from '../../../shared/ui/toast-provider';
 
 import type { OrderRecord } from '../api/orders.types';
@@ -47,6 +48,7 @@ import {
 } from '../api/order-snapshot.schema';
 import { ordersQueryKeys } from '../api/orders.query-keys';
 import {
+  extractShippingFieldErrors,
   useGenerateLabelMutation,
   useLabelDownload,
   type GenerateLabelInput,
@@ -473,10 +475,14 @@ export function GenerateLabelForm({
         </Alert>
       ) : null}
 
-      {/* API error at top */}
+      {/* API error at top (#1806) — the generic carrier message always
+          renders; a structured per-field breakdown (e.g. ShipX
+          `details.fieldErrors`) is appended underneath when the mutation
+          error carries one, so the operator knows exactly what to fix. */}
       {mutation.error ? (
         <Alert tone="error" className="generate-label-form__error">
-          {mutation.error.message}
+          <p className="generate-label-form__error-message">{mutation.error.message}</p>
+          <StructuredErrorList errors={extractShippingFieldErrors(mutation.error)} />
         </Alert>
       ) : null}
 

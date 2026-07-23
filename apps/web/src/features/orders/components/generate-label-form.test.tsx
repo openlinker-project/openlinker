@@ -14,6 +14,7 @@ import {
   createMockApiClient,
   findToastTitle,
 } from '../../../test/test-utils';
+import { ApiError } from '../../../shared/api/api-error';
 import { GenerateLabelForm } from './generate-label-form';
 import type { OrderRecord } from '../api/orders.types';
 
@@ -956,5 +957,77 @@ describe('GenerateLabelForm — #1569 COD currency per routed carrier', () => {
       'RON',
       'CZK',
     ]);
+  });
+});
+
+// ── #1806 — surface carrier per-field validation details in the error Alert ──
+
+describe('GenerateLabelForm — #1806 carrier field-error breakdown', () => {
+  function fillParcelAndSubmit(): void {
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+  }
+
+  it('should render the generic message plus each per-field reason when the 502 carries structured details', async () => {
+    const apiClient = createMockApiClient({
+      shipments: {
+        generateLabel: vi.fn().mockRejectedValue(
+          new ApiError('There are some validation errors. Check details object for more info.', 502, {
+            providerCode: 'validation_failed',
+            details: {
+              fieldErrors: {
+                'receiver.first_name': ['This field is required'],
+                'receiver.last_name': ['This field is required'],
+              },
+            },
+          }),
+        ),
+      },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+    fillParcelAndSubmit();
+
+    // Generic message still renders (never replaced, only augmented).
+    expect(
+      await screen.findByText(/There are some validation errors\. Check details object/i),
+    ).toBeInTheDocument();
+
+    // Each rejected field renders as its own row.
+    expect(
+      screen.getAllByText('This field is required', { selector: '.structured-error-list__message' }),
+    ).toHaveLength(2);
+    // Field breadcrumb renders as a click-to-copy button labelled with the
+    // full dotted path (rendered as separate trail/leaf spans internally).
+    expect(
+      screen.getByRole('button', { name: 'Copy field path receiver.first_name' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Copy field path receiver.last_name' }),
+    ).toBeInTheDocument();
+  });
+
+  it('should fall back to the bare generic message when the mutation error has no structured field errors', async () => {
+    const apiClient = createMockApiClient({
+      shipments: {
+        generateLabel: vi.fn().mockRejectedValue(new ApiError('Carrier is unreachable', 502, null)),
+      },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+    fillParcelAndSubmit();
+
+    expect(await screen.findByText('Carrier is unreachable')).toBeInTheDocument();
+    // No structured list renders — no empty/broken Alert artefact.
+    expect(document.querySelector('.structured-error-list')).toBeNull();
   });
 });

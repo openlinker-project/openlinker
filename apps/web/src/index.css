@@ -10807,6 +10807,15 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   margin: 0;
 }
 
+/* #1806 — per-field carrier validation breakdown under the generic message */
+.generate-label-form__error-message {
+  margin: 0;
+}
+
+.generate-label-form__error .structured-error-list {
+  margin-top: var(--space-2);
+}
+
 .generate-label-form__missing-list {
   margin: var(--space-1) 0 0 var(--space-4);
   padding: 0;
