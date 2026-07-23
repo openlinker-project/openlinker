@@ -18,6 +18,13 @@ export class BuyerProfile {
     public readonly taxId: TaxIdentifier | null,
     public readonly address: BuyerAddress,
     public readonly type: BuyerType,
+    /**
+     * Buyer e-mail, when known (#1797). `null` when the order's source didn't
+     * expose one — issuance must still succeed; only e-mail delivery
+     * (`InvoiceEmailSender.sendByEmail`) needs it. Defaulted so every
+     * pre-existing 4-argument call site keeps compiling unchanged.
+     */
+    public readonly email: string | null = null,
   ) {}
 
   /** Pure derivation: a business buyer (B2B). No I/O, no mutation. */

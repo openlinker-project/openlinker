@@ -220,6 +220,25 @@ describe('AutoIssueTriggerService', () => {
       expect((buyer as { isCompany?: unknown }).isCompany).toBeUndefined();
     });
 
+    it('payload buyer carries order.customerEmail (#1797)', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid', customerEmail: 'buyer@example.com' }),
+        'src-1',
+      );
+      const buyer = (syncJobs.schedule.mock.calls[0][0].payload as { buyer: { email?: string | null } })
+        .buyer;
+      expect(buyer.email).toBe('buyer@example.com');
+    });
+
+    it('payload buyer.email is null when the order has no customerEmail (#1797)', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      const buyer = (syncJobs.schedule.mock.calls[0][0].payload as { buyer: { email?: string | null } })
+        .buyer;
+      expect(buyer.email).toBeNull();
+    });
+
     it('no buyerTaxId ⇒ buyer type "private" (B2C-only MVP)', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
       await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
