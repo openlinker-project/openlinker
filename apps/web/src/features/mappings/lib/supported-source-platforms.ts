@@ -11,7 +11,7 @@
  * (as was done earlier for presta -> erli). Do NOT mirror this into a
  * server-side guard without an explicit decision to close that escape hatch.
  *
- * @module apps/web/src/features/mappings
+ * @module apps/web/src/features/mappings/lib
  */
 
 export const SUPPORTED_SOURCE_PLATFORMS = ['allegro', 'erli'] as const;

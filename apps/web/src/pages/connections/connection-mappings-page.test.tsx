@@ -165,23 +165,26 @@ describe('ConnectionMappingsPage', () => {
   });
 
   it('shows unsaved changes indicator after adding a row', async () => {
+    const user = userEvent.setup();
     renderAt(buildApiClient());
     await openTab('Order Statuses');
 
-    fireEvent.change(screen.getByRole('combobox', { name: /Select Allegro status/i }), {
-      target: { value: 'READY_FOR_PROCESSING' },
-    });
-    fireEvent.change(screen.getByRole('combobox', { name: /Select PrestaShop status/i }), {
-      target: { value: '2' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    // The add-row choosers are searchable comboboxes (#1784 I8): open + pick.
+    await user.click(screen.getByRole('combobox', { name: /Select Allegro status/i }));
+    await user.click(await screen.findByText('Ready for processing'));
+    await user.click(screen.getByRole('combobox', { name: /Select PrestaShop status/i }));
+    await user.click(await screen.findByText('Payment accepted'));
+    await user.click(screen.getByRole('button', { name: 'Add' }));
 
     await waitFor(() => {
       expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
     });
   });
 
-  it('calls upsertStatusMappings on save (keyed to the URL connection)', async () => {
+  it('calls upsertStatusMappings on save (keyed to the resolved SOURCE connection, not the URL master)', async () => {
+    // #1784 B1: status mappings are SOURCE-keyed. Opening from the master
+    // (ps_1) must still write against the resolved source (alg_1) — the id sync
+    // reads at runtime — not the dead master key.
     const upsertFn = vi.fn().mockResolvedValue(SAVED_STATUS_MAPPINGS);
     renderAt(
       buildApiClient({
@@ -201,7 +204,30 @@ describe('ConnectionMappingsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save mappings' }));
 
     await waitFor(() => {
-      expect(upsertFn).toHaveBeenCalledWith('ps_1', { items: [] });
+      expect(upsertFn).toHaveBeenCalledWith('alg_1', { items: [] });
+    });
+  });
+
+  it('reads the same SOURCE-keyed data whether opened from the master or the source (#1784 B1)', async () => {
+    // Master-open (ps_1) resolves source alg_1 → status data fetched for alg_1.
+    const masterApi = buildApiClient({
+      mappings: { getStatusMappings: vi.fn().mockResolvedValue([]) },
+    });
+    renderAt(masterApi, '/connections/ps_1/mappings');
+    await openTab('Order Statuses');
+    await waitFor(() => {
+      expect(masterApi.mappings.getStatusMappings).toHaveBeenCalledWith('alg_1');
+    });
+    cleanup();
+
+    // Source-open (alg_1) fetches the identical key.
+    const sourceApi = buildApiClient({
+      mappings: { getStatusMappings: vi.fn().mockResolvedValue([]) },
+    });
+    renderAt(sourceApi, '/connections/alg_1/mappings');
+    await openTab('Order Statuses');
+    await waitFor(() => {
+      expect(sourceApi.mappings.getStatusMappings).toHaveBeenCalledWith('alg_1');
     });
   });
 
@@ -238,23 +264,28 @@ describe('ConnectionMappingsPage', () => {
     it('shows the no-source guidance when a shop has no paired marketplace', async () => {
       renderAt(buildApiClient({ connectionList: [PRESTA] }));
 
-      expect(await screen.findByText(/No marketplace is paired with this shop/i)).toBeInTheDocument();
+      expect(
+        await screen.findByText(/No supported marketplace is paired with this shop/i),
+      ).toBeInTheDocument();
       expect(screen.queryByRole('tab', { name: 'Order Statuses' })).toBeNull();
     });
 
-    it('prompts for a source and navigates to it when several marketplaces are paired', async () => {
+    it('prompts for a source and navigates only after an explicit Configure click (#1784 I5)', async () => {
       const user = userEvent.setup();
       renderAt(buildApiClient({ connectionList: [ALLEGRO, ERLI, PRESTA] }));
 
       expect(await screen.findByText(/Choose which marketplace to configure/i)).toBeInTheDocument();
       expect(screen.queryByRole('tab', { name: 'Order Statuses' })).toBeNull();
 
+      // Selecting a value must NOT navigate on its own (no keyboard trap).
       await user.selectOptions(
         screen.getByRole('combobox', { name: /Choose marketplace to configure/i }),
         'alg_1',
       );
+      expect(screen.queryByText(/Configure Allegro/)).toBeNull();
 
-      // Navigation lands on the chosen marketplace's own mappings page (ready).
+      // Only the explicit Configure click navigates to the chosen marketplace.
+      await user.click(screen.getByRole('button', { name: 'Configure' }));
       expect(await screen.findByText(/Configure Allegro/)).toBeInTheDocument();
     });
   });
@@ -376,30 +407,33 @@ describe('ConnectionMappingsPage', () => {
       expect(screen.getByRole('combobox', { name: /Select PrestaShop order state/i })).toBeInTheDocument();
     });
 
-    it('hides the Order States tab when opened from a source without OrderProcessorManager', async () => {
-      // Opened from the Allegro source (OrderSource only) - no Order States tab.
+    it('shows the Order States tab on source-open, gated on the DESTINATION capability (#1784 B1)', async () => {
+      // Opened from the Allegro source (OrderSource only). The Order-States tab
+      // is gated on the resolved DESTINATION's OrderProcessorManager capability
+      // (PrestaShop), NOT on the opened side - so it is present regardless of
+      // which side the page was opened from.
       renderAt(buildApiClient(), '/connections/alg_1/mappings');
 
       await screen.findByRole('tab', { name: 'Carriers' });
-      expect(screen.queryByRole('tab', { name: 'Order States' })).toBeNull();
+      expect(screen.getByRole('tab', { name: 'Order States' })).toBeInTheDocument();
     });
 
     it('saves OL->destination order-state overrides with olStatus + externalStateId', async () => {
+      const user = userEvent.setup();
       const upsertFn = vi.fn().mockResolvedValue([]);
       renderAt(buildApiClient({ mappings: { upsertOrderStateMappings: upsertFn } }));
       await openTab('Order States');
       await screen.findByText('Order-State Mappings');
 
-      fireEvent.change(screen.getByRole('combobox', { name: /Select OpenLinker status/i }), {
-        target: { value: 'shipped' },
-      });
-      fireEvent.change(screen.getByRole('combobox', { name: /Select PrestaShop order state/i }), {
-        target: { value: '2' },
-      });
-      fireEvent.click(screen.getByRole('button', { name: 'Add' }));
-      fireEvent.click(screen.getByRole('button', { name: 'Save mappings' }));
+      await user.click(screen.getByRole('combobox', { name: /Select OpenLinker status/i }));
+      await user.click(await screen.findByText('Shipped'));
+      await user.click(screen.getByRole('combobox', { name: /Select PrestaShop order state/i }));
+      await user.click(await screen.findByText('Payment accepted'));
+      await user.click(screen.getByRole('button', { name: 'Add' }));
+      await user.click(screen.getByRole('button', { name: 'Save mappings' }));
 
       await waitFor(() => {
+        // Order-states are DESTINATION-keyed (#1784 B1) → the master id (ps_1).
         expect(upsertFn).toHaveBeenCalledWith('ps_1', {
           items: [{ olStatus: 'shipped', externalStateId: '2' }],
         });
@@ -413,5 +447,71 @@ describe('ConnectionMappingsPage', () => {
 
     expect(screen.getByRole('tab', { name: 'Carriers' })).toHaveAttribute('aria-selected', 'true');
     expect(await screen.findByText('Carrier Mappings')).toBeInTheDocument();
+  });
+
+  describe('lazy-load per tab (#1784 I4)', () => {
+    it('leaves non-default tab fetchers idle until their tab opens', async () => {
+      // Fresh per-fetcher mocks so the negative assertions aren't polluted by
+      // the module-level shared mocks other tests already invoked.
+      const api = buildApiClient({
+        mappings: {
+          getStatusMappings: vi.fn().mockResolvedValue([]),
+          getCarrierMappings: vi.fn().mockResolvedValue([]),
+          getPaymentMappings: vi.fn().mockResolvedValue([]),
+          getOrderStateMappings: vi.fn().mockResolvedValue([]),
+          getMappingOptions: buildOptionsResolver({
+            'source/order-statuses': STATUS_OPTIONS,
+            'destination/order-statuses': PS_STATUS_OPTIONS,
+          }),
+        },
+      });
+      renderAt(api); // default tab is Fulfillment (source advertises OrderSource)
+
+      await screen.findByRole('tab', { name: 'Fulfillment' });
+      // The default (Fulfillment) tab's option key IS fetched on load…
+      await waitFor(() => {
+        expect(api.mappings.getMappingOptions).toHaveBeenCalledWith(
+          'alg_1',
+          'source',
+          'delivery-methods',
+        );
+      });
+
+      // …but no non-default tab's mapping-data fetcher has fired.
+      expect(api.mappings.getStatusMappings).not.toHaveBeenCalled();
+      expect(api.mappings.getCarrierMappings).not.toHaveBeenCalled();
+      expect(api.mappings.getPaymentMappings).not.toHaveBeenCalled();
+      expect(api.mappings.getOrderStateMappings).not.toHaveBeenCalled();
+      // …and no non-default (side, kind) option key has been fetched.
+      expect(api.mappings.getMappingOptions).not.toHaveBeenCalledWith(
+        'alg_1',
+        'source',
+        'order-statuses',
+      );
+      expect(api.mappings.getMappingOptions).not.toHaveBeenCalledWith(
+        'ps_1',
+        'destination',
+        'carriers',
+      );
+      expect(api.mappings.getMappingOptions).not.toHaveBeenCalledWith(
+        'alg_1',
+        'source',
+        'payment-methods',
+      );
+
+      // Each tab's fetcher fires only once its tab is opened, keyed to the
+      // correct side (source vs destination) per #1784 B1.
+      await openTab('Order Statuses');
+      await waitFor(() => expect(api.mappings.getStatusMappings).toHaveBeenCalledWith('alg_1'));
+
+      await openTab('Carriers');
+      await waitFor(() => expect(api.mappings.getCarrierMappings).toHaveBeenCalledWith('alg_1'));
+
+      await openTab('Payments');
+      await waitFor(() => expect(api.mappings.getPaymentMappings).toHaveBeenCalledWith('alg_1'));
+
+      await openTab('Order States');
+      await waitFor(() => expect(api.mappings.getOrderStateMappings).toHaveBeenCalledWith('ps_1'));
+    });
   });
 });

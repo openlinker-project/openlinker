@@ -48,8 +48,25 @@ const QUERY_SPEC: Array<{
   { side: 'destination', kind: 'payment-methods', bundleKey: 'prestashopPaymentModules' },
 ];
 
+/**
+ * Per-side connection ids. Mapping data is keyed to DIFFERENT sides (#1784
+ * follow-up B1): source-side option lists come from the marketplace connection,
+ * destination-side lists from its paired master shop. Callers that don't care
+ * (e.g. the PrestaShop structured-config carrier picker) may pass a single
+ * string, which is used for both sides.
+ */
+export type MappingOptionsConnectionIds = string | { source: string; destination: string };
+
+/**
+ * Option dictionaries are near-static; refetching against slow destination-shop
+ * endpoints on every remount/refocus is wasteful (#1784 follow-up). A large but
+ * finite staleTime keeps them fresh-per-session without pinning them forever in
+ * memory across a genuinely stale session (S10).
+ */
+const OPTIONS_STALE_TIME_MS = 10 * 60 * 1000;
+
 export function useMappingOptions(
-  connectionId: string,
+  connectionIds: MappingOptionsConnectionIds,
   /**
    * Which bundle keys to actually fetch (#1784 follow-up: lazy-load per tab).
    * A key absent from the set has its query disabled, so option lists are
@@ -60,17 +77,22 @@ export function useMappingOptions(
 ): UseMappingOptionsResult {
   const apiClient = useApiClient();
 
+  const sourceConnectionId =
+    typeof connectionIds === 'string' ? connectionIds : connectionIds.source;
+  const destinationConnectionId =
+    typeof connectionIds === 'string' ? connectionIds : connectionIds.destination;
+
   const results = useQueries({
-    queries: QUERY_SPEC.map(({ side, kind, bundleKey }) => ({
-      enabled: connectionId.length > 0 && (enabledKeys?.has(bundleKey) ?? true),
-      // Option dictionaries are near-static; a short staleTime forced refetches
-      // against slow destination-shop endpoints on every remount/refocus (#1784
-      // follow-up). Treat them as effectively immutable per session.
-      staleTime: Infinity,
-      gcTime: 60 * 60 * 1000,
-      queryKey: mappingsQueryKeys.option(connectionId, side, kind),
-      queryFn: () => apiClient.mappings.getMappingOptions(connectionId, side, kind),
-    })),
+    queries: QUERY_SPEC.map(({ side, kind, bundleKey }) => {
+      const connectionId = side === 'source' ? sourceConnectionId : destinationConnectionId;
+      return {
+        enabled: connectionId.length > 0 && (enabledKeys?.has(bundleKey) ?? true),
+        staleTime: OPTIONS_STALE_TIME_MS,
+        gcTime: 60 * 60 * 1000,
+        queryKey: mappingsQueryKeys.option(connectionId, side, kind),
+        queryFn: () => apiClient.mappings.getMappingOptions(connectionId, side, kind),
+      };
+    }),
   });
 
   const isLoading = results.some((r) => r.isLoading);

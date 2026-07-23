@@ -15,7 +15,7 @@
  */
 
 import { useConnectionQuery, useConnectionsQuery, type Connection } from '../../connections';
-import { isSupportedSourcePlatform } from '../supported-source-platforms';
+import { isSupportedSourcePlatform } from '../lib/supported-source-platforms';
 import type { MappingPairing } from './use-mapping-pairing.types';
 
 /** Read the single pairing key off a connection's `config`; empty/non-string -> undefined. */
@@ -66,12 +66,14 @@ export function resolveMappingPairing(
     return { status: 'ready', source: urlConnection, destination };
   }
 
-  // Master/destination shop: reverse-lookup the active sources paired to it,
-  // narrowed to supported marketplace platforms (mirrors the backend, plus the
-  // FE-only allowlist).
+  // Master/destination shop: reverse-lookup the sources paired to it, narrowed
+  // to supported marketplace platforms (mirrors the backend, plus the FE-only
+  // allowlist). Disabled paired sources are INCLUDED (#1784 follow-up S11) so a
+  // shop with only a disabled-but-paired marketplace is not misreported as
+  // `no-source`; the page surfaces a non-active note instead, and the
+  // pick-source picker greys the disabled candidates.
   const supportedSources = allConnections.filter(
     (c) =>
-      c.status === 'active' &&
       readMasterCatalogConnectionId(c) === urlConnection.id &&
       isSupportedSourcePlatform(c.platformType),
   );
@@ -95,7 +97,7 @@ export function useMappingPairing(connectionId: string): MappingPairing {
 
   const queryError = urlConnectionQuery.error ?? connectionsQuery.error;
   if (queryError) {
-    return { status: 'error', error: queryError as Error };
+    return { status: 'error', error: queryError };
   }
 
   if (!urlConnectionQuery.data || !connectionsQuery.data) {

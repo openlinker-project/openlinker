@@ -98,7 +98,7 @@ describe('resolveMappingPairing', () => {
     expect(result).toEqual({ status: 'no-source', master: presta });
   });
 
-  it('ignores disabled paired sources', () => {
+  it('includes a disabled paired source rather than dropping it to no-source (#1784 S11)', () => {
     const disabledAllegro = conn({
       id: 'alg_disabled',
       platformType: 'allegro',
@@ -106,6 +106,24 @@ describe('resolveMappingPairing', () => {
       config: { masterCatalogConnectionId: 'ps_1' },
     });
     const result = resolveMappingPairing(presta, [presta, disabledAllegro]);
-    expect(result).toEqual({ status: 'no-source', master: presta });
+    // The single (disabled) paired source resolves to ready; the page surfaces
+    // a non-active note rather than misreporting "no marketplace paired".
+    expect(result).toEqual({ status: 'ready', source: disabledAllegro, destination: presta });
+  });
+
+  it('returns unsupported with a null destination when the paired master is missing', () => {
+    // Unsupported source whose pairing key points at a connection not in the
+    // list -> unsupported, destination null (renders "Not linked" in the bar).
+    const wooDangling = conn({
+      id: 'woo_2',
+      platformType: 'woocommerce',
+      config: { masterCatalogConnectionId: 'missing' },
+    });
+    const result = resolveMappingPairing(wooDangling, [wooDangling]);
+    expect(result.status).toBe('unsupported');
+    if (result.status === 'unsupported') {
+      expect(result.source).toBe(wooDangling);
+      expect(result.destination).toBeNull();
+    }
   });
 });

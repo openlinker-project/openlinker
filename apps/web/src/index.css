@@ -16111,8 +16111,11 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   font-weight: 500;
 }
 .mapping-pair__chip--dest {
-  background: var(--accent-primary-soft);
-  border-color: var(--accent-primary-border);
+  /* Neutral surface — the dest chip is read-only, so it must not borrow the
+     signal-orange accent reserved for actions/active/focus (#1784 S13).
+     Direction is carried by the role eyebrows + arrow, not colour. */
+  background: var(--bg-surface-muted);
+  border-color: var(--border-default);
 }
 .mapping-pair__chip--empty {
   color: var(--text-muted);
@@ -16257,11 +16260,15 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
     max-width: none;
   }
 
-  /* Mapping tab bar scrolls horizontally instead of wrapping (scoped by label). */
+  /* Mapping tab bar scrolls horizontally instead of wrapping (scoped by label).
+     A right-edge fade (mask-image) hints the overflow now the scrollbar is
+     suppressed, so operators discover the extra tabs (#1784 S14). */
   .tabs__list[aria-label='Mapping types'] {
     overflow-x: auto;
     flex-wrap: nowrap;
     scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
+    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
   }
   .tabs__list[aria-label='Mapping types']::-webkit-scrollbar {
     display: none;

@@ -13,17 +13,26 @@
  * @module apps/web/src/features/mappings/components
  */
 
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import { Button } from '../../../shared/ui/button';
 import { Select } from '../../../shared/ui/select';
 import { usePlatforms } from '../../../shared/plugins';
 import type { Connection } from '../../connections';
 import type { MappingPairing } from '../hooks/use-mapping-pairing.types';
+import { resolvePlatformLabel } from '../lib/platform-label';
+
+/** Id of the pick-source select, so the page can focus it from the empty state (#1784 I5). */
+export const MAPPING_SOURCE_PICKER_ID = 'mapping-pairing-source-select';
 
 interface MappingPairingBarProps {
   pairing: MappingPairing;
-  /** Called with the chosen source connection id in the ambiguous (pick-source) case. */
-  onPickSource: (connectionId: string) => void;
+  /**
+   * Called with the chosen source connection id in the ambiguous (pick-source)
+   * case. Optional - the read-only states (`ready` / `unsupported` / `no-source`)
+   * never invoke it, so those call sites can omit it (#1784 follow-up S18).
+   */
+  onPickSource?: (connectionId: string) => void;
 }
 
 function initials(label: string): string {
@@ -32,11 +41,35 @@ function initials(label: string): string {
   return trimmed.slice(0, 2).toUpperCase();
 }
 
+/** Tokened lock glyph replacing the raw emoji (#1784 follow-up S12). */
+function LockGlyph(): ReactElement {
+  return (
+    <svg
+      className="mapping-pair__lock"
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M3 5.5V4a3 3 0 0 1 6 0v1.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+      />
+      <rect x="2.5" y="5.5" width="7" height="4.5" rx="1" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function MappingPairingBar({ pairing, onPickSource }: MappingPairingBarProps): ReactElement | null {
   const platforms = usePlatforms();
+  const [selectedSourceId, setSelectedSourceId] = useState('');
 
   function labelFor(connection: Connection): string {
-    return platforms.find((p) => p.platformType === connection.platformType)?.displayName ?? connection.platformType;
+    return resolvePlatformLabel(platforms, connection);
   }
 
   function chip(connection: Connection, variant: 'source' | 'dest'): ReactElement {
@@ -81,29 +114,44 @@ export function MappingPairingBar({ pairing, onPickSource }: MappingPairingBarPr
         <div className="mapping-pair__row">
           <div className="mapping-pair__node">
             <span className="mapping-pair__role">Source</span>
-            <Select
-              aria-label="Choose marketplace to configure"
-              defaultValue=""
-              onChange={(e) => {
-                if (e.target.value) onPickSource(e.target.value);
-              }}
-            >
-              <option value="" disabled>
-                Choose a marketplace…
-              </option>
-              {pairing.candidates.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({labelFor(c)})
+            <div className="mapping-pair__picker">
+              <Select
+                id={MAPPING_SOURCE_PICKER_ID}
+                aria-label="Choose marketplace to configure"
+                value={selectedSourceId}
+                onChange={(e) => {
+                  setSelectedSourceId(e.target.value);
+                }}
+              >
+                <option value="" disabled>
+                  Choose a marketplace…
                 </option>
-              ))}
-            </Select>
+                {pairing.candidates.map((c) => {
+                  const isDisabled = c.status !== 'active';
+                  return (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({labelFor(c)}){isDisabled ? ' — disabled' : ''}
+                    </option>
+                  );
+                })}
+              </Select>
+              <Button
+                tone="primary"
+                disabled={selectedSourceId.length === 0}
+                onClick={() => {
+                  if (selectedSourceId) onPickSource?.(selectedSourceId);
+                }}
+              >
+                Configure
+              </Button>
+            </div>
           </div>
           {connector()}
           {destNode(pairing.master)}
         </div>
         <p className="mapping-pair__meta">
-          {pairing.candidates.length} marketplaces are paired with {pairing.master.name}. Pick one to
-          configure its mappings.
+          {pairing.candidates.length} marketplaces are paired with {pairing.master.name}. Pick one and
+          select Configure.
         </p>
       </div>
     );
@@ -148,17 +196,13 @@ export function MappingPairingBar({ pairing, onPickSource }: MappingPairingBarPr
       </div>
       {pairing.status === 'ready' ? (
         <p className="mapping-pair__meta">
-          <span className="mapping-pair__lock" aria-hidden="true">
-            🔒
-          </span>
+          <LockGlyph />
           Determined by connection pairing.{' '}
           <Link to={`/connections/${source.id}/edit`}>Change pairing</Link>
         </p>
       ) : (
         <p className="mapping-pair__meta">
-          <span className="mapping-pair__lock" aria-hidden="true">
-            🔒
-          </span>
+          <LockGlyph />
           Pairing is set on the connection.
         </p>
       )}
