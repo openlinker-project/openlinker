@@ -10,8 +10,7 @@
  *   - swap to `ShopPublishTracker` once the wizard reports a submitted
  *     record / batch
  *
- * Mirrors `OfferCreationLauncher`'s single-morphing-Dialog structure. The
- * launcher renders, in sequence:
+ * Uses a single morphing Dialog. The launcher renders, in sequence:
  *   1. picker body (skipped when exactly one eligible connection exists)
  *   2. empty state when no `ProductPublisher` connection is configured
  *   3. plugin-contributed wizard once a supported platform resolves

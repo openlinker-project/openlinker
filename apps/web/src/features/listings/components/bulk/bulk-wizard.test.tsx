@@ -6,7 +6,7 @@
  * a matching outcome keep their identity.
  */
 import { describe, expect, it } from 'vitest';
-import { mergeResolveOutcomes } from './bulk-wizard';
+import { mergeResolveOutcomes, seedRows } from './bulk-wizard';
 import type { BulkResolveOutcome, BulkResolveVariantOutcome } from './bulk-resolve-step';
 import type { BulkVariantRow, BulkWizardRow } from './bulk-wizard.types';
 import type { Product, ProductVariant } from '../../../products';
@@ -122,5 +122,54 @@ describe('mergeResolveOutcomes', () => {
     const rows = [makeRow('prod_1', [makeVariantRow('ol_variant_1')])];
     const next = mergeResolveOutcomes(rows, [outcome('prod_2', [])]);
     expect(next[0]).toBe(rows[0]);
+  });
+});
+
+describe('seedRows (#1754 pre-selected variants)', () => {
+  function makeProduct(id: string, variantIds: string[]): Product {
+    return {
+      id,
+      name: `Product ${id}`,
+      sku: id,
+      currency: 'PLN',
+      variants: variantIds.map(
+        (vid) =>
+          ({
+            id: vid,
+            productId: id,
+            sku: vid,
+            attributes: { Rozmiar: vid },
+            ean: null,
+            gtin: null,
+            price: 10,
+          }) as unknown as ProductVariant,
+      ),
+    } as unknown as Product;
+  }
+
+  it('seeds every variant included when no pre-selection is given', () => {
+    const rows = seedRows([makeProduct('p1', ['v1', 'v2', 'v3'])]);
+    expect(rows[0].variants.map((v) => v.included)).toEqual([true, true, true]);
+  });
+
+  it('keeps ALL variants but includes only the pre-selected one for a variant-scoped product', () => {
+    const rows = seedRows([makeProduct('p1', ['v1', 'v2', 'v3'])], new Set(['v2']));
+    // All three siblings are still seeded (product stays multi-variant / expandable)...
+    expect(rows[0].variants.map((v) => v.variantId)).toEqual(['v1', 'v2', 'v3']);
+    // ...but only the picked one starts included; the rest seed excluded.
+    expect(rows[0].variants.map((v) => v.included)).toEqual([false, true, false]);
+    // Primary represents an included variant, not the bare first sibling.
+    expect(rows[0].primaryVariant?.id).toBe('v2');
+  });
+
+  it('includes every variant of a whole-product pick even when the set scopes a different product', () => {
+    const rows = seedRows(
+      [makeProduct('p1', ['v1', 'v2']), makeProduct('p2', ['v3', 'v4'])],
+      new Set(['v3']),
+    );
+    // p1 has no variant in the set -> whole-product pick -> all included.
+    expect(rows[0].variants.map((v) => v.included)).toEqual([true, true]);
+    // p2 is variant-scoped -> only v3 included.
+    expect(rows[1].variants.map((v) => v.included)).toEqual([true, false]);
   });
 });

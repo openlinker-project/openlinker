@@ -21,6 +21,7 @@ module.exports = {
   maxWorkers: 2,
   testTimeout: 10000,
   moduleNameMapper: {
+    '^@openlinker/api/(.*)$': path.resolve(__dirname, 'src/$1'),
     '^@openlinker/integrations-allegro$': path.resolve(__dirname, '../../libs/integrations/allegro/src/index.ts'),
     '^@openlinker/integrations-allegro/(.*)$': path.resolve(__dirname, '../../libs/integrations/allegro/src/$1'),
     '^@openlinker/integrations-ai$': path.resolve(__dirname, '../../libs/integrations/ai/src/index.ts'),

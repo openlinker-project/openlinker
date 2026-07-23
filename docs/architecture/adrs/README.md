@@ -119,6 +119,7 @@ One pointer per section, identical format every time.
 | [ADR-027](./027-order-status-writeback-capability-and-relay.md) | Order status writeback capability (event-as-data) & lifecycle relay | Accepted | 2026-06-22 |
 | [ADR-028](./028-order-cancellation-stock-restore.md) | Order-cancellation-observe hook → marketplace stock-restore | Proposed | 2026-06-22 |
 | [ADR-029](./029-versioning-and-release-strategy.md) | Versioning and release strategy (four axes) | Accepted | 2026-06-30 |
+| [ADR-030](./030-infakt-ksef-indirection.md) | Infakt as a KSeF intermediary — `RegulatoryStatusReader`, not `RegulatoryTransmitter` | Accepted | 2026-07-02 |
 | [ADR-031](./031-erli-allegro-category-catalog-via-client-credentials.md) | Erli category/parameter browsing via an Erli-owned Allegro client-credentials token | Proposed | 2026-07-07 |
 | [ADR-032](./032-demo-only-vendor-neutral-analytics-config-seam.md) | Demo-only, vendor-neutral analytics/integration config seam on `/system/config` | Proposed | 2026-07-08 |
 | [ADR-033](./033-openlinker-as-mcp-server.md) | Expose OpenLinker as an MCP server | Proposed | 2026-07-11 |
