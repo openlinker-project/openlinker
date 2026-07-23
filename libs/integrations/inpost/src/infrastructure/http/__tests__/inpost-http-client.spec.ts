@@ -144,6 +144,32 @@ describe('InpostHttpClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('should flatten a nested ShipX field-error map (custom_attributes.target_point) onto its leaf key, not the outer field (#1807)', async () => {
+    // Live-reproduced shape for a paczkomat id ShipX doesn't recognise: the
+    // offending field (`target_point`) is nested one level inside the outer
+    // `custom_attributes` key, not a flat top-level key like `name` above.
+    fetchMock.mockResolvedValue(
+      fakeResponse({
+        ok: false,
+        status: 400,
+        body: '{"error":"validation_failed","message":"There are some validation errors. Check details object for more info.","details":{"custom_attributes":[{"target_point":["does_not_exist"]}]}}',
+      }),
+    );
+
+    const error = await client
+      .request({ method: 'POST', path: '/v1/x' })
+      .then(() => null)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ShippingProviderRejectionException);
+    expect(error).toMatchObject({
+      providerName: 'inpost',
+      providerCode: 'target_point',
+      providerDetails: { fieldErrors: { target_point: ['does_not_exist'] } },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('should retry a 429 and then succeed', async () => {
     fetchMock
       .mockResolvedValueOnce(fakeResponse({ ok: false, status: 429, retryAfter: '0', body: '{}' }))
