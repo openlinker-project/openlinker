@@ -52,13 +52,13 @@ describe('OrderRowDetail', () => {
     expect(placeholders.length).toBeGreaterThanOrEqual(6);
   });
 
-  it('renders an "(est.)" qualifier on the Ship-by field only when the deadline is estimated (#1776)', () => {
+  it('renders an "est." qualifier on the Ship-by field only when the deadline is estimated (#1776)', () => {
     const { rerender } = renderDetail({
       ...baseOrder,
       dispatchByAt: '2026-02-01T12:00:00.000Z',
       dispatchByEstimated: true,
     });
-    expect(screen.getByText(/\(est\.\)/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Estimated')).toBeInTheDocument();
 
     rerender(
       <LocaleProvider>
@@ -75,7 +75,7 @@ describe('OrderRowDetail', () => {
         </MemoryRouter>
       </LocaleProvider>,
     );
-    expect(screen.queryByText(/\(est\.\)/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Estimated')).not.toBeInTheDocument();
   });
 
   it('always renders the internal id and the OpenLinker order-details link', () => {

@@ -153,7 +153,7 @@ export function OrderRowDetail({
                 title="OpenLinker estimate - not a marketplace-confirmed deadline"
               >
                 {' '}
-                (est.)
+                est.
               </span>
             ) : null}
           </span>

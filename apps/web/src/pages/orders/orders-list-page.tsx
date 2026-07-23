@@ -695,16 +695,18 @@ export function OrdersListPage(): ReactElement {
           const sla = slaBadge(order.slaState);
           const due = order.dispatchByAt ?? null;
           const view = formatShipBy(due);
-          // Estimated ship-by qualifier (#1776): a subtle "~" glyph when the
+          // Estimated ship-by qualifier (#1776): a muted "est." label when the
           // deadline is an OL-side estimate (Erli), absent for authoritative
           // marketplace commitments (Allegro). Labelled for screen readers +
-          // hover so the convention isn't sight-only (consistent across surfaces).
+          // hover so the convention isn't sight-only, and rendered as the same
+          // "est." text on every surface (order-detail, row-detail, list).
           const estMark = order.dispatchByEstimated ? (
             <span
+              className="text-muted"
               aria-label="Estimated"
               title="OpenLinker estimate - not a marketplace-confirmed deadline"
             >
-              ~
+              est.{' '}
             </span>
           ) : null;
           // Carrier at row level (#1617): the list can't fetch per-order
@@ -1395,10 +1397,11 @@ export function OrdersListPage(): ReactElement {
                       <StatusBadge tone={SHIP_BY_TONE[shipBy.level]} withDot compact>
                         {order.dispatchByEstimated ? (
                           <span
+                            className="text-muted"
                             aria-label="Estimated"
                             title="OpenLinker estimate - not a marketplace-confirmed deadline"
                           >
-                            ~
+                            est.{' '}
                           </span>
                         ) : null}
                         {shipBy.remaining}

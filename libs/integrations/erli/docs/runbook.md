@@ -54,8 +54,9 @@ Read these before relying on the integration in production.
   the **per-offer** `dispatchTime` read back from `GET /products/{externalId}`,
   falling back to the connection's shop-wide **default dispatch time**
   (`config.defaultDispatchTime`) when the read carries none. Each line's deadline is
-  `purchasedAt + handlingTime`, and the window takes the **soonest** (MIN) deadline
-  across lines. For the `day` unit the period is counted in **Polish working days** —
+  `purchasedAt + handlingTime`, and the window takes the **latest** (MAX) deadline
+  across lines (the order-level ship-by is when EVERY line must have shipped). For the
+  `day` unit the period is counted in **Polish working days** —
   weekends AND Polish public holidays skipped, with day boundaries anchored at
   **Europe/Warsaw** (see `@openlinker/shared/date`). Because the deadline is an
   OpenLinker-side estimate, the window is flagged **`estimated`** and the UI shows a

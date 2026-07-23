@@ -94,7 +94,7 @@ describe('mapErliOrderToIncomingOrder', () => {
     // Ship-by is now derived in ErliOrderSourceAdapter.getOrder (needs per-offer
     // GETs → I/O), so the pure mapper never sets dispatchTime — regardless of
     // whether purchasedAt is present. See the order-source adapter spec for the
-    // per-offer + MIN + estimated + graceful-degrade coverage.
+    // per-offer + MAX + estimated + graceful-degrade coverage.
     it('should never set dispatchTime (derivation lives in the order-source adapter)', () => {
       expect(
         mapErliOrderToIncomingOrder(buildErliOrder({ purchasedAt: '2026-06-16T09:59:00.000Z' }))

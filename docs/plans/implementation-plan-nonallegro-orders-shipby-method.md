@@ -71,8 +71,8 @@ Three functional changes.
    connection's `defaultDispatchTime` when the read carries none (defensive:
    behaviour degrades to the connection-default derivation with no regression if
    Erli never echoes the field). Each line's deadline is `purchasedAt +
-   handlingTime`; the window takes the **soonest (MIN)** deadline across lines (first
-   breachable obligation, matching the list's soonest-first SLA sort). For `unit:
+   handlingTime`; the window takes the **latest (MAX)** deadline across lines (the
+   order-level ship-by is when EVERY line must have shipped). For `unit:
    'day'` the math is **Polish working days** — weekends AND PL public holidays
    skipped, day boundaries at **Europe/Warsaw** — via the pure, tested
    `@openlinker/shared/date` helper (`addWorkingDays` + Easter computus); calendar
@@ -121,16 +121,16 @@ stays required — it is the fulfillment routing key; the `typeId` guard in Erli
    `dispatchTime?: ErliDispatchTime` to the read-side `ErliProductResource`.
 9. `libs/integrations/erli/.../erli-order-source.adapter.ts` — derive the window in
    `getOrder`: per-offer `GET /products/{externalId}` (cached, guarded, degrade on
-   failure) → fallback to connection default → MIN across lines → `estimated: true`.
+   failure) → fallback to connection default → MAX across lines → `estimated: true`.
 10. `libs/integrations/erli/.../erli-adapter.factory.ts` — pass
     `config.defaultDispatchTime` into `ErliOrderSourceAdapter` (unchanged from v1).
 11. `apps/api/.../orders.controller.ts` + `dto/order-record-response.dto.ts` — emit
     derived `dispatchByEstimated` off the snapshot dispatch window.
 12. FE: `orders.types.ts` (`dispatchByEstimated?`), `orders-list-page.tsx`
     (desktop + mobile badges), `order-detail-page.tsx`, `order-row-detail.tsx` —
-    render the `~` / `est.` qualifier when estimated.
+    render the muted `est.` qualifier (labelled, consistent across surfaces) when estimated.
 13. Tests: erli mapper spec (mapper no longer sets dispatchTime), erli order-source
-    spec (per-offer + MIN + estimated + graceful-degrade), API controller spec
+    spec (per-offer + MAX + estimated + graceful-degrade), API controller spec
     (`dispatchByEstimated`), FE row-detail spec (est. qualifier).
 14. `libs/core/.../order-record.service.ts` + `libs/integrations/erli/docs/runbook.md`
     — revise the ship-by doc notes to the v2 per-offer working-day estimate.
