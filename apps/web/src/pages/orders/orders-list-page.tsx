@@ -695,10 +695,18 @@ export function OrdersListPage(): ReactElement {
           const sla = slaBadge(order.slaState);
           const due = order.dispatchByAt ?? null;
           const view = formatShipBy(due);
-          // Estimated ship-by qualifier (#1776): a subtle "~" prefix when the
+          // Estimated ship-by qualifier (#1776): a subtle "~" glyph when the
           // deadline is an OL-side estimate (Erli), absent for authoritative
-          // marketplace commitments (Allegro).
-          const estPrefix = order.dispatchByEstimated ? '~' : '';
+          // marketplace commitments (Allegro). Labelled for screen readers +
+          // hover so the convention isn't sight-only (consistent across surfaces).
+          const estMark = order.dispatchByEstimated ? (
+            <span
+              aria-label="Estimated"
+              title="OpenLinker estimate - not a marketplace-confirmed deadline"
+            >
+              ~
+            </span>
+          ) : null;
           // Carrier at row level (#1617): the list can't fetch per-order
           // shipments, so `shipping.methodName` (the source's stated delivery
           // method) is the best signal, then the raw method id (#1776), then
@@ -752,14 +760,14 @@ export function OrdersListPage(): ReactElement {
                   </StatusBadge>
                   {view ? (
                     <span className="text-muted orders-cell-sub mono tabular">
-                      {estPrefix}
+                      {estMark}
                       {view.remaining}
                     </span>
                   ) : null}
                 </span>
               ) : due && view ? (
                 <StatusBadge tone={SHIP_BY_TONE[view.level]} withDot compact>
-                  {estPrefix}
+                  {estMark}
                   {view.remaining}
                 </StatusBadge>
               ) : null}
@@ -1385,7 +1393,14 @@ export function OrdersListPage(): ReactElement {
                       </StatusBadge>
                     ) : shipBy ? (
                       <StatusBadge tone={SHIP_BY_TONE[shipBy.level]} withDot compact>
-                        {order.dispatchByEstimated ? '~' : ''}
+                        {order.dispatchByEstimated ? (
+                          <span
+                            aria-label="Estimated"
+                            title="OpenLinker estimate - not a marketplace-confirmed deadline"
+                          >
+                            ~
+                          </span>
+                        ) : null}
                         {shipBy.remaining}
                       </StatusBadge>
                     ) : null}

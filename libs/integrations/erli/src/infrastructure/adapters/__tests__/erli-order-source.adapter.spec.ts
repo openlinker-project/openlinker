@@ -535,20 +535,54 @@ describe('ErliOrderSourceAdapter', () => {
       expect(incoming.dispatchTime?.estimated).toBe(true);
     });
 
-    it('should take the MIN (soonest) deadline across multiple lines', async () => {
+    it('should take the MAX (latest) deadline across multiple lines', async () => {
       const adapterWithDefault = new ErliOrderSourceAdapter(CONNECTION_ID, client, undefined, undefined, {
         period: 5,
         unit: 'day',
       });
       routeGet(orderWith([line(OFFER_A), line(OFFER_B)]), {
-        [`products/${OFFER_A}`]: { dispatchTime: { period: 4, unit: 'day' } },
-        [`products/${OFFER_B}`]: { dispatchTime: { period: 1, unit: 'day' } }, // soonest
+        [`products/${OFFER_A}`]: { dispatchTime: { period: 4, unit: 'day' } }, // latest
+        [`products/${OFFER_B}`]: { dispatchTime: { period: 1, unit: 'day' } },
       });
 
       const incoming = await adapterWithDefault.getOrder({ externalOrderId: 'erli-order-1' });
 
-      // Tue + 1 working day → Wed 2026-06-17 (the soonest line wins).
-      expect(incoming.dispatchTime?.to).toBe('2026-06-17T09:59:00.000Z');
+      // The order-level ship-by is when EVERY line must have shipped (the slowest
+      // line wins). Tue 2026-06-16 + 4 working days → Wed17, Thu18, Fri19, Mon22
+      // (Sat/Sun skipped) → Mon 2026-06-22.
+      expect(incoming.dispatchTime?.to).toBe('2026-06-22T09:59:00.000Z');
+    });
+
+    it('should add calendar hours for an hour-unit handling time (no working-day math)', async () => {
+      const adapterWithDefault = new ErliOrderSourceAdapter(CONNECTION_ID, client, undefined, undefined, {
+        period: 5,
+        unit: 'day',
+      });
+      routeGet(orderWith([line(OFFER_A)]), {
+        [`products/${OFFER_A}`]: { dispatchTime: { period: 5, unit: 'hour' } },
+      });
+
+      const incoming = await adapterWithDefault.getOrder({ externalOrderId: 'erli-order-1' });
+
+      // 09:59 + 5 calendar hours → 14:59 same day (raw hour arithmetic).
+      expect(incoming.dispatchTime?.to).toBe('2026-06-16T14:59:00.000Z');
+      expect(incoming.dispatchTime?.estimated).toBe(true);
+    });
+
+    it('should add calendar months for a month-unit handling time (no working-day math)', async () => {
+      const adapterWithDefault = new ErliOrderSourceAdapter(CONNECTION_ID, client, undefined, undefined, {
+        period: 5,
+        unit: 'day',
+      });
+      routeGet(orderWith([line(OFFER_A)]), {
+        [`products/${OFFER_A}`]: { dispatchTime: { period: 2, unit: 'month' } },
+      });
+
+      const incoming = await adapterWithDefault.getOrder({ externalOrderId: 'erli-order-1' });
+
+      // 2026-06-16 + 2 calendar months → 2026-08-16 (raw month arithmetic).
+      expect(incoming.dispatchTime?.to).toBe('2026-08-16T09:59:00.000Z');
+      expect(incoming.dispatchTime?.estimated).toBe(true);
     });
 
     it('should degrade to the connection default when a per-offer GET fails (never fail ingestion)', async () => {

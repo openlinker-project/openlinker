@@ -37,7 +37,6 @@ import type {
   OrderRecord,
   OrderSyncStatus,
   SyncAttempt,
-  OrderDispatchWindow,
 } from '@openlinker/core/orders';
 import {
   INVOICE_SERVICE_TOKEN,
@@ -312,11 +311,6 @@ export class OrdersController {
 
   private toDto(order: OrderRecord): OrderRecordResponseDto {
     const fulfillmentState = order.fulfillmentState ?? 'not-shipped';
-    // Ship-by estimate flag (#1776) — read off the snapshot's dispatch window.
-    // Erli marks its derived window `estimated: true`; Allegro leaves it absent
-    // (authoritative). Coerced to a plain boolean for a stable wire shape.
-    const dispatchByEstimated =
-      (order.orderSnapshot.dispatchTime as OrderDispatchWindow | undefined)?.estimated === true;
     return {
       internalOrderId: order.internalOrderId,
       customerId: order.customerId,
@@ -329,7 +323,10 @@ export class OrdersController {
       createdAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
       updatedAt: order.updatedAt instanceof Date ? order.updatedAt.toISOString() : order.updatedAt,
       dispatchByAt: order.dispatchByAt ? order.dispatchByAt.toISOString() : null,
-      dispatchByEstimated,
+      // Ship-by estimate flag (#1776): a typed, fail-safe read off the snapshot's
+      // dispatch window. Erli marks its derived window `estimated: true`; Allegro
+      // leaves it absent (authoritative). Narrowing lives on the entity getter.
+      dispatchByEstimated: order.dispatchByEstimated,
       fulfillmentState,
       // BE-owned SLA bucket (#1108): single source of truth so the list filter +
       // badge agree. The FE renders only the live countdown off dispatchByAt.

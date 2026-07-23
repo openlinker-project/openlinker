@@ -13,6 +13,7 @@ import { PaymentStatusValues } from '../types/payment-status.types';
 import type { PaymentStatus } from '../types/payment-status.types';
 import type { CodToCollect } from '../types/cod-to-collect.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
+import type { OrderDispatchWindow } from '../types/order.types';
 
 export type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
 
@@ -131,5 +132,24 @@ export class OrderRecord {
     }
     const { methodName } = shipping as Record<string, unknown>;
     return typeof methodName === 'string' ? methodName : null;
+  }
+
+  /**
+   * Typed, fail-safe read of the ESTIMATED flag on the source dispatch window
+   * (#1776) from the snapshot (`orderSnapshot.dispatchTime.estimated`). Pure
+   * derivation of an already-loaded field (ADR-011): no I/O, no mutation.
+   * Mirrors {@link paymentStatus} / {@link codToCollect} - centralises the
+   * `orderSnapshot.dispatchTime` key + narrowing so the HTTP layer binds to a
+   * typed boolean rather than casting the untrusted JSONB inline. `true` only
+   * when the source marked the ship-by an OL-side estimate (Erli); `false` for
+   * a malformed value, a missing window, or a marketplace-authoritative
+   * deadline (Allegro).
+   */
+  get dispatchByEstimated(): boolean {
+    const value = this.orderSnapshot.dispatchTime;
+    if (typeof value !== 'object' || value === null) {
+      return false;
+    }
+    return (value as Partial<OrderDispatchWindow>).estimated === true;
   }
 }

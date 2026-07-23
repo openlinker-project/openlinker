@@ -228,11 +228,14 @@ export function OrderDetailPage(): ReactElement {
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                 <TimeDisplay iso={order.dispatchByAt} format="datetime" />
                 <StatusBadge tone={SHIP_BY_TONE[shipByView.level]} withDot compact>
-                  {order.dispatchByEstimated ? '~' : ''}
                   {shipByView.remaining}
                 </StatusBadge>
                 {order.dispatchByEstimated ? (
-                  <span className="text-muted" title="OpenLinker estimate — not a marketplace-confirmed deadline">
+                  <span
+                    className="text-muted"
+                    aria-label="Estimated"
+                    title="OpenLinker estimate - not a marketplace-confirmed deadline"
+                  >
                     est.
                   </span>
                 ) : null}

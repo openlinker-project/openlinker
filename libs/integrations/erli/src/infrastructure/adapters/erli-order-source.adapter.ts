@@ -100,7 +100,7 @@ import { Logger } from '@openlinker/shared/logging';
 import { addWorkingDays } from '@openlinker/shared/date';
 import type { ErliDispatchTime } from '../../domain/types/erli-connection.types';
 import type { ErliProductResource } from './erli-product.types';
-import { ERLI_PRODUCT_ID_PATTERN } from '../../erli.constants';
+import { ERLI_PRODUCT_ID_PATTERN, erliProductPath } from '../../erli.constants';
 import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
 import { ErliOrderDispatchRejectedException } from '../../domain/exceptions/erli-order-dispatch-rejected.exception';
 import {
@@ -322,14 +322,24 @@ export class ErliOrderSourceAdapter
    * `defaultDispatchTime` (robust whether or not Erli echoes the per-offer field
    * — absent everywhere ⇒ behaviour == the connection-default derivation, no
    * regression). Each line's deadline is `purchasedAt + handlingTime`; the window
-   * takes the MIN (soonest) deadline across lines — the first breachable
-   * obligation, matching the list's soonest-first SLA sort.
+   * takes the MAX (latest) deadline across lines - OL models a single order-level
+   * ship-by for one shipment, so the deadline is when EVERY line must have shipped
+   * (mirrors Allegro's single order-level `delivery.time.dispatch`). Taking MIN
+   * would flag the order overdue before its slowest line's real obligation.
    *
    * Fail-safe / never-fabricate: returns `undefined` (ship-by stays blank) when
    * `purchasedAt` is missing/unparseable, or when ANY line has no resolvable
    * handling time (no per-offer value AND no connection default). A per-offer GET
    * failure degrades that line to the connection default rather than failing
    * ingestion.
+   *
+   * Handling-time drift (#1776): the window is recomputed from the offer's
+   * CURRENT handling time on every `getOrder`, not snapshotted at purchase time
+   * (matches the "re-derive on every persist" convention elsewhere in core). So
+   * editing a listing's handling time after an order is in flight retroactively
+   * shifts that order's `dispatchByAt` on the next reconciliation pull, with no
+   * operator signal that it moved - a known limitation for the pending rider/CTA
+   * follow-up in this epic, not a regression.
    */
   private async deriveDispatchWindow(order: ErliOrder): Promise<OrderDispatchWindow | undefined> {
     const purchasedAt = order.purchasedAt;
@@ -344,37 +354,36 @@ export class ErliOrderSourceAdapter
       return undefined;
     }
 
-    // Cache per-offer reads within this order so split lines sharing an offer id
-    // don't re-fetch the same product.
+    // Resolve the per-offer handling times concurrently, deduped by offer id so
+    // split lines sharing an offer id issue a single GET. Only the distinct-id
+    // network calls are parallelised; the deadline fold below stays sequential
+    // (pure, order-independent).
+    const distinctOfferIds = [...new Set(order.items.map((item) => item.externalId))];
     const handlingCache = new Map<string, ErliDispatchTime | undefined>();
-    let minDeadline: Date | undefined;
+    await Promise.all(
+      distinctOfferIds.map(async (offerId) => {
+        handlingCache.set(offerId, await this.fetchOfferDispatchTime(offerId));
+      }),
+    );
 
+    let maxDeadline: Date | undefined;
     for (const item of order.items) {
-      const offerId = item.externalId;
-      let perOffer: ErliDispatchTime | undefined;
-      if (handlingCache.has(offerId)) {
-        perOffer = handlingCache.get(offerId);
-      } else {
-        perOffer = await this.fetchOfferDispatchTime(offerId);
-        handlingCache.set(offerId, perOffer);
-      }
-
-      const handling = perOffer ?? this.defaultDispatchTime;
+      const handling = handlingCache.get(item.externalId) ?? this.defaultDispatchTime;
       if (!handling) {
         // Guard: a line with no resolvable handling time ⇒ never fabricate.
         return undefined;
       }
 
       const deadline = computeErliDispatchDeadline(from, handling);
-      if (minDeadline === undefined || deadline.getTime() < minDeadline.getTime()) {
-        minDeadline = deadline;
+      if (maxDeadline === undefined || deadline.getTime() > maxDeadline.getTime()) {
+        maxDeadline = deadline;
       }
     }
 
-    if (minDeadline === undefined) {
+    if (maxDeadline === undefined) {
       return undefined;
     }
-    return { from: from.toISOString(), to: minDeadline.toISOString(), estimated: true };
+    return { from: from.toISOString(), to: maxDeadline.toISOString(), estimated: true };
   }
 
   /**
@@ -390,9 +399,7 @@ export class ErliOrderSourceAdapter
       return undefined;
     }
     try {
-      const res = await this.httpClient.get<ErliProductResource>(
-        `products/${encodeURIComponent(offerId)}`,
-      );
+      const res = await this.httpClient.get<ErliProductResource>(erliProductPath(offerId));
       return res.data?.dispatchTime;
     } catch (error) {
       this.logger.warn(
