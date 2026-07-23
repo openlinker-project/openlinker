@@ -1066,9 +1066,10 @@ describe('GenerateLabelForm — #1800 carrier support reference', () => {
 
     expect(await screen.findByText(/DPD could not process the shipment/i)).toBeInTheDocument();
     expect(screen.getByText(/Reference for carrier support/i)).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Copy support reference trace-xyz-789' }),
-    ).toBeInTheDocument();
+    // The trace id is rendered via the shared CopyableId primitive (aria-label
+    // `Copy <id>`), which also displays the id verbatim.
+    expect(screen.getByRole('button', { name: 'Copy trace-xyz-789' })).toBeInTheDocument();
+    expect(screen.getByText('trace-xyz-789')).toBeInTheDocument();
   });
 
   it('should not render the support-reference line when the mutation error carries no traceId', async () => {
