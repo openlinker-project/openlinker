@@ -54,6 +54,8 @@ import { useDemoMode } from '../../features/system';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
 import { itemsSummary, paymentBadge, invoiceBadge } from '../../features/orders/lib/order-row';
+import { deriveDeliveryOutcome } from '../../features/orders/lib/delivery-outcome';
+import { DeliveryChip } from '../../features/orders/components/delivery-chip';
 import { capSelectionPerSource, sourcesAtCap } from '../../features/orders/lib/dispatch-input';
 import { BulkDispatchDialog } from '../../features/orders/components/bulk-dispatch-dialog';
 import { OrderRowDetail } from '../../features/orders/components/order-row-detail';
@@ -706,6 +708,16 @@ export function OrdersListPage(): ReactElement {
             parsed.shipping?.methodId ??
             parsed.pickupPoint?.name ??
             null;
+          // Mapping-aware delivery chip (#1793): outcome + rider stacked. The
+          // list can't fetch shipments, so `fulfillmentState` (dispatched /
+          // delivered) stands in for "label exists"; the rider comes straight
+          // off the order response (BE-gated to `default` resolutions).
+          const deliveryOutcome = deriveDeliveryOutcome({
+            processorKind: order.deliveryResolution?.processorKind,
+            hasMethod: carrier != null,
+            isFulfilled:
+              order.fulfillmentState === 'dispatched' || order.fulfillmentState === 'delivered',
+          });
           // Offer "Generate label" ONLY when fulfillment is EXPLICITLY not-shipped
           // and the order isn't cancelled (#1713). An undefined fulfillmentState
           // (genuinely unknown) or a cancelled order shows the passive fulfillment
@@ -747,6 +759,7 @@ export function OrdersListPage(): ReactElement {
                   {view.remaining}
                 </StatusBadge>
               ) : null}
+              <DeliveryChip outcome={deliveryOutcome} rider={order.deliveryRider} />
               {carrier ? (
                 <span className="text-muted orders-cell-sub orders-carrier" title={carrier}>
                   {carrier}
@@ -1233,6 +1246,15 @@ export function OrdersListPage(): ReactElement {
                   parsed.shipping?.methodId ??
                   parsed.pickupPoint?.name ??
                   null;
+                // Mapping-aware delivery chip (#1793) — same snapshot-only
+                // derivation as the desktop cell.
+                const deliveryOutcome = deriveDeliveryOutcome({
+                  processorKind: order.deliveryResolution?.processorKind,
+                  hasMethod: carrier != null,
+                  isFulfilled:
+                    order.fulfillmentState === 'dispatched' ||
+                    order.fulfillmentState === 'delivered',
+                });
                 const inv = parsed.invoice ? invoiceBadge(parsed.invoice) : null;
                 const fulfillment = fulfillmentBadge(order.fulfillmentState);
                 // Offer "Generate label" ONLY when explicitly not-shipped and not
@@ -1316,6 +1338,10 @@ export function OrdersListPage(): ReactElement {
                               <StatusBadge tone={fulfillment.tone} withDot compact>
                                 {fulfillment.label}
                               </StatusBadge>
+                              <DeliveryChip
+                                outcome={deliveryOutcome}
+                                rider={order.deliveryRider}
+                              />
                               {carrier ? (
                                 <span className="text-muted orders-cell-sub">{carrier}</span>
                               ) : null}

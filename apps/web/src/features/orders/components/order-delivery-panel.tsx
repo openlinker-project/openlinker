@@ -33,6 +33,9 @@ import type {
   ParsedOrderPickupPoint,
   ParsedOrderShipping,
 } from '../api/order-snapshot.schema';
+import type { OrderDeliveryRider } from '../api/orders.types';
+import type { DeliveryOutcome } from '../lib/delivery-outcome';
+import { DeliveryOutcomeChip, DeliveryRiderBanner } from './delivery-chip';
 
 interface OrderDeliveryPanelProps {
   shippingAddress?: ParsedAddress;
@@ -51,9 +54,22 @@ interface OrderDeliveryPanelProps {
    * Method row when the snapshot carried no `shipping.methodName`/`methodId`.
    * Callers derive it from the booked shipment (carrier / mapped method) so a
    * source order with no delivery line still shows a method. The Method row
-   * chain is `shipping.methodName ?? shipping.methodId ?? methodFallback ?? '-'`.
+   * chain is `shipping.methodName ?? shipping.methodId ?? methodFallback ??
+   * pickupPoint.name ?? '-'`.
    */
   methodFallback?: string | null;
+  /**
+   * Physical delivery outcome (#1793) rendered as a chip in the Carrier row.
+   * Derived by the caller from `deliveryResolution` + shipment state via
+   * `deriveDeliveryOutcome`. Absent → no chip (older/degraded payloads).
+   */
+  deliveryOutcome?: DeliveryOutcome;
+  /**
+   * Actionable delivery rider (#1793/#1792). When actionable
+   * (`unmapped` / `not-connected`) an inline banner + fix-it button SLOT
+   * renders beneath the delivery fields; navigation is wired in #1794.
+   */
+  deliveryRider?: OrderDeliveryRider | null;
 }
 
 function addressLines(address: ParsedAddress): ReactElement {
@@ -94,6 +110,8 @@ export function OrderDeliveryPanel({
   sourcePlatformType,
   carrier,
   methodFallback,
+  deliveryOutcome,
+  deliveryRider,
 }: OrderDeliveryPanelProps): ReactElement {
   // Resolved unconditionally (never inside a branch) — see #893.
   const sourcePlatform = usePlatform(sourcePlatformType ?? undefined);
@@ -105,11 +123,13 @@ export function OrderDeliveryPanel({
   // Always rendered (#1776) — the delivery-method label is a core "where it's
   // going" fact, so it must not blank out when the source order carried no
   // shipping line. Precedence: source method name → source method id →
-  // caller-supplied fallback (shipment-derived carrier/method) → "-".
+  // caller-supplied fallback (shipment-derived carrier/method) → pickup-point
+  // name (#1793) → "-".
   items.push({
     id: 'method',
     label: 'Method',
-    value: shipping?.methodName ?? shipping?.methodId ?? methodFallback ?? '-',
+    value:
+      shipping?.methodName ?? shipping?.methodId ?? methodFallback ?? pickupPoint?.name ?? '-',
   });
   // Always rendered (unlike the fields above) — "-" fallback per #1617 so the
   // operator can tell "no carrier resolved" apart from "field doesn't exist".
@@ -117,8 +137,20 @@ export function OrderDeliveryPanel({
   // source order carried no delivery method (so the Method row above is absent —
   // e.g. Erli/WooCommerce orders with no shipping line), the booked shipment's
   // carrier still surfaces here, so the panel always answers "how is this
-  // shipping?" without duplicating a Method row.
-  items.push({ id: 'carrier', label: 'Carrier', value: carrier ?? '-' });
+  // shipping?" without duplicating a Method row. The mapping-aware outcome chip
+  // (#1793) sits alongside the carrier name when the caller derived one.
+  items.push({
+    id: 'carrier',
+    label: 'Carrier',
+    value: deliveryOutcome ? (
+      <span className="order-delivery__carrier">
+        <span>{carrier ?? '-'}</span>
+        <DeliveryOutcomeChip outcome={deliveryOutcome} />
+      </span>
+    ) : (
+      (carrier ?? '-')
+    ),
+  });
 
   const pickupCaption =
     sourcePlatform?.pickupPointResolvesAsync === true
@@ -139,6 +171,7 @@ export function OrderDeliveryPanel({
       <h3 className="detail-section__title">Delivery</h3>
       <div className="order-delivery__card">
         <KeyValueList items={items} />
+        {deliveryRider ? <DeliveryRiderBanner rider={deliveryRider} /> : null}
         {pickupPoint ? (
           <div className="order-delivery__pickup">
             <div className="order-delivery__pickup-code mono-text">
