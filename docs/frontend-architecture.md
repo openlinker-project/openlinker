@@ -90,6 +90,8 @@ A feature must keep its public-facing modules inside the canonical subdirectory 
 
 **Out of scope today.** Pages still deep-import from features (≈128 imports), and `app/api/api-client.ts` deep-imports each feature's `createXApi` factory to compose the host API client. Both are documented gaps — extending the rule to `pages/**` and `app/**` is a follow-up that doesn't change the architectural model, just expands enforcement scope.
 
+**Cross-feature consumption example (#1787):** `posthog-settings` imports `DemoEventCatalog` and `DemoEventGroup` from the `demo` feature's public barrel (`import { DemoEventCatalog, type DemoEventGroup } from '../../demo';`) to auto-derive its Product-events settings panel's group toggles from the event catalog, rather than hand-maintaining a duplicate group list. This is the intended shape of cross-feature consumption described above, not an exception to it.
+
 ## Routing Conventions
 
 Routing uses explicit React Router definitions under `src/app/routes`. Avoid file-system routing for FE-001 so the first app stays predictable and easy to refactor inside the monorepo.

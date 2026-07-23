@@ -22,4 +22,16 @@ export class PosthogDemoIntegrationDto {
 
   @ApiProperty({ description: 'Whether posthog-js should enable session recording (always masks all text/inputs).' })
   sessionRecording!: boolean;
+
+  @ApiProperty({
+    description:
+      'Master toggle for demo-mode product events (#1787), independent of autocapture.',
+  })
+  productEventsEnabled!: boolean;
+
+  @ApiProperty({
+    type: [String],
+    description: 'Enabled demo-event group names, derived client-side from the events catalog.',
+  })
+  enabledEventGroups!: string[];
 }

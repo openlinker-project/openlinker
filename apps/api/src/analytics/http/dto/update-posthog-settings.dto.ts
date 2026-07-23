@@ -11,7 +11,7 @@
  * @module apps/api/src/analytics/http/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsOptional, IsUrl } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsOptional, IsString, IsUrl } from 'class-validator';
 import { PosthogRegion, PosthogRegionValues } from '@openlinker/core/analytics';
 
 export class UpdatePosthogSettingsDto {
@@ -39,4 +39,20 @@ export class UpdatePosthogSettingsDto {
   @ApiProperty({ description: 'Record session replays (all text/inputs always masked).' })
   @IsBoolean()
   sessionRecording!: boolean;
+
+  @ApiProperty({
+    description:
+      'Master toggle for demo-mode product events (#1787), independent of autocapture.',
+  })
+  @IsBoolean()
+  productEventsEnabled!: boolean;
+
+  @ApiProperty({
+    type: [String],
+    description:
+      'Enabled demo-event group names (derived client-side from the demo-events catalog). Not validated against a closed enum — an unknown group name is simply never matched by any event.',
+  })
+  @IsArray()
+  @IsString({ each: true })
+  enabledEventGroups!: string[];
 }

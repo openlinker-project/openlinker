@@ -22,6 +22,8 @@ const configuredPosthog: SystemConfig = {
       host: 'https://eu.posthog.com',
       autocapture: true,
       sessionRecording: true,
+      productEventsEnabled: true,
+      enabledEventGroups: ['conversion-intent'],
     },
   },
 };
@@ -59,6 +61,40 @@ describe('captureDemoEvent', () => {
       actionName: 'a',
       surface: 'b',
     });
+  });
+
+  it('should not call posthog.capture when productEventsEnabled is false', async () => {
+    getDemoAnalyticsConsent.mockReturnValue('accepted');
+    await initDemoIntegrations({
+      ...configuredPosthog,
+      demoIntegrations: {
+        posthog: {
+          ...configuredPosthog.demoIntegrations!.posthog!,
+          productEventsEnabled: false,
+        },
+      },
+    });
+
+    captureDemoEvent('demo_viewer_locked_action_clicked', { actionName: 'a', surface: 'b' });
+
+    expect(posthogCapture).not.toHaveBeenCalled();
+  });
+
+  it("should not call posthog.capture when the event's group is not in enabledEventGroups", async () => {
+    getDemoAnalyticsConsent.mockReturnValue('accepted');
+    await initDemoIntegrations({
+      ...configuredPosthog,
+      demoIntegrations: {
+        posthog: {
+          ...configuredPosthog.demoIntegrations!.posthog!,
+          enabledEventGroups: ['some-other-group'],
+        },
+      },
+    });
+
+    captureDemoEvent('demo_viewer_locked_action_clicked', { actionName: 'a', surface: 'b' });
+
+    expect(posthogCapture).not.toHaveBeenCalled();
   });
 });
 
@@ -123,6 +159,8 @@ describe('initDemoIntegrations', () => {
           host: 'https://eu.posthog.com',
           autocapture: false,
           sessionRecording: false,
+          productEventsEnabled: false,
+          enabledEventGroups: [],
         },
       },
     });

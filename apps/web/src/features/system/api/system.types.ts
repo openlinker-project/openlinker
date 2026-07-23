@@ -3,6 +3,8 @@ export interface PosthogDemoIntegration {
   host: string;
   autocapture: boolean;
   sessionRecording: boolean;
+  productEventsEnabled: boolean;
+  enabledEventGroups: string[];
 }
 
 export interface DemoIntegrations {
