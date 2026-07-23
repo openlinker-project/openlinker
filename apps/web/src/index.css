@@ -10856,36 +10856,17 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   margin-top: var(--space-2);
 }
 
-/* #1800 — carrier support reference (traceId) under the error breakdown */
+/* #1800 — carrier support reference (traceId) under the error breakdown.
+   The mono id + copy affordance come from the shared CopyableId primitive;
+   this rule only spaces + tones the wrapping line. */
 .generate-label-form__error-trace {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
   margin: var(--space-2) 0 0;
   font-size: 0.8125rem;
   color: var(--text-secondary);
-}
-
-.generate-label-form__error-trace-id {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 0 var(--space-1);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  background: var(--bg-surface-muted);
-  color: var(--text-primary);
-  cursor: pointer;
-  overflow-wrap: anywhere;
-}
-
-.generate-label-form__error-trace-id:focus-visible {
-  box-shadow: var(--shadow-focus);
-  outline: none;
-}
-
-.generate-label-form__error-trace-copied {
-  font-size: 0.6875rem;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
-  color: var(--text-muted);
 }
 
 .generate-label-form__missing-list {

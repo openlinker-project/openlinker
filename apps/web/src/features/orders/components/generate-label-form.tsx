@@ -30,6 +30,7 @@ import { useConnectionsQuery } from '../../connections';
 import { usePlatform } from '../../../shared/plugins';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
+import { CopyableId } from '../../../shared/ui/copyable-id';
 import { FieldError } from '../../../shared/ui/field-error';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
@@ -801,35 +802,17 @@ function collectValidationMessages(
 
 /**
  * Carrier support reference (#1800). Renders the carrier-assigned `traceId`
- * (e.g. DPD's, surfaced on an undiagnosable `NOT_PROCESSED` rejection) with a
- * click-to-copy affordance so the operator can quote it to carrier support.
- * Renders nothing when the error carries no trace id, so the caller can pass
- * `extractShippingTraceId(...)` unconditionally.
+ * (e.g. DPD's, surfaced on an undiagnosable `NOT_PROCESSED` rejection) via the
+ * shared `CopyableId` primitive so the operator can copy it and quote it to
+ * carrier support. Renders nothing when the error carries no trace id, so the
+ * caller can pass `extractShippingTraceId(...)` unconditionally.
  */
 function ShippingTraceReference({ traceId }: { traceId: string | null }): ReactElement | null {
-  const [copied, setCopied] = useState(false);
-
   if (traceId === null) return null;
-
-  const handleCopy = (): void => {
-    void navigator.clipboard?.writeText(traceId).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    });
-  };
 
   return (
     <p className="generate-label-form__error-trace">
-      Reference for carrier support:{' '}
-      <button
-        type="button"
-        className="generate-label-form__error-trace-id mono-text"
-        onClick={handleCopy}
-        aria-label={copied ? `Copied ${traceId}` : `Copy support reference ${traceId}`}
-      >
-        {traceId}
-        {copied ? <span className="generate-label-form__error-trace-copied">copied</span> : null}
-      </button>
+      Reference for carrier support: <CopyableId id={traceId} />
     </p>
   );
 }
