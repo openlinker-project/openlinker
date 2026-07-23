@@ -22,6 +22,14 @@ export interface IInfaktHttpClient {
   get<T>(path: string, query?: Record<string, string>): Promise<T>;
   post<T>(path: string, body: unknown): Promise<T>;
   put<T>(path: string, body: unknown): Promise<T>;
+  /**
+   * POST that triggers a provider-side effect with no meaningful response body
+   * to deserialize (#1797) — e.g. a fire-and-forget async trigger like
+   * `deliver_via_email.json`, which replies `202 Accepted` with an empty body.
+   * Resolves on any 2xx regardless of body shape/emptiness; still throws
+   * `InfaktApiError` on a non-2xx response.
+   */
+  postForEffect(path: string, body: unknown): Promise<void>;
   /** Fetch a binary response (e.g. a PDF) rather than parsing JSON. */
   getBinary(path: string, query?: Record<string, string>): Promise<InfaktBinaryResponse>;
 }

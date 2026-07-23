@@ -31,4 +31,16 @@ describe('BuyerProfile', () => {
     const buyer = new BuyerProfile('Acme', { scheme: 'eu-vat', value: 'PL1234567890' }, address, 'company');
     expect(buyer.taxId).toEqual({ scheme: 'eu-vat', value: 'PL1234567890' });
   });
+
+  describe('email', () => {
+    it('defaults to null when omitted (#1797)', () => {
+      const buyer = new BuyerProfile('Jan Kowalski', null, address, 'private');
+      expect(buyer.email).toBeNull();
+    });
+
+    it('is assigned verbatim when provided (#1797)', () => {
+      const buyer = new BuyerProfile('Jan Kowalski', null, address, 'private', 'jan@example.com');
+      expect(buyer.email).toBe('jan@example.com');
+    });
+  });
 });

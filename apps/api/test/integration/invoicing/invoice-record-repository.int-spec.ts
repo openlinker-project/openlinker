@@ -132,6 +132,7 @@ describe('invoice_records persistence (integration)', () => {
         taxId: { scheme: 'pl-nip', value: '1234567890' },
         address: { line1: 'ul. X 1', line2: null, city: 'Poznań', postalCode: '60-001', countryIso2: 'PL' },
         type: 'company',
+        email: null,
       },
       currency: 'PLN',
       lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 100, taxRate: '23' }],

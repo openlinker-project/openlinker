@@ -74,19 +74,33 @@ export interface BulkListingSubmitInput {
    */
   initiatedBy: string;
   /**
-   * OL internal variant ids to fan out across. Validated by the
-   * controller DTO (length 1..100 + UUID-each); the service throws
-   * `EmptyBulkSubmissionException` if the array is empty as a second
-   * line of defense.
+   * OL internal variant ids (`ol_variant_*`) to fan out across. Validated
+   * by the controller DTO (length 1..100 + non-empty string each — NOT
+   * UUIDs); the service throws `EmptyBulkSubmissionException` if the array
+   * is empty as a second line of defense.
    */
   productIds: string[];
   /** Shared submission config applied to every product. */
   sharedConfig: BulkSharedConfig;
   /**
-   * Optional per-product overrides keyed by `productIds[i]`. Entries with
-   * unrecognised keys are ignored.
+   * Optional per-product overrides keyed by `productIds[i]` (the submitted
+   * primary/seed variant id). Applied to the whole variant family as the
+   * family-default layer. Entries with unrecognised keys are ignored.
    */
   perProductOverrides?: Record<string, PerProductOverride>;
+  /**
+   * Optional per-variant overrides keyed by the **actual** variant id of any
+   * sibling (#1741). Wins over the family layer field-by-field in
+   * `buildEnqueueInput`. Entries with unrecognised keys are ignored.
+   */
+  perVariantOverrides?: Record<string, PerProductOverride>;
+  /**
+   * Variant ids to exclude from the fan-out (#1741). `expandVariantJobs`
+   * skips these siblings (and never resurrects an excluded seed); `totalCount`
+   * reflects the post-exclusion count. A product whose every variant is
+   * excluded contributes zero jobs.
+   */
+  excludedVariantIds?: string[];
 }
 
 /**

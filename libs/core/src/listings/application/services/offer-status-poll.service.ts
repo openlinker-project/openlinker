@@ -35,6 +35,8 @@ import {
 import {
   ISyncJobsService,
   type MarketplaceOfferPollCreationStatusPayloadV1,
+  type MarketplaceOfferRefreshSnapshotPayloadV1,
+  OFFER_REFRESH_SNAPSHOT_DELAYS_SECONDS,
   SYNC_JOBS_SERVICE_TOKEN,
 } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
@@ -54,6 +56,7 @@ import type {
 } from '../types/offer-status-poll.types';
 
 const POLL_JOB_TYPE = 'marketplace.offer.pollCreationStatus';
+const REFRESH_SNAPSHOT_JOB_TYPE = 'marketplace.offer.refreshSnapshot';
 
 /**
  * Per-iteration runner-retry budget. The runner's transient-HTTP-blip cushion;
@@ -120,6 +123,13 @@ export class OfferStatusPollService implements IOfferStatusPollService {
         `POLL_TIMEOUT after ${this.cadence.maxAttempts} attempts`,
         'POLL_TIMEOUT'
       );
+      // A validator that outran the poll budget may still activate the offer;
+      // reconcile the live snapshot so the operator view isn't left stale (#1760).
+      await this.scheduleSnapshotReconcile(
+        input.connectionId,
+        input.externalOfferId,
+        record.internalVariantId
+      );
       return { outcome: 'business_failure' };
     }
 
@@ -179,11 +189,23 @@ export class OfferStatusPollService implements IOfferStatusPollService {
         );
       }
 
+      // A clean `inactive` at poll time lands the record as `draft`, but
+      // Allegro may still activate the offer after its async validation
+      // finishes — reconcile the live snapshot so the operator view catches
+      // that late activation without waiting for the hourly sync (#1760).
+      if (decision.recordStatus === OFFER_CREATION_STATUS.Draft) {
+        await this.scheduleSnapshotReconcile(
+          input.connectionId,
+          input.externalOfferId,
+          record.internalVariantId
+        );
+      }
+
       return { outcome: decision.outcome };
     }
 
     // Still validating — schedule the next iteration if we haven't hit the cap.
-    await this.scheduleNext(input);
+    await this.scheduleNext(input, record.internalVariantId);
     return { outcome: 'ok' };
   }
 
@@ -221,7 +243,7 @@ export class OfferStatusPollService implements IOfferStatusPollService {
     }
   }
 
-  private async scheduleNext(current: PollOnceInput): Promise<void> {
+  private async scheduleNext(current: PollOnceInput, internalVariantId: string): Promise<void> {
     const nextAttempt = current.pollAttempt + 1;
     if (nextAttempt > this.cadence.maxAttempts) {
       // We've exhausted the cadence budget. Mark the record failed with a
@@ -234,6 +256,13 @@ export class OfferStatusPollService implements IOfferStatusPollService {
       );
       this.logger.warn(
         `Poll cadence exhausted for record ${current.offerCreationRecordId} (offer ${current.externalOfferId}) — marked failed.`
+      );
+      // Reconcile the live snapshot after timeout: Allegro may activate the
+      // offer after our poll budget lapses (#1760).
+      await this.scheduleSnapshotReconcile(
+        current.connectionId,
+        current.externalOfferId,
+        internalVariantId
       );
       return;
     }
@@ -275,6 +304,46 @@ export class OfferStatusPollService implements IOfferStatusPollService {
       `Scheduled poll iteration ${input.pollAttempt} for record ${input.offerCreationRecordId} ` +
         `at +${delaySeconds}s (offer ${input.externalOfferId}).`
     );
+  }
+
+  /**
+   * Schedule the first post-terminal snapshot reconcile (#1760): a delayed
+   * `marketplace.offer.refreshSnapshot` job that re-reads the live publication
+   * status so a late Allegro activation surfaces on the operator view before
+   * the hourly steady-state sync. Attempt 1; the worker handler bounds the
+   * follow-up attempts. Fire-and-forget relative to the poll outcome — a
+   * scheduling failure must not fail the poll iteration.
+   */
+  private async scheduleSnapshotReconcile(
+    connectionId: string,
+    externalOfferId: string,
+    internalVariantId: string
+  ): Promise<void> {
+    const attempt = 1;
+    const delaySeconds = OFFER_REFRESH_SNAPSHOT_DELAYS_SECONDS[attempt - 1];
+    const payload: MarketplaceOfferRefreshSnapshotPayloadV1 = {
+      schemaVersion: 1,
+      externalOfferId,
+      internalVariantId,
+      attempt,
+    };
+    try {
+      await this.syncJobs.schedule({
+        jobType: REFRESH_SNAPSHOT_JOB_TYPE,
+        connectionId,
+        payload: payload as unknown as Record<string, unknown>,
+        idempotencyKey: `refreshSnapshot:${externalOfferId}:${attempt}`,
+        maxAttempts: RUNNER_RETRY_BUDGET,
+        runAfter: new Date(Date.now() + delaySeconds * 1000),
+      });
+      this.logger.debug(
+        `Scheduled snapshot reconcile attempt ${attempt} for offer ${externalOfferId} at +${delaySeconds}s.`
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Failed to schedule snapshot reconcile for offer ${externalOfferId}: ${(err as Error).message}`
+      );
+    }
   }
 
   /**

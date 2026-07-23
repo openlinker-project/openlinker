@@ -331,6 +331,9 @@ export function createMockApiClient(
       // #410 — default to "no parameters" so the wizard's category step
       // renders the friendly empty state in tests that don't override.
       getCategoryParameters: vi.fn().mockResolvedValue({ parameters: [] }),
+      // #1752 — default to an empty breadcrumb so the listing drawer falls back
+      // to the raw category id in tests that don't exercise category resolution.
+      getCategoryPath: vi.fn().mockResolvedValue({ path: [] }),
       // #635 — default the Allegro catalog match to "no_match" so tests
       // that don't exercise the catalog-prefill flow render the wizard
       // without a panel and without a real network call. `getCatalogProduct`
@@ -426,6 +429,7 @@ export function createMockApiClient(
       getOrderStateMappings: vi.fn().mockResolvedValue([]),
       upsertOrderStateMappings: vi.fn().mockResolvedValue([]),
       getMappingOptions: vi.fn().mockResolvedValue([]),
+      getCategoryPath: vi.fn().mockResolvedValue([]),
       getRoutingRules: vi.fn().mockResolvedValue([]),
       replaceRoutingRules: vi.fn().mockResolvedValue([]),
       getRoutingCandidates: vi.fn().mockResolvedValue([]),
@@ -545,6 +549,7 @@ const DEFAULT_TEST_USER: SessionUser = {
     'ai:suggest',
     'invoices:read', 'invoices:write',
   ],
+  analyticsConsent: true,
 };
 
 export function createAuthenticatedSessionAdapter(

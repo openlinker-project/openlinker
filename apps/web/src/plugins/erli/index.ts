@@ -30,9 +30,6 @@ import { erliSetupRoute } from './erli-setup.route';
 // Component-lazy (NOT route-lazy); the host render sites provide the
 // `<Suspense>` boundary. The contribution holds a `LazyExoticComponent`,
 // assignable to `ComponentType<…>`.
-const ErliCreateOfferWizardLazy = lazy(() =>
-  import('../../features/listings').then((m) => ({ default: m.ErliCreateOfferWizard })),
-);
 const ErliBulkConfigSectionLazy = lazy(() =>
   import('../../features/listings').then((m) => ({ default: m.ErliBulkConfigSection })),
 );
@@ -45,12 +42,6 @@ export const erliPlugin: OpenLinkerPlugin = definePlugin({
   platformType: 'erli',
   build: {
     routes: [erliSetupRoute],
-    // Capability-shaped single-offer creation (#608/#1096): the launcher
-    // resolves this via `useOfferCreationWizard('erli')`.
-    offerCreationWizard: {
-      platformType: 'erli',
-      component: ErliCreateOfferWizardLazy,
-    },
   },
   platform: {
     displayName: 'Erli',
@@ -80,9 +71,7 @@ export const erliPlugin: OpenLinkerPlugin = definePlugin({
     // deliberately never declares `CategoryBrowser` (most Erli connections
     // don't have Allegro category access configured). Without this, the
     // bulk edit modal always falls back to the manual Allegro-category-id
-    // input even when the operator *has* configured category access; the
-    // single-offer `ErliCreateOfferWizard` already reads the same config
-    // flag directly.
+    // input even when the operator *has* configured category access.
     bulkCategoryBrowsingEnabled: (connection) =>
       connection.config.allegroCategoryAccessEnabled === true,
     // Listing-detail: opt into the generic "Edit offer" drawer (#1215). The BE

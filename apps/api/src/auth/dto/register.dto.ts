@@ -5,13 +5,26 @@
  *
  * @module apps/api/src/auth/dto
  */
-import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsBoolean,
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class RegisterDto {
-  @ApiProperty({ description: 'Username', example: 'alice' })
+  @ApiProperty({ description: 'Username (must not contain "@")', example: 'alice' })
   @IsString()
   @IsNotEmpty()
+  // Forbid '@' so a username can never collide with an email on the shared
+  // login identifier field — AuthService.validateUser routes '@'-bearing
+  // identifiers to the email lookup and '@'-free ones to the username lookup.
+  @Matches(/^[^@]+$/, { message: 'Username must not contain "@"' })
   username!: string;
 
   @ApiProperty({ description: 'Email address', example: 'alice@example.com' })
@@ -24,4 +37,13 @@ export class RegisterDto {
   @MinLength(8)
   @MaxLength(72)
   password!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Opt-in for demo-only usage analytics. Omitted ⇒ treated as no consent (opt-in default).',
+    default: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  analyticsConsent?: boolean;
 }

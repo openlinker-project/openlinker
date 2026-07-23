@@ -133,6 +133,14 @@ The canonical OL-owned order-lifecycle state machine (authoritative
 | `InvoiceEmailSender` | Trigger the provider to render and email the already-issued invoice to the buyer. | `sendByEmail` | `isInvoiceEmailSender` |
 | `DocumentNumberConsumer` | Marker: the adapter relies on OpenLinker to allocate the legal, sequential document number from the connection's numbering series (OL-numbered provider, e.g. KSeF FA(3) `P_2`). Providers that number documents themselves (inFakt/Subiekt) do NOT implement it. | `consumesDocumentNumber` (marker) · `numberingTimeZone` · `maxDocumentNumberLength?` | `isDocumentNumberConsumer` |
 
+**Adapter coverage:** KSeF implements `RegulatoryTransmitter` and
+`CorrectionIssuer`; Infakt implements `RegulatoryStatusReader` (it relays to
+KSeF rather than transmitting directly), `CorrectionIssuer`,
+`RegulatoryDocumentReader`, and `BankAccountsReader` / `BankAccountDefaultSetter`;
+Subiekt nexo implements `RegulatoryStatusReader`, `CorrectionIssuer`, and
+`BankAccountsReader` / `BankAccountDefaultSetter` (see the
+[README Integrations](../README.md#integrations) section).
+
 See [ADR-026](./architecture/adrs/026-country-agnostic-invoicing-domain.md) for
 the country-agnostic invoicing design.
 

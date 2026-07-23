@@ -37,6 +37,15 @@ export interface WebhookSecretProviderPort {
   getSecret(provider: string, connectionId: string): Promise<string>;
 
   /**
+   * Report whether a webhook secret is currently resolvable for a
+   * provider+connection pair, without throwing when absent. Used by the
+   * operator-facing webhook status surface (#1770) to show whether signature
+   * verification is configured. Counts both the persisted (DB) secret and the
+   * deprecated env-var fallback so the status matches what `getSecret` resolves.
+   */
+  has(provider: string, connectionId: string): Promise<boolean>;
+
+  /**
    * Invalidate any cached secret for a provider+connection pair.
    * Must be called after rotating the secret so the next read fetches fresh data.
    */

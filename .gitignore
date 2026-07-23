@@ -66,4 +66,3 @@ Thumbs.db
 # Claude Code scheduled-task lock files
 .claude/scheduled_tasks.lock
 .claude/*.lock
-

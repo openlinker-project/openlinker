@@ -17,6 +17,9 @@ export const mappingsQueryKeys = {
   categories: (connectionId: string) => ['mappings', connectionId, 'categories'] as const,
   allegroCategories: (connectionId: string, parentId?: string) =>
     ['mappings', connectionId, 'allegro-categories', parentId ?? 'root'] as const,
+  /** Root-to-leaf breadcrumb for a single source (Allegro) category id (#1741). */
+  allegroCategoryPath: (connectionId: string, categoryId: string) =>
+    ['mappings', connectionId, 'allegro-category-path', categoryId] as const,
   /** Fulfillment-routing rules + candidate processors for a source connection (#836). */
   routingRules: (connectionId: string) => ['mappings', connectionId, 'routing-rules'] as const,
   routingCandidates: (connectionId: string) =>

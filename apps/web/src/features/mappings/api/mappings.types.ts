@@ -129,6 +129,12 @@ export interface AllegroCategory {
   leaf: boolean;
 }
 
+/** One ancestor node in a source-category breadcrumb, ordered ROOT -> LEAF (#1741). */
+export interface CategoryPathNode {
+  id: string;
+  name: string;
+}
+
 export interface PrestashopCategory {
   id: string;
   name: string;

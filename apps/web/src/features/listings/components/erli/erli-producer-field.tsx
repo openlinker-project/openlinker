@@ -3,8 +3,8 @@
  *
  * Shared, content-only picker for Erli's responsible producer ("producent") —
  * the selection that clears the missing-producer block on a created product.
- * Consumed by BOTH `ErliCreateOfferWizard` (single) and `ErliBulkConfigSection`
- * (bulk batch default) so the field never drifts.
+ * Consumed by `ErliBulkConfigSection` (batch default) and `ErliBulkRowSection`
+ * (per-row override) so the field never drifts.
  *
  * Options are fetched live from Erli per-connection via
  * `useResponsibleProducersQuery`. Controlled via `value` + `onChange` (the
