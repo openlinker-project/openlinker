@@ -320,6 +320,12 @@ describe('MappingPanel', () => {
       ).toBeInTheDocument();
       const select = screen.getByRole('combobox', { name: /select allegro delivery method/i });
       expect(select).toHaveValue(ALLEGRO_PACZKOMAT.value);
+
+      // savedRows is empty here — the pre-existing "no mappings configured
+      // yet" empty state and the deep-link focus hint are both role="status"
+      // and would otherwise announce together. Only the focus hint may render.
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+      expect(screen.queryByText(/No mappings configured yet/)).not.toBeInTheDocument();
     });
 
     it('does not pre-select or show the hint when focusSourceValue is already mapped', () => {

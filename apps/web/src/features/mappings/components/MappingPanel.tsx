@@ -225,11 +225,14 @@ export function MappingPanel({
 
       <p className="muted-text" style={{ marginBottom: '1rem' }}>{description}</p>
 
-      {localRows.length === 0 ? (
+      {/* Suppressed while the deep-link focus hint (#1794) is showing below —
+          otherwise two role="status" live regions would announce together
+          for a connection with zero carrier mappings and an unmapped method. */}
+      {localRows.length === 0 && !focusActionable ? (
         <p className="muted-text" role="status" aria-live="polite">
           No mappings configured yet. Orders may sync with default values. Add one below.
         </p>
-      ) : (
+      ) : localRows.length === 0 ? null : (
         <table className="data-table" aria-label={`${title} mappings`}>
           <thead>
             <tr>
