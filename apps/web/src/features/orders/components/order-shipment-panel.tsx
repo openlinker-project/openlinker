@@ -12,6 +12,7 @@
 import { useMemo, useState, type ReactElement } from 'react';
 
 import { useConnectionsQuery } from '../../connections';
+import { captureDemoEvent } from '../../demo';
 import {
   getCarrierDisplayName,
   pickActiveShipment,
@@ -129,7 +130,13 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
           title="No shipment yet"
           message="Generate a label to dispatch this order."
           action={
-            <Button tone="primary" onClick={() => setFormOpen(true)}>
+            <Button
+              tone="primary"
+              onClick={() => {
+                captureDemoEvent('demo_label_form_opened', { entry: 'empty_state' });
+                setFormOpen(true);
+              }}
+            >
               Generate label
             </Button>
           }
@@ -142,7 +149,10 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
         <ShipmentActionButtons
           shipment={activeShipment}
           paymentStatus={paymentStatus}
-          onGenerateLabelClick={() => setFormOpen(true)}
+          onGenerateLabelClick={() => {
+            captureDemoEvent('demo_label_form_opened', { entry: 'active_shipment_row' });
+            setFormOpen(true);
+          }}
         />
       ) : null}
 
