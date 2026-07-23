@@ -53,4 +53,37 @@ describe('deriveDeliveryOutcome', () => {
     expect(deriveDeliveryOutcome({ hasMethod: true, isFulfilled: false })).toBe('shop-fulfilled');
     expect(deriveDeliveryOutcome({ hasMethod: false, isFulfilled: false })).toBe('no-method');
   });
+
+  it('should NOT read as carrier-driven when the routed processor is disabled (#1799)', () => {
+    // A carrier rule to a disabled connection is not a live route — it falls
+    // through to the shop-default branch (pairs with the `disabled` rider),
+    // never promising a label.
+    expect(
+      deriveDeliveryOutcome({
+        processorKind: 'ol_managed_carrier',
+        hasMethod: true,
+        isFulfilled: false,
+        processorAvailable: false,
+      }),
+    ).toBe('shop-fulfilled');
+    expect(
+      deriveDeliveryOutcome({
+        processorKind: 'ol_managed_carrier',
+        hasMethod: false,
+        isFulfilled: false,
+        processorAvailable: false,
+      }),
+    ).toBe('no-method');
+  });
+
+  it('should stay carrier-driven when the processor is available (explicit true)', () => {
+    expect(
+      deriveDeliveryOutcome({
+        processorKind: 'ol_managed_carrier',
+        hasMethod: true,
+        isFulfilled: true,
+        processorAvailable: true,
+      }),
+    ).toBe('resolved');
+  });
 });

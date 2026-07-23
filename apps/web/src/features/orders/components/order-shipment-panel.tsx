@@ -52,6 +52,14 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
     [order.orderSnapshot],
   );
 
+  // Disabled-carrier route (#1799): a rule maps this order's delivery method to
+  // a carrier connection that is currently disabled. Dispatching is a dead end
+  // until it's re-enabled, so the Generate-label CTAs below are blocked (the
+  // Delivery panel shows the "Enable {carrier}" rider).
+  const routeUnavailable =
+    order.deliveryResolution?.source === 'rule' &&
+    order.deliveryResolution?.processorAvailable === false;
+
   // AC-8 — global capability gate. If no connection declares
   // ShippingProviderManager, render nothing (the operator has no way to
   // dispatch anything). Wait for the connections query to settle so we
@@ -124,7 +132,12 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
             mutationError={null /* surfaced via the action-buttons own state */}
           />
         </>
-      ) : formOpen ? null : (
+      ) : formOpen ? null : routeUnavailable ? (
+        <EmptyState
+          title="No shipment yet"
+          message="This order's delivery method routes to a disabled carrier connection. Enable it (see Delivery) before generating a label."
+        />
+      ) : (
         <EmptyState
           title="No shipment yet"
           message="Generate a label to dispatch this order."
@@ -143,6 +156,7 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
           shipment={activeShipment}
           paymentStatus={paymentStatus}
           onGenerateLabelClick={() => setFormOpen(true)}
+          routeUnavailable={routeUnavailable}
         />
       ) : null}
 

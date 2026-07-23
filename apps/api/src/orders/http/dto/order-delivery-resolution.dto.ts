@@ -44,4 +44,12 @@ export class OrderDeliveryResolutionDto {
       'fan-out there is no single fulfilling OMP; non-null for an explicit rule.',
   })
   processorConnectionId!: string | null;
+
+  @ApiProperty({
+    description:
+      'Whether the resolved processor connection is currently usable (status "active"). A rule ' +
+      'pointing at a disabled processor still matches but reports false here (#1799), so the FE ' +
+      'never presents a dead route as a live carrier. Always true for the default fallback.',
+  })
+  processorAvailable!: boolean;
 }

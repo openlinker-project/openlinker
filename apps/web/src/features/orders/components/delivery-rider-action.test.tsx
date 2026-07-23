@@ -54,6 +54,18 @@ describe('DeliveryRiderAction (#1794)', () => {
     expect(link.getAttribute('href')).toBe('/connections/new');
   });
 
+  it('should link a disabled-carrier rider to the connections list to re-enable it (#1799)', () => {
+    renderWithProviders(
+      <DeliveryRiderAction
+        rider={{ rider: 'disabled', candidateCarrier: { platformType: 'inpost', displayName: 'InPost' } }}
+        sourceConnectionId="conn-abc"
+      />,
+    );
+
+    const link = screen.getByRole('link', { name: 'Enable InPost' });
+    expect(link.getAttribute('href')).toBe('/connections');
+  });
+
   it('should render nothing for a non-actionable rider', () => {
     const { container } = renderWithProviders(
       <DeliveryRiderAction rider={{ rider: 'none' }} sourceConnectionId="conn-abc" />,

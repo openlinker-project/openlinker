@@ -60,6 +60,11 @@ export class DeliveryRiderService implements IDeliveryRiderService {
   ) {}
 
   async resolve(input: DeliveryRiderInput): Promise<DeliveryRiderResolution> {
+    // Disabled-carrier rule (#1799) takes precedence and needs no carrier-state
+    // read — the routing rule already named the (now-disabled) carrier.
+    if (input.routedProcessorDisabled) {
+      return this.disabledRider(input);
+    }
     const candidate = this.candidateFor(input);
     if (!candidate) {
       return { rider: 'none' };
@@ -71,29 +76,48 @@ export class DeliveryRiderService implements IDeliveryRiderService {
   async resolveBatch(inputs: DeliveryRiderInput[]): Promise<DeliveryRiderResolution[]> {
     const candidates = inputs.map((input) => this.candidateFor(input));
 
-    // Skip the carrier-state reads entirely unless at least one input has an
-    // actionable candidate — a page of rule-resolved / no-match orders costs
-    // zero integration round trips.
+    // Skip the carrier-state reads entirely unless at least one input has a
+    // default-path candidate — a page of rule-resolved / no-match / disabled
+    // orders costs zero integration round trips (the disabled branch is
+    // resolved from the input alone).
     if (candidates.every((candidate) => candidate === null)) {
-      return candidates.map(() => ({ rider: 'none' }));
+      return inputs.map((input) =>
+        input.routedProcessorDisabled ? this.disabledRider(input) : { rider: 'none' },
+      );
     }
 
     const state = await this.loadCarrierState();
-    return candidates.map((candidate) =>
-      candidate ? this.evaluate(candidate, state) : { rider: 'none' },
-    );
+    return inputs.map((input, i) => {
+      if (input.routedProcessorDisabled) {
+        return this.disabledRider(input);
+      }
+      const candidate = candidates[i];
+      return candidate ? this.evaluate(candidate, state) : { rider: 'none' };
+    });
   }
 
   /**
-   * The candidate carrier for an input, or `null` when the rider must not fire:
-   * a non-`default` resolution, or a method that maps to no known carrier. This
-   * is the only place the heuristic runs.
+   * The candidate carrier for an input, or `null` when the default-path rider
+   * must not fire: a non-`default` resolution, or a method that maps to no known
+   * carrier. This is the only place the heuristic runs for the default path.
    */
   private candidateFor(input: DeliveryRiderInput): CandidateCarrier | null {
     if (input.resolutionSource !== 'default') {
       return null;
     }
     return matchCandidateCarrier(input.sourceDeliveryMethod);
+  }
+
+  /**
+   * The `disabled` rider (#1799): a rule mapped the method to a carrier whose
+   * connection is now disabled. The carrier label comes from the same
+   * method-name heuristic the default path uses; when it can't identify one the
+   * rider degrades to `none` (never a wrong hint), matching the service's
+   * fail-safe invariant.
+   */
+  private disabledRider(input: DeliveryRiderInput): DeliveryRiderResolution {
+    const candidate = matchCandidateCarrier(input.sourceDeliveryMethod);
+    return candidate ? { rider: 'disabled', candidateCarrier: candidate } : { rider: 'none' };
   }
 
   /** Map a matched candidate + carrier state to the rider decision. */

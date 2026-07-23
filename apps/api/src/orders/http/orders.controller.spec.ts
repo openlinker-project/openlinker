@@ -371,7 +371,7 @@ describe('OrdersController', () => {
       );
       repository.findMany.mockResolvedValue({ items: [orderWithMethod, mockOrder], total: 2 });
       fulfillmentRouting.resolveBatch.mockResolvedValue([
-        { processorKind: 'ol_managed_carrier', processorConnectionId: 'conn-inpost', source: 'rule' },
+        { processorKind: 'ol_managed_carrier', processorConnectionId: 'conn-inpost', source: 'rule', processorAvailable: true },
       ]);
 
       const result = await controller.listOrders({ limit: 20, offset: 0 });
@@ -383,6 +383,7 @@ describe('OrdersController', () => {
         source: 'rule',
         processorKind: 'ol_managed_carrier',
         processorConnectionId: 'conn-inpost',
+        processorAvailable: true,
       });
       expect(result.items[1].deliveryResolution).toBeUndefined();
     });
@@ -410,7 +411,7 @@ describe('OrdersController', () => {
       );
       repository.findMany.mockResolvedValue({ items: [orderWithMethod, mockOrder], total: 2 });
       fulfillmentRouting.resolveBatch.mockResolvedValue([
-        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default' },
+        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true },
       ]);
       deliveryRider.resolveBatch.mockResolvedValue([
         { rider: 'unmapped', candidateCarrier: { platformType: 'inpost', displayName: 'InPost' } },
@@ -423,6 +424,7 @@ describe('OrdersController', () => {
           sourceConnectionId: 'conn-source-001',
           sourceDeliveryMethod: { name: 'Allegro Paczkomat InPost', typeId: 'ai-inpost-1' },
           resolutionSource: 'default',
+          routedProcessorDisabled: false,
         },
       ]);
       expect(result.items[0].deliveryRider).toEqual({
@@ -452,7 +454,7 @@ describe('OrdersController', () => {
       );
       repository.findMany.mockResolvedValue({ items: [orderWithMethod], total: 1 });
       fulfillmentRouting.resolveBatch.mockResolvedValue([
-        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default' },
+        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true },
       ]);
       deliveryRider.resolveBatch.mockResolvedValue([{ rider: 'none' }]);
 
@@ -614,6 +616,7 @@ describe('OrdersController', () => {
         processorKind: 'omp_fulfilled',
         processorConnectionId: null,
         source: 'default',
+        processorAvailable: true,
       });
 
       const result = await controller.getOrder('ol_order_shipped');
@@ -626,6 +629,7 @@ describe('OrdersController', () => {
         source: 'default',
         processorKind: 'omp_fulfilled',
         processorConnectionId: null,
+        processorAvailable: true,
       });
     });
 
@@ -655,6 +659,7 @@ describe('OrdersController', () => {
         processorKind: 'omp_fulfilled',
         processorConnectionId: null,
         source: 'default',
+        processorAvailable: true,
       });
       deliveryRider.resolve.mockResolvedValue({
         rider: 'not-connected',
@@ -667,6 +672,7 @@ describe('OrdersController', () => {
         sourceConnectionId: 'conn-source-001',
         sourceDeliveryMethod: { name: 'Kurier DPD', typeId: 'dpd-1' },
         resolutionSource: 'default',
+        routedProcessorDisabled: false,
       });
       expect(result.deliveryRider).toEqual({
         rider: 'not-connected',

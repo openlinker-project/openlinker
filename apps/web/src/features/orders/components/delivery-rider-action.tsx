@@ -9,6 +9,8 @@
  *   mapping tab, pre-focused on the unmapped source method.
  * - `not-connected` → **Connect {carrier}**: the candidate carrier's guided
  *   new-connection wizard (or the platform picker when it ships no wizard).
+ * - `disabled` → **Enable {carrier}** (#1799): the connections list, where the
+ *   operator re-enables the disabled carrier connection.
  *
  * @module apps/web/src/features/orders/components
  */
@@ -58,6 +60,17 @@ export function DeliveryRiderAction({
     const label = candidate ? `Connect ${candidate.displayName}` : 'Connect';
     return (
       <Link to={connectTarget} className="delivery-rider-banner__button">
+        {label}
+      </Link>
+    );
+  }
+
+  if (rider.rider === 'disabled') {
+    // The carrier connection exists but is disabled — send the operator to the
+    // connections list to re-enable it (the payload carries no connection id).
+    const label = candidate ? `Enable ${candidate.displayName}` : 'Enable carrier';
+    return (
+      <Link to="/connections" className="delivery-rider-banner__button">
         {label}
       </Link>
     );

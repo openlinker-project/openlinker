@@ -91,12 +91,20 @@ export interface OrderDeliveryResolution {
   source: FulfillmentRoutingSource;
   processorKind: FulfillmentProcessorKind;
   processorConnectionId: string | null;
+  /**
+   * Whether the resolved processor connection is currently usable (status
+   * "active"). A rule to a disabled processor still matches but reports false
+   * (#1799) so the FE never renders a dead route as a live carrier. Optional
+   * for older/degraded payloads → treated as available.
+   */
+  processorAvailable?: boolean;
 }
 
-// Actionable delivery hint on a `default`-resolved order (#1792): `unmapped`
-// (a supported carrier is connected → Add mapping), `not-connected` (OL supports
-// the carrier but none is connected → Connect), `none` (show nothing).
-export const DeliveryRiderValues = ['unmapped', 'not-connected', 'none'] as const;
+// Actionable delivery hint (#1792/#1799): `unmapped` (a supported carrier is
+// connected → Add mapping), `not-connected` (OL supports the carrier but none is
+// connected → Connect), `disabled` (a rule mapped the method to a disabled
+// carrier connection → Enable), `none` (show nothing).
+export const DeliveryRiderValues = ['unmapped', 'not-connected', 'disabled', 'none'] as const;
 export type DeliveryRiderValue = (typeof DeliveryRiderValues)[number];
 
 /** Heuristic-matched candidate carrier for an actionable rider (#1792). */
@@ -105,10 +113,10 @@ export interface DeliveryRiderCandidateCarrier {
   displayName: string;
 }
 
-/** Delivery rider projection (#1792) — present alongside a `default` resolution. */
+/** Delivery rider projection (#1792) — present alongside the routing resolution. */
 export interface OrderDeliveryRider {
   rider: DeliveryRiderValue;
-  /** Present only for the actionable riders (`unmapped` / `not-connected`). */
+  /** Present only for the actionable riders (`unmapped` / `not-connected` / `disabled`). */
   candidateCarrier?: DeliveryRiderCandidateCarrier;
 }
 

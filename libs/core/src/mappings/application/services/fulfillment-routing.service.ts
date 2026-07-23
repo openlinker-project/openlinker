@@ -150,7 +150,8 @@ export class FulfillmentRoutingService implements IFulfillmentRoutingService {
     if (sourceDeliveryMethodId) {
       const rule = await this.repository.findRule(sourceConnectionId, sourceDeliveryMethodId);
       if (rule) {
-        return this.toResolution(rule);
+        const activeProcessorIds = await this.loadActiveConnectionIds();
+        return this.toResolution(rule, activeProcessorIds);
       }
     }
 
@@ -180,25 +181,52 @@ export class FulfillmentRoutingService implements IFulfillmentRoutingService {
     );
     const rulesByConnection = new Map(connectionIds.map((id, i) => [id, ruleSets[i]]));
 
+    // Load the active-connection id set once for the whole batch (not per order),
+    // so a matched rule's processor availability is a Set membership check.
+    const anyRuleMatch = queries.some(
+      (query) =>
+        query.sourceDeliveryMethodId !== null &&
+        (rulesByConnection.get(query.sourceConnectionId) ?? []).some(
+          (r) => r.sourceDeliveryMethodId === query.sourceDeliveryMethodId,
+        ),
+    );
+    const activeProcessorIds = anyRuleMatch
+      ? await this.loadActiveConnectionIds()
+      : new Set<string>();
+
     return queries.map((query) => {
       if (query.sourceDeliveryMethodId) {
         const rule = (rulesByConnection.get(query.sourceConnectionId) ?? []).find(
           (r) => r.sourceDeliveryMethodId === query.sourceDeliveryMethodId,
         );
         if (rule) {
-          return this.toResolution(rule);
+          return this.toResolution(rule, activeProcessorIds);
         }
       }
       return this.defaultResolution();
     });
   }
 
+  /**
+   * The ids of all currently-active connections — the same `status: 'active'`
+   * gate {@link getCandidateProcessors} applies, reused here so a rule pointing
+   * at a disabled processor resolves `processorAvailable: false` (#1799).
+   */
+  private async loadActiveConnectionIds(): Promise<Set<string>> {
+    const active = await this.connectionPort.list({ status: 'active' });
+    return new Set(active.map((connection) => connection.id));
+  }
+
   /** Shared rule → resolution mapping between {@link resolve} and {@link resolveBatch}. */
-  private toResolution(rule: FulfillmentRoutingRule): FulfillmentRoutingResolution {
+  private toResolution(
+    rule: FulfillmentRoutingRule,
+    activeProcessorIds: Set<string>,
+  ): FulfillmentRoutingResolution {
     return {
       processorKind: rule.processorKind,
       processorConnectionId: rule.processorConnectionId,
       source: 'rule',
+      processorAvailable: activeProcessorIds.has(rule.processorConnectionId),
     };
   }
 
@@ -212,6 +240,8 @@ export class FulfillmentRoutingService implements IFulfillmentRoutingService {
       processorKind: FULFILLMENT_PROCESSOR_KIND.OmpFulfilled,
       processorConnectionId: null,
       source: 'default',
+      // No processor to gate on the default fallback — always available.
+      processorAvailable: true,
     };
   }
 

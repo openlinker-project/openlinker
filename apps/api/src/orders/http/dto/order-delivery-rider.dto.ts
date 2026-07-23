@@ -31,8 +31,10 @@ export class OrderDeliveryRiderDto {
     enum: DeliveryRiderValues,
     description:
       '"unmapped" (a supported carrier is connected → Add mapping), "not-connected" (OL supports the ' +
-      'carrier but none is connected → Connect), or "none" (no carrier match, a non-default resolution, ' +
-      'or a carrier OL cannot handle → show nothing). Only fires on a "default" resolution.',
+      'carrier but none is connected → Connect), "disabled" (a rule mapped the method to a carrier whose ' +
+      'connection is disabled → Enable), or "none" (no carrier match, a live rule resolution, or a carrier ' +
+      'OL cannot handle → show nothing). The first two fire on a "default" resolution; "disabled" fires on ' +
+      'a "rule" resolution with an unavailable processor.',
   })
   rider!: DeliveryRider;
 
@@ -40,7 +42,7 @@ export class OrderDeliveryRiderDto {
     type: DeliveryRiderCandidateCarrierDto,
     description:
       'The heuristic-matched candidate carrier. Present only for the actionable riders ' +
-      '("unmapped" / "not-connected"); absent for "none".',
+      '("unmapped" / "not-connected" / "disabled"); absent for "none".',
   })
   candidateCarrier?: DeliveryRiderCandidateCarrierDto;
 }

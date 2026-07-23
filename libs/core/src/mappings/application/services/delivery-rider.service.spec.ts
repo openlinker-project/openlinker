@@ -40,6 +40,7 @@ const defaultInput = (
   sourceConnectionId: 'conn-source-1',
   sourceDeliveryMethod: { name: 'Allegro Paczkomat InPost', typeId: 'ai-1' },
   resolutionSource: 'default',
+  routedProcessorDisabled: false,
   ...overrides,
 });
 
@@ -129,6 +130,32 @@ describe('DeliveryRiderService', () => {
 
       expect(result.rider).toBe('unmapped');
     });
+
+    it('returns "disabled" for a rule routed to a disabled carrier, without reading carrier state (#1799)', async () => {
+      const result = await service.resolve(
+        defaultInput({ resolutionSource: 'rule', routedProcessorDisabled: true })
+      );
+
+      expect(result).toEqual({
+        rider: 'disabled',
+        candidateCarrier: { platformType: 'inpost', displayName: 'InPost' },
+      });
+      // The rule already named the carrier — no active-carrier enumeration needed.
+      expect(integrations.listCapabilityAdapters).not.toHaveBeenCalled();
+      expect(registry.listAdapters).not.toHaveBeenCalled();
+    });
+
+    it('degrades a disabled-carrier rule to "none" when the method maps to no known carrier (#1799)', async () => {
+      const result = await service.resolve(
+        defaultInput({
+          resolutionSource: 'rule',
+          routedProcessorDisabled: true,
+          sourceDeliveryMethod: { name: 'Kurier standardowy', typeId: 'courier-1' },
+        })
+      );
+
+      expect(result).toEqual({ rider: 'none' });
+    });
   });
 
   describe('resolveBatch', () => {
@@ -161,6 +188,31 @@ describe('DeliveryRiderService', () => {
       ]);
 
       expect(results).toEqual([{ rider: 'none' }, { rider: 'none' }]);
+      expect(integrations.listCapabilityAdapters).not.toHaveBeenCalled();
+      expect(registry.listAdapters).not.toHaveBeenCalled();
+    });
+
+    it('resolves a disabled-carrier rule to "disabled" without carrier-state reads, even mixed in a batch (#1799)', async () => {
+      integrations.listCapabilityAdapters.mockResolvedValue([connectedCarrier('inpost')] as never);
+      registry.listAdapters.mockResolvedValue([carrierAdapter('inpost')]);
+
+      const results = await service.resolveBatch([
+        defaultInput({ resolutionSource: 'rule', routedProcessorDisabled: true }), // disabled
+        defaultInput(), // default, connected → unmapped
+      ]);
+
+      expect(results.map((r) => r.rider)).toEqual(['disabled', 'unmapped']);
+      expect(results[0].candidateCarrier).toEqual({ platformType: 'inpost', displayName: 'InPost' });
+      // Carrier-state still read only once, for the default-path input.
+      expect(integrations.listCapabilityAdapters).toHaveBeenCalledTimes(1);
+    });
+
+    it('resolves a disabled-carrier rule with no default-path inputs and skips carrier-state reads (#1799)', async () => {
+      const results = await service.resolveBatch([
+        defaultInput({ resolutionSource: 'rule', routedProcessorDisabled: true }),
+      ]);
+
+      expect(results.map((r) => r.rider)).toEqual(['disabled']);
       expect(integrations.listCapabilityAdapters).not.toHaveBeenCalled();
       expect(registry.listAdapters).not.toHaveBeenCalled();
     });

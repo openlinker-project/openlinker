@@ -29,13 +29,23 @@ export interface DeliveryOutcomeInput {
   hasMethod: boolean;
   /** Whether a label/tracking exists (booked shipment, or a dispatched/delivered rollup). */
   isFulfilled: boolean;
+  /**
+   * Whether the routed processor connection is currently usable (#1799). When a
+   * carrier route resolves to a disabled connection this is `false` — the route
+   * is not live, so the outcome must not read as `resolved`/`awaiting-label`.
+   * Defaults to available (older payloads / non-rule resolutions).
+   */
+  processorAvailable?: boolean;
 }
 
 /**
  * Map routing + local signals to a physical outcome:
- * - carrier-driven (`ol_managed_carrier` / `source_brokered`) → `resolved`
- *   once a label exists, else `awaiting-label` (a routed order is never
- *   `no-method`);
+ * - carrier-driven (`ol_managed_carrier` / `source_brokered`) with a LIVE
+ *   processor → `resolved` once a label exists, else `awaiting-label` (a routed
+ *   order is never `no-method`);
+ * - a carrier route to a DISABLED processor (#1799) is not live — it falls
+ *   through to the shop-default branch so the chip pairs with the `disabled`
+ *   rider rather than promising a label;
  * - otherwise (`omp_fulfilled` / unknown): `shop-fulfilled` when a method
  *   exists, else `no-method`.
  */
@@ -43,8 +53,11 @@ export function deriveDeliveryOutcome({
   processorKind,
   hasMethod,
   isFulfilled,
+  processorAvailable = true,
 }: DeliveryOutcomeInput): DeliveryOutcome {
-  if (processorKind === 'ol_managed_carrier' || processorKind === 'source_brokered') {
+  const carrierRouted =
+    processorKind === 'ol_managed_carrier' || processorKind === 'source_brokered';
+  if (carrierRouted && processorAvailable) {
     return isFulfilled ? 'resolved' : 'awaiting-label';
   }
   return hasMethod ? 'shop-fulfilled' : 'no-method';

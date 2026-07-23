@@ -22,10 +22,14 @@ import type { FulfillmentRoutingSource } from './fulfillment-routing.types';
  * - `unmapped`: the method maps to a carrier that IS connected → *Add mapping*.
  * - `not-connected`: the method maps to a carrier OL supports (an adapter is
  *   registered) but none is connected → *Connect {carrier}*.
- * - `none`: no carrier match, a non-default resolution, or a matched carrier OL
- *   doesn't support → show nothing.
+ * - `disabled`: a routing rule DID map the method to a carrier, but that
+ *   carrier connection is currently disabled (status ≠ active) → *Enable
+ *   {carrier}* (#1799). Unlike the other actionable riders this one fires on a
+ *   `rule` resolution whose processor is unavailable, not on `default`.
+ * - `none`: no carrier match, a non-default resolution with a live processor,
+ *   or a matched carrier OL doesn't support → show nothing.
  */
-export const DeliveryRiderValues = ['unmapped', 'not-connected', 'none'] as const;
+export const DeliveryRiderValues = ['unmapped', 'not-connected', 'disabled', 'none'] as const;
 export type DeliveryRider = (typeof DeliveryRiderValues)[number];
 
 /**
@@ -43,12 +47,19 @@ export interface RiderSourceDeliveryMethod {
 
 /**
  * Input to resolve a delivery rider. `resolutionSource` is #1791's
- * `deliveryResolution.source`; the rider only fires when it is `'default'`.
+ * `deliveryResolution.source`; the default-path riders (`unmapped` /
+ * `not-connected`) only fire when it is `'default'`.
+ *
+ * `routedProcessorDisabled` (#1799) is `true` when a `rule` resolution matched
+ * but its processor connection is not active (`processorAvailable === false`) —
+ * it drives the `disabled` rider (*Enable {carrier}*) and takes precedence over
+ * the default-path evaluation.
  */
 export interface DeliveryRiderInput {
   sourceConnectionId: string;
   sourceDeliveryMethod: RiderSourceDeliveryMethod;
   resolutionSource: FulfillmentRoutingSource;
+  routedProcessorDisabled: boolean;
 }
 
 /**
@@ -63,7 +74,7 @@ export interface CandidateCarrier {
 
 /**
  * The resolved rider. `candidateCarrier` is present only for the actionable
- * riders (`unmapped` / `not-connected`) — `none` carries no carrier.
+ * riders (`unmapped` / `not-connected` / `disabled`) — `none` carries no carrier.
  */
 export interface DeliveryRiderResolution {
   rider: DeliveryRider;

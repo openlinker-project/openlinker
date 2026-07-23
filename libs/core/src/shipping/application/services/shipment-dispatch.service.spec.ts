@@ -108,6 +108,7 @@ function resolution(
     processorConnectionId:
       overrides.processorConnectionId === undefined ? INPOST : overrides.processorConnectionId,
     source: overrides.source ?? 'rule',
+    processorAvailable: overrides.processorAvailable ?? true,
   };
 }
 

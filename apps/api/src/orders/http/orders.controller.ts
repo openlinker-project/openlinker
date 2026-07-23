@@ -409,13 +409,16 @@ export class OrdersController {
       source: resolution.source,
       processorKind: resolution.processorKind,
       processorConnectionId: resolution.processorConnectionId,
+      processorAvailable: resolution.processorAvailable,
     };
   }
 
   /**
    * Build the delivery-rider input (#1792) from an order + its #1791 routing
    * resolution. The rider's `resolutionSource` is the resolution's `source`, so
-   * a `rule`-resolved order short-circuits to `none` inside the service.
+   * a live `rule`-resolved order short-circuits to `none` inside the service;
+   * `routedProcessorDisabled` (#1799) flags a `rule` whose processor connection
+   * is not active, driving the `disabled` (*Enable {carrier}*) rider.
    */
   private toRiderInput(
     order: OrderRecord,
@@ -428,6 +431,7 @@ export class OrdersController {
         typeId: order.sourceDeliveryMethodId,
       },
       resolutionSource: resolution.source,
+      routedProcessorDisabled: resolution.source === 'rule' && !resolution.processorAvailable,
     };
   }
 

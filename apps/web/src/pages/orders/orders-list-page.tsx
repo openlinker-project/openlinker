@@ -731,13 +731,24 @@ export function OrdersListPage(): ReactElement {
             // shipments, whereas the detail uses booked-shipment presence.
             isFulfilled:
               order.fulfillmentState === 'dispatched' || order.fulfillmentState === 'delivered',
+            processorAvailable: order.deliveryResolution?.processorAvailable,
           });
+          // A carrier route to a disabled connection (#1799) is not a live route:
+          // the delivery chip degrades to shop-fulfilled and the `disabled` rider
+          // ("Enable {carrier}") shows, so offering "Generate label" here would be
+          // a dead end — suppress the CTA for that case.
+          const routeUnavailable =
+            order.deliveryResolution?.source === 'rule' &&
+            order.deliveryResolution?.processorAvailable === false;
           // Offer "Generate label" ONLY when fulfillment is EXPLICITLY not-shipped
-          // and the order isn't cancelled (#1713). An undefined fulfillmentState
-          // (genuinely unknown) or a cancelled order shows the passive fulfillment
-          // badge instead — never a dead-end action.
+          // and the order isn't cancelled (#1713), and the routed carrier isn't a
+          // disabled connection (#1799). An undefined fulfillmentState (genuinely
+          // unknown) or a cancelled order shows the passive fulfillment badge
+          // instead — never a dead-end action.
           const canGenerateLabel =
-            order.fulfillmentState === 'not-shipped' && parsed.status !== 'cancelled';
+            order.fulfillmentState === 'not-shipped' &&
+            parsed.status !== 'cancelled' &&
+            !routeUnavailable;
           return (
             <span className="orders-cell-stack">
               {/* When the row offers "Generate label" the CTA is deferred to sit
@@ -1278,13 +1289,22 @@ export function OrdersListPage(): ReactElement {
                   isFulfilled:
                     order.fulfillmentState === 'dispatched' ||
                     order.fulfillmentState === 'delivered',
+                  processorAvailable: order.deliveryResolution?.processorAvailable,
                 });
                 const inv = parsed.invoice ? invoiceBadge(parsed.invoice) : null;
                 const fulfillment = fulfillmentBadge(order.fulfillmentState);
+                // Disabled-carrier route (#1799): suppress the dead-end CTA, same
+                // as the desktop cell.
+                const routeUnavailable =
+                  order.deliveryResolution?.source === 'rule' &&
+                  order.deliveryResolution?.processorAvailable === false;
                 // Offer "Generate label" ONLY when explicitly not-shipped and not
-                // cancelled (#1713) — otherwise the passive fulfillment badge.
+                // cancelled (#1713), and the routed carrier isn't disabled (#1799)
+                // — otherwise the passive fulfillment badge.
                 const canGenerateLabel =
-                  order.fulfillmentState === 'not-shipped' && parsed.status !== 'cancelled';
+                  order.fulfillmentState === 'not-shipped' &&
+                  parsed.status !== 'cancelled' &&
+                  !routeUnavailable;
                 return (
                   <div className="orders-card-summary">
                     {items ? (

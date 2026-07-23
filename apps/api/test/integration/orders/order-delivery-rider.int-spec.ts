@@ -166,4 +166,52 @@ describe('Order delivery-rider projection (#1792)', () => {
     expect(detail.body.deliveryResolution.source).toBe('rule');
     expect(detail.body.deliveryRider).toEqual({ rider: 'none' });
   });
+
+  it('returns rider "disabled" for a rule routed to a now-disabled carrier connection (#1799)', async () => {
+    const sourceId = await seedSource();
+    const inpost = await createTestConnection(harness.getDataSource(), {
+      platformType: 'inpost',
+      name: 'InPost carrier',
+      adapterKey: 'inpost.shipx.v1',
+      enabledCapabilities: ['ShippingProviderManager'],
+    });
+    const routing = harness
+      .getApp()
+      .get<IFulfillmentRoutingService>(FULFILLMENT_ROUTING_SERVICE_TOKEN);
+    // The rule is authored while the carrier is active (replaceRules rejects a
+    // disabled processor), then the operator disables the connection.
+    await routing.replaceRules(sourceId, [
+      {
+        sourceDeliveryMethodId: 'ai-inpost-1',
+        processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier,
+        processorConnectionId: inpost.id,
+      },
+    ]);
+    await harness
+      .getDataSource()
+      .query('UPDATE connections SET status = $1 WHERE id = $2', ['disabled', inpost.id]);
+    const order = await createTestOrderRecord(harness.getDataSource(), {
+      sourceConnectionId: sourceId,
+      orderSnapshot: {
+        items: [],
+        shipping: { methodId: 'ai-inpost-1', methodName: 'Allegro Paczkomat InPost' },
+      },
+    });
+
+    const http = harness.getHttp();
+    const token = await loginAsAdmin(http, harness.getDataSource());
+
+    const detail = await http
+      .get(`/v1/orders/${order.internalOrderId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    // The rule still matches, but the processor is no longer available.
+    expect(detail.body.deliveryResolution.source).toBe('rule');
+    expect(detail.body.deliveryResolution.processorAvailable).toBe(false);
+    // → "Enable {carrier}" rider, carrier identified from the method name.
+    expect(detail.body.deliveryRider).toEqual({
+      rider: 'disabled',
+      candidateCarrier: { platformType: 'inpost', displayName: 'InPost' },
+    });
+  });
 });

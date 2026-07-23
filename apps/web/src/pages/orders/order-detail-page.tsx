@@ -192,6 +192,7 @@ export function OrderDetailPage(): ReactElement {
     processorKind: order.deliveryResolution?.processorKind,
     hasMethod: deliveryHasMethod,
     isFulfilled: Boolean(activeShipment),
+    processorAvailable: order.deliveryResolution?.processorAvailable,
   });
   const sourcePlatformType =
     connections.find((c) => c.id === order.sourceConnectionId)?.platformType ?? null;

@@ -43,18 +43,27 @@ const OUTCOME_TONE: Record<DeliveryOutcome, StatusBadgeTone> = {
   'no-method': 'neutral',
 };
 
-type ActionableRider = 'unmapped' | 'not-connected';
+type ActionableRider = 'unmapped' | 'not-connected' | 'disabled';
 
 const RIDER_LABEL: Record<ActionableRider, string> = {
   unmapped: 'Unmapped',
   'not-connected': 'Not connected',
+  disabled: 'Carrier disabled',
 };
 
-/** An actionable rider is one that renders a chip/banner (`unmapped` / `not-connected`). */
+/**
+ * An actionable rider is one that renders a chip/banner (`unmapped` /
+ * `not-connected` / `disabled`).
+ */
 function isActionableRider(
   rider: OrderDeliveryRider | null | undefined,
 ): rider is OrderDeliveryRider & { rider: ActionableRider } {
-  return !!rider && (rider.rider === 'unmapped' || rider.rider === 'not-connected');
+  return (
+    !!rider &&
+    (rider.rider === 'unmapped' ||
+      rider.rider === 'not-connected' ||
+      rider.rider === 'disabled')
+  );
 }
 
 function cx(...classes: (string | false | undefined)[]): string {
@@ -106,6 +115,7 @@ export function DeliveryRiderChip({
       className={cx(
         'delivery-rider-chip',
         rider.rider === 'not-connected' && 'delivery-rider-chip--not-connected',
+        rider.rider === 'disabled' && 'delivery-rider-chip--not-connected',
         className,
       )}
     >
@@ -139,11 +149,14 @@ const RIDER_BANNER_TEXT: Record<ActionableRider, (carrier: string) => string> = 
     `This delivery method isn't mapped to a carrier. Map it to ${carrier} so OpenLinker generates the label.`,
   'not-connected': (carrier) =>
     `OpenLinker supports ${carrier}, but no ${carrier} connection is set up. Connect one to fulfil this delivery.`,
+  disabled: (carrier) =>
+    `This delivery method routes to ${carrier}, but the ${carrier} connection is disabled. Enable it so OpenLinker can generate the label.`,
 };
 
 const RIDER_ACTION_LABEL: Record<ActionableRider, (carrier: string) => string> = {
   unmapped: () => 'Add mapping',
   'not-connected': (carrier) => `Connect ${carrier}`,
+  disabled: (carrier) => `Enable ${carrier}`,
 };
 
 interface DeliveryRiderBannerProps {

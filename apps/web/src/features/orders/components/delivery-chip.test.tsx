@@ -47,6 +47,14 @@ describe('DeliveryRiderChip', () => {
     expect(container.querySelector('.delivery-rider-chip--not-connected')).not.toBeNull();
   });
 
+  it('should render the "Carrier disabled" rider with the accent modifier (#1799)', () => {
+    const { container } = renderWithProviders(
+      <DeliveryRiderChip rider={{ rider: 'disabled' }} />,
+    );
+    expect(screen.getByText('Carrier disabled')).toBeInTheDocument();
+    expect(container.querySelector('.delivery-rider-chip--not-connected')).not.toBeNull();
+  });
+
   it('should render nothing for the "none" rider', () => {
     renderWithProviders(<DeliveryRiderChip rider={{ rider: 'none' }} />);
     expect(screen.queryByText('Unmapped')).not.toBeInTheDocument();
@@ -101,6 +109,17 @@ describe('DeliveryRiderBanner', () => {
     );
     expect(screen.getByText(/no DPD connection is set up/i)).toBeInTheDocument();
     const button = screen.getByRole('button', { name: 'Connect DPD' });
+    expect(button).toBeDisabled();
+  });
+
+  it('should render the disabled-carrier explanation + an "Enable {carrier}" slot button (#1799)', () => {
+    renderWithProviders(
+      <DeliveryRiderBanner
+        rider={{ rider: 'disabled', candidateCarrier: { platformType: 'inpost', displayName: 'InPost' } }}
+      />,
+    );
+    expect(screen.getByText(/the InPost connection is disabled/i)).toBeInTheDocument();
+    const button = screen.getByRole('button', { name: 'Enable InPost' });
     expect(button).toBeDisabled();
   });
 
