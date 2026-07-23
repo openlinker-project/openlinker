@@ -12,6 +12,41 @@ From `0.2.0` onward this file is generated automatically by
 Commits. The `0.1.0` entry below is the hand-curated baseline of what shipped
 before automated releases began.
 
+## [0.4.0](https://github.com/openlinker-project/openlinker/compare/v0.3.0...v0.4.0) (2026-07-23)
+
+
+### Features
+
+* **api/auth:** theme-aware transactional email layout derived from app design tokens ([#1750](https://github.com/openlinker-project/openlinker/issues/1750)) ([135605c](https://github.com/openlinker-project/openlinker/commit/135605ca9ec1909af574a395f3cdb2b0e62d5dd1)), closes [#1748](https://github.com/openlinker-project/openlinker/issues/1748)
+* **auth:** allow login with username or email ([#1730](https://github.com/openlinker-project/openlinker/issues/1730)) ([d20e998](https://github.com/openlinker-project/openlinker/commit/d20e99896cac7eb3375824d344914a3dca6b8f96))
+* **auth:** capture analytics consent at registration, drop post-login prompt ([#1744](https://github.com/openlinker-project/openlinker/issues/1744)) ([42a161b](https://github.com/openlinker-project/openlinker/commit/42a161b120b3087e9251a69d17321ed25893f168))
+* **dpd:** add ConnectionTester so 'Test connection' runs a real auth probe ([#1732](https://github.com/openlinker-project/openlinker/issues/1732)) ([#1733](https://github.com/openlinker-project/openlinker/issues/1733)) ([b2342e8](https://github.com/openlinker-project/openlinker/commit/b2342e85962acfa04117d2c53c1e56755da77ba9))
+* **erli:** fulfillment routing for Erli sources + routing-split bar ([#1740](https://github.com/openlinker-project/openlinker/issues/1740)) ([6224d18](https://github.com/openlinker-project/openlinker/commit/6224d1849a71960e801ae79a12e8b63ffeff8113)), closes [#1738](https://github.com/openlinker-project/openlinker/issues/1738) [#1739](https://github.com/openlinker-project/openlinker/issues/1739)
+* **erli:** implement OfferReader so listing details render for Erli ([#1735](https://github.com/openlinker-project/openlinker/issues/1735)) ([#1736](https://github.com/openlinker-project/openlinker/issues/1736)) ([2eee690](https://github.com/openlinker-project/openlinker/commit/2eee690632250d22ee7d6d6e421320e51b6c4d3f))
+* **infakt:** webhook config modal - set signing secret + status ([#1770](https://github.com/openlinker-project/openlinker/issues/1770)) ([#1773](https://github.com/openlinker-project/openlinker/issues/1773)) ([aebc7cb](https://github.com/openlinker-project/openlinker/commit/aebc7cb43e069472d2454b9f3e8bcd9286761d46))
+* **listings:** per-variant bulk offer config ([#1741](https://github.com/openlinker-project/openlinker/issues/1741)) ([#1757](https://github.com/openlinker-project/openlinker/issues/1757)) ([c2fc423](https://github.com/openlinker-project/openlinker/commit/c2fc42384ed71e8e66585de154a48bdcac99cf09))
+* **listings:** reconcile stale terminal offer status against live Allegro publication ([#1760](https://github.com/openlinker-project/openlinker/issues/1760)) ([#1762](https://github.com/openlinker-project/openlinker/issues/1762)) ([35cfbee](https://github.com/openlinker-project/openlinker/commit/35cfbee85fc3735d1cbfb2f3bb77e7f76894eec6))
+* **listings:** unify offer creation via multi-select picker + bulk wizard ([#1754](https://github.com/openlinker-project/openlinker/issues/1754)) ([#1774](https://github.com/openlinker-project/openlinker/issues/1774)) ([5fa88bb](https://github.com/openlinker-project/openlinker/commit/5fa88bbe166e3ad5c4fef91c25f9c58c0cbd8249))
+* **products:** polish product detail page — full-width variant table, rich listing drawer, mobile layout ([#1753](https://github.com/openlinker-project/openlinker/issues/1753)) ([5dde2d4](https://github.com/openlinker-project/openlinker/commit/5dde2d4d7f75291d6beb1ab686e10e8659e37734))
+* **products:** product-detail round-2 — rich variant drawer, single/multi states, master currency & attributes ([#1756](https://github.com/openlinker-project/openlinker/issues/1756)) ([8764423](https://github.com/openlinker-project/openlinker/commit/87644233abcf71ffaf6820b9b81ae72e7dfafeb7))
+* **web/data-table:** frozen columns, pinned bulk-action bar, viewport-pinned accordion drawer ([#1758](https://github.com/openlinker-project/openlinker/issues/1758)) ([6e825bc](https://github.com/openlinker-project/openlinker/commit/6e825bcf9204c9bbce95107ed3f7f04650595e35))
+
+
+### Bug Fixes
+
+* **api/auth:** add OL_COOKIE_DOMAIN for split-subdomain deploys ([#1725](https://github.com/openlinker-project/openlinker/issues/1725)) ([#1726](https://github.com/openlinker-project/openlinker/issues/1726)) ([1dcf363](https://github.com/openlinker-project/openlinker/commit/1dcf36342f9fa11e9165f0e226923c513bf093dd))
+* **dpd:** carrier population, rejection diagnosability, sender-postcode hint ([#1775](https://github.com/openlinker-project/openlinker/issues/1775), [#1777](https://github.com/openlinker-project/openlinker/issues/1777), [#1778](https://github.com/openlinker-project/openlinker/issues/1778)) ([#1781](https://github.com/openlinker-project/openlinker/issues/1781)) ([95bca6d](https://github.com/openlinker-project/openlinker/commit/95bca6db27f348c993fb720e85bfeba2f7d3c70b))
+* **erli:** reconcile frozen-field protection to the verified frozen{} object shape ([#1759](https://github.com/openlinker-project/openlinker/issues/1759)) ([f3a4dd2](https://github.com/openlinker-project/openlinker/commit/f3a4dd254eb6ce71956547a06688d8f7642114e9))
+* **inpost:** flatten nested ShipX field-errors so target_point rejections classify correctly ([#1816](https://github.com/openlinker-project/openlinker/issues/1816)) ([bafe267](https://github.com/openlinker-project/openlinker/commit/bafe267add7c7e59d838d807bf3ee0a3349b6195))
+* **invoicing:** thread buyer e-mail to Infakt so send-by-email stops 422ing ([#1811](https://github.com/openlinker-project/openlinker/issues/1811)) ([e824f68](https://github.com/openlinker-project/openlinker/commit/e824f68209680a092e66274bb24901bab3bbbf3a))
+* **mailer:** validate fromAddress shape and reject CRLF header injection ([#1771](https://github.com/openlinker-project/openlinker/issues/1771)) ([dfa897f](https://github.com/openlinker-project/openlinker/commit/dfa897f222f12f6821f8784109f99578f9870533)), closes [#1765](https://github.com/openlinker-project/openlinker/issues/1765)
+* **web/connections:** generalize escape-hatch banner copy on advanced setup page ([#1746](https://github.com/openlinker-project/openlinker/issues/1746)) ([8792da9](https://github.com/openlinker-project/openlinker/commit/8792da933d3bc0c2d5b725283d03b14bf1a348e8)), closes [#1745](https://github.com/openlinker-project/openlinker/issues/1745)
+* **web/connections:** WooCommerce setup wizard with capability selection ([#1727](https://github.com/openlinker-project/openlinker/issues/1727)) ([#1731](https://github.com/openlinker-project/openlinker/issues/1731)) ([4dd3848](https://github.com/openlinker-project/openlinker/commit/4dd3848dd724fc0c77a90be43e10d3cb3fd50a4c))
+* **web/mailer-settings:** accept display-name form in From address field ([#1761](https://github.com/openlinker-project/openlinker/issues/1761)) ([7469e3c](https://github.com/openlinker-project/openlinker/commit/7469e3c35ba2876b033695c21c90d793a220deeb))
+* **web/orders:** match products table header alignment and density ([#1751](https://github.com/openlinker-project/openlinker/issues/1751)) ([9a23b17](https://github.com/openlinker-project/openlinker/commit/9a23b1772fe83e4510448d53da3887c7c5496894)), closes [#1747](https://github.com/openlinker-project/openlinker/issues/1747)
+* **web/orders:** surface ShipX per-field validation details in the label-error Alert ([#1812](https://github.com/openlinker-project/openlinker/issues/1812)) ([328a17d](https://github.com/openlinker-project/openlinker/commit/328a17d413e389b2447afb6dc102149d6e973477))
+* **worker:** cap master.product.syncAll default page size at 100 ([#1723](https://github.com/openlinker-project/openlinker/issues/1723)) ([#1724](https://github.com/openlinker-project/openlinker/issues/1724)) ([62ed30b](https://github.com/openlinker-project/openlinker/commit/62ed30bbe7eb272c0908f657e362395e035ecae8))
+
 ## [0.3.0](https://github.com/openlinker-project/openlinker/compare/v0.2.0...v0.3.0) (2026-07-17)
 
 
