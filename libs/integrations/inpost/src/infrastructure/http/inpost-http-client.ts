@@ -279,18 +279,32 @@ function firstDetailKey(
  * (`'target_point'`), which broke the `target_point` → "pick another locker"
  * re-tag in `InpostShippingAdapter.generateLabel` (#885) for exactly the case
  * it was built for.
+ *
+ * Messages for a repeated leaf key (the same field rejected across multiple
+ * array items, or a flat top-level key that also appears nested) are merged
+ * rather than overwritten, so the FE's `StructuredErrorList` (#1812) shows
+ * every rejected sub-field instead of just the last one seen.
+ *
+ * Nesting is flattened exactly one level deep — the only two shapes ShipX is
+ * confirmed to emit live (#1807). A hypothetical doubly-nested `details`
+ * (`{ a: [{ b: [{ c: [...] }] }] }`) is a conscious non-goal: the inner value
+ * is an array of objects, fails the string-array guard, and is dropped rather
+ * than recursed, so no unproven shape is over-generalised for.
  */
 function flattenShipXFieldErrors(
   details: ShipXErrorBody['details'],
 ): Record<string, readonly string[]> {
   if (!details) return {};
-  const flat: Record<string, readonly string[]> = {};
+  const flat: Record<string, string[]> = {};
+  const mergeInto = (fieldKey: string, messages: readonly string[]): void => {
+    flat[fieldKey] = [...(flat[fieldKey] ?? []), ...messages];
+  };
   for (const [key, value] of Object.entries(details)) {
     if (!Array.isArray(value)) {
       continue;
     }
     if (value.every((item): item is string => typeof item === 'string')) {
-      flat[key] = value;
+      mergeInto(key, value);
       continue;
     }
     for (const item of value) {
@@ -300,7 +314,7 @@ function flattenShipXFieldErrors(
       const nestedFieldErrors = item as Record<string, unknown>;
       for (const [nestedKey, nestedValue] of Object.entries(nestedFieldErrors)) {
         if (Array.isArray(nestedValue) && nestedValue.every((m) => typeof m === 'string')) {
-          flat[nestedKey] = nestedValue as readonly string[];
+          mergeInto(nestedKey, nestedValue as readonly string[]);
         }
       }
     }

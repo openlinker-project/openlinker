@@ -170,6 +170,59 @@ describe('InpostHttpClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('should merge messages for a leaf key repeated across array items rather than dropping all but the last (#1807)', async () => {
+    // Two array items reject the same leaf key. Last-write-wins would surface
+    // only the second message; both must survive so the FE renders every one.
+    fetchMock.mockResolvedValue(
+      fakeResponse({
+        ok: false,
+        status: 400,
+        body: '{"error":"validation_failed","message":"x","details":{"parcels":[{"weight":["required"]},{"weight":["too_heavy"]}]}}',
+      }),
+    );
+
+    const error = await client
+      .request({ method: 'POST', path: '/v1/x' })
+      .then(() => null)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ShippingProviderRejectionException);
+    expect(error).toMatchObject({
+      providerName: 'inpost',
+      providerCode: 'weight',
+      providerDetails: { fieldErrors: { weight: ['required', 'too_heavy'] } },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('should not throw on a malformed nested details payload and simply omit the unparseable keys (#1807)', async () => {
+    // Defensive contract: a null nested item, a non-array leaf value, and a
+    // doubly-nested shape are all skipped without throwing. Only the one
+    // well-formed leaf key survives.
+    fetchMock.mockResolvedValue(
+      fakeResponse({
+        ok: false,
+        status: 400,
+        body: '{"error":"validation_failed","message":"x","details":{"custom_attributes":[null,{"target_point":"oops"},{"sending_method":["required"]}],"deep":[{"a":[{"b":["nope"]}]}]}}',
+      }),
+    );
+
+    const error = await client
+      .request({ method: 'POST', path: '/v1/x' })
+      .then(() => null)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ShippingProviderRejectionException);
+    expect(error).toMatchObject({
+      providerName: 'inpost',
+      providerDetails: { fieldErrors: { sending_method: ['required'] } },
+    });
+    expect((error as ShippingProviderRejectionException).providerDetails?.fieldErrors).not.toHaveProperty(
+      'target_point',
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('should retry a 429 and then succeed', async () => {
     fetchMock
       .mockResolvedValueOnce(fakeResponse({ ok: false, status: 429, retryAfter: '0', body: '{}' }))
