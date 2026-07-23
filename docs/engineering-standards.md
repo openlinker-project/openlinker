@@ -1480,6 +1480,7 @@ Fixes #456
 - How to test
 - Related issues
 - Screenshots (if UI changes)
+- A `## Docs` section stating the documentation impact (`path → what changed`, or `None - <reason>` for a doc-neutral change) - a self-attested convention the `/work` and `/ship` skills require so the documentation decision is visible in review
 
 ---
 
