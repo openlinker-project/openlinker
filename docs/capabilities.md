@@ -128,6 +128,14 @@ The canonical OL-owned order-lifecycle state machine (authoritative
 | `BankAccountsReader` | List the seller's payable bank accounts known to the provider (live picker for Transfer invoices). | `listBankAccounts` | `isBankAccountsReader` |
 | `BankAccountDefaultSetter` *(extends `BankAccountsReader`)* | Mark an account as the provider's own default, keeping it in sync with the account OL stamps on Transfer invoices. | `setDefaultBankAccount` | `isBankAccountDefaultSetter` |
 
+**Adapter coverage:** KSeF implements `RegulatoryTransmitter` and
+`CorrectionIssuer`; Infakt implements `RegulatoryStatusReader` (it relays to
+KSeF rather than transmitting directly), `CorrectionIssuer`,
+`RegulatoryDocumentReader`, and `BankAccountsReader` / `BankAccountDefaultSetter`;
+Subiekt nexo implements `RegulatoryStatusReader`, `CorrectionIssuer`, and
+`BankAccountsReader` / `BankAccountDefaultSetter` (see the
+[README Integrations](../README.md#integrations) section).
+
 See [ADR-026](./architecture/adrs/026-country-agnostic-invoicing-domain.md) for
 the country-agnostic invoicing design.
 
