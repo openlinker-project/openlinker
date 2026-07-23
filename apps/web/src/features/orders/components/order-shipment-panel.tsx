@@ -25,6 +25,7 @@ import { LoadingState, ErrorState, EmptyState } from '../../../shared/ui/feedbac
 import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-list';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { Button } from '../../../shared/ui/button';
+import { TimeDisplay } from '../../../shared/ui/time-display';
 
 import type { OrderRecord } from '../api/orders.types';
 import { parseOrderSnapshot, type PaymentStatus } from '../api/order-snapshot.schema';
@@ -177,6 +178,20 @@ function OrderShipmentPanelBody({
   return (
     <div className="order-shipment-panel__body">
       <KeyValueList items={items} />
+      {/* Persisted rejection (#1800) — the richer `errorMessage` / `failedAt`
+          the dispatch service stores on a failed shipment is otherwise only
+          visible synchronously during the failing mutation; render it here so
+          an operator revisiting a `failed` shipment still sees why. */}
+      {shipment.status === 'failed' && shipment.errorMessage ? (
+        <Alert tone="error" className="order-shipment-panel__error">
+          <p className="order-shipment-panel__error-message">{shipment.errorMessage}</p>
+          {shipment.failedAt ? (
+            <p className="order-shipment-panel__error-meta">
+              Failed <TimeDisplay iso={shipment.failedAt} />
+            </p>
+          ) : null}
+        </Alert>
+      ) : null}
       {mutationError ? (
         <Alert tone="error" className="order-shipment-panel__error">
           {mutationError}
