@@ -359,6 +359,9 @@ export function OrderDetailPage(): ReactElement {
             methodFallback={methodFallback}
             deliveryOutcome={deliveryOutcome}
             deliveryRider={order.deliveryRider}
+            sourceConnectionId={order.sourceConnectionId}
+            sourceDeliveryMethodId={order.sourceDeliveryMethodId}
+            sourceDeliveryMethodName={order.sourceDeliveryMethodName}
           />
           {/* Anchor wrappers (#1713) for the orders-list deep-link CTAs
               (`/orders/{id}#shipment`, `/orders/{id}#invoicing`). Page-level
