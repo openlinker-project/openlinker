@@ -390,6 +390,70 @@ fulfil) count:
 
 ---
 
+## 11. Fulfillment routing (dispatch & labels)
+
+Ingesting an order is not enough to **dispatch** it. Before OpenLinker can
+generate a shipping label for an Erli order, it needs to know **which carrier
+connection** handles each Erli delivery method - otherwise the order lands with
+no carrier and label generation has nothing to route to. This mapping is
+**not** created automatically on a fresh connection; you configure it once per
+Erli connection.
+
+Each rule maps one **source delivery method** (the Erli `delivery` method the
+buyer chose) to a **processor**:
+
+| Processor kind | Meaning |
+|---|---|
+| `ol_managed_carrier` | OpenLinker generates the label via a connected carrier (e.g. an InPost or DPD connection). |
+| `source_brokered` | The label is brokered by the source marketplace, not OL. |
+| `omp_fulfilled` | The order is fulfilled by the master shop / operator - represented by **rule absence** (omit the method). |
+
+> Methods you don't map fall back to `omp_fulfilled` (shop-fulfilled). Only map
+> the methods you want OpenLinker to dispatch.
+
+### Configure it in the UI (recommended)
+
+Open the Erli connection → **Mappings** → the **Fulfillment routing** panel
+(`/connections/:connectionId/mappings`). For each Erli delivery method, pick the
+carrier connection that should fulfil it, then save. The panel lists the
+processors the connection is allowed to route to. On the Mappings page the
+Fulfillment routing panel sits alongside the category/attribute mappings the
+connection also needs.
+
+### Configure it via the API (for scripted / demo provisioning)
+
+The panel is backed by two endpoints. First discover the candidate processors,
+then replace the full rule set (the `PUT` is replace-all - send every rule you
+want to keep):
+
+```bash
+BASE=https://api.demo.openlinker.io/v1        # your API origin
+ERLI_CONN=<erli-connection-id>
+TOKEN=<admin-bearer-token>
+
+# 1. Discover which processors this connection may route to
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "$BASE/connections/$ERLI_CONN/routing-rules/candidates"
+
+# 2. Replace all routing rules (only diverted methods; omit shop-fulfilled ones)
+curl -s -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  "$BASE/connections/$ERLI_CONN/routing-rules" \
+  -d '{
+    "items": [
+      {
+        "sourceDeliveryMethodId": "<erli-delivery-method-id>",
+        "processorKind": "ol_managed_carrier",
+        "processorConnectionId": "<inpost-or-dpd-connection-id>"
+      }
+    ]
+  }'
+```
+
+`GET /connections/:connectionId/routing-rules` returns the current rules for
+verification.
+
+---
+
 ## Next steps
 
 - **Day-2 operations** — scheduler env flags, known Erli quirks (async writes,
