@@ -268,6 +268,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         taxId: command.buyer.taxId,
         address: command.buyer.address,
         type: command.buyer.type,
+        email: command.buyer.email,
       },
       sourceConnectionId,
       trigger: triggerModel,

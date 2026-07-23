@@ -6324,6 +6324,564 @@ a.kpi-card:focus-visible {
   color: var(--text-primary);
 }
 
+/* ── Offer product picker (#1754, redesigned #1779) ──────────────────
+   Wide two-region modal: left list (search + products + sticky pager),
+   right rail (live selection review + connection + Continue). Below
+   1024px the regions become a two-step wizard (data-mstep on the root);
+   below 600px the modal is a full-screen sheet. */
+.offer-product-picker.dialog__content {
+  width: min(1080px, 96vw);
+  max-width: none;
+  /* Fixed height so the modal stays stable as selections/variants are added -
+     the product list and the rail scroll internally instead of growing the
+     modal (phone overrides to a 100dvh full-screen sheet below). */
+  height: min(760px, 88vh);
+  max-height: 88vh;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+}
+
+.offer-product-picker__x {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  z-index: 1;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1.35rem;
+  line-height: 1;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.offer-product-picker__x:hover {
+  color: var(--text-primary);
+}
+
+.offer-product-picker__head {
+  padding: var(--space-4) var(--space-6) var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.offer-product-picker__title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  margin: 0;
+}
+.offer-product-picker__sub {
+  margin: var(--space-1) 0 0;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  max-width: 52ch;
+}
+
+.offer-product-picker__body {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+/* Left: search + list + sticky pager */
+.offer-product-picker__list-region {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--border-subtle);
+}
+.offer-product-picker__search {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.offer-product-picker__hint {
+  margin: var(--space-1) 0 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.offer-product-picker__list {
+  overflow-y: auto;
+  flex: 1 1 auto;
+  padding: var(--space-2);
+}
+.offer-product-picker__prows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.offer-product-picker__prow {
+  border-radius: var(--radius-md);
+  min-width: 0;
+}
+.offer-product-picker__prow-main {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+}
+.offer-product-picker__prow-main:hover {
+  background: var(--bg-surface-hover);
+}
+/* Whole-product selection tap target, mirroring the full-row hit area of
+   the variant rows below. The 44px touch floor is applied only on
+   coarse-pointer (touch) devices so it doesn't inflate row height on
+   desktop, where the checkbox keeps its natural size. */
+.offer-product-picker__prow-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  cursor: pointer;
+}
+@media (pointer: coarse) {
+  .offer-product-picker__prow-check {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+.offer-product-picker__prow-check input[disabled] {
+  cursor: not-allowed;
+}
+.offer-product-picker__prow--open .offer-product-picker__prow-main {
+  background: var(--bg-surface-elevated);
+  border-color: var(--border-subtle);
+}
+.offer-product-picker__prow-toggle {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  text-align: left;
+}
+.offer-product-picker__pname {
+  min-width: 0;
+}
+.offer-product-picker__pname b {
+  font-weight: 600;
+  font-size: 0.86rem;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.offer-product-picker__pname small {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+.offer-product-picker__vcount {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  background: var(--bg-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  padding: 0.12rem 0.5rem;
+  white-space: nowrap;
+}
+.offer-product-picker__vcount--simple {
+  color: var(--text-muted);
+}
+.offer-product-picker__chev {
+  color: var(--text-muted);
+  transition: transform var(--duration-fast) var(--ease-out);
+  justify-self: center;
+}
+.offer-product-picker__prow--open .offer-product-picker__chev {
+  transform: rotate(90deg);
+}
+.offer-product-picker__prow--simple .offer-product-picker__chev {
+  opacity: 0.4;
+}
+
+.offer-product-picker__vrows {
+  list-style: none;
+  margin: 0;
+  padding: 2px var(--space-2) var(--space-2) 2.1rem;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.offer-product-picker__vrow {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0.42rem var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.offer-product-picker__vrow:hover {
+  background: var(--bg-surface-hover);
+}
+.offer-product-picker__vrow--picked {
+  background: var(--accent-primary-soft);
+  border-color: var(--accent-primary-border);
+}
+.offer-product-picker__vname {
+  min-width: 0;
+}
+.offer-product-picker__vname b {
+  font-weight: 600;
+  font-size: 0.8rem;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.offer-product-picker__vname small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.66rem;
+}
+.offer-product-picker__vname-bad {
+  color: var(--status-error-fg);
+}
+
+.offer-product-picker__cap-hint {
+  margin-top: var(--space-2);
+  font-size: 0.75rem;
+}
+
+/* Sticky pager */
+.offer-product-picker__pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-shell);
+}
+.offer-product-picker__pager-count {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.offer-product-picker__pager-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.offer-product-picker__pager-page {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  padding: 0 var(--space-1);
+}
+
+/* Step-1 "Review" bar - desktop hidden, shown only on the two-step layout. */
+.offer-product-picker__mstep-next {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+.offer-product-picker__mstep-count {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+.offer-product-picker__mstep-count b {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Right rail: live selection review + CTA */
+.offer-product-picker__rail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-shell);
+}
+.offer-product-picker__rail-head {
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+.offer-product-picker__rail-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.offer-product-picker__rail-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+/* Back sits on its own row ABOVE the "In this batch" titlebar (two-step
+   wizard, <=1023px); hidden on desktop where both regions show at once. */
+.offer-product-picker__rail-back {
+  display: none;
+  align-self: flex-start;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface-elevated);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+/* Structural (non-CTA) buttons must not inherit the global primary-button
+   hover (signal-orange). Keep hover feedback subtle/neutral. */
+.offer-product-picker__prow-toggle:hover,
+.offer-product-picker__prow-toggle:active {
+  background: transparent;
+  border-color: transparent;
+  color: inherit;
+}
+.offer-product-picker__rail-back:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.offer-product-picker__x:hover,
+.offer-product-picker__rm:hover {
+  background: transparent;
+  border-color: transparent;
+  color: var(--status-error-fg);
+}
+.offer-product-picker__rail-counts {
+  display: flex;
+  gap: var(--space-5);
+  padding: 0 var(--space-4) var(--space-2);
+}
+.offer-product-picker__rail-n {
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  font-variant-numeric: tabular-nums;
+}
+.offer-product-picker__rail-n--warn {
+  color: var(--status-warning-fg);
+}
+.offer-product-picker__rail-lbl {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-top: 0.1rem;
+}
+.offer-product-picker__rail-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--space-1) var(--space-3) var(--space-3);
+}
+.offer-product-picker__rail-empty {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  padding: var(--space-6) var(--space-4);
+}
+.offer-product-picker__selgrp {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  margin-bottom: var(--space-2);
+  overflow: hidden;
+}
+.offer-product-picker__selgrp-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0.45rem var(--space-2);
+}
+.offer-product-picker__selgrp-head b {
+  font-size: 0.76rem;
+  font-weight: 600;
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.offer-product-picker__rm {
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: 0.1rem 0.25rem;
+  cursor: pointer;
+  flex: none;
+}
+.offer-product-picker__rm:hover {
+  color: var(--status-error-fg);
+}
+.offer-product-picker__rm--tag {
+  margin-left: auto;
+  font-size: 0.85rem;
+}
+.offer-product-picker__seltag {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.32rem var(--space-2) 0.32rem var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+}
+.offer-product-picker__seltag--muted {
+  color: var(--text-muted);
+}
+.offer-product-picker__seltag-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  flex: none;
+}
+.offer-product-picker__seltag--muted .offer-product-picker__seltag-dot {
+  background: var(--text-disabled);
+}
+
+.offer-product-picker__rail-foot {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.offer-product-picker__rail-conn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.offer-product-picker__eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.offer-product-picker__req {
+  color: var(--accent-primary);
+}
+.offer-product-picker__resolved-connection {
+  font-size: 0.8rem;
+  margin: 0;
+}
+.offer-product-picker__rail-summary {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+.offer-product-picker__rail-summary b,
+.offer-product-picker__rail-summary strong {
+  color: var(--text-primary);
+}
+.offer-product-picker__rail-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+.offer-product-picker__rail-actions > .button,
+.offer-product-picker__rail-actions > .offer-product-picker__continue-wrap {
+  flex: 1 1 auto;
+}
+.offer-product-picker__continue-wrap {
+  display: inline-flex;
+}
+.offer-product-picker__continue-wrap > .button {
+  width: 100%;
+}
+/* Let hover fall through the disabled button to the span so its tooltip fires. */
+.offer-product-picker__continue-wrap > .button:disabled {
+  pointer-events: none;
+}
+
+/* ── Tablet + mobile (<=1023px): two-step wizard ──────────────────
+   Side-by-side list + rail is a desktop-only affordance. Below that,
+   one focused screen at a time: step 1 = list, step 2 = review. */
+@media (max-width: 1023px) {
+  .offer-product-picker.dialog__content {
+    width: min(720px, 96vw);
+  }
+  .offer-product-picker__body {
+    display: block;
+    overflow: hidden;
+  }
+  .offer-product-picker__list-region,
+  .offer-product-picker__rail {
+    height: 100%;
+    border-right: 0;
+  }
+  .offer-product-picker[data-mstep='1'] .offer-product-picker__rail {
+    display: none;
+  }
+  .offer-product-picker[data-mstep='1'] .offer-product-picker__list-region {
+    display: flex;
+  }
+  .offer-product-picker[data-mstep='1'] .offer-product-picker__mstep-next {
+    display: flex;
+    position: sticky;
+    bottom: 0;
+  }
+  .offer-product-picker[data-mstep='2'] .offer-product-picker__list-region {
+    display: none;
+  }
+  .offer-product-picker[data-mstep='2'] .offer-product-picker__rail {
+    display: flex;
+  }
+  .offer-product-picker__rail {
+    background: var(--bg-surface);
+  }
+  .offer-product-picker__rail-back {
+    display: inline-flex;
+  }
+  .offer-product-picker__rail-foot {
+    position: sticky;
+    bottom: 0;
+    background: var(--bg-surface);
+  }
+}
+
+/* ── Phone (<=600px): full-screen sheet ─────────────────────────── */
+@media (max-width: 600px) {
+  .offer-product-picker.dialog__content {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    top: 0;
+    left: 0;
+    transform: none;
+    border: 0;
+    border-radius: 0;
+  }
+  .offer-product-picker__hint {
+    display: none;
+  }
+}
+
 /*
  * Structured error rows (#448 / #486 / #607). Forensic-log aesthetic:
  * the panel context already implies error, so we don't drench every row
@@ -15300,4 +15858,220 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   font-weight: 600;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
+}
+
+
+/* ── inFakt webhook config modal (#1770) ── */
+.infakt-webhook {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding-top: var(--space-2);
+}
+.infakt-webhook__intro {
+  margin: 0;
+  max-width: 64ch;
+  line-height: 1.6;
+}
+
+/* status strip: two independent axes (activation + optional signature) */
+.infakt-webhook__status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-5);
+  background: var(--bg-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+.infakt-webhook__status-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.infakt-webhook__status-key {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.infakt-webhook__status-val {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.infakt-webhook__status-val--muted { color: var(--text-muted); font-weight: 400; }
+
+/* the exchange: a bidirectional relay with a center seam */
+.infakt-webhook__exchange {
+  display: grid;
+  grid-template-columns: 1fr 1px 1fr;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.infakt-webhook__lane {
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.infakt-webhook__seam {
+  position: relative;
+  background: var(--border-subtle);
+}
+.infakt-webhook__seam-glyph {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--accent-primary);
+}
+
+/* lane direction header: a small badge + role text */
+.infakt-webhook__dir {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-1);
+}
+.infakt-webhook__dir-badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary-soft-strong);
+  border: 1px solid var(--accent-primary-border);
+}
+.infakt-webhook__lane-label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* events checklist — mirrors inFakt's own checkbox labels */
+.infakt-webhook__events-label {
+  margin: var(--space-2) 0 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.infakt-webhook__events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.infakt-webhook__event {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: 12.5px;
+  color: var(--text-primary);
+}
+.infakt-webhook__event-mark {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-sm);
+  display: inline-grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  transform: translateY(2px);
+}
+.infakt-webhook__event--req .infakt-webhook__event-mark {
+  background: var(--status-success-soft);
+  color: var(--status-success-fg);
+  border: 1px solid var(--status-success-border);
+}
+.infakt-webhook__event--opt {
+  color: var(--text-secondary);
+}
+.infakt-webhook__event--opt .infakt-webhook__event-mark {
+  background: var(--bg-strong);
+  color: var(--text-muted);
+  border: 1px solid var(--border-default);
+}
+.infakt-webhook__event-note {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* secret paste field */
+.infakt-webhook__field {
+  display: flex;
+  gap: var(--space-2);
+  align-items: stretch;
+}
+.infakt-webhook__field > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.infakt-webhook__hint {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+/* disclosure */
+.infakt-webhook__why {
+  margin-top: var(--space-1);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+.infakt-webhook__why > summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  list-style: none;
+}
+.infakt-webhook__why > summary::-webkit-details-marker { display: none; }
+.infakt-webhook__why > summary::before {
+  content: '+';
+  display: inline-block;
+  width: 1.2em;
+  font-family: var(--font-mono);
+  color: var(--accent-primary);
+  font-weight: 700;
+}
+.infakt-webhook__why[open] > summary::before { content: '\2013'; }
+.infakt-webhook__why > p {
+  margin: var(--space-3) 0 0;
+  max-width: 74ch;
+  line-height: 1.6;
+}
+
+@media (max-width: 640px) {
+  .infakt-webhook__exchange { grid-template-columns: 1fr; }
+  .infakt-webhook__seam { height: 1px; width: 100%; }
+  .infakt-webhook__seam-glyph { transform: translate(-50%, -50%) rotate(90deg); }
 }

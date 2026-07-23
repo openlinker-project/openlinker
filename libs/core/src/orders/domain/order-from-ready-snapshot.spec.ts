@@ -120,6 +120,18 @@ describe('orderFromReadySnapshot', () => {
     expect(order.placedAt?.toISOString()).toBe('2026-06-19T14:30:00.000Z');
   });
 
+  it('rehydrates customerEmail from the snapshot when present (#1797)', () => {
+    const order = orderFromReadySnapshot(
+      makeRecord({ ...READY_SNAPSHOT, customerEmail: 'buyer@example.com' }),
+    );
+    expect(order.customerEmail).toBe('buyer@example.com');
+  });
+
+  it('leaves customerEmail undefined when the snapshot has none (#1797)', () => {
+    const order = orderFromReadySnapshot(makeRecord(READY_SNAPSHOT));
+    expect(order.customerEmail).toBeUndefined();
+  });
+
   it('falls back to shipping address when billing is absent', () => {
     const { billingAddress: _omit, ...rest } = READY_SNAPSHOT;
     void _omit;

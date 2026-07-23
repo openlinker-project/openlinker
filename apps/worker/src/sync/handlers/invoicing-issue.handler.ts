@@ -102,7 +102,8 @@ export class InvoicingIssueHandler implements SyncJobHandler {
    *    finite number `> 0` and `unitPriceGross` a finite number `>= 0`;
    *  - `buyer.type ∈ BuyerTypeValues`; `buyer.name` non-empty; `buyer.address`
    *    present with required string fields; `buyer.taxId` `null` OR
-   *    `{ scheme, value }` with both non-empty.
+   *    `{ scheme, value }` with both non-empty; `buyer.email` (#1797) absent
+   *    (pre-existing payload), `null`, OR a `string` — never any other type.
    *
    * PII: on violation logs ONLY the failed field name(s) + `orderId` /
    * `connectionId` / `schemaVersion` — NEVER `payload` / `buyer` / `lines`.
@@ -157,6 +158,16 @@ export class InvoicingIssueHandler implements SyncJobHandler {
       if (!isNonEmptyString(buyer.taxId.scheme)) return fail('buyer.taxId.scheme');
       if (!isNonEmptyString(buyer.taxId.value)) return fail('buyer.taxId.value');
     }
+    // Optional additive field (#1797): a payload persisted before this field
+    // existed has `buyer.email === undefined` — that's valid. Only reject a
+    // present-but-wrong-shaped value.
+    if (
+      buyer.email !== undefined &&
+      buyer.email !== null &&
+      typeof buyer.email !== 'string'
+    ) {
+      return fail('buyer.email');
+    }
 
     return p as InvoicingIssuePayloadV1;
   }
@@ -168,11 +179,14 @@ export class InvoicingIssueHandler implements SyncJobHandler {
    */
   private toCommand(payload: InvoicingIssuePayloadV1): IssueInvoiceCommand {
     // #12: rebuild the BuyerProfile class from the PLAIN payload buyer.
+    // #1797: `buyer.email` is `undefined` on a payload persisted before this
+    // field existed — normalize to `null` rather than requiring the key.
     const buyer = new BuyerProfile(
       payload.buyer.name,
       payload.buyer.taxId,
       payload.buyer.address,
       payload.buyer.type,
+      payload.buyer.email ?? null,
     );
 
     const command: IssueInvoiceCommand = {

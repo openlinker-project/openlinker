@@ -1,0 +1,281 @@
+# inFakt Integration Setup Guide
+
+OpenLinker integrates with **inFakt** (a Polish accounting SaaS) as a fiscal-document
+provider: it issues invoices and reads back their KSeF clearance status through
+inFakt's own, native KSeF submission.
+
+inFakt is the second provider of the country-agnostic **Invoicing** domain
+([ADR-026](../../../../docs/architecture/adrs/026-country-agnostic-invoicing-domain.md)). Unlike
+the `@openlinker/integrations-ksef` package, OL never opens a KSeF session or builds
+FA(3) XML for inFakt-issued invoices — inFakt does that internally, on its own
+timing. See [ADR-030](../../../../docs/architecture/adrs/030-infakt-ksef-indirection.md) for the
+full rationale behind that design.
+
+---
+
+## Capabilities
+
+| Capability | Supported | Notes |
+|---|---|---|
+| `Invoicing` (`issueInvoice` / `getInvoice` / `upsertCustomer` / `getSupportedDocumentTypes`) | ✅ | Document types: `invoice`, `corrected`, `proforma`, `prepayment`. |
+| `RegulatoryStatusReader` (`getClearanceStatus`) | ✅ | Reads `ksef_data.status` off the stored invoice. **Not** `RegulatoryTransmitter` — OL does trigger submission (`send_to_ksef.json`, called inline at issuance), but clearance timing and status ownership stay with inFakt's own KSeF integration, so that trigger isn't exposed as an independently-callable submit method. |
+| `RegulatoryResubmitter` (`resubmitForClearance`) | ✅ | Backs the **Resend to KSeF** action on a document whose clearance ended in `rejected` — re-hits `send_to_ksef.json` for the same document, never re-issues. |
+| `CorrectionIssuer` (`issueCorrection`) | ✅ | Issues a `corrective` invoice against the dedicated `POST /corrective_invoices.json` endpoint with a before/after line-pair payload. |
+| `BankAccountsReader` (`listBankAccounts`) + `BankAccountDefaultSetter` (`setDefaultBankAccount`) | ✅ | Backs the live bank-account picker for `Transfer` invoices - accounts are fetched from `GET /bank_accounts.json`, and the picked account is synced back as the inFakt default. |
+| `RegulatoryDocumentReader` (`getRegulatoryDocument`, kind `rendered`) | ✅ | Fetches the inFakt-rendered invoice PDF - powers the **Download PDF** button on the invoice detail page. |
+| `PaymentStatusReader` (`getPaymentStatus`) + `PaymentMarker` (`markPaid`) | ✅ | Payment-status round-trip: inbound `invoice_marked_as_paid` webhooks trigger a re-read (never trusted directly); the outbound **Mark as paid** action pushes an authoritative paid state to inFakt for orders settled elsewhere (e.g. a marketplace order). |
+| `InvoiceEmailSender` (`sendByEmail`) | ✅ | Backs the **Send to buyer** action — inFakt renders and emails the already-issued invoice using the client's stored email address. |
+
+The connection detail page shows the enabled capability roles for the connection:
+
+![inFakt capability panel](./assets/19-infakt-capability-panel.png)
+
+- **adapterKey:** `infakt.accounting.v1`
+- **platformType:** `infakt`
+- **displayName:** `Infakt Accounting API v3`
+
+---
+
+## Prerequisites
+
+1. An active [inFakt](https://www.infakt.pl/) account (or an inFakt **sandbox**
+   account for testing — the same API shape, a different `baseUrl`).
+2. **KSeF integration enabled** in your inFakt account settings. OL's adapter explicitly
+   triggers KSeF submission right after creating each invoice — an inFakt draft does
+   **not** submit to KSeF on its own — but that trigger only succeeds if KSeF
+   integration is turned on for the account; inFakt still owns the actual clearance
+   session and timing once submission starts. See
+   [ADR-030](../../../../docs/architecture/adrs/030-infakt-ksef-indirection.md) for the full
+   rationale.
+3. An **API key**, generated from your inFakt account settings.
+
+![inFakt dashboard login](./assets/if1-infakt-dashboard-login.png)
+
+![inFakt API key page](./assets/if2-infakt-api-key-page.png)
+
+---
+
+## 1. Creating the connection in OL
+
+From **Connections → New connection**, pick **inFakt** from the platform picker.
+
+![Platform picker](./assets/00-platform-picker.png)
+
+The guided wizard (`/connections/new/infakt`) collects:
+
+| Field | Required | Description |
+|---|---|---|
+| Connection name | ✅ | A label to identify this inFakt account in OpenLinker. |
+| API key | ✅ | The credential from [Prerequisites](#prerequisites). Stored encrypted server-side; never echoed back to the browser after creation. |
+| Base URL (optional) | ❌ | Advanced override for sandbox testing. Must use HTTPS. Leave blank to use inFakt's production API. |
+| Default payment method | ❌ | `Cash` or `Transfer` - the `payment_method` stamped on every invoice issued through this connection. Leave it untouched to fall back to `Cash`. `Transfer` is rejected (422) by inFakt unless a bank account is configured on the seller's inFakt account. |
+
+![inFakt wizard, empty](./assets/01-infakt-wizard-empty.png)
+
+![inFakt wizard, filled in](./assets/02-infakt-wizard-filled.png)
+
+When **Transfer** is selected, the connection also carries a **bank account for
+Transfer invoices**. The picker for a specific account unlocks once the connection
+exists (the API key is needed to query inFakt): OL fetches the account list live from
+inFakt and defaults to whichever account is marked default there, falling back to
+`Cash` if the inFakt account has no bank accounts at all. The issued document really
+carries this configuration - invoices land in inFakt with `payment_method: transfer`
+and the picked account's number and bank name.
+
+After submitting, the connection is created and a **Test connection** affordance
+appears — use it to confirm the API key is valid before relying on the connection.
+
+![Connection created](./assets/03-infakt-connection-created.png)
+
+![Connection test passed](./assets/04-infakt-connection-test-ok.png)
+
+![Connections list with inFakt](./assets/05-connections-list-with-infakt.png)
+
+Both payment fields stay editable after creation. On the connection **Edit** form,
+the **Payment method for invoice** disclosure exposes the same **Default payment
+method** select plus a **Bank account for Transfer invoices** picker populated live
+from inFakt. Picking a different account persists it eagerly and syncs it back as the
+default account in inFakt, so the connection config and the inFakt account never
+drift apart.
+
+![Edit form, payment method disclosure](./assets/06-infakt-edit-payment-section.png)
+
+![Edit form, changed bank account persisted](./assets/07-infakt-edit-bank-persisted.png)
+
+---
+
+## 2. Webhook configuration
+
+Webhooks are the low-latency path for learning that inFakt has finished submitting an
+invoice to KSeF (the "webhook = trigger, poll = reconciliation backstop" pattern —
+`getClearanceStatus()` remains the source of truth; the webhook only triggers an
+immediate re-read).
+
+**inFakt webhook subscriptions are configured entirely in the inFakt dashboard** — there
+is no programmatic `WebhookProvisioningPort` for this adapter (unlike PrestaShop's
+auto-provisioning). Set it up manually:
+
+1. In your inFakt account, go to **Settings → Webhooks** (or the equivalent
+   integrations/API section) and create a new subscription.
+2. **URL**: `POST https://<your-ol-host>/webhooks/infakt/{connectionId}` — substitute
+   the connection ID shown on the connection-detail page in OL.
+3. **Events**: subscribe at minimum to `send_to_ksef_success` and `send_to_ksef_error`
+   for clearance-status updates. Also subscribe to `invoice_marked_as_paid` (and/or
+   `invoice_marked_as_paid_via_async_api`) if you want OL's payment status to reflect
+   payments recorded directly in inFakt (#1354) — every other event inFakt can send is
+   accepted and silently ignored by OL.
+4. inFakt sends a **verification ping** — a POST with `{"verification_code": "..."}` —
+   to confirm the endpoint is live. OL's webhook decoder echoes the same code back
+   automatically; the subscription activates once inFakt sees the matching echo.
+5. **Secret**: as the subscription-creation form below shows, inFakt's "Nowy webhook"
+   form has **no secret field** - only the account fields (URL, description, payload
+   content, event checkboxes) plus your inFakt **account password**, required to
+   confirm the action. inFakt instead **auto-generates a secret per subscription**
+   after creation, visible in that subscription's details view in the inFakt
+   dashboard. Open the newly-created webhook's details and copy the generated secret -
+   this is the value OL verifies `X-Infakt-Signature` against (HMAC-SHA256 hex over the
+   raw request body). The direction is fixed by inFakt: **inFakt generates the secret,
+   you paste it into OL** (OL never pushes a secret to inFakt - there is no inFakt
+   webhook-provisioning API). See the box below for how to inject it into OL.
+
+![inFakt webhooks list](./assets/if3-infakt-webhooks-list.png)
+
+![inFakt webhook subscription form](./assets/if4-infakt-webhook-form.png)
+
+> **Injecting inFakt's secret into OL.** Because inFakt generates the secret (and has
+> no API to accept an externally-supplied one), give OL that exact value via
+> environment variable, read by OL's webhook-secret resolver:
+>
+> ```bash
+> # per-connection (preferred):
+> OPENLINKER_WEBHOOK_SECRET__INFAKT__<CONNECTION_ID_UPPERCASE>=<secret-from-infakt-ui>
+> # or provider-wide (all inFakt connections):
+> OPENLINKER_WEBHOOK_SECRET__INFAKT=<secret-from-infakt-ui>
+> ```
+>
+> This is the same mechanism OL's webhook-ingestion integration test uses to make
+> `X-Infakt-Signature` verification pass. Do **not** use the
+> `POST /connections/{connectionId}/webhooks/secret/rotate` endpoint for inFakt: it
+> generates a *new random* server-side secret that inFakt would never know, so
+> verification would fail.
+>
+> **Residual limitation**: the env-var resolver is marked deprecated in code (it emits
+> a one-time warning), and there is no OL admin-UI affordance yet to set an inFakt
+> connection's webhook secret to a caller-supplied value. Until a first-class "set
+> webhook secret" endpoint / FE affordance for inFakt-style providers ships, the env
+> var is the supported way to make verification pass.
+
+---
+
+## 3. Verifying the integration
+
+1. Trigger an invoice issuance from OL for a test order (**Order detail → Issue
+   invoice**, connection set to your inFakt connection).
+
+   ![Orders list](./assets/08-orders-list.png)
+
+   ![Order detail, not yet issued](./assets/10-order-detail-not-issued.png)
+
+2. Immediately after issuance, the invoice section shows `submitted` — inFakt has
+   accepted the invoice and queued it for KSeF submission.
+
+   ![Invoice issued, submitted](./assets/11-invoice-issued-submitted.png)
+
+3. Within roughly a minute (sandbox: ~90s observed), inFakt's own KSeF submission
+   completes. The webhook fires, OL re-reads the status, and the invoice section
+   updates to `accepted` with a clearance reference chip.
+
+   ![Invoice accepted / cleared](./assets/12-invoice-accepted-cleared.png)
+
+4. Confirm the same invoice shows as KSeF-confirmed from inFakt's own side.
+
+   ![inFakt invoice confirmed](./assets/if5-infakt-invoice-confirmed.png)
+
+5. The full invoice detail page renders the regulatory region alongside the rest of
+   the invoice.
+
+   ![Invoice detail page](./assets/13-invoice-detail-page.png)
+
+6. Download the invoice PDF. On the accepted invoice detail page, the **Download
+   PDF** button in the KSeF clearance panel fetches the invoice as rendered by
+   inFakt.
+
+   ![Download PDF on the accepted invoice](./assets/18-invoice-pdf-download.png)
+
+### Correcting an invoice
+
+Use **Issue correction** on an already-issued invoice to file a `corrective` document.
+Pick the line(s) to correct and the new quantity/price. Correction deltas diff
+against the invoice lines as issued (the issuance-time snapshot persisted with the
+invoice record, #1297), not against the order's current state - editing the order
+after issuance does not shift the correction baseline.
+
+![Correction dialog, empty](./assets/14-correction-modal-empty.png)
+
+![Correction dialog, filled in](./assets/15-correction-modal-filled.png)
+
+![Correction issued](./assets/16-correction-issued.png)
+
+![Invoices list, with correction linked to the original](./assets/17-invoices-list.png)
+
+### Resending a rejected invoice to KSeF
+
+If inFakt's own KSeF submission ends in `rejected` (e.g. the seller fixed a data
+problem after the fact), use **Resend to KSeF** on the invoice detail page. This
+re-triggers `send_to_ksef.json` for the same document — it never creates a second
+draft — and is only available while the document's regulatory status is `rejected`.
+
+*(screenshot pending)*
+
+### Emailing an invoice to the buyer
+
+**Send to buyer** on an issued invoice triggers inFakt to render and email the
+document to the client's stored email address (no recipient override on OL's side).
+The invoice flips to `sent` on inFakt's own side once delivered.
+
+*(screenshot pending)*
+
+### Marking an invoice as paid
+
+For orders settled somewhere inFakt cannot see on its own — most commonly a
+marketplace order the buyer paid off-platform — use **Mark as paid** on the invoice
+detail page to push an authoritative paid state to inFakt (`POST
+/async/invoices/{uuid}/paid.json`). This is an async operation on inFakt's side;
+OL re-reads the payment status afterward via `PaymentStatusReader` to reflect it.
+Re-marking an already-paid invoice is safe (no error).
+
+*(screenshot pending)*
+
+### Bulk-issuing invoices from the list
+
+The invoices list supports selecting multiple not-yet-issued orders and issuing them
+in one action; each selected order is issued independently through the same
+`issueInvoice` path used for a single order, so a failure on one order does not block
+the others.
+
+*(screenshot pending)*
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Connection test fails immediately | Wrong or revoked API key, or `baseUrl` pointed at the wrong environment | Re-check the API key in inFakt account settings; confirm `baseUrl` is blank (production) or the correct sandbox host. |
+| Webhook deliveries return 401 | `X-Infakt-Signature` (HMAC-SHA256 hex of the raw body) doesn't match the secret OL resolved | Copy the secret from inFakt's webhook-details view and set `OPENLINKER_WEBHOOK_SECRET__INFAKT__<CONNECTION_ID_UPPERCASE>` (or `OPENLINKER_WEBHOOK_SECRET__INFAKT`); do **not** use the `secret/rotate` endpoint for inFakt (it generates a random secret inFakt doesn't know). See [Webhook configuration](#2-webhook-configuration). |
+| Webhook subscription never activates | The verification-ping echo didn't reach inFakt (host unreachable, TLS issue, or the connection ID in the URL is wrong) | Confirm the URL path matches `POST /webhooks/infakt/{connectionId}` exactly and the host is publicly reachable from inFakt's servers. |
+| Invoice stays `submitted` forever, never reaches `accepted` | KSeF itself rejected the document after inFakt submitted it, or (less likely, since OL's `sendToKsef` call would normally fail outright at issuance time if this were disabled) KSeF integration is off in inFakt's account settings | Check inFakt's own invoice/KSeF status in its dashboard first — `ksef_data.status: error` there means inFakt attempted submission and KSeF rejected it (fix the underlying document data and re-issue). If `getClearanceStatus()` keeps returning `not-applicable` with no `ksef_data` at all, confirm KSeF integration is enabled in inFakt's account settings (the [Prerequisites](#prerequisites) requirement). |
+| Rate limiting / `429` from inFakt | Sandbox and low-tier plans enforce API rate limits | Space out bulk issuance; inFakt's retry classifier (`InfaktRetryClassifierAdapter`) already treats `429` as retryable in the worker's job runner. |
+
+---
+
+## Related documentation
+
+- [ADR-030](../../../../docs/architecture/adrs/030-infakt-ksef-indirection.md) — why this adapter
+  implements `RegulatoryStatusReader`, not `RegulatoryTransmitter`
+- [ADR-026](../../../../docs/architecture/adrs/026-country-agnostic-invoicing-domain.md) — the
+  country-agnostic invoicing domain this provider plugs into
+- [ADR-021](../../../../docs/architecture/adrs/021-third-party-native-inbound-webhook-ingestion.md) —
+  the inbound-webhook-decoder pattern `InfaktInboundWebhookDecoderAdapter` implements
+- [`libs/integrations/infakt/README.md`](../README.md) —
+  package-level adapter reference (capabilities, credentials/config shape)
