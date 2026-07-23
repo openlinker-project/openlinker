@@ -19,7 +19,31 @@ export const MAX_FROM_ADDRESS_LENGTH = 320;
 export const MAX_PASSWORD_LENGTH = 512;
 const MIN_PORT = 1;
 const MAX_PORT = 65535;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Excludes `<`/`>` (in addition to whitespace/`@`) so a stray bracket can't be
+// swallowed into the local-part or domain — e.g. `,<test@test.test` inside a
+// malformed `Test <,<test@test.test>` input would otherwise still satisfy this
+// pattern once the outer `<...>` wrapper is stripped off. The leading
+// `(?!.*\.\.)` lookahead rejects a consecutive `..` anywhere (e.g.
+// `test..test@test.pl`), and the local-part/domain each require a non-dot
+// first character so neither segment can start with a stray `.`.
+const EMAIL_PATTERN = /^(?!.*\.\.)[^\s@<>.][^\s@<>]*@[^\s@<>.][^\s@<>]*\.[^\s@<>]+$/;
+// Matches `Display Name <email@domain.com>` — nodemailer parses this form natively
+// into the `From:` header, and the backend DTO has no `@IsEmail()` gate, so this
+// client-side check only needs to confirm the bracketed part looks like an email.
+// The name segment excludes `<`/`>` so a second bracketed address (e.g.
+// `A <b@c.com> <d@e.com>`) fails the match instead of silently picking the last one.
+// It also excludes CR/LF: unlike the bare-email path (where `\s` already blocks
+// them), `[^<>]` alone would let a CRLF-carrying name through — the classic
+// email-header-injection shape (`From:` value smuggling a second header).
+const NAME_AND_EMAIL_PATTERN = /^[^<>\r\n]+\s<([^\s@<>]+@[^\s@<>]+\.[^\s@<>]+)>$/;
+
+function isValidFromAddress(value: string): boolean {
+  if (EMAIL_PATTERN.test(value)) {
+    return true;
+  }
+  const match = NAME_AND_EMAIL_PATTERN.exec(value);
+  return match !== null && EMAIL_PATTERN.test(match[1]);
+}
 
 export const mailerSettingsFormSchema = z
   .object({
@@ -72,11 +96,11 @@ export const mailerSettingsFormSchema = z
         path: ['fromAddress'],
         message: 'From address is required for SMTP transport',
       });
-    } else if (!EMAIL_PATTERN.test(values.fromAddress)) {
+    } else if (!isValidFromAddress(values.fromAddress)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['fromAddress'],
-        message: 'Enter a valid email address',
+        message: 'Enter a valid email address, optionally with a display name (e.g. "OpenLinker <noreply@example.com>")',
       });
     }
   });
