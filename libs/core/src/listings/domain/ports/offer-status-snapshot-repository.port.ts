@@ -53,4 +53,14 @@ export interface OfferStatusSnapshotRepositoryPort {
   countByConnectionAndStatus(
     connectionId: string
   ): Promise<Map<OfferPublicationStatus, number>>;
+
+  /**
+   * List snapshots for a set of internal variant ids, optionally scoped to a
+   * single connection. Backs the operator-facing per-product live-status read
+   * (#1760). An empty id list returns `[]` without querying.
+   */
+  findByVariantIds(
+    internalVariantIds: string[],
+    connectionId?: string
+  ): Promise<OfferStatusSnapshot[]>;
 }

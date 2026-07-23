@@ -57,6 +57,7 @@ import { useResolveCategoryQuery } from '../../hooks/use-resolve-category-query'
 import { useCategoryParametersQuery } from '../../hooks/use-category-parameters-query';
 import { CategoryPicker } from '../CategoryPicker';
 import { CategoryParametersStep } from '../category-parameters-step';
+import { injectEanParameter, isEanParameterName } from '../auto-prefill-parameters';
 import { buildParametersZodSchema } from '../build-parameters-zod-schema';
 import {
   MissingCategoryParameterSectionError,
@@ -251,6 +252,15 @@ export function ErliCreateOfferWizard({
     () => categoryParametersQuery.data ?? [],
     [categoryParametersQuery.data],
   );
+  // The borrowed Allegro EAN/GTIN category parameter is hidden from the rendered
+  // UI - its value is owned by the picked variant's barcode and re-injected at
+  // submit (#1741), mirroring the bulk editor + Allegro wizard. The full
+  // `categoryParameters` set is kept for serialization; only the display/
+  // validation set is filtered.
+  const renderableCategoryParameters = useMemo(
+    () => categoryParameters.filter((p) => !isEanParameterName(p.name)),
+    [categoryParameters],
+  );
   // Clear the parameters slice whenever the chosen category changes — the
   // shape is category-specific so prior values would never be valid under a
   // new schema (mirrors `AllegroCreateOfferWizard`).
@@ -338,11 +348,13 @@ export function ErliCreateOfferWizard({
     if (
       allegroCategoryAccessEnabled &&
       stepIndex === categoryParametersStepIndex &&
-      categoryParameters.length > 0
+      renderableCategoryParameters.length > 0
     ) {
       const paramValues =
         (form.getValues('parameters') as CategoryParameterFormValues | undefined) ?? {};
-      const result = buildParametersZodSchema(categoryParameters).safeParse(paramValues);
+      // Validate the rendered params only - the hidden EAN/GTIN slot is filled
+      // from the variant barcode at submit, not by the operator (#1741).
+      const result = buildParametersZodSchema(renderableCategoryParameters).safeParse(paramValues);
       if (!result.success) {
         form.clearErrors('parameters');
         for (const issue of result.error.issues) {
@@ -381,11 +393,10 @@ export function ErliCreateOfferWizard({
     // server-side unchanged — no BE change needed (confirmed in ADR-031's plan).
     let parameters: OfferParameter[] = [];
     if (allegroCategoryAccessEnabled) {
+      const formParameters =
+        (submitted.parameters as CategoryParameterFormValues | undefined) ?? {};
       try {
-        parameters = categoryParametersToOfferParameters(
-          (submitted.parameters as CategoryParameterFormValues | undefined) ?? {},
-          categoryParameters,
-        );
+        parameters = categoryParametersToOfferParameters(formParameters, categoryParameters);
       } catch (error) {
         if (error instanceof MissingCategoryParameterSectionError) {
           setStaleSchemaError(error.parameterName);
@@ -393,6 +404,13 @@ export function ErliCreateOfferWizard({
         }
         throw error;
       }
+      // Fill the (hidden) borrowed EAN/GTIN slot from the picked variant's
+      // barcode so it can never diverge; empty EAN omits it (#1741). Falls back
+      // to any EAN in the form state (retry-snapshot path, no re-picked variant).
+      const eanParam = categoryParameters.find((p) => isEanParameterName(p.name));
+      const formEan = eanParam ? formParameters[eanParam.id] : undefined;
+      const effectiveEan = pickedVariantEan ?? (typeof formEan === 'string' ? formEan : null);
+      parameters = injectEanParameter(parameters, categoryParameters, effectiveEan);
     }
 
     const request: CreateOfferRequest = {
@@ -716,7 +734,7 @@ export function ErliCreateOfferWizard({
             ) : categoryParameters.length === 0 ? (
               <p className="muted-text">No additional parameters required for this category.</p>
             ) : (
-              <CategoryParametersStep parameters={categoryParameters} formNamespace="parameters" />
+              <CategoryParametersStep parameters={renderableCategoryParameters} formNamespace="parameters" />
             )
           ) : null}
 

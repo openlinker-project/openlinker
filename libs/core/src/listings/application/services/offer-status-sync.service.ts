@@ -34,9 +34,11 @@ import {
 } from '../../listings.tokens';
 import type {
   IOfferStatusSyncService,
+  OfferStatusRefreshTarget,
   OfferStatusSyncOptions,
 } from './offer-status-sync.service.interface';
 import type { OfferStatusSyncResult } from '../../domain/types/offer-status-snapshot.types';
+import type { OfferPublicationStatus } from '../../domain/types/offer-status-read.types';
 
 @Injectable()
 export class OfferStatusSyncService implements IOfferStatusSyncService {
@@ -127,6 +129,52 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
       total: page.total,
       nextOffset,
     };
+  }
+
+  async refreshOne(
+    connectionId: string,
+    target: OfferStatusRefreshTarget
+  ): Promise<OfferPublicationStatus | null> {
+    const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+      connectionId,
+      'OfferManager'
+    );
+    if (!isOfferStatusReader(adapter)) {
+      this.logger.warn(
+        `Connection ${connectionId} adapter does not support OfferStatusReader; skipping single-offer refresh`
+      );
+      return null;
+    }
+
+    let status: OfferStatusReadResult;
+    try {
+      status = await adapter.getOfferStatus(target.externalOfferId);
+    } catch (error) {
+      if (error instanceof OfferNotFoundOnMarketplaceException) {
+        this.logger.debug(
+          `Offer not found on marketplace during refresh (connection=${connectionId}, offerId=${target.externalOfferId}); leaving snapshot unchanged`
+        );
+        return null;
+      }
+      throw error;
+    }
+
+    const { previousStatus } = await this.snapshots.upsert({
+      connectionId,
+      externalOfferId: target.externalOfferId,
+      internalVariantId: target.internalVariantId,
+      publicationStatus: status.publicationStatus,
+      statusDetails: this.toStatusDetails(status.validationErrors),
+      lastStatusSyncedAt: new Date(),
+    });
+
+    if (previousStatus !== null && previousStatus !== status.publicationStatus) {
+      this.logger.log(
+        `Offer status transition on refresh (connection=${connectionId}, offerId=${target.externalOfferId}): ${previousStatus} → ${status.publicationStatus}`
+      );
+    }
+
+    return status.publicationStatus;
   }
 
   private toStatusDetails(

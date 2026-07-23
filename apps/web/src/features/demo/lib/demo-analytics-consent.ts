@@ -27,11 +27,21 @@ export function getDemoAnalyticsConsent(): DemoAnalyticsConsent | null {
   }
 }
 
-export function setDemoAnalyticsConsent(value: DemoAnalyticsConsent): void {
+/**
+ * Persists the consent choice. Returns `true` when it was written, `false`
+ * when localStorage is unavailable (private browsing, strict cookie policy).
+ * Callers use the result to keep their in-memory state in step with what the
+ * consent-gated loader (`initDemoIntegrations`, which re-reads localStorage)
+ * will actually see — otherwise "accepted" could be shown while analytics
+ * silently stays off.
+ */
+export function setDemoAnalyticsConsent(value: DemoAnalyticsConsent): boolean {
   try {
     window.localStorage.setItem(DEMO_ANALYTICS_CONSENT_STORAGE_KEY, value);
+    return true;
   } catch {
     // localStorage may be disabled — the visitor will simply be re-prompted
     // next time; no functional impact beyond that.
+    return false;
   }
 }

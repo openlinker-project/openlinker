@@ -1,8 +1,8 @@
 /**
  * BulkConfigStep tests (#792 PR 3)
  *
- * The Config step builds the batch-wide `BulkWizardConfig` — connection,
- * delivery policy, currency, and the pricing/stock policy objects — and gates
+ * The Config step builds the batch-wide `BulkWizardConfig` - connection,
+ * delivery policy, currency, and the pricing/stock policy objects - and gates
  * "Proceed" on per-mode validation. The AI-generation toggle is gated on the
  * `listings:write` permission via the `useWriteAccess` + `ReadOnlyLock`
  * pattern (#1668): visible-but-disabled for a demo viewer, hidden for a
@@ -64,7 +64,7 @@ async function renderAndSelectPolicy() {
     <BulkConfigStep initial={{}} onProceed={onProceed} onCancel={() => undefined} />,
     { apiClient: makeConnectionClient(), sessionAdapter: createAuthenticatedSessionAdapter() },
   );
-  // Wait for the delivery option to render — that only happens after a 3-hop
+  // Wait for the delivery option to render - that only happens after a 3-hop
   // async chain: connections query → auto-select effect → seller-policies query
   // resolves (the select renders empty before then, since a disabled query
   // isn't "loading"). The generous timeout rides out a starved event loop under
@@ -91,7 +91,7 @@ describe('BulkConfigStep', () => {
     expect(onProceed).toHaveBeenCalledTimes(1);
     expect(onProceed.mock.calls[0][0]).toEqual({
       connectionId: 'conn-1',
-      // #1096 — delivery policy now lives under the generic platformParams slot,
+      // #1096 - delivery policy now lives under the generic platformParams slot,
       // written by Allegro's contributed bulk-config section.
       platformParams: { deliveryPolicyId: 'dp1' },
       currency: 'PLN',

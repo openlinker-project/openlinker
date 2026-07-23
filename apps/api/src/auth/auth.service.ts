@@ -32,8 +32,16 @@ export class AuthService implements IAuthService {
   private static readonly DUMMY_HASH =
     '$2b$10$AAAAAAAAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 
-  async validateUser(username: string, password: string): Promise<User | null> {
-    const user = await this.userRepository.findByUsername(username);
+  async validateUser(identifier: string, password: string): Promise<User | null> {
+    // Accept either a username or an email as the identifier. The presence of
+    // '@' disambiguates the two: usernames are forbidden from containing '@'
+    // (enforced by RegisterDto), so an identifier with '@' is an email and one
+    // without is a username. Branching this way makes the username<->email
+    // collision impossible rather than merely unlikely, and collapses lookup to
+    // a single query on every path.
+    const user = identifier.includes('@')
+      ? await this.userRepository.findByEmail(identifier)
+      : await this.userRepository.findByUsername(identifier);
     if (!user) {
       await bcrypt.compare(password, AuthService.DUMMY_HASH);
       return null;

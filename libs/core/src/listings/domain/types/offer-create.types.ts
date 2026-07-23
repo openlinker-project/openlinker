@@ -85,6 +85,16 @@ export interface CreateOfferOverrides {
    */
   productCardId?: string;
   /**
+   * Per-offer EAN/GTIN override (#1741). Falls back to the variant's own
+   * barcode (`variant.ean ?? variant.gtin`) when omitted. Lets the operator
+   * correct a typo'd/missing barcode at wizard time and rescue an otherwise
+   * barcode-less sibling. The core builder prefers this at BOTH barcode sites
+   * (catalog self-link/GTIN parameter AND category-resolution-by-barcode).
+   * GS1-checksum validity and batch-wide effective-identifier uniqueness are
+   * to be enforced in `BulkListingSubmitService` (#1741 AC D; pending), not here.
+   */
+  ean?: string;
+  /**
    * Image URLs in display order. Falls back to variant images. `null` or
    * `undefined` both mean "no override".
    */

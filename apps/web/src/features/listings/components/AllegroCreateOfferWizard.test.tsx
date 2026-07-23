@@ -714,7 +714,7 @@ describe('AllegroCreateOfferWizard', () => {
       },
     ];
 
-    it('auto-prefills EAN from variant + Stan default and serialises both into the submit payload', async () => {
+    it('hides the EAN/GTIN param but still injects the variant EAN + serialises Stan into the submit payload', async () => {
       const createOffer = vi
         .fn()
         .mockResolvedValue({ jobId: 'job-1', offerCreationRecordId: 'rec-1' });
@@ -745,12 +745,12 @@ describe('AllegroCreateOfferWizard', () => {
       fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
       fireEvent.click(screen.getByRole('button', { name: /next/i }));
 
-      // Step 3 (parameters) — required EAN field is rendered and pre-filled
-      // from the variant's EAN; Stan defaults to "Nowy".
-      const eanInput = await screen.findByLabelText(/ean \(gtin\)/i);
-      await waitFor(() => expect(eanInput).toHaveValue('5901234567890'));
-      const stanSelect = screen.getByLabelText<HTMLSelectElement>(/^stan$/i);
+      // Step 3 (parameters) - Stan defaults to "Nowy". The EAN/GTIN param is
+      // de-duplicated (#1741): it is NOT rendered as its own field (the variant
+      // barcode is its single source) yet still lands on the wire below.
+      const stanSelect = await screen.findByLabelText<HTMLSelectElement>(/^stan$/i);
       await waitFor(() => expect(stanSelect.value).toBe('p_stan_new'));
+      expect(screen.queryByLabelText(/ean \(gtin\)/i)).not.toBeInTheDocument();
 
       // Advance — dynamic Zod validation passes because Stan is filled.
       fireEvent.click(screen.getByRole('button', { name: /next/i }));
@@ -833,12 +833,11 @@ describe('AllegroCreateOfferWizard', () => {
       fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
       fireEvent.click(screen.getByRole('button', { name: /next/i }));
 
-      // Step 3 — fill both parameters explicitly.
-      await screen.findByLabelText(/ean \(gtin\)/i);
-      fireEvent.change(screen.getByLabelText(/ean \(gtin\)/i), {
-        target: { value: '5901234567890' },
-      });
-      const markaSelect = screen.getByLabelText<HTMLSelectElement>(/^marka$/i);
+      // Step 3 - Marka renders as a field; the EAN/GTIN param is de-duplicated
+      // (#1741) so it is not rendered, but the variant EAN is still injected on
+      // the wire below.
+      const markaSelect = await screen.findByLabelText<HTMLSelectElement>(/^marka$/i);
+      expect(screen.queryByLabelText(/ean \(gtin\)/i)).not.toBeInTheDocument();
       fireEvent.change(markaSelect, { target: { value: 'p_marka_canon' } });
 
       fireEvent.click(screen.getByRole('button', { name: /next/i }));
@@ -857,10 +856,12 @@ describe('AllegroCreateOfferWizard', () => {
       };
       const { parameters, platformParams } = submittedRequest.overrides;
 
-      // Each parameter carries its section; one flat neutral array.
+      // Each parameter carries its section; one flat neutral array. The
+      // de-duplicated EAN/GTIN slot is re-injected last from the variant barcode
+      // (#1741), so it trails the operator-filled Marka.
       expect(parameters).toEqual([
-        { id: 'p_ean', values: ['5901234567890'], section: 'offer' },
         { id: 'p_marka', valuesIds: ['p_marka_canon'], section: 'product' },
+        { id: 'p_ean', values: ['5901234567890'], section: 'offer' },
       ]);
       // platformParams no longer carries category parameters (#1071).
       expect(platformParams).not.toHaveProperty('parameters');

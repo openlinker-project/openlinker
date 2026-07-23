@@ -33,6 +33,8 @@ import {
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   OFFER_MAPPING_REPOSITORY_TOKEN,
+  OFFER_STATUS_READ_SERVICE_TOKEN,
+  OFFER_STATUS_SYNC_SERVICE_TOKEN,
   OfferCreationRecord,
   SELLER_POLICIES_SERVICE_TOKEN,
   RESPONSIBLE_PRODUCER_SERVICE_TOKEN,
@@ -41,11 +43,14 @@ import {
 import type {
   ICategoryResolutionService,
   IOfferCreationEnqueueService,
+  IOfferStatusReadService,
+  IOfferStatusSyncService,
   ISellerPoliciesService,
   IResponsibleProducerService,
   IDeliveryPriceListService,
   OfferCreationRecordRepositoryPort,
   OfferMappingRepositoryPort,
+  OfferStatusSnapshot,
 } from '@openlinker/core/listings';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
@@ -68,6 +73,8 @@ describe('ListingsController', () => {
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let productVariantRepository: jest.Mocked<ProductVariantRepositoryPort>;
   let categoryResolution: jest.Mocked<ICategoryResolutionService>;
+  let offerStatusRead: jest.Mocked<IOfferStatusReadService>;
+  let offerStatusSync: jest.Mocked<Pick<IOfferStatusSyncService, 'refreshOne'>>;
 
   const mockMapping = new IdentifierMapping(
     'uuid-1',
@@ -112,6 +119,7 @@ describe('ListingsController', () => {
       findByBulkBatchId: jest.fn(),
       updateClassificationReport: jest.fn(),
       resetForRetry: jest.fn(),
+      deleteById: jest.fn(),
     };
     offerCreationEnqueue = {
       enqueueCreation: jest.fn(),
@@ -145,6 +153,12 @@ describe('ListingsController', () => {
       resolveCategory: jest.fn(),
       resolveCategoriesBatch: jest.fn(),
     };
+    offerStatusRead = {
+      getPublicationStatusForProduct: jest.fn(),
+    };
+    offerStatusSync = {
+      refreshOne: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ListingsController],
@@ -159,6 +173,8 @@ describe('ListingsController', () => {
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrationsService },
         { provide: PRODUCT_VARIANT_REPOSITORY_TOKEN, useValue: productVariantRepository },
         { provide: CATEGORY_RESOLUTION_SERVICE_TOKEN, useValue: categoryResolution },
+        { provide: OFFER_STATUS_READ_SERVICE_TOKEN, useValue: offerStatusRead },
+        { provide: OFFER_STATUS_SYNC_SERVICE_TOKEN, useValue: offerStatusSync },
       ],
     }).compile();
 
@@ -743,6 +759,59 @@ describe('ListingsController', () => {
     });
   });
 
+  describe('getCategoryPath (#1752)', () => {
+    const samplePath = [
+      { id: '1', name: 'Electronics' },
+      { id: '10', name: 'Smartphones' },
+    ];
+
+    function makeAdapter(
+      withCategoryPathReader: boolean,
+      fetch: jest.Mock = jest.fn().mockResolvedValue(samplePath)
+    ): OfferManagerPort {
+      const base = { updateOfferQuantity: jest.fn() } as unknown as OfferManagerPort;
+      if (withCategoryPathReader) {
+        return Object.assign(base, { fetchCategoryPath: fetch });
+      }
+      return base;
+    }
+
+    it('returns the breadcrumb wrapped under `path`, root -> leaf', async () => {
+      const fetch = jest.fn().mockResolvedValue(samplePath);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(true, fetch));
+
+      const result = await controller.getCategoryPath('conn-1', '10');
+
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith('conn-1', 'OfferManager');
+      expect(fetch).toHaveBeenCalledWith('10');
+      expect(result.path).toEqual(samplePath);
+    });
+
+    it('throws 422 when the adapter does not implement CategoryPathReader', async () => {
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(false));
+
+      await expect(controller.getCategoryPath('conn-1', '10')).rejects.toBeInstanceOf(
+        UnprocessableEntityException
+      );
+    });
+
+    it('translates CategoryNotFoundException to a 404 NotFoundException', async () => {
+      const fetch = jest.fn().mockRejectedValue(new CategoryNotFoundException('999999', 'allegro'));
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(true, fetch));
+
+      await expect(controller.getCategoryPath('conn-1', '999999')).rejects.toBeInstanceOf(
+        NotFoundException
+      );
+    });
+
+    it('propagates upstream errors that are not CategoryNotFoundException', async () => {
+      const fetch = jest.fn().mockRejectedValue(new Error('upstream-503'));
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(true, fetch));
+
+      await expect(controller.getCategoryPath('conn-1', '10')).rejects.toThrow('upstream-503');
+    });
+  });
+
   describe('resolveCategory (#631)', () => {
     // Opaque adapter — the integration-service mock returns it just to satisfy
     // the pre-flight connection-validity check; the resolveCategory service
@@ -1101,6 +1170,63 @@ describe('ListingsController', () => {
 
     it.each(WRITE_METHODS)('%s stays restricted to admin and operator (no viewer)', (methodName) => {
       expect(rolesOf(methodName)).toEqual(['admin', 'operator']);
+    });
+  });
+
+  describe('getProductOfferStatus (#1760)', () => {
+    it('maps snapshots to publication-status DTOs', async () => {
+      const syncedAt = new Date('2026-07-22T08:00:00Z');
+      offerStatusRead.getPublicationStatusForProduct.mockResolvedValue([
+        {
+          connectionId: 'conn-1',
+          externalOfferId: '7781896308',
+          internalVariantId: 'ol_variant_1',
+          publicationStatus: 'active',
+          statusDetails: { validationMessages: ['note'] },
+          lastStatusSyncedAt: syncedAt,
+        } as OfferStatusSnapshot,
+      ]);
+
+      const result = await controller.getProductOfferStatus('ol_product_1', 'conn-1');
+
+      expect(offerStatusRead.getPublicationStatusForProduct).toHaveBeenCalledWith(
+        'ol_product_1',
+        'conn-1'
+      );
+      expect(result).toEqual([
+        {
+          connectionId: 'conn-1',
+          externalOfferId: '7781896308',
+          internalVariantId: 'ol_variant_1',
+          publicationStatus: 'active',
+          validationMessages: ['note'],
+          lastStatusSyncedAt: syncedAt.toISOString(),
+        },
+      ]);
+    });
+  });
+
+  describe('refreshOfferStatus (#1760)', () => {
+    const body = { internalVariantId: 'ol_variant_1' };
+
+    it('returns the refreshed publication status', async () => {
+      offerStatusSync.refreshOne.mockResolvedValue('active');
+
+      const result = await controller.refreshOfferStatus('conn-1', '7781896308', body);
+
+      expect(offerStatusSync.refreshOne).toHaveBeenCalledWith('conn-1', {
+        externalOfferId: '7781896308',
+        internalVariantId: 'ol_variant_1',
+      });
+      expect(result).toEqual({ publicationStatus: 'active' });
+    });
+
+    it('throws 404 when live status is unavailable', async () => {
+      offerStatusSync.refreshOne.mockResolvedValue(null);
+
+      await expect(controller.refreshOfferStatus('conn-1', '7781896308', body)).rejects.toBeInstanceOf(
+        NotFoundException
+      );
     });
   });
 });

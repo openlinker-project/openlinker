@@ -47,6 +47,18 @@ export class ProductResponseDto {
   })
   categories!: string[] | null;
 
+  @ApiPropertyOptional({
+    type: 'array',
+    items: {
+      type: 'object',
+      properties: { name: { type: 'string' }, value: { type: 'string' } },
+    },
+    description:
+      'Source-platform product-level attributes (#1752), e.g. Brand / Material. ' +
+      'Distinct from variant-distinguishing attributes. Absent until a sync populates it.',
+  })
+  features?: { name: string; value: string }[];
+
   @ApiProperty({ description: 'Creation timestamp (ISO 8601)' })
   createdAt!: string;
 

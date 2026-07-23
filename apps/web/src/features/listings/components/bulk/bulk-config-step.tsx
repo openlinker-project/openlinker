@@ -1,5 +1,5 @@
 /**
- * Bulk wizard Step 1 — Config (thin shell, #1096)
+ * Bulk wizard Step 1 - Config (thin shell, #1096)
  *
  * Batch-wide settings applied to every row before review/edit. After #1096
  * this is a **thin, marketplace-agnostic shell**: it selects target
@@ -13,7 +13,7 @@
  * Form state is one React Hook Form keyed by `BulkConfigFormValues`; the
  * platform section writes its fields under `platformParams.*`. "Proceed" is
  * gated on an explicit `canProceed` predicate (shared-slice validity AND the
- * section's `isComplete`) — NOT `formState.isValid`, which is stale-until-touched.
+ * section's `isComplete`) - NOT `formState.isValid`, which is stale-until-touched.
  *
  * @module apps/web/src/features/listings/components/bulk
  */
@@ -21,6 +21,7 @@ import { Suspense, useEffect, useMemo, useState, type ReactElement } from 'react
 import { useForm } from 'react-hook-form';
 
 import { Alert, Button, FormField, Input, Select } from '../../../../shared/ui';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../../shared/config/demo-mode';
 import { useWriteAccess } from '../../../../shared/auth/use-permission';
@@ -110,7 +111,7 @@ export function BulkConfigStep({
   const demoMode = useDemoMode();
   const generateDescriptionAccess = useWriteAccess('listings:write', demoMode);
 
-  // ---- shared-slice validity (explicit, deterministic — not formState.isValid) ----
+  // ---- shared-slice validity (explicit, deterministic - not formState.isValid) ----
   const markupValid =
     values.pricingMode !== 'markup' ||
     (/^-?\d+(\.\d+)?$/.test(values.markupPercent.trim()) &&
@@ -183,7 +184,7 @@ export function BulkConfigStep({
         </h2>
         <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: 13 }}>
           Batch-wide defaults applied to all selected products. You can fine-tune any of
-          them — price, stock, and platform fields like dispatch time — per product in the
+          them - price, stock, and platform fields like dispatch time - per product in the
           next Review step (use <strong>Edit</strong> on a row).
         </p>
       </header>
@@ -331,7 +332,19 @@ export function BulkConfigStep({
           onChange={(e) => form.setValue('publishImmediately', e.target.checked, { shouldDirty: true })}
         />
         <span>
-          <strong>Publish immediately</strong>
+          <strong>Publish immediately</strong>{' '}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="bulk-editor__infotip" role="img" aria-label="About publish immediately">
+                &#9432;
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              Requests publication for every offer. The marketplace still decides: it can keep an
+              offer as a draft if required parameters are missing or invalid on its side (common on
+              Erli).
+            </TooltipContent>
+          </Tooltip>
           <small style={{ display: 'block', color: 'var(--text-muted)' }}>
             Uncheck to create all offers as drafts.
           </small>

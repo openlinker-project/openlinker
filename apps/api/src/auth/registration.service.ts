@@ -56,6 +56,7 @@ export class RegistrationService implements IRegistrationService {
     email: string,
     password: string,
     clientIp?: string,
+    analyticsConsent: boolean = false,
   ): Promise<void> {
     const enabled = this.configService.get<string>('OL_REGISTRATION_ENABLED', 'false');
     if (enabled.trim().toLowerCase() !== 'true') {
@@ -89,6 +90,7 @@ export class RegistrationService implements IRegistrationService {
       // step, but login is blocked until the user proves the address is theirs.
       // Normal mode: pending admin approval per the #1125 approval flow.
       status: demoMode ? 'pending_confirmation' : 'pending',
+      analyticsConsent,
     });
 
     if (demoMode) {

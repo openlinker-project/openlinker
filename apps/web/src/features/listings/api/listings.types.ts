@@ -153,6 +153,38 @@ export interface OfferCreationError {
   message: string;
 }
 
+/**
+ * Live marketplace publication status (#1760) — mirrors the backend neutral
+ * `OfferPublicationStatus`. Distinct from `OfferCreationStatus`: this is the
+ * steady-state status persisted in `offer_status_snapshots`, not OL's one-shot
+ * creation lifecycle. `'active'`/`'ended'` are terminal publications;
+ * `'activating'`/`'inactivating'` are transient async states.
+ */
+export const OfferPublicationStatusValues = [
+  'active',
+  'activating',
+  'inactivating',
+  'inactive',
+  'ended',
+] as const;
+export type OfferPublicationStatus = (typeof OfferPublicationStatusValues)[number];
+
+/** One offer's persisted live publication status for a product (#1760). */
+export interface OfferPublicationStatusResponse {
+  connectionId: string;
+  externalOfferId: string;
+  internalVariantId: string;
+  publicationStatus: OfferPublicationStatus;
+  validationMessages?: string[];
+  /** ISO 8601 timestamp of the last marketplace read. */
+  lastStatusSyncedAt: string;
+}
+
+/** Response of the manual single-offer refresh (#1760). */
+export interface RefreshOfferPublicationStatusResponse {
+  publicationStatus: OfferPublicationStatus;
+}
+
 export interface CreateOfferPrice {
   amount: number;
   currency: string;
@@ -489,6 +521,19 @@ export interface CategoryParameter {
 
 export interface CategoryParametersListResponse {
   parameters: CategoryParameter[];
+}
+
+/**
+ * One node of a category breadcrumb, ordered root -> leaf (#1752). Mirrors the
+ * BE `CategoryPathResponseDto` 1:1.
+ */
+export interface CategoryPathSegment {
+  id: string;
+  name: string;
+}
+
+export interface CategoryPathResponse {
+  path: CategoryPathSegment[];
 }
 
 /**
