@@ -55,7 +55,12 @@ Same pattern as InPost — needs an existing order to attach a shipment to.
 > - The Delivery panel shows `CARRIER: — (awaiting)` and never resolves the carrier (DPD tracking
 >   mapper doesn't emit `carrier` on the snapshot) — filed as #1775.
 > - On an Erli-sourced order the orders list/detail omit the delivery-method label + ship-by
->   (Erli order snapshot carries no `shipping.methodName` / `dispatchByAt`) — filed as #1776.
+>   (Erli order snapshot carries no `shipping.methodName` / `dispatchByAt`) — filed as #1776.[^1776]
+
+[^1776]: #1776 was filed for the narrow finding above (missing delivery-method label + ship-by on
+    Erli-sourced orders) but has since been promoted to the epic "[EPIC] Orders - mapping-aware
+    delivery + non-Allegro ship-by", covering the full mapping-aware delivery-resolution surface.
+    The sub-finding recorded here is one item within that broader epic scope.
 
 ## Part C — Tracking status sync
 

@@ -53,18 +53,19 @@ tell me and I'll restart the tunnel + update the connection config.
 
 ![WooCommerce wp-admin Edit Product — adidas Originals Adicolor Classics 3-Stripes Tee, price 149 zł, description + product image correctly carried over from the master, status Draft](screenshots/woocommerce/05-wpadmin-product-created.png)
 
-> **Finding:** none on the happy path. Along the way, fixed 3 real bugs surfaced by this
-> walkthrough (all shipped, not just noted):
+> **Finding:** none on the happy path. Along the way, fixed 4 real UI bugs surfaced by this
+> walkthrough (all shipped, not just noted), plus one UX improvement:
 > - Publish-to-shop dialog: background content was visible through the overlay (missing
->   backdrop-blur) and, separately, product rows with long SKU/EAN text could overflow past the
->   dialog's rounded border (missing `overflow-x`/`min-width:0` on the CSS Grid picker list).
+>   backdrop-blur).
+> - Publish-to-shop dialog: product rows with long SKU/EAN text could overflow past the dialog's
+>   rounded border (missing `overflow-x`/`min-width:0` on the CSS Grid picker list).
 > - Toast notifications rendered *underneath* an open dialog (`z-index` collision) — invisible in
 >   practice.
-> - Configure step had no way back to the product-selection tray (only "Cancel", which discards
->   everything) — added a "← Back" button.
 > - Stock/price fields showed a blank input behind a "master" placeholder instead of the real
 >   current master value — now prefilled (editable) from master price/inventory, and "Use master
 >   stock/price for all" re-fills from master instead of silently clearing to blank.
+> - _UX improvement (not a bug):_ the Configure step had no way back to the product-selection tray
+>   (only "Cancel", which discards everything) - added a "← Back" button.
 
 ## Part C — Order ingestion (not applicable for this connection)
 
