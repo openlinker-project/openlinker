@@ -175,20 +175,45 @@ describe('InfaktHttpClient', () => {
     });
   });
 
-  describe('empty-body success responses (#1797)', () => {
-    it('does not throw on a 202 Accepted with an empty body (e.g. deliver_via_email.json)', async () => {
+  describe('get/post/put still require a JSON body on success', () => {
+    it('throws on a 2xx with an empty body (T stays honestly non-undefined)', async () => {
       fetchMock.mockResolvedValue(fakeResponse(202, ''));
-      await expect(client.post('invoices/x/deliver_via_email.json', {})).resolves.toBeUndefined();
+      await expect(client.post('some/path.json', {})).rejects.toBeInstanceOf(InfaktApiError);
     });
 
-    it('does not throw on a 204 No Content with a whitespace-only body', async () => {
-      fetchMock.mockResolvedValue(fakeResponse(204, '   '));
-      await expect(client.get('some/path.json')).resolves.toBeUndefined();
-    });
-
-    it('still throws on a non-JSON body when the status is a 2xx WITH content', async () => {
+    it('throws on a non-JSON body when the status is a 2xx WITH content', async () => {
       fetchMock.mockResolvedValue(fakeResponse(200, '<html>not json</html>'));
       await expect(client.get('some/path.json')).rejects.toBeInstanceOf(InfaktApiError);
+    });
+  });
+
+  describe('postForEffect (#1797)', () => {
+    it('resolves on a 202 Accepted with an empty body (e.g. deliver_via_email.json)', async () => {
+      fetchMock.mockResolvedValue(fakeResponse(202, ''));
+      await expect(
+        client.postForEffect('invoices/x/deliver_via_email.json', {}),
+      ).resolves.toBeUndefined();
+    });
+
+    it('resolves on a 2xx with a non-empty, even non-JSON body (body is ignored on success)', async () => {
+      fetchMock.mockResolvedValue(fakeResponse(200, '<html>ok</html>'));
+      await expect(client.postForEffect('some/path.json', {})).resolves.toBeUndefined();
+    });
+
+    it('throws InfaktApiError on a non-2xx JSON response', async () => {
+      fetchMock.mockResolvedValue(fakeResponse(422, '{"error":"invalid"}'));
+      await expect(client.postForEffect('some/path.json', {})).rejects.toMatchObject({
+        statusCode: 422,
+        responseBody: { error: 'invalid' },
+      });
+    });
+
+    it('throws InfaktApiError carrying the raw text when the error body is not JSON', async () => {
+      fetchMock.mockResolvedValue(fakeResponse(502, '<html>Bad Gateway</html>'));
+      await expect(client.postForEffect('some/path.json', {})).rejects.toMatchObject({
+        statusCode: 502,
+        responseBody: '<html>Bad Gateway</html>',
+      });
     });
   });
 

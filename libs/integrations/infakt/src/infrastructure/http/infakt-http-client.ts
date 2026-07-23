@@ -63,6 +63,43 @@ export class InfaktHttpClient implements IInfaktHttpClient {
     return this.parse<T>(res, 'PUT', path);
   }
 
+  /**
+   * POST that triggers a provider-side effect with no meaningful response
+   * body to deserialize (#1797) — e.g. `deliver_via_email.json`, a
+   * fire-and-forget async trigger that replies `202 Accepted` with an empty
+   * body. Unlike `post<T>()`, this never attempts to JSON-parse a successful
+   * response (whatever shape/emptiness it has), so `IInfaktHttpClient`'s
+   * typed `get`/`post`/`put` keep their honest `Promise<T>` (never
+   * `undefined`) contract for endpoints that really do return content. A
+   * non-2xx response still throws `InfaktApiError` with the same shape
+   * `parse()` produces (JSON body when parseable, else the raw text).
+   */
+  async postForEffect(path: string, body: unknown): Promise<void> {
+    const url = this.buildUrl(path);
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { ...this.headers(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      return;
+    }
+    const text = await res.text();
+    let parsedBody: unknown = text;
+    try {
+      parsedBody = JSON.parse(text);
+    } catch {
+      // Keep the raw text — Infakt error bodies aren't guaranteed JSON.
+    }
+    // Don't log the response body — see the same note in `parse()`.
+    this.logger.warn(`Infakt API POST ${path} → ${res.status}`);
+    throw new InfaktApiError(
+      `Infakt API POST ${path} failed with status ${res.status}`,
+      res.status,
+      parsedBody,
+    );
+  }
+
   async getBinary(path: string, query?: Record<string, string>): Promise<InfaktBinaryResponse> {
     const url = this.buildUrl(path, query);
     const res = await fetch(url, { headers: this.headers() });
@@ -122,16 +159,6 @@ export class InfaktHttpClient implements IInfaktHttpClient {
 
   private async parse<T>(res: Response, method: string, path: string): Promise<T> {
     const text = await res.text();
-
-    // A successful response with an empty body (e.g. `deliver_via_email.json`
-    // replies `202 Accepted` with nothing to echo back — it's a fire-and-forget
-    // async job on Infakt's side, #1797) is valid and must not be treated as a
-    // parse failure. Only a 2xx status qualifies; an empty error body still
-    // falls through to the non-JSON branch below.
-    if (res.ok && text.trim().length === 0) {
-      return undefined as T;
-    }
-
     let json: unknown;
     try {
       json = JSON.parse(text);

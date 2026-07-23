@@ -135,18 +135,6 @@ describe('InvoicingIssueHandler', () => {
       expect(result).toEqual({ outcome: 'ok' });
       expect(invoiceService.issueInvoice.mock.calls[0][0].buyer.email).toBeNull();
     });
-
-    it('a present-but-non-string, non-null buyer.email ⇒ business_failure (F5)', async () => {
-      const result = await handler.execute(
-        makeJob(
-          makePayload({
-            buyer: { ...makePayload().buyer, email: 42 as unknown as string },
-          }),
-        ),
-      );
-      expect(result).toEqual({ outcome: 'business_failure' });
-      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
-    });
   });
 
   describe('deep payload validation ⇒ business_failure (F5)', () => {
@@ -169,6 +157,9 @@ describe('InvoicingIssueHandler', () => {
       })],
       ['half-populated taxId', makePayload({
         buyer: { ...makePayload().buyer, taxId: { scheme: 'pl-nip', value: '' } },
+      })],
+      ['present but non-string, non-null buyer.email (#1797)', makePayload({
+        buyer: { ...makePayload().buyer, email: 42 as unknown as string },
       })],
       ['missing connectionId', makePayload({ connectionId: '' })],
       ['present but empty saleDate', makePayload({ saleDate: '' })],

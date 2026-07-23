@@ -361,7 +361,7 @@ export class InfaktInvoicingAdapter
     // (2026-07-01): the API wants `company_name` / `postal_code`, not the
     // `name` / `post_code` this previously sent — the latter is silently
     // rejected/ignored, so first-time client creation always 422'd.
-    // #1797: without `email`, Infakt creates the client with no address on
+    // #1797: without `email`, Infakt creates the client with no email on
     // file, so a later `deliver_via_email.json` call 422s ("adres e-mail
     // Klienta jest nieznany") — confirmed live against the sandbox.
     const payload = {
@@ -804,6 +804,10 @@ export class InfaktInvoicingAdapter
    * override — inFakt always uses the client's stored email, so the response
    * `recipient` is always null (inFakt doesn't echo it back). A provider
    * rejection propagates as-is (the controller maps it to a 502).
+   *
+   * `deliver_via_email.json` replies `202 Accepted` with an empty body (it's
+   * a fire-and-forget async trigger, #1797) — `postForEffect` tolerates that,
+   * unlike the generic `post<T>()` used elsewhere in this adapter.
    */
   async sendByEmail(cmd: SendInvoiceByEmailCommand): Promise<SendInvoiceByEmailResult> {
     const locale = toInfaktEmailLocale(cmd.locale);
@@ -812,7 +816,7 @@ export class InfaktInvoicingAdapter
       ...(locale ? { locale } : {}),
       ...(cmd.sendCopy !== undefined ? { send_copy: cmd.sendCopy } : {}),
     };
-    await this.http.post(
+    await this.http.postForEffect(
       `invoices/${encodeURIComponent(cmd.externalInvoiceId)}/deliver_via_email.json`,
       payload,
     );
