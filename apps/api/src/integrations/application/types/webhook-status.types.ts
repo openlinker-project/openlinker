@@ -5,7 +5,10 @@
  * derived from recorded deliveries + whether a signing secret is stored.
  * Two independent axes: whether the subscription has ever delivered
  * (activation) and whether HMAC signature verification is configured
- * (signature, optional per the inFakt model).
+ * (signature). A stored signing secret is required in practice - a
+ * delivery with a missing or invalid secret is rejected before it is
+ * recorded - so `off` means the connection cannot yet accept any
+ * delivery, not that signing is genuinely optional.
  *
  * @module apps/api/src/integrations/application/types
  */

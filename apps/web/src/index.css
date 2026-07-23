@@ -15237,17 +15237,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   font-weight: 600;
   letter-spacing: 0.02em;
 }
-.infakt-webhook__status-val--ok { color: var(--status-success); }
-.infakt-webhook__status-val--warn { color: var(--status-warning-fg); }
-.infakt-webhook__status-val--err { color: var(--status-error); }
 .infakt-webhook__status-val--muted { color: var(--text-muted); font-weight: 400; }
-.infakt-webhook__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-pill);
-  background: currentColor;
-  flex: none;
-}
 
 /* the exchange: a bidirectional relay with a center seam */
 .infakt-webhook__exchange {
@@ -15305,16 +15295,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   background: var(--accent-primary-soft);
   color: var(--accent-primary-soft-strong);
   border: 1px solid var(--accent-primary-border);
-}
-.infakt-webhook__tag {
-  margin-left: auto;
-  font-size: 9.5px;
-  letter-spacing: 0.06em;
-  padding: 2px var(--space-2);
-  border-radius: var(--radius-sm);
-  background: var(--bg-strong);
-  border: 1px solid var(--border-default);
-  color: var(--text-muted);
 }
 .infakt-webhook__lane-label {
   margin: 0;
