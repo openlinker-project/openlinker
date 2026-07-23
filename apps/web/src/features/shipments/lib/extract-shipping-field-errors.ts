@@ -22,10 +22,15 @@ import type { StructuredError } from '../../../shared/types/structured-error.typ
 interface FieldErrorsBody {
   providerCode?: string;
   details: {
-    fieldErrors: Record<string, string[]>;
+    fieldErrors: Record<string, readonly string[]>;
   };
 }
 
+// Assumes a FLAT `fieldErrors: Record<string, string[]>` (dotted keys, e.g.
+// `receiver.first_name`). If a nested ShipX body reaches the FE before #1816
+// flattens it on the backend, `Object.values(fieldErrors)` are objects rather
+// than string arrays, this guard returns false, and the Alert degrades to the
+// bare generic message — no crash, just no per-field breakdown.
 function isFieldErrorsBody(value: unknown): value is FieldErrorsBody {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as { providerCode?: unknown; details?: unknown };
