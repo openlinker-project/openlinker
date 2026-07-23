@@ -168,18 +168,19 @@ export type ErliProductPatchBody = Pick<
 >;
 
 /**
- * Provisional read-side product resource — `GET /products/{externalId}` (#988 /
- * #992). The single field #988 needs is {@link ErliProductResource.frozenFields}:
- * Erli marks seller-panel manual edits `frozen` (ADR-025 §4b, per-nested-field
- * granularity), and OL must NOT overwrite a frozen field on a subsequent PATCH.
+ * Read-side product resource — `GET /products/{externalId}` (#988 / #992). The
+ * field #988 needs is {@link ErliProductResource.frozen}: Erli marks seller-panel
+ * manual edits `frozen` (ADR-025 §4b, per-nested-field granularity), and OL must
+ * NOT overwrite a frozen field on a subsequent PATCH.
  *
- * PROVISIONAL: the exact wire shape of the frozen marker is unconfirmed until
- * the #992 sandbox spike. Modelled here as a flat list of frozen Erli field
- * names (e.g. `["price","name","description","stock"]`) — the most plausible
- * shape and the simplest to evaluate per-field. If #992 reveals a different
- * shape (e.g. a per-field `{ value, frozen }` object), this type and
- * {@link ErliOfferManagerAdapter.fetchErliProduct}'s consumers are the single
- * change point. #989 reuses this same read path for offer-status reconciliation.
+ * The live shape (verified against the sandbox and
+ * `docs/architecture/adrs/erli-sandbox-swagger.json`, #1737) is a `frozen` OBJECT
+ * keyed by Erli field name with boolean values, e.g.
+ * `{ "name": false, "price": true, "stock": false, ... }`. A field is frozen iff
+ * `frozen[<erliName>] === true`. {@link ErliOfferManagerAdapter.fetchErliProduct}'s
+ * consumers ({@link PATCH_KEY_TO_ERLI_FROZEN_NAME}, `ERLI_FROZEN_STOCK_FIELD`)
+ * are the single change point for the OL-key → Erli-name mapping. #989 reuses this
+ * same read path for offer-status reconciliation.
  */
 /**
  * Erli-side publication status of a product/offer (read side, #989).
@@ -225,12 +226,16 @@ export interface ErliProductCategoryNode {
 
 export interface ErliProductResource {
   /**
-   * Erli field names the seller has frozen via manual panel edits (#988). May
-   * include `"stock"` (#1066): reconciliation reads it to populate the per-offer
-   * frozen-stock cache flag the hot quantity path honors. No shape change — the
-   * flat `string[]` already covers it (#992-provisional, same as the other names).
+   * Per-field frozen markers the seller has set via manual panel edits (#988):
+   * a `Record<erliFieldName, boolean>` where `true` means frozen. Verified live
+   * shape (#1737) — the API returns an object, e.g.
+   * `{ name: false, price: true, stock: false, ... }`, not a flat name list.
+   * Includes `stock` (#1066): reconciliation reads `frozen.stock === true` to
+   * populate the per-offer frozen-stock cache flag the hot quantity path honors.
+   * Absent (`undefined`) means the read carried no frozen info (bodyless 2xx or
+   * the 404 fail-open branch) — treated as "unknown", never "nothing frozen".
    */
-  frozenFields?: string[];
+  frozen?: Record<string, boolean>;
   /** Current Erli-side publication status (#989). */
   status?: ErliProductStatus;
   /** Rejection / inactivation detail Erli supplies, when present (#989). */

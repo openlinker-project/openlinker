@@ -13,7 +13,7 @@
  *
  * @module apps/web/src/features/listings/components
  */
-import type { CatalogProduct, CategoryParameter } from '../api/listings.types';
+import type { CatalogProduct, CategoryParameter, OfferParameter } from '../api/listings.types';
 import type {
   CategoryParameterFormValues,
   FormParameterValue,
@@ -34,7 +34,47 @@ import type {
  * literals with a config map keyed by connection locale + parameter role,
  * so each adapter can declare its own mapping table.
  */
-const EAN_NAME_PATTERNS = ['ean (gtin)', 'ean', 'gtin', 'kod ean'];
+export const EAN_NAME_PATTERNS = ['ean (gtin)', 'ean', 'gtin', 'kod ean'];
+
+/**
+ * Whether a category parameter is the EAN/GTIN slot, matched (case-insensitive,
+ * trimmed) against {@link EAN_NAME_PATTERNS}. Shared with the bulk editor, which
+ * hides this parameter from its rendered category-parameters UI and fills its
+ * value from the dedicated offer-EAN field instead (#1741) - so the barcode has
+ * a single source and the two can never diverge.
+ */
+export function isEanParameterName(name: string): boolean {
+  return EAN_NAME_PATTERNS.includes(name.toLowerCase().trim());
+}
+
+/**
+ * De-duplicated EAN wire injection (#1741). Shared by the bulk editor and the
+ * single-offer wizards (Allegro + Erli borrowed-taxonomy): the EAN/GTIN category
+ * parameter is hidden from the rendered category-parameters UI, and the offer's
+ * dedicated EAN value (the picked variant's barcode, or the offer-EAN field) is
+ * its single source. At submit the param's value is re-derived from that
+ * effective EAN so a category that *requires* the GTIN product parameter still
+ * gets it and the two can never diverge.
+ *
+ * Only fires when the category schema actually contains an EAN/GTIN slot. Any
+ * value the (now-hidden) param field carried is dropped in favour of the
+ * dedicated field; an empty effective EAN omits the param (it is optional). The
+ * param keeps its own `section` (`product` for a GTIN slot, `offer` when the
+ * schema tags it so).
+ */
+export function injectEanParameter(
+  serialized: OfferParameter[],
+  categoryParameters: CategoryParameter[],
+  effectiveEan: string | null,
+): OfferParameter[] {
+  const eanParam = categoryParameters.find((p) => isEanParameterName(p.name));
+  if (!eanParam) return serialized;
+  const withoutEan = serialized.filter((p) => p.id !== eanParam.id);
+  const ean = effectiveEan?.trim() ?? '';
+  if (ean === '') return withoutEan;
+  const section = eanParam.section === 'offer' ? 'offer' : 'product';
+  return [...withoutEan, { id: eanParam.id, values: [ean], section }];
+}
 const CONDITION_NAME_PATTERNS = ['stan'];
 const NEW_VALUE_PATTERNS = ['nowy', 'new', 'nowe', 'nowa'];
 // Canonical Allegro brand-field names only. `Producent` (free-text manufacturer

@@ -100,6 +100,11 @@ export type {
 export type { BulkListingBatchRepositoryPort } from './domain/ports/bulk-listing-batch-repository.port';
 export { BulkListingBatchNotFoundException } from './domain/exceptions/bulk-listing-batch-not-found.exception';
 export { EmptyBulkSubmissionException } from './domain/exceptions/empty-bulk-submission.exception';
+export { InvalidEanException } from './domain/exceptions/invalid-ean.exception';
+export { DuplicateBatchEanException } from './domain/exceptions/duplicate-batch-ean.exception';
+export { CurrencyMismatchException } from './domain/exceptions/currency-mismatch.exception';
+export { InvalidOverrideKeyException } from './domain/exceptions/invalid-override-key.exception';
+export { ExpandedOfferCeilingExceededException } from './domain/exceptions/expanded-offer-ceiling-exceeded.exception';
 export { BulkBatchAdvancement } from './domain/entities/bulk-batch-advancement.entity';
 export type { BulkBatchAdvancementRepositoryPort } from './domain/ports/bulk-batch-advancement-repository.port';
 export { BulkChildOutcomeValues } from './domain/types/bulk-child-outcome.types';
@@ -266,6 +271,7 @@ export type {
   IOfferStatusSyncService,
   OfferStatusSyncOptions,
 } from './application/services/offer-status-sync.service.interface';
+export type { IOfferStatusReadService } from './application/services/offer-status-read.service.interface';
 export type { IOfferStockRestoreService } from './application/interfaces/offer-stock-restore.service.interface';
 export { OfferPollNotSupportedException } from './domain/exceptions/offer-poll-not-supported.exception';
 export { OfferNotFoundOnMarketplaceException } from './domain/exceptions/offer-not-found-on-marketplace.exception';

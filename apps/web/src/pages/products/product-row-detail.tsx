@@ -19,6 +19,7 @@ import { TimeDisplay } from '../../shared/ui/time-display';
 import { useProductQuery } from '../../features/products/hooks/use-product-query';
 import { useInventoryQuery } from '../../features/inventory/hooks/use-inventory-query';
 import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
+import { OfferPublicationStatusPanel } from '../../features/listings/components/offer-publication-status-panel';
 import type { Product, ProductVariant } from '../../features/products/api/products.types';
 import type { InventoryItem } from '../../features/inventory/api/inventory.types';
 import type { Connection } from '../../features/connections';
@@ -163,6 +164,10 @@ export function ProductRowDetail({
             ))}
           </div>
         )}
+      </div>
+      <div className="products-detail-publication-status">
+        <div className="products-detail-field__label">Live marketplace status</div>
+        <OfferPublicationStatusPanel productId={product.id} />
       </div>
     </div>
   );

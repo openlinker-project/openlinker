@@ -1,17 +1,19 @@
 /**
- * Bulk batch progress table (#741 / #806)
+ * Bulk batch progress table (#741 / #806 / #1741)
  *
- * One row per `BulkBatchRecordSummary`. Variant ID as the identity column
- * (the BE summary doesn't carry product names today; mapping variant→product
- * for the row label is a follow-up tracked alongside the Smart-classification
- * surface — see plan §9 follow-up #6 candidate). Status pill + offer link /
- * failure reason + timestamp complete the row.
+ * A per-product rollup (#1741) sits above the flat per-variant records table.
+ * The rollup groups records by product and shows "n of m live" progress with a
+ * bar; a group with a failed variant reads "n/m live · {variant} failed -
+ * listing incomplete" so the operator sees which listing is partial.
  *
- * Failed rows show the first error message inline (truncated) and a "Details"
- * button that opens the per-record failure dialog (#806) — the structured
- * errors ride along on the polled batch-summary payload, so no extra fetch.
+ * The flat table renders one row per `BulkBatchRecordSummary` (variant label
+ * preferred over the raw variant id). Status pill + offer link / failure reason
+ * + timestamp complete the row. Failed rows show the first error message inline
+ * (truncated) and a "Details" button that opens the per-record failure dialog
+ * (#806) - the structured errors ride along on the polled batch-summary payload,
+ * so no extra fetch.
  *
- * The Smart classification badge is intentionally not rendered here — see
+ * The Smart classification badge is intentionally not rendered here - see
  * implementation-plan §2 (parent AC-7 deferral).
  *
  * @module apps/web/src/features/listings/components/bulk
@@ -36,22 +38,39 @@ interface BulkBatchProgressTableProps {
   buildExternalOfferUrl?: (externalOfferId: string) => string;
 }
 
+/** Statuses that count as a live offer for the per-product rollup (#1741). */
+const LIVE_STATUSES: readonly OfferCreationStatus[] = ['active', 'draft', 'reused'];
+
+/**
+ * Above this many flat records, the per-variant DataTable virtualizes (#1741 AC
+ * J). The DataTable primitive already wraps `@tanstack/react-virtual`; a bulk
+ * batch rarely exceeds a few hundred records so a modest threshold keeps small
+ * batches on the plain (fully-rendered, no fixed-height container) path.
+ */
+const VIRTUALIZE_THRESHOLD = 200;
+
 export function BulkBatchProgressTable({
   records,
   buildExternalOfferUrl,
 }: BulkBatchProgressTableProps): ReactElement {
   const [detailRecord, setDetailRecord] = useState<BulkBatchRecordSummary | null>(null);
 
+  const groups = useMemo(() => groupByProduct(records), [records]);
+  const hasFailedGroup = groups.some((g) => g.failedLabel !== null);
+
   const columns: DataTableColumn<BulkBatchRecordSummary>[] = useMemo(
     () => [
       {
-        id: 'variantId',
-        header: 'Variant ID',
-        cell: (record) => (
-          <span className="mono-text" title={record.internalVariantId}>
-            {record.internalVariantId}
-          </span>
-        ),
+        id: 'variant',
+        header: 'Variant',
+        cell: (record) =>
+          record.variantLabel ? (
+            <span title={record.internalVariantId}>{record.variantLabel}</span>
+          ) : (
+            <span className="mono-text" title={record.internalVariantId}>
+              {record.internalVariantId}
+            </span>
+          ),
       },
       {
         id: 'status',
@@ -68,7 +87,7 @@ export function BulkBatchProgressTable({
             record.status === 'reused'
           ) {
             if (!record.externalOfferId) {
-              return <span className="dim">—</span>;
+              return <span className="dim">-</span>;
             }
             const url = buildExternalOfferUrl?.(record.externalOfferId);
             return url ? (
@@ -109,7 +128,7 @@ export function BulkBatchProgressTable({
               </span>
             );
           }
-          return <span className="dim">—</span>;
+          return <span className="dim">-</span>;
         },
       },
       {
@@ -118,7 +137,7 @@ export function BulkBatchProgressTable({
         align: 'right',
         cell: (record) =>
           record.status === 'pending' ? (
-            <span className="mono-text dim">—</span>
+            <span className="mono-text dim">-</span>
           ) : (
             <span className="mono-text">
               <TimeDisplay iso={record.updatedAt} format="datetime" />
@@ -132,11 +151,28 @@ export function BulkBatchProgressTable({
 
   return (
     <>
+      {groups.length > 0 ? (
+        <section className="bulk-progress" aria-label="Per-product progress">
+          <ul className="bulk-progress__list">
+            {groups.map((group) => (
+              <ProductRollupRow key={group.key} group={group} />
+            ))}
+          </ul>
+          {hasFailedGroup ? (
+            <p className="dim" style={{ marginTop: 'var(--space-3)', fontSize: 12 }}>
+              Retry re-runs the saved data; a data fix is a new batch excluding the
+              already-live siblings.
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
       <DataTable<BulkBatchRecordSummary>
         caption="Bulk batch records"
         columns={columns}
         rows={records}
         rowKey={(record) => record.id}
+        virtualize={records.length > VIRTUALIZE_THRESHOLD}
       />
 
       <Dialog
@@ -160,6 +196,84 @@ export function BulkBatchProgressTable({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+interface ProductGroup {
+  key: string;
+  name: string;
+  live: number;
+  total: number;
+  /** Label of the first failed variant, or null when the group has no failure. */
+  failedLabel: string | null;
+}
+
+function groupByProduct(records: BulkBatchRecordSummary[]): ProductGroup[] {
+  const order: string[] = [];
+  const byKey = new Map<string, BulkBatchRecordSummary[]>();
+
+  for (const record of records) {
+    const key = record.productId ?? record.internalVariantId;
+    const bucket = byKey.get(key);
+    if (bucket) {
+      bucket.push(record);
+    } else {
+      byKey.set(key, [record]);
+      order.push(key);
+    }
+  }
+
+  return order.map((key) => {
+    const bucket = byKey.get(key) ?? [];
+    const live = bucket.filter((r) => LIVE_STATUSES.includes(r.status)).length;
+    const firstFailed = bucket.find((r) => r.status === 'failed');
+    const failedLabel = firstFailed
+      ? firstFailed.variantLabel ?? firstFailed.internalVariantId
+      : null;
+    return {
+      key,
+      name: bucket[0]?.productName ?? 'Product',
+      live,
+      total: bucket.length,
+      failedLabel,
+    };
+  });
+}
+
+function ProductRollupRow({ group }: { group: ProductGroup }): ReactElement {
+  const { name, live, total, failedLabel } = group;
+  const incomplete = failedLabel !== null;
+  const complete = !incomplete && live === total;
+  const pct = total > 0 ? Math.round((live / total) * 100) : 0;
+
+  const rowClass = ['bulk-progress__row', incomplete ? 'bulk-progress__row--incomplete' : '']
+    .filter(Boolean)
+    .join(' ');
+  const barClass = ['bulk-progress__bar', incomplete ? 'bulk-progress__bar--warn' : '']
+    .filter(Boolean)
+    .join(' ');
+
+  const chipTone = incomplete ? 'warning' : complete ? 'success' : 'neutral';
+  const chipLabel = incomplete ? 'incomplete' : complete ? 'complete' : 'in progress';
+
+  const summary = incomplete
+    ? `${live}/${total} live · ${failedLabel} failed - listing incomplete`
+    : `${live} of ${total} live`;
+
+  return (
+    <li className={rowClass}>
+      <div className={barClass}>
+        <span style={{ width: `${pct}%` }} />
+      </div>
+      <div className="bulk-progress__name">
+        {name}
+        <small>{summary}</small>
+      </div>
+      <span className={`bulk-chip bulk-chip--${chipTone}`}>
+        <span className="bulk-chip__dot" aria-hidden="true" />
+        {chipLabel}
+      </span>
+    </li>
   );
 }
 

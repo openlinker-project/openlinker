@@ -287,7 +287,7 @@ describe('ErliCreateOfferWizard', () => {
       expect(screen.queryByPlaceholderText(/e\.g\. 12345/i)).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: /next/i }));
 
-      // Category step — pick the leaf via the reused CategoryPicker.
+      // Category step - pick the leaf via the reused CategoryPicker.
       const selectButton = await screen.findByRole('button', { name: /^select$/i });
       fireEvent.click(selectButton);
       await waitFor(() =>
@@ -311,6 +311,80 @@ describe('ErliCreateOfferWizard', () => {
       expect(request.overrides?.categoryId).toBe('12345');
       expect(request.overrides?.parameters).toEqual([
         { id: 'p_stan', valuesIds: ['nowy'], section: 'offer' },
+      ]);
+    });
+
+    it('hides the borrowed EAN/GTIN param but injects the variant EAN into overrides.parameters (#1741)', async () => {
+      const mockApi = mocks(productWith(['https://cdn.example.com/a.jpg']), {
+        connections: { list: vi.fn().mockResolvedValue([erliConnectionWithCategoryAccess]) },
+        listings: {
+          createOffer: vi
+            .fn()
+            .mockResolvedValue({ jobId: 'job-1', offerCreationRecordId: 'rec-1' }),
+          resolveCategory: vi.fn().mockResolvedValue({ allegroCategoryId: null, method: 'manual' }),
+          getCategoryParameters: vi.fn().mockResolvedValue({
+            parameters: [
+              {
+                id: 'p_ean',
+                name: 'EAN (GTIN)',
+                type: 'string',
+                required: false,
+                section: 'product',
+                restrictions: {},
+              },
+              {
+                id: 'p_material',
+                name: 'Material',
+                type: 'string',
+                required: false,
+                section: 'product',
+                restrictions: {},
+              },
+            ],
+          }),
+        },
+        mappings: {
+          getAllegroCategories: vi
+            .fn()
+            .mockResolvedValue([{ id: '12345', name: 'Test Category', parentId: null, leaf: true }]),
+        },
+      });
+      renderWithProviders(
+        <ErliCreateOfferWizard
+          connection={erliConnectionWithCategoryAccess}
+          onCancel={vi.fn()}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await pickVariantAndAdvance();
+      fireEvent.change(await screen.findByLabelText(/^price \(PLN\)$/i), {
+        target: { value: '99.99' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+      // Category step - pick the leaf.
+      fireEvent.click(await screen.findByRole('button', { name: /^select$/i }));
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /^selected$/i })).toBeInTheDocument(),
+      );
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+      // Category-parameters step - a non-EAN param renders; the borrowed EAN/GTIN
+      // param is de-duplicated and NOT rendered as its own field.
+      await screen.findByLabelText('Material');
+      expect(screen.queryByLabelText(/ean \(gtin\)/i)).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+      fireEvent.click(await screen.findByRole('button', { name: /create offer/i }));
+
+      const createOffer = vi.mocked(mockApi.listings.createOffer);
+      await waitFor(() => expect(createOffer).toHaveBeenCalledTimes(1));
+      const [, request] = createOffer.mock.calls[0] as [string, CreateOfferRequest];
+      // The variant barcode is the single source, injected into the GTIN slot.
+      expect(request.overrides?.parameters).toEqual([
+        { id: 'p_ean', values: ['5901234567890'], section: 'product' },
       ]);
     });
 

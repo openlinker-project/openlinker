@@ -65,6 +65,8 @@ import { CategoryParametersStep } from './category-parameters-step';
 import {
   autoPrefillParameters,
   collectUnmatchedBrandHints,
+  injectEanParameter,
+  isEanParameterName,
   prefillFromCatalogProduct,
 } from './auto-prefill-parameters';
 import { CatalogProductMatchPanel } from './catalog-product-match-panel';
@@ -395,6 +397,14 @@ export function AllegroCreateOfferWizard({
     () => categoryParametersQuery.data ?? [],
     [categoryParametersQuery.data],
   );
+  // The EAN/GTIN category parameter is hidden from the rendered UI (Step 3 +
+  // Review) - its value is owned by the picked variant's barcode and re-injected
+  // at submit (#1741), mirroring the bulk editor. The full `categoryParameters`
+  // set is kept for serialization; only the display/validation set is filtered.
+  const renderableCategoryParameters = useMemo(
+    () => categoryParameters.filter((p) => !isEanParameterName(p.name)),
+    [categoryParameters],
+  );
 
   // Auto-prefill EAN/Stan/brand/MPN when the parameter schema first arrives
   // for the current (connectionId, categoryId, internalVariantId) triple.
@@ -671,10 +681,13 @@ export function AllegroCreateOfferWizard({
     // serialiser drops empty/missing values, so an under-filled draft just
     // produces a smaller payload — submission still surfaces server-side
     // validation errors at the Review step).
-    if (stepIndex === 2 && categoryParameters.length > 0) {
+    if (stepIndex === 2 && renderableCategoryParameters.length > 0) {
       const values =
         (form.getValues('parameters') as CategoryParameterFormValues | undefined) ?? {};
-      const result = buildParametersZodSchema(categoryParameters).safeParse(values);
+      // Validate the rendered params only - the hidden EAN/GTIN slot is filled
+      // from the dedicated variant barcode at submit, not by the operator, so it
+      // must not be a client-side required-field blocker (#1741).
+      const result = buildParametersZodSchema(renderableCategoryParameters).safeParse(values);
       if (!result.success) {
         // Surface per-field issues onto the form — the renderer reads them
         // via `formState.errors['parameters.{paramId}']`.
@@ -742,12 +755,11 @@ export function AllegroCreateOfferWizard({
     // without a `section` value (a stale cache predating #417). Catch the typed
     // error and surface it via `staleSchemaError` so the operator gets an
     // actionable "reload the wizard" message — anything else rethrows.
+    const formParameters =
+      (values.parameters as CategoryParameterFormValues | undefined) ?? {};
     let parameters: OfferParameter[];
     try {
-      parameters = categoryParametersToOfferParameters(
-        (values.parameters as CategoryParameterFormValues | undefined) ?? {},
-        categoryParameters,
-      );
+      parameters = categoryParametersToOfferParameters(formParameters, categoryParameters);
     } catch (error) {
       if (error instanceof MissingCategoryParameterSectionError) {
         setStaleSchemaError(error.parameterName);
@@ -755,6 +767,14 @@ export function AllegroCreateOfferWizard({
       }
       throw error;
     }
+    // Fill the (hidden) EAN/GTIN category slot from the picked variant's barcode
+    // so it can never diverge; empty EAN omits it (#1741). Falls back to any EAN
+    // carried in the form state (the retry-snapshot path, where no variant is
+    // re-picked) so a required-GTIN category still gets its value on retry.
+    const eanParam = categoryParameters.find((p) => isEanParameterName(p.name));
+    const formEan = eanParam ? formParameters[eanParam.id] : undefined;
+    const effectiveEan = pickedVariantEan ?? (typeof formEan === 'string' ? formEan : null);
+    parameters = injectEanParameter(parameters, categoryParameters, effectiveEan);
 
     const request: CreateOfferRequest = {
       internalVariantId: values.internalVariantId,
@@ -1157,7 +1177,7 @@ export function AllegroCreateOfferWizard({
                     />
                   ) : null}
                   <CategoryParametersStep
-                    parameters={categoryParameters}
+                    parameters={renderableCategoryParameters}
                     formNamespace="parameters"
                     prefilledIds={prefilledIds}
                     extraHints={extraHints}
@@ -1260,7 +1280,7 @@ export function AllegroCreateOfferWizard({
               <dd>{values.publishImmediately ? 'Yes' : 'No (create as draft)'}</dd>
               {renderReviewParametersBlock(
                 (values.parameters as CategoryParameterFormValues | undefined) ?? {},
-                categoryParameters,
+                renderableCategoryParameters,
               )}
               <dt>Delivery policy</dt>
               <dd>

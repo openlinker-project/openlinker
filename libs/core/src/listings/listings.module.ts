@@ -47,6 +47,7 @@ import { BulkListingSubmitService } from './application/services/bulk-listing-su
 import { BulkListingRetryService } from './application/services/bulk-listing-retry.service';
 import { OfferStatusPollService } from './application/services/offer-status-poll.service';
 import { OfferStatusSyncService } from './application/services/offer-status-sync.service';
+import { OfferStatusReadService } from './application/services/offer-status-read.service';
 import { OfferStockRestoreService } from './application/services/offer-stock-restore.service';
 import { OfferStatusSnapshotOrmEntity } from './infrastructure/persistence/entities/offer-status-snapshot.orm-entity';
 import { OfferStatusSnapshotRepository } from './infrastructure/persistence/repositories/offer-status-snapshot.repository';
@@ -68,6 +69,7 @@ import {
   BULK_LISTING_RETRY_SERVICE_TOKEN,
   OFFER_STATUS_POLL_SERVICE_TOKEN,
   OFFER_STATUS_SYNC_SERVICE_TOKEN,
+  OFFER_STATUS_READ_SERVICE_TOKEN,
   OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
   SELLER_POLICIES_CACHE_TOKEN,
@@ -101,6 +103,7 @@ export {
   BULK_LISTING_RETRY_SERVICE_TOKEN,
   OFFER_STATUS_POLL_SERVICE_TOKEN,
   OFFER_STATUS_SYNC_SERVICE_TOKEN,
+  OFFER_STATUS_READ_SERVICE_TOKEN,
   OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
   SELLER_POLICIES_CACHE_TOKEN,
@@ -165,6 +168,7 @@ export {
     BulkListingRetryService,
     OfferStatusPollService,
     OfferStatusSyncService,
+    OfferStatusReadService,
     OfferStatusSnapshotRepository,
     SellerPoliciesCacheRepository,
     SellerPoliciesService,
@@ -264,6 +268,10 @@ export {
       useExisting: OfferStatusSyncService,
     },
     {
+      provide: OFFER_STATUS_READ_SERVICE_TOKEN,
+      useExisting: OfferStatusReadService,
+    },
+    {
       provide: OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
       useExisting: OfferStatusSnapshotRepository,
     },
@@ -305,6 +313,7 @@ export {
     BULK_LISTING_RETRY_SERVICE_TOKEN,
     OFFER_STATUS_POLL_SERVICE_TOKEN,
     OFFER_STATUS_SYNC_SERVICE_TOKEN,
+    OFFER_STATUS_READ_SERVICE_TOKEN,
     SELLER_POLICIES_SERVICE_TOKEN,
     SELLER_POLICIES_CACHE_TOKEN,
     RESPONSIBLE_PRODUCER_SERVICE_TOKEN,

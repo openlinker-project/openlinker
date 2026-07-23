@@ -12,6 +12,9 @@ export const listingsQueryKeys = {
   marketplaceOffer: (mappingId: string) => ['listings', 'marketplaceOffer', mappingId] as const,
   offerCreationStatus: (connectionId: string, offerCreationRecordId: string) =>
     ['listings', 'offerCreationStatus', connectionId, offerCreationRecordId] as const,
+  /** #1760 — live publication status of a product's offers (per snapshot). */
+  offerPublicationStatus: (productId: string, connectionId?: string) =>
+    ['listings', 'offerPublicationStatus', productId, connectionId ?? ''] as const,
   sellerPolicies: (connectionId: string) => ['listings', 'sellerPolicies', connectionId] as const,
   responsibleProducers: (connectionId: string) =>
     ['listings', 'responsibleProducers', connectionId] as const,
