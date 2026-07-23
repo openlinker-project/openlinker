@@ -740,17 +740,11 @@ export function OrdersListPage(): ReactElement {
             order.fulfillmentState === 'not-shipped' && parsed.status !== 'cancelled';
           return (
             <span className="orders-cell-stack">
-              {canGenerateLabel ? (
-                <Link
-                  className="orders-row-cta"
-                  to={`/orders/${order.internalOrderId}#shipment`}
-                >
-                  <span className="orders-row-cta__plus" aria-hidden="true">
-                    +
-                  </span>{' '}
-                  Generate label
-                </Link>
-              ) : (
+              {/* When the row offers "Generate label" the CTA is deferred to sit
+                  directly under the Awaiting-label delivery chip (the state it
+                  resolves), so the top slot only carries the passive fulfillment
+                  badge for non-actionable rows. */}
+              {canGenerateLabel ? null : (
                 <StatusBadge tone={f.tone} withDot compact>
                   {f.label}
                 </StatusBadge>
@@ -774,6 +768,17 @@ export function OrdersListPage(): ReactElement {
                 </StatusBadge>
               ) : null}
               <DeliveryChip outcome={deliveryOutcome} rider={order.deliveryRider} />
+              {canGenerateLabel ? (
+                <Link
+                  className="orders-row-cta"
+                  to={`/orders/${order.internalOrderId}#shipment`}
+                >
+                  <span className="orders-row-cta__plus" aria-hidden="true">
+                    +
+                  </span>{' '}
+                  Generate label
+                </Link>
+              ) : null}
               {carrier ? (
                 <span className="text-muted orders-cell-sub orders-carrier" title={carrier}>
                   {carrier}
@@ -1342,30 +1347,33 @@ export function OrdersListPage(): ReactElement {
                       <div className="orders-card-facts__wide">
                         <dt>Shipment</dt>
                         <dd>
-                          {canGenerateLabel ? (
-                            <Link
-                              className="orders-row-cta"
-                              to={`/orders/${order.internalOrderId}#shipment`}
-                            >
-                              <span className="orders-row-cta__plus" aria-hidden="true">
-                                +
-                              </span>{' '}
-                              Generate label
-                            </Link>
-                          ) : (
-                            <span className="orders-cell-stack">
+                          <span className="orders-cell-stack">
+                            {/* CTA deferred under the Awaiting-label chip, mirroring
+                                the desktop shipment column. */}
+                            {canGenerateLabel ? null : (
                               <StatusBadge tone={fulfillment.tone} withDot compact>
                                 {fulfillment.label}
                               </StatusBadge>
-                              <DeliveryChip
-                                outcome={deliveryOutcome}
-                                rider={order.deliveryRider}
-                              />
-                              {carrier ? (
-                                <span className="text-muted orders-cell-sub">{carrier}</span>
-                              ) : null}
-                            </span>
-                          )}
+                            )}
+                            <DeliveryChip
+                              outcome={deliveryOutcome}
+                              rider={order.deliveryRider}
+                            />
+                            {canGenerateLabel ? (
+                              <Link
+                                className="orders-row-cta"
+                                to={`/orders/${order.internalOrderId}#shipment`}
+                              >
+                                <span className="orders-row-cta__plus" aria-hidden="true">
+                                  +
+                                </span>{' '}
+                                Generate label
+                              </Link>
+                            ) : null}
+                            {carrier ? (
+                              <span className="text-muted orders-cell-sub">{carrier}</span>
+                            ) : null}
+                          </span>
                         </dd>
                       </div>
                     </dl>
