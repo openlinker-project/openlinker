@@ -456,34 +456,32 @@ describe('OfferProductPickerModal', () => {
     } as unknown as Connection;
   }
 
-  it('groups marketplaces and shops, and hands a shop pick to onPublishToShop', async () => {
-    const onPublishToShop = vi.fn();
-    renderWithProviders(
-      <OfferProductPickerModal isOpen onClose={vi.fn()} onPublishToShop={onPublishToShop} />,
-      { apiClient: mocks([conn('conn_a', 'Allegro', 'allegro'), shopConn('conn_w', 'My Shop')]) },
-    );
+  it('groups marketplaces and shops, and routes a shop pick to the bulk wizard (#1829)', async () => {
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+      apiClient: mocks([conn('conn_a', 'Allegro', 'allegro'), shopConn('conn_w', 'My Shop')]),
+    });
     fireEvent.click(await screen.findByLabelText('Select Product p1'));
     // Both groups render with capability-driven hints.
     expect(screen.getByText('Marketplaces')).toBeInTheDocument();
     expect(screen.getByText('Online shops')).toBeInTheDocument();
 
-    // Choosing the shop routes through onPublishToShop, not the wizard URL.
+    // Choosing the shop navigates to the SAME bulk wizard route as a
+    // marketplace - the wizard branches by capability (#1829).
     fireEvent.click(screen.getByRole('radio', { name: /My Shop/ }));
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
-    expect(onPublishToShop).toHaveBeenCalledWith(
-      expect.objectContaining({ connectionId: 'conn_w', productIds: ['p1'] }),
-    );
-    expect(navigateMock).not.toHaveBeenCalled();
+    const qs = continueUrlParams();
+    expect(qs.get('productIds')).toBe('p1');
+    expect(qs.get('connectionId')).toBe('conn_w');
   });
 
-  it('omits shop destinations when no onPublishToShop handler is provided', async () => {
+  it('always surfaces shop destinations alongside marketplaces (#1829)', async () => {
     renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
       apiClient: mocks([conn('conn_a', 'Allegro', 'allegro'), shopConn('conn_w', 'My Shop')]),
     });
     await screen.findByText('Product p1');
     expect(screen.getByRole('radio', { name: /Allegro/ })).toBeInTheDocument();
-    expect(screen.queryByRole('radio', { name: /My Shop/ })).not.toBeInTheDocument();
-    expect(screen.queryByText('Online shops')).not.toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /My Shop/ })).toBeInTheDocument();
+    expect(screen.getByText('Online shops')).toBeInTheDocument();
   });
 
   it('navigates between the product list and review steps (two-step wizard)', async () => {

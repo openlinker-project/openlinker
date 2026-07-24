@@ -11,7 +11,6 @@ import { TimeDisplay } from '../../shared/ui/time-display';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
 import { OfferProductPickerModal } from '../../features/listings/components/offer-product-picker-modal';
-import { ShopPublishLauncher } from '../../features/listings/components/ShopPublishLauncher';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import type {
@@ -146,14 +145,6 @@ export function ListingsListPage(): ReactElement {
   const write = useWriteAccess('listings:write', demoMode);
 
   const [isWizardOpen, setIsWizardOpen] = useState(false);
-  // Shop destinations chosen in the unified picker hand off to the retained
-  // ShopPublishLauncher (kept wired but hidden — no standalone CTA — until the
-  // wizard branch #1829 folds the shop path into the bulk-create route).
-  const [isShopPublishOpen, setIsShopPublishOpen] = useState(false);
-  const [shopHandoff, setShopHandoff] = useState<{
-    connectionId: string;
-    variantIds: string[];
-  } | null>(null);
 
   return (
     <PageLayout
@@ -274,20 +265,6 @@ export function ListingsListPage(): ReactElement {
       <OfferProductPickerModal
         isOpen={isWizardOpen}
         onClose={() => setIsWizardOpen(false)}
-        onPublishToShop={(handoff) => {
-          setShopHandoff({ connectionId: handoff.connectionId, variantIds: handoff.variantIds });
-          setIsShopPublishOpen(true);
-        }}
-      />
-
-      <ShopPublishLauncher
-        open={isShopPublishOpen}
-        onOpenChange={(open) => {
-          setIsShopPublishOpen(open);
-          if (!open) setShopHandoff(null);
-        }}
-        preselectedConnectionId={shopHandoff?.connectionId}
-        defaultVariantIds={shopHandoff?.variantIds}
       />
     </PageLayout>
   );

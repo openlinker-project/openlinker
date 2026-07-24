@@ -128,6 +128,60 @@ describe('BulkConfigStep', () => {
     expect(screen.getByRole('button', { name: /Proceed/ })).toBeDisabled();
   }, 15000);
 
+  describe('shop destination branch (#1829)', () => {
+    function makeShopClient() {
+      const shop = {
+        id: 'conn-shop',
+        name: 'My Shop',
+        status: 'active',
+        platformType: 'woocommerce',
+        supportedCapabilities: ['ProductPublisher'],
+        enabledCapabilities: ['ProductPublisher'],
+      } as unknown as Connection;
+      return createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([shop]) },
+      });
+    }
+
+    it('lets a shop connection Proceed without a per-platform section and emits config', async () => {
+      const onProceed = vi.fn<(c: BulkWizardConfig) => void>();
+      renderWithProviders(
+        <BulkConfigStep initial={{}} onProceed={onProceed} onCancel={() => undefined} />,
+        { apiClient: makeShopClient(), sessionAdapter: createAuthenticatedSessionAdapter() },
+      );
+
+      // Shop callout replaces the marketplace per-platform section.
+      await screen.findByText(/Publishing to an online shop/i);
+
+      await clickProceed();
+
+      expect(onProceed).toHaveBeenCalledTimes(1);
+      expect(onProceed.mock.calls[0][0]).toMatchObject({
+        connectionId: 'conn-shop',
+        platformParams: {},
+        pricingPolicy: { mode: 'use-master' },
+        stockPolicy: { mode: 'use-master' },
+      });
+    }, 15000);
+
+    it('reports the auto-selected connection up via onConnectionChange', async () => {
+      const onConnectionChange = vi.fn<(id: string) => void>();
+      renderWithProviders(
+        <BulkConfigStep
+          initial={{}}
+          onProceed={vi.fn()}
+          onCancel={() => undefined}
+          onConnectionChange={onConnectionChange}
+        />,
+        { apiClient: makeShopClient(), sessionAdapter: createAuthenticatedSessionAdapter() },
+      );
+
+      await waitFor(() => {
+        expect(onConnectionChange).toHaveBeenCalledWith('conn-shop');
+      });
+    }, 15000);
+  });
+
   describe('AI-generation toggle permission gating (listings:write, useWriteAccess + ReadOnlyLock, #1668)', () => {
     it('hides the toggle entirely for a genuinely unauthorized non-demo session (viewer)', async () => {
       renderWithProviders(

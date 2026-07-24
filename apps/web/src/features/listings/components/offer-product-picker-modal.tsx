@@ -31,14 +31,13 @@
  * Closing via X / Cancel / esc / outside-click is routed through a discard
  * guard: a pending selection opens a `ConfirmDialog` before the modal closes.
  *
- * Continue dispatches by destination kind. A **marketplace** destination
- * navigates into the bulk wizard route
- * (`/listings/bulk-create/wizard?productIds=...&variantIds=...&connectionId=...`);
- * products picked whole contribute no `variantIds` (the wizard then seeds all
- * their variants), products picked at variant granularity contribute their
- * explicit subset. A **shop** destination hands off to the caller's
- * `onPublishToShop` (today the retained, hidden `ShopPublishLauncher`, until
- * the wizard branch #1829 folds the shop path into the same route).
+ * Continue navigates into the bulk wizard route for BOTH destination kinds
+ * (`/listings/bulk-create/wizard?productIds=...&variantIds=...&connectionId=...`,
+ * #1829): the wizard branches on the destination's capability - a marketplace
+ * (`OfferCreator`) runs Config -> Resolve -> Review, a shop (`ProductPublisher`)
+ * runs Config -> Review. Products picked whole contribute no `variantIds` (the
+ * wizard then seeds all their variants), products picked at variant granularity
+ * contribute their explicit subset.
  *
  * @module apps/web/src/features/listings/components
  */
@@ -84,24 +83,9 @@ type SelectionEntry = 'ALL' | Set<string>;
 /** Two-step wizard step (meaningful only <=1023px; desktop shows both regions). */
 type PickerStep = 'products' | 'review';
 
-/** Args handed to the caller when a shop destination is chosen (#1828). */
-export interface PublishToShopHandoff {
-  connectionId: string;
-  productIds: string[];
-  /** Best-effort known variant ids (explicit subset picks + loaded whole-product variants). */
-  variantIds: string[];
-}
-
 interface OfferProductPickerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  /**
-   * Invoked instead of the marketplace navigation when the chosen destination
-   * is an online shop (`ProductPublisher`). The listings page routes this to
-   * the retained `ShopPublishLauncher` (#1828). When omitted, shop
-   * destinations are not surfaced.
-   */
-  onPublishToShop?: (handoff: PublishToShopHandoff) => void;
 }
 
 function variantLabel(product: Product, variant: ProductVariant): string {
@@ -325,7 +309,6 @@ interface RailGroup {
 export function OfferProductPickerModal({
   isOpen,
   onClose,
-  onPublishToShop,
 }: OfferProductPickerModalProps): ReactElement | null {
   const navigate = useNavigate();
 
@@ -367,11 +350,12 @@ export function OfferProductPickerModal({
   }, [isOpen]);
 
   const connectionsQuery = useConnectionsQuery();
-  const eligibleDestinations = useMemo(() => {
-    const all = selectPublishDestinations(connectionsQuery.data ?? []);
-    // Shop destinations are only offered when the caller can dispatch them.
-    return onPublishToShop ? all : all.filter((d) => d.kind === 'marketplace');
-  }, [connectionsQuery.data, onPublishToShop]);
+  // Both destination kinds are eligible - Continue routes each into the bulk
+  // wizard, which branches by capability (#1829).
+  const eligibleDestinations = useMemo(
+    () => selectPublishDestinations(connectionsQuery.data ?? []),
+    [connectionsQuery.data],
+  );
 
   // Auto-resolve when exactly one eligible destination exists; otherwise the
   // operator picks one from the grouped rail (or gets a warning when none exist).
@@ -577,34 +561,22 @@ export function OfferProductPickerModal({
   const handleContinue = useCallback(() => {
     if (selection.size === 0 || resolvedConnectionId === null) return;
     const productIds: string[] = [];
+    // Explicit variant-subset picks contribute their ids; whole-product picks
+    // contribute none, so the wizard seeds all their variants (#1829 - same
+    // semantics for marketplace and shop destinations).
     const variantIds: string[] = [];
-    // Best-effort variant ids for the shop handoff: whole-product picks
-    // contribute their loaded variant ids when known (the marketplace route
-    // instead lets the bulk wizard hydrate them from productIds).
-    const shopVariantIds: string[] = [];
     for (const [productId, entry] of selection) {
       productIds.push(productId);
       if (entry instanceof Set) {
-        for (const variantId of entry) {
-          variantIds.push(variantId);
-          shopVariantIds.push(variantId);
-        }
-      } else {
-        for (const v of variantMeta.get(productId) ?? []) shopVariantIds.push(v.id);
+        for (const variantId of entry) variantIds.push(variantId);
       }
-    }
-
-    if (resolvedKind === 'shop' && onPublishToShop) {
-      onPublishToShop({ connectionId: resolvedConnectionId, productIds, variantIds: shopVariantIds });
-      onClose();
-      return;
     }
 
     const params = new URLSearchParams({ productIds: productIds.join(',') });
     if (variantIds.length > 0) params.set('variantIds', variantIds.join(','));
     params.set('connectionId', resolvedConnectionId);
     void navigate(`/listings/bulk-create/wizard?${params.toString()}`);
-  }, [selection, resolvedConnectionId, resolvedKind, onPublishToShop, onClose, variantMeta, navigate]);
+  }, [selection, resolvedConnectionId, navigate]);
 
   // Discard guard: a pending selection intercepts every close path (X, Cancel,
   // esc, outside-click) with a confirm; an empty selection closes directly.
