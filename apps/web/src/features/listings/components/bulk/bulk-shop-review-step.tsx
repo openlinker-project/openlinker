@@ -42,13 +42,18 @@ interface BulkShopReviewStepProps {
   onPublish: (items: BulkShopPublishItemRequest[], status: ShopPublishVisibility) => void;
 }
 
-/** A flattened included variant paired with its owning product for display. */
+/** A flattened included variant paired with its owning product for display.
+ *  The displayed `stock` / `price` are the SAME policy-resolved values the
+ *  submit sends (see `buildBulkShopPublishItems`), so review == publish. */
 interface ShopReviewLine {
   productId: string;
   productName: string;
   variantId: string;
   variantLabel: string;
-  masterPrice: number | null;
+  /** Policy-resolved published quantity; null when unresolved (shown as 0). */
+  stock: number | null;
+  /** Policy-resolved price; null when it falls back to master server-side. */
+  price: number | null;
 }
 
 function variantDisplayLabel(variant: BulkVariantRow): string {
@@ -129,17 +134,23 @@ export function BulkShopReviewStep({
     for (const row of rows) {
       for (const variant of row.variants) {
         if (!variant.included) continue;
+        // Resolve exactly as the payload does so what the operator reviews
+        // equals what is submitted (review == publish).
+        const masterStock = masterStockByVariantId.get(variant.variantId) ?? variant.masterStock;
+        const stock = computeResolvedStock(config.stockPolicy, masterStock, variant.override);
+        const price = computeResolvedPrice(config.pricingPolicy, variant.masterPrice, variant.override);
         out.push({
           productId: row.productId,
           productName: row.product?.name ?? row.productId,
           variantId: variant.variantId,
           variantLabel: variantDisplayLabel(variant),
-          masterPrice: variant.masterPrice,
+          stock: stock.value,
+          price: price.value,
         });
       }
     }
     return out;
-  }, [rows]);
+  }, [rows, config.stockPolicy, config.pricingPolicy, masterStockByVariantId]);
 
   const handlePublish = (): void => {
     const items = buildBulkShopPublishItems(rows, config, masterStockByVariantId);
@@ -204,8 +215,13 @@ export function BulkShopReviewStep({
                 <b>{line.productName}</b>
                 <small className="mono-text muted-text">{line.variantLabel}</small>
               </div>
-              <span className="mono-text tabular">
-                {line.masterPrice !== null ? `${line.masterPrice} ${config.currency}` : 'from master'}
+              <span className="bulk-shop-review__cell mono-text tabular" aria-label="Stock">
+                <span className="bulk-shop-review__cell-label">stock</span>
+                {line.stock ?? 0}
+              </span>
+              <span className="bulk-shop-review__cell mono-text tabular" aria-label="Price">
+                <span className="bulk-shop-review__cell-label">price</span>
+                {line.price !== null ? `${line.price} ${config.currency}` : 'from master'}
               </span>
               <button
                 type="button"

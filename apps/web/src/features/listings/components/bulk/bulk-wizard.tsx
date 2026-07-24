@@ -229,7 +229,7 @@ export function BulkWizard({
       });
       return changed ? next : prev;
     });
-  }, [config, step, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit]);
+  }, [config, step, isShop, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit]);
 
   const handleConfigProceed = useCallback(
     (next: BulkWizardConfig) => {
