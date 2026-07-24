@@ -161,6 +161,37 @@ describe('ProductPublishExecutionService', () => {
     expect(result.outcome).toBe('ok');
   });
 
+  it('should record a clean business_failure when the recovery create is rejected (not an escaped throw)', async () => {
+    identifierMapping.getExternalIds.mockResolvedValue([
+      { externalId: EXT, connectionId: CONN, entityType: 'ShopProduct', platformType: 'woocommerce' },
+    ]);
+    adapter.publishProduct
+      .mockRejectedValueOnce(
+        new ProductPublishTargetNotFoundException('woocommerce.restapi.v3', EXT)
+      )
+      .mockRejectedValueOnce(
+        new ProductPublishRejectedException('woocommerce.restapi.v3', 422, [
+          { code: 'INVALID', message: 'bad' },
+        ])
+      );
+    records.updateStatus.mockResolvedValue(makeRecord('failed'));
+
+    const result = await service.executePublish(input);
+
+    // Stale mapping deleted, recovery create attempted, then its rejection
+    // recorded as a terminal failure rather than escaping.
+    expect(identifierMapping.deleteMapping).toHaveBeenCalledWith('ShopProduct', EXT, CONN);
+    expect(adapter.publishProduct).toHaveBeenCalledTimes(2);
+    expect(records.updateStatus).toHaveBeenCalledWith(
+      'rec-1',
+      'failed',
+      expect.arrayContaining([expect.objectContaining({ code: 'INVALID' })])
+    );
+    // No mapping written for a failed recovery create.
+    expect(identifierMapping.createMapping).not.toHaveBeenCalled();
+    expect(result.outcome).toBe('business_failure');
+  });
+
   it('should record business_failure when the shop rejects the publish', async () => {
     adapter.publishProduct.mockRejectedValue(
       new ProductPublishRejectedException('woocommerce.restapi.v1', 422, [

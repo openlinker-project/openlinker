@@ -46,7 +46,9 @@ const DEFAULT_ADAPTER_KEY = 'woocommerce.restapi.v3';
 
 // WooCommerce caps `per_page` at 100. The default (10) silently truncates the
 // category-search result set, so an exact name match beyond the first 10 fuzzy
-// hits is missed and a duplicate category is created (#1846 fix 3).
+// hits is missed and a duplicate category is created (#1846 fix 3). A search
+// yielding >100 fuzzy hits for one node name is not paginated here (accepted:
+// a single category name matching 100+ siblings is not a realistic taxonomy).
 const CATEGORY_SEARCH_PER_PAGE = 100;
 
 // WC REST error code returned when a category name already exists under the same
@@ -252,13 +254,18 @@ export class WooCommerceProductPublisherAdapter
 
   /**
    * Build a per-item, deterministic slug from the builder-supplied base slug.
-   * Suffixing with the item's SKU (falling back to the internal variant id)
-   * keeps sibling variants collision-free — WooCommerce would otherwise
-   * auto-suffix a shared slug (-2/-3) — while staying stable across re-publishes
-   * of the same item (so the canonical URL does not drift).
+   * Suffixing keeps sibling variants collision-free — WooCommerce would
+   * otherwise auto-suffix a shared slug (-2/-3) — while staying stable across
+   * re-publishes of the same item (so the canonical URL does not drift).
+   *
+   * The discriminator is the **internal variant id**, not the SKU: the id is
+   * immutable for the life of the variant, whereas a SKU can be absent at first
+   * publish and gained later — which would silently change the slug on a
+   * subsequent upsert and drift the WC permalink. Correctness (a stable URL)
+   * beats the marginally more readable SKU-based slug.
    */
   private buildPerItemSlug(baseSlug: string, cmd: PublishProductCommand): string {
-    const discriminator = this.slugify(cmd.sku ?? cmd.internalVariantId);
+    const discriminator = this.slugify(cmd.internalVariantId);
     return discriminator ? `${baseSlug}-${discriminator}` : baseSlug;
   }
 

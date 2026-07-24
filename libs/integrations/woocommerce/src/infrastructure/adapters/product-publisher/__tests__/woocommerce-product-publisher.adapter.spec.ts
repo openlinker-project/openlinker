@@ -329,28 +329,65 @@ describe('WooCommerceProductPublisherAdapter', () => {
       expect(http.post.mock.calls[0][1]).not.toHaveProperty('attributes');
     });
 
-    it('should build a per-item slug from the SKU when present (#1846 fix 4)', async () => {
+    it('should build a per-item slug from the stable internal variant id, ignoring SKU (#1846 fix 4)', async () => {
       http.post.mockResolvedValue({ id: 42, status: 'publish' });
 
+      // A SKU is present but must NOT drive the slug: the SKU can change over an
+      // item's life, which would drift the WC permalink on a later upsert.
       await adapter.publishProduct(
-        baseCommand({ sku: 'ABC-123', content: { title: 'Widget', seo: { slug: 'widget' } } }),
+        baseCommand({
+          internalVariantId: 'ol_variant_xyz',
+          sku: 'ABC-123',
+          content: { title: 'Widget', seo: { slug: 'widget' } },
+        }),
       );
 
-      expect(http.post.mock.calls[0][1]).toMatchObject({ slug: 'widget-abc-123' });
+      expect(http.post.mock.calls[0][1]).toMatchObject({ slug: 'widget-ol-variant-xyz' });
+    });
+
+    it('should keep the slug stable across upsert even if the SKU changes (#1846 fix 4)', async () => {
+      http.post.mockResolvedValue({ id: 43, status: 'publish' });
+      http.put.mockResolvedValue({ id: 43, status: 'publish' });
+
+      // First publish without a SKU.
+      await adapter.publishProduct(
+        baseCommand({
+          internalVariantId: 'ol_variant_stable',
+          content: { title: 'Widget', seo: { slug: 'widget' } },
+        }),
+      );
+      // Later upsert after the variant gained a SKU — slug must not drift.
+      await adapter.publishProduct(
+        baseCommand({
+          internalVariantId: 'ol_variant_stable',
+          sku: 'NEW-SKU',
+          externalProductId: '43',
+          content: { title: 'Widget', seo: { slug: 'widget' } },
+        }),
+      );
+
+      expect(http.post.mock.calls[0][1]).toMatchObject({ slug: 'widget-ol-variant-stable' });
+      expect(http.put.mock.calls[0][1]).toMatchObject({ slug: 'widget-ol-variant-stable' });
     });
 
     it('should build distinct per-item slugs for sibling variants sharing a base slug (#1846 fix 4)', async () => {
-      http.post.mockResolvedValue({ id: 43, status: 'publish' });
+      http.post.mockResolvedValue({ id: 44, status: 'publish' });
 
       await adapter.publishProduct(
-        baseCommand({ sku: 'V-1', content: { title: 'Widget', seo: { slug: 'widget' } } }),
+        baseCommand({
+          internalVariantId: 'ol_variant_1',
+          content: { title: 'Widget', seo: { slug: 'widget' } },
+        }),
       );
       await adapter.publishProduct(
-        baseCommand({ sku: 'V-2', content: { title: 'Widget', seo: { slug: 'widget' } } }),
+        baseCommand({
+          internalVariantId: 'ol_variant_2',
+          content: { title: 'Widget', seo: { slug: 'widget' } },
+        }),
       );
 
-      expect(http.post.mock.calls[0][1]).toMatchObject({ slug: 'widget-v-1' });
-      expect(http.post.mock.calls[1][1]).toMatchObject({ slug: 'widget-v-2' });
+      expect(http.post.mock.calls[0][1]).toMatchObject({ slug: 'widget-ol-variant-1' });
+      expect(http.post.mock.calls[1][1]).toMatchObject({ slug: 'widget-ol-variant-2' });
     });
 
     it('should send images on create but omit them on upsert to avoid re-sideloading (#1846 fix 7)', async () => {

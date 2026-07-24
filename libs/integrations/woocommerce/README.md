@@ -117,10 +117,12 @@ The publisher/offer-manager enforce these correctness rules (#1846):
   so an exact match beyond the default 10 fuzzy results is not missed and
   re-created. A concurrent `term_exists` rejection is recovered by re-resolving
   and reusing the racing winner's node — no duplicate categories.
-- **Per-item slug.** A supplied `seo.slug` is suffixed with the item's SKU
-  (falling back to the internal variant id), so sibling variants published in
-  bulk get distinct, deterministic slugs instead of WooCommerce silently
-  auto-suffixing a shared slug (`-2`/`-3`) and drifting the canonical URL.
+- **Per-item slug.** A supplied `seo.slug` is suffixed with the item's stable
+  internal variant id, so sibling variants published in bulk get distinct,
+  deterministic slugs instead of WooCommerce silently auto-suffixing a shared
+  slug (`-2`/`-3`). The variant id (not the SKU) is used because it is immutable
+  for the life of the variant - a SKU can be gained after the first publish,
+  which would drift the WC permalink on a later upsert.
 - **Images (create only).** `images` are sent only on create. WooCommerce
   sideloads media by `src` and re-imports it on every update, so re-sending on
   upsert churns/duplicates media; image updates on upsert need media-id tracking

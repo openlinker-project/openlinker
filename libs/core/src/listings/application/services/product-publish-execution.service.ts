@@ -145,20 +145,26 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
       // `ShopProduct` mapping and re-publish as a create so the variant can
       // recover instead of failing forever (#1846 fix 1/5).
       if (error instanceof ProductPublishTargetNotFoundException && existingExternalProductId) {
-        result = await this.recreateAfterStaleUpsertTarget(
-          adapter,
-          command,
-          input,
-          existingExternalProductId
-        );
-        mappingNeedsCreate = true;
+        try {
+          result = await this.recreateAfterStaleUpsertTarget(
+            adapter,
+            command,
+            input,
+            existingExternalProductId
+          );
+          mappingNeedsCreate = true;
+        } catch (recoveryError) {
+          // A rejection on the recovery create is a terminal business failure,
+          // exactly like a rejection on the first-attempt create path — record
+          // it as `failed` instead of letting it escape as an unhandled throw
+          // (which would retry/dead the job).
+          if (recoveryError instanceof ProductPublishRejectedException) {
+            return this.recordRejection(record.id, input.connectionId, recoveryError);
+          }
+          throw recoveryError;
+        }
       } else if (error instanceof ProductPublishRejectedException) {
-        const updated = await this.listingRecords.updateStatus(
-          record.id,
-          LISTING_CREATION_STATUS.Failed,
-          this.mapRejectionErrors(error)
-        );
-        return this.buildResult(updated, input.connectionId);
+        return this.recordRejection(record.id, input.connectionId, error);
       } else {
         throw error;
       }
@@ -197,6 +203,25 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
       result.warnings?.length ? result.warnings : null,
     );
     return this.buildResult(finalRecord, input.connectionId);
+  }
+
+  /**
+   * Record a shop-publish rejection as a terminal `failed` record and build the
+   * `business_failure` result. Shared by the first-attempt create/upsert path
+   * and the stale-mapping recovery-create path so both classify a rejection
+   * identically.
+   */
+  private async recordRejection(
+    recordId: string,
+    connectionId: string,
+    error: ProductPublishRejectedException
+  ): Promise<ExecutePublishProductResult> {
+    const updated = await this.listingRecords.updateStatus(
+      recordId,
+      LISTING_CREATION_STATUS.Failed,
+      this.mapRejectionErrors(error)
+    );
+    return this.buildResult(updated, connectionId);
   }
 
   /**
