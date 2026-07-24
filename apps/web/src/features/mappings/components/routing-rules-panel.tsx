@@ -59,9 +59,21 @@ const PROCESSOR_KIND_LABEL: Record<FulfillmentProcessorKind, string> = {
   source_brokered: 'Marketplace-brokered',
 };
 
-/** Truncates long ids (Allegro UUIDs) for inline hints; short ids render verbatim (#474). */
+const SHORT_VALUE_HEAD = 6;
+const SHORT_VALUE_TAIL = 4;
+
+/**
+ * Truncates long ids for inline hints; short ids render verbatim (#474).
+ *
+ * Middle-ellipsis rather than front-truncation: some marketplaces (Erli) share
+ * a long common prefix and carry the distinguishing part (weight/size) at the
+ * END of the id, so `slice(0, 8)` collapsed whole groups into identical hints -
+ * e.g. `erliDPDKurier5kg` / `…20kg` both became `erliDPDK…`. Keeping head + tail
+ * preserves the distinguishing suffix (`erliDP…20kg`).
+ */
 function shortValue(value: string): string {
-  return value.length <= 9 ? value : `${value.slice(0, 8)}…`;
+  if (value.length <= SHORT_VALUE_HEAD + SHORT_VALUE_TAIL + 1) return value;
+  return `${value.slice(0, SHORT_VALUE_HEAD)}…${value.slice(-SHORT_VALUE_TAIL)}`;
 }
 
 /** `${kind}::${connectionId}` → its parts, or null for the default sentinel / malformed keys. */

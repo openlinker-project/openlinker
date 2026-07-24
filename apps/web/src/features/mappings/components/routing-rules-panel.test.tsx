@@ -164,6 +164,24 @@ describe('RoutingRulesPanel', () => {
     expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
   });
 
+  it('keeps the distinguishing suffix visible when methods share a label and id prefix (#1776 follow-up)', async () => {
+    // Erli returns groups that share a label and a long common id prefix, with
+    // the distinguishing part (weight) at the END of the id. Front-truncation
+    // (`slice(0,8)`) collapsed these into identical `erliDPDK…` hints; the
+    // middle-ellipsis keeps the suffix visible so the rows stay distinguishable.
+    const methods: MappingOption[] = [
+      { value: 'erliDPDKurier5kg', label: 'ERLI DPD Kurier' },
+      { value: 'erliDPDKurier20kg', label: 'ERLI DPD Kurier' },
+    ];
+    renderPanel(buildApiClient(), { deliveryMethods: methods });
+
+    expect(await screen.findByText('erliDP…r5kg')).toBeInTheDocument();
+    expect(screen.getByText('erliDP…20kg')).toBeInTheDocument();
+    // The old front-truncated hint that made the two rows identical is gone.
+    expect(screen.queryByText('erliDPD…')).not.toBeInTheDocument();
+    expect(screen.queryByText('erliDPDK…')).not.toBeInTheDocument();
+  });
+
   describe('routing-split bar (#1739)', () => {
     function legendEntry(container: HTMLElement, label: string): HTMLElement {
       const entry = Array.from(
