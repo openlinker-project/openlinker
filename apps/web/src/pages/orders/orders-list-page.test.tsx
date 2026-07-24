@@ -857,7 +857,7 @@ describe('OrdersListPage', () => {
     expect(within(row).queryByRole('link', { name: /generate label/i })).not.toBeInTheDocument();
   });
 
-  it('should render the Shop-fulfilled chip but SUPPRESS the rider chip on the list (rider is non-actionable here)', async () => {
+  it('should render the Ships chip but SUPPRESS the rider chip on the list (rider is non-actionable here)', async () => {
     const shopFulfilledWithRider: OrderRecord = {
       ...syncedOrder,
       fulfillmentState: 'not-shipped',
@@ -889,7 +889,7 @@ describe('OrdersListPage', () => {
     const row = container.querySelector('.data-table__row') as HTMLElement;
 
     // The outcome chip is present, the rider chip label is not.
-    expect(within(row).getByText('Shop-fulfilled')).toBeInTheDocument();
+    expect(within(row).getByText('Ships')).toBeInTheDocument();
     expect(within(row).queryByText('Unmapped')).not.toBeInTheDocument();
   });
 

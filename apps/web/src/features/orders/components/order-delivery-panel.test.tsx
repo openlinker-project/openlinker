@@ -122,7 +122,7 @@ describe('OrderDeliveryPanel', () => {
     it('should render the delivery outcome chip in the Carrier row', () => {
       renderWithProviders(<OrderDeliveryPanel carrier="InPost" deliveryOutcome="resolved" />);
       expect(screen.getByText('InPost')).toBeInTheDocument();
-      expect(screen.getByText('Resolved')).toBeInTheDocument();
+      expect(screen.getByText('Labelled')).toBeInTheDocument();
     });
 
     it('should render the rider banner with a fix-it slot when a rider is actionable', () => {
@@ -135,7 +135,7 @@ describe('OrderDeliveryPanel', () => {
           }}
         />,
       );
-      expect(screen.getByText('Shop-fulfilled')).toBeInTheDocument();
+      expect(screen.getByText('Ships')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Add mapping' })).toBeDisabled();
     });
 
@@ -143,7 +143,7 @@ describe('OrderDeliveryPanel', () => {
       renderWithProviders(
         <OrderDeliveryPanel deliveryOutcome="shop-fulfilled" deliveryRider={{ rider: 'none' }} />,
       );
-      expect(screen.getByText('Shop-fulfilled')).toBeInTheDocument();
+      expect(screen.getByText('Ships')).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /Add mapping|Connect/ })).not.toBeInTheDocument();
     });
   });

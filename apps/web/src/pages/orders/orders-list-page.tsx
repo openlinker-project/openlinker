@@ -55,7 +55,8 @@ import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.sch
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
 import { itemsSummary, paymentBadge, invoiceBadge } from '../../features/orders/lib/order-row';
 import { deriveDeliveryOutcome, hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
-import { DeliveryChip } from '../../features/orders/components/delivery-chip';
+import { DeliveryOutcomeChip } from '../../features/orders/components/delivery-chip';
+import { resolveDeliveryOwner } from '../../features/orders/lib/delivery-owner';
 import { capSelectionPerSource, sourcesAtCap } from '../../features/orders/lib/dispatch-input';
 import { BulkDispatchDialog } from '../../features/orders/components/bulk-dispatch-dialog';
 import { OrderRowDetail } from '../../features/orders/components/order-row-detail';
@@ -113,6 +114,17 @@ const HEALTH_SEGMENTS: readonly HealthSegment[] = [
  */
 function isOrderHealth(value: string | null): value is OrderHealthValue {
   return value !== null && (OrderHealthValues as readonly string[]).includes(value);
+}
+
+/**
+ * Whether the row's delivery rider is one OpenLinker could take over (#1776) —
+ * drives the quiet accent-edge + caret marker on a shop-fulfilled chip. The list
+ * stays button-free; the fix-it action lives on the order detail.
+ */
+function isTakeoverRider(rider: OrderRecord['deliveryRider']): boolean {
+  return (
+    rider?.rider === 'unmapped' || rider?.rider === 'not-connected' || rider?.rider === 'disabled'
+  );
 }
 
 /** Triage default ordering — soonest ship-by first (NULLs last), server-backed. */
@@ -319,6 +331,16 @@ export function OrdersListPage(): ReactElement {
     const map = new Map<string, string>();
     (connectionsQuery.data ?? []).forEach((c) => {
       map.set(c.id, c.platformType);
+    });
+    return map;
+  }, [connectionsQuery.data]);
+
+  // id → {name, platformType} for the delivery badge's owner resolution (#1776).
+  // Presentation-only lookup: it names the connection the BE already routed to.
+  const connectionInfoById = useMemo(() => {
+    const map = new Map<string, { name: string; platformType: string }>();
+    (connectionsQuery.data ?? []).forEach((c) => {
+      map.set(c.id, { name: c.name, platformType: c.platformType });
     });
     return map;
   }, [connectionsQuery.data]);
@@ -773,13 +795,18 @@ export function OrdersListPage(): ReactElement {
                   {view.remaining}
                 </StatusBadge>
               ) : null}
-              {/* On the list the rider chip is a non-actionable label (the
-                  actionable banner + button live on the order-detail Delivery
-                  panel), so it's suppressed on shop-fulfilled rows to keep the
-                  triage queue quiet - the rider only co-occurs with shop-fulfilled. */}
-              <DeliveryChip
+              {/* The list carries no rider chip and no button: the owner badge
+                  says who ships, and a quiet accent edge + caret marks the rows
+                  OpenLinker could take over. The actionable banner + fix-it
+                  button live on the order-detail Delivery panel. */}
+              <DeliveryOutcomeChip
                 outcome={deliveryOutcome}
-                rider={deliveryOutcome === 'shop-fulfilled' ? null : order.deliveryRider}
+                owner={resolveDeliveryOwner(
+                  order.deliveryResolution,
+                  order.deliveryRider,
+                  connectionInfoById,
+                )}
+                switchable={deliveryOutcome === 'shop-fulfilled' && isTakeoverRider(order.deliveryRider)}
               />
               {canGenerateLabel ? (
                 <Link
@@ -1373,13 +1400,18 @@ export function OrdersListPage(): ReactElement {
                                 {fulfillment.label}
                               </StatusBadge>
                             )}
-                            {/* Rider chip suppressed on shop-fulfilled list rows
-                                (non-actionable label; the actionable banner lives
-                                on order-detail) - mirrors the desktop cell. */}
-                            <DeliveryChip
+                            {/* Owner badge + quiet takeover marker, no rider chip
+                                and no button - mirrors the desktop cell. */}
+                            <DeliveryOutcomeChip
                               outcome={deliveryOutcome}
-                              rider={
-                                deliveryOutcome === 'shop-fulfilled' ? null : order.deliveryRider
+                              owner={resolveDeliveryOwner(
+                                order.deliveryResolution,
+                                order.deliveryRider,
+                                connectionInfoById,
+                              )}
+                              switchable={
+                                deliveryOutcome === 'shop-fulfilled' &&
+                                isTakeoverRider(order.deliveryRider)
                               }
                             />
                             {canGenerateLabel ? (

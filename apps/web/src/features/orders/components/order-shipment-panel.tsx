@@ -29,6 +29,8 @@ import { Button } from '../../../shared/ui/button';
 import type { OrderDeliveryRider, OrderRecord } from '../api/orders.types';
 import { parseOrderSnapshot, type PaymentStatus } from '../api/order-snapshot.schema';
 import { hasLiveOlCarrierRoute } from '../lib/delivery-outcome';
+import { SHOP_FULFILLED_NO_DUP_LABEL } from '../lib/delivery-copy';
+import { DeliveryRiderAction } from './delivery-rider-action';
 import { GenerateLabelForm } from './generate-label-form';
 import { ShipmentActionButtons } from './shipment-action-buttons';
 import { ShipmentLifecycleRail } from './shipment-lifecycle-rail';
@@ -36,22 +38,39 @@ import { ShipmentTrackingLink } from './shipment-tracking-link';
 
 const SHIPPING_CAPABILITY = 'ShippingProviderManager';
 
+/** Whether a rider is one OpenLinker could take over (#1776). */
+function isTakeoverRider(rider: OrderDeliveryRider | undefined): boolean {
+  return (
+    rider?.rider === 'unmapped' || rider?.rider === 'not-connected' || rider?.rider === 'disabled'
+  );
+}
+
 /**
- * Empty-state copy when OpenLinker has no live own-carrier route for the order
- * (#1799), keyed on the delivery rider so the operator is told exactly what to
- * fix. `none` (shop-fulfilled / no-method) means the shop ships it — no OL label.
+ * Takeover empty-state message (#1776 E3) — drops "(see Delivery)"; the fix-it
+ * action is the EmptyState's own button. `carrier` is the rider's candidate
+ * carrier display name (or "a carrier"). Copy always says "this and future
+ * orders", never "re-ship this order".
  */
-function noOlCarrierRouteMessage(rider: OrderDeliveryRider | undefined): string {
+function takeoverMessage(rider: OrderDeliveryRider | undefined, carrier: string): string {
   switch (rider?.rider) {
-    case 'disabled':
-      return 'This delivery method routes to a disabled carrier connection. Enable it (see Delivery) to generate a label here.';
-    case 'unmapped':
-      return "This delivery method isn't mapped to an OpenLinker carrier yet. Map it (see Delivery) to generate a label here.";
     case 'not-connected':
-      return "This delivery method needs a carrier OpenLinker isn't connected to yet. Connect it (see Delivery) to generate a label here.";
+      return `OpenLinker supports ${carrier} but isn't connected to it yet. Connect it to ship this and future orders on this method through OpenLinker.`;
+    case 'disabled':
+      return `This delivery method routes to ${carrier}, but that connection is disabled. Enable it so OpenLinker can generate the label.`;
+    case 'unmapped':
     default:
-      return 'This order is fulfilled by the shop - there is no OpenLinker label to generate here.';
+      return `This delivery method isn't mapped to a carrier yet. Map it to ${carrier} and OpenLinker will generate the label for this and future orders on this method.`;
   }
+}
+
+/**
+ * Affirmative shop-fulfilled message (#1776 E2) — the shop owns fulfilment and
+ * OpenLinker only mirrors its status. Substitutes the shop connection name for
+ * "The destination shop" when it's resolvable.
+ */
+function shopFulfilledMessage(shopName: string | null): string {
+  const subject = shopName ?? 'The destination shop';
+  return `${subject} ships this order with its own carrier. ${SHOP_FULFILLED_NO_DUP_LABEL}`;
 }
 
 interface OrderShipmentPanelProps {
@@ -77,7 +96,24 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
   // CTAs are suppressed and the operator is pointed at delivery routing instead
   // (the Delivery panel's rider, or a "fulfilled by the shop" note here).
   const olCarrierRoute = hasLiveOlCarrierRoute(order.deliveryResolution);
-  const noRouteMessage = olCarrierRoute ? null : noOlCarrierRouteMessage(order.deliveryRider);
+  const rider = order.deliveryRider;
+  const takeover = isTakeoverRider(rider);
+  const candidateCarrier = rider?.candidateCarrier?.displayName ?? 'a carrier';
+  // Shop connection name for the affirmative empty state — the explicit OMP
+  // processor when the routing named one (id → name lookup only).
+  const shopConnectionName =
+    order.deliveryResolution?.processorConnectionId != null
+      ? ((connectionsQuery.data ?? []).find(
+          (c) => c.id === order.deliveryResolution?.processorConnectionId,
+        )?.name ?? null)
+      : null;
+  // Inline note shown alongside an already-booked shipment on a dead route:
+  // the takeover reason, or the affirmative shop-fulfilled sentence.
+  const noRouteMessage = olCarrierRoute
+    ? null
+    : takeover
+      ? takeoverMessage(rider, candidateCarrier)
+      : shopFulfilledMessage(shopConnectionName);
 
   // AC-8 — global capability gate. If no connection declares
   // ShippingProviderManager, render nothing (the operator has no way to
@@ -166,8 +202,33 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
           title="Dispatched outside OpenLinker"
           message="Dispatched outside OpenLinker - no label to generate here."
         />
-      ) : noRouteMessage ? (
-        <EmptyState title="No shipment yet" message={noRouteMessage} />
+      ) : !olCarrierRoute ? (
+        takeover ? (
+          // Takeover nudge (#1776 E3) — OpenLinker could ship this once the
+          // operator maps / connects / enables the carrier. The fix-it deep link
+          // is the EmptyState's action (needs the source connection + method).
+          <EmptyState
+            title="OpenLinker can ship this"
+            message={takeoverMessage(rider, candidateCarrier)}
+            action={
+              rider && order.sourceConnectionId ? (
+                <DeliveryRiderAction
+                  rider={rider}
+                  sourceConnectionId={order.sourceConnectionId}
+                  sourceDeliveryMethodId={order.sourceDeliveryMethodId}
+                  sourceDeliveryMethodName={order.sourceDeliveryMethodName}
+                />
+              ) : undefined
+            }
+          />
+        ) : (
+          // Affirmative shop-fulfilled empty state (#1776 E2) — the shop owns
+          // fulfilment; no CTA, no dead-end label action.
+          <EmptyState
+            title="Shipped by the shop"
+            message={shopFulfilledMessage(shopConnectionName)}
+          />
+        )
       ) : (
         <EmptyState
           title="No shipment yet"

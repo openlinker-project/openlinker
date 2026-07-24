@@ -35,6 +35,8 @@ import type {
 } from '../api/order-snapshot.schema';
 import type { OrderDeliveryRider } from '../api/orders.types';
 import type { DeliveryOutcome } from '../lib/delivery-outcome';
+import type { DeliveryOwner } from '../lib/delivery-owner';
+import { ConnectionDot } from './connection-dot';
 import { DeliveryOutcomeChip, DeliveryRiderBanner } from './delivery-chip';
 import { DeliveryRiderAction } from './delivery-rider-action';
 
@@ -65,6 +67,13 @@ interface OrderDeliveryPanelProps {
    * `deriveDeliveryOutcome`. Absent → no chip (older/degraded payloads).
    */
   deliveryOutcome?: DeliveryOutcome;
+  /**
+   * Resolved delivery owner (#1776) — the carrier or destination shop that owns
+   * fulfilment, resolved by the caller via `resolveDeliveryOwner`. Renders a
+   * "Shipped by" row (connection mini-badge + name + a muted routing note) as
+   * the panel's first field. Absent → no Shipped-by row (older payloads).
+   */
+  deliveryOwner?: DeliveryOwner;
   /**
    * Actionable delivery rider (#1793/#1792). When actionable
    * (`unmapped` / `not-connected`) an inline banner + fix-it deep-link button
@@ -121,6 +130,7 @@ export function OrderDeliveryPanel({
   carrier,
   methodFallback,
   deliveryOutcome,
+  deliveryOwner,
   deliveryRider,
   sourceConnectionId,
   sourceDeliveryMethodId,
@@ -130,6 +140,30 @@ export function OrderDeliveryPanel({
   const sourcePlatform = usePlatform(sourcePlatformType ?? undefined);
 
   const items: KeyValueItem[] = [];
+  // "Shipped by" (#1776) — the first field: who owns fulfilment. A carrier
+  // route reassures "OpenLinker generates the label"; a shop route (named or
+  // the generic destination shop) reads "its own carrier".
+  if (deliveryOwner) {
+    const shippedByName =
+      deliveryOwner.name ?? (deliveryOwner.variant === 'carrier' ? 'a carrier' : 'The destination shop');
+    const shippedByNote =
+      deliveryOwner.variant === 'carrier' ? '· OpenLinker generates the label' : '· its own carrier';
+    items.push({
+      id: 'shipped-by',
+      label: 'Shipped by',
+      value: (
+        <span className="order-delivery__shipped-by">
+          <ConnectionDot
+            name={deliveryOwner.name}
+            platformType={deliveryOwner.platformType}
+            variant={deliveryOwner.variant}
+          />
+          <span>{shippedByName}</span>
+          <span className="text-muted">{shippedByNote}</span>
+        </span>
+      ),
+    });
+  }
   if (shippingAddress) {
     items.push({ id: 'ship-to', label: 'Ship to', value: addressLines(shippingAddress) });
   }

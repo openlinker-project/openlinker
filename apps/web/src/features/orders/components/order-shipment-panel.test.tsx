@@ -172,7 +172,7 @@ describe('OrderShipmentPanel — empty state', () => {
 
     renderWithProviders(<OrderShipmentPanel order={order} />, { apiClient });
 
-    expect(await screen.findByText(/fulfilled by the shop/i)).toBeInTheDocument();
+    expect(await screen.findByText(/ships this order with its own carrier/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Generate label/i })).not.toBeInTheDocument();
   });
 
@@ -195,7 +195,7 @@ describe('OrderShipmentPanel — empty state', () => {
 
     renderWithProviders(<OrderShipmentPanel order={order} />, { apiClient });
 
-    expect(await screen.findByText(/disabled carrier connection/i)).toBeInTheDocument();
+    expect(await screen.findByText(/that connection is disabled/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Generate label/i })).not.toBeInTheDocument();
   });
 
@@ -239,7 +239,7 @@ describe('OrderShipmentPanel — empty state', () => {
     // Populated state (carrier row) plus the inline route note - the reason is
     // visible without hovering the disabled Generate-label button.
     expect(await screen.findByText('InPost')).toBeInTheDocument();
-    expect(screen.getByText(/disabled carrier connection/i)).toBeInTheDocument();
+    expect(screen.getByText(/that connection is disabled/i)).toBeInTheDocument();
   });
 });
 

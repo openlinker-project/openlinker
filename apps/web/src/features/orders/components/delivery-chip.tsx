@@ -28,19 +28,21 @@ import type { ReactElement, ReactNode } from 'react';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { OrderDeliveryRider } from '../api/orders.types';
 import type { DeliveryOutcome } from '../lib/delivery-outcome';
+import type { DeliveryOwner } from '../lib/delivery-owner';
+import { ConnectionDot } from './connection-dot';
 
 const OUTCOME_LABEL: Record<DeliveryOutcome, string> = {
-  resolved: 'Resolved',
+  resolved: 'Labelled',
   'awaiting-label': 'Awaiting label',
-  'shop-fulfilled': 'Shop-fulfilled',
-  'no-method': 'No method',
+  'shop-fulfilled': 'Ships',
+  'no-method': 'No delivery method',
 };
 
 const OUTCOME_TONE: Record<DeliveryOutcome, StatusBadgeTone> = {
   resolved: 'success',
   'awaiting-label': 'info',
   'shop-fulfilled': 'neutral',
-  'no-method': 'neutral',
+  'no-method': 'warning',
 };
 
 type ActionableRider = 'unmapped' | 'not-connected' | 'disabled';
@@ -72,25 +74,80 @@ function cx(...classes: (string | false | undefined)[]): string {
 
 interface DeliveryOutcomeChipProps {
   outcome: DeliveryOutcome;
+  /**
+   * Presentational owner (#1776) — the connection whose `ConnectionDot` renders
+   * before the word on resolved / awaiting-label / shop-fulfilled chips. The
+   * chip stays presentational: the caller resolves ids to names
+   * (`resolveDeliveryOwner`) and passes the result. Ignored for `no-method`
+   * (the warning triangle stands alone) and absent → no dot.
+   */
+  owner?: DeliveryOwner;
+  /**
+   * Quiet takeover marker (#1776) — on a shop-fulfilled chip where OpenLinker
+   * could take over (rider unmapped / not-connected / disabled), draw an accent
+   * edge + a trailing caret and extend the accessible name, keeping the list
+   * chip button-free. The caller computes this; the chip only renders it.
+   */
+  switchable?: boolean;
   className?: string;
 }
 
 export function DeliveryOutcomeChip({
   outcome,
+  owner,
+  switchable = false,
   className = '',
 }: DeliveryOutcomeChipProps): ReactElement {
+  // No-method is an unresolved/attention state, not a physical outcome: mark it
+  // with a warning triangle (in place of the tone dot) so it reads as distinct
+  // from the shop-fulfilled neutral chip. It ignores the owner badge.
+  const noMethod = outcome === 'no-method';
+  const showOwner = !noMethod && owner !== undefined;
   return (
     <StatusBadge
       tone={OUTCOME_TONE[outcome]}
-      withDot
+      withDot={false}
       compact
       className={cx(
         'delivery-outcome-chip',
-        outcome === 'no-method' && 'delivery-outcome-chip--dashed',
+        noMethod && 'delivery-outcome-chip--dashed',
+        noMethod && 'delivery-outcome-chip--warn',
+        switchable && 'delivery-outcome-chip--switchable',
         className,
       )}
     >
+      {noMethod ? (
+        <svg
+          className="delivery-outcome-chip__tri"
+          viewBox="0 0 16 16"
+          width="11"
+          height="11"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path
+            d="M8 1.6 15 14H1z"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.4"
+            stroke-linejoin="round"
+          />
+          <rect x="7.3" y="6" width="1.4" height="4" rx="0.7" fill="currentColor" />
+          <rect x="7.3" y="11" width="1.4" height="1.5" rx="0.7" fill="currentColor" />
+        </svg>
+      ) : null}
+      {showOwner ? (
+        <ConnectionDot name={owner.name} platformType={owner.platformType} variant={owner.variant} />
+      ) : null}
       {OUTCOME_LABEL[outcome]}
+      {switchable ? (
+        <>
+          <span className="delivery-outcome-chip__caret" aria-hidden="true">
+            ›
+          </span>
+          <span className="sr-only"> - OpenLinker can take this over (see order)</span>
+        </>
+      ) : null}
     </StatusBadge>
   );
 }

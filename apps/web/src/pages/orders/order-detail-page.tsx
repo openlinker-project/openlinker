@@ -43,6 +43,7 @@ import { OrderPricingPanel } from '../../features/orders/components/order-pricin
 import { OrderDeliveryPanel } from '../../features/orders/components/order-delivery-panel';
 import { deriveFulfillment } from '../../features/orders/lib/order-health';
 import { deriveDeliveryOutcome } from '../../features/orders/lib/delivery-outcome';
+import { resolveDeliveryOwner } from '../../features/orders/lib/delivery-owner';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
 
 const RAW_SNAPSHOT_ANCHOR_ID = 'order-raw-snapshot';
@@ -191,12 +192,30 @@ export function OrderDetailPage(): ReactElement {
   const deliveryOutcome = deriveDeliveryOutcome({
     processorKind: order.deliveryResolution?.processorKind,
     hasMethod: deliveryHasMethod,
-    isFulfilled: Boolean(activeShipment),
+    // Fulfilled when an OL shipment is booked OR the rollup already reads
+    // dispatched/delivered (e.g. dispatched outside OpenLinker) - so the Carrier
+    // outcome agrees with the Shipment panel instead of showing "awaiting label"
+    // next to a "dispatched outside OpenLinker" note.
+    isFulfilled:
+      Boolean(activeShipment) ||
+      order.fulfillmentState === 'dispatched' ||
+      order.fulfillmentState === 'delivered',
     processorAvailable: order.deliveryResolution?.processorAvailable,
     cancelled: snapshot.status === 'cancelled',
   });
   const sourcePlatformType =
     connections.find((c) => c.id === order.sourceConnectionId)?.platformType ?? null;
+  // Resolve the delivery owner (#1776) for the "Shipped by" row — id → name
+  // lookup only (never re-deriving routing). The carrier/shop split + names come
+  // from the BE resolution + rider through the connections directory.
+  const connectionsById = new Map(
+    connections.map((c) => [c.id, { name: c.name, platformType: c.platformType }] as const),
+  );
+  const deliveryOwner = resolveDeliveryOwner(
+    order.deliveryResolution,
+    order.deliveryRider,
+    connectionsById,
+  );
 
   // Internal ID is the header copy-chip; not duplicated here.
   const shipByView = formatShipBy(order.dispatchByAt ?? null);
@@ -360,6 +379,7 @@ export function OrderDetailPage(): ReactElement {
             carrier={carrier}
             methodFallback={methodFallback}
             deliveryOutcome={deliveryOutcome}
+            deliveryOwner={deliveryOwner}
             deliveryRider={order.deliveryRider}
             sourceConnectionId={order.sourceConnectionId}
             sourceDeliveryMethodId={order.sourceDeliveryMethodId}

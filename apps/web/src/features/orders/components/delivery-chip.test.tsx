@@ -11,9 +11,9 @@ import {
 } from './delivery-chip';
 
 describe('DeliveryOutcomeChip', () => {
-  it('should render the "Resolved" label for the resolved outcome', () => {
+  it('should render the "Labelled" label for the resolved outcome', () => {
     renderWithProviders(<DeliveryOutcomeChip outcome="resolved" />);
-    expect(screen.getByText('Resolved')).toBeInTheDocument();
+    expect(screen.getByText('Labelled')).toBeInTheDocument();
   });
 
   it('should render the "Awaiting label" label for the awaiting-label outcome', () => {
@@ -21,14 +21,14 @@ describe('DeliveryOutcomeChip', () => {
     expect(screen.getByText('Awaiting label')).toBeInTheDocument();
   });
 
-  it('should render the "Shop-fulfilled" label for the shop-fulfilled outcome', () => {
+  it('should render the "Ships" label for the shop-fulfilled outcome', () => {
     renderWithProviders(<DeliveryOutcomeChip outcome="shop-fulfilled" />);
-    expect(screen.getByText('Shop-fulfilled')).toBeInTheDocument();
+    expect(screen.getByText('Ships')).toBeInTheDocument();
   });
 
-  it('should render the "No method" label with the dashed modifier for the no-method outcome', () => {
+  it('should render the "No delivery method" label with the dashed modifier for the no-method outcome', () => {
     const { container } = renderWithProviders(<DeliveryOutcomeChip outcome="no-method" />);
-    expect(screen.getByText('No method')).toBeInTheDocument();
+    expect(screen.getByText('No delivery method')).toBeInTheDocument();
     expect(container.querySelector('.delivery-outcome-chip--dashed')).not.toBeNull();
   });
 });
@@ -69,20 +69,20 @@ describe('DeliveryChip', () => {
       candidateCarrier: { platformType: 'inpost', displayName: 'InPost' },
     };
     renderWithProviders(<DeliveryChip outcome="shop-fulfilled" rider={rider} />);
-    expect(screen.getByText('Shop-fulfilled')).toBeInTheDocument();
+    expect(screen.getByText('Ships')).toBeInTheDocument();
     expect(screen.getByText('Unmapped')).toBeInTheDocument();
   });
 
   it('should render only the outcome chip when the rider is "none"', () => {
     renderWithProviders(<DeliveryChip outcome="shop-fulfilled" rider={{ rider: 'none' }} />);
-    expect(screen.getByText('Shop-fulfilled')).toBeInTheDocument();
+    expect(screen.getByText('Ships')).toBeInTheDocument();
     expect(screen.queryByText('Unmapped')).not.toBeInTheDocument();
     expect(screen.queryByText('Not connected')).not.toBeInTheDocument();
   });
 
   it('should render only the outcome chip when no rider is supplied', () => {
     renderWithProviders(<DeliveryChip outcome="resolved" />);
-    expect(screen.getByText('Resolved')).toBeInTheDocument();
+    expect(screen.getByText('Labelled')).toBeInTheDocument();
     expect(screen.queryByText('Unmapped')).not.toBeInTheDocument();
   });
 });
