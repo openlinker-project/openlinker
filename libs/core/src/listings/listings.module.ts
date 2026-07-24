@@ -47,6 +47,7 @@ import { SellerPoliciesService } from './application/services/seller-policies.se
 import { ResponsibleProducerService } from './application/services/responsible-producer.service';
 import { DeliveryPriceListService } from './application/services/delivery-price-list.service';
 import { ShopCategoryBrowseService } from './application/services/shop-category-browse.service';
+import { ShopAttributeReadService } from './application/services/shop-attribute-read.service';
 import { OfferCreationEnqueueService } from './application/services/offer-creation-enqueue.service';
 import { BulkListingSubmitService } from './application/services/bulk-listing-submit.service';
 import { BulkListingRetryService } from './application/services/bulk-listing-retry.service';
@@ -91,6 +92,7 @@ import {
   BULK_SHOP_PUBLISH_RETRY_SERVICE_TOKEN,
   SHOP_STATUS_SYNC_SERVICE_TOKEN,
   SHOP_PRODUCT_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
+  SHOP_ATTRIBUTE_READ_SERVICE_TOKEN,
 } from './listings.tokens';
 
 // Re-export tokens for convenience
@@ -129,6 +131,7 @@ export {
   BULK_SHOP_PUBLISH_RETRY_SERVICE_TOKEN,
   SHOP_STATUS_SYNC_SERVICE_TOKEN,
   SHOP_PRODUCT_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
+  SHOP_ATTRIBUTE_READ_SERVICE_TOKEN,
 } from './listings.tokens';
 
 @Module({
@@ -192,6 +195,7 @@ export {
     ResponsibleProducerService,
     DeliveryPriceListService,
     ShopCategoryBrowseService,
+    ShopAttributeReadService,
     OfferStockRestoreService,
     {
       provide: OFFER_LINKING_SERVICE_TOKEN,
@@ -326,6 +330,10 @@ export {
       useExisting: ShopCategoryBrowseService,
     },
     {
+      provide: SHOP_ATTRIBUTE_READ_SERVICE_TOKEN,
+      useExisting: ShopAttributeReadService,
+    },
+    {
       provide: OFFER_STOCK_RESTORE_SERVICE_TOKEN,
       useExisting: OfferStockRestoreService,
     },
@@ -363,6 +371,7 @@ export {
     BULK_SHOP_PUBLISH_RETRY_SERVICE_TOKEN,
     SHOP_STATUS_SYNC_SERVICE_TOKEN,
     SHOP_PRODUCT_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
+    SHOP_ATTRIBUTE_READ_SERVICE_TOKEN,
   ],
 })
 export class ListingsModule {}

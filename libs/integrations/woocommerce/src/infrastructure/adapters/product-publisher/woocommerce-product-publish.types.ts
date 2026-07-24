@@ -56,8 +56,15 @@ export interface WooCommerceProductPublishRequest {
   /** Product tags (created on demand by name). Maps `PublishProductContent.tags`. */
   tags?: Array<{ name: string }>;
   images?: Array<{ src: string }>;
-  /** Per-product custom attributes (preferred over global-attribute-on-variation in v1). */
-  attributes?: Array<{ name: string; options: string[]; visible: boolean }>;
+  /**
+   * Product attributes. Two shapes share the array (#1835):
+   * - Global-attribute linkage: `{ id, options, visible }` where `id` is the WC
+   *   global-attribute (`pa_*` taxonomy) id and `options` are its term names/slugs
+   *   — WC resolves the options to existing terms of that attribute.
+   * - Custom free-text: `{ name, options, visible }` — an ad-hoc per-product
+   *   attribute with no taxonomy backing (the fallback).
+   */
+  attributes?: Array<WooCommerceProductAttribute>;
   /**
    * Arbitrary post-meta rows. Used to carry SEO title/description for the common
    * SEO plugins (Yoast / RankMath), which read product SEO from post meta rather
@@ -65,6 +72,35 @@ export interface WooCommerceProductPublishRequest {
    */
   meta_data?: Array<{ key: string; value: string }>;
   [key: string]: unknown;
+}
+
+/**
+ * One product-attribute wire item. `id` links a store-wide global attribute
+ * (`pa_*` taxonomy); `name` names an ad-hoc custom attribute. Exactly one of the
+ * two is sent per item — global linkage is preferred; custom is the fallback.
+ */
+export interface WooCommerceProductAttribute {
+  /** Global-attribute id (`pa_*` taxonomy). Present for a linked global attribute. */
+  id?: number;
+  /** Custom-attribute name. Present for an ad-hoc free-text attribute. */
+  name?: string;
+  /** Term names/slugs (global) or free-text values (custom). */
+  options: string[];
+  visible: boolean;
+}
+
+/** Minimal `products/attributes` response shape the adapter reads (#1835). */
+export interface WooCommerceAttributeResponse {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+/** Minimal `products/attributes/{id}/terms` response shape the adapter reads (#1835). */
+export interface WooCommerceAttributeTermResponse {
+  id: number;
+  name: string;
+  slug: string;
 }
 
 /** Minimal `products` response shape the adapter reads. */

@@ -34,6 +34,14 @@ export { WoocommercePublishWizard } from './components/WoocommercePublishWizard'
 export { ShopCategoryPickerModal } from './components/bulk/shop-category-picker-modal';
 export { useShopCategoriesQuery } from './hooks/use-shop-categories-query';
 export type { ShopCategory } from './api/listings.types';
+// Shop destination structured attribute picker (#1835). Self-contained panel +
+// hooks so the shop edit modal (#1830) can mount it in its attributes section,
+// gated on the shop `ShopAttributeReader` capability. Emits neutral
+// `OfferParameter`s (product-section) the caller threads onto publish parameters.
+export { ShopAttributePicker } from './components/bulk/shop-attribute-picker';
+export { useShopAttributesQuery } from './hooks/use-shop-attributes-query';
+export { useShopAttributeTermsQuery } from './hooks/use-shop-attribute-terms-query';
+export type { ShopAttribute, ShopAttributeTerm } from './api/listings.types';
 // NOTE: `ShopPublishLauncher` is intentionally NOT re-exported here. It
 // imports the app-tier `useShopPublishWizard` binding, which imports the
 // plugin registry — re-exporting it from this barrel (which the WooCommerce

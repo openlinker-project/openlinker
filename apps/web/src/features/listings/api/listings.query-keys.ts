@@ -58,4 +58,10 @@ export const listingsQueryKeys = {
   /** #1834 — shop destination category tree, one parent level at a time. */
   shopCategories: (connectionId: string, parentId?: string) =>
     ['listings', 'shopCategories', connectionId, parentId ?? ''] as const,
+  /** #1835 — shop destination global attributes. */
+  shopAttributes: (connectionId: string) =>
+    ['listings', 'shopAttributes', connectionId] as const,
+  /** #1835 — predefined terms of one global attribute. */
+  shopAttributeTerms: (connectionId: string, attributeId: string) =>
+    ['listings', 'shopAttributeTerms', connectionId, attributeId] as const,
 };

@@ -316,6 +316,10 @@ export function createMockApiClient(
       // #1834 — default to "no shop categories" so the shop category picker
       // renders its empty state in tests that don't override.
       browseShopCategories: vi.fn().mockResolvedValue([]),
+      // #1835 — default to "no global attributes/terms" so the shop attribute
+      // picker renders its empty state in tests that don't override.
+      listShopAttributes: vi.fn().mockResolvedValue([]),
+      listShopAttributeTerms: vi.fn().mockResolvedValue([]),
       shopPublishBulk: vi.fn().mockResolvedValue({ batchId: 'sp-batch-1', items: [] }),
       getBulkShopPublishBatch: vi.fn().mockResolvedValue(null),
       getSellerPolicies: vi.fn().mockResolvedValue({
