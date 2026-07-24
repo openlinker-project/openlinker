@@ -98,6 +98,25 @@ describe('ProductPublishEnqueueService', () => {
     );
   });
 
+  it('should forward per-item destinationCategoryIds + parameters into the payload (#1831)', async () => {
+    const parameters = [{ id: 'Colour', values: ['Red'], section: 'product' as const }];
+
+    await service.enqueuePublish({
+      ...input,
+      destinationCategoryIds: ['cat-1', 'cat-2'],
+      parameters,
+    });
+
+    expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          destinationCategoryIds: ['cat-1', 'cat-2'],
+          parameters,
+        }),
+      }),
+    );
+  });
+
   it('should honour an explicit idempotency key', async () => {
     await service.enqueuePublish({ ...input, idempotencyKey: 'custom-key' });
     expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(

@@ -159,7 +159,7 @@ A new shop-listing capability touches, end-to-end (~13 new files, ~15 edits):
 
 **Cons / trade-offs:** the orchestration extraction is a refactor of the hottest subsystem (#726/#824 just landed) — sequence it carefully behind tests; two builder code-paths to maintain; the visibility axis adds state the offer model didn't have; WooCommerce global-attribute-on-variation writes are documented as REST-friction-prone (prefer per-product custom attributes initially); Shopify is GraphQL-forward (REST product endpoints legacy as of Oct 2024) — the adapter targets `productSet` + `publishablePublish`.
 
-**Deferred:** Shopify collections (orthogonal to categories); scheduled publication; per-channel publication fan-out beyond Online Store; bulk publish UX depth.
+**Deferred:** Shopify collections (orthogonal to categories); scheduled publication; per-channel publication fan-out beyond Online Store; bulk publish UX depth (partially realized — the bulk transport now round-trips optional per-item `content` / `destinationCategoryIds` / `parameters` overrides that beat the batch-shared / server-derived defaults, #1831; the FE editor that authors them is #1830).
 
 ## Related
 

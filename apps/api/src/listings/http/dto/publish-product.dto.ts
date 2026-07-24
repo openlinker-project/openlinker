@@ -73,6 +73,8 @@ import {
   type PublishTaxStatus,
 } from '@openlinker/core/listings';
 
+import { OfferParameterDto } from './create-offer.dto';
+
 const VARIANT_ID_PATTERN = /^ol_variant_[a-f0-9]+$/;
 const VARIANT_ID_MESSAGE = 'must be an OpenLinker internal variant id (ol_variant_{hex})';
 
@@ -275,6 +277,42 @@ export class BulkPublishItemDto {
   @ValidateNested()
   @Type(() => PublishPriceDto)
   price?: PublishPriceDto;
+
+  @ApiPropertyOptional({
+    type: PublishContentDto,
+    description:
+      "This product's own content override (#1831); wins over the batch-shared content. Omitted ⇒ batch-shared content applies.",
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PublishContentDto)
+  content?: PublishContentDto;
+
+  @ApiPropertyOptional({
+    isArray: true,
+    type: String,
+    description:
+      "This product's own destination category ids (#1831). Present (including empty) ⇒ skips server-side provisioning; omitted ⇒ builder provisions as today.",
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  @MaxLength(128, { each: true })
+  destinationCategoryIds?: string[];
+
+  @ApiPropertyOptional({
+    isArray: true,
+    type: OfferParameterDto,
+    description:
+      "This product's own neutral category parameters (#1831). Present (including empty) ⇒ skips attribute projection; omitted ⇒ builder projects as today.",
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => OfferParameterDto)
+  parameters?: OfferParameterDto[];
 }
 
 export class BulkPublishProductRequestDto {

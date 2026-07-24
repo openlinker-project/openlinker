@@ -85,6 +85,10 @@ export class ProductPublishEnqueueService implements IProductPublishEnqueueServi
             ...(input.price !== undefined && { price: input.price }),
             ...(input.content !== undefined && { content: input.content }),
             ...(input.commerce !== undefined && { commerce: input.commerce }),
+            ...(input.destinationCategoryIds !== undefined && {
+              destinationCategoryIds: input.destinationCategoryIds,
+            }),
+            ...(input.parameters !== undefined && { parameters: input.parameters }),
             ...(input.idempotencyKey !== undefined && { idempotencyKey: input.idempotencyKey }),
           } satisfies ShopProductPublishPayloadV2)
         : ({
@@ -96,6 +100,10 @@ export class ProductPublishEnqueueService implements IProductPublishEnqueueServi
             ...(input.price !== undefined && { price: input.price }),
             ...(input.content !== undefined && { content: input.content }),
             ...(input.commerce !== undefined && { commerce: input.commerce }),
+            ...(input.destinationCategoryIds !== undefined && {
+              destinationCategoryIds: input.destinationCategoryIds,
+            }),
+            ...(input.parameters !== undefined && { parameters: input.parameters }),
             ...(input.idempotencyKey !== undefined && { idempotencyKey: input.idempotencyKey }),
           } satisfies ShopProductPublishPayloadV1);
 
