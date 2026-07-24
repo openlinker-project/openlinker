@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DataTable } from './data-table';
+import { mockMobileViewport } from '../../test/viewport';
 
 interface TestRow {
   createdAt: string;
@@ -19,22 +20,6 @@ function renderWithRouter(ui: React.ReactElement): ReturnType<typeof render> {
   return render(<MemoryRouter>{ui}</MemoryRouter>);
 }
 
-function mockMobileViewport(): { restore: () => void } {
-  const spy = vi.spyOn(window, 'matchMedia').mockImplementation(
-    (query) =>
-      ({
-        matches: query.includes('max-width'),
-        media: query,
-        onchange: null,
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        addListener: () => {},
-        removeListener: () => {},
-        dispatchEvent: () => false,
-      }) as MediaQueryList,
-  );
-  return { restore: () => spy.mockRestore() };
-}
 
 describe('DataTable', () => {
   afterEach(cleanup);

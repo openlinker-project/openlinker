@@ -189,11 +189,12 @@ export class InpostHttpClient implements IInpostHttpClient {
     if (response.status >= 500) {
       throw new RetryableHttpError(message, response.status);
     }
+    const flatDetails = flattenShipXFieldErrors(errorBody?.details);
     throw new ShippingProviderRejectionException(
       'inpost',
-      firstDetailKey(errorBody?.details),
+      firstDetailKey(flatDetails),
       message,
-      errorBody?.details ? { fieldErrors: errorBody.details } : undefined,
+      Object.keys(flatDetails).length > 0 ? { fieldErrors: flatDetails } : undefined,
     );
   }
 
@@ -248,10 +249,11 @@ function parseRetryAfterMs(header: string | null): number | undefined {
 }
 
 /**
- * Pick the first field key from a ShipX per-field error map to use as the
- * rejection's `providerCode`. The closest thing ShipX surfaces to a typed
- * error code is the field that triggered the rejection (e.g. `'target_point'`,
- * `'sender'`, `'parcels'`). Returns `null` when no details are available.
+ * Pick the first field key from a (flattened) ShipX per-field error map to use
+ * as the rejection's `providerCode`. The closest thing ShipX surfaces to a
+ * typed error code is the field that triggered the rejection (e.g.
+ * `'target_point'`, `'sender'`, `'parcels'`). Returns `null` when no details
+ * are available.
  */
 function firstDetailKey(
   details: Record<string, readonly string[]> | undefined,
@@ -259,4 +261,63 @@ function firstDetailKey(
   if (!details) return null;
   const keys = Object.keys(details);
   return keys.length > 0 ? keys[0] : null;
+}
+
+/**
+ * Normalise ShipX's `details` map to a single flat, leaf-keyed
+ * `{ field: string[] }` shape. ShipX uses two shapes depending on the
+ * rejected field (confirmed live against the sandbox, #1807):
+ *
+ * - flat, for simple top-level fields: `{ name: ["required"] }`
+ * - nested, for compound/array request fields: `{ custom_attributes: [{
+ *   target_point: ["does_not_exist"] }] }` — a paczkomat rejection surfaces
+ *   this way because `target_point` lives inside `custom_attributes` on the
+ *   wire (`buildLockerRequest`).
+ *
+ * Without this normalisation, `firstDetailKey` picked the *outer* key
+ * (`'custom_attributes'`) instead of the actual offending field
+ * (`'target_point'`), which broke the `target_point` → "pick another locker"
+ * re-tag in `InpostShippingAdapter.generateLabel` (#885) for exactly the case
+ * it was built for.
+ *
+ * Messages for a repeated leaf key (the same field rejected across multiple
+ * array items, or a flat top-level key that also appears nested) are merged
+ * rather than overwritten, so the FE's `StructuredErrorList` (#1812) shows
+ * every rejected sub-field instead of just the last one seen.
+ *
+ * Nesting is flattened exactly one level deep — the only two shapes ShipX is
+ * confirmed to emit live (#1807). A hypothetical doubly-nested `details`
+ * (`{ a: [{ b: [{ c: [...] }] }] }`) is a conscious non-goal: the inner value
+ * is an array of objects, fails the string-array guard, and is dropped rather
+ * than recursed, so no unproven shape is over-generalised for.
+ */
+function flattenShipXFieldErrors(
+  details: ShipXErrorBody['details'],
+): Record<string, readonly string[]> {
+  if (!details) return {};
+  const flat: Record<string, string[]> = {};
+  const mergeInto = (fieldKey: string, messages: readonly string[]): void => {
+    flat[fieldKey] = [...(flat[fieldKey] ?? []), ...messages];
+  };
+  for (const [key, value] of Object.entries(details)) {
+    if (!Array.isArray(value)) {
+      continue;
+    }
+    if (value.every((item): item is string => typeof item === 'string')) {
+      mergeInto(key, value);
+      continue;
+    }
+    for (const item of value) {
+      if (item === null || typeof item !== 'object') {
+        continue;
+      }
+      const nestedFieldErrors = item as Record<string, unknown>;
+      for (const [nestedKey, nestedValue] of Object.entries(nestedFieldErrors)) {
+        if (Array.isArray(nestedValue) && nestedValue.every((m) => typeof m === 'string')) {
+          mergeInto(nestedKey, nestedValue as readonly string[]);
+        }
+      }
+    }
+  }
+  return flat;
 }
