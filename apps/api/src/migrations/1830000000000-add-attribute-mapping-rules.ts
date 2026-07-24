@@ -8,7 +8,15 @@
  * phrase, and ordered by `priority`. Kind-specific configuration lives in the
  * `config` jsonb column; `kind` is mirrored as a scalar for DB-level filtering.
  *
- * Mirrors the ORM-entity decorators for synchronize↔migration parity.
+ * The `attribute_mapping_rules.{destination,source}_connection_id` columns and
+ * the `IX_attribute_mapping_rules_destination` index mirror the ORM-entity
+ * decorators for synchronize↔migration parity. The two `ON DELETE CASCADE`
+ * foreign keys to `connections(id)` are intentionally migration-only — the ORM
+ * entity deliberately does NOT model them as `@ManyToOne` relations (the rule is
+ * read connection-scoped by id and never navigates to the `Connection`
+ * aggregate, so a relation would only add eager-load / hydration churn). The
+ * synchronize-built integration schema therefore omits the FKs; the DB-level
+ * cascade is a production-migration guarantee, not part of the entity contract.
  * `gen_random_uuid()` is built-in on PG >= 13 (Testcontainers + prod run PG 16).
  *
  * @module apps/api/src/migrations

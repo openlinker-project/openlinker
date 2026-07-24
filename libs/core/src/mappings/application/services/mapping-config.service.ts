@@ -211,7 +211,7 @@ export class MappingConfigService implements IMappingConfigService {
     return this.attributeRuleRepo.upsertRule(destinationConnectionId, input);
   }
 
-  deleteAttributeMappingRule(id: string): Promise<void> {
-    return this.attributeRuleRepo.deleteRule(id);
+  deleteAttributeMappingRule(id: string, destinationConnectionId: string): Promise<void> {
+    return this.attributeRuleRepo.deleteRule(id, destinationConnectionId);
   }
 }

@@ -132,5 +132,5 @@ export interface IMappingConfigService {
     destinationConnectionId: string,
     input: AttributeMappingRuleInput
   ): Promise<AttributeMappingRule>;
-  deleteAttributeMappingRule(id: string): Promise<void>;
+  deleteAttributeMappingRule(id: string, destinationConnectionId: string): Promise<void>;
 }

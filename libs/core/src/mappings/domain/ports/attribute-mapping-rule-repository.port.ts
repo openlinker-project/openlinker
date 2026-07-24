@@ -21,6 +21,11 @@ export interface AttributeMappingRuleRepositoryPort {
     input: AttributeMappingRuleInput
   ): Promise<AttributeMappingRule>;
 
-  /** Delete a rule by surrogate id. */
-  deleteRule(id: string): Promise<void>;
+  /**
+   * Delete a rule by surrogate id, scoped to its destination connection.
+   * Throws `AttributeMappingRuleNotFoundException` when no rule with that id
+   * exists under the given connection (so a rule cannot be deleted through a
+   * different connection's path).
+   */
+  deleteRule(id: string, destinationConnectionId: string): Promise<void>;
 }

@@ -19,12 +19,14 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  NotFoundException,
   Param,
   Put,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
+  AttributeMappingRuleNotFoundException,
   IMappingConfigService,
   MAPPING_CONFIG_SERVICE_TOKEN,
   type AttributeMappingRuleConfig,
@@ -65,17 +67,21 @@ export class AttributeMappingRulesController {
     @Param('connectionId') connectionId: string,
     @Body() dto: AttributeRuleInputDto
   ): Promise<AttributeRuleResponseDto> {
-    const rule = await this.mappingConfigService.upsertAttributeMappingRule(connectionId, {
-      id: dto.id,
-      destinationParameterName: dto.destinationParameterName,
-      config: this.toConfig(dto),
-      priority: dto.priority,
-      sourceConnectionId: dto.sourceConnectionId ?? null,
-      destinationCategoryId: dto.destinationCategoryId ?? null,
-      manufacturerMatch: dto.manufacturerMatch ?? null,
-      phraseMatch: dto.phraseMatch ?? null,
-    });
-    return AttributeRuleResponseDto.fromDomain(rule);
+    try {
+      const rule = await this.mappingConfigService.upsertAttributeMappingRule(connectionId, {
+        id: dto.id,
+        destinationParameterName: dto.destinationParameterName,
+        config: this.toConfig(dto),
+        priority: dto.priority,
+        sourceConnectionId: dto.sourceConnectionId ?? null,
+        destinationCategoryId: dto.destinationCategoryId ?? null,
+        manufacturerMatch: dto.manufacturerMatch ?? null,
+        phraseMatch: dto.phraseMatch ?? null,
+      });
+      return AttributeRuleResponseDto.fromDomain(rule);
+    } catch (error) {
+      throw this.mapNotFound(error);
+    }
   }
 
   @Delete(':ruleId')
@@ -86,15 +92,30 @@ export class AttributeMappingRulesController {
   @ApiParam({ name: 'ruleId', type: String })
   @ApiResponse({ status: 204, description: 'Rule deleted' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async remove(@Param('ruleId') ruleId: string): Promise<void> {
-    await this.mappingConfigService.deleteAttributeMappingRule(ruleId);
+  async remove(
+    @Param('connectionId') connectionId: string,
+    @Param('ruleId') ruleId: string
+  ): Promise<void> {
+    try {
+      await this.mappingConfigService.deleteAttributeMappingRule(ruleId, connectionId);
+    } catch (error) {
+      throw this.mapNotFound(error);
+    }
+  }
+
+  /** Map the domain not-found exception to a 404 at the HTTP boundary. */
+  private mapNotFound(error: unknown): unknown {
+    if (error instanceof AttributeMappingRuleNotFoundException) {
+      return new NotFoundException(error.message);
+    }
+    return error;
   }
 
   private toConfig(dto: AttributeRuleInputDto): AttributeMappingRuleConfig {
     switch (dto.kind) {
       case 'fixed':
-        if (dto.fixedValue === undefined) {
-          throw new BadRequestException('fixedValue is required for a "fixed" rule');
+        if (dto.fixedValue === undefined || dto.fixedValue === '') {
+          throw new BadRequestException('fixedValue must be a non-empty string for a "fixed" rule');
         }
         return { kind: 'fixed', value: dto.fixedValue };
       case 'copy-remap':

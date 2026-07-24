@@ -66,8 +66,11 @@ export class AttributeMappingRuleRepository implements AttributeMappingRuleRepos
     return this.toDomain(saved);
   }
 
-  async deleteRule(id: string): Promise<void> {
-    await this.repo.delete({ id });
+  async deleteRule(id: string, destinationConnectionId: string): Promise<void> {
+    const result = await this.repo.delete({ id, destinationConnectionId });
+    if (!result.affected) {
+      throw new AttributeMappingRuleNotFoundException(id);
+    }
   }
 
   private toDomain(entity: AttributeMappingRuleOrmEntity): AttributeMappingRule {

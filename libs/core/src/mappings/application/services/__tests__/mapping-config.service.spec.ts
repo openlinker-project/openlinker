@@ -495,12 +495,12 @@ describe('MappingConfigService', () => {
       expect(result).toEqual(saved);
     });
 
-    it('deleteAttributeMappingRule delegates to the rule repo', async () => {
+    it('deleteAttributeMappingRule delegates to the rule repo (connection-scoped)', async () => {
       attributeRuleRepo.deleteRule.mockResolvedValue(undefined);
 
-      await service.deleteAttributeMappingRule('r-3');
+      await service.deleteAttributeMappingRule('r-3', CONNECTION_ID);
 
-      expect(attributeRuleRepo.deleteRule).toHaveBeenCalledWith('r-3');
+      expect(attributeRuleRepo.deleteRule).toHaveBeenCalledWith('r-3', CONNECTION_ID);
     });
   });
 });
