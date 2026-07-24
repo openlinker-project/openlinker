@@ -32,6 +32,8 @@ const usView: PosthogSettingsView = {
   customHost: null,
   autocapture: true,
   sessionRecording: true,
+  productEventsEnabled: false,
+  enabledEventGroups: [],
   apiKeyConfigured: true,
   wouldOverrideEnv: false,
   overriddenEnvVars: [],
@@ -80,6 +82,8 @@ describe('PosthogSettingsDialog', () => {
         customHost: null,
         autocapture: true,
         sessionRecording: true,
+        productEventsEnabled: false,
+        enabledEventGroups: [],
       });
     });
     await waitFor(() => {

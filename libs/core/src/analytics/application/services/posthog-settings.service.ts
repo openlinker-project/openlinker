@@ -94,6 +94,8 @@ export class PosthogSettingsService implements IPosthogSettingsService {
         customHost: null,
         autocapture: false,
         sessionRecording: false,
+        productEventsEnabled: false,
+        enabledEventGroups: [],
         apiKeyConfigured,
         wouldOverrideEnv,
         overriddenEnvVars,
@@ -108,6 +110,8 @@ export class PosthogSettingsService implements IPosthogSettingsService {
       customHost: row.customHost,
       autocapture: row.autocapture,
       sessionRecording: row.sessionRecording,
+      productEventsEnabled: row.productEventsEnabled,
+      enabledEventGroups: row.enabledEventGroups,
       apiKeyConfigured,
       wouldOverrideEnv,
       overriddenEnvVars,
@@ -165,13 +169,17 @@ export class PosthogSettingsService implements IPosthogSettingsService {
         host,
         autocapture: row.autocapture,
         sessionRecording: row.sessionRecording,
+        productEventsEnabled: row.productEventsEnabled,
+        enabledEventGroups: row.enabledEventGroups,
       };
     }
 
     // No enabled DB row — env fallback, preserving the exact pre-#1685
     // behavior (autocapture/session-recording were previously hardcoded
     // client-side; pin the same values here so an env-only deployment sees
-    // no behavior change on upgrade).
+    // no behavior change on upgrade). Product events are DB-only — an
+    // env-configured install never gets them, since there is no env var for
+    // group enablement.
     const envConfig = this.readEnvConfig();
     if (!envConfig) {
       return null;
@@ -181,6 +189,8 @@ export class PosthogSettingsService implements IPosthogSettingsService {
       host: envConfig.host,
       autocapture: false,
       sessionRecording: true,
+      productEventsEnabled: false,
+      enabledEventGroups: [],
     };
   }
 

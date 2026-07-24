@@ -76,6 +76,8 @@ export class PosthogSettingsController {
         customHost: dto.region === 'custom' ? (dto.customHost ?? null) : null,
         autocapture: dto.autocapture,
         sessionRecording: dto.sessionRecording,
+        productEventsEnabled: dto.productEventsEnabled,
+        enabledEventGroups: dto.enabledEventGroups,
       },
       user?.id
     );

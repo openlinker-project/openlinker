@@ -82,6 +82,8 @@ describe('PosthogSettingsService', () => {
         customHost: null,
         autocapture: false,
         sessionRecording: false,
+        productEventsEnabled: false,
+        enabledEventGroups: [],
         apiKeyConfigured: false,
         wouldOverrideEnv: false,
         overriddenEnvVars: [],
@@ -93,7 +95,7 @@ describe('PosthogSettingsService', () => {
     it('never includes the API key, only whether one is configured', async () => {
       const updatedAt = new Date('2026-05-01T00:00:00Z');
       repository.findSettings.mockResolvedValue(
-        new PosthogSettings(true, 'eu', null, true, true, updatedAt, 'admin')
+        new PosthogSettings(true, 'eu', null, true, true, false, [], updatedAt, 'admin')
       );
       credentials.getByRef.mockResolvedValue(buildCredential('phc_super_secret'));
 
@@ -114,7 +116,7 @@ describe('PosthogSettingsService', () => {
 
     it('reports wouldOverrideEnv=false when the row is disabled, even if env is set', async () => {
       repository.findSettings.mockResolvedValue(
-        new PosthogSettings(false, 'eu', null, false, false, new Date(), 'admin')
+        new PosthogSettings(false, 'eu', null, false, false, false, [], new Date(), 'admin')
       );
       const config = buildConfigService({ OL_POSTHOG_KEY: 'phc_env' });
 
@@ -129,7 +131,7 @@ describe('PosthogSettingsService', () => {
       // though resolveConfig() would (correctly) return null in this exact
       // state — nothing is actually being overridden if the row has no key.
       repository.findSettings.mockResolvedValue(
-        new PosthogSettings(true, 'us', null, false, false, new Date(), 'admin')
+        new PosthogSettings(true, 'us', null, false, false, false, [], new Date(), 'admin')
       );
       const config = buildConfigService({ OL_POSTHOG_KEY: 'phc_env' });
 
@@ -141,7 +143,7 @@ describe('PosthogSettingsService', () => {
 
     it('names only OL_POSTHOG_KEY when env host was not explicitly set', async () => {
       repository.findSettings.mockResolvedValue(
-        new PosthogSettings(true, 'us', null, false, false, new Date(), 'admin')
+        new PosthogSettings(true, 'us', null, false, false, false, [], new Date(), 'admin')
       );
       credentials.getByRef.mockResolvedValue(buildCredential('phc_db'));
       const config = buildConfigService({ OL_POSTHOG_KEY: 'phc_env' });
@@ -154,7 +156,7 @@ describe('PosthogSettingsService', () => {
 
     it('names both OL_POSTHOG_KEY and OL_POSTHOG_HOST when env host was explicitly set', async () => {
       repository.findSettings.mockResolvedValue(
-        new PosthogSettings(true, 'us', null, false, false, new Date(), 'admin')
+        new PosthogSettings(true, 'us', null, false, false, false, [], new Date(), 'admin')
       );
       credentials.getByRef.mockResolvedValue(buildCredential('phc_db'));
       const config = buildConfigService({
@@ -171,18 +173,22 @@ describe('PosthogSettingsService', () => {
   describe('updateSettings', () => {
     it('delegates to the repository', async () => {
       repository.upsertSettings.mockResolvedValue(
-        new PosthogSettings(true, 'us', null, true, true, new Date(), 'admin')
+        new PosthogSettings(true, 'us', null, true, true, false, [], new Date(), 'admin')
       );
 
-      await buildService().updateSettings(
-        { enabled: true, region: 'us', customHost: null, autocapture: true, sessionRecording: true },
-        'admin'
-      );
+      const input = {
+        enabled: true,
+        region: 'us' as const,
+        customHost: null,
+        autocapture: true,
+        sessionRecording: true,
+        productEventsEnabled: false,
+        enabledEventGroups: [],
+      };
 
-      expect(repository.upsertSettings).toHaveBeenCalledWith(
-        { enabled: true, region: 'us', customHost: null, autocapture: true, sessionRecording: true },
-        'admin'
-      );
+      await buildService().updateSettings(input, 'admin');
+
+      expect(repository.upsertSettings).toHaveBeenCalledWith(input, 'admin');
     });
   });
 
@@ -240,12 +246,14 @@ describe('PosthogSettingsService', () => {
         host: 'https://eu.posthog.com',
         autocapture: false,
         sessionRecording: true,
+        productEventsEnabled: false,
+        enabledEventGroups: [],
       });
     });
 
     it('falls back to env when the DB row is disabled', async () => {
       repository.findSettings.mockResolvedValue(
-        new PosthogSettings(false, 'us', null, true, true, new Date(), 'admin')
+        new PosthogSettings(false, 'us', null, true, true, false, [], new Date(), 'admin')
       );
       const config = buildConfigService({ OL_POSTHOG_KEY: 'phc_env' });
 
@@ -256,12 +264,14 @@ describe('PosthogSettingsService', () => {
         host: 'https://eu.posthog.com',
         autocapture: false,
         sessionRecording: true,
+        productEventsEnabled: false,
+        enabledEventGroups: [],
       });
     });
 
     it('DB row wins over env when enabled, using its own autocapture/sessionRecording', async () => {
       repository.findSettings.mockResolvedValue(
-        new PosthogSettings(true, 'us', null, true, false, new Date(), 'admin')
+        new PosthogSettings(true, 'us', null, true, false, false, [], new Date(), 'admin')
       );
       credentials.getByRef.mockResolvedValue(buildCredential('phc_db'));
       const config = buildConfigService({ OL_POSTHOG_KEY: 'phc_env' });
@@ -273,12 +283,14 @@ describe('PosthogSettingsService', () => {
         host: 'https://us.i.posthog.com',
         autocapture: true,
         sessionRecording: false,
+        productEventsEnabled: false,
+        enabledEventGroups: [],
       });
     });
 
     it('resolves the eu region to the EU ingestion host', async () => {
       repository.findSettings.mockResolvedValue(
-        new PosthogSettings(true, 'eu', null, false, false, new Date(), 'admin')
+        new PosthogSettings(true, 'eu', null, false, false, false, [], new Date(), 'admin')
       );
       credentials.getByRef.mockResolvedValue(buildCredential('phc_db'));
 
@@ -289,7 +301,7 @@ describe('PosthogSettingsService', () => {
 
     it('resolves the custom region to the configured custom host', async () => {
       repository.findSettings.mockResolvedValue(
-        new PosthogSettings(true, 'custom', 'https://posthog.mycompany.com', false, false, new Date(), 'admin')
+        new PosthogSettings(true, 'custom', 'https://posthog.mycompany.com', false, false, false, [], new Date(), 'admin')
       );
       credentials.getByRef.mockResolvedValue(buildCredential('phc_db'));
 
@@ -300,7 +312,7 @@ describe('PosthogSettingsService', () => {
 
     it('returns null when region is custom but no custom host is set', async () => {
       repository.findSettings.mockResolvedValue(
-        new PosthogSettings(true, 'custom', null, false, false, new Date(), 'admin')
+        new PosthogSettings(true, 'custom', null, false, false, false, [], new Date(), 'admin')
       );
       credentials.getByRef.mockResolvedValue(buildCredential('phc_db'));
 
@@ -314,7 +326,7 @@ describe('PosthogSettingsService', () => {
       // DB-selected region is exactly the failure mode this feature exists
       // to prevent (#1685) - deny-by-default instead.
       repository.findSettings.mockResolvedValue(
-        new PosthogSettings(true, 'eu', null, false, false, new Date(), 'admin')
+        new PosthogSettings(true, 'eu', null, false, false, false, [], new Date(), 'admin')
       );
       const config = buildConfigService({ OL_POSTHOG_KEY: 'phc_env' });
 
@@ -323,7 +335,7 @@ describe('PosthogSettingsService', () => {
 
     it('returns null when enabled but no key resolves from either the credential store or env', async () => {
       repository.findSettings.mockResolvedValue(
-        new PosthogSettings(true, 'eu', null, false, false, new Date(), 'admin')
+        new PosthogSettings(true, 'eu', null, false, false, false, [], new Date(), 'admin')
       );
 
       await expect(buildService().resolveConfig()).resolves.toBeNull();

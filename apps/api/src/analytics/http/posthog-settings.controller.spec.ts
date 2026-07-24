@@ -59,6 +59,8 @@ describe('PosthogSettingsController', () => {
         customHost: null,
         autocapture: true,
         sessionRecording: true,
+        productEventsEnabled: false,
+        enabledEventGroups: [],
         apiKeyConfigured: true,
         wouldOverrideEnv: false,
         overriddenEnvVars: [],
@@ -81,6 +83,8 @@ describe('PosthogSettingsController', () => {
         region: 'us',
         autocapture: true,
         sessionRecording: true,
+        productEventsEnabled: true,
+        enabledEventGroups: ['conversion-intent'],
       };
 
       await controller.update(dto, user, res as unknown as Response);
@@ -92,6 +96,8 @@ describe('PosthogSettingsController', () => {
           customHost: null,
           autocapture: true,
           sessionRecording: true,
+          productEventsEnabled: true,
+          enabledEventGroups: ['conversion-intent'],
         },
         'admin-1'
       );
@@ -104,6 +110,8 @@ describe('PosthogSettingsController', () => {
         customHost: 'https://posthog.mycompany.com',
         autocapture: false,
         sessionRecording: false,
+        productEventsEnabled: false,
+        enabledEventGroups: [],
       };
 
       await controller.update(dto, user, res as unknown as Response);
@@ -115,6 +123,8 @@ describe('PosthogSettingsController', () => {
           customHost: 'https://posthog.mycompany.com',
           autocapture: false,
           sessionRecording: false,
+          productEventsEnabled: false,
+          enabledEventGroups: [],
         },
         'admin-1'
       );
@@ -127,6 +137,8 @@ describe('PosthogSettingsController', () => {
         customHost: 'https://leftover.example.com',
         autocapture: false,
         sessionRecording: false,
+        productEventsEnabled: false,
+        enabledEventGroups: [],
       };
 
       await controller.update(dto, user, res as unknown as Response);

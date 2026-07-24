@@ -19,8 +19,11 @@
 import type { PostHog } from 'posthog-js';
 import type { SystemConfig } from '../../system';
 import { getDemoAnalyticsConsent } from './demo-analytics-consent';
+import { DemoEventCatalog, type DemoEventName, type DemoEventProps } from './demo-events';
 
 let posthogInstance: PostHog | null = null;
+let productEventsEnabled = false;
+let enabledEventGroups: ReadonlySet<string> = new Set();
 
 export async function initDemoIntegrations(config: SystemConfig | undefined): Promise<void> {
   const posthogConfig = config?.demoMode ? config.demoIntegrations?.posthog : undefined;
@@ -34,6 +37,8 @@ export async function initDemoIntegrations(config: SystemConfig | undefined): Pr
 
   const { default: posthog } = await import('posthog-js');
   posthogInstance = posthog;
+  productEventsEnabled = posthogConfig.productEventsEnabled;
+  enabledEventGroups = new Set(posthogConfig.enabledEventGroups);
   posthog.init(posthogConfig.key, {
     api_host: posthogConfig.host,
     person_profiles: 'identified_only',
@@ -55,4 +60,26 @@ export async function initDemoIntegrations(config: SystemConfig | undefined): Pr
  */
 export function disableDemoAnalytics(): void {
   posthogInstance?.opt_out_capturing();
+}
+
+/**
+ * Emits a named demo business event to PostHog. A no-op whenever PostHog was
+ * never initialized this session (not demo mode, no key, or consent not
+ * accepted) — mirrors `disableDemoAnalytics`'s gate on the same module-local
+ * `posthogInstance` — and also a no-op when the operator has turned off
+ * product events entirely, or turned off this specific event's group, via
+ * the `/settings` Product-events panel (#1787).
+ */
+export function captureDemoEvent<E extends DemoEventName>(
+  event: E,
+  props: DemoEventProps<E>
+): void {
+  if (!posthogInstance || !productEventsEnabled) {
+    return;
+  }
+  const group = DemoEventCatalog[event].group;
+  if (!enabledEventGroups.has(group)) {
+    return;
+  }
+  posthogInstance.capture(event, props);
 }
