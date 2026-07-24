@@ -14,6 +14,7 @@ import { DuplicateIdentifierMappingError } from '@openlinker/core/identifier-map
 import {
   ProductPublishRejectedException,
   ProductPublishTargetNotFoundException,
+  ShopProductMappingConflictException,
 } from '@openlinker/core/listings';
 
 import { ListingCreationRecord } from '../../../domain/entities/listing-creation-record.entity';
@@ -51,6 +52,7 @@ describe('ProductPublishExecutionService', () => {
   };
   let identifierMapping: {
     getExternalIds: jest.Mock;
+    getInternalId: jest.Mock;
     createMapping: jest.Mock;
     deleteMapping: jest.Mock;
   };
@@ -81,6 +83,7 @@ describe('ProductPublishExecutionService', () => {
     };
     identifierMapping = {
       getExternalIds: jest.fn().mockResolvedValue([]),
+      getInternalId: jest.fn().mockResolvedValue(VARIANT),
       createMapping: jest.fn().mockResolvedValue(undefined),
       deleteMapping: jest.fn().mockResolvedValue(undefined),
     };
@@ -224,14 +227,40 @@ describe('ProductPublishExecutionService', () => {
     expect(result.outcome).toBe('business_failure');
   });
 
-  it('should treat DuplicateIdentifierMappingError as an idempotent retry', async () => {
+  it('should treat DuplicateIdentifierMappingError as an idempotent retry when the mapping claims the same variant (#1845)', async () => {
     identifierMapping.createMapping.mockRejectedValue(
       new DuplicateIdentifierMappingError('ShopProduct', EXT, 'woocommerce', CONN)
     );
+    // The winning mapping points to the same variant — benign concurrent first publish.
+    identifierMapping.getInternalId.mockResolvedValue(VARIANT);
+
+    const result = await service.executePublish(input);
+
+    expect(identifierMapping.getInternalId).toHaveBeenCalledWith('ShopProduct', EXT, CONN);
+    expect(result.outcome).toBe('ok');
+  });
+
+  it('should treat a benign duplicate as ok when the mapping has not committed yet (null read) (#1845)', async () => {
+    identifierMapping.createMapping.mockRejectedValue(
+      new DuplicateIdentifierMappingError('ShopProduct', EXT, 'woocommerce', CONN)
+    );
+    identifierMapping.getInternalId.mockResolvedValue(null);
 
     const result = await service.executePublish(input);
 
     expect(result.outcome).toBe('ok');
+  });
+
+  it('should rethrow when a duplicate mapping claims a DIFFERENT variant (real conflict) (#1845)', async () => {
+    identifierMapping.createMapping.mockRejectedValue(
+      new DuplicateIdentifierMappingError('ShopProduct', EXT, 'woocommerce', CONN)
+    );
+    // The shop product is already claimed by another variant — genuine conflict.
+    identifierMapping.getInternalId.mockResolvedValue('ol_variant_other');
+
+    await expect(service.executePublish(input)).rejects.toBeInstanceOf(
+      ShopProductMappingConflictException
+    );
   });
 
   it('should propagate a transient (non-domain) adapter error for worker retry', async () => {

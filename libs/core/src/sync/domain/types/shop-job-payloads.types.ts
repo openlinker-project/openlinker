@@ -83,3 +83,19 @@ export interface ShopProductPublishPayloadV2
 
 /** Discriminated union of all `shop.product.publish` payload versions the worker handler accepts. */
 export type ShopProductPublishPayload = ShopProductPublishPayloadV1 | ShopProductPublishPayloadV2;
+
+/**
+ * Payload for `shop.product.statusSync` jobs (#1845). Drains one page of a
+ * connection's published/draft products, reads their live shop-side status via
+ * the `ShopProductStatusReader` sub-capability, and upserts the reconciled
+ * status snapshot. The connection id is taken from `job.connectionId`; the scan
+ * offset is persisted on a connection cursor (mirrors
+ * `MarketplaceOfferStatusSyncPayloadV1`).
+ */
+export interface ShopProductStatusSyncPayloadV1 {
+  schemaVersion: 1;
+  /** Page size (products to reconcile this run). Handler clamps/defaults. */
+  limit?: number;
+  /** Optional cursor-key override for the persisted scan offset. */
+  cursorKey?: string;
+}

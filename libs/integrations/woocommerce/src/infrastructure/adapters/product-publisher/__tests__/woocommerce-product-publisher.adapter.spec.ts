@@ -633,6 +633,40 @@ describe('WooCommerceProductPublisherAdapter', () => {
     });
   });
 
+  describe('getShopProductStatus (#1845)', () => {
+    it.each([
+      ['publish', 'published'],
+      ['draft', 'draft'],
+      ['pending', 'unpublished'],
+      ['private', 'unpublished'],
+      ['trash', 'removed'],
+      ['weird-unknown', 'removed'],
+    ])('should map WC status %s to neutral %s', async (wcStatus, neutral) => {
+      http.get.mockResolvedValue({ id: 42, status: wcStatus });
+
+      const result = await adapter.getShopProductStatus('42');
+
+      expect(http.get).toHaveBeenCalledWith('/wp-json/wc/v3/products/42');
+      expect(result).toEqual({ publicationStatus: neutral });
+    });
+
+    it('should map a 404 to removed (product deleted/trashed shop-side)', async () => {
+      http.get.mockRejectedValue(new WooCommerceHttpResponseException(404, 'not found'));
+
+      const result = await adapter.getShopProductStatus('999');
+
+      expect(result).toEqual({ publicationStatus: 'removed' });
+    });
+
+    it('should propagate a non-404 transport error for worker retry', async () => {
+      http.get.mockRejectedValue(new WooCommerceHttpResponseException(500, 'boom'));
+
+      await expect(adapter.getShopProductStatus('42')).rejects.toBeInstanceOf(
+        WooCommerceHttpResponseException,
+      );
+    });
+  });
+
   describe('listAttributes / listAttributeTerms (#1835)', () => {
     it('should list global attributes mapped to neutral ShopAttribute nodes', async () => {
       http.get.mockResolvedValue([

@@ -44,6 +44,13 @@ export const BULK_SHOP_PUBLISH_SUBMIT_SERVICE_TOKEN = Symbol('IBulkShopPublishSu
 
 // Shop-side category browse (#1834)
 export const SHOP_CATEGORY_BROWSE_SERVICE_TOKEN = Symbol('IShopCategoryBrowseService');
+// Shop publish retry (#1845)
+export const BULK_SHOP_PUBLISH_RETRY_SERVICE_TOKEN = Symbol('IBulkShopPublishRetryService');
+// Shop product status reconcile (#1845)
+export const SHOP_STATUS_SYNC_SERVICE_TOKEN = Symbol('IShopStatusSyncService');
+export const SHOP_PRODUCT_STATUS_SNAPSHOT_REPOSITORY_TOKEN = Symbol(
+  'ShopProductStatusSnapshotRepositoryPort',
+);
 
 // Shop-side global attribute read (#1835)
 export const SHOP_ATTRIBUTE_READ_SERVICE_TOKEN = Symbol('IShopAttributeReadService');

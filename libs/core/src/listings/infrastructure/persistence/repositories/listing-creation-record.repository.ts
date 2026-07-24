@@ -11,15 +11,16 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { ListingCreationRecord } from '../../../domain/entities/listing-creation-record.entity';
 import { ListingCreationRecordNotFoundException } from '../../../domain/exceptions/listing-creation-record-not-found.exception';
 import type { ListingCreationRecordRepositoryPort } from '../../../domain/ports/listing-creation-record-repository.port';
-import type {
-  CreateListingCreationRecordInput,
-  ListingCreationError,
-  ListingCreationStatus,
+import {
+  LISTING_CREATION_STATUS,
+  type CreateListingCreationRecordInput,
+  type ListingCreationError,
+  type ListingCreationStatus,
 } from '../../../domain/types/listing-creation-record.types';
 import { ListingCreationRecordOrmEntity } from '../entities/listing-creation-record.orm-entity';
 
@@ -68,6 +69,41 @@ export class ListingCreationRecordRepository implements ListingCreationRecordRep
       where: { externalProductId, connectionId },
     });
     return entity ? this.toDomain(entity) : null;
+  }
+
+  async findPublishedByConnection(
+    connectionId: string,
+    options: { limit: number; offset: number },
+  ): Promise<{ items: ListingCreationRecord[]; total: number }> {
+    const [entities, total] = await this.repository.findAndCount({
+      where: {
+        connectionId,
+        status: In([LISTING_CREATION_STATUS.Published, LISTING_CREATION_STATUS.Draft]),
+      },
+      order: { createdAt: 'ASC' },
+      skip: options.offset,
+      take: options.limit,
+    });
+    // externalProductId is non-null for any published/draft record (assigned
+    // atomically with the terminal status), so no extra null filter is needed.
+    return { items: entities.map((entity) => this.toDomain(entity)), total };
+  }
+
+  async deleteById(id: string): Promise<void> {
+    await this.repository.delete({ id });
+  }
+
+  async resetForRetry(id: string): Promise<ListingCreationRecord> {
+    const entity = await this.repository.findOne({ where: { id } });
+    if (!entity) {
+      throw new ListingCreationRecordNotFoundException(id);
+    }
+    entity.status = LISTING_CREATION_STATUS.Pending;
+    entity.externalProductId = null;
+    entity.errors = null;
+    entity.warnings = null;
+    const saved = await this.repository.save(entity);
+    return this.toDomain(saved);
   }
 
   async updateStatus(
@@ -119,6 +155,7 @@ export class ListingCreationRecordRepository implements ListingCreationRecordRep
     entity.errors = input.errors ?? null;
     entity.bulkBatchId = input.bulkBatchId ?? null;
     entity.warnings = input.warnings ?? null;
+    entity.request = input.request ?? null;
     return entity;
   }
 
@@ -134,6 +171,7 @@ export class ListingCreationRecordRepository implements ListingCreationRecordRep
       entity.updatedAt,
       entity.bulkBatchId,
       entity.warnings,
+      entity.request,
     );
   }
 }

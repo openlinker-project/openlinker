@@ -16,9 +16,14 @@ const USER = 'user-1';
 
 describe('BulkShopPublishSubmitService', () => {
   let integrations: { getCapabilityAdapter: jest.Mock };
-  let batchRepo: { create: jest.Mock; findById: jest.Mock; updateStatus: jest.Mock };
+  let batchRepo: {
+    create: jest.Mock;
+    findById: jest.Mock;
+    updateStatus: jest.Mock;
+    updateTotalCount: jest.Mock;
+  };
   let enqueue: { enqueuePublish: jest.Mock };
-  let records: { findByBulkBatchId: jest.Mock };
+  let records: { findByBulkBatchId: jest.Mock; deleteById: jest.Mock };
   let service: BulkShopPublishSubmitService;
 
   const input = {
@@ -39,6 +44,12 @@ describe('BulkShopPublishSubmitService', () => {
       create: jest.fn().mockResolvedValue({ id: 'batch-1', totalCount: 2 }),
       findById: jest.fn(),
       updateStatus: jest.fn().mockResolvedValue({ id: 'batch-1' }),
+      updateTotalCount: jest.fn().mockResolvedValue({
+        id: 'batch-1',
+        totalCount: 1,
+        succeededCount: 0,
+        failedCount: 0,
+      }),
     };
     enqueue = {
       enqueuePublish: jest
@@ -50,7 +61,7 @@ describe('BulkShopPublishSubmitService', () => {
           }),
         ),
     };
-    records = { findByBulkBatchId: jest.fn() };
+    records = { findByBulkBatchId: jest.fn().mockResolvedValue([]), deleteById: jest.fn() };
     service = new BulkShopPublishSubmitService(
       integrations as never,
       batchRepo as never,
@@ -130,12 +141,51 @@ describe('BulkShopPublishSubmitService', () => {
     expect(v2Arg).not.toHaveProperty('parameters');
   });
 
-  it('should mark the batch failed and rethrow on a partial enqueue failure', async () => {
+  it('should reconcile totalCount, clean orphans and reach running on a partial enqueue failure (#1845)', async () => {
+    // v1 enqueues; v2 pre-creates its record then throws before the stream write.
     enqueue.enqueuePublish
       .mockResolvedValueOnce({ jobId: 'job-v1', listingCreationRecord: { id: 'rec-v1' } })
       .mockRejectedValueOnce(new Error('redis down'));
+    // Both records exist in the DB; rec-v2 is the orphan whose enqueue threw.
+    records.findByBulkBatchId.mockResolvedValue([{ id: 'rec-v1' }, { id: 'rec-v2' }]);
 
     await expect(service.submit(input)).rejects.toThrow('redis down');
+
+    // Orphan (never reached the stream) is deleted; the enqueued one is kept.
+    expect(records.deleteById).toHaveBeenCalledWith('rec-v2');
+    expect(records.deleteById).not.toHaveBeenCalledWith('rec-v1');
+    // totalCount reconciled down to what actually enqueued (1).
+    expect(batchRepo.updateTotalCount).toHaveBeenCalledWith('batch-1', 1);
+    // With 1 enqueued child still pending, the batch advances to running.
+    expect(batchRepo.updateStatus).toHaveBeenCalledWith('batch-1', 'running');
+    expect(batchRepo.updateStatus).not.toHaveBeenCalledWith('batch-1', 'failed');
+  });
+
+  it('should derive a terminal status when all reconciled children already finished (#1845)', async () => {
+    enqueue.enqueuePublish
+      .mockResolvedValueOnce({ jobId: 'job-v1', listingCreationRecord: { id: 'rec-v1' } })
+      .mockRejectedValueOnce(new Error('redis down'));
+    records.findByBulkBatchId.mockResolvedValue([{ id: 'rec-v1' }]);
+    // The single enqueued child already succeeded before reconcile ran.
+    batchRepo.updateTotalCount.mockResolvedValue({
+      id: 'batch-1',
+      totalCount: 1,
+      succeededCount: 1,
+      failedCount: 0,
+    });
+
+    await expect(service.submit(input)).rejects.toThrow('redis down');
+    expect(batchRepo.updateStatus).toHaveBeenCalledWith('batch-1', 'completed');
+  });
+
+  it('should mark the batch failed when nothing enqueued (#1845)', async () => {
+    enqueue.enqueuePublish.mockRejectedValueOnce(new Error('redis down'));
+    records.findByBulkBatchId.mockResolvedValue([{ id: 'rec-v1' }]);
+
+    await expect(service.submit(input)).rejects.toThrow('redis down');
+    // Orphan cleanup still runs, then a terminal 'failed' (no children to count).
+    expect(records.deleteById).toHaveBeenCalledWith('rec-v1');
+    expect(batchRepo.updateTotalCount).not.toHaveBeenCalled();
     expect(batchRepo.updateStatus).toHaveBeenCalledWith('batch-1', 'failed');
     expect(batchRepo.updateStatus).not.toHaveBeenCalledWith('batch-1', 'running');
   });

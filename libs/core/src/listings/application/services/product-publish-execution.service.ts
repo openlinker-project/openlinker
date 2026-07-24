@@ -55,6 +55,7 @@ import type { ListingCreationRecord } from '../../domain/entities/listing-creati
 import { ListingCreationInvariantException } from '../../domain/exceptions/listing-creation-invariant.exception';
 import { ListingCreationRecordNotFoundException } from '../../domain/exceptions/listing-creation-record-not-found.exception';
 import { MasterCatalogConnectionNotConfiguredException } from '../../domain/exceptions/master-catalog-connection-not-configured.exception';
+import { ShopProductMappingConflictException } from '../../domain/exceptions/shop-product-mapping-conflict.exception';
 import type { ProductPublishBuilderValidationIssue } from '../../domain/exceptions/product-publish-builder-validation.exception';
 import { ProductPublishBuilderValidationException } from '../../domain/exceptions/product-publish-builder-validation.exception';
 import { ListingCreationRecordRepositoryPort } from '../../domain/ports/listing-creation-record-repository.port';
@@ -172,8 +173,15 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
 
     // First publish (or stale-mapping recovery) — persist the variant →
     // external-product mapping. Upserts already have it.
-    // `DuplicateIdentifierMappingError` means a prior attempt inserted it; that
-    // is exactly what we wanted, so continue.
+    //
+    // Concurrency-safe first publish (#1845): two concurrent first publishes of
+    // the same variant both call `createMapping`; the loser gets
+    // `DuplicateIdentifierMappingError`. Swallowing it blindly is wrong — a
+    // divergent mapping (a DIFFERENT internal variant already claiming this
+    // shop product) is a real conflict that would silently mis-link. Re-read the
+    // now-existing mapping and swallow ONLY when it points to the same internal
+    // variant id; otherwise rethrow so the job dead-letters instead of
+    // corrupting the identity graph.
     if (mappingNeedsCreate) {
       try {
         await this.identifierMapping.createMapping(
@@ -186,6 +194,7 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
         if (!(error instanceof DuplicateIdentifierMappingError)) {
           throw error;
         }
+        await this.assertMappingClaimsSameVariant(input, result.externalProductId);
       }
     }
 
@@ -248,6 +257,34 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
     );
     const createCommand: PublishProductCommand = { ...command, externalProductId: null };
     return adapter.publishProduct(createCommand);
+  }
+
+  /**
+   * Verify a concurrency-lost mapping insert resolved to the SAME variant
+   * (#1845). Re-reads the internal id mapped to (ShopProduct, externalProductId,
+   * connectionId); swallows only when it equals the variant being published,
+   * otherwise throws `ShopProductMappingConflictException`. A null read (the
+   * racing insert has not committed yet, or was rolled back) is treated as
+   * benign — the mapping will be reconciled on the next publish rather than
+   * failing this job on a transient visibility gap.
+   */
+  private async assertMappingClaimsSameVariant(
+    input: ExecutePublishProductInput,
+    externalProductId: string
+  ): Promise<void> {
+    const mappedInternalId = await this.identifierMapping.getInternalId(
+      CORE_ENTITY_TYPE.ShopProduct,
+      externalProductId,
+      input.connectionId
+    );
+    if (mappedInternalId !== null && mappedInternalId !== input.internalVariantId) {
+      throw new ShopProductMappingConflictException(
+        externalProductId,
+        input.connectionId,
+        input.internalVariantId,
+        mappedInternalId
+      );
+    }
   }
 
   private async resolveExistingExternalProductId(

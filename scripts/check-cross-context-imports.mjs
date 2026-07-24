@@ -266,6 +266,10 @@ const ALLOW_LIST = new Map([
     new Set(['ConnectionCursorRepositoryPort']),
   ],
   [
+    'apps/worker/src/sync/handlers/shop-product-status-sync.handler.ts',
+    new Set(['ConnectionCursorRepositoryPort']),
+  ],
+  [
     'apps/worker/src/sync/handlers/marketplace-shipment-status-sync.handler.ts',
     new Set(['ConnectionCursorRepositoryPort']),
   ],

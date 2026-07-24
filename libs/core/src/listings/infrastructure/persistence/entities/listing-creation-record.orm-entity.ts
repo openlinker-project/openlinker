@@ -17,7 +17,10 @@ import {
 } from 'typeorm';
 
 import { ListingCreationStatus } from '../../../domain/types/listing-creation-record.types';
-import type { ListingCreationError } from '../../../domain/types/listing-creation-record.types';
+import type {
+  ListingCreationError,
+  ShopPublishRequestSnapshot,
+} from '../../../domain/types/listing-creation-record.types';
 
 @Entity('listing_creation_records')
 @Index(['internalVariantId', 'connectionId'])
@@ -69,6 +72,14 @@ export class ListingCreationRecordOrmEntity {
   @Column({ type: 'uuid', nullable: true })
   @Index('IDX_listing_creation_records_bulkBatchId')
   bulkBatchId!: string | null;
+
+  /**
+   * Persisted per-item publish request snapshot (#1845). Enables the bulk
+   * shop-publish retry to rebuild the original payload for a failed child.
+   * Null for single publishes / records created before the column existed.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  request!: ShopPublishRequestSnapshot | null;
 
   @CreateDateColumn()
   createdAt!: Date;
