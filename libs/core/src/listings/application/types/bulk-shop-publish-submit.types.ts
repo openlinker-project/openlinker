@@ -9,6 +9,8 @@
  * @module libs/core/src/listings/application/types
  */
 
+import type { OfferDescriptionTone } from '@openlinker/core/sync';
+
 import type { BulkListingBatch } from '../../domain/entities/bulk-listing-batch.entity';
 import type { ListingCreationRecord } from '../../domain/entities/listing-creation-record.entity';
 import type { OfferParameter } from '../../domain/types/offer-parameter.types';
@@ -67,6 +69,15 @@ export interface BulkShopPublishSubmitInput {
   content?: PublishProductContent;
   /** Optional shared commerce fields (sale price, dimensions, tax) applied to every child. */
   commerce?: PublishProductCommerce;
+  /**
+   * Shared AI flag (#1840): when `true`, every child publish generates its
+   * description via the `offer.description.suggest` prompt template (unless a
+   * child already carries an explicit description override). Batch-scoped,
+   * mirroring the offer bulk flow's batch-level `generateDescription`.
+   */
+  generateDescription?: boolean;
+  /** Optional shared AI tone hint; ignored when `generateDescription` is not `true`. */
+  descriptionTone?: OfferDescriptionTone;
 }
 
 export interface BulkShopPublishItem {

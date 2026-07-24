@@ -23,12 +23,18 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import {
+  CONTENT_SUGGESTION_SERVICE_TOKEN,
+  type IContentSuggestionService,
+} from '@openlinker/core/content';
+import {
   type BulkChildOutcome,
   BULK_LISTING_PROGRESS_SERVICE_TOKEN,
   type IBulkListingProgressService,
   type IProductPublishExecutionService,
+  type PublishProductContent,
   PRODUCT_PUBLISH_EXECUTION_SERVICE_TOKEN,
 } from '@openlinker/core/listings';
+import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
 import type {
   ShopProductPublishPayload,
   ShopProductPublishPayloadV2,
@@ -41,6 +47,16 @@ import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
 
+/**
+ * Prompt-template channel for shop-publish AI descriptions (#1840). The
+ * `offer.description.suggest` template is seeded per channel; the shop-publish
+ * flow targets WooCommerce, so it renders the `woocommerce` variant — the
+ * open-world channel seam (`PromptTemplateChannel = string`) mirrors the offer
+ * handler's hardcoded `allegro` channel. A missing template surfaces as an AI
+ * failure and falls through to the master description (see below).
+ */
+const SHOP_PUBLISH_AI_CHANNEL = 'woocommerce';
+
 @Injectable()
 export class ShopProductPublishHandler implements SyncJobHandler {
   private readonly logger = new Logger(ShopProductPublishHandler.name);
@@ -50,6 +66,10 @@ export class ShopProductPublishHandler implements SyncJobHandler {
     private readonly productPublish: IProductPublishExecutionService,
     @Inject(BULK_LISTING_PROGRESS_SERVICE_TOKEN)
     private readonly bulkProgress: IBulkListingProgressService,
+    @Inject(CONTENT_SUGGESTION_SERVICE_TOKEN)
+    private readonly contentSuggestion: IContentSuggestionService,
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly products: IProductsService,
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -59,6 +79,12 @@ export class ShopProductPublishHandler implements SyncJobHandler {
       `Executing shop.product.publish job ${job.id} variant=${payload.internalVariantId} connection=${job.connectionId} status=${payload.status}`,
     );
 
+    // #1840 — fill content.description from AI when the operator asked for it
+    // and hasn't supplied an explicit description override. AI failure falls
+    // through to the master description (builder default), never blocking the
+    // publish. Mirrors the offer-create handler's placement + precedence.
+    const content = await this.maybeRunAiDescription(payload);
+
     try {
       const { listingCreationRecord, outcome } = await this.productPublish.executePublish({
         internalVariantId: payload.internalVariantId,
@@ -66,7 +92,7 @@ export class ShopProductPublishHandler implements SyncJobHandler {
         stock: payload.stock,
         status: payload.status,
         price: payload.price,
-        content: payload.content,
+        content,
         commerce: payload.commerce,
         destinationCategoryIds: payload.destinationCategoryIds,
         parameters: payload.parameters,
@@ -100,6 +126,58 @@ export class ShopProductPublishHandler implements SyncJobHandler {
         job.connectionId,
         error instanceof Error ? error : undefined,
       );
+    }
+  }
+
+  /**
+   * #1840 — when `generateDescription === true` and no explicit operator
+   * description override is present, generate the product description via the
+   * `offer.description.suggest` prompt template and merge it into `content`.
+   * An operator-supplied `content.description` always wins (never overwritten).
+   * Any failure (variant lookup, missing template, LLM error) logs a warning
+   * and returns the original `payload.content` unchanged so the publish still
+   * proceeds on the master description / builder default.
+   */
+  private async maybeRunAiDescription(
+    payload: ShopProductPublishPayload,
+  ): Promise<PublishProductContent | undefined> {
+    if (payload.generateDescription !== true) {
+      return payload.content;
+    }
+    if (payload.content?.description != null) {
+      // Explicit operator override wins — don't overwrite it.
+      return payload.content;
+    }
+
+    let productId: string;
+    try {
+      const variant = await this.products.getVariant(payload.internalVariantId);
+      if (!variant) {
+        this.logger.warn(
+          `AI description skipped — variant not found: ${payload.internalVariantId}`,
+        );
+        return payload.content;
+      }
+      productId = variant.productId;
+    } catch (err) {
+      this.logger.warn(
+        `AI description skipped — variant lookup failed: ${(err as Error).message}`,
+      );
+      return payload.content;
+    }
+
+    try {
+      const result = await this.contentSuggestion.suggestDescription({
+        productId,
+        channel: SHOP_PUBLISH_AI_CHANNEL,
+        ...(payload.descriptionTone !== undefined && { tone: payload.descriptionTone }),
+      });
+      return { ...payload.content, description: result.suggestion };
+    } catch (err) {
+      this.logger.warn(
+        `AI description failed (falling back to master description / default): ${(err as Error).message}`,
+      );
+      return payload.content;
     }
   }
 
@@ -151,6 +229,8 @@ export class ShopProductPublishHandler implements SyncJobHandler {
       content: payload.content,
       commerce: payload.commerce,
       parameters: payload.parameters,
+      generateDescription: payload.generateDescription,
+      descriptionTone: payload.descriptionTone,
       idempotencyKey: payload.idempotencyKey,
     };
 

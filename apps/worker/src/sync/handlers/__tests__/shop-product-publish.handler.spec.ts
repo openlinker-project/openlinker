@@ -38,6 +38,8 @@ const validPayload = {
 describe('ShopProductPublishHandler', () => {
   let execution: { executePublish: jest.Mock };
   let bulkProgress: { advanceBatchStatus: jest.Mock };
+  let contentSuggestion: { suggestDescription: jest.Mock };
+  let products: { getVariant: jest.Mock };
   let handler: ShopProductPublishHandler;
 
   beforeEach(() => {
@@ -48,7 +50,14 @@ describe('ShopProductPublishHandler', () => {
       }),
     };
     bulkProgress = { advanceBatchStatus: jest.fn().mockResolvedValue(null) };
-    handler = new ShopProductPublishHandler(execution as never, bulkProgress as never);
+    contentSuggestion = { suggestDescription: jest.fn() };
+    products = { getVariant: jest.fn() };
+    handler = new ShopProductPublishHandler(
+      execution as never,
+      bulkProgress as never,
+      contentSuggestion as never,
+      products as never,
+    );
   });
 
   it('should delegate a valid payload to the execution service and return its outcome', async () => {
@@ -126,5 +135,89 @@ describe('ShopProductPublishHandler', () => {
     await expect(handler.execute(createJob(validPayload))).rejects.toBeInstanceOf(
       SyncJobExecutionError,
     );
+  });
+
+  describe('AI description (#1840)', () => {
+    it('should not invoke AI when generateDescription is absent', async () => {
+      await handler.execute(createJob(validPayload));
+      expect(products.getVariant).not.toHaveBeenCalled();
+      expect(contentSuggestion.suggestDescription).not.toHaveBeenCalled();
+    });
+
+    it('should generate and fill content.description when generateDescription=true', async () => {
+      products.getVariant.mockResolvedValue({ id: 'ol_variant_aaaa', productId: 'ol_product_x' });
+      contentSuggestion.suggestDescription.mockResolvedValue({ suggestion: '<p>AI copy</p>' });
+
+      await handler.execute(
+        createJob({ ...validPayload, generateDescription: true, descriptionTone: 'detailed' }),
+      );
+
+      expect(products.getVariant).toHaveBeenCalledWith('ol_variant_aaaa');
+      expect(contentSuggestion.suggestDescription).toHaveBeenCalledWith({
+        productId: 'ol_product_x',
+        channel: 'woocommerce',
+        tone: 'detailed',
+      });
+      expect(execution.executePublish).toHaveBeenCalledWith(
+        expect.objectContaining({ content: { description: '<p>AI copy</p>' } }),
+      );
+    });
+
+    it('should not overwrite an explicit operator description override', async () => {
+      await handler.execute(
+        createJob({
+          ...validPayload,
+          generateDescription: true,
+          content: { description: 'operator wrote this' },
+        }),
+      );
+
+      expect(contentSuggestion.suggestDescription).not.toHaveBeenCalled();
+      expect(execution.executePublish).toHaveBeenCalledWith(
+        expect.objectContaining({ content: { description: 'operator wrote this' } }),
+      );
+    });
+
+    it('should merge the AI description alongside other operator content fields', async () => {
+      products.getVariant.mockResolvedValue({ id: 'ol_variant_aaaa', productId: 'ol_product_x' });
+      contentSuggestion.suggestDescription.mockResolvedValue({ suggestion: '<p>AI copy</p>' });
+
+      await handler.execute(
+        createJob({
+          ...validPayload,
+          generateDescription: true,
+          content: { title: 'Keep me' },
+        }),
+      );
+
+      expect(execution.executePublish).toHaveBeenCalledWith(
+        expect.objectContaining({ content: { title: 'Keep me', description: '<p>AI copy</p>' } }),
+      );
+    });
+
+    it('should fall through to the original content when the AI call fails', async () => {
+      products.getVariant.mockResolvedValue({ id: 'ol_variant_aaaa', productId: 'ol_product_x' });
+      contentSuggestion.suggestDescription.mockRejectedValue(new Error('LLM 503'));
+
+      const result = await handler.execute(
+        createJob({ ...validPayload, generateDescription: true }),
+      );
+
+      expect(result).toEqual({ outcome: 'ok' });
+      expect(execution.executePublish).toHaveBeenCalledWith(
+        expect.objectContaining({ content: undefined }),
+      );
+    });
+
+    it('should fall through when the variant cannot be resolved', async () => {
+      products.getVariant.mockResolvedValue(null);
+
+      await handler.execute(createJob({ ...validPayload, generateDescription: true }));
+
+      expect(contentSuggestion.suggestDescription).not.toHaveBeenCalled();
+      expect(execution.executePublish).toHaveBeenCalledWith(
+        expect.objectContaining({ content: undefined }),
+      );
+    });
   });
 });

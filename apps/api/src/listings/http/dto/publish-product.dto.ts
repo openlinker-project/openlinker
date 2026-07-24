@@ -13,6 +13,7 @@ import {
   ArrayMaxSize,
   ArrayNotEmpty,
   IsArray,
+  IsBoolean,
   IsDefined,
   IsIn,
   IsISO8601,
@@ -72,6 +73,7 @@ import {
   type PublishProductStatus,
   type PublishTaxStatus,
 } from '@openlinker/core/listings';
+import { OfferDescriptionToneValues } from '@openlinker/core/sync';
 
 import { OfferParameterDto } from './create-offer.dto';
 
@@ -252,6 +254,22 @@ export class PublishProductRequestDto {
   @ValidateNested()
   @Type(() => PublishCommerceDto)
   commerce?: PublishCommerceDto;
+
+  @ApiPropertyOptional({
+    description:
+      'Generate the product description with AI (#1840). Ignored when an explicit content.description override is supplied.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  generateDescription?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'AI description tone hint forwarded to the worker handler (#1840).',
+    enum: OfferDescriptionToneValues,
+  })
+  @IsOptional()
+  @IsIn(OfferDescriptionToneValues as readonly string[])
+  descriptionTone?: (typeof OfferDescriptionToneValues)[number];
 }
 
 export class BulkPublishItemDto {
@@ -351,4 +369,20 @@ export class BulkPublishProductRequestDto {
   @ValidateNested()
   @Type(() => PublishCommerceDto)
   commerce?: PublishCommerceDto;
+
+  @ApiPropertyOptional({
+    description:
+      'Generate the product description with AI for every product in the batch (#1840). A child with an explicit content.description override keeps it.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  generateDescription?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Shared AI description tone hint forwarded to the worker handler (#1840).',
+    enum: OfferDescriptionToneValues,
+  })
+  @IsOptional()
+  @IsIn(OfferDescriptionToneValues as readonly string[])
+  descriptionTone?: (typeof OfferDescriptionToneValues)[number];
 }

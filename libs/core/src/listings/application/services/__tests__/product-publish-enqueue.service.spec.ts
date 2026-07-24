@@ -117,6 +117,23 @@ describe('ProductPublishEnqueueService', () => {
     );
   });
 
+  it('should forward AI description flags into the payload (#1840)', async () => {
+    await service.enqueuePublish({
+      ...input,
+      generateDescription: true,
+      descriptionTone: 'detailed',
+    });
+
+    expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          generateDescription: true,
+          descriptionTone: 'detailed',
+        }),
+      }),
+    );
+  });
+
   it('should honour an explicit idempotency key', async () => {
     await service.enqueuePublish({ ...input, idempotencyKey: 'custom-key' });
     expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(

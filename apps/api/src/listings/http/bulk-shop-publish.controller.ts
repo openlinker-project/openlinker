@@ -87,6 +87,10 @@ export class BulkShopPublishController {
         status: dto.status,
         ...(dto.content !== undefined && { content: dto.content }),
         ...(dto.commerce !== undefined && { commerce: dto.commerce }),
+        ...(dto.generateDescription !== undefined && {
+          generateDescription: dto.generateDescription,
+        }),
+        ...(dto.descriptionTone !== undefined && { descriptionTone: dto.descriptionTone }),
       });
       return { batchId, items };
     } catch (error) {
