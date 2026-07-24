@@ -3,29 +3,33 @@
  *
  * The `ProductPublisher` (online shop) branch of the bulk wizard. Shops have no
  * marketplace category/EAN resolution, so the wizard skips the Resolve step and
- * lands here straight from Config. This step reviews the included variants of
- * the seeded rows, computes each one's stock (from master availability + the
- * batch stock policy) and price (from the variant master price + the batch
- * pricing policy), lets the operator flip visibility (draft / published) and
- * exclude variants, then submits one `bulk-shop-publish` item per included
- * variant.
+ * lands here straight from Config. This step reviews every variant of the
+ * seeded rows, computes each one's stock (from master availability + the batch
+ * stock policy) and price (from the variant master price + the batch pricing
+ * policy), lets the operator flip visibility (draft / published) and
+ * include/exclude variants, then submits one `bulk-shop-publish` item per
+ * included variant.
  *
  * Per-product content / category / attribute editing lands via the shared
  * two-pane editor (#1830, shop mode) opened from each row's Edit button; the
  * overrides it saves round-trip through each item's `content` /
  * `destinationCategoryIds` / `parameters` (backed by the #1831 transport).
  *
- * Structural parity with the marketplace `BulkReviewStep` (#1838 whole-epic
- * review): rows group by product with expand/collapse for a multi-variant
- * product, plus a filter box and an "only flagged" toggle (flagged = out of
- * stock OR already-listed) - a large multi-variant batch would otherwise
- * render every variant as a flat, repetitive `<li>`.
+ * Visual parity with the marketplace `BulkReviewStep` (#1838 whole-epic
+ * review): same section-heading/description block, filter + top CTA header
+ * toolbar, ready/needs-attention/excluded summary bar and readiness banner,
+ * per-row checkbox (`.bulk-review__chk`) and status pill (`.bulk-chip`) reused
+ * verbatim from the marketplace review step - only the underlying readiness
+ * rule differs (shop: stock only, via `checkShopLineSellability`; marketplace:
+ * category/EAN/param blockers). Rows still group by product with
+ * expand/collapse for a multi-variant product, plus a filter box and an "only
+ * flagged" toggle (flagged = out of stock OR already-listed).
  *
  * @module apps/web/src/features/listings/components/bulk
  */
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 
-import { Alert, Button, Input } from '../../../../shared/ui';
+import { Alert, Button, CheckboxCell, Input } from '../../../../shared/ui';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../../shared/config/demo-mode';
 import { useInventoryAvailabilityBatchQuery } from '../../../inventory';
@@ -77,25 +81,24 @@ interface BulkShopReviewStepProps {
   ) => void;
 }
 
-/** A flattened included variant paired with its owning product for display.
- *  The displayed `stock` / `price` are the SAME policy-resolved values the
- *  submit sends (see `buildBulkShopPublishItems`), so review == publish. */
+/** A flattened variant paired with its owning product for display. The
+ *  displayed `stock` / `price` are the SAME policy-resolved values the submit
+ *  sends (see `buildBulkShopPublishItems`), so review == publish. */
 interface ShopReviewLine {
   productId: string;
   productName: string;
   variantId: string;
   variantLabel: string;
+  included: boolean;
   /** Policy-resolved published quantity; null when unresolved (shown as 0). */
   stock: number | null;
   /** Policy-resolved price; null when it falls back to master server-side. */
   price: number | null;
 }
 
-/** Product-grouped lines (#1838) - a product with 2+ INCLUDED lines to review
- *  renders as an expand/collapse group; one (or zero) included line renders
- *  flat with no caret, mirroring the marketplace `BulkReviewStep`
- *  isSimple/isMulti split (a group is only worth collapsing when there's more
- *  than one row underneath it). */
+/** Product-grouped lines (#1838) - a product with 2+ lines to review renders
+ *  as an expand/collapse group; a single-variant product renders flat with no
+ *  caret, mirroring the marketplace `BulkReviewStep` isSimple/isMulti split. */
 interface ShopReviewGroup {
   productId: string;
   productName: string;
@@ -196,6 +199,33 @@ export function buildBulkShopPublishItems(
   return items;
 }
 
+/** Readiness counts across ALL lines (included + excluded) - the shop-side
+ *  counterpart to the marketplace review's `countBatch` (#1838). "Ready" /
+ *  "needs attention" only apply to included lines; excluded lines are their
+ *  own bucket, mirroring the marketplace ready/attn/off summary. */
+interface ShopBatchCounts {
+  ready: number;
+  needsAttention: number;
+  excluded: number;
+}
+
+function countShopBatch(lines: ShopReviewLine[]): ShopBatchCounts {
+  let ready = 0;
+  let needsAttention = 0;
+  let excluded = 0;
+  for (const line of lines) {
+    if (!line.included) {
+      excluded += 1;
+      continue;
+    }
+    if (checkShopLineSellability(line.stock ?? 0).length === 0) ready += 1;
+    else needsAttention += 1;
+  }
+  return { ready, needsAttention, excluded };
+}
+
+export { countShopBatch as countShopBatchForTest };
+
 export function BulkShopReviewStep({
   rows,
   connection,
@@ -255,11 +285,13 @@ export function BulkShopReviewStep({
     [availabilityQuery.data]
   );
 
+  // Every variant renders a line (included or not) so an excluded row stays
+  // visible with an unchecked checkbox and can be re-included from Review -
+  // structural parity with the marketplace review step's variant rows.
   const lines = useMemo<ShopReviewLine[]>(() => {
     const out: ShopReviewLine[] = [];
     for (const row of rows) {
       for (const variant of row.variants) {
-        if (!variant.included) continue;
         // Resolve exactly as the payload does so what the operator reviews
         // equals what is submitted (review == publish).
         const masterStock = masterStockByVariantId.get(variant.variantId) ?? variant.masterStock;
@@ -274,6 +306,7 @@ export function BulkShopReviewStep({
           productName: row.product?.name ?? row.productId,
           variantId: variant.variantId,
           variantLabel: variantDisplayLabel(variant),
+          included: variant.included,
           stock: stock.value,
           price: price.value,
         });
@@ -282,17 +315,20 @@ export function BulkShopReviewStep({
     return out;
   }, [rows, config.stockPolicy, config.pricingPolicy, masterStockByVariantId]);
 
+  const includedLines = useMemo(() => lines.filter((l) => l.included), [lines]);
+
   // Required-to-sell preflight (#1842): a listing that publishes with zero
   // stock is live but unbuyable. Soft-block - surfaced per row + a batch
-  // banner, overridable via the acknowledgement checkbox below.
+  // banner, overridable via the acknowledgement checkbox below. Only applies
+  // to included lines - an excluded row never blocks publish.
   const outOfStockVariantIds = useMemo(
     () =>
       new Set(
-        lines
+        includedLines
           .filter((line) => checkShopLineSellability(line.stock ?? 0).length > 0)
           .map((line) => line.variantId)
       ),
-    [lines]
+    [includedLines]
   );
   const needsSellabilityAck = outOfStockVariantIds.size > 0 && !acknowledgeOutOfStock;
 
@@ -302,6 +338,10 @@ export function BulkShopReviewStep({
   useEffect(() => {
     setAcknowledgeOutOfStock(false);
   }, [outOfStockVariantIds.size]);
+
+  // Ready / needs-attention / excluded summary counts (#1838) - visual parity
+  // with the marketplace review's ready/attn/off summary bar.
+  const counts = useMemo(() => countShopBatch(lines), [lines]);
 
   // Flagged = out of stock OR already listed on the destination (#1838) -
   // drives the "only flagged" toggle, mirroring the marketplace review step.
@@ -348,61 +388,110 @@ export function BulkShopReviewStep({
     });
   }, [groups, filter, onlyFlagged, flaggedVariantIds]);
 
+  const canPublish =
+    includedLines.length > 0 && !needsSellabilityAck && !isSubmitting && !demoReadOnly;
+
   const handlePublish = (): void => {
-    if (needsSellabilityAck) return;
+    if (!canPublish) return;
     const items = buildBulkShopPublishItems(rows, config, masterStockByVariantId);
     if (items.length === 0) return;
     onPublish(items, status);
   };
 
+  const publishLabel = isSubmitting
+    ? 'Publishing…'
+    : `Publish ${includedLines.length} ${includedLines.length === 1 ? 'listing' : 'listings'}`;
+
   return (
-    <div className="bulk-shop-review">
+    <div className="bulk-shop-review" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
       {errorMessage ? <Alert tone="error">{errorMessage}</Alert> : null}
 
-      <header>
-        <h2
-          style={{
-            margin: 0,
-            fontSize: 17,
-            fontWeight: 600,
-            letterSpacing: 'var(--tracking-tight)',
-          }}
-        >
-          Review shop listings
-        </h2>
-        <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: 13 }}>
-          Publishing {lines.length} {lines.length === 1 ? 'product listing' : 'product listings'} to{' '}
-          <strong>{connection?.name ?? 'the selected shop'}</strong>. Stock and price come from each
-          product's master values and the batch policy.
-        </p>
+      <header className="bulk-review__header">
+        <div className="bulk-review__intro">
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600 }}>Review shop listings</h2>
+          <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: 13 }}>
+            Publishing {includedLines.length}{' '}
+            {includedLines.length === 1 ? 'product listing' : 'product listings'} to{' '}
+            <strong>{connection?.name ?? 'the selected shop'}</strong>. Stock and price come from
+            each product's master values and the batch policy.
+          </p>
+        </div>
+        {lines.length > 0 ? (
+          <div className="bulk-review__toolbar">
+            <Input
+              type="search"
+              placeholder="Filter products..."
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="bulk-review__filter"
+              aria-label="Filter products by name or SKU"
+            />
+            <Button
+              tone="primary"
+              className="bulk-review__cta bulk-review__cta--top"
+              disabled={!canPublish}
+              onClick={handlePublish}
+            >
+              {publishLabel}
+            </Button>
+          </div>
+        ) : null}
       </header>
 
       {lines.length > 0 ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-          <Input
-            type="search"
-            placeholder="Filter products..."
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="bulk-review__filter"
-            aria-label="Filter products by name or SKU"
-          />
-          <label
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              fontSize: 12,
-              color: 'var(--text-secondary)',
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={onlyFlagged}
-              onChange={(e) => setOnlyFlagged(e.target.checked)}
-            />
-            Only flagged
-          </label>
+        <div className="bulk-review__summary" role="status">
+          <div className="ready">
+            <span className="n">{counts.ready}</span> <span className="lbl">ready</span>
+          </div>
+          <div className="attn">
+            <span className="n">{counts.needsAttention}</span>{' '}
+            <span className="lbl">need attention</span>
+          </div>
+          <div className="off">
+            <span className="n">{counts.excluded}</span> <span className="lbl">excluded</span>
+          </div>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 'var(--space-2)' }}>
+            <label
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 12,
+                color: 'var(--text-secondary)',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={onlyFlagged}
+                onChange={(e) => setOnlyFlagged(e.target.checked)}
+              />
+              Only flagged
+            </label>
+          </div>
+        </div>
+      ) : null}
+
+      {lines.length > 0 ? (
+        <div
+          className={
+            counts.needsAttention === 0 ? 'bulk-review__banner bulk-review__banner--ok' : 'bulk-review__banner'
+          }
+          role="status"
+        >
+          {counts.needsAttention === 0 ? (
+            <>
+              <b>All included listings are ready.</b> {counts.ready} listings will be published.
+            </>
+          ) : (
+            <>
+              <b>
+                {counts.needsAttention}{' '}
+                {counts.needsAttention === 1 ? 'listing needs' : 'listings need'} attention.
+              </b>{' '}
+              They will publish but can&apos;t be purchased until restocked - fix the stock via
+              Edit, exclude the row, or confirm below to publish anyway.
+            </>
+          )}
         </div>
       ) : null}
 
@@ -440,6 +529,11 @@ export function BulkShopReviewStep({
         </Alert>
       ) : (
         <>
+          {includedLines.length === 0 ? (
+            <Alert tone="warning">
+              No variants are included. Re-include at least one variant to publish.
+            </Alert>
+          ) : null}
           {outOfStockVariantIds.size > 0 ? (
             <Alert tone="warning">
               <b>
@@ -485,44 +579,56 @@ export function BulkShopReviewStep({
                       onEdit={() =>
                         setEditing({ productId: line.productId, focusVariantId: line.variantId })
                       }
-                      onRemove={() => onSetVariantIncluded(line.productId, line.variantId, false)}
+                      onSetIncluded={(included) =>
+                        onSetVariantIncluded(line.productId, line.variantId, included)
+                      }
                     />
                   ))
                 ) : (
                   <li key={group.productId} className="bulk-shop-review__group">
                     <div className="bulk-shop-review__row bulk-shop-review__group-head">
-                      <button
-                        type="button"
-                        className="bulk-review__toggle"
-                        aria-expanded={expanded.has(group.productId)}
-                        aria-label={`${expanded.has(group.productId) ? 'Collapse' : 'Expand'} ${
-                          group.productName
-                        } variants`}
-                        onClick={() => toggleExpand(group.productId)}
-                      >
-                        <span className="bulk-review__caret" aria-hidden="true">
-                          &#9656;
-                        </span>
-                      </button>
+                      <span className="bulk-review__lead">
+                        <CheckboxCell
+                          state={
+                            group.lines.every((l) => l.included)
+                              ? 'all'
+                              : group.lines.some((l) => l.included)
+                                ? 'some'
+                                : 'none'
+                          }
+                          ariaLabel={`Include all ${group.productName} variants`}
+                          onToggle={() => {
+                            const nextIncluded = !group.lines.every((l) => l.included);
+                            for (const line of group.lines) {
+                              onSetVariantIncluded(line.productId, line.variantId, nextIncluded);
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="bulk-review__toggle"
+                          aria-expanded={expanded.has(group.productId)}
+                          aria-label={`${expanded.has(group.productId) ? 'Collapse' : 'Expand'} ${
+                            group.productName
+                          } variants`}
+                          onClick={() => toggleExpand(group.productId)}
+                        >
+                          <span className="bulk-review__caret" aria-hidden="true">
+                            &#9656;
+                          </span>
+                        </button>
+                      </span>
                       <div className="bulk-shop-review__row-main">
                         <b>{group.productName}</b>
                         <small className="mono-text muted-text">
                           {group.lines.length} variants
                         </small>
+                        <ShopAggregateChip lines={group.lines} outOfStockVariantIds={outOfStockVariantIds} />
                         {group.lines.some((l) => alreadyListedVariantIds.has(l.variantId)) ? (
                           <AlreadyListedChip
                             destinationName={destinationName}
                             title={`already on ${destinationName} - publishing updates it`}
                           />
-                        ) : null}
-                        {group.lines.some((l) => outOfStockVariantIds.has(l.variantId)) ? (
-                          <span
-                            className="bulk-chip bulk-chip--warning"
-                            title="Out of stock - will publish but cannot be purchased until restocked"
-                          >
-                            <span className="bulk-chip__dot" aria-hidden="true" />
-                            out of stock
-                          </span>
                         ) : null}
                       </div>
                     </div>
@@ -543,8 +649,8 @@ export function BulkShopReviewStep({
                                 focusVariantId: line.variantId,
                               })
                             }
-                            onRemove={() =>
-                              onSetVariantIncluded(line.productId, line.variantId, false)
+                            onSetIncluded={(included) =>
+                              onSetVariantIncluded(line.productId, line.variantId, included)
                             }
                           />
                         ))}
@@ -564,14 +670,8 @@ export function BulkShopReviewStep({
         </Button>
         <div className="bulk-wizard__footer-spacer" />
         <ReadOnlyLock active={demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
-          <Button
-            tone="primary"
-            disabled={isSubmitting || demoReadOnly || lines.length === 0 || needsSellabilityAck}
-            onClick={handlePublish}
-          >
-            {isSubmitting
-              ? 'Publishing…'
-              : `Publish ${lines.length} ${lines.length === 1 ? 'listing' : 'listings'}`}
+          <Button tone="primary" disabled={!canPublish} onClick={handlePublish}>
+            {publishLabel}
           </Button>
         </ReadOnlyLock>
       </footer>
@@ -601,6 +701,48 @@ export function BulkShopReviewStep({
   );
 }
 
+/** Aggregate readiness pill for a collapsed multi-variant group header -
+ *  mirrors the marketplace review's `AggregateChips` ("N ready" / "N
+ *  attention" / "N off"). */
+function ShopAggregateChip({
+  lines,
+  outOfStockVariantIds,
+}: {
+  lines: ShopReviewLine[];
+  outOfStockVariantIds: ReadonlySet<string>;
+}): ReactElement {
+  let ready = 0;
+  let attn = 0;
+  let off = 0;
+  for (const line of lines) {
+    if (!line.included) off += 1;
+    else if (outOfStockVariantIds.has(line.variantId)) attn += 1;
+    else ready += 1;
+  }
+  return (
+    <>
+      {ready > 0 ? (
+        <span className="bulk-chip bulk-chip--success">
+          <span className="bulk-chip__dot" aria-hidden="true" />
+          {ready} ready
+        </span>
+      ) : null}
+      {attn > 0 ? (
+        <span className="bulk-chip bulk-chip--warning">
+          <span className="bulk-chip__dot" aria-hidden="true" />
+          {attn} attention
+        </span>
+      ) : null}
+      {off > 0 ? (
+        <span className="bulk-chip bulk-chip--neutral">
+          <span className="bulk-chip__dot" aria-hidden="true" />
+          {off} off
+        </span>
+      ) : null}
+    </>
+  );
+}
+
 interface ShopReviewLineRowProps {
   line: ShopReviewLine;
   currency: string;
@@ -609,11 +751,14 @@ interface ShopReviewLineRowProps {
   outOfStock: boolean;
   showEdit: boolean;
   onEdit: () => void;
-  onRemove: () => void;
+  onSetIncluded: (included: boolean) => void;
 }
 
 /** One variant line - flat under a single-variant product, or nested inside
- *  an expanded multi-variant group (#1838). */
+ *  an expanded multi-variant group (#1838). Structural + visual parity with
+ *  the marketplace review's `VariantRow`: a leading `.bulk-review__chk`
+ *  include checkbox, then a status pill (ready / needs attention / excluded)
+ *  reusing the marketplace's `.bulk-chip` classes. */
 function ShopReviewLineRow({
   line,
   currency,
@@ -622,27 +767,32 @@ function ShopReviewLineRow({
   outOfStock,
   showEdit,
   onEdit,
-  onRemove,
+  onSetIncluded,
 }: ShopReviewLineRowProps): ReactElement {
   return (
-    <li className="bulk-shop-review__row">
+    <li
+      className={
+        line.included
+          ? 'bulk-shop-review__row'
+          : 'bulk-shop-review__row bulk-review__vrow--excluded'
+      }
+    >
+      <input
+        type="checkbox"
+        className="bulk-review__chk"
+        checked={line.included}
+        onChange={(e) => onSetIncluded(e.target.checked)}
+        aria-label={`Include ${line.productName} - ${line.variantLabel}`}
+      />
       <div className="bulk-shop-review__row-main">
         <b>{line.productName}</b>
         <small className="mono-text muted-text">{line.variantLabel}</small>
+        <ShopStatusPill included={line.included} outOfStock={outOfStock} />
         {alreadyListed ? (
           <AlreadyListedChip
             destinationName={destinationName}
             title={`already on ${destinationName} - publishing updates it`}
           />
-        ) : null}
-        {outOfStock ? (
-          <span
-            className="bulk-chip bulk-chip--warning"
-            title="Out of stock - will publish but cannot be purchased until restocked"
-          >
-            <span className="bulk-chip__dot" aria-hidden="true" />
-            out of stock
-          </span>
         ) : null}
       </div>
       <span className="bulk-shop-review__cell mono-text tabular" aria-label="Stock">
@@ -663,14 +813,44 @@ function ShopReviewLineRow({
           Edit
         </Button>
       ) : null}
-      <button
-        type="button"
-        className="bulk-shop-review__remove"
-        aria-label={`Remove ${line.productName} - ${line.variantLabel}`}
-        onClick={onRemove}
-      >
-        ×
-      </button>
     </li>
+  );
+}
+
+/** Per-row readiness pill - green "ready" / amber "needs attention" (out of
+ *  stock today; the same slot future required-to-sell rules, e.g. missing
+ *  weight/dimensions, will plug into) / neutral "excluded" - the exact
+ *  `.bulk-chip` classes + tones the marketplace review's `VariantChips` use. */
+function ShopStatusPill({
+  included,
+  outOfStock,
+}: {
+  included: boolean;
+  outOfStock: boolean;
+}): ReactElement {
+  if (!included) {
+    return (
+      <span className="bulk-chip bulk-chip--neutral">
+        <span className="bulk-chip__dot" aria-hidden="true" />
+        excluded
+      </span>
+    );
+  }
+  if (outOfStock) {
+    return (
+      <span
+        className="bulk-chip bulk-chip--warning"
+        title="Out of stock - will publish but cannot be purchased until restocked"
+      >
+        <span className="bulk-chip__dot" aria-hidden="true" />
+        needs attention
+      </span>
+    );
+  }
+  return (
+    <span className="bulk-chip bulk-chip--success">
+      <span className="bulk-chip__dot" aria-hidden="true" />
+      ready
+    </span>
   );
 }

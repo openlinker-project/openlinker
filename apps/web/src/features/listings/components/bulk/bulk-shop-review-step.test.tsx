@@ -220,7 +220,7 @@ function renderStep(
 }
 
 describe('BulkShopReviewStep (render)', () => {
-  it('renders one row per included variant and displays the resolved stock + price it will submit', async () => {
+  it('renders one row per variant (included and excluded) and displays the resolved stock + price it will submit', async () => {
     const rows = [makeRow('prod_1', [makeVariantRow('v1'), makeVariantRow('v2', { included: false })])];
     // use-master stock (availability 7) + flat price 99 -> review must show both.
     renderStep(
@@ -230,15 +230,20 @@ describe('BulkShopReviewStep (render)', () => {
       [{ productVariantId: 'v1', totalAvailable: 7 }],
     );
 
-    // Only the included variant renders a row.
-    expect(await screen.findByLabelText('Remove P - v1')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Remove P - v2')).not.toBeInTheDocument();
+    // Multi-variant product - expand the group to reveal per-variant rows.
+    fireEvent.click(await screen.findByRole('button', { name: /Expand P variants/ }));
 
-    // Displayed stock == resolved availability; price == flat policy value.
+    // Both the included and the excluded variant render a row, distinguished
+    // by their include checkbox's checked state.
+    expect(await screen.findByLabelText('Include P - v1')).toBeChecked();
+    expect(screen.getByLabelText('Include P - v2')).not.toBeChecked();
+
+    // Displayed stock == resolved availability; price == flat policy value
+    // (computed for both lines - flat pricing does not depend on inclusion).
     await waitFor(() => {
       expect(screen.getByText('7')).toBeInTheDocument();
     });
-    expect(screen.getByText('99 PLN')).toBeInTheDocument();
+    expect(screen.getAllByText('99 PLN').length).toBe(2);
   });
 
   it('publishes the resolved items with the chosen visibility', async () => {
@@ -256,7 +261,8 @@ describe('BulkShopReviewStep (render)', () => {
     await waitFor(() => {
       expect(screen.getByText('7')).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByRole('button', { name: /Publish 1 listing/ }));
+    // Rendered twice (header top CTA + footer CTA); click the first.
+    fireEvent.click(screen.getAllByRole('button', { name: /Publish 1 listing/ })[0]);
 
     expect(onPublish).toHaveBeenCalledWith(
       [{ internalVariantId: 'v1', stock: 7, price: { amount: 99, currency: 'PLN' } }],
@@ -264,12 +270,12 @@ describe('BulkShopReviewStep (render)', () => {
     );
   });
 
-  it('excludes a variant via its remove button', async () => {
+  it('excludes a variant via its include checkbox', async () => {
     const onSetVariantIncluded = vi.fn();
     const rows = [makeRow('prod_1', [makeVariantRow('v1')])];
     renderStep(rows, config(), { onSetVariantIncluded });
 
-    fireEvent.click(await screen.findByLabelText('Remove P - v1'));
+    fireEvent.click(await screen.findByLabelText('Include P - v1'));
     expect(onSetVariantIncluded).toHaveBeenCalledWith('prod_1', 'v1', false);
   });
 
@@ -283,19 +289,21 @@ describe('BulkShopReviewStep (render)', () => {
       [{ productVariantId: 'v1', totalAvailable: 0 }],
     );
 
-    expect((await screen.findAllByText(/out of stock/i)).length).toBeGreaterThan(0);
-    const publishButton = screen.getByRole('button', { name: /Publish 1 listing/ });
-    expect(publishButton).toBeDisabled();
+    expect((await screen.findAllByText(/out of stock|needs attention/i)).length).toBeGreaterThan(0);
+    const publishButtons = screen.getAllByRole('button', { name: /Publish 1 listing/ });
+    publishButtons.forEach((btn) => expect(btn).toBeDisabled());
 
-    fireEvent.click(publishButton);
+    fireEvent.click(publishButtons[0]);
     expect(onPublish).not.toHaveBeenCalled();
 
     fireEvent.click(
       screen.getByRole('checkbox', { name: /Publish anyway - I understand/i }),
     );
-    expect(publishButton).toBeEnabled();
+    screen
+      .getAllByRole('button', { name: /Publish 1 listing/ })
+      .forEach((btn) => expect(btn).toBeEnabled());
 
-    fireEvent.click(publishButton);
+    fireEvent.click(screen.getAllByRole('button', { name: /Publish 1 listing/ })[0]);
     expect(onPublish).toHaveBeenCalledWith(
       [{ internalVariantId: 'v1', stock: 0, price: { amount: 99, currency: 'PLN' } }],
       'published',
@@ -315,7 +323,41 @@ describe('BulkShopReviewStep (render)', () => {
   it('shows the empty-state alert when no variants are included', () => {
     const rows = [makeRow('prod_1', [makeVariantRow('v1', { included: false })])];
     renderStep(rows, config());
-    expect(screen.getByText(/No variants are included/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/No variants are included/i).length).toBeGreaterThan(0);
+  });
+
+  it('shows a ready pill for an included in-stock line and an excluded pill for an excluded line', async () => {
+    const rows = [makeRow('prod_1', [makeVariantRow('v1'), makeVariantRow('v2', { included: false })])];
+    renderStep(rows, config(), {}, [{ productVariantId: 'v1', totalAvailable: 5 }]);
+
+    // Multi-variant product - expand the group to reveal per-variant rows.
+    fireEvent.click(await screen.findByRole('button', { name: /Expand P variants/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText('5')).toBeInTheDocument();
+    });
+    expect(
+      document.querySelector('.bulk-shop-review__vrows .bulk-chip--success'),
+    ).toHaveTextContent('ready');
+    expect(
+      document.querySelector('.bulk-shop-review__vrows .bulk-chip--neutral'),
+    ).toHaveTextContent('excluded');
+  });
+
+  it('shows the ready/needs-attention/excluded summary bar', async () => {
+    const rows = [
+      makeRow('prod_1', [
+        makeVariantRow('v1', { masterPrice: 39 }),
+        makeVariantRow('v2', { included: false, masterPrice: 39 }),
+      ]),
+    ];
+    renderStep(rows, config(), {}, [{ productVariantId: 'v1', totalAvailable: 0 }]);
+
+    await waitFor(() => {
+      expect(document.querySelector('.bulk-review__summary')).toBeInTheDocument();
+    });
+    expect(screen.getByText('need attention')).toBeInTheDocument();
+    expect(screen.getByText('excluded')).toBeInTheDocument();
   });
 
   it('opens the shop editor from a row Edit button (#1830)', async () => {
@@ -371,8 +413,8 @@ describe('BulkShopReviewStep grouping/filter/expand (#1838 whole-epic review)', 
     ]);
 
     await screen.findByText('2 variants');
-    // Collapsed by default - no per-variant remove buttons rendered yet.
-    expect(screen.queryByLabelText(/Remove P - /)).not.toBeInTheDocument();
+    // Collapsed by default - no per-variant include checkboxes rendered yet.
+    expect(screen.queryByLabelText(/Include P - /)).not.toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: /Expand P variants/ }),
     ).toBeInTheDocument();
@@ -387,12 +429,12 @@ describe('BulkShopReviewStep grouping/filter/expand (#1838 whole-epic review)', 
     const toggle = await screen.findByRole('button', { name: /Expand P variants/ });
     fireEvent.click(toggle);
 
-    expect(await screen.findByLabelText('Remove P - v1')).toBeInTheDocument();
-    expect(screen.getByLabelText('Remove P - v2')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Include P - v1')).toBeInTheDocument();
+    expect(screen.getByLabelText('Include P - v2')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Collapse P variants/ })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Collapse P variants/ }));
-    expect(screen.queryByLabelText('Remove P - v1')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Include P - v1')).not.toBeInTheDocument();
   });
 
   it('narrows the visible set via the filter box', async () => {
