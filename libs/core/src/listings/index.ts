@@ -340,6 +340,7 @@ export type {
   PublishProductCommerce,
   PublishProductCommand,
   PublishProductResult,
+  PublishProductVariantGroup,
 } from './domain/types/product-publish.types';
 export type {
   ProvisionCategoryPathNode,

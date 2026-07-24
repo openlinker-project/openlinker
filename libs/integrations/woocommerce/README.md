@@ -106,6 +106,54 @@ empty string or zero), so an upsert never clears a field the operator did not to
 | `destinationCategoryIds` | resolved upstream | `categories` |
 | `parameters` | projected attributes | `attributes` (custom, per-product) |
 
+The table above describes a **single-variant / simple** product — one OL
+variant, one WooCommerce `type:'simple'` product. A **multi-variant** product
+publishes differently; see the next section.
+
+## Variable products / variations (#1836)
+
+A multi-variant OL product (`getVariantsByProductId(...).length > 1`) publishes
+as one shared WooCommerce `type:'variable'` **parent** product plus one
+`products/{parentId}/variations` entry per sibling — not N unrelated `simple`
+products. A single-variant / simple product is unaffected; it keeps the exact
+table above.
+
+`ProductPublishBuilderService` populates `PublishProductCommand.variantGroup`
+whenever the variant has siblings, carrying: an opaque `groupId` (the OL
+product id), this variant's own distinguishing attribute values, and the
+**union** of every sibling's values per attribute name
+(`groupAttributeValues`) — the parent's variation-flagged attributes must
+declare the full option set up front, which no single sibling can supply
+alone. `ProductPublishExecutionService` additionally resolves the parent's own
+`ShopProduct` mapping (keyed on `groupId`, not the variant id) and threads it
+back onto `variantGroup.externalParentProductId` so the adapter knows whether
+to create or reuse the parent.
+
+**Wire mapping:**
+
+| Field | Lives on | WooCommerce shape |
+|---|---|---|
+| Content, category, SEO, plain category-parameter attributes | Parent (`type:'variable'`) | Same fields as the simple-product table above |
+| Distinguishing attributes (`groupAttributeValues`) | Parent | `attributes[]` entries with `variation: true` and `options` = every sibling's value for that axis (custom, not global `pa_*` — `ProductVariant.attributes` are freeform names with no WC global-attribute id) |
+| `price` / `sku` / `stock` / `barcode` / `weight` / commerce fields | Each sibling's variation | Same field names, on `products/{parentId}/variations[/{variationId}]` |
+| This variant's own attribute values | Each sibling's variation | `attributes[]` entries with a singular `option` (not the parent's plural `options`) |
+| `content.seo.slug` | Parent | `slug`, suffixed with the **group id** (not the variant id) — every sibling resolves to the same stable slug regardless of which one triggers the parent upsert |
+| Image | Each sibling's variation | Single `image: { src }` (create-only, same re-import-churn guard as the simple-product path) |
+
+**Mapping model.** No schema change — the existing variant-keyed `ShopProduct`
+identifier mapping already supports a second row keyed on the *product's*
+internal id (distinctly prefixed `ol_product_*` vs `ol_variant_*`, so no
+collision with the variant's own mapping row). The parent mapping is written
+the first time it resolves, with the same concurrency-safe swallow-or-conflict
+handling (#1845) as the variant's own mapping.
+
+**Known limitations (MVP, see ADR-024):** the parent's shared fields reflect
+whichever sibling published most recently (no merge across concurrent
+publishes); a 404 on the *parent* upsert (parent deleted shop-side) does not
+yet auto-heal the way a stale *variation* target does (see Publish correctness
+below) — it propagates for investigation/retry rather than silently
+mis-linking.
+
 ### SEO title & description
 
 Core WooCommerce has **no native product SEO title/description field** — those are
@@ -128,7 +176,10 @@ The publisher/offer-manager enforce these correctness rules (#1846):
   404s means the mapped product was deleted shop-side. The adapter raises the
   neutral `ProductPublishTargetNotFoundException`; the core execution service
   deletes the stale `ShopProduct` identifier mapping and re-publishes as a
-  create, so the variant recovers instead of failing permanently.
+  create, so the variant recovers instead of failing permanently. For a
+  grouped (multi-variant, #1836) publish this recovery applies to a stale
+  **variation** target the same way; a stale **parent** target does not yet
+  auto-heal (documented limitation, ADR-024).
 - **Stale-mapping cleanup on stock write-back.** A 404 from the stock
   `PUT /products/{id}` deletes the stale `ShopProduct` mapping (the stock value
   for that run is not propagated); the next publish re-creates the product and

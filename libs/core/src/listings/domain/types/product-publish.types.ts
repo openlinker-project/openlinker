@@ -21,6 +21,7 @@
  */
 
 import type { OfferParameter } from './offer-parameter.types';
+import type { OfferVariantAttribute } from './offer-create.types';
 
 /**
  * Publication state of a shop product. Distinct from record existence and from
@@ -95,6 +96,48 @@ export interface PublishProductCommerce {
 }
 
 /**
+ * Cross-shop variant-grouping hint (#1836), the shop-publish sibling of
+ * `OfferVariantGroup` (#1065). Present only when this variant is one sibling of
+ * a multi-variant product that should publish as ONE grouped shop record
+ * (WooCommerce variable product + variations; Shopify product + variants) —
+ * absent means standalone (single-variant / simple products keep the exact
+ * pre-#1836 simple-product path).
+ *
+ * Distinct from `OfferVariantGroup` (not reused) because a shop grouping needs
+ * two things a marketplace offer grouping does not: the full union of
+ * distinguishing attribute values across every sibling (a shop parent record
+ * must declare its variation axes up front — WC "variation-flagged" attribute
+ * options, Shopify product `options`), and the already-resolved parent
+ * shop-native id so the adapter can upsert the parent instead of guessing.
+ */
+export interface PublishProductVariantGroup {
+  /**
+   * Opaque, stable grouping token shared by every sibling of the same product
+   * (today the parent OL product id). Adapters treat it as an opaque key, same
+   * contract as `OfferVariantGroup.groupId` — never parsed or path-routed.
+   */
+  groupId: string;
+  /** This variant's own distinguishing attribute values, flattened from `ProductVariant.attributes`. */
+  attributes: OfferVariantAttribute[];
+  /**
+   * Union of every sibling's distinguishing attribute values, keyed by
+   * attribute name (e.g. `{ Color: ['Red', 'Blue'], Size: ['S', 'M'] }`) — the
+   * full option set the destination's parent record must declare so any
+   * sibling variation can select from it. Assembled once by the builder from
+   * `getVariantsByProductId`, so every sibling's publish carries the same set
+   * regardless of publish order.
+   */
+  groupAttributeValues: Record<string, string[]>;
+  /**
+   * The parent's shop-native product id when it has already been published on
+   * this connection (resolved by the execution service via the `ShopProduct`
+   * mapping keyed on `groupId`). `null`/absent ⇒ the parent does not exist yet;
+   * the adapter creates it as part of this call.
+   */
+  externalParentProductId?: string | null;
+}
+
+/**
  * Command to publish (create-or-upsert) a product onto a shop destination.
  *
  * Shop-neutral contract. WooCommerce, Shopify, … adapters translate this into
@@ -158,9 +201,21 @@ export interface PublishProductCommand {
   /**
    * Shop-native product id when this is an upsert (already published). Absent /
    * `null` → create a new product and map it. Resolved by the #1042 execution
-   * service via `IdentifierMapping`.
+   * service via `IdentifierMapping`. For a **grouped** publish (`variantGroup`
+   * present), this is the variant's own variation id (or absent to create a
+   * new variation under the parent) — the parent id lives on
+   * `variantGroup.externalParentProductId`.
    */
   externalProductId?: string | null;
+  /**
+   * Platform-neutral variant-grouping hint (#1836), populated by
+   * `ProductPublishBuilderService` for a sibling of a multi-variant product.
+   * Adapters that support native variable-product grouping (WooCommerce)
+   * publish one shared parent record + one child variation per sibling;
+   * adapters without that concept ignore it and publish standalone. Absent ⇒
+   * single-variant / simple products, unchanged simple-product path.
+   */
+  variantGroup?: PublishProductVariantGroup;
   /** Optional idempotency key for deduplication at the adapter / job layer. */
   idempotencyKey?: string;
   /**
@@ -181,10 +236,23 @@ export interface PublishProductCommand {
  * created/updated.
  */
 export interface PublishProductResult {
-  /** Shop-native id of the created/updated product. */
+  /**
+   * Shop-native id of the created/updated product. For a grouped publish
+   * (`command.variantGroup` present) this is the variant's own variation id,
+   * NOT the parent id — the parent id is reported separately on
+   * `externalParentProductId`.
+   */
   externalProductId: string;
   /** Observed publication state immediately after the publish call. */
   status: PublishProductStatus;
   /** Non-fatal warnings (e.g. an optional attribute the shop dropped). Omitted when empty. */
   warnings?: string[];
+  /**
+   * The resolved (created-or-reused) parent product id, present only when
+   * `command.variantGroup` was set (#1836). The execution service persists the
+   * `ShopProduct` mapping keyed on `variantGroup.groupId` from this value when
+   * no such mapping existed yet — same idempotent-write posture as the
+   * variant's own `externalProductId`.
+   */
+  externalParentProductId?: string;
 }

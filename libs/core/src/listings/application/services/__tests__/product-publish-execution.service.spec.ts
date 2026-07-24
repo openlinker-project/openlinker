@@ -291,4 +291,168 @@ describe('ProductPublishExecutionService', () => {
     expect(loggerWarnSpy).not.toHaveBeenCalledWith(expect.stringContaining('non-fatal adapter warnings'));
     expect(result.outcome).toBe('ok');
   });
+
+  describe('grouped (multi-variant) publish (#1836)', () => {
+    const GROUP_ID = 'prod-1';
+    const VARIATION_EXT = 'wc-variation-7';
+    const PARENT_EXT = 'wc-parent-42';
+
+    beforeEach(() => {
+      builder.buildPublishProductCommand.mockResolvedValue({
+        internalVariantId: VARIANT,
+        connectionId: CONN,
+        destinationCategoryIds: [],
+        price: { amount: 10, currency: 'PLN' },
+        stock: 5,
+        status: 'published',
+        variantGroup: {
+          groupId: GROUP_ID,
+          attributes: [{ name: 'Color', value: 'Red' }],
+          groupAttributeValues: { Color: ['Red', 'Blue'] },
+        },
+      });
+    });
+
+    it('should resolve no existing parent, publish, and persist both variant + parent mappings on first publish', async () => {
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+      adapter.publishProduct.mockResolvedValue({
+        externalProductId: VARIATION_EXT,
+        status: 'published',
+        externalParentProductId: PARENT_EXT,
+      });
+
+      const result = await service.executePublish(input);
+
+      // Command passed to the adapter carries a resolved (absent) parent id.
+      expect(adapter.publishProduct).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variantGroup: expect.objectContaining({ groupId: GROUP_ID, externalParentProductId: null }),
+        }),
+      );
+      // Both mappings written: the variation (variant-keyed) and the parent (product-keyed).
+      expect(identifierMapping.createMapping).toHaveBeenCalledWith(
+        'ShopProduct',
+        VARIATION_EXT,
+        CONN,
+        VARIANT,
+      );
+      expect(identifierMapping.createMapping).toHaveBeenCalledWith(
+        'ShopProduct',
+        PARENT_EXT,
+        CONN,
+        GROUP_ID,
+      );
+      expect(result.outcome).toBe('ok');
+    });
+
+    it('should thread an existing parent mapping into the command and skip re-creating it', async () => {
+      identifierMapping.getExternalIds.mockImplementation((entityType: string, internalId: string) => {
+        if (internalId === GROUP_ID) {
+          return Promise.resolve([
+            { externalId: PARENT_EXT, connectionId: CONN, entityType, platformType: 'woocommerce' },
+          ]);
+        }
+        return Promise.resolve([]); // variant has no mapping yet — first variation publish
+      });
+      adapter.publishProduct.mockResolvedValue({
+        externalProductId: VARIATION_EXT,
+        status: 'published',
+        externalParentProductId: PARENT_EXT,
+      });
+
+      await service.executePublish(input);
+
+      expect(adapter.publishProduct).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variantGroup: expect.objectContaining({ externalParentProductId: PARENT_EXT }),
+        }),
+      );
+      // Variation mapping is new (created); parent mapping already existed (not re-created).
+      expect(identifierMapping.createMapping).toHaveBeenCalledWith(
+        'ShopProduct',
+        VARIATION_EXT,
+        CONN,
+        VARIANT,
+      );
+      expect(identifierMapping.createMapping).not.toHaveBeenCalledWith(
+        'ShopProduct',
+        expect.anything(),
+        CONN,
+        GROUP_ID,
+      );
+    });
+
+    it('should skip re-creating both mappings on a steady-state re-publish (both already exist)', async () => {
+      identifierMapping.getExternalIds.mockImplementation((entityType: string, internalId: string) => {
+        if (internalId === GROUP_ID) {
+          return Promise.resolve([
+            { externalId: PARENT_EXT, connectionId: CONN, entityType, platformType: 'woocommerce' },
+          ]);
+        }
+        return Promise.resolve([
+          { externalId: VARIATION_EXT, connectionId: CONN, entityType, platformType: 'woocommerce' },
+        ]);
+      });
+      adapter.publishProduct.mockResolvedValue({
+        externalProductId: VARIATION_EXT,
+        status: 'published',
+        externalParentProductId: PARENT_EXT,
+      });
+
+      await service.executePublish(input);
+
+      expect(adapter.publishProduct).toHaveBeenCalledWith(
+        expect.objectContaining({
+          externalProductId: VARIATION_EXT,
+          variantGroup: expect.objectContaining({ externalParentProductId: PARENT_EXT }),
+        }),
+      );
+      expect(identifierMapping.createMapping).not.toHaveBeenCalled();
+    });
+
+    it('should swallow a benign duplicate parent-mapping race when the winner claims the same group id', async () => {
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+      adapter.publishProduct.mockResolvedValue({
+        externalProductId: VARIATION_EXT,
+        status: 'published',
+        externalParentProductId: PARENT_EXT,
+      });
+      identifierMapping.createMapping.mockImplementation((_entityType: string, externalId: string) => {
+        if (externalId === PARENT_EXT) {
+          return Promise.reject(
+            new DuplicateIdentifierMappingError('ShopProduct', PARENT_EXT, 'woocommerce', CONN),
+          );
+        }
+        return Promise.resolve(undefined);
+      });
+      identifierMapping.getInternalId.mockResolvedValue(GROUP_ID);
+
+      const result = await service.executePublish(input);
+
+      expect(identifierMapping.getInternalId).toHaveBeenCalledWith('ShopProduct', PARENT_EXT, CONN);
+      expect(result.outcome).toBe('ok');
+    });
+
+    it('should rethrow when a duplicate parent mapping claims a DIFFERENT group (genuine conflict)', async () => {
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+      adapter.publishProduct.mockResolvedValue({
+        externalProductId: VARIATION_EXT,
+        status: 'published',
+        externalParentProductId: PARENT_EXT,
+      });
+      identifierMapping.createMapping.mockImplementation((_entityType: string, externalId: string) => {
+        if (externalId === PARENT_EXT) {
+          return Promise.reject(
+            new DuplicateIdentifierMappingError('ShopProduct', PARENT_EXT, 'woocommerce', CONN),
+          );
+        }
+        return Promise.resolve(undefined);
+      });
+      identifierMapping.getInternalId.mockResolvedValue('prod-other');
+
+      await expect(service.executePublish(input)).rejects.toBeInstanceOf(
+        ShopProductMappingConflictException,
+      );
+    });
+  });
 });

@@ -46,7 +46,6 @@ import type {
   CreateOfferOverrides,
   OfferManagerPort,
   OfferParameter,
-  OfferVariantAttribute,
   OfferVariantGroup,
   SourceAttribute,
   SourceCategoryRef,
@@ -72,6 +71,7 @@ import type { IOfferBuilderService } from '../interfaces/offer-builder.service.i
 import type { BuildCreateOfferCommandInput } from '../types/offer-builder.types';
 import type { AttributeProjectionMetadata } from '../types/attribute-projection.types';
 import { buildProjectionMetadata } from './build-projection-metadata';
+import { flattenAttributes } from './variant-attributes.util';
 
 @Injectable()
 export class OfferBuilderService implements IOfferBuilderService {
@@ -539,11 +539,3 @@ function slugifyFeatureName(name: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-function flattenAttributes(
-  attributes: Record<string, string> | null
-): OfferVariantAttribute[] {
-  return Object.entries(attributes ?? {})
-    .filter(([name, value]) => name.length > 0 && value.length > 0)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([name, value]) => ({ name, value }));
-}

@@ -469,6 +469,160 @@ describe('WooCommerceProductPublisherAdapter', () => {
     });
   });
 
+  describe('publishProduct — grouped multi-variant (#1836)', () => {
+    const variantGroup = {
+      groupId: 'prod-1',
+      attributes: [{ name: 'Color', value: 'Red' }],
+      groupAttributeValues: { Color: ['Red', 'Blue'] },
+    };
+
+    it('should create the parent variable product then create the variation, returning both ids', async () => {
+      http.post
+        .mockResolvedValueOnce({ id: 500 }) // parent create
+        .mockResolvedValueOnce({ id: 501 }); // variation create
+
+      const result = await adapter.publishProduct(
+        baseCommand({ variantGroup: { ...variantGroup, externalParentProductId: null } }),
+      );
+
+      expect(http.post).toHaveBeenNthCalledWith(
+        1,
+        '/wp-json/wc/v3/products',
+        expect.objectContaining({
+          type: 'variable',
+          status: 'publish',
+          name: 'Widget',
+          attributes: expect.arrayContaining([
+            { name: 'Color', options: ['Red', 'Blue'], visible: true, variation: true },
+          ]),
+        }),
+      );
+      // Parent body carries no per-variant fields.
+      expect(http.post.mock.calls[0][1]).not.toHaveProperty('regular_price');
+      expect(http.post.mock.calls[0][1]).not.toHaveProperty('sku');
+      expect(http.post.mock.calls[0][1]).not.toHaveProperty('stock_quantity');
+
+      expect(http.post).toHaveBeenNthCalledWith(
+        2,
+        '/wp-json/wc/v3/products/500/variations',
+        expect.objectContaining({
+          status: 'publish',
+          regular_price: '19.99',
+          manage_stock: true,
+          stock_quantity: 7,
+          attributes: [{ name: 'Color', option: 'Red' }],
+        }),
+      );
+      expect(result).toEqual({
+        externalProductId: '501',
+        status: 'published',
+        externalParentProductId: '500',
+      });
+    });
+
+    it('should PUT the existing parent then POST a new variation when only the parent already exists', async () => {
+      http.put.mockResolvedValue({ id: 500 });
+      http.post.mockResolvedValue({ id: 502 });
+
+      const result = await adapter.publishProduct(
+        baseCommand({ variantGroup: { ...variantGroup, externalParentProductId: '500' } }),
+      );
+
+      expect(http.put).toHaveBeenCalledWith(
+        '/wp-json/wc/v3/products/500',
+        expect.objectContaining({ type: 'variable' }),
+      );
+      expect(http.post).toHaveBeenCalledWith(
+        '/wp-json/wc/v3/products/500/variations',
+        expect.objectContaining({ regular_price: '19.99' }),
+      );
+      expect(result).toEqual({
+        externalProductId: '502',
+        status: 'published',
+        externalParentProductId: '500',
+      });
+    });
+
+    it('should PUT both the parent and the existing variation on a steady-state re-publish', async () => {
+      http.put.mockResolvedValueOnce({ id: 500 }).mockResolvedValueOnce({ id: 501 });
+
+      const result = await adapter.publishProduct(
+        baseCommand({
+          externalProductId: '501',
+          variantGroup: { ...variantGroup, externalParentProductId: '500' },
+        }),
+      );
+
+      expect(http.put).toHaveBeenNthCalledWith(
+        1,
+        '/wp-json/wc/v3/products/500',
+        expect.objectContaining({ type: 'variable' }),
+      );
+      expect(http.put).toHaveBeenNthCalledWith(
+        2,
+        '/wp-json/wc/v3/products/500/variations/501',
+        expect.objectContaining({ regular_price: '19.99' }),
+      );
+      expect(http.post).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        externalProductId: '501',
+        status: 'published',
+        externalParentProductId: '500',
+      });
+    });
+
+    it('should build the parent slug from the group id (stable across siblings) rather than the variant id', async () => {
+      http.post.mockResolvedValueOnce({ id: 500 }).mockResolvedValueOnce({ id: 501 });
+
+      await adapter.publishProduct(
+        baseCommand({
+          internalVariantId: 'ol_variant_a',
+          content: { title: 'Widget', seo: { slug: 'widget' } },
+          variantGroup: { ...variantGroup, externalParentProductId: null },
+        }),
+      );
+
+      expect(http.post.mock.calls[0][1]).toMatchObject({ slug: 'widget-prod-1' });
+    });
+
+    it('should map a variation-upsert 404 to ProductPublishTargetNotFoundException (stale variation mapping)', async () => {
+      http.put
+        .mockResolvedValueOnce({ id: 500 }) // parent upsert succeeds
+        .mockRejectedValueOnce(
+          new WooCommerceHttpResponseException(404, 'Not found', 'woocommerce_rest_product_invalid_id'),
+        );
+
+      await expect(
+        adapter.publishProduct(
+          baseCommand({
+            externalProductId: '999',
+            variantGroup: { ...variantGroup, externalParentProductId: '500' },
+          }),
+        ),
+      ).rejects.toMatchObject({
+        name: 'ProductPublishTargetNotFoundException',
+        externalProductId: '999',
+      });
+    });
+
+    it('should map a parent-upsert 404 to ProductPublishTargetNotFoundException carrying the PARENT id', async () => {
+      http.put.mockRejectedValueOnce(
+        new WooCommerceHttpResponseException(404, 'Not found', 'woocommerce_rest_product_invalid_id'),
+      );
+
+      await expect(
+        adapter.publishProduct(
+          baseCommand({ variantGroup: { ...variantGroup, externalParentProductId: '404-gone' } }),
+        ),
+      ).rejects.toMatchObject({
+        name: 'ProductPublishTargetNotFoundException',
+        externalProductId: '404-gone',
+      });
+      // Never reached the variation call — the parent upsert failed first.
+      expect(http.post).not.toHaveBeenCalled();
+    });
+  });
+
   describe('provisionCategory', () => {
     it('should reuse an exact name+parent match and not create', async () => {
       http.get.mockResolvedValue([
