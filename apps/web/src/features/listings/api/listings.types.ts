@@ -364,6 +364,23 @@ export interface BulkShopPublishItemRequest {
   internalVariantId: string;
   stock: number;
   price?: ShopPublishPrice;
+  /**
+   * Per-item content override (#1830); wins over the batch-shared `content`.
+   * Omitted ⇒ batch-shared content (or the master product) applies.
+   */
+  content?: ShopPublishContent;
+  /**
+   * Per-item destination category ids (#1830). Present (including an empty
+   * array ⇒ uncategorised) skips server-side category provisioning; omitted ⇒
+   * the builder provisions as before.
+   */
+  destinationCategoryIds?: string[];
+  /**
+   * Per-item neutral category parameters / attributes (#1830). Present
+   * (including empty) skips server-side attribute projection; omitted ⇒ the
+   * builder projects as before.
+   */
+  parameters?: OfferParameter[];
 }
 
 export interface BulkShopPublishRequest {

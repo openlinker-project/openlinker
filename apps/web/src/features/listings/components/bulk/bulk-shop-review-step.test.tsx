@@ -10,6 +10,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { renderWithProviders, createMockApiClient } from '../../../../test/test-utils';
+
+// Isolate the shop editor render from the AI suggestion dialog (#1830).
+vi.mock('../../../content', () => ({ SuggestionDialog: () => null }));
 import {
   BulkShopReviewStep,
   buildBulkShopPublishItems,
@@ -121,6 +124,55 @@ describe('buildBulkShopPublishItems', () => {
     const items = buildBulkShopPublishItems(rows, config(), new Map());
     expect(items[0].stock).toBe(0);
   });
+
+  it('threads per-product content, destination categories, and parameters onto each item (#1830)', () => {
+    const row = makeRow('prod_1', [makeVariantRow('v1')]);
+    row.override = {
+      overrides: {
+        title: 'Custom title',
+        description: 'Base description',
+        imageUrls: ['https://img/1.jpg'],
+        destinationCategoryIds: ['cat_42'],
+        parameters: [{ id: 'pa_color', values: ['Red'], valuesIds: ['t1'], section: 'product' }],
+      },
+    };
+    const items = buildBulkShopPublishItems([row], config(), new Map([['v1', 5]]));
+    expect(items[0]).toMatchObject({
+      internalVariantId: 'v1',
+      content: {
+        title: 'Custom title',
+        description: 'Base description',
+        imageUrls: ['https://img/1.jpg'],
+      },
+      destinationCategoryIds: ['cat_42'],
+      parameters: [{ id: 'pa_color', values: ['Red'], valuesIds: ['t1'], section: 'product' }],
+    });
+  });
+
+  it('lets a per-variant description override win over the base content (#1830)', () => {
+    const v1 = makeVariantRow('v1', {
+      override: { overrides: { description: 'Variant-specific copy' } },
+    });
+    const row = makeRow('prod_1', [v1]);
+    row.override = { overrides: { description: 'Base description' } };
+    const items = buildBulkShopPublishItems([row], config(), new Map([['v1', 5]]));
+    expect(items[0].content?.description).toBe('Variant-specific copy');
+  });
+
+  it('preserves a defined-but-empty destinationCategoryIds (uncategorised) (#1830)', () => {
+    const row = makeRow('prod_1', [makeVariantRow('v1')]);
+    row.override = { overrides: { destinationCategoryIds: [] } };
+    const items = buildBulkShopPublishItems([row], config(), new Map([['v1', 5]]));
+    expect(items[0].destinationCategoryIds).toEqual([]);
+  });
+
+  it('omits content/category/parameters for a passthrough item with no overrides (#1830)', () => {
+    const rows = [makeRow('prod_1', [makeVariantRow('v1')])];
+    const items = buildBulkShopPublishItems(rows, config(), new Map([['v1', 5]]));
+    expect(items[0]).not.toHaveProperty('content');
+    expect(items[0]).not.toHaveProperty('destinationCategoryIds');
+    expect(items[0]).not.toHaveProperty('parameters');
+  });
 });
 
 const shopConnection = {
@@ -139,6 +191,7 @@ function renderStep(
     onPublish?: (items: BulkShopPublishItemRequest[], status: ShopPublishVisibility) => void;
     onSetVariantIncluded?: (p: string, v: string, i: boolean) => void;
     onBack?: () => void;
+    onSaveEditor?: () => void;
   } = {},
   availability: { productVariantId: string; totalAvailable: number }[] = [],
 ): void {
@@ -160,6 +213,7 @@ function renderStep(
       onSetVariantIncluded={handlers.onSetVariantIncluded ?? ((): void => undefined)}
       onBack={handlers.onBack ?? ((): void => undefined)}
       onPublish={handlers.onPublish ?? ((): void => undefined)}
+      onSaveEditor={handlers.onSaveEditor ?? ((): void => undefined)}
     />,
     { apiClient },
   );
@@ -223,5 +277,15 @@ describe('BulkShopReviewStep (render)', () => {
     const rows = [makeRow('prod_1', [makeVariantRow('v1', { included: false })])];
     renderStep(rows, config());
     expect(screen.getByText(/No variants are included/i)).toBeInTheDocument();
+  });
+
+  it('opens the shop editor from a row Edit button (#1830)', async () => {
+    const rows = [makeRow('prod_1', [makeVariantRow('v1')])];
+    renderStep(rows, config(), {}, [{ productVariantId: 'v1', totalAvailable: 7 }]);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit P' }));
+    // The shop editor mounts its title field (a shop-only "Product fields" scope).
+    expect(await screen.findByRole('heading', { name: 'Product fields' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Title')).toBeInTheDocument();
   });
 });

@@ -451,7 +451,42 @@ kind from the selected connection via `publishDestinationKind` (capability, neve
 - **`ShopPublishLauncher` disposition.** The launcher is no longer wired to any
   publish CTA - the unified picker + wizard cover the create path end-to-end. It
   and the WooCommerce single-publish wizard are retained (unreferenced by the
-  pages) for the shop **edit** mode still owned by #1830.
+  pages).
+
+**Two-axis edit modal: destination kind × variant shape (#1830).** `BulkEditModal`
+(`features/listings/components/bulk/bulk-edit-modal.tsx`) is one component that
+serves both destination kinds via a `destinationKind: 'marketplace' | 'shop'`
+prop, resolved by the caller from `publishDestinationKind(connection)` (capability,
+never `platformType`) - never inferred inside the modal itself. Both branches
+share the same shell: the two-pane layout (rail = Base + per-variant scopes with
+inherit/override semantics) for a multi-variant product, a flat form with no rail
+for a simple/single-variant product, and the discard-guard dialog wrapper.
+
+- **Marketplace branch** (`BulkEditModalForm`, unchanged since #1741): category
+  tree + parameter schema, EAN self-link, product-card link, grouping-determining
+  params locked to base, per-plugin platform sections.
+- **Shop branch** (`BulkShopEditModalForm`, #1830): category placement lives in
+  the top crumb bar (mounts `ShopCategoryPickerModal`, gated on the connection's
+  `ShopCategoryBrowser` sub-capability) rather than a mid-form field; structured
+  attributes are collected via `ShopAttributePicker` (gated on `ShopAttributeReader`);
+  content (title/description/images), visibility, and price/stock round out the
+  base scope. No category-parameter schema, no EAN self-link - a shop product has
+  neither. The variant scope keeps the marketplace precedent of no standalone
+  "distinguishing" field (the scope heading already names the variant) and makes
+  every override-eligible base field (description, price) overridable per variant;
+  parent-only fields (title, category, images, attributes) stay base-only, mirroring
+  which fields are genuinely shared across a shop's simple-product siblings.
+  Per-product content/category/parameter overrides are carried on
+  `BulkOfferOverrides` (`destinationCategoryIds` addition, #1830) and threaded by
+  `buildBulkShopPublishItems` (`bulk-shop-review-step.tsx`) onto each item's
+  `content` / `destinationCategoryIds` / `parameters` - the FE consumer of the
+  #1831 per-item transport. Two adds of the same global-attribute id from
+  `ShopAttributePicker` (e.g. Color=Red then Color=Blue) are merged by
+  `mergeShopParameter` (union term values/ids, last-wins on `section`) rather
+  than appended as duplicate `parameters` entries, so WooCommerce never receives
+  two `attributes[]` rows for one attribute id. The AI-description toggle for
+  shops is a separate follow-up (#1840) - the shop editor's `SuggestionDialog`
+  wiring exists but no shop-specific toggle is added here.
 
 ### UI Library Policy
 

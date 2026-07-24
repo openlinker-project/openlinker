@@ -617,6 +617,7 @@ export function BulkWizard({
                 alreadyListedVariantIds={alreadyListedSet}
                 destinationName={dupGuardDestinationName}
                 onSetVariantIncluded={setVariantIncluded}
+                onSaveEditor={handleSaveEditor}
                 onBack={() => { setStep('config'); }}
                 onPublish={handleShopPublishRequested}
               />
