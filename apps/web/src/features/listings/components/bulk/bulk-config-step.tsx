@@ -28,6 +28,7 @@ import { useWriteAccess } from '../../../../shared/auth/use-permission';
 import { useDemoMode } from '../../../system';
 import { useConnectionsQuery } from '../../../connections';
 import type { Connection } from '../../../connections';
+import { selectPublishDestinations } from '../../lib/publish-destinations';
 import { usePlatform, usePlatforms, type BulkConfigFormValues } from '../../../../shared/plugins';
 import type {
   BulkWizardConfig,
@@ -48,12 +49,12 @@ interface BulkConfigStepProps {
 const DEFAULT_CURRENCY = 'PLN';
 
 function selectOfferManagerConnections(all: readonly Connection[]): Connection[] {
-  return all
-    // OfferCreator (not coarse OfferManager, #1498): a quantity-only
-    // OfferManager (WooCommerce stock write-back) cannot create offers.
-    .filter((c) => c.status === 'active' && c.supportedCapabilities?.includes('OfferCreator'))
-    .slice()
-    .sort((a, b) => a.name.localeCompare(b.name));
+  // Unified publish targets (#1828): offer marketplaces (OfferCreator) OR
+  // online shops (ProductPublisher), capability-driven. A connection without a
+  // per-platform config section (e.g. a shop, until the wizard branch #1829
+  // lands) surfaces the "not configured" warning and cannot Proceed via the
+  // marketplace path - see `sectionComplete` below.
+  return selectPublishDestinations(all).map((d) => d.connection);
 }
 
 function defaultFormValues(initial: Partial<BulkWizardConfig>): BulkConfigFormValues {
@@ -127,7 +128,11 @@ export function BulkConfigStep({
     (/^\d+$/.test(values.flatStockValue.trim()) && Number(values.flatStockValue) >= 1);
 
   const sharedSliceValid = markupValid && flatPriceValid && capValid && flatStockValid;
-  const sectionComplete = section ? section.isComplete(values) : true;
+  // A connection with no per-platform config section cannot be bulk-published
+  // through the marketplace wizard (e.g. a shop destination that slipped in via
+  // direct URL before the wizard branch #1829 lands) - block Proceed rather
+  // than submit a shop connection to the offer bulk-create endpoint.
+  const sectionComplete = section ? section.isComplete(values) : false;
   const canProceed = connectionId !== '' && sharedSliceValid && sectionComplete;
 
   function buildPricingPolicy(): PricingPolicy {

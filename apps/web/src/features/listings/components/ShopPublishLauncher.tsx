@@ -38,6 +38,14 @@ interface ShopPublishLauncherProps {
   onOpenChange: (open: boolean) => void;
   defaultVariantId?: string;
   defaultVariantIds?: string[];
+  /**
+   * Shop connection handed off from the unified "Publish products" picker
+   * (#1828). When set (and it resolves to an eligible shop connection), the
+   * launcher skips its own connection picker and opens that connection's
+   * wizard directly. Falls back to the internal auto-resolve / picker when
+   * unset or not eligible.
+   */
+  preselectedConnectionId?: string;
 }
 
 /** The capability a connection must enable to publish products to it. */
@@ -50,7 +58,9 @@ export const SHOP_PUBLISH_CAPABILITY = 'ProductPublisher';
  */
 export function selectShopPublishConnections(all: ReadonlyArray<Connection>): Connection[] {
   return all
-    .filter((c) => c.status === 'active' && c.enabledCapabilities.includes(SHOP_PUBLISH_CAPABILITY))
+    .filter(
+      (c) => c.status === 'active' && c.enabledCapabilities?.includes(SHOP_PUBLISH_CAPABILITY),
+    )
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -60,6 +70,7 @@ export function ShopPublishLauncher({
   onOpenChange,
   defaultVariantId,
   defaultVariantIds,
+  preselectedConnectionId,
 }: ShopPublishLauncherProps): ReactElement | null {
   const connectionsQuery = useConnectionsQuery();
   const shopConnections = useMemo(
@@ -86,13 +97,21 @@ export function ShopPublishLauncher({
     }
   }, [open]);
 
-  // Auto-skip the picker when there is exactly one eligible connection.
+  // Auto-skip the picker when the unified picker handed off a specific shop
+  // connection (#1828), or when there is exactly one eligible connection.
   useEffect(() => {
     if (!open || pickedConnectionId !== null || submitted !== null) return;
+    if (
+      preselectedConnectionId !== undefined &&
+      shopConnections.some((c) => c.id === preselectedConnectionId)
+    ) {
+      setPickedConnectionId(preselectedConnectionId);
+      return;
+    }
     if (shopConnections.length === 1) {
       setPickedConnectionId(shopConnections[0].id);
     }
-  }, [open, shopConnections, pickedConnectionId, submitted]);
+  }, [open, shopConnections, pickedConnectionId, submitted, preselectedConnectionId]);
 
   const pickedConnection =
     pickedConnectionId !== null
