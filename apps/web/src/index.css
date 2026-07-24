@@ -2424,11 +2424,16 @@ textarea,
 }
 
 .conn-dot__glyph {
+  display: block;
   font-size: 9px;
   line-height: 1;
   font-weight: 700;
   color: #fff;
   font-family: var(--font-mono, ui-monospace);
+  /* Optical centering: flex centers the line box, but a cap-height glyph with no
+     descender sits visually high inside it - nudge down so the initial reads
+     centered in the disc. */
+  transform: translateY(0.5px);
 }
 
 /* Generic (name-less) dot ignores the hash - muted grey for the destination shop. */
