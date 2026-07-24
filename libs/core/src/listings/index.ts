@@ -327,6 +327,7 @@ export type {
   ProvisionCategoryResult,
 } from './domain/types/category-provision.types';
 export { ProductPublishRejectedException } from './domain/exceptions/product-publish-rejected.exception';
+export { ProductPublishTargetNotFoundException } from './domain/exceptions/product-publish-target-not-found.exception';
 
 // Shop publish execution (#1042, #1072) — pure contracts only (the two service
 // classes live on `@openlinker/core/listings/services`, never here).

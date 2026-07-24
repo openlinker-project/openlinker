@@ -67,8 +67,8 @@ empty string or zero), so an upsert never clears a field the operator did not to
 | `content.description` | operator ?? master | `description` |
 | `content.shortDescription` | operator | `short_description` |
 | `content.tags` | operator | `tags` (`[{ name }]`, created on demand) |
-| `content.imageUrls` | operator ?? master | `images` |
-| `content.seo.slug` | operator | `slug` |
+| `content.imageUrls` | operator ?? master | `images` (**create only** — see Publish correctness below) |
+| `content.seo.slug` | operator | `slug` (suffixed per-item — see below) |
 | `content.seo.title` / `content.seo.description` | operator | `meta_data` (see SEO below) |
 | `commerce.salePrice.amount` | operator | `sale_price` (store currency applies; amount only) |
 | `commerce.saleStartsAt` / `saleEndsAt` | operator (UTC ISO-8601) | `date_on_sale_from_gmt` / `date_on_sale_to_gmt` (UTC; the site-local `date_on_sale_from`/`_to` are deliberately not used so the store timezone can't shift the window) |
@@ -91,6 +91,42 @@ writing the keys for **both** dominant plugins so whichever is active picks them
 If neither plugin is installed, the rows are inert post meta (no effect). This
 replaces the previous behaviour where `seo.title` / `seo.description` were accepted
 and silently discarded (only `seo.slug` mapped, to the native `slug`).
+
+## Publish correctness
+
+The publisher/offer-manager enforce these correctness rules (#1846):
+
+- **Stale-mapping recovery on publish.** An upsert (`PUT /products/{id}`) that
+  404s means the mapped product was deleted shop-side. The adapter raises the
+  neutral `ProductPublishTargetNotFoundException`; the core execution service
+  deletes the stale `ShopProduct` identifier mapping and re-publishes as a
+  create, so the variant recovers instead of failing permanently.
+- **Stale-mapping cleanup on stock write-back.** A 404 from the stock
+  `PUT /products/{id}` deletes the stale `ShopProduct` mapping (the stock value
+  for that run is not propagated); the next publish re-creates the product and
+  writes a fresh mapping. Previously the write was silently skipped forever.
+- **Transient errors are retried, not failed.** `429 Too Many Requests` and
+  `408 Request Timeout` propagate (the worker retries the whole job) instead of
+  being recorded as a terminal `business_failure`. Other 4xx remain terminal
+  rejections. (The HTTP client also retries `429`/`5xx` internally first.)
+- **Dictionary-typed parameters.** WooCommerce custom attributes carry only
+  free-text option strings. A parameter that resolves to no free-text `values`
+  (dictionary-only `valuesIds`, or empty) is **dropped**, not written as an empty
+  `options: []` attribute (which was silent data loss).
+- **Category provisioning.** The category search requests `per_page=100` (WC max)
+  so an exact match beyond the default 10 fuzzy results is not missed and
+  re-created. A concurrent `term_exists` rejection is recovered by re-resolving
+  and reusing the racing winner's node — no duplicate categories.
+- **Per-item slug.** A supplied `seo.slug` is suffixed with the item's stable
+  internal variant id, so sibling variants published in bulk get distinct,
+  deterministic slugs instead of WooCommerce silently auto-suffixing a shared
+  slug (`-2`/`-3`). The variant id (not the SKU) is used because it is immutable
+  for the life of the variant - a SKU can be gained after the first publish,
+  which would drift the WC permalink on a later upsert.
+- **Images (create only).** `images` are sent only on create. WooCommerce
+  sideloads media by `src` and re-imports it on every update, so re-sending on
+  upsert churns/duplicates media; image updates on upsert need media-id tracking
+  and are a deferred enhancement.
 
 ## Documentation
 
