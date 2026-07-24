@@ -26,7 +26,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import { Logger } from '@openlinker/shared/logging';
-import { CONNECTION_PORT_TOKEN, ConnectionPort } from '@openlinker/core/identifier-mapping';
+import {
+  CONNECTION_PORT_TOKEN,
+  ConnectionPort,
+  applyStockSafetyBuffer,
+  isPresentButInvalidStockSafetyBuffer,
+  readStockSafetyBuffer,
+} from '@openlinker/core/identifier-mapping';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type {
   OfferParameter,
@@ -111,7 +117,10 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
       destinationCategoryIds,
       // `price` is guaranteed defined here — `issues` would have caught it above.
       price: price as { amount: number; currency: string },
-      stock: input.stock,
+      // #1844 — hold back the destination's per-connection stock safety buffer so
+      // a fast-moving item keeps a cushion and can't oversell between syncs.
+      // Default reserve 0 => master stock passes through unchanged.
+      stock: applyStockSafetyBuffer(input.stock, this.resolveStockReserve(input.connectionId, connection.config)),
       status: input.status,
       // Thread the variant SKU so shop products publish with a reference the
       // shop can key on (reconciliation, inventory-by-SKU). Omitted when the
@@ -296,5 +305,25 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
     if (!config) return null;
     const value = config['masterCatalogConnectionId'];
     return typeof value === 'string' && value.length > 0 ? value : null;
+  }
+
+  /**
+   * #1844 — resolve the per-connection stock reserve, warning when a present
+   * `config.stockSafetyBuffer` coerced to 0. A mistyped buffer (e.g. `"5"` or a
+   * negative number) silently drops the oversell protection the operator thinks
+   * they configured, so surface it rather than fail silently.
+   */
+  private resolveStockReserve(
+    connectionId: string,
+    config: Parameters<typeof readStockSafetyBuffer>[0]
+  ): number {
+    if (isPresentButInvalidStockSafetyBuffer(config)) {
+      this.logger.warn(
+        `Connection ${connectionId} has a stockSafetyBuffer that is present but invalid ` +
+          `(non-numeric, negative, zero, or non-finite) — it coerces to 0, so no stock ` +
+          `reserve is applied. Set a positive integer to enable oversell protection.`
+      );
+    }
+    return readStockSafetyBuffer(config);
   }
 }

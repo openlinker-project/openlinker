@@ -159,6 +159,27 @@ describe('OfferBuilderService', () => {
       });
     });
 
+    it('subtracts the per-connection stock safety buffer, flooring at 0 (#1844)', async () => {
+      connectionPort.get.mockResolvedValue({
+        ...defaultConnection,
+        config: { masterCatalogConnectionId: MASTER_CONN_ID, stockSafetyBuffer: 4 },
+      } as Connection);
+
+      const buffered = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 10,
+      });
+      expect(buffered.stock).toBe(6);
+
+      const floored = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 2,
+      });
+      expect(floored.stock).toBe(0);
+    });
+
     it('lifts overrides.productCardId to the top-level command (#808)', async () => {
       const result = await service.buildCreateOfferCommand({
         internalVariantId: VARIANT_ID,

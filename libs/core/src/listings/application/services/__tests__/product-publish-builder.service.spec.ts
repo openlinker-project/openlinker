@@ -104,6 +104,24 @@ describe('ProductPublishBuilderService', () => {
     expect(command).not.toHaveProperty('sku');
   });
 
+  it('should pass master stock through unchanged when the connection has no buffer (default 0) (#1844)', async () => {
+    const command = await service.buildPublishProductCommand(baseInput);
+
+    expect(command.stock).toBe(3);
+  });
+
+  it('should subtract the per-connection stock safety buffer, flooring at 0 (#1844)', async () => {
+    connectionPort.get.mockResolvedValue({
+      config: { masterCatalogConnectionId: MASTER, stockSafetyBuffer: 2 },
+    });
+
+    const buffered = await service.buildPublishProductCommand({ ...baseInput, stock: 10 });
+    expect(buffered.stock).toBe(8);
+
+    const floored = await service.buildPublishProductCommand({ ...baseInput, stock: 1 });
+    expect(floored.stock).toBe(0);
+  });
+
   it('should thread the variant SKU into the command when the variant has one', async () => {
     products.getVariant.mockResolvedValue({
       id: VARIANT,
