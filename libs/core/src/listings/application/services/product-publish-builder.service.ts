@@ -26,7 +26,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import { Logger } from '@openlinker/shared/logging';
-import { CONNECTION_PORT_TOKEN, ConnectionPort } from '@openlinker/core/identifier-mapping';
+import {
+  CONNECTION_PORT_TOKEN,
+  ConnectionPort,
+  applyStockSafetyBuffer,
+  readStockSafetyBuffer,
+} from '@openlinker/core/identifier-mapping';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type {
   OfferParameter,
@@ -111,7 +116,10 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
       destinationCategoryIds,
       // `price` is guaranteed defined here — `issues` would have caught it above.
       price: price as { amount: number; currency: string },
-      stock: input.stock,
+      // #1844 — hold back the destination's per-connection stock safety buffer so
+      // a fast-moving item keeps a cushion and can't oversell between syncs.
+      // Default reserve 0 => master stock passes through unchanged.
+      stock: applyStockSafetyBuffer(input.stock, readStockSafetyBuffer(connection.config)),
       status: input.status,
       // Thread the variant SKU so shop products publish with a reference the
       // shop can key on (reconciliation, inventory-by-SKU). Omitted when the

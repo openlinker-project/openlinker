@@ -11,6 +11,12 @@ import { createHash } from 'crypto';
 import type { OfferManagerPort } from '@openlinker/core/listings';
 import { isOfferQuantityBatchUpdater } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import {
+  CONNECTION_PORT_TOKEN,
+  ConnectionPort,
+  applyStockSafetyBuffer,
+  readStockSafetyBuffer,
+} from '@openlinker/core/identifier-mapping';
 import type {
   UpdateOfferQuantityCommand,
   UpdateOfferQuantitiesBatchCommand,
@@ -25,7 +31,9 @@ export class InventorySyncService implements IInventorySyncService {
 
   constructor(
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
-    private readonly integrationsService: IIntegrationsService
+    private readonly integrationsService: IIntegrationsService,
+    @Inject(CONNECTION_PORT_TOKEN)
+    private readonly connectionPort: ConnectionPort
   ) {}
 
   async updateOfferQuantity(
@@ -48,13 +56,23 @@ export class InventorySyncService implements IInventorySyncService {
       'OfferManager'
     );
 
+    // #1844 — apply the destination's per-connection stock safety buffer to every
+    // written-back quantity: published quantity = max(0, masterStock - reserve).
+    // Read once per batch (single connection); default reserve 0 => pass-through.
+    const connection = await this.connectionPort.get(connectionId);
+    const reserve = readStockSafetyBuffer(connection.config);
+
     const normalized: UpdateOfferQuantitiesBatchCommand = {
       idempotencyKey: cmd.idempotencyKey,
-      items: cmd.items.map((i) => ({
-        ...i,
-        idempotencyKey:
-          i.idempotencyKey ?? this.buildIdempotencyKey(connectionId, i.offerId, i.quantity),
-      })),
+      items: cmd.items.map((i) => {
+        const quantity = applyStockSafetyBuffer(i.quantity, reserve);
+        return {
+          ...i,
+          quantity,
+          idempotencyKey:
+            i.idempotencyKey ?? this.buildIdempotencyKey(connectionId, i.offerId, quantity),
+        };
+      }),
     };
 
     // Prefer adapter batch API when available and we have more than one item.

@@ -9,13 +9,18 @@
 import { InventorySyncService } from '../inventory-sync.service';
 import type { OfferManagerPort, OfferQuantityBatchUpdater } from '@openlinker/core/listings';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
+import type { Connection, ConnectionConfig, ConnectionPort } from '@openlinker/core/identifier-mapping';
 
 describe('InventorySyncService', () => {
   let service: InventorySyncService;
   let integrationsService: jest.Mocked<IIntegrationsService>;
+  let connectionPort: jest.Mocked<ConnectionPort>;
   let marketplace: jest.Mocked<OfferManagerPort & OfferQuantityBatchUpdater>;
 
   const connectionId = 'connection-123';
+
+  const connectionWithConfig = (config: ConnectionConfig): Connection =>
+    ({ id: connectionId, config } as unknown as Connection);
 
   beforeEach(() => {
     marketplace = {
@@ -31,7 +36,15 @@ describe('InventorySyncService', () => {
       listCapabilityAdapters: jest.fn(),
     } as unknown as jest.Mocked<IIntegrationsService>;
 
-    service = new InventorySyncService(integrationsService);
+    connectionPort = {
+      get: jest.fn().mockResolvedValue(connectionWithConfig({})),
+      list: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      disable: jest.fn(),
+    } as unknown as jest.Mocked<ConnectionPort>;
+
+    service = new InventorySyncService(integrationsService, connectionPort);
   });
 
   it('uses batch API when available and multiple items provided', async () => {
@@ -150,5 +163,64 @@ describe('InventorySyncService', () => {
     const thirdCallArg = marketplace.updateOfferQuantity.mock.calls[2][0];
     expect(thirdCallArg.idempotencyKey).toMatch(/^inv:[a-f0-9]{16}$/);
     expect(thirdCallArg.idempotencyKey).not.toBe(firstCallArg.idempotencyKey);
+  });
+
+  describe('stock safety buffer (#1844)', () => {
+    it('should pass master quantity through unchanged when the connection has no buffer (default 0)', async () => {
+      connectionPort.get.mockResolvedValue(connectionWithConfig({}));
+      marketplace.updateOfferQuantity.mockResolvedValue(undefined);
+
+      await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 10 });
+
+      expect(marketplace.updateOfferQuantity).toHaveBeenCalledWith(
+        expect.objectContaining({ offerId: 'o1', quantity: 10 })
+      );
+    });
+
+    it('should subtract the per-connection reserve from the written-back quantity', async () => {
+      connectionPort.get.mockResolvedValue(connectionWithConfig({ stockSafetyBuffer: 3 }));
+      marketplace.updateOfferQuantity.mockResolvedValue(undefined);
+
+      await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 10 });
+
+      expect(marketplace.updateOfferQuantity).toHaveBeenCalledWith(
+        expect.objectContaining({ offerId: 'o1', quantity: 7 })
+      );
+    });
+
+    it('should floor the written-back quantity at 0 when the reserve exceeds master stock', async () => {
+      connectionPort.get.mockResolvedValue(connectionWithConfig({ stockSafetyBuffer: 5 }));
+      marketplace.updateOfferQuantity.mockResolvedValue(undefined);
+
+      await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 2 });
+
+      expect(marketplace.updateOfferQuantity).toHaveBeenCalledWith(
+        expect.objectContaining({ offerId: 'o1', quantity: 0 })
+      );
+    });
+
+    it('should apply the reserve to every item in a batch update', async () => {
+      connectionPort.get.mockResolvedValue(connectionWithConfig({ stockSafetyBuffer: 2 }));
+      (marketplace.updateOfferQuantitiesBatch as unknown as jest.Mock).mockResolvedValueOnce({
+        succeeded: ['o1', 'o2'],
+        failed: [],
+      });
+
+      await service.updateOfferQuantities(connectionId, {
+        items: [
+          { offerId: 'o1', quantity: 10, idempotencyKey: 'k1' },
+          { offerId: 'o2', quantity: 1, idempotencyKey: 'k2' },
+        ],
+      });
+
+      expect(marketplace.updateOfferQuantitiesBatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          items: [
+            expect.objectContaining({ offerId: 'o1', quantity: 8 }),
+            expect.objectContaining({ offerId: 'o2', quantity: 0 }),
+          ],
+        })
+      );
+    });
   });
 });
