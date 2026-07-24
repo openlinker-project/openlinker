@@ -24,7 +24,9 @@ import { useConnectionsQuery } from '../../../connections';
 import { useBulkSubmitMutation } from '../../hooks/use-bulk-submit-mutation';
 import { useBulkShopPublishMutation } from '../../hooks/use-bulk-shop-publish-mutation';
 import { useBulkRequiredProductParams } from '../../hooks/use-bulk-required-product-params';
+import { usePublishedVariantsQuery } from '../../hooks/use-published-variants-query';
 import { publishDestinationKind } from '../../lib/publish-destinations';
+import { DuplicateGuardModal } from '../duplicate-guard-modal';
 import type {
   BulkOfferCreateRequest,
   BulkPerProductOverride,
@@ -94,6 +96,9 @@ const SHOP_WIZARD_STEPS: { id: BulkWizardStep; label: string }[] = [
 /** Stable empty list so a param-schema opt-out platform keeps a constant deps identity. */
 const EMPTY_CATEGORY_IDS: readonly string[] = [];
 
+/** Stable empty set so a render without published-variant data keeps a constant ref. */
+const EMPTY_ALREADY_LISTED: ReadonlySet<string> = new Set<string>();
+
 export function BulkWizard({
   products,
   resolveConnectionName,
@@ -134,6 +139,16 @@ export function BulkWizard({
   );
   const isShop = activeConnection ? publishDestinationKind(activeConnection) === 'shop' : false;
   const wizardSteps = isShop ? SHOP_WIZARD_STEPS : WIZARD_STEPS;
+
+  // #1837 duplicate guard: soft-warn when included variants are already
+  // published on the destination (a duplicate offer on a marketplace, an
+  // upsert on a shop). Never blocks - surfaced as a chip + a confirm before the
+  // publish action commits.
+  const [dupGuardOpen, setDupGuardOpen] = useState(false);
+  const pendingShopPublishRef = useRef<{
+    items: BulkShopPublishItemRequest[];
+    status: ShopPublishVisibility;
+  } | null>(null);
 
   // Sync row state when the products list changes (dedup by product id so a
   // product surfaced twice yields one row / one fan-out, mirroring the BE seen
@@ -461,6 +476,71 @@ export function BulkWizard({
   const counts = useMemo(() => countBatch(rows), [rows]);
   const marketplaceName = batchPlatform?.displayName ?? 'marketplace';
 
+  // Every seeded variant id, checked against the destination in one call.
+  const allSeededVariantIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const row of rows) {
+      for (const variant of row.variants) ids.push(variant.variantId);
+    }
+    return ids;
+  }, [rows]);
+
+  const publishedVariantsQuery = usePublishedVariantsQuery(
+    activeConnectionId || null,
+    allSeededVariantIds,
+  );
+  const alreadyListedSet = publishedVariantsQuery.data ?? EMPTY_ALREADY_LISTED;
+
+  // Included variants that are already published there - drives the guard gate.
+  const duplicateIncludedCount = useMemo(() => {
+    if (alreadyListedSet.size === 0) return 0;
+    let n = 0;
+    for (const row of rows) {
+      for (const variant of row.variants) {
+        if (variant.included && alreadyListedSet.has(variant.variantId)) n += 1;
+      }
+    }
+    return n;
+  }, [rows, alreadyListedSet]);
+
+  const dupGuardKind = isShop ? 'shop' : 'marketplace';
+  const dupGuardDestinationName = activeConnection?.name ?? marketplaceName;
+
+  // Marketplace publish gate: a duplicate opens the soft confirm first, which on
+  // confirm hands off to the existing submit-confirm modal.
+  const handleApproveAll = useCallback(() => {
+    if (duplicateIncludedCount > 0) {
+      setDupGuardOpen(true);
+      return;
+    }
+    setConfirmOpen(true);
+  }, [duplicateIncludedCount]);
+
+  // Shop publish gate: stash the built items, soft-confirm on a duplicate, else
+  // publish straight away.
+  const handleShopPublishRequested = useCallback(
+    (items: BulkShopPublishItemRequest[], status: ShopPublishVisibility) => {
+      if (duplicateIncludedCount > 0) {
+        pendingShopPublishRef.current = { items, status };
+        setDupGuardOpen(true);
+        return;
+      }
+      void handleShopPublish(items, status);
+    },
+    [duplicateIncludedCount, handleShopPublish],
+  );
+
+  const handleDupGuardConfirm = useCallback(() => {
+    setDupGuardOpen(false);
+    if (isShop) {
+      const pending = pendingShopPublishRef.current;
+      pendingShopPublishRef.current = null;
+      if (pending) void handleShopPublish(pending.items, pending.status);
+    } else {
+      setConfirmOpen(true);
+    }
+  }, [isShop, handleShopPublish]);
+
   const currentStepIndex = Math.max(
     0,
     wizardSteps.findIndex((s) => s.id === step),
@@ -534,9 +614,11 @@ export function BulkWizard({
                 demoReadOnly={write.demoReadOnly}
                 isSubmitting={shopMutation.isPending}
                 errorMessage={shopMutation.error ? shopMutation.error.message : null}
+                alreadyListedVariantIds={alreadyListedSet}
+                destinationName={dupGuardDestinationName}
                 onSetVariantIncluded={setVariantIncluded}
                 onBack={() => { setStep('config'); }}
-                onPublish={(items, status) => { void handleShopPublish(items, status); }}
+                onPublish={handleShopPublishRequested}
               />
             )}
             {step === 'review' && config && !isShop && (
@@ -553,10 +635,12 @@ export function BulkWizard({
                     : ''
                 }
                 demoReadOnly={write.demoReadOnly}
+                alreadyListedVariantIds={alreadyListedSet}
+                destinationName={dupGuardDestinationName}
                 onSetVariantIncluded={setVariantIncluded}
                 onSetProductIncluded={setProductIncluded}
                 onSaveEditor={handleSaveEditor}
-                onApproveAll={() => { setConfirmOpen(true); }}
+                onApproveAll={handleApproveAll}
                 onBack={() => { setStep('config'); }}
               />
             )}
@@ -580,6 +664,17 @@ export function BulkWizard({
             onConfirm={(publishImmediately) => {
               void handleSubmit(publishImmediately);
             }}
+          />
+        ) : null}
+
+        {config ? (
+          <DuplicateGuardModal
+            open={dupGuardOpen}
+            onOpenChange={setDupGuardOpen}
+            kind={dupGuardKind}
+            destinationName={dupGuardDestinationName}
+            duplicateCount={duplicateIncludedCount}
+            onConfirm={handleDupGuardConfirm}
           />
         ) : null}
       </div>

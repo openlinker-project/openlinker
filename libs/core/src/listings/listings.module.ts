@@ -21,6 +21,8 @@ import { OfferMappingsService } from './application/services/offer-mappings.serv
 import { CategoryResolutionService } from './application/services/category-resolution.service';
 import { AttributeProjectionService } from './application/services/attribute-projection.service';
 import { OfferMappingRepository } from './infrastructure/persistence/repositories/offer-mapping.repository';
+import { ShopProductMappingRepository } from './infrastructure/persistence/repositories/shop-product-mapping.repository';
+import { PublishedVariantsService } from './application/services/published-variants.service';
 import { OfferCreationRecordOrmEntity } from './infrastructure/persistence/entities/offer-creation-record.orm-entity';
 import { OfferCreationRecordRepository } from './infrastructure/persistence/repositories/offer-creation-record.repository';
 import { BulkListingBatchOrmEntity } from './infrastructure/persistence/entities/bulk-listing-batch.orm-entity';
@@ -93,6 +95,8 @@ import {
   SHOP_STATUS_SYNC_SERVICE_TOKEN,
   SHOP_PRODUCT_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
   SHOP_ATTRIBUTE_READ_SERVICE_TOKEN,
+  SHOP_PRODUCT_MAPPING_REPOSITORY_TOKEN,
+  PUBLISHED_VARIANTS_SERVICE_TOKEN,
 } from './listings.tokens';
 
 // Re-export tokens for convenience
@@ -132,6 +136,8 @@ export {
   SHOP_STATUS_SYNC_SERVICE_TOKEN,
   SHOP_PRODUCT_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
   SHOP_ATTRIBUTE_READ_SERVICE_TOKEN,
+  SHOP_PRODUCT_MAPPING_REPOSITORY_TOKEN,
+  PUBLISHED_VARIANTS_SERVICE_TOKEN,
 } from './listings.tokens';
 
 @Module({
@@ -197,9 +203,19 @@ export {
     ShopCategoryBrowseService,
     ShopAttributeReadService,
     OfferStockRestoreService,
+    ShopProductMappingRepository,
+    PublishedVariantsService,
     {
       provide: OFFER_LINKING_SERVICE_TOKEN,
       useExisting: OfferLinkingService,
+    },
+    {
+      provide: SHOP_PRODUCT_MAPPING_REPOSITORY_TOKEN,
+      useExisting: ShopProductMappingRepository,
+    },
+    {
+      provide: PUBLISHED_VARIANTS_SERVICE_TOKEN,
+      useExisting: PublishedVariantsService,
     },
     {
       provide: OFFER_MAPPING_SYNC_SERVICE_TOKEN,
@@ -372,6 +388,8 @@ export {
     SHOP_STATUS_SYNC_SERVICE_TOKEN,
     SHOP_PRODUCT_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
     SHOP_ATTRIBUTE_READ_SERVICE_TOKEN,
+    SHOP_PRODUCT_MAPPING_REPOSITORY_TOKEN,
+    PUBLISHED_VARIANTS_SERVICE_TOKEN,
   ],
 })
 export class ListingsModule {}

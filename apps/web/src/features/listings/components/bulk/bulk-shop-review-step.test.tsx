@@ -155,6 +155,8 @@ function renderStep(
       demoReadOnly={false}
       isSubmitting={false}
       errorMessage={null}
+      alreadyListedVariantIds={new Set<string>()}
+      destinationName="Test Shop"
       onSetVariantIncluded={handlers.onSetVariantIncluded ?? ((): void => undefined)}
       onBack={handlers.onBack ?? ((): void => undefined)}
       onPublish={handlers.onPublish ?? ((): void => undefined)}

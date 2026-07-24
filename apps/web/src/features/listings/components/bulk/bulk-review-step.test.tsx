@@ -105,6 +105,8 @@ function baseProps() {
     platformBlockerChips: [],
     canBrowseCategories: true,
     demoReadOnly: false,
+    alreadyListedVariantIds: new Set<string>(),
+    destinationName: 'Test Marketplace',
     onSetVariantIncluded: vi.fn(),
     onSetProductIncluded: vi.fn(),
     onSaveEditor: vi.fn(),

@@ -44,6 +44,7 @@ import {
   OFFER_MAPPING_REPOSITORY_TOKEN,
   OFFER_STATUS_READ_SERVICE_TOKEN,
   OFFER_STATUS_SYNC_SERVICE_TOKEN,
+  PUBLISHED_VARIANTS_SERVICE_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
   RESPONSIBLE_PRODUCER_SERVICE_TOKEN,
   DELIVERY_PRICE_LIST_SERVICE_TOKEN,
@@ -51,6 +52,7 @@ import {
   IOfferCreationEnqueueService,
   IOfferStatusReadService,
   IOfferStatusSyncService,
+  IPublishedVariantsService,
   ISellerPoliciesService,
   IResponsibleProducerService,
   IDeliveryPriceListService,
@@ -76,6 +78,10 @@ import { ListOfferMappingsQueryDto } from './dto/list-offer-mappings-query.dto';
 import { MarketplaceOfferResponseDto } from './dto/marketplace-offer-response.dto';
 import { OfferMappingResponseDto } from './dto/offer-mapping-response.dto';
 import { PaginatedOfferMappingsResponseDto } from './dto/paginated-offer-mappings-response.dto';
+import {
+  PublishedVariantsRequestDto,
+  PublishedVariantsResponseDto,
+} from './dto/published-variants.dto';
 import { UpdateOfferFieldsDto, UpdateOfferFieldsResponseDto } from './dto/update-offer-fields.dto';
 import {
   AutoMatchVariantsRequestDto,
@@ -135,8 +141,33 @@ export class ListingsController {
     @Inject(OFFER_STATUS_READ_SERVICE_TOKEN)
     private readonly offerStatusRead: IOfferStatusReadService,
     @Inject(OFFER_STATUS_SYNC_SERVICE_TOKEN)
-    private readonly offerStatusSync: IOfferStatusSyncService
+    private readonly offerStatusSync: IOfferStatusSyncService,
+    @Inject(PUBLISHED_VARIANTS_SERVICE_TOKEN)
+    private readonly publishedVariants: IPublishedVariantsService
   ) {}
+
+  @Post('published-variants')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Check which variants are already published on a destination (#1837)',
+    description:
+      'Destination-aware duplicate guard: given a connection and a set of variant ids, returns the subset already published there - an offer mapping (marketplace) or a shop-product mapping (online shop). A soft warning signal; it never blocks publishing.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Subset of the requested variant ids already published',
+    type: PublishedVariantsResponseDto,
+  })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async checkPublishedVariants(
+    @Body() body: PublishedVariantsRequestDto
+  ): Promise<PublishedVariantsResponseDto> {
+    const publishedVariantIds = await this.publishedVariants.getPublishedVariantIds(
+      body.connectionId,
+      body.variantIds
+    );
+    return { publishedVariantIds };
+  }
 
   @Get()
   @HttpCode(HttpStatus.OK)

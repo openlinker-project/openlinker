@@ -38,6 +38,8 @@ import type {
   BulkShopPublishRequest,
   BulkShopPublishResponse,
   BulkShopPublishBatchResponse,
+  PublishedVariantsRequest,
+  PublishedVariantsResponse,
   UpdateOfferFieldsPayload,
   UpdateOfferFieldsResult,
 } from './listings.types';
@@ -140,6 +142,11 @@ export interface ListingsApi {
   shopPublishBulk: (body: BulkShopPublishRequest) => Promise<BulkShopPublishResponse>;
   /** Read a bulk shop-publish batch + its per-record summary. Used for polling. */
   getBulkShopPublishBatch: (batchId: string) => Promise<BulkShopPublishBatchResponse>;
+  /** Destination-aware duplicate guard (#1837) - which variants already have a
+   *  listing (offer or shop-product) on the connection. */
+  checkPublishedVariants: (
+    body: PublishedVariantsRequest,
+  ) => Promise<PublishedVariantsResponse>;
   getSellerPolicies: (connectionId: string) => Promise<SellerPoliciesResponse>;
   getResponsibleProducers: (connectionId: string) => Promise<ResponsibleProducersResponse>;
   getDeliveryPriceLists: (connectionId: string) => Promise<DeliveryPriceListsResponse>;
@@ -320,6 +327,13 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
       return request<BulkShopPublishBatchResponse>(
         `/listings/bulk-shop-publish/${encodeURIComponent(batchId)}`,
       );
+    },
+    checkPublishedVariants(body): Promise<PublishedVariantsResponse> {
+      return request<PublishedVariantsResponse>('/listings/published-variants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
     },
     getSellerPolicies(connectionId): Promise<SellerPoliciesResponse> {
       return request<SellerPoliciesResponse>(

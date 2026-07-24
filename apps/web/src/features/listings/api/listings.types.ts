@@ -379,6 +379,18 @@ export interface BulkShopPublishItem {
   listingCreationRecordId: string;
 }
 
+/** Destination-aware duplicate guard (#1837): request to check which variants
+ *  are already published on a destination connection. */
+export interface PublishedVariantsRequest {
+  connectionId: string;
+  variantIds: string[];
+}
+
+/** Subset of the requested variant ids already published on the connection. */
+export interface PublishedVariantsResponse {
+  publishedVariantIds: string[];
+}
+
 export interface BulkShopPublishResponse {
   batchId: string;
   items: BulkShopPublishItem[];

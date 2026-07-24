@@ -64,4 +64,11 @@ export const listingsQueryKeys = {
   /** #1835 — predefined terms of one global attribute. */
   shopAttributeTerms: (connectionId: string, attributeId: string) =>
     ['listings', 'shopAttributeTerms', connectionId, attributeId] as const,
+  /**
+   * #1837 — destination-aware duplicate guard. Keyed on the connection + the
+   * sorted variant-id set so a different destination or selection never shares
+   * a cache entry.
+   */
+  publishedVariants: (connectionId: string, variantIds: readonly string[]) =>
+    ['listings', 'publishedVariants', connectionId, [...variantIds].sort()] as const,
 };
