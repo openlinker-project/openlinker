@@ -72,6 +72,7 @@ import { selectPublishDestinations } from '../lib/publish-destinations';
 import { usePublishedVariantsQuery } from '../hooks/use-published-variants-query';
 import { DuplicateGuardModal } from './duplicate-guard-modal';
 import { PublishDestinationRail } from './publish-destination-rail';
+import { AlreadyListedChip } from './already-listed-chip';
 
 /** Max distinct products per batch (mirrors the `/products` BULK_SELECTION_CAP,
  *  kept local per R1 to avoid a `features -> pages` import). */
@@ -126,9 +127,9 @@ interface PickerProductRowProps {
   isExpanded: boolean;
   entry: SelectionEntry | undefined;
   capBlocked: boolean;
-  /** "already on {destination}" label when this product is already published
-   *  to the resolved destination (#1837); null when not / no destination. */
-  alreadyOnLabel: string | null;
+  /** Destination name when this product is already published there (#1837);
+   *  null when not / no destination. Renders the shared `AlreadyListedChip`. */
+  alreadyOnDestinationName: string | null;
   onToggleExpand: () => void;
   onSelectAll: () => void;
   onClear: () => void;
@@ -141,7 +142,7 @@ function PickerProductRow({
   isExpanded,
   entry,
   capBlocked,
-  alreadyOnLabel,
+  alreadyOnDestinationName,
   onToggleExpand,
   onSelectAll,
   onClear,
@@ -230,11 +231,11 @@ function PickerProductRow({
               {variantCount} {variantCount === 1 ? 'variant' : 'variants'}
             </span>
           ) : null}
-          {alreadyOnLabel ? (
-            <span className="bulk-chip bulk-chip--neutral" title={alreadyOnLabel}>
-              <span className="bulk-chip__dot" />
-              {alreadyOnLabel}
-            </span>
+          {alreadyOnDestinationName ? (
+            <AlreadyListedChip
+              destinationName={alreadyOnDestinationName}
+              title={`already on ${alreadyOnDestinationName}`}
+            />
           ) : null}
           <span className="offer-product-picker__chev" aria-hidden="true">
 
@@ -804,10 +805,8 @@ export function OfferProductPickerModal({
                         isExpanded={expanded.has(product.id)}
                         entry={selection.get(product.id)}
                         capBlocked={capReached && !selection.has(product.id)}
-                        alreadyOnLabel={
-                          productAlreadyOnList(product) && destinationName
-                            ? `already on ${destinationName}`
-                            : null
+                        alreadyOnDestinationName={
+                          productAlreadyOnList(product) && destinationName ? destinationName : null
                         }
                         onToggleExpand={() => toggleExpand(product.id)}
                         onSelectAll={() => selectAllProduct(product.id, product.variantCount)}
@@ -965,13 +964,10 @@ export function OfferProductPickerModal({
                             </span>
                           )}
                           {group.alreadyOnDestination && destinationName ? (
-                            <span
-                              className="bulk-chip bulk-chip--neutral"
+                            <AlreadyListedChip
+                              destinationName={destinationName}
                               title={`already on ${destinationName}`}
-                            >
-                              <span className="bulk-chip__dot" />
-                              already on {destinationName}
-                            </span>
+                            />
                           ) : null}
                           <button
                             type="button"

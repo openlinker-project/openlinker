@@ -9768,6 +9768,32 @@ input.bulk-dispatch__num--wide {
   color: var(--text-primary);
 }
 
+/* Product-grouped expand/collapse (#1838 - parity with .bulk-review__prow) */
+.bulk-shop-review__group {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.bulk-shop-review__group:last-child {
+  border-bottom: none;
+}
+
+.bulk-shop-review__group-head {
+  border-bottom: none;
+  gap: var(--space-2);
+}
+
+.bulk-shop-review__vrows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.bulk-shop-review__vrows .bulk-shop-review__row {
+  padding-left: calc(var(--space-3) + 24px);
+}
+
 /* Edit modal — AI button row */
 .bulk-edit__desc-row {
   display: flex;

@@ -20,16 +20,20 @@
 import { Suspense, useEffect, useMemo, useState, type ReactElement } from 'react';
 import { useForm } from 'react-hook-form';
 
-import { Alert, Button, FormField, Input, Select } from '../../../../shared/ui';
+import { Alert, Button, FormField, Input } from '../../../../shared/ui';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../../shared/config/demo-mode';
 import { useWriteAccess } from '../../../../shared/auth/use-permission';
 import { useDemoMode } from '../../../system';
 import { useConnectionsQuery } from '../../../connections';
-import type { Connection } from '../../../connections';
-import { publishDestinationKind, selectPublishDestinations } from '../../lib/publish-destinations';
-import { usePlatform, usePlatforms, type BulkConfigFormValues } from '../../../../shared/plugins';
+import { PublishDestinationRail } from '../publish-destination-rail';
+import {
+  publishDestinationKind,
+  selectPublishDestinations,
+  type PublishDestination,
+} from '../../lib/publish-destinations';
+import { usePlatform, type BulkConfigFormValues } from '../../../../shared/plugins';
 import type {
   BulkWizardConfig,
   PricingPolicy,
@@ -54,14 +58,6 @@ interface BulkConfigStepProps {
 }
 
 const DEFAULT_CURRENCY = 'PLN';
-
-function selectPublishConnections(all: readonly Connection[]): Connection[] {
-  // Unified publish targets (#1828): offer marketplaces (OfferCreator) OR
-  // online shops (ProductPublisher), capability-driven. Marketplaces render a
-  // per-platform config section and gate Proceed on it; shops (#1829) skip the
-  // section and the Resolve step entirely - see `isShop` / `canProceed` below.
-  return selectPublishDestinations(all).map((d) => d.connection);
-}
 
 function defaultFormValues(initial: Partial<BulkWizardConfig>): BulkConfigFormValues {
   return {
@@ -89,11 +85,15 @@ export function BulkConfigStep({
   onConnectionChange,
 }: BulkConfigStepProps): ReactElement {
   const connectionsQuery = useConnectionsQuery();
-  const platforms = usePlatforms();
-  const publishConnections = useMemo(
-    () => selectPublishConnections(connectionsQuery.data ?? []),
+  // Unified publish targets (#1828): offer marketplaces (OfferCreator) OR
+  // online shops (ProductPublisher), capability-driven. Marketplaces render a
+  // per-platform config section and gate Proceed on it; shops (#1829) skip the
+  // section and the Resolve step entirely - see `isShop` / `canProceed` below.
+  const destinations: PublishDestination[] = useMemo(
+    () => selectPublishDestinations(connectionsQuery.data ?? []),
     [connectionsQuery.data],
   );
+  const publishConnections = useMemo(() => destinations.map((d) => d.connection), [destinations]);
 
   const form = useForm<BulkConfigFormValues>({
     defaultValues: defaultFormValues(initial),
@@ -147,7 +147,12 @@ export function BulkConfigStep({
   const sharedSliceValid = markupValid && flatPriceValid && capValid && flatStockValid;
   // Marketplaces must complete their per-platform config section before
   // Proceed; shops have no section (#1829) so the shared slice alone gates.
-  const sectionComplete = isShop ? true : section ? section.isComplete(values) : false;
+  // A marketplace with no registered `bulkOfferConfigSection` (today
+  // impossible - Allegro and Erli both register one) must NOT permanently
+  // block Proceed with no explanation - pre-epic behavior was `: true`
+  // (nothing to complete = nothing blocking), matching #1096's original
+  // fallback before the unified-publish rework inverted it.
+  const sectionComplete = isShop ? true : section ? section.isComplete(values) : true;
   const canProceed = connectionId !== '' && sharedSliceValid && sectionComplete;
 
   function buildPricingPolicy(): PricingPolicy {
@@ -210,22 +215,21 @@ export function BulkConfigStep({
       </header>
 
       {publishConnections.length > 1 ? (
-        <FormField name="bulk-config-connection" label="Destination connection">
-          <Select value={connectionId} onChange={(e) => setConnectionId(e.target.value)}>
-            <option value="" disabled>
-              Select a connection…
-            </option>
-            {publishConnections.map((c) => {
-              const label = platforms.find((p) => p.platformType === c.platformType)?.displayName;
-              return (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                  {label ? ` (${label})` : ` (${c.platformType})`}
-                </option>
-              );
-            })}
-          </Select>
-        </FormField>
+        // Same grouped, keyboard-accessible rail the picker modals use
+        // (`OfferProductPickerModal` / `MarketplacePickerModal`) - the operator
+        // sees one consistent destination-picking pattern across the whole
+        // publish flow instead of a plain `<Select>` here.
+        <div className="form-field">
+          <label id="bulk-config-connection-label" className="form-field__label">
+            Destination connection
+          </label>
+          <PublishDestinationRail
+            destinations={destinations}
+            selectedConnectionId={connectionId || null}
+            onSelect={setConnectionId}
+            labelledBy="bulk-config-connection-label"
+          />
+        </div>
       ) : (
         <Alert tone="info">
           Publishing as <strong>{publishConnections[0]?.name}</strong>.

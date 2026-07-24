@@ -128,6 +128,33 @@ describe('BulkConfigStep', () => {
     expect(screen.getByRole('button', { name: /Proceed/ })).toBeDisabled();
   }, 15000);
 
+  describe('marketplace with no registered bulkOfferConfigSection (#1838 fix - fallback regression)', () => {
+    function makeUnknownMarketplaceClient() {
+      const unknownMarketplace = {
+        id: 'conn-unknown',
+        name: 'My Unknown Marketplace',
+        status: 'active',
+        platformType: 'some-future-marketplace',
+        supportedCapabilities: ['OfferManager', 'OfferCreator'],
+      } as unknown as Connection;
+      return createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([unknownMarketplace]) },
+      });
+    }
+
+    it('does not permanently block Proceed when the platform has no registered config section', async () => {
+      renderWithProviders(
+        <BulkConfigStep initial={{}} onProceed={vi.fn()} onCancel={() => undefined} />,
+        { apiClient: makeUnknownMarketplaceClient(), sessionAdapter: createAuthenticatedSessionAdapter() },
+      );
+
+      await screen.findByText(/isn't configured for this marketplace yet/i);
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /Proceed/ })).toBeEnabled();
+      });
+    });
+  });
+
   describe('shop destination branch (#1829)', () => {
     function makeShopClient() {
       const shop = {
@@ -180,6 +207,66 @@ describe('BulkConfigStep', () => {
         expect(onConnectionChange).toHaveBeenCalledWith('conn-shop');
       });
     }, 15000);
+  });
+
+  describe('destination rail (#1838 - shared PublishDestinationRail, not a plain Select)', () => {
+    function makeMultiConnectionClient() {
+      const marketplace = {
+        id: 'conn-1',
+        name: 'My Allegro',
+        status: 'active',
+        platformType: 'allegro',
+        supportedCapabilities: ['OfferManager', 'OfferCreator'],
+      } as unknown as Connection;
+      const shop = {
+        id: 'conn-shop',
+        name: 'My Shop',
+        status: 'active',
+        platformType: 'woocommerce',
+        supportedCapabilities: ['ProductPublisher'],
+        enabledCapabilities: ['ProductPublisher'],
+      } as unknown as Connection;
+      return createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([marketplace, shop]) },
+        listings: {
+          getSellerPolicies: vi.fn().mockResolvedValue({
+            deliveryPolicies: [{ id: 'dp1', name: 'Courier 24h' }],
+          }),
+        },
+      });
+    }
+
+    it('renders the grouped destination rail instead of a plain select', async () => {
+      renderWithProviders(
+        <BulkConfigStep initial={{}} onProceed={vi.fn()} onCancel={() => undefined} />,
+        { apiClient: makeMultiConnectionClient(), sessionAdapter: createAuthenticatedSessionAdapter() },
+      );
+
+      expect(await screen.findByRole('radiogroup')).toBeInTheDocument();
+      expect(screen.getByText('Marketplaces')).toBeInTheDocument();
+      expect(screen.getByText('Online shops')).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: /My Allegro/ })).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: /My Shop/ })).toBeInTheDocument();
+    });
+
+    it('fires onConnectionChange when a destination is selected via the rail', async () => {
+      const onConnectionChange = vi.fn<(id: string) => void>();
+      renderWithProviders(
+        <BulkConfigStep
+          initial={{}}
+          onProceed={vi.fn()}
+          onCancel={() => undefined}
+          onConnectionChange={onConnectionChange}
+        />,
+        { apiClient: makeMultiConnectionClient(), sessionAdapter: createAuthenticatedSessionAdapter() },
+      );
+
+      fireEvent.click(await screen.findByRole('radio', { name: /My Shop/ }));
+
+      await waitFor(() => {
+        expect(onConnectionChange).toHaveBeenCalledWith('conn-shop');
+      });
+    });
   });
 
   describe('AI-generation toggle permission gating (listings:write, useWriteAccess + ReadOnlyLock, #1668)', () => {

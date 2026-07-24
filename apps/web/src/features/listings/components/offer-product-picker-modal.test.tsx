@@ -379,6 +379,25 @@ describe('OfferProductPickerModal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('renders the "already on {destination}" chip with an aria-hidden decorative dot (#1838)', async () => {
+    const coveredP1: Product = {
+      ...P1,
+      listingsCoverage: [{ connectionId: 'conn_a', platformType: 'allegro', listedVariants: 2 }],
+    };
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([conn('conn_a', 'Allegro', 'allegro')]) },
+      products: {
+        list: vi.fn().mockResolvedValue({ items: [coveredP1], total: 1, limit: 20, offset: 0 }),
+        getById: vi.fn().mockResolvedValue(coveredP1),
+      },
+    });
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, { apiClient });
+
+    const chip = await screen.findByText(/already on Allegro/);
+    const dot = chip.parentElement?.querySelector('.bulk-chip__dot');
+    expect(dot).toHaveAttribute('aria-hidden', 'true');
+  });
+
   describe('query error + retry branches', () => {
     const oneProductPage = (): PaginatedProductsShape => ({
       items: [P1],
