@@ -68,9 +68,14 @@ export function ConnectionDot({
 
   return (
     <span className={cx('conn-dot', isGeneric && 'conn-dot--generic')} style={style} title={fullName}>
-      <span className="conn-dot__glyph" aria-hidden="true">
-        {initial}
-      </span>
+      {/* SVG text is geometrically centered (text-anchor + dominant-baseline),
+          so the initial sits dead-centre regardless of the font's ascent/descent
+          metrics - CSS line-box centering left it visibly off. */}
+      <svg className="conn-dot__glyph" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+        <text x="7" y="7" textAnchor="middle" dominantBaseline="central">
+          {initial}
+        </text>
+      </svg>
       <span className="sr-only">{fullName}</span>
     </span>
   );
