@@ -529,7 +529,7 @@ Each is an independent interface + co-located `is{Capability}(adapter)` type gua
 
 ### Future Capability Ports
 
-- **PricingAuthorityPort**: Manages pricing rules and catalog pricing
+- **PricingAuthorityPort**: Manages pricing rules and catalog pricing. A capability-port-shaped `PricingAuthorityPort` is still future work, but its underlying **pricing-resolution seam** already exists (#1843): `readPricingRule` / `applyPricingRule` (`libs/core/src/identifier-mapping/domain/types/pricing-rule.types.ts`) are pure, marketplace-neutral helpers — mirroring the `stockSafetyBuffer` config-coercion precedent (#1844) — that resolve a destination price from the master catalog price via a per-connection `Connection.config.pricingRule` (`{ type: 'passthrough' | 'markup' | 'margin', percent?, rounding?: 'none' | 'nearestWhole' | 'endingIn99' }`, JSONB — no schema/migration change). `markup` is cost-plus (`price = base * (1 + percent/100)`); `margin` solves for the price whose margin over the base equals `percent` (`price = base / (1 - percent/100)`, guarded for `percent >= 100`). Both `OfferBuilderService` and `ProductPublishBuilderService` call it as the sole source of `command.price` whenever no explicit per-item `input.price` is supplied (an explicit price always wins and is never re-priced) — replacing the prior raw `product.price` passthrough. A connection with no configured rule is untouched (byte-identical to the pre-#1843 passthrough). No FE control exists yet for editing `config.pricingRule` (same posture as `stockSafetyBuffer` today) — a follow-up.
 - **ShippingProviderManagerPort**: Orchestrates shipping and tracking
 - **PaymentProcessorPort**: Handles payment processing
 

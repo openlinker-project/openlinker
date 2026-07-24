@@ -36,8 +36,10 @@ import { Logger } from '@openlinker/shared/logging';
 import {
   CONNECTION_PORT_TOKEN,
   ConnectionPort,
+  applyPricingRule,
   applyStockSafetyBuffer,
   isPresentButInvalidStockSafetyBuffer,
+  readPricingRule,
   readStockSafetyBuffer,
 } from '@openlinker/core/identifier-mapping';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
@@ -156,7 +158,7 @@ export class OfferBuilderService implements IOfferBuilderService {
       });
     }
 
-    const price = this.resolvePrice(input, product, issues);
+    const price = this.resolvePrice(input, product, connection.config, issues);
 
     // Gate 1 — category / price. Throw before projection: projection needs a
     // resolved category, and surfacing all field problems at once is the
@@ -440,9 +442,19 @@ export class OfferBuilderService implements IOfferBuilderService {
     }
   }
 
+  /**
+   * Resolve `command.price`. An explicit `input.price` always wins (per-item
+   * operator/UI-resolved price, e.g. the bulk wizard's client-side pricing
+   * policy) and is used verbatim — no rule applies to it. Otherwise falls back
+   * to the master catalog price, run through the connection's pricing-resolution
+   * rule (#1843, `pricing-rule.types.ts`) — markup/margin formula + rounding.
+   * A connection with no configured rule is untouched (`applyPricingRule`
+   * returns the master price unchanged), preserving the pre-#1843 passthrough.
+   */
   private resolvePrice(
     input: BuildCreateOfferCommandInput,
     product: { price: number | null; currency: string | null },
+    connectionConfig: Parameters<typeof readPricingRule>[0],
     issues: OfferBuilderValidationIssue[]
   ): { amount: number; currency: string } | null {
     if (input.price) {
@@ -478,7 +490,16 @@ export class OfferBuilderService implements IOfferBuilderService {
       });
       return null;
     }
-    return { amount, currency };
+    const resolvedAmount = applyPricingRule(amount, readPricingRule(connectionConfig));
+    if (resolvedAmount <= 0) {
+      issues.push({
+        field: 'price.amount',
+        code: 'NON_POSITIVE',
+        message: `Resolved price (${resolvedAmount}) from the connection's pricing rule is not a positive value; provide input.price explicitly or adjust the pricing rule`,
+      });
+      return null;
+    }
+    return { amount: resolvedAmount, currency };
   }
 
   private readMasterCatalogConnectionId(
