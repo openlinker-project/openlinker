@@ -14,7 +14,7 @@
  */
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import {
   renderWithProviders,
   createMockApiClient,
@@ -27,6 +27,15 @@ import type { Connection } from '../../connections';
 import type { OrderRecord } from '../../orders';
 import type { InvoiceRecord } from '../api/invoicing.types';
 import { OrderInvoicePanel } from './order-invoice-panel';
+
+const captureDemoEvent = vi.fn();
+vi.mock('../../demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
+
+beforeEach(() => {
+  captureDemoEvent.mockClear();
+});
 
 afterEach(cleanup);
 
@@ -292,6 +301,20 @@ describe('OrderInvoicePanel — issue flow', () => {
     expect(issue.mock.calls[0][0].documentType).toBe('receipt');
   });
 
+  it('captures demo_invoice_doctype_changed when the document-type picker changes (#1788)', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<OrderInvoicePanel order={order} />, {
+      apiClient: createMockApiClient({ connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) }, invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) } }),
+      ...adminSession,
+    });
+    await screen.findByRole('button', { name: /issue invoice/i });
+    await user.selectOptions(screen.getByRole('combobox', { name: /document type/i }), 'receipt');
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_invoice_doctype_changed', {
+      documentType: 'receipt',
+    });
+  });
+
   it('issue capability-disabled 400 ⇒ friendly copy AND DOM does NOT leak connectionId/adapterKey', async () => {
     const user = userEvent.setup();
     const leaky = "Capability 'Invoicing' not enabled for connection conn_inv (adapter subiekt-gt)";
@@ -340,6 +363,23 @@ describe('OrderInvoicePanel — write-access gating (#1613, mirrors #1615)', () 
       ...viewerSession,
     });
     expect(await screen.findByRole('button', { name: /issue invoice/i })).toBeDisabled();
+  });
+
+  it('captures demo_invoice_issue_attempted when a demo read-only viewer clicks the locked Issue button (#1788)', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<OrderInvoicePanel order={order} />, {
+      apiClient: demoApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+      }),
+      ...viewerSession,
+    });
+    await screen.findByRole('button', { name: /issue invoice/i });
+    const lockWrapper = document.querySelector('.read-only-lock');
+    expect(lockWrapper).not.toBeNull();
+    await user.click(lockWrapper as Element);
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_invoice_issue_attempted', {});
   });
 
   it('demo read-only viewer sees the Retry button visible-but-disabled', async () => {

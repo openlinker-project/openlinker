@@ -14,6 +14,11 @@ import { renderWithProviders, createMockApiClient } from '../../../test/test-uti
 import { WoocommercePublishWizard } from './WoocommercePublishWizard';
 import type { Connection } from '../../connections';
 
+const captureDemoEvent = vi.fn();
+vi.mock('../../demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
+
 const wooConnection: Connection = {
   id: 'conn_woo_1',
   name: 'Main WooCommerce store',
@@ -31,6 +36,7 @@ const wooConnection: Connection = {
 describe('WoocommercePublishWizard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    captureDemoEvent.mockClear();
   });
 
   afterEach(() => {
@@ -310,8 +316,13 @@ describe('WoocommercePublishWizard', () => {
       await waitFor(() =>
         expect(screen.getByRole('button', { name: /^publish$/i })).toBeDisabled()
       );
-      fireEvent.click(screen.getByRole('button', { name: /^publish$/i }));
+      fireEvent.click(document.querySelector('.read-only-lock') as Element);
       expect(shopPublish).not.toHaveBeenCalled();
+
+      expect(captureDemoEvent).toHaveBeenCalledWith('demo_offer_create_attempted', {
+        platform: 'woocommerce',
+        mode: 'single',
+      });
     });
 
     it('lets a demo viewer reach the single-mode Review step but disables Confirm & publish', async () => {
@@ -334,12 +345,21 @@ describe('WoocommercePublishWizard', () => {
       await screen.findByPlaceholderText('master');
       fireEvent.click(screen.getByRole('button', { name: /^review$/i }));
 
+      expect(captureDemoEvent).toHaveBeenCalledWith('demo_offer_wizard_review_reached', {
+        platform: 'woocommerce',
+      });
+
       await screen.findByRole('button', { name: /confirm & publish/i });
       await waitFor(() =>
         expect(screen.getByRole('button', { name: /confirm & publish/i })).toBeDisabled()
       );
-      fireEvent.click(screen.getByRole('button', { name: /confirm & publish/i }));
+      fireEvent.click(document.querySelector('.read-only-lock') as Element);
       expect(shopPublish).not.toHaveBeenCalled();
+
+      expect(captureDemoEvent).toHaveBeenCalledWith('demo_offer_create_attempted', {
+        platform: 'woocommerce',
+        mode: 'single',
+      });
     });
   });
 });
