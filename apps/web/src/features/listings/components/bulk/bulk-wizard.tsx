@@ -535,6 +535,7 @@ export function BulkWizard({
                 isSubmitting={shopMutation.isPending}
                 errorMessage={shopMutation.error ? shopMutation.error.message : null}
                 onSetVariantIncluded={setVariantIncluded}
+                onSaveEditor={handleSaveEditor}
                 onBack={() => { setStep('config'); }}
                 onPublish={(items, status) => { void handleShopPublish(items, status); }}
               />

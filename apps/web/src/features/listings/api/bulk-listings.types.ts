@@ -56,6 +56,14 @@ export interface BulkOfferOverrides {
   /** Operator-picked neutral category parameters (#1071). */
   parameters?: OfferParameter[];
   platformParams?: Record<string, unknown>;
+  /**
+   * Per-product destination *shop* category ids (#1830). FE-only carrier used by
+   * the shop edit modal; the shop review threads it onto the bulk shop-publish
+   * transport's per-item `destinationCategoryIds` (present, including empty ⇒
+   * skips server-side provisioning). Distinct from the marketplace `categoryId`;
+   * the marketplace offer path ignores it.
+   */
+  destinationCategoryIds?: string[];
 }
 
 export interface BulkSharedConfig {

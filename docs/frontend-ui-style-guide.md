@@ -773,6 +773,26 @@ Used for:
 - field mappings
 - shipping mappings
 
+### Two-Axis Bulk Editor (#1741 / #1830)
+
+The bulk publish edit modal (`BulkEditModal`) is organized along two independent
+axes rather than one flow per destination:
+
+- **Variant shape** - a multi-variant product renders the two-pane layout (left
+  rail of scopes: Shared base + one per variant, right pane = the active scope's
+  form, inherit/override provenance badges); a simple/single-variant product
+  collapses to a flat form with no rail.
+- **Destination kind** - a marketplace destination (`OfferCreator`) shows the
+  offer field set (category tree + parameter schema, EAN self-link); a shop
+  destination (`ProductPublisher`, #1830) shows the shop field set (category in
+  the top crumb bar, structured attributes, content, visibility, price/stock).
+
+Both axes reuse the same shell chrome (rail, accordion heads, provenance badges,
+discard-guard dialog) - only the field set inside a scope changes with the
+destination kind. A destination's sub-capabilities (`ShopCategoryBrowser`,
+`ShopAttributeReader`, `CategoryBrowser`, …) gate which sections render; never
+branch on `platformType`.
+
 ## Accessibility
 
 The operations cockpit must remain accessible even when dense.
