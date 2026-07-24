@@ -21,9 +21,9 @@ describe('DeliveryOutcomeChip', () => {
     expect(screen.getByText('Awaiting label')).toBeInTheDocument();
   });
 
-  it('should render the "Ships" label for the shop-fulfilled outcome', () => {
+  it('should render the "Not via OpenLinker" label for the shop-fulfilled outcome', () => {
     renderWithProviders(<DeliveryOutcomeChip outcome="shop-fulfilled" />);
-    expect(screen.getByText('Ships')).toBeInTheDocument();
+    expect(screen.getByText('Not via OpenLinker')).toBeInTheDocument();
   });
 
   it('should render the "No delivery method" label with the dashed modifier for the no-method outcome', () => {
@@ -69,13 +69,13 @@ describe('DeliveryChip', () => {
       candidateCarrier: { platformType: 'inpost', displayName: 'InPost' },
     };
     renderWithProviders(<DeliveryChip outcome="shop-fulfilled" rider={rider} />);
-    expect(screen.getByText('Ships')).toBeInTheDocument();
+    expect(screen.getByText('Not via OpenLinker')).toBeInTheDocument();
     expect(screen.getByText('Unmapped')).toBeInTheDocument();
   });
 
   it('should render only the outcome chip when the rider is "none"', () => {
     renderWithProviders(<DeliveryChip outcome="shop-fulfilled" rider={{ rider: 'none' }} />);
-    expect(screen.getByText('Ships')).toBeInTheDocument();
+    expect(screen.getByText('Not via OpenLinker')).toBeInTheDocument();
     expect(screen.queryByText('Unmapped')).not.toBeInTheDocument();
     expect(screen.queryByText('Not connected')).not.toBeInTheDocument();
   });

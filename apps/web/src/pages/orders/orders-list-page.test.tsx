@@ -889,7 +889,7 @@ describe('OrdersListPage', () => {
     const row = container.querySelector('.data-table__row') as HTMLElement;
 
     // The outcome chip is present, the rider chip label is not.
-    expect(within(row).getByText('Ships')).toBeInTheDocument();
+    expect(within(row).getByText('Not via OpenLinker')).toBeInTheDocument();
     expect(within(row).queryByText('Unmapped')).not.toBeInTheDocument();
   });
 

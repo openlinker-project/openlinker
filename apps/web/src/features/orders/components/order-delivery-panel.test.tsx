@@ -135,7 +135,7 @@ describe('OrderDeliveryPanel', () => {
           }}
         />,
       );
-      expect(screen.getByText('Ships')).toBeInTheDocument();
+      expect(screen.getByText('Not via OpenLinker')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Add mapping' })).toBeDisabled();
     });
 
@@ -143,7 +143,7 @@ describe('OrderDeliveryPanel', () => {
       renderWithProviders(
         <OrderDeliveryPanel deliveryOutcome="shop-fulfilled" deliveryRider={{ rider: 'none' }} />,
       );
-      expect(screen.getByText('Ships')).toBeInTheDocument();
+      expect(screen.getByText('Not via OpenLinker')).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /Add mapping|Connect/ })).not.toBeInTheDocument();
     });
   });

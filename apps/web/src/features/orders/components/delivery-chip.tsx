@@ -34,7 +34,7 @@ import { ConnectionDot } from './connection-dot';
 const OUTCOME_LABEL: Record<DeliveryOutcome, string> = {
   resolved: 'Labelled',
   'awaiting-label': 'Awaiting label',
-  'shop-fulfilled': 'Ships',
+  'shop-fulfilled': 'Not via OpenLinker',
   'no-method': 'No delivery method',
 };
 
