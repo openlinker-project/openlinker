@@ -50,8 +50,16 @@ vi.mock('../../../shared/ui/use-media-query', () => ({
   useMediaQuery: (): boolean => true,
 }));
 
+const captureDemoEvent = vi.fn();
+vi.mock('../../demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
+
 describe('ContentEditor', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    captureDemoEvent.mockClear();
+  });
 
   it('renders master and channel tabs from the content state', async () => {
     const mockApi = createMockApiClient({
@@ -132,6 +140,65 @@ describe('ContentEditor', () => {
 
     expect(await screen.findByText('Unable to load content')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+
+  describe('demo event instrumentation (#1790)', () => {
+    it('fires demo_content_publish_attempted with channel="master" when the master Publish button is clicked', async () => {
+      const stateWithPublishableMaster = makeState({
+        master: {
+          baseValue: 'old master',
+          draftValue: 'new master draft',
+          hasConflict: false,
+          updatedAt: '2026-05-01T10:00:00.000Z',
+          updatedBy: 'admin@example.com',
+        },
+      });
+      const mockApi = createMockApiClient({
+        content: { get: vi.fn().mockResolvedValue(stateWithPublishableMaster) },
+      });
+
+      renderWithProviders(<ContentEditor productId="ol_product_1" />, { apiClient: mockApi });
+
+      await screen.findByRole('tab', { name: /Master/ });
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('button', { name: 'Publish' }));
+
+      expect(captureDemoEvent).toHaveBeenCalledWith('demo_content_publish_attempted', {
+        channel: 'master',
+      });
+    });
+
+    it('fires demo_content_publish_attempted with the platformType when a channel Publish button is clicked', async () => {
+      const stateWithPublishableChannel = makeState({
+        channels: [
+          {
+            connectionId: 'conn_allegro_1',
+            connectionName: 'Allegro PL',
+            platformType: 'allegro',
+            connectionStatus: 'active',
+            baseValue: 'old channel',
+            draftValue: 'new channel draft',
+            hasConflict: false,
+            updatedAt: '2026-04-21T10:00:00.000Z',
+            updatedBy: 'admin@example.com',
+            linkedOfferCount: 3,
+          },
+        ],
+      });
+      const mockApi = createMockApiClient({
+        content: { get: vi.fn().mockResolvedValue(stateWithPublishableChannel) },
+      });
+
+      renderWithProviders(<ContentEditor productId="ol_product_1" />, { apiClient: mockApi });
+
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole('tab', { name: /Allegro PL/ }));
+      await user.click(screen.getByRole('button', { name: 'Publish' }));
+
+      expect(captureDemoEvent).toHaveBeenCalledWith('demo_content_publish_attempted', {
+        channel: 'allegro',
+      });
+    });
   });
 
   describe('publish failure surfaces (#486)', () => {

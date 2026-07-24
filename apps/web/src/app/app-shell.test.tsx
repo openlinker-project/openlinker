@@ -34,6 +34,12 @@ import {
   createMockApiClient,
 } from '../test/test-utils';
 
+const captureDemoEvent = vi.fn();
+vi.mock('../features/demo', async (): Promise<object> => {
+  const actual = await vi.importActual<object>('../features/demo');
+  return { ...actual, captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args) };
+});
+
 interface RenderShellOptions {
   apiClient?: ApiClient;
   pathname?: string;
@@ -116,7 +122,10 @@ function getDrawer(): HTMLDialogElement {
 }
 
 describe('AppShell', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    captureDemoEvent.mockClear();
+  });
 
   it('renders the three live nav groups plus a disabled Planned footer', () => {
     renderShell({ pathname: '/' });
@@ -413,5 +422,69 @@ describe('AppShell', () => {
     });
 
     expect(drawer.open).toBe(false);
+  });
+
+  describe('open-source link + analytics opt-out demo events (#1790)', () => {
+    it('renders the "View on GitHub" link in demo mode and fires demo_opensource_link_clicked on click', async () => {
+      const demoApiClient = createMockApiClient({
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      });
+      renderShell({ pathname: '/', apiClient: demoApiClient });
+
+      const user = userEvent.setup();
+      const links = await screen.findAllByRole('link', { name: /View on GitHub/ });
+      expect(links.length).toBeGreaterThan(0);
+      expect(links[0]).toHaveAttribute('href', 'https://github.com/openlinker-project/openlinker');
+
+      await user.click(links[0]);
+
+      expect(captureDemoEvent).toHaveBeenCalledWith('demo_opensource_link_clicked', {
+        location: 'sidebar_footer',
+      });
+    });
+
+    it('does not render the "View on GitHub" link outside demo mode', async () => {
+      renderShell({ pathname: '/' });
+
+      // Wait for the (non-demo) system config to resolve before asserting absence.
+      const primary = screen.getByRole('navigation', { name: 'Primary' });
+      await within(primary).findByText('Prompt templates');
+      expect(screen.queryByRole('link', { name: /View on GitHub/ })).toBeNull();
+    });
+
+    it('fires demo_analytics_disabled when the viewer clicks Disable in the demo banner', async () => {
+      const viewerAdapter = createAuthenticatedSessionAdapter({
+        id: 'u2',
+        username: 'viewer',
+        email: 'viewer@example.com',
+        role: 'viewer',
+        permissions: [],
+        analyticsConsent: true,
+      });
+      const demoApiClient = createMockApiClient({
+        system: {
+          getConfig: vi.fn().mockResolvedValue({
+            demoMode: true,
+            demoIntegrations: {
+              posthog: {
+                key: 'phc_abc',
+                host: 'https://eu.posthog.com',
+                autocapture: true,
+                sessionRecording: false,
+                productEventsEnabled: true,
+                enabledEventGroups: ['baseline'],
+              },
+            },
+          }),
+        },
+      });
+      renderShell({ pathname: '/', apiClient: demoApiClient, sessionAdapter: viewerAdapter });
+
+      const user = userEvent.setup();
+      const disableButton = await screen.findByRole('button', { name: 'Disable' });
+      await user.click(disableButton);
+
+      expect(captureDemoEvent).toHaveBeenCalledWith('demo_analytics_disabled', {});
+    });
   });
 });

@@ -183,6 +183,48 @@ export const DemoEventCatalog = {
     group: 'conversion-intent',
     props: { mode: 'create' } as { mode: 'create' | 'edit' },
   },
+
+  // ── AI descriptions (#1790) ──────────────────────────────────────────
+  demo_ai_suggest_attempted: {
+    description:
+      'Viewer clicked "Suggest with AI" — the locked write action — the primary AI-description intent-to-convert signal',
+    group: 'conversion-intent',
+    props: { channel: '' } as { channel: string },
+  },
+  demo_content_publish_attempted: {
+    description: 'Viewer clicked "Publish" on a content (description) draft',
+    group: 'ai-descriptions',
+    props: { channel: '' } as { channel: string },
+  },
+
+  // ── Open source (#1790) ──────────────────────────────────────────────
+  demo_opensource_link_clicked: {
+    description: 'Viewer clicked the "View on GitHub" link in the app shell',
+    group: 'opensource',
+    props: { location: '' } as { location: string },
+  },
+
+  // ── Cross-cutting baseline (#1790) ───────────────────────────────────
+  demo_login_succeeded: {
+    description: 'Viewer successfully logged in',
+    group: 'baseline',
+    props: { role: '' } as { role: string },
+  },
+  demo_command_palette_opened: {
+    description: 'Viewer opened the ⌘K command palette',
+    group: 'baseline',
+    props: { trigger: 'keyboard' } as { trigger: 'keyboard' | 'click' },
+  },
+  demo_command_palette_result_selected: {
+    description: 'Viewer selected a result in the command palette',
+    group: 'baseline',
+    props: { source: '' } as { source: string },
+  },
+  demo_analytics_disabled: {
+    description: 'Viewer opted out of demo analytics via the banner',
+    group: 'baseline',
+    props: {} as Record<string, never>,
+  },
 } as const;
 
 export type DemoEventName = keyof typeof DemoEventCatalog;
