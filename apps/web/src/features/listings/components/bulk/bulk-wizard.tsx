@@ -458,7 +458,17 @@ export function BulkWizard({
       if (!config || items.length === 0) return;
       try {
         const result = await shopMutation.mutateAsync({
-          request: { connectionId: config.connectionId, items, status },
+          request: {
+            connectionId: config.connectionId,
+            items,
+            status,
+            // #1840 - same Config-step toggle the marketplace branch reads
+            // (canGenerateDescription gates on write access, mirroring the
+            // marketplace request below).
+            ...(canGenerateDescription && config.generateDescription
+              ? { generateDescription: true }
+              : {}),
+          },
         });
         showToast({
           tone: 'success',
@@ -470,7 +480,7 @@ export function BulkWizard({
         // Surfaced via shopMutation.error in the review step.
       }
     },
-    [config, shopMutation, showToast],
+    [config, shopMutation, showToast, canGenerateDescription],
   );
 
   const counts = useMemo(() => countBatch(rows), [rows]);

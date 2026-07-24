@@ -312,6 +312,10 @@ export interface ShopPublishRequest {
   stock: number;
   price?: ShopPublishPrice;
   content?: ShopPublishContent;
+  /** Generate the product description with AI (#1840). Ignored when content.description is supplied. */
+  generateDescription?: boolean;
+  /** AI description tone hint; ignored when generateDescription is not true. */
+  descriptionTone?: 'concise' | 'detailed';
 }
 
 export interface ShopPublishResponse {
@@ -388,6 +392,10 @@ export interface BulkShopPublishRequest {
   items: BulkShopPublishItemRequest[];
   status: 'draft' | 'published';
   content?: ShopPublishContent;
+  /** Generate descriptions with AI for every product in the batch (#1840). */
+  generateDescription?: boolean;
+  /** Shared AI description tone hint; ignored when generateDescription is not true. */
+  descriptionTone?: 'concise' | 'detailed';
 }
 
 export interface BulkShopPublishItem {

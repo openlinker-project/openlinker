@@ -141,6 +141,17 @@ describe('BulkShopPublishSubmitService', () => {
     expect(v2Arg).not.toHaveProperty('parameters');
   });
 
+  it('should forward batch-scoped AI description flags to every child enqueue (#1840)', async () => {
+    await service.submit({ ...input, generateDescription: true, descriptionTone: 'concise' });
+
+    expect(enqueue.enqueuePublish).toHaveBeenCalledTimes(2);
+    for (const call of enqueue.enqueuePublish.mock.calls as Array<[Record<string, unknown>]>) {
+      expect(call[0]).toEqual(
+        expect.objectContaining({ generateDescription: true, descriptionTone: 'concise' }),
+      );
+    }
+  });
+
   it('should reconcile totalCount, clean orphans and reach running on a partial enqueue failure (#1845)', async () => {
     // v1 enqueues; v2 pre-creates its record then throws before the stream write.
     enqueue.enqueuePublish

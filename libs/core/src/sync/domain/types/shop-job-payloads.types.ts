@@ -17,6 +17,8 @@ import type {
   OfferParameter,
 } from '@openlinker/core/listings';
 
+import type { OfferDescriptionTone } from './marketplace-job-payloads.types';
+
 /**
  * Payload for `shop.product.publish` jobs (ADR-024).
  *
@@ -56,6 +58,19 @@ export interface ShopProductPublishPayloadV1 {
   parameters?: OfferParameter[];
   /** Optional idempotency key forwarded to the adapter. */
   idempotencyKey?: string;
+  /**
+   * Shop-publish AI flag (#1840): when `true` the worker handler generates the
+   * product description via the `offer.description.suggest` prompt template
+   * (channel `woocommerce`) and fills `content.description` — unless an explicit
+   * operator description override is already present (which always wins).
+   * Omitted / `false` ⇒ no AI call (master description / operator override used).
+   */
+  generateDescription?: boolean;
+  /**
+   * Optional tone hint forwarded to the AI prompt template (#1840). Ignored when
+   * `generateDescription` is not `true`.
+   */
+  descriptionTone?: OfferDescriptionTone;
   /**
    * Pre-created listing-record id, if the caller wanted the record visible
    * before the job ran. When omitted, the #1042 execution service creates a

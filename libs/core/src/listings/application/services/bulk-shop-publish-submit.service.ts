@@ -115,6 +115,14 @@ export class BulkShopPublishSubmitService implements IBulkShopPublishSubmitServi
             destinationCategoryIds: item.destinationCategoryIds,
           }),
           ...(item.parameters !== undefined && { parameters: item.parameters }),
+          // Batch-scoped AI flags (#1840) — applied to every child publish. A
+          // child's own explicit description override still wins in the worker.
+          ...(input.generateDescription !== undefined && {
+            generateDescription: input.generateDescription,
+          }),
+          ...(input.descriptionTone !== undefined && {
+            descriptionTone: input.descriptionTone,
+          }),
         });
         enqueuedRecordIds.add(listingCreationRecord.id);
         items.push({

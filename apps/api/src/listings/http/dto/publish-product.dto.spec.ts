@@ -6,7 +6,11 @@ import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 
-import { PublishCommerceDto } from './publish-product.dto';
+import {
+  BulkPublishProductRequestDto,
+  PublishCommerceDto,
+  PublishProductRequestDto,
+} from './publish-product.dto';
 
 async function errorsFor(commerce: Record<string, unknown>): Promise<string[]> {
   const dto = plainToInstance(PublishCommerceDto, commerce);
@@ -68,5 +72,53 @@ describe('PublishCommerceDto (#1832)', () => {
   it('rejects a negative dimension', async () => {
     const errs = await errorsFor({ dimensions: { length: -1 } });
     expect(errs).toContain('min');
+  });
+});
+
+async function requestErrors(payload: Record<string, unknown>): Promise<string[]> {
+  const dto = plainToInstance(PublishProductRequestDto, payload);
+  const errors = await validate(dto, { whitelist: true });
+  return errors.flatMap((e) => Object.keys(e.constraints ?? {}));
+}
+
+describe('PublishProductRequestDto AI flags (#1840)', () => {
+  const base = { internalVariantId: 'ol_variant_abc', status: 'published', stock: 3 };
+
+  it('accepts generateDescription + a valid tone', async () => {
+    const errs = await requestErrors({
+      ...base,
+      generateDescription: true,
+      descriptionTone: 'detailed',
+    });
+    expect(errs).toHaveLength(0);
+  });
+
+  it('accepts the request with the AI flags omitted', async () => {
+    const errs = await requestErrors(base);
+    expect(errs).toHaveLength(0);
+  });
+
+  it('rejects a non-boolean generateDescription', async () => {
+    const errs = await requestErrors({ ...base, generateDescription: 'yes' });
+    expect(errs).toContain('isBoolean');
+  });
+
+  it('rejects an unknown tone', async () => {
+    const errs = await requestErrors({ ...base, descriptionTone: 'snarky' });
+    expect(errs).toContain('isIn');
+  });
+});
+
+describe('BulkPublishProductRequestDto AI flags (#1840)', () => {
+  it('accepts batch-level generateDescription + tone', async () => {
+    const dto = plainToInstance(BulkPublishProductRequestDto, {
+      connectionId: 'conn-1',
+      items: [{ internalVariantId: 'ol_variant_abc', stock: 1 }],
+      status: 'draft',
+      generateDescription: true,
+      descriptionTone: 'concise',
+    });
+    const errors = await validate(dto, { whitelist: true });
+    expect(errors.flatMap((e) => Object.keys(e.constraints ?? {}))).toHaveLength(0);
   });
 });

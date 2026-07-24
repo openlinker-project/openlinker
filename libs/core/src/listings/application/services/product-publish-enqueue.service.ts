@@ -96,6 +96,12 @@ export class ProductPublishEnqueueService implements IProductPublishEnqueueServi
               destinationCategoryIds: input.destinationCategoryIds,
             }),
             ...(input.parameters !== undefined && { parameters: input.parameters }),
+            ...(input.generateDescription !== undefined && {
+              generateDescription: input.generateDescription,
+            }),
+            ...(input.descriptionTone !== undefined && {
+              descriptionTone: input.descriptionTone,
+            }),
             ...(input.idempotencyKey !== undefined && { idempotencyKey: input.idempotencyKey }),
           } satisfies ShopProductPublishPayloadV2)
         : ({
@@ -111,6 +117,12 @@ export class ProductPublishEnqueueService implements IProductPublishEnqueueServi
               destinationCategoryIds: input.destinationCategoryIds,
             }),
             ...(input.parameters !== undefined && { parameters: input.parameters }),
+            ...(input.generateDescription !== undefined && {
+              generateDescription: input.generateDescription,
+            }),
+            ...(input.descriptionTone !== undefined && {
+              descriptionTone: input.descriptionTone,
+            }),
             ...(input.idempotencyKey !== undefined && { idempotencyKey: input.idempotencyKey }),
           } satisfies ShopProductPublishPayloadV1);
 
