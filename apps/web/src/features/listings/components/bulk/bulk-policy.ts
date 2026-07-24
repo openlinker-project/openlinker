@@ -467,8 +467,6 @@ export function recomputeVariantBlockers(
   destinationResolvesCategoryAtSubmit = false,
   isMultiVariant = false,
 ): BulkRowBlocker[] {
-  // Already-listed is a create-only informational blocker; the operator resolves
-  // it by excluding the variant. It never gates readiness of the others.
   const submitCategoryId = variant.override.overrides?.categoryId ?? variant.resolvedCategoryId;
   const blockers = computeBlockers({
     hasVariant: true,
@@ -502,7 +500,9 @@ export function recomputeVariantBlockers(
   if (ean !== null && !isValidGtin(ean) && !filtered.includes('no-ean')) {
     filtered.push('no-ean');
   }
-  if (variant.alreadyListed) filtered.push('already-listed');
+  // #1837: "already listed" is a SOFT warning surfaced as its own chip + a
+  // publish-time confirm - never a readiness blocker (re-publishing is a valid
+  // operator choice), so it is intentionally NOT pushed into `blockers`.
   return filtered;
 }
 

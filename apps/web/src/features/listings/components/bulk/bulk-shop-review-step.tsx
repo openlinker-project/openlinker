@@ -37,6 +37,11 @@ interface BulkShopReviewStepProps {
   demoReadOnly: boolean;
   isSubmitting: boolean;
   errorMessage: string | null;
+  /** Variants already published on this shop (#1837) - shown as a soft
+   *  "already on {destination}" chip; publishing upserts them. */
+  alreadyListedVariantIds: ReadonlySet<string>;
+  /** Destination name for the "already on {name}" chip copy. */
+  destinationName: string;
   onSetVariantIncluded: (productId: string, variantId: string, included: boolean) => void;
   onBack: () => void;
   onPublish: (items: BulkShopPublishItemRequest[], status: ShopPublishVisibility) => void;
@@ -100,6 +105,8 @@ export function BulkShopReviewStep({
   demoReadOnly,
   isSubmitting,
   errorMessage,
+  alreadyListedVariantIds,
+  destinationName,
   onSetVariantIncluded,
   onBack,
   onPublish,
@@ -214,6 +221,15 @@ export function BulkShopReviewStep({
               <div className="bulk-shop-review__row-main">
                 <b>{line.productName}</b>
                 <small className="mono-text muted-text">{line.variantLabel}</small>
+                {alreadyListedVariantIds.has(line.variantId) ? (
+                  <span
+                    className="bulk-chip bulk-chip--neutral"
+                    title={`already on ${destinationName} - publishing updates it`}
+                  >
+                    <span className="bulk-chip__dot" />
+                    already on {destinationName}
+                  </span>
+                ) : null}
               </div>
               <span className="bulk-shop-review__cell mono-text tabular" aria-label="Stock">
                 <span className="bulk-shop-review__cell-label">stock</span>

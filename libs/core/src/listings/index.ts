@@ -63,6 +63,8 @@ export type {
 } from './application/services/offer-mapping-sync.service.interface';
 export type { IOfferMappingsService } from './application/services/offer-mappings.service.interface';
 export type { OfferMappingRepositoryPort } from './domain/ports/offer-mapping-repository.port';
+export type { ShopProductMappingRepositoryPort } from './domain/ports/shop-product-mapping-repository.port';
+export type { IPublishedVariantsService } from './application/services/published-variants.service.interface';
 export type {
   OfferMappingFilters,
   OfferMappingPagination,
