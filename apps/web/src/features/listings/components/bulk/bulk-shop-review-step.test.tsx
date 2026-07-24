@@ -328,3 +328,110 @@ describe('BulkShopReviewStep (render)', () => {
     expect(screen.getByLabelText('Title')).toBeInTheDocument();
   });
 });
+
+describe('BulkShopReviewStep already-listed chip (#1838)', () => {
+  it('renders the "already on {destination}" chip with an aria-hidden decorative dot', async () => {
+    const rows = [makeRow('prod_1', [makeVariantRow('v1')])];
+    const apiClient = createMockApiClient({
+      inventory: { availability: vi.fn().mockResolvedValue({ items: [{ productVariantId: 'v1', totalAvailable: 7 }] }) },
+    });
+    renderWithProviders(
+      <BulkShopReviewStep
+        rows={rows}
+        connection={shopConnection}
+        config={config()}
+        demoReadOnly={false}
+        isSubmitting={false}
+        errorMessage={null}
+        alreadyListedVariantIds={new Set(['v1'])}
+        destinationName="Test Shop"
+        onSetVariantIncluded={(): void => undefined}
+        onBack={(): void => undefined}
+        onPublish={(): void => undefined}
+        onSaveEditor={(): void => undefined}
+      />,
+      { apiClient },
+    );
+
+    const chip = await screen.findByText(/already on Test Shop/);
+    const dot = chip.parentElement?.querySelector('.bulk-chip__dot');
+    expect(dot).toHaveAttribute('aria-hidden', 'true');
+  });
+});
+
+describe('BulkShopReviewStep grouping/filter/expand (#1838 whole-epic review)', () => {
+  function multiVariantRows(): BulkWizardRow[] {
+    return [makeRow('prod_1', [makeVariantRow('v1'), makeVariantRow('v2')])];
+  }
+
+  it('groups a multi-variant product behind a collapsed expand toggle', async () => {
+    renderStep(multiVariantRows(), config(), {}, [
+      { productVariantId: 'v1', totalAvailable: 7 },
+      { productVariantId: 'v2', totalAvailable: 3 },
+    ]);
+
+    await screen.findByText('2 variants');
+    // Collapsed by default - no per-variant remove buttons rendered yet.
+    expect(screen.queryByLabelText(/Remove P - /)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Expand P variants/ }),
+    ).toBeInTheDocument();
+  });
+
+  it('expands a group to reveal its per-variant rows', async () => {
+    renderStep(multiVariantRows(), config(), {}, [
+      { productVariantId: 'v1', totalAvailable: 7 },
+      { productVariantId: 'v2', totalAvailable: 3 },
+    ]);
+
+    const toggle = await screen.findByRole('button', { name: /Expand P variants/ });
+    fireEvent.click(toggle);
+
+    expect(await screen.findByLabelText('Remove P - v1')).toBeInTheDocument();
+    expect(screen.getByLabelText('Remove P - v2')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Collapse P variants/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Collapse P variants/ }));
+    expect(screen.queryByLabelText('Remove P - v1')).not.toBeInTheDocument();
+  });
+
+  it('narrows the visible set via the filter box', async () => {
+    const rows = [
+      makeRow('prod_1', [makeVariantRow('v1')]),
+      { ...makeRow('prod_2', [makeVariantRow('v2')]), product: { id: 'prod_2', name: 'Other', currency: 'PLN' } as never },
+    ];
+    renderStep(rows, config(), {}, [
+      { productVariantId: 'v1', totalAvailable: 7 },
+      { productVariantId: 'v2', totalAvailable: 5 },
+    ]);
+
+    expect(await screen.findByText('P')).toBeInTheDocument();
+    expect(screen.getByText('Other')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Filter products by name or SKU'), {
+      target: { value: 'Other' },
+    });
+
+    expect(screen.queryByText('P')).not.toBeInTheDocument();
+    expect(screen.getByText('Other')).toBeInTheDocument();
+  });
+
+  it('shows only flagged rows (out of stock) when "Only flagged" is checked', async () => {
+    const rows = [
+      makeRow('prod_1', [makeVariantRow('v1')]),
+      { ...makeRow('prod_2', [makeVariantRow('v2')]), product: { id: 'prod_2', name: 'Other', currency: 'PLN' } as never },
+    ];
+    renderStep(rows, config(), {}, [
+      { productVariantId: 'v1', totalAvailable: 0 },
+      { productVariantId: 'v2', totalAvailable: 5 },
+    ]);
+
+    expect(await screen.findByText('P')).toBeInTheDocument();
+    expect(screen.getByText('Other')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Only flagged' }));
+
+    expect(screen.getByText('P')).toBeInTheDocument();
+    expect(screen.queryByText('Other')).not.toBeInTheDocument();
+  });
+});

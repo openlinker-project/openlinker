@@ -34,6 +34,7 @@ import type {
 } from './bulk-wizard.types';
 import { BulkEditModal } from './bulk-edit-modal';
 import { BulkImageLightbox } from './bulk-image-lightbox';
+import { AlreadyListedChip } from '../already-listed-chip';
 import {
   FALLBACK_CHIP,
   NEUTRAL_BLOCKER_CHIPS,
@@ -577,7 +578,7 @@ function ProductRow({
             <>
               <AggregateChips ready={agg.ready} attn={agg.attn} off={agg.off} />
               {anyAlreadyListed ? (
-                <AlreadyListedChip destinationName={destinationName} />
+                <AlreadyListedChip destinationName={destinationName} title={`already on ${destinationName}`} />
               ) : null}
             </>
           )}
@@ -741,7 +742,7 @@ function VariantChips({
 }): ReactElement {
   // The "already on {destination}" chip is a SOFT warning shown alongside the
   // readiness/blocker chips - it never marks the variant not-ready (#1837).
-  const dupChip = alreadyListed ? <AlreadyListedChip destinationName={destinationName} /> : null;
+  const dupChip = alreadyListed ? <AlreadyListedChip destinationName={destinationName} title={`already on ${destinationName}`} /> : null;
   if (!variant.included) {
     return (
       <>
@@ -773,19 +774,6 @@ function VariantChips({
       })}
       {dupChip}
     </>
-  );
-}
-
-/** Soft "already on {destination}" chip (#1837) - informational, never blocking. */
-function AlreadyListedChip({ destinationName }: { destinationName: string }): ReactElement {
-  return (
-    <span
-      className="bulk-chip bulk-chip--neutral"
-      title={`already on ${destinationName}`}
-    >
-      <span className="bulk-chip__dot" aria-hidden="true" />
-      already on {destinationName}
-    </span>
   );
 }
 
