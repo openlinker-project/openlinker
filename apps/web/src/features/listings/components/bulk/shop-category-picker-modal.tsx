@@ -141,8 +141,8 @@ function ShopCategoryPickerBody({
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search categories..."
-          aria-label="Search categories"
+          placeholder="Filter this level..."
+          aria-label="Filter categories in this level"
         />
       </div>
 
@@ -222,6 +222,7 @@ function ShopCategoryPickerBody({
                       type="button"
                       className="button--sm"
                       aria-pressed={isCurrent}
+                      aria-label={`Select ${node.name}`}
                       onClick={() => pick(node)}
                     >
                       {isCurrent ? 'Selected' : 'Select'}

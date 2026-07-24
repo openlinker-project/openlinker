@@ -547,5 +547,29 @@ describe('WooCommerceProductPublisherAdapter', () => {
         expect.objectContaining({ parent: 0 }),
       );
     });
+
+    it('should stop at the 50-page cap when the endpoint always returns a full page', async () => {
+      const fullPage = Array.from({ length: 100 }, (_, i) => ({
+        id: i + 1,
+        name: `Cat ${i + 1}`,
+        parent: 0,
+        slug: `cat-${i + 1}`,
+      }));
+      // Always a full page — without the cap this would loop forever.
+      http.get.mockResolvedValue(fullPage);
+      const warnSpy = jest
+        .spyOn(
+          (adapter as unknown as { logger: { warn: (msg: string) => void } }).logger,
+          'warn',
+        )
+        .mockImplementation(() => undefined);
+
+      const result = await adapter.browseCategories();
+
+      expect(http.get).toHaveBeenCalledTimes(50);
+      expect(result).toHaveLength(5000);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('50-page cap'));
+    });
   });
 });

@@ -47,7 +47,7 @@ describe('ShopCategoryPickerModal', () => {
 
     expect(await screen.findByText('Clothing')).toBeInTheDocument();
 
-    await userEvent.click(screen.getAllByRole('button', { name: 'Select' })[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Select Clothing' }));
 
     expect(onSelect).toHaveBeenCalledWith('10', ['Clothing']);
   });
@@ -69,7 +69,7 @@ describe('ShopCategoryPickerModal', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Browse into Footwear' }));
 
     expect(await screen.findByText('Sneakers')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Select' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Select Sneakers' }));
 
     expect(onSelect).toHaveBeenCalledWith('20', ['Footwear', 'Sneakers']);
   });
