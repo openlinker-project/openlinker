@@ -70,6 +70,12 @@ export const woocommerceAdapterManifest: AdapterMetadata = {
     // structured attribute picker (global attribute + terms; custom free-text
     // fallback).
     'ShopAttributeReader',
+    // Shop-side publication status read (#1845). Advertised-without-dispatch:
+    // declared here for host/FE discovery, resolved by narrowing the dispatched
+    // ProductPublisher adapter with `isShopProductStatusReader` (never via
+    // getCapabilityAdapter('ShopProductStatusReader')). Backs the steady-state
+    // `ShopStatusSyncService` reconcile scheduler.
+    'ShopProductStatusReader',
     // Inventory write-back to published products (#1498). Quantity-only —
     // WooCommerce is a destination shop, not a marketplace: no OfferCreator /
     // OfferLister sub-capabilities, so offer-creation flows (gated on

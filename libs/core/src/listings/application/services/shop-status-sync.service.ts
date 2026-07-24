@@ -17,15 +17,27 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 
+import {
+  CORE_ENTITY_TYPE,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+  IIdentifierMappingService,
+} from '@openlinker/core/identifier-mapping';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import { IProductsService, PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 
 import type { ShopProductManagerPort } from '../../domain/ports/shop-product-manager.port';
-import { isShopProductStatusReader } from '../../domain/ports/capabilities/shop-product-status-reader.capability';
+import {
+  isShopProductStatusReader,
+  type ShopProductStatusReader,
+} from '../../domain/ports/capabilities/shop-product-status-reader.capability';
 import { ListingCreationRecordRepositoryPort } from '../../domain/ports/listing-creation-record-repository.port';
 import { ShopProductStatusSnapshotRepositoryPort } from '../../domain/ports/shop-product-status-snapshot-repository.port';
 import { SHOP_PUBLICATION_STATUS } from '../../domain/types/shop-product-status.types';
-import type { ShopStatusSyncResult } from '../../domain/types/shop-product-status.types';
+import type {
+  ShopProductStatusReadResult,
+  ShopStatusSyncResult,
+} from '../../domain/types/shop-product-status.types';
 import {
   LISTING_CREATION_RECORD_REPOSITORY_TOKEN,
   SHOP_PRODUCT_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
@@ -46,6 +58,10 @@ export class ShopStatusSyncService implements IShopStatusSyncService {
     private readonly listingRecords: ListingCreationRecordRepositoryPort,
     @Inject(SHOP_PRODUCT_STATUS_SNAPSHOT_REPOSITORY_TOKEN)
     private readonly snapshots: ShopProductStatusSnapshotRepositoryPort,
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly productsService: IProductsService,
+    @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
+    private readonly identifierMapping: IIdentifierMappingService,
   ) {}
 
   async sync(
@@ -84,7 +100,7 @@ export class ShopStatusSyncService implements IShopStatusSyncService {
       }
       const externalProductId = record.externalProductId;
 
-      const status = await adapter.getShopProductStatus(externalProductId);
+      const status = await this.readStatus(adapter, connectionId, record.internalVariantId, externalProductId);
 
       const { previousStatus } = await this.snapshots.upsert({
         connectionId,
@@ -123,5 +139,57 @@ export class ShopStatusSyncService implements IShopStatusSyncService {
       total: page.total,
       nextOffset,
     };
+  }
+
+  /**
+   * Resolve the correct status-read call for one record (whole-epic review
+   * finding #2). A grouped/multi-variant publish (#1836) stores the CHILD
+   * variation's id on `record.externalProductId`, which is a different
+   * shop-native resource than a standalone simple product (WooCommerce:
+   * `products/{parentId}/variations/{id}`, not `products/{id}`) — reading it
+   * through `getShopProductStatus` 404s and is misread as `removed`.
+   *
+   * Detects "grouped" the same way the publish path does (sibling count > 1 on
+   * the variant's product), then resolves the parent's `ShopProduct` mapping
+   * (keyed on the product id, same lookup shape used to thread
+   * `variantGroup.externalParentProductId` in `ProductPublishExecutionService`)
+   * and calls the adapter's variation-aware read when both the grouping and
+   * the adapter support exist. Falls back to the simple-product read
+   * otherwise — including when the adapter doesn't implement the optional
+   * `getShopVariationStatus` method — so existing readers are unaffected.
+   */
+  private async readStatus(
+    adapter: ShopProductManagerPort & ShopProductStatusReader,
+    connectionId: string,
+    internalVariantId: string,
+    externalProductId: string,
+  ): Promise<ShopProductStatusReadResult> {
+    if (typeof adapter.getShopVariationStatus === 'function') {
+      const variant = await this.productsService.getVariant(internalVariantId);
+      if (variant) {
+        const siblings = await this.productsService.getVariantsByProductId(variant.productId);
+        if (siblings.length > 1) {
+          const parentExternalId = await this.resolveParentExternalId(
+            variant.productId,
+            connectionId,
+          );
+          if (parentExternalId) {
+            return adapter.getShopVariationStatus(parentExternalId, externalProductId);
+          }
+        }
+      }
+    }
+    return adapter.getShopProductStatus(externalProductId);
+  }
+
+  private async resolveParentExternalId(
+    productId: string,
+    connectionId: string,
+  ): Promise<string | null> {
+    const mappings = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.ShopProduct,
+      productId,
+    );
+    return mappings.find((m) => m.connectionId === connectionId)?.externalId ?? null;
   }
 }

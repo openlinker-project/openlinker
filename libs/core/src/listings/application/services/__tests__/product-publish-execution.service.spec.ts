@@ -454,5 +454,174 @@ describe('ProductPublishExecutionService', () => {
         ShopProductMappingConflictException,
       );
     });
+
+    describe('stale-mapping 404 recovery distinguishes variant vs parent target (whole-epic review finding #1)', () => {
+      it('should recover the VARIANT-level mapping unchanged when the variation upsert 404s (existing parent untouched)', async () => {
+        // Both variant and parent mappings already exist (steady-state re-publish).
+        identifierMapping.getExternalIds.mockImplementation(
+          (entityType: string, internalId: string) => {
+            if (internalId === GROUP_ID) {
+              return Promise.resolve([
+                { externalId: PARENT_EXT, connectionId: CONN, entityType, platformType: 'woocommerce' },
+              ]);
+            }
+            return Promise.resolve([
+              { externalId: VARIATION_EXT, connectionId: CONN, entityType, platformType: 'woocommerce' },
+            ]);
+          },
+        );
+        const NEW_VARIATION_EXT = 'wc-variation-99';
+        adapter.publishProduct
+          .mockRejectedValueOnce(
+            new ProductPublishTargetNotFoundException('woocommerce.restapi.v3', VARIATION_EXT),
+          )
+          .mockResolvedValueOnce({
+            externalProductId: NEW_VARIATION_EXT,
+            status: 'published',
+            externalParentProductId: PARENT_EXT,
+          });
+
+        const result = await service.executePublish(input);
+
+        // Only the variant-level mapping is deleted — the parent mapping is untouched.
+        expect(identifierMapping.deleteMapping).toHaveBeenCalledWith('ShopProduct', VARIATION_EXT, CONN);
+        expect(identifierMapping.deleteMapping).not.toHaveBeenCalledWith(
+          'ShopProduct',
+          PARENT_EXT,
+          CONN,
+        );
+        expect(adapter.publishProduct).toHaveBeenCalledTimes(2);
+        expect(adapter.publishProduct).toHaveBeenNthCalledWith(
+          2,
+          expect.objectContaining({
+            externalProductId: null,
+            variantGroup: expect.objectContaining({ externalParentProductId: PARENT_EXT }),
+          }),
+        );
+        // Fresh variant mapping written; parent mapping already existed, not re-created.
+        expect(identifierMapping.createMapping).toHaveBeenCalledWith(
+          'ShopProduct',
+          NEW_VARIATION_EXT,
+          CONN,
+          VARIANT,
+        );
+        expect(identifierMapping.createMapping).not.toHaveBeenCalledWith(
+          'ShopProduct',
+          expect.anything(),
+          CONN,
+          GROUP_ID,
+        );
+        expect(result.outcome).toBe('ok');
+      });
+
+      it('should recover the PARENT mapping (not the variant mapping) when the parent upsert 404s and an existing variant mapping is present', async () => {
+        identifierMapping.getExternalIds.mockImplementation(
+          (entityType: string, internalId: string) => {
+            if (internalId === GROUP_ID) {
+              return Promise.resolve([
+                { externalId: PARENT_EXT, connectionId: CONN, entityType, platformType: 'woocommerce' },
+              ]);
+            }
+            return Promise.resolve([
+              { externalId: VARIATION_EXT, connectionId: CONN, entityType, platformType: 'woocommerce' },
+            ]);
+          },
+        );
+        const NEW_PARENT_EXT = 'wc-parent-99';
+        adapter.publishProduct
+          .mockRejectedValueOnce(
+            new ProductPublishTargetNotFoundException('woocommerce.restapi.v3', PARENT_EXT),
+          )
+          .mockResolvedValueOnce({
+            externalProductId: VARIATION_EXT,
+            status: 'published',
+            externalParentProductId: NEW_PARENT_EXT,
+          });
+
+        const result = await service.executePublish(input);
+
+        // Only the PARENT mapping is deleted — the variant's own mapping is untouched.
+        expect(identifierMapping.deleteMapping).toHaveBeenCalledWith('ShopProduct', PARENT_EXT, CONN);
+        expect(identifierMapping.deleteMapping).not.toHaveBeenCalledWith(
+          'ShopProduct',
+          VARIATION_EXT,
+          CONN,
+        );
+        expect(adapter.publishProduct).toHaveBeenCalledTimes(2);
+        expect(adapter.publishProduct).toHaveBeenNthCalledWith(
+          2,
+          expect.objectContaining({
+            externalProductId: VARIATION_EXT,
+            variantGroup: expect.objectContaining({ externalParentProductId: null }),
+          }),
+        );
+        // Fresh parent mapping written; the variant's own mapping already
+        // existed and is not re-created.
+        expect(identifierMapping.createMapping).toHaveBeenCalledWith(
+          'ShopProduct',
+          NEW_PARENT_EXT,
+          CONN,
+          GROUP_ID,
+        );
+        expect(identifierMapping.createMapping).not.toHaveBeenCalledWith(
+          'ShopProduct',
+          expect.anything(),
+          CONN,
+          VARIANT,
+        );
+        expect(result.outcome).toBe('ok');
+      });
+
+      it('should recover a stale parent mapping even with NO existing variant mapping (new sibling, dead parent)', async () => {
+        // Parent mapping already exists (created by an earlier sibling); this
+        // sibling has never published (no variant-level mapping yet).
+        identifierMapping.getExternalIds.mockImplementation(
+          (entityType: string, internalId: string) => {
+            if (internalId === GROUP_ID) {
+              return Promise.resolve([
+                { externalId: PARENT_EXT, connectionId: CONN, entityType, platformType: 'woocommerce' },
+              ]);
+            }
+            return Promise.resolve([]);
+          },
+        );
+        const NEW_PARENT_EXT = 'wc-parent-99';
+        adapter.publishProduct
+          .mockRejectedValueOnce(
+            new ProductPublishTargetNotFoundException('woocommerce.restapi.v3', PARENT_EXT),
+          )
+          .mockResolvedValueOnce({
+            externalProductId: VARIATION_EXT,
+            status: 'published',
+            externalParentProductId: NEW_PARENT_EXT,
+          });
+
+        const result = await service.executePublish(input);
+
+        // Recovers instead of throwing raw — the old (pre-fix) behavior would
+        // hit `throw error` here since `existingExternalProductId` was null.
+        expect(identifierMapping.deleteMapping).toHaveBeenCalledWith('ShopProduct', PARENT_EXT, CONN);
+        expect(adapter.publishProduct).toHaveBeenCalledTimes(2);
+        expect(adapter.publishProduct).toHaveBeenNthCalledWith(
+          2,
+          expect.objectContaining({
+            variantGroup: expect.objectContaining({ externalParentProductId: null }),
+          }),
+        );
+        expect(identifierMapping.createMapping).toHaveBeenCalledWith(
+          'ShopProduct',
+          NEW_PARENT_EXT,
+          CONN,
+          GROUP_ID,
+        );
+        expect(identifierMapping.createMapping).toHaveBeenCalledWith(
+          'ShopProduct',
+          VARIATION_EXT,
+          CONN,
+          VARIANT,
+        );
+        expect(result.outcome).toBe('ok');
+      });
+    });
   });
 });

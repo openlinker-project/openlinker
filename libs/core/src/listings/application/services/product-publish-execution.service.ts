@@ -168,35 +168,63 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
     let mappingNeedsCreate = !existingExternalProductId;
     // #1836 — same tracking for the grouped parent mapping, independent of the
     // variant's own mapping lifecycle (a variant re-publish after the parent
-    // already exists must not re-write the parent mapping).
-    const parentMappingNeedsCreate =
+    // already exists must not re-write the parent mapping). `let` because a
+    // parent-level stale-mapping recovery (below) also forces a re-write.
+    let parentMappingNeedsCreate =
       command.variantGroup != null && !existingParentExternalProductId;
 
     let result: PublishProductResult;
     try {
       result = await adapter.publishProduct(command);
     } catch (error) {
-      // Stale mapping: the upsert target was deleted shop-side. Drop the dead
-      // `ShopProduct` mapping and re-publish as a create so the variant can
-      // recover instead of failing forever (#1846 fix 1/5).
-      if (error instanceof ProductPublishTargetNotFoundException && existingExternalProductId) {
-        try {
-          result = await this.recreateAfterStaleUpsertTarget(
-            adapter,
-            command,
-            input,
-            existingExternalProductId
-          );
-          mappingNeedsCreate = true;
-        } catch (recoveryError) {
-          // A rejection on the recovery create is a terminal business failure,
-          // exactly like a rejection on the first-attempt create path — record
-          // it as `failed` instead of letting it escape as an unhandled throw
-          // (which would retry/dead the job).
-          if (recoveryError instanceof ProductPublishRejectedException) {
-            return this.recordRejection(record.id, input.connectionId, recoveryError);
+      if (error instanceof ProductPublishTargetNotFoundException) {
+        // The adapter reports which id actually 404'd — a grouped publish has
+        // TWO distinct upsert targets (the variant's own variation id and the
+        // shared parent's id, resolved separately above), and only recovering
+        // whichever one is truly stale avoids deleting a perfectly-fine
+        // mapping or leaving a dead parent mapping in place forever (whole-epic
+        // review finding #1).
+        const staleId = error.externalProductId;
+        if (existingExternalProductId && staleId === existingExternalProductId) {
+          try {
+            result = await this.recreateAfterStaleUpsertTarget(
+              adapter,
+              command,
+              input,
+              existingExternalProductId
+            );
+            mappingNeedsCreate = true;
+          } catch (recoveryError) {
+            // A rejection on the recovery create is a terminal business failure,
+            // exactly like a rejection on the first-attempt create path — record
+            // it as `failed` instead of letting it escape as an unhandled throw
+            // (which would retry/dead the job).
+            if (recoveryError instanceof ProductPublishRejectedException) {
+              return this.recordRejection(record.id, input.connectionId, recoveryError);
+            }
+            throw recoveryError;
           }
-          throw recoveryError;
+        } else if (
+          command.variantGroup &&
+          existingParentExternalProductId &&
+          staleId === existingParentExternalProductId
+        ) {
+          try {
+            result = await this.recreateAfterStaleParentTarget(
+              adapter,
+              command,
+              input,
+              existingParentExternalProductId
+            );
+            parentMappingNeedsCreate = true;
+          } catch (recoveryError) {
+            if (recoveryError instanceof ProductPublishRejectedException) {
+              return this.recordRejection(record.id, input.connectionId, recoveryError);
+            }
+            throw recoveryError;
+          }
+        } else {
+          throw error;
         }
       } else if (error instanceof ProductPublishRejectedException) {
         return this.recordRejection(record.id, input.connectionId, error);
@@ -321,6 +349,42 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
     );
     const createCommand: PublishProductCommand = { ...command, externalProductId: null };
     return adapter.publishProduct(createCommand);
+  }
+
+  /**
+   * Recover from a stale grouped-parent `ShopProduct` mapping (whole-epic review
+   * finding #1) — the PARENT id resolved onto `command.variantGroup.externalParentProductId`
+   * no longer exists shop-side (the parent upsert 404'd, not the variation
+   * upsert). Deletes the dead parent mapping and re-publishes the same command
+   * with `variantGroup.externalParentProductId` cleared so the adapter creates a
+   * fresh parent; the caller then persists the new parent mapping. Distinct from
+   * {@link recreateAfterStaleUpsertTarget}, which recovers the variant/variation's
+   * OWN stale mapping — the two are mutually exclusive per invocation because
+   * only one id can be the one that actually 404'd.
+   */
+  private async recreateAfterStaleParentTarget(
+    adapter: ShopProductManagerPort,
+    command: PublishProductCommand,
+    input: ExecutePublishProductInput,
+    staleParentExternalProductId: string
+  ): Promise<PublishProductResult> {
+    this.logger.warn(
+      `Stale ShopProduct PARENT mapping detected; grouped-parent upsert target missing shop-side. ` +
+        `Deleting parent mapping and re-creating. connectionId=${input.connectionId} ` +
+        `internalVariantId=${input.internalVariantId} staleParentExternalProductId=${staleParentExternalProductId}`
+    );
+    await this.identifierMapping.deleteMapping(
+      CORE_ENTITY_TYPE.ShopProduct,
+      staleParentExternalProductId,
+      input.connectionId
+    );
+    const retriedCommand: PublishProductCommand = {
+      ...command,
+      variantGroup: command.variantGroup
+        ? { ...command.variantGroup, externalParentProductId: null }
+        : command.variantGroup,
+    };
+    return adapter.publishProduct(retriedCommand);
   }
 
   /**

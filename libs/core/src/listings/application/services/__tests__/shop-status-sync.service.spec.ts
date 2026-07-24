@@ -32,7 +32,13 @@ describe('ShopStatusSyncService', () => {
   let integrations: { getCapabilityAdapter: jest.Mock };
   let records: { findPublishedByConnection: jest.Mock };
   let snapshots: { upsert: jest.Mock };
-  let adapter: { publishProduct: jest.Mock; getShopProductStatus?: jest.Mock };
+  let productsService: { getVariant: jest.Mock; getVariantsByProductId: jest.Mock };
+  let identifierMapping: { getExternalIds: jest.Mock };
+  let adapter: {
+    publishProduct: jest.Mock;
+    getShopProductStatus?: jest.Mock;
+    getShopVariationStatus?: jest.Mock;
+  };
   let service: ShopStatusSyncService;
 
   beforeEach(() => {
@@ -50,10 +56,17 @@ describe('ShopStatusSyncService', () => {
       }),
     };
     snapshots = { upsert: jest.fn().mockResolvedValue({ previousStatus: null }) };
+    productsService = {
+      getVariant: jest.fn().mockResolvedValue({ productId: 'ol_product_a' }),
+      getVariantsByProductId: jest.fn().mockResolvedValue([{ id: 'ol_variant_a' }]),
+    };
+    identifierMapping = { getExternalIds: jest.fn().mockResolvedValue([]) };
     service = new ShopStatusSyncService(
       integrations as never,
       records as never,
       snapshots as never,
+      productsService as never,
+      identifierMapping as never,
     );
   });
 
@@ -111,5 +124,69 @@ describe('ShopStatusSyncService', () => {
     const result = await service.sync(CONN, { limit: 1, offset: 0 });
 
     expect(result.nextOffset).toBe(1);
+  });
+
+  describe('grouped-variation status read (whole-epic review finding #2)', () => {
+    it('should call the standalone getShopProductStatus path (no regression) for a simple-product record', async () => {
+      productsService.getVariantsByProductId.mockResolvedValue([{ id: 'ol_variant_a' }]); // single variant, not grouped
+      adapter.getShopVariationStatus = jest.fn();
+
+      await service.sync(CONN, { limit: 100 });
+
+      expect(adapter.getShopProductStatus).toHaveBeenCalledWith('wc-1');
+      expect(adapter.getShopVariationStatus).not.toHaveBeenCalled();
+    });
+
+    it('should call the variation-aware read with parent+variation ids for a grouped-variant record, and not report it removed when the variation is live', async () => {
+      productsService.getVariant.mockResolvedValue({ productId: 'ol_product_a' });
+      productsService.getVariantsByProductId.mockResolvedValue([
+        { id: 'ol_variant_a' },
+        { id: 'ol_variant_b' },
+      ]); // multi-variant → grouped
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: 'wc-parent-1', connectionId: CONN, entityType: 'ShopProduct', platformType: 'woocommerce' },
+      ]);
+      adapter.getShopVariationStatus = jest
+        .fn()
+        .mockResolvedValue({ publicationStatus: SHOP_PUBLICATION_STATUS.Published });
+
+      const result = await service.sync(CONN, { limit: 100 });
+
+      expect(adapter.getShopVariationStatus).toHaveBeenCalledWith('wc-parent-1', 'wc-1');
+      expect(adapter.getShopProductStatus).not.toHaveBeenCalled();
+      expect(result.removed).toBe(0);
+      expect(snapshots.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ publicationStatus: SHOP_PUBLICATION_STATUS.Published }),
+      );
+    });
+
+    it('should fall back to getShopProductStatus when grouped but no parent mapping is resolvable', async () => {
+      productsService.getVariantsByProductId.mockResolvedValue([
+        { id: 'ol_variant_a' },
+        { id: 'ol_variant_b' },
+      ]);
+      identifierMapping.getExternalIds.mockResolvedValue([]); // no parent mapping yet
+      adapter.getShopVariationStatus = jest.fn();
+
+      await service.sync(CONN, { limit: 100 });
+
+      expect(adapter.getShopVariationStatus).not.toHaveBeenCalled();
+      expect(adapter.getShopProductStatus).toHaveBeenCalledWith('wc-1');
+    });
+
+    it('should fall back to getShopProductStatus when the adapter does not implement getShopVariationStatus', async () => {
+      productsService.getVariantsByProductId.mockResolvedValue([
+        { id: 'ol_variant_a' },
+        { id: 'ol_variant_b' },
+      ]);
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: 'wc-parent-1', connectionId: CONN, entityType: 'ShopProduct', platformType: 'woocommerce' },
+      ]);
+      // adapter.getShopVariationStatus intentionally left undefined.
+
+      await service.sync(CONN, { limit: 100 });
+
+      expect(adapter.getShopProductStatus).toHaveBeenCalledWith('wc-1');
+    });
   });
 });

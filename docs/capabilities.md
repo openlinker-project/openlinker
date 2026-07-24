@@ -86,17 +86,19 @@ declare what they support via `implements <BasePort>, <SubCapability>, …`.
 section); Erli implements a reconciliation-first subset
 ([ADR-025](./architecture/adrs/025-erli-marketplace-adapter.md)).
 
-### `ShopProductManagerPort` (listings) — 3
+### `ShopProductManagerPort` (listings) — 4
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
 | `CategoryProvisioner` | Create / ensure a category exists on the destination shop before publishing. Also a registry-level capability (`CategoryProvisioner` ∈ `CoreCapabilityValues`). | `provisionCategory` | `isCategoryProvisioner` |
 | `ShopCategoryBrowser` | Browse the shop's existing category tree (drill-down by parent) so an operator can pick a placement — the shop-side sibling of the marketplace `CategoryBrowser`. Every node is selectable (no leaf gate). Advertised-without-dispatch (not in `CoreCapabilityValues`): declared in the manifest for discovery, resolved by narrowing the `ProductPublisher` adapter. | `browseCategories` | `isShopCategoryBrowser` |
 | `ShopAttributeReader` | Read the shop's store-wide global product attributes + their predefined terms so an operator can pick a structured attribute (linked on publish as `pa_*` + term ids), with free-text custom attributes as the fallback. Advertised-without-dispatch (not in `CoreCapabilityValues`): declared in the manifest for discovery, resolved by narrowing the `ProductPublisher` adapter. | `listAttributes`, `listAttributeTerms` | `isShopAttributeReader` |
+| `ShopProductStatusReader` | Read a previously-published product's live shop-side publication status for the steady-state `ShopStatusSyncService` reconcile (#1845) — the shop-side sibling of `OfferStatusReader`. Optional `getShopVariationStatus` reads a grouped/multi-variant publish's CHILD variation status scoped under its parent (a variation lives at a different shop-native resource than a standalone simple product). Advertised-without-dispatch (not in `CoreCapabilityValues`): declared in the manifest for discovery, resolved by narrowing the `ProductPublisher` adapter. | `getShopProductStatus`, `getShopVariationStatus?` | `isShopProductStatusReader` |
 
 **Adapter coverage:** WooCommerce implements `CategoryProvisioner` (write),
-`ShopCategoryBrowser` (read, #1834), and `ShopAttributeReader` (read, #1835) on
-its `ProductPublisher` adapter.
+`ShopCategoryBrowser` (read, #1834), `ShopAttributeReader` (read, #1835), and
+`ShopProductStatusReader` (read, #1845, including the grouped-variation-aware
+read) on its `ProductPublisher` adapter.
 
 ### `OrderProcessorManagerPort` / `OrderSourcePort` (orders) — 5
 

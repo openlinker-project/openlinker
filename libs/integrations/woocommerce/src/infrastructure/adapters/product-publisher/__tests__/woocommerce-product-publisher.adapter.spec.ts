@@ -621,6 +621,37 @@ describe('WooCommerceProductPublisherAdapter', () => {
       // Never reached the variation call — the parent upsert failed first.
       expect(http.post).not.toHaveBeenCalled();
     });
+
+    it('should omit sale_price/date_on_sale fields from the parent body while the variation body still carries them (whole-epic review finding #3)', async () => {
+      http.post.mockResolvedValueOnce({ id: 500 }).mockResolvedValueOnce({ id: 501 });
+
+      await adapter.publishProduct(
+        baseCommand({
+          variantGroup: { ...variantGroup, externalParentProductId: null },
+          commerce: {
+            salePrice: { amount: 9.99, currency: 'PLN' },
+            saleStartsAt: '2026-01-01T00:00:00Z',
+            saleEndsAt: '2026-02-01T00:00:00Z',
+            taxClass: 'reduced-rate',
+          },
+        }),
+      );
+
+      const parentBody = http.post.mock.calls[0][1] as Record<string, unknown>;
+      expect(parentBody).not.toHaveProperty('sale_price');
+      expect(parentBody).not.toHaveProperty('date_on_sale_from_gmt');
+      expect(parentBody).not.toHaveProperty('date_on_sale_to_gmt');
+      // Non-price commerce fields still apply to the parent.
+      expect(parentBody).toMatchObject({ tax_class: 'reduced-rate' });
+
+      const variationBody = http.post.mock.calls[1][1] as Record<string, unknown>;
+      expect(variationBody).toMatchObject({
+        sale_price: '9.99',
+        date_on_sale_from_gmt: '2026-01-01T00:00:00Z',
+        date_on_sale_to_gmt: '2026-02-01T00:00:00Z',
+        tax_class: 'reduced-rate',
+      });
+    });
   });
 
   describe('provisionCategory', () => {
@@ -816,6 +847,33 @@ describe('WooCommerceProductPublisherAdapter', () => {
       http.get.mockRejectedValue(new WooCommerceHttpResponseException(500, 'boom'));
 
       await expect(adapter.getShopProductStatus('42')).rejects.toBeInstanceOf(
+        WooCommerceHttpResponseException,
+      );
+    });
+  });
+
+  describe('getShopVariationStatus (whole-epic review finding #2)', () => {
+    it('should read the variation-scoped resource under its parent', async () => {
+      http.get.mockResolvedValue({ id: 501, status: 'publish' });
+
+      const result = await adapter.getShopVariationStatus('500', '501');
+
+      expect(http.get).toHaveBeenCalledWith('/wp-json/wc/v3/products/500/variations/501');
+      expect(result).toEqual({ publicationStatus: 'published' });
+    });
+
+    it('should map a 404 to removed (variation deleted/trashed shop-side)', async () => {
+      http.get.mockRejectedValue(new WooCommerceHttpResponseException(404, 'not found'));
+
+      const result = await adapter.getShopVariationStatus('500', '999');
+
+      expect(result).toEqual({ publicationStatus: 'removed' });
+    });
+
+    it('should propagate a non-404 transport error for worker retry', async () => {
+      http.get.mockRejectedValue(new WooCommerceHttpResponseException(500, 'boom'));
+
+      await expect(adapter.getShopVariationStatus('500', '501')).rejects.toBeInstanceOf(
         WooCommerceHttpResponseException,
       );
     });
