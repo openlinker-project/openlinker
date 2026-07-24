@@ -6,6 +6,20 @@
  * create-offer wizard and the listings API request type) import from here.
  */
 export type { CreateOfferRequest } from './api/listings.types';
+export {
+  selectPublishDestinations,
+  publishDestinationKind,
+  PUBLISH_DESTINATION_KIND_HINT,
+  PUBLISH_DESTINATION_GROUP_LABEL,
+  PUBLISH_DESTINATION_KIND_ORDER,
+  MARKETPLACE_PUBLISH_CAPABILITY,
+  SHOP_PUBLISH_CAPABILITY,
+} from './lib/publish-destinations';
+export type {
+  PublishDestination,
+  PublishDestinationKind,
+} from './lib/publish-destinations';
+export { PublishDestinationRail } from './components/publish-destination-rail';
 export { ErliBulkConfigSection } from './components/erli/erli-bulk-config-section';
 export { erliBulkConfigIsComplete } from './components/erli/erli-offer-fields.schema';
 export { ErliBulkRowSection } from './components/erli/erli-bulk-row-section';

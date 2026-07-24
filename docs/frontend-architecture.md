@@ -403,6 +403,39 @@ Naming conventions:
 - route modules: `*.route.tsx`
 - tests: `*.test.tsx`
 
+### Unified publish flow (#1828)
+
+Publishing a product to a channel is a **single operator intent** with one entry
+point. The Listings page exposes one **"Publish products"** action (the former
+separate "Create offer" + "Publish to shop" CTAs are folded together); the
+Products page per-row **"+ Publish"** CTA and bulk **"Publish products / Publish
+to {name}"** CTA share the same flow.
+
+- **Eligibility is capability-driven, never `platformType`.** `selectPublishDestinations`
+  (`features/listings/lib/publish-destinations.ts`, re-exported from the
+  `features/listings` barrel) classifies every active connection as a
+  `'marketplace'` (advertises the `OfferCreator` sub-capability, via
+  `supportedCapabilities`) or a `'shop'` (has **enabled** `ProductPublisher`,
+  via `enabledCapabilities`). It returns `null` for connections that are
+  neither.
+- **The destination rail groups by kind** (Marketplaces / Online shops) with a
+  capability-driven hint (`PUBLISH_DESTINATION_KIND_HINT`), single-select. A sole
+  eligible destination auto-resolves. Both pickers render the shared
+  `PublishDestinationRail` (`features/listings/components`), which owns the
+  WAI-ARIA radiogroup keyboard contract - a single tab stop via roving
+  `tabindex` plus Arrow / Home / End to move-and-select (mirroring the
+  `SegmentedControl` primitive) - so the markup and its a11y live in one place.
+- **Continue dispatches by kind.** A marketplace navigates to the bulk-create
+  wizard route (`/listings/bulk-create/wizard?productIds=…&variantIds=…&connectionId=…`,
+  destination-agnostic). A shop hands off to the retained `ShopPublishLauncher`
+  (its `preselectedConnectionId` prop skips the launcher's own picker). The
+  launcher is kept wired but has no standalone CTA.
+- **Deferred to #1829 / #1830.** Folding the shop path into the bulk-create
+  wizard route (so shop and marketplace share one wizard + dispatch) is #1829;
+  shop edit mode is #1830. Until #1829 lands, `ShopPublishLauncher` is the shop
+  wizard, and the marketplace `BulkConfigStep` blocks Proceed for any connection
+  without a per-platform config section (e.g. a shop reached by direct URL).
+
 ### UI Library Policy
 
 No **styled** external UI library (no shadcn/ui, MUI, Mantine, Chakra, Ant Design). Visual opinions are ours — every pixel is vanilla CSS against the tokens in `apps/web/src/index.css`.

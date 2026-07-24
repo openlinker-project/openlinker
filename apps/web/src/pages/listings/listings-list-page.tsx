@@ -11,11 +11,7 @@ import { TimeDisplay } from '../../shared/ui/time-display';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
 import { OfferProductPickerModal } from '../../features/listings/components/offer-product-picker-modal';
-import {
-  ShopPublishLauncher,
-  selectShopPublishConnections,
-} from '../../features/listings/components/ShopPublishLauncher';
-import { useConnectionsQuery } from '../../features/connections';
+import { ShopPublishLauncher } from '../../features/listings/components/ShopPublishLauncher';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import type {
@@ -143,17 +139,21 @@ export function ListingsListPage(): ReactElement {
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
 
-  const connectionsQuery = useConnectionsQuery();
-  const shopPublishConnections = selectShopPublishConnections(connectionsQuery.data ?? []);
-  const canPublishToShop = shopPublishConnections.length > 0;
   const demoMode = useDemoMode();
-  // "Create offer" and "Publish to shop" both open a wizard first — visible
+  // The unified "Publish products" entry opens a picker first — visible
   // (enabled) for a demo viewer per the useWriteAccess + ReadOnlyLock pattern
-  // (#1615/#1613); the wizards themselves gate their own final submit (#1663).
+  // (#1615/#1613); the downstream wizard gates its own final submit (#1663).
   const write = useWriteAccess('listings:write', demoMode);
 
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+  // Shop destinations chosen in the unified picker hand off to the retained
+  // ShopPublishLauncher (kept wired but hidden — no standalone CTA — until the
+  // wizard branch #1829 folds the shop path into the bulk-create route).
   const [isShopPublishOpen, setIsShopPublishOpen] = useState(false);
+  const [shopHandoff, setShopHandoff] = useState<{
+    connectionId: string;
+    variantIds: string[];
+  } | null>(null);
 
   return (
     <PageLayout
@@ -162,14 +162,7 @@ export function ListingsListPage(): ReactElement {
       description="Offer mapping workbench — browse offer-to-variant identifier mappings across platforms."
       actions={
         write.visible ? (
-          <>
-            <Button onClick={() => setIsWizardOpen(true)}>Create offer</Button>
-            {canPublishToShop ? (
-              <Button tone="secondary" onClick={() => setIsShopPublishOpen(true)}>
-                Publish to shop
-              </Button>
-            ) : null}
-          </>
+          <Button onClick={() => setIsWizardOpen(true)}>Publish products</Button>
         ) : null
       }
     >
@@ -281,9 +274,21 @@ export function ListingsListPage(): ReactElement {
       <OfferProductPickerModal
         isOpen={isWizardOpen}
         onClose={() => setIsWizardOpen(false)}
+        onPublishToShop={(handoff) => {
+          setShopHandoff({ connectionId: handoff.connectionId, variantIds: handoff.variantIds });
+          setIsShopPublishOpen(true);
+        }}
       />
 
-      <ShopPublishLauncher open={isShopPublishOpen} onOpenChange={setIsShopPublishOpen} />
+      <ShopPublishLauncher
+        open={isShopPublishOpen}
+        onOpenChange={(open) => {
+          setIsShopPublishOpen(open);
+          if (!open) setShopHandoff(null);
+        }}
+        preselectedConnectionId={shopHandoff?.connectionId}
+        defaultVariantIds={shopHandoff?.variantIds}
+      />
     </PageLayout>
   );
 }

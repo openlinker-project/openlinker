@@ -55,6 +55,8 @@ import {
 } from '../../features/products/api/products.types';
 import { useConnectionsQuery } from '../../features/connections';
 import type { Connection } from '../../features/connections';
+import { selectPublishDestinations } from '../../features/listings';
+import { ShopPublishLauncher } from '../../features/listings/components/ShopPublishLauncher';
 import {
   deriveStockStatus,
   STOCK_STATUS_BADGE_TONE,
@@ -206,6 +208,14 @@ export function ProductsListPage(): ReactElement {
   // Set when the per-row "+ Create offers" CTA opened the picker for a single
   // product (instead of the bulk selection).
   const [pendingProductId, setPendingProductId] = useState<string | null>(null);
+  // Shop destinations chosen from the publish CTAs hand off to the retained
+  // ShopPublishLauncher (kept wired but hidden — no standalone CTA — until the
+  // wizard branch #1829 folds the shop path into the bulk-create route).
+  // TODO(#1829/#1830): thread the product + variant context into the shop
+  // wizard so the per-row CTA prefills like the marketplace route does; today
+  // the launcher opens its own product picker for the chosen shop connection.
+  const [isShopPublishOpen, setIsShopPublishOpen] = useState(false);
+  const [shopHandoffConnectionId, setShopHandoffConnectionId] = useState<string | null>(null);
 
   // Capability-gated create-offers action (#1096): select target connections by
   // the `OfferManager` capability — never a literal platformType. Display names
@@ -233,6 +243,20 @@ export function ProductsListPage(): ReactElement {
     [offerManagerConnections],
   );
   const gapsCsv = offerCreatorIds.join(',');
+
+  // Unified publish targets (#1828): offer marketplaces (OfferCreator) OR
+  // online shops (ProductPublisher), capability-driven. Drives the publish
+  // CTAs + picker; the offer-coverage surfaces (gaps KPI, "Unlisted on" chips,
+  // coverage pills, per-row gap detection) stay keyed to the marketplace
+  // `offerManagerConnections` subset above, since coverage is offer-based.
+  const publishDestinations = useMemo(
+    () => selectPublishDestinations(connectionsQuery.data ?? []),
+    [connectionsQuery.data],
+  );
+  const hasShopDestination = useMemo(
+    () => publishDestinations.some((d) => d.kind === 'shop'),
+    [publishDestinations],
+  );
 
   // Source select lists ALL active connections (any capability); the cockpit
   // source axis is about provenance, not offer creation.
@@ -464,34 +488,50 @@ export function ProductsListPage(): ReactElement {
     [navigate],
   );
 
-  // Capability-aware bulk launch: 1 connection → straight to wizard
-  // (preselected); 2+ → marketplace-picker modal. (0 hides the action.)
+  // Dispatch a resolved destination by kind (#1828): a marketplace goes to the
+  // bulk-create wizard; a shop hands off to the retained ShopPublishLauncher.
+  const dispatchPublish = useCallback(
+    (productIds: readonly string[], connectionId: string) => {
+      const destination = publishDestinations.find((d) => d.connection.id === connectionId);
+      if (!destination) return;
+      if (destination.kind === 'shop') {
+        setShopHandoffConnectionId(connectionId);
+        setIsShopPublishOpen(true);
+        return;
+      }
+      goToWizard(productIds, connectionId);
+    },
+    [publishDestinations, goToWizard],
+  );
+
+  // Capability-aware bulk launch: 1 destination → dispatch straight;
+  // 2+ → grouped destination picker. (0 hides the action.)
   const handleCreateOffers = useCallback(() => {
-    if (offerManagerConnections.length === 1) {
-      goToWizard(Array.from(selectedIds), offerManagerConnections[0]!.id);
-    } else if (offerManagerConnections.length > 1) {
+    if (publishDestinations.length === 1) {
+      dispatchPublish(Array.from(selectedIds), publishDestinations[0]!.connection.id);
+    } else if (publishDestinations.length > 1) {
       setPendingProductId(null);
       setPickerOpen(true);
     }
-  }, [offerManagerConnections, goToWizard, selectedIds]);
+  }, [publishDestinations, dispatchPublish, selectedIds]);
 
   // Per-row "+ Create offers" CTA — same launch, single product preselected.
   const handleCreateOffersForProduct = useCallback(
     (productId: string) => {
-      if (offerManagerConnections.length === 1) {
-        goToWizard([productId], offerManagerConnections[0]!.id);
-      } else if (offerManagerConnections.length > 1) {
+      if (publishDestinations.length === 1) {
+        dispatchPublish([productId], publishDestinations[0]!.connection.id);
+      } else if (publishDestinations.length > 1) {
         setPendingProductId(productId);
         setPickerOpen(true);
       }
     },
-    [offerManagerConnections, goToWizard],
+    [publishDestinations, dispatchPublish],
   );
 
   const soleConnectionName =
-    offerManagerConnections.length === 1
-      ? (platforms.find((p) => p.platformType === offerManagerConnections[0]!.platformType)
-          ?.displayName ?? offerManagerConnections[0]!.platformType)
+    publishDestinations.length === 1
+      ? (platforms.find((p) => p.platformType === publishDestinations[0]!.connection.platformType)
+          ?.displayName ?? publishDestinations[0]!.connection.platformType)
       : null;
 
   const atCap = selectedIds.size >= BULK_SELECTION_CAP;
@@ -650,7 +690,7 @@ export function ProductsListPage(): ReactElement {
         cell: (product) => (
           <span className="products-cell-stack">
             {renderCoveragePills(product)}
-            {write.visible && hasListingGap(product) ? (
+            {write.visible && (hasListingGap(product) || hasShopDestination) ? (
               <Button
                 tone="ghost"
                 className="button--sm products-row-cta"
@@ -658,7 +698,7 @@ export function ProductsListPage(): ReactElement {
                   handleCreateOffersForProduct(product.id);
                 }}
               >
-                + Create offers
+                + Publish
               </Button>
             ) : null}
           </span>
@@ -710,6 +750,7 @@ export function ProductsListPage(): ReactElement {
       platformLabel,
       write.visible,
       hasListingGap,
+      hasShopDestination,
       handleCreateOffersForProduct,
     ],
   );
@@ -1070,12 +1111,12 @@ export function ProductsListPage(): ReactElement {
                     <Button tone="ghost" className="button--sm" onClick={clearSelection}>
                       Clear
                     </Button>
-                    {/* Capability-gated (#1096): hidden with 0 OfferManager connections. */}
-                    {offerManagerConnections.length > 0 && write.visible ? (
+                    {/* Capability-gated (#1096/#1828): hidden with 0 publish destinations. */}
+                    {publishDestinations.length > 0 && write.visible ? (
                       <Button tone="primary" onClick={handleCreateOffers}>
                         {soleConnectionName
-                          ? `Create ${soleConnectionName} offers (${selectedIds.size.toLocaleString()})`
-                          : `Create offers (${selectedIds.size.toLocaleString()})`}
+                          ? `Publish to ${soleConnectionName} (${selectedIds.size.toLocaleString()})`
+                          : `Publish products (${selectedIds.size.toLocaleString()})`}
                       </Button>
                     ) : null}
                   </>
@@ -1204,13 +1245,22 @@ export function ProductsListPage(): ReactElement {
               if (!open) setPendingProductId(null);
             }}
             productCount={pendingProductId ? 1 : selectedIds.size}
-            connections={offerManagerConnections}
+            destinations={publishDestinations}
             onContinue={(connectionId) => {
               setPickerOpen(false);
               const ids = pendingProductId ? [pendingProductId] : Array.from(selectedIds);
               setPendingProductId(null);
-              goToWizard(ids, connectionId);
+              dispatchPublish(ids, connectionId);
             }}
+          />
+
+          <ShopPublishLauncher
+            open={isShopPublishOpen}
+            onOpenChange={(open) => {
+              setIsShopPublishOpen(open);
+              if (!open) setShopHandoffConnectionId(null);
+            }}
+            preselectedConnectionId={shopHandoffConnectionId ?? undefined}
           />
         </>
       )}

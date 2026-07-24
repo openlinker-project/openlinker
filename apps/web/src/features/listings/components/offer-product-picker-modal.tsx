@@ -20,20 +20,25 @@
  * Selection persists across pagination and search changes, keyed by product
  * id to `'ALL'` (whole product) or a `Set<variantId>` (explicit subset).
  *
- * Connection resolution happens inside the modal (R1 - the picker never
- * imports from `pages/`): active connections advertising the `OfferCreator`
- * sub-capability are eligible; exactly one auto-resolves, several render a
- * `<Select>`, none renders a warning.
+ * Destination resolution happens inside the modal (R1 - the picker never
+ * imports from `pages/`): active connections that are either an offer
+ * marketplace (`OfferCreator`) or an online shop (`ProductPublisher`) are
+ * eligible (#1828). The right rail groups them by kind (Marketplaces /
+ * Online shops) with a capability-driven hint - never a `platformType`
+ * literal - as a single-select radio list. Exactly one destination
+ * auto-resolves; none renders a warning.
  *
  * Closing via X / Cancel / esc / outside-click is routed through a discard
  * guard: a pending selection opens a `ConfirmDialog` before the modal closes.
  *
- * Continue navigates into the bulk wizard route
- * (`/listings/bulk-create/wizard?productIds=...&variantIds=...&connectionId=...`).
- * Products picked whole contribute no `variantIds` (the wizard then seeds all
- * their variants); products picked at variant granularity contribute their
- * explicit subset. Absent `variantIds` keeps the `/products` entry point
- * byte-identical.
+ * Continue dispatches by destination kind. A **marketplace** destination
+ * navigates into the bulk wizard route
+ * (`/listings/bulk-create/wizard?productIds=...&variantIds=...&connectionId=...`);
+ * products picked whole contribute no `variantIds` (the wizard then seeds all
+ * their variants), products picked at variant granularity contribute their
+ * explicit subset. A **shop** destination hands off to the caller's
+ * `onPublishToShop` (today the retained, hidden `ShopPublishLauncher`, until
+ * the wizard branch #1829 folds the shop path into the same route).
  *
  * @module apps/web/src/features/listings/components
  */
@@ -59,13 +64,13 @@ import {
 } from '../../../shared/ui/dialog';
 import { Input } from '../../../shared/ui/input';
 import { ProductThumbnail } from '../../../shared/ui/product-thumbnail';
-import { Select } from '../../../shared/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../shared/ui/tooltip';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
 import { useConnectionsQuery } from '../../connections';
-import type { Connection } from '../../connections';
 import { useProductQuery, useProductsQuery } from '../../products';
 import type { Product, ProductVariant } from '../../products';
+import { selectPublishDestinations } from '../lib/publish-destinations';
+import { PublishDestinationRail } from './publish-destination-rail';
 
 /** Max distinct products per batch (mirrors the `/products` BULK_SELECTION_CAP,
  *  kept local per R1 to avoid a `features -> pages` import). */
@@ -79,21 +84,24 @@ type SelectionEntry = 'ALL' | Set<string>;
 /** Two-step wizard step (meaningful only <=1023px; desktop shows both regions). */
 type PickerStep = 'products' | 'review';
 
+/** Args handed to the caller when a shop destination is chosen (#1828). */
+export interface PublishToShopHandoff {
+  connectionId: string;
+  productIds: string[];
+  /** Best-effort known variant ids (explicit subset picks + loaded whole-product variants). */
+  variantIds: string[];
+}
+
 interface OfferProductPickerModalProps {
   isOpen: boolean;
   onClose: () => void;
-}
-
-/**
- * Marketplace connections eligible for offer creation. Filters by the
- * `OfferCreator` sub-capability (#1498) and active status, sorted by name.
- * Mirrors the retired launcher's `selectMarketplaceConnections`.
- */
-function selectOfferCreatorConnections(all: ReadonlyArray<Connection>): Connection[] {
-  return all
-    .filter((c) => c.status === 'active' && c.supportedCapabilities.includes('OfferCreator'))
-    .slice()
-    .sort((a, b) => a.name.localeCompare(b.name));
+  /**
+   * Invoked instead of the marketplace navigation when the chosen destination
+   * is an online shop (`ProductPublisher`). The listings page routes this to
+   * the retained `ShopPublishLauncher` (#1828). When omitted, shop
+   * destinations are not surfaced.
+   */
+  onPublishToShop?: (handoff: PublishToShopHandoff) => void;
 }
 
 function variantLabel(product: Product, variant: ProductVariant): string {
@@ -317,6 +325,7 @@ interface RailGroup {
 export function OfferProductPickerModal({
   isOpen,
   onClose,
+  onPublishToShop,
 }: OfferProductPickerModalProps): ReactElement | null {
   const navigate = useNavigate();
 
@@ -358,17 +367,24 @@ export function OfferProductPickerModal({
   }, [isOpen]);
 
   const connectionsQuery = useConnectionsQuery();
-  const eligibleConnections = useMemo(
-    () => selectOfferCreatorConnections(connectionsQuery.data ?? []),
-    [connectionsQuery.data],
-  );
+  const eligibleDestinations = useMemo(() => {
+    const all = selectPublishDestinations(connectionsQuery.data ?? []);
+    // Shop destinations are only offered when the caller can dispatch them.
+    return onPublishToShop ? all : all.filter((d) => d.kind === 'marketplace');
+  }, [connectionsQuery.data, onPublishToShop]);
 
-  // Auto-resolve when exactly one eligible connection exists; otherwise the
-  // operator picks from the `<Select>` (or gets a warning when none exist).
+  // Auto-resolve when exactly one eligible destination exists; otherwise the
+  // operator picks one from the grouped rail (or gets a warning when none exist).
   const resolvedConnectionId =
-    eligibleConnections.length === 1
-      ? eligibleConnections[0]!.id
+    eligibleDestinations.length === 1
+      ? eligibleDestinations[0]!.connection.id
       : pickedConnectionId || null;
+
+  const resolvedDestination =
+    resolvedConnectionId !== null
+      ? eligibleDestinations.find((d) => d.connection.id === resolvedConnectionId) ?? null
+      : null;
+  const resolvedKind = resolvedDestination?.kind ?? null;
 
   const productsQuery = useProductsQuery(
     { search: debouncedSearch || undefined },
@@ -562,17 +578,33 @@ export function OfferProductPickerModal({
     if (selection.size === 0 || resolvedConnectionId === null) return;
     const productIds: string[] = [];
     const variantIds: string[] = [];
+    // Best-effort variant ids for the shop handoff: whole-product picks
+    // contribute their loaded variant ids when known (the marketplace route
+    // instead lets the bulk wizard hydrate them from productIds).
+    const shopVariantIds: string[] = [];
     for (const [productId, entry] of selection) {
       productIds.push(productId);
       if (entry instanceof Set) {
-        for (const variantId of entry) variantIds.push(variantId);
+        for (const variantId of entry) {
+          variantIds.push(variantId);
+          shopVariantIds.push(variantId);
+        }
+      } else {
+        for (const v of variantMeta.get(productId) ?? []) shopVariantIds.push(v.id);
       }
     }
+
+    if (resolvedKind === 'shop' && onPublishToShop) {
+      onPublishToShop({ connectionId: resolvedConnectionId, productIds, variantIds: shopVariantIds });
+      onClose();
+      return;
+    }
+
     const params = new URLSearchParams({ productIds: productIds.join(',') });
     if (variantIds.length > 0) params.set('variantIds', variantIds.join(','));
     params.set('connectionId', resolvedConnectionId);
     void navigate(`/listings/bulk-create/wizard?${params.toString()}`);
-  }, [selection, resolvedConnectionId, navigate]);
+  }, [selection, resolvedConnectionId, resolvedKind, onPublishToShop, onClose, variantMeta, navigate]);
 
   // Discard guard: a pending selection intercepts every close path (X, Cancel,
   // esc, outside-click) with a confirm; an empty selection closes directly.
@@ -596,7 +628,8 @@ export function OfferProductPickerModal({
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
   const canContinue = selection.size > 0 && resolvedConnectionId !== null;
-  const selectionSummary = `${itemCount} ${itemCount === 1 ? 'offer' : 'offers'} selected across ${
+  const itemNoun = resolvedKind === 'shop' ? 'product listing' : 'offer';
+  const selectionSummary = `${itemCount} ${itemCount === 1 ? itemNoun : `${itemNoun}s`} selected across ${
     selection.size
   } ${selection.size === 1 ? 'product' : 'products'}`;
 
@@ -636,10 +669,10 @@ export function OfferProductPickerModal({
           </span>
 
           <header className="offer-product-picker__head">
-            <DialogTitle className="offer-product-picker__title">Create offers</DialogTitle>
+            <DialogTitle className="offer-product-picker__title">Publish products</DialogTitle>
             <DialogDescription className="offer-product-picker__sub">
-              Pick whole products or individual variants, mix across products - it all becomes one
-              batch.
+              Pick whole products or individual variants, mix across products, then choose a
+              marketplace or shop to publish to - it all becomes one batch.
             </DialogDescription>
           </header>
 
@@ -753,7 +786,7 @@ export function OfferProductPickerModal({
               {/* Step-1 action bar - visible only on the <=1023px two-step layout. */}
               <div className="offer-product-picker__mstep-next">
                 <span className="offer-product-picker__mstep-count">
-                  <b>{itemCount}</b> {itemCount === 1 ? 'offer' : 'offers'} · {selection.size}{' '}
+                  <b>{itemCount}</b> {itemCount === 1 ? itemNoun : `${itemNoun}s`} · {selection.size}{' '}
                   {selection.size === 1 ? 'product' : 'products'}
                 </span>
                 <Button type="button" onClick={() => setStep('review')}>
@@ -790,7 +823,9 @@ export function OfferProductPickerModal({
               <div className="offer-product-picker__rail-counts">
                 <div>
                   <span className="offer-product-picker__rail-n tabular">{itemCount}</span>
-                  <span className="offer-product-picker__rail-lbl">offers</span>
+                  <span className="offer-product-picker__rail-lbl">
+                    {resolvedKind === 'shop' ? 'listings' : 'offers'}
+                  </span>
                 </div>
                 <div>
                   <span className="offer-product-picker__rail-n tabular">{selection.size}</span>
@@ -901,7 +936,7 @@ export function OfferProductPickerModal({
 
               <div className="offer-product-picker__rail-foot">
                 {connectionsQuery.isLoading ? (
-                  <p className="muted-text">Loading marketplace connections…</p>
+                  <p className="muted-text">Loading destinations…</p>
                 ) : connectionsQuery.error ? (
                   <Alert
                     tone="error"
@@ -918,35 +953,22 @@ export function OfferProductPickerModal({
                   >
                     {connectionsQuery.error.message}
                   </Alert>
-                ) : eligibleConnections.length === 0 ? (
-                  <Alert tone="warning" title="No marketplace connections available">
-                    Add an active connection that supports offer creation before publishing offers.
+                ) : eligibleDestinations.length === 0 ? (
+                  <Alert tone="warning" title="No publish destinations available">
+                    Add an active marketplace (offer creation) or online shop (product publishing)
+                    connection before publishing.
                   </Alert>
                 ) : (
                   <div className="offer-product-picker__rail-conn">
-                    <label className="offer-product-picker__eyebrow" htmlFor="offerConnection">
+                    <span className="offer-product-picker__eyebrow" id="publishDestinationLabel">
                       Publish to <span className="offer-product-picker__req">*</span>
-                    </label>
-                    {eligibleConnections.length > 1 ? (
-                      <Select
-                        id="offerConnection"
-                        value={pickedConnectionId}
-                        onChange={(e) => setPickedConnectionId(e.target.value)}
-                        aria-label="Marketplace connection"
-                      >
-                        <option value="">Choose a connection…</option>
-                        {eligibleConnections.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name} ({c.platformType})
-                          </option>
-                        ))}
-                      </Select>
-                    ) : (
-                      <p className="muted-text offer-product-picker__resolved-connection">
-                        Publishing to: <strong>{eligibleConnections[0]!.name}</strong> (
-                        {eligibleConnections[0]!.platformType})
-                      </p>
-                    )}
+                    </span>
+                    <PublishDestinationRail
+                      destinations={eligibleDestinations}
+                      selectedConnectionId={resolvedConnectionId}
+                      onSelect={setPickedConnectionId}
+                      labelledBy="publishDestinationLabel"
+                    />
                   </div>
                 )}
 
@@ -975,10 +997,10 @@ export function OfferProductPickerModal({
                       </TooltipTrigger>
                       <TooltipContent>
                         {selection.size === 0
-                          ? 'Select at least one product, then choose a connection.'
-                          : eligibleConnections.length === 0
-                            ? 'Add an active connection that supports offer creation before publishing.'
-                            : 'Choose a connection to publish to first.'}
+                          ? 'Select at least one product, then choose a destination.'
+                          : eligibleDestinations.length === 0
+                            ? 'Add an active marketplace or shop connection before publishing.'
+                            : 'Choose a destination to publish to first.'}
                       </TooltipContent>
                     </Tooltip>
                   )}

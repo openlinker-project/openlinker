@@ -599,7 +599,7 @@ describe('ProductsListPage', () => {
     await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
 
     expect(
-      screen.getByRole('button', { name: 'Create Allegro offers (1)' }),
+      screen.getByRole('button', { name: 'Publish to Allegro (1)' }),
     ).toBeInTheDocument();
     expect(screen.getByRole('region', { name: '1 product selected' })).toBeInTheDocument();
   });
@@ -623,7 +623,7 @@ describe('ProductsListPage', () => {
     await user.click(headerCheckbox);
 
     expect(
-      screen.getByRole('button', { name: 'Create Allegro offers (2)' }),
+      screen.getByRole('button', { name: 'Publish to Allegro (2)' }),
     ).toBeInTheDocument();
 
     // After selecting all, header checkbox should be "Unselect all visible"
@@ -649,7 +649,7 @@ describe('ProductsListPage', () => {
     await screen.findByText('Test Product');
     await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
     expect(
-      screen.getByRole('button', { name: 'Create Allegro offers (1)' }),
+      screen.getByRole('button', { name: 'Publish to Allegro (1)' }),
     ).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Clear' }));
@@ -673,7 +673,7 @@ describe('ProductsListPage', () => {
     await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
     await user.click(screen.getByRole('checkbox', { name: 'Select Another Product' }));
 
-    const cta = screen.getByRole('button', { name: 'Create Allegro offers (2)' });
+    const cta = screen.getByRole('button', { name: 'Publish to Allegro (2)' });
     await user.click(cta);
 
     expect(navigateMock).toHaveBeenCalledTimes(1);
@@ -704,7 +704,7 @@ describe('ProductsListPage', () => {
     await screen.findByText('Test Product');
     // Only the first product has a gap (1 of 2 variants listed on Allegro);
     // the second is fully covered (1/1), so exactly one row CTA renders.
-    const ctas = await screen.findAllByRole('button', { name: '+ Create offers' });
+    const ctas = await screen.findAllByRole('button', { name: '+ Publish' });
     expect(ctas).toHaveLength(1);
     await user.click(ctas[0]);
 
@@ -726,7 +726,7 @@ describe('ProductsListPage', () => {
 
     await screen.findByText('Test Product');
     expect(
-      screen.queryByRole('button', { name: '+ Create offers' }),
+      screen.queryByRole('button', { name: '+ Publish' }),
     ).not.toBeInTheDocument();
   });
 
@@ -746,7 +746,7 @@ describe('ProductsListPage', () => {
 
     // The bar still shows (Clear) but the create CTA is absent.
     expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Create .*offers/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Publish/ })).not.toBeInTheDocument();
   });
 
   it('opens the marketplace picker with 2+ OfferManager connections', async () => {
@@ -772,11 +772,11 @@ describe('ProductsListPage', () => {
     await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
 
     // Generic label (no single marketplace name) with 2+ connections.
-    const cta = await screen.findByRole('button', { name: 'Create offers (1)' });
+    const cta = await screen.findByRole('button', { name: 'Publish products (1)' });
     await user.click(cta);
 
     // The picker modal appears; no navigation yet.
-    expect(await screen.findByText('Where should these list?')).toBeInTheDocument();
+    expect(await screen.findByText('Where should these publish?')).toBeInTheDocument();
     expect(navigateMock).not.toHaveBeenCalled();
   });
 
@@ -796,7 +796,7 @@ describe('ProductsListPage', () => {
     await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
 
     expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Create .*offers/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Publish/ })).not.toBeInTheDocument();
   });
 
   it('renders the create-offers CTA (enabled) for a demo read-only viewer', async () => {
@@ -815,7 +815,7 @@ describe('ProductsListPage', () => {
     await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
 
     expect(
-      await screen.findByRole('button', { name: 'Create Allegro offers (1)' }),
+      await screen.findByRole('button', { name: 'Publish to Allegro (1)' }),
     ).toBeEnabled();
   });
 });
