@@ -315,6 +315,15 @@ export type { ShopCategory } from './domain/types/shop-category.types';
 export type { ShopCategoryBrowser } from './domain/ports/capabilities/shop-category-browser.capability';
 export { isShopCategoryBrowser } from './domain/ports/capabilities/shop-category-browser.capability';
 export type { IShopCategoryBrowseService } from './application/interfaces/shop-category-browse.service.interface';
+// Shop-side global attribute read (#1835): read the destination's store-wide
+// global attributes + terms so an operator can pick a structured attribute
+// (linked on publish), with free-text custom attributes as the fallback.
+// Advertised-without-dispatch; narrowed from the `ProductPublisher` adapter via
+// `isShopAttributeReader`.
+export type { ShopAttribute, ShopAttributeTerm } from './domain/types/shop-attribute.types';
+export type { ShopAttributeReader } from './domain/ports/capabilities/shop-attribute-reader.capability';
+export { isShopAttributeReader } from './domain/ports/capabilities/shop-attribute-reader.capability';
+export type { IShopAttributeReadService } from './application/interfaces/shop-attribute-read.service.interface';
 // Taxonomy-borrowing sub-capability (#1045): a `borrows` destination (ERLI)
 // names the owner taxonomy whose category/parameter ids it reuses verbatim.
 export type { TaxonomyBorrower } from './domain/ports/capabilities/taxonomy-borrower.capability';

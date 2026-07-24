@@ -44,3 +44,6 @@ export const BULK_SHOP_PUBLISH_SUBMIT_SERVICE_TOKEN = Symbol('IBulkShopPublishSu
 
 // Shop-side category browse (#1834)
 export const SHOP_CATEGORY_BROWSE_SERVICE_TOKEN = Symbol('IShopCategoryBrowseService');
+
+// Shop-side global attribute read (#1835)
+export const SHOP_ATTRIBUTE_READ_SERVICE_TOKEN = Symbol('IShopAttributeReadService');

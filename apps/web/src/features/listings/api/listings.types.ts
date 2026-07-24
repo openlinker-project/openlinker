@@ -330,6 +330,24 @@ export interface ShopCategory {
   parentId: string | null;
 }
 
+/**
+ * A shop's store-wide global product attribute (#1835) — a reusable taxonomy the
+ * operator picks from (WooCommerce `pa_*`), distinct from a one-off free-text
+ * custom attribute. Terms are loaded on demand via `listShopAttributeTerms`.
+ */
+export interface ShopAttribute {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+/** One predefined term of a global attribute (#1835). */
+export interface ShopAttributeTerm {
+  id: string;
+  name: string;
+  slug: string;
+}
+
 export interface ShopPublishStatusResponse {
   id: string;
   internalVariantId: string;

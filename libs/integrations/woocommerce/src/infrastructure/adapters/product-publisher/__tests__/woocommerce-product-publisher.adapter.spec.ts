@@ -329,6 +329,66 @@ describe('WooCommerceProductPublisherAdapter', () => {
       expect(http.post.mock.calls[0][1]).not.toHaveProperty('attributes');
     });
 
+    it('should link a global attribute (numeric id + valuesIds) by id with term names as options (#1835)', async () => {
+      http.post.mockResolvedValue({ id: 45, status: 'publish' });
+
+      await adapter.publishProduct(
+        baseCommand({
+          parameters: [
+            { id: '6', values: ['Red', 'Blue'], valuesIds: ['31', '32'], section: 'product' },
+          ],
+        }),
+      );
+
+      const body = http.post.mock.calls[0][1] as Record<string, unknown>;
+      // Global attribute: emitted with the numeric attribute id + term names,
+      // never a custom `name`.
+      expect(body.attributes).toEqual([{ id: 6, options: ['Red', 'Blue'], visible: true }]);
+    });
+
+    it('should mix a global-attribute link and a free-text custom attribute (#1835)', async () => {
+      http.post.mockResolvedValue({ id: 46, status: 'publish' });
+
+      await adapter.publishProduct(
+        baseCommand({
+          parameters: [
+            { id: '6', values: ['Red'], valuesIds: ['31'], section: 'product' },
+            { id: 'Material', values: ['Cotton'], section: 'product' },
+          ],
+        }),
+      );
+
+      const body = http.post.mock.calls[0][1] as Record<string, unknown>;
+      expect(body.attributes).toEqual([
+        { id: 6, options: ['Red'], visible: true },
+        { name: 'Material', options: ['Cotton'], visible: true },
+      ]);
+    });
+
+    it('should drop a global-attribute param with term ids but no chosen term names (#1835)', async () => {
+      http.post.mockResolvedValue({ id: 47, status: 'publish' });
+
+      await adapter.publishProduct(
+        baseCommand({ parameters: [{ id: '6', valuesIds: ['31'], section: 'product' }] }),
+      );
+
+      expect(http.post.mock.calls[0][1]).not.toHaveProperty('attributes');
+    });
+
+    it('should treat a valuesIds param with a non-numeric id as a custom attribute fallback (#1835)', async () => {
+      http.post.mockResolvedValue({ id: 48, status: 'publish' });
+
+      await adapter.publishProduct(
+        baseCommand({
+          parameters: [{ id: 'Brand', values: ['Acme'], valuesIds: ['555'], section: 'product' }],
+        }),
+      );
+
+      const body = http.post.mock.calls[0][1] as Record<string, unknown>;
+      // Non-numeric id ⇒ not a WC global attribute; falls back to custom name.
+      expect(body.attributes).toEqual([{ name: 'Brand', options: ['Acme'], visible: true }]);
+    });
+
     it('should build a per-item slug from the stable internal variant id, ignoring SKU (#1846 fix 4)', async () => {
       http.post.mockResolvedValue({ id: 42, status: 'publish' });
 
@@ -570,6 +630,61 @@ describe('WooCommerceProductPublisherAdapter', () => {
       expect(result).toHaveLength(5000);
       expect(warnSpy).toHaveBeenCalledTimes(1);
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('50-page cap'));
+    });
+  });
+
+  describe('listAttributes / listAttributeTerms (#1835)', () => {
+    it('should list global attributes mapped to neutral ShopAttribute nodes', async () => {
+      http.get.mockResolvedValue([
+        { id: 6, name: 'Color', slug: 'pa_color' },
+        { id: 7, name: 'Size', slug: 'pa_size' },
+      ]);
+
+      const result = await adapter.listAttributes();
+
+      const [path, params] = http.get.mock.calls[0];
+      expect(path).toBe('/wp-json/wc/v3/products/attributes');
+      expect(params).toMatchObject({ per_page: 100, page: 1 });
+      expect(result).toEqual([
+        { id: '6', name: 'Color', slug: 'pa_color' },
+        { id: '7', name: 'Size', slug: 'pa_size' },
+      ]);
+    });
+
+    it('should list an attribute terms via the terms subresource', async () => {
+      http.get.mockResolvedValue([
+        { id: 31, name: 'Red', slug: 'red' },
+        { id: 32, name: 'Blue', slug: 'blue' },
+      ]);
+
+      const result = await adapter.listAttributeTerms('6');
+
+      expect(http.get.mock.calls[0][0]).toBe('/wp-json/wc/v3/products/attributes/6/terms');
+      expect(result).toEqual([
+        { id: '31', name: 'Red', slug: 'red' },
+        { id: '32', name: 'Blue', slug: 'blue' },
+      ]);
+    });
+
+    it('should page through terms until a short page is returned', async () => {
+      const fullPage = Array.from({ length: 100 }, (_, i) => ({
+        id: i + 1,
+        name: `Term ${i + 1}`,
+        slug: `term-${i + 1}`,
+      }));
+      http.get
+        .mockResolvedValueOnce(fullPage)
+        .mockResolvedValueOnce([{ id: 101, name: 'Term 101', slug: 'term-101' }]);
+
+      const result = await adapter.listAttributeTerms('6');
+
+      expect(http.get).toHaveBeenCalledTimes(2);
+      expect(http.get).toHaveBeenNthCalledWith(
+        2,
+        '/wp-json/wc/v3/products/attributes/6/terms',
+        expect.objectContaining({ page: 2 }),
+      );
+      expect(result).toHaveLength(101);
     });
   });
 });

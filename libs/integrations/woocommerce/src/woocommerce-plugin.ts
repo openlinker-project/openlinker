@@ -63,6 +63,13 @@ export const woocommerceAdapterManifest: AdapterMetadata = {
     // getCapabilityAdapter('ShopCategoryBrowser')). Backs the publish edit
     // flow's destination-category picker.
     'ShopCategoryBrowser',
+    // Shop-side global attribute read (#1835). Advertised-without-dispatch:
+    // declared here for host/FE discovery, resolved by narrowing the dispatched
+    // ProductPublisher adapter with `isShopAttributeReader` (never via
+    // getCapabilityAdapter('ShopAttributeReader')). Backs the publish edit flow's
+    // structured attribute picker (global attribute + terms; custom free-text
+    // fallback).
+    'ShopAttributeReader',
     // Inventory write-back to published products (#1498). Quantity-only —
     // WooCommerce is a destination shop, not a marketplace: no OfferCreator /
     // OfferLister sub-capabilities, so offer-creation flows (gated on

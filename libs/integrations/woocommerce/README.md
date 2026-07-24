@@ -21,16 +21,35 @@ WooCommerce REST API v3 adapter for OpenLinker — product catalog, inventory, a
 | `ProductPublisher` | Publish product content changes back to WooCommerce |
 | `CategoryProvisioner` | Create / ensure a category exists in WooCommerce before publishing |
 | `ShopCategoryBrowser` | Browse the store's existing category tree (drill-down by parent) so an operator can pick a placement |
+| `ShopAttributeReader` | Read the store's global product attributes (`pa_*`) + their predefined terms so an operator can pick a structured attribute; linked on publish |
 
 See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-capability catalog.
 
-`ShopCategoryBrowser` and `CategoryProvisioner` are sub-capabilities of
-`ShopProductManagerPort` implemented on the same `ProductPublisher` adapter
-instance; call sites narrow with `isShopCategoryBrowser` / `isCategoryProvisioner`.
+`ShopCategoryBrowser`, `ShopAttributeReader`, and `CategoryProvisioner` are
+sub-capabilities of `ShopProductManagerPort` implemented on the same
+`ProductPublisher` adapter instance; call sites narrow with
+`isShopCategoryBrowser` / `isShopAttributeReader` / `isCategoryProvisioner`.
 `ShopCategoryBrowser` reads `GET /wp-json/wc/v3/products/categories` scoped by
 `parent` (root when omitted), paged at the WooCommerce maximum `per_page=100`,
 and returns neutral `ShopCategory` nodes (`{ id, name, parentId }`) — every node
 is a valid placement target (no leaf gate), unlike a marketplace taxonomy.
+
+### Global vs custom attributes
+
+`ShopAttributeReader` reads `GET /wp-json/wc/v3/products/attributes` and
+`GET /wp-json/wc/v3/products/attributes/{id}/terms` (paged at `per_page=100`),
+returning neutral `ShopAttribute` / `ShopAttributeTerm` nodes (`{ id, name, slug }`).
+WooCommerce has two kinds of product attribute:
+
+- **Global** (`pa_*` taxonomies with predefined terms) — store-wide, reusable,
+  and the only kind that powers storefront filtering. On publish, a neutral
+  `OfferParameter` carrying `valuesIds` (term ids) plus a numeric `id` (the
+  global-attribute id) is emitted as `{ id, options: <term names>, visible }`,
+  which links the product to that attribute's existing terms.
+- **Custom** (free-text, per product) — the fallback for one-off attributes.
+  A parameter with no global linkage is emitted as `{ name, options, visible }`.
+  A custom parameter with no free-text values (or a global one with no chosen
+  terms) is dropped rather than written as an empty, valueless attribute row.
 
 ## Credentials & config
 
