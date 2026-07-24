@@ -56,7 +56,6 @@ import {
 import { useConnectionsQuery } from '../../features/connections';
 import type { Connection } from '../../features/connections';
 import { selectPublishDestinations } from '../../features/listings';
-import { ShopPublishLauncher } from '../../features/listings/components/ShopPublishLauncher';
 import {
   deriveStockStatus,
   STOCK_STATUS_BADGE_TONE,
@@ -208,14 +207,6 @@ export function ProductsListPage(): ReactElement {
   // Set when the per-row "+ Create offers" CTA opened the picker for a single
   // product (instead of the bulk selection).
   const [pendingProductId, setPendingProductId] = useState<string | null>(null);
-  // Shop destinations chosen from the publish CTAs hand off to the retained
-  // ShopPublishLauncher (kept wired but hidden — no standalone CTA — until the
-  // wizard branch #1829 folds the shop path into the bulk-create route).
-  // TODO(#1829/#1830): thread the product + variant context into the shop
-  // wizard so the per-row CTA prefills like the marketplace route does; today
-  // the launcher opens its own product picker for the chosen shop connection.
-  const [isShopPublishOpen, setIsShopPublishOpen] = useState(false);
-  const [shopHandoffConnectionId, setShopHandoffConnectionId] = useState<string | null>(null);
 
   // Capability-gated create-offers action (#1096): select target connections by
   // the `OfferManager` capability — never a literal platformType. Display names
@@ -488,17 +479,14 @@ export function ProductsListPage(): ReactElement {
     [navigate],
   );
 
-  // Dispatch a resolved destination by kind (#1828): a marketplace goes to the
-  // bulk-create wizard; a shop hands off to the retained ShopPublishLauncher.
+  // Dispatch a resolved destination to the bulk wizard (#1829): both a
+  // marketplace and a shop route into the same bulk-create wizard, which
+  // branches its steps + submit by the destination's capability. Product
+  // context is preserved end-to-end (no re-pick).
   const dispatchPublish = useCallback(
     (productIds: readonly string[], connectionId: string) => {
       const destination = publishDestinations.find((d) => d.connection.id === connectionId);
       if (!destination) return;
-      if (destination.kind === 'shop') {
-        setShopHandoffConnectionId(connectionId);
-        setIsShopPublishOpen(true);
-        return;
-      }
       goToWizard(productIds, connectionId);
     },
     [publishDestinations, goToWizard],
@@ -1252,15 +1240,6 @@ export function ProductsListPage(): ReactElement {
               setPendingProductId(null);
               dispatchPublish(ids, connectionId);
             }}
-          />
-
-          <ShopPublishLauncher
-            open={isShopPublishOpen}
-            onOpenChange={(open) => {
-              setIsShopPublishOpen(open);
-              if (!open) setShopHandoffConnectionId(null);
-            }}
-            preselectedConnectionId={shopHandoffConnectionId ?? undefined}
           />
         </>
       )}

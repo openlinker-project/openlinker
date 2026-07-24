@@ -425,16 +425,33 @@ to {name}"** CTA share the same flow.
   WAI-ARIA radiogroup keyboard contract - a single tab stop via roving
   `tabindex` plus Arrow / Home / End to move-and-select (mirroring the
   `SegmentedControl` primitive) - so the markup and its a11y live in one place.
-- **Continue dispatches by kind.** A marketplace navigates to the bulk-create
-  wizard route (`/listings/bulk-create/wizard?productIds=…&variantIds=…&connectionId=…`,
-  destination-agnostic). A shop hands off to the retained `ShopPublishLauncher`
-  (its `preselectedConnectionId` prop skips the launcher's own picker). The
-  launcher is kept wired but has no standalone CTA.
-- **Deferred to #1829 / #1830.** Folding the shop path into the bulk-create
-  wizard route (so shop and marketplace share one wizard + dispatch) is #1829;
-  shop edit mode is #1830. Until #1829 lands, `ShopPublishLauncher` is the shop
-  wizard, and the marketplace `BulkConfigStep` blocks Proceed for any connection
-  without a per-platform config section (e.g. a shop reached by direct URL).
+- **Continue dispatches to one route for both kinds (#1829).** Marketplace AND
+  shop both navigate to the bulk-create wizard route
+  (`/listings/bulk-create/wizard?productIds=…&variantIds=…&connectionId=…`,
+  destination-agnostic). Product + variant context is carried through the URL
+  identically - a whole-product pick contributes no `variantIds` (the wizard
+  seeds all variants), a variant-subset pick contributes its explicit ids.
+
+**Capability-branched bulk wizard (#1829).** `BulkWizard`
+(`features/listings/components/bulk/bulk-wizard.tsx`) resolves the destination's
+kind from the selected connection via `publishDestinationKind` (capability, never
+`platformType`) and branches its step model + submit:
+
+| Destination | Capability | Steps | Config section | Submit |
+|---|---|---|---|---|
+| Marketplace | `OfferCreator` | Config → Resolve → Review → Confirm | per-platform `bulkOfferConfigSection` (Allegro/Erli) | `useBulkSubmitMutation` → `POST /listings/bulk-create` |
+| Online shop | `ProductPublisher` | Config → Review | shared visibility + pricing/stock policy (no category/EAN resolve) | `useBulkShopPublishMutation` → `POST /listings/bulk-shop-publish` |
+
+  `BulkConfigStep` reports the live-selected connection up via `onConnectionChange`
+  so the stepper branches before Proceed; it skips the per-platform section (and
+  its Proceed gate) for shops. `BulkShopReviewStep` reviews the included variants,
+  computes each one's stock (master availability + the batch stock policy) and
+  price (variant master price + the batch pricing policy), and submits one item
+  per included variant; on success it swaps to `ShopPublishTracker`.
+- **`ShopPublishLauncher` disposition.** The launcher is no longer wired to any
+  publish CTA - the unified picker + wizard cover the create path end-to-end. It
+  and the WooCommerce single-publish wizard are retained (unreferenced by the
+  pages) for the shop **edit** mode still owned by #1830.
 
 ### UI Library Policy
 

@@ -28,7 +28,7 @@ import { useWriteAccess } from '../../../../shared/auth/use-permission';
 import { useDemoMode } from '../../../system';
 import { useConnectionsQuery } from '../../../connections';
 import type { Connection } from '../../../connections';
-import { selectPublishDestinations } from '../../lib/publish-destinations';
+import { publishDestinationKind, selectPublishDestinations } from '../../lib/publish-destinations';
 import { usePlatform, usePlatforms, type BulkConfigFormValues } from '../../../../shared/plugins';
 import type {
   BulkWizardConfig,
@@ -44,16 +44,22 @@ interface BulkConfigStepProps {
   preselectedConnectionId?: string;
   onProceed: (config: BulkWizardConfig) => void;
   onCancel: () => void;
+  /**
+   * Reports the live-selected connection id up so the wizard can branch its
+   * step model by the destination's capability (#1829) - a `ProductPublisher`
+   * shop runs Config -> Review, an `OfferCreator` marketplace keeps
+   * Config -> Resolve -> Review. Fires on auto-select and manual change.
+   */
+  onConnectionChange?: (connectionId: string) => void;
 }
 
 const DEFAULT_CURRENCY = 'PLN';
 
-function selectOfferManagerConnections(all: readonly Connection[]): Connection[] {
+function selectPublishConnections(all: readonly Connection[]): Connection[] {
   // Unified publish targets (#1828): offer marketplaces (OfferCreator) OR
-  // online shops (ProductPublisher), capability-driven. A connection without a
-  // per-platform config section (e.g. a shop, until the wizard branch #1829
-  // lands) surfaces the "not configured" warning and cannot Proceed via the
-  // marketplace path - see `sectionComplete` below.
+  // online shops (ProductPublisher), capability-driven. Marketplaces render a
+  // per-platform config section and gate Proceed on it; shops (#1829) skip the
+  // section and the Resolve step entirely - see `isShop` / `canProceed` below.
   return selectPublishDestinations(all).map((d) => d.connection);
 }
 
@@ -80,11 +86,12 @@ export function BulkConfigStep({
   preselectedConnectionId,
   onProceed,
   onCancel,
+  onConnectionChange,
 }: BulkConfigStepProps): ReactElement {
   const connectionsQuery = useConnectionsQuery();
   const platforms = usePlatforms();
-  const offerManagerConnections = useMemo(
-    () => selectOfferManagerConnections(connectionsQuery.data ?? []),
+  const publishConnections = useMemo(
+    () => selectPublishConnections(connectionsQuery.data ?? []),
     [connectionsQuery.data],
   );
 
@@ -97,16 +104,26 @@ export function BulkConfigStep({
     initial.connectionId ?? preselectedConnectionId ?? '',
   );
 
-  // Auto-select the sole OfferManager connection (honors explicit preselect first).
+  // Auto-select the sole publish connection (honors explicit preselect first).
   useEffect(() => {
-    if (connectionId === '' && offerManagerConnections.length === 1) {
-      setConnectionId(offerManagerConnections[0]!.id);
+    if (connectionId === '' && publishConnections.length === 1) {
+      setConnectionId(publishConnections[0]!.id);
     }
-  }, [offerManagerConnections, connectionId]);
+  }, [publishConnections, connectionId]);
 
-  const connection = offerManagerConnections.find((c) => c.id === connectionId) ?? null;
+  // Report the live selection up so the wizard can branch its step model by the
+  // destination's capability (#1829).
+  useEffect(() => {
+    if (connectionId !== '') onConnectionChange?.(connectionId);
+  }, [connectionId, onConnectionChange]);
+
+  const connection = publishConnections.find((c) => c.id === connectionId) ?? null;
+  // Capability-driven destination kind - never a platformType literal (#1829).
+  const isShop = connection ? publishDestinationKind(connection) === 'shop' : false;
   const platform = usePlatform(connection?.platformType);
-  const section = platform?.bulkOfferConfigSection;
+  // Shops carry no per-platform offer-config section (category/attributes/images
+  // are resolved from the master product at publish time).
+  const section = isShop ? undefined : platform?.bulkOfferConfigSection;
 
   const values = form.watch();
   const demoMode = useDemoMode();
@@ -128,11 +145,9 @@ export function BulkConfigStep({
     (/^\d+$/.test(values.flatStockValue.trim()) && Number(values.flatStockValue) >= 1);
 
   const sharedSliceValid = markupValid && flatPriceValid && capValid && flatStockValid;
-  // A connection with no per-platform config section cannot be bulk-published
-  // through the marketplace wizard (e.g. a shop destination that slipped in via
-  // direct URL before the wizard branch #1829 lands) - block Proceed rather
-  // than submit a shop connection to the offer bulk-create endpoint.
-  const sectionComplete = section ? section.isComplete(values) : false;
+  // Marketplaces must complete their per-platform config section before
+  // Proceed; shops have no section (#1829) so the shared slice alone gates.
+  const sectionComplete = isShop ? true : section ? section.isComplete(values) : false;
   const canProceed = connectionId !== '' && sharedSliceValid && sectionComplete;
 
   function buildPricingPolicy(): PricingPolicy {
@@ -167,10 +182,10 @@ export function BulkConfigStep({
   if (connectionsQuery.isLoading) {
     return <Alert tone="info">Loading connections…</Alert>;
   }
-  if (offerManagerConnections.length === 0) {
+  if (publishConnections.length === 0) {
     return (
       <Alert tone="error">
-        No active connections with offer-creation capability found. Add one from{' '}
+        No active publish destinations found. Add a marketplace or online-shop connection from{' '}
         <a href="/connections">Connections</a>.
       </Alert>
     );
@@ -194,13 +209,13 @@ export function BulkConfigStep({
         </p>
       </header>
 
-      {offerManagerConnections.length > 1 ? (
-        <FormField name="bulk-config-connection" label="Marketplace connection">
+      {publishConnections.length > 1 ? (
+        <FormField name="bulk-config-connection" label="Destination connection">
           <Select value={connectionId} onChange={(e) => setConnectionId(e.target.value)}>
             <option value="" disabled>
               Select a connection…
             </option>
-            {offerManagerConnections.map((c) => {
+            {publishConnections.map((c) => {
               const label = platforms.find((p) => p.platformType === c.platformType)?.displayName;
               return (
                 <option key={c.id} value={c.id}>
@@ -213,12 +228,22 @@ export function BulkConfigStep({
         </FormField>
       ) : (
         <Alert tone="info">
-          Publishing as <strong>{offerManagerConnections[0]?.name}</strong>.
+          Publishing as <strong>{publishConnections[0]?.name}</strong>.
         </Alert>
       )}
 
+      {/* Shops resolve category, attributes & images from the master product at
+          publish time (#1829) - no per-platform section to configure. */}
+      {connection && isShop ? (
+        <div className="shop-publish-callout">
+          Publishing to an online shop. Category placement, attributes &amp; images are resolved
+          from the master product at publish time - only visibility, price, and stock policy below
+          apply.
+        </div>
+      ) : null}
+
       {/* Per-platform config section (Allegro: delivery policy + currency; Erli: dispatch time). */}
-      {connection ? (
+      {connection && !isShop ? (
         section ? (
           <Suspense fallback={<Alert tone="info">Loading marketplace options…</Alert>}>
             <section.component connection={connection} form={form} />

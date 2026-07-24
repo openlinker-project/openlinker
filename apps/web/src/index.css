@@ -9698,6 +9698,61 @@ input.bulk-dispatch__num--wide {
   flex: 1;
 }
 
+/* ── Bulk shop-publish review step (#1829) ──────────────────────────── */
+.bulk-shop-review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.bulk-shop-review__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.bulk-shop-review__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.bulk-shop-review__row:last-child {
+  border-bottom: none;
+}
+
+.bulk-shop-review__row-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.bulk-shop-review__row-main small {
+  color: var(--text-muted);
+}
+
+.bulk-shop-review__remove {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 var(--space-1);
+}
+
+.bulk-shop-review__remove:hover {
+  color: var(--text-primary);
+}
+
 /* Edit modal — AI button row */
 .bulk-edit__desc-row {
   display: flex;
