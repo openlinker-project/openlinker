@@ -10,9 +10,14 @@
  * @module apps/web/src/features/mappings/components
  */
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MappingPanel, type MappingRow } from './MappingPanel';
 import type { MappingOption } from '../api/mappings.types';
+
+const captureDemoEvent = vi.fn();
+vi.mock('../../demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
 
 const baseProps = {
   title: 'Carrier Mappings',
@@ -37,6 +42,9 @@ const PS_INPOST: MappingOption = { value: '5', label: 'InPost Paczkomat' };
 const PS_DPD: MappingOption = { value: '12', label: 'DPD courier' };
 
 describe('MappingPanel', () => {
+  beforeEach(() => {
+    captureDemoEvent.mockClear();
+  });
   afterEach(cleanup);
 
   describe('label + id-hint rendering (#474)', () => {
@@ -298,6 +306,25 @@ describe('MappingPanel', () => {
 
       expect(onSave).toHaveBeenCalledTimes(1);
       expect(onSave).toHaveBeenCalledWith([]);
+    });
+
+    it('captures demo_mapping_save_attempted with the panel title when Save is clicked (#1789)', () => {
+      render(
+        <MappingPanel
+          {...baseProps}
+          sourceOptions={[ALLEGRO_PACZKOMAT]}
+          targetOptions={[PS_INPOST]}
+          savedRows={[{ sourceValue: ALLEGRO_PACZKOMAT.value, targetValue: PS_INPOST.value }]}
+          onSave={vi.fn()}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /remove mapping/i }));
+      fireEvent.click(screen.getByRole('button', { name: /save mappings/i }));
+
+      expect(captureDemoEvent).toHaveBeenCalledWith('demo_mapping_save_attempted', {
+        mappingKind: 'Carrier Mappings',
+      });
     });
   });
 });

@@ -13,6 +13,7 @@ import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
+import { captureDemoEvent } from '../../demo';
 
 interface ConnectionActionsPanelProps {
   connection: Connection;
@@ -82,7 +83,13 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
                 stored credentials.
               </p>
             </div>
-            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock
+              active={write.demoReadOnly}
+              message={DEMO_READ_ONLY_ACTION_MESSAGE}
+              onLockedClick={() =>
+                captureDemoEvent('demo_connection_test_attempted', { platform: connection.platformType })
+              }
+            >
               <Button
                 tone="secondary"
                 disabled={testConnection.isPending || write.demoReadOnly}
@@ -121,7 +128,10 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
             </div>
             <Button
               tone="primary"
-              onClick={() => setIsTriggerDialogOpen(true)}
+              onClick={() => {
+                captureDemoEvent('demo_connection_sync_dialog_opened', {});
+                setIsTriggerDialogOpen(true);
+              }}
             >
               Trigger sync…
             </Button>

@@ -1,10 +1,30 @@
-import { within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, within } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PlatformPicker } from './platform-picker';
 import { renderWithProviders } from '../../../test/test-utils';
 import type { OpenLinkerPlugin } from '../../../shared/plugins';
 
+const captureDemoEvent = vi.fn();
+vi.mock('../../demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
+
 describe('PlatformPicker', () => {
+  beforeEach(() => {
+    captureDemoEvent.mockClear();
+  });
+
+  it('captures demo_connection_platform_selected when a platform card is clicked (#1789)', () => {
+    const view = renderWithProviders(<PlatformPicker />);
+
+    const prestashop = within(view.container).getByRole('link', { name: /PrestaShop/i });
+    fireEvent.click(prestashop);
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_connection_platform_selected', {
+      platformType: 'prestashop',
+    });
+  });
+
   it('renders a card per platform linking to its guided setup route', () => {
     const view = renderWithProviders(<PlatformPicker />);
 

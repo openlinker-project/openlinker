@@ -41,6 +41,7 @@ import { Select } from '../../../shared/ui/select';
 import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { captureDemoEvent } from '../../demo';
 
 // "Verify credentials" rather than "Test connection": the PrestaShop `/test`
 // endpoint is only reachable after the connection is saved, so this step is a
@@ -114,6 +115,10 @@ export function PrestashopSetupForm(): ReactElement {
       if (!valid) return;
     }
     setCompletedSteps((prev) => new Set(prev).add(stepIndex));
+    captureDemoEvent('demo_connection_wizard_step_advanced', {
+      platform: 'prestashop',
+      step: STEP_LABELS[stepIndex],
+    });
     setStepIndex((i) => Math.min(i + 1, STEP_LABELS.length - 1));
   }
 
