@@ -41,8 +41,8 @@ Additional instructions: {{extraInstructions}}
 
 Output only the HTML body — no <html>, <head>, or wrapping tags.`;
 
-export class SeedWoocommercePromptTemplate1831000000000 implements MigrationInterface {
-  name = 'SeedWoocommercePromptTemplate1831000000000';
+export class SeedWoocommercePromptTemplate1831000000002 implements MigrationInterface {
+  name = 'SeedWoocommercePromptTemplate1831000000002';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
