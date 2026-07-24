@@ -6,9 +6,14 @@
  * submits the mapped nested-config + credentials payload via connections.create.
  */
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InpostSetupForm } from './inpost-setup-form';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../../test/test-utils';
+
+const captureDemoEvent = vi.fn();
+vi.mock('../../demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
 
 afterEach(cleanup);
 
@@ -43,6 +48,22 @@ async function advanceOneStep(container: HTMLElement): Promise<void> {
 }
 
 describe('InpostSetupForm', () => {
+  beforeEach(() => {
+    captureDemoEvent.mockClear();
+  });
+
+  it('captures demo_connection_wizard_step_advanced on each Next click (#1789)', async () => {
+    const { container } = renderWithProviders(<InpostSetupForm />);
+
+    fillAccountStep(container, { name: 'InPost — main', apiToken: 'shipx-token', organizationId: '123456' });
+    await advanceOneStep(container);
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_connection_wizard_step_advanced', {
+      platform: 'inpost',
+      step: 'Account & credentials',
+    });
+  });
+
   it('blocks Next while the account step is invalid', async () => {
     const { container } = renderWithProviders(<InpostSetupForm />);
 

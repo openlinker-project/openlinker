@@ -71,15 +71,7 @@ import {
 import { ListingsCoveragePills } from './listings-coverage-pills';
 import { ProductRowDetail } from './product-row-detail';
 import { MarketplacePickerModal } from './marketplace-picker-modal';
-import { captureDemoEvent } from '../../features/demo';
-
-/** Buckets a raw result count into a low-cardinality string for analytics. */
-function bucketResultCount(count: number): string {
-  if (count === 0) return '0';
-  if (count <= 10) return '1-10';
-  if (count <= 50) return '11-50';
-  return '50+';
-}
+import { bucketCount, captureDemoEvent } from '../../features/demo';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -289,7 +281,7 @@ export function ProductsListPage(): ReactElement {
     if (query.data && !hasFiredViewedRef.current) {
       hasFiredViewedRef.current = true;
       captureDemoEvent('demo_products_viewed', {
-        resultCountBucket: bucketResultCount(query.data.total),
+        resultCountBucket: bucketCount(query.data.total),
       });
     }
   }, [query.data]);

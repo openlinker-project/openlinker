@@ -13,17 +13,6 @@ describe('DemoEventCatalog', () => {
     }
   });
 
-  it('should give every entry runtime-inspectable prop keys (#1787 settings panel introspection)', () => {
-    // `props` is typed via `{} as { ... }` casts, so nothing at compile time
-    // stops a future entry from reverting to a bare `{}` placeholder — which
-    // would silently make the /settings read-only catalog show "props:
-    // (none)" for that event. Every entry declaring a non-empty props type
-    // must carry matching non-empty runtime keys.
-    for (const entry of Object.values(DemoEventCatalog)) {
-      expect(Object.keys(entry.props).length).toBeGreaterThan(0);
-    }
-  });
-
   // Events genuinely carrying zero props (typed `Record<string, never>`) —
   // legitimately empty at runtime, not a regression of the invariant below.
   const NO_PROPS_EVENTS = new Set<string>([
@@ -31,6 +20,9 @@ describe('DemoEventCatalog', () => {
     'demo_orders_viewed',
     'demo_order_opened',
     'demo_invoice_issue_attempted',
+    'demo_connection_sync_dialog_opened',
+    'demo_category_source_selected',
+    'demo_category_map_attempted',
   ]);
 
   it('should give every non-empty-typed entry runtime-inspectable prop keys (#1787 settings panel introspection)', () => {

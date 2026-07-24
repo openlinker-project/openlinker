@@ -7,7 +7,7 @@
  */
 import type { ReactElement } from 'react';
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useLocation } from 'react-router-dom';
 import {
   createMockApiClient,
@@ -15,6 +15,11 @@ import {
   renderWithProviders,
 } from '../../../test/test-utils';
 import { WoocommerceSetupForm } from './woocommerce-setup-form';
+
+const captureDemoEvent = vi.fn();
+vi.mock('../../demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
 
 function LocationProbe(): ReactElement {
   const location = useLocation();
@@ -71,7 +76,22 @@ async function advanceToReview(
 }
 
 describe('WoocommerceSetupForm', () => {
+  beforeEach(() => {
+    captureDemoEvent.mockClear();
+  });
   afterEach(cleanup);
+
+  it('captures demo_connection_wizard_step_advanced on each Next click (#1789)', async () => {
+    const { container } = renderWithProviders(<WoocommerceSetupForm />);
+
+    fillStoreDetailsStep(container, { name: 'My Store', url: 'https://shop.example.com' });
+    await advanceOneStep(container);
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_connection_wizard_step_advanced', {
+      platform: 'woocommerce',
+      step: 'Store details',
+    });
+  });
 
   it('renders the store-details step first with only its fields', () => {
     const view = renderWithProviders(<WoocommerceSetupForm />);

@@ -12,6 +12,7 @@ import { useState, useEffect, type ReactElement, type ReactNode } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import type { MappingOption } from '../api/mappings.types';
+import { captureDemoEvent } from '../../demo';
 
 export interface MappingRow {
   sourceValue: string;
@@ -154,6 +155,7 @@ export function MappingPanel({
   }
 
   function handleSave(): void {
+    captureDemoEvent('demo_mapping_save_attempted', { mappingKind: title });
     onSave(localRows);
   }
 

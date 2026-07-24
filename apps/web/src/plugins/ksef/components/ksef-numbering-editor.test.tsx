@@ -8,11 +8,16 @@
  * @module plugins/ksef/components
  */
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
 import type { NumberingSeries } from '../../../features/invoicing';
 import { KsefNumberingEditor } from './ksef-numbering-editor';
+
+const captureDemoEvent = vi.fn();
+vi.mock('../../../features/demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
 
 const series: NumberingSeries = {
   id: 'series_main',
@@ -30,7 +35,40 @@ const series: NumberingSeries = {
 };
 
 describe('KsefNumberingEditor', () => {
+  beforeEach(() => {
+    captureDemoEvent.mockClear();
+  });
   afterEach(cleanup);
+
+  it('captures demo_ksef_numbering_variable_inserted when a variable chip is clicked (#1789)', () => {
+    renderWithProviders(
+      <KsefNumberingEditor connectionId="conn_1" onDone={vi.fn()} onCancel={vi.fn()} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Insert {seq}' }));
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_ksef_numbering_variable_inserted', {
+      variable: '{seq}',
+    });
+  });
+
+  it('captures demo_ksef_series_save_attempted when a read-only viewer clicks the locked Save series button (#1789)', () => {
+    renderWithProviders(
+      <KsefNumberingEditor
+        connectionId="conn_1"
+        series={series}
+        readOnly
+        onDone={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(document.querySelector('.read-only-lock') as Element);
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_ksef_series_save_attempted', {
+      mode: 'edit',
+    });
+  });
 
   it('renders a live preview for the prefilled create pattern', () => {
     renderWithProviders(

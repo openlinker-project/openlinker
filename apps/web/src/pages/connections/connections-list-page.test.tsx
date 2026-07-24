@@ -1,11 +1,32 @@
-import { cleanup, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAuthenticatedSessionAdapter, createMockApiClient, renderWithProviders, sampleConnection } from '../../test/test-utils';
 import { ConnectionsListPage } from './connections-list-page';
 
+const captureDemoEvent = vi.fn();
+vi.mock('../../features/demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
+
 describe('ConnectionsListPage', () => {
+  beforeEach(() => {
+    captureDemoEvent.mockClear();
+  });
   afterEach(cleanup);
+
+  it('captures demo_connections_filtered when the status filter changes (#1789)', () => {
+    renderWithProviders(<ConnectionsListPage />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter by status' }), {
+      target: { value: 'active' },
+    });
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_connections_filtered', {
+      filter: 'status',
+      value: 'active',
+    });
+  });
 
   it('renders the page heading', () => {
     renderWithProviders(<ConnectionsListPage />);
