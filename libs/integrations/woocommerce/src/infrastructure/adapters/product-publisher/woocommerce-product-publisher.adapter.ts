@@ -134,7 +134,12 @@ export class WooCommerceProductPublisherAdapter
     if (content?.title != null) typed.name = content.title;
     if (content?.description != null) typed.description = content.description;
     if (content?.shortDescription != null) typed.short_description = content.shortDescription;
-    if (content?.tags != null) typed.tags = content.tags.map((name) => ({ name }));
+    // Omit an empty tags array: sending `tags: []` on upsert would CLEAR the WC
+    // product's existing tags, violating the "never clear an untouched field"
+    // contract. An explicit non-empty list still replaces the set.
+    if (content?.tags != null && content.tags.length > 0) {
+      typed.tags = content.tags.map((name) => ({ name }));
+    }
     if (content?.imageUrls != null) typed.images = content.imageUrls.map((src) => ({ src }));
     if (content?.seo?.slug != null) typed.slug = content.seo.slug;
     if (cmd.destinationCategoryIds.length > 0) {
@@ -170,8 +175,10 @@ export class WooCommerceProductPublisherAdapter
     if (!commerce) return;
 
     if (commerce.salePrice != null) typed.sale_price = String(commerce.salePrice.amount);
-    if (commerce.saleStartsAt != null) typed.date_on_sale_from = commerce.saleStartsAt;
-    if (commerce.saleEndsAt != null) typed.date_on_sale_to = commerce.saleEndsAt;
+    // Neutral sale window is UTC (ISO 8601); write the `_gmt` fields so WC does
+    // not reinterpret the value as site-local and shift the window.
+    if (commerce.saleStartsAt != null) typed.date_on_sale_from_gmt = commerce.saleStartsAt;
+    if (commerce.saleEndsAt != null) typed.date_on_sale_to_gmt = commerce.saleEndsAt;
     if (commerce.taxClass != null) typed.tax_class = commerce.taxClass;
     if (commerce.taxStatus != null) typed.tax_status = commerce.taxStatus;
 

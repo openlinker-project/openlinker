@@ -176,12 +176,25 @@ describe('WooCommerceProductPublisherAdapter', () => {
       const body = http.post.mock.calls[0][1] as Record<string, unknown>;
       expect(body).toMatchObject({
         sale_price: '14.5',
-        date_on_sale_from: '2026-08-01T00:00:00Z',
-        date_on_sale_to: '2026-08-31T23:59:59Z',
+        // UTC input is written to the `_gmt` fields, not the site-local ones.
+        date_on_sale_from_gmt: '2026-08-01T00:00:00Z',
+        date_on_sale_to_gmt: '2026-08-31T23:59:59Z',
         dimensions: { length: '10', width: '5', height: '2' },
         tax_class: 'reduced-rate',
         tax_status: 'taxable',
       });
+      expect(body).not.toHaveProperty('date_on_sale_from');
+      expect(body).not.toHaveProperty('date_on_sale_to');
+    });
+
+    it('should omit an empty tags array so upsert does not clear existing WC tags', async () => {
+      http.put.mockResolvedValue({ id: 30, status: 'publish' });
+
+      await adapter.publishProduct(
+        baseCommand({ externalProductId: '30', content: { title: 'Widget', tags: [] } }),
+      );
+
+      expect(http.put.mock.calls[0][1]).not.toHaveProperty('tags');
     });
 
     it('should omit new fields when the command does not carry them', async () => {

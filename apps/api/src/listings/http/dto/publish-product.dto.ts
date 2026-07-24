@@ -13,6 +13,7 @@ import {
   ArrayMaxSize,
   ArrayNotEmpty,
   IsArray,
+  IsDefined,
   IsIn,
   IsISO8601,
   IsInt,
@@ -25,11 +26,45 @@ import {
   Matches,
   MaxLength,
   Min,
+  registerDecorator,
   ValidateIf,
   ValidateNested,
+  type ValidationArguments,
+  type ValidationOptions,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+/**
+ * Property validator: the decorated ISO-8601 datetime must be strictly after the
+ * sibling datetime named by `property`. Passes when either side is absent
+ * (presence is enforced separately) or unparseable (format is `@IsISO8601`'s job).
+ */
+function IsAfter(property: string, validationOptions?: ValidationOptions) {
+  return function (object: object, propertyName: string): void {
+    registerDecorator({
+      name: 'isAfter',
+      target: object.constructor,
+      propertyName,
+      constraints: [property],
+      options: validationOptions,
+      validator: {
+        validate(value: unknown, args: ValidationArguments): boolean {
+          const [relatedProperty] = args.constraints as [string];
+          const related = (args.object as Record<string, unknown>)[relatedProperty];
+          if (typeof value !== 'string' || typeof related !== 'string') return true;
+          const end = Date.parse(value);
+          const start = Date.parse(related);
+          if (Number.isNaN(end) || Number.isNaN(start)) return true;
+          return end > start;
+        },
+        defaultMessage(args: ValidationArguments): string {
+          return `${args.property} must be after ${args.constraints[0]}`;
+        },
+      },
+    });
+  };
+}
 
 import {
   PublishProductStatusValues,
@@ -124,15 +159,21 @@ export class PublishDimensionsDto {
 export class PublishCommerceDto {
   @ApiPropertyOptional({
     type: PublishPriceDto,
-    description: 'Discounted sale price. Omitted ⇒ no sale price set.',
+    description:
+      'Discounted sale price. Required when a sale window (saleStartsAt/saleEndsAt) is supplied; omitted ⇒ no sale price set.',
   })
-  @IsOptional()
+  // Validated when a sale price OR a sale window is supplied; `@IsDefined` then
+  // enforces that a window can't be scheduled without a price to discount to.
+  @ValidateIf((o: PublishCommerceDto) => o.saleStartsAt != null || o.saleEndsAt != null || o.salePrice != null)
+  @IsDefined({
+    message: 'salePrice is required when a sale window (saleStartsAt/saleEndsAt) is supplied',
+  })
   @ValidateNested()
   @Type(() => PublishPriceDto)
   salePrice?: PublishPriceDto;
 
   @ApiPropertyOptional({
-    description: 'ISO 8601 datetime the sale price becomes active.',
+    description: 'ISO 8601 datetime the sale price becomes active (UTC).',
     example: '2026-08-01T00:00:00Z',
   })
   @IsOptional()
@@ -140,11 +181,12 @@ export class PublishCommerceDto {
   saleStartsAt?: string;
 
   @ApiPropertyOptional({
-    description: 'ISO 8601 datetime the sale price expires.',
+    description: 'ISO 8601 datetime the sale price expires (UTC). Must be after saleStartsAt.',
     example: '2026-08-31T23:59:59Z',
   })
   @IsOptional()
   @IsISO8601()
+  @IsAfter('saleStartsAt', { message: 'saleEndsAt must be after saleStartsAt' })
   saleEndsAt?: string;
 
   @ApiPropertyOptional({ type: PublishDimensionsDto, description: 'Physical dimensions.' })

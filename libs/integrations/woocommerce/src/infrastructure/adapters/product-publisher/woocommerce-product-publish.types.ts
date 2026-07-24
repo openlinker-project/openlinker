@@ -30,10 +30,14 @@ export interface WooCommerceProductPublishRequest {
   regular_price?: string;
   /** Discounted price (amount only; WooCommerce applies the store currency). */
   sale_price?: string;
-  /** ISO 8601 datetime the sale price becomes active. */
-  date_on_sale_from?: string;
-  /** ISO 8601 datetime the sale price expires. */
-  date_on_sale_to?: string;
+  /**
+   * UTC/GMT datetime the sale price becomes active. The `_gmt` variant (not the
+   * site-local `date_on_sale_from`) is used so the neutral UTC input is honoured
+   * regardless of the store's timezone.
+   */
+  date_on_sale_from_gmt?: string;
+  /** UTC/GMT datetime the sale price expires (see `date_on_sale_from_gmt`). */
+  date_on_sale_to_gmt?: string;
   description?: string;
   /** Short/excerpt description. Maps `PublishProductContent.shortDescription`. */
   short_description?: string;

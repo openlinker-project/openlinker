@@ -71,7 +71,7 @@ empty string or zero), so an upsert never clears a field the operator did not to
 | `content.seo.slug` | operator | `slug` |
 | `content.seo.title` / `content.seo.description` | operator | `meta_data` (see SEO below) |
 | `commerce.salePrice.amount` | operator | `sale_price` (store currency applies; amount only) |
-| `commerce.saleStartsAt` / `saleEndsAt` | operator | `date_on_sale_from` / `date_on_sale_to` |
+| `commerce.saleStartsAt` / `saleEndsAt` | operator (UTC ISO-8601) | `date_on_sale_from_gmt` / `date_on_sale_to_gmt` (UTC; the site-local `date_on_sale_from`/`_to` are deliberately not used so the store timezone can't shift the window) |
 | `commerce.dimensions` | operator | `dimensions.{length,width,height}` (strings) |
 | `commerce.taxClass` | operator | `tax_class` |
 | `commerce.taxStatus` | operator | `tax_status` (`taxable` / `shipping` / `none`) |

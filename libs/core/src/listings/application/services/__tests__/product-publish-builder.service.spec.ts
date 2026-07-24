@@ -167,6 +167,24 @@ describe('ProductPublishBuilderService', () => {
     expect(command).not.toHaveProperty('weight');
   });
 
+  it('should thread operator shortDescription and tags through content', async () => {
+    const command = await service.buildPublishProductCommand({
+      ...baseInput,
+      content: { shortDescription: 'Short blurb', tags: ['sale', 'new'] },
+    });
+
+    expect(command.content).toEqual(
+      expect.objectContaining({ shortDescription: 'Short blurb', tags: ['sale', 'new'] }),
+    );
+  });
+
+  it('should omit shortDescription and tags from content when not supplied', async () => {
+    const command = await service.buildPublishProductCommand(baseInput);
+
+    expect(command.content).not.toHaveProperty('shortDescription');
+    expect(command.content).not.toHaveProperty('tags');
+  });
+
   it('should pass operator commerce fields through to the command', async () => {
     const commerce = {
       salePrice: { amount: 9.99, currency: 'PLN' },

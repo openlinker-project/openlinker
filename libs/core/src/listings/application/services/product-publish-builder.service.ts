@@ -254,6 +254,12 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
     if (title != null) content.title = title;
     if (description != null) content.description = description;
     if (imageUrls != null) content.imageUrls = imageUrls;
+    // Operator-only, no master fallback: the master product carries no
+    // short-description / tags fields. Threaded here so the builder-owned
+    // content object actually reaches the adapter (both single + bulk flow
+    // through this method).
+    if (overrides?.shortDescription != null) content.shortDescription = overrides.shortDescription;
+    if (overrides?.tags != null) content.tags = overrides.tags;
     if (overrides?.seo != null) content.seo = overrides.seo;
 
     return Object.keys(content).length > 0 ? content : undefined;
