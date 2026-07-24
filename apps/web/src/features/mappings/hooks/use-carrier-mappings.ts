@@ -15,9 +15,13 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 import { mappingsQueryKeys } from '../api/mappings.query-keys';
 import type { CarrierMapping, UpsertCarrierMappingsPayload } from '../api/mappings.types';
 
-export function useCarrierMappingsQuery(connectionId: string): UseQueryResult<CarrierMapping[]> {
+export function useCarrierMappingsQuery(
+  connectionId: string,
+  options?: { enabled?: boolean },
+): UseQueryResult<CarrierMapping[]> {
   const apiClient = useApiClient();
   return useQuery({
+    enabled: connectionId.length > 0 && (options?.enabled ?? true),
     queryKey: mappingsQueryKeys.carriers(connectionId),
     queryFn: () => apiClient.mappings.getCarrierMappings(connectionId),
   });

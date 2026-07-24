@@ -11,9 +11,11 @@
  * @module apps/web/src/features/mappings/components
  */
 
-import { useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import { Button } from '../../../shared/ui/button';
+import { DataTable, type DataTableColumn, type DataTableCardView } from '../../../shared/ui/data-table';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
+import { Select } from '../../../shared/ui/select';
 import { ConnectionEntityLabel, useConnectionsQuery } from '../../connections';
 import { RoutingSplitBar, type RoutingSplitBucket } from './routing-split-bar';
 import {
@@ -30,14 +32,25 @@ import {
 
 interface RoutingRulesPanelProps {
   connectionId: string;
-  /** Source delivery methods to route — owned by the page's `useMappingOptions`. */
+  /** Resolved source-platform label for user-facing copy (#1784), e.g. "Allegro". */
+  sourceLabel: string;
+  /** Source delivery methods to route - owned by the page's `useMappingOptions`. */
   deliveryMethods: MappingOption[];
   deliveryMethodsLoading: boolean;
   deliveryMethodsError: Error | null;
+  /**
+   * Reports the panel's dirty (unsaved-edits) state up so the page can guard a
+   * tab switch that would discard staged routing edits (#1784 follow-up I3).
+   */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 /** Sentinel selection key meaning "no rule" → the default OMP fulfils the method. */
 const DEFAULT_KEY = '__default__';
+
+/** Virtualized-row height estimate; also caps the container to content (#1784 S17). */
+const ROUTING_ROW_HEIGHT = 52;
+const ROUTING_MAX_CONTAINER_HEIGHT = 520;
 
 /** Human qualifier shown before the connection name in dropdowns + row display. */
 const PROCESSOR_KIND_LABEL: Record<FulfillmentProcessorKind, string> = {
@@ -46,9 +59,21 @@ const PROCESSOR_KIND_LABEL: Record<FulfillmentProcessorKind, string> = {
   source_brokered: 'Marketplace-brokered',
 };
 
-/** Truncates long ids (Allegro UUIDs) for inline hints; short ids render verbatim (#474). */
+const SHORT_VALUE_HEAD = 6;
+const SHORT_VALUE_TAIL = 4;
+
+/**
+ * Truncates long ids for inline hints; short ids render verbatim (#474).
+ *
+ * Middle-ellipsis rather than front-truncation: some marketplaces (Erli) share
+ * a long common prefix and carry the distinguishing part (weight/size) at the
+ * END of the id, so `slice(0, 8)` collapsed whole groups into identical hints -
+ * e.g. `erliDPDKurier5kg` / `…20kg` both became `erliDPDK…`. Keeping head + tail
+ * preserves the distinguishing suffix (`erliDP…20kg`).
+ */
 function shortValue(value: string): string {
-  return value.length <= 9 ? value : `${value.slice(0, 8)}…`;
+  if (value.length <= SHORT_VALUE_HEAD + SHORT_VALUE_TAIL + 1) return value;
+  return `${value.slice(0, SHORT_VALUE_HEAD)}…${value.slice(-SHORT_VALUE_TAIL)}`;
 }
 
 /** `${kind}::${connectionId}` → its parts, or null for the default sentinel / malformed keys. */
@@ -71,9 +96,11 @@ interface DivertOption {
 
 export function RoutingRulesPanel({
   connectionId,
+  sourceLabel,
   deliveryMethods,
   deliveryMethodsLoading,
   deliveryMethodsError,
+  onDirtyChange,
 }: RoutingRulesPanelProps): ReactElement {
   const rulesQuery = useRoutingRulesQuery(connectionId);
   const candidatesQuery = useRoutingCandidatesQuery(connectionId);
@@ -106,9 +133,10 @@ export function RoutingRulesPanel({
     return map;
   }, [connectionsQuery.data]);
 
-  function connName(id: string): string {
-    return connectionNameById.get(id) ?? shortValue(id);
-  }
+  const connName = useCallback(
+    (id: string): string => connectionNameById.get(id) ?? shortValue(id),
+    [connectionNameById],
+  );
 
   const candidates = useMemo(() => candidatesQuery.data ?? [], [candidatesQuery.data]);
 
@@ -120,13 +148,19 @@ export function RoutingRulesPanel({
     : 'Default (order-management platform)';
 
   // Divert options exclude omp_fulfilled — that IS the default in v1; explicit
-  // OMP pinning is the multi-OMP follow-up.
-  const divertOptions: DivertOption[] = candidates
-    .filter((c) => c.processorKind !== 'omp_fulfilled')
-    .map((c) => ({
-      key: `${c.processorKind}::${c.processorConnectionId}`,
-      label: `${PROCESSOR_KIND_LABEL[c.processorKind]} · ${connName(c.processorConnectionId)}`,
-    }));
+  // OMP pinning is the multi-OMP follow-up. Sorted by label so the divert menu
+  // stays scannable (#1784 I8).
+  const divertOptions: DivertOption[] = useMemo(
+    () =>
+      candidates
+        .filter((c) => c.processorKind !== 'omp_fulfilled')
+        .map((c) => ({
+          key: `${c.processorKind}::${c.processorConnectionId}`,
+          label: `${PROCESSOR_KIND_LABEL[c.processorKind]} · ${connName(c.processorConnectionId)}`,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [candidates, connName],
+  );
 
   // Render a row per delivery method, plus any saved rule whose method the
   // source no longer reports — so a replace-all save never silently drops it.
@@ -142,6 +176,12 @@ export function RoutingRulesPanel({
   const isDirty = rowMethods.some(
     (m) => (selections[m.value] ?? DEFAULT_KEY) !== (savedKeyByMethod.get(m.value) ?? DEFAULT_KEY),
   );
+
+  // Surface the dirty signal up for the page-level discard guard (#1784 I3).
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   // Routing-split buckets (#1739): methods-per-processor derived from the
   // CURRENT selections (not the saved rules), so the bar moves live while the
@@ -182,25 +222,28 @@ export function RoutingRulesPanel({
     return buckets;
   }, [rowMethods, selections, candidates, defaultLabel, connectionNameById]);
 
-  function optionsForRow(currentKey: string): DivertOption[] {
-    const base: DivertOption[] = [{ key: DEFAULT_KEY, label: defaultLabel }, ...divertOptions];
-    // Keep a saved selection visible even when it is no longer a live candidate
-    // (connection disabled, capability lost), so the operator can see + decide.
-    if (currentKey !== DEFAULT_KEY && !base.some((o) => o.key === currentKey)) {
-      const parsed = parseSelectionKey(currentKey);
-      base.push({
-        key: currentKey,
-        label: parsed
-          ? `${PROCESSOR_KIND_LABEL[parsed.kind]} · ${connName(parsed.connectionId)} (unavailable)`
-          : currentKey,
-      });
-    }
-    return base;
-  }
+  const optionsForRow = useCallback(
+    (currentKey: string): DivertOption[] => {
+      const base: DivertOption[] = [{ key: DEFAULT_KEY, label: defaultLabel }, ...divertOptions];
+      // Keep a saved selection visible even when it is no longer a live candidate
+      // (connection disabled, capability lost), so the operator can see + decide.
+      if (currentKey !== DEFAULT_KEY && !base.some((o) => o.key === currentKey)) {
+        const parsed = parseSelectionKey(currentKey);
+        base.push({
+          key: currentKey,
+          label: parsed
+            ? `${PROCESSOR_KIND_LABEL[parsed.kind]} · ${connName(parsed.connectionId)} (unavailable)`
+            : currentKey,
+        });
+      }
+      return base;
+    },
+    [defaultLabel, divertOptions, connName],
+  );
 
-  function handleSelect(methodId: string, key: string): void {
+  const handleSelect = useCallback((methodId: string, key: string): void => {
     setSelections((prev) => ({ ...prev, [methodId]: key }));
-  }
+  }, []);
 
   function handleSave(): void {
     const items: RoutingRuleInput[] = [];
@@ -217,6 +260,96 @@ export function RoutingRulesPanel({
     replaceMutation.mutate({ items });
   }
 
+  // Cell renderers memoized so the DataTable column literals stay stable and
+  // don't re-prime the virtualizer on unrelated re-renders (#1784 I7). The
+  // `method` cell is static; `routed`/`change` depend on `selections`.
+  const renderMethodLabel = useCallback((method: MappingOption): ReactNode => {
+    if (method.label === method.value) {
+      return <span className="mono-text">{method.value}</span>;
+    }
+    return (
+      <>
+        {method.label}{' '}
+        <span className="mapping-id-hint mono-text">{shortValue(method.value)}</span>
+      </>
+    );
+  }, []);
+
+  const renderRoutedTo = useCallback(
+    (currentKey: string): ReactNode => {
+      if (currentKey === DEFAULT_KEY) {
+        return <span className="muted-text">{defaultLabel}</span>;
+      }
+      const parsed = parseSelectionKey(currentKey);
+      if (!parsed) return <span className="mono-text">{currentKey}</span>;
+      return (
+        <>
+          <span>{PROCESSOR_KIND_LABEL[parsed.kind]}</span>{' '}
+          <ConnectionEntityLabel
+            connectionId={parsed.connectionId}
+            linkToDetail={false}
+            showId={false}
+          />
+        </>
+      );
+    },
+    [defaultLabel],
+  );
+
+  // NOTE (#1784 I8): the per-row divert picker stays a native <select> routed
+  // through the shared `Select` wrapper (for the tokened focus ring) rather than
+  // the searchable `Combobox`. The option set is tiny (compatible candidates +
+  // default), so search is unnecessary; and a popover-combobox nested inside a
+  // virtualized DataTable cell brings portal/focus fragility that isn't worth it
+  // here. The raw id is already out of the option label (candidate name only).
+  const renderProcessorSelect = useCallback(
+    (method: MappingOption): ReactNode => {
+      const currentKey = selections[method.value] ?? DEFAULT_KEY;
+      return (
+        <Select
+          aria-label={`Fulfillment processor for ${method.label}`}
+          value={currentKey}
+          onChange={(e) => {
+            handleSelect(method.value, e.target.value);
+          }}
+        >
+          {optionsForRow(currentKey).map((o) => (
+            <option key={o.key} value={o.key}>
+              {o.label}
+            </option>
+          ))}
+        </Select>
+      );
+    },
+    [selections, optionsForRow, handleSelect],
+  );
+
+  const columns = useMemo<DataTableColumn<MappingOption>[]>(
+    () => [
+      {
+        id: 'method',
+        header: `${sourceLabel} delivery method`,
+        cell: (m) => renderMethodLabel(m),
+      },
+      {
+        id: 'routed',
+        header: 'Routed to',
+        cell: (m) => renderRoutedTo(selections[m.value] ?? DEFAULT_KEY),
+      },
+      { id: 'change', header: 'Change', cell: (m) => renderProcessorSelect(m) },
+    ],
+    [sourceLabel, renderMethodLabel, renderRoutedTo, renderProcessorSelect, selections],
+  );
+
+  const cardView = useMemo<DataTableCardView<MappingOption>>(
+    () => ({
+      title: (m) => renderMethodLabel(m),
+      subtitle: (m) => renderRoutedTo(selections[m.value] ?? DEFAULT_KEY),
+      detail: (m) => renderProcessorSelect(m),
+    }),
+    [renderMethodLabel, renderRoutedTo, renderProcessorSelect, selections],
+  );
+
   if (deliveryMethodsLoading || rulesQuery.isLoading || candidatesQuery.isLoading) {
     return (
       <LoadingState
@@ -232,35 +365,10 @@ export function RoutingRulesPanel({
     return <ErrorState title="Unable to load routing configuration" message={dataError.message} />;
   }
 
-  function renderMethodLabel(method: MappingOption): ReactNode {
-    if (method.label === method.value) {
-      return <span className="mono-text">{method.value}</span>;
-    }
-    return (
-      <>
-        {method.label}{' '}
-        <span className="mapping-id-hint mono-text">{shortValue(method.value)}</span>
-      </>
-    );
-  }
-
-  function renderRoutedTo(currentKey: string): ReactNode {
-    if (currentKey === DEFAULT_KEY) {
-      return <span className="muted-text">{defaultLabel}</span>;
-    }
-    const parsed = parseSelectionKey(currentKey);
-    if (!parsed) return <span className="mono-text">{currentKey}</span>;
-    return (
-      <>
-        <span>{PROCESSOR_KIND_LABEL[parsed.kind]}</span>{' '}
-        <ConnectionEntityLabel
-          connectionId={parsed.connectionId}
-          linkToDetail={false}
-          showId={false}
-        />
-      </>
-    );
-  }
+  const containerHeight = Math.min(
+    ROUTING_MAX_CONTAINER_HEIGHT,
+    rowMethods.length * ROUTING_ROW_HEIGHT + 8,
+  );
 
   return (
     <div className="panel panel--dense">
@@ -277,7 +385,7 @@ export function RoutingRulesPanel({
       </div>
 
       <p className="muted-text" style={{ marginBottom: 'var(--space-4)' }}>
-        Choose how each marketplace delivery method is fulfilled. Methods stay with the default
+        Choose how each {sourceLabel} delivery method is fulfilled. Methods stay with the default
         order-management platform unless you divert them to a connected carrier or
         marketplace-delivery processor.
       </p>
@@ -302,39 +410,20 @@ export function RoutingRulesPanel({
           the source exposes delivery methods.
         </p>
       ) : (
-        <table className="data-table" aria-label="Fulfillment routing rules">
-          <thead>
-            <tr>
-              <th>Delivery method</th>
-              <th>Routed to</th>
-              <th>Change</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rowMethods.map((method) => {
-              const currentKey = selections[method.value] ?? DEFAULT_KEY;
-              return (
-                <tr key={method.value}>
-                  <td>{renderMethodLabel(method)}</td>
-                  <td>{renderRoutedTo(currentKey)}</td>
-                  <td>
-                    <select
-                      aria-label={`Fulfillment processor for ${method.label}`}
-                      value={currentKey}
-                      onChange={(e) => { handleSelect(method.value, e.target.value); }}
-                    >
-                      {optionsForRow(currentKey).map((o) => (
-                        <option key={o.key} value={o.key}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        // Virtualized so hundreds of source delivery methods (Allegro) render
+        // without lag (#1784 follow-up). DataTable auto-disables virtualization
+        // and renders its `cardView` on narrow viewports, so the mobile layout
+        // is preserved without the raw-table `.data-table--stackable` transform.
+        <DataTable
+          caption="Fulfillment routing rules"
+          rows={rowMethods}
+          rowKey={(m) => m.value}
+          virtualize
+          estimateRowHeight={ROUTING_ROW_HEIGHT}
+          containerHeight={containerHeight}
+          columns={columns}
+          cardView={cardView}
+        />
       )}
 
       {replaceMutation.error && (

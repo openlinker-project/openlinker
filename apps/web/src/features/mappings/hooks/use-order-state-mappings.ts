@@ -19,10 +19,12 @@ import { mappingsQueryKeys } from '../api/mappings.query-keys';
 import type { OrderStateMapping, UpsertOrderStateMappingsPayload } from '../api/mappings.types';
 
 export function useOrderStateMappingsQuery(
-  connectionId: string
+  connectionId: string,
+  options?: { enabled?: boolean }
 ): UseQueryResult<OrderStateMapping[]> {
   const apiClient = useApiClient();
   return useQuery({
+    enabled: connectionId.length > 0 && (options?.enabled ?? true),
     queryKey: mappingsQueryKeys.orderStates(connectionId),
     queryFn: () => apiClient.mappings.getOrderStateMappings(connectionId),
   });
