@@ -11,7 +11,10 @@
  */
 
 import { DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping';
-import { ProductPublishRejectedException } from '@openlinker/core/listings';
+import {
+  ProductPublishRejectedException,
+  ProductPublishTargetNotFoundException,
+} from '@openlinker/core/listings';
 
 import { ListingCreationRecord } from '../../../domain/entities/listing-creation-record.entity';
 import { ProductPublishBuilderValidationException } from '../../../domain/exceptions/product-publish-builder-validation.exception';
@@ -46,7 +49,11 @@ describe('ProductPublishExecutionService', () => {
     updateStatus: jest.Mock;
     updateExternalIdAndStatus: jest.Mock;
   };
-  let identifierMapping: { getExternalIds: jest.Mock; createMapping: jest.Mock };
+  let identifierMapping: {
+    getExternalIds: jest.Mock;
+    createMapping: jest.Mock;
+    deleteMapping: jest.Mock;
+  };
   let integrations: { getCapabilityAdapter: jest.Mock };
   let adapter: { publishProduct: jest.Mock };
   let service: ProductPublishExecutionService;
@@ -75,6 +82,7 @@ describe('ProductPublishExecutionService', () => {
     identifierMapping = {
       getExternalIds: jest.fn().mockResolvedValue([]),
       createMapping: jest.fn().mockResolvedValue(undefined),
+      deleteMapping: jest.fn().mockResolvedValue(undefined),
     };
     adapter = {
       publishProduct: jest.fn().mockResolvedValue({ externalProductId: EXT, status: 'published' }),
@@ -118,6 +126,39 @@ describe('ProductPublishExecutionService', () => {
     );
     // No new mapping on upsert.
     expect(identifierMapping.createMapping).not.toHaveBeenCalled();
+  });
+
+  it('should delete the stale mapping and re-create when the upsert target is gone (404)', async () => {
+    // Existing mapping → upsert path.
+    identifierMapping.getExternalIds.mockResolvedValue([
+      { externalId: EXT, connectionId: CONN, entityType: 'ShopProduct', platformType: 'woocommerce' },
+    ]);
+    const NEW_EXT = 'wc-product-99';
+    adapter.publishProduct
+      .mockRejectedValueOnce(
+        new ProductPublishTargetNotFoundException('woocommerce.restapi.v3', EXT)
+      )
+      .mockResolvedValueOnce({ externalProductId: NEW_EXT, status: 'published' });
+    records.updateExternalIdAndStatus.mockResolvedValue(makeRecord('published', NEW_EXT));
+
+    const result = await service.executePublish(input);
+
+    // Stale mapping deleted.
+    expect(identifierMapping.deleteMapping).toHaveBeenCalledWith('ShopProduct', EXT, CONN);
+    // Re-published as a create (no externalProductId on the second call).
+    expect(adapter.publishProduct).toHaveBeenCalledTimes(2);
+    expect(adapter.publishProduct).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ externalProductId: null })
+    );
+    // Fresh mapping written for the newly created product.
+    expect(identifierMapping.createMapping).toHaveBeenCalledWith(
+      'ShopProduct',
+      NEW_EXT,
+      CONN,
+      VARIANT
+    );
+    expect(result.outcome).toBe('ok');
   });
 
   it('should record business_failure when the shop rejects the publish', async () => {

@@ -9,7 +9,7 @@ import { WooCommerceInvalidIdentifierException } from '../../../../domain/except
 import { WooCommerceInvalidArgumentException } from '../../../../domain/exceptions/woocommerce-invalid-argument.exception';
 import { WooCommerceUnauthorizedException } from '../../../../domain/exceptions/woocommerce-unauthorized.exception';
 import type { IWooCommerceHttpClient } from '../../../http/woocommerce-http-client.interface';
-import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 
 const makeConnection = (overrides: Partial<Connection> = {}): Connection =>
   ({
@@ -28,6 +28,7 @@ const makeConnection = (overrides: Partial<Connection> = {}): Connection =>
 
 describe('WooCommerceOfferManagerAdapter', () => {
   let httpClient: jest.Mocked<IWooCommerceHttpClient>;
+  let identifierMapping: jest.Mocked<Pick<IdentifierMappingPort, 'deleteMapping'>>;
   let adapter: WooCommerceOfferManagerAdapter;
 
   beforeEach(() => {
@@ -37,7 +38,14 @@ describe('WooCommerceOfferManagerAdapter', () => {
       put: jest.fn(),
       delete: jest.fn(),
     } as unknown as jest.Mocked<IWooCommerceHttpClient>;
-    adapter = new WooCommerceOfferManagerAdapter(httpClient, makeConnection());
+    identifierMapping = {
+      deleteMapping: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<Pick<IdentifierMappingPort, 'deleteMapping'>>;
+    adapter = new WooCommerceOfferManagerAdapter(
+      httpClient,
+      makeConnection(),
+      identifierMapping as unknown as IdentifierMappingPort,
+    );
   });
 
   describe('updateOfferQuantity', () => {
@@ -97,12 +105,15 @@ describe('WooCommerceOfferManagerAdapter', () => {
       expect(httpClient.put).not.toHaveBeenCalled();
     });
 
-    it('should resolve without throwing when the product is gone shop-side (404 = stale mapping skip)', async () => {
+    it('should delete the stale mapping and resolve when the product is gone shop-side (404, #1846 fix 5)', async () => {
       httpClient.put.mockRejectedValue(
         new WooCommerceHttpResponseException(404, 'Not found', 'woocommerce_rest_product_invalid_id'),
       );
 
-      await expect(adapter.updateOfferQuantity({ offerId: '999', quantity: 3 })).resolves.toBeUndefined();
+      await expect(
+        adapter.updateOfferQuantity({ offerId: '999', quantity: 3 }),
+      ).resolves.toBeUndefined();
+      expect(identifierMapping.deleteMapping).toHaveBeenCalledWith('ShopProduct', '999', 'conn-wc-1');
     });
 
     it('should propagate non-404 HTTP response errors so the runner retries them', async () => {

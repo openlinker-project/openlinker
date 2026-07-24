@@ -204,7 +204,12 @@ export function createWooCommercePlugin(deps?: CreateWooCommercePluginDeps): Ada
                 new WooCommerceProductPublisherAdapter(httpClient, connection),
               CategoryProvisioner: () =>
                 new WooCommerceProductPublisherAdapter(httpClient, connection),
-              OfferManager: () => new WooCommerceOfferManagerAdapter(httpClient, connection),
+              OfferManager: () =>
+                new WooCommerceOfferManagerAdapter(
+                  httpClient,
+                  connection,
+                  host.identifierMapping,
+                ),
             },
             WOOCOMMERCE_BRAND,
           ),

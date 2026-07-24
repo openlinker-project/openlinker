@@ -20,6 +20,7 @@ import { Logger } from '@openlinker/shared/logging';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import {
   ProductPublishRejectedException,
+  ProductPublishTargetNotFoundException,
   type CategoryProvisioner,
   type ProvisionCategoryCommand,
   type ProvisionCategoryResult,
@@ -43,6 +44,16 @@ const PRODUCTS_PATH = '/wp-json/wc/v3/products';
 const CATEGORIES_PATH = '/wp-json/wc/v3/products/categories';
 const DEFAULT_ADAPTER_KEY = 'woocommerce.restapi.v3';
 
+// WooCommerce caps `per_page` at 100. The default (10) silently truncates the
+// category-search result set, so an exact name match beyond the first 10 fuzzy
+// hits is missed and a duplicate category is created (#1846 fix 3).
+const CATEGORY_SEARCH_PER_PAGE = 100;
+
+// WC REST error code returned when a category name already exists under the same
+// parent — surfaces on a concurrent/racing provision. The response carries the
+// existing term id, letting us reuse it instead of failing (#1846 fix 3).
+const WC_TERM_EXISTS_CODE = 'term_exists';
+
 // Core WooCommerce has no native SEO title/description field — those live in
 // post meta owned by whichever SEO plugin the store runs. We write the meta keys
 // for both dominant plugins (Yoast, RankMath); the inactive plugin's rows are
@@ -61,8 +72,8 @@ export class WooCommerceProductPublisherAdapter
   ) {}
 
   async publishProduct(cmd: PublishProductCommand): Promise<PublishProductResult> {
-    const body = this.buildProductBody(cmd);
     const isUpsert = cmd.externalProductId != null && cmd.externalProductId !== '';
+    const body = this.buildProductBody(cmd, isUpsert);
     const path = isUpsert
       ? `${PRODUCTS_PATH}/${encodeURIComponent(String(cmd.externalProductId))}`
       : PRODUCTS_PATH;
@@ -78,7 +89,7 @@ export class WooCommerceProductPublisherAdapter
         ? await this.httpClient.put<WooCommerceProductResponse>(path, body)
         : await this.httpClient.post<WooCommerceProductResponse>(path, body);
     } catch (err) {
-      throw this.toPublishError(err);
+      throw this.toPublishError(err, isUpsert, cmd.externalProductId);
     }
 
     return { externalProductId: String(raw.id), status: this.fromWcStatus(raw.status) };
@@ -96,12 +107,9 @@ export class WooCommerceProductPublisherAdapter
         parentId = existing.id;
         continue;
       }
-      const created = await this.httpClient.post<WooCommerceCategoryResponse>(CATEGORIES_PATH, {
-        name: node.name,
-        parent: parentId,
-      });
+      const created = await this.createCategory(node.name, parentId);
       leafId = String(created.id);
-      createdPath.push(leafId);
+      if (created.created) createdPath.push(leafId);
       parentId = created.id;
     }
 
@@ -115,7 +123,10 @@ export class WooCommerceProductPublisherAdapter
    * Build the sparse WooCommerce product body. `platformParams` is spread first
    * so the explicit, modelled fields always win over any un-modeled knob.
    */
-  private buildProductBody(cmd: PublishProductCommand): Record<string, unknown> {
+  private buildProductBody(
+    cmd: PublishProductCommand,
+    isUpsert: boolean,
+  ): Record<string, unknown> {
     const content = cmd.content;
     const typed: WooCommerceProductPublishRequest = {
       type: 'simple',
@@ -140,21 +151,23 @@ export class WooCommerceProductPublisherAdapter
     if (content?.tags != null && content.tags.length > 0) {
       typed.tags = content.tags.map((name) => ({ name }));
     }
-    if (content?.imageUrls != null) typed.images = content.imageUrls.map((src) => ({ src }));
-    if (content?.seo?.slug != null) typed.slug = content.seo.slug;
+    // Images are sideloaded by `src`; WooCommerce re-imports (churns/duplicates)
+    // the media on every update. Only send them on create — image updates on
+    // upsert need media-id tracking and are a deferred enhancement (#1846 fix 7).
+    if (!isUpsert && content?.imageUrls != null) {
+      typed.images = content.imageUrls.map((src) => ({ src }));
+    }
+    // Per-item slug: bulk publishes several sibling variants as distinct simple
+    // products. Sending the same base slug for each lets WooCommerce silently
+    // auto-suffix (-2/-3), drifting the canonical URL. Discriminate the slug per
+    // item so each is deterministic and collision-free across re-publishes
+    // (#1846 fix 4).
+    if (content?.seo?.slug != null) typed.slug = this.buildPerItemSlug(content.seo.slug, cmd);
     if (cmd.destinationCategoryIds.length > 0) {
       typed.categories = cmd.destinationCategoryIds.map((id) => ({ id: Number(id) }));
     }
-    if (cmd.parameters && cmd.parameters.length > 0) {
-      // WooCommerce custom attributes carry free-text option strings; the owns-path
-      // `valuesIds` (dictionary entry ids) has no WC analogue and is intentionally
-      // not emitted in v1.
-      typed.attributes = cmd.parameters.map((p) => ({
-        name: p.id,
-        options: p.values ?? [],
-        visible: true,
-      }));
-    }
+    const attributes = this.buildAttributes(cmd.parameters);
+    if (attributes.length > 0) typed.attributes = attributes;
 
     this.applyCommerce(typed, cmd);
 
@@ -210,6 +223,52 @@ export class WooCommerceProductPublisherAdapter
     return rows;
   }
 
+  /**
+   * Map neutral projected/operator parameters to WooCommerce custom attributes.
+   * WooCommerce custom attributes carry only free-text option strings — the
+   * owns-path `valuesIds` (dictionary entry ids) has no WC analogue. A parameter
+   * that resolves to no free-text `values` (dictionary-only, or empty) is dropped
+   * cleanly rather than emitted as an empty `options: []` attribute, which would
+   * write a visible-but-valueless attribute row (silent data loss, #1846 fix 2).
+   */
+  private buildAttributes(
+    parameters: PublishProductCommand['parameters'],
+  ): Array<{ name: string; options: string[]; visible: boolean }> {
+    if (!parameters || parameters.length === 0) return [];
+    const attributes: Array<{ name: string; options: string[]; visible: boolean }> = [];
+    for (const p of parameters) {
+      const options = p.values ?? [];
+      if (options.length === 0) {
+        this.logger.debug(
+          `Dropping WooCommerce attribute "${p.id}" with no free-text values ` +
+            `(dictionary-typed valuesIds have no WC analogue).`,
+        );
+        continue;
+      }
+      attributes.push({ name: p.id, options, visible: true });
+    }
+    return attributes;
+  }
+
+  /**
+   * Build a per-item, deterministic slug from the builder-supplied base slug.
+   * Suffixing with the item's SKU (falling back to the internal variant id)
+   * keeps sibling variants collision-free — WooCommerce would otherwise
+   * auto-suffix a shared slug (-2/-3) — while staying stable across re-publishes
+   * of the same item (so the canonical URL does not drift).
+   */
+  private buildPerItemSlug(baseSlug: string, cmd: PublishProductCommand): string {
+    const discriminator = this.slugify(cmd.sku ?? cmd.internalVariantId);
+    return discriminator ? `${baseSlug}-${discriminator}` : baseSlug;
+  }
+
+  private slugify(value: string): string {
+    return value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-+|-+$)/g, '');
+  }
+
   private async findCategory(
     name: string,
     parent: number,
@@ -217,10 +276,44 @@ export class WooCommerceProductPublisherAdapter
     const matches = await this.httpClient.get<WooCommerceCategoryResponse[]>(CATEGORIES_PATH, {
       search: name,
       parent,
+      // WooCommerce defaults `per_page` to 10; a store with many same-prefix
+      // siblings would truncate the fuzzy result set and miss the exact match,
+      // then create a duplicate. Request the WC maximum so the exact match is
+      // always in range (#1846 fix 3).
+      per_page: CATEGORY_SEARCH_PER_PAGE,
     });
     // WooCommerce `search` is fuzzy — require an exact name + parent match before
     // reusing a node, so a similarly-named sibling is never mis-bound.
     return matches.find((c) => c.name === name && c.parent === parent) ?? null;
+  }
+
+  /**
+   * Create a category node, tolerating a concurrent creation race. Two publishes
+   * provisioning the same path at once can both miss `findCategory` and POST; the
+   * loser gets a WC `term_exists` 4xx. Instead of failing (which would create a
+   * duplicate on a naive retry), re-resolve the now-existing node and reuse it —
+   * an idempotency guard around the non-atomic find-then-create (#1846 fix 3).
+   */
+  private async createCategory(
+    name: string,
+    parent: number,
+  ): Promise<{ id: number; created: boolean }> {
+    try {
+      const created = await this.httpClient.post<WooCommerceCategoryResponse>(CATEGORIES_PATH, {
+        name,
+        parent,
+      });
+      return { id: created.id, created: true };
+    } catch (err) {
+      if (
+        err instanceof WooCommerceHttpResponseException &&
+        err.errorCode === WC_TERM_EXISTS_CODE
+      ) {
+        const existing = await this.findCategory(name, parent);
+        if (existing) return { id: existing.id, created: false };
+      }
+      throw err;
+    }
   }
 
   private fromWcStatus(status: WooCommerceProductStatus): PublishProductStatus {
@@ -228,18 +321,38 @@ export class WooCommerceProductPublisherAdapter
   }
 
   /**
-   * Map a transport failure to the neutral publish exception. A 4xx is a
-   * terminal rejection (no record created/updated) → `ProductPublishRejectedException`
-   * (the execution service records `business_failure`). Auth (401/403, a distinct
-   * exception type) and 5xx/network propagate untouched for the worker-retry / reauth paths.
+   * Map a transport failure to the neutral publish exception.
+   *
+   * - Upsert 404 → `ProductPublishTargetNotFoundException`: the mapped product
+   *   was deleted shop-side; core deletes the stale mapping and re-creates
+   *   (#1846 fix 1), not a terminal failure.
+   * - 429 (rate limit) / 408 (request timeout) → propagate untouched: these are
+   *   transient, so the worker retries the whole job rather than recording a
+   *   `business_failure` (#1846 fix 6). (The HTTP client already retries 429/5xx
+   *   internally; a surfaced 429 means its own budget was exhausted.)
+   * - Other 4xx → terminal rejection (no record created/updated) →
+   *   `ProductPublishRejectedException` (the execution service records
+   *   `business_failure`).
+   * - Auth (401/403, a distinct exception type) and 5xx/network propagate
+   *   untouched for the worker-retry / reauth paths.
    */
-  private toPublishError(err: unknown): unknown {
-    if (
-      err instanceof WooCommerceHttpResponseException &&
-      err.statusCode >= 400 &&
-      err.statusCode < 500
-    ) {
-      const adapterKey = this.connection.adapterKey ?? DEFAULT_ADAPTER_KEY;
+  private toPublishError(
+    err: unknown,
+    isUpsert: boolean,
+    externalProductId?: string | null,
+  ): unknown {
+    if (!(err instanceof WooCommerceHttpResponseException)) return err;
+
+    const adapterKey = this.connection.adapterKey ?? DEFAULT_ADAPTER_KEY;
+
+    if (isUpsert && err.statusCode === 404 && externalProductId != null) {
+      return new ProductPublishTargetNotFoundException(adapterKey, String(externalProductId));
+    }
+
+    // Transient 4xx — let the worker retry the job instead of failing terminally.
+    if (err.statusCode === 429 || err.statusCode === 408) return err;
+
+    if (err.statusCode >= 400 && err.statusCode < 500) {
       return new ProductPublishRejectedException(adapterKey, err.statusCode, [
         { code: err.errorCode ?? 'woocommerce_rejected', message: err.message },
       ]);

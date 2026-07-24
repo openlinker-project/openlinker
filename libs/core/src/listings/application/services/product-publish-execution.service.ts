@@ -44,7 +44,10 @@ import type {
   PublishProductResult,
   ShopProductManagerPort,
 } from '@openlinker/core/listings';
-import { ProductPublishRejectedException } from '@openlinker/core/listings';
+import {
+  ProductPublishRejectedException,
+  ProductPublishTargetNotFoundException,
+} from '@openlinker/core/listings';
 import type { JobOutcome } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -129,25 +132,43 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
       'ProductPublisher'
     );
 
+    // Tracks whether the mapping still needs writing after the publish call. A
+    // first publish (no existing mapping) always writes; a stale-mapping
+    // recovery deletes the dead mapping and re-creates, so it must write too.
+    let mappingNeedsCreate = !existingExternalProductId;
+
     let result: PublishProductResult;
     try {
       result = await adapter.publishProduct(command);
     } catch (error) {
-      if (error instanceof ProductPublishRejectedException) {
+      // Stale mapping: the upsert target was deleted shop-side. Drop the dead
+      // `ShopProduct` mapping and re-publish as a create so the variant can
+      // recover instead of failing forever (#1846 fix 1/5).
+      if (error instanceof ProductPublishTargetNotFoundException && existingExternalProductId) {
+        result = await this.recreateAfterStaleUpsertTarget(
+          adapter,
+          command,
+          input,
+          existingExternalProductId
+        );
+        mappingNeedsCreate = true;
+      } else if (error instanceof ProductPublishRejectedException) {
         const updated = await this.listingRecords.updateStatus(
           record.id,
           LISTING_CREATION_STATUS.Failed,
           this.mapRejectionErrors(error)
         );
         return this.buildResult(updated, input.connectionId);
+      } else {
+        throw error;
       }
-      throw error;
     }
 
-    // First publish only — persist the variant → external-product mapping.
-    // Upserts already have it. `DuplicateIdentifierMappingError` means a prior
-    // attempt inserted it; that is exactly what we wanted, so continue.
-    if (!existingExternalProductId) {
+    // First publish (or stale-mapping recovery) — persist the variant →
+    // external-product mapping. Upserts already have it.
+    // `DuplicateIdentifierMappingError` means a prior attempt inserted it; that
+    // is exactly what we wanted, so continue.
+    if (mappingNeedsCreate) {
       try {
         await this.identifierMapping.createMapping(
           CORE_ENTITY_TYPE.ShopProduct,
@@ -176,6 +197,32 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
       result.warnings?.length ? result.warnings : null,
     );
     return this.buildResult(finalRecord, input.connectionId);
+  }
+
+  /**
+   * Recover from a stale `ShopProduct` mapping whose upsert target no longer
+   * exists shop-side. Deletes the dead mapping and re-publishes the same command
+   * as a create (no `externalProductId`), returning the fresh publish result.
+   * The caller then persists the new mapping.
+   */
+  private async recreateAfterStaleUpsertTarget(
+    adapter: ShopProductManagerPort,
+    command: PublishProductCommand,
+    input: ExecutePublishProductInput,
+    staleExternalProductId: string
+  ): Promise<PublishProductResult> {
+    this.logger.warn(
+      `Stale ShopProduct mapping detected; upsert target missing shop-side. ` +
+        `Deleting mapping and re-creating. connectionId=${input.connectionId} ` +
+        `internalVariantId=${input.internalVariantId} staleExternalProductId=${staleExternalProductId}`
+    );
+    await this.identifierMapping.deleteMapping(
+      CORE_ENTITY_TYPE.ShopProduct,
+      staleExternalProductId,
+      input.connectionId
+    );
+    const createCommand: PublishProductCommand = { ...command, externalProductId: null };
+    return adapter.publishProduct(createCommand);
   }
 
   private async resolveExistingExternalProductId(
