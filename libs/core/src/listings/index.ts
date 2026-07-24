@@ -349,6 +349,7 @@ export type {
   ListingCreationStatus,
   ListingCreationError,
   CreateListingCreationRecordInput,
+  ShopPublishRequestSnapshot,
 } from './domain/types/listing-creation-record.types';
 export type { ListingCreationRecordRepositoryPort } from './domain/ports/listing-creation-record-repository.port';
 export { ListingCreationInvariantException } from './domain/exceptions/listing-creation-invariant.exception';
@@ -377,6 +378,36 @@ export type {
   BulkShopPublishItem,
   BulkShopPublishBatchSummary,
 } from './application/types/bulk-shop-publish-submit.types';
+// Shop publish retry (#1845)
+export type { IBulkShopPublishRetryService } from './application/interfaces/bulk-shop-publish-retry.service.interface';
+export type { BulkShopPublishRetryResult } from './application/types/bulk-shop-publish-retry.types';
+export { ShopProductMappingConflictException } from './domain/exceptions/shop-product-mapping-conflict.exception';
+// Shop product status reconcile (#1845)
+export {
+  ShopPublicationStatusValues,
+  SHOP_PUBLICATION_STATUS,
+} from './domain/types/shop-product-status.types';
+export type {
+  ShopPublicationStatus,
+  ShopProductStatusReadResult,
+  ShopProductStatusSnapshotProps,
+  ShopProductStatusSnapshotDetails,
+  UpsertShopProductStatusSnapshotCommand,
+  ShopStatusSyncResult,
+} from './domain/types/shop-product-status.types';
+export { ShopProductStatusSnapshot } from './domain/entities/shop-product-status-snapshot.entity';
+export type {
+  ShopProductStatusSnapshotRepositoryPort,
+  ShopProductStatusUpsertResult,
+} from './domain/ports/shop-product-status-snapshot-repository.port';
+export {
+  isShopProductStatusReader,
+} from './domain/ports/capabilities/shop-product-status-reader.capability';
+export type { ShopProductStatusReader } from './domain/ports/capabilities/shop-product-status-reader.capability';
+export type {
+  IShopStatusSyncService,
+  ShopStatusSyncOptions,
+} from './application/services/shop-status-sync.service.interface';
 
 // Tokens
 export * from './listings.tokens';

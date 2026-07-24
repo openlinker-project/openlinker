@@ -73,6 +73,16 @@ export interface WooCommerceProductResponse {
   status: WooCommerceProductStatus;
 }
 
+/**
+ * Minimal `GET /products/{id}` response shape the status reconcile reads (#1845).
+ * `status` is a broad `string` (not the publish-time union) because a live read
+ * can return states the publish path never sets - notably `'trash'`.
+ */
+export interface WooCommerceProductStatusResponse {
+  id: number;
+  status: string;
+}
+
 /** Minimal `products/categories` response shape the adapter reads. */
 export interface WooCommerceCategoryResponse {
   id: number;

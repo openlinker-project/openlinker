@@ -27,7 +27,10 @@ import {
 } from '@openlinker/core/sync';
 
 import { ListingCreationRecordRepositoryPort } from '../../domain/ports/listing-creation-record-repository.port';
-import { LISTING_CREATION_STATUS } from '../../domain/types/listing-creation-record.types';
+import {
+  LISTING_CREATION_STATUS,
+  type ShopPublishRequestSnapshot,
+} from '../../domain/types/listing-creation-record.types';
 import { LISTING_CREATION_RECORD_REPOSITORY_TOKEN } from '../../listings.tokens';
 import type { IProductPublishEnqueueService } from '../interfaces/product-publish-enqueue.service.interface';
 import type {
@@ -59,12 +62,16 @@ export class ProductPublishEnqueueService implements IProductPublishEnqueueServi
     // 2. Pre-create the record so the HTTP response carries an id clients can
     //    poll immediately. `bulkBatchId` is forwarded straight through so
     //    per-batch summary reads see the row before the worker terminates.
+    //    The per-item request snapshot (#1845) is persisted so the bulk retry
+    //    can rebuild the original payload for a failed child without re-deriving
+    //    it (mirrors the offer path's `OfferCreationRecord.request`).
     const record = await this.listingRecords.create({
       internalVariantId: input.internalVariantId,
       connectionId: input.connectionId,
       status: LISTING_CREATION_STATUS.Pending,
       externalProductId: null,
       errors: null,
+      request: this.buildRequestSnapshot(input),
       ...(input.bulkBatchId !== undefined && { bulkBatchId: input.bulkBatchId }),
     });
 
@@ -122,5 +129,25 @@ export class ProductPublishEnqueueService implements IProductPublishEnqueueServi
     });
 
     return { jobId, listingCreationRecord: record };
+  }
+
+  /**
+   * Capture the neutral per-item publish request as a retry snapshot (#1845).
+   * Only fields present on the input are carried; batch-scoped / shared flags
+   * are intentionally excluded (they live on the batch `sharedConfig`).
+   */
+  private buildRequestSnapshot(input: EnqueueProductPublishInput): ShopPublishRequestSnapshot {
+    return {
+      internalVariantId: input.internalVariantId,
+      status: input.status,
+      stock: input.stock,
+      ...(input.price !== undefined && { price: input.price }),
+      ...(input.destinationCategoryIds !== undefined && {
+        destinationCategoryIds: input.destinationCategoryIds,
+      }),
+      ...(input.content !== undefined && { content: input.content }),
+      ...(input.commerce !== undefined && { commerce: input.commerce }),
+      ...(input.parameters !== undefined && { parameters: input.parameters }),
+    };
   }
 }

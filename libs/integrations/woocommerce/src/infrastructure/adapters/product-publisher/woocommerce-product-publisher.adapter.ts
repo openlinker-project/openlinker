@@ -21,6 +21,7 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import {
   ProductPublishRejectedException,
   ProductPublishTargetNotFoundException,
+  SHOP_PUBLICATION_STATUS,
   type CategoryProvisioner,
   type ProvisionCategoryCommand,
   type ProvisionCategoryResult,
@@ -31,6 +32,9 @@ import {
   type ShopCategory,
   type ShopCategoryBrowser,
   type ShopProductManagerPort,
+  type ShopProductStatusReadResult,
+  type ShopProductStatusReader,
+  type ShopPublicationStatus,
 } from '@openlinker/core/listings';
 
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
@@ -40,6 +44,7 @@ import type {
   WooCommerceProductPublishRequest,
   WooCommerceProductResponse,
   WooCommerceProductStatus,
+  WooCommerceProductStatusResponse,
 } from './woocommerce-product-publish.types';
 
 const PRODUCTS_PATH = '/wp-json/wc/v3/products';
@@ -72,7 +77,11 @@ const SEO_TITLE_META_KEYS = ['_yoast_wpseo_title', 'rank_math_title'] as const;
 const SEO_DESCRIPTION_META_KEYS = ['_yoast_wpseo_metadesc', 'rank_math_description'] as const;
 
 export class WooCommerceProductPublisherAdapter
-  implements ShopProductManagerPort, CategoryProvisioner, ShopCategoryBrowser
+  implements
+    ShopProductManagerPort,
+    CategoryProvisioner,
+    ShopCategoryBrowser,
+    ShopProductStatusReader
 {
   private readonly logger = new Logger(WooCommerceProductPublisherAdapter.name);
 
@@ -103,6 +112,50 @@ export class WooCommerceProductPublisherAdapter
     }
 
     return { externalProductId: String(raw.id), status: this.fromWcStatus(raw.status) };
+  }
+
+  /**
+   * Read the live shop-side publication status of a published product (#1845).
+   * Maps WooCommerce's native `status` onto the neutral `ShopPublicationStatus`;
+   * a 404 (product deleted/trashed shop-side) maps to `removed` so the core
+   * reconcile can detect an unpublished/removed product without treating it as a
+   * transport error. Other transport failures propagate for the runner's
+   * transient-retry path.
+   */
+  async getShopProductStatus(externalProductId: string): Promise<ShopProductStatusReadResult> {
+    const path = `${PRODUCTS_PATH}/${encodeURIComponent(externalProductId)}`;
+    let raw: WooCommerceProductStatusResponse;
+    try {
+      raw = await this.httpClient.get<WooCommerceProductStatusResponse>(path);
+    } catch (err) {
+      if (err instanceof WooCommerceHttpResponseException && err.statusCode === 404) {
+        return { publicationStatus: SHOP_PUBLICATION_STATUS.Removed };
+      }
+      throw err;
+    }
+    return { publicationStatus: this.toPublicationStatus(raw.status) };
+  }
+
+  /**
+   * Map a WooCommerce native product status onto the neutral union. `publish` is
+   * live; `draft` reverted to draft; `pending`/`private` are present but not
+   * buyer-visible (unpublished); `trash` (or any unknown value) is treated as
+   * removed shop-side.
+   */
+  private toPublicationStatus(status: string): ShopPublicationStatus {
+    switch (status) {
+      case 'publish':
+        return SHOP_PUBLICATION_STATUS.Published;
+      case 'draft':
+        return SHOP_PUBLICATION_STATUS.Draft;
+      case 'pending':
+      case 'private':
+        return SHOP_PUBLICATION_STATUS.Unpublished;
+      case 'trash':
+        return SHOP_PUBLICATION_STATUS.Removed;
+      default:
+        return SHOP_PUBLICATION_STATUS.Removed;
+    }
   }
 
   async provisionCategory(cmd: ProvisionCategoryCommand): Promise<ProvisionCategoryResult> {

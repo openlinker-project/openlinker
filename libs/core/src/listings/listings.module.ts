@@ -37,6 +37,10 @@ import { ProductPublishExecutionService } from './application/services/product-p
 import { ProductPublishEnqueueService } from './application/services/product-publish-enqueue.service';
 import { ListingCreationQueryService } from './application/services/listing-creation-query.service';
 import { BulkShopPublishSubmitService } from './application/services/bulk-shop-publish-submit.service';
+import { BulkShopPublishRetryService } from './application/services/bulk-shop-publish-retry.service';
+import { ShopStatusSyncService } from './application/services/shop-status-sync.service';
+import { ShopProductStatusSnapshotOrmEntity } from './infrastructure/persistence/entities/shop-product-status-snapshot.orm-entity';
+import { ShopProductStatusSnapshotRepository } from './infrastructure/persistence/repositories/shop-product-status-snapshot.repository';
 import { SellerPoliciesCacheOrmEntity } from './infrastructure/persistence/entities/seller-policies-cache.orm-entity';
 import { SellerPoliciesCacheRepository } from './infrastructure/persistence/repositories/seller-policies-cache.repository';
 import { SellerPoliciesService } from './application/services/seller-policies.service';
@@ -84,6 +88,9 @@ import {
   LISTING_CREATION_QUERY_SERVICE_TOKEN,
   BULK_SHOP_PUBLISH_SUBMIT_SERVICE_TOKEN,
   SHOP_CATEGORY_BROWSE_SERVICE_TOKEN,
+  BULK_SHOP_PUBLISH_RETRY_SERVICE_TOKEN,
+  SHOP_STATUS_SYNC_SERVICE_TOKEN,
+  SHOP_PRODUCT_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
 } from './listings.tokens';
 
 // Re-export tokens for convenience
@@ -119,6 +126,9 @@ export {
   LISTING_CREATION_QUERY_SERVICE_TOKEN,
   BULK_SHOP_PUBLISH_SUBMIT_SERVICE_TOKEN,
   SHOP_CATEGORY_BROWSE_SERVICE_TOKEN,
+  BULK_SHOP_PUBLISH_RETRY_SERVICE_TOKEN,
+  SHOP_STATUS_SYNC_SERVICE_TOKEN,
+  SHOP_PRODUCT_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
 } from './listings.tokens';
 
 @Module({
@@ -131,6 +141,7 @@ export {
       BulkBatchAdvancementOrmEntity,
       SellerPoliciesCacheOrmEntity,
       OfferStatusSnapshotOrmEntity,
+      ShopProductStatusSnapshotOrmEntity,
     ]),
     IntegrationsModule,
     IdentifierMappingModule,
@@ -166,6 +177,9 @@ export {
     ProductPublishEnqueueService,
     ListingCreationQueryService,
     BulkShopPublishSubmitService,
+    BulkShopPublishRetryService,
+    ShopStatusSyncService,
+    ShopProductStatusSnapshotRepository,
     OfferCreationEnqueueService,
     BulkListingSubmitService,
     BulkListingRetryService,
@@ -252,6 +266,18 @@ export {
       useExisting: BulkShopPublishSubmitService,
     },
     {
+      provide: BULK_SHOP_PUBLISH_RETRY_SERVICE_TOKEN,
+      useExisting: BulkShopPublishRetryService,
+    },
+    {
+      provide: SHOP_STATUS_SYNC_SERVICE_TOKEN,
+      useExisting: ShopStatusSyncService,
+    },
+    {
+      provide: SHOP_PRODUCT_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
+      useExisting: ShopProductStatusSnapshotRepository,
+    },
+    {
       provide: OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
       useExisting: OfferCreationEnqueueService,
     },
@@ -334,6 +360,9 @@ export {
     LISTING_CREATION_QUERY_SERVICE_TOKEN,
     BULK_SHOP_PUBLISH_SUBMIT_SERVICE_TOKEN,
     SHOP_CATEGORY_BROWSE_SERVICE_TOKEN,
+    BULK_SHOP_PUBLISH_RETRY_SERVICE_TOKEN,
+    SHOP_STATUS_SYNC_SERVICE_TOKEN,
+    SHOP_PRODUCT_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
   ],
 })
 export class ListingsModule {}
