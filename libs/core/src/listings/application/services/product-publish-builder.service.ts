@@ -39,10 +39,11 @@ import type {
   ProvisionCategoryCommand,
   PublishProductCommand,
   PublishProductContent,
+  PublishProductVariantGroup,
   ShopProductManagerPort,
 } from '@openlinker/core/listings';
 import { isCategoryProvisioner } from '@openlinker/core/listings';
-import type { Category, ProductMasterPort } from '@openlinker/core/products';
+import type { Category, ProductMasterPort, ProductVariant } from '@openlinker/core/products';
 import { IProductsService, PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
 
 import { MasterCatalogConnectionNotConfiguredException } from '../../domain/exceptions/master-catalog-connection-not-configured.exception';
@@ -54,6 +55,7 @@ import type { IProductPublishBuilderService } from '../interfaces/product-publis
 import type { BuildPublishProductCommandInput } from '../types/product-publish-builder.types';
 import type { AttributeProjectionMetadata } from '../types/attribute-projection.types';
 import { buildProjectionMetadata } from './build-projection-metadata';
+import { flattenAttributes } from './variant-attributes.util';
 
 @Injectable()
 export class ProductPublishBuilderService implements IProductPublishBuilderService {
@@ -128,6 +130,13 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
     const barcode = variant.gtin ?? variant.ean ?? undefined;
     const weight = variant.weight ?? product.weight;
 
+    // #1836 — a multi-variant product (>1 sibling) publishes as one grouped
+    // shop record (WooCommerce variable product + variations). Mirrors the
+    // marketplace #1065 populate decision (sibling count only; the read
+    // happens once per publish regardless of fan-out width).
+    const siblings = await this.productsService.getVariantsByProductId(variant.productId);
+    const variantGroup = this.resolveVariantGroup(variant, siblings);
+
     const command: PublishProductCommand = {
       internalVariantId: input.internalVariantId,
       connectionId: input.connectionId,
@@ -151,11 +160,51 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
       ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
     };
 
+    // #1836 — only set when populated, keeping the command shape tidy for
+    // single-variant / simple products (mirrors the #1065 marketplace posture).
+    if (variantGroup) {
+      command.variantGroup = variantGroup;
+    }
+
     this.logger.debug(
-      `Built PublishProductCommand for variant=${input.internalVariantId} connection=${input.connectionId} categories=${destinationCategoryIds.length} params=${parameters.length} status=${input.status}`
+      `Built PublishProductCommand for variant=${input.internalVariantId} connection=${input.connectionId} categories=${destinationCategoryIds.length} params=${parameters.length} status=${input.status} grouped=${variantGroup != null}`
     );
 
     return command;
+  }
+
+  /**
+   * Pure helper (#1836): build the shop-neutral grouping hint for a sibling of
+   * a multi-variant product. Returns `undefined` for single-variant / simple
+   * products (`siblings.length <= 1`) so they publish standalone, preserving
+   * the exact pre-#1836 simple-product path. `groupAttributeValues` unions
+   * every sibling's own distinguishing values per attribute name so the
+   * destination's parent record can declare the full option set regardless of
+   * which sibling happens to publish first.
+   */
+  private resolveVariantGroup(
+    variant: ProductVariant,
+    siblings: ProductVariant[]
+  ): PublishProductVariantGroup | undefined {
+    if (siblings.length <= 1) {
+      return undefined;
+    }
+    const groupAttributeValues: Record<string, string[]> = {};
+    for (const sibling of siblings) {
+      for (const { name, value } of flattenAttributes(sibling.attributes)) {
+        const existing = groupAttributeValues[name];
+        if (existing) {
+          if (!existing.includes(value)) existing.push(value);
+        } else {
+          groupAttributeValues[name] = [value];
+        }
+      }
+    }
+    return {
+      groupId: variant.productId,
+      attributes: flattenAttributes(variant.attributes),
+      groupAttributeValues,
+    };
   }
 
   /**

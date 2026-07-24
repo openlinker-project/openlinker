@@ -11,9 +11,14 @@
  *   2. Resolve create-vs-upsert: look up the `ShopProduct` IdentifierMapping for
  *      this (variant, connection) → set `externalProductId` for an upsert.
  *   3. Build the neutral PublishProductCommand (ProductPublishBuilderService).
- *   4. Resolve the shop adapter and call `publishProduct`.
- *   5. On first publish, persist the IdentifierMapping (idempotent on retry).
- *   6. Update the record with externalProductId + final status.
+ *   4. For a grouped (multi-variant) command, also resolve the PARENT
+ *      `ShopProduct` mapping keyed on `variantGroup.groupId` and stamp
+ *      `variantGroup.externalParentProductId` (#1836).
+ *   5. Resolve the shop adapter and call `publishProduct`.
+ *   6. On first publish, persist the variant IdentifierMapping (idempotent on
+ *      retry); for a grouped command, also persist the parent's mapping the
+ *      first time it resolves.
+ *   7. Update the record with externalProductId + final status.
  *
  * Terminal domain failures (builder validation, master-catalog misconfig, shop
  * reject) are caught and recorded as `status='failed'`; the method resolves
@@ -24,6 +29,10 @@
  * distinct shop products (shop create is not platform-idempotent; the mapping
  * records one). Bounded by the job-level `idempotencyKey` dedup (#726
  * at-most-once enqueue) — the enqueue gate is the guard, not a DB constraint.
+ * The grouped parent mapping (#1836) has the same race shape when two sibling
+ * variants' jobs run concurrently and both find no parent yet — the losing
+ * `createMapping` swallows the duplicate once it verifies the winner's mapping
+ * points to the same group (product) id.
  *
  * @module libs/core/src/listings/application/services
  * @implements {IProductPublishExecutionService}
@@ -128,6 +137,26 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
       command = { ...command, externalProductId: existingExternalProductId };
     }
 
+    // #1836 — a grouped (multi-variant) publish additionally resolves the
+    // PARENT variable-product mapping (keyed on `variantGroup.groupId`, the OL
+    // product id — distinct internalId from the variant's own mapping, so both
+    // live in the same `ShopProduct` entityType without collision). Absent ⇒
+    // the adapter creates the parent as part of this call.
+    let existingParentExternalProductId: string | null = null;
+    if (command.variantGroup) {
+      existingParentExternalProductId = await this.resolveExistingExternalProductIdFor(
+        command.variantGroup.groupId,
+        input.connectionId
+      );
+      command = {
+        ...command,
+        variantGroup: {
+          ...command.variantGroup,
+          externalParentProductId: existingParentExternalProductId,
+        },
+      };
+    }
+
     const adapter = await this.integrationsService.getCapabilityAdapter<ShopProductManagerPort>(
       input.connectionId,
       'ProductPublisher'
@@ -137,6 +166,11 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
     // first publish (no existing mapping) always writes; a stale-mapping
     // recovery deletes the dead mapping and re-creates, so it must write too.
     let mappingNeedsCreate = !existingExternalProductId;
+    // #1836 — same tracking for the grouped parent mapping, independent of the
+    // variant's own mapping lifecycle (a variant re-publish after the parent
+    // already exists must not re-write the parent mapping).
+    const parentMappingNeedsCreate =
+      command.variantGroup != null && !existingParentExternalProductId;
 
     let result: PublishProductResult;
     try {
@@ -195,6 +229,36 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
           throw error;
         }
         await this.assertMappingClaimsSameVariant(input, result.externalProductId);
+      }
+    }
+
+    // #1836 — persist the grouped PARENT mapping the first time it resolves.
+    // `result.externalParentProductId` is populated by the adapter whenever
+    // `command.variantGroup` was set (created just now, or reused — either
+    // way idempotent to write once). Same concurrency-safe posture as the
+    // variant mapping above: two siblings racing to create the parent for the
+    // first time both attempt the insert; the loser swallows the duplicate
+    // only if the winner's mapping claims the same group (product) id.
+    if (parentMappingNeedsCreate && result.externalParentProductId) {
+      const groupId = command.variantGroup?.groupId;
+      if (groupId) {
+        try {
+          await this.identifierMapping.createMapping(
+            CORE_ENTITY_TYPE.ShopProduct,
+            result.externalParentProductId,
+            input.connectionId,
+            groupId
+          );
+        } catch (error) {
+          if (!(error instanceof DuplicateIdentifierMappingError)) {
+            throw error;
+          }
+          await this.assertMappingClaimsSameInternalId(
+            result.externalParentProductId,
+            input.connectionId,
+            groupId
+          );
+        }
       }
     }
 
@@ -272,16 +336,34 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
     input: ExecutePublishProductInput,
     externalProductId: string
   ): Promise<void> {
+    await this.assertMappingClaimsSameInternalId(
+      externalProductId,
+      input.connectionId,
+      input.internalVariantId
+    );
+  }
+
+  /**
+   * Generic form of the same-internal-id assertion (#1836), reused for the
+   * grouped parent mapping (`internalId` = the OL product id) alongside the
+   * variant's own mapping. See {@link assertMappingClaimsSameVariant} for the
+   * concurrency rationale.
+   */
+  private async assertMappingClaimsSameInternalId(
+    externalId: string,
+    connectionId: string,
+    expectedInternalId: string
+  ): Promise<void> {
     const mappedInternalId = await this.identifierMapping.getInternalId(
       CORE_ENTITY_TYPE.ShopProduct,
-      externalProductId,
-      input.connectionId
+      externalId,
+      connectionId
     );
-    if (mappedInternalId !== null && mappedInternalId !== input.internalVariantId) {
+    if (mappedInternalId !== null && mappedInternalId !== expectedInternalId) {
       throw new ShopProductMappingConflictException(
-        externalProductId,
-        input.connectionId,
-        input.internalVariantId,
+        externalId,
+        connectionId,
+        expectedInternalId,
         mappedInternalId
       );
     }
@@ -290,11 +372,25 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
   private async resolveExistingExternalProductId(
     input: ExecutePublishProductInput
   ): Promise<string | null> {
+    return this.resolveExistingExternalProductIdFor(input.internalVariantId, input.connectionId);
+  }
+
+  /**
+   * Generic `ShopProduct` mapping lookup, scoped by connection (#1836). Shared
+   * by the variant's own mapping (`internalId` = variant id) and the grouped
+   * parent's mapping (`internalId` = the OL product id) — both live in the
+   * same `ShopProduct` entityType without collision since variant and product
+   * internal ids are distinctly prefixed (`ol_variant_*` vs `ol_product_*`).
+   */
+  private async resolveExistingExternalProductIdFor(
+    internalId: string,
+    connectionId: string
+  ): Promise<string | null> {
     const mappings = await this.identifierMapping.getExternalIds(
       CORE_ENTITY_TYPE.ShopProduct,
-      input.internalVariantId
+      internalId
     );
-    const forConnection = mappings.find((m) => m.connectionId === input.connectionId);
+    const forConnection = mappings.find((m) => m.connectionId === connectionId);
     return forConnection?.externalId ?? null;
   }
 

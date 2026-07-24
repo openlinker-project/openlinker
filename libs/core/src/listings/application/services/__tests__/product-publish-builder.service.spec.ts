@@ -18,7 +18,7 @@ const MASTER = 'conn-master-1';
 const VARIANT = 'ol_variant_aaaa';
 
 describe('ProductPublishBuilderService', () => {
-  let products: { getVariant: jest.Mock };
+  let products: { getVariant: jest.Mock; getVariantsByProductId: jest.Mock };
   let connectionPort: { get: jest.Mock };
   let integrations: { getCapabilityAdapter: jest.Mock };
   let projection: { project: jest.Mock };
@@ -38,6 +38,11 @@ describe('ProductPublishBuilderService', () => {
       getVariant: jest
         .fn()
         .mockResolvedValue({ id: VARIANT, productId: 'prod-1', attributes: { Brand: 'Acme' }, ean: null, gtin: null, sku: null }),
+      // Single-element by default so existing (pre-#1836) suites keep exercising
+      // the standalone / unchanged simple-product path.
+      getVariantsByProductId: jest
+        .fn()
+        .mockResolvedValue([{ id: VARIANT, productId: 'prod-1', attributes: { Brand: 'Acme' } }]),
     };
     connectionPort = {
       get: jest.fn().mockResolvedValue({ config: { masterCatalogConnectionId: MASTER } }),
@@ -305,5 +310,54 @@ describe('ProductPublishBuilderService', () => {
     await expect(service.buildPublishProductCommand(baseInput)).rejects.toBeInstanceOf(
       ProductPublishBuilderValidationException
     );
+  });
+
+  describe('variantGroup (#1836)', () => {
+    it('should leave variantGroup absent for a single-variant / simple product', async () => {
+      const command = await service.buildPublishProductCommand(baseInput);
+
+      expect(command.variantGroup).toBeUndefined();
+    });
+
+    it('should stamp a variantGroup with the union of sibling attribute values for a multi-variant product', async () => {
+      products.getVariantsByProductId.mockResolvedValue([
+        { id: VARIANT, productId: 'prod-1', attributes: { Color: 'Red', Size: 'M' } },
+        { id: 'ol_variant_bbbb', productId: 'prod-1', attributes: { Color: 'Blue', Size: 'M' } },
+        { id: 'ol_variant_cccc', productId: 'prod-1', attributes: { Color: 'Red', Size: 'L' } },
+      ]);
+      products.getVariant.mockResolvedValue({
+        id: VARIANT,
+        productId: 'prod-1',
+        attributes: { Color: 'Red', Size: 'M' },
+        ean: null,
+        gtin: null,
+        sku: null,
+      });
+
+      const command = await service.buildPublishProductCommand(baseInput);
+
+      expect(command.variantGroup).toEqual({
+        groupId: 'prod-1',
+        attributes: [
+          { name: 'Color', value: 'Red' },
+          { name: 'Size', value: 'M' },
+        ],
+        groupAttributeValues: {
+          Color: ['Red', 'Blue'],
+          Size: ['M', 'L'],
+        },
+      });
+    });
+
+    it('should not stamp externalParentProductId on the builder-produced variantGroup (resolved downstream by the execution service)', async () => {
+      products.getVariantsByProductId.mockResolvedValue([
+        { id: VARIANT, productId: 'prod-1', attributes: { Color: 'Red' } },
+        { id: 'ol_variant_bbbb', productId: 'prod-1', attributes: { Color: 'Blue' } },
+      ]);
+
+      const command = await service.buildPublishProductCommand(baseInput);
+
+      expect(command.variantGroup).not.toHaveProperty('externalParentProductId');
+    });
   });
 });

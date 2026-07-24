@@ -6,16 +6,22 @@
  * (#1835) sub-capabilities against the WooCommerce REST API v3. Pure transport:
  * the core `ProductPublishExecutionService` (#1042) owns the `ShopProduct`
  * identifier mapping + record lifecycle — this adapter only shapes the neutral
- * `PublishProductCommand` onto WooCommerce's `products` / `products/categories` /
- * `products/attributes` resources and maps failures back to the neutral
- * `ProductPublishRejectedException`.
+ * `PublishProductCommand` onto WooCommerce's `products` / `products/{id}/variations`
+ * / `products/categories` / `products/attributes` resources and maps failures
+ * back to the neutral `ProductPublishRejectedException`.
  *
- * Publish model (ADR-024 §1/§3): each OL variant publishes as its own *simple*
- * product (create on first publish, upsert via `externalProductId` thereafter).
- * Neutral `parameters` become WooCommerce product attributes: a parameter with
- * resolved term ids + a numeric global-attribute id links a real global (`pa_*`)
- * attribute, otherwise it falls back to a free-text custom attribute (#1835).
- * Variable-product / variations grouping is a deferred enhancement.
+ * Publish model (ADR-024 §1/§3, superseded by #1836 for multi-variant): a
+ * single-variant / simple product publishes as its own *simple* product
+ * (create on first publish, upsert via `externalProductId` thereafter) —
+ * unchanged. A **multi-variant** product (`cmd.variantGroup` present) publishes
+ * as one shared `type:'variable'` parent carrying every distinguishing
+ * attribute flagged `variation:true`, plus one `products/{parentId}/variations`
+ * entry per sibling carrying its own price/sku/stock/image/barcode and its own
+ * value for each variation attribute (#1836). Neutral `parameters` become
+ * WooCommerce product attributes on the parent either way: a parameter with
+ * resolved term ids + a numeric global-attribute id links a real global
+ * (`pa_*`) attribute, otherwise it falls back to a free-text custom attribute
+ * (#1835).
  *
  * @module libs/integrations/woocommerce/src/infrastructure/adapters/product-publisher
  */
@@ -32,6 +38,7 @@ import {
   type PublishProductContent,
   type PublishProductResult,
   type PublishProductStatus,
+  type PublishProductVariantGroup,
   type ShopAttribute,
   type ShopAttributeReader,
   type ShopAttributeTerm,
@@ -49,11 +56,14 @@ import type {
   WooCommerceAttributeResponse,
   WooCommerceAttributeTermResponse,
   WooCommerceCategoryResponse,
+  WooCommercePriceCommerceFields,
   WooCommerceProductAttribute,
   WooCommerceProductPublishRequest,
   WooCommerceProductResponse,
   WooCommerceProductStatus,
   WooCommerceProductStatusResponse,
+  WooCommerceVariationPublishRequest,
+  WooCommerceVariationResponse,
 } from './woocommerce-product-publish.types';
 
 const PRODUCTS_PATH = '/wp-json/wc/v3/products';
@@ -103,6 +113,14 @@ export class WooCommerceProductPublisherAdapter
   ) {}
 
   async publishProduct(cmd: PublishProductCommand): Promise<PublishProductResult> {
+    if (cmd.variantGroup) {
+      return this.publishGroupedVariant(cmd, cmd.variantGroup);
+    }
+    return this.publishSimpleProduct(cmd);
+  }
+
+  /** Pre-#1836 single-variant / simple-product path — unchanged. */
+  private async publishSimpleProduct(cmd: PublishProductCommand): Promise<PublishProductResult> {
     const isUpsert = cmd.externalProductId != null && cmd.externalProductId !== '';
     const body = this.buildProductBody(cmd, isUpsert);
     const path = isUpsert
@@ -124,6 +142,91 @@ export class WooCommerceProductPublisherAdapter
     }
 
     return { externalProductId: String(raw.id), status: this.fromWcStatus(raw.status) };
+  }
+
+  /**
+   * Multi-variant path (#1836): upsert the shared `type:'variable'` parent
+   * (creating it on the first sibling to publish, reusing it on every later
+   * sibling), then upsert this sibling's own `products/{parentId}/variations`
+   * entry. Returns the variation's own external id on `externalProductId` plus
+   * the resolved parent id on `externalParentProductId` so the execution
+   * service can persist both `ShopProduct` mappings.
+   */
+  private async publishGroupedVariant(
+    cmd: PublishProductCommand,
+    group: PublishProductVariantGroup,
+  ): Promise<PublishProductResult> {
+    const parentId = await this.upsertParentVariableProduct(cmd, group);
+    const variation = await this.upsertVariation(cmd, group, parentId);
+    return { ...variation, externalParentProductId: parentId };
+  }
+
+  /**
+   * Upsert the shared `variable` parent. Content/category/SEO fields mirror
+   * the simple-product path; price/sku/stock/barcode/weight are intentionally
+   * absent (those live on each variation). Every sibling's publish re-PUTs the
+   * parent when it already exists — idempotent, though it means the parent's
+   * shared fields reflect whichever sibling published most recently (accepted
+   * MVP posture, documented in ADR-024).
+   */
+  private async upsertParentVariableProduct(
+    cmd: PublishProductCommand,
+    group: PublishProductVariantGroup,
+  ): Promise<string> {
+    const isUpsert = group.externalParentProductId != null && group.externalParentProductId !== '';
+    const body = this.buildParentVariableProductBody(cmd, group, isUpsert);
+    const path = isUpsert
+      ? `${PRODUCTS_PATH}/${encodeURIComponent(String(group.externalParentProductId))}`
+      : PRODUCTS_PATH;
+
+    this.logger.debug(
+      `Publishing grouped parent groupId=${group.groupId} connection=${this.connection.id} ` +
+        `mode=${isUpsert ? 'upsert' : 'create'}`,
+    );
+
+    let raw: WooCommerceProductResponse;
+    try {
+      raw = isUpsert
+        ? await this.httpClient.put<WooCommerceProductResponse>(path, body)
+        : await this.httpClient.post<WooCommerceProductResponse>(path, body);
+    } catch (err) {
+      throw this.toPublishError(err, isUpsert, group.externalParentProductId);
+    }
+    return String(raw.id);
+  }
+
+  /**
+   * Upsert this sibling's own variation under the resolved parent. Carries the
+   * per-sibling price/sku/stock/image/barcode/weight plus this variant's own
+   * value for each of the parent's variation-flagged attributes.
+   */
+  private async upsertVariation(
+    cmd: PublishProductCommand,
+    group: PublishProductVariantGroup,
+    parentId: string,
+  ): Promise<PublishProductResult> {
+    const isUpsert = cmd.externalProductId != null && cmd.externalProductId !== '';
+    const body = this.buildVariationBody(cmd, group, isUpsert);
+    const variationsPath = `${PRODUCTS_PATH}/${encodeURIComponent(parentId)}/variations`;
+    const path = isUpsert
+      ? `${variationsPath}/${encodeURIComponent(String(cmd.externalProductId))}`
+      : variationsPath;
+
+    this.logger.debug(
+      `Publishing variation variant=${cmd.internalVariantId} parent=${parentId} ` +
+        `connection=${this.connection.id} mode=${isUpsert ? 'upsert' : 'create'} status=${cmd.status}`,
+    );
+
+    let raw: WooCommerceVariationResponse;
+    try {
+      raw = isUpsert
+        ? await this.httpClient.put<WooCommerceVariationResponse>(path, body)
+        : await this.httpClient.post<WooCommerceVariationResponse>(path, body);
+    } catch (err) {
+      throw this.toPublishError(err, isUpsert, cmd.externalProductId);
+    }
+
+    return { externalProductId: String(raw.id), status: cmd.status };
   }
 
   /**
@@ -363,9 +466,118 @@ export class WooCommerceProductPublisherAdapter
     return { ...(cmd.platformParams ?? {}), ...typed };
   }
 
-  /** Map the neutral `commerce` block (sale price + schedule, dimensions, tax). */
+  /**
+   * Build the shared `variable` parent body (#1836). Mirrors `buildProductBody`
+   * for content/category/SEO fields; price/sku/stock/barcode/weight are
+   * intentionally absent (per-sibling, carried on the variation body instead).
+   * Attributes merge the plain category-parameter attributes with the
+   * variation-flagged distinguishing axes so WC knows which attributes a
+   * variation may select a value from.
+   */
+  private buildParentVariableProductBody(
+    cmd: PublishProductCommand,
+    group: PublishProductVariantGroup,
+    isUpsert: boolean,
+  ): Record<string, unknown> {
+    const content = cmd.content;
+    const typed: WooCommerceProductPublishRequest = {
+      type: 'variable',
+      status: cmd.status === 'published' ? 'publish' : 'draft',
+    };
+
+    if (content?.title != null) typed.name = content.title;
+    if (content?.description != null) typed.description = content.description;
+    if (content?.shortDescription != null) typed.short_description = content.shortDescription;
+    if (content?.tags != null && content.tags.length > 0) {
+      typed.tags = content.tags.map((name) => ({ name }));
+    }
+    // Images churn on every WC re-import (#1846 fix 7) — create-only, same
+    // guard as the simple-product path.
+    if (!isUpsert && content?.imageUrls != null) {
+      typed.images = content.imageUrls.map((src) => ({ src }));
+    }
+    // The parent's slug is keyed on the GROUP id (not the variant id) so every
+    // sibling's publish resolves to the same stable slug, regardless of which
+    // sibling happens to trigger the parent upsert (#1846 fix 4 extended).
+    if (content?.seo?.slug != null) {
+      typed.slug = this.buildGroupSlug(content.seo.slug, group.groupId);
+    }
+    if (cmd.destinationCategoryIds.length > 0) {
+      typed.categories = cmd.destinationCategoryIds.map((id) => ({ id: Number(id) }));
+    }
+
+    const attributes = [
+      ...this.buildAttributes(cmd.parameters),
+      ...this.buildVariationFlaggedAttributes(group.groupAttributeValues),
+    ];
+    if (attributes.length > 0) typed.attributes = attributes;
+
+    this.applyCommerce(typed, cmd);
+
+    const metaData = this.buildSeoMetaData(content?.seo);
+    if (metaData.length > 0) typed.meta_data = metaData;
+
+    return { ...(cmd.platformParams ?? {}), ...typed };
+  }
+
+  /**
+   * Declare the parent's variation axes: one entry per distinguishing
+   * attribute name, carrying the FULL union of sibling values (so any sibling
+   * variation can select from it) and `variation: true`. Custom (not global)
+   * — `ProductVariant.attributes` are freeform names with no WC global
+   * (`pa_*`) attribute id to link.
+   */
+  private buildVariationFlaggedAttributes(
+    groupAttributeValues: Record<string, string[]>,
+  ): WooCommerceProductAttribute[] {
+    return Object.entries(groupAttributeValues)
+      .filter(([name, values]) => name.length > 0 && values.length > 0)
+      .map(([name, values]) => ({ name, options: values, visible: true, variation: true }));
+  }
+
+  /**
+   * Build the per-sibling variation body (#1836): price/sku/stock/image/
+   * barcode/weight/commerce fields, plus this variant's own value for each
+   * parent variation-flagged attribute (WC variation attributes carry a
+   * singular `option`, not the plural `options` array).
+   */
+  private buildVariationBody(
+    cmd: PublishProductCommand,
+    group: PublishProductVariantGroup,
+    isUpsert: boolean,
+  ): Record<string, unknown> {
+    const typed: WooCommerceVariationPublishRequest = {
+      status: cmd.status === 'published' ? 'publish' : 'draft',
+      regular_price: String(cmd.price.amount),
+      manage_stock: true,
+      stock_quantity: cmd.stock,
+    };
+
+    if (cmd.sku) typed.sku = cmd.sku;
+    if (cmd.barcode) typed.global_unique_id = cmd.barcode;
+    if (cmd.weight != null) typed.weight = String(cmd.weight);
+    // Single sideloaded image, create-only (same re-import churn guard as the
+    // simple-product / parent paths, #1846 fix 7).
+    const imageUrl = cmd.content?.imageUrls?.[0];
+    if (!isUpsert && imageUrl != null) typed.image = { src: imageUrl };
+
+    const attributes = group.attributes
+      .filter((a) => a.name.length > 0 && a.value.length > 0)
+      .map((a) => ({ name: a.name, option: a.value }));
+    if (attributes.length > 0) typed.attributes = attributes;
+
+    this.applyCommerce(typed, cmd);
+
+    return { ...(cmd.platformParams ?? {}), ...typed };
+  }
+
+  /**
+   * Map the neutral `commerce` block (sale price + schedule, dimensions, tax).
+   * Typed against the shared `WooCommercePriceCommerceFields` shape so it can
+   * write into either the parent/simple-product body or a variation body.
+   */
   private applyCommerce(
-    typed: WooCommerceProductPublishRequest,
+    typed: WooCommercePriceCommerceFields,
     cmd: PublishProductCommand,
   ): void {
     const commerce = cmd.commerce;
@@ -485,6 +697,17 @@ export class WooCommerceProductPublisherAdapter
    */
   private buildPerItemSlug(baseSlug: string, cmd: PublishProductCommand): string {
     const discriminator = this.slugify(cmd.internalVariantId);
+    return discriminator ? `${baseSlug}-${discriminator}` : baseSlug;
+  }
+
+  /**
+   * Build the shared parent slug from the GROUP id (#1836) — the parent slug
+   * must resolve to the SAME value regardless of which sibling's publish
+   * triggers the parent upsert, unlike the per-variant slug above (which
+   * exists precisely so sibling simple products do NOT share one slug).
+   */
+  private buildGroupSlug(baseSlug: string, groupId: string): string {
+    const discriminator = this.slugify(groupId);
     return discriminator ? `${baseSlug}-${discriminator}` : baseSlug;
   }
 

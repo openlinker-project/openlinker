@@ -122,6 +122,11 @@ describe('Bulk shop publish per-item overrides (end-to-end, #1831)', () => {
         gtin: null,
         sku: null,
       }),
+      // Single-element ⇒ variantGroup stays absent (#1836); this suite is not
+      // exercising the multi-variant grouped path.
+      getVariantsByProductId: jest
+        .fn()
+        .mockResolvedValue([{ id: 'v', productId: 'prod-1', attributes: { Brand: 'Acme' } }]),
     };
     const connectionPort = {
       get: jest.fn().mockResolvedValue({ config: { masterCatalogConnectionId: MASTER } }),
