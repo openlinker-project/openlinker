@@ -173,7 +173,7 @@ export function MappingPanel({
   // `onDirtyChange` (#1784 follow-up I3).
   const savedSignature = savedRows
     .map((r) => `${r.sourceValue}\u0000${r.targetValue}`)
-    .join('');
+    .join('\u0001');
   // Resync only when the saved CONTENT changes; `savedRows` identity is
   // intentionally unstable per parent render, so it is not a dependency here.
   useEffect(() => {
