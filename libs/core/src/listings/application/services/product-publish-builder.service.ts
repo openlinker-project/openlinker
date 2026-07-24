@@ -101,13 +101,22 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
       throw new ProductPublishBuilderValidationException(issues);
     }
 
-    const destinationCategoryIds = await this.provisionCategory(input.connectionId, productMaster, variant.productId);
-    const parameters = await this.projectParameters(
-      input,
-      masterConnectionId,
-      destinationCategoryIds[0] ?? null,
-      variant.attributes ?? {}
-    );
+    // Per-item overrides (#1831) WIN over server-derived defaults. A supplied
+    // (defined) array — even empty — is an explicit operator choice: it skips
+    // server-side provisioning / projection. Omitted (undefined) ⇒ derive as today.
+    const destinationCategoryIds =
+      input.destinationCategoryIds !== undefined
+        ? input.destinationCategoryIds
+        : await this.provisionCategory(input.connectionId, productMaster, variant.productId);
+    const parameters =
+      input.parameters !== undefined
+        ? input.parameters
+        : await this.projectParameters(
+            input,
+            masterConnectionId,
+            destinationCategoryIds[0] ?? null,
+            variant.attributes ?? {}
+          );
 
     const content = this.buildContent(input.content, product);
 

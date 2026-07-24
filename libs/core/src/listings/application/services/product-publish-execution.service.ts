@@ -103,6 +103,8 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
         price: input.price,
         content: input.content,
         commerce: input.commerce,
+        destinationCategoryIds: input.destinationCategoryIds,
+        parameters: input.parameters,
         idempotencyKey: input.idempotencyKey,
       });
     } catch (error) {

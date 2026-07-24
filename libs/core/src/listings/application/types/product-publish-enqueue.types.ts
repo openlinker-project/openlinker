@@ -9,6 +9,7 @@
  * @module libs/core/src/listings/application/types
  */
 
+import type { OfferParameter } from '../../domain/types/offer-parameter.types';
 import type {
   PublishProductCommerce,
   PublishProductContent,
@@ -31,6 +32,18 @@ export interface EnqueueProductPublishInput {
   content?: PublishProductContent;
   /** Optional operator-supplied commerce fields (sale price, dimensions, tax). */
   commerce?: PublishProductCommerce;
+  /**
+   * Optional per-item destination category override (#1831). Present ⇒ the
+   * builder skips server-side provisioning and uses these ids; omitted ⇒ the
+   * builder provisions category placement as today.
+   */
+  destinationCategoryIds?: string[];
+  /**
+   * Optional per-item neutral category parameters override (#1831). Present ⇒
+   * the builder skips attribute projection and uses these; omitted ⇒ the builder
+   * projects the variant's attributes as today.
+   */
+  parameters?: OfferParameter[];
   /** Optional idempotency key; defaults to `shop-publish:{recordId}` (single) / a batch-scoped key (bulk). */
   idempotencyKey?: string;
   /**

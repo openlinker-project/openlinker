@@ -8,6 +8,7 @@
  */
 
 import type {
+  OfferParameter,
   PublishProductCommerce,
   PublishProductContent,
   PublishProductStatus,
@@ -31,6 +32,16 @@ export interface ExecutePublishProductInput {
   content?: PublishProductContent;
   /** Optional operator-supplied commerce fields (sale price, dimensions, tax). */
   commerce?: PublishProductCommerce;
+  /**
+   * Optional per-item destination category override (#1831). Threaded to the
+   * builder, which uses it instead of server-side provisioning when present.
+   */
+  destinationCategoryIds?: string[];
+  /**
+   * Optional per-item neutral category parameters override (#1831). Threaded to
+   * the builder, which uses it instead of attribute projection when present.
+   */
+  parameters?: OfferParameter[];
   /** Optional idempotency key threaded to the adapter. */
   idempotencyKey?: string;
   /**

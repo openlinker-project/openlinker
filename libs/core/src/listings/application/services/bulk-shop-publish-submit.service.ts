@@ -84,6 +84,11 @@ export class BulkShopPublishSubmitService implements IBulkShopPublishSubmitServi
     const items: BulkShopPublishItem[] = [];
     try {
       for (const item of input.items) {
+        // Per-item content (#1831) WINS over the batch-shared content; each
+        // per-item category/parameter override is threaded straight through so
+        // the builder uses it instead of its server-derived default. Omitted
+        // fields fall back to batch-shared / server-derived behavior.
+        const content = item.content ?? input.content;
         const { jobId, listingCreationRecord } = await this.enqueue.enqueuePublish({
           connectionId: input.connectionId,
           internalVariantId: item.internalVariantId,
@@ -91,8 +96,12 @@ export class BulkShopPublishSubmitService implements IBulkShopPublishSubmitServi
           stock: item.stock,
           bulkBatchId: batch.id,
           ...(item.price !== undefined && { price: item.price }),
-          ...(input.content !== undefined && { content: input.content }),
+          ...(content !== undefined && { content }),
           ...(input.commerce !== undefined && { commerce: input.commerce }),
+          ...(item.destinationCategoryIds !== undefined && {
+            destinationCategoryIds: item.destinationCategoryIds,
+          }),
+          ...(item.parameters !== undefined && { parameters: item.parameters }),
         });
         items.push({
           internalVariantId: item.internalVariantId,

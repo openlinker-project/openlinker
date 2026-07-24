@@ -78,6 +78,11 @@ export class BulkShopPublishController {
           internalVariantId: item.internalVariantId,
           stock: item.stock,
           ...(item.price !== undefined && { price: item.price }),
+          ...(item.content !== undefined && { content: item.content }),
+          ...(item.destinationCategoryIds !== undefined && {
+            destinationCategoryIds: item.destinationCategoryIds,
+          }),
+          ...(item.parameters !== undefined && { parameters: item.parameters }),
         })),
         status: dto.status,
         ...(dto.content !== undefined && { content: dto.content }),

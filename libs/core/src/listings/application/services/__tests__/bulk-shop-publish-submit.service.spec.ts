@@ -90,6 +90,46 @@ describe('BulkShopPublishSubmitService', () => {
     });
   });
 
+  it('should let per-item content/categories/parameters win over batch-shared defaults (#1831)', async () => {
+    const batchContent = { title: 'Batch title' };
+    const itemContent = { title: 'Item title' };
+    const itemParameters = [{ id: 'Colour', values: ['Red'], section: 'product' as const }];
+
+    await service.submit({
+      ...input,
+      content: batchContent,
+      items: [
+        // Overriding item: its own content/categories/parameters must win.
+        {
+          internalVariantId: 'v1',
+          stock: 3,
+          content: itemContent,
+          destinationCategoryIds: ['cat-override'],
+          parameters: itemParameters,
+        },
+        // Passthrough item: falls back to the batch-shared content, no overrides.
+        { internalVariantId: 'v2', stock: 5 },
+      ],
+    });
+
+    expect(enqueue.enqueuePublish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        internalVariantId: 'v1',
+        content: itemContent,
+        destinationCategoryIds: ['cat-override'],
+        parameters: itemParameters,
+      }),
+    );
+
+    const calls = enqueue.enqueuePublish.mock.calls as Array<[{ internalVariantId: string }]>;
+    const v2Arg = calls.map(([arg]) => arg).find((arg) => arg.internalVariantId === 'v2');
+    expect(v2Arg).toEqual(
+      expect.objectContaining({ internalVariantId: 'v2', content: batchContent }),
+    );
+    expect(v2Arg).not.toHaveProperty('destinationCategoryIds');
+    expect(v2Arg).not.toHaveProperty('parameters');
+  });
+
   it('should mark the batch failed and rethrow on a partial enqueue failure', async () => {
     enqueue.enqueuePublish
       .mockResolvedValueOnce({ jobId: 'job-v1', listingCreationRecord: { id: 'rec-v1' } })

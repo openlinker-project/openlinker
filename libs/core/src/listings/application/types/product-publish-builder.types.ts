@@ -12,6 +12,7 @@
  */
 
 import type {
+  OfferParameter,
   PublishProductCommerce,
   PublishProductContent,
   PublishProductStatus,
@@ -35,6 +36,19 @@ export interface BuildPublishProductCommandInput {
   content?: PublishProductContent;
   /** Optional operator-supplied commerce fields (sale price, dimensions, tax). */
   commerce?: PublishProductCommerce;
+  /**
+   * Optional destination category override (#1831). Present (including an empty
+   * array) ⇒ the builder uses these ids verbatim and skips server-side category
+   * provisioning; omitted ⇒ the builder provisions category placement as today.
+   */
+  destinationCategoryIds?: string[];
+  /**
+   * Optional neutral category parameters override (#1831). Present (including an
+   * empty array) ⇒ the builder uses these verbatim and skips attribute
+   * projection + the required-parameter gate; omitted ⇒ the builder projects the
+   * variant's attributes as today.
+   */
+  parameters?: OfferParameter[];
   /** Optional idempotency key forwarded to the produced command. */
   idempotencyKey?: string;
 }

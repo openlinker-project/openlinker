@@ -214,6 +214,44 @@ describe('ProductPublishBuilderService', () => {
     expect(command.commerce).toEqual(commerce);
   });
 
+  it('should use per-item destinationCategoryIds override instead of provisioning (#1831)', async () => {
+    const command = await service.buildPublishProductCommand({
+      ...baseInput,
+      destinationCategoryIds: ['dest-override-1', 'dest-override-2'],
+    });
+
+    expect(shopAdapter.provisionCategory).not.toHaveBeenCalled();
+    expect(command.destinationCategoryIds).toEqual(['dest-override-1', 'dest-override-2']);
+    // Projection still runs, keyed on the override's first category.
+    expect(projection.project).toHaveBeenCalledWith(
+      expect.objectContaining({ destinationCategoryId: 'dest-override-1' })
+    );
+  });
+
+  it('should use per-item parameters override instead of attribute projection (#1831)', async () => {
+    const override = [{ id: 'Colour', values: ['Red'], section: 'product' as const }];
+
+    const command = await service.buildPublishProductCommand({
+      ...baseInput,
+      parameters: override,
+    });
+
+    expect(projection.project).not.toHaveBeenCalled();
+    expect(command.parameters).toEqual(override);
+  });
+
+  it('should treat an empty destinationCategoryIds override as explicit uncategorised (#1831)', async () => {
+    const command = await service.buildPublishProductCommand({
+      ...baseInput,
+      destinationCategoryIds: [],
+    });
+
+    expect(shopAdapter.provisionCategory).not.toHaveBeenCalled();
+    expect(command.destinationCategoryIds).toEqual([]);
+    // No category ⇒ projection skipped (unless parameters overridden separately).
+    expect(projection.project).not.toHaveBeenCalled();
+  });
+
   it('should publish uncategorised when the shop adapter is not a CategoryProvisioner', async () => {
     delete shopAdapter.provisionCategory; // not a provisioner
 

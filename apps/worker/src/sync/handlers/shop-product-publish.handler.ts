@@ -13,10 +13,10 @@
  * same `BulkListingProgressService` + at-most-once `bulk_batch_advancements`
  * gate the marketplace offer-create handler uses (#737/#1044).
  *
- * The payload's `destinationCategoryIds` / `parameters` fields are reserved for
- * a future pre-resolved enqueue path; today the builder re-resolves category
- * placement + attribute projection, so the handler threads only the publish
- * inputs the execution service consumes.
+ * The payload's `destinationCategoryIds` / `parameters` fields (#1831) carry
+ * per-item overrides from the bulk transport; when present the builder uses them
+ * verbatim instead of re-resolving category placement / attribute projection.
+ * When absent the builder derives both as before (backward compatible).
  *
  * @module apps/worker/src/sync/handlers
  */
@@ -68,6 +68,8 @@ export class ShopProductPublishHandler implements SyncJobHandler {
         price: payload.price,
         content: payload.content,
         commerce: payload.commerce,
+        destinationCategoryIds: payload.destinationCategoryIds,
+        parameters: payload.parameters,
         idempotencyKey: payload.idempotencyKey,
         listingCreationRecordId: payload.listingCreationRecordId,
       });
