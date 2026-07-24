@@ -7,6 +7,11 @@ import { renderWithProviders } from '../../test/test-utils';
 import { MarketplacePickerModal } from './marketplace-picker-modal';
 import type { Connection } from '../../features/connections';
 
+const captureDemoEvent = vi.fn();
+vi.mock('../../features/demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
+
 function conn(id: string, platformType: string, name: string): Connection {
   return {
     id,
@@ -24,7 +29,10 @@ function conn(id: string, platformType: string, name: string): Connection {
 }
 
 describe('MarketplacePickerModal', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    captureDemoEvent.mockClear();
+  });
 
   it('lists each OfferManager connection and continues with the chosen one', () => {
     const onContinue = vi.fn();
@@ -50,5 +58,24 @@ describe('MarketplacePickerModal', () => {
     fireEvent.click(continueBtn);
 
     expect(onContinue).toHaveBeenCalledWith('c2');
+  });
+
+  it('captures demo_offer_marketplace_picked with the chosen platform on Continue (#1788)', () => {
+    renderWithProviders(
+      <MarketplacePickerModal
+        open
+        onOpenChange={vi.fn()}
+        productCount={1}
+        connections={[conn('c1', 'allegro', 'My Allegro')]}
+        onContinue={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('radio', { name: /My Allegro/ }));
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_offer_marketplace_picked', {
+      platform: 'allegro',
+    });
   });
 });

@@ -22,6 +22,7 @@ import {
 } from '../../shared/ui/dialog';
 import { usePlatforms } from '../../shared/plugins';
 import type { Connection } from '../../features/connections';
+import { captureDemoEvent } from '../../features/demo';
 
 interface MarketplacePickerModalProps {
   open: boolean;
@@ -96,7 +97,12 @@ export function MarketplacePickerModal({
               type="button"
               tone="primary"
               disabled={!picked}
-              onClick={() => picked && onContinue(picked)}
+              onClick={() => {
+                if (!picked) return;
+                const platform = connections.find((c) => c.id === picked)?.platformType ?? picked;
+                captureDemoEvent('demo_offer_marketplace_picked', { platform });
+                onContinue(picked);
+              }}
             >
               Continue →
             </Button>

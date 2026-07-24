@@ -35,6 +35,7 @@ import {
 } from '../../../shared/ui/dialog';
 
 import { useConnectionsQuery, type Connection } from '../../connections';
+import { captureDemoEvent } from '../../demo';
 import { useTranslation } from '../../../shared/i18n';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { Alert } from '../../../shared/ui/alert';
@@ -533,11 +534,18 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
         <div className="order-invoice-panel__actions order-invoice-panel__actions--issue">
           <DocumentTypeSelect
             value={documentType}
-            onChange={setDocumentType}
+            onChange={(next) => {
+              captureDemoEvent('demo_invoice_doctype_changed', { documentType: next });
+              setDocumentType(next);
+            }}
             disabled={issueMutation.isPending || write.demoReadOnly}
             className="order-invoice-panel__doc-type"
           />
-          <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <ReadOnlyLock
+            active={write.demoReadOnly}
+            message={DEMO_READ_ONLY_ACTION_MESSAGE}
+            onLockedClick={() => captureDemoEvent('demo_invoice_issue_attempted', {})}
+          >
             <Button tone="primary" onClick={handleIssue} disabled={issueMutation.isPending || write.demoReadOnly}>
               {t('invoice.action.issue', 'Issue invoice')}
             </Button>

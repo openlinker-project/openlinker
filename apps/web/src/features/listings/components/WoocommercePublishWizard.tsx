@@ -44,6 +44,7 @@ import { Input } from '../../../shared/ui/input';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { captureDemoEvent } from '../../demo';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
@@ -659,7 +660,16 @@ export function WoocommercePublishWizard({
             </Button>
           </div>
           <div className="wizard-actions__group">
-            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock
+              active={write.demoReadOnly}
+              message={DEMO_READ_ONLY_ACTION_MESSAGE}
+              onLockedClick={() =>
+                captureDemoEvent('demo_offer_create_attempted', {
+                  platform: 'woocommerce',
+                  mode: mode ?? 'unknown',
+                })
+              }
+            >
               <Button type="submit" disabled={isPending || write.demoReadOnly}>
                 {isPending ? 'Publishing…' : 'Confirm & publish'}
               </Button>
@@ -858,14 +868,28 @@ export function WoocommercePublishWizard({
               disabled={isPending || !singleId}
               onClick={() => {
                 void form.trigger().then((ok) => {
-                  if (ok) setReviewing(true);
+                  if (ok) {
+                    captureDemoEvent('demo_offer_wizard_review_reached', {
+                      platform: 'woocommerce',
+                    });
+                    setReviewing(true);
+                  }
                 });
               }}
             >
               Review
             </Button>
           ) : null}
-          <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <ReadOnlyLock
+            active={write.demoReadOnly}
+            message={DEMO_READ_ONLY_ACTION_MESSAGE}
+            onLockedClick={() =>
+              captureDemoEvent('demo_offer_create_attempted', {
+                platform: 'woocommerce',
+                mode: mode ?? 'unknown',
+              })
+            }
+          >
             <Button
               type="submit"
               disabled={

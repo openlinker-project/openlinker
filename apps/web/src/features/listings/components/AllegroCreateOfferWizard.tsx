@@ -45,6 +45,7 @@ import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { Textarea } from '../../../shared/ui/textarea';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { captureDemoEvent } from '../../demo';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
@@ -706,7 +707,15 @@ export function AllegroCreateOfferWizard({
     }
 
     setCompletedSteps((prev) => new Set(prev).add(stepIndex));
-    setStepIndex((i) => Math.min(i + 1, ALLEGRO_STEP_LABELS.length - 1));
+    captureDemoEvent('demo_offer_wizard_step_advanced', {
+      platform: 'allegro',
+      step: ALLEGRO_STEP_LABELS[stepIndex],
+    });
+    const nextStepIndex = Math.min(stepIndex + 1, ALLEGRO_STEP_LABELS.length - 1);
+    if (nextStepIndex === ALLEGRO_STEP_LABELS.length - 1) {
+      captureDemoEvent('demo_offer_wizard_review_reached', { platform: 'allegro' });
+    }
+    setStepIndex(nextStepIndex);
   }
 
   function goBack(): void {
@@ -1344,7 +1353,16 @@ export function AllegroCreateOfferWizard({
               Next
             </Button>
           ) : (
-            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock
+              active={write.demoReadOnly}
+              message={DEMO_READ_ONLY_ACTION_MESSAGE}
+              onLockedClick={() =>
+                captureDemoEvent('demo_offer_create_attempted', {
+                  platform: 'allegro',
+                  mode: 'create',
+                })
+              }
+            >
               <Button
                 type="submit"
                 form="create-offer-form"

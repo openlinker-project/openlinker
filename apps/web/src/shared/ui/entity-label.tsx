@@ -14,10 +14,16 @@ interface EntityLabelProps extends Omit<ComponentPropsWithoutRef<'span'>, 'id'> 
   name?: string | null;
   showId?: boolean;
   to?: string;
+  /**
+   * Fired when the inner name link is clicked (navigation), never when the
+   * "Copy id" button is clicked — the outer `<span>` wraps both, so a plain
+   * `onClick` on the whole component would double-fire on Copy clicks too.
+   */
+  onNavigate?: () => void;
 }
 
 export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(function EntityLabel(
-  { id, loading = false, name, showId = true, to, className = '', ...props },
+  { id, loading = false, name, showId = true, to, onNavigate, className = '', ...props },
   ref,
 ) {
   const [copied, setCopied] = useState(false);
@@ -57,7 +63,7 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
     </span>
   ) : resolvedName ? (
     to ? (
-      <Link to={to} className="entity-label__name entity-label__name--link">
+      <Link to={to} className="entity-label__name entity-label__name--link" onClick={onNavigate}>
         {resolvedName}
       </Link>
     ) : (

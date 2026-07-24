@@ -18,7 +18,15 @@
  *
  * @module apps/web/src/pages/products
  */
-import { useCallback, useMemo, useState, type ReactElement, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -63,6 +71,15 @@ import {
 import { ListingsCoveragePills } from './listings-coverage-pills';
 import { ProductRowDetail } from './product-row-detail';
 import { MarketplacePickerModal } from './marketplace-picker-modal';
+import { captureDemoEvent } from '../../features/demo';
+
+/** Buckets a raw result count into a low-cardinality string for analytics. */
+function bucketResultCount(count: number): string {
+  if (count === 0) return '0';
+  if (count <= 10) return '1-10';
+  if (count <= 50) return '11-50';
+  return '50+';
+}
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -264,6 +281,18 @@ export function ProductsListPage(): ReactElement {
 
   const query = useProductsQuery(filters, pagination, sort);
   const items = query.data?.items ?? [];
+
+  // Fire once per successful list load, not on every filter/page refetch —
+  // demo-mode analytics only (#1788), no-op elsewhere.
+  const hasFiredViewedRef = useRef(false);
+  useEffect(() => {
+    if (query.data && !hasFiredViewedRef.current) {
+      hasFiredViewedRef.current = true;
+      captureDemoEvent('demo_products_viewed', {
+        resultCountBucket: bucketResultCount(query.data.total),
+      });
+    }
+  }, [query.data]);
 
   // KPI tile counts — four cheap limit:1 probes with distinct query keys
   // (nav-counts precedent). The gaps probe is disabled with zero OfferCreator
@@ -467,6 +496,7 @@ export function ProductsListPage(): ReactElement {
   // Capability-aware bulk launch: 1 connection → straight to wizard
   // (preselected); 2+ → marketplace-picker modal. (0 hides the action.)
   const handleCreateOffers = useCallback(() => {
+    captureDemoEvent('demo_offer_create_launched', { source: 'bulk_bar' });
     if (offerManagerConnections.length === 1) {
       goToWizard(Array.from(selectedIds), offerManagerConnections[0]!.id);
     } else if (offerManagerConnections.length > 1) {
@@ -478,6 +508,7 @@ export function ProductsListPage(): ReactElement {
   // Per-row "+ Create offers" CTA — same launch, single product preselected.
   const handleCreateOffersForProduct = useCallback(
     (productId: string) => {
+      captureDemoEvent('demo_offer_create_launched', { source: 'row' });
       if (offerManagerConnections.length === 1) {
         goToWizard([productId], offerManagerConnections[0]!.id);
       } else if (offerManagerConnections.length > 1) {
@@ -1156,7 +1187,12 @@ export function ProductsListPage(): ReactElement {
                       type="button"
                       className="products-card-disclosure"
                       aria-expanded={expanded}
-                      onClick={() => { toggleCardExpanded(product.id); }}
+                      onClick={() => {
+                        toggleCardExpanded(product.id);
+                        if (!expanded) {
+                          captureDemoEvent('demo_product_row_expanded', {});
+                        }
+                      }}
                     >
                       <span className="products-card-disclosure__chev" aria-hidden="true">
                         {expanded ? '▾' : '▸'}
