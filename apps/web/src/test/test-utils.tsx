@@ -436,6 +436,9 @@ export function createMockApiClient(
       getRoutingRules: vi.fn().mockResolvedValue([]),
       replaceRoutingRules: vi.fn().mockResolvedValue([]),
       getRoutingCandidates: vi.fn().mockResolvedValue([]),
+      getAttributeRules: vi.fn().mockResolvedValue([]),
+      upsertAttributeRule: vi.fn().mockResolvedValue(undefined),
+      deleteAttributeRule: vi.fn().mockResolvedValue(undefined),
       ...overrides.mappings,
     } as ApiClient['mappings'],
     shipments: {

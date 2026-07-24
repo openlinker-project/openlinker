@@ -27,13 +27,22 @@ import {
   IMappingConfigService,
   MAPPING_CONFIG_SERVICE_TOKEN,
   type AttributeMapping,
+  type AttributeMappingRule,
+  type PlaceValueSource,
 } from '@openlinker/core/mappings';
 import type { IAttributeProjectionService } from '../interfaces/attribute-projection.service.interface';
 import type {
   AttributeProjectionInput,
+  AttributeProjectionMetadata,
   AttributeProjectionResult,
   ResolvedParameter,
 } from '../types/attribute-projection.types';
+
+/** One rule-derived destination value, keyed by normalized parameter name. */
+interface RuleContribution {
+  name: string;
+  value: string;
+}
 
 @Injectable()
 export class AttributeProjectionService implements IAttributeProjectionService {
@@ -72,19 +81,34 @@ export class AttributeProjectionService implements IAttributeProjectionService {
     const unresolvedRequired: AttributeProjectionResult['unresolvedRequired'] = [];
     const usedSourceKeys = new Set<string>();
 
+    // Operator-authored rule layer (#1841): a deterministic, sequenced overlay
+    // that fills destination parameters by name. Rules win over the legacy
+    // attribute-mapping layer for the same destination parameter name.
+    const rules = await this.mappingConfig.getAttributeMappingRules(destinationConnectionId);
+    const ruleByName = this.resolveRuleContributions(rules, input, usedSourceKeys);
+
     if (isCategoryParametersReader(adapter)) {
       const params = await adapter.fetchCategoryParameters({ categoryId: destinationCategoryId });
       for (const param of params) {
-        const mapping = this.findMappingForParameter(applicable, param.name);
-        const sourceValue = mapping ? attributes[mapping.sourceAttributeKey] : undefined;
-        if (!mapping || sourceValue === undefined || sourceValue === '') {
+        const rule = ruleByName.get(this.normalize(param.name));
+        const mapping = rule ? undefined : this.findMappingForParameter(applicable, param.name);
+        let destinationValue: string | undefined;
+        if (rule) {
+          destinationValue = rule.value;
+        } else if (mapping) {
+          const sourceValue = attributes[mapping.sourceAttributeKey];
+          if (sourceValue !== undefined && sourceValue !== '') {
+            usedSourceKeys.add(mapping.sourceAttributeKey);
+            destinationValue = this.mapValue(mapping, sourceValue);
+          }
+        }
+        if (destinationValue === undefined || destinationValue === '') {
           if (param.required) {
             unresolvedRequired.push({ id: param.id, name: param.name, section: param.section });
           }
           continue;
         }
-        usedSourceKeys.add(mapping.sourceAttributeKey);
-        const resolved = this.toResolvedParameter(param, this.mapValue(mapping, sourceValue));
+        const resolved = this.toResolvedParameter(param, destinationValue);
         if (resolved) {
           parameters.push(resolved);
         } else if (param.required) {
@@ -92,17 +116,23 @@ export class AttributeProjectionService implements IAttributeProjectionService {
         }
       }
     } else {
-      // borrows / open — name-keyed pass-through.
+      // borrows / open — name-keyed pass-through. Collect mapping outputs first,
+      // then let rules override by destination parameter name.
+      const byName = new Map<string, ResolvedParameter>();
       for (const mapping of applicable.values()) {
         const sourceValue = attributes[mapping.sourceAttributeKey];
         if (sourceValue === undefined || sourceValue === '') continue;
         usedSourceKeys.add(mapping.sourceAttributeKey);
-        parameters.push({
+        byName.set(this.normalize(mapping.destinationParameterName), {
           id: mapping.destinationParameterName,
           values: [this.mapValue(mapping, sourceValue)],
           section: 'offer',
         });
       }
+      for (const [key, contribution] of ruleByName) {
+        byName.set(key, { id: contribution.name, values: [contribution.value], section: 'offer' });
+      }
+      for (const resolved of byName.values()) parameters.push(resolved);
     }
 
     const unmappedSourceKeys = Object.keys(attributes).filter((key) => {
@@ -200,6 +230,100 @@ export class AttributeProjectionService implements IAttributeProjectionService {
       return { id: param.id, valuesIds: [entry.id], section: param.section };
     }
     return { id: param.id, values: [destinationValue], section: param.section };
+  }
+
+  /**
+   * Apply operator-authored rules (#1841): filter by scope, order by `priority`
+   * ascending, resolve each to a destination value, and collapse to one
+   * contribution per destination parameter name (later rule wins). Copy-remap
+   * rules that consume a source attribute add its key to `usedSourceKeys` so it
+   * is not later reported unmapped.
+   */
+  private resolveRuleContributions(
+    rules: AttributeMappingRule[],
+    input: AttributeProjectionInput,
+    usedSourceKeys: Set<string>
+  ): Map<string, RuleContribution> {
+    const contributions = new Map<string, RuleContribution>();
+    const applicable = rules
+      .filter((rule) => this.ruleMatches(rule, input))
+      .sort((a, b) => a.priority - b.priority);
+    for (const rule of applicable) {
+      const value = this.computeRuleValue(rule, input, usedSourceKeys);
+      if (value === undefined || value === '') continue;
+      contributions.set(this.normalize(rule.destinationParameterName), {
+        name: rule.destinationParameterName,
+        value,
+      });
+    }
+    return contributions;
+  }
+
+  private ruleMatches(rule: AttributeMappingRule, input: AttributeProjectionInput): boolean {
+    if (rule.sourceConnectionId !== null && rule.sourceConnectionId !== input.sourceConnectionId) {
+      return false;
+    }
+    if (
+      rule.destinationCategoryId !== null &&
+      rule.destinationCategoryId !== input.destinationCategoryId
+    ) {
+      return false;
+    }
+    if (rule.manufacturerMatch !== null) {
+      const manufacturer = input.metadata?.manufacturer;
+      if (!manufacturer || this.normalize(manufacturer) !== this.normalize(rule.manufacturerMatch)) {
+        return false;
+      }
+    }
+    if (rule.phraseMatch !== null) {
+      const name = input.metadata?.productName ?? '';
+      if (!this.normalize(name).includes(this.normalize(rule.phraseMatch))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private computeRuleValue(
+    rule: AttributeMappingRule,
+    input: AttributeProjectionInput,
+    usedSourceKeys: Set<string>
+  ): string | undefined {
+    const config = rule.config;
+    switch (config.kind) {
+      case 'fixed':
+        return config.value;
+      case 'copy-remap': {
+        const sourceValue = input.attributes[config.sourceAttributeKey];
+        if (sourceValue === undefined || sourceValue === '') return undefined;
+        usedSourceKeys.add(config.sourceAttributeKey);
+        const target = this.normalize(sourceValue);
+        const remap = config.valueRemap.find((v) => this.normalize(v.sourceValue) === target);
+        return remap ? remap.destinationValue : sourceValue;
+      }
+      case 'place-value':
+        return this.placeValue(config.source, input.metadata);
+    }
+  }
+
+  private placeValue(
+    source: PlaceValueSource,
+    metadata: AttributeProjectionMetadata | undefined
+  ): string | undefined {
+    switch (source) {
+      case 'name':
+        return metadata?.productName;
+      case 'variant':
+        return metadata?.variantName;
+      case 'manufacturer':
+        return metadata?.manufacturer;
+      case 'ean':
+        return metadata?.ean;
+      case 'sku':
+        return metadata?.sku;
+      case 'weight':
+        return metadata?.weight;
+    }
   }
 
   private normalize(value: string): string {

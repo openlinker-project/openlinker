@@ -714,12 +714,15 @@ describe('OfferBuilderService', () => {
         stock: 1,
       });
 
-      expect(attributeProjection.project).toHaveBeenCalledWith({
-        sourceConnectionId: MASTER_CONN_ID,
-        destinationConnectionId: MARKETPLACE_CONN_ID,
-        destinationCategoryId: 'allegro-cat-999',
-        attributes: { Color: 'Red' },
-      });
+      expect(attributeProjection.project).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceConnectionId: MASTER_CONN_ID,
+          destinationConnectionId: MARKETPLACE_CONN_ID,
+          destinationCategoryId: 'allegro-cat-999',
+          attributes: { Color: 'Red' },
+          metadata: expect.objectContaining({ productName: 'Test Product' }),
+        })
+      );
       expect(result.parameters).toEqual([
         { id: '224017', valuesIds: ['11954'], section: 'product' },
       ]);

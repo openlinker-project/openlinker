@@ -45,8 +45,10 @@ export type { IAttributeProjectionService } from './application/interfaces/attri
 export type {
   AttributeProjectionInput,
   AttributeProjectionResult,
+  AttributeProjectionMetadata,
   ResolvedParameter,
 } from './application/types/attribute-projection.types';
+export { buildProjectionMetadata } from './application/services/build-projection-metadata';
 export type { IOfferLinkingService } from './application/interfaces/offer-linking.service.interface';
 export type {
   OfferLinkMethod,

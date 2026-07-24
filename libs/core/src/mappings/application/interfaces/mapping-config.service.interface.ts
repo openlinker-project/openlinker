@@ -14,6 +14,7 @@ import type { PaymentMapping } from '../../domain/entities/payment-mapping.entit
 import type { CategoryMapping } from '../../domain/entities/category-mapping.entity';
 import type { OrderStateMapping } from '../../domain/entities/order-state-mapping.entity';
 import type { AttributeMapping } from '../../domain/entities/attribute-mapping.entity';
+import type { AttributeMappingRule } from '../../domain/entities/attribute-mapping-rule.entity';
 import type {
   StatusMappingInput,
   CarrierMappingInput,
@@ -22,6 +23,7 @@ import type {
   OrderStateMappingInput,
   AttributeMappingInput,
 } from '../../domain/types/mapping.types';
+import type { AttributeMappingRuleInput } from '../../domain/types/attribute-mapping-rule.types';
 
 export interface IMappingConfigService {
   getStatusMappings(connectionId: string): Promise<StatusMapping[]>;
@@ -119,4 +121,16 @@ export interface IMappingConfigService {
     input: AttributeMappingInput
   ): Promise<AttributeMapping>;
   deleteAttributeMapping(id: string): Promise<void>;
+
+  /**
+   * Operator-authored attribute mapping rules for a destination connection
+   * (#1841), ordered by `priority` ascending. Consumed by attribute projection
+   * to fill destination attributes/parameters deterministically across products.
+   */
+  getAttributeMappingRules(destinationConnectionId: string): Promise<AttributeMappingRule[]>;
+  upsertAttributeMappingRule(
+    destinationConnectionId: string,
+    input: AttributeMappingRuleInput
+  ): Promise<AttributeMappingRule>;
+  deleteAttributeMappingRule(id: string, destinationConnectionId: string): Promise<void>;
 }

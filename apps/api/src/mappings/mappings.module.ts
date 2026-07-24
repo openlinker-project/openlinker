@@ -15,6 +15,7 @@ import { CategoriesModule } from '../categories/categories.module';
 import { MappingsController } from './http/mappings.controller';
 import { MappingOptionsController } from './http/mapping-options.controller';
 import { FulfillmentRoutingController } from './http/fulfillment-routing.controller';
+import { AttributeMappingRulesController } from './http/attribute-mapping-rules.controller';
 
 @Module({
   // - CoreIntegrationsModule provides INTEGRATIONS_SERVICE_TOKEN — the
@@ -27,6 +28,11 @@ import { FulfillmentRoutingController } from './http/fulfillment-routing.control
   //   IdentifierMappingModule but does not re-export the token, so the
   //   import here is direct.
   imports: [CoreMappingsModule, CoreIntegrationsModule, IdentifierMappingModule, CategoriesModule],
-  controllers: [MappingsController, MappingOptionsController, FulfillmentRoutingController],
+  controllers: [
+    MappingsController,
+    MappingOptionsController,
+    FulfillmentRoutingController,
+    AttributeMappingRulesController,
+  ],
 })
 export class MappingsApiModule {}
