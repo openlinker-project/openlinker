@@ -27,14 +27,52 @@ import { StatusBadge } from '../../../shared/ui/status-badge';
 import { Button } from '../../../shared/ui/button';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 
-import type { OrderRecord } from '../api/orders.types';
+import type { OrderDeliveryRider, OrderRecord } from '../api/orders.types';
 import { parseOrderSnapshot, type PaymentStatus } from '../api/order-snapshot.schema';
+import { hasLiveOlCarrierRoute } from '../lib/delivery-outcome';
+import { SHOP_FULFILLED_NO_DUP_LABEL } from '../lib/delivery-copy';
+import { DeliveryRiderAction } from './delivery-rider-action';
 import { GenerateLabelForm } from './generate-label-form';
 import { ShipmentActionButtons } from './shipment-action-buttons';
 import { ShipmentLifecycleRail } from './shipment-lifecycle-rail';
 import { ShipmentTrackingLink } from './shipment-tracking-link';
 
 const SHIPPING_CAPABILITY = 'ShippingProviderManager';
+
+/** Whether a rider is one OpenLinker could take over (#1776). */
+function isTakeoverRider(rider: OrderDeliveryRider | undefined): boolean {
+  return (
+    rider?.rider === 'unmapped' || rider?.rider === 'not-connected' || rider?.rider === 'disabled'
+  );
+}
+
+/**
+ * Takeover empty-state message (#1776 E3) — drops "(see Delivery)"; the fix-it
+ * action is the EmptyState's own button. `carrier` is the rider's candidate
+ * carrier display name (or "a carrier"). Copy always says "this and future
+ * orders", never "re-ship this order".
+ */
+function takeoverMessage(rider: OrderDeliveryRider | undefined, carrier: string): string {
+  switch (rider?.rider) {
+    case 'not-connected':
+      return `OpenLinker supports ${carrier} but isn't connected to it yet. Connect it to ship this and future orders on this method through OpenLinker.`;
+    case 'disabled':
+      return `This delivery method routes to ${carrier}, but that connection is disabled. Enable it so OpenLinker can generate the label.`;
+    case 'unmapped':
+    default:
+      return `This delivery method isn't mapped to a carrier yet. Map it to ${carrier} and OpenLinker will generate the label for this and future orders on this method.`;
+  }
+}
+
+/**
+ * Affirmative shop-fulfilled message (#1776 E2) — the shop owns fulfilment and
+ * OpenLinker only mirrors its status. Substitutes the shop connection name for
+ * "The destination shop" when it's resolvable.
+ */
+function shopFulfilledMessage(shopName: string | null): string {
+  const subject = shopName ?? 'The destination shop';
+  return `${subject} ships this order with its own carrier. ${SHOP_FULFILLED_NO_DUP_LABEL}`;
+}
 
 interface OrderShipmentPanelProps {
   order: OrderRecord;
@@ -52,6 +90,31 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
     () => parseOrderSnapshot(order.orderSnapshot).paymentStatus,
     [order.orderSnapshot],
   );
+
+  // OpenLinker only generates a label when routing resolves to a LIVE own-carrier
+  // route (#1799). A shop-fulfilled / no-method / unmapped / not-connected /
+  // disabled-carrier order has no OL label to generate, so the Generate-label
+  // CTAs are suppressed and the operator is pointed at delivery routing instead
+  // (the Delivery panel's rider, or a "fulfilled by the shop" note here).
+  const olCarrierRoute = hasLiveOlCarrierRoute(order.deliveryResolution);
+  const rider = order.deliveryRider;
+  const takeover = isTakeoverRider(rider);
+  const candidateCarrier = rider?.candidateCarrier?.displayName ?? 'a carrier';
+  // Shop connection name for the affirmative empty state — the explicit OMP
+  // processor when the routing named one (id → name lookup only).
+  const shopConnectionName =
+    order.deliveryResolution?.processorConnectionId != null
+      ? ((connectionsQuery.data ?? []).find(
+          (c) => c.id === order.deliveryResolution?.processorConnectionId,
+        )?.name ?? null)
+      : null;
+  // Inline note shown alongside an already-booked shipment on a dead route:
+  // the takeover reason, or the affirmative shop-fulfilled sentence.
+  const noRouteMessage = olCarrierRoute
+    ? null
+    : takeover
+      ? takeoverMessage(rider, candidateCarrier)
+      : shopFulfilledMessage(shopConnectionName);
 
   // AC-8 — global capability gate. If no connection declares
   // ShippingProviderManager, render nothing (the operator has no way to
@@ -91,6 +154,12 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
     ? (connectionsQuery.data ?? []).find((c) => c.id === activeShipment.connectionId)
     : undefined;
 
+  // No OL shipment row but the rollup already reads dispatched/delivered → the
+  // order was fulfilled outside OpenLinker; there is no label to generate here.
+  const dispatchedOutsideOl =
+    !activeShipment &&
+    (order.fulfillmentState === 'dispatched' || order.fulfillmentState === 'delivered');
+
   return (
     <section className="detail-section order-shipment-panel">
       <header className="order-shipment-panel__header">
@@ -125,7 +194,43 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
             mutationError={null /* surfaced via the action-buttons own state */}
           />
         </>
-      ) : formOpen ? null : (
+      ) : formOpen ? null : dispatchedOutsideOl ? (
+        // No OL shipment row, yet the rollup says the order is already
+        // dispatched/delivered → it was fulfilled outside OpenLinker. Show a
+        // passive note instead of an active "Generate a label" CTA (this takes
+        // precedence over the normal live-route empty state).
+        <EmptyState
+          title="Dispatched outside OpenLinker"
+          message="Dispatched outside OpenLinker - no label to generate here."
+        />
+      ) : !olCarrierRoute ? (
+        takeover ? (
+          // Takeover nudge (#1776 E3) — OpenLinker could ship this once the
+          // operator maps / connects / enables the carrier. The fix-it deep link
+          // is the EmptyState's action (needs the source connection + method).
+          <EmptyState
+            title="OpenLinker can ship this"
+            message={takeoverMessage(rider, candidateCarrier)}
+            action={
+              rider && order.sourceConnectionId ? (
+                <DeliveryRiderAction
+                  rider={rider}
+                  sourceConnectionId={order.sourceConnectionId}
+                  sourceDeliveryMethodId={order.sourceDeliveryMethodId}
+                  sourceDeliveryMethodName={order.sourceDeliveryMethodName}
+                />
+              ) : undefined
+            }
+          />
+        ) : (
+          // Affirmative shop-fulfilled empty state (#1776 E2) — the shop owns
+          // fulfilment; no CTA, no dead-end label action.
+          <EmptyState
+            title="Shipped by the shop"
+            message={shopFulfilledMessage(shopConnectionName)}
+          />
+        )
+      ) : (
         <EmptyState
           title="No shipment yet"
           message="Generate a label to dispatch this order."
@@ -137,13 +242,25 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
         />
       )}
 
+      {/* When a shipment already exists but routing has no live OL carrier route
+          (#1799), surface the reason inline so it's visible without hovering the
+          disabled Generate-label button. The EmptyState already carries this copy
+          on the no-shipment path, so this only fires alongside an active shipment. */}
+      {activeShipment && noRouteMessage ? (
+        <Alert tone="info" className="order-shipment-panel__route-note">
+          {noRouteMessage}
+        </Alert>
+      ) : null}
+
       {/* Active-state action row (omitted in the empty state — the EmptyState
-          owns its own CTA). */}
+          owns its own CTA). Generate/re-generate is blocked when there's no live
+          OL carrier route (#1799); Cancel / Download / Mark-dispatched stay. */}
       {activeShipment ? (
         <ShipmentActionButtons
           shipment={activeShipment}
           paymentStatus={paymentStatus}
           onGenerateLabelClick={() => setFormOpen(true)}
+          routeUnavailable={!olCarrierRoute}
         />
       ) : null}
 

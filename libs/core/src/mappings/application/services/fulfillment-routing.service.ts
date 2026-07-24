@@ -150,20 +150,98 @@ export class FulfillmentRoutingService implements IFulfillmentRoutingService {
     if (sourceDeliveryMethodId) {
       const rule = await this.repository.findRule(sourceConnectionId, sourceDeliveryMethodId);
       if (rule) {
-        return {
-          processorKind: rule.processorKind,
-          processorConnectionId: rule.processorConnectionId,
-          source: 'rule',
-        };
+        const activeProcessorIds = await this.loadActiveConnectionIds();
+        return this.toResolution(rule, activeProcessorIds);
       }
     }
 
-    // No rule (or no method): today's PrestaShop-fulfilled default. Under
-    // fan-out there is no single fulfilling OMP, so processorConnectionId is null.
+    return this.defaultResolution();
+  }
+
+  /**
+   * Batched counterpart to {@link resolve} (#1791) — resolves many orders'
+   * `(source, method)` pairs in one pass, avoiding an N+1 repository round
+   * trip for a page of orders. Groups queries by distinct `sourceConnectionId`
+   * (typically 1-3 per page) and fetches each connection's full rule set once
+   * via `findBySourceConnectionId` — the same read `getRules` uses — instead
+   * of one `findRule` call per order. Returns resolutions in the same order
+   * as `queries`, one-to-one.
+   */
+  async resolveBatch(
+    queries: FulfillmentRoutingQuery[],
+  ): Promise<FulfillmentRoutingResolution[]> {
+    const connectionIds = Array.from(
+      new Set(
+        queries.filter((q) => q.sourceDeliveryMethodId !== null).map((q) => q.sourceConnectionId),
+      ),
+    );
+
+    const ruleSets = await Promise.all(
+      connectionIds.map((id) => this.repository.findBySourceConnectionId(id)),
+    );
+    const rulesByConnection = new Map(connectionIds.map((id, i) => [id, ruleSets[i]]));
+
+    // Load the active-connection id set once for the whole batch (not per order),
+    // so a matched rule's processor availability is a Set membership check.
+    const anyRuleMatch = queries.some(
+      (query) =>
+        query.sourceDeliveryMethodId !== null &&
+        (rulesByConnection.get(query.sourceConnectionId) ?? []).some(
+          (r) => r.sourceDeliveryMethodId === query.sourceDeliveryMethodId,
+        ),
+    );
+    const activeProcessorIds = anyRuleMatch
+      ? await this.loadActiveConnectionIds()
+      : new Set<string>();
+
+    return queries.map((query) => {
+      if (query.sourceDeliveryMethodId) {
+        const rule = (rulesByConnection.get(query.sourceConnectionId) ?? []).find(
+          (r) => r.sourceDeliveryMethodId === query.sourceDeliveryMethodId,
+        );
+        if (rule) {
+          return this.toResolution(rule, activeProcessorIds);
+        }
+      }
+      return this.defaultResolution();
+    });
+  }
+
+  /**
+   * The ids of all currently-active connections — the same `status: 'active'`
+   * gate {@link getCandidateProcessors} applies, reused here so a rule pointing
+   * at a disabled processor resolves `processorAvailable: false` (#1799).
+   */
+  private async loadActiveConnectionIds(): Promise<Set<string>> {
+    const active = await this.connectionPort.list({ status: 'active' });
+    return new Set(active.map((connection) => connection.id));
+  }
+
+  /** Shared rule → resolution mapping between {@link resolve} and {@link resolveBatch}. */
+  private toResolution(
+    rule: FulfillmentRoutingRule,
+    activeProcessorIds: Set<string>,
+  ): FulfillmentRoutingResolution {
+    return {
+      processorKind: rule.processorKind,
+      processorConnectionId: rule.processorConnectionId,
+      source: 'rule',
+      processorAvailable: activeProcessorIds.has(rule.processorConnectionId),
+    };
+  }
+
+  /**
+   * Shared default fallback between {@link resolve} and {@link resolveBatch}:
+   * today's PrestaShop-fulfilled default. Under fan-out there is no single
+   * fulfilling OMP, so `processorConnectionId` is null.
+   */
+  private defaultResolution(): FulfillmentRoutingResolution {
     return {
       processorKind: FULFILLMENT_PROCESSOR_KIND.OmpFulfilled,
       processorConnectionId: null,
       source: 'default',
+      // No processor to gate on the default fallback — always available.
+      processorAvailable: true,
     };
   }
 

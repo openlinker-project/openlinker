@@ -52,6 +52,7 @@ describe('FulfillmentRoutingController', () => {
       getCandidateProcessors: jest.fn(),
       replaceRules: jest.fn(),
       resolve: jest.fn(),
+      resolveBatch: jest.fn(),
     };
     controller = new FulfillmentRoutingController(routing);
   });

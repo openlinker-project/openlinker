@@ -8,7 +8,7 @@
  */
 
 import type { ReactElement, ReactNode } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
 import { Alert } from '../../shared/ui/alert';
@@ -27,6 +27,7 @@ import { useConnectionQuery } from '../../features/connections/hooks/use-connect
 import { OL_ORDER_STATUS_OPTIONS, type MappingOption } from '../../features/mappings/api/mappings.types';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { DesktopOnlyBanner } from '../../shared/ui/desktop-only-banner';
+import { DELIVERY_MAPPING_DEEP_LINK_PARAMS } from '../../features/mappings';
 
 type TabId = 'fulfillment' | 'status' | 'carriers' | 'payments' | 'order-states';
 
@@ -111,6 +112,14 @@ function deriveCarrierFallbackBanner(args: {
 export function ConnectionMappingsPage(): ReactElement {
   const { connectionId = '' } = useParams();
 
+  // Fix-it deep link (#1794): the order-detail "Add mapping" rider links here
+  // with `?tab=carriers&method=<id>&methodName=<name>` so we open the Delivery
+  // (carriers) tab and pre-focus the unmapped source method.
+  const [searchParams] = useSearchParams();
+  const requestedTab = searchParams.get(DELIVERY_MAPPING_DEEP_LINK_PARAMS.tab);
+  const focusMethodId = searchParams.get(DELIVERY_MAPPING_DEEP_LINK_PARAMS.method);
+  const focusMethodName = searchParams.get(DELIVERY_MAPPING_DEEP_LINK_PARAMS.methodName);
+
   const statusQuery = useStatusMappingsQuery(connectionId);
   const carrierQuery = useCarrierMappingsQuery(connectionId);
   const paymentQuery = usePaymentMappingsQuery(connectionId);
@@ -180,7 +189,12 @@ export function ConnectionMappingsPage(): ReactElement {
     { id: 'payments' as const, label: 'Payments' },
     ...(supportsOrderProcessor ? [{ id: 'order-states' as const, label: 'Order States' }] : []),
   ];
-  const defaultTab = tabs[0].id;
+  // Honour the deep-link tab request (#1794) only when it names a tab that is
+  // actually available for this connection; otherwise fall back to the first.
+  const initialTab =
+    requestedTab && tabs.some((t) => t.id === requestedTab)
+      ? (requestedTab as TabId)
+      : tabs[0].id;
 
   if (isLoading) {
     return (
@@ -292,7 +306,7 @@ export function ConnectionMappingsPage(): ReactElement {
         visible but large tables may overflow horizontally.
       </DesktopOnlyBanner>
 
-      <Tabs defaultValue={defaultTab} aria-label="Mapping types">
+      <Tabs defaultValue={initialTab} aria-label="Mapping types">
         <TabsList>
           {tabs.map((tab) => (
             <TabsTrigger key={tab.id} value={tab.id}>
@@ -351,6 +365,8 @@ export function ConnectionMappingsPage(): ReactElement {
             saveError={upsertCarrier.error}
             optionsLoading={optionsLoading}
             optionsError={carrierOptionsError}
+            focusSourceValue={focusMethodId}
+            focusSourceName={focusMethodName}
           />
         </TabsContent>
 

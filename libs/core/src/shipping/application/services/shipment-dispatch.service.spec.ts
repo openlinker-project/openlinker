@@ -108,6 +108,7 @@ function resolution(
     processorConnectionId:
       overrides.processorConnectionId === undefined ? INPOST : overrides.processorConnectionId,
     source: overrides.source ?? 'rule',
+    processorAvailable: overrides.processorAvailable ?? true,
   };
 }
 
@@ -135,6 +136,7 @@ describe('ShipmentDispatchService', () => {
       getCandidateProcessors: jest.fn(),
       replaceRules: jest.fn(),
       resolve: jest.fn(),
+      resolveBatch: jest.fn(),
     };
     adapter = {
       generateLabel: jest.fn(),

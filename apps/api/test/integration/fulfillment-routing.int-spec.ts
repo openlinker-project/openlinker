@@ -224,6 +224,7 @@ describe('Fulfillment Routing Integration', () => {
         processorKind: 'ol_managed_carrier',
         processorConnectionId: inpostId,
         source: 'rule',
+        processorAvailable: true,
       });
     });
 
@@ -240,6 +241,7 @@ describe('Fulfillment Routing Integration', () => {
         processorKind: 'omp_fulfilled',
         processorConnectionId: null,
         source: 'default',
+        processorAvailable: true,
       });
     });
   });

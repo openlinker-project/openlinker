@@ -33,6 +33,12 @@ import type {
   ParsedOrderPickupPoint,
   ParsedOrderShipping,
 } from '../api/order-snapshot.schema';
+import type { OrderDeliveryRider } from '../api/orders.types';
+import type { DeliveryOutcome } from '../lib/delivery-outcome';
+import type { DeliveryOwner } from '../lib/delivery-owner';
+import { ConnectionDot } from './connection-dot';
+import { DeliveryOutcomeChip, DeliveryRiderBanner } from './delivery-chip';
+import { DeliveryRiderAction } from './delivery-rider-action';
 
 interface OrderDeliveryPanelProps {
   shippingAddress?: ParsedAddress;
@@ -46,6 +52,43 @@ interface OrderDeliveryPanelProps {
    * nothing (no shipment carrier and no snapshot method name).
    */
   carrier?: string | null;
+  /**
+   * Fallback delivery-method label (#1776) rendered on the always-present
+   * Method row when the snapshot carried no `shipping.methodName`/`methodId`.
+   * Callers derive it from the booked shipment (carrier / mapped method) so a
+   * source order with no delivery line still shows a method. The Method row
+   * chain is `shipping.methodName ?? shipping.methodId ?? methodFallback ??
+   * pickupPoint.name ?? '-'`.
+   */
+  methodFallback?: string | null;
+  /**
+   * Physical delivery outcome (#1793) rendered as a chip in the Carrier row.
+   * Derived by the caller from `deliveryResolution` + shipment state via
+   * `deriveDeliveryOutcome`. Absent → no chip (older/degraded payloads).
+   */
+  deliveryOutcome?: DeliveryOutcome;
+  /**
+   * Resolved delivery owner (#1776) — the carrier or destination shop that owns
+   * fulfilment, resolved by the caller via `resolveDeliveryOwner`. Renders a
+   * "Shipped by" row (connection mini-badge + name + a muted routing note) as
+   * the panel's first field. Absent → no Shipped-by row (older payloads).
+   */
+  deliveryOwner?: DeliveryOwner;
+  /**
+   * Actionable delivery rider (#1793/#1792). When actionable
+   * (`unmapped` / `not-connected`) an inline banner + fix-it deep-link button
+   * (#1794) renders beneath the delivery fields.
+   */
+  deliveryRider?: OrderDeliveryRider | null;
+  /**
+   * Source connection id (#1794) — the Add-mapping deep-link target. When
+   * absent the rider banner falls back to its disabled placeholder button.
+   */
+  sourceConnectionId?: string | null;
+  /** Unmapped source delivery-method id (#1791) — Add-mapping pre-focus target. */
+  sourceDeliveryMethodId?: string | null;
+  /** Source delivery-method label (#1791) — Add-mapping pre-focus copy. */
+  sourceDeliveryMethodName?: string | null;
 }
 
 function addressLines(address: ParsedAddress): ReactElement {
@@ -85,20 +128,76 @@ export function OrderDeliveryPanel({
   pickupPoint,
   sourcePlatformType,
   carrier,
+  methodFallback,
+  deliveryOutcome,
+  deliveryOwner,
+  deliveryRider,
+  sourceConnectionId,
+  sourceDeliveryMethodId,
+  sourceDeliveryMethodName,
 }: OrderDeliveryPanelProps): ReactElement {
   // Resolved unconditionally (never inside a branch) — see #893.
   const sourcePlatform = usePlatform(sourcePlatformType ?? undefined);
 
   const items: KeyValueItem[] = [];
+  // "Shipped by" (#1776) — the first field: who owns fulfilment. A carrier
+  // route reassures "OpenLinker generates the label"; a shop route (named or
+  // the generic destination shop) reads "its own carrier".
+  if (deliveryOwner) {
+    const shippedByName =
+      deliveryOwner.name ?? (deliveryOwner.variant === 'carrier' ? 'a carrier' : 'The destination shop');
+    const shippedByNote =
+      deliveryOwner.variant === 'carrier' ? '· OpenLinker generates the label' : '· its own carrier';
+    items.push({
+      id: 'shipped-by',
+      label: 'Shipped by',
+      value: (
+        <span className="order-delivery__shipped-by">
+          <ConnectionDot
+            name={deliveryOwner.name}
+            platformType={deliveryOwner.platformType}
+            variant={deliveryOwner.variant}
+          />
+          <span>{shippedByName}</span>
+          <span className="text-muted">{shippedByNote}</span>
+        </span>
+      ),
+    });
+  }
   if (shippingAddress) {
     items.push({ id: 'ship-to', label: 'Ship to', value: addressLines(shippingAddress) });
   }
-  if (shipping?.methodName ?? shipping?.methodId) {
-    items.push({ id: 'method', label: 'Method', value: shipping.methodName ?? shipping.methodId });
-  }
+  // Always rendered (#1776) — the delivery-method label is a core "where it's
+  // going" fact, so it must not blank out when the source order carried no
+  // shipping line. Precedence: source method name → source method id →
+  // caller-supplied fallback (shipment-derived carrier/method) → pickup-point
+  // name (#1793) → "-".
+  items.push({
+    id: 'method',
+    label: 'Method',
+    value:
+      shipping?.methodName ?? shipping?.methodId ?? methodFallback ?? pickupPoint?.name ?? '-',
+  });
   // Always rendered (unlike the fields above) — "-" fallback per #1617 so the
   // operator can tell "no carrier resolved" apart from "field doesn't exist".
-  items.push({ id: 'carrier', label: 'Carrier', value: carrier ?? '-' });
+  // This row is also the documented delivery-method fallback (#1776): when the
+  // source order carried no delivery method (so the Method row above is absent —
+  // e.g. Erli/WooCommerce orders with no shipping line), the booked shipment's
+  // carrier still surfaces here, so the panel always answers "how is this
+  // shipping?" without duplicating a Method row. The mapping-aware outcome chip
+  // (#1793) sits alongside the carrier name when the caller derived one.
+  items.push({
+    id: 'carrier',
+    label: 'Carrier',
+    value: deliveryOutcome ? (
+      <span className="order-delivery__carrier">
+        <span>{carrier ?? '-'}</span>
+        <DeliveryOutcomeChip outcome={deliveryOutcome} />
+      </span>
+    ) : (
+      (carrier ?? '-')
+    ),
+  });
 
   const pickupCaption =
     sourcePlatform?.pickupPointResolvesAsync === true
@@ -119,6 +218,21 @@ export function OrderDeliveryPanel({
       <h3 className="detail-section__title">Delivery</h3>
       <div className="order-delivery__card">
         <KeyValueList items={items} />
+        {deliveryRider ? (
+          <DeliveryRiderBanner
+            rider={deliveryRider}
+            actionSlot={
+              sourceConnectionId ? (
+                <DeliveryRiderAction
+                  rider={deliveryRider}
+                  sourceConnectionId={sourceConnectionId}
+                  sourceDeliveryMethodId={sourceDeliveryMethodId}
+                  sourceDeliveryMethodName={sourceDeliveryMethodName}
+                />
+              ) : undefined
+            }
+          />
+        ) : null}
         {pickupPoint ? (
           <div className="order-delivery__pickup">
             <div className="order-delivery__pickup-code mono-text">

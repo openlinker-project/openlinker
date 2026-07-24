@@ -52,6 +52,32 @@ describe('OrderRowDetail', () => {
     expect(placeholders.length).toBeGreaterThanOrEqual(6);
   });
 
+  it('renders an "est." qualifier on the Ship-by field only when the deadline is estimated (#1776)', () => {
+    const { rerender } = renderDetail({
+      ...baseOrder,
+      dispatchByAt: '2026-02-01T12:00:00.000Z',
+      dispatchByEstimated: true,
+    });
+    expect(screen.getByLabelText('Estimated')).toBeInTheDocument();
+
+    rerender(
+      <LocaleProvider>
+        <MemoryRouter>
+          <OrderRowDetail
+            order={{
+              ...baseOrder,
+              dispatchByAt: '2026-02-01T12:00:00.000Z',
+              dispatchByEstimated: false,
+            }}
+            channelLabel={() => undefined}
+            platformByConnection={new Map()}
+          />
+        </MemoryRouter>
+      </LocaleProvider>,
+    );
+    expect(screen.queryByLabelText('Estimated')).not.toBeInTheDocument();
+  });
+
   it('always renders the internal id and the OpenLinker order-details link', () => {
     renderDetail(baseOrder);
 

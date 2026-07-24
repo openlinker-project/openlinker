@@ -4,11 +4,13 @@ import { renderWithProviders } from '../../../test/test-utils';
 import { OrderDeliveryPanel } from './order-delivery-panel';
 
 describe('OrderDeliveryPanel', () => {
-  it('should always render the panel with a Carrier field, "-" when there is no delivery data (#1617)', () => {
+  it('should always render the panel with Method and Carrier fields, "-" when there is no delivery data (#1617/#1776)', () => {
     renderWithProviders(<OrderDeliveryPanel />);
     expect(screen.getByRole('region', { name: 'Delivery' })).toBeInTheDocument();
+    expect(screen.getByText('Method')).toBeInTheDocument();
     expect(screen.getByText('Carrier')).toBeInTheDocument();
-    expect(screen.getByText('-')).toBeInTheDocument();
+    // Both value cells fall back to "-" when nothing is resolvable.
+    expect(screen.getAllByText('-')).toHaveLength(2);
   });
 
   it('should render the address, method and pickup code when they are present', () => {
@@ -71,6 +73,113 @@ describe('OrderDeliveryPanel', () => {
       renderWithProviders(<OrderDeliveryPanel carrier="InPost" />);
       expect(screen.getByRole('region', { name: 'Delivery' })).toBeInTheDocument();
       expect(screen.getByText('InPost')).toBeInTheDocument();
+    });
+  });
+
+  describe('method field fallback chain (#1776)', () => {
+    it('should prefer the snapshot method name over every fallback', () => {
+      renderWithProviders(
+        <OrderDeliveryPanel
+          shipping={{ methodId: 'm1', methodName: 'InPost Paczkomat' }}
+          methodFallback="Kurier"
+        />,
+      );
+      expect(screen.getByText('InPost Paczkomat')).toBeInTheDocument();
+      expect(screen.queryByText('Kurier')).not.toBeInTheDocument();
+    });
+
+    it('should fall back to the method id when the method name is absent', () => {
+      renderWithProviders(
+        <OrderDeliveryPanel shipping={{ methodId: 'MID-42' }} methodFallback="Kurier" />,
+      );
+      expect(screen.getByText('MID-42')).toBeInTheDocument();
+      expect(screen.queryByText('Kurier')).not.toBeInTheDocument();
+    });
+
+    it('should fall back to the caller-supplied methodFallback when the snapshot has no shipping', () => {
+      renderWithProviders(<OrderDeliveryPanel methodFallback="Paczkomat" />);
+      expect(screen.getByText('Method')).toBeInTheDocument();
+      expect(screen.getByText('Paczkomat')).toBeInTheDocument();
+    });
+
+    it('should fall back to the pickup-point name when no method or fallback resolves (#1793)', () => {
+      renderWithProviders(
+        <OrderDeliveryPanel pickupPoint={{ id: 'OLS06A', name: 'Paczkomat OLS06A' }} />,
+      );
+      expect(screen.getByText('Method')).toBeInTheDocument();
+      expect(screen.getByText('Paczkomat OLS06A')).toBeInTheDocument();
+    });
+
+    it('should render "-" for Method when neither snapshot nor fallback resolves', () => {
+      renderWithProviders(<OrderDeliveryPanel carrier="InPost" />);
+      expect(screen.getByText('Method')).toBeInTheDocument();
+      // Only the Method value falls back to "-"; Carrier shows InPost.
+      expect(screen.getByText('-')).toBeInTheDocument();
+    });
+  });
+
+  describe('mapping-aware delivery outcome + rider (#1793)', () => {
+    it('should render the delivery outcome chip in the Carrier row', () => {
+      renderWithProviders(<OrderDeliveryPanel carrier="InPost" deliveryOutcome="resolved" />);
+      expect(screen.getByText('InPost')).toBeInTheDocument();
+      expect(screen.getByText('Labelled')).toBeInTheDocument();
+    });
+
+    it('should render the rider banner with a fix-it slot when a rider is actionable', () => {
+      renderWithProviders(
+        <OrderDeliveryPanel
+          deliveryOutcome="shop-fulfilled"
+          deliveryRider={{
+            rider: 'unmapped',
+            candidateCarrier: { platformType: 'inpost', displayName: 'InPost' },
+          }}
+        />,
+      );
+      expect(screen.getByText('Not via OpenLinker')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Add mapping' })).toBeDisabled();
+    });
+
+    it('should not render a rider banner when the rider is "none"', () => {
+      renderWithProviders(
+        <OrderDeliveryPanel deliveryOutcome="shop-fulfilled" deliveryRider={{ rider: 'none' }} />,
+      );
+      expect(screen.getByText('Not via OpenLinker')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Add mapping|Connect/ })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('fix-it deep-link wiring (#1794)', () => {
+    it('should render the real Add-mapping deep link when sourceConnectionId is provided', () => {
+      renderWithProviders(
+        <OrderDeliveryPanel
+          deliveryOutcome="shop-fulfilled"
+          deliveryRider={{
+            rider: 'unmapped',
+            candidateCarrier: { platformType: 'inpost', displayName: 'InPost' },
+          }}
+          sourceConnectionId="conn-abc"
+          sourceDeliveryMethodId="method-xyz"
+          sourceDeliveryMethodName="InPost Paczkomat"
+        />,
+      );
+      const link = screen.getByRole('link', { name: 'Add mapping' });
+      expect(link.getAttribute('href')).toContain('/connections/conn-abc/mappings');
+      expect(link.getAttribute('href')).toContain('method=method-xyz');
+      expect(screen.queryByRole('button', { name: 'Add mapping' })).not.toBeInTheDocument();
+    });
+
+    it('should fall back to the disabled placeholder when sourceConnectionId is absent', () => {
+      renderWithProviders(
+        <OrderDeliveryPanel
+          deliveryOutcome="shop-fulfilled"
+          deliveryRider={{
+            rider: 'unmapped',
+            candidateCarrier: { platformType: 'inpost', displayName: 'InPost' },
+          }}
+        />,
+      );
+      expect(screen.getByRole('button', { name: 'Add mapping' })).toBeDisabled();
+      expect(screen.queryByRole('link', { name: 'Add mapping' })).not.toBeInTheDocument();
     });
   });
 });

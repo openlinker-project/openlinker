@@ -18,3 +18,16 @@ export const ERLI_ADAPTER_KEY = 'erli.shopapi.v1';
  * in lockstep (a mismatch fails closed: updates throw, never send).
  */
 export const ERLI_PRODUCT_ID_PATTERN = /^ol_variant_[a-f0-9]{32}$/;
+
+/**
+ * Build the `GET/POST/PATCH /products/{id}` request path, encoding the id as the
+ * `encodeURIComponent` backstop against the path-injection classes the pattern
+ * above already excludes. Pure - the CALLER owns validation against
+ * {@link ERLI_PRODUCT_ID_PATTERN} and decides the fail mode (offer-manager fails
+ * closed with `ErliConfigException`; the order-source ship-by read fails open to
+ * the connection default). Centralising the exact URL shape keeps both call sites
+ * from drifting.
+ */
+export function erliProductPath(id: string): string {
+  return `products/${encodeURIComponent(id)}`;
+}
