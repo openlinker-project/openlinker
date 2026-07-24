@@ -7,7 +7,11 @@
  * @module libs/core/src/listings/application/types
  */
 
-import type { PublishProductContent, PublishProductStatus } from '@openlinker/core/listings';
+import type {
+  PublishProductCommerce,
+  PublishProductContent,
+  PublishProductStatus,
+} from '@openlinker/core/listings';
 import type { JobOutcome } from '@openlinker/core/sync';
 
 import type { ListingCreationRecord } from '../../domain/entities/listing-creation-record.entity';
@@ -25,6 +29,8 @@ export interface ExecutePublishProductInput {
   price?: { amount: number; currency: string };
   /** Optional owned-record content overrides. */
   content?: PublishProductContent;
+  /** Optional operator-supplied commerce fields (sale price, dimensions, tax). */
+  commerce?: PublishProductCommerce;
   /** Optional idempotency key threaded to the adapter. */
   idempotencyKey?: string;
   /**

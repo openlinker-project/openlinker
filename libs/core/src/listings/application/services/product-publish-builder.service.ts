@@ -111,6 +111,11 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
 
     const content = this.buildContent(input.content, product);
 
+    // Master-derived barcode/weight: prefer the variant's own value, fall back
+    // to the product's. Empty/absent ⇒ omitted (never sent as blank/zero).
+    const barcode = variant.gtin ?? variant.ean ?? undefined;
+    const weight = variant.weight ?? product.weight;
+
     const command: PublishProductCommand = {
       internalVariantId: input.internalVariantId,
       connectionId: input.connectionId,
@@ -126,7 +131,10 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
       // shop can key on (reconciliation, inventory-by-SKU). Omitted when the
       // variant has no SKU, matching the spread-omit convention below.
       ...(variant.sku ? { sku: variant.sku } : {}),
+      ...(barcode ? { barcode } : {}),
+      ...(weight != null ? { weight } : {}),
       ...(content ? { content } : {}),
+      ...(input.commerce ? { commerce: input.commerce } : {}),
       ...(parameters.length > 0 ? { parameters } : {}),
       ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
     };
@@ -255,6 +263,12 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
     if (title != null) content.title = title;
     if (description != null) content.description = description;
     if (imageUrls != null) content.imageUrls = imageUrls;
+    // Operator-only, no master fallback: the master product carries no
+    // short-description / tags fields. Threaded here so the builder-owned
+    // content object actually reaches the adapter (both single + bulk flow
+    // through this method).
+    if (overrides?.shortDescription != null) content.shortDescription = overrides.shortDescription;
+    if (overrides?.tags != null) content.tags = overrides.tags;
     if (overrides?.seo != null) content.seo = overrides.seo;
 
     return Object.keys(content).length > 0 ? content : undefined;

@@ -312,10 +312,12 @@ export { isCategoryProvisioner } from './domain/ports/capabilities/category-prov
 // names the owner taxonomy whose category/parameter ids it reuses verbatim.
 export type { TaxonomyBorrower } from './domain/ports/capabilities/taxonomy-borrower.capability';
 export { isTaxonomyBorrower } from './domain/ports/capabilities/taxonomy-borrower.capability';
-export { PublishProductStatusValues } from './domain/types/product-publish.types';
+export { PublishProductStatusValues, PublishTaxStatusValues } from './domain/types/product-publish.types';
 export type {
   PublishProductStatus,
+  PublishTaxStatus,
   PublishProductContent,
+  PublishProductCommerce,
   PublishProductCommand,
   PublishProductResult,
 } from './domain/types/product-publish.types';

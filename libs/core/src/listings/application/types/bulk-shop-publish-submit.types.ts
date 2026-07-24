@@ -12,6 +12,7 @@
 import type { BulkListingBatch } from '../../domain/entities/bulk-listing-batch.entity';
 import type { ListingCreationRecord } from '../../domain/entities/listing-creation-record.entity';
 import type {
+  PublishProductCommerce,
   PublishProductContent,
   PublishProductStatus,
 } from '../../domain/types/product-publish.types';
@@ -40,6 +41,8 @@ export interface BulkShopPublishSubmitInput {
   status: PublishProductStatus;
   /** Optional shared content overrides applied to every child. */
   content?: PublishProductContent;
+  /** Optional shared commerce fields (sale price, dimensions, tax) applied to every child. */
+  commerce?: PublishProductCommerce;
 }
 
 export interface BulkShopPublishItem {

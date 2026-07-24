@@ -133,6 +133,120 @@ describe('WooCommerceProductPublisherAdapter', () => {
       expect(body.tax_class).toBe('reduced-rate'); // un-modeled knob passes through
     });
 
+    it('should map barcode, weight, short_description and tags when present', async () => {
+      http.post.mockResolvedValue({ id: 20, status: 'publish' });
+
+      await adapter.publishProduct(
+        baseCommand({
+          barcode: '5901234123457',
+          weight: 1.25,
+          content: {
+            title: 'Widget',
+            shortDescription: 'Short blurb',
+            tags: ['sale', 'new'],
+          },
+        }),
+      );
+
+      const body = http.post.mock.calls[0][1] as Record<string, unknown>;
+      expect(body).toMatchObject({
+        global_unique_id: '5901234123457',
+        weight: '1.25',
+        short_description: 'Short blurb',
+        tags: [{ name: 'sale' }, { name: 'new' }],
+      });
+    });
+
+    it('should map the commerce block (sale price + schedule, dimensions, tax)', async () => {
+      http.post.mockResolvedValue({ id: 21, status: 'publish' });
+
+      await adapter.publishProduct(
+        baseCommand({
+          commerce: {
+            salePrice: { amount: 14.5, currency: 'PLN' },
+            saleStartsAt: '2026-08-01T00:00:00Z',
+            saleEndsAt: '2026-08-31T23:59:59Z',
+            dimensions: { length: 10, width: 5, height: 2 },
+            taxClass: 'reduced-rate',
+            taxStatus: 'taxable',
+          },
+        }),
+      );
+
+      const body = http.post.mock.calls[0][1] as Record<string, unknown>;
+      expect(body).toMatchObject({
+        sale_price: '14.5',
+        // UTC input is written to the `_gmt` fields, not the site-local ones.
+        date_on_sale_from_gmt: '2026-08-01T00:00:00Z',
+        date_on_sale_to_gmt: '2026-08-31T23:59:59Z',
+        dimensions: { length: '10', width: '5', height: '2' },
+        tax_class: 'reduced-rate',
+        tax_status: 'taxable',
+      });
+      expect(body).not.toHaveProperty('date_on_sale_from');
+      expect(body).not.toHaveProperty('date_on_sale_to');
+    });
+
+    it('should omit an empty tags array so upsert does not clear existing WC tags', async () => {
+      http.put.mockResolvedValue({ id: 30, status: 'publish' });
+
+      await adapter.publishProduct(
+        baseCommand({ externalProductId: '30', content: { title: 'Widget', tags: [] } }),
+      );
+
+      expect(http.put.mock.calls[0][1]).not.toHaveProperty('tags');
+    });
+
+    it('should omit new fields when the command does not carry them', async () => {
+      http.post.mockResolvedValue({ id: 22, status: 'publish' });
+
+      await adapter.publishProduct(baseCommand());
+
+      const body = http.post.mock.calls[0][1];
+      expect(body).not.toHaveProperty('global_unique_id');
+      expect(body).not.toHaveProperty('weight');
+      expect(body).not.toHaveProperty('short_description');
+      expect(body).not.toHaveProperty('tags');
+      expect(body).not.toHaveProperty('sale_price');
+      expect(body).not.toHaveProperty('dimensions');
+      expect(body).not.toHaveProperty('tax_class');
+      expect(body).not.toHaveProperty('tax_status');
+      expect(body).not.toHaveProperty('meta_data');
+    });
+
+    it('should map SEO title/description to Yoast + RankMath meta_data (#1833)', async () => {
+      http.post.mockResolvedValue({ id: 23, status: 'publish' });
+
+      await adapter.publishProduct(
+        baseCommand({
+          content: {
+            title: 'Widget',
+            seo: { title: 'SEO Title', description: 'SEO Desc', slug: 'widget' },
+          },
+        }),
+      );
+
+      const body = http.post.mock.calls[0][1] as Record<string, unknown>;
+      expect(body.slug).toBe('widget');
+      expect(body.meta_data).toEqual([
+        { key: '_yoast_wpseo_title', value: 'SEO Title' },
+        { key: 'rank_math_title', value: 'SEO Title' },
+        { key: '_yoast_wpseo_metadesc', value: 'SEO Desc' },
+        { key: 'rank_math_description', value: 'SEO Desc' },
+      ]);
+    });
+
+    it('should not emit meta_data when only the SEO slug is supplied', async () => {
+      http.post.mockResolvedValue({ id: 24, status: 'publish' });
+
+      await adapter.publishProduct(
+        baseCommand({ content: { title: 'Widget', seo: { slug: 'widget' } } }),
+      );
+
+      const body = http.post.mock.calls[0][1];
+      expect(body).not.toHaveProperty('meta_data');
+    });
+
     it('should map a 4xx rejection to ProductPublishRejectedException', async () => {
       http.post.mockRejectedValue(
         new WooCommerceHttpResponseException(400, 'Invalid price', 'product_invalid_price'),

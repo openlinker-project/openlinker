@@ -73,6 +73,7 @@ export class ShopPublishController {
       stock: dto.stock,
       ...(dto.price !== undefined && { price: dto.price }),
       ...(dto.content !== undefined && { content: dto.content }),
+      ...(dto.commerce !== undefined && { commerce: dto.commerce }),
       ...(idempotencyKey !== undefined && { idempotencyKey }),
     });
     return { jobId, listingCreationRecordId: listingCreationRecord.id };

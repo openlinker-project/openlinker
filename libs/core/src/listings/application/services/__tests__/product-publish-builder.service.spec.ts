@@ -137,6 +137,83 @@ describe('ProductPublishBuilderService', () => {
     expect(command.sku).toBe('SKU-123');
   });
 
+  it('should derive barcode (gtin then ean) and weight from the master variant', async () => {
+    products.getVariant.mockResolvedValue({
+      id: VARIANT,
+      productId: 'prod-1',
+      attributes: {},
+      ean: '1111111111116',
+      gtin: '5901234123457',
+      sku: null,
+      weight: 2.5,
+    });
+
+    const command = await service.buildPublishProductCommand(baseInput);
+
+    expect(command.barcode).toBe('5901234123457'); // gtin wins over ean
+    expect(command.weight).toBe(2.5);
+  });
+
+  it('should fall back to the ean and the product weight when the variant lacks them', async () => {
+    products.getVariant.mockResolvedValue({
+      id: VARIANT,
+      productId: 'prod-1',
+      attributes: {},
+      ean: '1111111111116',
+      gtin: null,
+      sku: null,
+    });
+    productMaster.getProduct.mockResolvedValue({
+      name: 'Widget',
+      description: 'A widget',
+      images: ['http://img'],
+      price: 12.5,
+      currency: 'PLN',
+      weight: 3,
+    });
+
+    const command = await service.buildPublishProductCommand(baseInput);
+
+    expect(command.barcode).toBe('1111111111116');
+    expect(command.weight).toBe(3);
+  });
+
+  it('should omit barcode and weight when neither variant nor product provide them', async () => {
+    const command = await service.buildPublishProductCommand(baseInput);
+
+    expect(command).not.toHaveProperty('barcode');
+    expect(command).not.toHaveProperty('weight');
+  });
+
+  it('should thread operator shortDescription and tags through content', async () => {
+    const command = await service.buildPublishProductCommand({
+      ...baseInput,
+      content: { shortDescription: 'Short blurb', tags: ['sale', 'new'] },
+    });
+
+    expect(command.content).toEqual(
+      expect.objectContaining({ shortDescription: 'Short blurb', tags: ['sale', 'new'] }),
+    );
+  });
+
+  it('should omit shortDescription and tags from content when not supplied', async () => {
+    const command = await service.buildPublishProductCommand(baseInput);
+
+    expect(command.content).not.toHaveProperty('shortDescription');
+    expect(command.content).not.toHaveProperty('tags');
+  });
+
+  it('should pass operator commerce fields through to the command', async () => {
+    const commerce = {
+      salePrice: { amount: 9.99, currency: 'PLN' },
+      taxStatus: 'taxable' as const,
+    };
+
+    const command = await service.buildPublishProductCommand({ ...baseInput, commerce });
+
+    expect(command.commerce).toEqual(commerce);
+  });
+
   it('should publish uncategorised when the shop adapter is not a CategoryProvisioner', async () => {
     delete shopAdapter.provisionCategory; // not a provisioner
 

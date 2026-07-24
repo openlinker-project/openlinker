@@ -24,6 +24,7 @@ import {
   type ProvisionCategoryCommand,
   type ProvisionCategoryResult,
   type PublishProductCommand,
+  type PublishProductContent,
   type PublishProductResult,
   type PublishProductStatus,
   type ShopProductManagerPort,
@@ -41,6 +42,13 @@ import type {
 const PRODUCTS_PATH = '/wp-json/wc/v3/products';
 const CATEGORIES_PATH = '/wp-json/wc/v3/products/categories';
 const DEFAULT_ADAPTER_KEY = 'woocommerce.restapi.v3';
+
+// Core WooCommerce has no native SEO title/description field — those live in
+// post meta owned by whichever SEO plugin the store runs. We write the meta keys
+// for both dominant plugins (Yoast, RankMath); the inactive plugin's rows are
+// inert post meta, so emitting both is safe and covers the common installs.
+const SEO_TITLE_META_KEYS = ['_yoast_wpseo_title', 'rank_math_title'] as const;
+const SEO_DESCRIPTION_META_KEYS = ['_yoast_wpseo_metadesc', 'rank_math_description'] as const;
 
 export class WooCommerceProductPublisherAdapter
   implements ShopProductManagerPort, CategoryProvisioner
@@ -121,8 +129,17 @@ export class WooCommerceProductPublisherAdapter
     // the builder's spread-omit and avoiding an empty `sku` clearing the WC
     // product's SKU on upsert.
     if (cmd.sku) typed.sku = cmd.sku;
+    if (cmd.barcode) typed.global_unique_id = cmd.barcode;
+    if (cmd.weight != null) typed.weight = String(cmd.weight);
     if (content?.title != null) typed.name = content.title;
     if (content?.description != null) typed.description = content.description;
+    if (content?.shortDescription != null) typed.short_description = content.shortDescription;
+    // Omit an empty tags array: sending `tags: []` on upsert would CLEAR the WC
+    // product's existing tags, violating the "never clear an untouched field"
+    // contract. An explicit non-empty list still replaces the set.
+    if (content?.tags != null && content.tags.length > 0) {
+      typed.tags = content.tags.map((name) => ({ name }));
+    }
     if (content?.imageUrls != null) typed.images = content.imageUrls.map((src) => ({ src }));
     if (content?.seo?.slug != null) typed.slug = content.seo.slug;
     if (cmd.destinationCategoryIds.length > 0) {
@@ -139,7 +156,58 @@ export class WooCommerceProductPublisherAdapter
       }));
     }
 
+    this.applyCommerce(typed, cmd);
+
+    // SEO title/description have no native WooCommerce product field — route them
+    // to the SEO-plugin post-meta keys so they aren't silently dropped (#1833).
+    const metaData = this.buildSeoMetaData(content?.seo);
+    if (metaData.length > 0) typed.meta_data = metaData;
+
     return { ...(cmd.platformParams ?? {}), ...typed };
+  }
+
+  /** Map the neutral `commerce` block (sale price + schedule, dimensions, tax). */
+  private applyCommerce(
+    typed: WooCommerceProductPublishRequest,
+    cmd: PublishProductCommand,
+  ): void {
+    const commerce = cmd.commerce;
+    if (!commerce) return;
+
+    if (commerce.salePrice != null) typed.sale_price = String(commerce.salePrice.amount);
+    // Neutral sale window is UTC (ISO 8601); write the `_gmt` fields so WC does
+    // not reinterpret the value as site-local and shift the window.
+    if (commerce.saleStartsAt != null) typed.date_on_sale_from_gmt = commerce.saleStartsAt;
+    if (commerce.saleEndsAt != null) typed.date_on_sale_to_gmt = commerce.saleEndsAt;
+    if (commerce.taxClass != null) typed.tax_class = commerce.taxClass;
+    if (commerce.taxStatus != null) typed.tax_status = commerce.taxStatus;
+
+    if (commerce.dimensions != null) {
+      const { length, width, height } = commerce.dimensions;
+      const dimensions: { length?: string; width?: string; height?: string } = {};
+      if (length != null) dimensions.length = String(length);
+      if (width != null) dimensions.width = String(width);
+      if (height != null) dimensions.height = String(height);
+      if (Object.keys(dimensions).length > 0) typed.dimensions = dimensions;
+    }
+  }
+
+  /**
+   * Build SEO post-meta rows for the common SEO plugins. Emits both Yoast and
+   * RankMath keys for each supplied value so whichever plugin the store runs
+   * picks it up; an absent value emits no rows for that field.
+   */
+  private buildSeoMetaData(
+    seo: PublishProductContent['seo'],
+  ): Array<{ key: string; value: string }> {
+    const rows: Array<{ key: string; value: string }> = [];
+    if (seo?.title != null) {
+      for (const key of SEO_TITLE_META_KEYS) rows.push({ key, value: seo.title });
+    }
+    if (seo?.description != null) {
+      for (const key of SEO_DESCRIPTION_META_KEYS) rows.push({ key, value: seo.description });
+    }
+    return rows;
   }
 
   private async findCategory(

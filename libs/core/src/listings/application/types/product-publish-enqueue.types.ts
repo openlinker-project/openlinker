@@ -10,6 +10,7 @@
  */
 
 import type {
+  PublishProductCommerce,
   PublishProductContent,
   PublishProductStatus,
 } from '../../domain/types/product-publish.types';
@@ -28,6 +29,8 @@ export interface EnqueueProductPublishInput {
   price?: { amount: number; currency: string };
   /** Optional owned-record content overrides (title, description, images, SEO). */
   content?: PublishProductContent;
+  /** Optional operator-supplied commerce fields (sale price, dimensions, tax). */
+  commerce?: PublishProductCommerce;
   /** Optional idempotency key; defaults to `shop-publish:{recordId}` (single) / a batch-scoped key (bulk). */
   idempotencyKey?: string;
   /**

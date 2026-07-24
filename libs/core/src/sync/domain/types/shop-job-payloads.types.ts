@@ -13,6 +13,7 @@
 import type {
   PublishProductStatus,
   PublishProductContent,
+  PublishProductCommerce,
   OfferParameter,
 } from '@openlinker/core/listings';
 
@@ -44,6 +45,8 @@ export interface ShopProductPublishPayloadV1 {
   destinationCategoryIds?: string[];
   /** Optional owned-record content overrides (title, description, images, SEO). */
   content?: PublishProductContent;
+  /** Optional operator-supplied commerce fields (sale price, dimensions, tax). */
+  commerce?: PublishProductCommerce;
   /**
    * Neutral, section-tagged projected category parameters (#1072) — the same
    * `OfferParameter` channel the offer payload uses. Mirrors
