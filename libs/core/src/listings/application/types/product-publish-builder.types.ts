@@ -11,7 +11,11 @@
  * @module libs/core/src/listings/application/types
  */
 
-import type { PublishProductContent, PublishProductStatus } from '@openlinker/core/listings';
+import type {
+  PublishProductCommerce,
+  PublishProductContent,
+  PublishProductStatus,
+} from '@openlinker/core/listings';
 
 export interface BuildPublishProductCommandInput {
   /** OL internal variant id being published. */
@@ -29,6 +33,8 @@ export interface BuildPublishProductCommandInput {
   price?: { amount: number; currency: string };
   /** Optional owned-record content overrides; missing fields fall back to the master product. */
   content?: PublishProductContent;
+  /** Optional operator-supplied commerce fields (sale price, dimensions, tax). */
+  commerce?: PublishProductCommerce;
   /** Optional idempotency key forwarded to the produced command. */
   idempotencyKey?: string;
 }

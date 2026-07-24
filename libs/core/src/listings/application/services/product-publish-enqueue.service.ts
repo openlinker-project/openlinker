@@ -84,6 +84,7 @@ export class ProductPublishEnqueueService implements IProductPublishEnqueueServi
             listingCreationRecordId: record.id,
             ...(input.price !== undefined && { price: input.price }),
             ...(input.content !== undefined && { content: input.content }),
+            ...(input.commerce !== undefined && { commerce: input.commerce }),
             ...(input.idempotencyKey !== undefined && { idempotencyKey: input.idempotencyKey }),
           } satisfies ShopProductPublishPayloadV2)
         : ({
@@ -94,6 +95,7 @@ export class ProductPublishEnqueueService implements IProductPublishEnqueueServi
             listingCreationRecordId: record.id,
             ...(input.price !== undefined && { price: input.price }),
             ...(input.content !== undefined && { content: input.content }),
+            ...(input.commerce !== undefined && { commerce: input.commerce }),
             ...(input.idempotencyKey !== undefined && { idempotencyKey: input.idempotencyKey }),
           } satisfies ShopProductPublishPayloadV1);
 

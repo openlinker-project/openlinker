@@ -75,6 +75,7 @@ export class BulkShopPublishSubmitService implements IBulkShopPublishSubmitServi
       sharedConfig: {
         status: input.status,
         ...(input.content !== undefined && { content: input.content }),
+        ...(input.commerce !== undefined && { commerce: input.commerce }),
       },
     });
 
@@ -91,6 +92,7 @@ export class BulkShopPublishSubmitService implements IBulkShopPublishSubmitServi
           bulkBatchId: batch.id,
           ...(item.price !== undefined && { price: item.price }),
           ...(input.content !== undefined && { content: input.content }),
+          ...(input.commerce !== undefined && { commerce: input.commerce }),
         });
         items.push({
           internalVariantId: item.internalVariantId,

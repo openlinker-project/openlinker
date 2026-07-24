@@ -34,6 +34,14 @@ export const PublishProductStatusValues = ['draft', 'published'] as const;
 export type PublishProductStatus = (typeof PublishProductStatusValues)[number];
 
 /**
+ * Neutral tax-treatment values for a shop product. Mirrors the common shop
+ * vocabulary (taxable / shipping-only / not-taxed); adapters map it to their
+ * platform field (WooCommerce `tax_status`).
+ */
+export const PublishTaxStatusValues = ['taxable', 'shipping', 'none'] as const;
+export type PublishTaxStatus = (typeof PublishTaxStatusValues)[number];
+
+/**
  * Owned-record content fields. Extracted as a named type (not inline on the
  * command) so the `shop.product.publish` job payload can reference the same
  * shape without indexed-access coupling.
@@ -47,6 +55,10 @@ export interface PublishProductContent {
   title?: string;
   /** Product description (HTML or rich text). `null`/`undefined` → no override. */
   description?: string | null;
+  /** Short/excerpt description. `null`/`undefined` → no override. */
+  shortDescription?: string | null;
+  /** Marketing tags for the storefront product. `null`/`undefined` → no override. */
+  tags?: string[] | null;
   /** Image URLs in display order. `null`/`undefined` → no override. */
   imageUrls?: string[] | null;
   /** SEO metadata for the storefront product page. */
@@ -55,6 +67,31 @@ export interface PublishProductContent {
     description?: string | null;
     slug?: string;
   };
+}
+
+/**
+ * Operator-supplied commerce/physical product fields beyond the core
+ * name/price/stock. Shop-neutral: WooCommerce, Shopify, … adapters map the keys
+ * they support and ignore the rest. Every field is optional; an absent field is
+ * left unset on the shop (never sent as empty/zero).
+ */
+export interface PublishProductCommerce {
+  /**
+   * Discounted sale price. Currency should match the shop/connection locale
+   * (shops typically apply the store currency, so adapters may use only the
+   * amount). Absent ⇒ no sale price is set.
+   */
+  salePrice?: { amount: number; currency: string };
+  /** ISO 8601 datetime the sale price becomes active. Absent ⇒ immediate/unset. */
+  saleStartsAt?: string;
+  /** ISO 8601 datetime the sale price expires. Absent ⇒ open-ended/unset. */
+  saleEndsAt?: string;
+  /** Physical dimensions. Each axis optional; an absent axis is left unset. */
+  dimensions?: { length?: number; width?: number; height?: number };
+  /** Tax class slug (shop-defined, e.g. WooCommerce "reduced-rate"). Absent ⇒ shop default. */
+  taxClass?: string;
+  /** Whether/how the product is taxed. Absent ⇒ shop default. */
+  taxStatus?: PublishTaxStatus;
 }
 
 /**
@@ -90,6 +127,23 @@ export interface PublishProductCommand {
   status: PublishProductStatus;
   /** Owned-record content fields (title, description, images, SEO). */
   content?: PublishProductContent;
+  /**
+   * Product barcode (GTIN/EAN). Master-derived by the builder from the variant
+   * (`ProductVariant.gtin` ?? `ProductVariant.ean`). Absent ⇒ the variant has no
+   * barcode and the field is left unset on the shop.
+   */
+  barcode?: string;
+  /**
+   * Physical weight in the shop's configured weight unit. Master-derived by the
+   * builder (`ProductVariant.weight` ?? `Product.weight`). Absent ⇒ left unset.
+   */
+  weight?: number;
+  /**
+   * Operator-supplied commerce/physical fields (sale price + schedule,
+   * dimensions, tax class/status). Shop-neutral; adapters map the keys they
+   * support. Absent ⇒ no operator overrides for these fields.
+   */
+  commerce?: PublishProductCommerce;
   /**
    * Neutral, section-tagged projected/operator category parameters (#1072,
    * ADR-024 §Flow). Produced by core (attribute projection on the ADR-023

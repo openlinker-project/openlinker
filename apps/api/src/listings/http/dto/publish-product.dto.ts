@@ -14,6 +14,7 @@ import {
   ArrayNotEmpty,
   IsArray,
   IsIn,
+  IsISO8601,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -30,7 +31,12 @@ import {
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-import { PublishProductStatusValues, type PublishProductStatus } from '@openlinker/core/listings';
+import {
+  PublishProductStatusValues,
+  PublishTaxStatusValues,
+  type PublishProductStatus,
+  type PublishTaxStatus,
+} from '@openlinker/core/listings';
 
 const VARIANT_ID_PATTERN = /^ol_variant_[a-f0-9]+$/;
 const VARIANT_ID_MESSAGE = 'must be an OpenLinker internal variant id (ol_variant_{hex})';
@@ -64,6 +70,26 @@ export class PublishContentDto {
 
   @ApiPropertyOptional({
     nullable: true,
+    description: 'Short/excerpt description. `null` ⇒ no override.',
+  })
+  @IsOptional()
+  @IsString()
+  shortDescription?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    isArray: true,
+    type: String,
+    description: 'Marketing tags. `null` ⇒ no override.',
+  })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[] | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
     isArray: true,
     type: String,
     description: 'Image URLs in display order. `null` ⇒ no override.',
@@ -73,6 +99,71 @@ export class PublishContentDto {
   @IsArray()
   @IsUrl({}, { each: true, message: 'imageUrls must be an array of valid URLs' })
   imageUrls?: string[] | null;
+}
+
+export class PublishDimensionsDto {
+  @ApiPropertyOptional({ example: 12.5, minimum: 0, description: 'Length. Omitted ⇒ unset.' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  length?: number;
+
+  @ApiPropertyOptional({ example: 8, minimum: 0, description: 'Width. Omitted ⇒ unset.' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  width?: number;
+
+  @ApiPropertyOptional({ example: 3, minimum: 0, description: 'Height. Omitted ⇒ unset.' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  height?: number;
+}
+
+export class PublishCommerceDto {
+  @ApiPropertyOptional({
+    type: PublishPriceDto,
+    description: 'Discounted sale price. Omitted ⇒ no sale price set.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PublishPriceDto)
+  salePrice?: PublishPriceDto;
+
+  @ApiPropertyOptional({
+    description: 'ISO 8601 datetime the sale price becomes active.',
+    example: '2026-08-01T00:00:00Z',
+  })
+  @IsOptional()
+  @IsISO8601()
+  saleStartsAt?: string;
+
+  @ApiPropertyOptional({
+    description: 'ISO 8601 datetime the sale price expires.',
+    example: '2026-08-31T23:59:59Z',
+  })
+  @IsOptional()
+  @IsISO8601()
+  saleEndsAt?: string;
+
+  @ApiPropertyOptional({ type: PublishDimensionsDto, description: 'Physical dimensions.' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PublishDimensionsDto)
+  dimensions?: PublishDimensionsDto;
+
+  @ApiPropertyOptional({
+    description: 'Tax class slug (shop-defined, e.g. "reduced-rate"). Omitted ⇒ shop default.',
+  })
+  @IsOptional()
+  @IsString()
+  taxClass?: string;
+
+  @ApiPropertyOptional({ enum: PublishTaxStatusValues, description: 'Tax treatment.' })
+  @IsOptional()
+  @IsIn(PublishTaxStatusValues)
+  taxStatus?: PublishTaxStatus;
 }
 
 export class PublishProductRequestDto {
@@ -108,6 +199,15 @@ export class PublishProductRequestDto {
   @ValidateNested()
   @Type(() => PublishContentDto)
   content?: PublishContentDto;
+
+  @ApiPropertyOptional({
+    type: PublishCommerceDto,
+    description: 'Operator-supplied commerce fields (sale price, dimensions, tax).',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PublishCommerceDto)
+  commerce?: PublishCommerceDto;
 }
 
 export class BulkPublishItemDto {
@@ -162,4 +262,13 @@ export class BulkPublishProductRequestDto {
   @ValidateNested()
   @Type(() => PublishContentDto)
   content?: PublishContentDto;
+
+  @ApiPropertyOptional({
+    type: PublishCommerceDto,
+    description: 'Shared commerce fields (sale price, dimensions, tax) applied to every child.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PublishCommerceDto)
+  commerce?: PublishCommerceDto;
 }

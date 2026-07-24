@@ -105,6 +105,11 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
 
     const content = this.buildContent(input.content, product);
 
+    // Master-derived barcode/weight: prefer the variant's own value, fall back
+    // to the product's. Empty/absent ⇒ omitted (never sent as blank/zero).
+    const barcode = variant.gtin ?? variant.ean ?? undefined;
+    const weight = variant.weight ?? product.weight;
+
     const command: PublishProductCommand = {
       internalVariantId: input.internalVariantId,
       connectionId: input.connectionId,
@@ -117,7 +122,10 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
       // shop can key on (reconciliation, inventory-by-SKU). Omitted when the
       // variant has no SKU, matching the spread-omit convention below.
       ...(variant.sku ? { sku: variant.sku } : {}),
+      ...(barcode ? { barcode } : {}),
+      ...(weight != null ? { weight } : {}),
       ...(content ? { content } : {}),
+      ...(input.commerce ? { commerce: input.commerce } : {}),
       ...(parameters.length > 0 ? { parameters } : {}),
       ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
     };

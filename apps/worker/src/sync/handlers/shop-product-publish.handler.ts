@@ -67,6 +67,7 @@ export class ShopProductPublishHandler implements SyncJobHandler {
         status: payload.status,
         price: payload.price,
         content: payload.content,
+        commerce: payload.commerce,
         idempotencyKey: payload.idempotencyKey,
         listingCreationRecordId: payload.listingCreationRecordId,
       });
@@ -146,6 +147,7 @@ export class ShopProductPublishHandler implements SyncJobHandler {
       price: payload.price,
       destinationCategoryIds: payload.destinationCategoryIds,
       content: payload.content,
+      commerce: payload.commerce,
       parameters: payload.parameters,
       idempotencyKey: payload.idempotencyKey,
     };
