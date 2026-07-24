@@ -30,6 +30,8 @@ import type {
   ResponsibleProducersResponse,
   DeliveryPriceListsResponse,
   ShopCategory,
+  ShopAttribute,
+  ShopAttributeTerm,
   ShopPublishRequest,
   ShopPublishResponse,
   ShopPublishStatusResponse,
@@ -122,6 +124,17 @@ export interface ListingsApi {
     connectionId: string,
     parentId?: string,
   ) => Promise<ShopCategory[]>;
+  /**
+   * List a shop connection's store-wide global product attributes (#1835).
+   * Backed by the shop `ShopAttributeReader` capability; 422 if the connection's
+   * adapter does not implement it.
+   */
+  listShopAttributes: (connectionId: string) => Promise<ShopAttribute[]>;
+  /** List the predefined terms of one global attribute (#1835). */
+  listShopAttributeTerms: (
+    connectionId: string,
+    attributeId: string,
+  ) => Promise<ShopAttributeTerm[]>;
   /** Submit a bulk shop-publish batch (#1044). Returns the persisted
    *  `batchId` and per-variant job + record ids. */
   shopPublishBulk: (body: BulkShopPublishRequest) => Promise<BulkShopPublishResponse>;
@@ -282,6 +295,18 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
       const qs = parentId ? `?parentId=${encodeURIComponent(parentId)}` : '';
       return request<ShopCategory[]>(
         `/listings/connections/${connectionId}/shop-publish/categories${qs}`,
+      );
+    },
+    listShopAttributes(connectionId): Promise<ShopAttribute[]> {
+      return request<ShopAttribute[]>(
+        `/listings/connections/${connectionId}/shop-publish/attributes`,
+      );
+    },
+    listShopAttributeTerms(connectionId, attributeId): Promise<ShopAttributeTerm[]> {
+      return request<ShopAttributeTerm[]>(
+        `/listings/connections/${connectionId}/shop-publish/attributes/${encodeURIComponent(
+          attributeId,
+        )}/terms`,
       );
     },
     shopPublishBulk(body): Promise<BulkShopPublishResponse> {

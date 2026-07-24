@@ -11091,6 +11091,25 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   .bulk-editor__catpick { max-width: 100%; max-height: 100vh; height: 100dvh; border-radius: 0; }
 }
 
+/* ── Shop attribute picker (#1835) ── */
+.shop-attr-picker { display: flex; flex-direction: column; gap: var(--space-3); }
+.shop-attr-picker__panel { display: flex; flex-direction: column; gap: var(--space-2); }
+.shop-attr-picker__label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.shop-attr-picker__terms {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  max-height: 220px;
+  overflow-y: auto;
+}
+.shop-attr-picker__term { display: flex; align-items: center; gap: var(--space-2); font-size: 13px; }
+.shop-attr-picker__hint { color: var(--text-muted); font-size: 11px; }
+.shop-attr-picker__empty { padding: var(--space-3); color: var(--text-muted); font-size: 12.5px; }
+.shop-attr-picker__foot { display: flex; justify-content: flex-end; }
+
 /* ── Per-product progress rollup (#1741) ── */
 .bulk-progress__list { display: flex; flex-direction: column; gap: var(--space-2); }
 .bulk-progress__row {

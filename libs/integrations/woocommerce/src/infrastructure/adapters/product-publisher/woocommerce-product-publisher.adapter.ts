@@ -2,17 +2,20 @@
  * WooCommerce Product Publisher Adapter (#1043)
  *
  * Implements `ShopProductManagerPort` (capability `'ProductPublisher'`) plus the
- * `CategoryProvisioner` sub-capability against the WooCommerce REST API v3.
- * Pure transport: the core `ProductPublishExecutionService` (#1042) owns the
- * `ShopProduct` identifier mapping + record lifecycle — this adapter only shapes
- * the neutral `PublishProductCommand` onto WooCommerce's `products` /
- * `products/categories` resources and maps failures back to the neutral
+ * `CategoryProvisioner`, `ShopCategoryBrowser` (#1834) and `ShopAttributeReader`
+ * (#1835) sub-capabilities against the WooCommerce REST API v3. Pure transport:
+ * the core `ProductPublishExecutionService` (#1042) owns the `ShopProduct`
+ * identifier mapping + record lifecycle — this adapter only shapes the neutral
+ * `PublishProductCommand` onto WooCommerce's `products` / `products/categories` /
+ * `products/attributes` resources and maps failures back to the neutral
  * `ProductPublishRejectedException`.
  *
  * Publish model (ADR-024 §1/§3): each OL variant publishes as its own *simple*
- * product (create on first publish, upsert via `externalProductId` thereafter);
- * neutral `parameters` become per-product custom attributes. Variable-product /
- * variations grouping is a deferred enhancement.
+ * product (create on first publish, upsert via `externalProductId` thereafter).
+ * Neutral `parameters` become WooCommerce product attributes: a parameter with
+ * resolved term ids + a numeric global-attribute id links a real global (`pa_*`)
+ * attribute, otherwise it falls back to a free-text custom attribute (#1835).
+ * Variable-product / variations grouping is a deferred enhancement.
  *
  * @module libs/integrations/woocommerce/src/infrastructure/adapters/product-publisher
  */
@@ -28,6 +31,9 @@ import {
   type PublishProductContent,
   type PublishProductResult,
   type PublishProductStatus,
+  type ShopAttribute,
+  type ShopAttributeReader,
+  type ShopAttributeTerm,
   type ShopCategory,
   type ShopCategoryBrowser,
   type ShopProductManagerPort,
@@ -36,7 +42,10 @@ import {
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import type {
+  WooCommerceAttributeResponse,
+  WooCommerceAttributeTermResponse,
   WooCommerceCategoryResponse,
+  WooCommerceProductAttribute,
   WooCommerceProductPublishRequest,
   WooCommerceProductResponse,
   WooCommerceProductStatus,
@@ -44,20 +53,22 @@ import type {
 
 const PRODUCTS_PATH = '/wp-json/wc/v3/products';
 const CATEGORIES_PATH = '/wp-json/wc/v3/products/categories';
+const ATTRIBUTES_PATH = '/wp-json/wc/v3/products/attributes';
 const DEFAULT_ADAPTER_KEY = 'woocommerce.restapi.v3';
 
-// WooCommerce caps `per_page` at 100. The default (10) silently truncates the
-// category-search result set, so an exact name match beyond the first 10 fuzzy
-// hits is missed and a duplicate category is created (#1846 fix 3). A search
-// yielding >100 fuzzy hits for one node name is not paginated here (accepted:
-// a single category name matching 100+ siblings is not a realistic taxonomy).
-const CATEGORY_PAGE_SIZE = 100;
+// WooCommerce caps `per_page` at 100 across all list endpoints. The default (10)
+// silently truncates the result set, so an exact category-search match beyond
+// the first 10 fuzzy hits is missed and a duplicate category is created (#1846
+// fix 3). A search yielding >100 fuzzy hits for one node name is not paginated
+// here (accepted: a single category name matching 100+ siblings is not a
+// realistic taxonomy).
+const WC_LIST_PAGE_SIZE = 100;
 
-// Defensive upper bound on `browseCategories` paging (#1834 review): a
-// misbehaving endpoint that always returns a full page would otherwise spin the
-// loop forever. 50 pages x 100 = 5000 categories per parent level, far beyond
-// any realistic shop taxonomy; hitting it logs a warning and stops.
-const CATEGORY_MAX_PAGES = 50;
+// Defensive upper bound on paged list reads (browse categories / attributes /
+// terms, #1834/#1835): a misbehaving endpoint that always returns a full page
+// would otherwise spin the loop forever. 50 pages x 100 = 5000 rows, far beyond
+// any realistic shop taxonomy/attribute set; hitting it logs a warning and stops.
+const WC_LIST_MAX_PAGES = 50;
 
 // WC REST error code returned when a category name already exists under the same
 // parent — surfaces on a concurrent/racing provision. The response carries the
@@ -72,7 +83,7 @@ const SEO_TITLE_META_KEYS = ['_yoast_wpseo_title', 'rank_math_title'] as const;
 const SEO_DESCRIPTION_META_KEYS = ['_yoast_wpseo_metadesc', 'rank_math_description'] as const;
 
 export class WooCommerceProductPublisherAdapter
-  implements ShopProductManagerPort, CategoryProvisioner, ShopCategoryBrowser
+  implements ShopProductManagerPort, CategoryProvisioner, ShopCategoryBrowser, ShopAttributeReader
 {
   private readonly logger = new Logger(WooCommerceProductPublisherAdapter.name);
 
@@ -144,10 +155,10 @@ export class WooCommerceProductPublisherAdapter
     const parent = this.toParentNumber(parentId);
     const collected: ShopCategory[] = [];
 
-    for (let page = 1; page <= CATEGORY_MAX_PAGES; page += 1) {
+    for (let page = 1; page <= WC_LIST_MAX_PAGES; page += 1) {
       const batch = await this.httpClient.get<WooCommerceCategoryResponse[]>(CATEGORIES_PATH, {
         parent,
-        per_page: CATEGORY_PAGE_SIZE,
+        per_page: WC_LIST_PAGE_SIZE,
         page,
         orderby: 'name',
         order: 'asc',
@@ -159,16 +170,71 @@ export class WooCommerceProductPublisherAdapter
           parentId: node.parent === 0 ? null : String(node.parent),
         });
       }
-      if (batch.length < CATEGORY_PAGE_SIZE) return collected;
-      if (page === CATEGORY_MAX_PAGES) {
+      if (batch.length < WC_LIST_PAGE_SIZE) return collected;
+      if (page === WC_LIST_MAX_PAGES) {
         this.logger.warn(
-          `browseCategories hit the ${CATEGORY_MAX_PAGES}-page cap for parent=${parent} ` +
+          `browseCategories hit the ${WC_LIST_MAX_PAGES}-page cap for parent=${parent} ` +
             `(connection=${this.connection.id}); returning the first ${collected.length} categories. ` +
             `The endpoint may be misbehaving or the taxonomy is unexpectedly large.`,
         );
       }
     }
 
+    return collected;
+  }
+
+  /**
+   * List the store's global product attributes (#1835) — the `pa_*` taxonomies
+   * an operator picks from in the structured attribute picker. Reads
+   * `GET /products/attributes`, paged at the WC maximum `per_page`.
+   */
+  async listAttributes(): Promise<ShopAttribute[]> {
+    const rows = await this.fetchAllPages<WooCommerceAttributeResponse>(ATTRIBUTES_PATH, {
+      label: 'listAttributes',
+    });
+    return rows.map((a) => ({ id: String(a.id), name: a.name, slug: a.slug }));
+  }
+
+  /**
+   * List the predefined terms of one global attribute (#1835). Reads
+   * `GET /products/attributes/{id}/terms`, paged at the WC maximum `per_page`.
+   * The term ids returned here are threaded back on publish as the neutral
+   * `OfferParameter.valuesIds` global-attribute linkage.
+   */
+  async listAttributeTerms(attributeId: string): Promise<ShopAttributeTerm[]> {
+    const path = `${ATTRIBUTES_PATH}/${encodeURIComponent(attributeId)}/terms`;
+    const rows = await this.fetchAllPages<WooCommerceAttributeTermResponse>(path, {
+      label: 'listAttributeTerms',
+    });
+    return rows.map((t) => ({ id: String(t.id), name: t.name, slug: t.slug }));
+  }
+
+  /**
+   * Page through a WC list endpoint at the maximum `per_page`, stopping on the
+   * first short page. Bounded by `WC_LIST_MAX_PAGES` so a misbehaving endpoint
+   * that always returns a full page cannot spin forever (logs + stops). Ordered
+   * by name for a stable picker; `orderby=name` is a no-op on endpoints that
+   * ignore it.
+   */
+  private async fetchAllPages<T>(path: string, ctx: { label: string }): Promise<T[]> {
+    const collected: T[] = [];
+    for (let page = 1; page <= WC_LIST_MAX_PAGES; page += 1) {
+      const batch = await this.httpClient.get<T[]>(path, {
+        per_page: WC_LIST_PAGE_SIZE,
+        page,
+        orderby: 'name',
+        order: 'asc',
+      });
+      collected.push(...batch);
+      if (batch.length < WC_LIST_PAGE_SIZE) return collected;
+      if (page === WC_LIST_MAX_PAGES) {
+        this.logger.warn(
+          `${ctx.label} hit the ${WC_LIST_MAX_PAGES}-page cap for path=${path} ` +
+            `(connection=${this.connection.id}); returning the first ${collected.length} rows. ` +
+            `The endpoint may be misbehaving or the attribute set is unexpectedly large.`,
+        );
+      }
+    }
     return collected;
   }
 
@@ -288,30 +354,67 @@ export class WooCommerceProductPublisherAdapter
   }
 
   /**
-   * Map neutral projected/operator parameters to WooCommerce custom attributes.
-   * WooCommerce custom attributes carry only free-text option strings — the
-   * owns-path `valuesIds` (dictionary entry ids) has no WC analogue. A parameter
-   * that resolves to no free-text `values` (dictionary-only, or empty) is dropped
-   * cleanly rather than emitted as an empty `options: []` attribute, which would
-   * write a visible-but-valueless attribute row (silent data loss, #1846 fix 2).
+   * Map neutral projected/operator parameters to WooCommerce product attributes,
+   * preferring real **global** attributes over free-text custom ones (#1835).
+   *
+   * A parameter carrying `valuesIds` (term ids from `ShopAttributeReader`) plus a
+   * numeric `id` (the global-attribute id) is emitted as a global-attribute
+   * linkage `{ id, options, visible }`, where `options` are the term names
+   * (`values`) — WooCommerce resolves those to the attribute's existing terms.
+   * This is what powers storefront filtering; term ids alone have no place in the
+   * WC product `attributes[]` wire (options are name/slug strings), so the names
+   * on `values` are the linkage payload.
+   *
+   * Any other parameter falls back to a free-text custom attribute
+   * `{ name, options, visible }`. As before (#1846 fix 2), a custom parameter with
+   * no free-text `values` is dropped rather than emitted as an empty, valueless
+   * attribute row. A global-attribute linkage with no chosen terms is likewise
+   * skipped — an attribute assignment with zero terms carries no information.
    */
   private buildAttributes(
     parameters: PublishProductCommand['parameters'],
-  ): Array<{ name: string; options: string[]; visible: boolean }> {
+  ): WooCommerceProductAttribute[] {
     if (!parameters || parameters.length === 0) return [];
-    const attributes: Array<{ name: string; options: string[]; visible: boolean }> = [];
+    const attributes: WooCommerceProductAttribute[] = [];
     for (const p of parameters) {
       const options = p.values ?? [];
+      const globalAttributeId = this.toGlobalAttributeId(p.valuesIds, p.id);
+
+      if (globalAttributeId != null) {
+        if (options.length === 0) {
+          this.logger.debug(
+            `Dropping WooCommerce global attribute "${p.id}" with no chosen term names ` +
+              `(term ids alone cannot be sent in the product attributes wire).`,
+          );
+          continue;
+        }
+        attributes.push({ id: globalAttributeId, options, visible: true });
+        continue;
+      }
+
       if (options.length === 0) {
         this.logger.debug(
-          `Dropping WooCommerce attribute "${p.id}" with no free-text values ` +
-            `(dictionary-typed valuesIds have no WC analogue).`,
+          `Dropping WooCommerce custom attribute "${p.id}" with no free-text values ` +
+            `(dictionary-typed valuesIds without a numeric global-attribute id have no WC analogue).`,
         );
         continue;
       }
       attributes.push({ name: p.id, options, visible: true });
     }
     return attributes;
+  }
+
+  /**
+   * Decide whether a neutral parameter is a WooCommerce global-attribute linkage.
+   * It is when it carries resolved term ids (`valuesIds`) AND its `id` is the
+   * numeric global-attribute id. A `valuesIds`-bearing parameter whose `id` is
+   * not numeric (e.g. a dictionary param projected for a different platform) is
+   * NOT a WC global attribute and falls back to the custom path.
+   */
+  private toGlobalAttributeId(valuesIds: string[] | undefined, id: string): number | null {
+    if (!valuesIds || valuesIds.length === 0) return null;
+    const parsed = Number(id);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   }
 
   /**
@@ -349,7 +452,7 @@ export class WooCommerceProductPublisherAdapter
       // siblings would truncate the fuzzy result set and miss the exact match,
       // then create a duplicate. Request the WC maximum so the exact match is
       // always in range (#1846 fix 3).
-      per_page: CATEGORY_PAGE_SIZE,
+      per_page: WC_LIST_PAGE_SIZE,
     });
     // WooCommerce `search` is fuzzy — require an exact name + parent match before
     // reusing a node, so a similarly-named sibling is never mis-bound.

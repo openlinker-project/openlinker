@@ -36,6 +36,7 @@ describe('ShopPublishController', () => {
   let enqueue: { enqueuePublish: jest.Mock };
   let query: { getById: jest.Mock };
   let categoryBrowse: { browseCategories: jest.Mock };
+  let attributeRead: { listAttributes: jest.Mock; listAttributeTerms: jest.Mock };
   let controller: ShopPublishController;
 
   beforeEach(() => {
@@ -46,10 +47,12 @@ describe('ShopPublishController', () => {
     };
     query = { getById: jest.fn() };
     categoryBrowse = { browseCategories: jest.fn() };
+    attributeRead = { listAttributes: jest.fn(), listAttributeTerms: jest.fn() };
     controller = new ShopPublishController(
       enqueue as never,
       query as never,
       categoryBrowse as never,
+      attributeRead as never,
     );
   });
 
@@ -96,6 +99,22 @@ describe('ShopPublishController', () => {
       { id: '10', name: 'Clothing', parentId: null },
       { id: '20', name: 'Sneakers', parentId: '11' },
     ]);
+  });
+
+  it('should list global attributes and map them to the response DTO (#1835)', async () => {
+    attributeRead.listAttributes.mockResolvedValue([
+      { id: '6', name: 'Color', slug: 'pa_color' },
+    ]);
+    const result = await controller.listAttributes(CONN);
+    expect(attributeRead.listAttributes).toHaveBeenCalledWith(CONN);
+    expect(result).toEqual([{ id: '6', name: 'Color', slug: 'pa_color' }]);
+  });
+
+  it('should list attribute terms and map them to the response DTO (#1835)', async () => {
+    attributeRead.listAttributeTerms.mockResolvedValue([{ id: '31', name: 'Red', slug: 'red' }]);
+    const result = await controller.listAttributeTerms(CONN, '6');
+    expect(attributeRead.listAttributeTerms).toHaveBeenCalledWith(CONN, '6');
+    expect(result).toEqual([{ id: '31', name: 'Red', slug: 'red' }]);
   });
 });
 
