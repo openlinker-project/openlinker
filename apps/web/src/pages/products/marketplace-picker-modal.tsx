@@ -3,16 +3,13 @@
  *
  * Capability-gated publish-destination picker shown from the Products page
  * when 2+ eligible connections exist (#1096, widened for the unified publish
- * flow in #1828). Lists each destination grouped by kind (Marketplaces /
- * Online shops) with a capability-driven hint - never a `platformType`
- * literal; choosing one continues with that connection preselected.
- *
- * Selection is single-select and capability-based. Display names come from
- * the connection record; the kind hint comes from `publishDestinationKind`.
+ * flow in #1828). Renders the shared `PublishDestinationRail` (grouped by kind
+ * with a capability-driven hint, keyboard-navigable single-select); choosing
+ * one continues with that connection preselected.
  *
  * @module pages/products
  */
-import { Fragment, useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 
 import { Button } from '../../shared/ui';
 import {
@@ -21,12 +18,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from '../../shared/ui/dialog';
-import {
-  PUBLISH_DESTINATION_GROUP_LABEL,
-  PUBLISH_DESTINATION_KIND_HINT,
-  PUBLISH_DESTINATION_KIND_ORDER,
-  type PublishDestination,
-} from '../../features/listings';
+import { PublishDestinationRail, type PublishDestination } from '../../features/listings';
 
 interface MarketplacePickerModalProps {
   open: boolean;
@@ -60,40 +52,12 @@ export function MarketplacePickerModal({
           them to.
         </DialogDescription>
 
-        <div role="radiogroup" aria-label="Publish destination" className="marketplace-picker">
-          {PUBLISH_DESTINATION_KIND_ORDER.map((kind) => {
-            const inKind = destinations.filter((d) => d.kind === kind);
-            if (inKind.length === 0) return null;
-            return (
-              <Fragment key={kind}>
-                <div className="marketplace-picker__group">
-                  {PUBLISH_DESTINATION_GROUP_LABEL[kind]}
-                </div>
-                {inKind.map((d) => {
-                  const isPicked = picked === d.connection.id;
-                  return (
-                    <button
-                      key={d.connection.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={isPicked}
-                      className={`marketplace-picker__option${isPicked ? ' marketplace-picker__option--picked' : ''}`}
-                      onClick={() => setPicked(d.connection.id)}
-                    >
-                      <span className="marketplace-picker__meta">
-                        <span className="marketplace-picker__name">{d.connection.name}</span>
-                        <span className="mono-text muted-text">
-                          {PUBLISH_DESTINATION_KIND_HINT[d.kind]}
-                        </span>
-                      </span>
-                      <span className="marketplace-picker__radio" aria-hidden="true" />
-                    </button>
-                  );
-                })}
-              </Fragment>
-            );
-          })}
-        </div>
+        <PublishDestinationRail
+          destinations={destinations}
+          selectedConnectionId={picked || null}
+          onSelect={setPicked}
+          ariaLabel="Publish destination"
+        />
 
         <div className="wizard-actions">
           <div className="wizard-actions__group">

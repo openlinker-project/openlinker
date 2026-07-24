@@ -19,6 +19,7 @@ export type {
   PublishDestination,
   PublishDestinationKind,
 } from './lib/publish-destinations';
+export { PublishDestinationRail } from './components/publish-destination-rail';
 export { ErliBulkConfigSection } from './components/erli/erli-bulk-config-section';
 export { erliBulkConfigIsComplete } from './components/erli/erli-offer-fields.schema';
 export { ErliBulkRowSection } from './components/erli/erli-bulk-row-section';

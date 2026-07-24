@@ -420,7 +420,11 @@ to {name}"** CTA share the same flow.
   neither.
 - **The destination rail groups by kind** (Marketplaces / Online shops) with a
   capability-driven hint (`PUBLISH_DESTINATION_KIND_HINT`), single-select. A sole
-  eligible destination auto-resolves.
+  eligible destination auto-resolves. Both pickers render the shared
+  `PublishDestinationRail` (`features/listings/components`), which owns the
+  WAI-ARIA radiogroup keyboard contract - a single tab stop via roving
+  `tabindex` plus Arrow / Home / End to move-and-select (mirroring the
+  `SegmentedControl` primitive) - so the markup and its a11y live in one place.
 - **Continue dispatches by kind.** A marketplace navigates to the bulk-create
   wizard route (`/listings/bulk-create/wizard?productIds=…&variantIds=…&connectionId=…`,
   destination-agnostic). A shop hands off to the retained `ShopPublishLauncher`

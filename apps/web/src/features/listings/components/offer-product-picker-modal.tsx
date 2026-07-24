@@ -43,7 +43,6 @@
  * @module apps/web/src/features/listings/components
  */
 import {
-  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -70,12 +69,8 @@ import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
 import { useConnectionsQuery } from '../../connections';
 import { useProductQuery, useProductsQuery } from '../../products';
 import type { Product, ProductVariant } from '../../products';
-import {
-  selectPublishDestinations,
-  PUBLISH_DESTINATION_GROUP_LABEL,
-  PUBLISH_DESTINATION_KIND_HINT,
-  PUBLISH_DESTINATION_KIND_ORDER,
-} from '../lib/publish-destinations';
+import { selectPublishDestinations } from '../lib/publish-destinations';
+import { PublishDestinationRail } from './publish-destination-rail';
 
 /** Max distinct products per batch (mirrors the `/products` BULK_SELECTION_CAP,
  *  kept local per R1 to avoid a `features -> pages` import). */
@@ -968,52 +963,12 @@ export function OfferProductPickerModal({
                     <span className="offer-product-picker__eyebrow" id="publishDestinationLabel">
                       Publish to <span className="offer-product-picker__req">*</span>
                     </span>
-                    <div
-                      role="radiogroup"
-                      aria-labelledby="publishDestinationLabel"
-                      aria-label="Publish destination"
-                      className="offer-product-picker__dests"
-                    >
-                      {PUBLISH_DESTINATION_KIND_ORDER.map((kind) => {
-                        const inKind = eligibleDestinations.filter((d) => d.kind === kind);
-                        if (inKind.length === 0) return null;
-                        return (
-                          <Fragment key={kind}>
-                            <div className="offer-product-picker__dest-group">
-                              {PUBLISH_DESTINATION_GROUP_LABEL[kind]}
-                            </div>
-                            {inKind.map((d) => {
-                              const selected = resolvedConnectionId === d.connection.id;
-                              return (
-                                <button
-                                  key={d.connection.id}
-                                  type="button"
-                                  role="radio"
-                                  aria-checked={selected}
-                                  className={`offer-product-picker__dest${
-                                    selected ? ' offer-product-picker__dest--selected' : ''
-                                  }`}
-                                  onClick={() => setPickedConnectionId(d.connection.id)}
-                                >
-                                  <span className="offer-product-picker__dest-meta">
-                                    <span className="offer-product-picker__dest-name">
-                                      {d.connection.name}
-                                    </span>
-                                    <span className="offer-product-picker__dest-kind">
-                                      {PUBLISH_DESTINATION_KIND_HINT[d.kind]}
-                                    </span>
-                                  </span>
-                                  <span
-                                    className="offer-product-picker__dest-radio"
-                                    aria-hidden="true"
-                                  />
-                                </button>
-                              );
-                            })}
-                          </Fragment>
-                        );
-                      })}
-                    </div>
+                    <PublishDestinationRail
+                      destinations={eligibleDestinations}
+                      selectedConnectionId={resolvedConnectionId}
+                      onSelect={setPickedConnectionId}
+                      labelledBy="publishDestinationLabel"
+                    />
                   </div>
                 )}
 
