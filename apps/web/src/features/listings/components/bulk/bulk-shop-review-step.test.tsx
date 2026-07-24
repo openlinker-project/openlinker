@@ -273,6 +273,45 @@ describe('BulkShopReviewStep (render)', () => {
     expect(onSetVariantIncluded).toHaveBeenCalledWith('prod_1', 'v1', false);
   });
 
+  it('warns and soft-blocks publish when a resolved line is out of stock (#1842)', async () => {
+    const onPublish = vi.fn();
+    const rows = [makeRow('prod_1', [makeVariantRow('v1')])];
+    renderStep(
+      rows,
+      config({ pricingPolicy: { mode: 'flat', amount: 99 } }),
+      { onPublish },
+      [{ productVariantId: 'v1', totalAvailable: 0 }],
+    );
+
+    expect((await screen.findAllByText(/out of stock/i)).length).toBeGreaterThan(0);
+    const publishButton = screen.getByRole('button', { name: /Publish 1 listing/ });
+    expect(publishButton).toBeDisabled();
+
+    fireEvent.click(publishButton);
+    expect(onPublish).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: /Publish anyway - I understand/i }),
+    );
+    expect(publishButton).toBeEnabled();
+
+    fireEvent.click(publishButton);
+    expect(onPublish).toHaveBeenCalledWith(
+      [{ internalVariantId: 'v1', stock: 0, price: { amount: 99, currency: 'PLN' } }],
+      'published',
+    );
+  });
+
+  it('does not show the out-of-stock banner when every line has stock', async () => {
+    const rows = [makeRow('prod_1', [makeVariantRow('v1')])];
+    renderStep(rows, config(), {}, [{ productVariantId: 'v1', totalAvailable: 3 }]);
+
+    await waitFor(() => {
+      expect(screen.getByText('3')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/out of stock/i)).not.toBeInTheDocument();
+  });
+
   it('shows the empty-state alert when no variants are included', () => {
     const rows = [makeRow('prod_1', [makeVariantRow('v1', { included: false })])];
     renderStep(rows, config());
