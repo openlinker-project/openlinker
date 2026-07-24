@@ -127,6 +127,30 @@ describe('ProductPublishBuilderService', () => {
     expect(floored.stock).toBe(0);
   });
 
+  it('should apply the connection pricing rule to the master price (#1843)', async () => {
+    connectionPort.get.mockResolvedValue({
+      config: { masterCatalogConnectionId: MASTER, pricingRule: { type: 'margin', percent: 20 } },
+    });
+
+    const command = await service.buildPublishProductCommand(baseInput);
+
+    // margin 20% => price = 12.5 / 0.8 = 15.625 -> rounds to 15.63
+    expect(command.price).toEqual({ amount: 15.63, currency: 'PLN' });
+  });
+
+  it('should not apply the pricing rule when an explicit input.price is supplied (#1843)', async () => {
+    connectionPort.get.mockResolvedValue({
+      config: { masterCatalogConnectionId: MASTER, pricingRule: { type: 'markup', percent: 100 } },
+    });
+
+    const command = await service.buildPublishProductCommand({
+      ...baseInput,
+      price: { amount: 9.99, currency: 'PLN' },
+    });
+
+    expect(command.price).toEqual({ amount: 9.99, currency: 'PLN' });
+  });
+
   it('should thread the variant SKU into the command when the variant has one', async () => {
     products.getVariant.mockResolvedValue({
       id: VARIANT,

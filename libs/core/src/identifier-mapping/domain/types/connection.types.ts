@@ -7,6 +7,8 @@
  *
  * @module libs/core/src/identifier-mapping/domain/types
  */
+import type { PricingRule } from './pricing-rule.types';
+
 /**
  * Platform type identifier (e.g., 'prestashop', 'allegro', 'shopify')
  */
@@ -73,6 +75,14 @@ export interface ConnectionConfig {
    * (`stock-safety-buffer.types.ts`).
    */
   stockSafetyBuffer?: number;
+  /**
+   * Per-connection pricing-resolution rule (#1843). Markup/margin formula +
+   * rounding applied when a destination's price is derived from the master
+   * catalog price (no explicit per-item price override). A missing value
+   * preserves the pre-#1843 raw passthrough. Read via `readPricingRule` and
+   * applied via `applyPricingRule` (`pricing-rule.types.ts`).
+   */
+  pricingRule?: PricingRule;
   [key: string]: unknown;
 }
 
