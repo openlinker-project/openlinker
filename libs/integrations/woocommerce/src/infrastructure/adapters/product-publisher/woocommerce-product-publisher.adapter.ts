@@ -252,6 +252,31 @@ export class WooCommerceProductPublisherAdapter
   }
 
   /**
+   * Read the live status of a grouped-publish CHILD variation (whole-epic review
+   * finding #2). A variation lives at a different resource than a standalone
+   * simple product — `products/{parentId}/variations/{id}`, not `products/{id}`
+   * — so calling `getShopProductStatus` with a variation id 404s and would be
+   * misread as `removed` even though the variation is genuinely live. Same 404
+   * → `removed` mapping as the simple-product path.
+   */
+  async getShopVariationStatus(
+    externalParentProductId: string,
+    externalVariationId: string,
+  ): Promise<ShopProductStatusReadResult> {
+    const path = `${PRODUCTS_PATH}/${encodeURIComponent(externalParentProductId)}/variations/${encodeURIComponent(externalVariationId)}`;
+    let raw: WooCommerceProductStatusResponse;
+    try {
+      raw = await this.httpClient.get<WooCommerceProductStatusResponse>(path);
+    } catch (err) {
+      if (err instanceof WooCommerceHttpResponseException && err.statusCode === 404) {
+        return { publicationStatus: SHOP_PUBLICATION_STATUS.Removed };
+      }
+      throw err;
+    }
+    return { publicationStatus: this.toPublicationStatus(raw.status) };
+  }
+
+  /**
    * Map a WooCommerce native product status onto the neutral union. `publish` is
    * live; `draft` reverted to draft; `pending`/`private` are present but not
    * buyer-visible (unpublished); `trash` (or any unknown value) is treated as
@@ -512,7 +537,12 @@ export class WooCommerceProductPublisherAdapter
     ];
     if (attributes.length > 0) typed.attributes = attributes;
 
-    this.applyCommerce(typed, cmd);
+    // Price/sale-price/sale-window fields are intentionally excluded on the
+    // PARENT (whole-epic review finding #3): WooCommerce derives a variable
+    // product's price/sale/on-sale state from its VARIATIONS, not the parent
+    // post, so writing them here is silently ignored. `applyCommerce` still
+    // writes dimensions/tax_class, which ARE legitimate parent-level fields.
+    this.applyCommerce(typed, cmd, { includePricing: false });
 
     const metaData = this.buildSeoMetaData(content?.seo);
     if (metaData.length > 0) typed.meta_data = metaData;
@@ -575,19 +605,26 @@ export class WooCommerceProductPublisherAdapter
    * Map the neutral `commerce` block (sale price + schedule, dimensions, tax).
    * Typed against the shared `WooCommercePriceCommerceFields` shape so it can
    * write into either the parent/simple-product body or a variation body.
+   * `includePricing` (default `true`) gates the price/sale-price/sale-window
+   * fields off for the `variable` PARENT body (whole-epic review finding #3) —
+   * WooCommerce derives those from the VARIATIONS, not the parent post, so
+   * writing them there is silently ignored. Dimensions/tax always apply.
    */
   private applyCommerce(
     typed: WooCommercePriceCommerceFields,
     cmd: PublishProductCommand,
+    { includePricing = true }: { includePricing?: boolean } = {},
   ): void {
     const commerce = cmd.commerce;
     if (!commerce) return;
 
-    if (commerce.salePrice != null) typed.sale_price = String(commerce.salePrice.amount);
-    // Neutral sale window is UTC (ISO 8601); write the `_gmt` fields so WC does
-    // not reinterpret the value as site-local and shift the window.
-    if (commerce.saleStartsAt != null) typed.date_on_sale_from_gmt = commerce.saleStartsAt;
-    if (commerce.saleEndsAt != null) typed.date_on_sale_to_gmt = commerce.saleEndsAt;
+    if (includePricing) {
+      if (commerce.salePrice != null) typed.sale_price = String(commerce.salePrice.amount);
+      // Neutral sale window is UTC (ISO 8601); write the `_gmt` fields so WC
+      // does not reinterpret the value as site-local and shift the window.
+      if (commerce.saleStartsAt != null) typed.date_on_sale_from_gmt = commerce.saleStartsAt;
+      if (commerce.saleEndsAt != null) typed.date_on_sale_to_gmt = commerce.saleEndsAt;
+    }
     if (commerce.taxClass != null) typed.tax_class = commerce.taxClass;
     if (commerce.taxStatus != null) typed.tax_status = commerce.taxStatus;
 
