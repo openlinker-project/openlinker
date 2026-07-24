@@ -115,6 +115,10 @@ describe('woocommerceAdapterManifest', () => {
     expect(woocommerceAdapterManifest.supportedCapabilities).toContain('OfferManager');
   });
 
+  it('should include ShopCategoryBrowser in supportedCapabilities (#1834)', () => {
+    expect(woocommerceAdapterManifest.supportedCapabilities).toContain('ShopCategoryBrowser');
+  });
+
   it('should NOT declare offer-creation sub-capabilities (WC is a destination shop, #1498)', () => {
     expect(woocommerceAdapterManifest.supportedCapabilities).not.toContain('OfferCreator');
     expect(woocommerceAdapterManifest.supportedCapabilities).not.toContain('OfferEventReader');

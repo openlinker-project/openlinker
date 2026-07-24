@@ -28,6 +28,12 @@ export { AllegroBulkConfigSection } from './components/allegro/allegro-bulk-conf
 export { allegroBulkConfigIsComplete } from './components/allegro/allegro-bulk-config.schema';
 export { allegroOfferValidation } from './components/allegro/allegro-offer-validation';
 export { WoocommercePublishWizard } from './components/WoocommercePublishWizard';
+// Shop destination category picker (#1834). Self-contained modal + hook so the
+// shop edit modal (#1830) can mount it where the marketplace path mounts
+// `BulkCategoryChooseModal`, gated on the shop `ShopCategoryBrowser` capability.
+export { ShopCategoryPickerModal } from './components/bulk/shop-category-picker-modal';
+export { useShopCategoriesQuery } from './hooks/use-shop-categories-query';
+export type { ShopCategory } from './api/listings.types';
 // NOTE: `ShopPublishLauncher` is intentionally NOT re-exported here. It
 // imports the app-tier `useShopPublishWizard` binding, which imports the
 // plugin registry — re-exporting it from this barrel (which the WooCommerce

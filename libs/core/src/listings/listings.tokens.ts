@@ -41,3 +41,6 @@ export const PRODUCT_PUBLISH_EXECUTION_SERVICE_TOKEN = Symbol('IProductPublishEx
 export const PRODUCT_PUBLISH_ENQUEUE_SERVICE_TOKEN = Symbol('IProductPublishEnqueueService');
 export const LISTING_CREATION_QUERY_SERVICE_TOKEN = Symbol('IListingCreationQueryService');
 export const BULK_SHOP_PUBLISH_SUBMIT_SERVICE_TOKEN = Symbol('IBulkShopPublishSubmitService');
+
+// Shop-side category browse (#1834)
+export const SHOP_CATEGORY_BROWSE_SERVICE_TOKEN = Symbol('IShopCategoryBrowseService');

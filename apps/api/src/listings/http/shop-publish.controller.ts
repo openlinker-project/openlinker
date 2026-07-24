@@ -20,14 +20,24 @@ import {
   NotFoundException,
   Param,
   Post,
+  Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 
 import {
   IListingCreationQueryService,
   IProductPublishEnqueueService,
+  IShopCategoryBrowseService,
   LISTING_CREATION_QUERY_SERVICE_TOKEN,
   PRODUCT_PUBLISH_ENQUEUE_SERVICE_TOKEN,
+  SHOP_CATEGORY_BROWSE_SERVICE_TOKEN,
 } from '@openlinker/core/listings';
 import type { ListingCreationRecord } from '@openlinker/core/listings';
 
@@ -35,6 +45,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { PublishProductRequestDto } from './dto/publish-product.dto';
 import {
   ListingCreationRecordResponseDto,
+  ShopCategoryResponseDto,
   ShopPublishResponseDto,
 } from './dto/shop-publish-response.dto';
 
@@ -47,6 +58,8 @@ export class ShopPublishController {
     private readonly enqueue: IProductPublishEnqueueService,
     @Inject(LISTING_CREATION_QUERY_SERVICE_TOKEN)
     private readonly query: IListingCreationQueryService,
+    @Inject(SHOP_CATEGORY_BROWSE_SERVICE_TOKEN)
+    private readonly categoryBrowse: IShopCategoryBrowseService,
   ) {}
 
   @Roles('admin', 'operator')
@@ -77,6 +90,30 @@ export class ShopPublishController {
       ...(idempotencyKey !== undefined && { idempotencyKey }),
     });
     return { jobId, listingCreationRecordId: listingCreationRecord.id };
+  }
+
+  @Get('categories')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Browse a shop connection\'s existing category tree',
+    description:
+      'Resolves the connection ProductPublisher adapter, narrows it to the ShopCategoryBrowser sub-capability, and returns the direct child categories under parentId (root level when omitted). Backs the publish edit flow category picker.',
+  })
+  @ApiQuery({
+    name: 'parentId',
+    required: false,
+    description: 'Parent category id; omit for root-level categories.',
+  })
+  @ApiResponse({ status: 200, description: 'Category nodes', type: [ShopCategoryResponseDto] })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({ status: 409, description: 'Connection disabled' })
+  @ApiResponse({ status: 422, description: 'Adapter does not support shop category browsing' })
+  async browseCategories(
+    @Param('connectionId') connectionId: string,
+    @Query('parentId') parentId?: string,
+  ): Promise<ShopCategoryResponseDto[]> {
+    const categories = await this.categoryBrowse.browseCategories(connectionId, parentId);
+    return categories.map((c) => ({ id: c.id, name: c.name, parentId: c.parentId }));
   }
 
   @Get(':recordId')

@@ -20,8 +20,17 @@ WooCommerce REST API v3 adapter for OpenLinker — product catalog, inventory, a
 | `OrderProcessorManager` | Create orders in WooCommerce; supports `OrderFulfillmentUpdater` |
 | `ProductPublisher` | Publish product content changes back to WooCommerce |
 | `CategoryProvisioner` | Create / ensure a category exists in WooCommerce before publishing |
+| `ShopCategoryBrowser` | Browse the store's existing category tree (drill-down by parent) so an operator can pick a placement |
 
 See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-capability catalog.
+
+`ShopCategoryBrowser` and `CategoryProvisioner` are sub-capabilities of
+`ShopProductManagerPort` implemented on the same `ProductPublisher` adapter
+instance; call sites narrow with `isShopCategoryBrowser` / `isCategoryProvisioner`.
+`ShopCategoryBrowser` reads `GET /wp-json/wc/v3/products/categories` scoped by
+`parent` (root when omitted), paged at the WooCommerce maximum `per_page=100`,
+and returns neutral `ShopCategory` nodes (`{ id, name, parentId }`) — every node
+is a valid placement target (no leaf gate), unlike a marketplace taxonomy.
 
 ## Credentials & config
 

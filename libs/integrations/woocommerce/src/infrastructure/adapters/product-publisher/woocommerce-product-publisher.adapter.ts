@@ -28,6 +28,8 @@ import {
   type PublishProductContent,
   type PublishProductResult,
   type PublishProductStatus,
+  type ShopCategory,
+  type ShopCategoryBrowser,
   type ShopProductManagerPort,
 } from '@openlinker/core/listings';
 
@@ -49,7 +51,13 @@ const DEFAULT_ADAPTER_KEY = 'woocommerce.restapi.v3';
 // hits is missed and a duplicate category is created (#1846 fix 3). A search
 // yielding >100 fuzzy hits for one node name is not paginated here (accepted:
 // a single category name matching 100+ siblings is not a realistic taxonomy).
-const CATEGORY_SEARCH_PER_PAGE = 100;
+const CATEGORY_PAGE_SIZE = 100;
+
+// Defensive upper bound on `browseCategories` paging (#1834 review): a
+// misbehaving endpoint that always returns a full page would otherwise spin the
+// loop forever. 50 pages x 100 = 5000 categories per parent level, far beyond
+// any realistic shop taxonomy; hitting it logs a warning and stops.
+const CATEGORY_MAX_PAGES = 50;
 
 // WC REST error code returned when a category name already exists under the same
 // parent — surfaces on a concurrent/racing provision. The response carries the
@@ -64,7 +72,7 @@ const SEO_TITLE_META_KEYS = ['_yoast_wpseo_title', 'rank_math_title'] as const;
 const SEO_DESCRIPTION_META_KEYS = ['_yoast_wpseo_metadesc', 'rank_math_description'] as const;
 
 export class WooCommerceProductPublisherAdapter
-  implements ShopProductManagerPort, CategoryProvisioner
+  implements ShopProductManagerPort, CategoryProvisioner, ShopCategoryBrowser
 {
   private readonly logger = new Logger(WooCommerceProductPublisherAdapter.name);
 
@@ -119,6 +127,60 @@ export class WooCommerceProductPublisherAdapter
       destinationCategoryId: leafId,
       ...(createdPath.length > 0 ? { createdPath } : {}),
     };
+  }
+
+  /**
+   * List the shop's existing category nodes directly under `parentId` (#1834).
+   * Omitting `parentId` lists root-level categories (WooCommerce `parent=0`).
+   * Unlike a marketplace's leaf-gated taxonomy, every WooCommerce category is a
+   * valid product placement, so no `leaf` flag is emitted — the picker allows
+   * selecting any node and drilling into any node.
+   *
+   * Pages through the parent-scoped result set at the WC maximum `per_page` so a
+   * parent with more than one page of direct children is fully enumerated; stops
+   * on the first short page.
+   */
+  async browseCategories(parentId?: string): Promise<ShopCategory[]> {
+    const parent = this.toParentNumber(parentId);
+    const collected: ShopCategory[] = [];
+
+    for (let page = 1; page <= CATEGORY_MAX_PAGES; page += 1) {
+      const batch = await this.httpClient.get<WooCommerceCategoryResponse[]>(CATEGORIES_PATH, {
+        parent,
+        per_page: CATEGORY_PAGE_SIZE,
+        page,
+        orderby: 'name',
+        order: 'asc',
+      });
+      for (const node of batch) {
+        collected.push({
+          id: String(node.id),
+          name: node.name,
+          parentId: node.parent === 0 ? null : String(node.parent),
+        });
+      }
+      if (batch.length < CATEGORY_PAGE_SIZE) return collected;
+      if (page === CATEGORY_MAX_PAGES) {
+        this.logger.warn(
+          `browseCategories hit the ${CATEGORY_MAX_PAGES}-page cap for parent=${parent} ` +
+            `(connection=${this.connection.id}); returning the first ${collected.length} categories. ` +
+            `The endpoint may be misbehaving or the taxonomy is unexpectedly large.`,
+        );
+      }
+    }
+
+    return collected;
+  }
+
+  /**
+   * Map a neutral parent id to the WooCommerce `parent` query value. A blank /
+   * absent id means "root level" (`parent=0`); a non-numeric id is a caller
+   * error surfaced as `0` rather than a silent NaN.
+   */
+  private toParentNumber(parentId?: string): number {
+    if (parentId == null || parentId.trim() === '') return 0;
+    const parsed = Number(parentId);
+    return Number.isFinite(parsed) ? parsed : 0;
   }
 
   /**
@@ -287,7 +349,7 @@ export class WooCommerceProductPublisherAdapter
       // siblings would truncate the fuzzy result set and miss the exact match,
       // then create a duplicate. Request the WC maximum so the exact match is
       // always in range (#1846 fix 3).
-      per_page: CATEGORY_SEARCH_PER_PAGE,
+      per_page: CATEGORY_PAGE_SIZE,
     });
     // WooCommerce `search` is fuzzy — require an exact name + parent match before
     // reusing a node, so a similarly-named sibling is never mis-bound.

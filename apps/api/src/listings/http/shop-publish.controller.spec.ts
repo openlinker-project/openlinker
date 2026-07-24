@@ -35,6 +35,7 @@ function record(over: Record<string, unknown> = {}): Record<string, unknown> {
 describe('ShopPublishController', () => {
   let enqueue: { enqueuePublish: jest.Mock };
   let query: { getById: jest.Mock };
+  let categoryBrowse: { browseCategories: jest.Mock };
   let controller: ShopPublishController;
 
   beforeEach(() => {
@@ -44,7 +45,12 @@ describe('ShopPublishController', () => {
         .mockResolvedValue({ jobId: 'job-1', listingCreationRecord: { id: 'rec-1' } }),
     };
     query = { getById: jest.fn() };
-    controller = new ShopPublishController(enqueue as never, query as never);
+    categoryBrowse = { browseCategories: jest.fn() };
+    controller = new ShopPublishController(
+      enqueue as never,
+      query as never,
+      categoryBrowse as never,
+    );
   });
 
   it('should enqueue a publish and return job + record ids', async () => {
@@ -77,6 +83,19 @@ describe('ShopPublishController', () => {
   it('should 404 when the record is unknown', async () => {
     query.getById.mockResolvedValue(null);
     await expect(controller.getRecord('nope')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('should browse categories and map them to the response DTO', async () => {
+    categoryBrowse.browseCategories.mockResolvedValue([
+      { id: '10', name: 'Clothing', parentId: null },
+      { id: '20', name: 'Sneakers', parentId: '11' },
+    ]);
+    const result = await controller.browseCategories(CONN, '11');
+    expect(categoryBrowse.browseCategories).toHaveBeenCalledWith(CONN, '11');
+    expect(result).toEqual([
+      { id: '10', name: 'Clothing', parentId: null },
+      { id: '20', name: 'Sneakers', parentId: '11' },
+    ]);
   });
 });
 

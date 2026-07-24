@@ -86,11 +86,15 @@ declare what they support via `implements <BasePort>, <SubCapability>, …`.
 section); Erli implements a reconciliation-first subset
 ([ADR-025](./architecture/adrs/025-erli-marketplace-adapter.md)).
 
-### `ShopProductManagerPort` (listings) — 1
+### `ShopProductManagerPort` (listings) — 2
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
 | `CategoryProvisioner` | Create / ensure a category exists on the destination shop before publishing. Also a registry-level capability (`CategoryProvisioner` ∈ `CoreCapabilityValues`). | `provisionCategory` | `isCategoryProvisioner` |
+| `ShopCategoryBrowser` | Browse the shop's existing category tree (drill-down by parent) so an operator can pick a placement — the shop-side sibling of the marketplace `CategoryBrowser`. Every node is selectable (no leaf gate). Advertised-without-dispatch (not in `CoreCapabilityValues`): declared in the manifest for discovery, resolved by narrowing the `ProductPublisher` adapter. | `browseCategories` | `isShopCategoryBrowser` |
+
+**Adapter coverage:** WooCommerce implements both `CategoryProvisioner` (write) and
+`ShopCategoryBrowser` (read) on its `ProductPublisher` adapter (#1834).
 
 ### `OrderProcessorManagerPort` / `OrderSourcePort` (orders) — 5
 
