@@ -55,4 +55,7 @@ export const listingsQueryKeys = {
     ['listings', 'shopPublishStatus', connectionId, recordId] as const,
   /** #1044 — bulk shop-publish batch progress polling. */
   bulkShopPublishBatch: (batchId: string) => ['listings', 'bulkShopPublishBatch', batchId] as const,
+  /** #1834 — shop destination category tree, one parent level at a time. */
+  shopCategories: (connectionId: string, parentId?: string) =>
+    ['listings', 'shopCategories', connectionId, parentId ?? ''] as const,
 };

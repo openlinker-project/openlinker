@@ -308,6 +308,13 @@ export { ResponsibleProducerKindValues } from './domain/types/responsible-produc
 export type { ShopProductManagerPort } from './domain/ports/shop-product-manager.port';
 export type { CategoryProvisioner } from './domain/ports/capabilities/category-provisioner.capability';
 export { isCategoryProvisioner } from './domain/ports/capabilities/category-provisioner.capability';
+// Shop-side category browse (#1834): read the destination's existing category
+// tree so an operator can pick a placement. Advertised-without-dispatch;
+// narrowed from the `ProductPublisher` adapter via `isShopCategoryBrowser`.
+export type { ShopCategory } from './domain/types/shop-category.types';
+export type { ShopCategoryBrowser } from './domain/ports/capabilities/shop-category-browser.capability';
+export { isShopCategoryBrowser } from './domain/ports/capabilities/shop-category-browser.capability';
+export type { IShopCategoryBrowseService } from './application/interfaces/shop-category-browse.service.interface';
 // Taxonomy-borrowing sub-capability (#1045): a `borrows` destination (ERLI)
 // names the owner taxonomy whose category/parameter ids it reuses verbatim.
 export type { TaxonomyBorrower } from './domain/ports/capabilities/taxonomy-borrower.capability';

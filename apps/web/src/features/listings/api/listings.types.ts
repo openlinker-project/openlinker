@@ -319,6 +319,17 @@ export interface ShopPublishResponse {
   listingCreationRecordId: string;
 }
 
+/**
+ * One node of a shop destination's category tree (#1834). Unlike a marketplace
+ * category, every node is a valid placement target (no `leaf` gate) and may also
+ * have children to drill into.
+ */
+export interface ShopCategory {
+  id: string;
+  name: string;
+  parentId: string | null;
+}
+
 export interface ShopPublishStatusResponse {
   id: string;
   internalVariantId: string;

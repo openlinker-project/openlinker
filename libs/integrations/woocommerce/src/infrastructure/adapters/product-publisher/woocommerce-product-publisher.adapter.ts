@@ -28,6 +28,8 @@ import {
   type PublishProductContent,
   type PublishProductResult,
   type PublishProductStatus,
+  type ShopCategory,
+  type ShopCategoryBrowser,
   type ShopProductManagerPort,
 } from '@openlinker/core/listings';
 
@@ -64,7 +66,7 @@ const SEO_TITLE_META_KEYS = ['_yoast_wpseo_title', 'rank_math_title'] as const;
 const SEO_DESCRIPTION_META_KEYS = ['_yoast_wpseo_metadesc', 'rank_math_description'] as const;
 
 export class WooCommerceProductPublisherAdapter
-  implements ShopProductManagerPort, CategoryProvisioner
+  implements ShopProductManagerPort, CategoryProvisioner, ShopCategoryBrowser
 {
   private readonly logger = new Logger(WooCommerceProductPublisherAdapter.name);
 
@@ -119,6 +121,53 @@ export class WooCommerceProductPublisherAdapter
       destinationCategoryId: leafId,
       ...(createdPath.length > 0 ? { createdPath } : {}),
     };
+  }
+
+  /**
+   * List the shop's existing category nodes directly under `parentId` (#1834).
+   * Omitting `parentId` lists root-level categories (WooCommerce `parent=0`).
+   * Unlike a marketplace's leaf-gated taxonomy, every WooCommerce category is a
+   * valid product placement, so no `leaf` flag is emitted — the picker allows
+   * selecting any node and drilling into any node.
+   *
+   * Pages through the parent-scoped result set at the WC maximum `per_page` so a
+   * parent with more than one page of direct children is fully enumerated; stops
+   * on the first short page.
+   */
+  async browseCategories(parentId?: string): Promise<ShopCategory[]> {
+    const parent = this.toParentNumber(parentId);
+    const collected: ShopCategory[] = [];
+
+    for (let page = 1; ; page += 1) {
+      const batch = await this.httpClient.get<WooCommerceCategoryResponse[]>(CATEGORIES_PATH, {
+        parent,
+        per_page: CATEGORY_SEARCH_PER_PAGE,
+        page,
+        orderby: 'name',
+        order: 'asc',
+      });
+      for (const node of batch) {
+        collected.push({
+          id: String(node.id),
+          name: node.name,
+          parentId: node.parent === 0 ? null : String(node.parent),
+        });
+      }
+      if (batch.length < CATEGORY_SEARCH_PER_PAGE) break;
+    }
+
+    return collected;
+  }
+
+  /**
+   * Map a neutral parent id to the WooCommerce `parent` query value. A blank /
+   * absent id means "root level" (`parent=0`); a non-numeric id is a caller
+   * error surfaced as `0` rather than a silent NaN.
+   */
+  private toParentNumber(parentId?: string): number {
+    if (parentId == null || parentId.trim() === '') return 0;
+    const parsed = Number(parentId);
+    return Number.isFinite(parsed) ? parsed : 0;
   }
 
   /**

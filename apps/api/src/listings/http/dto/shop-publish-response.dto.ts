@@ -55,6 +55,20 @@ export class ListingCreationRecordResponseDto {
   updatedAt!: string;
 }
 
+export class ShopCategoryResponseDto {
+  @ApiProperty({ description: 'Destination-native category id.' })
+  id!: string;
+
+  @ApiProperty({ description: 'Human-readable category name.' })
+  name!: string;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'Parent category id, or null for a root-level category.',
+  })
+  parentId!: string | null;
+}
+
 export class BulkShopPublishItemDto {
   @ApiProperty()
   internalVariantId!: string;

@@ -11072,6 +11072,9 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .bulk-editor__catpick-name { flex: 1; min-width: 0; }
 .bulk-editor__catpick-name b { font-weight: 600; display: block; }
 .bulk-editor__catpick-name small { display: block; color: var(--text-muted); font-size: 11px; }
+/* Shop picker (#1834): a shop node is both selectable and browsable, so its row
+   carries two actions side by side (marketplace rows carry only one). */
+.bulk-editor__catpick-actions { display: inline-flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
 .bulk-editor__catpick-empty { padding: var(--space-4); color: var(--text-muted); font-size: 12.5px; }
 .bulk-editor__catpick-foot {
   padding: var(--space-4) var(--space-5);

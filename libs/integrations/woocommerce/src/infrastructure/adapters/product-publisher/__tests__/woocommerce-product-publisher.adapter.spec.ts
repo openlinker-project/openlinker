@@ -483,4 +483,69 @@ describe('WooCommerceProductPublisherAdapter', () => {
       expect(result).toEqual({ destinationCategoryId: '11', createdPath: ['10', '11'] });
     });
   });
+
+  describe('browseCategories', () => {
+    it('should list root categories with parent=0 when no parentId is given', async () => {
+      http.get.mockResolvedValue([
+        { id: 10, name: 'Clothing', parent: 0, slug: 'clothing' },
+        { id: 11, name: 'Shoes', parent: 0, slug: 'shoes' },
+      ]);
+
+      const result = await adapter.browseCategories();
+
+      expect(http.get).toHaveBeenCalledTimes(1);
+      const [path, params] = http.get.mock.calls[0];
+      expect(path).toBe('/wp-json/wc/v3/products/categories');
+      expect(params).toMatchObject({ parent: 0, per_page: 100, page: 1 });
+      expect(result).toEqual([
+        { id: '10', name: 'Clothing', parentId: null },
+        { id: '11', name: 'Shoes', parentId: null },
+      ]);
+    });
+
+    it('should drill into a parent and map parentId from the parent number', async () => {
+      http.get.mockResolvedValue([{ id: 20, name: 'Sneakers', parent: 11, slug: 'sneakers' }]);
+
+      const result = await adapter.browseCategories('11');
+
+      expect(http.get).toHaveBeenCalledWith(
+        '/wp-json/wc/v3/products/categories',
+        expect.objectContaining({ parent: 11, page: 1 }),
+      );
+      expect(result).toEqual([{ id: '20', name: 'Sneakers', parentId: '11' }]);
+    });
+
+    it('should page through until a short page is returned', async () => {
+      const fullPage = Array.from({ length: 100 }, (_, i) => ({
+        id: i + 1,
+        name: `Cat ${i + 1}`,
+        parent: 0,
+        slug: `cat-${i + 1}`,
+      }));
+      http.get
+        .mockResolvedValueOnce(fullPage)
+        .mockResolvedValueOnce([{ id: 101, name: 'Cat 101', parent: 0, slug: 'cat-101' }]);
+
+      const result = await adapter.browseCategories();
+
+      expect(http.get).toHaveBeenCalledTimes(2);
+      expect(http.get).toHaveBeenNthCalledWith(
+        2,
+        '/wp-json/wc/v3/products/categories',
+        expect.objectContaining({ page: 2 }),
+      );
+      expect(result).toHaveLength(101);
+    });
+
+    it('should treat a non-numeric parentId as root (parent=0)', async () => {
+      http.get.mockResolvedValue([]);
+
+      await adapter.browseCategories('not-a-number');
+
+      expect(http.get).toHaveBeenCalledWith(
+        '/wp-json/wc/v3/products/categories',
+        expect.objectContaining({ parent: 0 }),
+      );
+    });
+  });
 });

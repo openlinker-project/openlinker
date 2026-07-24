@@ -42,6 +42,7 @@ import { SellerPoliciesCacheRepository } from './infrastructure/persistence/repo
 import { SellerPoliciesService } from './application/services/seller-policies.service';
 import { ResponsibleProducerService } from './application/services/responsible-producer.service';
 import { DeliveryPriceListService } from './application/services/delivery-price-list.service';
+import { ShopCategoryBrowseService } from './application/services/shop-category-browse.service';
 import { OfferCreationEnqueueService } from './application/services/offer-creation-enqueue.service';
 import { BulkListingSubmitService } from './application/services/bulk-listing-submit.service';
 import { BulkListingRetryService } from './application/services/bulk-listing-retry.service';
@@ -82,6 +83,7 @@ import {
   PRODUCT_PUBLISH_ENQUEUE_SERVICE_TOKEN,
   LISTING_CREATION_QUERY_SERVICE_TOKEN,
   BULK_SHOP_PUBLISH_SUBMIT_SERVICE_TOKEN,
+  SHOP_CATEGORY_BROWSE_SERVICE_TOKEN,
 } from './listings.tokens';
 
 // Re-export tokens for convenience
@@ -116,6 +118,7 @@ export {
   PRODUCT_PUBLISH_ENQUEUE_SERVICE_TOKEN,
   LISTING_CREATION_QUERY_SERVICE_TOKEN,
   BULK_SHOP_PUBLISH_SUBMIT_SERVICE_TOKEN,
+  SHOP_CATEGORY_BROWSE_SERVICE_TOKEN,
 } from './listings.tokens';
 
 @Module({
@@ -174,6 +177,7 @@ export {
     SellerPoliciesService,
     ResponsibleProducerService,
     DeliveryPriceListService,
+    ShopCategoryBrowseService,
     OfferStockRestoreService,
     {
       provide: OFFER_LINKING_SERVICE_TOKEN,
@@ -292,6 +296,10 @@ export {
       useExisting: DeliveryPriceListService,
     },
     {
+      provide: SHOP_CATEGORY_BROWSE_SERVICE_TOKEN,
+      useExisting: ShopCategoryBrowseService,
+    },
+    {
       provide: OFFER_STOCK_RESTORE_SERVICE_TOKEN,
       useExisting: OfferStockRestoreService,
     },
@@ -325,6 +333,7 @@ export {
     PRODUCT_PUBLISH_ENQUEUE_SERVICE_TOKEN,
     LISTING_CREATION_QUERY_SERVICE_TOKEN,
     BULK_SHOP_PUBLISH_SUBMIT_SERVICE_TOKEN,
+    SHOP_CATEGORY_BROWSE_SERVICE_TOKEN,
   ],
 })
 export class ListingsModule {}

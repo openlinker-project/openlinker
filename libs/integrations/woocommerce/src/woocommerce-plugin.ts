@@ -57,6 +57,12 @@ export const woocommerceAdapterManifest: AdapterMetadata = {
     'OrderSource',
     'ProductPublisher',
     'CategoryProvisioner',
+    // Shop-side category browse (#1834). Advertised-without-dispatch: declared
+    // here for host/FE discovery, resolved by narrowing the dispatched
+    // ProductPublisher adapter with `isShopCategoryBrowser` (never via
+    // getCapabilityAdapter('ShopCategoryBrowser')). Backs the publish edit
+    // flow's destination-category picker.
+    'ShopCategoryBrowser',
     // Inventory write-back to published products (#1498). Quantity-only —
     // WooCommerce is a destination shop, not a marketplace: no OfferCreator /
     // OfferLister sub-capabilities, so offer-creation flows (gated on

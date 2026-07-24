@@ -29,6 +29,7 @@ import type {
   SellerPoliciesResponse,
   ResponsibleProducersResponse,
   DeliveryPriceListsResponse,
+  ShopCategory,
   ShopPublishRequest,
   ShopPublishResponse,
   ShopPublishStatusResponse,
@@ -112,6 +113,15 @@ export interface ListingsApi {
     connectionId: string,
     recordId: string,
   ) => Promise<ShopPublishStatusResponse>;
+  /**
+   * Browse a shop connection's existing category tree (#1834), one parent level
+   * at a time (omit `parentId` for root). Backed by the shop `ShopCategoryBrowser`
+   * capability; 422 if the connection's adapter does not implement it.
+   */
+  browseShopCategories: (
+    connectionId: string,
+    parentId?: string,
+  ) => Promise<ShopCategory[]>;
   /** Submit a bulk shop-publish batch (#1044). Returns the persisted
    *  `batchId` and per-variant job + record ids. */
   shopPublishBulk: (body: BulkShopPublishRequest) => Promise<BulkShopPublishResponse>;
@@ -266,6 +276,12 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
     getShopPublishStatus(connectionId, recordId): Promise<ShopPublishStatusResponse> {
       return request<ShopPublishStatusResponse>(
         `/listings/connections/${connectionId}/shop-publish/${encodeURIComponent(recordId)}`,
+      );
+    },
+    browseShopCategories(connectionId, parentId): Promise<ShopCategory[]> {
+      const qs = parentId ? `?parentId=${encodeURIComponent(parentId)}` : '';
+      return request<ShopCategory[]>(
+        `/listings/connections/${connectionId}/shop-publish/categories${qs}`,
       );
     },
     shopPublishBulk(body): Promise<BulkShopPublishResponse> {
