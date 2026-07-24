@@ -35,6 +35,7 @@ import { CommandPalette } from '../shared/ui/command-palette';
 import type { PaletteGroup, PaletteItem } from '../shared/ui/command-palette';
 import { useSession } from '../shared/auth/use-session';
 import { useDemoMode } from '../features/system';
+import { captureDemoEvent } from '../features/demo';
 import { BASE_NAV_GROUPS } from './nav-registry';
 import type { LiveNavGroup } from './nav-registry.types';
 
@@ -81,6 +82,17 @@ function pushRecent(entry: RecentEntry, current: RecentEntry[]): RecentEntry[] {
   return [entry, ...deduped].slice(0, MAX_RECENTS);
 }
 
+// ── Result-source attribution ────────────────────────────────────────
+
+const SOURCE_BY_PREFIX: Record<string, string> = {
+  nav: 'navigation',
+  conn: 'connections',
+  order: 'orders',
+  product: 'products',
+  job: 'sync_jobs',
+  recent: 'recent',
+};
+
 // ── Context ───────────────────────────────────────────────────────────
 
 interface CommandPaletteContextValue {
@@ -119,7 +131,11 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
     function handleKeyDown(event: KeyboardEvent): void {
       if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
         event.preventDefault();
-        setIsOpen((prev) => !prev);
+        setIsOpen((prev) => {
+          const next = !prev;
+          if (next) captureDemoEvent('demo_command_palette_opened', { trigger: 'keyboard' });
+          return next;
+        });
       }
     }
     document.addEventListener('keydown', handleKeyDown);
@@ -135,6 +151,10 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
 
   const handleSelect = useCallback(
     (entry: RecentEntry, isRecentClick = false): void => {
+      const prefix = entry.id.split(':')[0] ?? '';
+      captureDemoEvent('demo_command_palette_result_selected', {
+        source: SOURCE_BY_PREFIX[prefix] ?? 'unknown',
+      });
       if (!isRecentClick) {
         const next = pushRecent(entry, recents);
         setRecents(next);
@@ -327,7 +347,15 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
     productsQuery.isFetching ||
     syncJobsQuery.isLoading;
 
-  const ctx = useMemo<CommandPaletteContextValue>(() => ({ open: () => setIsOpen(true) }), []);
+  const ctx = useMemo<CommandPaletteContextValue>(
+    () => ({
+      open: () => {
+        captureDemoEvent('demo_command_palette_opened', { trigger: 'click' });
+        setIsOpen(true);
+      },
+    }),
+    [],
+  );
 
   return (
     <CommandPaletteContext.Provider value={ctx}>

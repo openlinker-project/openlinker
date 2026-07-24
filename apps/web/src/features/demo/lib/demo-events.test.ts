@@ -23,6 +23,7 @@ describe('DemoEventCatalog', () => {
     'demo_connection_sync_dialog_opened',
     'demo_category_source_selected',
     'demo_category_map_attempted',
+    'demo_analytics_disabled',
   ]);
 
   it('should give every non-empty-typed entry runtime-inspectable prop keys (#1787 settings panel introspection)', () => {

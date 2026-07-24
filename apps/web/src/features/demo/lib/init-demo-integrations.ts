@@ -25,32 +25,56 @@ let posthogInstance: PostHog | null = null;
 let productEventsEnabled = false;
 let enabledEventGroups: ReadonlySet<string> = new Set();
 
+/**
+ * A `captureDemoEvent` call that lands before `initDemoIntegrations` resolves
+ * (e.g. `demo_login_succeeded` firing right after login, in the same tick as
+ * the app's boot-time init) is buffered here and replayed once init settles,
+ * instead of being silently dropped by the `posthogInstance` guard below.
+ */
+let pendingEvents: Array<{ event: DemoEventName; props: unknown }> = [];
+/**
+ * Flips true on every exit path of `initDemoIntegrations` (early return or
+ * success) so the buffer stops accepting new entries once this session's
+ * init outcome is known — otherwise a long-lived non-demo/no-consent session
+ * would accumulate an unbounded array from calls that will never replay.
+ */
+let initSettled = false;
+
 export async function initDemoIntegrations(config: SystemConfig | undefined): Promise<void> {
-  const posthogConfig = config?.demoMode ? config.demoIntegrations?.posthog : undefined;
-  if (!posthogConfig?.key) {
-    return;
-  }
+  try {
+    const posthogConfig = config?.demoMode ? config.demoIntegrations?.posthog : undefined;
+    if (!posthogConfig?.key) {
+      return;
+    }
 
-  if (getDemoAnalyticsConsent() !== 'accepted') {
-    return;
-  }
+    if (getDemoAnalyticsConsent() !== 'accepted') {
+      return;
+    }
 
-  const { default: posthog } = await import('posthog-js');
-  posthogInstance = posthog;
-  productEventsEnabled = posthogConfig.productEventsEnabled;
-  enabledEventGroups = new Set(posthogConfig.enabledEventGroups);
-  posthog.init(posthogConfig.key, {
-    api_host: posthogConfig.host,
-    person_profiles: 'identified_only',
-    autocapture: posthogConfig.autocapture,
-    capture_pageview: true,
-    session_recording: posthogConfig.sessionRecording
-      ? {
-          maskAllInputs: true,
-          maskTextSelector: '*',
-        }
-      : undefined,
-  });
+    const { default: posthog } = await import('posthog-js');
+    posthogInstance = posthog;
+    productEventsEnabled = posthogConfig.productEventsEnabled;
+    enabledEventGroups = new Set(posthogConfig.enabledEventGroups);
+    posthog.init(posthogConfig.key, {
+      api_host: posthogConfig.host,
+      person_profiles: 'identified_only',
+      autocapture: posthogConfig.autocapture,
+      capture_pageview: true,
+      session_recording: posthogConfig.sessionRecording
+        ? {
+            maskAllInputs: true,
+            maskTextSelector: '*',
+          }
+        : undefined,
+    });
+  } finally {
+    initSettled = true;
+    const buffered = pendingEvents;
+    pendingEvents = [];
+    for (const { event, props } of buffered) {
+      captureDemoEvent(event, props as DemoEventProps<typeof event>);
+    }
+  }
 }
 
 /**
@@ -74,7 +98,13 @@ export function captureDemoEvent<E extends DemoEventName>(
   event: E,
   props: DemoEventProps<E>
 ): void {
-  if (!posthogInstance || !productEventsEnabled) {
+  if (!posthogInstance) {
+    if (!initSettled) {
+      pendingEvents.push({ event, props });
+    }
+    return;
+  }
+  if (!productEventsEnabled) {
     return;
   }
   const group = DemoEventCatalog[event].group;
