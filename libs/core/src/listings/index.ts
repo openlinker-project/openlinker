@@ -350,6 +350,21 @@ export type {
 export { ProductPublishRejectedException } from './domain/exceptions/product-publish-rejected.exception';
 export { ProductPublishTargetNotFoundException } from './domain/exceptions/product-publish-target-not-found.exception';
 
+// Required-to-sell preflight (#1842) — pure, side-effect-free "would publish
+// but not be sellable" checker + shared shape (cross-cutting seam for a
+// future marketplace-side check).
+export { checkRequiredToSell } from './application/services/check-required-to-sell';
+export {
+  RequiredToSellSeverityValues,
+  RequiredToSellIssueCodeValues,
+} from './domain/types/required-to-sell.types';
+export type {
+  RequiredToSellSeverity,
+  RequiredToSellIssueCode,
+  RequiredToSellIssue,
+  RequiredToSellCheckInput,
+} from './domain/types/required-to-sell.types';
+
 // Shop publish execution (#1042, #1072) — pure contracts only (the two service
 // classes live on `@openlinker/core/listings/services`, never here).
 export { ListingCreationRecord } from './domain/entities/listing-creation-record.entity';

@@ -56,7 +56,9 @@ import { IAttributeProjectionService } from '../interfaces/attribute-projection.
 import type { IProductPublishBuilderService } from '../interfaces/product-publish-builder.service.interface';
 import type { BuildPublishProductCommandInput } from '../types/product-publish-builder.types';
 import type { AttributeProjectionMetadata } from '../types/attribute-projection.types';
+import type { RequiredToSellIssue } from '../../domain/types/required-to-sell.types';
 import { buildProjectionMetadata } from './build-projection-metadata';
+import { checkRequiredToSell } from './check-required-to-sell';
 import { flattenAttributes } from './variant-attributes.util';
 
 @Injectable()
@@ -167,6 +169,17 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
     if (variantGroup) {
       command.variantGroup = variantGroup;
     }
+
+    // #1842 — required-to-sell preflight: a publish that succeeds on the
+    // destination but isn't actually buyable there (missing weight/dimensions
+    // for weight-based shipping, zero stock). Pure, no extra I/O — reads only
+    // fields already resolved onto `command`. `block`-severity issues gate the
+    // publish exactly like the price/parameter gates above; today every rule is
+    // `warn` (soft-block, operator-overridable at Review — see the FE Review
+    // step), so this only logs. The check is exported standalone so a future
+    // preflight surface (FE dry-run, HTTP endpoint) can call it without
+    // resolving a full command first.
+    this.gateOnRequiredToSell(command);
 
     this.logger.debug(
       `Built PublishProductCommand for variant=${input.internalVariantId} connection=${input.connectionId} categories=${destinationCategoryIds.length} params=${parameters.length} status=${input.status} grouped=${variantGroup != null}`
@@ -396,6 +409,34 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
       return null;
     }
     return { amount: resolvedAmount, currency };
+  }
+
+  /**
+   * #1842 — run the required-to-sell preflight over the assembled command and
+   * apply its verdict: `block`-severity issues gate the publish (raised the
+   * same way as the price/parameter gates above); `warn`-severity issues are
+   * logged only — they're the operator-overridable signals the Review step
+   * surfaces before submit, so by the time a command reaches the builder the
+   * operator has already had the chance to confirm through.
+   */
+  private gateOnRequiredToSell(command: PublishProductCommand): void {
+    const issues: RequiredToSellIssue[] = checkRequiredToSell({
+      stock: command.stock,
+      weight: command.weight,
+      dimensions: command.commerce?.dimensions,
+    });
+    if (issues.length === 0) return;
+
+    const blocking = issues.filter((issue) => issue.severity === 'block');
+    if (blocking.length > 0) {
+      throw new ProductPublishBuilderValidationException(
+        blocking.map((issue) => ({ field: issue.field, code: issue.code, message: issue.message }))
+      );
+    }
+
+    this.logger.warn(
+      `Required-to-sell preflight found ${issues.length} issue(s) for variant=${command.internalVariantId} connection=${command.connectionId}: ${issues.map((issue) => issue.code).join(', ')}`
+    );
   }
 
   private readMasterCatalogConnectionId(

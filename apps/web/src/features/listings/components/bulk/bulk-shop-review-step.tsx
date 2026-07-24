@@ -17,18 +17,16 @@
  *
  * @module apps/web/src/features/listings/components/bulk
  */
-import { useMemo, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useState, type ReactElement } from 'react';
 
 import { Alert, Button } from '../../../../shared/ui';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../../shared/config/demo-mode';
 import { useInventoryAvailabilityBatchQuery } from '../../../inventory';
 import { publishDestinationKind } from '../../lib/publish-destinations';
+import { checkShopLineSellability } from '../../lib/required-to-sell';
 import type { Connection } from '../../../connections';
-import type {
-  BulkShopPublishItemRequest,
-  ShopPublishContent,
-} from '../../api/listings.types';
+import type { BulkShopPublishItemRequest, ShopPublishContent } from '../../api/listings.types';
 import type { BulkPerProductOverride } from '../../api/bulk-listings.types';
 import {
   computeResolvedPrice,
@@ -68,7 +66,7 @@ interface BulkShopReviewStepProps {
     baseOverride: BulkPerProductOverride,
     perVariantOverrides: Record<string, BulkPerProductOverride>,
     includedByVariantId: Record<string, boolean>,
-    editFormValues: Record<string, unknown>,
+    editFormValues: Record<string, unknown>
   ) => void;
 }
 
@@ -101,7 +99,7 @@ function variantDisplayLabel(variant: BulkVariantRow): string {
  */
 function effectiveShopContent(
   row: BulkWizardRow,
-  variant: BulkVariantRow,
+  variant: BulkVariantRow
 ): ShopPublishContent | undefined {
   const base = row.override.overrides ?? {};
   const variantOverrides = variant.override.overrides ?? {};
@@ -133,7 +131,7 @@ function effectiveShopContent(
 export function buildBulkShopPublishItems(
   rows: BulkWizardRow[],
   config: BulkWizardConfig,
-  masterStockByVariantId: ReadonlyMap<string, number>,
+  masterStockByVariantId: ReadonlyMap<string, number>
 ): BulkShopPublishItemRequest[] {
   const items: BulkShopPublishItemRequest[] = [];
   for (const row of rows) {
@@ -178,12 +176,15 @@ export function BulkShopReviewStep({
   onSaveEditor,
 }: BulkShopReviewStepProps): ReactElement {
   const [status, setStatus] = useState<ShopPublishVisibility>(
-    config.publishImmediately ? 'published' : 'draft',
+    config.publishImmediately ? 'published' : 'draft'
   );
   // Per-product edit session (#1830) - product id + the variant to focus.
   const [editing, setEditing] = useState<{ productId: string; focusVariantId?: string } | null>(
-    null,
+    null
   );
+  // Required-to-sell preflight (#1842) - soft-block: operator must tick this
+  // to publish while any included line is out of stock.
+  const [acknowledgeOutOfStock, setAcknowledgeOutOfStock] = useState(false);
 
   // Capability-gated shop editor sub-sections - never a platformType literal.
   const canBrowseShopCategories =
@@ -191,12 +192,11 @@ export function BulkShopReviewStep({
   const canPickShopAttributes =
     connection?.supportedCapabilities?.includes('ShopAttributeReader') ?? false;
   // Guard: only mount the editor for a genuine shop destination (#1830).
-  const isShopDestination =
-    connection !== null && publishDestinationKind(connection) === 'shop';
+  const isShopDestination = connection !== null && publishDestinationKind(connection) === 'shop';
 
   const editingRow = useMemo(
     () => (editing ? rows.find((r) => r.productId === editing.productId) ?? null : null),
-    [editing, rows],
+    [editing, rows]
   );
 
   const includedVariantIds = useMemo(() => {
@@ -215,9 +215,9 @@ export function BulkShopReviewStep({
   const masterStockByVariantId = useMemo(
     () =>
       new Map(
-        (availabilityQuery.data?.items ?? []).map((i) => [i.productVariantId, i.totalAvailable]),
+        (availabilityQuery.data?.items ?? []).map((i) => [i.productVariantId, i.totalAvailable])
       ),
-    [availabilityQuery.data],
+    [availabilityQuery.data]
   );
 
   const lines = useMemo<ShopReviewLine[]>(() => {
@@ -229,7 +229,11 @@ export function BulkShopReviewStep({
         // equals what is submitted (review == publish).
         const masterStock = masterStockByVariantId.get(variant.variantId) ?? variant.masterStock;
         const stock = computeResolvedStock(config.stockPolicy, masterStock, variant.override);
-        const price = computeResolvedPrice(config.pricingPolicy, variant.masterPrice, variant.override);
+        const price = computeResolvedPrice(
+          config.pricingPolicy,
+          variant.masterPrice,
+          variant.override
+        );
         out.push({
           productId: row.productId,
           productName: row.product?.name ?? row.productId,
@@ -243,7 +247,29 @@ export function BulkShopReviewStep({
     return out;
   }, [rows, config.stockPolicy, config.pricingPolicy, masterStockByVariantId]);
 
+  // Required-to-sell preflight (#1842): a listing that publishes with zero
+  // stock is live but unbuyable. Soft-block - surfaced per row + a batch
+  // banner, overridable via the acknowledgement checkbox below.
+  const outOfStockVariantIds = useMemo(
+    () =>
+      new Set(
+        lines
+          .filter((line) => checkShopLineSellability(line.stock ?? 0).length > 0)
+          .map((line) => line.variantId)
+      ),
+    [lines]
+  );
+  const needsSellabilityAck = outOfStockVariantIds.size > 0 && !acknowledgeOutOfStock;
+
+  // Re-arm the confirmation whenever the out-of-stock set changes (fixed via
+  // the editor, or a different variant went out of stock) so a stale tick
+  // never silently covers a new issue.
+  useEffect(() => {
+    setAcknowledgeOutOfStock(false);
+  }, [outOfStockVariantIds.size]);
+
   const handlePublish = (): void => {
+    if (needsSellabilityAck) return;
     const items = buildBulkShopPublishItems(rows, config, masterStockByVariantId);
     if (items.length === 0) return;
     onPublish(items, status);
@@ -255,7 +281,12 @@ export function BulkShopReviewStep({
 
       <header>
         <h2
-          style={{ margin: 0, fontSize: 17, fontWeight: 600, letterSpacing: 'var(--tracking-tight)' }}
+          style={{
+            margin: 0,
+            fontSize: 17,
+            fontWeight: 600,
+            letterSpacing: 'var(--tracking-tight)',
+          }}
         >
           Review shop listings
         </h2>
@@ -299,51 +330,91 @@ export function BulkShopReviewStep({
           No variants are included. Re-include at least one variant to publish.
         </Alert>
       ) : (
-        <ul className="bulk-shop-review__list">
-          {lines.map((line) => (
-            <li key={line.variantId} className="bulk-shop-review__row">
-              <div className="bulk-shop-review__row-main">
-                <b>{line.productName}</b>
-                <small className="mono-text muted-text">{line.variantLabel}</small>
-                {alreadyListedVariantIds.has(line.variantId) ? (
-                  <span
-                    className="bulk-chip bulk-chip--neutral"
-                    title={`already on ${destinationName} - publishing updates it`}
-                  >
-                    <span className="bulk-chip__dot" />
-                    already on {destinationName}
-                  </span>
-                ) : null}
-              </div>
-              <span className="bulk-shop-review__cell mono-text tabular" aria-label="Stock">
-                <span className="bulk-shop-review__cell-label">stock</span>
-                {line.stock ?? 0}
-              </span>
-              <span className="bulk-shop-review__cell mono-text tabular" aria-label="Price">
-                <span className="bulk-shop-review__cell-label">price</span>
-                {line.price !== null ? `${line.price} ${config.currency}` : 'from master'}
-              </span>
-              {isShopDestination ? (
-                <Button
-                  tone="ghost"
-                  className="button--xs bulk-shop-review__edit"
-                  aria-label={`Edit ${line.productName}`}
-                  onClick={() => setEditing({ productId: line.productId, focusVariantId: line.variantId })}
-                >
-                  Edit
-                </Button>
-              ) : null}
-              <button
-                type="button"
-                className="bulk-shop-review__remove"
-                aria-label={`Remove ${line.productName} - ${line.variantLabel}`}
-                onClick={() => onSetVariantIncluded(line.productId, line.variantId, false)}
+        <>
+          {outOfStockVariantIds.size > 0 ? (
+            <Alert tone="warning">
+              <b>
+                {outOfStockVariantIds.size}{' '}
+                {outOfStockVariantIds.size === 1 ? 'listing is' : 'listings are'} out of stock.
+              </b>{' '}
+              They will publish but can&apos;t be purchased until restocked. Fix the stock via Edit,
+              exclude the row, or confirm to publish anyway.
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  marginTop: 8,
+                  fontSize: 13,
+                  fontWeight: 400,
+                }}
               >
-                ×
-              </button>
-            </li>
-          ))}
-        </ul>
+                <input
+                  type="checkbox"
+                  checked={acknowledgeOutOfStock}
+                  onChange={(e) => setAcknowledgeOutOfStock(e.target.checked)}
+                />
+                Publish anyway - I understand these listings will be out of stock.
+              </label>
+            </Alert>
+          ) : null}
+          <ul className="bulk-shop-review__list">
+            {lines.map((line) => (
+              <li key={line.variantId} className="bulk-shop-review__row">
+                <div className="bulk-shop-review__row-main">
+                  <b>{line.productName}</b>
+                  <small className="mono-text muted-text">{line.variantLabel}</small>
+                  {alreadyListedVariantIds.has(line.variantId) ? (
+                    <span
+                      className="bulk-chip bulk-chip--neutral"
+                      title={`already on ${destinationName} - publishing updates it`}
+                    >
+                      <span className="bulk-chip__dot" />
+                      already on {destinationName}
+                    </span>
+                  ) : null}
+                  {outOfStockVariantIds.has(line.variantId) ? (
+                    <span
+                      className="bulk-chip bulk-chip--warning"
+                      title="Out of stock - will publish but cannot be purchased until restocked"
+                    >
+                      <span className="bulk-chip__dot" />
+                      out of stock
+                    </span>
+                  ) : null}
+                </div>
+                <span className="bulk-shop-review__cell mono-text tabular" aria-label="Stock">
+                  <span className="bulk-shop-review__cell-label">stock</span>
+                  {line.stock ?? 0}
+                </span>
+                <span className="bulk-shop-review__cell mono-text tabular" aria-label="Price">
+                  <span className="bulk-shop-review__cell-label">price</span>
+                  {line.price !== null ? `${line.price} ${config.currency}` : 'from master'}
+                </span>
+                {isShopDestination ? (
+                  <Button
+                    tone="ghost"
+                    className="button--xs bulk-shop-review__edit"
+                    aria-label={`Edit ${line.productName}`}
+                    onClick={() =>
+                      setEditing({ productId: line.productId, focusVariantId: line.variantId })
+                    }
+                  >
+                    Edit
+                  </Button>
+                ) : null}
+                <button
+                  type="button"
+                  className="bulk-shop-review__remove"
+                  aria-label={`Remove ${line.productName} - ${line.variantLabel}`}
+                  onClick={() => onSetVariantIncluded(line.productId, line.variantId, false)}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       <footer className="bulk-wizard__footer">
@@ -354,7 +425,7 @@ export function BulkShopReviewStep({
         <ReadOnlyLock active={demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
           <Button
             tone="primary"
-            disabled={isSubmitting || demoReadOnly || lines.length === 0}
+            disabled={isSubmitting || demoReadOnly || lines.length === 0 || needsSellabilityAck}
             onClick={handlePublish}
           >
             {isSubmitting
