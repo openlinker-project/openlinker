@@ -10,6 +10,7 @@ import { InventorySyncService } from '../inventory-sync.service';
 import type { OfferManagerPort, OfferQuantityBatchUpdater } from '@openlinker/core/listings';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { Connection, ConnectionConfig, ConnectionPort } from '@openlinker/core/identifier-mapping';
+import { Logger } from '@openlinker/shared/logging';
 
 describe('InventorySyncService', () => {
   let service: InventorySyncService;
@@ -197,6 +198,34 @@ describe('InventorySyncService', () => {
       expect(marketplace.updateOfferQuantity).toHaveBeenCalledWith(
         expect.objectContaining({ offerId: 'o1', quantity: 0 })
       );
+    });
+
+    it('should warn (but still pass through) when the buffer is present but invalid', async () => {
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      connectionPort.get.mockResolvedValue(
+        connectionWithConfig({ stockSafetyBuffer: -3 as unknown as number })
+      );
+      marketplace.updateOfferQuantity.mockResolvedValue(undefined);
+
+      await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 10 });
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('present but invalid'));
+      // Coerces to 0 reserve => quantity passes through unchanged.
+      expect(marketplace.updateOfferQuantity).toHaveBeenCalledWith(
+        expect.objectContaining({ offerId: 'o1', quantity: 10 })
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('should not warn when the buffer is absent (default 0)', async () => {
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      connectionPort.get.mockResolvedValue(connectionWithConfig({}));
+      marketplace.updateOfferQuantity.mockResolvedValue(undefined);
+
+      await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 10 });
+
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
     });
 
     it('should apply the reserve to every item in a batch update', async () => {

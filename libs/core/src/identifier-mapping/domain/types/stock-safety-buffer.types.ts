@@ -40,6 +40,34 @@ export function readStockSafetyBuffer(config: ConnectionConfig | null | undefine
 }
 
 /**
+ * Report whether `config.stockSafetyBuffer` is present but invalid — i.e. the
+ * key is set to a non-null value that `readStockSafetyBuffer` coerces to `0`
+ * (a non-numeric, negative, zero-as-typo-adjacent, or non-finite value).
+ *
+ * A mistyped buffer (e.g. the JSON string `"5"`, or `-3`) silently removes the
+ * oversell protection the operator believes they configured, so callers use
+ * this to emit a warning. Pure (no I/O). Returns `false` when the key is absent
+ * or `null` (the intentional "no buffer" case), and `false` for a valid
+ * positive number (which `readStockSafetyBuffer` returns as-is).
+ *
+ * Note: a literal `0` is treated as present-but-invalid here — `0` is
+ * indistinguishable from the default and disables protection, so surfacing it
+ * as a likely typo is intentional.
+ */
+export function isPresentButInvalidStockSafetyBuffer(
+  config: ConnectionConfig | null | undefined
+): boolean {
+  if (!config) {
+    return false;
+  }
+  const raw = config[STOCK_SAFETY_BUFFER_CONFIG_KEY];
+  if (raw == null) {
+    return false;
+  }
+  return readStockSafetyBuffer(config) === 0;
+}
+
+/**
  * Apply a stock safety buffer to a master stock level.
  *
  * Returns `max(0, masterStock - reserve)` so the published quantity never goes

@@ -5,6 +5,7 @@
  */
 import {
   applyStockSafetyBuffer,
+  isPresentButInvalidStockSafetyBuffer,
   readStockSafetyBuffer,
 } from '../stock-safety-buffer.types';
 
@@ -34,6 +35,35 @@ describe('stock-safety-buffer', () => {
       expect(readStockSafetyBuffer({ stockSafetyBuffer: Number.NaN })).toBe(0);
       expect(readStockSafetyBuffer({ stockSafetyBuffer: Infinity })).toBe(0);
       expect(readStockSafetyBuffer({ stockSafetyBuffer: '5' as unknown as number })).toBe(0);
+    });
+  });
+
+  describe('isPresentButInvalidStockSafetyBuffer', () => {
+    it('should be false when config is null/undefined or the key is absent', () => {
+      expect(isPresentButInvalidStockSafetyBuffer(null)).toBe(false);
+      expect(isPresentButInvalidStockSafetyBuffer(undefined)).toBe(false);
+      expect(isPresentButInvalidStockSafetyBuffer({})).toBe(false);
+    });
+
+    it('should be false when the key is explicitly null (intentional no-buffer)', () => {
+      expect(
+        isPresentButInvalidStockSafetyBuffer({ stockSafetyBuffer: null as unknown as number })
+      ).toBe(false);
+    });
+
+    it('should be false for a valid positive number', () => {
+      expect(isPresentButInvalidStockSafetyBuffer({ stockSafetyBuffer: 5 })).toBe(false);
+      expect(isPresentButInvalidStockSafetyBuffer({ stockSafetyBuffer: 2.9 })).toBe(false);
+    });
+
+    it('should be true when present but coercing to 0 (mistyped buffer)', () => {
+      expect(isPresentButInvalidStockSafetyBuffer({ stockSafetyBuffer: 0 })).toBe(true);
+      expect(isPresentButInvalidStockSafetyBuffer({ stockSafetyBuffer: -3 })).toBe(true);
+      expect(isPresentButInvalidStockSafetyBuffer({ stockSafetyBuffer: Number.NaN })).toBe(true);
+      expect(isPresentButInvalidStockSafetyBuffer({ stockSafetyBuffer: Infinity })).toBe(true);
+      expect(
+        isPresentButInvalidStockSafetyBuffer({ stockSafetyBuffer: '5' as unknown as number })
+      ).toBe(true);
     });
   });
 
