@@ -70,6 +70,8 @@ import { IAttributeProjectionService } from '../interfaces/attribute-projection.
 import { ICategoryResolutionService } from '../interfaces/category-resolution.service.interface';
 import type { IOfferBuilderService } from '../interfaces/offer-builder.service.interface';
 import type { BuildCreateOfferCommandInput } from '../types/offer-builder.types';
+import type { AttributeProjectionMetadata } from '../types/attribute-projection.types';
+import { buildProjectionMetadata } from './build-projection-metadata';
 
 @Injectable()
 export class OfferBuilderService implements IOfferBuilderService {
@@ -173,7 +175,8 @@ export class OfferBuilderService implements IOfferBuilderService {
           masterConnectionId,
           categoryId,
           variant.attributes ?? {},
-          borrowedTaxonomy
+          borrowedTaxonomy,
+          buildProjectionMetadata(product, variant, effectiveBarcode)
         )
       : [];
 
@@ -333,13 +336,16 @@ export class OfferBuilderService implements IOfferBuilderService {
     sourceConnectionId: string,
     destinationCategoryId: string,
     attributes: Record<string, string>,
-    borrowedTaxonomy: TaxonomyOwner | undefined
+    borrowedTaxonomy: TaxonomyOwner | undefined,
+    metadata: AttributeProjectionMetadata
   ): Promise<OfferParameter[]> {
     const projection = await this.attributeProjection.project({
       sourceConnectionId,
       destinationConnectionId: input.connectionId,
       destinationCategoryId,
       attributes,
+      // #1841 — product-derived metadata for operator place-value / scope rules.
+      metadata,
       // #1045 — reuse the owner's attribute mappings for a borrows destination.
       ...(borrowedTaxonomy ? { borrowedTaxonomy } : {}),
     });

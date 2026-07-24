@@ -18,6 +18,7 @@ import type { PaymentMapping } from '../../domain/entities/payment-mapping.entit
 import type { CategoryMapping } from '../../domain/entities/category-mapping.entity';
 import type { OrderStateMapping } from '../../domain/entities/order-state-mapping.entity';
 import type { AttributeMapping } from '../../domain/entities/attribute-mapping.entity';
+import type { AttributeMappingRule } from '../../domain/entities/attribute-mapping-rule.entity';
 import type {
   StatusMappingInput,
   CarrierMappingInput,
@@ -26,12 +27,14 @@ import type {
   OrderStateMappingInput,
   AttributeMappingInput,
 } from '../../domain/types/mapping.types';
+import type { AttributeMappingRuleInput } from '../../domain/types/attribute-mapping-rule.types';
 import { StatusMappingRepositoryPort } from '../../domain/ports/status-mapping-repository.port';
 import { CarrierMappingRepositoryPort } from '../../domain/ports/carrier-mapping-repository.port';
 import { PaymentMappingRepositoryPort } from '../../domain/ports/payment-mapping-repository.port';
 import { CategoryMappingRepositoryPort } from '../../domain/ports/category-mapping-repository.port';
 import { OrderStateMappingRepositoryPort } from '../../domain/ports/order-state-mapping-repository.port';
 import { AttributeMappingRepositoryPort } from '../../domain/ports/attribute-mapping-repository.port';
+import { AttributeMappingRuleRepositoryPort } from '../../domain/ports/attribute-mapping-rule-repository.port';
 import {
   STATUS_MAPPING_REPOSITORY_TOKEN,
   CARRIER_MAPPING_REPOSITORY_TOKEN,
@@ -39,6 +42,7 @@ import {
   CATEGORY_MAPPING_REPOSITORY_TOKEN,
   ORDER_STATE_MAPPING_REPOSITORY_TOKEN,
   ATTRIBUTE_MAPPING_REPOSITORY_TOKEN,
+  ATTRIBUTE_MAPPING_RULE_REPOSITORY_TOKEN,
 } from '../../mappings.tokens';
 
 @Injectable()
@@ -55,7 +59,9 @@ export class MappingConfigService implements IMappingConfigService {
     @Inject(ORDER_STATE_MAPPING_REPOSITORY_TOKEN)
     private readonly orderStateRepo: OrderStateMappingRepositoryPort,
     @Inject(ATTRIBUTE_MAPPING_REPOSITORY_TOKEN)
-    private readonly attributeRepo: AttributeMappingRepositoryPort
+    private readonly attributeRepo: AttributeMappingRepositoryPort,
+    @Inject(ATTRIBUTE_MAPPING_RULE_REPOSITORY_TOKEN)
+    private readonly attributeRuleRepo: AttributeMappingRuleRepositoryPort
   ) {}
 
   getStatusMappings(connectionId: string): Promise<StatusMapping[]> {
@@ -192,5 +198,20 @@ export class MappingConfigService implements IMappingConfigService {
 
   deleteAttributeMapping(id: string): Promise<void> {
     return this.attributeRepo.deleteMapping(id);
+  }
+
+  getAttributeMappingRules(destinationConnectionId: string): Promise<AttributeMappingRule[]> {
+    return this.attributeRuleRepo.findByDestinationConnection(destinationConnectionId);
+  }
+
+  upsertAttributeMappingRule(
+    destinationConnectionId: string,
+    input: AttributeMappingRuleInput
+  ): Promise<AttributeMappingRule> {
+    return this.attributeRuleRepo.upsertRule(destinationConnectionId, input);
+  }
+
+  deleteAttributeMappingRule(id: string): Promise<void> {
+    return this.attributeRuleRepo.deleteRule(id);
   }
 }

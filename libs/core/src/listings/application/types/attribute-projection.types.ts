@@ -42,6 +42,28 @@ export interface AttributeProjectionInput {
    * Absent for `owns` / `open` destinations.
    */
   borrowedTaxonomy?: string;
+  /**
+   * Product-derived metadata for operator-authored attribute mapping rules
+   * (#1841): `place-value` rules read from these fields and `manufacturer` /
+   * `productName` scope rule matching. Absent ⇒ place-value rules that need a
+   * missing field skip, and manufacturer/phrase-scoped rules don't match.
+   */
+  metadata?: AttributeProjectionMetadata;
+}
+
+/**
+ * Product-derived values a `place-value` rule can fill from, plus the scope
+ * inputs (`manufacturer`, `productName`) rule matching reads (#1841). Assembled
+ * by the caller from the master product + variant.
+ */
+export interface AttributeProjectionMetadata {
+  productName?: string;
+  /** The variant's distinguishing attribute values, e.g. `"Red / M"`. */
+  variantName?: string;
+  manufacturer?: string;
+  ean?: string;
+  sku?: string;
+  weight?: string;
 }
 
 /**

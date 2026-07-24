@@ -14,6 +14,7 @@ import {
   CATEGORY_MAPPING_REPOSITORY_TOKEN,
   ORDER_STATE_MAPPING_REPOSITORY_TOKEN,
   ATTRIBUTE_MAPPING_REPOSITORY_TOKEN,
+  ATTRIBUTE_MAPPING_RULE_REPOSITORY_TOKEN,
 } from '../../../mappings.tokens';
 import type { StatusMappingRepositoryPort } from '../../../domain/ports/status-mapping-repository.port';
 import type { CarrierMappingRepositoryPort } from '../../../domain/ports/carrier-mapping-repository.port';
@@ -21,6 +22,8 @@ import type { PaymentMappingRepositoryPort } from '../../../domain/ports/payment
 import type { CategoryMappingRepositoryPort } from '../../../domain/ports/category-mapping-repository.port';
 import type { OrderStateMappingRepositoryPort } from '../../../domain/ports/order-state-mapping-repository.port';
 import type { AttributeMappingRepositoryPort } from '../../../domain/ports/attribute-mapping-repository.port';
+import type { AttributeMappingRuleRepositoryPort } from '../../../domain/ports/attribute-mapping-rule-repository.port';
+import { AttributeMappingRule } from '../../../domain/entities/attribute-mapping-rule.entity';
 import { StatusMapping } from '../../../domain/entities/status-mapping.entity';
 import { CarrierMapping } from '../../../domain/entities/carrier-mapping.entity';
 import { PaymentMapping } from '../../../domain/entities/payment-mapping.entity';
@@ -35,6 +38,7 @@ describe('MappingConfigService', () => {
   let categoryRepo: jest.Mocked<CategoryMappingRepositoryPort>;
   let orderStateRepo: jest.Mocked<OrderStateMappingRepositoryPort>;
   let attributeRepo: jest.Mocked<AttributeMappingRepositoryPort>;
+  let attributeRuleRepo: jest.Mocked<AttributeMappingRuleRepositoryPort>;
 
   const CONNECTION_ID = 'conn-uuid-1';
 
@@ -68,6 +72,11 @@ describe('MappingConfigService', () => {
       upsertMapping: jest.fn(),
       deleteMapping: jest.fn(),
     };
+    attributeRuleRepo = {
+      findByDestinationConnection: jest.fn(),
+      upsertRule: jest.fn(),
+      deleteRule: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -78,6 +87,7 @@ describe('MappingConfigService', () => {
         { provide: CATEGORY_MAPPING_REPOSITORY_TOKEN, useValue: categoryRepo },
         { provide: ORDER_STATE_MAPPING_REPOSITORY_TOKEN, useValue: orderStateRepo },
         { provide: ATTRIBUTE_MAPPING_REPOSITORY_TOKEN, useValue: attributeRepo },
+        { provide: ATTRIBUTE_MAPPING_RULE_REPOSITORY_TOKEN, useValue: attributeRuleRepo },
       ],
     }).compile();
 
@@ -434,6 +444,63 @@ describe('MappingConfigService', () => {
       await service.getAttributeMappingsByProvenance('allegro');
 
       expect(attributeRepo.findByProvenance).toHaveBeenCalledWith('allegro');
+    });
+  });
+
+  describe('attribute mapping rules (#1841)', () => {
+    it('getAttributeMappingRules delegates to the rule repo', async () => {
+      const rules = [
+        new AttributeMappingRule(
+          'r-1',
+          CONNECTION_ID,
+          'Brand',
+          { kind: 'fixed', value: 'ACME' },
+          0,
+          null,
+          null,
+          null,
+          null
+        ),
+      ];
+      attributeRuleRepo.findByDestinationConnection.mockResolvedValue(rules);
+
+      const result = await service.getAttributeMappingRules(CONNECTION_ID);
+
+      expect(attributeRuleRepo.findByDestinationConnection).toHaveBeenCalledWith(CONNECTION_ID);
+      expect(result).toEqual(rules);
+    });
+
+    it('upsertAttributeMappingRule delegates to the rule repo', async () => {
+      const input = {
+        destinationParameterName: 'Brand',
+        config: { kind: 'fixed' as const, value: 'ACME' },
+        priority: 0,
+      };
+      const saved = new AttributeMappingRule(
+        'r-2',
+        CONNECTION_ID,
+        'Brand',
+        input.config,
+        0,
+        null,
+        null,
+        null,
+        null
+      );
+      attributeRuleRepo.upsertRule.mockResolvedValue(saved);
+
+      const result = await service.upsertAttributeMappingRule(CONNECTION_ID, input);
+
+      expect(attributeRuleRepo.upsertRule).toHaveBeenCalledWith(CONNECTION_ID, input);
+      expect(result).toEqual(saved);
+    });
+
+    it('deleteAttributeMappingRule delegates to the rule repo', async () => {
+      attributeRuleRepo.deleteRule.mockResolvedValue(undefined);
+
+      await service.deleteAttributeMappingRule('r-3');
+
+      expect(attributeRuleRepo.deleteRule).toHaveBeenCalledWith('r-3');
     });
   });
 });

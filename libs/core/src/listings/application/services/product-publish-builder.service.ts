@@ -52,6 +52,8 @@ import { ATTRIBUTE_PROJECTION_SERVICE_TOKEN } from '../../listings.tokens';
 import { IAttributeProjectionService } from '../interfaces/attribute-projection.service.interface';
 import type { IProductPublishBuilderService } from '../interfaces/product-publish-builder.service.interface';
 import type { BuildPublishProductCommandInput } from '../types/product-publish-builder.types';
+import type { AttributeProjectionMetadata } from '../types/attribute-projection.types';
+import { buildProjectionMetadata } from './build-projection-metadata';
 
 @Injectable()
 export class ProductPublishBuilderService implements IProductPublishBuilderService {
@@ -115,7 +117,8 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
             input,
             masterConnectionId,
             destinationCategoryIds[0] ?? null,
-            variant.attributes ?? {}
+            variant.attributes ?? {},
+            buildProjectionMetadata(product, variant, variant.gtin ?? variant.ean ?? null)
           );
 
     const content = this.buildContent(input.content, product);
@@ -220,7 +223,8 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
     input: BuildPublishProductCommandInput,
     sourceConnectionId: string,
     destinationCategoryId: string | null,
-    attributes: Record<string, string>
+    attributes: Record<string, string>,
+    metadata: AttributeProjectionMetadata
   ): Promise<OfferParameter[]> {
     if (!destinationCategoryId) {
       return [];
@@ -230,6 +234,8 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
       destinationConnectionId: input.connectionId,
       destinationCategoryId,
       attributes,
+      // #1841 — product-derived metadata for operator place-value / scope rules.
+      metadata,
       // Shop connections expose the schema reader under `ProductPublisher`, not
       // the marketplace `OfferManager` (which they don't support — resolving it
       // would throw `CapabilityNotSupportedException`).

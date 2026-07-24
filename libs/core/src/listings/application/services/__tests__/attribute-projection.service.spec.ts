@@ -2,10 +2,10 @@
  * Unit tests for AttributeProjectionService (#1038).
  */
 import { AttributeProjectionService } from '../attribute-projection.service';
-import { AttributeMapping, AttributeValueMapping } from '@openlinker/core/mappings';
-import type { IMappingConfigService } from '@openlinker/core/mappings';
+import { AttributeMapping, AttributeValueMapping, AttributeMappingRule } from '@openlinker/core/mappings';
+import type { IMappingConfigService, AttributeMappingRuleConfig } from '@openlinker/core/mappings';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
-import type { CategoryParameter } from '@openlinker/core/listings';
+import type { CategoryParameter, AttributeProjectionMetadata } from '@openlinker/core/listings';
 
 const SRC = 'conn-source';
 const DEST = 'conn-dest';
@@ -56,17 +56,44 @@ describe('AttributeProjectionService', () => {
 
   function build(
     adapter: unknown,
-    mappings: AttributeMapping[]
+    mappings: AttributeMapping[],
+    rules: AttributeMappingRule[] = []
   ): AttributeProjectionService {
     integrations = {
       getCapabilityAdapter: jest.fn().mockResolvedValue(adapter),
     } as jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
     mappingConfig = {
       getAttributeMappings: jest.fn().mockResolvedValue(mappings),
-    } as jest.Mocked<Pick<IMappingConfigService, 'getAttributeMappings'>>;
+      getAttributeMappingRules: jest.fn().mockResolvedValue(rules),
+    } as jest.Mocked<Pick<IMappingConfigService, 'getAttributeMappings' | 'getAttributeMappingRules'>>;
     return new AttributeProjectionService(
       integrations as unknown as IIntegrationsService,
       mappingConfig as unknown as IMappingConfigService
+    );
+  }
+
+  function rule(
+    destinationParameterName: string,
+    config: AttributeMappingRuleConfig,
+    opts: {
+      priority?: number;
+      id?: string;
+      sourceConnectionId?: string | null;
+      destinationCategoryId?: string | null;
+      manufacturerMatch?: string | null;
+      phraseMatch?: string | null;
+    } = {}
+  ): AttributeMappingRule {
+    return new AttributeMappingRule(
+      opts.id ?? `r-${destinationParameterName}-${opts.priority ?? 0}`,
+      DEST,
+      destinationParameterName,
+      config,
+      opts.priority ?? 0,
+      opts.sourceConnectionId ?? null,
+      opts.destinationCategoryId ?? null,
+      opts.manufacturerMatch ?? null,
+      opts.phraseMatch ?? null
     );
   }
 
@@ -168,6 +195,7 @@ describe('AttributeProjectionService', () => {
     const mappingConfigMock = {
       getAttributeMappings: jest.fn().mockResolvedValue([]),
       getAttributeMappingsByProvenance,
+      getAttributeMappingRules: jest.fn().mockResolvedValue([]),
     } as unknown as IMappingConfigService;
     const svc = new AttributeProjectionService(integrationsMock, mappingConfigMock);
 
@@ -185,6 +213,7 @@ describe('AttributeProjectionService', () => {
     const mappingConfigMock = {
       getAttributeMappings: jest.fn().mockResolvedValue([mapping('Color', 'colour')]),
       getAttributeMappingsByProvenance,
+      getAttributeMappingRules: jest.fn().mockResolvedValue([]),
     } as unknown as IMappingConfigService;
     const svc = new AttributeProjectionService(integrationsMock, mappingConfigMock);
 
@@ -224,5 +253,192 @@ describe('AttributeProjectionService', () => {
 
     expect(result.parameters).toEqual([]);
     expect(result.unmappedSourceKeys).toEqual(['Fabric']);
+  });
+
+  describe('operator attribute mapping rules (#1841)', () => {
+    const inputWith = (
+      attributes: Record<string, string>,
+      metadata?: AttributeProjectionMetadata
+    ) => ({ ...input(attributes), ...(metadata ? { metadata } : {}) });
+
+    it('applies a fixed-value rule (owns dictionary param)', async () => {
+      const params = [
+        param({
+          id: 'p-brand',
+          name: 'Marka',
+          type: 'dictionary',
+          required: true,
+          dictionary: [{ id: 'd-acme', value: 'ACME' }],
+        }),
+      ];
+      service = build(ownsAdapter(params), [], [rule('Marka', { kind: 'fixed', value: 'ACME' })]);
+
+      const result = await service.project(input({}));
+
+      expect(result.parameters).toEqual([{ id: 'p-brand', valuesIds: ['d-acme'], section: 'offer' }]);
+      expect(result.unresolvedRequired).toEqual([]);
+    });
+
+    it('applies a fixed-value rule on the borrows/pass-through path', async () => {
+      service = build(passthroughAdapter(), [], [rule('Brand', { kind: 'fixed', value: 'ACME' })]);
+
+      const result = await service.project(input({}));
+
+      expect(result.parameters).toEqual([{ id: 'Brand', values: ['ACME'], section: 'offer' }]);
+    });
+
+    it('applies a copy-remap rule (36S -> 36) and marks the source key used', async () => {
+      const params = [param({ id: 'p-size', name: 'Rozmiar' })];
+      service = build(
+        ownsAdapter(params),
+        [],
+        [
+          rule('Rozmiar', {
+            kind: 'copy-remap',
+            sourceAttributeKey: 'Size',
+            valueRemap: [{ sourceValue: '36S', destinationValue: '36' }],
+          }),
+        ]
+      );
+
+      const result = await service.project(input({ Size: '36S' }));
+
+      expect(result.parameters).toEqual([{ id: 'p-size', values: ['36'], section: 'offer' }]);
+      expect(result.unmappedSourceKeys).toEqual([]);
+    });
+
+    it('copy-remap passes the source value through when no remap entry matches', async () => {
+      service = build(
+        passthroughAdapter(),
+        [],
+        [rule('Rozmiar', { kind: 'copy-remap', sourceAttributeKey: 'Size', valueRemap: [] })]
+      );
+
+      const result = await service.project(input({ Size: '42' }));
+
+      expect(result.parameters).toEqual([{ id: 'Rozmiar', values: ['42'], section: 'offer' }]);
+    });
+
+    it('skips a copy-remap rule whose source attribute is absent', async () => {
+      const params = [param({ id: 'p-size', name: 'Rozmiar' })];
+      service = build(
+        ownsAdapter(params),
+        [],
+        [rule('Rozmiar', { kind: 'copy-remap', sourceAttributeKey: 'Size', valueRemap: [] })]
+      );
+
+      const result = await service.project(input({}));
+
+      expect(result.parameters).toEqual([]);
+    });
+
+    it.each([
+      ['name', { productName: 'Widget Pro' }, 'Widget Pro'],
+      ['variant', { variantName: 'Red / M' }, 'Red / M'],
+      ['manufacturer', { manufacturer: 'ACME' }, 'ACME'],
+      ['ean', { ean: '5901234123457' }, '5901234123457'],
+      ['sku', { sku: 'SKU-1' }, 'SKU-1'],
+      ['weight', { weight: '1.5' }, '1.5'],
+    ] as const)('fills a place-value rule from metadata.%s', async (source, metadata, expected) => {
+      service = build(
+        passthroughAdapter(),
+        [],
+        [rule('Field', { kind: 'place-value', source })]
+      );
+
+      const result = await service.project(inputWith({}, metadata));
+
+      expect(result.parameters).toEqual([{ id: 'Field', values: [expected], section: 'offer' }]);
+    });
+
+    it('skips a place-value rule when the metadata field is missing', async () => {
+      service = build(passthroughAdapter(), [], [rule('Field', { kind: 'place-value', source: 'sku' })]);
+
+      const result = await service.project(input({}));
+
+      expect(result.parameters).toEqual([]);
+    });
+
+    it('applies rules in priority order, later rule wins for the same parameter', async () => {
+      service = build(
+        passthroughAdapter(),
+        [],
+        [
+          rule('Brand', { kind: 'fixed', value: 'first' }, { priority: 10, id: 'r-a' }),
+          rule('Brand', { kind: 'fixed', value: 'second' }, { priority: 20, id: 'r-b' }),
+        ]
+      );
+
+      const result = await service.project(input({}));
+
+      expect(result.parameters).toEqual([{ id: 'Brand', values: ['second'], section: 'offer' }]);
+    });
+
+    it('a rule wins over a legacy attribute mapping for the same destination parameter', async () => {
+      const params = [param({ id: 'p-mat', name: 'Material' })];
+      service = build(
+        ownsAdapter(params),
+        [mapping('Fabric', 'Material', { values: [{ sourceValue: 'C', destinationValue: 'from-mapping' }] })],
+        [rule('Material', { kind: 'fixed', value: 'from-rule' })]
+      );
+
+      const result = await service.project(input({ Fabric: 'C' }));
+
+      expect(result.parameters).toEqual([{ id: 'p-mat', values: ['from-rule'], section: 'offer' }]);
+    });
+
+    it('filters a rule out by destination category scope', async () => {
+      service = build(
+        passthroughAdapter(),
+        [],
+        [rule('Brand', { kind: 'fixed', value: 'X' }, { destinationCategoryId: 'other-cat' })]
+      );
+
+      const result = await service.project(input({}));
+
+      expect(result.parameters).toEqual([]);
+    });
+
+    it('filters a rule by manufacturer scope (case-insensitive)', async () => {
+      service = build(
+        passthroughAdapter(),
+        [],
+        [
+          rule('Brand', { kind: 'fixed', value: 'match' }, { manufacturerMatch: 'acme' }),
+          rule('Other', { kind: 'fixed', value: 'nomatch' }, { manufacturerMatch: 'nike' }),
+        ]
+      );
+
+      const result = await service.project(inputWith({}, { manufacturer: 'ACME' }));
+
+      expect(result.parameters).toEqual([{ id: 'Brand', values: ['match'], section: 'offer' }]);
+    });
+
+    it('filters a rule by product-name phrase scope (substring, case-insensitive)', async () => {
+      service = build(
+        passthroughAdapter(),
+        [],
+        [
+          rule('Brand', { kind: 'fixed', value: 'match' }, { phraseMatch: 'pro' }),
+          rule('Other', { kind: 'fixed', value: 'nomatch' }, { phraseMatch: 'lite' }),
+        ]
+      );
+
+      const result = await service.project(inputWith({}, { productName: 'Widget PRO Max' }));
+
+      expect(result.parameters).toEqual([{ id: 'Brand', values: ['match'], section: 'offer' }]);
+    });
+
+    it('honours source-connection scope on a rule', async () => {
+      service = build(
+        passthroughAdapter(),
+        [],
+        [rule('Brand', { kind: 'fixed', value: 'X' }, { sourceConnectionId: 'other-source' })]
+      );
+
+      const result = await service.project(input({}));
+
+      expect(result.parameters).toEqual([]);
+    });
   });
 });

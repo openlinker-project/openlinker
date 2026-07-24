@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
 import { Alert } from '../../shared/ui/alert';
 import { MappingPanel, type MappingRow } from '../../features/mappings/components/MappingPanel';
 import { RoutingRulesPanel } from '../../features/mappings/components/routing-rules-panel';
+import { AttributeRulesPanel } from '../../features/mappings/components/attribute-rules-panel';
 import { useStatusMappingsQuery, useUpsertStatusMappings } from '../../features/mappings/hooks/use-status-mappings';
 import { useCarrierMappingsQuery, useUpsertCarrierMappings } from '../../features/mappings/hooks/use-carrier-mappings';
 import { usePaymentMappingsQuery, useUpsertPaymentMappings } from '../../features/mappings/hooks/use-payment-mappings';
@@ -28,7 +29,7 @@ import { OL_ORDER_STATUS_OPTIONS, type MappingOption } from '../../features/mapp
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { DesktopOnlyBanner } from '../../shared/ui/desktop-only-banner';
 
-type TabId = 'fulfillment' | 'status' | 'carriers' | 'payments' | 'order-states';
+type TabId = 'fulfillment' | 'status' | 'carriers' | 'payments' | 'order-states' | 'attribute-rules';
 
 interface FallbackBannerSpec {
   tone: 'info' | 'warning';
@@ -136,6 +137,13 @@ export function ConnectionMappingsPage(): ReactElement {
   const supportsOrderProcessor =
     connectionQuery.data?.supportedCapabilities.includes('OrderProcessorManager') ?? false;
 
+  // Attribute mapping rules (#1841) feed attribute projection, which runs for
+  // marketplace offer creation (OfferManager) and shop publish (ProductPublisher).
+  // Capability-gated to publish-capable destinations, never platformType-based.
+  const caps = connectionQuery.data?.supportedCapabilities ?? [];
+  const supportsAttributeRules =
+    caps.includes('OfferManager') || caps.includes('ProductPublisher');
+
   // Routing rules feed two things: the Fulfillment tab and the routing-aware
   // carrier-banner count (#836). Gated to OrderSource connections (no rules
   // exist otherwise); deduped with the panel's own subscription.
@@ -179,6 +187,9 @@ export function ConnectionMappingsPage(): ReactElement {
     { id: 'carriers' as const, label: 'Carriers' },
     { id: 'payments' as const, label: 'Payments' },
     ...(supportsOrderProcessor ? [{ id: 'order-states' as const, label: 'Order States' }] : []),
+    ...(supportsAttributeRules
+      ? [{ id: 'attribute-rules' as const, label: 'Attribute Rules' }]
+      : []),
   ];
   const defaultTab = tabs[0].id;
 
@@ -387,6 +398,12 @@ export function ConnectionMappingsPage(): ReactElement {
               optionsLoading={optionsLoading}
               optionsError={orderStateOptionsError}
             />
+          </TabsContent>
+        )}
+
+        {supportsAttributeRules && (
+          <TabsContent value="attribute-rules">
+            <AttributeRulesPanel connectionId={connectionId} />
           </TabsContent>
         )}
       </Tabs>
