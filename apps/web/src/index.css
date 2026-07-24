@@ -15945,6 +15945,10 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   margin: var(--space-2) 0 0;
   font-family: var(--font-mono);
   font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
 /* ── Mapping pairing route strip (#1784) ──────────────────────────────
  * Source -> destination pair shown under the Mapping Configuration title.
  * Two labelled platform nodes joined by a directional connector; stacks
@@ -16075,6 +16079,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   .infakt-webhook__exchange { grid-template-columns: 1fr; }
   .infakt-webhook__seam { height: 1px; width: 100%; }
   .infakt-webhook__seam-glyph { transform: translate(-50%, -50%) rotate(90deg); }
+}
 .mapping-pair__connector {
   position: relative;
   width: 72px;
