@@ -1,0 +1,23 @@
+{
+  "name": "@openlinker/e2e",
+  "version": "0.1.0",
+  "description": "Browser-level end-to-end tests for OpenLinker operator flows (Playwright).",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "test:e2e": "pnpm test:e2e:unattended",
+    "test:e2e:unattended": "playwright test --project=setup --project=smoke --project=golden-path --project=webhooks --project=woocommerce-parity --project=lifecycle --project=access-control --project=shipping --project=invoicing",
+    "test:e2e:full-flow": "E2E_ATTENDED=1 playwright test --project=full-flow --headed",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:report": "playwright show-report",
+    "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\" playwright.config.ts",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@types/node": "20.11.30",
+    "typescript": "5.4.3"
+  }
+}
