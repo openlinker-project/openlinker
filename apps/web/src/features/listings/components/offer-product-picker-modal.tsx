@@ -517,15 +517,16 @@ export function OfferProductPickerModal({
   }, []);
 
   // Item total across products: an explicit set counts its size; a whole
-  // product counts its known variant count, else 1.
+  // product counts its known variant count (loaded count, else the list
+  // query's own variantCount, else 1 for a genuinely-unknown product).
   const itemCount = useMemo(() => {
     let sum = 0;
     for (const [productId, entry] of selection) {
       if (entry instanceof Set) sum += entry.size;
-      else sum += variantCounts.get(productId) ?? 1;
+      else sum += variantCounts.get(productId) ?? productMeta.get(productId)?.variantCount ?? 1;
     }
     return sum;
-  }, [selection, variantCounts]);
+  }, [selection, variantCounts, productMeta]);
 
   // Per-product rail rows, derived from the selection + accumulated metadata.
   const railGroups = useMemo<RailGroup[]>(() => {
