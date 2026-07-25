@@ -514,7 +514,12 @@ describe('ProductPublishExecutionService', () => {
         expect(result.outcome).toBe('ok');
       });
 
-      it('should recover the PARENT mapping (not the variant mapping) when the parent upsert 404s and an existing variant mapping is present', async () => {
+      it('should recover BOTH the parent and the variant mapping when the parent upsert 404s and an existing variant mapping is present (WC cascade-delete, #1838 fix)', async () => {
+        // Deleting a WooCommerce `type:'variable'` parent cascade-deletes its
+        // child variations, so a stale-parent recovery must also treat this
+        // sibling's own (existing) variation id as dead — not just the
+        // parent's id — and must NOT retry the variation upsert against the
+        // old (now-nonexistent-under-the-fresh-parent) variation id.
         identifierMapping.getExternalIds.mockImplementation(
           (entityType: string, internalId: string) => {
             if (internalId === GROUP_ID) {
@@ -528,46 +533,50 @@ describe('ProductPublishExecutionService', () => {
           },
         );
         const NEW_PARENT_EXT = 'wc-parent-99';
+        const NEW_VARIATION_EXT = 'wc-variation-99';
         adapter.publishProduct
           .mockRejectedValueOnce(
             new ProductPublishTargetNotFoundException('woocommerce.restapi.v3', PARENT_EXT),
           )
           .mockResolvedValueOnce({
-            externalProductId: VARIATION_EXT,
+            externalProductId: NEW_VARIATION_EXT,
             status: 'published',
             externalParentProductId: NEW_PARENT_EXT,
           });
 
         const result = await service.executePublish(input);
 
-        // Only the PARENT mapping is deleted — the variant's own mapping is untouched.
+        // Both the stale parent mapping AND the now-equally-stale variant
+        // mapping are deleted — the parent's cascade-delete took the
+        // variation with it.
         expect(identifierMapping.deleteMapping).toHaveBeenCalledWith('ShopProduct', PARENT_EXT, CONN);
-        expect(identifierMapping.deleteMapping).not.toHaveBeenCalledWith(
+        expect(identifierMapping.deleteMapping).toHaveBeenCalledWith(
           'ShopProduct',
           VARIATION_EXT,
           CONN,
         );
         expect(adapter.publishProduct).toHaveBeenCalledTimes(2);
+        // The retried command is a CREATE on BOTH axes: no stale variation id
+        // is retried against the freshly-created (zero-variation) parent.
         expect(adapter.publishProduct).toHaveBeenNthCalledWith(
           2,
           expect.objectContaining({
-            externalProductId: VARIATION_EXT,
+            externalProductId: null,
             variantGroup: expect.objectContaining({ externalParentProductId: null }),
           }),
         );
-        // Fresh parent mapping written; the variant's own mapping already
-        // existed and is not re-created.
+        // Fresh mappings written for BOTH the new variation and the new parent.
+        expect(identifierMapping.createMapping).toHaveBeenCalledWith(
+          'ShopProduct',
+          NEW_VARIATION_EXT,
+          CONN,
+          VARIANT,
+        );
         expect(identifierMapping.createMapping).toHaveBeenCalledWith(
           'ShopProduct',
           NEW_PARENT_EXT,
           CONN,
           GROUP_ID,
-        );
-        expect(identifierMapping.createMapping).not.toHaveBeenCalledWith(
-          'ShopProduct',
-          expect.anything(),
-          CONN,
-          VARIANT,
         );
         expect(result.outcome).toBe('ok');
       });

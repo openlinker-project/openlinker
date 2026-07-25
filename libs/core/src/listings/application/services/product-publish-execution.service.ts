@@ -214,9 +214,17 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
               adapter,
               command,
               input,
-              existingParentExternalProductId
+              existingParentExternalProductId,
+              existingExternalProductId
             );
             parentMappingNeedsCreate = true;
+            // A WooCommerce `type:'variable'` parent CASCADE-DELETES its child
+            // variations when it's deleted shop-side — the stale-parent recovery
+            // above therefore also invalidates this sibling's own variation id
+            // (if it had one), not just the parent id. Force the variant's own
+            // mapping to be (re)written too, mirroring
+            // `recreateAfterStaleUpsertTarget`'s posture.
+            mappingNeedsCreate = true;
           } catch (recoveryError) {
             if (recoveryError instanceof ProductPublishRejectedException) {
               return this.recordRejection(record.id, input.connectionId, recoveryError);
@@ -361,25 +369,47 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
    * {@link recreateAfterStaleUpsertTarget}, which recovers the variant/variation's
    * OWN stale mapping — the two are mutually exclusive per invocation because
    * only one id can be the one that actually 404'd.
+   *
+   * A deleted WooCommerce `type:'variable'` parent CASCADE-DELETES its child
+   * variations, so if this variant already had its own mapping
+   * (`existingVariantExternalProductId`), that variation id is dead too — not
+   * just the parent's. The retried command therefore ALSO clears
+   * `externalProductId` (forcing the adapter's variation upsert to CREATE
+   * instead of PUT against a variation id that no longer exists under the
+   * freshly-created parent), and the dead variant mapping is deleted alongside
+   * the parent's so both are cleanly re-created by the caller.
    */
   private async recreateAfterStaleParentTarget(
     adapter: ShopProductManagerPort,
     command: PublishProductCommand,
     input: ExecutePublishProductInput,
-    staleParentExternalProductId: string
+    staleParentExternalProductId: string,
+    existingVariantExternalProductId: string | null
   ): Promise<PublishProductResult> {
     this.logger.warn(
       `Stale ShopProduct PARENT mapping detected; grouped-parent upsert target missing shop-side. ` +
         `Deleting parent mapping and re-creating. connectionId=${input.connectionId} ` +
-        `internalVariantId=${input.internalVariantId} staleParentExternalProductId=${staleParentExternalProductId}`
+        `internalVariantId=${input.internalVariantId} staleParentExternalProductId=${staleParentExternalProductId} ` +
+        `existingVariantExternalProductId=${existingVariantExternalProductId ?? '<none>'}`
     );
     await this.identifierMapping.deleteMapping(
       CORE_ENTITY_TYPE.ShopProduct,
       staleParentExternalProductId,
       input.connectionId
     );
+    if (existingVariantExternalProductId) {
+      // The parent's cascade-delete took this variant's own variation with it —
+      // its mapping is equally stale and must not survive to be reused as an
+      // upsert target against the fresh parent (which has zero variations).
+      await this.identifierMapping.deleteMapping(
+        CORE_ENTITY_TYPE.ShopProduct,
+        existingVariantExternalProductId,
+        input.connectionId
+      );
+    }
     const retriedCommand: PublishProductCommand = {
       ...command,
+      externalProductId: null,
       variantGroup: command.variantGroup
         ? { ...command.variantGroup, externalParentProductId: null }
         : command.variantGroup,
