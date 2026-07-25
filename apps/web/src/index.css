@@ -9706,94 +9706,11 @@ input.bulk-dispatch__num--wide {
   gap: var(--space-4);
 }
 
-.bulk-shop-review__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.bulk-shop-review__row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.bulk-shop-review__row:last-child {
-  border-bottom: none;
-}
-
-.bulk-shop-review__row-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.bulk-shop-review__row-main small {
-  color: var(--text-muted);
-}
-
-.bulk-shop-review__cell {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: flex-end;
-  min-width: 72px;
-  font-size: 13px;
-}
-
-.bulk-shop-review__cell-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-wide);
-  color: var(--text-muted);
-}
-
-.bulk-shop-review__remove {
-  border: none;
-  background: none;
-  cursor: pointer;
-  color: var(--text-muted);
-  font-size: 18px;
-  line-height: 1;
-  padding: 0 var(--space-1);
-}
-
-.bulk-shop-review__remove:hover {
-  color: var(--text-primary);
-}
-
-/* Product-grouped expand/collapse (#1838 - parity with .bulk-review__prow) */
-.bulk-shop-review__group {
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.bulk-shop-review__group:last-child {
-  border-bottom: none;
-}
-
-.bulk-shop-review__group-head {
-  border-bottom: none;
-  gap: var(--space-2);
-}
-
-.bulk-shop-review__vrows {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.bulk-shop-review__vrows .bulk-shop-review__row {
-  padding-left: calc(var(--space-3) + 24px);
-}
+/* Structural parity with the marketplace review table (#1838): rows are built
+ * on the SAME `.bulk-review__table` / `.bulk-review__grid` / `.bulk-review__prow`
+ * classes as `bulk-review-step.tsx` - no shop-specific row layout remains.
+ * `.bulk-shop-review__vrows` is kept only as an additive class on top of
+ * `.bulk-review__vrows` (a test/query hook); it has no rule of its own here. */
 
 /* Edit modal — AI button row */
 .bulk-edit__desc-row {
@@ -11157,9 +11074,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   font-size: 12.5px;
 }
 .shop-attr-picker__added-label { flex: 1; min-width: 0; word-break: break-word; }
-
-/* ── Shop review: per-product edit affordance (#1830) ── */
-.bulk-shop-review__edit { flex: none; }
 
 /* ── Per-product progress rollup (#1741) ── */
 .bulk-progress__list { display: flex; flex-direction: column; gap: var(--space-2); }
