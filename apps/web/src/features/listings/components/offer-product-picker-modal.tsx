@@ -69,19 +69,13 @@ import { useConnectionsQuery } from '../../connections';
 import { useProductQuery, useProductsQuery } from '../../products';
 import type { Product, ProductVariant } from '../../products';
 import { selectPublishDestinations } from '../lib/publish-destinations';
-import { usePublishedVariantsQuery } from '../hooks/use-published-variants-query';
-import { DuplicateGuardModal } from './duplicate-guard-modal';
 import { PublishDestinationRail } from './publish-destination-rail';
-import { AlreadyListedChip } from './already-listed-chip';
 
 /** Max distinct products per batch (mirrors the `/products` BULK_SELECTION_CAP,
  *  kept local per R1 to avoid a `features -> pages` import). */
 const OFFER_PICKER_PRODUCT_CAP = 100;
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
-
-/** Stable empty set so a render without published data keeps a constant ref. */
-const EMPTY_PUBLISHED_SET: ReadonlySet<string> = new Set<string>();
 
 /** Per-product selection: whole product, or an explicit variant subset. */
 type SelectionEntry = 'ALL' | Set<string>;
@@ -92,6 +86,15 @@ type PickerStep = 'products' | 'review';
 interface OfferProductPickerModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /**
+   * Whole-product ids to preselect on open (#1838 unification: the Products
+   * page's bulk-select CTA feeds its checkbox selection in here instead of
+   * opening a separate destination-only picker). Optional — omit for a
+   * fresh, empty selection.
+   */
+  initialProductIds?: readonly string[];
+  /** Product objects for `initialProductIds`, so the rail can render names/images immediately without waiting on this picker's own paginated query to reach them. */
+  initialProductMeta?: readonly Product[];
 }
 
 function variantLabel(product: Product, variant: ProductVariant): string {
@@ -127,9 +130,6 @@ interface PickerProductRowProps {
   isExpanded: boolean;
   entry: SelectionEntry | undefined;
   capBlocked: boolean;
-  /** Destination name when this product is already published there (#1837);
-   *  null when not / no destination. Renders the shared `AlreadyListedChip`. */
-  alreadyOnDestinationName: string | null;
   onToggleExpand: () => void;
   onSelectAll: () => void;
   onClear: () => void;
@@ -142,7 +142,6 @@ function PickerProductRow({
   isExpanded,
   entry,
   capBlocked,
-  alreadyOnDestinationName,
   onToggleExpand,
   onSelectAll,
   onClear,
@@ -231,14 +230,7 @@ function PickerProductRow({
               {variantCount} {variantCount === 1 ? 'variant' : 'variants'}
             </span>
           ) : null}
-          {alreadyOnDestinationName ? (
-            <AlreadyListedChip
-              destinationName={alreadyOnDestinationName}
-              title={`already on ${alreadyOnDestinationName}`}
-            />
-          ) : null}
           <span className="offer-product-picker__chev" aria-hidden="true">
-
             ▸
           </span>
         </button>
@@ -321,14 +313,13 @@ interface RailGroup {
   wholeEan: { loaded: boolean; needCount: number } | null;
   /** Selected variants for a subset pick; `null` for a whole-product pick. */
   selected: { id: string; label: string; hasBarcode: boolean }[] | null;
-  /** True when this product is already published on the resolved destination
-   *  (#1837): any known selected variant mapped, or marketplace coverage. */
-  alreadyOnDestination: boolean;
 }
 
 export function OfferProductPickerModal({
   isOpen,
   onClose,
+  initialProductIds,
+  initialProductMeta,
 }: OfferProductPickerModalProps): ReactElement | null {
   const navigate = useNavigate();
 
@@ -340,8 +331,6 @@ export function OfferProductPickerModal({
   const [pickedConnectionId, setPickedConnectionId] = useState<string>('');
   const [step, setStep] = useState<PickerStep>('products');
   const [discardOpen, setDiscardOpen] = useState(false);
-  // #1837 duplicate guard: open once Continue detects already-published variants.
-  const [dupGuardOpen, setDupGuardOpen] = useState(false);
   // Accumulated product / variant metadata for the rail review, so a product
   // selected then paged away still renders its name, image, and variant labels.
   const [productMeta, setProductMeta] = useState<Map<string, Product>>(new Map());
@@ -366,11 +355,31 @@ export function OfferProductPickerModal({
       setPickedConnectionId('');
       setStep('products');
       setDiscardOpen(false);
-      setDupGuardOpen(false);
       setProductMeta(new Map());
       setVariantMeta(new Map());
     }
   }, [isOpen]);
+
+  // Seed a preselected whole-product set on open (#1838) - the Products page
+  // bulk-select CTA hands its checkbox selection in here instead of opening a
+  // separate destination-only picker, so the operator sees the same product
+  // list + rail they'd get from /listings, with their picks already checked.
+  useEffect(() => {
+    if (!isOpen || !initialProductIds || initialProductIds.length === 0) return;
+    setSelection((prev) => {
+      if (prev.size > 0) return prev;
+      const next = new Map(prev);
+      for (const id of initialProductIds) next.set(id, 'ALL');
+      return next;
+    });
+    if (initialProductMeta && initialProductMeta.length > 0) {
+      setProductMeta((prev) => {
+        const next = new Map(prev);
+        for (const p of initialProductMeta) next.set(p.id, p);
+        return next;
+      });
+    }
+  }, [isOpen, initialProductIds, initialProductMeta]);
 
   const connectionsQuery = useConnectionsQuery();
   // Both destination kinds are eligible - Continue routes each into the bulk
@@ -518,53 +527,6 @@ export function OfferProductPickerModal({
     return sum;
   }, [selection, variantCounts]);
 
-  // #1837 duplicate guard: variant ids we can check against the destination -
-  // explicit variant-subset picks + any loaded (expanded) product's variants.
-  // Whole-product picks contribute their loaded variants; unexpanded ones fall
-  // back to marketplace coverage below. Best-effort in the picker; the wizard
-  // Review re-checks every variant authoritatively.
-  const knownVariantIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const entry of selection.values()) {
-      if (entry instanceof Set) for (const id of entry) ids.add(id);
-    }
-    for (const variants of variantMeta.values()) {
-      for (const v of variants) ids.add(v.id);
-    }
-    return [...ids];
-  }, [selection, variantMeta]);
-
-  const publishedQuery = usePublishedVariantsQuery(resolvedConnectionId, knownVariantIds);
-  const publishedSet = publishedQuery.data ?? EMPTY_PUBLISHED_SET;
-
-  // Marketplace-only cheap signal: the products list already carries per-product
-  // Offer coverage (#1720), so an unexpanded whole-product pick still flags on a
-  // marketplace destination. Shops carry no coverage - they flag via the
-  // variant-level `publishedSet` once variants are known.
-  const productHasMarketplaceCoverage = useCallback(
-    (product: Product | undefined): boolean => {
-      if (!product || resolvedConnectionId === null) return false;
-      return (product.listingsCoverage ?? []).some(
-        (c) => c.connectionId === resolvedConnectionId && c.listedVariants > 0,
-      );
-    },
-    [resolvedConnectionId],
-  );
-
-  const destinationName = resolvedDestination?.connection.name ?? null;
-
-  // Whether a product LIST row should show the "already on {destination}" badge:
-  // marketplace coverage (unexpanded) or any loaded published variant (#1837).
-  const productAlreadyOnList = useCallback(
-    (product: Product): boolean => {
-      if (resolvedConnectionId === null) return false;
-      if (productHasMarketplaceCoverage(product)) return true;
-      const loaded = variantMeta.get(product.id);
-      return loaded ? loaded.some((v) => publishedSet.has(v.id)) : false;
-    },
-    [resolvedConnectionId, productHasMarketplaceCoverage, variantMeta, publishedSet],
-  );
-
   // Per-product rail rows, derived from the selection + accumulated metadata.
   const railGroups = useMemo<RailGroup[]>(() => {
     const groups: RailGroup[] = [];
@@ -581,9 +543,6 @@ export function OfferProductPickerModal({
               needCount: loadedVariants.filter((v) => !variantHasBarcode(v)).length,
             }
           : { loaded: false, needCount: 0 };
-        const wholeAlreadyOn =
-          productHasMarketplaceCoverage(meta) ||
-          (loadedVariants?.some((v) => publishedSet.has(v.id)) ?? false);
         groups.push({
           productId,
           name: meta?.name ?? productId,
@@ -592,7 +551,6 @@ export function OfferProductPickerModal({
           totalVariants,
           wholeEan,
           selected: null,
-          alreadyOnDestination: wholeAlreadyOn,
         });
         continue;
       }
@@ -612,11 +570,10 @@ export function OfferProductPickerModal({
         totalVariants,
         wholeEan: null,
         selected,
-        alreadyOnDestination: selected.some((s) => publishedSet.has(s.id)),
       });
     }
     return groups;
-  }, [selection, productMeta, variantMeta, variantCounts, publishedSet, productHasMarketplaceCoverage]);
+  }, [selection, productMeta, variantMeta, variantCounts]);
 
   // Selected variants (across groups) whose barcode is missing, best-effort
   // from loaded metadata. Whole-product picks contribute their known variants.
@@ -633,24 +590,7 @@ export function OfferProductPickerModal({
     return sum;
   }, [railGroups, variantMeta]);
 
-  // Count of selected variants already published on the resolved destination.
-  // Explicit subsets count their published members; whole-product picks count
-  // their loaded published variants (best-effort, see `knownVariantIds`).
-  const duplicateVariantCount = useMemo(() => {
-    if (resolvedConnectionId === null || publishedSet.size === 0) return 0;
-    let n = 0;
-    for (const [productId, entry] of selection) {
-      if (entry instanceof Set) {
-        for (const id of entry) if (publishedSet.has(id)) n += 1;
-      } else {
-        const loaded = variantMeta.get(productId) ?? [];
-        for (const v of loaded) if (publishedSet.has(v.id)) n += 1;
-      }
-    }
-    return n;
-  }, [selection, variantMeta, publishedSet, resolvedConnectionId]);
-
-  const proceed = useCallback(() => {
+  const handleContinue = useCallback(() => {
     if (selection.size === 0 || resolvedConnectionId === null) return;
     const productIds: string[] = [];
     // Explicit variant-subset picks contribute their ids; whole-product picks
@@ -669,17 +609,6 @@ export function OfferProductPickerModal({
     params.set('connectionId', resolvedConnectionId);
     void navigate(`/listings/bulk-create/wizard?${params.toString()}`);
   }, [selection, resolvedConnectionId, navigate]);
-
-  // Continue gate (#1837): a duplicate present opens the soft confirm first; the
-  // operator can go back or proceed anyway. No duplicates continues directly.
-  const handleContinue = useCallback(() => {
-    if (selection.size === 0 || resolvedConnectionId === null) return;
-    if (duplicateVariantCount > 0) {
-      setDupGuardOpen(true);
-      return;
-    }
-    proceed();
-  }, [selection.size, resolvedConnectionId, duplicateVariantCount, proceed]);
 
   // Discard guard: a pending selection intercepts every close path (X, Cancel,
   // esc, outside-click) with a confirm; an empty selection closes directly.
@@ -805,9 +734,6 @@ export function OfferProductPickerModal({
                         isExpanded={expanded.has(product.id)}
                         entry={selection.get(product.id)}
                         capBlocked={capReached && !selection.has(product.id)}
-                        alreadyOnDestinationName={
-                          productAlreadyOnList(product) && destinationName ? destinationName : null
-                        }
                         onToggleExpand={() => toggleExpand(product.id)}
                         onSelectAll={() => selectAllProduct(product.id, product.variantCount)}
                         onClear={() => clearProduct(product.id)}
@@ -963,12 +889,6 @@ export function OfferProductPickerModal({
                               ready
                             </span>
                           )}
-                          {group.alreadyOnDestination && destinationName ? (
-                            <AlreadyListedChip
-                              destinationName={destinationName}
-                              title={`already on ${destinationName}`}
-                            />
-                          ) : null}
                           <button
                             type="button"
                             className="offer-product-picker__rm"
@@ -1110,22 +1030,6 @@ export function OfferProductPickerModal({
           onClose();
         }}
       />
-
-      {resolvedKind !== null && destinationName !== null ? (
-        <DuplicateGuardModal
-          open={dupGuardOpen}
-          onOpenChange={setDupGuardOpen}
-          kind={resolvedKind}
-          destinationName={destinationName}
-          duplicateCount={duplicateVariantCount}
-          className="dialog__content--elevated"
-          overlayClassName="dialog__overlay--elevated"
-          onConfirm={() => {
-            setDupGuardOpen(false);
-            proceed();
-          }}
-        />
-      ) : null}
     </>
   );
 }
