@@ -63,7 +63,7 @@ import {
 } from './product-stock-status';
 import { ListingsCoveragePills } from './listings-coverage-pills';
 import { ProductRowDetail } from './product-row-detail';
-import { MarketplacePickerModal } from './marketplace-picker-modal';
+import { OfferProductPickerModal } from '../../features/listings/components/offer-product-picker-modal';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -1226,20 +1226,13 @@ export function ProductsListPage(): ReactElement {
             </div>
           </div>
 
-          <MarketplacePickerModal
-            open={pickerOpen}
-            onOpenChange={(open) => {
-              setPickerOpen(open);
-              if (!open) setPendingProductId(null);
-            }}
-            productCount={pendingProductId ? 1 : selectedIds.size}
-            destinations={publishDestinations}
-            onContinue={(connectionId) => {
+          <OfferProductPickerModal
+            isOpen={pickerOpen}
+            onClose={() => {
               setPickerOpen(false);
-              const ids = pendingProductId ? [pendingProductId] : Array.from(selectedIds);
               setPendingProductId(null);
-              dispatchPublish(ids, connectionId);
             }}
+            initialProductIds={pendingProductId ? [pendingProductId] : Array.from(selectedIds)}
           />
         </>
       )}

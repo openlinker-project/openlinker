@@ -775,8 +775,8 @@ describe('ProductsListPage', () => {
     const cta = await screen.findByRole('button', { name: 'Publish products (1)' });
     await user.click(cta);
 
-    // The picker modal appears; no navigation yet.
-    expect(await screen.findByText('Where should these publish?')).toBeInTheDocument();
+    // The unified picker modal appears (#1838); no navigation yet.
+    expect(await screen.findByText('Publish products')).toBeInTheDocument();
     expect(navigateMock).not.toHaveBeenCalled();
   });
 
