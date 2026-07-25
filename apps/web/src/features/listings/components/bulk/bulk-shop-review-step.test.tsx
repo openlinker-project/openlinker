@@ -240,10 +240,13 @@ describe('BulkShopReviewStep (render)', () => {
 
     // Displayed stock == resolved availability; price == flat policy value
     // (computed for both lines - flat pricing does not depend on inclusion).
+    // 3 occurrences: the product row's own aggregate price cell (mirrors the
+    // marketplace product row showing its first variant's price) plus the
+    // two expanded per-variant sub-rows.
     await waitFor(() => {
       expect(screen.getByText('7')).toBeInTheDocument();
     });
-    expect(screen.getAllByText('99 PLN').length).toBe(2);
+    expect(screen.getAllByText('99 PLN').length).toBe(3);
   });
 
   it('publishes the resolved items with the chosen visibility', async () => {
@@ -447,14 +450,17 @@ describe('BulkShopReviewStep grouping/filter/expand (#1838 whole-epic review)', 
       { productVariantId: 'v2', totalAvailable: 5 },
     ]);
 
-    expect(await screen.findByText('P')).toBeInTheDocument();
+    // "P" is a single-letter product name here, so it also matches the
+    // thumbnail fallback initial (`<span aria-hidden>P</span>`) - scope to
+    // the product-name `<b>` tag to disambiguate.
+    expect(await screen.findByText('P', { selector: 'b' })).toBeInTheDocument();
     expect(screen.getByText('Other')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Filter products by name or SKU'), {
       target: { value: 'Other' },
     });
 
-    expect(screen.queryByText('P')).not.toBeInTheDocument();
+    expect(screen.queryByText('P', { selector: 'b' })).not.toBeInTheDocument();
     expect(screen.getByText('Other')).toBeInTheDocument();
   });
 
@@ -468,12 +474,15 @@ describe('BulkShopReviewStep grouping/filter/expand (#1838 whole-epic review)', 
       { productVariantId: 'v2', totalAvailable: 5 },
     ]);
 
-    expect(await screen.findByText('P')).toBeInTheDocument();
+    // "P" is a single-letter product name here, so it also matches the
+    // thumbnail fallback initial (`<span aria-hidden>P</span>`) - scope to
+    // the product-name `<b>` tag to disambiguate.
+    expect(await screen.findByText('P', { selector: 'b' })).toBeInTheDocument();
     expect(screen.getByText('Other')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Only flagged' }));
 
-    expect(screen.getByText('P')).toBeInTheDocument();
+    expect(screen.getByText('P', { selector: 'b' })).toBeInTheDocument();
     expect(screen.queryByText('Other')).not.toBeInTheDocument();
   });
 });
