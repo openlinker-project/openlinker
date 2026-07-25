@@ -12,7 +12,7 @@
  * stubbed so the test isolates the editor's own logic.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { renderWithProviders } from '../../../../test/test-utils';
 import { BulkEditModal, mergeShopParameter } from './bulk-edit-modal';
 import type { BulkVariantRow, BulkWizardRow } from './bulk-wizard.types';
@@ -141,6 +141,21 @@ function renderShopEditor(
   );
 }
 
+/**
+ * Selects a variant's rail entry and returns its panel container. The base
+ * scope form stays mounted (just `hidden`) while a variant is active, so any
+ * unscoped query (e.g. the "Attribute" picker's select, present in both
+ * forms) would otherwise match twice - scoping to the panel's own subtree
+ * keeps every assertion unambiguous.
+ */
+function openVariantPanel(label: RegExp | string): HTMLElement {
+  fireEvent.click(screen.getByRole('radio', { name: label }));
+  const heading = screen.getByRole('heading', { name: /^Variant ·/ });
+  const panel = heading.closest('.bulk-editor__form');
+  if (!panel) throw new Error('variant panel container not found');
+  return panel as HTMLElement;
+}
+
 describe('mergeShopParameter', () => {
   it('appends a distinct-id parameter', () => {
     const existing: OfferParameter[] = [{ id: 'pa_color', values: ['Red'], section: 'product' }];
@@ -265,5 +280,99 @@ describe('BulkEditModal (shop mode)', () => {
       Record<string, BulkPerProductOverride>,
     ];
     expect(perVariantOverrides.v1.overrides?.description).toBe('Only for M');
+  });
+
+  it('renders provenance badges + reset affordances in the variant panel, matching the marketplace panel (#1838)', () => {
+    const row = makeRow([makeVariant('v1', { Size: 'M' }), makeVariant('v2', { Size: 'L' })]);
+    renderShopEditor(row, vi.fn());
+
+    const panel = openVariantPanel(/Size: M|M$/);
+
+    // Description, Attributes, and Price all start inherited - muted styling,
+    // no reset control yet (three "inherited" badges: description/attributes/price).
+    const description = within(panel).getByLabelText(/Description for/);
+    expect(description).toHaveClass('bulk-editor__input--inherited');
+    expect(within(panel).queryByText(/reset to base/)).not.toBeInTheDocument();
+    expect(within(panel).getAllByText('inherited').length).toBeGreaterThanOrEqual(3);
+
+    // Stock is always master-provenance, never overridable (parity with the
+    // marketplace variant panel's read-only master stock field).
+    const stock = within(panel).getByDisplayValue('5');
+    expect(stock).toHaveAttribute('readonly');
+    expect(within(panel).getByText('from master')).toBeInTheDocument();
+
+    // Overriding description flips the badge + input styling and surfaces reset.
+    fireEvent.change(description, { target: { value: 'Only for M' } });
+    expect(description).toHaveClass('bulk-editor__input--overridden');
+    const resetButton = within(panel).getByText(/reset to base/);
+    expect(resetButton).toBeInTheDocument();
+
+    fireEvent.click(resetButton);
+    expect(description).toHaveClass('bulk-editor__input--inherited');
+    expect(within(panel).queryByText(/reset to base/)).not.toBeInTheDocument();
+  });
+
+  it('emits a per-variant attribute override on top of the base list (#1838)', () => {
+    const onSave = vi.fn();
+    const row = makeRow([makeVariant('v1', { Size: 'M' }), makeVariant('v2', { Size: 'L' })]);
+    renderShopEditor(row, onSave);
+
+    // Add a base-level attribute first (single picker instance while on the
+    // shared-base scope), then switch to the variant to add its own.
+    fireEvent.change(screen.getByLabelText('Attribute'), { target: { value: 'pa_color' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Red' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add attribute' }));
+
+    const panel = openVariantPanel(/Size: M|M$/);
+    // Inherited effective list surfaces the base pick even before overriding.
+    expect(within(panel).getByText('pa_color: Red')).toBeInTheDocument();
+
+    fireEvent.change(within(panel).getByLabelText('Attribute'), { target: { value: 'pa_color' } });
+    fireEvent.click(within(panel).getByRole('checkbox', { name: 'Blue' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Add attribute' }));
+
+    expect(within(panel).getByText('overridden')).toBeInTheDocument();
+    expect(within(panel).getByText(/reset to base/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+
+    const [, baseOverride, perVariantOverrides] = onSave.mock.calls[0] as [
+      string,
+      BulkPerProductOverride,
+      Record<string, BulkPerProductOverride>,
+    ];
+    expect(baseOverride.overrides?.parameters).toEqual([
+      { id: 'pa_color', values: ['Red'], valuesIds: ['t1'], section: 'product' },
+    ]);
+    expect(perVariantOverrides.v1.overrides?.parameters).toEqual([
+      { id: 'pa_color', values: ['Red', 'Blue'], valuesIds: ['t1', 't2'], section: 'product' },
+    ]);
+    // The other variant never diverged - no override recorded for it.
+    expect(perVariantOverrides.v2).toBeUndefined();
+  });
+
+  it('reverts a per-variant attribute override to inherited via the reset control (#1838)', () => {
+    const onSave = vi.fn();
+    const row = makeRow([makeVariant('v1', { Size: 'M' }), makeVariant('v2', { Size: 'L' })]);
+    renderShopEditor(row, onSave);
+
+    const panel = openVariantPanel(/Size: M|M$/);
+    fireEvent.change(within(panel).getByLabelText('Attribute'), { target: { value: 'pa_color' } });
+    fireEvent.click(within(panel).getByRole('checkbox', { name: 'Red' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Add attribute' }));
+    expect(within(panel).getByText('overridden')).toBeInTheDocument();
+
+    fireEvent.click(within(panel).getByText(/reset to base/));
+    expect(within(panel).queryByText('overridden')).not.toBeInTheDocument();
+    expect(within(panel).queryByText('pa_color: Red')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+
+    const [, , perVariantOverrides] = onSave.mock.calls[0] as [
+      string,
+      BulkPerProductOverride,
+      Record<string, BulkPerProductOverride>,
+    ];
+    expect(perVariantOverrides.v1).toBeUndefined();
   });
 });
