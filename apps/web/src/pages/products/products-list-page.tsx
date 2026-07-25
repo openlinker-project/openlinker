@@ -1233,6 +1233,11 @@ export function ProductsListPage(): ReactElement {
               setPendingProductId(null);
             }}
             initialProductIds={pendingProductId ? [pendingProductId] : Array.from(selectedIds)}
+            initialProductMeta={
+              pendingProductId
+                ? items.filter((p) => p.id === pendingProductId)
+                : items.filter((p) => selectedIds.has(p.id))
+            }
           />
         </>
       )}
