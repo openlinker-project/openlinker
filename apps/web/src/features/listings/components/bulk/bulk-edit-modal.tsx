@@ -2521,10 +2521,17 @@ function shopParameterLabel(parameter: OfferParameter): string {
   return values === '' ? parameter.id : `${parameter.id}: ${values}`;
 }
 
-/** Per-variant shop overrides (#1830). Absent key ⇒ inherited from base. */
+/**
+ * Per-variant shop overrides (#1830). Absent key ⇒ inherited from base.
+ * `parameters` mirrors the base scope's whole-array-replace attribute model
+ * (#1835, `mergeShopParameter`) rather than a per-param diff map - the shop
+ * attribute picker adds/removes whole `OfferParameter` entries, not
+ * per-field values like the marketplace category-parameters form.
+ */
 interface ShopVariantEdit {
   description?: string;
   price?: string;
+  parameters?: OfferParameter[];
 }
 
 function initShopVariantEdit(variant: BulkVariantRow): ShopVariantEdit {
@@ -2532,6 +2539,7 @@ function initShopVariantEdit(variant: BulkVariantRow): ShopVariantEdit {
   return {
     description: typeof o.description === 'string' ? o.description : undefined,
     price: variant.override.price !== undefined ? String(variant.override.price.amount) : undefined,
+    parameters: Array.isArray(o.parameters) ? o.parameters : undefined,
   };
 }
 
@@ -2667,6 +2675,31 @@ function BulkShopEditModalForm({
     setParameters((prev) => prev.filter((p) => p.id !== id));
   }, []);
 
+  // Per-variant attribute overrides (field-completeness parity with the
+  // marketplace variant panel's category-parameter overrides). Absent
+  // `edit.parameters` ⇒ inherits the live base list; any add/remove pins an
+  // explicit array for that variant.
+  const addVariantAttribute = useCallback(
+    (variantId: string, parameter: OfferParameter): void => {
+      setVariantEdits((prev) => {
+        const current = prev[variantId];
+        const effective = current.parameters ?? parameters;
+        return { ...prev, [variantId]: { ...current, parameters: mergeShopParameter(effective, parameter) } };
+      });
+    },
+    [parameters],
+  );
+  const removeVariantAttribute = useCallback(
+    (variantId: string, id: string): void => {
+      setVariantEdits((prev) => {
+        const current = prev[variantId];
+        const effective = current.parameters ?? parameters;
+        return { ...prev, [variantId]: { ...current, parameters: effective.filter((p) => p.id !== id) } };
+      });
+    },
+    [parameters],
+  );
+
   const scopeList = useMemo(() => {
     if (!isMultiVariant) return [{ id: 'simple', label: 'Product fields' }];
     return [
@@ -2748,6 +2781,7 @@ function BulkShopEditModalForm({
         const edit = variantEdits[variant.variantId];
         const variantOverrides: BulkOfferOverrides = {};
         if (edit.description !== undefined) variantOverrides.description = edit.description;
+        if (edit.parameters !== undefined) variantOverrides.parameters = edit.parameters;
         const override: BulkPerProductOverride = {
           ...(edit.price !== undefined && edit.price.trim() !== ''
             ? { price: { amount: Number(edit.price.replace(',', '.')), currency } }
@@ -2918,6 +2952,11 @@ function BulkShopEditModalForm({
                         included={included[v.variantId]}
                         baseDescription={description}
                         basePriceValue={shopInheritedPrice(pricingPolicy, v.masterPrice)}
+                        canPickShopAttributes={canPickShopAttributes}
+                        connectionId={connectionId}
+                        baseParameters={parameters}
+                        onAddAttribute={(parameter) => addVariantAttribute(v.variantId, parameter)}
+                        onRemoveAttribute={(id) => removeVariantAttribute(v.variantId, id)}
                         onPatch={(patch) => patchVariant(v.variantId, patch)}
                         onIncludedChange={(next) =>
                           setIncluded((prev) => ({ ...prev, [v.variantId]: next }))
@@ -3332,6 +3371,13 @@ interface ShopVariantScopeFormProps {
   included: boolean;
   baseDescription: string;
   basePriceValue: string;
+  /** Gates the Attributes block (ShopAttributeReader capability, #1835). */
+  canPickShopAttributes: boolean;
+  connectionId: string;
+  /** Live base-scope attribute list this variant inherits when un-overridden. */
+  baseParameters: OfferParameter[];
+  onAddAttribute: (parameter: OfferParameter) => void;
+  onRemoveAttribute: (id: string) => void;
   onPatch: (patch: Partial<ShopVariantEdit>) => void;
   onIncludedChange: (next: boolean) => void;
 }
@@ -3343,10 +3389,17 @@ function ShopVariantScopeForm({
   included,
   baseDescription,
   basePriceValue,
+  canPickShopAttributes,
+  connectionId,
+  baseParameters,
+  onAddAttribute,
+  onRemoveAttribute,
   onPatch,
   onIncludedChange,
 }: ShopVariantScopeFormProps): ReactElement {
   const label = distinguishingLabel(variant, index);
+  const effectiveParameters = edit.parameters ?? baseParameters;
+  const parametersOverridden = edit.parameters !== undefined;
   const formClasses = [
     'bulk-editor__form',
     'bulk-editor__form--acc-open',
@@ -3396,6 +3449,42 @@ function ShopVariantScopeForm({
           onChange={(e) => onPatch({ description: e.target.value === baseDescription ? undefined : e.target.value })}
         />
       </div>
+
+      {canPickShopAttributes ? (
+        <div className="bulk-editor__field">
+          <label>
+            Attributes {parametersOverridden ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />}
+            {parametersOverridden ? (
+              <button type="button" className="bulk-editor__reset" onClick={() => onPatch({ parameters: undefined })}>
+                ↺ reset to base
+              </button>
+            ) : null}
+          </label>
+          {effectiveParameters.length > 0 ? (
+            <ul className="shop-attr-picker__added" role="list">
+              {effectiveParameters.map((p) => (
+                <li key={p.id} className="shop-attr-picker__added-item">
+                  <span className="shop-attr-picker__added-label">{shopParameterLabel(p)}</span>
+                  <button
+                    type="button"
+                    className="bulk-editor__img-x"
+                    aria-label={`Remove attribute ${p.id} for ${label}`}
+                    onClick={() => onRemoveAttribute(p.id)}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <ShopAttributePicker connectionId={connectionId} onAdd={onAddAttribute} />
+          <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+            {parametersOverridden
+              ? 'Custom attribute set for this variant.'
+              : 'Inherits the base attributes - add or remove to override for this variant.'}
+          </div>
+        </div>
+      ) : null}
 
       <div className="bulk-editor__row2">
         <div className="bulk-editor__field">
