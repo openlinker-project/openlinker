@@ -146,6 +146,7 @@ export class ListingsController {
     private readonly publishedVariants: IPublishedVariantsService
   ) {}
 
+  @Roles('admin', 'operator', 'viewer')
   @Post('published-variants')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
