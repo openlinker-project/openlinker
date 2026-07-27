@@ -68,6 +68,12 @@ export class FakeInfaktHttpClient implements IInfaktHttpClient {
     return this.resolve<T>('PUT', path);
   }
 
+  /** Like `post`, but resolves to `void` regardless of the seeded value (#1797). */
+  async postForEffect(path: string, body?: unknown): Promise<void> {
+    this.calls.push({ method: 'POST', path, body });
+    await this.resolve<unknown>('POST', path);
+  }
+
   getBinary(path: string, query?: Record<string, string>): Promise<InfaktBinaryResponse> {
     this.calls.push({ method: 'GET_BINARY', path, query });
     return this.resolve<InfaktBinaryResponse>('GET_BINARY', path);

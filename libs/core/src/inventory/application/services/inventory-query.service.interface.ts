@@ -13,8 +13,9 @@ import type {
   InventoryFilters,
   InventoryPagination,
   VariantAvailability,
+  ProductStockAggregate,
 } from '../../domain/types/inventory.types';
-import type { InventoryItemView, PaginatedInventoryView } from '../types/inventory-view.types';
+import type { PaginatedInventoryView } from '../types/inventory-view.types';
 
 export interface IInventoryQueryService {
   /**
@@ -26,14 +27,6 @@ export interface IInventoryQueryService {
     filters: InventoryFilters,
     pagination: InventoryPagination
   ): Promise<PaginatedInventoryView>;
-
-  /**
-   * Get a single inventory item by id, composing product details.
-   * Returns `null` when the inventory item does not exist. `view.product`
-   * is `null` when the item exists but its product lookup returned null.
-   * Callers in the interface layer translate `null` to an HTTP 404.
-   */
-  getInventoryItem(id: string): Promise<InventoryItemView | null>;
 
   /**
    * Batch per-variant availability lookup (#792 PR 2).
@@ -48,4 +41,19 @@ export interface IInventoryQueryService {
   getAvailabilityByVariantIds(
     variantIds: readonly string[]
   ): Promise<readonly VariantAvailability[]>;
+
+  /**
+   * Product-level stock aggregates for the given product IDs (#1720).
+   *
+   * Cross-context display-enrichment seam for the products catalog cockpit:
+   * one row per product that has at least one live inventory row, with
+   * available/reserved quantities summed across all rows and the most recent
+   * stock write timestamp. Products with no inventory rows are absent from
+   * the result - the caller decides how to present them (the API layer
+   * zero-fills). Empty input returns []; input is capped at 200 IDs per call
+   * (mirrors the availability read's request cap).
+   */
+  getProductStockAggregates(
+    productIds: readonly string[]
+  ): Promise<readonly ProductStockAggregate[]>;
 }

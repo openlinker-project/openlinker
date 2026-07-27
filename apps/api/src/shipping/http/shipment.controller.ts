@@ -217,6 +217,9 @@ export class ShipmentController {
       parcel: dto.parcel,
       // COD pass-through (#966) — caller-supplied; COD-incapable adapters ignore it.
       cod: dto.cod,
+      // Insurance pass-through (#1542) — caller-supplied; insurance-incapable
+      // adapters ignore it, insurance-capable ones (InPost ShipX) translate it.
+      insuredValue: dto.insuredValue,
     };
     try {
       const result = await this.dispatch.dispatch(input);
@@ -439,8 +442,9 @@ export class ShipmentController {
 /**
  * Map a label document's MIME type to a download-filename extension. The label
  * bytes are NOT always PDF — Allegro returns ZPL/EPL per the seller's "Ship
- * with Allegro" setting and InPost ShipX can return PNG — so the saved file
- * must be labelled by its actual content type, never hardcoded to `.pdf`.
+ * with Allegro" setting, InPost ShipX can return PNG, and a multi-service
+ * dispatch protocol comes back as a ZIP — so the saved file must be labelled
+ * by its actual content type, never hardcoded to `.pdf`.
  * Falls back to `bin` for anything unrecognised so the download never claims a
  * format it isn't.
  */
@@ -458,6 +462,8 @@ export function extensionForContentType(contentType: string): string {
     case 'application/epl':
     case 'application/x-epl':
       return 'epl';
+    case 'application/zip':
+      return 'zip';
     default:
       return 'bin';
   }

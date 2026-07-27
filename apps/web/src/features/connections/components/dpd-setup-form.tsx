@@ -32,6 +32,7 @@ import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
+import { CodCurrencySupport } from './cod-currency-support';
 import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
 import { useToast } from '../../../shared/ui/toast-provider';
@@ -222,6 +223,8 @@ export function DpdSetupForm(): ReactElement {
                 invalid={Boolean(form.formState.errors.masterFid)}
               />
             </FormField>
+
+            <CodCurrencySupport platformType="dpd" />
           </>
         ) : null}
 

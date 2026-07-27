@@ -21,4 +21,16 @@ describe('ConnectionConfigPanel', () => {
     expect(screen.getByText('No configuration values set.')).toBeInTheDocument();
     expect(screen.getByText('0 keys')).toBeInTheDocument();
   });
+
+  it('renders no editable form controls or save action (read-only for every session, including demo viewers)', () => {
+    const config = { baseUrl: 'https://example.com', apiKey: 'test' };
+    const { container } = renderWithProviders(<ConnectionConfigPanel config={config} />);
+
+    expect(container.querySelector('input')).toBeNull();
+    expect(container.querySelector('textarea')).toBeNull();
+    expect(container.querySelector('select')).toBeNull();
+    expect(container.querySelector('form')).toBeNull();
+    expect(screen.queryByRole('button', { name: /save/i })).toBeNull();
+  });
+
 });

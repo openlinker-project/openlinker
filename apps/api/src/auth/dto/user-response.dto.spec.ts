@@ -60,6 +60,14 @@ describe('UserResponseDto', () => {
       expect(dto.permissions).not.toContain('sync:write');
     });
 
+    it('should expose analyticsConsent from the domain user (#1743)', () => {
+      const consented = new User('id-1', 'a', null, 'hash', 'viewer', 'active', new Date(), new Date(), true);
+      const declined = new User('id-2', 'b', null, 'hash', 'viewer', 'active', new Date(), new Date(), false);
+
+      expect(UserResponseDto.fromDomain(consented).analyticsConsent).toBe(true);
+      expect(UserResponseDto.fromDomain(declined).analyticsConsent).toBe(false);
+    });
+
     it('should not expose passwordHash', () => {
       const user = new User('id-1', 'testuser', null, 'secret-hash', 'admin', 'active', new Date(), new Date());
 

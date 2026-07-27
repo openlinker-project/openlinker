@@ -38,6 +38,7 @@ import type { PrestashopCustomerProvisioner } from '../infrastructure/provisione
 import { PrestashopAddressProvisioner } from '../infrastructure/provisioners/prestashop-address-provisioner';
 import { PrestashopCountryResolver } from '../infrastructure/provisioners/prestashop-country-resolver';
 import { PrestashopCurrencyResolver } from '../infrastructure/provisioners/prestashop-currency-resolver';
+import { PrestashopShopCurrencyResolver } from '../infrastructure/provisioners/prestashop-shop-currency.resolver';
 import { PrestashopTaxRateResolver } from '../infrastructure/provisioners/prestashop-tax-rate.resolver';
 import { PrestashopAttributeResolver } from '../infrastructure/provisioners/prestashop-attribute.resolver';
 import { PrestashopFeatureResolver } from '../infrastructure/provisioners/prestashop-feature.resolver';
@@ -63,6 +64,12 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
   // mirroring `attributeResolver`.
   private readonly featureResolver = new PrestashopFeatureResolver();
   private readonly categoryPathResolver = new PrestashopCategoryPathResolver();
+
+  // Process-singleton (mirrors the resolvers above) so its per-connection cache
+  // of the shop-default-currency ISO survives across per-product adapter
+  // instances the master sync creates. Resolves the fallback currency when the
+  // connection config leaves `currency` unset.
+  private readonly shopCurrencyResolver = new PrestashopShopCurrencyResolver();
 
   constructor(
     private readonly customerProvisioner?: PrestashopCustomerProvisioner,
@@ -101,12 +108,21 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
     // Create HTTP client
     const httpClient = new PrestashopWebserviceClient(config.baseUrl, credentials, config);
 
+    // Resolve the product currency: an explicit connection-config `currency`
+    // always wins; otherwise fall back to the PrestaShop shop default (cached
+    // per connection). Resolution is best-effort — on any failure the currency
+    // stays unset and the mapper emits `currency: null` (today's behaviour).
+    const resolvedCurrency =
+      config.currency ??
+      (await this.shopCurrencyResolver.resolveDefaultCurrencyIso(connection.id, httpClient)) ??
+      undefined;
+
     // Create mappers. `storefrontBaseUrl` falls back to the webservice `baseUrl`
     // when unset — works for the common case where webservice and storefront
     // share a host. Operators override it via connection config when they differ.
     const productMapper = new PrestashopProductMapper({
       storefrontBaseUrl: config.storefrontBaseUrl ?? config.baseUrl,
-      currency: config.currency,
+      currency: resolvedCurrency,
     });
     const inventoryMapper = new PrestashopInventoryMapper();
     const orderMapper = new PrestashopOrderMapper();

@@ -17,7 +17,7 @@ import type {
   ProductVariantCreate,
   Category,
 } from '@openlinker/core/products';
-import { normalizeBarcode, normalizeToEan13 } from '@openlinker/core/products';
+import { normalizeBarcode, normalizeToEan13, MasterProductNotFoundError } from '@openlinker/core/products';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
@@ -68,51 +68,61 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
   async getProduct(productId: string): Promise<Product> {
     this.logger.debug(`Getting product: ${productId} (connection: ${this.connection.id})`);
 
-    // Resolve internal ID → external ID
-    const externalIds = await this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Product, productId);
-    const prestashopId = externalIds.find(
-      (e: { connectionId: string }) => e.connectionId === this.connection.id
-    );
-
-    if (!prestashopId) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
-      const error = new PrestashopResourceNotFoundException(
-        `Product not found: ${productId} (no external ID mapping for connection ${this.connection.id})`,
-        CORE_ENTITY_TYPE.Product,
-        productId,
-        this.connection.id
+    try {
+      // Resolve internal ID → external ID
+      const externalIds = await this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Product, productId);
+      const prestashopId = externalIds.find(
+        (e: { connectionId: string }) => e.connectionId === this.connection.id
       );
+
+      if (!prestashopId) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
+        const error = new PrestashopResourceNotFoundException(
+          `Product not found: ${productId} (no external ID mapping for connection ${this.connection.id})`,
+          CORE_ENTITY_TYPE.Product,
+          productId,
+          this.connection.id
+        );
+        throw error;
+      }
+
+      // Fetch from PrestaShop
+      const prestashopProduct = await this.httpClient.getResource<PrestashopProduct>(
+        'products',
+        prestashopId.externalId
+      );
+
+      // Map to OpenLinker schema
+      const langIdValue: number = this.resolveLangId();
+
+      const mapped = this.productMapper.mapProduct(prestashopProduct, langIdValue);
+
+      // #1096 F2/F3 — enrich with shop-native features and a full category path so
+      // a borrows destination (Erli) can emit `source:"shop"` taxonomy. Both are
+      // best-effort: a resolver failure leaves the field empty/unset and never
+      // breaks product sync.
+      const features = await this.resolveFeatures(prestashopProduct, langIdValue);
+      const categoryBreadcrumb = await this.resolveCategoryBreadcrumb(
+        prestashopProduct,
+        langIdValue
+      );
+
+      // Return with internal ID
+      return {
+        ...mapped,
+        id: productId,
+        ...(features.length > 0 ? { features } : {}),
+        ...(categoryBreadcrumb.length > 0 ? { categoryBreadcrumb } : {}),
+      };
+    } catch (error) {
+      // Translate the platform not-found (missing mapping OR a 404 from the
+      // webservice, i.e. deleted at the master) into the neutral core error so
+      // core services can distinguish deletion from a transient failure (#1599).
+      if (error instanceof PrestashopResourceNotFoundException) {
+        throw new MasterProductNotFoundError(productId, this.connection.id, error);
+      }
       throw error;
     }
-
-    // Fetch from PrestaShop
-    const prestashopProduct = await this.httpClient.getResource<PrestashopProduct>(
-      'products',
-      prestashopId.externalId
-    );
-
-    // Map to OpenLinker schema
-    const langIdValue: number = this.resolveLangId();
-
-    const mapped = this.productMapper.mapProduct(prestashopProduct, langIdValue);
-
-    // #1096 F2/F3 — enrich with shop-native features and a full category path so
-    // a borrows destination (Erli) can emit `source:"shop"` taxonomy. Both are
-    // best-effort: a resolver failure leaves the field empty/unset and never
-    // breaks product sync.
-    const features = await this.resolveFeatures(prestashopProduct, langIdValue);
-    const categoryBreadcrumb = await this.resolveCategoryBreadcrumb(
-      prestashopProduct,
-      langIdValue
-    );
-
-    // Return with internal ID
-    return {
-      ...mapped,
-      id: productId,
-      ...(features.length > 0 ? { features } : {}),
-      ...(categoryBreadcrumb.length > 0 ? { categoryBreadcrumb } : {}),
-    };
   }
 
   /**
@@ -537,14 +547,68 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     return Promise.reject(error);
   }
 
-  getProductCategories(_productId: string): Promise<Category[]> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
-    const error = new PrestashopNotSupportedException(
-      'Get product categories is not implemented in MVP.',
-      'getProductCategories',
-      'Future implementation'
+  /**
+   * Return the product's category placement as a neutral `Category[]` ordered
+   * root→leaf, so the publish provisioner + builder chain places a
+   * PrestaShop-mastered product in the mapped/provisioned destination category
+   * instead of "Uncategorized" (#1502).
+   *
+   * PrestaShop has no product→path endpoint, so the path is reconstructed from
+   * the product's `id_category_default` by the shared
+   * `PrestashopCategoryPathResolver` (reusing the same walk as the #1096 F3
+   * breadcrumb), which excludes the Root/Home pseudo-categories. `depth` is
+   * stamped from the root→leaf index so the builder's depth-ordered provision
+   * path is deterministic. Best-effort by design: no path resolver wired, no
+   * default leaf, or an unresolvable walk yields `[]` (publish uncategorised) -
+   * the builder tolerates an empty list.
+   *
+   * Single-branch by design (#1502 MVP scope): only `id_category_default` is
+   * followed, so exactly one root->leaf path is returned. A product's
+   * `associations.categories` (a product may sit in several categories) is
+   * intentionally ignored - a product whose intended placement lives in a
+   * non-default category, or whose default is Home, publishes
+   * uncategorised/mis-placed. Multi-branch placement is deferred, matching
+   * `toProvisionPath`'s documented single-branch assumption.
+   *
+   * NOTE: `depth` here is a RELATIVE breadcrumb index (0 = first non-excluded
+   * ancestor after Root/Home), unlike sibling `getCategories()`, which reports
+   * PrestaShop's ABSOLUTE `level_depth`. The builder only uses `depth` for
+   * relative ordering within a single path, so the relative index is sufficient
+   * and the two meanings never mix.
+   */
+  async getProductCategories(productId: string): Promise<Category[]> {
+    this.logger.debug(
+      `Getting categories for product: ${productId} (connection: ${this.connection.id})`
     );
-    return Promise.reject(error);
+
+    const externalIds = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.Product,
+      productId
+    );
+    const prestashopId = externalIds.find(
+      (e: { connectionId: string }) => e.connectionId === this.connection.id
+    );
+
+    if (!prestashopId) {
+      const error = new PrestashopResourceNotFoundException(
+        `Product not found: ${productId} (no external ID mapping for connection ${this.connection.id})`,
+        CORE_ENTITY_TYPE.Product,
+        productId,
+        this.connection.id
+      );
+      throw error;
+    }
+
+    const prestashopProduct = await this.httpClient.getResource<PrestashopProduct>(
+      'products',
+      prestashopId.externalId
+    );
+
+    const path = await this.resolveCategoryBreadcrumb(prestashopProduct, this.resolveLangId());
+
+    // `depth` is the RELATIVE root->leaf index (0-based), not PrestaShop's
+    // absolute `level_depth` used by `getCategories()` - see the method note.
+    return path.map((node, index) => ({ id: node.id, name: node.name, depth: index }));
   }
 
   assignCategories(_productId: string, _categoryIds: string[]): Promise<void> {

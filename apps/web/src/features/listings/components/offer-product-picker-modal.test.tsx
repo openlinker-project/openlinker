@@ -1,0 +1,457 @@
+/**
+ * OfferProductPickerModal tests (#1754)
+ *
+ * Covers the unified offer-creation entry point:
+ *   - paginated product list + persisted selection across pages
+ *   - whole-product tri-state ('all') vs single-variant ('some')
+ *   - mixed selection across two products
+ *   - Continue URL construction (whole-only / single-variant / mixed)
+ *   - connection auto-resolve (1) vs picker (2+)
+ *   - Continue disabled with no selection
+ */
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as ReactRouterDom from 'react-router-dom';
+import type { ApiClient } from '../../../app/api/api-client';
+import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
+import { OfferProductPickerModal } from './offer-product-picker-modal';
+import type { Connection } from '../../connections';
+import type { Product } from '../../products';
+
+interface PaginatedProductsShape {
+  items: Product[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+const navigateMock = vi.fn();
+vi.mock('react-router-dom', async (): Promise<typeof ReactRouterDom> => {
+  const actual = await vi.importActual<typeof ReactRouterDom>('react-router-dom');
+  return { ...actual, useNavigate: (): typeof navigateMock => navigateMock };
+});
+
+function conn(id: string, name: string, platformType: string): Connection {
+  return {
+    id,
+    name,
+    platformType,
+    status: 'active',
+    config: {},
+    credentialsBacked: true,
+    adapterKey: `${platformType}.v1`,
+    enabledCapabilities: ['OfferManager'],
+    supportedCapabilities: ['OfferManager', 'OfferCreator'],
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  } as unknown as Connection;
+}
+
+function customConn(overrides: {
+  id: string;
+  status?: 'active' | 'disabled';
+  capabilities?: string[];
+}): Connection {
+  return {
+    id: overrides.id,
+    name: overrides.id,
+    platformType: 'allegro',
+    status: overrides.status ?? 'active',
+    config: {},
+    credentialsBacked: true,
+    adapterKey: 'allegro.v1',
+    enabledCapabilities: ['OfferManager'],
+    supportedCapabilities: overrides.capabilities ?? ['OfferManager', 'OfferCreator'],
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  } as unknown as Connection;
+}
+
+function makeProduct(id: string, variantIds: string[]): Product {
+  return {
+    id,
+    name: `Product ${id}`,
+    sku: `SKU-${id}`,
+    price: null,
+    currency: null,
+    description: null,
+    images: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    variants: variantIds.map((vid) => ({
+      id: vid,
+      productId: id,
+      sku: vid,
+      attributes: null,
+      ean: null,
+      gtin: null,
+      price: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    })),
+  };
+}
+
+const P1 = makeProduct('p1', ['v1a', 'v1b']);
+const P2 = makeProduct('p2', ['v2a']);
+// A full first page (20) plus 2 on page 2 so the pager shows.
+const FIRST_PAGE: Product[] = [
+  P1,
+  P2,
+  ...Array.from({ length: 18 }, (_, i) => makeProduct(`f${i.toString()}`, [`fv${i.toString()}`])),
+];
+const SECOND_PAGE: Product[] = [makeProduct('p21', ['v21a']), makeProduct('p22', ['v22a'])];
+
+function mocks(connections: Connection[]): ApiClient {
+  const byId = new Map<string, Product>();
+  for (const p of [...FIRST_PAGE, ...SECOND_PAGE]) byId.set(p.id, p);
+  return createMockApiClient({
+    connections: { list: vi.fn().mockResolvedValue(connections) },
+    products: {
+      list: vi
+        .fn()
+        .mockImplementation((_f, pagination): Promise<PaginatedProductsShape> => {
+          const offset = (pagination?.offset as number | undefined) ?? 0;
+          const items = offset === 0 ? FIRST_PAGE : SECOND_PAGE;
+          return Promise.resolve({ items, total: 22, limit: 20, offset });
+        }),
+      getById: vi.fn().mockImplementation((id: string) => Promise.resolve(byId.get(id) ?? null)),
+    },
+  });
+}
+
+function continueUrlParams(): URLSearchParams {
+  const arg = navigateMock.mock.calls.at(-1)?.[0] as string;
+  return new URLSearchParams(arg.split('?')[1] ?? '');
+}
+
+describe('OfferProductPickerModal', () => {
+  beforeEach(() => vi.clearAllMocks());
+  afterEach(cleanup);
+
+  it('renders nothing when closed', () => {
+    renderWithProviders(<OfferProductPickerModal isOpen={false} onClose={vi.fn()} />, {
+      apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]),
+    });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('lists paginated products and shows the pager', async () => {
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+      apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]),
+    });
+    expect(await screen.findByText('Product p1')).toBeInTheDocument();
+    expect(screen.getByText('1–20 of 22')).toBeInTheDocument();
+  });
+
+  it('selects a whole product (tri-state all) and Continue omits variantIds', async () => {
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+      apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]),
+    });
+    const cb = await screen.findByLabelText<HTMLInputElement>('Select Product p1');
+    fireEvent.click(cb);
+    expect(cb.checked).toBe(true);
+    expect(screen.getByText(/1 offer selected across/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    const qs = continueUrlParams();
+    expect(qs.get('productIds')).toBe('p1');
+    expect(qs.get('variantIds')).toBeNull();
+    expect(qs.get('connectionId')).toBe('conn_a');
+  });
+
+  it('expands and selects a single variant (tri-state some) and Continue carries variantIds', async () => {
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+      apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]),
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /expand product p1/i }));
+    const variantCb = await screen.findByRole<HTMLInputElement>('checkbox', { name: /v1a/i });
+    fireEvent.click(variantCb);
+
+    const productCb = screen.getByLabelText<HTMLInputElement>('Select Product p1');
+    expect(productCb.checked).toBe(false);
+    expect(productCb.indeterminate).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    const qs = continueUrlParams();
+    expect(qs.get('productIds')).toBe('p1');
+    expect(qs.get('variantIds')).toBe('v1a');
+    expect(qs.get('connectionId')).toBe('conn_a');
+  });
+
+  it('supports a mix across two products', async () => {
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+      apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]),
+    });
+    // Whole p1.
+    fireEvent.click(await screen.findByLabelText('Select Product p1'));
+    // Single variant of p2.
+    fireEvent.click(screen.getByRole('button', { name: /expand product p2/i }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: /v2a/i }));
+
+    expect(screen.getByText(/across.*2 products/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    const qs = continueUrlParams();
+    expect(qs.get('productIds')).toBe('p1,p2');
+    expect(qs.get('variantIds')).toBe('v2a');
+    expect(qs.get('connectionId')).toBe('conn_a');
+  });
+
+  it('persists selection across a page change', async () => {
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+      apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]),
+    });
+    fireEvent.click(await screen.findByLabelText('Select Product p1'));
+    expect(screen.getByText(/1 offer selected across.*1 product/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /next page of products/i }));
+    // p1 is no longer rendered, but the selection total persists.
+    expect(await screen.findByText('Product p21')).toBeInTheDocument();
+    expect(screen.getByText(/1 offer selected across.*1 product/i)).toBeInTheDocument();
+  });
+
+  it('auto-resolves the sole eligible connection (no picker shown)', async () => {
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+      apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]),
+    });
+    await screen.findByText('Product p1');
+    expect(screen.queryByLabelText(/marketplace connection/i)).not.toBeInTheDocument();
+    // Selecting one product is enough to enable Continue (connection auto-resolved).
+    fireEvent.click(screen.getByLabelText('Select Product p1'));
+    expect(screen.getByRole('button', { name: /continue/i })).toBeEnabled();
+  });
+
+  it('requires a connection pick when 2+ eligible connections exist', async () => {
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+      apiClient: mocks([conn('conn_a', 'Allegro', 'allegro'), conn('conn_e', 'Erli', 'erli')]),
+    });
+    fireEvent.click(await screen.findByLabelText('Select Product p1'));
+    // Disabled Continue is wrapped in a tooltip trigger; re-query after the
+    // connection pick since the enabled button is a fresh DOM node.
+    expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
+
+    const select = screen.getByLabelText<HTMLSelectElement>(/marketplace connection/i);
+    fireEvent.change(select, { target: { value: 'conn_e' } });
+    const continueBtn = screen.getByRole('button', { name: /continue/i });
+    expect(continueBtn).toBeEnabled();
+
+    fireEvent.click(continueBtn);
+    expect(continueUrlParams().get('connectionId')).toBe('conn_e');
+  });
+
+  it('disables Continue with no selection', async () => {
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+      apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]),
+    });
+    await screen.findByText('Product p1');
+    expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
+  });
+
+  it('shows a warning when no eligible connection exists', async () => {
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+      apiClient: mocks([]),
+    });
+    expect(
+      await screen.findByText(/no marketplace connections available/i),
+    ).toBeInTheDocument();
+  });
+
+  it('excludes an active connection lacking OfferCreator and auto-resolves the sole eligible one', async () => {
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+      apiClient: mocks([
+        customConn({ id: 'eligible', capabilities: ['OfferManager', 'OfferCreator'] }),
+        customConn({ id: 'noCreator', capabilities: ['OfferManager'] }),
+      ]),
+    });
+    await screen.findByText('Product p1');
+    // Exactly one eligible → no picker, read-only "Publishing to" line instead.
+    expect(screen.queryByLabelText(/marketplace connection/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/publishing to:/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Select Product p1'));
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    expect(continueUrlParams().get('connectionId')).toBe('eligible');
+  });
+
+  it('shows the zero-eligible warning when the only OfferCreator connection is disabled', async () => {
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+      apiClient: mocks([
+        customConn({
+          id: 'disabledCreator',
+          status: 'disabled',
+          capabilities: ['OfferManager', 'OfferCreator'],
+        }),
+      ]),
+    });
+    expect(
+      await screen.findByText(/no marketplace connections available/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/marketplace connection/i)).not.toBeInTheDocument();
+  });
+
+  it('resets selection when the dialog is closed and reopened', async () => {
+    const { rerender } = renderWithProviders(
+      <OfferProductPickerModal isOpen onClose={vi.fn()} />,
+      { apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]) },
+    );
+    fireEvent.click(await screen.findByLabelText('Select Product p1'));
+    expect(screen.getByText(/1 offer selected across.*1 product/i)).toBeInTheDocument();
+
+    rerender(<OfferProductPickerModal isOpen={false} onClose={vi.fn()} />);
+    rerender(<OfferProductPickerModal isOpen onClose={vi.fn()} />);
+
+    expect(await screen.findByText('Product p1')).toBeInTheDocument();
+    expect(screen.getByText(/0 offers selected across 0 products/i)).toBeInTheDocument();
+  });
+
+  it('materializes an ALL product into an explicit subset when a variant is unchecked', async () => {
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+      apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]),
+    });
+    // Whole 2-variant product, then expand and uncheck one variant.
+    fireEvent.click(await screen.findByLabelText('Select Product p1'));
+    fireEvent.click(screen.getByRole('button', { name: /expand product p1/i }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: /v1a/i }));
+
+    const productCb = screen.getByLabelText<HTMLInputElement>('Select Product p1');
+    expect(productCb.checked).toBe(false);
+    expect(productCb.indeterminate).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    const qs = continueUrlParams();
+    expect(qs.get('productIds')).toBe('p1');
+    expect(qs.get('variantIds')).toBe('v1b');
+  });
+
+  it('guards close with a discard confirm when a selection exists', async () => {
+    const onClose = vi.fn();
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={onClose} />, {
+      apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]),
+    });
+    fireEvent.click(await screen.findByLabelText('Select Product p1'));
+    // Cancel routes through the discard guard - the confirm appears, nothing closes.
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+    expect(await screen.findByText('Discard changes?')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    // Confirming discards and closes.
+    fireEvent.click(screen.getByRole('button', { name: /discard changes/i }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the discard confirm on Escape and keeps the modal open on "Keep editing"', async () => {
+    const onClose = vi.fn();
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={onClose} />, {
+      apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]),
+    });
+    fireEvent.click(await screen.findByLabelText('Select Product p1'));
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(await screen.findByText('Discard changes?')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    // "Keep editing" dismisses the confirm without closing the modal.
+    fireEvent.click(screen.getByRole('button', { name: /keep editing/i }));
+    expect(screen.queryByText('Discard changes?')).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('shows a non-success EAN chip for a whole product whose loaded variants lack a barcode', async () => {
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+      apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]),
+    });
+    // Whole product picked but not yet expanded -> barcode state unknown.
+    fireEvent.click(await screen.findByLabelText('Select Product p1'));
+    expect(screen.getByText('not checked')).toBeInTheDocument();
+
+    // Expanding loads the variants (P1's variants carry no EAN/GTIN), so the
+    // whole-product chip and the need-EAN tile agree on the missing count.
+    fireEvent.click(screen.getByRole('button', { name: /expand product p1/i }));
+    expect(await screen.findByText('2 need EAN')).toBeInTheDocument();
+  });
+
+  it('closes directly on Cancel when nothing is selected', async () => {
+    const onClose = vi.fn();
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={onClose} />, {
+      apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]),
+    });
+    await screen.findByText('Product p1');
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+    expect(screen.queryByText('Discard changes?')).not.toBeInTheDocument();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  describe('query error + retry branches', () => {
+    const oneProductPage = (): PaginatedProductsShape => ({
+      items: [P1],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    });
+
+    it('shows an error with Retry when the products query fails, and Retry refetches', async () => {
+      const list = vi.fn().mockRejectedValue(new Error('products boom'));
+      const mockApi = createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([conn('conn_a', 'Allegro', 'allegro')]) },
+        products: { list },
+      });
+      renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+        apiClient: mockApi,
+      });
+
+      expect(await screen.findByText(/unable to load products/i)).toBeInTheDocument();
+      const before = list.mock.calls.length;
+      fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+      await waitFor(() => expect(list.mock.calls.length).toBeGreaterThan(before));
+    });
+
+    it('shows an error with Retry when the connections query fails, and Retry refetches', async () => {
+      const connectionsList = vi.fn().mockRejectedValue(new Error('connections down'));
+      const mockApi = createMockApiClient({
+        connections: { list: connectionsList },
+        products: { list: vi.fn().mockResolvedValue(oneProductPage()) },
+      });
+      renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+        apiClient: mockApi,
+      });
+
+      expect(await screen.findByText(/unable to load connections/i)).toBeInTheDocument();
+      const before = connectionsList.mock.calls.length;
+      fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+      await waitFor(() => expect(connectionsList.mock.calls.length).toBeGreaterThan(before));
+    });
+
+    it('shows an error with Retry when a product variant query fails, and Retry refetches', async () => {
+      const getById = vi.fn().mockRejectedValue(new Error('variant nope'));
+      const mockApi = createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([conn('conn_a', 'Allegro', 'allegro')]) },
+        products: {
+          list: vi.fn().mockResolvedValue(oneProductPage()),
+          getById,
+        },
+      });
+      renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+        apiClient: mockApi,
+      });
+
+      fireEvent.click(await screen.findByRole('button', { name: /expand product p1/i }));
+      expect(await screen.findByText(/unable to load variants/i)).toBeInTheDocument();
+      const before = getById.mock.calls.length;
+      fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+      await waitFor(() => expect(getById.mock.calls.length).toBeGreaterThan(before));
+    });
+  });
+
+  it('navigates between the product list and review steps (two-step wizard)', async () => {
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+      apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]),
+    });
+    await screen.findByText('Product p1');
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-mstep', '1');
+    // Review → advances to the rail (connection + Continue live here).
+    fireEvent.click(screen.getByRole('button', { name: /review/i }));
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-mstep', '2');
+    expect(screen.getByRole('button', { name: /continue/i })).toBeInTheDocument();
+    // Back returns to the product list.
+    fireEvent.click(screen.getByRole('button', { name: /back to products/i }));
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-mstep', '1');
+  });
+});

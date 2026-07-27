@@ -10,7 +10,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThan, QueryFailedError, Repository } from 'typeorm';
+import { In, LessThan, QueryFailedError, Repository } from 'typeorm';
 import { User } from '../../../domain/entities/user.entity';
 import { UserAlreadyExistsException } from '../../../domain/exceptions/user-already-exists.exception';
 import type { UserRepositoryPort } from '../../../domain/ports/user-repository.port';
@@ -33,7 +33,9 @@ export class UserRepository implements UserRepositoryPort {
   }
 
   async findByEmail(email: string): Promise<User | null> {
-    const entity = await this.ormRepository.findOne({ where: { email } });
+    const entity = await this.ormRepository.findOne({
+      where: { email: email.trim().toLowerCase() },
+    });
     return entity ? this.toDomain(entity) : null;
   }
 
@@ -81,22 +83,25 @@ export class UserRepository implements UserRepositoryPort {
     await this.ormRepository.delete({ id: userId });
   }
 
-  async findStaleViewerAccounts(olderThan: Date): Promise<User[]> {
+  async findStaleViewerAccounts(olderThan: Date, statuses: UserStatus[]): Promise<User[]> {
     const entities = await this.ormRepository.find({
-      where: { role: 'viewer', status: 'active', createdAt: LessThan(olderThan) },
+      where: { role: 'viewer', status: In(statuses), createdAt: LessThan(olderThan) },
     });
     return entities.map((entity) => this.toDomain(entity));
   }
 
   async save(
-    user: Pick<User, 'username' | 'email' | 'passwordHash' | 'role' | 'status'>
+    user: Pick<User, 'username' | 'email' | 'passwordHash' | 'role' | 'status'> &
+      Partial<Pick<User, 'analyticsConsent'>>
   ): Promise<User> {
+    const normalizedEmail = this.normalizeEmail(user.email);
     const entity = this.ormRepository.create({
       username: user.username,
-      email: user.email,
+      email: normalizedEmail,
       passwordHash: user.passwordHash,
       role: user.role,
       status: user.status,
+      analyticsConsent: user.analyticsConsent ?? false,
     });
     try {
       const saved = await this.ormRepository.save(entity);
@@ -106,7 +111,7 @@ export class UserRepository implements UserRepositoryPort {
         const pgErr = error as QueryFailedError & { code?: string; detail?: string };
         if (pgErr.code === '23505') {
           const detail = pgErr.detail ?? '';
-          const identifier = detail.includes('(email)') ? (user.email ?? 'email') : user.username;
+          const identifier = detail.includes('(email)') ? (normalizedEmail ?? 'email') : user.username;
           throw new UserAlreadyExistsException(identifier);
         }
       }
@@ -146,6 +151,14 @@ export class UserRepository implements UserRepositoryPort {
     return { deleted: result[1] > 0 };
   }
 
+  /**
+   * Trims and lowercases an email so `foo@example.com` and `Foo@Example.com`
+   * collide against the same `UQ_users_email` constraint row (#1625).
+   */
+  private normalizeEmail(email: string | null): string | null {
+    return email ? email.trim().toLowerCase() : null;
+  }
+
   private toDomain(entity: UserOrmEntity): User {
     const role = UserRoleValues.includes(entity.role as UserRole)
       ? (entity.role as UserRole)
@@ -163,7 +176,8 @@ export class UserRepository implements UserRepositoryPort {
       role,
       status,
       entity.createdAt,
-      entity.updatedAt
+      entity.updatedAt,
+      entity.analyticsConsent ?? false
     );
   }
 }

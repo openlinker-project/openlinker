@@ -279,6 +279,14 @@ services:
       JWT_SECRET: '${JWT_SECRET:-development-secret-key-change-in-production}'
       JWT_EXPIRES_IN: '${JWT_EXPIRES_IN:-1d}'
       OL_PII_HASH_SALT: '${OL_PII_HASH_SALT:-development-pii-hash-salt-change-in-production}'
+      # Base URL used to build confirm-email/reset-password links emailed to
+      # users (EmailConfirmationService, MailerPasswordResetNotifierAdapter).
+      # Defaults to the demo web service's own published port (WEB_HOST_PORT,
+      # docker-compose.demo.yml) rather than a second, unrelated hardcoded
+      # default — so the two stay in sync automatically instead of drifting
+      # like the Vite-preview-port default (4173) that neither compose file
+      # ever overrode (#1647).
+      WEB_URL: '${WEB_URL:-http://localhost:${WEB_HOST_PORT:-8090}}'
     ports:
       - '${OL_BIND_ADDRESS:-127.0.0.1}:${API_HOST_PORT:-3000}:3000'
     depends_on:

@@ -31,7 +31,7 @@ function fakeLogger(): jest.Mocked<LoggerPort> {
   return { log: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn() };
 }
 
-function buyer(overrides: Partial<{ nip: string | null }> = {}): BuyerProfile {
+function buyer(overrides: Partial<{ nip: string | null; email: string | null }> = {}): BuyerProfile {
   return new BuyerProfile(
     'Acme Sp. z o.o.',
     overrides.nip === undefined || overrides.nip === null
@@ -45,6 +45,7 @@ function buyer(overrides: Partial<{ nip: string | null }> = {}): BuyerProfile {
       countryIso2: 'PL',
     },
     overrides.nip ? 'company' : 'private',
+    overrides.email ?? null,
   );
 }
 
@@ -190,6 +191,67 @@ describe('InfaktInvoicingAdapter', () => {
       expect(createCall?.body).toMatchObject({
         client: expect.objectContaining({ company_name: 'Acme Sp. z o.o.', postal_code: '00-001' }),
       });
+    });
+
+    it('includes the buyer email in the create payload when known (#1797)', async () => {
+      http.seed<InfaktListResponse<InfaktClient>>('GET', 'clients.json', {
+        items: [],
+        pagination: { current_page: 1, items_on_page: 0, limit: 10, total_items: 0, total_pages: 1 },
+      });
+      const created: InfaktClient = {
+        id: 4,
+        uuid: 'client-with-email',
+        company_name: 'Acme',
+        nip: '1234567890',
+        email: 'buyer@example.com',
+        city: 'Warszawa',
+        street: 'Testowa 1',
+        postal_code: '00-001',
+        country: 'PL',
+      };
+      http.seed('POST', 'clients.json', created);
+
+      await adapter.upsertCustomer({
+        connectionId: 'conn-1',
+        buyer: buyer({ nip: '1234567890', email: 'buyer@example.com' }),
+      });
+
+      const createCall = http.calls.find((c) => c.method === 'POST' && c.path === 'clients.json');
+      const body = createCall?.body as { client: Record<string, unknown> };
+      expect(body.client.email).toBe('buyer@example.com');
+    });
+
+    it('omits the email key from the create payload when the buyer has none (#1797)', async () => {
+      http.seed<InfaktListResponse<InfaktClient>>('GET', 'clients.json', {
+        items: [],
+        pagination: { current_page: 1, items_on_page: 0, limit: 10, total_items: 0, total_pages: 1 },
+      });
+      const created: InfaktClient = {
+        id: 5,
+        uuid: 'client-no-email',
+        company_name: 'Acme',
+        nip: '1234567890',
+        email: null,
+        city: 'Warszawa',
+        street: 'Testowa 1',
+        postal_code: '00-001',
+        country: 'PL',
+      };
+      http.seed('POST', 'clients.json', created);
+
+      await adapter.upsertCustomer({
+        connectionId: 'conn-1',
+        buyer: buyer({ nip: '1234567890' }),
+      });
+
+      const createCall = http.calls.find((c) => c.method === 'POST' && c.path === 'clients.json');
+      const body = createCall?.body as { client: Record<string, unknown> };
+      // `undefined` (not absent) at this layer — the fake HTTP client captures
+      // the raw pre-serialization object; `JSON.stringify` (the real transport,
+      // `InfaktHttpClient.post`) is what actually drops an `undefined` key from
+      // the wire payload, mirroring the pre-existing `nip: nip ?? undefined`
+      // behavior in the same object literal.
+      expect(body.client.email).toBeUndefined();
     });
 
     it('should create a new client without a NIP lookup when the buyer has no tax id', async () => {
@@ -644,6 +706,46 @@ describe('InfaktInvoicingAdapter', () => {
       http.seedError('GET', 'invoices/inv-uuid-1.json', new InfaktApiError('server error', 503, {}));
 
       await expect(adapter.getPaymentStatus(record)).rejects.toMatchObject({ statusCode: 503 });
+    });
+  });
+
+  describe('markPaid (#1362)', () => {
+    it('should POST the mark-paid task with the formatted date', async () => {
+      http.seed('POST', 'async/invoices/inv-uuid-1/paid.json', {});
+
+      await adapter.markPaid({
+        externalInvoiceId: 'inv-uuid-1',
+        paidDate: new Date('2026-07-08T12:34:56Z'),
+      });
+
+      expect(http.calls).toContainEqual({
+        method: 'POST',
+        path: 'async/invoices/inv-uuid-1/paid.json',
+        body: { invoice: { paid_date: '2026-07-08' } },
+      });
+    });
+
+    it('should URL-encode the external invoice id', async () => {
+      http.seed('POST', 'async/invoices/inv%2Fuuid/paid.json', {});
+
+      await adapter.markPaid({
+        externalInvoiceId: 'inv/uuid',
+        paidDate: new Date('2026-07-08T00:00:00Z'),
+      });
+
+      expect(http.calls[0]?.path).toBe('async/invoices/inv%2Fuuid/paid.json');
+    });
+
+    it('should propagate a transport error', async () => {
+      http.seedError(
+        'POST',
+        'async/invoices/inv-uuid-1/paid.json',
+        new InfaktApiError('not found', 404, {}),
+      );
+
+      await expect(
+        adapter.markPaid({ externalInvoiceId: 'inv-uuid-1', paidDate: new Date('2026-07-08') }),
+      ).rejects.toMatchObject({ statusCode: 404 });
     });
   });
 

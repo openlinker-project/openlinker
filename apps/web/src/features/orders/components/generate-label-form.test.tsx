@@ -6,7 +6,7 @@
  * Plus the happy-path render: with a complete snapshot, the form mounts
  * focused on the first input and the submit is enabled.
  */
-import { cleanup, screen, fireEvent, waitFor } from '@testing-library/react';
+import { cleanup, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 
 import {
@@ -14,6 +14,7 @@ import {
   createMockApiClient,
   findToastTitle,
 } from '../../../test/test-utils';
+import { ApiError } from '../../../shared/api/api-error';
 import { GenerateLabelForm } from './generate-label-form';
 import type { OrderRecord } from '../api/orders.types';
 
@@ -322,6 +323,51 @@ describe('GenerateLabelForm — happy path', () => {
 
     await waitFor(() => expect(generateLabel).toHaveBeenCalled());
     expect((generateLabel.mock.calls[0][0] as { cod?: unknown }).cod).toBeUndefined();
+  });
+
+  it('should send the insured value and normalise the decimal when supplied (#1542)', async () => {
+    const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
+    const apiClient = createMockApiClient({ shipments: { generateLabel } });
+    renderWithProviders(<GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />, {
+      apiClient,
+    });
+
+    const insuredInput = screen.getByLabelText(/Declared value to insure/i);
+    expect(insuredInput).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+    fireEvent.change(insuredInput, { target: { value: '150,00' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    await waitFor(() =>
+      expect(generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ insuredValue: { amount: '150.00', currency: 'PLN' } }),
+      ),
+    );
+  });
+
+  it('should omit the insured value when the amount is left blank (#1542)', async () => {
+    const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
+    const apiClient = createMockApiClient({ shipments: { generateLabel } });
+    renderWithProviders(<GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />, {
+      apiClient,
+    });
+
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    await waitFor(() => expect(generateLabel).toHaveBeenCalled());
+    expect(
+      (generateLabel.mock.calls[0][0] as { insuredValue?: unknown }).insuredValue,
+    ).toBeUndefined();
   });
 
   it('should send parcel.template (locker size, default medium) for a paczkomat order (#1423)', async () => {
@@ -753,5 +799,293 @@ describe('GenerateLabelForm — #953 dispatch-outcome toast', () => {
 
     expect(await findToastTitle(/Fulfilled by destination store/i)).toBeInTheDocument();
     expect(screen.queryByText(/Label generated/i)).not.toBeInTheDocument();
+  });
+});
+
+// ── #1569 — COD currency scoped to the routed carrier ─────────────────────
+
+describe('GenerateLabelForm — #1569 COD currency per routed carrier', () => {
+  function carrierConnection(id: string, platformType: string) {
+    return {
+      id,
+      platformType,
+      name: platformType,
+      status: 'active',
+      config: {},
+      credentialsBacked: true,
+      enabledCapabilities: [],
+      supportedCapabilities: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+  }
+
+  function routedApi(
+    processorPlatform: string,
+    overrides: Parameters<typeof createMockApiClient>[0] = {},
+  ) {
+    return createMockApiClient({
+      mappings: {
+        getRoutingRules: vi.fn().mockResolvedValue([
+          {
+            id: 'rule-1',
+            sourceConnectionId: 'b3f1c2d4-0000-4000-8000-000000000099',
+            sourceDeliveryMethodId: 'allegro-courier',
+            processorKind: 'ol_managed_carrier',
+            processorConnectionId: `conn-${processorPlatform}`,
+          },
+        ]),
+      },
+      connections: {
+        list: vi.fn().mockResolvedValue([carrierConnection(`conn-${processorPlatform}`, processorPlatform)]),
+      },
+      ...overrides,
+    });
+  }
+
+  function fillParcel(): void {
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+  }
+
+  function codOrder(currency?: string): OrderRecord {
+    const base = makeOrder();
+    return makeOrder({
+      orderSnapshot: {
+        ...(base.orderSnapshot as Record<string, unknown>),
+        paymentStatus: 'cod',
+        ...(currency
+          ? { totals: { subtotal: 100, tax: 0, shipping: 0, total: 100, currency } }
+          : {}),
+      },
+    });
+  }
+
+  it('should lock COD to PLN and hide the currency picker for an InPost-routed order', async () => {
+    const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
+    const apiClient = routedApi('inpost', { shipments: { generateLabel } });
+
+    renderWithProviders(
+      <GenerateLabelForm order={codOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    // Once the routing resolves the carrier, the picker collapses to a locked
+    // value + reason line and the select is gone.
+    expect(
+      await screen.findByText(/collects cash on delivery in PLN only/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'COD currency' })).toBeNull();
+
+    fillParcel();
+    fireEvent.change(screen.getByLabelText(/COD amount to collect/i), { target: { value: '129.90' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    await waitFor(() =>
+      expect(generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ cod: { amount: '129.90', currency: 'PLN' } }),
+      ),
+    );
+  });
+
+  it('should offer the full set and default from the order currency for a DPD-routed order', async () => {
+    const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
+    const apiClient = routedApi('dpd', { shipments: { generateLabel } });
+
+    renderWithProviders(
+      <GenerateLabelForm order={codOrder('EUR')} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    const select = await screen.findByRole('combobox', { name: 'COD currency' });
+    expect(within(select).getAllByRole('option')).toHaveLength(4);
+    expect(select).toHaveValue('EUR');
+    expect(screen.getByText(/Set from the order currency \(EUR\)/i)).toBeInTheDocument();
+
+    fillParcel();
+    fireEvent.change(screen.getByLabelText(/COD amount to collect/i), { target: { value: '50.00' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    await waitFor(() =>
+      expect(generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ cod: { amount: '50.00', currency: 'EUR' } }),
+      ),
+    );
+  });
+
+  it('should coerce an order currency the carrier rejects (CZK order → InPost) down to PLN', async () => {
+    const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
+    const apiClient = routedApi('inpost', { shipments: { generateLabel } });
+
+    renderWithProviders(
+      <GenerateLabelForm order={codOrder('CZK')} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    expect(
+      await screen.findByText(/Order is in CZK, but this carrier collects cash on delivery in PLN/i),
+    ).toBeInTheDocument();
+
+    fillParcel();
+    fireEvent.change(screen.getByLabelText(/COD amount to collect/i), { target: { value: '80.00' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    await waitFor(() =>
+      expect(generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ cod: { amount: '80.00', currency: 'PLN' } }),
+      ),
+    );
+  });
+
+  it('should keep the full currency union when no routing rule matches (carrier unknown)', async () => {
+    // Default mock returns [] routing rules → carrier unpredictable → union.
+    const apiClient = createMockApiClient({
+      shipments: { generateLabel: vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null }) },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={codOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    const select = await screen.findByRole('combobox', { name: 'COD currency' });
+    expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'PLN',
+      'EUR',
+      'RON',
+      'CZK',
+    ]);
+  });
+});
+
+// ── #1806 — surface carrier per-field validation details in the error Alert ──
+
+describe('GenerateLabelForm — #1806 carrier field-error breakdown', () => {
+  function fillParcelAndSubmit(): void {
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+  }
+
+  it('should render the generic message plus each per-field reason when the 502 carries structured details', async () => {
+    const apiClient = createMockApiClient({
+      shipments: {
+        generateLabel: vi.fn().mockRejectedValue(
+          new ApiError('There are some validation errors. Check details object for more info.', 502, {
+            providerCode: 'validation_failed',
+            details: {
+              fieldErrors: {
+                'receiver.first_name': ['This field is required'],
+                'receiver.last_name': ['This field is required'],
+              },
+            },
+          }),
+        ),
+      },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+    fillParcelAndSubmit();
+
+    // Generic message still renders (never replaced, only augmented).
+    expect(
+      await screen.findByText(/There are some validation errors\. Check details object/i),
+    ).toBeInTheDocument();
+
+    // Each rejected field renders as its own row.
+    expect(
+      screen.getAllByText('This field is required', { selector: '.structured-error-list__message' }),
+    ).toHaveLength(2);
+    // Field breadcrumb renders as a click-to-copy button labelled with the
+    // full dotted path (rendered as separate trail/leaf spans internally).
+    expect(
+      screen.getByRole('button', { name: 'Copy field path receiver.first_name' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Copy field path receiver.last_name' }),
+    ).toBeInTheDocument();
+  });
+
+  it('should fall back to the bare generic message when the mutation error has no structured field errors', async () => {
+    const apiClient = createMockApiClient({
+      shipments: {
+        generateLabel: vi.fn().mockRejectedValue(new ApiError('Carrier is unreachable', 502, null)),
+      },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+    fillParcelAndSubmit();
+
+    expect(await screen.findByText('Carrier is unreachable')).toBeInTheDocument();
+    // No structured list renders — no empty/broken Alert artefact.
+    expect(document.querySelector('.structured-error-list')).toBeNull();
+  });
+});
+
+// ── #1800 — surface carrier support reference (traceId) in the error Alert ──
+
+describe('GenerateLabelForm — #1800 carrier support reference', () => {
+  function fillParcelAndSubmit(): void {
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+  }
+
+  it('should render a copyable carrier support reference when the 502 nests a traceId on providerDetails', async () => {
+    const apiClient = createMockApiClient({
+      shipments: {
+        generateLabel: vi.fn().mockRejectedValue(
+          // Real DPD envelope: traceId merged into providerDetails →
+          // controller wraps it as `{ message, providerCode, details }`, so on
+          // the FE it lands at ApiError.details.details.traceId.
+          new ApiError('DPD could not process the shipment.', 502, {
+            providerCode: 'NOT_PROCESSED',
+            details: { errorCode: null, info: 'rejected', traceId: 'trace-xyz-789' },
+          }),
+        ),
+      },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+    fillParcelAndSubmit();
+
+    expect(await screen.findByText(/DPD could not process the shipment/i)).toBeInTheDocument();
+    expect(screen.getByText(/Reference for carrier support/i)).toBeInTheDocument();
+    // The trace id is rendered via the shared CopyableId primitive (aria-label
+    // `Copy <id>`), which also displays the id verbatim.
+    expect(screen.getByRole('button', { name: 'Copy trace-xyz-789' })).toBeInTheDocument();
+    expect(screen.getByText('trace-xyz-789')).toBeInTheDocument();
+  });
+
+  it('should not render the support-reference line when the mutation error carries no traceId', async () => {
+    const apiClient = createMockApiClient({
+      shipments: {
+        generateLabel: vi.fn().mockRejectedValue(new ApiError('Carrier is unreachable', 502, null)),
+      },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+    fillParcelAndSubmit();
+
+    expect(await screen.findByText('Carrier is unreachable')).toBeInTheDocument();
+    expect(screen.queryByText(/Reference for carrier support/i)).toBeNull();
   });
 });

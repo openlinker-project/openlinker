@@ -23,6 +23,7 @@ import { useCreateConnectionMutation } from '../../../features/connections';
 import {
   KSEF_AUTH_TYPE_VALUES,
   KSEF_ENVIRONMENT_VALUES,
+  KSEF_LINE_UNIT_SUGGESTIONS,
   KSEF_SETUP_DEFAULT_VALUES,
   ksefSetupSchema,
   toCreateConnectionInput,
@@ -253,6 +254,27 @@ export function KsefSetupForm(): ReactElement {
           invalid={Boolean(form.formState.errors.contextIdentifier)}
         />
       </FormField>
+
+      <FormField
+        label="Default line unit"
+        name="invoiceDefaultLineUnit"
+        error={form.formState.errors.invoiceDefaultLineUnit?.message}
+        description="Unit of measure stamped on issued-invoice lines. Clear it to omit the unit from documents."
+      >
+        <Input
+          {...form.register('invoiceDefaultLineUnit')}
+          list="ksef-line-unit-suggestions"
+          placeholder="szt."
+          autoComplete="off"
+          invalid={Boolean(form.formState.errors.invoiceDefaultLineUnit)}
+        />
+      </FormField>
+      {/* Outside FormField (it requires a single child); linked via list=. */}
+      <datalist id="ksef-line-unit-suggestions">
+        {KSEF_LINE_UNIT_SUGGESTIONS.map((unit) => (
+          <option key={unit} value={unit} />
+        ))}
+      </datalist>
 
       <FormField
         label="Authentication type"

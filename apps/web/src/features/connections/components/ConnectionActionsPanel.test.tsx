@@ -1,6 +1,11 @@
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { renderWithProviders, sampleConnection, createAuthenticatedSessionAdapter } from '../../../test/test-utils';
+import {
+  createMockApiClient,
+  renderWithProviders,
+  sampleConnection,
+  createAuthenticatedSessionAdapter,
+} from '../../../test/test-utils';
 import { ConnectionActionsPanel } from './ConnectionActionsPanel';
 
 // jsdom does not implement showModal/close — stub them on HTMLDialogElement
@@ -78,5 +83,57 @@ describe('ConnectionActionsPanel', () => {
 
     // Dialog is now open — job type select should be visible
     expect(screen.getByRole('combobox', { name: /job type/i })).toBeInTheDocument();
+  });
+
+  describe('demo read-only viewer (#1615)', () => {
+    const viewerSession = { sessionAdapter: createAuthenticatedSessionAdapter({
+      id: 'u2',
+      username: 'viewer',
+      email: null,
+      role: 'viewer',
+      permissions: ['connections:read', 'sync:read'],
+    }) };
+
+    function demoApiClient() {
+      return createMockApiClient({ system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) } });
+    }
+
+    it('renders every action visible-but-disabled instead of hiding them', async () => {
+      renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />, {
+        apiClient: demoApiClient(),
+        ...viewerSession,
+      });
+
+      expect(await screen.findByRole('button', { name: 'Test connection' })).toBeDisabled();
+      expect(screen.getByRole('link', { name: 'Edit' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /trigger sync/i })).not.toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Disable' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /configure webhooks/i })).toBeDisabled();
+    });
+
+    it('opens the TriggerSyncDialog with an enabled job type select but a disabled Trigger submit', async () => {
+      renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />, {
+        apiClient: demoApiClient(),
+        ...viewerSession,
+      });
+
+      fireEvent.click(await screen.findByRole('button', { name: /trigger sync/i }));
+
+      const jobTypeSelect = screen.getByRole('combobox', { name: /job type/i });
+      expect(jobTypeSelect).not.toBeDisabled();
+      expect(screen.getByRole('button', { name: /^trigger$/i })).toBeDisabled();
+    });
+
+    it('keeps the existing hide-when-missing behaviour for an unauthorized non-demo viewer', async () => {
+      renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />, viewerSession);
+
+      // Wait for the session to hydrate before asserting absence.
+      await waitFor(() => {
+        expect(screen.queryByRole('button', { name: 'Test connection' })).not.toBeInTheDocument();
+      });
+      expect(screen.queryByRole('link', { name: 'Edit' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /trigger sync/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Disable' })).not.toBeInTheDocument();
+    });
   });
 });

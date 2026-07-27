@@ -14,6 +14,7 @@ import {
   ShippingProviderRejectionException,
   type GenerateLabelCommand,
 } from '@openlinker/core/shipping';
+import { Logger } from '@openlinker/shared/logging';
 import type { DpdConnectionConfig } from '../../../domain/types/dpd-config.types';
 import type { IDpdHttpClient } from '../../http/dpd-http-client.interface';
 import type { IDpdInfoSoapClient } from '../../http/dpd-info-soap-client.interface';
@@ -141,6 +142,79 @@ describe('DpdShippingAdapter', () => {
     });
 
     await expect(adapter.generateLabel(makeCmd())).rejects.toBeInstanceOf(ShippingProviderRejectionException);
+  });
+
+  it('should log the full raw DPD body keyed by traceId when a create is rejected', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    http.request.mockResolvedValueOnce({
+      status: 'NOT_PROCESSED',
+      traceId: 'trace-abc-123',
+      packages: [{ status: 'NOT_PROCESSED', parcels: [] }],
+    });
+
+    await expect(adapter.generateLabel(makeCmd())).rejects.toBeInstanceOf(
+      ShippingProviderRejectionException,
+    );
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    const logged = warn.mock.calls[0][0] as string;
+    expect(logged).toContain('trace-abc-123');
+    expect(logged).toContain('NOT_PROCESSED');
+    // The raw body (minus the base64 documentData) is logged so an errorCode-less
+    // rejection is diagnosable. This create response carries no documentData.
+    expect(logged).toContain(JSON.stringify({ status: 'NOT_PROCESSED', traceId: 'trace-abc-123', packages: [{ status: 'NOT_PROCESSED', parcels: [] }] }));
+    warn.mockRestore();
+  });
+
+  it('should strip base64 documentData from the rejection log line', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const pdf = Buffer.from('%PDF-1.4 label bytes', 'utf8').toString('base64');
+    // A malformed/edge response: non-OK status paired with a populated document.
+    http.request.mockResolvedValueOnce({
+      status: 'REJECTED',
+      traceId: 'trace-doc-1',
+      documentData: pdf,
+    });
+
+    await expect(adapter.fetchLabel({ providerShipmentId: 'WB1' })).rejects.toBeInstanceOf(
+      ShippingProviderRejectionException,
+    );
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    const logged = warn.mock.calls[0][0] as string;
+    expect(logged).toContain('trace-doc-1');
+    expect(logged).toContain('REJECTED');
+    // The base64 PDF must not land in structured logs.
+    expect(logged).not.toContain(pdf);
+    expect(logged).not.toContain('documentData');
+    warn.mockRestore();
+  });
+
+  it('should surface DPD traceId on the rejection providerDetails for recovery', async () => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    http.request.mockResolvedValueOnce({
+      status: 'NOT_PROCESSED',
+      traceId: 'trace-xyz-789',
+      packages: [{ status: 'NOT_PROCESSED', parcels: [] }],
+    });
+
+    await expect(adapter.generateLabel(makeCmd())).rejects.toMatchObject({
+      providerDetails: { traceId: 'trace-xyz-789' },
+    });
+  });
+
+  it('should rethrow the original rejection unenriched when the response carries no traceId', async () => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    http.request.mockResolvedValueOnce({ status: 'PROTOCOL_ERROR' });
+
+    const error = await adapter
+      .generateProtocol({ providerShipmentIds: ['WB1'] })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ShippingProviderRejectionException);
+    // No traceId on the response → the `response.traceId ? … : error` branch
+    // rethrows the original exception, so providerDetails carries no traceId.
+    expect((error as ShippingProviderRejectionException).providerDetails?.traceId).toBeUndefined();
   });
 
   it('should propagate an HTTP-level rejection from the client', async () => {

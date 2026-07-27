@@ -2,10 +2,10 @@
  * Erli offer validation
  *
  * Declares Erli's per-row blocker (missing image) and the pure row validator,
- * in ONE place (#1096). Consumed by BOTH the bulk Review step and
- * `ErliCreateOfferWizard` via the plugin's `platform.offerValidation` slot, so
- * the rule never drifts between the two surfaces. Erli's `POST /products/{id}`
- * requires ≥1 image, so a row whose master product carries none is blocked.
+ * in ONE place (#1096). Consumed by the bulk Review step via the plugin's
+ * `platform.offerValidation` slot, so the rule lives with the other Erli
+ * offer-field logic. Erli's `POST /products/{id}` requires ≥1 image, so a row
+ * whose master product carries none is blocked.
  *
  * @module features/listings/components/erli
  */

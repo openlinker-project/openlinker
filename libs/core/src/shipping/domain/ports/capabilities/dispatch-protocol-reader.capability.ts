@@ -17,9 +17,10 @@
  * inventing a near-identical "ProtocolDocument" type.
  *
  * Carrier-neutral and OPTIONAL: carriers with no handover-manifest concept
- * (e.g. InPost) simply don't implement it, and the bulk-dispatch protocol
- * endpoint reports the gap rather than failing. Allegro Delivery (#831) reuses
- * this exact capability for its dispatch manifest.
+ * simply don't implement it, and the bulk-dispatch protocol endpoint reports
+ * the gap rather than failing. InPost implements it via ShipX
+ * `dispatch_orders/printouts` (#1543); Allegro Delivery (#831) reuses this
+ * exact capability for its dispatch manifest.
  *
  * @module libs/core/src/shipping/domain/ports/capabilities
  */

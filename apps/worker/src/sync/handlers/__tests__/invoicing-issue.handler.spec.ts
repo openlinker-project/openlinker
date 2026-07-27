@@ -69,6 +69,7 @@ describe('InvoicingIssueHandler', () => {
       getInvoice: jest.fn(),
       getInvoiceById: jest.fn(),
       getLatestInvoiceForOrder: jest.fn(),
+      getLatestInvoicesForOrders: jest.fn(),
       listInvoices: jest.fn(),
       issueCorrection: jest.fn(),
       applyRegulatoryClearance: jest.fn(),
@@ -98,6 +99,42 @@ describe('InvoicingIssueHandler', () => {
       await handler.execute(makeJob(makePayload({ idempotencyKey: 'invoice:c:o' })));
       expect(invoiceService.issueInvoice.mock.calls[0][0].idempotencyKey).toBe('invoice:c:o');
     });
+
+    it('command saleDate is restored from payload.saleDate (#1525)', async () => {
+      await handler.execute(makeJob(makePayload({ saleDate: '2026-06-19' })));
+      expect(invoiceService.issueInvoice.mock.calls[0][0].saleDate).toBe('2026-06-19');
+    });
+
+    it('command omits saleDate when the payload carries none', async () => {
+      await handler.execute(makeJob(makePayload()));
+      const cmd = invoiceService.issueInvoice.mock.calls[0][0];
+      expect('saleDate' in cmd).toBe(false);
+    });
+  });
+
+  describe('buyer.email (#1797)', () => {
+    it('reconstructs BuyerProfile.email from payload.buyer.email', async () => {
+      await handler.execute(
+        makeJob(
+          makePayload({
+            buyer: { ...makePayload().buyer, email: 'buyer@example.com' },
+          }),
+        ),
+      );
+      const cmd = invoiceService.issueInvoice.mock.calls[0][0];
+      expect(cmd.buyer.email).toBe('buyer@example.com');
+    });
+
+    it('normalizes a missing buyer.email (pre-#1797 payload shape) to null', async () => {
+      const payload = makePayload();
+      // Simulate a job persisted before this field existed: no `email` key at all.
+      delete (payload.buyer as { email?: string | null }).email;
+
+      const result = await handler.execute(makeJob(payload));
+
+      expect(result).toEqual({ outcome: 'ok' });
+      expect(invoiceService.issueInvoice.mock.calls[0][0].buyer.email).toBeNull();
+    });
   });
 
   describe('deep payload validation ⇒ business_failure (F5)', () => {
@@ -121,7 +158,12 @@ describe('InvoicingIssueHandler', () => {
       ['half-populated taxId', makePayload({
         buyer: { ...makePayload().buyer, taxId: { scheme: 'pl-nip', value: '' } },
       })],
+      ['present but non-string, non-null buyer.email (#1797)', makePayload({
+        buyer: { ...makePayload().buyer, email: 42 as unknown as string },
+      })],
       ['missing connectionId', makePayload({ connectionId: '' })],
+      ['present but empty saleDate', makePayload({ saleDate: '' })],
+      ['present but non-string saleDate', makePayload({ saleDate: 5 as unknown as string })],
     ];
 
     it.each(cases)('%s ⇒ business_failure (no issueInvoice call)', async (_label, payload) => {

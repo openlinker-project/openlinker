@@ -2,8 +2,9 @@
  * Register Form
  *
  * Self-service registration form for the /register guest page. Submits to
- * POST /auth/register. In demo mode (OL_DEMO_MODE=true), accounts are
- * auto-approved by the server so the success screen reflects instant access.
+ * POST /auth/register. In demo mode (OL_DEMO_MODE=true), accounts need no
+ * admin approval but stay inactive until the user confirms their email
+ * (#1624) — the success screen reflects that confirmation step.
  *
  * @module features/users/components
  */
@@ -14,6 +15,7 @@ import { useForm } from 'react-hook-form';
 import { Link } from 'react-router-dom';
 import { useRegisterMutation } from '../hooks/use-register-mutation';
 import { registerFormSchema, type RegisterFormValues } from './register-form.schema';
+import { ApiError } from '../../../shared/api/api-error';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
@@ -29,7 +31,15 @@ export function RegisterForm({ demoMode = false }: RegisterFormProps): ReactElem
   const [submitted, setSubmitted] = useState(false);
 
   const form = useForm<RegisterFormValues>({
-    defaultValues: { username: '', email: '', password: '', confirmPassword: '' },
+    defaultValues: {
+      username: '',
+      email: '',
+      password: '',
+      confirmPassword: '',
+      // Opt-in (#1743): unchecked by default so consent is an affirmative
+      // action (GDPR/ePrivacy — a pre-ticked box is not valid consent).
+      analyticsConsent: false,
+    },
     resolver: zodResolver(registerFormSchema),
   });
 
@@ -42,8 +52,11 @@ export function RegisterForm({ demoMode = false }: RegisterFormProps): ReactElem
       <div className="guest-page__success">
         {demoMode ? (
           <>
-            <p>Your demo account is ready. Sign in with the credentials you just created.</p>
-            <Link to="/login">Sign in now</Link>
+            <p>
+              Check your email to confirm your account. Click the link we sent you to activate it,
+              then sign in.
+            </p>
+            <Link to="/login">Back to sign in</Link>
           </>
         ) : (
           <>
@@ -55,9 +68,9 @@ export function RegisterForm({ demoMode = false }: RegisterFormProps): ReactElem
     );
   }
 
-  const onSubmit = form.handleSubmit(async ({ username, email, password }) => {
+  const onSubmit = form.handleSubmit(async ({ username, email, password, analyticsConsent }) => {
     try {
-      await register.mutateAsync({ username, email, password });
+      await register.mutateAsync({ username, email, password, analyticsConsent });
       setSubmitted(true);
     } catch {
       return;
@@ -69,14 +82,16 @@ export function RegisterForm({ demoMode = false }: RegisterFormProps): ReactElem
       {demoMode ? (
         <div className="guest-form__demo-bar">
           <strong>🔗 OpenLinker Demo</strong>
-          <span>Your account will be active immediately</span>
+          <span>Check your email to confirm and activate your account</span>
         </div>
       ) : null}
 
       {form.formState.submitCount > 0 ? <FormErrorSummary errors={validationMessages} /> : null}
       {register.error ? (
         <Alert tone="error" title="Registration failed">
-          {register.error.message}
+          {register.error instanceof ApiError && register.error.isConflict()
+            ? 'This email is already registered.'
+            : register.error.message}
         </Alert>
       ) : null}
 
@@ -85,7 +100,8 @@ export function RegisterForm({ demoMode = false }: RegisterFormProps): ReactElem
           <span className="guest-form__demo-callout-icon" aria-hidden="true">⚡</span>
           <div>
             <strong>Demo mode active</strong> — no approval needed. Your account is set to
-            read-only and activated instantly. You'll be able to sign in right away.
+            read-only. We'll email you a confirmation link; click it to activate your account
+            before signing in.
           </div>
         </div>
       ) : null}
@@ -128,6 +144,19 @@ export function RegisterForm({ demoMode = false }: RegisterFormProps): ReactElem
           autoComplete="new-password"
         />
       </FormField>
+
+      {demoMode ? (
+        <label className="guest-form__consent">
+          <input type="checkbox" {...form.register('analyticsConsent')} />
+          <span className="guest-form__consent-text">
+            <strong>Share anonymous usage analytics</strong>
+            <span className="guest-form__consent-hint">
+              Optional. Helps us improve OpenLinker. Includes session recording with all inputs
+              masked. Off unless you tick this; you can change it anytime after signing in.
+            </span>
+          </span>
+        </label>
+      ) : null}
 
       <Button type="submit" tone="primary" disabled={register.isPending}>
         {register.isPending

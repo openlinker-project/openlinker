@@ -112,8 +112,24 @@ export class OrdersController {
       { limit, offset }
     );
 
+    // Batch the invoice projection for the whole page (#1713): one query, not an
+    // N+1 of per-row `getLatestInvoiceForOrder`. Orders with no invoice are
+    // absent from the map and simply carry no `invoice` sub-tree — the FE then
+    // shows the "Issue invoice" action instead of a status pill.
+    const invoices = await this.invoiceService.getLatestInvoicesForOrders(
+      items.map((order) => order.internalOrderId)
+    );
+    const invoiceByOrderId = new Map(invoices.map((invoice) => [invoice.orderId, invoice]));
+
     return {
-      items: items.map((order) => this.toDto(order)),
+      items: items.map((order) => {
+        const dto = this.toDto(order);
+        const invoice = invoiceByOrderId.get(order.internalOrderId);
+        if (invoice) {
+          dto.orderSnapshot = { ...dto.orderSnapshot, invoice: this.toInvoiceProjection(invoice) };
+        }
+        return dto;
+      }),
       total,
       limit,
       offset,
@@ -184,9 +200,10 @@ export class OrdersController {
       throw new NotFoundException(`Order not found: ${internalOrderId}`);
     }
     const dto = this.toDto(order);
-    // Order-detail-only invoice projection (#1224): the FE invoice panel reads a
-    // neutral `invoice` sub-tree off the snapshot. Joined on the detail read only
-    // (the list endpoint stays a single query — no N+1).
+    // Invoice projection (#1224): the FE invoice panel reads a neutral `invoice`
+    // sub-tree off the snapshot. The list endpoint now shares the same projection
+    // via a batch read (`getLatestInvoicesForOrders`, one query per page — #1713);
+    // this detail read joins the single record for one order.
     const invoiceRecord = await this.invoiceService.getLatestInvoiceForOrder(
       order.internalOrderId
     );
@@ -276,6 +293,8 @@ export class OrdersController {
     const confirmationDocumentAvailable = record.status === 'issued' && record.regulatoryStatus === 'accepted';
     return {
       invoiceId: record.id,
+      documentType: record.documentType,
+      status: record.status,
       regulatoryStatus: record.regulatoryStatus,
       clearanceReference: record.clearanceReference,
       confirmationDocumentAvailable,

@@ -186,4 +186,29 @@ describe('Order column sort (integration)', () => {
       synced.internalOrderId, // 3
     ]);
   });
+
+  it('sorts by payment status ascending (alphabetical), NULLs last (#1713)', async () => {
+    const ds = harness.getDataSource();
+    const paid = await createTestOrderRecord(ds, {
+      sourceConnectionId: SOURCE,
+      orderSnapshot: { items: [], paymentStatus: 'paid' },
+    });
+    const awaiting = await createTestOrderRecord(ds, {
+      sourceConnectionId: SOURCE,
+      orderSnapshot: { items: [], paymentStatus: 'awaiting' },
+    });
+    const noPayment = await createTestOrderRecord(ds, {
+      sourceConnectionId: SOURCE,
+      orderSnapshot: { items: [] },
+    });
+
+    const { items } = await repository.findMany({ sort: 'payment', dir: 'asc' }, PAGE);
+
+    // Alphabetical: awaiting < paid; the order with no paymentStatus sorts last.
+    expect(items.map((o) => o.internalOrderId)).toEqual([
+      awaiting.internalOrderId,
+      paid.internalOrderId,
+      noPayment.internalOrderId, // NULLs last
+    ]);
+  });
 });

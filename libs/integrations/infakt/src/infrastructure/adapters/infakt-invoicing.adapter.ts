@@ -32,6 +32,8 @@ import type {
   IssueInvoiceCommand,
   IssueInvoiceResult,
   InvoicingPort,
+  MarkInvoicePaidCommand,
+  PaymentMarker,
   PaymentStatus,
   PaymentStatusReader,
   PaymentStatusResult,
@@ -267,6 +269,7 @@ export class InfaktInvoicingAdapter
     InvoicingPort,
     RegulatoryStatusReader,
     PaymentStatusReader,
+    PaymentMarker,
     RegulatoryResubmitter,
     CorrectionIssuer,
     RegulatoryDocumentReader,
@@ -358,10 +361,14 @@ export class InfaktInvoicingAdapter
     // (2026-07-01): the API wants `company_name` / `postal_code`, not the
     // `name` / `post_code` this previously sent — the latter is silently
     // rejected/ignored, so first-time client creation always 422'd.
+    // #1797: without `email`, Infakt creates the client with no email on
+    // file, so a later `deliver_via_email.json` call 422s ("adres e-mail
+    // Klienta jest nieznany") — confirmed live against the sandbox.
     const payload = {
       client: {
         company_name: buyer.name,
         nip: nip ?? undefined,
+        email: buyer.email ?? undefined,
         city: buyer.address.city,
         street: buyer.address.line1,
         postal_code: buyer.address.postalCode,
@@ -559,6 +566,30 @@ export class InfaktInvoicingAdapter
     );
 
     return { paymentStatus: toPaymentStatus(invoice) };
+  }
+
+  /**
+   * `PaymentMarker.markPaid` (#1362) - the outbound counterpart to
+   * `getPaymentStatus`: push an authoritative "paid" state to inFakt for an
+   * order settled elsewhere (e.g. a marketplace order - the buyer paid the
+   * marketplace, not the seller's bank account, so inFakt has no bank
+   * statement to auto-match against). Verified live against the sandbox
+   * (2026-07-08): `POST /async/invoices/{uuid}/paid.json` returns 201 with an
+   * async task envelope (`processing_code: 100`, "task accepted" - not
+   * "completed"), and an immediate re-read shows `status: 'paid'` /
+   * `paid_date` set. Re-marking an already-paid invoice is safe (still 201,
+   * no error).
+   *
+   * Async on inFakt's side: the caller is responsible for re-reading via
+   * `getPaymentStatus` afterward if it needs OL's own projection updated -
+   * this method only confirms the provider ACCEPTED the mark, not that its
+   * processing has finished.
+   */
+  async markPaid(cmd: MarkInvoicePaidCommand): Promise<void> {
+    await this.http.post(`async/invoices/${encodeURIComponent(cmd.externalInvoiceId)}/paid.json`, {
+      invoice: { paid_date: cmd.paidDate.toISOString().slice(0, 10) },
+    });
+    this.logger.log(`Infakt invoice ${cmd.externalInvoiceId} marked as paid`);
   }
 
   async issueCorrection(cmd: IssueCorrectionCommand): Promise<IssueInvoiceResult> {
@@ -773,6 +804,10 @@ export class InfaktInvoicingAdapter
    * override — inFakt always uses the client's stored email, so the response
    * `recipient` is always null (inFakt doesn't echo it back). A provider
    * rejection propagates as-is (the controller maps it to a 502).
+   *
+   * `deliver_via_email.json` replies `202 Accepted` with an empty body (it's
+   * a fire-and-forget async trigger, #1797) — `postForEffect` tolerates that,
+   * unlike the generic `post<T>()` used elsewhere in this adapter.
    */
   async sendByEmail(cmd: SendInvoiceByEmailCommand): Promise<SendInvoiceByEmailResult> {
     const locale = toInfaktEmailLocale(cmd.locale);
@@ -781,7 +816,7 @@ export class InfaktInvoicingAdapter
       ...(locale ? { locale } : {}),
       ...(cmd.sendCopy !== undefined ? { send_copy: cmd.sendCopy } : {}),
     };
-    await this.http.post(
+    await this.http.postForEffect(
       `invoices/${encodeURIComponent(cmd.externalInvoiceId)}/deliver_via_email.json`,
       payload,
     );

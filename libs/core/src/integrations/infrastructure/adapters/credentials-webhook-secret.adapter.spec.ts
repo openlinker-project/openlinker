@@ -119,4 +119,57 @@ describe('CredentialsWebhookSecretAdapter', () => {
     await subject.getSecret(provider, connectionId);
     expect(repository.getByRef).toHaveBeenCalledTimes(2);
   });
+
+  describe('has', () => {
+    it('returns true on a DB hit', async () => {
+      repository.getByRef.mockResolvedValue(credential('plain'));
+
+      await expect(subject.has(provider, connectionId)).resolves.toBe(true);
+    });
+
+    it('returns true from a connection-scoped env var when DB misses', async () => {
+      repository.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
+      config.get.mockImplementation((k: string) =>
+        k === `OPENLINKER_WEBHOOK_SECRET__${provider.toUpperCase()}__${connectionId.toUpperCase()}`
+          ? 'env-secret'
+          : undefined
+      );
+
+      await expect(subject.has(provider, connectionId)).resolves.toBe(true);
+    });
+
+    it('returns true from a provider-level env var when the connection-scoped key is absent', async () => {
+      repository.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
+      config.get.mockImplementation((k: string) =>
+        k === `OPENLINKER_WEBHOOK_SECRET__${provider.toUpperCase()}` ? 'provider-secret' : undefined
+      );
+
+      await expect(subject.has(provider, connectionId)).resolves.toBe(true);
+    });
+
+    it('returns false when neither DB nor env resolve', async () => {
+      repository.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
+      config.get.mockReturnValue(undefined);
+
+      await expect(subject.has(provider, connectionId)).resolves.toBe(false);
+    });
+
+    it('returns false (not a false-positive) when the env var is set but empty (#1770 review)', async () => {
+      repository.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
+      config.get.mockReturnValue('');
+
+      await expect(subject.has(provider, connectionId)).resolves.toBe(false);
+    });
+
+    it('does not consult the cache populated by a prior getSecret call', async () => {
+      repository.getByRef.mockResolvedValue(credential('plain'));
+      await subject.getSecret(provider, connectionId);
+      repository.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
+      config.get.mockReturnValue(undefined);
+
+      // has() re-checks the DB directly rather than trusting the getSecret cache,
+      // so a secret deleted after being cached is correctly reported absent.
+      await expect(subject.has(provider, connectionId)).resolves.toBe(false);
+    });
+  });
 });

@@ -21,6 +21,7 @@ const adminAdapter = createAuthenticatedSessionAdapter({
   email: 'admin@example.com',
   role: 'admin',
   permissions: [],
+  analyticsConsent: true,
 });
 
 const viewerAdapter = createAuthenticatedSessionAdapter({
@@ -29,6 +30,7 @@ const viewerAdapter = createAuthenticatedSessionAdapter({
   email: 'viewer@example.com',
   role: 'viewer',
   permissions: [],
+  analyticsConsent: true,
 });
 
 function template(overrides: Partial<PromptTemplate> = {}): PromptTemplate {

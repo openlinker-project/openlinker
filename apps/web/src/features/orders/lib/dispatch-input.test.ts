@@ -202,6 +202,27 @@ describe('buildDispatchItem', () => {
     });
     expect(item.cod).toEqual({ amount: '129.90', currency: 'PLN' });
   });
+
+  it('normalises a comma decimal in the insured value amount (#1542)', () => {
+    const item = buildDispatchItem({
+      order: order({ snapshot: COURIER_SNAPSHOT }),
+      snapshot: parseOrderSnapshot(COURIER_SNAPSHOT),
+      shippingMethod: 'kurier',
+      parcel: { length: 1, width: 1, height: 1, weightGrams: 1 },
+      insuredValue: { amount: '150,00', currency: 'PLN' },
+    });
+    expect(item.insuredValue).toEqual({ amount: '150.00', currency: 'PLN' });
+  });
+
+  it('omits the insured value when none is supplied (#1542)', () => {
+    const item = buildDispatchItem({
+      order: order({ snapshot: COURIER_SNAPSHOT }),
+      snapshot: parseOrderSnapshot(COURIER_SNAPSHOT),
+      shippingMethod: 'kurier',
+      parcel: { length: 1, width: 1, height: 1, weightGrams: 1 },
+    });
+    expect(item.insuredValue).toBeUndefined();
+  });
 });
 
 describe('groupBy', () => {

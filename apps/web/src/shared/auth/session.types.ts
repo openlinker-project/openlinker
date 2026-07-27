@@ -24,6 +24,7 @@ export const PermissionValues = [
   'customers:read',
   'shipments:read',
   'invoices:read',
+  'invoices:write',
   'webhooks:read',
   'ai:suggest',
 ] as const;
@@ -36,6 +37,12 @@ export interface MeResponse {
   email: string | null;
   role: string;
   permissions: Permission[];
+  /**
+   * Account opt-in for demo-only usage analytics (#1743). Optional so a
+   * payload from an API predating this field is tolerated; consumers treat a
+   * missing value as no consent (opt-in default).
+   */
+  analyticsConsent?: boolean;
 }
 
 export interface SessionUser {
@@ -44,6 +51,8 @@ export interface SessionUser {
   email: string | null;
   role: string;
   permissions: Permission[];
+  /** Account opt-in for demo-only usage analytics (#1743). Absent ⇒ opt-in (off). */
+  analyticsConsent?: boolean;
 }
 
 export interface Session {

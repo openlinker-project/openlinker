@@ -55,6 +55,33 @@ function buildErliOrder(overrides: Partial<ErliOrder> = {}): ErliOrder {
 }
 
 describe('mapErliOrderToIncomingOrder', () => {
+  it('should map delivery.typeId and name onto the neutral shipping reference when present', () => {
+    const result = mapErliOrderToIncomingOrder(
+      buildErliOrder({
+        delivery: { name: 'ERLI InPost Paczkomaty 24/7', typeId: 'erliPaczkomat', cod: false },
+      }),
+    );
+
+    expect(result.shipping).toEqual({
+      methodId: 'erliPaczkomat',
+      methodName: 'ERLI InPost Paczkomaty 24/7',
+    });
+  });
+
+  it('should keep shipping absent when delivery carries no typeId', () => {
+    const result = mapErliOrderToIncomingOrder(buildErliOrder({ delivery: { cod: false } }));
+
+    expect(result.shipping).toBeUndefined();
+  });
+
+  it('should omit methodName when delivery has a typeId but no name', () => {
+    const result = mapErliOrderToIncomingOrder(
+      buildErliOrder({ delivery: { typeId: 'dpd', cod: false } }),
+    );
+
+    expect(result.shipping).toEqual({ methodId: 'dpd' });
+  });
+
   it('should map a COD purchased order to processing + paymentStatus cod', () => {
     const result = mapErliOrderToIncomingOrder(
       buildErliOrder({ status: 'purchased', delivery: { cod: true } }),
@@ -228,6 +255,78 @@ describe('mapErliOrderToIncomingOrder', () => {
 
     expect(result.shippingAddress).toBeUndefined();
     expect(result.billingAddress).toBeUndefined();
+  });
+
+  it('should project delivery.pickupPlace onto the neutral pickupPoint (#1519)', () => {
+    const result = mapErliOrderToIncomingOrder(
+      buildErliOrder({
+        delivery: {
+          cod: false,
+          price: 1000,
+          pickupPlace: {
+            id: 42,
+            externalId: 'POZ08A',
+            type: 'paczkomat',
+            provider: 'inpost',
+            name: 'Paczkomat POZ08A',
+            address: 'ul. Testowa 1',
+            city: 'Testowo',
+            zip: '00-001',
+          },
+        },
+      }),
+    );
+
+    expect(result.pickupPoint).toEqual({
+      id: 'POZ08A',
+      name: 'Paczkomat POZ08A',
+      description: 'ul. Testowa 1',
+      pointType: 'apm',
+    });
+  });
+
+  it('should fall back to the numeric pickupPlace id when externalId is absent (#1519)', () => {
+    const result = mapErliOrderToIncomingOrder(
+      buildErliOrder({
+        delivery: { cod: false, price: 1000, pickupPlace: { id: 42 } },
+      }),
+    );
+
+    expect(result.pickupPoint?.id).toBe('42');
+    expect(result.pickupPoint?.pointType).toBeUndefined();
+  });
+
+  it('should classify a PaczkoPunkt pickup point as pop (#1519)', () => {
+    const result = mapErliOrderToIncomingOrder(
+      buildErliOrder({
+        delivery: {
+          cod: false,
+          price: 1000,
+          pickupPlace: { externalId: 'POP-123', type: 'paczkopunkt', name: 'PaczkoPunkt' },
+        },
+      }),
+    );
+
+    expect(result.pickupPoint?.id).toBe('POP-123');
+    expect(result.pickupPoint?.pointType).toBe('pop');
+  });
+
+  it('should leave pickupPoint undefined for a courier / home-delivery order (#1519)', () => {
+    const result = mapErliOrderToIncomingOrder(
+      buildErliOrder({ delivery: { name: 'Kurier', typeId: 'courier', price: 1000, cod: true } }),
+    );
+
+    expect(result.pickupPoint).toBeUndefined();
+  });
+
+  it('should leave pickupPoint undefined when pickupPlace carries no resolvable id (#1519)', () => {
+    const result = mapErliOrderToIncomingOrder(
+      buildErliOrder({
+        delivery: { cod: false, price: 1000, pickupPlace: { name: 'Some point', type: 'apm' } },
+      }),
+    );
+
+    expect(result.pickupPoint).toBeUndefined();
   });
 
   it('should never emit an internal ol_ id anywhere in the output (the #995 identity boundary)', () => {

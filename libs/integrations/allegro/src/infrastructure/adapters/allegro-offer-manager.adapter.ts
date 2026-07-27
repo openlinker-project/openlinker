@@ -15,6 +15,8 @@ import type {
   OfferEventReader,
   OfferFieldUpdater,
   CategoryBrowser,
+  CategoryPathReader,
+  CategoryPathSegment,
   CategoryBarcodeMatcher,
   EanCategoryMatcher,
   BatchCategoryByEanInput,
@@ -40,13 +42,17 @@ import type {
   UpdateOfferQuantityCommand,
   UpdateOfferFieldsCommand,
   CreateOfferCommand,
+  OfferCondition,
   OfferParameter,
   CreateOfferResult,
   CreateOfferResultStatus,
   CreateOfferValidationError,
   OfferCategory,
   CategoryParameter,
+  CategoryParameterSection,
   MarketplaceOffer,
+  MarketplaceOfferParameter,
+  MarketplaceOfferProductSetItem,
   SellerPolicies,
   SafetyAttachmentUploader,
   SafetyAttachmentUploadInput,
@@ -74,6 +80,7 @@ import type {
   AllegroQuantityChangeCommandStatusResponse,
   AllegroCategoryParametersResponse,
   AllegroCategoriesResponse,
+  AllegroCategoryResponse,
   AllegroOfferParameter,
   AllegroOfferPublicationStatus,
   AllegroProductOffer,
@@ -106,10 +113,35 @@ import { AllegroQuantityCommand } from '../../index';
 /** Adapter key registered for the Allegro marketplace integration. */
 const ALLEGRO_ADAPTER_KEY = 'allegro.publicapi.v1';
 
+/**
+ * Allegro "Stan" (condition) parameter id and its dictionary value ids (#1500).
+ * "Stan" is an offer-section parameter; the adapter owns this neutral → wire
+ * mapping so core carries only the neutral `CreateOfferCommand.condition`. Value
+ * ids are Allegro's stable global dictionary entries (`11323_1` = Nowy / new,
+ * `11323_2` = Używany / used).
+ */
+const ALLEGRO_CONDITION_PARAMETER_ID = '11323';
+const ALLEGRO_CONDITION_VALUE_IDS: Record<OfferCondition, string> = {
+  new: '11323_1',
+  used: '11323_2',
+};
+
 /** Default cache TTL (24h) for `/sale/categories/{id}/parameters` responses. */
 const DEFAULT_CAT_PARAMS_TTL_SEC = 24 * 60 * 60;
 /** Cache key prefix — global namespace; Allegro category schemas are public taxonomy. */
 const CAT_PARAMS_CACHE_PREFIX = 'allegro:cat-params:';
+/**
+ * Cache key prefix for a single category node (`GET /sale/categories/{id}`).
+ * Global namespace — a category node is immutable public taxonomy, so it is
+ * shared across connections and reused by every breadcrumb walk that touches it.
+ */
+const CATEGORY_NODE_CACHE_PREFIX = 'allegro:category-node:';
+
+/**
+ * Upper bound on category-breadcrumb ancestor hops (#1752). Allegro's tree is
+ * far shallower; the cap only guards against a malformed/cyclic parent chain.
+ */
+const MAX_CATEGORY_PATH_DEPTH = 12;
 
 /**
  * Variant key used when `matchCategoryByBarcode` delegates to the batch util
@@ -117,6 +149,33 @@ const CAT_PARAMS_CACHE_PREFIX = 'allegro:cat-params:';
  * consumed by one read in the same call.
  */
 const SINGLE_ITEM_KEY = 'single';
+
+/**
+ * Build a URL-safe slug from a human offer name for the cosmetic path segment
+ * of a public offer URL. Lowercases, strips diacritics (NFD + drop combining
+ * marks), collapses every non-alphanumeric run to a single `-`, and trims
+ * leading/trailing separators. Returns an empty string for blank/symbol-only
+ * input so the caller can fall back to an id-only URL.
+ *
+ * The slug is cosmetic only \u2014 Allegro resolves the offer by the trailing id and
+ * 301s to the canonical URL \u2014 so it must never be treated as canonical.
+ */
+function slugify(name: string): string {
+  return (
+    name
+      // Latin letters with a stroke (Polish \u0142/\u0141, and the same family for other
+      // languages) are single codepoints NFD does not decompose, so map them
+      // explicitly before the combining-mark strip \u2014 otherwise `s\u0142uchawki`
+      // would slug to `s-uchawki`.
+      .replace(/[\u0142\u0141]/g, 'l')
+      .replace(/[\u0111\u0110]/g, 'd')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+  );
+}
 
 /**
  * Defensive runtime check for the persisted `Connection.config.allegro
@@ -193,6 +252,7 @@ export class AllegroOfferManagerAdapter
     OfferEventReader,
     OfferFieldUpdater,
     CategoryBrowser,
+    CategoryPathReader,
     CategoryBarcodeMatcher,
     EanCategoryMatcher,
     CategoryParametersReader,
@@ -684,9 +744,69 @@ export class AllegroOfferManagerAdapter
       availableQuantity: offer.stock?.available ?? 0,
       status: offer.publication?.status ?? 'UNKNOWN',
       category: offer.category ? { id: offer.category.id } : undefined,
-      marketplaceUrl: this.buildMarketplaceUrl(offer.id),
+      marketplaceUrl: this.buildMarketplaceUrl(offer),
       endsAt: offer.publication?.endingAt,
+      parameters: this.mapOfferParameters(offer),
+      productSet: this.mapOfferProductSet(offer),
     };
+  }
+
+  /**
+   * Collect the offer's filled parameter values into the neutral shape
+   * (#1482). Offer-section values come from `offer.parameters`; product-
+   * section values (Brand, Model, manufacturer code, ...) come from each
+   * `productSet[].product.parameters` - both already present on the
+   * `GET /sale/product-offers/{offerId}` response, so no extra API call.
+   * Returns undefined when the response carries no parameter data at all,
+   * keeping the previous DTO shape for sparse offers.
+   */
+  private mapOfferParameters(offer: AllegroProductOffer): MarketplaceOfferParameter[] | undefined {
+    const mapped: MarketplaceOfferParameter[] = [];
+    for (const parameter of offer.parameters ?? []) {
+      mapped.push(this.toMarketplaceOfferParameter(parameter, 'offer'));
+    }
+    for (const entry of offer.productSet ?? []) {
+      for (const parameter of entry.product?.parameters ?? []) {
+        mapped.push(this.toMarketplaceOfferParameter(parameter, 'product'));
+      }
+    }
+    return mapped.length > 0 ? mapped : undefined;
+  }
+
+  private toMarketplaceOfferParameter(
+    parameter: AllegroOfferParameter,
+    section: CategoryParameterSection
+  ): MarketplaceOfferParameter {
+    return {
+      id: parameter.id,
+      name: parameter.name,
+      values: parameter.values ?? [],
+      valuesIds: parameter.valuesIds,
+      rangeValue: parameter.rangeValue
+        ? { from: parameter.rangeValue.from, to: parameter.rangeValue.to }
+        : undefined,
+      section,
+    };
+  }
+
+  /**
+   * Map `productSet[]` into the neutral catalog-linkage shape (#1482).
+   * `product.id` is only present on smart-linked entries (inline products
+   * carry no card id); `quantity.value` is Allegro's per-item unit count.
+   * Returns undefined when the offer has no product set so adapters without
+   * catalog linkage keep the previous shape.
+   */
+  private mapOfferProductSet(
+    offer: AllegroProductOffer
+  ): MarketplaceOfferProductSetItem[] | undefined {
+    const entries = offer.productSet ?? [];
+    if (entries.length === 0) {
+      return undefined;
+    }
+    return entries.map((entry) => ({
+      productId: entry.product?.id,
+      quantity: entry.quantity?.value,
+    }));
   }
 
   /**
@@ -718,12 +838,19 @@ export class AllegroOfferManagerAdapter
    * hosts differ between sandbox and production; the factory passes the
    * right storefront base via the constructor. When unset (legacy callers,
    * tests), omit the URL — the FE renders no link rather than a wrong one.
+   *
+   * Canonical shape is `/oferta/{slug}-{offerId}`; the numeric id suffix is
+   * what resolves, the slug is cosmetic (Allegro 301s to the canonical slug),
+   * so a stale/mismatched slug is safe. When the offer carries no name we fall
+   * back to the id-only `/oferta/{offerId}` form.
    */
-  private buildMarketplaceUrl(offerId: string): string | undefined {
+  private buildMarketplaceUrl(offer: AllegroProductOffer): string | undefined {
     if (!this.storefrontBaseUrl) {
       return undefined;
     }
-    return `${this.storefrontBaseUrl.replace(/\/+$/, '')}/oferta/${offerId}`;
+    const base = `${this.storefrontBaseUrl.replace(/\/+$/, '')}/oferta`;
+    const slug = slugify(offer.name ?? '');
+    return slug ? `${base}/${slug}-${offer.id}` : `${base}/${offer.id}`;
   }
 
   /**
@@ -807,6 +934,79 @@ export class AllegroOfferManagerAdapter
     }));
   }
 
+  /**
+   * Fetch a single category node (`GET /sale/categories/{id}`, not its
+   * children), returning Allegro's native shape verbatim. Cached under a global
+   * namespace when a cache is wired — a category node is immutable public
+   * taxonomy — so repeat breadcrumb walks that share an ancestor hit the cache.
+   * 404 surfaces as an `AllegroApiException` the caller maps to a neutral
+   * not-found.
+   */
+  private async fetchCategoryByIdRaw(categoryId: string): Promise<AllegroCategoryResponse> {
+    const cacheKey = `${CATEGORY_NODE_CACHE_PREFIX}${categoryId}`;
+    if (this.cache) {
+      const cached = await this.cache.get<AllegroCategoryResponse>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+    const response = await this.httpClient.get<AllegroCategoryResponse>(
+      `/sale/categories/${categoryId}`
+    );
+    if (this.cache) {
+      await this.cache.set(cacheKey, response.data, this.catParamsTtlSec);
+    }
+    return response.data;
+  }
+
+  /**
+   * `CategoryPathReader.fetchCategoryPath` — resolve `categoryId` to its full
+   * breadcrumb ordered root -> leaf. Walks up the tree via each node's
+   * `parent.id`, one `GET /sale/categories/{id}` per ancestor (nodes are cached
+   * in `fetchCategoryByIdRaw`); a depth cap + a `seen` set guard against a
+   * malformed/cyclic parent chain. 404 on the requested leaf (the first hop)
+   * maps to the neutral `CategoryNotFoundException`; a 404 on an *ancestor*
+   * returns the partial breadcrumb resolved so far rather than discarding it.
+   */
+  async fetchCategoryPath(categoryId: string): Promise<CategoryPathSegment[]> {
+    this.logger.debug(
+      `Fetching Allegro category path (connection: ${this.connectionId}, categoryId: ${categoryId})`
+    );
+    const segments: CategoryPathSegment[] = [];
+    const seen = new Set<string>();
+
+    let currentId: string | null = categoryId;
+    for (let depth = 0; currentId && depth < MAX_CATEGORY_PATH_DEPTH; depth += 1) {
+      if (seen.has(currentId)) {
+        // Defensive: a cyclic parent chain should never happen, but stop
+        // rather than loop.
+        break;
+      }
+      seen.add(currentId);
+
+      let node: AllegroCategoryResponse;
+      try {
+        node = await this.fetchCategoryByIdRaw(currentId);
+      } catch (err) {
+        if (err instanceof AllegroApiException && err.statusCode === 404) {
+          // The requested leaf not existing is a genuine not-found; an ancestor
+          // vanishing mid-walk just truncates the breadcrumb — keep what we have.
+          if (depth === 0) {
+            throw new CategoryNotFoundException(currentId, 'allegro');
+          }
+          break;
+        }
+        throw err;
+      }
+
+      // Prepend so the result stays root -> leaf.
+      segments.unshift({ id: node.id, name: node.name });
+      currentId = node.parent?.id ?? null;
+    }
+
+    return segments;
+  }
+
   async matchCategoryByBarcode(barcode: string): Promise<string | null> {
     // Delegates to the shared #735 batch util so single-call and batch paths
     // share the `/sale/products?phrase=…&mode=GTIN` endpoint, cache namespace,
@@ -838,7 +1038,7 @@ export class AllegroOfferManagerAdapter
    * failure.
    */
   async resolveCategoriesForBatchByEan(
-    input: BatchCategoryByEanInput,
+    input: BatchCategoryByEanInput
   ): Promise<Map<string, EanMatchResult>> {
     return resolveCategoriesForBatchByEan(this.httpClient, this.cache, this.connectionId, input);
   }
@@ -1481,7 +1681,7 @@ export class AllegroOfferManagerAdapter
     // ensures `this.sellerDefaults` is defined by the time we get here).
     body.location = { ...this.sellerDefaults!.location };
 
-    this.applyPlatformParams(body, platformParams, cmd.parameters, cardLinkResult);
+    this.applyPlatformParams(body, platformParams, cmd.parameters, cardLinkResult, cmd.condition);
 
     return body;
   }
@@ -1503,11 +1703,43 @@ export class AllegroOfferManagerAdapter
     }));
   }
 
+  /**
+   * Build the Allegro "Stan" (condition) offer-section parameter from the neutral
+   * `cmd.condition` (#1500). Returns `undefined` when no condition is set OR when
+   * the operator already supplied a Stan parameter (id 11323) among the
+   * offer-section params — operator intent wins and condition is never
+   * double-set. `valuesIds` carries the dictionary entry id ("Stan" is a
+   * dictionary parameter).
+   *
+   * The operator-wins check inspects only the offer-section params
+   * (`existingOfferParameters`) by design: "Stan" is inherently an
+   * offer-section parameter on Allegro (fixture `describesProduct:false`; the
+   * wizard/mapper always treat it as offer-section), so a product-section Stan
+   * cannot legitimately arise. If that assumption ever breaks, extend the
+   * dedup to scan the product-section params too.
+   */
+  private buildConditionParameter(
+    condition: OfferCondition | undefined,
+    existingOfferParameters: readonly AllegroOfferParameter[]
+  ): AllegroOfferParameter | undefined {
+    if (!condition) {
+      return undefined;
+    }
+    if (existingOfferParameters.some((p) => p.id === ALLEGRO_CONDITION_PARAMETER_ID)) {
+      return undefined;
+    }
+    return {
+      id: ALLEGRO_CONDITION_PARAMETER_ID,
+      valuesIds: [ALLEGRO_CONDITION_VALUE_IDS[condition]],
+    };
+  }
+
   private applyPlatformParams(
     body: AllegroProductOfferCreateRequest,
     platformParams: Record<string, unknown>,
     parameters: readonly OfferParameter[] | undefined,
-    cardLinkResult: ResolveProductCardResult
+    cardLinkResult: ResolveProductCardResult,
+    condition: OfferCondition | undefined
   ): void {
     const deliveryPolicyId = platformParams['deliveryPolicyId'];
     const handlingTime = platformParams['handlingTime'];
@@ -1551,6 +1783,13 @@ export class AllegroOfferManagerAdapter
     const offerParameters = this.toAllegroParameters(
       (parameters ?? []).filter((p) => p.section === 'offer')
     );
+    // #1500 — default marketplace-required condition ("Stan"). Skip when the
+    // operator already supplied a Stan parameter (offer-section id 11323) so
+    // operator intent wins and condition is never double-set.
+    const conditionParameter = this.buildConditionParameter(condition, offerParameters);
+    if (conditionParameter) {
+      offerParameters.push(conditionParameter);
+    }
     if (offerParameters.length > 0) {
       body.parameters = offerParameters;
     }

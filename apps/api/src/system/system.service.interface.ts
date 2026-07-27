@@ -9,7 +9,7 @@
 import type { SystemConfigDto } from './dto/system-config.dto';
 
 export interface ISystemService {
-  getConfig(): SystemConfigDto;
+  getConfig(): Promise<SystemConfigDto>;
 }
 
 export const SYSTEM_SERVICE_TOKEN = Symbol('ISystemService');

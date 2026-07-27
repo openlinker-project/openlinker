@@ -9,6 +9,11 @@
  */
 export const INVOICE_RECORD_REPOSITORY_TOKEN = Symbol('InvoiceRecordRepositoryPort');
 
+/** Binding token for the {@link InvoiceNumberingSeriesRepositoryPort} (#1575). */
+export const INVOICE_NUMBERING_SERIES_REPOSITORY_TOKEN = Symbol(
+  'InvoiceNumberingSeriesRepositoryPort',
+);
+
 /** Binding token for the {@link IInvoiceService} application service (ADR-026 "SVC"). */
 export const INVOICE_SERVICE_TOKEN = Symbol('IInvoiceService');
 
@@ -34,3 +39,35 @@ export const REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN = Symbol(
  * `PaymentStatusReader` sub-capability when a provider payment webhook triggers.
  */
 export const PAYMENT_STATUS_REFRESH_SERVICE_TOKEN = Symbol('IPaymentStatusRefreshService');
+
+/** Binding token for the {@link InvoiceNumberGapNoteRepositoryPort} (#8). */
+export const INVOICE_NUMBER_GAP_NOTE_REPOSITORY_TOKEN = Symbol(
+  'InvoiceNumberGapNoteRepositoryPort',
+);
+
+/** Binding token for the {@link INumberingAuditService} gap-audit read model (#8). */
+export const NUMBERING_AUDIT_SERVICE_TOKEN = Symbol('INumberingAuditService');
+
+/**
+ * Binding token for the {@link INumberingSeriesService} application service (#9/#10).
+ * The API layer injects this instead of the repository port directly, keeping the
+ * cross-context contract to an `I*Service` seam (pattern validation + periodKey
+ * seeding live behind it, never in the controller).
+ */
+export const NUMBERING_SERIES_SERVICE_TOKEN = Symbol('INumberingSeriesService');
+
+/**
+ * Binding token for the `IOfflineResubmissionService` (#1700, mini-epic #1585).
+ * The degraded-mode sweep that resubmits `pending-submission` documents via the
+ * {@link OfflineResubmitter} sub-capability. Implementation lands in a later part
+ * of the epic; the token is declared here so the barrel exposes it now.
+ */
+export const OFFLINE_RESUBMISSION_SERVICE_TOKEN = Symbol('IOfflineResubmissionService');
+
+/**
+ * Binding token for the `IPendingRecoveryService` (#1700, mini-epic #1585). The
+ * crash-recovery sweep that reconciles interrupted submits, falling back to the
+ * {@link RegulatoryRecordLocator} authority lookup. Implementation lands in a
+ * later part of the epic; the token is declared here so the barrel exposes it now.
+ */
+export const PENDING_RECOVERY_SERVICE_TOKEN = Symbol('IPendingRecoveryService');

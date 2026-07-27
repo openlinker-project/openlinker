@@ -30,6 +30,7 @@ import { useConnectionsQuery } from '../../connections';
 import { usePlatform } from '../../../shared/plugins';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
+import { CopyableId } from '../../../shared/ui/copyable-id';
 import { FieldError } from '../../../shared/ui/field-error';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
@@ -38,6 +39,7 @@ import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-li
 import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { Select } from '../../../shared/ui/select';
 import { StatusBadge } from '../../../shared/ui/status-badge';
+import { StructuredErrorList } from '../../../shared/ui/structured-error-list';
 import { useToast } from '../../../shared/ui/toast-provider';
 
 import type { OrderRecord } from '../api/orders.types';
@@ -47,18 +49,26 @@ import {
 } from '../api/order-snapshot.schema';
 import { ordersQueryKeys } from '../api/orders.query-keys';
 import {
+  extractShippingFieldErrors,
+  extractShippingTraceId,
   useGenerateLabelMutation,
   useLabelDownload,
   type GenerateLabelInput,
 } from '../../shipments';
 import {
   COD_CURRENCY_VALUES,
+  clampCodCurrency,
+  codCurrenciesForPlatform,
+} from '../../../shared/shipping/cod-currencies';
+import {
+  INSURED_CURRENCY_VALUES,
   LOCKER_TEMPLATE_VALUES,
   generateLabelSchema,
   type GenerateLabelFormSubmission,
   type GenerateLabelFormValues,
   type LockerTemplate,
 } from './generate-label-form.schema';
+import { useRoutedCarrierPlatform } from '../hooks/use-routed-carrier-platform';
 import {
   buildDispatchItem,
   classifyDeliveryMethod,
@@ -197,7 +207,13 @@ export function GenerateLabelForm({
       // order (Allegro) for a COD order; these fields back only the fallback
       // manual input shown for a COD order with no sourced amount.
       codAmount: '',
-      codCurrency: 'PLN',
+      // Default the currency from the order (#1569), clamped to a currency any
+      // carrier accepts; the routed-carrier effect below narrows it further once
+      // the routing rules resolve.
+      codCurrency: clampCodCurrency(snapshot.totals?.currency, COD_CURRENCY_VALUES),
+      // Declared-value / insurance (#1542) — operator-supplied, blank ⇒ none.
+      insuredAmount: '',
+      insuredCurrency: 'PLN',
     },
     resolver: zodResolver(generateLabelSchema),
   });
@@ -212,6 +228,8 @@ export function GenerateLabelForm({
   const paczkomatRegister = form.register('paczkomatId');
   const codAmountRegister = form.register('codAmount');
   const codCurrencyRegister = form.register('codCurrency');
+  const insuredAmountRegister = form.register('insuredAmount');
+  const insuredCurrencyRegister = form.register('insuredCurrency');
   // Locker size is driven imperatively via a segmented control (#1425). The
   // registration is bound to a hidden input at the control (so RHF holds a real
   // ref and tracks the field); the pressed state is set via `setValue` and read
@@ -240,6 +258,70 @@ export function GenerateLabelForm({
   // The read-only "from Allegro" panel only applies to a marketplace COD order
   // that carried a sourced amount; every other allowed state uses the input.
   const showSourcedCod = isCodOrder && sourcedCod !== undefined;
+
+  // COD currency scoping (#1569). Predict the carrier this order's delivery
+  // method routes to, then scope the editable currency set to what that carrier
+  // accepts. Unknown carrier ⇒ the full union (adapter preflight is the
+  // backstop). Only relevant for the editable fallback field, not the read-only
+  // sourced panel.
+  const orderCurrency = snapshot.totals?.currency;
+  const routedCarrierPlatform = useRoutedCarrierPlatform(
+    order.sourceConnectionId,
+    snapshot.shipping?.methodId,
+    { enabled: codAllowed && !showSourcedCod },
+  );
+  const allowedCodCurrencies = useMemo(
+    () => codCurrenciesForPlatform(routedCarrierPlatform),
+    [routedCarrierPlatform],
+  );
+  const codCurrencyValue = form.watch('codCurrency');
+  // Coerce the selection when the routed carrier doesn't accept it (e.g. a CZK
+  // order routed to InPost, PLN-only): prefer the order currency, else the
+  // carrier's default. Keeps the FE from submitting a currency the carrier will
+  // reject at preflight.
+  useEffect(() => {
+    if (!codAllowed || showSourcedCod) return;
+    const allowed = allowedCodCurrencies as readonly string[];
+    if (codCurrencyValue !== undefined && allowed.includes(codCurrencyValue)) return;
+    form.setValue(
+      'codCurrency',
+      clampCodCurrency(orderCurrency ?? codCurrencyValue, allowedCodCurrencies),
+      { shouldValidate: false },
+    );
+  }, [allowedCodCurrencies, codCurrencyValue, codAllowed, showSourcedCod, orderCurrency, form]);
+
+  // COD currency caption (#1569). Frames the currency as what the courier
+  // collects at delivery, warns when the routed carrier can't collect in the
+  // order currency (coercion), and only shows the "set from the order" hint
+  // until the operator manually re-picks a currency.
+  function renderCodCaption(): ReactElement | null {
+    const effectiveCurrency = codCurrencyValue ?? allowedCodCurrencies[0];
+    const currencyDirty = form.formState.dirtyFields.codCurrency;
+    if (orderCurrency && effectiveCurrency && effectiveCurrency !== orderCurrency) {
+      return (
+        <p className="generate-label-form__cod-caption">
+          Order is in {orderCurrency}, but this carrier collects cash on delivery in{' '}
+          {effectiveCurrency} — the amount will be collected in {effectiveCurrency}.
+        </p>
+      );
+    }
+    if (allowedCodCurrencies.length <= 1) {
+      return (
+        <p className="generate-label-form__cod-caption">
+          This carrier collects cash on delivery in {effectiveCurrency} only.
+        </p>
+      );
+    }
+    if (orderCurrency && !currencyDirty) {
+      return (
+        <p className="generate-label-form__cod-caption">
+          Set from the order currency ({orderCurrency}). Change it if the carrier requires a
+          different one.
+        </p>
+      );
+    }
+    return null;
+  }
 
   // Focus first input on mount (a11y — focus enters the inline expansion).
   const firstInputRef = useRef<HTMLInputElement | null>(null);
@@ -273,6 +355,14 @@ export function GenerateLabelForm({
           ? { amount: values.codAmount, currency: values.codCurrency ?? 'PLN' }
           : undefined;
 
+    // Declared-value / insurance (#1542) — operator-supplied, not payment-gated
+    // (unlike COD). Blank amount ⇒ no insurance. The BE mapper re-validates the
+    // amount/currency and rejects a non-PLN insured value.
+    const insuredValue =
+      values.insuredAmount && values.insuredAmount.length > 0
+        ? { amount: values.insuredAmount, currency: values.insuredCurrency ?? 'PLN' }
+        : undefined;
+
     const input: GenerateLabelInput = {
       sourceConnectionId: order.sourceConnectionId,
       ...buildDispatchItem({
@@ -288,6 +378,7 @@ export function GenerateLabelForm({
         },
         paczkomatId: values.paczkomatId,
         cod,
+        insuredValue,
       }),
     };
     try {
@@ -386,10 +477,18 @@ export function GenerateLabelForm({
         </Alert>
       ) : null}
 
-      {/* API error at top */}
+      {/* API error at top (#1806) — the generic carrier message always
+          renders; a structured per-field breakdown (e.g. ShipX
+          `details.fieldErrors`) is appended underneath when the mutation
+          error carries one, so the operator knows exactly what to fix.
+          A carrier support reference (`traceId`, e.g. DPD's undiagnosable
+          `NOT_PROCESSED`, #1800) renders last when present, so the operator
+          can quote it to carrier support without a log dive. */}
       {mutation.error ? (
         <Alert tone="error" className="generate-label-form__error">
-          {mutation.error.message}
+          <p className="generate-label-form__error-message">{mutation.error.message}</p>
+          <StructuredErrorList errors={extractShippingFieldErrors(mutation.error)} />
+          <ShippingTraceReference traceId={extractShippingTraceId(mutation.error)} />
         </Alert>
       ) : null}
 
@@ -563,27 +662,82 @@ export function GenerateLabelForm({
                     ? "This order is cash-on-delivery, but the collect amount didn't come from the source (non-Allegro or missing). Enter the amount to collect."
                     : 'Amount to collect on delivery. Leave blank for a prepaid shipment.'}
                 </p>
-                <div className="generate-label-form__cod">
+                {/* Amount + currency as one control (#1569). The currency
+                    defaults from the order and is scoped to the routed carrier:
+                    a borderless select when the carrier takes several
+                    currencies, a static suffix when it takes just one. */}
+                <div className="generate-label-form__money">
                   <Input
                     {...codAmountRegister}
+                    className="generate-label-form__money-amount"
                     inputMode="decimal"
                     placeholder="129.90"
-                    aria-label="COD amount to collect"
+                    aria-label={
+                      allowedCodCurrencies.length > 1
+                        ? 'COD amount to collect'
+                        : `COD amount to collect in ${allowedCodCurrencies[0]}`
+                    }
                     invalid={Boolean(form.formState.errors.codAmount)}
                   />
-                  <Select {...codCurrencyRegister} aria-label="COD currency">
-                    {COD_CURRENCY_VALUES.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </Select>
+                  {allowedCodCurrencies.length > 1 ? (
+                    <Select
+                      {...codCurrencyRegister}
+                      className="generate-label-form__money-ccy"
+                      aria-label="COD currency"
+                    >
+                      {allowedCodCurrencies.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <span className="generate-label-form__money-ccy--static" aria-hidden="true">
+                      {allowedCodCurrencies[0]}
+                    </span>
+                  )}
                 </div>
                 <FieldError id="cod-error" message={form.formState.errors.codAmount?.message} />
+                {renderCodCaption()}
               </>
             )}
           </div>
         ) : null}
+
+        {/* Declared value / insurance (#1542) — operator-supplied, always
+            available (not payment-gated, unlike COD). Blank amount ⇒ no
+            insurance. Insurance-incapable carriers ignore it server-side; InPost
+            ShipX translates it to its `insurance` object. */}
+        <div className="form-field generate-label-form__insured-panel">
+          <div className="generate-label-form__insured-head">
+            <StatusBadge tone="info" withDot>
+              Insurance
+            </StatusBadge>
+          </div>
+          <p className="generate-label-form__insured-note">
+            Declared value to insure the parcel for. Leave blank for the carrier default.
+          </p>
+          <div className="generate-label-form__insured">
+            <Input
+              {...insuredAmountRegister}
+              inputMode="decimal"
+              placeholder="150.00"
+              aria-label="Declared value to insure"
+              invalid={Boolean(form.formState.errors.insuredAmount)}
+            />
+            <Select {...insuredCurrencyRegister} aria-label="Insurance currency">
+              {INSURED_CURRENCY_VALUES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <FieldError
+            id="insured-error"
+            message={form.formState.errors.insuredAmount?.message}
+          />
+        </div>
 
         {showSlowNotice ? (
           <div role="status" aria-live="polite" className="generate-label-form__slow-notice">
@@ -644,4 +798,21 @@ function collectValidationMessages(
     if (typeof message === 'string') messages.push(message);
   }
   return messages;
+}
+
+/**
+ * Carrier support reference (#1800). Renders the carrier-assigned `traceId`
+ * (e.g. DPD's, surfaced on an undiagnosable `NOT_PROCESSED` rejection) via the
+ * shared `CopyableId` primitive so the operator can copy it and quote it to
+ * carrier support. Renders nothing when the error carries no trace id, so the
+ * caller can pass `extractShippingTraceId(...)` unconditionally.
+ */
+function ShippingTraceReference({ traceId }: { traceId: string | null }): ReactElement | null {
+  if (traceId === null) return null;
+
+  return (
+    <p className="generate-label-form__error-trace">
+      Reference for carrier support: <CopyableId id={traceId} />
+    </p>
+  );
 }

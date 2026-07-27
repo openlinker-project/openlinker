@@ -129,3 +129,56 @@ describe('mapToFa3BuilderInput — payment (#1311)', () => {
     expect(result.payment).toEqual({ formaPlatnosci: '6', paymentTermDays: 14 });
   });
 });
+
+describe('mapToFa3BuilderInput - sale date P_6 (#1525)', () => {
+  it('should pass the neutral saleDate through to the builder input', () => {
+    const result = mapToFa3BuilderInput({ ...baseCommand('23'), saleDate: '2026-06-20' }, CONTEXT);
+    expect(result.saleDate).toBe('2026-06-20');
+  });
+
+  it('should leave saleDate off the builder input when the command has none', () => {
+    const result = mapToFa3BuilderInput(baseCommand('23'), CONTEXT);
+    expect(result.saleDate).toBeUndefined();
+    expect('saleDate' in result).toBe(false);
+  });
+});
+
+describe('mapToFa3BuilderInput - line unit P_8A precedence (#1525)', () => {
+  it('should keep the line unit when the neutral line carries one (wins over the default)', () => {
+    const cmd = baseCommand('23');
+    cmd.lines = [{ name: 'Widget', quantity: 1, unitPriceGross: 100, taxRate: '23', unit: 'kg' }];
+    const result = mapToFa3BuilderInput(cmd, { ...CONTEXT, defaultLineUnit: 'szt.' });
+    expect(result.lines[0].unit).toBe('kg');
+  });
+
+  it('should fall back to the connection defaultLineUnit when the line has none', () => {
+    const result = mapToFa3BuilderInput(baseCommand('23'), { ...CONTEXT, defaultLineUnit: 'szt.' });
+    expect(result.lines[0].unit).toBe('szt.');
+  });
+
+  it('should omit unit entirely when neither the line nor the connection has one', () => {
+    const result = mapToFa3BuilderInput(baseCommand('23'), CONTEXT);
+    expect(result.lines[0].unit).toBeUndefined();
+    expect('unit' in result.lines[0]).toBe(false);
+  });
+
+  it('should treat an empty/whitespace line unit as absent and use the default', () => {
+    const cmd = baseCommand('23');
+    cmd.lines = [{ name: 'Widget', quantity: 1, unitPriceGross: 100, taxRate: '23', unit: '  ' }];
+    const result = mapToFa3BuilderInput(cmd, { ...CONTEXT, defaultLineUnit: 'kpl.' });
+    expect(result.lines[0].unit).toBe('kpl.');
+  });
+
+  it('should apply the same unit precedence to correction lines', () => {
+    const cmd = baseCommand('23');
+    cmd.correction = {
+      originalClearanceReference: null,
+      originalDocumentNumber: 'FA/2026/06/0001',
+      originalIssueDate: '2026-06-01',
+      reason: 'Return',
+      correctedLines: [{ name: 'Widget', quantity: 1, unitPriceGross: 90, taxRate: '23' }],
+    };
+    const result = mapToFa3BuilderInput(cmd, { ...CONTEXT, defaultLineUnit: 'szt.' });
+    expect(result.correction?.correctedLines[0].unit).toBe('szt.');
+  });
+});

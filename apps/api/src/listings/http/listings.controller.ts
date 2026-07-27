@@ -36,21 +36,33 @@ import {
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
   isCatalogProductReader,
   isCategoryParametersReader,
+  isCategoryPathReader,
   isOfferReader,
+  OfferNotFoundOnMarketplaceException,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   OFFER_MAPPING_REPOSITORY_TOKEN,
+  OFFER_STATUS_READ_SERVICE_TOKEN,
+  OFFER_STATUS_SYNC_SERVICE_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
+  RESPONSIBLE_PRODUCER_SERVICE_TOKEN,
+  DELIVERY_PRICE_LIST_SERVICE_TOKEN,
   ICategoryResolutionService,
   IOfferCreationEnqueueService,
+  IOfferStatusReadService,
+  IOfferStatusSyncService,
   ISellerPoliciesService,
+  IResponsibleProducerService,
+  IDeliveryPriceListService,
   OfferCreationRecordRepositoryPort,
   OfferMappingRepositoryPort,
 } from '@openlinker/core/listings';
 import type {
   CategoryParameter,
+  CategoryPathSegment,
   OfferCreationRecord,
   OfferManagerPort,
+  OfferStatusSnapshot,
 } from '@openlinker/core/listings';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IIntegrationsService } from '@openlinker/core/integrations';
@@ -72,9 +84,17 @@ import {
 import { CreateOfferDto } from './dto/create-offer.dto';
 import { CreateOfferResponseDto } from './dto/create-offer-response.dto';
 import { OfferCreationStatusResponseDto } from './dto/offer-creation-status-response.dto';
+import {
+  OfferPublicationStatusResponseDto,
+  RefreshOfferPublicationStatusDto,
+  RefreshOfferPublicationStatusResponseDto,
+} from './dto/offer-publication-status-response.dto';
 import { SellerPoliciesResponseDto } from './dto/seller-policies-response.dto';
+import { ResponsibleProducersResponseDto } from './dto/responsible-producers-response.dto';
+import { DeliveryPriceListsResponseDto } from './dto/delivery-price-lists-response.dto';
 import type { CategoryParameterResponseDto } from './dto/category-parameter-response.dto';
 import { CategoryParametersListResponseDto } from './dto/category-parameter-response.dto';
+import { CategoryPathResponseDto } from './dto/category-path-response.dto';
 import { ResolveCategoryRequestDto, ResolveCategoryResponseDto } from './dto/resolve-category.dto';
 import {
   ResolveCategoryBatchRequestDto,
@@ -102,12 +122,20 @@ export class ListingsController {
     private readonly offerCreationEnqueue: IOfferCreationEnqueueService,
     @Inject(SELLER_POLICIES_SERVICE_TOKEN)
     private readonly sellerPolicies: ISellerPoliciesService,
+    @Inject(RESPONSIBLE_PRODUCER_SERVICE_TOKEN)
+    private readonly responsibleProducers: IResponsibleProducerService,
+    @Inject(DELIVERY_PRICE_LIST_SERVICE_TOKEN)
+    private readonly deliveryPriceLists: IDeliveryPriceListService,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(PRODUCT_VARIANT_REPOSITORY_TOKEN)
     private readonly productVariantRepository: ProductVariantRepositoryPort,
     @Inject(CATEGORY_RESOLUTION_SERVICE_TOKEN)
-    private readonly categoryResolution: ICategoryResolutionService
+    private readonly categoryResolution: ICategoryResolutionService,
+    @Inject(OFFER_STATUS_READ_SERVICE_TOKEN)
+    private readonly offerStatusRead: IOfferStatusReadService,
+    @Inject(OFFER_STATUS_SYNC_SERVICE_TOKEN)
+    private readonly offerStatusSync: IOfferStatusSyncService
   ) {}
 
   @Get()
@@ -235,8 +263,19 @@ export class ListingsController {
       );
     }
 
-    const offer = await adapter.getOffer({ externalId: mapping.externalId });
-    return MarketplaceOfferResponseDto.fromDomain(offer);
+    try {
+      const offer = await adapter.getOffer({ externalId: mapping.externalId });
+      return MarketplaceOfferResponseDto.fromDomain(offer);
+    } catch (error) {
+      // The offer isn't (yet) retrievable on the marketplace — e.g. Erli's
+      // read-after-write cache lag or a deleted offer. Map to 404 so the FE
+      // renders the soft "live data unavailable" fallback rather than a hard
+      // error, keeping the rest of the detail page rendering.
+      if (error instanceof OfferNotFoundOnMarketplaceException) {
+        throw new NotFoundException(error.message);
+      }
+      throw error;
+    }
   }
 
   @Roles('admin', 'operator')
@@ -384,7 +423,57 @@ export class ListingsController {
     return this.toOfferCreationStatusDto(record);
   }
 
+  @Roles('admin', 'operator', 'viewer')
+  @Get('products/:productId/offer-status')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'productId', description: 'Internal OL product id' })
+  @ApiOperation({
+    summary: 'Live marketplace publication status of a product’s offers',
+    description:
+      'Reads the persisted offer_status_snapshots for every offer mapped to a variant of the product (#1760). Steady-state live status, distinct from the one-shot creation lifecycle.',
+  })
+  @ApiResponse({ status: 200, type: [OfferPublicationStatusResponseDto] })
+  async getProductOfferStatus(
+    @Param('productId') productId: string,
+    @Query('connectionId') connectionId?: string
+  ): Promise<OfferPublicationStatusResponseDto[]> {
+    const snapshots = await this.offerStatusRead.getPublicationStatusForProduct(
+      productId,
+      connectionId
+    );
+    return snapshots.map((snapshot) => this.toOfferPublicationStatusDto(snapshot));
+  }
+
   @Roles('admin', 'operator')
+  @Post('connections/:connectionId/offers/:externalOfferId/refresh-status')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
+  @ApiParam({ name: 'externalOfferId', description: 'Marketplace-native offer id' })
+  @ApiOperation({
+    summary: 'Force-refresh one offer’s live publication status',
+    description:
+      'Reads the offer’s live marketplace status now and upserts its snapshot (#1760). Returns 404 when the connection cannot read offer status or the offer is not found on the marketplace.',
+  })
+  @ApiResponse({ status: 200, type: RefreshOfferPublicationStatusResponseDto })
+  @ApiResponse({ status: 404, description: 'Status unavailable for this offer/connection' })
+  async refreshOfferStatus(
+    @Param('connectionId') connectionId: string,
+    @Param('externalOfferId') externalOfferId: string,
+    @Body() body: RefreshOfferPublicationStatusDto
+  ): Promise<RefreshOfferPublicationStatusResponseDto> {
+    const publicationStatus = await this.offerStatusSync.refreshOne(connectionId, {
+      externalOfferId,
+      internalVariantId: body.internalVariantId,
+    });
+    if (publicationStatus === null) {
+      throw new NotFoundException(
+        `Live status unavailable for offer ${externalOfferId} on connection ${connectionId}`
+      );
+    }
+    return { publicationStatus };
+  }
+
+  @Roles('admin', 'operator', 'viewer')
   @Get('connections/:connectionId/seller-policies')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -403,7 +492,62 @@ export class ListingsController {
     return this.sellerPolicies.getSellerPolicies(connectionId);
   }
 
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
+  @Get('connections/:connectionId/responsible-producers')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
+  @ApiOperation({
+    summary: 'List seller-configured responsible producers (#1531)',
+    description:
+      'Returns the EU GPSR responsible-producer registry ("producent") configured for the connection, fetched live from the marketplace. The offer-creation wizard renders these so the operator can attach one and the created product is not blocked for a missing producer.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Responsible producers wrapped under `responsibleProducers`.',
+    type: ResponsibleProducersResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({ status: 409, description: 'Connection disabled' })
+  @ApiResponse({
+    status: 422,
+    description: 'Adapter does not support responsible-producer listing',
+  })
+  async getResponsibleProducers(
+    @Param('connectionId') connectionId: string
+  ): Promise<ResponsibleProducersResponseDto> {
+    const responsibleProducers =
+      await this.responsibleProducers.listResponsibleProducers(connectionId);
+    return { responsibleProducers };
+  }
+
+  @Roles('admin', 'operator', 'viewer')
+  @Get('connections/:connectionId/delivery-price-lists')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
+  @ApiOperation({
+    summary: 'List seller-configured delivery price lists (#1530)',
+    description:
+      'Returns the delivery price lists ("cennik dostawy") configured for the connection, fetched live from the marketplace. The offer-creation wizard renders these so the operator can attach one and the created offer is buyable.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Delivery price lists wrapped under `deliveryPriceLists`.',
+    type: DeliveryPriceListsResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({ status: 409, description: 'Connection disabled' })
+  @ApiResponse({
+    status: 422,
+    description: 'Adapter does not support delivery-price-list listing',
+  })
+  async getDeliveryPriceLists(
+    @Param('connectionId') connectionId: string
+  ): Promise<DeliveryPriceListsResponseDto> {
+    const deliveryPriceLists = await this.deliveryPriceLists.listDeliveryPriceLists(connectionId);
+    return { deliveryPriceLists };
+  }
+
+  @Roles('admin', 'operator', 'viewer')
   @Get('connections/:connectionId/categories/:categoryId/parameters')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -459,7 +603,64 @@ export class ListingsController {
     return { parameters: parameters.map((p) => this.toCategoryParameterResponseDto(p)) };
   }
 
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
+  @Get('connections/:connectionId/categories/:categoryId/path')
+  @HttpCode(HttpStatus.OK)
+  // Category breadcrumbs are effectively immutable public taxonomy — let the
+  // browser cache them for a day so re-opening the listing drawer never re-hits
+  // the marketplace.
+  @Header('Cache-Control', 'public, max-age=86400')
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
+  @ApiParam({ name: 'categoryId', description: 'Marketplace category ID (Allegro-issued).' })
+  @ApiOperation({
+    summary: 'Resolve a category id to its breadcrumb path (#1752)',
+    description:
+      "Returns the category's full ancestor breadcrumb ordered root -> leaf. The listing-detail drawer renders this instead of the raw category id Allegro's offer payload carries.",
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Breadcrumb segments wrapped under `path`.',
+    type: CategoryPathResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Connection or category not found.' })
+  @ApiResponse({ status: 409, description: 'Connection disabled.' })
+  @ApiResponse({
+    status: 422,
+    description: 'Adapter does not support category-path reading.',
+  })
+  async getCategoryPath(
+    @Param('connectionId') connectionId: string,
+    @Param('categoryId') categoryId: string
+  ): Promise<CategoryPathResponseDto> {
+    // Throws ConnectionNotFoundException (404) / ConnectionDisabledException (409) /
+    // CapabilityNotSupportedException (422) for upstream connection-level issues.
+    const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+      connectionId,
+      'OfferManager'
+    );
+
+    if (!isCategoryPathReader(adapter)) {
+      throw new UnprocessableEntityException(
+        `Adapter for connection ${connectionId} does not support category-path reading`
+      );
+    }
+
+    let path: CategoryPathSegment[];
+    try {
+      path = await adapter.fetchCategoryPath(categoryId);
+    } catch (err) {
+      if (err instanceof CategoryNotFoundException) {
+        throw new NotFoundException(
+          `Category ${categoryId} not found on connection ${connectionId}`
+        );
+      }
+      throw err;
+    }
+
+    return { path: path.map((segment) => ({ id: segment.id, name: segment.name })) };
+  }
+
+  @Roles('admin', 'operator', 'viewer')
   @Post('connections/:connectionId/categories/resolve')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -510,18 +711,20 @@ export class ListingsController {
     };
   }
 
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
   @Post('connections/:connectionId/categories/resolve-batch')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
   @ApiOperation({
-    summary: 'Batch-resolve marketplace categories by variant EAN (#795)',
+    summary: 'Batch-resolve marketplace categories by variant EAN, with mapping fallback (#795 / #1522)',
     description:
-      'Resolves up to 200 variant EANs to marketplace categories in one call via the ' +
-      'connection adapter’s EanCategoryMatcher sub-capability (#735). EAN-only — no ' +
-      'mapping fallback. Drives the bulk-listing wizard Resolve step, replacing the ' +
-      'previous one-HTTP-call-per-row loop. Results are keyed by variantId; every input ' +
-      'item gets exactly one entry.',
+      'Resolves up to 200 variants to marketplace categories in one call. EAN catalogue ' +
+      'match (via the connection adapter’s EanCategoryMatcher sub-capability, #735) is the ' +
+      'primary path; when the EAN yields no match and the item supplies sourceCategoryIds, ' +
+      'the batch falls back to the operator’s configured per-source-category mapping (#1522), ' +
+      'returning method="category_mapping". Drives the bulk-listing wizard Resolve step, ' +
+      'replacing the previous one-HTTP-call-per-row loop. Results are keyed by variantId; ' +
+      'every input item gets exactly one entry.',
   })
   @ApiResponse({
     status: 200,
@@ -540,7 +743,13 @@ export class ListingsController {
   ): Promise<ResolveCategoryBatchResponseDto> {
     try {
       const results = await this.categoryResolution.resolveCategoriesBatch(connectionId, {
-        items: dto.items.map((item) => ({ variantId: item.variantId, ean: item.ean ?? null })),
+        items: dto.items.map((item) => ({
+          variantId: item.variantId,
+          ean: item.ean ?? null,
+          ...(item.sourceCategoryIds && item.sourceCategoryIds.length > 0
+            ? { sourceCategoryIds: item.sourceCategoryIds }
+            : {}),
+        })),
       });
       return { results: Object.fromEntries(results) };
     } catch (error) {
@@ -566,7 +775,7 @@ export class ListingsController {
   // appears (e.g. a future bulk-prefill worker), promote to a service.
   // -----------------------------------------------------------------
 
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
   @Post('connections/:connectionId/products/find-by-barcode')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -619,7 +828,7 @@ export class ListingsController {
     return { kind: 'no_match' };
   }
 
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
   @Get('connections/:connectionId/products/:productId')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -730,6 +939,22 @@ export class ListingsController {
       // Pass the snapshot through untouched. It's already the on-wire shape
       // (plain object in jsonb); no date fields or instance conversions to run.
       request: record.request,
+    };
+  }
+
+  private toOfferPublicationStatusDto(
+    snapshot: OfferStatusSnapshot
+  ): OfferPublicationStatusResponseDto {
+    return {
+      connectionId: snapshot.connectionId,
+      externalOfferId: snapshot.externalOfferId,
+      internalVariantId: snapshot.internalVariantId,
+      publicationStatus: snapshot.publicationStatus,
+      validationMessages: snapshot.statusDetails?.validationMessages,
+      lastStatusSyncedAt:
+        snapshot.lastStatusSyncedAt instanceof Date
+          ? snapshot.lastStatusSyncedAt.toISOString()
+          : snapshot.lastStatusSyncedAt,
     };
   }
 }

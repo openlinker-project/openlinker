@@ -28,4 +28,16 @@ export interface ISyncJobsService {
    * pre-existing row when the idempotency key has already been seen.
    */
   schedule(input: ScheduleJobInput): Promise<SyncJob>;
+
+  /**
+   * Re-drive a job that has exhausted its retries by requeuing it (#1585 I3).
+   * Looks the job up by its `idempotencyKey` and, ONLY when it is currently in
+   * `dead` status, resets it to `queued` (attempts=0, nextRunAt=now) so the
+   * worker re-runs it. A no-op returning `false` when no job holds the key, or
+   * the job is not `dead` (still queued/running — it will re-drive itself). This
+   * is the safe re-drive seam for a never-transmitted `pending` invoice whose
+   * original `invoicing.issue` job died: re-running the SAME idempotency-keyed
+   * job resumes issuance against the existing record (no double-issue).
+   */
+  requeueDeadByIdempotencyKey(idempotencyKey: string): Promise<boolean>;
 }

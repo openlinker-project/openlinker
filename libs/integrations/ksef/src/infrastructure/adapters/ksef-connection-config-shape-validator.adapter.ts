@@ -150,6 +150,31 @@ export class KsefConnectionConfigShapeValidatorAdapter
       }
     }
 
+    // Per-line issuance defaults (#1525). `lineUnit` is free text emitted as
+    // FaWiersz/P_8A; an empty/whitespace-only value is treated as absent (the
+    // factory's `resolveDefaultLineUnit` drops it), so only a wrong type or an
+    // over-long value is rejected. The 20-char cap is a sanity limit, not an
+    // XSD constraint (P_8A is unbounded TZnakowy).
+    const invoiceDefaults = config.invoiceDefaults;
+    if (
+      invoiceDefaults !== undefined &&
+      (invoiceDefaults === null || typeof invoiceDefaults !== 'object')
+    ) {
+      issues.push({ path: 'invoiceDefaults', message: 'must be an object' });
+    } else if (invoiceDefaults !== undefined) {
+      const lineUnit = (invoiceDefaults as Record<string, unknown>).lineUnit;
+      if (lineUnit !== undefined) {
+        if (typeof lineUnit !== 'string') {
+          issues.push({ path: 'invoiceDefaults.lineUnit', message: 'must be a string' });
+        } else if (lineUnit.trim().length > 20) {
+          issues.push({
+            path: 'invoiceDefaults.lineUnit',
+            message: 'must be at most 20 characters after trimming',
+          });
+        }
+      }
+    }
+
     if (issues.length > 0) {
       return Promise.reject(new InvalidConnectionConfigException(this.pluginName, issues));
     }

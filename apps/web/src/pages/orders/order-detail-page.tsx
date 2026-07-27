@@ -10,8 +10,8 @@
  *
  * @module apps/web/src/pages/orders
  */
-import { useCallback, type ReactElement } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useCallback, useEffect, type ReactElement } from 'react';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Alert } from '../../shared/ui/alert';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
@@ -27,7 +27,7 @@ import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/us
 import type { OrderSyncStatusValue } from '../../features/orders/api/orders.types';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 import { useConnectionsQuery } from '../../features/connections';
-import { useOrderShipmentsQuery } from '../../features/shipments';
+import { useOrderShipmentsQuery, pickActiveShipment, getCarrierDisplayName } from '../../features/shipments';
 import { OrderCustomerCard } from '../../features/orders/components/order-customer-card';
 import { OrderActivityTimeline } from '../../features/orders/components/order-activity-timeline';
 import { OrderShipmentPanel } from '../../features/orders/components/order-shipment-panel';
@@ -63,6 +63,31 @@ export function OrderDetailPage(): ReactElement {
   const shipmentsQuery = useOrderShipmentsQuery(internalOrderId);
   const retry = useRetryOrderDestinationMutation();
   const { showToast } = useToast();
+  const location = useLocation();
+
+  // Scroll to the section a deep-link CTA targets (#1713): the orders-list
+  // "Generate label" / "Issue invoice" actions land here on `#shipment` /
+  // `#invoicing`. Runs once the order data is present (the anchor wrapper divs
+  // render with it) — the app has no other hash-scroll, and the panels mount
+  // asynchronously, so a native browser jump on first paint would miss.
+  const hasOrder = query.data !== undefined;
+  useEffect(() => {
+    if (!hasOrder) return;
+    const targetId = location.hash.replace(/^#/, '');
+    if (!targetId) return;
+    const raf = requestAnimationFrame(() => {
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'auto'
+        : 'smooth';
+      // Move focus to the section so keyboard/AT users follow the visual jump;
+      // `preventScroll` lets scrollIntoView own the (possibly smooth) scroll.
+      target.focus({ preventScroll: true });
+      target.scrollIntoView({ behavior, block: 'start' });
+    });
+    return () => { cancelAnimationFrame(raf); };
+  }, [hasOrder, location.hash]);
 
   const pendingDestinationId =
     retry.isPending && retry.variables ? retry.variables.destinationConnectionId : null;
@@ -126,6 +151,15 @@ export function OrderDetailPage(): ReactElement {
   );
   const shipmentStatuses = shipmentsQuery.data?.items.map((s) => s.status) ?? null;
   const fulfillment = deriveFulfillment(shipmentStatuses, hasShippingCapability);
+  // Carrier precedence (#1617): the shipment record's `carrier` is the actual
+  // carrier of record on a booked shipment — prefer it over the snapshot's
+  // `shipping.methodName`, which is only the source's stated delivery-method
+  // preference and may not match what was actually booked. Falls back to the
+  // method name when no shipment exists yet (or its carrier hasn't resolved),
+  // and to `null` (rendered "-") when neither is available.
+  const activeShipment = pickActiveShipment(shipmentsQuery.data?.items ?? null);
+  const carrier =
+    getCarrierDisplayName(activeShipment?.carrier ?? null) ?? snapshot.shipping?.methodName ?? null;
   const sourcePlatformType =
     connections.find((c) => c.id === order.sourceConnectionId)?.platformType ?? null;
 
@@ -279,9 +313,18 @@ export function OrderDetailPage(): ReactElement {
             shipping={snapshot.shipping}
             pickupPoint={snapshot.pickupPoint}
             sourcePlatformType={sourcePlatformType}
+            carrier={carrier}
           />
-          <OrderShipmentPanel order={order} />
-          <OrderInvoicePanel order={order} />
+          {/* Anchor wrappers (#1713) for the orders-list deep-link CTAs
+              (`/orders/{id}#shipment`, `/orders/{id}#invoicing`). Page-level
+              divs so the target exists even while a panel is capability-gated
+              (renders null) or still loading. */}
+          <div id="shipment" tabIndex={-1}>
+            <OrderShipmentPanel order={order} />
+          </div>
+          <div id="invoicing" tabIndex={-1}>
+            <OrderInvoicePanel order={order} />
+          </div>
           <OrderCustomerCard customerId={order.customerId} sourceConnectionId={order.sourceConnectionId} />
         </div>
       </div>

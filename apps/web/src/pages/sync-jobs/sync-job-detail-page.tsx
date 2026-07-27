@@ -15,7 +15,10 @@ import type { SyncJob } from '../../features/sync-jobs/api/sync-jobs.types';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
 import { OfferCreationTracker } from '../../features/listings/components/OfferCreationTracker';
-import { usePermission } from '../../shared/auth/use-permission';
+import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
+import { useWriteAccess } from '../../shared/auth/use-permission';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
+import { useDemoMode } from '../../features/system';
 
 /**
  * Extracts the offer-creation record ID from a `marketplace.offer.create`
@@ -77,7 +80,11 @@ export function SyncJobDetailPage(): ReactElement {
   // before the loading/error guards below.
   const connectionQuery = useConnectionQuery(query.data?.connectionId ?? '');
   const retry = useRetrySyncJobMutation();
-  const canRetry = usePermission('sync:write');
+  const demoMode = useDemoMode();
+  // "Retry" fires the retry mutation immediately (a direct-write action, no
+  // intermediate form) - visible-but-disabled with a read-only tooltip for a
+  // demo viewer, per the #1615 Test connection/Disable connection precedent.
+  const write = useWriteAccess('sync:write', demoMode);
   const { showToast } = useToast();
 
   if (query.isLoading) {
@@ -132,10 +139,12 @@ export function SyncJobDetailPage(): ReactElement {
           tone="error"
           title={`Job failed after ${job.attempts} attempt${job.attempts === 1 ? '' : 's'}`}
           action={
-            canRetry ? (
-              <Button onClick={handleRetry} disabled={retry.isPending}>
-                {retry.isPending ? 'Retrying…' : 'Retry'}
-              </Button>
+            write.visible ? (
+              <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                <Button onClick={handleRetry} disabled={retry.isPending || write.demoReadOnly}>
+                  {retry.isPending ? 'Retrying…' : 'Retry'}
+                </Button>
+              </ReadOnlyLock>
             ) : null
           }
         >

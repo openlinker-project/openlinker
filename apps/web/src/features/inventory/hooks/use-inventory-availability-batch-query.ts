@@ -12,14 +12,27 @@
  *
  * @module apps/web/src/features/inventory/hooks
  */
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import {
+  useQuery,
+  type UseQueryResult,
+  type UseQueryOptions,
+} from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { inventoryQueryKeys } from '../api/inventory.query-keys';
 import type { InventoryAvailabilityResponse } from '../api/inventory.types';
 
+interface UseInventoryAvailabilityBatchQueryOptions {
+  enabled?: boolean;
+  // Optional retry policy passthrough so callers (e.g. the bulk wizard resolve
+  // step) can self-heal a transient cold-start failure instead of dead-ending
+  // the whole step on the app-wide `retry: false` default.
+  retry?: UseQueryOptions<InventoryAvailabilityResponse>['retry'];
+  retryDelay?: UseQueryOptions<InventoryAvailabilityResponse>['retryDelay'];
+}
+
 export function useInventoryAvailabilityBatchQuery(
   productVariantIds: readonly string[],
-  options?: { enabled?: boolean }
+  options?: UseInventoryAvailabilityBatchQueryOptions
 ): UseQueryResult<InventoryAvailabilityResponse> {
   const apiClient = useApiClient();
   const deduped = [...new Set(productVariantIds)];
@@ -29,5 +42,7 @@ export function useInventoryAvailabilityBatchQuery(
     queryKey: inventoryQueryKeys.availability(deduped),
     queryFn: () => apiClient.inventory.availability(deduped),
     enabled,
+    ...(options?.retry !== undefined ? { retry: options.retry } : {}),
+    ...(options?.retryDelay !== undefined ? { retryDelay: options.retryDelay } : {}),
   });
 }

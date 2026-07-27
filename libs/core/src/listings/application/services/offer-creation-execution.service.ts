@@ -98,6 +98,11 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
         publishImmediately: input.publishImmediately,
         price: input.price,
         overrides: input.overrides,
+        // #1500 — forward the neutral condition so a programmatic caller's
+        // choice reaches the builder (and thence the adapter). Omitted →
+        // builder defaults to 'new'. The operator's wizard Stan param still
+        // rides on overrides.parameters independently.
+        condition: input.condition,
         idempotencyKey: input.idempotencyKey,
       });
     } catch (error) {

@@ -7,6 +7,7 @@
  * @module libs/integrations/prestashop/src/application/__tests__
  */
 import { PrestashopAdapterFactory } from '../prestashop-adapter.factory';
+import { PrestashopShopCurrencyResolver } from '../../infrastructure/provisioners/prestashop-shop-currency.resolver';
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { PrestashopCredentials } from '@openlinker/integrations-prestashop';
@@ -98,6 +99,33 @@ describe('PrestashopAdapterFactory', () => {
 
       // Adapters should be created with defaults
       expect(adapters.productMaster).toBeDefined();
+    });
+
+    it('should resolve the shop-default currency when config.currency is unset', async () => {
+      const resolveSpy = jest
+        .spyOn(PrestashopShopCurrencyResolver.prototype, 'resolveDefaultCurrencyIso')
+        .mockResolvedValue('PLN');
+      const connection = createTestConnection();
+      mockCredentialsResolver.get.mockResolvedValue({ webserviceApiKey: 'test-key' });
+
+      await factory.createAdapters(connection, mockIdentifierMapping, mockCredentialsResolver);
+
+      expect(resolveSpy).toHaveBeenCalledWith('test-connection-id', expect.anything());
+      resolveSpy.mockRestore();
+    });
+
+    it('should not resolve the shop-default currency when config.currency is set (explicit wins)', async () => {
+      const resolveSpy = jest.spyOn(
+        PrestashopShopCurrencyResolver.prototype,
+        'resolveDefaultCurrencyIso'
+      );
+      const connection = createTestConnection({ currency: 'EUR' });
+      mockCredentialsResolver.get.mockResolvedValue({ webserviceApiKey: 'test-key' });
+
+      await factory.createAdapters(connection, mockIdentifierMapping, mockCredentialsResolver);
+
+      expect(resolveSpy).not.toHaveBeenCalled();
+      resolveSpy.mockRestore();
     });
   });
 

@@ -1,11 +1,14 @@
 /**
  * WoocommerceSetupForm Tests
  *
- * Coverage for the single-step WooCommerce setup wizard. Tests form validation,
- * capability seeding from adapter registry, and submission flow.
+ * Coverage for the 4-step WooCommerce setup wizard: per-step validation,
+ * capability selection with the InventoryMaster/OfferManager mutual-exclusion
+ * guard, review content, and submission payload shape.
  */
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { useLocation } from 'react-router-dom';
 import {
   createMockApiClient,
   findToastTitle,
@@ -13,226 +16,298 @@ import {
 } from '../../../test/test-utils';
 import { WoocommerceSetupForm } from './woocommerce-setup-form';
 
+function LocationProbe(): ReactElement {
+  const location = useLocation();
+  return <div data-testid="location-pathname">{location.pathname}</div>;
+}
+
+function fillStoreDetailsStep(
+  container: HTMLElement,
+  values: { name: string; url: string },
+): void {
+  fireEvent.change(within(container).getByLabelText('Connection name'), {
+    target: { value: values.name },
+  });
+  fireEvent.change(within(container).getByLabelText('Site URL'), {
+    target: { value: values.url },
+  });
+}
+
+function fillCredentialsStep(
+  container: HTMLElement,
+  values: { key: string; secret: string },
+): void {
+  fireEvent.change(within(container).getByLabelText('Consumer key'), {
+    target: { value: values.key },
+  });
+  fireEvent.change(within(container).getByLabelText('Consumer secret'), {
+    target: { value: values.secret },
+  });
+}
+
+async function advanceOneStep(container: HTMLElement): Promise<void> {
+  const before = container.querySelector('[aria-current="step"]')?.textContent ?? '';
+  fireEvent.click(within(container).getByRole('button', { name: 'Next' }));
+  await waitFor(() => {
+    const after = container.querySelector('[aria-current="step"]')?.textContent ?? '';
+    if (after === before) throw new Error('Step did not advance');
+  });
+}
+
+async function advanceToReview(
+  container: HTMLElement,
+  values = {
+    name: 'My Store',
+    url: 'https://shop.example.com',
+    key: 'ck_test1234567890',
+    secret: 'cs_test1234567890',
+  },
+): Promise<void> {
+  fillStoreDetailsStep(container, { name: values.name, url: values.url });
+  await advanceOneStep(container);
+  fillCredentialsStep(container, { key: values.key, secret: values.secret });
+  await advanceOneStep(container);
+  await advanceOneStep(container); // capabilities → review
+}
+
 describe('WoocommerceSetupForm', () => {
   afterEach(cleanup);
 
-  it('renders all required form fields', () => {
-    renderWithProviders(<WoocommerceSetupForm />);
-    expect(screen.getByLabelText('Connection name')).toBeInTheDocument();
-    expect(screen.getByLabelText('Site URL')).toBeInTheDocument();
-    expect(screen.getByLabelText('Consumer key')).toBeInTheDocument();
-    expect(screen.getByLabelText('Consumer secret')).toBeInTheDocument();
+  it('renders the store-details step first with only its fields', () => {
+    const view = renderWithProviders(<WoocommerceSetupForm />);
+    expect(within(view.container).getByLabelText('Connection name')).toBeInTheDocument();
+    expect(within(view.container).getByLabelText('Site URL')).toBeInTheDocument();
+    expect(within(view.container).queryByLabelText('Consumer key')).toBeNull();
+    expect(within(view.container).queryByLabelText('Consumer secret')).toBeNull();
   });
 
-  it('requires connection name to be non-empty', async () => {
-    renderWithProviders(<WoocommerceSetupForm />);
-    const submitButton = screen.getByRole('button', { name: 'Connect WooCommerce' });
+  it('blocks advancing when the connection name is empty', async () => {
+    const view = renderWithProviders(<WoocommerceSetupForm />);
+    fillStoreDetailsStep(view.container, { name: '', url: 'https://shop.example.com' });
 
-    fireEvent.click(submitButton);
+    fireEvent.click(within(view.container).getByRole('button', { name: 'Next' }));
 
-    await waitFor(() => {
-      expect(screen.getAllByText('Connection name is required')[0]).toBeInTheDocument();
-    });
+    expect((await screen.findAllByText('Connection name is required')).length).toBeGreaterThan(0);
+    expect(within(view.container).queryByLabelText('Consumer key')).toBeNull();
   });
 
-  it('requires site URL to be HTTPS', async () => {
-    renderWithProviders(<WoocommerceSetupForm />);
+  it('blocks advancing when the site URL is not HTTPS', async () => {
+    const view = renderWithProviders(<WoocommerceSetupForm />);
+    fillStoreDetailsStep(view.container, { name: 'My Store', url: 'http://example.com' });
 
-    fireEvent.change(screen.getByLabelText('Connection name'), {
-      target: { value: 'My Store' },
-    });
-    fireEvent.change(screen.getByLabelText('Site URL'), {
-      target: { value: 'http://example.com' }, // HTTP, not HTTPS
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Connect WooCommerce' }));
+    fireEvent.click(within(view.container).getByRole('button', { name: 'Next' }));
 
-    await waitFor(() => {
-      expect(screen.getAllByText('Site URL must use HTTPS')[0]).toBeInTheDocument();
-    });
+    expect((await screen.findAllByText('Site URL must use HTTPS')).length).toBeGreaterThan(0);
+    expect(within(view.container).queryByLabelText('Consumer key')).toBeNull();
   });
 
-  it('rejects plain-http localhost URLs (BE enforces https-only)', async () => {
-    renderWithProviders(<WoocommerceSetupForm />);
+  it('blocks advancing when the consumer key does not start with ck_', async () => {
+    const view = renderWithProviders(<WoocommerceSetupForm />);
+    fillStoreDetailsStep(view.container, { name: 'My Store', url: 'https://shop.example.com' });
+    await advanceOneStep(view.container);
 
-    fireEvent.change(screen.getByLabelText('Connection name'), {
-      target: { value: 'Local Store' },
-    });
-    fireEvent.change(screen.getByLabelText('Site URL'), {
-      target: { value: 'http://localhost:8080' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Connect WooCommerce' }));
+    fillCredentialsStep(view.container, { key: 'invalid_key', secret: 'cs_test1234567890' });
+    fireEvent.click(within(view.container).getByRole('button', { name: 'Next' }));
 
-    await waitFor(() => {
-      expect(screen.getAllByText('Site URL must use HTTPS')[0]).toBeInTheDocument();
-    });
+    expect((await screen.findAllByText('Consumer key must start with ck_')).length).toBeGreaterThan(
+      0,
+    );
   });
 
-  it('accepts https localhost URLs for local development', async () => {
-    const createConnection = vi.fn().mockResolvedValue({
-      id: 'conn-1',
-      name: 'Local Store',
-    });
-    const apiClient = createMockApiClient({
-      connections: { create: createConnection },
-    });
+  it('blocks advancing when the consumer secret does not start with cs_', async () => {
+    const view = renderWithProviders(<WoocommerceSetupForm />);
+    fillStoreDetailsStep(view.container, { name: 'My Store', url: 'https://shop.example.com' });
+    await advanceOneStep(view.container);
 
-    renderWithProviders(<WoocommerceSetupForm />, { apiClient });
+    fillCredentialsStep(view.container, { key: 'ck_test1234567890', secret: 'invalid_secret' });
+    fireEvent.click(within(view.container).getByRole('button', { name: 'Next' }));
 
-    fireEvent.change(screen.getByLabelText('Connection name'), {
-      target: { value: 'Local Store' },
-    });
-    fireEvent.change(screen.getByLabelText('Site URL'), {
-      target: { value: 'https://localhost:8443' },
-    });
-    fireEvent.change(screen.getByLabelText('Consumer key'), {
-      target: { value: 'ck_test1234567890' },
-    });
-    fireEvent.change(screen.getByLabelText('Consumer secret'), {
-      target: { value: 'cs_test1234567890' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Connect WooCommerce' }));
-
-    await waitFor(() => {
-      expect(createConnection).toHaveBeenCalled();
-    });
+    expect(
+      (await screen.findAllByText('Consumer secret must start with cs_')).length,
+    ).toBeGreaterThan(0);
   });
 
-  it('requires consumer key to start with ck_', async () => {
-    renderWithProviders(<WoocommerceSetupForm />);
+  it('pre-selects the shop-master capability defaults on the capabilities step', async () => {
+    const view = renderWithProviders(<WoocommerceSetupForm />);
+    fillStoreDetailsStep(view.container, { name: 'My Store', url: 'https://shop.example.com' });
+    await advanceOneStep(view.container);
+    fillCredentialsStep(view.container, { key: 'ck_test1234567890', secret: 'cs_test1234567890' });
+    await advanceOneStep(view.container);
 
-    fireEvent.change(screen.getByLabelText('Connection name'), {
-      target: { value: 'My Store' },
-    });
-    fireEvent.change(screen.getByLabelText('Site URL'), {
-      target: { value: 'https://shop.example.com' },
-    });
-    fireEvent.change(screen.getByLabelText('Consumer key'), {
-      target: { value: 'invalid_key' }, // Should start with ck_
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Connect WooCommerce' }));
-
-    await waitFor(() => {
-      expect(
-        screen.getAllByText('Consumer key must start with ck_')[0]
-      ).toBeInTheDocument();
-    });
+    expect(within(view.container).getByRole('checkbox', { name: /ProductMaster/ })).toBeChecked();
+    expect(within(view.container).getByRole('checkbox', { name: /InventoryMaster/ })).toBeChecked();
+    expect(
+      within(view.container).getByRole('checkbox', { name: /OrderProcessorManager/ }),
+    ).toBeChecked();
+    expect(within(view.container).getByRole('checkbox', { name: /OrderSource/ })).toBeChecked();
   });
 
-  it('requires consumer secret to start with cs_', async () => {
-    renderWithProviders(<WoocommerceSetupForm />);
+  it('disables OfferManager while InventoryMaster is selected and re-enables it after deselection', async () => {
+    const adapters = vi.fn().mockResolvedValue([
+      {
+        adapterKey: 'woocommerce.restapi.v3',
+        platformType: 'woocommerce',
+        supportedCapabilities: [
+          'ProductMaster',
+          'InventoryMaster',
+          'OrderProcessorManager',
+          'OrderSource',
+          'ProductPublisher',
+          'CategoryProvisioner',
+          'OfferManager',
+        ],
+      },
+    ]);
+    const apiClient = createMockApiClient({ adapters: { list: adapters } });
+    const view = renderWithProviders(<WoocommerceSetupForm />, { apiClient });
 
-    fireEvent.change(screen.getByLabelText('Connection name'), {
-      target: { value: 'My Store' },
-    });
-    fireEvent.change(screen.getByLabelText('Site URL'), {
-      target: { value: 'https://shop.example.com' },
-    });
-    fireEvent.change(screen.getByLabelText('Consumer key'), {
-      target: { value: 'ck_test1234567890' },
-    });
-    fireEvent.change(screen.getByLabelText('Consumer secret'), {
-      target: { value: 'invalid_secret' }, // Should start with cs_
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Connect WooCommerce' }));
+    fillStoreDetailsStep(view.container, { name: 'My Store', url: 'https://shop.example.com' });
+    await advanceOneStep(view.container);
+    fillCredentialsStep(view.container, { key: 'ck_test1234567890', secret: 'cs_test1234567890' });
+    await advanceOneStep(view.container);
 
+    const offerManager = await within(view.container).findByRole('checkbox', {
+      name: /OfferManager/,
+    });
+    expect(offerManager).toBeDisabled();
+    expect(
+      within(view.container).getByText(/Unavailable while InventoryMaster is selected/),
+    ).toBeInTheDocument();
+
+    // Deselect InventoryMaster → OfferManager unlocks.
+    fireEvent.click(within(view.container).getByRole('checkbox', { name: /InventoryMaster/ }));
     await waitFor(() => {
       expect(
-        screen.getAllByText('Consumer secret must start with cs_')[0]
-      ).toBeInTheDocument();
-    });
-  });
-
-  it('submits valid form and shows success toast', async () => {
-    const createConnection = vi.fn().mockResolvedValue({
-      id: 'conn-1',
-      name: 'My Store',
-    });
-    const apiClient = createMockApiClient({
-      connections: { create: createConnection },
+        within(view.container).getByRole('checkbox', { name: /OfferManager/ }),
+      ).toBeEnabled();
     });
 
-    renderWithProviders(<WoocommerceSetupForm />, { apiClient });
-
-    fireEvent.change(screen.getByLabelText('Connection name'), {
-      target: { value: 'My Store' },
-    });
-    fireEvent.change(screen.getByLabelText('Site URL'), {
-      target: { value: 'https://shop.example.com' },
-    });
-    fireEvent.change(screen.getByLabelText('Consumer key'), {
-      target: { value: 'ck_test1234567890' },
-    });
-    fireEvent.change(screen.getByLabelText('Consumer secret'), {
-      target: { value: 'cs_test1234567890' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Connect WooCommerce' }));
-
+    // Select OfferManager → InventoryMaster locks in the other direction.
+    fireEvent.click(within(view.container).getByRole('checkbox', { name: /OfferManager/ }));
     await waitFor(() => {
-      expect(createConnection).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: 'My Store',
-          platformType: 'woocommerce',
-          adapterKey: expect.any(String),
-          config: expect.objectContaining({
-            siteUrl: 'https://shop.example.com',
-          }),
-          credentials: expect.objectContaining({
-            consumerKey: 'ck_test1234567890',
-            consumerSecret: 'cs_test1234567890',
-          }),
-          enabledCapabilities: expect.any(Array),
-        })
-      );
+      expect(
+        within(view.container).getByRole('checkbox', { name: /InventoryMaster/ }),
+      ).toBeDisabled();
     });
     expect(
-      await findToastTitle('Connection created')
+      within(view.container).getByText(/Unavailable while OfferManager is selected/),
     ).toBeInTheDocument();
   });
 
-  it('disables submit button during mutation', async () => {
-    const createConnection = vi.fn().mockImplementation(
-      () => new Promise(resolve => setTimeout(() => resolve({
-        id: 'conn-1',
-        name: 'My Store',
-      }), 100))
+  it('shows the review summary with a masked consumer key and selected capabilities', async () => {
+    const view = renderWithProviders(<WoocommerceSetupForm />);
+    await advanceToReview(view.container);
+
+    expect(within(view.container).getByText('My Store')).toBeInTheDocument();
+    expect(within(view.container).getByText('https://shop.example.com')).toBeInTheDocument();
+    // Masked: only the last 4 chars visible.
+    expect(within(view.container).getByText(/•+7890$/)).toBeInTheDocument();
+    expect(within(view.container).queryByText('ck_test1234567890')).toBeNull();
+    expect(
+      within(view.container).getByText(
+        'ProductMaster, InventoryMaster, OrderProcessorManager, OrderSource',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('submits exactly the user-selected capabilities and shows a success toast', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Store' });
+    const apiClient = createMockApiClient({ connections: { create } });
+    const view = renderWithProviders(
+      <>
+        <WoocommerceSetupForm />
+        <LocationProbe />
+      </>,
+      { apiClient },
     );
-    const apiClient = createMockApiClient({
-      connections: { create: createConnection },
-    });
 
-    renderWithProviders(<WoocommerceSetupForm />, { apiClient });
+    fillStoreDetailsStep(view.container, { name: 'My Store', url: 'https://shop.example.com' });
+    await advanceOneStep(view.container);
+    fillCredentialsStep(view.container, { key: 'ck_test1234567890', secret: 'cs_test1234567890' });
+    await advanceOneStep(view.container);
 
-    fireEvent.change(screen.getByLabelText('Connection name'), {
-      target: { value: 'My Store' },
-    });
-    fireEvent.change(screen.getByLabelText('Site URL'), {
-      target: { value: 'https://shop.example.com' },
-    });
-    fireEvent.change(screen.getByLabelText('Consumer key'), {
-      target: { value: 'ck_test1234567890' },
-    });
-    fireEvent.change(screen.getByLabelText('Consumer secret'), {
-      target: { value: 'cs_test1234567890' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Connect WooCommerce' }));
+    fireEvent.click(within(view.container).getByRole('checkbox', { name: /OrderSource/ }));
+    await advanceOneStep(view.container);
+
+    fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
     await waitFor(() => {
-      const button = screen.getByRole('button', { name: /Connecting|Connect WooCommerce/ });
+      expect(create).toHaveBeenCalledWith({
+        name: 'My Store',
+        platformType: 'woocommerce',
+        adapterKey: 'woocommerce.restapi.v3',
+        credentials: {
+          consumerKey: 'ck_test1234567890',
+          consumerSecret: 'cs_test1234567890',
+        },
+        config: { siteUrl: 'https://shop.example.com' },
+        enabledCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager'],
+      });
+    });
+    expect(await findToastTitle('Connection created')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('location-pathname')).toHaveTextContent('/connections');
+    });
+  });
+
+  it('never submits both InventoryMaster and OfferManager together', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Store' });
+    const apiClient = createMockApiClient({ connections: { create } });
+    const view = renderWithProviders(<WoocommerceSetupForm />, { apiClient });
+    await advanceToReview(view.container);
+
+    fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
+
+    await waitFor(() => {
+      expect(create).toHaveBeenCalled();
+    });
+    const payload = create.mock.calls[0]?.[0] as { enabledCapabilities: string[] };
+    const hasBoth =
+      payload.enabledCapabilities.includes('InventoryMaster') &&
+      payload.enabledCapabilities.includes('OfferManager');
+    expect(hasBoth).toBe(false);
+  });
+
+  it('surfaces API errors in a form-level alert on the review step', async () => {
+    const apiClient = createMockApiClient({
+      connections: { create: vi.fn().mockRejectedValue(new Error('API create failed')) },
+    });
+    const view = renderWithProviders(<WoocommerceSetupForm />, { apiClient });
+    await advanceToReview(view.container);
+
+    fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
+
+    expect(await screen.findByText('Unable to create connection')).toBeInTheDocument();
+    expect(screen.getByText('API create failed')).toBeInTheDocument();
+  });
+
+  it('disables the submit button during the mutation', async () => {
+    const create = vi
+      .fn()
+      .mockImplementation(
+        () =>
+          new Promise((resolve) =>
+            setTimeout(() => resolve({ id: 'conn-1', name: 'My Store' }), 100),
+          ),
+      );
+    const apiClient = createMockApiClient({ connections: { create } });
+    const view = renderWithProviders(<WoocommerceSetupForm />, { apiClient });
+    await advanceToReview(view.container);
+
+    fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
+
+    await waitFor(() => {
+      const button = within(view.container).getByRole('button', {
+        name: /Creating|Create connection/,
+      });
       expect(button).toBeDisabled();
     });
   });
 
-  it('shows validation errors only after first submit attempt', async () => {
-    renderWithProviders(<WoocommerceSetupForm />);
-
-    // Initially no error summary
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-
-    // After submit attempt
-    fireEvent.click(screen.getByRole('button', { name: 'Connect WooCommerce' }));
-
-    await waitFor(() => {
-      expect(screen.getAllByText('Connection name is required')[0]).toBeInTheDocument();
-    });
+  it('renders the back-to-connections link inside the wizard card', () => {
+    const view = renderWithProviders(<WoocommerceSetupForm />);
+    const backLink = within(view.container).getByRole('link', { name: 'Connections' });
+    expect(backLink).toHaveAttribute('href', '/connections/new');
+    expect(backLink).toHaveClass('back-link', 'wizard-card__back');
   });
 });

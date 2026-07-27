@@ -102,6 +102,7 @@ describe('OfferCreationExecutionService', () => {
       findByBulkBatchId: jest.fn(),
       updateClassificationReport: jest.fn(),
       resetForRetry: jest.fn(),
+      deleteById: jest.fn(),
     };
     identifierMapping = {
       createMapping: jest.fn().mockResolvedValue(undefined),
@@ -177,6 +178,38 @@ describe('OfferCreationExecutionService', () => {
     expect(records.updateExternalOfferId).not.toHaveBeenCalled();
     expect(records.updateStatus).not.toHaveBeenCalled();
     expect(offerCreationRecord.status).toBe('draft');
+  });
+
+  describe('condition threading (#1500)', () => {
+    it('forwards a programmatic input.condition to the builder and thence to the adapter', async () => {
+      // Echo the neutral condition through the built command so we can assert it
+      // reaches the adapter — proving the orchestrator wires input.condition
+      // end-to-end (builder → createOffer), not just at the builder unit level.
+      builder.buildCreateOfferCommand.mockImplementationOnce(
+        (input): Promise<CreateOfferCommand> =>
+          Promise.resolve({
+            ...builtCommand,
+            condition: input.condition,
+          })
+      );
+
+      await service.executeCreation({ ...baseInput, condition: 'used' });
+
+      expect(builder.buildCreateOfferCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ condition: 'used' })
+      );
+      expect(adapter.createOffer).toHaveBeenCalledWith(
+        expect.objectContaining({ condition: 'used' })
+      );
+    });
+
+    it('forwards an undefined condition unchanged (builder owns the default)', async () => {
+      await service.executeCreation(baseInput);
+
+      expect(builder.buildCreateOfferCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ condition: undefined })
+      );
+    });
   });
 
   it('persists status=active when adapter returns active', async () => {

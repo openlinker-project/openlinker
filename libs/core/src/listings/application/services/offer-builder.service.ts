@@ -127,9 +127,15 @@ export class OfferBuilderService implements IOfferBuilderService {
       ? destination.getBorrowedTaxonomy()
       : undefined;
 
+    // #1741: an operator-supplied per-offer EAN override wins over the variant's
+    // own barcode at BOTH catalog sites (category-resolution-by-barcode below and
+    // the `variantBarcode` self-link), so a corrected/rescued EAN actually links
+    // the card and groups instead of reaching the builder as null.
+    const effectiveBarcode = input.overrides?.ean ?? variant.ean ?? variant.gtin ?? null;
+
     const categoryId = await this.resolveCategory(
       input,
-      variant.ean ?? variant.gtin ?? null,
+      effectiveBarcode,
       product.categories,
       { borrowedTaxonomy, sourceConnectionId: masterConnectionId }
     );
@@ -225,6 +231,11 @@ export class OfferBuilderService implements IOfferBuilderService {
       publishImmediately: input.publishImmediately ?? false,
       overrides: Object.keys(cleanedOverrides).length > 0 ? cleanedOverrides : undefined,
       idempotencyKey: input.idempotencyKey,
+      // #1500 — marketplaces require a condition ("Stan") on offer creation.
+      // Default to 'new' when the operator supplies none so non-UI / borrows
+      // paths never silently omit it; an explicit operator condition wins. The
+      // neutral value stays platform-free — each adapter maps it to its wire id.
+      condition: input.condition ?? 'new',
       ...(sourceCategories.length > 0 ? { sourceCategories } : {}),
       ...(sourceAttributes.length > 0 ? { sourceAttributes } : {}),
       // Neutral parameters (#1039/#1071): projected attributes merged with
@@ -234,7 +245,7 @@ export class OfferBuilderService implements IOfferBuilderService {
       ...(parameters.length > 0 ? { parameters } : {}),
       // #431 — smart-link by barcode. Pre-resolved here so adapters that
       // need it (Allegro) don't have to re-fetch the variant.
-      variantBarcode: variant.ean ?? variant.gtin ?? null,
+      variantBarcode: effectiveBarcode,
       // #808 — smart-link by pre-resolved catalogue card. When the wizard
       // already matched a unique product card by EAN, thread its id straight
       // through so the adapter links it (and inherits its required product

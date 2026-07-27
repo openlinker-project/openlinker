@@ -6,7 +6,7 @@
  * @module libs/core/src/sync/domain/types
  */
 
-import type { CreateOfferOverrides, OfferFieldUpdate } from '@openlinker/core/listings';
+import type { CreateOfferOverrides, OfferCondition, OfferFieldUpdate } from '@openlinker/core/listings';
 import type { OrderFeedEventType } from '@openlinker/core/orders';
 
 export interface MarketplaceOrdersPollPayloadV1 {
@@ -84,6 +84,13 @@ export interface MarketplaceOfferCreatePayloadV1 {
    * expected to carry `null` description/imageUrls.
    */
   overrides?: CreateOfferOverrides;
+  /**
+   * Optional neutral item condition (#1500). Carried so a programmatic caller's
+   * choice survives the enqueue → worker round-trip; the builder defaults it to
+   * `'new'` when absent. The operator's wizard Stan choice rides on `overrides`
+   * instead, so wizard payloads normally omit this.
+   */
+  condition?: OfferCondition;
   /** Optional idempotency key forwarded to the adapter. */
   idempotencyKey?: string;
   /**
@@ -117,6 +124,8 @@ export interface MarketplaceOfferCreatePayloadV2 {
   price?: { amount: number; currency: string };
   /** Optional overrides — same shape as V1. */
   overrides?: CreateOfferOverrides;
+  /** Optional neutral item condition (#1500) — same seam as V1. */
+  condition?: OfferCondition;
   /** Optional idempotency key forwarded to the adapter. */
   idempotencyKey?: string;
   /** Pre-created OfferCreationRecord id — always set for V2 (bulk pre-creates). */
@@ -204,6 +213,41 @@ export interface MarketplaceOfferStatusSyncPayloadV1 {
    */
   cursorKey?: string;
 }
+
+/**
+ * Payload for `marketplace.offer.refreshSnapshot` jobs (#1760).
+ *
+ * Post-terminal one-shot reconcile: the creation poller (#447) terminalises a
+ * record to `draft` / `failed(POLL_TIMEOUT)` when Allegro's validator outran
+ * the poll budget; Allegro may activate the offer minutes later. This bounded,
+ * delayed job re-reads the live publication status (`OfferStatusReader`) and
+ * upserts `offer_status_snapshots`, so the operator-facing live status (#816
+ * read surface) reflects the late activation without waiting for the hourly
+ * steady-state sync. The handler re-schedules `attempt + 1` (up to a small cap)
+ * only while the offer is still not terminally published.
+ *
+ * Connection id comes from `job.connectionId`, not the payload.
+ */
+export interface MarketplaceOfferRefreshSnapshotPayloadV1 {
+  schemaVersion: 1;
+  /** Marketplace-native offer id to re-read (e.g. Allegro `7781896308`). */
+  externalOfferId: string;
+  /** Internal OL variant the offer is mapped to (carried for the snapshot upsert). */
+  internalVariantId: string;
+  /** Reconcile attempt, 1-based. The handler bounds re-scheduling by this. */
+  attempt: number;
+}
+
+/**
+ * Delay (seconds) before reconcile `attempt` N runs, indexed by `attempt - 1`
+ * (#1760): ~2 min, ~8 min, ~20 min. Chosen to comfortably outlast the ~9-min
+ * creation-poll budget so a late Allegro activation is caught well before the
+ * hourly steady-state sync. Length defines the attempt cap.
+ */
+export const OFFER_REFRESH_SNAPSHOT_DELAYS_SECONDS = [120, 480, 1200] as const;
+
+/** Max reconcile attempts (#1760) — derived from the delay schedule length. */
+export const OFFER_REFRESH_SNAPSHOT_MAX_ATTEMPTS = OFFER_REFRESH_SNAPSHOT_DELAYS_SECONDS.length;
 
 /**
  * Payload for `marketplace.offer.stockRestore` jobs (#1146).

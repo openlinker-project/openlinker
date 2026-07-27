@@ -120,6 +120,26 @@ export interface ErliProductCreateBody {
   ean?: string;
   sku?: string;
   dispatchTime?: ErliDispatchTime;
+  /**
+   * Responsible producer ("producent") the product references (#1531). Erli
+   * keys it by the numeric responsible-producer dictionary id
+   * (`GET /dictionaries/responsibleProducers`); without it the created product
+   * is blocked for a missing producer. Supplied when the neutral command carries
+   * an operator selection (`overrides.platformParams.producer`); omitted
+   * otherwise. Erli's schema documents `producerId` as deprecated in favour of
+   * the `externalResponsibleProducer` `{ externalId, source }` array, but the
+   * numeric id maps 1:1 to a dictionary entry (which the picker reads), so it is
+   * the direct and reliable reference here.
+   */
+  producerId?: number;
+  /**
+   * Delivery price list ("cennik dostawy") the offer references (#1530). Erli
+   * keys a price list by its unique `name` string (the default list is named
+   * `"*"`); without it the created offer lands not-buyable ("brak metody
+   * dostawy"). Supplied when the neutral command carries an operator selection
+   * (`overrides.platformParams.deliveryPriceList`); omitted otherwise.
+   */
+  deliveryPriceList?: string;
   /** Allegro category reuse (#985); omitted when empty. */
   externalCategories?: ErliExternalCategory[];
   /** Allegro parameter reuse (#985); omitted when empty. */
@@ -148,18 +168,19 @@ export type ErliProductPatchBody = Pick<
 >;
 
 /**
- * Provisional read-side product resource — `GET /products/{externalId}` (#988 /
- * #992). The single field #988 needs is {@link ErliProductResource.frozenFields}:
- * Erli marks seller-panel manual edits `frozen` (ADR-025 §4b, per-nested-field
- * granularity), and OL must NOT overwrite a frozen field on a subsequent PATCH.
+ * Read-side product resource — `GET /products/{externalId}` (#988 / #992). The
+ * field #988 needs is {@link ErliProductResource.frozen}: Erli marks seller-panel
+ * manual edits `frozen` (ADR-025 §4b, per-nested-field granularity), and OL must
+ * NOT overwrite a frozen field on a subsequent PATCH.
  *
- * PROVISIONAL: the exact wire shape of the frozen marker is unconfirmed until
- * the #992 sandbox spike. Modelled here as a flat list of frozen Erli field
- * names (e.g. `["price","name","description","stock"]`) — the most plausible
- * shape and the simplest to evaluate per-field. If #992 reveals a different
- * shape (e.g. a per-field `{ value, frozen }` object), this type and
- * {@link ErliOfferManagerAdapter.fetchErliProduct}'s consumers are the single
- * change point. #989 reuses this same read path for offer-status reconciliation.
+ * The live shape (verified against the sandbox and
+ * `docs/architecture/adrs/erli-sandbox-swagger.json`, #1737) is a `frozen` OBJECT
+ * keyed by Erli field name with boolean values, e.g.
+ * `{ "name": false, "price": true, "stock": false, ... }`. A field is frozen iff
+ * `frozen[<erliName>] === true`. {@link ErliOfferManagerAdapter.fetchErliProduct}'s
+ * consumers ({@link PATCH_KEY_TO_ERLI_FROZEN_NAME}, `ERLI_FROZEN_STOCK_FIELD`)
+ * are the single change point for the OL-key → Erli-name mapping. #989 reuses this
+ * same read path for offer-status reconciliation.
  */
 /**
  * Erli-side publication status of a product/offer (read side, #989).
@@ -168,16 +189,89 @@ export type ErliProductPatchBody = Pick<
  */
 export type ErliProductStatus = 'accepted' | 'active' | 'inactive' | 'rejected';
 
+/**
+ * One item from `GET /dictionaries/responsibleProducers` (#1531). Erli returns
+ * the `ResponsibleSchema` shape (`{ id: integer, name: string, ... }`); only the
+ * `id` (referenced by the create body's `producerId`) and `name` (picker label)
+ * are consumed. Verified against `docs/architecture/adrs/erli-sandbox-swagger.json`
+ * (`ResponsibleSchema`, "pobierz listę producentów produktu").
+ */
+export interface ErliResponsibleProducerItem {
+  id: number;
+  name: string;
+}
+
+/**
+ * One item from `GET /delivery/priceLists` (#1530). Erli returns
+ * `{ id: integer, name: string }`; `name` is the unique delivery-method name
+ * (the default list is `"*"`) that the create body's `deliveryPriceList` field
+ * references. Verified against `docs/architecture/adrs/erli-sandbox-swagger.json`
+ * (`PriceListListItem`).
+ */
+export interface ErliDeliveryPriceListItem {
+  id: number;
+  name: string;
+}
+
+/**
+ * One category-breadcrumb node on the read-side product resource. Erli returns
+ * `categories` as an array of breadcrumb paths (`[[{ id, name }, ...]]`); the
+ * leaf of the first path is the most-specific category the offer sits under.
+ * `id` is a numeric marketplace category id; `name` is the human-readable label.
+ */
+export interface ErliProductCategoryNode {
+  id: number;
+  name?: string;
+}
+
 export interface ErliProductResource {
   /**
-   * Erli field names the seller has frozen via manual panel edits (#988). May
-   * include `"stock"` (#1066): reconciliation reads it to populate the per-offer
-   * frozen-stock cache flag the hot quantity path honors. No shape change — the
-   * flat `string[]` already covers it (#992-provisional, same as the other names).
+   * Per-field frozen markers the seller has set via manual panel edits (#988):
+   * a `Record<erliFieldName, boolean>` where `true` means frozen. Verified live
+   * shape (#1737) — the API returns an object, e.g.
+   * `{ name: false, price: true, stock: false, ... }`, not a flat name list.
+   * Includes `stock` (#1066): reconciliation reads `frozen.stock === true` to
+   * populate the per-offer frozen-stock cache flag the hot quantity path honors.
+   * Absent (`undefined`) means the read carried no frozen info (bodyless 2xx or
+   * the 404 fail-open branch) — treated as "unknown", never "nothing frozen".
    */
-  frozenFields?: string[];
+  frozen?: Record<string, boolean>;
   /** Current Erli-side publication status (#989). */
   status?: ErliProductStatus;
   /** Rejection / inactivation detail Erli supplies, when present (#989). */
   statusReason?: string;
+
+  // ── Read-side offer-detail fields (OfferReader.getOffer) ──
+  // Verified live against the sandbox GET /products/{externalId}: money is an
+  // INTEGER in minor units (grosze, PLN-only), `images[].url` is a public URL,
+  // and `categories` is an array of breadcrumb paths.
+  /** Seller-keyed product id echoed back (the OL variant id used as the offer id). */
+  externalId?: string;
+  /** Offer title. */
+  name?: string;
+  /**
+   * Rendered HTML description Erli returns alongside the structured
+   * `description.sections` object. Preferred for the detail-page preview
+   * because it is a flat string rather than a section tree.
+   */
+  externalDescription?: string;
+  ean?: string;
+  sku?: string;
+  /** Price in INTEGER minor units (grosze). PLN-only — no currency field. */
+  price?: number;
+  stock?: number;
+  images?: ErliProductImage[];
+  /** Category breadcrumb paths; the first path's leaf is the offer's category. */
+  categories?: ErliProductCategoryNode[][];
+  // ── Buyer-facing URL fields (#1752) ──
+  // PROVISIONAL: unlike the read-side fields above, these two are NOT yet
+  // confirmed against a live sandbox `GET /products/{externalId}` response.
+  // The public offer URL (`{host}/produkt/{slug},{marketplaceId}`) is built
+  // only when BOTH are present, so an absent field just omits the URL (safe
+  // fallback, no broken link) rather than mislabelling anything. Confirm the
+  // live read returns them before treating the URL as a guaranteed feature.
+  /** Buyer-facing offer slug (e.g. `swieca-sojowa-200g`). */
+  slug?: string;
+  /** Numeric Erli marketplace offer id (distinct from the seller-keyed `externalId`). */
+  marketplaceId?: number;
 }

@@ -11,6 +11,7 @@
  */
 import { z } from 'zod';
 import { CORE_CAPABILITY_VALUES, type CoreCapability, type CreateConnectionInput } from '../api/connections.types';
+import { hasCapabilityConflict } from '../lib/capability-metadata';
 
 export const WOOCOMMERCE_ADAPTER_KEY = 'woocommerce.restapi.v3';
 
@@ -53,7 +54,13 @@ export const woocommerceSetupSchema = z.object({
     .refine((v) => v.startsWith('cs_'), 'Consumer secret must start with cs_'),
   enabledCapabilities: z
     .array(z.enum(CORE_CAPABILITY_VALUES))
-    .default(WOOCOMMERCE_FALLBACK_CAPABILITIES),
+    .default(WOOCOMMERCE_FALLBACK_CAPABILITIES)
+    // Backstop for the UI disable-guard: the backend rejects this pair with a
+    // 400, so the payload must never carry both.
+    .refine(
+      (capabilities) => !hasCapabilityConflict(capabilities),
+      'InventoryMaster and OfferManager cannot both be enabled on the same connection.',
+    ),
 });
 
 export type WoocommerceSetupFormValues = z.input<typeof woocommerceSetupSchema>;

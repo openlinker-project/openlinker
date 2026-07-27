@@ -18,6 +18,7 @@ import { MarketplaceOfferCreateHandler } from './marketplace-offer-create.handle
 import { MarketplaceOfferPollCreationStatusHandler } from './marketplace-offer-poll-creation-status.handler';
 import { MarketplaceOffersSyncHandler } from './marketplace-offers-sync.handler';
 import { MarketplaceOfferStatusSyncHandler } from './marketplace-offer-status-sync.handler';
+import { MarketplaceOfferRefreshSnapshotHandler } from './marketplace-offer-refresh-snapshot.handler';
 import { MarketplaceOfferStockRestoreHandler } from './marketplace-offer-stock-restore.handler';
 import { MarketplaceShipmentStatusSyncHandler } from './marketplace-shipment-status-sync.handler';
 import { MarketplaceShipmentSyncByExternalIdHandler } from './marketplace-shipment-sync-by-external-id.handler';
@@ -31,6 +32,8 @@ import { PickupPointRefreshHandler } from './pickup-point-refresh.handler';
 import { ShopProductPublishHandler } from './shop-product-publish.handler';
 import { InvoicingIssueHandler } from './invoicing-issue.handler';
 import { RegulatoryStatusReconcileHandler } from './regulatory-status-reconcile.handler';
+import { OfflineResubmitHandler } from './offline-resubmit.handler';
+import { PendingRecoveryHandler } from './pending-recovery.handler';
 import { PaymentStatusRefreshHandler } from './payment-status-refresh.handler';
 
 @Injectable()
@@ -46,6 +49,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceOfferPollCreationStatusHandler: MarketplaceOfferPollCreationStatusHandler,
     private readonly marketplaceOffersSyncHandler: MarketplaceOffersSyncHandler,
     private readonly marketplaceOfferStatusSyncHandler: MarketplaceOfferStatusSyncHandler,
+    private readonly marketplaceOfferRefreshSnapshotHandler: MarketplaceOfferRefreshSnapshotHandler,
     private readonly marketplaceOfferStockRestoreHandler: MarketplaceOfferStockRestoreHandler,
     private readonly marketplaceShipmentStatusSyncHandler: MarketplaceShipmentStatusSyncHandler,
     private readonly marketplaceShipmentSyncByExternalIdHandler: MarketplaceShipmentSyncByExternalIdHandler,
@@ -59,6 +63,8 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly shopProductPublishHandler: ShopProductPublishHandler,
     private readonly invoicingIssueHandler: InvoicingIssueHandler,
     private readonly regulatoryStatusReconcileHandler: RegulatoryStatusReconcileHandler,
+    private readonly offlineResubmitHandler: OfflineResubmitHandler,
+    private readonly pendingRecoveryHandler: PendingRecoveryHandler,
     private readonly paymentStatusRefreshHandler: PaymentStatusRefreshHandler
   ) {}
 
@@ -83,6 +89,10 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'marketplace.offer.statusSync',
       this.marketplaceOfferStatusSyncHandler
+    );
+    this.handlerRegistry.register(
+      'marketplace.offer.refreshSnapshot',
+      this.marketplaceOfferRefreshSnapshotHandler
     );
     this.handlerRegistry.register(
       'marketplace.offer.stockRestore',
@@ -138,6 +148,16 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'invoicing.regulatoryStatus.reconcile',
       this.regulatoryStatusReconcileHandler
+    );
+    // Register offline-submission resubmission sweep handler (#1702)
+    this.handlerRegistry.register(
+      'invoicing.offlineSubmission.resubmit',
+      this.offlineResubmitHandler
+    );
+    // Register crash-recovery sweep handler (#1703)
+    this.handlerRegistry.register(
+      'invoicing.pendingRecovery.sweep',
+      this.pendingRecoveryHandler
     );
     // Register by-id payment-status refresh handler (#1354)
     this.handlerRegistry.register(

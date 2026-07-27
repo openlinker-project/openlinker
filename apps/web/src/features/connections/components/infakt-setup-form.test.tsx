@@ -6,7 +6,7 @@
  * "Test connection" flow that surfaces a ConnectionTestResult. Mirrors
  * `erli-setup-form.test.tsx`.
  */
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createMockApiClient,
@@ -99,6 +99,34 @@ describe('InfaktSetupForm', () => {
     expect(await findToastTitle('Connection created')).toBeInTheDocument();
   });
 
+  it('prompts to set up webhooks after create and opens the config dialog', async () => {
+    const create = vi
+      .fn()
+      .mockResolvedValue({ id: 'conn-1', name: 'My inFakt Account', config: {} });
+    const getWebhookStatus = vi.fn().mockResolvedValue({
+      activation: 'not-registered',
+      signature: 'off',
+      lastDeliveryAt: null,
+      lastDeliveryEvent: null,
+      lastDeliveryResult: null,
+    });
+    const apiClient = createMockApiClient({ connections: { create, getWebhookStatus } });
+
+    renderWithProviders(<InfaktSetupForm />, { apiClient });
+    fireEvent.change(screen.getByLabelText('Connection name'), {
+      target: { value: 'My inFakt Account' },
+    });
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk_test_123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect inFakt' }));
+
+    const prompt = await screen.findByRole('dialog');
+    expect(within(prompt).getByText('Set up delivery webhooks now?')).toBeInTheDocument();
+
+    fireEvent.click(within(prompt).getByRole('button', { name: 'Configure webhooks' }));
+
+    expect(await screen.findByText(/\/webhooks\/infakt\/conn-1/)).toBeInTheDocument();
+  });
+
   it('includes baseUrl in config when supplied', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My inFakt Account' });
     const apiClient = createMockApiClient({ connections: { create } });
@@ -167,6 +195,7 @@ describe('InfaktSetupForm', () => {
       target: { value: 'sk_test_123' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Connect inFakt' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Not now' }));
 
     // After create, the test affordance replaces the connect button.
     const testButton = await screen.findByRole('button', { name: 'Test connection' });
@@ -194,6 +223,7 @@ describe('InfaktSetupForm', () => {
       target: { value: 'sk_test_123' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Connect inFakt' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Not now' }));
 
     const testButton = await screen.findByRole('button', { name: 'Test connection' });
     fireEvent.click(testButton);
@@ -216,6 +246,7 @@ describe('InfaktSetupForm', () => {
       target: { value: 'sk_test_123' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Connect inFakt' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Not now' }));
 
     const testButton = await screen.findByRole('button', { name: 'Test connection' });
     fireEvent.click(testButton);
@@ -279,6 +310,9 @@ describe('InfaktSetupForm', () => {
         target: { value: config.defaultPaymentMethod ?? 'cash' },
       });
       fireEvent.click(screen.getByRole('button', { name: 'Connect inFakt' }));
+      // Dismiss the post-create webhook prompt (#1770) so the post-create UI
+      // under test is reachable (the prompt is a focus-trapping modal).
+      fireEvent.click(await screen.findByRole('button', { name: 'Not now' }));
       await screen.findByRole('button', { name: 'Test connection' });
       return update;
     }
@@ -480,6 +514,7 @@ describe('InfaktSetupForm', () => {
         target: { value: 'transfer' },
       });
       fireEvent.click(screen.getByRole('button', { name: 'Connect inFakt' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Not now' }));
       await screen.findByRole('button', { name: 'Test connection' });
 
       expect(

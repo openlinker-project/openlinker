@@ -90,6 +90,48 @@ describe('orderFromReadySnapshot', () => {
     expect(order.updatedAt.toISOString()).toBe('2026-06-21T09:30:00.000Z');
   });
 
+  it('rehydrates placedAt from the snapshot when present (P_6 source, #1525)', () => {
+    const order = orderFromReadySnapshot(
+      makeRecord({ ...READY_SNAPSHOT, placedAt: '2026-06-19T14:30:00.000Z' }),
+    );
+
+    expect(order.placedAt).toBeInstanceOf(Date);
+    expect(order.placedAt?.toISOString()).toBe('2026-06-19T14:30:00.000Z');
+  });
+
+  it('leaves placedAt undefined when the snapshot has none (no fallback substitution)', () => {
+    const order = orderFromReadySnapshot(makeRecord(READY_SNAPSHOT));
+    expect(order.placedAt).toBeUndefined();
+  });
+
+  it('leaves placedAt undefined when the snapshot value is not a parseable date string', () => {
+    const order = orderFromReadySnapshot(
+      makeRecord({ ...READY_SNAPSHOT, placedAt: 'not-a-date' }),
+    );
+    expect(order.placedAt).toBeUndefined();
+  });
+
+  it('rehydrates placedAt from a Date instance too (same string|Date acceptance as createdAt/updatedAt)', () => {
+    const order = orderFromReadySnapshot(
+      makeRecord({ ...READY_SNAPSHOT, placedAt: new Date('2026-06-19T14:30:00.000Z') }),
+    );
+
+    expect(order.placedAt).toBeInstanceOf(Date);
+    expect(order.placedAt?.toISOString()).toBe('2026-06-19T14:30:00.000Z');
+  });
+
+  it('rehydrates customerEmail from the snapshot when present (#1797)', () => {
+    const order = orderFromReadySnapshot(
+      makeRecord({ ...READY_SNAPSHOT, customerEmail: 'buyer@example.com' }),
+    );
+    expect(order.customerEmail).toBe('buyer@example.com');
+  });
+
+  it('leaves customerEmail undefined when the snapshot has none (#1797)', () => {
+    const order = orderFromReadySnapshot(makeRecord(READY_SNAPSHOT));
+    expect(order.customerEmail).toBeUndefined();
+  });
+
   it('falls back to shipping address when billing is absent', () => {
     const { billingAddress: _omit, ...rest } = READY_SNAPSHOT;
     void _omit;

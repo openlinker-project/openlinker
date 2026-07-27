@@ -510,4 +510,111 @@ describe('buildFa3Xml', () => {
       expect(() => validateFa3Xml(buildFa3Xml(b2bInput()))).not.toThrow();
     });
   });
+
+  describe('P_6 sale date (#1525)', () => {
+    it('should emit P_6 between P_2 and the P_13_x aggregates when saleDate is present', () => {
+      const input = b2bInput();
+      input.saleDate = '2026-06-20';
+      const xml = buildFa3Xml(input);
+      expect(xml).toContain('<P_6>2026-06-20</P_6>');
+      expect(xml).toMatch(/<P_2>[^]*<\/P_2><P_6>2026-06-20<\/P_6><P_13_1>/);
+    });
+
+    it('should emit P_6 even when it equals P_1', () => {
+      const input = b2bInput();
+      input.saleDate = input.issueDate;
+      const xml = buildFa3Xml(input);
+      expect(xml).toContain(`<P_6>${input.issueDate}</P_6>`);
+    });
+
+    it('should omit P_6 entirely when saleDate is absent', () => {
+      expect(buildFa3Xml(b2bInput())).not.toContain('<P_6>');
+    });
+
+    it('should pass the structural FA(3) validator with P_6 present', () => {
+      const input = b2bInput();
+      input.saleDate = '2026-06-20';
+      expect(() => validateFa3Xml(buildFa3Xml(input))).not.toThrow();
+    });
+  });
+
+  describe('P_9A net unit price (#1525)', () => {
+    it('should equal P_11 for quantity 1', () => {
+      const input = b2bInput();
+      input.lines = [{ name: 'A', quantity: 1, unitPriceGross: 123, p12: '23' }];
+      const xml = buildFa3Xml(input);
+      expect(xml).toContain('<P_9A>100.00</P_9A>');
+      expect(xml).toContain('<P_11>100.00</P_11>');
+    });
+
+    it('should carry the documented rounding drift for quantity > 1 (net 100.00 / qty 3)', () => {
+      const input = b2bInput();
+      // gross = 3 x 41 = 123, net = 123 / 1.23 = 100.00; P_9A = 100 / 3 = 33.33
+      // so P_9A x P_8B = 99.99 differs from P_11 = 100.00 by a cent - the
+      // accepted drift; P_11 stays authoritative.
+      input.lines = [{ name: 'A', quantity: 3, unitPriceGross: 41, p12: '23' }];
+      const xml = buildFa3Xml(input);
+      expect(xml).toContain('<P_9A>33.33</P_9A>');
+      expect(xml).toContain('<P_11>100.00</P_11>');
+    });
+
+    it('should emit P_9A on KOR before AND after rows with the same formula', () => {
+      const input: Fa3BuilderInput = {
+        ...b2bInput(),
+        lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 123.0, p12: '23' }],
+        correction: {
+          typKorekty: '2',
+          reason: 'Return',
+          originalIssueDate: '2026-05-01',
+          originalInvoiceNumber: 'FV/2026/05/0042',
+          originalKsefNumber: null,
+          correctedLines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123.0, p12: '23' }],
+        },
+      };
+      const xml = buildFa3Xml(input);
+      // Both rows share the same unit price, so both emit the same P_9A.
+      expect(xml.match(/<P_9A>100\.00<\/P_9A>/g)?.length).toBe(2);
+    });
+
+    it('should omit P_9A (never emit NaN) for a zero-quantity line', () => {
+      const input: Fa3BuilderInput = {
+        ...b2bInput(),
+        lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123.0, p12: '23' }],
+        correction: {
+          typKorekty: '2',
+          reason: 'Full return',
+          originalIssueDate: '2026-05-01',
+          originalInvoiceNumber: 'FV/2026/05/0042',
+          originalKsefNumber: null,
+          // A full return zeroes the "after" row - quantity 0 must not divide
+          // P_9A to NaN (KSeF would reject the literal at clearance).
+          correctedLines: [{ name: 'Widget', quantity: 0, unitPriceGross: 123.0, p12: '23' }],
+        },
+      };
+      const xml = buildFa3Xml(input);
+      expect(xml).not.toContain('NaN');
+      // Exactly one P_9A: the "before" row's. The zero-quantity row omits it.
+      expect(xml.match(/<P_9A>/g)?.length).toBe(1);
+    });
+  });
+
+  describe('P_8A unit of measure (#1525)', () => {
+    it('should emit P_8A between P_7 and P_8B when the line carries a unit', () => {
+      const input = b2bInput();
+      input.lines = [{ name: 'Widget', quantity: 2, unitPriceGross: 123.45, p12: '23', unit: 'szt.' }];
+      const xml = buildFa3Xml(input);
+      expect(xml).toMatch(/<P_7>Widget<\/P_7><P_8A>szt\.<\/P_8A><P_8B>2<\/P_8B>/);
+    });
+
+    it('should omit P_8A when the line carries no unit', () => {
+      expect(buildFa3Xml(b2bInput())).not.toContain('<P_8A>');
+    });
+
+    it('should pass the structural FA(3) validator with P_8A + P_9A present', () => {
+      const input = b2bInput();
+      input.saleDate = '2026-06-23';
+      input.lines = [{ name: 'Widget', quantity: 2, unitPriceGross: 123.45, p12: '23', unit: 'kg' }];
+      expect(() => validateFa3Xml(buildFa3Xml(input))).not.toThrow();
+    });
+  });
 });

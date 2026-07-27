@@ -31,6 +31,7 @@ import {
   ConnectionPort,
   CONNECTION_PORT_TOKEN,
 } from '@openlinker/core/identifier-mapping';
+import type { Connection } from '@openlinker/core/identifier-mapping';
 import {
   ISyncJobsService,
   SYNC_JOBS_SERVICE_TOKEN,
@@ -45,6 +46,7 @@ import { Logger } from '@openlinker/shared/logging';
 import type { IAutoIssueTriggerService } from './auto-issue-trigger.service.interface';
 import type { InvoiceTriggerModel } from '../../domain/types/invoice-trigger.types';
 import { parseTriggerModel } from '../../domain/types/invoice-trigger.types';
+import { normalizeShippingLineName } from '../../domain/types/shipping-line-label.types';
 import { toIssueInvoiceCommand } from '../mappers/order-to-issue-invoice-command.mapper';
 import { BatchedTriggerNotImplementedError } from '../../domain/exceptions/batched-trigger-not-implemented.error';
 import type { InvoicingIssuePayloadV1 } from '@openlinker/core/sync';
@@ -68,6 +70,7 @@ const INVOICING_CAPABILITY = 'Invoicing';
  */
 const PII_SAFE_ERROR_NAMES: ReadonlySet<string> = new Set([
   'InvalidBuyerProfileError',
+  'InvalidInvoiceLineError',
   'UnsupportedPriceTreatmentError',
   'BatchedTriggerNotImplementedError',
 ]);
@@ -125,6 +128,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         // F4: compose the deterministic key ONCE and thread it into BOTH the
         // job-row idempotencyKey AND payload.idempotencyKey.
         const idempotencyKey = `invoice:${connection.id}:${order.id}`;
+        // #1694: resolve the source connection's neutral platformType for the
+        // per-source numbering axis. Best-effort — a lookup failure leaves it
+        // absent (routing falls back past the source axis), never aborting issuance.
+        const sourcePlatformType = await this.resolveSourcePlatformType(sourceConnectionId);
         const payload = this.composePayload(
           order,
           connection.id,
@@ -132,6 +139,8 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           triggerModel,
           sourceConnectionId,
           sourceEventId,
+          this.readShippingLineName(connection),
+          sourcePlatformType,
         );
 
         await this.syncJobs.schedule({
@@ -228,13 +237,22 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     triggerModel: InvoiceTriggerModel,
     sourceConnectionId: string,
     sourceEventId?: string,
+    shippingLineName?: string,
+    sourcePlatformType?: string,
   ): InvoicingIssuePayloadV1 {
     // The mapper owns the neutral Order->command rules and may surface
     // InvalidBuyerProfileError / UnsupportedPriceTreatmentError (both PII-clean).
+    // #1562: thread the operator's per-connection shipping-line label into the
+    // mapper's gross shipping line. Country-agnostic (ADR-026) - core forwards
+    // an opaque operator string, never a language it chose. The worker replays
+    // `payload.lines` verbatim, so the label MUST be baked here, where the
+    // Connection is in hand; a blank/absent value defers to the mapper's neutral
+    // `SHIPPING_LINE_NAME` default.
     const command = toIssueInvoiceCommand({
       order,
       connectionId: invoicingConnectionId,
       idempotencyKey,
+      shippingLineName,
     });
 
     // #12: flatten the BuyerProfile class into the PLAIN, jsonb-safe field-set.
@@ -250,6 +268,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         taxId: command.buyer.taxId,
         address: command.buyer.address,
         type: command.buyer.type,
+        email: command.buyer.email,
       },
       sourceConnectionId,
       trigger: triggerModel,
@@ -258,10 +277,52 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     if (command.documentType !== undefined) {
       payload.documentType = command.documentType;
     }
+    // #1525: without this the field-by-field flatten silently drops the sale
+    // date and the auto-issued document loses its P_6 counterpart.
+    if (command.saleDate !== undefined) {
+      payload.saleDate = command.saleDate;
+    }
     if (sourceEventId !== undefined) {
       payload.sourceEventId = sourceEventId;
     }
+    // #1694: carry the resolved order-origin platformType so the worker can
+    // thread it onto the command's `source` numbering axis.
+    if (sourcePlatformType !== undefined && sourcePlatformType.trim().length > 0) {
+      payload.source = sourcePlatformType;
+    }
 
     return payload;
+  }
+
+  /**
+   * Read the connection's optional operator-supplied shipping-line label
+   * (#1562), narrowed via the shared {@link normalizeShippingLineName} coercion
+   * so this reader and the HTTP controller's cannot drift.
+   */
+  private readShippingLineName(connection: Connection): string | undefined {
+    return normalizeShippingLineName(connection.config.invoicing?.shippingLineName);
+  }
+
+  /**
+   * Resolve the source connection's neutral `platformType` for the per-source
+   * numbering axis (#1694). Best-effort: any lookup failure returns `undefined`
+   * (the source axis is simply not applied) rather than breaking issuance — the
+   * downstream numbering resolution degrades gracefully past a missing source.
+   */
+  private async resolveSourcePlatformType(
+    sourceConnectionId: string,
+  ): Promise<string | undefined> {
+    try {
+      const connection = await this.connectionPort.get(sourceConnectionId);
+      const platformType = connection.platformType.trim();
+      return platformType.length > 0 ? platformType : undefined;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.debug(
+        `Source platformType lookup failed for connection ${sourceConnectionId}; ` +
+          `per-source numbering axis not applied: ${message}`,
+      );
+      return undefined;
+    }
   }
 }

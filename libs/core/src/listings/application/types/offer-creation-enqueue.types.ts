@@ -14,7 +14,7 @@
  * @module libs/core/src/listings/application/types
  */
 
-import type { CreateOfferOverrides } from '@openlinker/core/listings';
+import type { CreateOfferOverrides, OfferCondition } from '@openlinker/core/listings';
 import type { OfferDescriptionTone } from '@openlinker/core/sync';
 
 import type { OfferCreationRecord } from '../../domain/entities/offer-creation-record.entity';
@@ -32,6 +32,15 @@ export interface EnqueueOfferCreationInput {
   price?: { amount: number; currency: string };
   /** Optional overrides; the builder strips null/undefined on the worker side. */
   overrides?: CreateOfferOverrides;
+  /**
+   * Optional explicit item condition (#1500). Persisted on the record's
+   * `request` snapshot and forwarded on the job payload so it survives the
+   * enqueue → worker → (bulk-)retry round-trip, then defaulted to `'new'` by
+   * the builder when omitted. Programmatic seam only — the operator's wizard
+   * choice rides on `overrides.parameters` (the Stan param) instead. Not
+   * exposed on any HTTP DTO.
+   */
+  condition?: OfferCondition;
   /** Caller-supplied idempotency key; defaults to `offer-create:{record.id}` (per-call-unique). */
   idempotencyKey?: string;
   /**

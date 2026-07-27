@@ -30,10 +30,20 @@ beforeAll(() => {
 
 afterEach(cleanup);
 
-function renderDialog(open = true, onOpenChange = vi.fn(), apiOverrides = {}) {
+function renderDialog(
+  open = true,
+  onOpenChange = vi.fn(),
+  apiOverrides = {},
+  submitDisabled = false,
+) {
   const mockApi = createMockApiClient(apiOverrides);
   renderWithProviders(
-    <TriggerSyncDialog connection={sampleConnection} open={open} onOpenChange={onOpenChange} />,
+    <TriggerSyncDialog
+      connection={sampleConnection}
+      open={open}
+      onOpenChange={onOpenChange}
+      submitDisabled={submitDisabled}
+    />,
     { apiClient: mockApi },
   );
   return { mockApi, onOpenChange };
@@ -59,7 +69,7 @@ describe('TriggerSyncDialog', () => {
       const allegroConnection = {
         ...sampleConnection,
         platformType: 'allegro' as const,
-        supportedCapabilities: ['OfferManager' as const],
+        supportedCapabilities: ['OfferManager' as const, 'OfferEventReader' as const, 'OrderSource' as const],
         enabledCapabilities: ['OfferManager' as const],
       };
       const mockApi = createMockApiClient();
@@ -71,6 +81,59 @@ describe('TriggerSyncDialog', () => {
       const labels = options.map((o) => o.textContent);
       expect(labels).toContain('Sync marketplace offers');
       expect(labels).not.toContain('Sync all products'); // requires ProductMaster
+    });
+
+    it('should render the Invoicing reconcile trigger for Invoicing-capable connections', () => {
+      const ksefConnection = {
+        ...sampleConnection,
+        platformType: 'ksef' as const,
+        supportedCapabilities: ['Invoicing'],
+        enabledCapabilities: ['Invoicing' as const],
+      };
+      const mockApi = createMockApiClient();
+      renderWithProviders(
+        <TriggerSyncDialog connection={ksefConnection} open onOpenChange={vi.fn()} />,
+        { apiClient: mockApi },
+      );
+      const options = screen.getAllByRole('option');
+      const labels = options.map((o) => o.textContent);
+      expect(labels).toContain('Reconcile regulatory status');
+      // Inventory fan-out job is now gated to InventoryMaster — must not leak here.
+      expect(labels).not.toContain('Propagate inventory to marketplaces');
+      expect(labels).not.toContain('Sync all products');
+    });
+
+    it('should hide the inventory propagation job when the connection lacks InventoryMaster', () => {
+      const invoicingOnlyConnection = {
+        ...sampleConnection,
+        platformType: 'ksef' as const,
+        supportedCapabilities: ['Invoicing'],
+        enabledCapabilities: ['Invoicing' as const],
+      };
+      const mockApi = createMockApiClient();
+      renderWithProviders(
+        <TriggerSyncDialog connection={invoicingOnlyConnection} open onOpenChange={vi.fn()} />,
+        { apiClient: mockApi },
+      );
+      const labels = screen.getAllByRole('option').map((o) => o.textContent);
+      expect(labels).not.toContain('Propagate inventory to marketplaces');
+    });
+
+    it('should render a neutral empty-state and disable submit when no triggers match', () => {
+      const shippingOnlyConnection = {
+        ...sampleConnection,
+        platformType: 'inpost' as const,
+        supportedCapabilities: ['ShippingProviderManager'],
+        enabledCapabilities: [],
+      };
+      const mockApi = createMockApiClient();
+      renderWithProviders(
+        <TriggerSyncDialog connection={shippingOnlyConnection} open onOpenChange={vi.fn()} />,
+        { apiClient: mockApi },
+      );
+      expect(screen.getByText(/no sync triggers available for this connection/i)).toBeInTheDocument();
+      expect(screen.queryByRole('combobox', { name: /job type/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /trigger/i })).toBeDisabled();
     });
 
     it('should show job description for selected job type', () => {
@@ -101,7 +164,7 @@ describe('TriggerSyncDialog', () => {
       const allegroConnection = {
         ...sampleConnection,
         platformType: 'allegro' as const,
-        supportedCapabilities: ['OfferManager' as const],
+        supportedCapabilities: ['OfferManager' as const, 'OfferEventReader' as const, 'OrderSource' as const],
         enabledCapabilities: ['OfferManager' as const],
       };
       const mockApi = createMockApiClient();
@@ -121,7 +184,7 @@ describe('TriggerSyncDialog', () => {
       const prestashopMarketplaceConnection = {
         ...sampleConnection,
         platformType: 'prestashop' as const,
-        supportedCapabilities: ['OfferManager' as const],
+        supportedCapabilities: ['OfferManager' as const, 'OfferEventReader' as const, 'OrderSource' as const],
         enabledCapabilities: ['OfferManager' as const],
       };
       const mockApi = createMockApiClient();
@@ -236,6 +299,34 @@ describe('TriggerSyncDialog', () => {
           expect.objectContaining({
             jobType: 'master.product.syncByExternalId',
             payload: { schemaVersion: 1, externalId: 'ext-999', objectType: 'combination' },
+          }),
+        );
+      });
+    });
+
+    it('should enqueue the Invoicing reconcile job with schemaVersion and default limit', async () => {
+      const ksefConnection = {
+        ...sampleConnection,
+        platformType: 'ksef' as const,
+        supportedCapabilities: ['Invoicing'],
+        enabledCapabilities: ['Invoicing' as const],
+      };
+      const mockApi = createMockApiClient();
+      renderWithProviders(
+        <TriggerSyncDialog connection={ksefConnection} open onOpenChange={vi.fn()} />,
+        { apiClient: mockApi },
+      );
+
+      // Reconcile is the only trigger, so it is selected by default. Its optional
+      // limit field pre-fills to 100.
+      fireEvent.click(screen.getByRole('button', { name: /trigger/i }));
+
+      await waitFor(() => {
+        expect(mockApi.syncJobs.enqueue).toHaveBeenCalledWith(
+          expect.objectContaining({
+            connectionId: ksefConnection.id,
+            jobType: 'invoicing.regulatoryStatus.reconcile',
+            payload: { schemaVersion: 1, limit: 100 },
           }),
         );
       });
@@ -413,6 +504,25 @@ describe('TriggerSyncDialog', () => {
       const firstSuffix = firstKey.split(':').at(-1);
       const secondSuffix = secondKey.split(':').at(-1);
       expect(firstSuffix).toBe(secondSuffix);
+    });
+  });
+
+  describe('submitDisabled (demo read-only viewer, #1615)', () => {
+    it('renders the job type and payload inputs editable while disabling only the Trigger submit', () => {
+      renderDialog(true, vi.fn(), {}, true);
+
+      const select = screen.getByRole('combobox', { name: /job type/i });
+      expect(select).not.toBeDisabled();
+      fireEvent.change(select, { target: { value: 'master.product.syncByExternalId' } });
+      expect(select).toHaveValue('master.product.syncByExternalId');
+
+      expect(screen.getByRole('button', { name: /trigger/i })).toBeDisabled();
+    });
+
+    it('keeps the Trigger submit enabled when submitDisabled is not set', () => {
+      renderDialog();
+
+      expect(screen.getByRole('button', { name: /trigger/i })).not.toBeDisabled();
     });
   });
 });

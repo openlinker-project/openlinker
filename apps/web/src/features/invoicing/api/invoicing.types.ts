@@ -48,9 +48,17 @@ export type FailureCode = (typeof FailureCodeValues)[number];
  *  default sentinel — the panel's badge gate keys on `!== 'not-applicable'`.
  *  Terminal success is `accepted` (KSeF maps 200 → accepted); `cleared` is
  *  reserved for split-clearance regimes and no current provider emits it, so
- *  the FE never renders a `cleared` success label. */
+ *  the FE never renders a `cleared` success label.
+ *
+ *  `pending-submission` (#1585) is the degraded-mode offline window: a document
+ *  ISSUED with legal effect but NOT yet transmitted to the authority (the
+ *  authority was unreachable at issuance). Non-terminal — a background sweep
+ *  resubmits it. The FE renders it in the amber `warning` family with a pulsing
+ *  "in motion, no action owed" dot; it must NEVER read as a submitted/cleared
+ *  success (nothing was sent yet). */
 export const RegulatoryStatusValues = [
   'not-applicable',
+  'pending-submission',
   'submitted',
   'cleared',
   'accepted',

@@ -147,4 +147,40 @@ describe('KsefSetupForm', () => {
       },
     });
   });
+
+  it('prefills the default line unit with "szt." and maps it to config.invoiceDefaults (#1525)', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-ksef', name: 'KSeF main' });
+    const apiClient = createMockApiClient({ connections: { create } });
+    renderWithProviders(<KsefSetupForm />, { apiClient });
+
+    const unit = screen.getByLabelText('Default line unit');
+    expect(unit).toHaveValue('szt.');
+
+    fireEvent.change(screen.getByLabelText('Connection name'), { target: { value: 'KSeF main' } });
+    fireEvent.change(screen.getByLabelText('Authentication secret'), {
+      target: { value: 'tok_secret_value' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect KSeF' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    const payload = create.mock.calls[0][0] as { config: Record<string, unknown> };
+    expect(payload.config.invoiceDefaults).toEqual({ lineUnit: 'szt.' });
+  });
+
+  it('clearing the default line unit omits config.invoiceDefaults entirely (#1525)', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-ksef', name: 'KSeF main' });
+    const apiClient = createMockApiClient({ connections: { create } });
+    renderWithProviders(<KsefSetupForm />, { apiClient });
+
+    fireEvent.change(screen.getByLabelText('Connection name'), { target: { value: 'KSeF main' } });
+    fireEvent.change(screen.getByLabelText('Default line unit'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Authentication secret'), {
+      target: { value: 'tok_secret_value' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect KSeF' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    const payload = create.mock.calls[0][0] as { config: Record<string, unknown> };
+    expect('invoiceDefaults' in payload.config).toBe(false);
+  });
 });

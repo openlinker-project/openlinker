@@ -19,6 +19,10 @@ export type {
   ConnectionDiagnostics,
   RecentJobSummary,
   InstallWebhooksResult,
+  RotateWebhookSecretResult,
+  WebhookStatus,
+  WebhookActivation,
+  WebhookSignatureState,
   CreateConnectionInput,
   UpdateConnectionInput,
   PlatformType,
@@ -27,9 +31,13 @@ export type {
 export { CORE_PLATFORM_TYPES, CORE_CAPABILITY_VALUES } from './api/connections.types';
 
 export { useConnectionsQuery } from './hooks/use-connections-query';
+export { useConnectionQuery } from './hooks/use-connection-query';
 export { useCreateConnectionMutation } from './hooks/use-create-connection-mutation';
 export { useProductMasterConnections } from './hooks/use-product-master-connections';
 export { useConfigureWebhooksMutation } from './hooks/use-configure-webhooks-mutation';
+export { useRotateWebhookSecretMutation } from './hooks/use-rotate-webhook-secret-mutation';
+export { useSetWebhookSecretMutation } from './hooks/use-set-webhook-secret-mutation';
+export { useWebhookStatusQuery } from './hooks/use-webhook-status-query';
 export { useUpdateConnectionCredentialsMutation } from './hooks/use-update-connection-credentials-mutation';
 export { useUpdateConnectionMutation } from './hooks/use-update-connection-mutation';
 export { useBankAccountsQuery } from './hooks/use-bank-accounts-query';
@@ -55,6 +63,13 @@ export type {
   EditConnectionStructuredPatch,
   EditConnectionFormValues,
 } from './components/edit-connection.schema';
+
+export {
+  InfaktWebhookConfig,
+  InfaktWebhookConfigDialog,
+  activationLabel as infaktWebhookActivationLabel,
+  signatureLabel as infaktWebhookSignatureLabel,
+} from './components/infakt-webhook-config';
 
 export { ConnectionEntityLabel } from './components/ConnectionEntityLabel';
 export { AllegroSellerDefaultsSection } from './components/allegro-seller-defaults-section';

@@ -15,7 +15,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { InventoryItemOrmEntity } from '../entities/inventory-item.orm-entity';
 import type { InventoryRepositoryPort } from '../../../domain/ports/inventory-repository.port';
@@ -25,6 +25,8 @@ import type {
   InventoryPagination,
   PaginatedInventoryItems,
   VariantAvailability,
+  ProductStockAggregate,
+  PruneStaleVariantsResult,
 } from '../../../domain/types/inventory.types';
 
 @Injectable()
@@ -64,11 +66,6 @@ export class InventoryRepository implements InventoryRepositoryPort {
     }
 
     return this.toDomain(entity);
-  }
-
-  async findById(id: string): Promise<InventoryItem | null> {
-    const entity = await this.repository.findOne({ where: { id } });
-    return entity ? this.toDomain(entity) : null;
   }
 
   async findMany(
@@ -111,6 +108,8 @@ export class InventoryRepository implements InventoryRepositoryPort {
       .addSelect('COALESCE(SUM(inv.availableQuantity), 0)', 'totalAvailable')
       .addSelect('COUNT(DISTINCT inv.locationId)', 'locationCount')
       .where('inv.productVariantId IN (:...variantIds)', { variantIds: [...variantIds] })
+      // Exclude soft-deleted rows so offer flows never act on dead stock (#1478).
+      .andWhere('inv.isStale = false')
       .groupBy('inv.productVariantId')
       .getRawMany<{
         productVariantId: string;
@@ -126,6 +125,84 @@ export class InventoryRepository implements InventoryRepositoryPort {
       totalAvailable: Number(row.totalAvailable),
       locationCount: Number(row.locationCount),
     }));
+  }
+
+  async findStockAggregatesByProductIds(
+    productIds: readonly string[]
+  ): Promise<readonly ProductStockAggregate[]> {
+    if (productIds.length === 0) return [];
+
+    const rows = await this.repository
+      .createQueryBuilder('inv')
+      .select('inv.productId', 'productId')
+      .addSelect('COALESCE(SUM(inv.availableQuantity), 0)', 'totalAvailable')
+      .addSelect('COALESCE(SUM(inv.reservedQuantity), 0)', 'totalReserved')
+      .addSelect('MAX(inv.updatedAt)', 'stockUpdatedAt')
+      .where('inv.productId IN (:...productIds)', { productIds: [...productIds] })
+      // Exclude soft-deleted rows so aggregates never count dead stock (#1478),
+      // mirroring findAvailabilityByVariantIds.
+      .andWhere('inv.isStale = false')
+      .groupBy('inv.productId')
+      .getRawMany<{
+        productId: string;
+        totalAvailable: string;
+        totalReserved: string;
+        stockUpdatedAt: Date | string;
+      }>();
+
+    // SUM comes back as numeric (string) through TypeORM's raw-query path;
+    // MAX(timestamptz) comes back as a Date via the pg driver but is defensively
+    // normalised in case the driver hands back a string.
+    return rows.map((row) => ({
+      productId: row.productId,
+      totalAvailable: Number(row.totalAvailable),
+      totalReserved: Number(row.totalReserved),
+      stockUpdatedAt: row.stockUpdatedAt instanceof Date ? row.stockUpdatedAt : new Date(row.stockUpdatedAt),
+    }));
+  }
+
+  async markStaleExceptVariants(
+    productId: string,
+    keepVariantIds: readonly (string | null)[]
+  ): Promise<PruneStaleVariantsResult> {
+    const nonNullKeep = keepVariantIds.filter((v): v is string => v !== null);
+    const keepNull = keepVariantIds.includes(null);
+
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(InventoryItemOrmEntity)
+      .set({ isStale: true })
+      .where('productId = :productId', { productId })
+      .andWhere('isStale = false')
+      .andWhere(
+        // A row is stale iff its variant is not in the keep set. Each branch
+        // guards its own NULL so the predicate is total (never three-valued),
+        // and NOT IN is only applied to guaranteed-non-null values.
+        new Brackets((qb) => {
+          if (nonNullKeep.length > 0) {
+            qb.where(
+              'productVariantId IS NOT NULL AND productVariantId NOT IN (:...keep)',
+              { keep: nonNullKeep }
+            );
+          } else {
+            qb.where('productVariantId IS NOT NULL');
+          }
+          if (!keepNull) {
+            qb.orWhere('productVariantId IS NULL');
+          }
+        })
+      )
+      .returning(['productVariantId'])
+      .execute();
+
+    // RETURNING yields one raw row per flagged inventory row; distinct non-null
+    // variant ids feed the master-deletion event payload (#1599). Product-level
+    // rows carry a NULL variant id and are counted but not surfaced as ids.
+    const raw = result.raw as { productVariantId: string | null }[];
+    const variantIds = [
+      ...new Set(raw.map((r) => r.productVariantId).filter((v): v is string => v !== null)),
+    ];
+    return { markedCount: result.affected ?? raw.length, variantIds };
   }
 
   async upsert(item: InventoryItem): Promise<InventoryItem> {
@@ -183,7 +260,8 @@ export class InventoryRepository implements InventoryRepositoryPort {
       entity.availableQuantity,
       entity.reservedQuantity,
       entity.locationId,
-      entity.updatedAt
+      entity.updatedAt,
+      entity.isStale
     );
   }
 
@@ -198,6 +276,9 @@ export class InventoryRepository implements InventoryRepositoryPort {
     entity.availableQuantity = item.availableQuantity;
     entity.reservedQuantity = item.reservedQuantity;
     entity.locationId = item.locationId;
+    // A freshly-synced/upserted row is always live — this is what clears a
+    // previously-stale flag when a deleted variant reappears at the master (#1478).
+    entity.isStale = item.isStale;
     entity.updatedAt = item.updatedAt;
     return entity;
   }

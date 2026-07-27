@@ -19,6 +19,7 @@ import type {
   OfferMappingFilters,
   OfferMappingPagination,
   PaginatedOfferMappings,
+  ProductListingsCoverage,
 } from '../../../domain/types/offer-mapping.types';
 
 const OFFER_ENTITY_TYPE: CoreEntityType = CORE_ENTITY_TYPE.Offer;
@@ -112,6 +113,44 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       if (count > 0) result.set(row.internalId, count);
     }
     return result;
+  }
+
+  async countListedVariantsByProducts(
+    productIds: readonly string[]
+  ): Promise<readonly ProductListingsCoverage[]> {
+    if (productIds.length === 0) return [];
+
+    const rows = await this.repository
+      .createQueryBuilder('mapping')
+      .select('pv."productId"', 'productId')
+      .addSelect('mapping.connectionId', 'connectionId')
+      .addSelect('mapping.platformType', 'platformType')
+      .addSelect('COUNT(DISTINCT mapping.internalId)', 'listedVariants')
+      // Read-model reporting join onto the products-context table by name -
+      // no cross-context ORM-entity import, so the import contract stays
+      // intact (#1720; columns are camelCase and must be double-quoted in
+      // raw fragments).
+      .innerJoin('product_variants', 'pv', 'pv."id" = mapping."internalId"')
+      .where('mapping.entityType = :entityType', { entityType: OFFER_ENTITY_TYPE })
+      .andWhere('pv."productId" IN (:...productIds)', { productIds: [...productIds] })
+      .groupBy('pv."productId"')
+      .addGroupBy('mapping.connectionId')
+      .addGroupBy('mapping.platformType')
+      .getRawMany<{
+        productId: string;
+        connectionId: string;
+        platformType: string;
+        listedVariants: string;
+      }>();
+
+    // COUNT(DISTINCT) comes back as bigint (string) through TypeORM's
+    // raw-query path - explicit Number() cast surfaces the right shape.
+    return rows.map((row) => ({
+      productId: row.productId,
+      connectionId: row.connectionId,
+      platformType: row.platformType,
+      listedVariants: Number(row.listedVariants),
+    }));
   }
 
   private toDomain(entity: IdentifierMappingOrmEntity): IdentifierMapping {

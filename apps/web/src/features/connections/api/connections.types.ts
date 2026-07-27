@@ -161,6 +161,35 @@ export interface InstallWebhooksResult {
   warning?: string;
 }
 
+/**
+ * Response from `POST /connections/:id/webhooks/secret/rotate`. The plaintext
+ * secret is revealed exactly once here and is never retrievable again — callers
+ * must surface it immediately for the operator to store.
+ */
+export interface RotateWebhookSecretResult {
+  secret: string;
+  revealedOnce: boolean;
+  warning: string;
+}
+
+/**
+ * Operator-facing webhook state for a connection (`GET
+ * /connections/:id/webhooks/status`, #1770). `activation` is inferred from
+ * delivery + rejection history (`auth-failing` = deliveries arriving but every
+ * one rejected at signature check, #1814); `signature` reflects whether HMAC
+ * verification is configured (optional). Backs the inFakt webhook-config modal.
+ */
+export type WebhookActivation = 'not-registered' | 'verified' | 'auth-failing';
+export type WebhookSignatureState = 'off' | 'configured';
+
+export interface WebhookStatus {
+  activation: WebhookActivation;
+  signature: WebhookSignatureState;
+  lastDeliveryAt: string | null;
+  lastDeliveryEvent: string | null;
+  lastDeliveryResult: string | null;
+}
+
 export interface ConnectionDiagnostics {
   connectionId: string;
   connectionName: string;

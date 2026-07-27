@@ -13,6 +13,7 @@
  *
  * @module libs/core/src/listings/domain/types
  */
+import type { CategoryParameterSection } from './category-parameter.types';
 
 export interface MarketplaceOfferPrice {
   /** Decimal string, e.g. `"99.99"` — keep precision intact across the wire. */
@@ -29,6 +30,37 @@ export interface MarketplaceOfferCategory {
    * this undefined and the FE shows the id only.
    */
   name?: string;
+}
+
+/**
+ * One filled category-parameter value on a live offer (#1482).
+ *
+ * Reuses the neutral section vocabulary from `CategoryParameterSection`
+ * (#415/#419): `'offer'` for offer-section parameters, `'product'` for
+ * product-section ones (Brand, Model, manufacturer code, ...). `name` stays
+ * optional - some marketplaces omit it on reads and consumers fall back to
+ * the id. `values` carries human-readable values when provided; `valuesIds`
+ * carries dictionary value ids; `rangeValue` carries integer/float range
+ * parameters as a neutral string pair.
+ */
+export interface MarketplaceOfferParameter {
+  id: string;
+  name?: string;
+  values: string[];
+  valuesIds?: string[];
+  rangeValue?: { from: string; to: string };
+  section: CategoryParameterSection;
+}
+
+/**
+ * Product-set linkage entry for catalog-grouped offers (#1482) - e.g.
+ * Allegro's auto-grouping links each offer to a catalog product card.
+ * Both fields are optional because inline (non-linked) entries carry no
+ * stable product id and some marketplaces don't report a quantity.
+ */
+export interface MarketplaceOfferProductSetItem {
+  productId?: string;
+  quantity?: number;
 }
 
 export interface MarketplaceOffer {
@@ -52,4 +84,12 @@ export interface MarketplaceOffer {
    * see on the detail page.
    */
   endsAt?: string;
+  /**
+   * Filled category-parameter values (#1482). Absent when the adapter's
+   * native read carries no parameter data - existing consumers are
+   * unaffected.
+   */
+  parameters?: MarketplaceOfferParameter[];
+  /** Product-set linkage for catalog-grouped offers (#1482). */
+  productSet?: MarketplaceOfferProductSetItem[];
 }

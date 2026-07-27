@@ -4,8 +4,9 @@
  * Verifies the generate → apply flow, the "not auto-saved" contract (Apply
  * just calls `onApply(text)` — persistence is the parent's job), that
  * tone/extra inputs are forwarded as part of the suggest request payload,
- * and that the trigger is gated on the `ai:suggest` permission (admin-only)
- * rather than demo mode (#1379 re-scope).
+ * and that the trigger is gated on the `ai:suggest` permission via the
+ * `useWriteAccess` + `ReadOnlyLock` pattern (#1668): visible-but-disabled
+ * for a demo viewer, hidden for a genuinely unauthorized non-demo session.
  */
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -17,7 +18,7 @@ import {
   renderWithProviders,
 } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
-import { AI_SUGGEST_REQUIRES_ADMIN_MESSAGE } from '../../../shared/config/demo-mode';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import type { SessionUser } from '../../../shared/auth/session.types';
 import type { SuggestionResponse } from '../api/content.types';
 
@@ -216,43 +217,41 @@ describe('SuggestionDialog', () => {
     });
   });
 
-  describe('permission gating (ai:suggest, #1379 re-scope)', () => {
-    function renderAsViewer() {
+  describe('permission gating (ai:suggest, useWriteAccess + ReadOnlyLock, #1668)', () => {
+    it('hides the trigger entirely for a genuinely unauthorized non-demo session', async () => {
       const suggest = vi.fn();
       const mockApi = createMockApiClient({ content: { suggest } });
       renderWithProviders(
         <SuggestionDialog productId="ol_product_1" channel={null} onApply={vi.fn()} />,
         { apiClient: mockApi, sessionAdapter: createAuthenticatedSessionAdapter(viewerUser) },
       );
-      return { suggest };
-    }
 
-    it('disables the trigger and does not open the dialog for a session without ai:suggest', async () => {
-      const { suggest } = renderAsViewer();
+      await waitFor(() => {
+        expect(screen.queryByRole('button', { name: /Suggest with AI/ })).not.toBeInTheDocument();
+      });
+      expect(suggest).not.toHaveBeenCalled();
+    });
+
+    it('renders the trigger visible-but-disabled with the demo read-only tooltip for a demo viewer', async () => {
+      const suggest = vi.fn();
+      const mockApi = createMockApiClient({
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+        content: { suggest },
+      });
+      renderWithProviders(
+        <SuggestionDialog productId="ol_product_1" channel={null} onApply={vi.fn()} />,
+        { apiClient: mockApi, sessionAdapter: createAuthenticatedSessionAdapter(viewerUser) },
+      );
+
       const user = userEvent.setup();
-
-      // Re-query inside waitFor: the trigger renders locked from the first
-      // paint (session starts anonymous) and stays locked once the viewer
-      // session hydrates — unlike the admin case, there's no flip to enabled.
       await waitFor(() =>
         expect(screen.getByRole('button', { name: /Suggest with AI/ })).toBeDisabled(),
       );
 
       await user.click(screen.getByRole('button', { name: /Suggest with AI/ }));
-
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
       expect(suggest).not.toHaveBeenCalled();
-    });
 
-    it('surfaces the requires-admin tooltip on the locked trigger', async () => {
-      renderAsViewer();
-      const user = userEvent.setup();
-
-      await waitFor(() =>
-        expect(screen.getByRole('button', { name: /Suggest with AI/ })).toBeDisabled(),
-      );
-
-      // The tooltip trigger is the focusable span wrapping the disabled button.
       const trigger = screen.getByRole('button', { name: /Suggest with AI/ });
       await user.hover(trigger.parentElement as HTMLElement);
 
@@ -260,14 +259,10 @@ describe('SuggestionDialog', () => {
       // hidden `role="tooltip"` a11y duplicate) — `findByText` would match
       // both and throw. Query the unique `role="tooltip"` node instead.
       const tooltip = await screen.findByRole('tooltip');
-      expect(tooltip).toHaveTextContent(AI_SUGGEST_REQUIRES_ADMIN_MESSAGE);
+      expect(tooltip).toHaveTextContent(DEMO_READ_ONLY_ACTION_MESSAGE);
     });
 
     it('keeps the trigger enabled for an admin session even when the deployment is in demo mode', async () => {
-      // The regression this re-scope fixes: gating on `demoMode` locked the
-      // admin out of the one legitimate use case (demoing AI live to a
-      // prospect from the admin session) while doing nothing for security,
-      // since the backend endpoint is `@Roles('admin')`-gated regardless.
       const suggest = vi.fn().mockResolvedValue(makeSuggestionResponse('ok'));
       const mockApi = createMockApiClient({
         system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },

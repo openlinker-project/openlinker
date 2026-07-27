@@ -26,6 +26,7 @@ import { ProductsModule } from '@openlinker/core/products';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { SyncModule } from '@openlinker/core/sync';
+import { EventsModule } from '@openlinker/core/events';
 
 // Re-export tokens for convenience
 export {
@@ -43,6 +44,7 @@ export {
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN (marketplace adapter resolution)
     IdentifierMappingModule, // Required for IDENTIFIER_MAPPING_SERVICE_TOKEN
     SyncModule, // Required for SYNC_JOB_QUEUE_TOKEN (inventory propagation enqueue)
+    EventsModule, // Required for EVENT_PUBLISHER_TOKEN (master-deletion event, #1599)
   ],
   providers: [
     // Provide classes directly first

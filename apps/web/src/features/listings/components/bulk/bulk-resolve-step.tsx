@@ -1,36 +1,36 @@
 /**
- * Bulk wizard Step 2 — master-pull resolve (#792 PR 3 / #795)
+ * Bulk wizard Step 2 - per-variant master-pull resolve (#792 / #1741)
  *
- * Two batch calls, then compute each row's blocker set:
- * 1. `resolveCategoriesBatch` — one call resolves every variant EAN to a
- *    marketplace category (#795), replacing the previous one-call-per-row loop.
- * 2. `useInventoryAvailabilityBatchQuery` — one call for summed master stock.
- *
- * Master price/currency are read off the already-loaded products. Per-row
- * blockers are derived from (category result × pricing/stock policy × master
- * values). Auto-advances to Review when both batch queries settle; surfaces an
- * error + Retry if either fails.
+ * Fans category-match + availability out over EVERY sibling variant of every
+ * selected product (not just the primary, #1741), chunked to the <=200-id API
+ * cap (50 for latency) via `useQueries` so a 600-offer batch runs parallel
+ * request chunks and renders incremental "resolving N/M" progress instead of
+ * one 60-100s synchronous call. Computes each variant's blocker set from its own
+ * EAN x master values x the batch pricing/stock policy.
  *
  * @module apps/web/src/features/listings/components/bulk
  */
-import { useCallback, useEffect, useRef, type ReactElement } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useRef, type ReactElement } from 'react';
+import { useQueries } from '@tanstack/react-query';
 import { Alert, Button } from '../../../../shared/ui';
 import { useApiClient } from '../../../../app/api/api-client-provider';
-import { useInventoryAvailabilityBatchQuery } from '../../../inventory';
+import { ApiError } from '../../../../shared/api/api-error';
+import { inventoryQueryKeys } from '../../../inventory';
 import type { OfferRowValidationInput } from '../../../../shared/plugins';
 import { listingsQueryKeys } from '../../api/listings.query-keys';
 import type { EanMatchCandidate, EanMatchResult } from '../../api/listings.types';
-import { computeBlockers, imageCountForRow } from './bulk-policy';
+import { computeBlockers, effectiveVariantEan, imageCountForVariant, isValidGtin } from './bulk-policy';
 import type {
   BulkRowBlocker,
+  BulkVariantRow,
   BulkWizardRow,
   PricingPolicy,
   StockPolicy,
 } from './bulk-wizard.types';
 
-export interface BulkResolveOutcome {
-  productId: string;
+/** Per-sibling resolved outcome merged back into `row.variants` (#1741). */
+export interface BulkResolveVariantOutcome {
+  variantId: string;
   blockers: readonly BulkRowBlocker[];
   resolvedCategoryId: string | null;
   resolvedProductCardId: string | null;
@@ -39,6 +39,12 @@ export interface BulkResolveOutcome {
   masterStock: number | null;
   masterCurrency: string | null;
   categoryCandidates: readonly EanMatchCandidate[];
+  ean: string | null;
+}
+
+export interface BulkResolveOutcome {
+  productId: string;
+  variants: BulkResolveVariantOutcome[];
 }
 
 interface BulkResolveStepProps {
@@ -46,23 +52,42 @@ interface BulkResolveStepProps {
   connectionId: string;
   pricingPolicy: PricingPolicy;
   stockPolicy: StockPolicy;
-  /** Batch-wide currency (D7) — drives the currency-mismatch blocker. */
   currency: string;
-  /** Resolved platform row validator (#1096) — emits platform-specific blockers. */
   platformValidate?: (input: OfferRowValidationInput) => string[];
-  /**
-   * True when the destination resolves the category server-side at submit
-   * (`borrows` taxonomy, no `EanCategoryMatcher` — #1096). Suppresses the
-   * pre-flight category blocker so such rows aren't falsely blocked.
-   */
   destinationResolvesCategoryAtSubmit?: boolean;
-  /** Called once with the resolved outcomes for every row, on settle. */
   onComplete: (outcomes: BulkResolveOutcome[]) => void;
 }
 
-function barcodeOf(row: BulkWizardRow): string | null {
-  const raw = row.primaryVariant?.ean ?? row.primaryVariant?.gtin ?? null;
-  return raw && raw.trim() !== '' ? raw : null;
+const RESOLVE_MAX_RETRIES = 3;
+/** Chunk size - well under the 200-id API cap; smaller keeps per-chunk latency low. */
+const RESOLVE_CHUNK_SIZE = 50;
+
+export function shouldRetryTransient(failureCount: number, error: Error): boolean {
+  if (failureCount >= RESOLVE_MAX_RETRIES) return false;
+  if (error instanceof ApiError) {
+    return error.isNetworkError() || error.status === 429 || error.isServerError();
+  }
+  return true;
+}
+
+function resolveRetryDelay(attemptIndex: number): number {
+  return Math.min(1000 * 2 ** attemptIndex, 8000);
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+interface ResolveItem {
+  variantId: string;
+  ean: string | null;
+  sourceCategoryIds?: string[];
+}
+
+function sourceCategoriesOf(row: BulkWizardRow): string[] {
+  return (row.product?.categories ?? []).filter((c) => typeof c === 'string' && c.trim() !== '');
 }
 
 export function BulkResolveStep({
@@ -77,92 +102,140 @@ export function BulkResolveStep({
 }: BulkResolveStepProps): ReactElement {
   const apiClient = useApiClient();
 
-  const variantRows = rows.filter((r) => r.primaryVariant !== null);
-  const variantIds = variantRows.map((r) => r.primaryVariant!.id);
-  const barcodeItems = variantRows
-    .map((r) => ({ variantId: r.primaryVariant!.id, ean: barcodeOf(r) }))
-    .filter((i): i is { variantId: string; ean: string } => i.ean !== null);
-  const barcodeVariantIds = barcodeItems.map((i) => i.variantId);
+  // Flatten every sibling of every product into a resolve unit.
+  const allVariants = useMemo(() => {
+    const list: { row: BulkWizardRow; variant: BulkVariantRow }[] = [];
+    for (const row of rows) {
+      for (const variant of row.variants) {
+        list.push({ row, variant });
+      }
+    }
+    return list;
+  }, [rows]);
 
-  const categoryQuery = useQuery({
-    queryKey: listingsQueryKeys.resolveCategoryBatch(connectionId, barcodeVariantIds),
-    queryFn: () => apiClient.listings.resolveCategoriesBatch(connectionId, { items: barcodeItems }),
-    enabled: barcodeItems.length > 0,
+  const allVariantIds = useMemo(() => allVariants.map((x) => x.variant.variantId), [allVariants]);
+
+  const resolveItems = useMemo<ResolveItem[]>(() => {
+    return allVariants
+      .map(({ row, variant }) => {
+        const cats = sourceCategoriesOf(row);
+        return {
+          variantId: variant.variantId,
+          ean: effectiveVariantEan(variant),
+          ...(cats.length > 0 ? { sourceCategoryIds: cats } : {}),
+        };
+      })
+      .filter((i) => i.ean !== null || (i.sourceCategoryIds?.length ?? 0) > 0);
+  }, [allVariants]);
+
+  const categoryChunks = useMemo(() => chunk(resolveItems, RESOLVE_CHUNK_SIZE), [resolveItems]);
+  const availabilityChunks = useMemo(() => chunk(allVariantIds, RESOLVE_CHUNK_SIZE), [allVariantIds]);
+
+  const categoryResults = useQueries({
+    queries: categoryChunks.map((items) => ({
+      queryKey: listingsQueryKeys.resolveCategoryBatch(
+        connectionId,
+        items.map((i) => i.variantId),
+      ),
+      queryFn: () => apiClient.listings.resolveCategoriesBatch(connectionId, { items }),
+      enabled: items.length > 0,
+      retry: shouldRetryTransient,
+      retryDelay: resolveRetryDelay,
+    })),
   });
 
-  const availabilityQuery = useInventoryAvailabilityBatchQuery(variantIds);
+  const availabilityResults = useQueries({
+    queries: availabilityChunks.map((ids) => ({
+      queryKey: inventoryQueryKeys.availability([...ids]),
+      queryFn: () => apiClient.inventory.availability(ids),
+      enabled: ids.length > 0,
+      retry: shouldRetryTransient,
+      retryDelay: resolveRetryDelay,
+    })),
+  });
 
-  const categoryReady = barcodeItems.length === 0 || categoryQuery.isSuccess;
-  const availabilityReady = variantIds.length === 0 || availabilityQuery.isSuccess;
-  const hasError = categoryQuery.isError || availabilityQuery.isError;
-  const settled = categoryReady && availabilityReady && !hasError;
+  const allChunks = [...categoryResults, ...availabilityResults];
+  const totalChunks = allChunks.length;
+  const settledChunks = allChunks.filter((q) => q.isSuccess).length;
+  const hasError = allChunks.some((q) => q.isError);
+  const settled = totalChunks === 0 || settledChunks === totalChunks;
 
   const buildOutcomes = useCallback((): BulkResolveOutcome[] => {
-    const categoryResults: Record<string, EanMatchResult> = categoryQuery.data?.results ?? {};
-    const availabilityMap = new Map(
-      (availabilityQuery.data?.items ?? []).map((i) => [i.productVariantId, i.totalAvailable]),
-    );
-
-    return rows.map((row) => {
-      const variant = row.primaryVariant;
-      if (!variant) {
-        return {
-          productId: row.productId,
-          blockers: ['no-variant'] as const,
-          resolvedCategoryId: null,
-          resolvedProductCardId: null,
-          resolutionMethod: null,
-          masterPrice: null,
-          masterStock: null,
-          masterCurrency: null,
-          categoryCandidates: [],
-        };
+    const categoryByVariant: Record<string, EanMatchResult> = {};
+    for (const q of categoryResults) {
+      for (const [variantId, result] of Object.entries(q.data?.results ?? {})) {
+        categoryByVariant[variantId] = result;
       }
+    }
+    const availabilityByVariant = new Map<string, number>();
+    for (const q of availabilityResults) {
+      for (const item of q.data?.items ?? []) {
+        availabilityByVariant.set(item.productVariantId, item.totalAvailable);
+      }
+    }
 
-      const categoryResult: EanMatchResult =
-        barcodeOf(row) !== null
-          ? categoryResults[variant.id] ?? { kind: 'no-match' }
-          : { kind: 'no-ean' };
-      const masterPrice = variant.price;
-      const masterCurrency = row.product?.currency ?? null;
-      const masterStock = availabilityMap.has(variant.id)
-        ? availabilityMap.get(variant.id)!
-        : null;
+    return rows.map((row) => ({
+      productId: row.productId,
+      variants: row.variants.map((variant) => {
+        const isMulti = row.variants.length > 1;
+        const ean = effectiveVariantEan(variant);
+        const categoryResult: EanMatchResult =
+          categoryByVariant[variant.variantId] ??
+          (ean !== null ? { kind: 'no-match' } : { kind: 'no-ean' });
+        const masterPrice = variant.variant.price;
+        const masterCurrency = row.product?.currency ?? null;
+        const masterStock = availabilityByVariant.has(variant.variantId)
+          ? availabilityByVariant.get(variant.variantId)!
+          : null;
 
-      const blockers = computeBlockers({
-        hasVariant: true,
-        categoryResult,
-        pricingPolicy,
-        stockPolicy,
-        masterPrice,
-        masterStock,
-        masterCurrency,
-        batchCurrency: currency,
-        override: row.override,
-        imageCount: imageCountForRow(row),
-        platformValidate,
-        destinationResolvesCategoryAtSubmit,
-      });
+        let blockers = computeBlockers({
+          hasVariant: true,
+          categoryResult,
+          pricingPolicy,
+          stockPolicy,
+          masterPrice,
+          masterStock,
+          masterCurrency,
+          batchCurrency: currency,
+          override: variant.override,
+          imageCount: imageCountForVariant(row, variant),
+          platformValidate,
+          destinationResolvesCategoryAtSubmit,
+        });
+        // Master stock is authoritative + read-only for multi-variant siblings
+        // (incl. 0 -> out-of-stock, not a create error). Plan §11.
+        if (isMulti) blockers = blockers.filter((b) => b !== 'no-master-stock');
+        // A supplied-but-invalid EAN is a hard GS1 gate (plan §10.1 / B5).
+        if (ean !== null && !isValidGtin(ean) && !blockers.includes('no-ean')) {
+          blockers = [...blockers, 'no-ean'];
+        }
 
-      return {
-        productId: row.productId,
-        blockers,
-        resolvedCategoryId:
-          categoryResult.kind === 'matched' ? categoryResult.allegroCategoryId : null,
-        resolvedProductCardId:
-          categoryResult.kind === 'matched' ? categoryResult.productCardId : null,
-        resolutionMethod: categoryResult.kind === 'matched' ? 'auto_detect' : null,
-        masterPrice,
-        masterStock,
-        masterCurrency,
-        categoryCandidates:
-          categoryResult.kind === 'multi-match' ? categoryResult.candidates : [],
-      };
-    });
+        return {
+          variantId: variant.variantId,
+          blockers,
+          resolvedCategoryId:
+            categoryResult.kind === 'matched' ? categoryResult.allegroCategoryId : null,
+          resolvedProductCardId:
+            categoryResult.kind === 'matched' && categoryResult.productCardId !== ''
+              ? categoryResult.productCardId
+              : null,
+          resolutionMethod:
+            categoryResult.kind === 'matched'
+              ? categoryResult.method ?? 'auto_detect'
+              : null,
+          masterPrice,
+          masterStock,
+          masterCurrency,
+          categoryCandidates:
+            categoryResult.kind === 'multi-match' ? categoryResult.candidates : [],
+          ean,
+        };
+      }),
+    }));
   }, [
     rows,
-    categoryQuery.data,
-    availabilityQuery.data,
+    categoryResults,
+    availabilityResults,
     pricingPolicy,
     stockPolicy,
     currency,
@@ -170,19 +243,16 @@ export function BulkResolveStep({
     destinationResolvesCategoryAtSubmit,
   ]);
 
-  // Fire onComplete exactly once, when both batch queries have settled.
   const completedRef = useRef(false);
   useEffect(() => {
-    if (completedRef.current || !settled) return;
+    if (completedRef.current || hasError || !settled) return;
     completedRef.current = true;
     onComplete(buildOutcomes());
-  }, [settled, buildOutcomes, onComplete]);
+  }, [settled, hasError, buildOutcomes, onComplete]);
 
   if (hasError) {
-    const message =
-      categoryQuery.error?.message ??
-      availabilityQuery.error?.message ??
-      'Resolution failed.';
+    const firstError = allChunks.find((q) => q.isError)?.error;
+    const message = firstError instanceof Error ? firstError.message : 'Resolution failed.';
     return (
       <div className="bulk-wizard__body--center" role="alert">
         <Alert tone="error">
@@ -191,11 +261,10 @@ export function BulkResolveStep({
         <Button
           tone="secondary"
           onClick={() => {
-            if (categoryQuery.isError) void categoryQuery.refetch();
-            if (availabilityQuery.isError) void availabilityQuery.refetch();
+            for (const q of allChunks) if (q.isError) void q.refetch();
           }}
         >
-          Retry
+          Retry resolve
         </Button>
       </div>
     );
@@ -214,12 +283,12 @@ export function BulkResolveStep({
           margin: 0,
         }}
       >
-        Resolving categories &amp; stock
+        Resolving variants - {settledChunks} of {totalChunks || 1}
       </h2>
       <p className="bulk-wizard__resolve-sub">
-        Matching every product's EAN against Allegro's catalog and pulling master price and
-        stock in one pass. Rows without a clean match or master value are flagged so you can
-        fix them before submit.
+        Matching each variant's EAN against the marketplace catalog and pulling per-variant
+        master price and stock in parallel chunks. Review fills in as siblings settle; rows
+        without a clean match or master value are flagged so you can fix them before submit.
       </p>
     </div>
   );

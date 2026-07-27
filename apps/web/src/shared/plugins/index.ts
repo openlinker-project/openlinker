@@ -20,8 +20,6 @@ export type {
   StructuredConfigSectionProps,
   ExtraConfigSectionProps,
   NavContribution,
-  OfferCreationWizardContribution,
-  OfferCreationWizardProps,
   ShopProductPublishWizardContribution,
   ShopProductPublishWizardProps,
   PluginApiNamespacesFactory,

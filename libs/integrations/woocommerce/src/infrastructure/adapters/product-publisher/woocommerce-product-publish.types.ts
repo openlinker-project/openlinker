@@ -21,6 +21,8 @@ export type WooCommerceProductStatus = 'publish' | 'draft' | 'pending' | 'privat
  */
 export interface WooCommerceProductPublishRequest {
   name?: string;
+  /** Product SKU / reference. Maps the neutral `PublishProductCommand.sku`. */
+  sku?: string;
   type?: 'simple';
   status?: WooCommerceProductStatus;
   regular_price?: string;

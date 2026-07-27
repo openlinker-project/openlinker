@@ -13,6 +13,20 @@
 import type { OfferParameter } from './offer-parameter.types';
 
 /**
+ * Marketplace-neutral item condition (#1500).
+ *
+ * A small closed set sufficient for the marketplaces OL targets today (Allegro's
+ * "Stan", Erli's borrowed Allegro taxonomy); richer vocabularies (refurbished,
+ * damaged, …) can extend it later. The neutral value carries no platform id —
+ * each destination adapter owns the neutral → wire mapping (Allegro "Stan" 11323
+ * dictionary value id; Erli `source:"allegro"` 11323). Marketplaces require a
+ * condition on offer creation, so `OfferBuilderService` defaults it to `'new'`
+ * when the operator supplies none.
+ */
+export const OfferConditionValues = ['new', 'used'] as const;
+export type OfferCondition = (typeof OfferConditionValues)[number];
+
+/**
  * A source-shop category reference carried through from the master catalog
  * (#1096). Platform-neutral: a destination that accepts shop-native taxonomy
  * (Erli `source:"shop"`, ADR-025 §3) maps these to its wire shape when no
@@ -70,6 +84,16 @@ export interface CreateOfferOverrides {
    * the wizard already performed isn't redone (and weakened) at create time.
    */
   productCardId?: string;
+  /**
+   * Per-offer EAN/GTIN override (#1741). Falls back to the variant's own
+   * barcode (`variant.ean ?? variant.gtin`) when omitted. Lets the operator
+   * correct a typo'd/missing barcode at wizard time and rescue an otherwise
+   * barcode-less sibling. The core builder prefers this at BOTH barcode sites
+   * (catalog self-link/GTIN parameter AND category-resolution-by-barcode).
+   * GS1-checksum validity and batch-wide effective-identifier uniqueness are
+   * to be enforced in `BulkListingSubmitService` (#1741 AC D; pending), not here.
+   */
+  ean?: string;
   /**
    * Image URLs in display order. Falls back to variant images. `null` or
    * `undefined` both mean "no override".
@@ -194,6 +218,17 @@ export interface CreateOfferCommand {
    * pre-resolution alongside `variantBarcode` / `productCardId`.
    */
   variantGroup?: OfferVariantGroup;
+  /**
+   * Marketplace-neutral item condition (#1500). Defaulted to `'new'` by
+   * `OfferBuilderService` when the operator supplies none, so every core-built
+   * command carries a condition and non-UI / borrows paths no longer silently
+   * omit the marketplace-required condition parameter. Each destination adapter
+   * maps it to its wire shape (Allegro "Stan" 11323 dictionary value; Erli
+   * `source:"allegro"` 11323) and MUST NOT override an operator-supplied
+   * condition parameter already present in `parameters` (operator intent wins,
+   * never double-set). Platform-neutral: no platform id lives in core.
+   */
+  condition?: OfferCondition;
   /**
    * Source-shop category references (master-derived), platform-neutral (#1096).
    * Threaded by `OfferBuilderService` from the master product's categories. A

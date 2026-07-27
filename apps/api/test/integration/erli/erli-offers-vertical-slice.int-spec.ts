@@ -170,7 +170,7 @@ describe('Erli Offers Vertical Slice Integration (#991)', () => {
   it('S2: updateOfferFields issues a sparse PATCH of only the changed field', async () => {
     const adapter = await getAdapter();
     // Live product with no frozen fields.
-    erli.fake.setProduct(VARIANT_A, { frozenFields: [], status: 'active' });
+    erli.fake.setProduct(VARIANT_A, { frozen: {}, status: 'active' });
 
     const cmd: UpdateOfferFieldsCommand = {
       externalOfferId: VARIANT_A,
@@ -201,7 +201,7 @@ describe('Erli Offers Vertical Slice Integration (#991)', () => {
   it('S3b: updateOfferQuantity is a no-op once a status read cached frozen stock', async () => {
     const adapter = await getAdapter();
     // A status read that sees frozen stock populates the per-offer cache flag.
-    erli.fake.setProduct(VARIANT_A, { frozenFields: ['stock'], status: 'active' });
+    erli.fake.setProduct(VARIANT_A, { frozen: { stock: true }, status: 'active' });
     await adapter.getOfferStatus(VARIANT_A);
 
     const patchesBefore = erli.fake.callsOf('PATCH').length;
@@ -250,7 +250,7 @@ describe('Erli Offers Vertical Slice Integration (#991)', () => {
   // ── S5: frozen-field suppression + 0-stock listed as 0 ─────────────────────
   it('S5a: updateOfferFields drops a frozen field but keeps a non-frozen one', async () => {
     const adapter = await getAdapter();
-    erli.fake.setProduct(VARIANT_A, { frozenFields: ['price'], status: 'active' });
+    erli.fake.setProduct(VARIANT_A, { frozen: { price: true }, status: 'active' });
 
     await adapter.updateOfferFields({
       externalOfferId: VARIANT_A,
@@ -288,8 +288,8 @@ describe('Erli Offers Vertical Slice Integration (#991)', () => {
 
     // Model Erli's async settle: accepted (→ activating) then active (→ active).
     erli.fake.enqueueGet(VARIANT_A, [
-      { status: 'accepted', frozenFields: [] },
-      { status: 'active', frozenFields: [] },
+      { status: 'accepted', frozen: {} },
+      { status: 'active', frozen: {} },
     ]);
 
     await syncService.sync(connectionId, { limit: 50, offset: 0 });

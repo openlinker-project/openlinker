@@ -38,9 +38,6 @@ describe('subiektPlugin', () => {
     it('does NOT contribute API namespaces', () => {
       expect(subiektPlugin.build?.apiNamespaces).toBeUndefined();
     });
-    it('does NOT contribute an offer-creation wizard', () => {
-      expect(subiektPlugin.build?.offerCreationWizard).toBeUndefined();
-    });
   });
 
   describe('platform contributions', () => {

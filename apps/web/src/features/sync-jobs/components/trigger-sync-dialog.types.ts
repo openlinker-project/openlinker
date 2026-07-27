@@ -29,12 +29,24 @@ export interface TriggerableJob {
   label: string;
   description: string;
   payloadFields: PayloadField[];
-  /** If set, only show this job when the connection supports this capability. */
-  requiredCapability?: CoreCapability;
+  /**
+   * If set, only show this job when the connection supports this capability.
+   * Open-world at the extension boundary (mirrors the BE `CoreCapability |
+   * string` shape, #576): manifests advertise sub-capability names beyond the
+   * closed core set (e.g. `OfferEventReader`, #1498), and jobs may gate on
+   * them. `string & Record<never, never>` keeps `CoreCapability`
+   * autocomplete working.
+   */
+  requiredCapability?: CoreCapability | (string & Record<never, never>);
 }
 
 export interface TriggerSyncDialogProps {
   connection: Connection;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Demo read-only viewer (#1615): the dialog opens with editable inputs, but
+   * the final "Trigger" submit renders disabled with a read-only tooltip.
+   */
+  submitDisabled?: boolean;
 }

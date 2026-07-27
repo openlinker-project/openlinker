@@ -3,9 +3,12 @@
  *
  * @module apps/api/src/listings/http
  */
+import 'reflect-metadata';
 import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
+
+import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 
 import type {
   CatalogProduct,
@@ -19,6 +22,7 @@ import {
   AdapterCapabilityNotSupportedException,
   CatalogProductNotFoundException,
   CategoryNotFoundException,
+  OfferNotFoundOnMarketplaceException,
 } from '@openlinker/core/listings';
 import {
   ConnectionNotFoundException,
@@ -29,15 +33,24 @@ import {
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   OFFER_MAPPING_REPOSITORY_TOKEN,
+  OFFER_STATUS_READ_SERVICE_TOKEN,
+  OFFER_STATUS_SYNC_SERVICE_TOKEN,
   OfferCreationRecord,
   SELLER_POLICIES_SERVICE_TOKEN,
+  RESPONSIBLE_PRODUCER_SERVICE_TOKEN,
+  DELIVERY_PRICE_LIST_SERVICE_TOKEN,
 } from '@openlinker/core/listings';
 import type {
   ICategoryResolutionService,
   IOfferCreationEnqueueService,
+  IOfferStatusReadService,
+  IOfferStatusSyncService,
   ISellerPoliciesService,
+  IResponsibleProducerService,
+  IDeliveryPriceListService,
   OfferCreationRecordRepositoryPort,
   OfferMappingRepositoryPort,
+  OfferStatusSnapshot,
 } from '@openlinker/core/listings';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
@@ -55,9 +68,13 @@ describe('ListingsController', () => {
   let offerCreationRecords: jest.Mocked<OfferCreationRecordRepositoryPort>;
   let offerCreationEnqueue: jest.Mocked<IOfferCreationEnqueueService>;
   let sellerPolicies: jest.Mocked<ISellerPoliciesService>;
+  let responsibleProducers: jest.Mocked<IResponsibleProducerService>;
+  let deliveryPriceLists: jest.Mocked<IDeliveryPriceListService>;
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let productVariantRepository: jest.Mocked<ProductVariantRepositoryPort>;
   let categoryResolution: jest.Mocked<ICategoryResolutionService>;
+  let offerStatusRead: jest.Mocked<IOfferStatusReadService>;
+  let offerStatusSync: jest.Mocked<Pick<IOfferStatusSyncService, 'refreshOne'>>;
 
   const mockMapping = new IdentifierMapping(
     'uuid-1',
@@ -88,6 +105,7 @@ describe('ListingsController', () => {
       findById: jest.fn(),
       findMany: jest.fn(),
       countByConnectionAndVariants: jest.fn().mockResolvedValue(new Map<string, number>()),
+      countListedVariantsByProducts: jest.fn().mockResolvedValue([]),
     };
     jobEnqueue = { enqueueJob: jest.fn() } as unknown as jest.Mocked<JobEnqueuePort>;
     offerCreationRecords = {
@@ -101,12 +119,20 @@ describe('ListingsController', () => {
       findByBulkBatchId: jest.fn(),
       updateClassificationReport: jest.fn(),
       resetForRetry: jest.fn(),
+      deleteById: jest.fn(),
     };
     offerCreationEnqueue = {
       enqueueCreation: jest.fn(),
     };
+    deliveryPriceLists = {
+      listDeliveryPriceLists: jest.fn(),
+    };
+
     sellerPolicies = {
       getSellerPolicies: jest.fn(),
+    };
+    responsibleProducers = {
+      listResponsibleProducers: jest.fn(),
     };
     integrationsService = {
       getCapabilityAdapter: jest.fn(),
@@ -114,16 +140,24 @@ describe('ListingsController', () => {
     productVariantRepository = {
       findById: jest.fn().mockResolvedValue(null),
       findByProductId: jest.fn(),
+      countByProductIds: jest.fn().mockResolvedValue(new Map<string, number>()),
       findBySku: jest.fn(),
       findBySkuIn: jest.fn(),
       findByEanOrGtinIn: jest.fn(),
       upsert: jest.fn(),
       upsertMany: jest.fn(),
       findMany: jest.fn(),
+      markStaleExceptVariants: jest.fn(),
     };
     categoryResolution = {
       resolveCategory: jest.fn(),
       resolveCategoriesBatch: jest.fn(),
+    };
+    offerStatusRead = {
+      getPublicationStatusForProduct: jest.fn(),
+    };
+    offerStatusSync = {
+      refreshOne: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -134,9 +168,13 @@ describe('ListingsController', () => {
         { provide: OFFER_CREATION_RECORD_REPOSITORY_TOKEN, useValue: offerCreationRecords },
         { provide: OFFER_CREATION_ENQUEUE_SERVICE_TOKEN, useValue: offerCreationEnqueue },
         { provide: SELLER_POLICIES_SERVICE_TOKEN, useValue: sellerPolicies },
+        { provide: RESPONSIBLE_PRODUCER_SERVICE_TOKEN, useValue: responsibleProducers },
+        { provide: DELIVERY_PRICE_LIST_SERVICE_TOKEN, useValue: deliveryPriceLists },
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrationsService },
         { provide: PRODUCT_VARIANT_REPOSITORY_TOKEN, useValue: productVariantRepository },
         { provide: CATEGORY_RESOLUTION_SERVICE_TOKEN, useValue: categoryResolution },
+        { provide: OFFER_STATUS_READ_SERVICE_TOKEN, useValue: offerStatusRead },
+        { provide: OFFER_STATUS_SYNC_SERVICE_TOKEN, useValue: offerStatusSync },
       ],
     }).compile();
 
@@ -410,6 +448,16 @@ describe('ListingsController', () => {
 
       await expect(controller.getMarketplaceOffer('uuid-1')).rejects.toThrow('Allegro 502');
     });
+
+    it('should map OfferNotFoundOnMarketplaceException to a soft 404 (live data unavailable)', async () => {
+      repository.findById.mockResolvedValue(mockMapping);
+      const getOffer = jest
+        .fn()
+        .mockRejectedValue(new OfferNotFoundOnMarketplaceException('allegro-offer-456', 'conn-1'));
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeOfferReaderAdapter(getOffer));
+
+      await expect(controller.getMarketplaceOffer('uuid-1')).rejects.toThrow(NotFoundException);
+    });
   });
 
   describe('createOffer', () => {
@@ -561,6 +609,44 @@ describe('ListingsController', () => {
     });
   });
 
+  describe('getResponsibleProducers', () => {
+    it('delegates to the responsible-producer service and wraps the result', async () => {
+      responsibleProducers.listResponsibleProducers.mockResolvedValue([
+        { id: '1', name: 'ACME Sp. z o.o.', kind: 'PRODUCER' },
+        { id: '2', name: 'Importer Ltd', kind: 'PRODUCER' },
+      ]);
+
+      const result = await controller.getResponsibleProducers('conn-1');
+
+      expect(result).toEqual({
+        responsibleProducers: [
+          { id: '1', name: 'ACME Sp. z o.o.', kind: 'PRODUCER' },
+          { id: '2', name: 'Importer Ltd', kind: 'PRODUCER' },
+        ],
+      });
+      expect(responsibleProducers.listResponsibleProducers).toHaveBeenCalledWith('conn-1');
+    });
+  });
+
+  describe('getDeliveryPriceLists', () => {
+    it('delegates to the delivery-price-list service and wraps the result', async () => {
+      deliveryPriceLists.listDeliveryPriceLists.mockResolvedValue([
+        { id: '1', name: '*' },
+        { id: '2', name: 'Kurier' },
+      ]);
+
+      const result = await controller.getDeliveryPriceLists('conn-1');
+
+      expect(result).toEqual({
+        deliveryPriceLists: [
+          { id: '1', name: '*' },
+          { id: '2', name: 'Kurier' },
+        ],
+      });
+      expect(deliveryPriceLists.listDeliveryPriceLists).toHaveBeenCalledWith('conn-1');
+    });
+  });
+
   describe('getCategoryParameters', () => {
     const sampleNeutral: CategoryParameter[] = [
       {
@@ -670,6 +756,59 @@ describe('ListingsController', () => {
       await expect(controller.getCategoryParameters('conn-1', '257933')).rejects.toThrow(
         'upstream-503'
       );
+    });
+  });
+
+  describe('getCategoryPath (#1752)', () => {
+    const samplePath = [
+      { id: '1', name: 'Electronics' },
+      { id: '10', name: 'Smartphones' },
+    ];
+
+    function makeAdapter(
+      withCategoryPathReader: boolean,
+      fetch: jest.Mock = jest.fn().mockResolvedValue(samplePath)
+    ): OfferManagerPort {
+      const base = { updateOfferQuantity: jest.fn() } as unknown as OfferManagerPort;
+      if (withCategoryPathReader) {
+        return Object.assign(base, { fetchCategoryPath: fetch });
+      }
+      return base;
+    }
+
+    it('returns the breadcrumb wrapped under `path`, root -> leaf', async () => {
+      const fetch = jest.fn().mockResolvedValue(samplePath);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(true, fetch));
+
+      const result = await controller.getCategoryPath('conn-1', '10');
+
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith('conn-1', 'OfferManager');
+      expect(fetch).toHaveBeenCalledWith('10');
+      expect(result.path).toEqual(samplePath);
+    });
+
+    it('throws 422 when the adapter does not implement CategoryPathReader', async () => {
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(false));
+
+      await expect(controller.getCategoryPath('conn-1', '10')).rejects.toBeInstanceOf(
+        UnprocessableEntityException
+      );
+    });
+
+    it('translates CategoryNotFoundException to a 404 NotFoundException', async () => {
+      const fetch = jest.fn().mockRejectedValue(new CategoryNotFoundException('999999', 'allegro'));
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(true, fetch));
+
+      await expect(controller.getCategoryPath('conn-1', '999999')).rejects.toBeInstanceOf(
+        NotFoundException
+      );
+    });
+
+    it('propagates upstream errors that are not CategoryNotFoundException', async () => {
+      const fetch = jest.fn().mockRejectedValue(new Error('upstream-503'));
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(true, fetch));
+
+      await expect(controller.getCategoryPath('conn-1', '10')).rejects.toThrow('upstream-503');
     });
   });
 
@@ -788,6 +927,39 @@ describe('ListingsController', () => {
         results: {
           v1: { kind: 'matched', allegroCategoryId: '257933', productCardId: 'card-1' },
           v2: { kind: 'no-ean' },
+        },
+      });
+    });
+
+    it('forwards sourceCategoryIds and surfaces a category_mapping result (#1522)', async () => {
+      const serviceResult = new Map<string, EanMatchResult>([
+        [
+          'v1',
+          {
+            kind: 'matched',
+            allegroCategoryId: '89508',
+            productCardId: '',
+            method: 'category_mapping',
+          },
+        ],
+      ]);
+      categoryResolution.resolveCategoriesBatch.mockResolvedValue(serviceResult);
+
+      const result = await controller.resolveCategoriesBatch('conn-1', {
+        items: [{ variantId: 'v1', ean: '5901234567890', sourceCategoryIds: ['ps-cat-42'] }],
+      });
+
+      expect(categoryResolution.resolveCategoriesBatch).toHaveBeenCalledWith('conn-1', {
+        items: [{ variantId: 'v1', ean: '5901234567890', sourceCategoryIds: ['ps-cat-42'] }],
+      });
+      expect(result).toEqual({
+        results: {
+          v1: {
+            kind: 'matched',
+            allegroCategoryId: '89508',
+            productCardId: '',
+            method: 'category_mapping',
+          },
         },
       });
     });
@@ -962,6 +1134,99 @@ describe('ListingsController', () => {
 
         await expect(controller.getCatalogProduct('conn-1', 'p1')).rejects.toThrow('upstream-503');
       });
+    });
+  });
+
+  // ─── @Roles metadata (#1608) ────────────────────────────────────────────────
+  //
+  // Demo-mode `viewer` accounts must reach step 4 (Confirm) of the bulk-create
+  // offer wizard: all read-only lookups it drives must include 'viewer' in
+  // their @Roles set, while every write/submit endpoint stays admin+operator
+  // only. Reads decorator metadata directly (no HTTP layer / DB needed) so
+  // this stays in the fast unit-test tier; the end-to-end guard behaviour is
+  // covered by viewer-role-authz.int-spec.ts.
+  describe('@Roles metadata (#1608 — viewer wizard-read access)', () => {
+    const READ_LOOKUP_METHODS = [
+      'getSellerPolicies',
+      'getResponsibleProducers',
+      'getDeliveryPriceLists',
+      'getCategoryParameters',
+      'resolveCategory',
+      'resolveCategoriesBatch',
+      'findProductsByBarcode',
+      'getCatalogProduct',
+    ] as const;
+
+    const WRITE_METHODS = ['updateOfferFields', 'autoMatchVariants', 'createOffer'] as const;
+
+    function rolesOf(methodName: string): string[] | undefined {
+      const proto = ListingsController.prototype as unknown as Record<string, unknown>;
+      return Reflect.getMetadata(ROLES_KEY, proto[methodName] as object) as string[] | undefined;
+    }
+
+    it.each(READ_LOOKUP_METHODS)('%s includes admin, operator, and viewer', (methodName) => {
+      expect(rolesOf(methodName)).toEqual(['admin', 'operator', 'viewer']);
+    });
+
+    it.each(WRITE_METHODS)('%s stays restricted to admin and operator (no viewer)', (methodName) => {
+      expect(rolesOf(methodName)).toEqual(['admin', 'operator']);
+    });
+  });
+
+  describe('getProductOfferStatus (#1760)', () => {
+    it('maps snapshots to publication-status DTOs', async () => {
+      const syncedAt = new Date('2026-07-22T08:00:00Z');
+      offerStatusRead.getPublicationStatusForProduct.mockResolvedValue([
+        {
+          connectionId: 'conn-1',
+          externalOfferId: '7781896308',
+          internalVariantId: 'ol_variant_1',
+          publicationStatus: 'active',
+          statusDetails: { validationMessages: ['note'] },
+          lastStatusSyncedAt: syncedAt,
+        } as OfferStatusSnapshot,
+      ]);
+
+      const result = await controller.getProductOfferStatus('ol_product_1', 'conn-1');
+
+      expect(offerStatusRead.getPublicationStatusForProduct).toHaveBeenCalledWith(
+        'ol_product_1',
+        'conn-1'
+      );
+      expect(result).toEqual([
+        {
+          connectionId: 'conn-1',
+          externalOfferId: '7781896308',
+          internalVariantId: 'ol_variant_1',
+          publicationStatus: 'active',
+          validationMessages: ['note'],
+          lastStatusSyncedAt: syncedAt.toISOString(),
+        },
+      ]);
+    });
+  });
+
+  describe('refreshOfferStatus (#1760)', () => {
+    const body = { internalVariantId: 'ol_variant_1' };
+
+    it('returns the refreshed publication status', async () => {
+      offerStatusSync.refreshOne.mockResolvedValue('active');
+
+      const result = await controller.refreshOfferStatus('conn-1', '7781896308', body);
+
+      expect(offerStatusSync.refreshOne).toHaveBeenCalledWith('conn-1', {
+        externalOfferId: '7781896308',
+        internalVariantId: 'ol_variant_1',
+      });
+      expect(result).toEqual({ publicationStatus: 'active' });
+    });
+
+    it('throws 404 when live status is unavailable', async () => {
+      offerStatusSync.refreshOne.mockResolvedValue(null);
+
+      await expect(controller.refreshOfferStatus('conn-1', '7781896308', body)).rejects.toBeInstanceOf(
+        NotFoundException
+      );
     });
   });
 });

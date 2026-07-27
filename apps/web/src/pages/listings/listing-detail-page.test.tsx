@@ -55,11 +55,11 @@ describe('ListingDetailPage', () => {
     expect(link).toHaveAttribute('href', '/products/ol_variant_xyz');
   });
 
-  it('links the internal ID to the inventory detail when entityType is InventoryItem', async () => {
+  it('renders the internal ID as plain text when entityType is InventoryItem', async () => {
     renderDetail(buildMapping({ entityType: 'InventoryItem', internalId: 'ol_inventory_99' }));
 
-    const link = await screen.findByRole('link', { name: 'ol_inventory_99' });
-    expect(link).toHaveAttribute('href', '/inventory/ol_inventory_99');
+    await screen.findByText('ol_inventory_99');
+    expect(screen.queryByRole('link', { name: 'ol_inventory_99' })).toBeNull();
   });
 
   it('renders the internal ID as plain text for unknown entity types', async () => {

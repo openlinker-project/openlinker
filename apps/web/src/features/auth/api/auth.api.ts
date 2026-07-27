@@ -1,4 +1,5 @@
 import type {
+  ConfirmEmailRequest,
   ForgotPasswordRequest,
   LoginRequest,
   LoginResponse,
@@ -16,6 +17,7 @@ export interface AuthApi {
   register: (input: RegisterRequest) => Promise<OkResponse>;
   forgotPassword: (input: ForgotPasswordRequest) => Promise<OkResponse>;
   resetPassword: (input: ResetPasswordRequest) => Promise<OkResponse>;
+  confirmEmail: (input: ConfirmEmailRequest) => Promise<OkResponse>;
 }
 
 export function createAuthApi(request: ApiRequest): AuthApi {
@@ -40,6 +42,12 @@ export function createAuthApi(request: ApiRequest): AuthApi {
     },
     resetPassword(input): Promise<OkResponse> {
       return request<OkResponse>('/auth/reset-password', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+    },
+    confirmEmail(input): Promise<OkResponse> {
+      return request<OkResponse>('/auth/confirm-email', {
         method: 'POST',
         body: JSON.stringify(input),
       });

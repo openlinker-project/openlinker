@@ -175,7 +175,23 @@ function lineNode(line: Fa3Line, ordinal: number, stanPrzed = false): XmlNodeObj
   const node: XmlNodeObject = {
     NrWierszaFa: ordinal,
     P_7: line.name,
+    // P_8A (unit of measure) precedes P_8B in the FaWiersz sequence (XSD line
+    // ~3129); already precedence-resolved by the mapper, absent = omitted.
+    ...(line.unit !== undefined ? { P_8A: line.unit } : {}),
     P_8B: quantity(line.quantity),
+    // P_9A is the NET unit price, derived from the SAME `lineNet` source as
+    // P_11 / the P_13_x band aggregation so the three can never drift. Rounded
+    // to 2dp: for quantity > 1 the rounded P_9A times P_8B may differ from
+    // P_11 by cents (e.g. net 100.00 / qty 3 -> P_9A 33.33, x3 = 99.99) - an
+    // accepted, documented drift; P_11 remains authoritative (#1525). Applies
+    // to KOR before/after rows identically (no correction special-casing).
+    // Guarded to quantity > 0: a non-positive quantity (a zero-quantity KOR
+    // "after" row, or a malformed snapshot's 0 default) would divide to NaN
+    // and render a literal "NaN" that the local structural validator cannot
+    // catch but KSeF rejects at clearance - the optional element is omitted
+    // instead (defense-in-depth with the command composer's positive-quantity
+    // gate, which covers only the plain-issue path).
+    ...(line.quantity > 0 ? { P_9A: money(lineNet(line) / line.quantity) } : {}),
     // P_11 is the line's NET sale value — never the gross. Shared with the
     // band aggregation via `lineNet` so the two can't diverge.
     P_11: money(lineNet(line)),
@@ -447,6 +463,10 @@ function faNode(input: Fa3BuilderInput): XmlNodeObject {
     KodWaluty: input.currency,
     P_1: input.issueDate,
     P_2: input.invoiceNumber,
+    // P_6 (date of supply / sale) sits in the optional choice right after
+    // P_2/WZ and before the P_13_x aggregates (XSD line ~2471). Emitted
+    // whenever known - including when equal to P_1 (#1525).
+    ...(input.saleDate !== undefined ? { P_6: input.saleDate } : {}),
     ...bands,
     P_15: grandTotal,
     Adnotacje: adnotacjeNode(),

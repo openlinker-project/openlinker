@@ -64,6 +64,15 @@ export interface SchedulerTaskConfig {
   enabledEnvVar?: string;
 
   /**
+   * Default enablement when `enabledEnvVar` is unset. Defaults to `true`
+   * (enabled). Set `false` for a task that must stay opt-in until an operator
+   * explicitly turns it on — e.g. the offline-resubmit sweep, whose duplicate-
+   * issue safety depends on a provider wire contract an operator must verify
+   * against their own authority before enabling (#1585 B1).
+   */
+  enabledDefault?: boolean;
+
+  /**
    * Optional custom connection filter (overrides default platformType-based
    * lookup). Used for capability-based scheduling that spans multiple
    * platforms — e.g. drain every connection that supports the

@@ -31,10 +31,15 @@ function isVariantLinkedEntityType(value: string): boolean {
   return value === 'ProductVariant' || value === 'Offer';
 }
 
-const ENTITY_TYPE_ROUTES: Record<KnownMappingEntityType, (id: string) => string> = {
+/**
+ * `InventoryItem` has no entry: its `internalId` is the inventory item's own
+ * id, not a product id, and the standalone `/inventory/:id` page it used to
+ * link to no longer exists (folded into Product detail's per-variant stock
+ * table). No cheap synchronous id to route to, so it renders as plain text.
+ */
+const ENTITY_TYPE_ROUTES: Partial<Record<KnownMappingEntityType, (id: string) => string>> = {
   Product: (id) => `/products/${id}`,
   ProductVariant: (id) => `/products/${id}`,
-  InventoryItem: (id) => `/inventory/${id}`,
 };
 
 function isKnownEntityType(value: string): value is KnownMappingEntityType {
@@ -56,7 +61,8 @@ function renderInternalIdValue(
     </span>
   ) : null;
 
-  if (!isKnownEntityType(entityType)) {
+  const routeBuilder = isKnownEntityType(entityType) ? ENTITY_TYPE_ROUTES[entityType] : undefined;
+  if (!routeBuilder) {
     return (
       <>
         <span className="mono-text">{internalId}</span>
@@ -64,7 +70,7 @@ function renderInternalIdValue(
       </>
     );
   }
-  const to = ENTITY_TYPE_ROUTES[entityType](internalId);
+  const to = routeBuilder(internalId);
   return (
     <>
       <Link to={to} className="mono-text">

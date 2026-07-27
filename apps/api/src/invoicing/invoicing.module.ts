@@ -18,11 +18,21 @@ import { Module } from '@nestjs/common';
 import { IntegrationsModule as CoreIntegrationsModule } from '@openlinker/core/integrations';
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { OrdersModule } from '@openlinker/core/orders';
+import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { IntegrationsModule } from '../integrations/integrations.module';
 import { InvoicingController } from './http/invoicing.controller';
+import { NumberingSeriesController } from './http/numbering-series.controller';
 
 @Module({
-  imports: [InvoicingModule, OrdersModule, CoreIntegrationsModule, IntegrationsModule],
-  controllers: [InvoicingController],
+  // IdentifierMappingModule supplies CONNECTION_PORT_TOKEN so the controller can
+  // read the connection's `config.invoicing.shippingLineName` (#1562).
+  imports: [
+    InvoicingModule,
+    OrdersModule,
+    CoreIntegrationsModule,
+    IntegrationsModule,
+    IdentifierMappingModule,
+  ],
+  controllers: [InvoicingController, NumberingSeriesController],
 })
 export class InvoicingApiModule {}

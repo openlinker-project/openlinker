@@ -68,6 +68,11 @@ declare module '../../shared/plugins/plugin.types' {
     paymentTermDays?: string;
     paymentSkontoConditions?: string;
     paymentSkontoAmount?: string;
+    /**
+     * KSeF default line unit (#1525) - nested `config.invoiceDefaults.lineUnit`,
+     * emitted as `FaWiersz/P_8A`; empty = the unit element is not emitted.
+     */
+    invoiceDefaultLineUnit?: string;
   }
 }
 
@@ -154,6 +159,8 @@ const ksefSchemaShape: ConnectionConfigContribution['schemaShape'] = {
     .optional(),
   paymentSkontoConditions: z.union([z.string().trim().max(512), z.literal('')]).optional(),
   paymentSkontoAmount: z.union([z.string().trim().max(64), z.literal('')]).optional(),
+  // Mirrors the BE shape validator's 20-char (after trim) cap (#1525).
+  invoiceDefaultLineUnit: z.union([z.string().trim().max(20), z.literal('')]).optional(),
 };
 
 function ksefSuperRefine(values: Record<string, unknown>, ctx: z.RefinementCtx): void {
@@ -288,6 +295,23 @@ function readKsefPayment(config: Record<string, unknown>): {
   };
 }
 
+/**
+ * Read the KSeF default line unit out of `config.invoiceDefaults.lineUnit`
+ * (#1525) for form hydration. An absent/wrong-typed leaf reads as ''.
+ */
+function readKsefInvoiceDefaults(config: Record<string, unknown>): {
+  invoiceDefaultLineUnit: string;
+} {
+  const invoiceDefaults =
+    typeof config.invoiceDefaults === 'object' && config.invoiceDefaults !== null
+      ? (config.invoiceDefaults as Record<string, unknown>)
+      : {};
+  return {
+    invoiceDefaultLineUnit:
+      typeof invoiceDefaults.lineUnit === 'string' ? invoiceDefaults.lineUnit : '',
+  };
+}
+
 /** Rebuild the typed seller patch slice from an untyped structured patch. */
 function toSellerPatch(patch: Record<string, unknown>): KsefSellerProfileInput {
   return {
@@ -345,6 +369,39 @@ function applyKsefConfig(
   }
   next = applyKsefSellerToConfig(next, toSellerPatch(patch));
   next = applyKsefPaymentToConfig(next, toPaymentPatch(patch));
+  next = applyKsefInvoiceDefaultsToConfig(next, patch);
+  return next;
+}
+
+/**
+ * Merge the default-line-unit leaf into `config.invoiceDefaults` (#1525).
+ * Delete-on-empty at both levels: an emptied `lineUnit` leaf is removed, and a
+ * hollow `invoiceDefaults` object is dropped so P_8A emission stops entirely.
+ */
+function applyKsefInvoiceDefaultsToConfig(
+  config: Record<string, unknown>,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const lineUnit = readOptionalConfigString(patch, 'invoiceDefaultLineUnit');
+  if (lineUnit === undefined) {
+    return config;
+  }
+  const next: Record<string, unknown> = { ...config };
+  const invoiceDefaults: Record<string, unknown> =
+    typeof next.invoiceDefaults === 'object' && next.invoiceDefaults !== null
+      ? { ...(next.invoiceDefaults as Record<string, unknown>) }
+      : {};
+  const normalized = lineUnit.trim();
+  if (normalized.length === 0) {
+    delete invoiceDefaults.lineUnit;
+  } else {
+    invoiceDefaults.lineUnit = normalized;
+  }
+  if (Object.keys(invoiceDefaults).length === 0) {
+    delete next.invoiceDefaults;
+  } else {
+    next.invoiceDefaults = invoiceDefaults;
+  }
   return next;
 }
 
@@ -355,6 +412,7 @@ export const ksefConnectionConfig: ConnectionConfigContribution = {
     ksefEnvironment: readKsefEnvironment(config),
     ...readKsefSeller(config),
     ...readKsefPayment(config),
+    ...readKsefInvoiceDefaults(config),
     contextIdentifier: readConfigString(config, 'contextIdentifier'),
   }),
   applyToConfig: applyKsefConfig,

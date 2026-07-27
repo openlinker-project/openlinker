@@ -60,25 +60,10 @@ import {
 } from '../../domain/ports/capabilities/regulatory-status-reader.capability';
 import type { InvoiceOutcomePatch, RegulatoryClearanceResult } from '../../domain/types/invoicing.types';
 import { isTerminalRegulatoryStatus } from '../../domain/types/invoicing.types';
+import { MAX_PAGES_PER_RUN, sanitizeError } from './invoice-sweep-support';
 
 /** Capability the connection must declare; the reader is a runtime-detected sub-capability. */
 const INVOICING_CAPABILITY = 'Invoicing';
-
-/**
- * Max length of a sanitized, operator-facing read-error diagnostic. A
- * `RegulatoryStatusReader` adapter is third-party-shaped and its error may echo
- * buyer/KSeF-side data — bound it before logging (same idiom as `InvoiceService`).
- */
-const MAX_ERROR_MESSAGE_LENGTH = 500;
-
-/**
- * Runaway guard on the intra-run keyset page walk (#1206). The walk normally
- * terminates when a page returns fewer than `limit` rows; this caps the worst
- * case (e.g. a frontier that keeps growing under concurrent issuance) so a
- * single run cannot spin unboundedly. At the default page size (100) this is
- * 100k records/run — far above any realistic MVP frontier.
- */
-const MAX_PAGES_PER_RUN = 1000;
 
 @Injectable()
 export class RegulatoryStatusReconciliationService
@@ -168,7 +153,7 @@ export class RegulatoryStatusReconciliationService
           result.readErrors += 1;
           const err = error instanceof Error ? error : new Error(String(error));
           this.logger.error(
-            `Regulatory status read failed (connection=${connectionId}, record=${record.id}): ${err.name}: ${this.sanitizeError(error)}`,
+            `Regulatory status read failed (connection=${connectionId}, record=${record.id}): ${err.name}: ${sanitizeError(error)}`,
           );
           continue;
         }
@@ -241,19 +226,5 @@ export class RegulatoryStatusReconciliationService
     record: InvoiceRecord,
   ): Promise<RegulatoryClearanceResult> {
     return adapter.getClearanceStatus(record);
-  }
-
-  /**
-   * Length-bounded, operator-facing diagnostic for a per-record read error.
-   * INTERNAL-ONLY; may contain provider-echoed data — never log the raw,
-   * unbounded message to an external sink (#8d).
-   */
-  private sanitizeError(error: unknown): string {
-    const raw = error instanceof Error ? error.message : String(error);
-    if (raw.length <= MAX_ERROR_MESSAGE_LENGTH) {
-      return raw;
-    }
-    const marker = '…[truncated]';
-    return raw.slice(0, MAX_ERROR_MESSAGE_LENGTH - marker.length) + marker;
   }
 }

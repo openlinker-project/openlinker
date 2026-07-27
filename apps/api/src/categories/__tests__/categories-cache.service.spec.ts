@@ -10,6 +10,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { CategoriesCacheService } from '../categories-cache.service';
 import { AllegroCategoryCacheOrmEntity } from '../persistence/allegro-category-cache.orm-entity';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import { CategoryNotFoundException } from '@openlinker/core/listings';
 import type { OfferCategory } from '@openlinker/core/listings';
 
 const CONNECTION_ID = 'conn-uuid-1';
@@ -128,6 +129,52 @@ describe('CategoriesCacheService', () => {
       const result = await service.getAllegroCategories(CONNECTION_ID);
 
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('getAllegroCategoryPath', () => {
+    it('resolves the OfferManager adapter and returns its breadcrumb', async () => {
+      const path = [
+        { id: '1', name: 'Electronics' },
+        { id: '10', name: 'Phones' },
+      ];
+      const fetchCategoryPath = jest.fn().mockResolvedValue(path);
+      integrationsService.getCapabilityAdapter.mockResolvedValue({ fetchCategoryPath });
+
+      const result = await service.getAllegroCategoryPath(CONNECTION_ID, '10');
+
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        'OfferManager'
+      );
+      expect(fetchCategoryPath).toHaveBeenCalledWith('10');
+      expect(result).toEqual(path);
+    });
+
+    it('returns an empty array when the adapter does not implement CategoryPathReader', async () => {
+      integrationsService.getCapabilityAdapter.mockResolvedValue({});
+
+      const result = await service.getAllegroCategoryPath(CONNECTION_ID, '10');
+
+      expect(result).toEqual([]);
+    });
+
+    it('returns an empty array when the category cannot be resolved', async () => {
+      const fetchCategoryPath = jest
+        .fn()
+        .mockRejectedValue(new CategoryNotFoundException('10', 'allegro'));
+      integrationsService.getCapabilityAdapter.mockResolvedValue({ fetchCategoryPath });
+
+      const result = await service.getAllegroCategoryPath(CONNECTION_ID, '10');
+
+      expect(result).toEqual([]);
+    });
+
+    it('rethrows other adapter errors', async () => {
+      const fetchCategoryPath = jest.fn().mockRejectedValue(new Error('boom'));
+      integrationsService.getCapabilityAdapter.mockResolvedValue({ fetchCategoryPath });
+
+      await expect(service.getAllegroCategoryPath(CONNECTION_ID, '10')).rejects.toThrow('boom');
     });
   });
 

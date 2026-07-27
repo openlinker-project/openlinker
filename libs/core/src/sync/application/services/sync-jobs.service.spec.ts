@@ -14,12 +14,18 @@ import type { SyncJob } from '../../domain/entities/sync-job.entity';
 import type { ScheduleJobInput } from './sync-jobs.types';
 
 describe('SyncJobsService', () => {
-  let repository: jest.Mocked<Pick<SyncJobRepositoryPort, 'createIfNotExistsByIdempotencyKey'>>;
+  let repository: jest.Mocked<
+    Pick<
+      SyncJobRepositoryPort,
+      'createIfNotExistsByIdempotencyKey' | 'requeueDeadByIdempotencyKey'
+    >
+  >;
   let service: SyncJobsService;
 
   beforeEach(() => {
     repository = {
       createIfNotExistsByIdempotencyKey: jest.fn(),
+      requeueDeadByIdempotencyKey: jest.fn(),
     };
     service = new SyncJobsService(repository as unknown as SyncJobRepositoryPort);
   });
@@ -69,6 +75,26 @@ describe('SyncJobsService', () => {
 
       const [arg0] = repository.createIfNotExistsByIdempotencyKey.mock.calls[0];
       expect(arg0.maxAttempts).toBe(7);
+    });
+  });
+
+  describe('requeueDeadByIdempotencyKey (#1585 I3 / S3)', () => {
+    it('delegates to the guarded repo update and returns true when a dead job was requeued', async () => {
+      repository.requeueDeadByIdempotencyKey.mockResolvedValue(true);
+
+      const result = await service.requeueDeadByIdempotencyKey('invoice:c:o');
+
+      expect(result).toBe(true);
+      expect(repository.requeueDeadByIdempotencyKey).toHaveBeenCalledWith('invoice:c:o');
+    });
+
+    it('returns false when the guarded update matched no dead job (absent / non-dead)', async () => {
+      repository.requeueDeadByIdempotencyKey.mockResolvedValue(false);
+
+      const result = await service.requeueDeadByIdempotencyKey('missing');
+
+      expect(result).toBe(false);
+      expect(repository.requeueDeadByIdempotencyKey).toHaveBeenCalledWith('missing');
     });
   });
 });

@@ -73,6 +73,19 @@ describe('FakeInpostShippingAdapter', () => {
     await expect(fake.findPickupPoints({ city: 'Poznań' })).resolves.toEqual([point]);
   });
 
+  it('should return a deterministic protocol document for a batch', async () => {
+    const result = await fake.generateProtocol({ providerShipmentIds: ['fake-1', 'fake-2'] });
+    expect(result.contentType).toBe('application/pdf');
+    expect(result.body).toEqual(new Uint8Array([0x25, 0x50, 0x44, 0x46]));
+  });
+
+  it('should reject an empty protocol batch like the real adapter', async () => {
+    await expect(fake.generateProtocol({ providerShipmentIds: [] })).rejects.toMatchObject({
+      name: 'ShippingProviderRejectionException',
+      providerCode: 'preflight.empty-protocol-batch',
+    });
+  });
+
   it('should reset state on clear', async () => {
     await fake.generateLabel(paczkomatCmd);
     fake.clear();

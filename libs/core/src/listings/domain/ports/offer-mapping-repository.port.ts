@@ -11,6 +11,7 @@ import type {
   OfferMappingFilters,
   OfferMappingPagination,
   PaginatedOfferMappings,
+  ProductListingsCoverage,
 } from '../types/offer-mapping.types';
 
 export interface OfferMappingRepositoryPort {
@@ -38,4 +39,15 @@ export interface OfferMappingRepositoryPort {
     connectionId: string,
     internalIds: ReadonlyArray<string>
   ): Promise<Map<string, number>>;
+
+  /**
+   * Count DISTINCT listed variants per (product, connection) for the given
+   * product IDs (#1720). Joins the products-context `product_variants` table
+   * as a read-model reporting query to resolve each Offer mapping's variant
+   * back to its parent product. Pairs with zero listed variants are omitted.
+   * Empty input returns [] without a storage round-trip.
+   */
+  countListedVariantsByProducts(
+    productIds: readonly string[]
+  ): Promise<readonly ProductListingsCoverage[]>;
 }

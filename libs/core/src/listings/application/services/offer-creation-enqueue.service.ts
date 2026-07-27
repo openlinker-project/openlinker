@@ -80,6 +80,7 @@ export class OfferCreationEnqueueService implements IOfferCreationEnqueueService
       publishImmediately: input.publishImmediately,
       ...(input.price !== undefined && { price: input.price }),
       ...(input.overrides !== undefined && { overrides: input.overrides }),
+      ...(input.condition !== undefined && { condition: input.condition }),
     };
 
     // 4. Pre-create the record so the HTTP response carries an id clients
@@ -121,6 +122,7 @@ export class OfferCreationEnqueueService implements IOfferCreationEnqueueService
             generateDescription: input.generateDescription ?? false,
             ...(input.price !== undefined && { price: input.price }),
             ...(input.overrides !== undefined && { overrides: input.overrides }),
+            ...(input.condition !== undefined && { condition: input.condition }),
             ...(input.descriptionTone !== undefined && {
               descriptionTone: input.descriptionTone,
             }),
@@ -133,6 +135,7 @@ export class OfferCreationEnqueueService implements IOfferCreationEnqueueService
             offerCreationRecordId: record.id,
             ...(input.price !== undefined && { price: input.price }),
             ...(input.overrides !== undefined && { overrides: input.overrides }),
+            ...(input.condition !== undefined && { condition: input.condition }),
           } satisfies MarketplaceOfferCreatePayloadV1);
 
     // Bulk default idempotency key includes the batchId so the same

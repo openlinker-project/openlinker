@@ -6,7 +6,9 @@
  * extras slot, and order back-link.
  *
  * Layout: 2-column grid at ≥1024 px.
- *   LEFT:  Failure alert (when applicable) + Contents / Document / Regulatory KV
+ *   LEFT:  Failure alert (when applicable) + one host card containing the
+ *          Document/Regulatory KeyValueList and the nested provider region
+ *          (#1462, mirrors #1449's OrderInvoicePanel card chrome)
  *   RIGHT: InvoiceTimeline + Actions (Retry / in-doubt)
  *
  * Lifecycle states:
@@ -28,11 +30,12 @@ import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { TimeDisplay } from '../../shared/ui/time-display';
+import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
 import { useTranslation } from '../../shared/i18n';
 import { useToast } from '../../shared/ui/toast-provider';
 import { ApiError } from '../../shared/api/api-error';
 import { usePlatform } from '../../shared/plugins';
-import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
+import { useConnectionsQuery, type Connection } from '../../features/connections';
 import { useInvoiceQuery } from '../../features/invoicing/hooks/use-invoice-query';
 import { useIssueInvoiceMutation } from '../../features/invoicing/hooks/use-issue-invoice-mutation';
 import {
@@ -40,12 +43,87 @@ import {
   canRetryInvoice,
   resolveFailureCopy,
 } from '../../features/invoicing/lib/derive-invoice-display';
+import type { InvoiceRecord } from '../../features/invoicing/api/invoicing.types';
 import { InvoiceStatusBadge } from '../../features/invoicing/components/invoice-status-badge';
 import { RegulatoryStatusBadge } from '../../features/invoicing/components/regulatory-status-badge';
 import { InvoicePdfLink } from '../../features/invoicing/components/invoice-pdf-link';
 import { InvoiceTimeline } from '../../features/invoicing/components/invoice-timeline';
 import { DOCUMENT_TYPE_LABEL_FALLBACK } from '../../features/invoicing/components/document-type-select';
 import { resolveIssueErrorMessage } from '../../features/invoicing/lib/issue-error-message';
+
+/**
+ * Build the `KeyValueList` rows for the Document fields block — same field
+ * set the bespoke `<dl className="invoice-panel__kv">` rendered, only the
+ * wrapping markup changed to the shared primitive (#1462, mirrors #1449's
+ * `buildInvoiceFieldItems` on `OrderInvoicePanel`).
+ */
+function buildInvoiceDetailFieldItems(
+  invoice: InvoiceRecord,
+  connection: Connection | null,
+  showRegulatoryBadge: boolean,
+  t: (key: string, fallback: string) => string,
+): KeyValueItem[] {
+  const items: KeyValueItem[] = [
+    {
+      id: 'number',
+      label: t('invoice.field.number', 'Number'),
+      value: invoice.providerInvoiceNumber ? (
+        <InvoicePdfLink
+          invoiceNumber={invoice.providerInvoiceNumber}
+          pdfUrl={invoice.pdfUrl}
+        />
+      ) : (
+        <span className="text-muted">—</span>
+      ),
+    },
+    {
+      id: 'document',
+      label: t('invoice.field.document', 'Document type'),
+      value: t(
+        `invoice.documentType.${invoice.documentType}`,
+        DOCUMENT_TYPE_LABEL_FALLBACK[invoice.documentType] ?? invoice.documentType,
+      ),
+    },
+    {
+      id: 'issued',
+      label: t('invoice.field.issued', 'Issued at'),
+      value: invoice.issuedAt ? (
+        <TimeDisplay iso={invoice.issuedAt} format="datetime" className="mono-text" />
+      ) : (
+        <span className="text-muted">—</span>
+      ),
+    },
+    {
+      id: 'via',
+      label: t('invoice.field.via', 'Invoiced via'),
+      value: connection ? (
+        <Link to={`/connections/${connection.id}`} className="link">
+          {connection.name}
+        </Link>
+      ) : (
+        <span className="mono-text">{invoice.connectionId}</span>
+      ),
+    },
+  ];
+
+  if (showRegulatoryBadge) {
+    items.push({
+      id: 'clearance',
+      label: t('invoice.field.clearance', 'Regulatory clearance'),
+      value: <RegulatoryStatusBadge status={invoice.regulatoryStatus} />,
+    });
+
+    if (invoice.clearanceReference) {
+      items.push({
+        id: 'clearanceRef',
+        label: t('invoice.field.clearanceRef', 'Reference'),
+        value: <span className="mono-text">{invoice.clearanceReference}</span>,
+      });
+    }
+  }
+
+  return items;
+}
 
 export function InvoiceDetailPage(): ReactElement {
   const { invoiceId = '' } = useParams<{ invoiceId: string }>();
@@ -189,73 +267,30 @@ export function InvoiceDetailPage(): ReactElement {
             </Alert>
           ) : null}
 
-          {/* Invoice KV */}
-          <section className="detail-section">
-            <h2 className="detail-section__title">
-              {t('invoice.detail.sectionDocument', 'Document')}
-            </h2>
-            <dl className="invoice-panel__kv">
-              <dt>{t('invoice.field.number', 'Number')}</dt>
-              <dd>
-                {invoice.providerInvoiceNumber ? (
-                  <InvoicePdfLink
-                    invoiceNumber={invoice.providerInvoiceNumber}
-                    pdfUrl={invoice.pdfUrl}
-                  />
-                ) : (
-                  <span className="text-muted">—</span>
-                )}
-              </dd>
+          {/* Document fields + provider region — one host card (#1462) */}
+          <div className="invoice-detail__card">
+            <section className="detail-section">
+              <h2 className="detail-section__title">
+                {t('invoice.detail.sectionDocument', 'Document')}
+              </h2>
+              <KeyValueList
+                items={buildInvoiceDetailFieldItems(invoice, connection, showRegulatoryBadge, t)}
+              />
+            </section>
 
-              <dt>{t('invoice.field.document', 'Document type')}</dt>
-              <dd>
-                {t(
-                  `invoice.documentType.${invoice.documentType}`,
-                  DOCUMENT_TYPE_LABEL_FALLBACK[invoice.documentType] ?? invoice.documentType,
-                )}
-              </dd>
-
-              <dt>{t('invoice.field.issued', 'Issued at')}</dt>
-              <dd>
-                {invoice.issuedAt ? (
-                  <TimeDisplay iso={invoice.issuedAt} format="datetime" className="mono-text" />
-                ) : (
-                  <span className="text-muted">—</span>
-                )}
-              </dd>
-
-              <dt>{t('invoice.field.via', 'Invoiced via')}</dt>
-              <dd>
-                {connection ? (
-                  <Link to={`/connections/${connection.id}`} className="link">
-                    {connection.name}
-                  </Link>
-                ) : (
-                  <span className="mono-text">{invoice.connectionId}</span>
-                )}
-              </dd>
-
-              {showRegulatoryBadge ? (
-                <>
-                  <dt>{t('invoice.field.clearance', 'Regulatory clearance')}</dt>
-                  <dd>
-                    <RegulatoryStatusBadge status={invoice.regulatoryStatus} />
-                  </dd>
-                  {invoice.clearanceReference ? (
-                    <>
-                      <dt>{t('invoice.field.clearanceRef', 'Reference')}</dt>
-                      <dd className="mono-text">{invoice.clearanceReference}</dd>
-                    </>
-                  ) : null}
-                </>
-              ) : null}
-            </dl>
-          </section>
-
-          {/* Provider extras slot */}
-          {InvoiceDetailSection && connection ? (
-            <InvoiceDetailSection invoice={invoice} connection={connection} />
-          ) : null}
+            {/* Provider extras slot */}
+            {InvoiceDetailSection && connection ? (
+              <>
+                <hr className="invoice-detail__card-divider" />
+                <div>
+                  <p className="invoice-detail__provider-label">
+                    {t('invoice.detail.providerRegion', 'Provider region')}
+                  </p>
+                  <InvoiceDetailSection invoice={invoice} connection={connection} />
+                </div>
+              </>
+            ) : null}
+          </div>
         </div>
 
         {/* ── RIGHT COLUMN ── */}

@@ -13,6 +13,8 @@ import {
   InvoiceFailureModeValues,
   InvoiceStatusValues,
   RegulatoryStatusValues,
+  TerminalRegulatoryStatusValues,
+  isTerminalRegulatoryStatus,
 } from './invoicing.types';
 
 describe('invoicing.types', () => {
@@ -53,13 +55,21 @@ describe('invoicing.types', () => {
   });
 
   it('exposes the neutral CTC clearance lifecycle', () => {
+    // `pending-submission` (#1700) is the non-terminal degraded-mode window.
     expect([...RegulatoryStatusValues]).toEqual([
       'not-applicable',
+      'pending-submission',
       'submitted',
       'cleared',
       'accepted',
       'rejected',
     ]);
+  });
+
+  it('treats `pending-submission` as present but non-terminal (#1700)', () => {
+    expect(RegulatoryStatusValues).toContain('pending-submission');
+    expect(TerminalRegulatoryStatusValues as readonly string[]).not.toContain('pending-submission');
+    expect(isTerminalRegulatoryStatus('pending-submission')).toBe(false);
   });
 
   it('exposes the neutral B2B/B2C buyer axis', () => {

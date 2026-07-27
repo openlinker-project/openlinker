@@ -13,6 +13,21 @@
  * and config/credentials resolution stay single-sourced. The probe client runs
  * with `maxRetries: 0` so a stale token surfaces as an immediate, clear failure.
  *
+ * **Scope, by design (#1807):** this validates connectivity + auth only — it
+ * never exercises `POST /v1/organizations/:org/shipments`, so it cannot detect
+ * (and was never intended to detect) shipment-payload-specific rejections such
+ * as an unrecognised `target_point` (a paczkomat id ShipX doesn't have on
+ * file), a bad parcel dimension, or any other per-request validation error.
+ * ShipX has no side-effect-free "validate this shipment" endpoint, and
+ * generating a real throwaway shipment on every connection test to exercise
+ * that path would create real (and, in production, billable) carrier-side
+ * artifacts — not a reasonable trade for a generic health check. A green
+ * "Test Connection" therefore means "the API token + environment are good",
+ * **not** "the next label will generate" — a specific label can still fail on
+ * fields only a live create-shipment call validates. See the InPost
+ * troubleshooting section (`docs/setup-guide.md` § 5) for the confirmed
+ * `target_point` failure mode this leaves undetected.
+ *
  * @module libs/integrations/inpost/src/infrastructure/adapters
  * @implements {ConnectionTesterPort}
  */

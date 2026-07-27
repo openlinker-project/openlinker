@@ -12,12 +12,14 @@ import {
   UserNotActiveException,
   UserNotDeactivatedException,
   UserNotPendingException,
+  UserNotPendingConfirmationException,
   type UserRepositoryPort,
+  type UserStatus,
 } from '@openlinker/core/users';
 
 const makeUser = (
   id: string,
-  status: 'pending' | 'active' | 'deactivated' = 'active',
+  status: UserStatus = 'active',
   role: 'admin' | 'viewer' = 'viewer'
 ): User => new User(id, `user-${id}`, `${id}@test.com`, 'hash', role, status, new Date(), new Date());
 
@@ -256,6 +258,31 @@ describe('UserManagementService', () => {
       repo.findById.mockResolvedValue(null);
 
       await expect(service.deleteUser('ghost', 'u1')).rejects.toThrow(UserNotFoundException);
+    });
+  });
+
+  describe('confirmEmail (#1624)', () => {
+    it('should activate a user pending email confirmation', async () => {
+      repo.findById.mockResolvedValue(makeUser('u1', 'pending_confirmation'));
+
+      await service.confirmEmail('u1');
+
+      expect(repo.updateStatus).toHaveBeenCalledWith('u1', 'active');
+    });
+
+    it('should throw UserNotPendingConfirmationException for an already-active user', async () => {
+      repo.findById.mockResolvedValue(makeUser('u1', 'active'));
+
+      await expect(service.confirmEmail('u1')).rejects.toThrow(
+        UserNotPendingConfirmationException
+      );
+      expect(repo.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('should throw UserNotFoundException for an unknown user', async () => {
+      repo.findById.mockResolvedValue(null);
+
+      await expect(service.confirmEmail('ghost')).rejects.toThrow(UserNotFoundException);
     });
   });
 });

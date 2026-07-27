@@ -150,6 +150,8 @@ describe('OfferBuilderService', () => {
           imageUrls: ['https://example.com/img1.jpg', 'https://example.com/img2.jpg'],
         },
         idempotencyKey: undefined,
+        // #1500 — marketplace-required condition defaulted to 'new'.
+        condition: 'new',
         // #431 — barcode threaded through for adapter-side smart-link.
         variantBarcode: '5901234123457',
         // #808 — no pre-resolved card on this input.
@@ -193,6 +195,43 @@ describe('OfferBuilderService', () => {
 
       expect(categoryResolution.resolveCategory).not.toHaveBeenCalled();
       expect(result.overrides?.categoryId).toBe('explicit-cat');
+    });
+
+    it('prefers overrides.ean over the variant barcode at BOTH the self-link and category-resolution sites (#1741)', async () => {
+      // Variant carries its own barcode, but the operator supplied a corrected
+      // per-offer EAN - the builder must use the override at category resolution
+      // (EanCategoryMatcher) AND on the top-level variantBarcode self-link.
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        overrides: { ean: '4006381333931' },
+      });
+
+      expect(categoryResolution.resolveCategory).toHaveBeenCalledWith(
+        expect.objectContaining({ barcode: '4006381333931' })
+      );
+      expect(result.variantBarcode).toBe('4006381333931');
+    });
+
+    it('resolves and self-links by the override EAN when the variant has no barcode (rescued sibling, #1741)', async () => {
+      productsService.getVariant.mockResolvedValue({
+        ...(defaultVariant as unknown as Record<string, unknown>),
+        ean: undefined,
+        gtin: undefined,
+      } as unknown as ProductVariant);
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        overrides: { ean: '4006381333931' },
+      });
+
+      expect(categoryResolution.resolveCategory).toHaveBeenCalledWith(
+        expect.objectContaining({ barcode: '4006381333931' })
+      );
+      expect(result.variantBarcode).toBe('4006381333931');
     });
 
     it('throws OfferBuilderValidationException when no barcode and no override', async () => {
@@ -930,6 +969,29 @@ describe('OfferBuilderService', () => {
 
       expect(first.variantGroup?.groupId).toBe('ol_product_456');
       expect(second.variantGroup?.groupId).toBe('ol_product_456');
+    });
+  });
+
+  describe('condition default (#1500)', () => {
+    it('defaults condition to "new" when the operator supplies none', async () => {
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(result.condition).toBe('new');
+    });
+
+    it('uses an explicit operator-supplied condition over the default', async () => {
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        condition: 'used',
+      });
+
+      expect(result.condition).toBe('used');
     });
   });
 });

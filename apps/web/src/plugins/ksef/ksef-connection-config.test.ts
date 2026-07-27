@@ -420,6 +420,7 @@ describe('ksefConnectionConfig.readConfigToForm — hydration', () => {
       paymentTermDays: '14',
       paymentSkontoConditions: 'text',
       paymentSkontoAmount: '2%',
+      invoiceDefaultLineUnit: '',
     });
   });
 
@@ -433,5 +434,68 @@ describe('ksefConnectionConfig.readConfigToForm — hydration', () => {
     expect(values.ksefEnvironment).toBe('');
     expect(values.sellerNip).toBe('');
     expect(values.paymentFormaPlatnosci).toBe('');
+    expect(values.invoiceDefaultLineUnit).toBe('');
+  });
+
+  it('hydrates the default line unit from config.invoiceDefaults.lineUnit (#1525)', () => {
+    const values = ksefConnectionConfig.readConfigToForm({
+      env: 'test',
+      invoiceDefaults: { lineUnit: 'szt.' },
+    });
+    expect(values.invoiceDefaultLineUnit).toBe('szt.');
+  });
+});
+
+describe('mergeStructuredIntoConfig - KSeF invoiceDefaults.lineUnit (#1525)', () => {
+  it('assembles the nested config.invoiceDefaults shape resolveDefaultLineUnit reads', () => {
+    const result = mergeStructuredIntoConfig(
+      { env: 'test' },
+      { invoiceDefaultLineUnit: 'kg' },
+      ksefConnectionConfig,
+    );
+    expect(result.invoiceDefaults).toEqual({ lineUnit: 'kg' });
+  });
+
+  it('trims the value before persisting', () => {
+    const result = mergeStructuredIntoConfig(
+      { env: 'test' },
+      { invoiceDefaultLineUnit: '  szt.  ' },
+      ksefConnectionConfig,
+    );
+    expect(result.invoiceDefaults).toEqual({ lineUnit: 'szt.' });
+  });
+
+  it('clearing the field drops the leaf AND the hollow invoiceDefaults object (stops P_8A emission)', () => {
+    const result = mergeStructuredIntoConfig(
+      { env: 'test', invoiceDefaults: { lineUnit: 'szt.' } },
+      { invoiceDefaultLineUnit: '' },
+      ksefConnectionConfig,
+    );
+    expect('invoiceDefaults' in result).toBe(false);
+  });
+
+  it('does not touch config.invoiceDefaults when the field is not on the patch', () => {
+    const base = { env: 'test', invoiceDefaults: { lineUnit: 'kpl.' } };
+    const result = mergeStructuredIntoConfig(base, { ksefEnvironment: 'demo' }, ksefConnectionConfig);
+    expect(result.invoiceDefaults).toEqual({ lineUnit: 'kpl.' });
+  });
+});
+
+describe('composed edit schema - KSeF default line unit length (#1525)', () => {
+  const base = { name: 'ksef', status: 'active', configText: '{}', credentialsText: '' };
+
+  it('accepts a unit within the 20-char cap', () => {
+    const parsed = ksefSchema.safeParse({ ...base, invoiceDefaultLineUnit: 'szt.' });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('allows an empty unit (clearable field)', () => {
+    const parsed = ksefSchema.safeParse({ ...base, invoiceDefaultLineUnit: '' });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('rejects a unit longer than 20 characters after trim', () => {
+    const parsed = ksefSchema.safeParse({ ...base, invoiceDefaultLineUnit: 'x'.repeat(21) });
+    expect(parsed.success).toBe(false);
   });
 });

@@ -36,9 +36,14 @@ import {
   BULK_LISTING_SUBMIT_SERVICE_TOKEN,
   BulkListingBatchNotFoundException,
   BulkRetryMissingSnapshotException,
+  CurrencyMismatchException,
+  DuplicateBatchEanException,
   EmptyBulkSubmissionException,
+  ExpandedOfferCeilingExceededException,
   IBulkListingRetryService,
   IBulkListingSubmitService,
+  InvalidEanException,
+  InvalidOverrideKeyException,
   NoFailedChildrenToRetryException,
 } from '@openlinker/core/listings';
 import type {
@@ -111,14 +116,33 @@ export class BulkListingController {
       ...(dto.perProductOverrides !== undefined && {
         perProductOverrides: dto.perProductOverrides,
       }),
+      ...(dto.perVariantOverrides !== undefined && {
+        perVariantOverrides: dto.perVariantOverrides,
+      }),
+      ...(dto.excludedVariantIds !== undefined && {
+        excludedVariantIds: dto.excludedVariantIds,
+      }),
     };
 
     try {
       const { batchId, jobIds } = await this.bulkSubmit.submit(input);
       return { batchId, jobIds };
     } catch (error) {
-      if (error instanceof EmptyBulkSubmissionException) {
+      // Invalid-input identifier / override enforcement (#1741) → 400, the same
+      // mapping shape as the empty-submission guard.
+      if (
+        error instanceof EmptyBulkSubmissionException ||
+        error instanceof InvalidEanException ||
+        error instanceof DuplicateBatchEanException ||
+        error instanceof CurrencyMismatchException ||
+        error instanceof InvalidOverrideKeyException
+      ) {
         throw new BadRequestException(error.message);
+      }
+      // Post-#824 fan-out exceeds the hard ceiling → 422 (preserves the status
+      // the previous inline UnprocessableEntityException returned).
+      if (error instanceof ExpandedOfferCeilingExceededException) {
+        throw new UnprocessableEntityException(error.message);
       }
       // Remaining domain exceptions are mapped by global filters:
       // `CapabilityNotSupportedException` → 400 (`CapabilityNotSupportedFilter`),

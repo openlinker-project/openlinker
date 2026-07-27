@@ -43,4 +43,18 @@ export interface WooCommerceConnectionConfig {
 
   /** OrderSource capability configuration (#876). */
   orders?: WooCommerceOrdersConfig;
+
+  // Base URL of this OpenLinker instance, where WooCommerce POSTs inbound
+  // webhook deliveries (e.g. http://host.docker.internal:3000 in dev, the
+  // public OL URL in prod). Required before webhook provisioning (#1548) —
+  // WooCommerceWebhookProvisioningAdapter builds each webhook's delivery_url
+  // as `${openlinkerCallbackBaseUrl}/webhooks/woocommerce/${connectionId}`.
+  // Left off the config-shape DTO on purpose: the provisioning adapter is the
+  // single point that validates presence, mirroring the PrestaShop flow.
+  openlinkerCallbackBaseUrl?: string;
+
+  // Set true by WooCommerceWebhookProvisioningAdapter once webhooks are
+  // registered on the store (#1548). Advisory flag surfaced in the FE
+  // connection-actions UI; the reconciliation poll backstops regardless.
+  webhooksConfigured?: boolean;
 }

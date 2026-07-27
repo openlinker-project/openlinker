@@ -10,6 +10,18 @@
  * trait (#893): the buyer selects the locker on the source marketplace, so the
  * source connection — not the destination — owns the "buyer-selected" wording.
  *
+ * Carrier precedence (#1617): the panel never resolves the carrier itself — it
+ * renders whatever `carrier` string the caller passes in. `OrderDetailPage`
+ * computes that value as `shipment.carrier` (the actual carrier of record on
+ * a booked shipment, via `getCarrierDisplayName`) when a shipment exists,
+ * falling back to the snapshot's `shipping.methodName` (the source's stated
+ * delivery-method preference) otherwise. Same precedence the orders-list row
+ * detail would use if a shipment were loaded there (it isn't — see
+ * `OrderRowDetail`, which uses `shipping.methodName` directly). Unlike the
+ * other fields below, Carrier always renders ("-" fallback) — including when
+ * every other delivery field is absent — so the panel doubles as the one
+ * guaranteed place to check "who's shipping this."
+ *
  * @module apps/web/src/features/orders/components
  */
 import type { ReactElement } from 'react';
@@ -28,6 +40,12 @@ interface OrderDeliveryPanelProps {
   pickupPoint?: ParsedOrderPickupPoint;
   /** Source platform type — drives the buyer-selected vs operator-selected caption. */
   sourcePlatformType?: string | null;
+  /**
+   * Resolved carrier display name (#1617) — see precedence note above.
+   * Always rendered as a "Carrier" field, "-" when the caller resolved
+   * nothing (no shipment carrier and no snapshot method name).
+   */
+  carrier?: string | null;
 }
 
 function addressLines(address: ParsedAddress): ReactElement {
@@ -66,11 +84,10 @@ export function OrderDeliveryPanel({
   shipping,
   pickupPoint,
   sourcePlatformType,
-}: OrderDeliveryPanelProps): ReactElement | null {
+  carrier,
+}: OrderDeliveryPanelProps): ReactElement {
   // Resolved unconditionally (never inside a branch) — see #893.
   const sourcePlatform = usePlatform(sourcePlatformType ?? undefined);
-
-  if (!shippingAddress && !shipping && !pickupPoint) return null;
 
   const items: KeyValueItem[] = [];
   if (shippingAddress) {
@@ -79,6 +96,9 @@ export function OrderDeliveryPanel({
   if (shipping?.methodName ?? shipping?.methodId) {
     items.push({ id: 'method', label: 'Method', value: shipping.methodName ?? shipping.methodId });
   }
+  // Always rendered (unlike the fields above) — "-" fallback per #1617 so the
+  // operator can tell "no carrier resolved" apart from "field doesn't exist".
+  items.push({ id: 'carrier', label: 'Carrier', value: carrier ?? '-' });
 
   const pickupCaption =
     sourcePlatform?.pickupPointResolvesAsync === true
@@ -98,7 +118,7 @@ export function OrderDeliveryPanel({
     <section className="detail-section order-delivery" aria-label="Delivery">
       <h3 className="detail-section__title">Delivery</h3>
       <div className="order-delivery__card">
-        {items.length > 0 ? <KeyValueList items={items} /> : null}
+        <KeyValueList items={items} />
         {pickupPoint ? (
           <div className="order-delivery__pickup">
             <div className="order-delivery__pickup-code mono-text">

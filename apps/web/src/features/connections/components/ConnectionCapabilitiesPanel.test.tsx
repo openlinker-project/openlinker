@@ -117,6 +117,47 @@ describe('ConnectionCapabilitiesPanel', () => {
     expect(screen.queryByText(/no capabilities available to toggle/)).not.toBeInTheDocument();
   });
 
+  it('disables OfferManager with an explanation while InventoryMaster is enabled', () => {
+    const connection: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OfferManager'],
+      enabledCapabilities: ['ProductMaster', 'InventoryMaster'],
+    };
+    renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
+
+    expect(screen.getByRole('checkbox', { name: /OfferManager/ })).toBeDisabled();
+    expect(
+      screen.getByText(/Unavailable while InventoryMaster is selected/),
+    ).toBeInTheDocument();
+    // The non-conflicting checkboxes stay operable.
+    expect(screen.getByRole('checkbox', { name: /ProductMaster/ })).toBeEnabled();
+  });
+
+  it('disables InventoryMaster with an explanation while OfferManager is enabled', () => {
+    const connection: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['InventoryMaster', 'OfferManager'],
+      enabledCapabilities: ['OfferManager'],
+    };
+    renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
+
+    expect(screen.getByRole('checkbox', { name: /InventoryMaster/ })).toBeDisabled();
+    expect(screen.getByText(/Unavailable while OfferManager is selected/)).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /OfferManager/ })).toBeEnabled();
+  });
+
+  it('keeps both pair members enabled for unchecking when neither is enabled', () => {
+    const connection: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['InventoryMaster', 'OfferManager'],
+      enabledCapabilities: [],
+    };
+    renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
+
+    expect(screen.getByRole('checkbox', { name: /InventoryMaster/ })).toBeEnabled();
+    expect(screen.getByRole('checkbox', { name: /OfferManager/ })).toBeEnabled();
+  });
+
   it('renders togglable checkboxes for ProductPublisher and CategoryProvisioner (shop-listing caps)', () => {
     const connection: Connection = {
       ...sampleConnection,

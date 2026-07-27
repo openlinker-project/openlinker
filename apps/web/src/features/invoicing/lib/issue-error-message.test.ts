@@ -49,6 +49,15 @@ describe('resolveIssueErrorMessage', () => {
     expect(resolveIssueErrorMessage(error, t)).toBe(msg);
   });
 
+  it('403 ⇒ permission-specific fixed copy (#1613), no error.message echo', () => {
+    const error = new ApiError('Forbidden resource', 403, { message: 'Forbidden resource' });
+    const result = resolveIssueErrorMessage(error, t);
+    expect(result).toBe(
+      "You don't have permission to issue invoices - this action requires an administrator account.",
+    );
+    expect(result).not.toContain('Forbidden resource');
+  });
+
   it('409 ⇒ already-issued fixed copy', () => {
     const error = new ApiError('Invoice already issued for order: o1', 409, {});
     expect(resolveIssueErrorMessage(error, t)).toBe('This order already has an issued invoice.');

@@ -62,6 +62,8 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
     const seller = this.resolveSeller(connection);
     const defaultTaxRate = this.resolveDefaultTaxRate(connection);
     const payment = this.resolvePayment(connection);
+    const defaultLineUnit = this.resolveDefaultLineUnit(connection);
+    const numberingTimeZone = this.resolveNumberingTimeZone(connection);
 
     const { httpClient, publicKeyCache } = createKsefHttpClient({
       connectionId: connection.id,
@@ -83,7 +85,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
         fa3Builder,
         seller,
         defaultTaxRate,
-        { payment },
+        { payment, defaultLineUnit, numberingTimeZone },
       ),
     };
   }
@@ -150,6 +152,33 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
   private resolveDefaultTaxRate(connection: Connection): string {
     const config = connection.config as Partial<KsefConnectionConfig> | undefined;
     return config?.seller?.defaultTaxRate?.trim() || DEFAULT_FA3_TAX_RATE;
+  }
+
+  /**
+   * Resolve the connection-level default unit of measure (`P_8A`, #1525) from
+   * `config.invoiceDefaults.lineUnit`. Mirrors `resolveDefaultTaxRate`'s
+   * defensive trim; unlike the tax rate there is NO hard default - an
+   * absent/empty value returns `undefined` and unit-less lines omit `P_8A`
+   * entirely (clearing the field stops emission).
+   */
+  private resolveDefaultLineUnit(connection: Connection): string | undefined {
+    const config = connection.config as Partial<KsefConnectionConfig> | undefined;
+    const lineUnit = config?.invoiceDefaults?.lineUnit;
+    return typeof lineUnit === 'string' && lineUnit.trim().length > 0
+      ? lineUnit.trim()
+      : undefined;
+  }
+
+  /**
+   * Resolve the connection-level numbering timezone (#7) from
+   * `config.invoiceDefaults.numberingTimeZone`. Returns `undefined` for an
+   * absent/empty value so the adapter applies its `Europe/Warsaw` default — the
+   * seller-timezone default lives in the plugin, never in `libs/core`.
+   */
+  private resolveNumberingTimeZone(connection: Connection): string | undefined {
+    const config = connection.config as Partial<KsefConnectionConfig> | undefined;
+    const zone = config?.invoiceDefaults?.numberingTimeZone;
+    return typeof zone === 'string' && zone.trim().length > 0 ? zone.trim() : undefined;
   }
 
   /**

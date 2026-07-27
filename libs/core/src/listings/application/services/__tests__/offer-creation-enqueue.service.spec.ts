@@ -63,6 +63,7 @@ describe('OfferCreationEnqueueService', () => {
       findByBulkBatchId: jest.fn(),
       updateClassificationReport: jest.fn(),
       resetForRetry: jest.fn(),
+      deleteById: jest.fn(),
     };
 
     jobEnqueue = {

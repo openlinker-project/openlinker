@@ -169,6 +169,15 @@ export interface GenerateLabelInput {
     /** ISO 4217 currency code (e.g. PLN). */
     currency: string;
   };
+  /** Optional declared value to insure the parcel for (operator-supplied, #1542).
+   * Insurance-incapable carriers ignore it server-side; InPost ShipX translates
+   * it to its `insurance` object. */
+  insuredValue?: {
+    /** Amount as a decimal string (e.g. "150.00"). */
+    amount: string;
+    /** ISO 4217 currency code (e.g. PLN). */
+    currency: string;
+  };
 }
 
 /** `POST /shipments/generate-label` response — mirrors `DispatchResultResponseDto`. */

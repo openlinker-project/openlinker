@@ -90,6 +90,10 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
         publishImmediately: payload.publishImmediately,
         price: payload.price,
         overrides,
+        // #1500 — forward the neutral condition end-to-end so a programmatic /
+        // bulk-retry payload's choice reaches the adapter; absent → builder
+        // defaults to 'new'.
+        condition: payload.condition,
         idempotencyKey: payload.idempotencyKey,
         offerCreationRecordId: payload.offerCreationRecordId,
       });

@@ -19,6 +19,18 @@ export interface KsefInvoicingAdapterOptions {
    * `Platnosc` entirely.
    */
   payment?: Fa3PaymentInput;
+  /**
+   * Connection-level default unit of measure (#1525) applied to any line whose
+   * neutral `unit` is absent - emitted as `FaWiersz/P_8A`. Omitted when the
+   * connection has none configured, in which case unit-less lines omit `P_8A`.
+   */
+  defaultLineUnit?: string;
+  /**
+   * IANA timezone (#7) the numbering date variables + period-reset bucket resolve
+   * in. Resolved from the connection config by the factory; `Europe/Warsaw` when
+   * absent.
+   */
+  numberingTimeZone?: string;
   /** Injected clock so the adapter (and its FA(3) timestamps) stay testable. */
   now?: () => Date;
 }

@@ -9,7 +9,7 @@
  * @module libs/core/src/listings/application/types
  */
 
-import type { CreateOfferOverrides } from '@openlinker/core/listings';
+import type { CreateOfferOverrides, OfferCondition } from '@openlinker/core/listings';
 
 export interface BuildCreateOfferCommandInput {
   /** OL internal variant id being listed. */
@@ -30,6 +30,14 @@ export interface BuildCreateOfferCommandInput {
   publishImmediately?: boolean;
   /** Overrides and platform-specific fields passed through to the command. */
   overrides?: CreateOfferOverrides;
+  /**
+   * Optional explicit item condition (#1500). When omitted the builder defaults
+   * to `'new'` so every produced command carries a condition. An operator's
+   * condition parameter picked in the wizard rides on `overrides.parameters`
+   * instead and is honoured by the destination adapter independently of this
+   * field (the adapter never double-sets condition).
+   */
+  condition?: OfferCondition;
   /**
    * Optional idempotency key forwarded to the produced `CreateOfferCommand`.
    * Adapters may use it for unique external references on the marketplace

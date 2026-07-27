@@ -82,6 +82,21 @@ describe('DemoAccountCleanupService', () => {
     jest.useRealTimers();
   });
 
+  it('should sweep both active and pending_confirmation statuses', async () => {
+    const repo = makeRepo();
+    repo.findStaleViewerAccounts.mockResolvedValue([]);
+    const service = new DemoAccountCleanupService(
+      repo,
+      makeDemoService(true),
+      makeConfig({ OL_DEMO_ACCOUNT_RETENTION_HOURS: '24' }),
+    );
+
+    await service.cleanup();
+
+    const statuses = repo.findStaleViewerAccounts.mock.calls[0][1];
+    expect(statuses).toEqual(expect.arrayContaining(['active', 'pending_confirmation']));
+  });
+
   it('should not delete anything when no accounts are stale', async () => {
     const repo = makeRepo();
     repo.findStaleViewerAccounts.mockResolvedValue([]);

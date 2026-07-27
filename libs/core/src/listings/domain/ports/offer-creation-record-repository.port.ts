@@ -115,6 +115,14 @@ export interface OfferCreationRecordRepositoryPort {
   findByBulkBatchId(bulkBatchId: string): Promise<OfferCreationRecord[]>;
 
   /**
+   * Delete a record by id. Idempotent — deleting an unknown id is a no-op.
+   * Used to clean up an orphaned pre-created record whose enqueue failed
+   * mid-fan-out so the bulk batch's persisted-record set matches its
+   * reconciled `totalCount` (#1741 review #6).
+   */
+  deleteById(id: string): Promise<void>;
+
+  /**
    * Persist the marketplace classification report for an existing record (#737).
    * `null` is a valid value meaning "readback yielded no report" (e.g. 404 from
    * Allegro for not-yet-classified offers) — distinguishes from "never read".

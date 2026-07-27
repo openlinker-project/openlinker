@@ -41,3 +41,19 @@ export interface PaginatedOfferMappings {
   items: IdentifierMapping[];
   total: number;
 }
+
+/**
+ * Per-product, per-connection listed-variant count (#1720 - products catalog
+ * cockpit coverage pills).
+ *
+ * One row per (product, connection) pair that has at least one variant with
+ * an Offer mapping; `listedVariants` is the count of DISTINCT variants of the
+ * product that carry at least one Offer mapping on that connection. Products
+ * or connections with zero listed variants are simply absent from the result.
+ */
+export interface ProductListingsCoverage {
+  productId: string;
+  connectionId: string;
+  platformType: string;
+  listedVariants: number;
+}

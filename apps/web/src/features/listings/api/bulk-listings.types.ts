@@ -14,6 +14,9 @@
  */
 
 import type { OfferCreationError, OfferCreationStatus, OfferParameter } from './listings.types';
+// Type-only (erased at build) - per-product pricing/stock policy overrides
+// (#1741). Defined alongside the batch policies in `bulk-wizard.types`.
+import type { PricingPolicy, StockPolicy } from '../components/bulk/bulk-wizard.types';
 
 export const BulkBatchStatusValues = [
   'pending',
@@ -33,7 +36,7 @@ export const TERMINAL_BULK_BATCH_STATUSES: readonly BulkBatchStatus[] = [
 /**
  * Shared offer-override shape used by both `BulkSharedConfig.overrides` (the
  * Step-1 defaults) and `BulkPerProductOverride.overrides` (per-row tweaks).
- * Mirrors `CreateOfferOverridesDto` on the BE — kept narrow to the keys the
+ * Mirrors `CreateOfferOverridesDto` on the BE - kept narrow to the keys the
  * bulk wizard actually populates.
  */
 export interface BulkOfferOverrides {
@@ -42,6 +45,13 @@ export interface BulkOfferOverrides {
   categoryId?: string;
   /** Catalogue product-card id from a unique EAN match (#808). */
   productCardId?: string;
+  /**
+   * Per-variant EAN/GTIN override (#1741). Rescues a barcode-less sibling and is
+   * threaded to both barcode sites in the core `OfferBuilderService` (catalog
+   * self-link + EanCategoryMatcher). The BE strips it from perVariant/perProduct
+   * maps only for `categoryId`; `ean` is kept. Must be a GS1-valid GTIN-8/13.
+   */
+  ean?: string;
   imageUrls?: string[] | null;
   /** Operator-picked neutral category parameters (#1071). */
   parameters?: OfferParameter[];
@@ -55,7 +65,7 @@ export interface BulkSharedConfig {
   /**
    * Shared `CreateOfferOverrides` block. The bulk wizard uses this to carry
    * `platformParams.deliveryPolicyId` (the shipping rate package picked in
-   * Step 1) — Allegro's offer-creation contract requires this on every offer.
+   * Step 1) - Allegro's offer-creation contract requires this on every offer.
    */
   overrides?: BulkOfferOverrides;
   generateDescription?: boolean;
@@ -67,14 +77,33 @@ export interface BulkPerProductOverride {
   publishImmediately?: boolean;
   price?: { amount: number; currency: string };
   overrides?: BulkOfferOverrides;
+  /**
+   * Per-product pricing/stock policy override (#1741). Set from the multi-variant
+   * editor's shared-base scope when the operator diverges from the batch policy;
+   * the wizard resolves it into concrete per-variant price/stock before submit
+   * (it wins over `config.pricingPolicy` / `config.stockPolicy`). Absent ⇒ the
+   * product inherits the batch policy. FE-only resolution input - the BE receives
+   * the already-resolved amounts and ignores these fields.
+   */
+  pricingPolicy?: PricingPolicy;
+  stockPolicy?: StockPolicy;
 }
 
 export interface BulkOfferCreateRequest {
   connectionId: string;
-  /** Variant IDs (despite the field name — see file header). */
+  /** Primary/seed variant IDs, one per selected product (despite the field name - see file header). */
   productIds: string[];
   sharedConfig: BulkSharedConfig;
+  /** Family-layer overrides keyed by the submitted primary variant id (#1741). */
   perProductOverrides?: Record<string, BulkPerProductOverride>;
+  /**
+   * Per-variant overrides keyed by the **actual** sibling variant id (#1741).
+   * Wins over the family layer field-by-field in the BE. `categoryId` is
+   * stripped server-side (grouping-determining, product-level).
+   */
+  perVariantOverrides?: Record<string, BulkPerProductOverride>;
+  /** Sibling variant ids the operator switched off; skipped in the BE fan-out (#1741). */
+  excludedVariantIds?: string[];
 }
 
 export interface BulkOfferCreateResponse {
@@ -91,6 +120,20 @@ export interface BulkBatchRecordSummary {
   updatedAt: string;
   /** Structured failure reasons; populated when status=failed, null otherwise (#806). */
   errors: OfferCreationError[] | null;
+  /**
+   * Product name for the per-product progress rollup (#1741). Optional +
+   * forward-compatible: the BE record-summary projection is a coordinated
+   * follow-up; when absent the progress table groups by product id and labels
+   * rows with the variant id.
+   */
+  productName?: string | null;
+  /**
+   * Distinguishing-attribute label for the failed/live variant (e.g. "Rozmiar: M",
+   * #1741). When absent the progress table falls back to the raw variant id.
+   */
+  variantLabel?: string | null;
+  /** OL product id, for grouping records into a per-product rollup (#1741). */
+  productId?: string | null;
 }
 
 export interface BulkBatchSummary {

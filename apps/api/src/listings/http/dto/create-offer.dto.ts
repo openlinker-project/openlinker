@@ -158,6 +158,19 @@ export class CreateOfferOverridesDto {
   productCardId?: string;
 
   @ApiPropertyOptional({
+    description:
+      'Per-offer EAN/GTIN override (#1741). Falls back to the variant barcode. Must be a valid GTIN length (8/12/13/14 digits) at the boundary; GS1 checksum + batch-wide uniqueness are enforced in BulkListingSubmitService.',
+  })
+  @IsOptional()
+  @IsString()
+  // Only true GTIN lengths (EAN-8, UPC-A, EAN-13, GTIN-14). 9/10/11-digit
+  // values are not valid GTINs and would otherwise skip the BE checksum gate
+  // (which only checksums GTIN lengths) and fail at marketplace create-time as
+  // an opaque business_failure instead of a clean 400 (#1741 review #4).
+  @Matches(/^(\d{8}|\d{12,14})$/, { message: 'ean must be 8, 12, 13, or 14 digits' })
+  ean?: string;
+
+  @ApiPropertyOptional({
     nullable: true,
     isArray: true,
     type: String,

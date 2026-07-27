@@ -40,11 +40,6 @@ describe('allegroPlugin', () => {
       expect(namespaces).toBeDefined();
       expect(namespaces && 'allegro' in namespaces).toBe(true);
     });
-
-    it('contributes the offer-creation wizard contribution', () => {
-      expect(allegroPlugin.build?.offerCreationWizard?.platformType).toBe('allegro');
-      expect(allegroPlugin.build?.offerCreationWizard?.component).toBeDefined();
-    });
   });
 
   describe('platform contributions', () => {

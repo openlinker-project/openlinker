@@ -99,6 +99,24 @@ describe('ProductPublishBuilderService', () => {
       expect.objectContaining({ title: 'Widget', description: 'A widget', imageUrls: ['http://img'] })
     );
     expect(command.status).toBe('published');
+    // Default mock variant has sku: null ⇒ the key is spread-omitted entirely
+    // (not merely set to undefined).
+    expect(command).not.toHaveProperty('sku');
+  });
+
+  it('should thread the variant SKU into the command when the variant has one', async () => {
+    products.getVariant.mockResolvedValue({
+      id: VARIANT,
+      productId: 'prod-1',
+      attributes: { Brand: 'Acme' },
+      ean: null,
+      gtin: null,
+      sku: 'SKU-123',
+    });
+
+    const command = await service.buildPublishProductCommand(baseInput);
+
+    expect(command.sku).toBe('SKU-123');
   });
 
   it('should publish uncategorised when the shop adapter is not a CategoryProvisioner', async () => {

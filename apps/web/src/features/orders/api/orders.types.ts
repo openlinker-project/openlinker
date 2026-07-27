@@ -110,6 +110,7 @@ export const OrderSortValues = [
   'status',
   'total',
   'fulfillment',
+  'payment',
 ] as const;
 export type OrderSortValue = (typeof OrderSortValues)[number];
 

@@ -15,17 +15,7 @@
  */
 import type { ReactElement } from 'react';
 import { useTranslation } from '../../../shared/i18n';
-
-/** True only for `http:` / `https:` absolute URLs. Rejects `javascript:`,
- *  `data:`, `vbscript:`, relative / garbage strings, and whitespace-prefixed
- *  payloads (`new URL().protocol` is the stricter form). */
-export function isSafeHttpUrl(value: string): boolean {
-  try {
-    return ['http:', 'https:'].includes(new URL(value).protocol);
-  } catch {
-    return false;
-  }
-}
+import { isSafeHttpUrl } from '../../../shared/lib/is-safe-http-url';
 
 interface InvoicePdfLinkProps {
   invoiceNumber: string | null;

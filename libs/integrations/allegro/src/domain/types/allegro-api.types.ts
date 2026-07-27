@@ -315,6 +315,13 @@ export interface AllegroProductSetEntry {
     images?: string[];
   };
   /**
+   * How many units of the catalog product one offer item contains
+   * (`quantity.value`, default 1 - Allegro uses it for bundles/sets).
+   * Read-side field consumed by `getOffer` (#1482); the create path never
+   * sets it.
+   */
+  quantity?: { value?: number };
+  /**
    * EU GPSR (Reg. 2023/988) responsible-producer reference. Required by
    * Allegro on every `productSet[]` entry when the entry creates an inline
    * product (no `product.id`). Smart-linked entries inherit this from the
@@ -415,6 +422,21 @@ export interface AllegroCategoryItem {
  */
 export interface AllegroCategoriesResponse {
   categories: AllegroCategoryItem[];
+}
+
+/**
+ * Single Allegro category node (from GET /sale/categories/{id}).
+ * Same fields as an item in the list response, but returned as the node
+ * itself (not its children). `parent.id` links to the ancestor used to walk
+ * the breadcrumb up to the root.
+ */
+export interface AllegroCategoryResponse {
+  id: string;
+  name: string;
+  parent?: {
+    id: string;
+  } | null;
+  leaf: boolean;
 }
 
 /**
@@ -798,7 +820,6 @@ export interface AllegroWarrantiesResponse {
 export interface AllegroImpliedWarrantiesResponse {
   impliedWarranties: AllegroSellerPolicyEntry[];
 }
-
 
 /**
  * Response from `GET /sale/offers/{offerId}/smart` (#737) — Allegro Smart!

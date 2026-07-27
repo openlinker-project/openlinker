@@ -119,7 +119,12 @@ One pointer per section, identical format every time.
 | [ADR-027](./027-order-status-writeback-capability-and-relay.md) | Order status writeback capability (event-as-data) & lifecycle relay | Accepted | 2026-06-22 |
 | [ADR-028](./028-order-cancellation-stock-restore.md) | Order-cancellation-observe hook → marketplace stock-restore | Proposed | 2026-06-22 |
 | [ADR-029](./029-versioning-and-release-strategy.md) | Versioning and release strategy (four axes) | Accepted | 2026-06-30 |
+| [ADR-030](./030-infakt-ksef-indirection.md) | Infakt as a KSeF intermediary — `RegulatoryStatusReader`, not `RegulatoryTransmitter` | Accepted | 2026-07-02 |
 | [ADR-031](./031-erli-allegro-category-catalog-via-client-credentials.md) | Erli category/parameter browsing via an Erli-owned Allegro client-credentials token | Proposed | 2026-07-07 |
 | [ADR-032](./032-demo-only-vendor-neutral-analytics-config-seam.md) | Demo-only, vendor-neutral analytics/integration config seam on `/system/config` | Proposed | 2026-07-08 |
+| [ADR-033](./033-openlinker-as-mcp-server.md) | Expose OpenLinker as an MCP server | Proposed | 2026-07-11 |
+| [ADR-034](./034-mcp-authorization-user-issued-pats.md) | MCP authorization — user-issued Personal Access Tokens (Resource Server); OAuth AS deferred | Proposed | 2026-07-12 |
+| [ADR-035](./035-ctc-offline-degraded-mode-issuance-lifecycle.md) | CTC offline / degraded-mode issuance lifecycle | Proposed | 2026-07-16 |
+| [ADR-036](./036-cross-context-read-model-joins.md) | Cross-context read-model joins by table name (server-side sort/filter across contexts) | Accepted | 2026-07-17 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*

@@ -8,6 +8,8 @@ import { rootRoute } from './routes/root.route';
 import { SessionProvider } from '../shared/auth/session-provider';
 import { ToastProvider } from '../shared/ui/toast-provider';
 import { LocaleProvider } from '../shared/i18n';
+import { PluginRegistryProvider } from '../shared/plugins';
+import { plugins as inTreePlugins } from '../plugins';
 
 interface RenderAppResult {
   router: ReturnType<typeof createMemoryRouter>;
@@ -26,15 +28,17 @@ function renderApp(
 
   const view = render(
     <LocaleProvider>
-      <SessionProvider adapter={sessionAdapter}>
-        <ToastProvider>
-          <ApiClientProvider client={apiClient}>
-            <QueryClientProvider client={queryClient}>
-              <RouterProvider router={router} />
-            </QueryClientProvider>
-          </ApiClientProvider>
-        </ToastProvider>
-      </SessionProvider>
+      <PluginRegistryProvider plugins={inTreePlugins}>
+        <SessionProvider adapter={sessionAdapter}>
+          <ToastProvider>
+            <ApiClientProvider client={apiClient}>
+              <QueryClientProvider client={queryClient}>
+                <RouterProvider router={router} />
+              </QueryClientProvider>
+            </ApiClientProvider>
+          </ToastProvider>
+        </SessionProvider>
+      </PluginRegistryProvider>
     </LocaleProvider>,
   );
 

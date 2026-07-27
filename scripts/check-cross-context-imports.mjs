@@ -172,6 +172,36 @@ const ALLOW_LIST = new Map([
   ['apps/api/src/auth/refresh-token.service.ts', new Set(['RefreshTokenRepositoryPort'])],
   ['apps/api/src/auth/refresh-token.service.spec.ts', new Set(['RefreshTokenRepositoryPort'])],
 
+  // apps → users.EmailConfirmationTokenRepositoryPort + UserRepositoryPort — rewire via IUsersService
+  // (#1624, mirrors the pre-existing PasswordResetTokenRepositoryPort entry above;
+  // #1649 added the direct UserRepositoryPort lookup used to unstick pending accounts)
+  [
+    'apps/api/src/auth/email-confirmation.service.ts',
+    new Set(['EmailConfirmationTokenRepositoryPort', 'UserRepositoryPort']),
+  ],
+  [
+    'apps/api/src/auth/email-confirmation.service.spec.ts',
+    new Set(['EmailConfirmationTokenRepositoryPort', 'UserRepositoryPort']),
+  ],
+  [
+    'apps/api/test/integration/email-confirmation.int-spec.ts',
+    new Set(['EmailConfirmationTokenRepositoryPort', 'UserRepositoryPort']),
+  ],
+
+  // apps → users.PasswordResetTokenRepositoryPort + UserRepositoryPort — rewire via IUsersService
+  // (#1635, mirrors the pre-existing password-reset.service.spec.ts entry above)
+  [
+    'apps/api/src/auth/password-reset-round-trip.spec.ts',
+    new Set(['PasswordResetTokenRepositoryPort', 'UserRepositoryPort']),
+  ],
+
+  // apps → users.UserRepositoryPort — rewire via IUsersService
+  // (#1641, mirrors the pre-existing UserRepositoryPort entries above)
+  [
+    'apps/api/test/integration/user-email-uniqueness.int-spec.ts',
+    new Set(['UserRepositoryPort']),
+  ],
+
   // apps + worker → sync.SyncJobRepositoryPort — rewire via ISyncJobsService
   ['apps/api/src/integrations/http/connection.controller.ts', new Set(['SyncJobRepositoryPort'])],
   [
@@ -275,13 +305,23 @@ const ALLOW_LIST = new Map([
     'apps/api/src/webhooks/application/services/__tests__/webhook-delivery-query.service.spec.ts',
     new Set(['WebhookDeliveryRepositoryPort']),
   ],
+  // WebhookAuthRejectionRepositoryPort added for the auth-failing signal (#1814).
   [
     'apps/api/src/webhooks/application/services/webhook.service.ts',
-    new Set(['WebhookDeliveryRepositoryPort']),
+    new Set(['WebhookDeliveryRepositoryPort', 'WebhookAuthRejectionRepositoryPort']),
   ],
   [
     'apps/api/src/webhooks/application/services/webhook.service.spec.ts',
-    new Set(['WebhookDeliveryRepositoryPort']),
+    new Set(['WebhookDeliveryRepositoryPort', 'WebhookAuthRejectionRepositoryPort']),
+  ],
+  // apps → webhooks.WebhookAuthRejectionRepositoryPort (#1814) — rewire via IWebhooksService
+  [
+    'apps/api/src/integrations/application/services/webhook-status.service.ts',
+    new Set(['WebhookAuthRejectionRepositoryPort']),
+  ],
+  [
+    'apps/api/src/integrations/application/services/webhook-status.service.spec.ts',
+    new Set(['WebhookAuthRejectionRepositoryPort']),
   ],
 
   // apps + plugin → customers.CustomerProjectionRepositoryPort — rewire via ICustomersService
@@ -323,6 +363,40 @@ const ALLOW_LIST = new Map([
   ],
   [
     'libs/integrations/prestashop/src/infrastructure/provisioners/prestashop-address-provisioner.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  // WooCommerce customer + address provisioning (#1552) — mirrors PrestaShop;
+  // rewire via ICustomersService alongside the PS entries (#722).
+  [
+    'libs/integrations/woocommerce/src/woocommerce-plugin.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/woocommerce/src/woocommerce-integration.module.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/woocommerce/src/infrastructure/adapters/order-processor/woocommerce-order-processor.adapter.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/woocommerce/src/infrastructure/provisioners/woocommerce-address-provisioner.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/woocommerce/src/infrastructure/provisioners/woocommerce-provisioner.types.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/woocommerce/src/infrastructure/provisioners/__tests__/woocommerce-address-provisioner.spec.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/woocommerce/src/infrastructure/adapters/order-processor/__tests__/woocommerce-order-processor.adapter.spec.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/woocommerce/src/infrastructure/adapters/order-processor/__tests__/woocommerce-order-processor.fulfillment-status.spec.ts',
     new Set(['CustomerProjectionRepositoryPort']),
   ],
   [

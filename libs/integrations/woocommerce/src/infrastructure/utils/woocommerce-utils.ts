@@ -35,13 +35,13 @@ export const FETCH_ALL_MAX_PAGES = 500;
  */
 export function toPositiveInt(value: unknown, label = 'identifier'): number {
   const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) {
+  if (!Number.isInteger(n) || n <= 0) {
     throw new WooCommerceInvalidIdentifierException(
       `WooCommerce ${label} must be a positive integer, received: ${JSON.stringify(value)}`,
       value,
     );
   }
-  return Math.floor(n);
+  return n;
 }
 
 /**

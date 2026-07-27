@@ -129,4 +129,60 @@ describe('BulkBatchProgressTable', () => {
     );
     expect(screen.queryByRole('button', { name: /Failure details/ })).not.toBeInTheDocument();
   });
+
+  it('rolls up records per product with "n of m live" (#1741)', () => {
+    renderWithProviders(
+      <BulkBatchProgressTable
+        records={[
+          rec({ id: 'a', productId: 'ol_product_1', productName: 'Hoodie', internalVariantId: 'v1', status: 'active', errors: null }),
+          rec({ id: 'b', productId: 'ol_product_1', productName: 'Hoodie', internalVariantId: 'v2', status: 'active', errors: null }),
+          rec({ id: 'c', productId: 'ol_product_1', productName: 'Hoodie', internalVariantId: 'v3', status: 'active', errors: null }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('Hoodie')).toBeInTheDocument();
+    expect(screen.getByText('3 of 3 live')).toBeInTheDocument();
+    expect(screen.getByText('complete')).toBeInTheDocument();
+  });
+
+  it('flags an incomplete listing with the failed variant label (#1741)', () => {
+    renderWithProviders(
+      <BulkBatchProgressTable
+        records={[
+          rec({ id: 'a', productId: 'ol_product_2', productName: 'Hoodie', internalVariantId: 'v1', status: 'active', errors: null }),
+          rec({ id: 'b', productId: 'ol_product_2', productName: 'Hoodie', internalVariantId: 'v2', status: 'active', errors: null }),
+          rec({
+            id: 'c',
+            productId: 'ol_product_2',
+            productName: 'Hoodie',
+            internalVariantId: 'v3',
+            variantLabel: 'Rozmiar: L',
+            status: 'failed',
+            errors: [{ code: 'X', message: 'boom' }],
+          }),
+        ]}
+      />,
+    );
+
+    expect(
+      screen.getByText(/2\/3 live · Rozmiar: L failed - listing incomplete/),
+    ).toBeInTheDocument();
+    expect(screen.getByText('incomplete')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Retry re-runs the saved data/),
+    ).toBeInTheDocument();
+  });
+
+  it('prefers the variant label over the raw id in the flat records table (#1741)', () => {
+    renderWithProviders(
+      <BulkBatchProgressTable
+        records={[
+          rec({ status: 'active', externalOfferId: 'A-1', variantLabel: 'Kolor: Czarny', errors: null }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('Kolor: Czarny')).toBeInTheDocument();
+  });
 });

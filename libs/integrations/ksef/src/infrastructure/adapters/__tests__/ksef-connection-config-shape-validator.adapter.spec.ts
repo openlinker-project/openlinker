@@ -310,4 +310,66 @@ describe('KsefConnectionConfigShapeValidatorAdapter', () => {
       ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
     });
   });
+
+  describe('invoiceDefaults.lineUnit (#1525)', () => {
+    it('should resolve when invoiceDefaults is absent', async () => {
+      await expect(validator.validate({ env: 'test' })).resolves.toBeUndefined();
+    });
+
+    it('should resolve for a valid lineUnit', async () => {
+      await expect(
+        validator.validate({ env: 'test', invoiceDefaults: { lineUnit: 'szt.' } }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should resolve for an empty lineUnit (treated as absent, not an error)', async () => {
+      await expect(
+        validator.validate({ env: 'test', invoiceDefaults: { lineUnit: '' } }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should resolve for a whitespace-only lineUnit (treated as absent)', async () => {
+      await expect(
+        validator.validate({ env: 'test', invoiceDefaults: { lineUnit: '   ' } }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should resolve for a lineUnit of exactly 20 characters after trim', async () => {
+      await expect(
+        validator.validate({ env: 'test', invoiceDefaults: { lineUnit: ` ${'x'.repeat(20)} ` } }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should reject a lineUnit longer than 20 characters after trim', async () => {
+      await expect(
+        validator.validate({ env: 'test', invoiceDefaults: { lineUnit: 'x'.repeat(21) } }),
+      ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    });
+
+    it('should reject a non-string lineUnit', async () => {
+      await expect(
+        validator.validate({ env: 'test', invoiceDefaults: { lineUnit: 5 } }),
+      ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    });
+
+    it('should reject a non-object invoiceDefaults', async () => {
+      await expect(
+        validator.validate({ env: 'test', invoiceDefaults: 'szt.' }),
+      ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    });
+
+    it('should carry a flat { path, message } issue for invoiceDefaults.lineUnit', async () => {
+      expect.assertions(1);
+      try {
+        await validator.validate({ env: 'test', invoiceDefaults: { lineUnit: 'x'.repeat(21) } });
+      } catch (error) {
+        expect((error as InvalidConnectionConfigException).errors).toEqual([
+          {
+            path: 'invoiceDefaults.lineUnit',
+            message: 'must be at most 20 characters after trimming',
+          },
+        ]);
+      }
+    });
+  });
 });

@@ -23,6 +23,8 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import type { PayloadField, TriggerableJob, TriggerSyncDialogProps } from './trigger-sync-dialog.types';
 
 const ALL_TRIGGERABLE_JOBS: TriggerableJob[] = [
@@ -81,7 +83,10 @@ const ALL_TRIGGERABLE_JOBS: TriggerableJob[] = [
         placeholder: '100',
       },
     ],
-    requiredCapability: 'OfferManager',
+    // OfferEventReader, not coarse OfferManager (#1498): only adapters with an
+    // offer-event journal (Allegro) can sync offers this way. Erli (reconciliation
+    // -first, #1096 skip) and WooCommerce (quantity-only write-back) would no-op.
+    requiredCapability: 'OfferEventReader',
   },
   {
     jobType: 'marketplace.orders.poll',
@@ -103,7 +108,10 @@ const ALL_TRIGGERABLE_JOBS: TriggerableJob[] = [
         placeholder: '100',
       },
     ],
-    requiredCapability: 'OfferManager',
+    // OrderSource, not OfferManager (#1498): this is an order-ingestion job —
+    // every order source (Allegro, Erli, WooCommerce, PrestaShop) runs it via
+    // its scheduler, so the manual trigger should match that set.
+    requiredCapability: 'OrderSource',
   },
   {
     jobType: 'inventory.propagateToMarketplaces',
@@ -117,7 +125,25 @@ const ALL_TRIGGERABLE_JOBS: TriggerableJob[] = [
         placeholder: 'ol_product_…',
       },
     ],
-    // No requiredCapability — this is a cross-connection fan-out job, valid for any active connection.
+    // Gated to InventoryMaster (the capability whose inventory it propagates) so it
+    // no longer leaks onto invoicing/shipping-only connections (KSeF, InPost). See #1474.
+    requiredCapability: 'InventoryMaster',
+  },
+  {
+    jobType: 'invoicing.regulatoryStatus.reconcile',
+    label: 'Reconcile regulatory status',
+    description: 'Poll the tax authority for clearance status of submitted invoices.',
+    payloadFields: [
+      {
+        name: 'limit',
+        label: 'Max invoices',
+        required: false,
+        type: 'number',
+        defaultValue: '100',
+        placeholder: '100',
+      },
+    ],
+    requiredCapability: 'Invoicing',
   },
 ];
 
@@ -141,6 +167,7 @@ export function TriggerSyncDialog({
   connection,
   open,
   onOpenChange,
+  submitDisabled = false,
 }: TriggerSyncDialogProps): ReactElement {
   const triggerableJobs = useMemo(
     () =>
@@ -166,6 +193,7 @@ export function TriggerSyncDialog({
   const { showToast } = useToast();
 
   const selectedJob = triggerableJobs.find((j) => j.jobType === selectedJobType);
+  const hasTriggers = triggerableJobs.length > 0;
 
   useEffect(() => {
     if (open) {
@@ -248,19 +276,27 @@ export function TriggerSyncDialog({
             </Alert>
           ) : null}
 
-          <FormField label="Job type" name="jobType">
-            <Select
-              value={selectedJobType}
-              onChange={(e) => handleJobTypeChange(e.target.value)}
-              disabled={enqueueSyncJob.isPending}
-            >
-              {triggerableJobs.map((job) => (
-                <option key={job.jobType} value={job.jobType}>
-                  {job.label}
-                </option>
-              ))}
-            </Select>
-          </FormField>
+          {!hasTriggers ? (
+            <p className="trigger-sync-dialog__description muted-text" role="status">
+              No sync triggers available for this connection.
+            </p>
+          ) : null}
+
+          {hasTriggers ? (
+            <FormField label="Job type" name="jobType">
+              <Select
+                value={selectedJobType}
+                onChange={(e) => handleJobTypeChange(e.target.value)}
+                disabled={enqueueSyncJob.isPending}
+              >
+                {triggerableJobs.map((job) => (
+                  <option key={job.jobType} value={job.jobType}>
+                    {job.label}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+          ) : null}
 
           {selectedJob?.description ? (
             <p className="trigger-sync-dialog__description muted-text">{selectedJob.description}</p>
@@ -290,13 +326,17 @@ export function TriggerSyncDialog({
           <Button tone="secondary" onClick={() => onOpenChange(false)} disabled={enqueueSyncJob.isPending}>
             Cancel
           </Button>
-          <Button
-            tone="primary"
-            onClick={() => void handleSubmit()}
-            disabled={enqueueSyncJob.isPending || intentKey === null}
-          >
-            {enqueueSyncJob.isPending ? 'Enqueuing…' : 'Trigger'}
-          </Button>
+          <ReadOnlyLock active={submitDisabled} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <Button
+              tone="primary"
+              onClick={() => void handleSubmit()}
+              disabled={
+                enqueueSyncJob.isPending || intentKey === null || !hasTriggers || submitDisabled
+              }
+            >
+              {enqueueSyncJob.isPending ? 'Enqueuing…' : 'Trigger'}
+            </Button>
+          </ReadOnlyLock>
         </DialogFooter>
       </DialogContent>
     </Dialog>

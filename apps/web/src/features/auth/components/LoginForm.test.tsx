@@ -4,11 +4,11 @@ import { LoginForm } from './LoginForm';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 
 describe('LoginForm', () => {
-  it('should render username and password fields', () => {
+  it('should render identifier and password fields', () => {
     const view = renderWithProviders(<LoginForm />);
     const container = within(view.container);
 
-    expect(container.getAllByLabelText('Username')[0]).toBeInTheDocument();
+    expect(container.getAllByLabelText('Username or email')[0]).toBeInTheDocument();
     expect(container.getAllByLabelText('Password')[0]).toBeInTheDocument();
     expect(container.getAllByRole('button', { name: 'Sign in' })[0]).toBeInTheDocument();
   });
@@ -19,7 +19,9 @@ describe('LoginForm', () => {
 
     fireEvent.click(container.getAllByRole('button', { name: 'Sign in' })[0]);
 
-    expect((await container.findAllByText('Username is required')).length).toBeGreaterThan(0);
+    expect((await container.findAllByText('Enter your username or email')).length).toBeGreaterThan(
+      0
+    );
     expect(container.getAllByText('Password is required').length).toBeGreaterThan(0);
   });
 
@@ -28,7 +30,7 @@ describe('LoginForm', () => {
     const view = renderWithProviders(<LoginForm />, { apiClient });
     const container = within(view.container);
 
-    fireEvent.change(container.getAllByLabelText('Username')[0], {
+    fireEvent.change(container.getAllByLabelText('Username or email')[0], {
       target: { value: 'admin' },
     });
     fireEvent.change(container.getAllByLabelText('Password')[0], {
@@ -55,7 +57,7 @@ describe('LoginForm', () => {
     const view = renderWithProviders(<LoginForm />, { apiClient });
     const container = within(view.container);
 
-    fireEvent.change(container.getAllByLabelText('Username')[0], {
+    fireEvent.change(container.getAllByLabelText('Username or email')[0], {
       target: { value: 'admin' },
     });
     fireEvent.change(container.getAllByLabelText('Password')[0], {
@@ -76,7 +78,7 @@ describe('LoginForm', () => {
     const view = renderWithProviders(<LoginForm />, { apiClient });
     const container = within(view.container);
 
-    fireEvent.change(container.getAllByLabelText('Username')[0], {
+    fireEvent.change(container.getAllByLabelText('Username or email')[0], {
       target: { value: 'admin' },
     });
     fireEvent.change(container.getAllByLabelText('Password')[0], {

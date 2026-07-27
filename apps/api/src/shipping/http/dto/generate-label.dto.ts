@@ -12,10 +12,12 @@
  */
 import { Type } from 'class-transformer';
 import {
+  IsDefined,
   IsEmail,
   IsEnum,
   IsInt,
   IsNotEmpty,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -142,6 +144,22 @@ class ShipmentCodDto {
   currency!: string;
 }
 
+class ShipmentInsuredValueDto {
+  @ApiProperty({ description: 'Declared value to insure, as a decimal string (e.g. "150.00")' })
+  @IsString()
+  @IsNotEmpty()
+  // Defense-in-depth: the FE gates the decimal shape, but the API has other
+  // potential clients — reject a malformed amount here so it never reaches the
+  // carrier (mirrors ShipmentCodDto, #1542).
+  @Matches(/^\d+(\.\d{1,2})?$/, { message: 'Insured amount must be a decimal string, e.g. "150.00"' })
+  amount!: string;
+
+  @ApiProperty({ description: 'ISO 4217 currency code (e.g. PLN). Carrier validates the supported set.' })
+  @IsString()
+  @IsNotEmpty()
+  currency!: string;
+}
+
 export class GenerateLabelDto {
   @ApiProperty({ description: 'Order-source connection id (the routing rule scope)' })
   @IsUUID()
@@ -190,11 +208,20 @@ export class GenerateLabelDto {
   paczkomatId?: string;
 
   @ApiProperty({ type: ShipmentRecipientDto })
+  // `@ValidateNested()` does not reject an absent value; `@IsDefined()` +
+  // `@IsObject()` make the required field a clean 400 on omission instead of a
+  // downstream TypeError in the adapter (#1518).
+  @IsDefined()
+  @IsObject()
   @ValidateNested()
   @Type(() => ShipmentRecipientDto)
   recipient!: ShipmentRecipientDto;
 
   @ApiProperty({ type: ShipmentParcelDto })
+  // See `recipient` above — a required nested object needs @IsDefined()/@IsObject()
+  // for `@ValidateNested()` to fail on an omitted `parcel` (#1518).
+  @IsDefined()
+  @IsObject()
   @ValidateNested()
   @Type(() => ShipmentParcelDto)
   parcel!: ShipmentParcelDto;
@@ -208,4 +235,15 @@ export class GenerateLabelDto {
   @ValidateNested()
   @Type(() => ShipmentCodDto)
   cod?: ShipmentCodDto;
+
+  @ApiPropertyOptional({
+    type: ShipmentInsuredValueDto,
+    description:
+      'Declared value to insure the parcel for (operator-supplied, #1542). ' +
+      'Insurance-incapable carriers ignore it; InPost ShipX translates it to its `insurance` object.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ShipmentInsuredValueDto)
+  insuredValue?: ShipmentInsuredValueDto;
 }

@@ -28,9 +28,8 @@ describe('inpostPlugin', () => {
       const paths = (inpostPlugin.build?.routes ?? []).map((route) => route.path);
       expect(paths).toContain('connections/new/inpost');
     });
-    it('does NOT contribute API namespaces or an offer-creation wizard (carrier-only)', () => {
+    it('does NOT contribute API namespaces (carrier-only)', () => {
       expect(inpostPlugin.build?.apiNamespaces).toBeUndefined();
-      expect(inpostPlugin.build?.offerCreationWizard).toBeUndefined();
     });
   });
 

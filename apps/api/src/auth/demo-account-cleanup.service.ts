@@ -6,13 +6,22 @@
  * enabled — a non-demo deployment (registration usually disabled anyway)
  * never has this task do anything.
  *
- * Scope: `role: 'viewer'` + `status: 'active'` + `createdAt` older than the
- * retention window, per `UserRepositoryPort.findStaleViewerAccounts`. This
- * is the exact shape `RegistrationService.register` produces for a demo
- * account — an operator-created persistent viewer account is
- * indistinguishable from a demo one and would also be swept up. Acceptable
- * for a public/unattended demo; out of scope to add a distinguishing column
- * for a single supervised deployment.
+ * Scope: `role: 'viewer'` + `status IN ('active', 'pending_confirmation')` +
+ * `createdAt` older than the retention window, per
+ * `UserRepositoryPort.findStaleViewerAccounts`. `pending_confirmation` is
+ * included (#1624) because demo signups now land in that status until the
+ * user clicks the confirmation link — an abandoned/never-confirmed signup
+ * would otherwise never match `status: 'active'` and accumulate forever on
+ * a public demo deployment. Both statuses share the same retention window
+ * for now; a pending_confirmation account that's still stale after the
+ * window either never confirmed or the confirmation was accepted (making
+ * it 'active', not swept differently) — one threshold keeps this simple.
+ * The `role: 'viewer'` scoping is the exact shape
+ * `RegistrationService.register` produces for a demo account — an
+ * operator-created persistent viewer account is indistinguishable from a
+ * demo one and would also be swept up. Acceptable for a public/unattended
+ * demo; out of scope to add a distinguishing column for a single
+ * supervised deployment.
  *
  * @module apps/api/src/auth
  */
@@ -47,7 +56,10 @@ export class DemoAccountCleanupService {
       this.configService.get<string>('OL_DEMO_ACCOUNT_RETENTION_HOURS', '24'),
     );
     const olderThan = new Date(Date.now() - retentionHours * MS_PER_HOUR);
-    const staleAccounts = await this.userRepository.findStaleViewerAccounts(olderThan);
+    const staleAccounts = await this.userRepository.findStaleViewerAccounts(olderThan, [
+      'active',
+      'pending_confirmation',
+    ]);
 
     for (const account of staleAccounts) {
       await this.userRepository.deleteById(account.id);

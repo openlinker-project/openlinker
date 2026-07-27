@@ -6,12 +6,15 @@
  * fetched on a normal (non-demo) install — the three synchronous guards
  * (demo mode, config presence, visitor consent) all run before the import.
  *
- * Masking is opt-out (`maskTextSelector: '*'` masks every rendered text
- * node), not opt-in by selector: demo mode must only ever run against
- * synthetic seed data (see docs/one-command-demo-setup-guide.md), but rrweb
- * records every rendered DOM text node by default, so an operator who points
- * a demo instance at real data would otherwise ship buyer PII to PostHog
- * cloud.
+ * `autocapture` and whether session recording is enabled at all (#1685) are
+ * now read from the resolved config rather than hardcoded — an admin
+ * toggles them via the PostHog settings dialog on `/settings`. Masking
+ * WITHIN session recording stays unconditional regardless of that toggle
+ * (`maskTextSelector: '*'` masks every rendered text node), not opt-in by
+ * selector: demo mode must only ever run against synthetic seed data (see
+ * docs/one-command-demo-setup-guide.md), but rrweb records every rendered
+ * DOM text node by default, so an operator who points a demo instance at
+ * real data would otherwise ship buyer PII to PostHog cloud.
  */
 import type { PostHog } from 'posthog-js';
 import type { SystemConfig } from '../../system';
@@ -34,12 +37,14 @@ export async function initDemoIntegrations(config: SystemConfig | undefined): Pr
   posthog.init(posthogConfig.key, {
     api_host: posthogConfig.host,
     person_profiles: 'identified_only',
-    autocapture: false,
+    autocapture: posthogConfig.autocapture,
     capture_pageview: true,
-    session_recording: {
-      maskAllInputs: true,
-      maskTextSelector: '*',
-    },
+    session_recording: posthogConfig.sessionRecording
+      ? {
+          maskAllInputs: true,
+          maskTextSelector: '*',
+        }
+      : undefined,
   });
 }
 

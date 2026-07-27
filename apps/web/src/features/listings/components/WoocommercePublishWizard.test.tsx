@@ -280,4 +280,66 @@ describe('WoocommercePublishWizard', () => {
     expect((await screen.findAllByText(/whole number/i)).length).toBeGreaterThan(0);
     expect(shopPublish).not.toHaveBeenCalled();
   });
+
+  describe('demo read-only viewer (#1663)', () => {
+    it('lets a demo viewer edit the Configure step but disables the final Publish submit', async () => {
+      const shopPublish = vi.fn();
+      const apiClient = createMockApiClient({
+        listings: { shopPublish },
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      });
+
+      renderWithProviders(
+        <WoocommercePublishWizard
+          connection={wooConnection}
+          defaultVariantId="ol_variant_1"
+          onCancel={vi.fn()}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient },
+      );
+
+      const stockInput = await screen.findByPlaceholderText('master');
+      fireEvent.change(stockInput, { target: { value: '5' } });
+      expect(stockInput).not.toBeDisabled();
+
+      // `demoMode` resolves from the async `useDemoMode()` config query; once it
+      // settles the submit button is re-wrapped in a read-only lock (a new DOM
+      // node), so re-query inside waitFor rather than holding a stale reference
+      // to the pre-wrap button (flaked in CI, #1519/#1518).
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /^publish$/i })).toBeDisabled()
+      );
+      fireEvent.click(screen.getByRole('button', { name: /^publish$/i }));
+      expect(shopPublish).not.toHaveBeenCalled();
+    });
+
+    it('lets a demo viewer reach the single-mode Review step but disables Confirm & publish', async () => {
+      const shopPublish = vi.fn();
+      const apiClient = createMockApiClient({
+        listings: { shopPublish },
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      });
+
+      renderWithProviders(
+        <WoocommercePublishWizard
+          connection={wooConnection}
+          defaultVariantId="ol_variant_1"
+          onCancel={vi.fn()}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient },
+      );
+
+      await screen.findByPlaceholderText('master');
+      fireEvent.click(screen.getByRole('button', { name: /^review$/i }));
+
+      await screen.findByRole('button', { name: /confirm & publish/i });
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /confirm & publish/i })).toBeDisabled()
+      );
+      fireEvent.click(screen.getByRole('button', { name: /confirm & publish/i }));
+      expect(shopPublish).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -280,6 +280,28 @@ describe('ShipmentController', () => {
       expect((dispatch.dispatch.mock.calls[0][0] as { cod?: unknown }).cod).toBeUndefined();
     });
 
+    it('should pass the insured value through to the dispatch input when supplied (#1542)', async () => {
+      dispatch.dispatch.mockResolvedValue({ kind: 'dispatched', shipment: makeShipment() });
+
+      await controller.generateLabel(
+        makeGenerateLabelDto({ insuredValue: { amount: '150.00', currency: 'PLN' } }),
+      );
+
+      expect(dispatch.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({ insuredValue: { amount: '150.00', currency: 'PLN' } }),
+      );
+    });
+
+    it('should leave insuredValue undefined on the dispatch input when not supplied (#1542)', async () => {
+      dispatch.dispatch.mockResolvedValue({ kind: 'dispatched', shipment: makeShipment() });
+
+      await controller.generateLabel(makeGenerateLabelDto());
+
+      expect(
+        (dispatch.dispatch.mock.calls[0][0] as { insuredValue?: unknown }).insuredValue,
+      ).toBeUndefined();
+    });
+
     it('should map UndispatchableResolutionException to 422', async () => {
       dispatch.dispatch.mockRejectedValue(new UndispatchableResolutionException('no connection'));
       await expect(controller.generateLabel(makeGenerateLabelDto())).rejects.toBeInstanceOf(
@@ -615,6 +637,8 @@ describe('ShipmentController', () => {
       ['application/zpl', 'zpl'],
       ['application/x-zpl', 'zpl'],
       ['application/epl', 'epl'],
+      ['application/zip', 'zip'],
+      ['application/zip; charset=binary', 'zip'],
       ['', 'bin'],
       ['application/octet-stream', 'bin'],
     ])('maps %s → %s', (ct, ext) => {

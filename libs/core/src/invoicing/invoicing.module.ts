@@ -19,29 +19,55 @@ import { SyncModule } from '@openlinker/core/sync';
 
 import { InvoiceService } from './application/services/invoice.service';
 import { InvoiceRecordOrmEntity } from './infrastructure/persistence/entities/invoice-record.orm-entity';
+import { InvoiceNumberingSeriesOrmEntity } from './infrastructure/persistence/entities/invoice-numbering-series.orm-entity';
+import { InvoiceNumberingRouteOrmEntity } from './infrastructure/persistence/entities/invoice-numbering-route.orm-entity';
+import { InvoiceNumberGapNoteOrmEntity } from './infrastructure/persistence/entities/invoice-number-gap-note.orm-entity';
 import { InvoiceRecordRepository } from './infrastructure/persistence/repositories/invoice-record.repository';
+import { InvoiceNumberingSeriesRepository } from './infrastructure/persistence/repositories/invoice-numbering-series.repository';
+import { InvoiceNumberGapNoteRepository } from './infrastructure/persistence/repositories/invoice-number-gap-note.repository';
 import { AutoIssueTriggerService } from './application/services/auto-issue-trigger.service';
 import { RegulatoryStatusReconciliationService } from './application/services/regulatory-status-reconciliation.service';
+import { OfflineResubmissionService } from './application/services/offline-resubmission.service';
+import { PendingRecoveryService } from './application/services/pending-recovery.service';
 import { PaymentStatusRefreshService } from './application/services/payment-status-refresh.service';
+import { NumberingAuditService } from './application/services/numbering-audit.service';
+import { NumberingSeriesService } from './application/services/numbering-series.service';
 import {
   INVOICE_RECORD_REPOSITORY_TOKEN,
+  INVOICE_NUMBERING_SERIES_REPOSITORY_TOKEN,
   INVOICE_SERVICE_TOKEN,
   AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
   REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
+  OFFLINE_RESUBMISSION_SERVICE_TOKEN,
+  PENDING_RECOVERY_SERVICE_TOKEN,
   PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
+  INVOICE_NUMBER_GAP_NOTE_REPOSITORY_TOKEN,
+  NUMBERING_AUDIT_SERVICE_TOKEN,
+  NUMBERING_SERIES_SERVICE_TOKEN,
 } from './invoicing.tokens';
 
 export {
   INVOICE_RECORD_REPOSITORY_TOKEN,
+  INVOICE_NUMBERING_SERIES_REPOSITORY_TOKEN,
   INVOICE_SERVICE_TOKEN,
   AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
   REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
+  OFFLINE_RESUBMISSION_SERVICE_TOKEN,
+  PENDING_RECOVERY_SERVICE_TOKEN,
   PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
+  INVOICE_NUMBER_GAP_NOTE_REPOSITORY_TOKEN,
+  NUMBERING_AUDIT_SERVICE_TOKEN,
+  NUMBERING_SERIES_SERVICE_TOKEN,
 } from './invoicing.tokens';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([InvoiceRecordOrmEntity]),
+    TypeOrmModule.forFeature([
+      InvoiceRecordOrmEntity,
+      InvoiceNumberingSeriesOrmEntity,
+      InvoiceNumberingRouteOrmEntity,
+      InvoiceNumberGapNoteOrmEntity,
+    ]),
     // InvoiceService injects INTEGRATIONS_SERVICE_TOKEN to resolve the
     // 'Invoicing' capability adapter per-connection. IntegrationsModule exports
     // that token but is NOT @Global, so it must be imported (mirrors
@@ -60,6 +86,11 @@ export {
       provide: INVOICE_RECORD_REPOSITORY_TOKEN,
       useExisting: InvoiceRecordRepository,
     },
+    InvoiceNumberingSeriesRepository,
+    {
+      provide: INVOICE_NUMBERING_SERIES_REPOSITORY_TOKEN,
+      useExisting: InvoiceNumberingSeriesRepository,
+    },
     InvoiceService,
     {
       provide: INVOICE_SERVICE_TOKEN,
@@ -75,10 +106,35 @@ export {
       provide: REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
       useExisting: RegulatoryStatusReconciliationService,
     },
+    OfflineResubmissionService,
+    {
+      provide: OFFLINE_RESUBMISSION_SERVICE_TOKEN,
+      useExisting: OfflineResubmissionService,
+    },
+    PendingRecoveryService,
+    {
+      provide: PENDING_RECOVERY_SERVICE_TOKEN,
+      useExisting: PendingRecoveryService,
+    },
     PaymentStatusRefreshService,
     {
       provide: PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
       useExisting: PaymentStatusRefreshService,
+    },
+    InvoiceNumberGapNoteRepository,
+    {
+      provide: INVOICE_NUMBER_GAP_NOTE_REPOSITORY_TOKEN,
+      useExisting: InvoiceNumberGapNoteRepository,
+    },
+    NumberingAuditService,
+    {
+      provide: NUMBERING_AUDIT_SERVICE_TOKEN,
+      useExisting: NumberingAuditService,
+    },
+    NumberingSeriesService,
+    {
+      provide: NUMBERING_SERIES_SERVICE_TOKEN,
+      useExisting: NumberingSeriesService,
     },
   ],
   // Export BOTH the token and the provider so OrdersModule (which imports this
@@ -88,13 +144,26 @@ export {
   // fail the worker's DI at boot (#1121 plan decision #12).
   exports: [
     INVOICE_RECORD_REPOSITORY_TOKEN,
+    INVOICE_NUMBERING_SERIES_REPOSITORY_TOKEN,
     INVOICE_SERVICE_TOKEN,
     AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
     AutoIssueTriggerService,
     REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
     // Exported so the worker's SyncWorkerModule can inject the service into
+    // OfflineResubmitHandler (#1702) — same reason as the reconciliation token.
+    OFFLINE_RESUBMISSION_SERVICE_TOKEN,
+    // Exported so the worker's SyncWorkerModule can inject the service into
+    // PendingRecoveryHandler (#1703) — same reason as the reconciliation token.
+    PENDING_RECOVERY_SERVICE_TOKEN,
+    // Exported so the worker's SyncWorkerModule can inject the service into
     // PaymentStatusRefreshHandler (#1354) — same reason as the reconciliation token.
     PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
+    // Exported so the C2/W3 API layer can inject the gap-audit read model (#8).
+    NUMBERING_AUDIT_SERVICE_TOKEN,
+    INVOICE_NUMBER_GAP_NOTE_REPOSITORY_TOKEN,
+    // Exported so the W3 API layer can inject the series/routing service (#9/#10)
+    // instead of the repository port (cross-context contract).
+    NUMBERING_SERIES_SERVICE_TOKEN,
   ],
 })
 export class InvoicingModule {}

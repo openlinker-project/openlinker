@@ -32,6 +32,8 @@ export type {
   CategoryResolutionResult,
   CategoryResolutionMethod,
   CategoryProvenance,
+  BatchCategoryResolveItem,
+  BatchCategoryResolveInput,
 } from './application/types/category-resolution.types';
 export {
   CategoryResolutionMethodValues,
@@ -63,6 +65,7 @@ export type {
   OfferMappingFilters,
   OfferMappingPagination,
   PaginatedOfferMappings,
+  ProductListingsCoverage,
 } from './domain/types/offer-mapping.types';
 export type {
   OfferDescriptionSectionItem,
@@ -97,6 +100,11 @@ export type {
 export type { BulkListingBatchRepositoryPort } from './domain/ports/bulk-listing-batch-repository.port';
 export { BulkListingBatchNotFoundException } from './domain/exceptions/bulk-listing-batch-not-found.exception';
 export { EmptyBulkSubmissionException } from './domain/exceptions/empty-bulk-submission.exception';
+export { InvalidEanException } from './domain/exceptions/invalid-ean.exception';
+export { DuplicateBatchEanException } from './domain/exceptions/duplicate-batch-ean.exception';
+export { CurrencyMismatchException } from './domain/exceptions/currency-mismatch.exception';
+export { InvalidOverrideKeyException } from './domain/exceptions/invalid-override-key.exception';
+export { ExpandedOfferCeilingExceededException } from './domain/exceptions/expanded-offer-ceiling-exceeded.exception';
 export { BulkBatchAdvancement } from './domain/entities/bulk-batch-advancement.entity';
 export type { BulkBatchAdvancementRepositoryPort } from './domain/ports/bulk-batch-advancement-repository.port';
 export { BulkChildOutcomeValues } from './domain/types/bulk-child-outcome.types';
@@ -130,6 +138,8 @@ export { OfferBuilderValidationException } from './domain/exceptions/offer-build
 export type { OfferBuilderValidationIssue } from './domain/exceptions/offer-builder-validation.exception';
 export { MasterCatalogConnectionNotConfiguredException } from './domain/exceptions/master-catalog-connection-not-configured.exception';
 export type { ISellerPoliciesService } from './application/interfaces/seller-policies.service.interface';
+export type { IResponsibleProducerService } from './application/interfaces/responsible-producer.service.interface';
+export type { IDeliveryPriceListService } from './application/interfaces/delivery-price-list.service.interface';
 export type {
   SellerPoliciesCacheRepositoryPort,
   CachedSellerPolicies,
@@ -154,14 +164,15 @@ export type {
   UpdateOfferQuantitiesBatchFailure,
 } from './domain/types/offer-quantity-update.types';
 export type { UpdateOfferFieldsCommand } from './domain/types/offer-fields-update.types';
-export type { OfferCategory } from './domain/types/category.types';
-export { CreateOfferResultStatusValues } from './domain/types/offer-create.types';
+export type { OfferCategory, CategoryPathSegment } from './domain/types/category.types';
+export { CreateOfferResultStatusValues, OfferConditionValues } from './domain/types/offer-create.types';
 export type {
   CreateOfferCommand,
   CreateOfferOverrides,
   CreateOfferResult,
   CreateOfferResultStatus,
   CreateOfferValidationError,
+  OfferCondition,
   OfferVariantGroup,
   OfferVariantAttribute,
   SourceCategoryRef,
@@ -169,6 +180,7 @@ export type {
 } from './domain/types/offer-create.types';
 export type { OfferParameter } from './domain/types/offer-parameter.types';
 export type { SellerPolicy, SellerPolicies } from './domain/types/seller-policies.types';
+export type { DeliveryPriceList } from './domain/types/delivery-price-list.types';
 export { OfferCreateRejectedException } from './domain/exceptions/offer-create-rejected.exception';
 
 // OfferManagerPort sub-capabilities (#337): optional capabilities extracted into
@@ -188,6 +200,8 @@ export { isOfferStockRestorer } from './domain/ports/capabilities/offer-stock-re
 export type { OfferStockRestoreTarget } from './domain/types/offer-stock-restore.types';
 export type { CategoryBrowser } from './domain/ports/capabilities/category-browser.capability';
 export { isCategoryBrowser } from './domain/ports/capabilities/category-browser.capability';
+export type { CategoryPathReader } from './domain/ports/capabilities/category-path-reader.capability';
+export { isCategoryPathReader } from './domain/ports/capabilities/category-path-reader.capability';
 export type { CategoryBarcodeMatcher } from './domain/ports/capabilities/category-barcode-matcher.capability';
 export { isCategoryBarcodeMatcher } from './domain/ports/capabilities/category-barcode-matcher.capability';
 export type { EanCategoryMatcher } from './domain/ports/capabilities/ean-category-matcher.capability';
@@ -198,9 +212,10 @@ export type {
   SmartClassificationReport,
   SmartClassificationCondition,
 } from './domain/types/smart-classification.types';
-export { EanMatchResultKindValues } from './domain/types/ean-category-match.types';
+export { EanMatchResultKindValues, EanMatchMethodValues } from './domain/types/ean-category-match.types';
 export type {
   EanMatchResultKind,
+  EanMatchMethod,
   EanMatchResult,
   EanMatchCandidate,
   BatchCategoryByEanInput,
@@ -256,6 +271,7 @@ export type {
   IOfferStatusSyncService,
   OfferStatusSyncOptions,
 } from './application/services/offer-status-sync.service.interface';
+export type { IOfferStatusReadService } from './application/services/offer-status-read.service.interface';
 export type { IOfferStockRestoreService } from './application/interfaces/offer-stock-restore.service.interface';
 export { OfferPollNotSupportedException } from './domain/exceptions/offer-poll-not-supported.exception';
 export { OfferNotFoundOnMarketplaceException } from './domain/exceptions/offer-not-found-on-marketplace.exception';
@@ -265,9 +281,13 @@ export type {
   MarketplaceOffer,
   MarketplaceOfferPrice,
   MarketplaceOfferCategory,
+  MarketplaceOfferParameter,
+  MarketplaceOfferProductSetItem,
 } from './domain/types/marketplace-offer.types';
 export type { SellerPoliciesReader } from './domain/ports/capabilities/seller-policies-reader.capability';
 export { isSellerPoliciesReader } from './domain/ports/capabilities/seller-policies-reader.capability';
+export type { DeliveryPriceListReader } from './domain/ports/capabilities/delivery-price-list-reader.capability';
+export { isDeliveryPriceListReader } from './domain/ports/capabilities/delivery-price-list-reader.capability';
 export type {
   SafetyAttachmentUploader,
   SafetyAttachmentUploadInput,
