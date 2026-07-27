@@ -35,6 +35,13 @@ export interface InvoicingIssueBuyerV1 {
   taxId: TaxIdentifier | null;
   address: BuyerAddress;
   type: BuyerType;
+  /**
+   * Buyer e-mail, or `null` when unknown (#1797). Optional additive field (no
+   * `schemaVersion` bump) — a handler reading a payload persisted before this
+   * field existed sees `undefined` and must normalize it to `null`, not require
+   * the key.
+   */
+  email?: string | null;
 }
 
 /**

@@ -451,6 +451,7 @@ Required implementation rules:
 - style modifiers after their base rules and keep state classes explicit, for example `status-pill--error` or `context-chip--info`
 - responsive overrides must match the layout model being changed; use grid overrides for grid layouts and flex overrides for flex layouts
 - add or extend shared primitives before introducing page-specific one-off styling
+- narrow-viewport table-to-cards (#1784): where a dense mapping/config table must stay usable on small screens, opt the table into `.data-table--stackable` and add a `data-label` to each `<td>`. At `<= 640px` a scoped block collapses each row into a card (source cell as the heading; remaining cells stack under their `data-label`). Prefer this over a "desktop-only" banner — the mapping page dropped `DesktopOnlyBanner` for it. The rule is scoped to the modifier so the app-wide `DataTable` is untouched.
 
 Recommended CSS structure for `apps/web/src/index.css`:
 
@@ -619,6 +620,8 @@ Defaults (FE-002):
 
 Never introduce a row height that isn't on this list without updating the guide first. Variability across surfaces is the primary way a cockpit feels amateur.
 
+**Selection-list rows are governed separately.** Multi-select picker rows inside a modal (e.g. the offer-creation product picker, `.offer-product-picker__prow-main` / `.offer-product-picker__vrow`, #1754/#1779) are *not* `DataTable` rows and are intentionally taller than 36 px: the whole-product checkbox carries a ≥ 44 px tap target (touch parity with the full-width variant-row hit area) and each row pairs a thumbnail with two text lines. They inherit the density posture but pick their own height from content + the tap-target floor rather than the table default; don't force them onto the `36 px` row.
+
 ## Responsive
 
 Desktop (≥ 1024 px) is the design anchor. **Mobile (≤ 767 px) and tablet (768–1023 px) are first-class** — operators should be able to triage failures from a phone off-hours and from an iPad on the shop floor.
@@ -645,6 +648,8 @@ Parity matrix — what changes across sizes:
 | Raw payload panel | collapsed by default | as desktop | as desktop |
 | Complex editors | **read-only + "open on desktop to edit" hint** | full interactive | full interactive |
 | Wizards | one step per screen, stepper collapsed | full | full |
+
+**Documented departure — the offer-creation product picker modal (#1754/#1779)** folds into a two-step wizard (step 1 = product list, step 2 = selection review + connection + Continue) at **both** mobile *and* tablet width (≤ 1023 px), rather than staying "full interactive" at tablet as the *Complex editors* / *Wizards* rows above would suggest. This is deliberate: the modal's side-by-side list + review rail needs two comfortable columns, which only desktop (≥ 1024 px) affords; on an iPad the two-step flow is more usable than two cramped columns. Unlike the "complex editors" rule, the picker stays **fully interactive** at every width (it is a selection surface, not a data editor), so it never shows an "open on desktop" hint.
 
 Rules:
 

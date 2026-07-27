@@ -9,6 +9,7 @@ import { WebhookSecretService } from './webhook-secret.service';
 import type { IntegrationCredentialRepositoryPort } from '../../domain/ports/integration-credential-repository.port';
 import type { WebhookSecretProviderPort } from '../../domain/ports/webhook-secret-provider.port';
 import { CredentialNotFoundException } from '../../domain/exceptions/credential-not-found.exception';
+import { CallerSuppliedWebhookSecretNotSupportedException } from '../../domain/exceptions/caller-supplied-webhook-secret-not-supported.exception';
 import { IntegrationCredential } from '../../domain/entities/integration-credential.entity';
 
 describe('WebhookSecretService', () => {
@@ -23,6 +24,18 @@ describe('WebhookSecretService', () => {
     new Date(),
     new Date(),
     'prestashop.webservice.v1',
+    []
+  );
+  const infaktConnection = new Connection(
+    connectionId,
+    'infakt',
+    'n',
+    'active',
+    {},
+    'r',
+    new Date(),
+    new Date(),
+    'infakt.publicapi.v1',
     []
   );
 
@@ -80,5 +93,50 @@ describe('WebhookSecretService', () => {
 
     await expect(subject.rotate('prestashop', connectionId)).rejects.toThrow('nope');
     expect(repository.update).not.toHaveBeenCalled();
+  });
+
+  describe('set', () => {
+    beforeEach(() => {
+      connectionPort.get.mockResolvedValue(infaktConnection);
+    });
+
+    it('persists the caller-supplied secret and invalidates the cache', async () => {
+      await subject.set('infakt', connectionId, 'pasted-secret', 'user-1');
+
+      expect(repository.update).toHaveBeenCalledWith(`webhook-secret:${connectionId}`, {
+        credentialsJson: { webhookSecret: 'pasted-secret' },
+      });
+      expect(secretProvider.invalidate).toHaveBeenCalledWith('infakt', connectionId);
+    });
+
+    it('creates the credential when missing', async () => {
+      repository.update.mockRejectedValueOnce(new CredentialNotFoundException('x'));
+
+      await subject.set('infakt', connectionId, 'pasted-secret');
+
+      expect(repository.create).toHaveBeenCalledWith({
+        ref: `webhook-secret:${connectionId}`,
+        platformType: 'infakt',
+        credentialsJson: { webhookSecret: 'pasted-secret' },
+      });
+    });
+
+    it('propagates connection lookup failures without writing', async () => {
+      connectionPort.get.mockRejectedValue(new Error('nope'));
+
+      await expect(subject.set('infakt', connectionId, 's')).rejects.toThrow('nope');
+      expect(repository.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a platform that does not accept a caller-supplied secret (#1770 review)', async () => {
+      connectionPort.get.mockResolvedValue(connection); // prestashop
+
+      await expect(subject.set('prestashop', connectionId, 'pasted-secret')).rejects.toThrow(
+        CallerSuppliedWebhookSecretNotSupportedException
+      );
+      expect(repository.update).not.toHaveBeenCalled();
+      expect(repository.create).not.toHaveBeenCalled();
+      expect(secretProvider.invalidate).not.toHaveBeenCalled();
+    });
   });
 });

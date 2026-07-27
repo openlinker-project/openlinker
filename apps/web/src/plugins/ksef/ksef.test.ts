@@ -39,7 +39,6 @@ describe('ksefPlugin', () => {
       expect(ksefPlugin.build?.apiNamespaces).toBeDefined();
     });
     it('does NOT contribute marketplace/shop wizards', () => {
-      expect(ksefPlugin.build?.offerCreationWizard).toBeUndefined();
       expect(ksefPlugin.build?.shopProductPublishWizard).toBeUndefined();
     });
   });

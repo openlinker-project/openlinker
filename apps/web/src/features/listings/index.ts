@@ -6,8 +6,6 @@
  * create-offer wizard and the listings API request type) import from here.
  */
 export type { CreateOfferRequest } from './api/listings.types';
-export { AllegroCreateOfferWizard } from './components/AllegroCreateOfferWizard';
-export { ErliCreateOfferWizard } from './components/erli/erli-create-offer-wizard';
 export { ErliBulkConfigSection } from './components/erli/erli-bulk-config-section';
 export { erliBulkConfigIsComplete } from './components/erli/erli-offer-fields.schema';
 export { ErliBulkRowSection } from './components/erli/erli-bulk-row-section';

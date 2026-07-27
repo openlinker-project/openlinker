@@ -51,6 +51,15 @@ function makeOrder(overrides: Partial<OrderRecord> = {}): OrderRecord {
     recordStatus: 'ready',
     createdAt: '2026-05-28T09:00:00.000Z',
     updatedAt: '2026-05-28T09:30:00.000Z',
+    // Live OL carrier route by default (#1799) so "Generate label" is offered;
+    // individual tests override deliveryResolution to exercise the suppressed
+    // shop-fulfilled / disabled paths.
+    deliveryResolution: {
+      source: 'rule',
+      processorKind: 'ol_managed_carrier',
+      processorConnectionId: 'conn-inpost',
+      processorAvailable: true,
+    },
     ...overrides,
   };
 }
@@ -152,6 +161,94 @@ describe('OrderShipmentPanel — empty state', () => {
 
     expect(await screen.findByText('No shipment yet')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Generate label/i })).toBeInTheDocument();
+  });
+
+  it('should suppress the Generate-label CTA and explain shop fulfilment for an omp_fulfilled order (#1799)', async () => {
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+      },
+    });
+    const order = makeOrder({
+      deliveryResolution: {
+        source: 'default',
+        processorKind: 'omp_fulfilled',
+        processorConnectionId: null,
+        processorAvailable: true,
+      },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={order} />, { apiClient });
+
+    expect(await screen.findByText(/ships this order with its own carrier/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Generate label/i })).not.toBeInTheDocument();
+  });
+
+  it('should suppress the Generate-label CTA and point to Delivery for a disabled-carrier route (#1799)', async () => {
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+      },
+    });
+    const order = makeOrder({
+      deliveryResolution: {
+        source: 'rule',
+        processorKind: 'ol_managed_carrier',
+        processorConnectionId: 'conn-inpost',
+        processorAvailable: false,
+      },
+      deliveryRider: { rider: 'disabled', candidateCarrier: { platformType: 'inpost', displayName: 'InPost' } },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={order} />, { apiClient });
+
+    expect(await screen.findByText(/that connection is disabled/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Generate label/i })).not.toBeInTheDocument();
+  });
+
+  it('should render a passive "Dispatched outside OpenLinker" note when there is no shipment but the rollup is dispatched (#1799)', async () => {
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+      },
+    });
+    const order = makeOrder({ fulfillmentState: 'dispatched' });
+
+    renderWithProviders(<OrderShipmentPanel order={order} />, { apiClient });
+
+    expect(await screen.findByText('Dispatched outside OpenLinker')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Generate label/i })).not.toBeInTheDocument();
+  });
+
+  it('should surface the no-live-route reason inline when an active shipment exists on a disabled-carrier route (#1799)', async () => {
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [makeShipment()], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+    const order = makeOrder({
+      deliveryResolution: {
+        source: 'rule',
+        processorKind: 'ol_managed_carrier',
+        processorConnectionId: 'conn-inpost',
+        processorAvailable: false,
+      },
+      deliveryRider: {
+        rider: 'disabled',
+        candidateCarrier: { platformType: 'inpost', displayName: 'InPost' },
+      },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={order} />, { apiClient });
+
+    // Populated state (carrier row) plus the inline route note - the reason is
+    // visible without hovering the disabled Generate-label button.
+    expect(await screen.findByText('InPost')).toBeInTheDocument();
+    expect(screen.getByText(/that connection is disabled/i)).toBeInTheDocument();
   });
 
   it('captures demo_label_form_opened with entry=empty_state when the empty-state CTA is clicked (#1788)', async () => {
@@ -452,5 +549,55 @@ describe('OrderShipmentPanel — action button matrix (§3.4)', () => {
     const anchor = clickSpy.mock.instances[0] as HTMLAnchorElement;
     expect(anchor.download).toBe('ol-shipment-ol_shipment_1.pdf');
     vi.restoreAllMocks();
+  });
+});
+
+describe('OrderShipmentPanel — persisted rejection (#1800)', () => {
+  it('should render the persisted errorMessage and failedAt for a failed shipment', async () => {
+    const shipment = makeShipment({
+      status: 'failed',
+      errorMessage: 'DPD rejected the shipment: sender postal code is not serviceable.',
+      failedAt: '2026-05-28T12:30:00.000Z',
+      trackingNumber: null,
+      carrier: 'dpd',
+    });
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, { apiClient });
+
+    expect(
+      await screen.findByText(/sender postal code is not serviceable/i),
+    ).toBeInTheDocument();
+    // failedAt renders as a relative/absolute time — the "Failed" label anchors it.
+    expect(screen.getByText(/^Failed/)).toBeInTheDocument();
+  });
+
+  it('should not render a persisted-error Alert for a non-failed shipment carrying a stale errorMessage', async () => {
+    // A shipment that failed once then recovered keeps its old errorMessage;
+    // gating on status === 'failed' prevents surfacing it as a current error.
+    const shipment = makeShipment({
+      status: 'dispatched',
+      errorMessage: 'previous transient error',
+      failedAt: '2026-05-28T12:30:00.000Z',
+    });
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    const { container } = renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, {
+      apiClient,
+    });
+
+    await screen.findByText('Shipment');
+    expect(screen.queryByText('previous transient error')).toBeNull();
+    expect(container.querySelector('.order-shipment-panel__error')).toBeNull();
   });
 });

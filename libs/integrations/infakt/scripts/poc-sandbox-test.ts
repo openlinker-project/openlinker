@@ -4,6 +4,7 @@
  * Runs a full E2E verification against the Infakt sandbox API:
  *   1. upsertCustomer — find or create a test buyer by NIP
  *   2. issueInvoice   — create a VAT invoice
+ *   2b. sendByEmail   — trigger Infakt to e-mail the issued invoice (#1797)
  *   3. getInvoice     — read back the created invoice by UUID
  *   4. getClearanceStatus — read ksef_data (before KSeF submit)
  *   5. sendToKsef     — trigger KSeF submission
@@ -16,6 +17,12 @@
  *   INFAKT_BASE_URL   — defaults to https://api.sandbox-infakt.pl/api/v3
  *   POC_POLL_MAX_MS   — max poll time in ms (default 180000 = 3 min)
  *   POC_POLL_INTERVAL_MS — poll interval (default 10000 = 10 s)
+ *   POC_TEST_BUYER_EMAIL — a real, disposable test-inbox address YOU control
+ *     (#1797). Never a fabricated or third-party address — step 2b actually
+ *     asks Infakt to send a real e-mail to it. Defaults to a
+ *     `noreply@example.com` placeholder, which is enough to prove the
+ *     `clients.json` payload carries `email` and to unblock `deliver_via_email`
+ *     past the "client e-mail unknown" 422, but won't confirm real delivery.
  *
  * Verified live 2026-06-30: full draft→KSeF clearance in ~90 s on sandbox.
  *
@@ -37,6 +44,7 @@ const BASE_URL =
   process.env['INFAKT_BASE_URL'] ?? 'https://api.sandbox-infakt.pl/api/v3';
 const POLL_MAX_MS = parseInt(process.env['POC_POLL_MAX_MS'] ?? '180000', 10);
 const POLL_INTERVAL_MS = parseInt(process.env['POC_POLL_INTERVAL_MS'] ?? '10000', 10);
+const TEST_BUYER_EMAIL = process.env['POC_TEST_BUYER_EMAIL'] ?? 'noreply@example.com';
 
 const CONNECTION_ID = 'poc-sandbox-connection';
 
@@ -68,6 +76,7 @@ const testBuyer = new BuyerProfile(
   { scheme: 'pl-nip', value: '5252659437' },
   { line1: 'ul. Testowa 1', line2: null, city: 'Warszawa', postalCode: '00-001', countryIso2: 'PL' },
   'company',
+  TEST_BUYER_EMAIL,
 );
 
 // ---- helpers ----------------------------------------------------------------
@@ -183,6 +192,18 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Step 2b — sendByEmail (#1797: confirms the client-creation payload
+  // actually carries `email`, so Infakt's deliver_via_email no longer 422s
+  // with "adres e-mail Klienta jest nieznany").
+  console.log('\nSTEP 2b — sendByEmail');
+  try {
+    const result = await adapter.sendByEmail({ externalInvoiceId: invoiceUuid });
+    ok('invoice emailed', `delivered=${result.delivered} recipient=${result.recipient ?? 'null'}`);
+  } catch (err) {
+    fail('sendByEmail failed', err);
+    // Non-fatal — continue; a failure here is the exact regression #1797 fixes.
+  }
+
   // Step 3 — getInvoice by UUID
   console.log('\nSTEP 3 — getInvoice (read back by UUID)');
   try {
@@ -231,7 +252,7 @@ async function main(): Promise<void> {
     fail('sendToKsef failed', err);
     console.log('  → skipping KSeF poll (KSeF may not be configured on this account)');
     console.log('\n=== POC DONE (no KSeF) ===');
-    console.log('issueInvoice + getInvoice + getClearanceStatus: CONFIRMED ✅');
+    console.log('issueInvoice + sendByEmail + getInvoice + getClearanceStatus: CONFIRMED ✅');
     return;
   }
 
@@ -248,7 +269,9 @@ async function main(): Promise<void> {
   console.log('');
   console.log('=== POC COMPLETE ✅ ===');
   console.log('All steps confirmed:');
-  console.log('  upsertCustomer → issueInvoice → getInvoice → getClearanceStatus → sendToKsef → cleared');
+  console.log(
+    '  upsertCustomer → issueInvoice → sendByEmail → getInvoice → getClearanceStatus → sendToKsef → cleared',
+  );
 }
 
 main().catch((err: unknown) => {

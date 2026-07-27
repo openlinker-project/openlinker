@@ -134,10 +134,19 @@ export interface ShipXPointsResponse {
   items: readonly ShipXPoint[];
 }
 
-/** ShipX error body — `error` is the machine key (`validation_failed`, `unauthorized`, …). */
+/**
+ * ShipX error body — `error` is the machine key (`validation_failed`, `unauthorized`, …).
+ *
+ * `details` carries two confirmed shapes (#1807 — live-reproduced against the
+ * sandbox): a **flat** per-field map (`{ name: ["required"] }`) for simple
+ * top-level fields, and a **nested** array-of-objects map
+ * (`{ custom_attributes: [{ target_point: ["does_not_exist"] }] }`) for
+ * compound/nested request fields. `flattenShipXFieldErrors` in
+ * `inpost-http-client.ts` normalises both into one flat leaf-keyed map.
+ */
 export interface ShipXErrorBody {
   status?: number;
   error?: string;
   message?: string;
-  details?: Record<string, readonly string[]>;
+  details?: Record<string, readonly string[] | ReadonlyArray<Record<string, readonly string[]>>>;
 }

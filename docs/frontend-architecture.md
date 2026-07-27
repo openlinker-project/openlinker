@@ -405,6 +405,12 @@ Naming conventions:
 - route modules: `*.route.tsx`
 - tests: `*.test.tsx`
 
+### Mapping configuration pairing (#1784)
+
+The order Mapping Configuration page (`connection-mappings-page.tsx`) configures a **source -> destination connection pair**, not a single connection. The pair is **config-stamped**, mirroring the backend `MappingOptionsController.resolvePartnerConnectionId`: a marketplace connection carries a single `config.masterCatalogConnectionId` pointing at its master shop. `useMappingPairing(connectionId)` resolves this into one of `ready | pick-source | no-source | unsupported | loading | error` and the page renders the pairing route strip (`MappingPairingBar`) plus the resolved-label copy from it. Because a marketplace has exactly one master, opening from a source is always unambiguous; the only genuine choice is opening from a shop with several paired marketplaces, which surfaces a source picker and **navigates** to the chosen marketplace's own mappings page (URL state, keeping mapping data keyed to the marketplace connection).
+
+Which platform pairs may be mapped is a **front-end-only allowlist** (`features/mappings/supported-source-platforms.ts`, `SUPPORTED_SOURCE_PLATFORMS = ['allegro', 'erli']`). This is deliberate: the mapping API stays open on capability so an operator can add mappings for an unlisted pair via the API in an emergency (as done for presta -> erli). Do not promote it to a server-side guard without an explicit decision.
+
 ### UI Library Policy
 
 No **styled** external UI library (no shadcn/ui, MUI, Mantine, Chakra, Ant Design). Visual opinions are ours — every pixel is vanilla CSS against the tokens in `apps/web/src/index.css`.
@@ -444,7 +450,7 @@ These boundaries are enforced by ESLint `no-restricted-imports` rules in `.eslin
 
 > **Note:** Features may import `useApiClient` from `app/api/` — this is the designed dependency-injection boundary for API access. A future refactor may move the hook to `shared/`, but the current crossing is intentional and not restricted by lint.
 >
-> **Note (#608):** Features may also import `useOfferCreationWizard` from `app/plugin-bindings/` — same DI-boundary precedent. Features must NOT import `plugins/` directly; per-platform extension points go through the `app/`-tier hook that closes over the registry. The folder is named `plugin-bindings` (not `plugins`) so the `**/plugins/**` lint deny-glob can stay broad without carve-out exceptions.
+> **Note (#608):** Features may also import an `app/plugin-bindings/` hook (today `useShopPublishWizard`) - same DI-boundary precedent. Features must NOT import `plugins/` directly; per-platform extension points go through the `app/`-tier hook that closes over the registry. The folder is named `plugin-bindings` (not `plugins`) so the `**/plugins/**` lint deny-glob can stay broad without carve-out exceptions.
 
 > **Exemption — `shared/plugins/` (#578/#579):** The FE plugin contract in `shared/plugins/plugin.types.ts` is a feature-aware surface by design — plugins receive `Connection` and `UseFormReturn<EditConnectionFormValues>` shapes from the connections feature. To keep the contract fully typed without hoisting feature-private types into `shared/`, the ESLint rule allows `shared/plugins/**` to type-import `Connection` and `EditConnectionFormValues` (and nothing else) from `features/connections/`. Hoisting the types into a `shared/types/` boundary is the cleaner long-term move; it's deferred until a second consumer needs them.
 
@@ -487,7 +493,6 @@ Every slot is optional.
 | `routes` | `RouteObject[]` | `root.route.tsx` | React Router route objects appended to the root route's children. |
 | `navItems` | `NavContribution[]` | `nav-registry.ts` | Sidebar nav items merged into existing nav groups by label. |
 | `apiNamespaces` | `(request) => Partial<PluginApiNamespaces>` | `createApiClient` | Factory that produces typed API client namespaces. Plugins extend `PluginApiNamespaces` via TS declaration merging. |
-| `offerCreationWizard` | `OfferCreationWizardContribution` | `useOfferCreationWizard` | Per-platform offer-creation wizard registered against the `OfferCreationLauncher` dispatch site (#608). |
 
 ### `PlatformContribution` slot reference
 

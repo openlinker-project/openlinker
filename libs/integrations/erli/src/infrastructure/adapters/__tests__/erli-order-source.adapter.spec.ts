@@ -468,6 +468,178 @@ describe('ErliOrderSourceAdapter', () => {
     });
   });
 
+  describe('getOrder — derived ship-by (#1776)', () => {
+    // OL-managed offer ids (match ERLI_PRODUCT_ID_PATTERN so per-offer GETs fire).
+    const OFFER_A = `ol_variant_${'a'.repeat(32)}`;
+    const OFFER_B = `ol_variant_${'b'.repeat(32)}`;
+    const PURCHASED_AT = '2026-06-16T09:59:00.000Z'; // Tuesday
+
+    /** Route `/orders/*` → order, `products/*` → per-offer product resource. */
+    function routeGet(
+      order: ErliOrder,
+      productsByPath: Record<string, { dispatchTime?: { period: number; unit?: string } } | Error>,
+    ): void {
+      client.get.mockImplementation((url: string) => {
+        if (url.startsWith('/orders')) {
+          return Promise.resolve(ok(order));
+        }
+        // productPath is `products/<encoded id>`.
+        const entry = productsByPath[url];
+        if (entry instanceof Error) {
+          return Promise.reject(entry);
+        }
+        return Promise.resolve(ok(entry ?? {}));
+      });
+    }
+
+    function orderWith(items: ErliOrder['items']): ErliOrder {
+      return buildErliOrder({ items, purchasedAt: PURCHASED_AT });
+    }
+
+    function line(externalId: string): ErliOrder['items'][number] {
+      return { id: 1, externalId, quantity: 1, unitPrice: 5000, name: 'X', sku: 'S' };
+    }
+
+    it('should prefer the per-offer dispatchTime over the connection default and mark the window estimated', async () => {
+      const adapterWithDefault = new ErliOrderSourceAdapter(
+        CONNECTION_ID,
+        client,
+        undefined,
+        undefined,
+        { period: 5, unit: 'day' }, // connection default (should be overridden)
+      );
+      routeGet(orderWith([line(OFFER_A)]), {
+        [`products/${OFFER_A}`]: { dispatchTime: { period: 2, unit: 'day' } },
+      });
+
+      const incoming = await adapterWithDefault.getOrder({ externalOrderId: 'erli-order-1' });
+
+      // Tue 2026-06-16 + 2 working days → Thu 2026-06-18 (per-offer wins).
+      expect(incoming.dispatchTime).toEqual({
+        from: PURCHASED_AT,
+        to: '2026-06-18T09:59:00.000Z',
+        estimated: true,
+      });
+    });
+
+    it('should fall back to the connection default when the per-offer read carries no dispatchTime', async () => {
+      const adapterWithDefault = new ErliOrderSourceAdapter(CONNECTION_ID, client, undefined, undefined, {
+        period: 2,
+        unit: 'day',
+      });
+      routeGet(orderWith([line(OFFER_A)]), { [`products/${OFFER_A}`]: {} });
+
+      const incoming = await adapterWithDefault.getOrder({ externalOrderId: 'erli-order-1' });
+
+      expect(incoming.dispatchTime?.to).toBe('2026-06-18T09:59:00.000Z');
+      expect(incoming.dispatchTime?.estimated).toBe(true);
+    });
+
+    it('should take the MAX (latest) deadline across multiple lines', async () => {
+      const adapterWithDefault = new ErliOrderSourceAdapter(CONNECTION_ID, client, undefined, undefined, {
+        period: 5,
+        unit: 'day',
+      });
+      routeGet(orderWith([line(OFFER_A), line(OFFER_B)]), {
+        [`products/${OFFER_A}`]: { dispatchTime: { period: 4, unit: 'day' } }, // latest
+        [`products/${OFFER_B}`]: { dispatchTime: { period: 1, unit: 'day' } },
+      });
+
+      const incoming = await adapterWithDefault.getOrder({ externalOrderId: 'erli-order-1' });
+
+      // The order-level ship-by is when EVERY line must have shipped (the slowest
+      // line wins). Tue 2026-06-16 + 4 working days → Wed17, Thu18, Fri19, Mon22
+      // (Sat/Sun skipped) → Mon 2026-06-22.
+      expect(incoming.dispatchTime?.to).toBe('2026-06-22T09:59:00.000Z');
+    });
+
+    it('should add calendar hours for an hour-unit handling time (no working-day math)', async () => {
+      const adapterWithDefault = new ErliOrderSourceAdapter(CONNECTION_ID, client, undefined, undefined, {
+        period: 5,
+        unit: 'day',
+      });
+      routeGet(orderWith([line(OFFER_A)]), {
+        [`products/${OFFER_A}`]: { dispatchTime: { period: 5, unit: 'hour' } },
+      });
+
+      const incoming = await adapterWithDefault.getOrder({ externalOrderId: 'erli-order-1' });
+
+      // 09:59 + 5 calendar hours → 14:59 same day (raw hour arithmetic).
+      expect(incoming.dispatchTime?.to).toBe('2026-06-16T14:59:00.000Z');
+      expect(incoming.dispatchTime?.estimated).toBe(true);
+    });
+
+    it('should add calendar months for a month-unit handling time (no working-day math)', async () => {
+      const adapterWithDefault = new ErliOrderSourceAdapter(CONNECTION_ID, client, undefined, undefined, {
+        period: 5,
+        unit: 'day',
+      });
+      routeGet(orderWith([line(OFFER_A)]), {
+        [`products/${OFFER_A}`]: { dispatchTime: { period: 2, unit: 'month' } },
+      });
+
+      const incoming = await adapterWithDefault.getOrder({ externalOrderId: 'erli-order-1' });
+
+      // 2026-06-16 + 2 calendar months → 2026-08-16 (raw month arithmetic).
+      expect(incoming.dispatchTime?.to).toBe('2026-08-16T09:59:00.000Z');
+      expect(incoming.dispatchTime?.estimated).toBe(true);
+    });
+
+    it('should degrade to the connection default when a per-offer GET fails (never fail ingestion)', async () => {
+      const adapterWithDefault = new ErliOrderSourceAdapter(CONNECTION_ID, client, undefined, undefined, {
+        period: 2,
+        unit: 'day',
+      });
+      routeGet(orderWith([line(OFFER_A)]), {
+        [`products/${OFFER_A}`]: new ErliApiException('boom', 500),
+      });
+
+      const incoming = await adapterWithDefault.getOrder({ externalOrderId: 'erli-order-1' });
+
+      // GET failed → connection default (2 working days) → Thu 2026-06-18.
+      expect(incoming.dispatchTime?.to).toBe('2026-06-18T09:59:00.000Z');
+    });
+
+    it('should leave dispatchTime unset when a line has no resolvable handling time (no default, no per-offer)', async () => {
+      const adapterNoDefault = new ErliOrderSourceAdapter(CONNECTION_ID, client); // no default
+      routeGet(orderWith([line(OFFER_A)]), { [`products/${OFFER_A}`]: {} });
+
+      const incoming = await adapterNoDefault.getOrder({ externalOrderId: 'erli-order-1' });
+
+      expect(incoming.dispatchTime).toBeUndefined();
+    });
+
+    it('should leave dispatchTime unset when purchasedAt is missing', async () => {
+      const adapterWithDefault = new ErliOrderSourceAdapter(CONNECTION_ID, client, undefined, undefined, {
+        period: 2,
+        unit: 'day',
+      });
+      client.get.mockResolvedValue(ok(buildErliOrder({ items: [line(OFFER_A)], purchasedAt: undefined })));
+
+      const incoming = await adapterWithDefault.getOrder({ externalOrderId: 'erli-order-1' });
+
+      expect(incoming.dispatchTime).toBeUndefined();
+    });
+
+    it('should not fetch per-offer products for non-OL offer ids (uses connection default)', async () => {
+      const adapterWithDefault = new ErliOrderSourceAdapter(CONNECTION_ID, client, undefined, undefined, {
+        period: 2,
+        unit: 'day',
+      });
+      // 'erli-prod-aaa' does not match ERLI_PRODUCT_ID_PATTERN → no product GET.
+      client.get.mockResolvedValue(ok(orderWith([line('erli-prod-aaa')])));
+
+      const incoming = await adapterWithDefault.getOrder({ externalOrderId: 'erli-order-1' });
+
+      expect(incoming.dispatchTime?.to).toBe('2026-06-18T09:59:00.000Z');
+      // Only the order path was fetched — never a products/ path.
+      const productCalls = client.get.mock.calls.filter(([url]) =>
+        String(url).startsWith('products/'),
+      );
+      expect(productCalls).toHaveLength(0);
+    });
+  });
+
   describe('write — OrderStatusWriteback (#997 Half A / #1168)', () => {
     const ORDER_ID = 'erli-order-xyz';
 

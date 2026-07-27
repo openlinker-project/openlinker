@@ -16,6 +16,13 @@
  *  - Status enum is `pending | purchased | cancelled | returned`.
  *  - Erli reports buyer-paid GROSS prices → `taxTreatment: 'inclusive'`.
  *
+ * Ship-by / dispatch deadline (#1776): the Erli order resource exposes no
+ * per-order dispatch deadline field. Because deriving one requires per-offer
+ * `GET /products/{externalId}` reads (I/O), the derivation lives in
+ * `ErliOrderSourceAdapter.getOrder` (post-mapping), NOT here — this mapper stays
+ * pure and never sets `dispatchTime`. The adapter stamps `estimated: true` on
+ * the derived window.
+ *
  * Identity resolution is DEFERRED to #995 and happens downstream in core
  * (`OrderIngestionService`) — this mapper carries buyer email + the line-item
  * product reference through RAW (external-only), never emitting internal `ol_*`
@@ -78,6 +85,8 @@ export function mapErliOrderToIncomingOrder(order: ErliOrder): IncomingOrder {
     pickupPoint: mapPickupPoint(order.delivery.pickupPlace),
     paymentStatus: derivePaymentStatus(order.status, order.delivery.cod),
     placedAt: order.purchasedAt,
+    // Derived ship-by (#1776) is attached by ErliOrderSourceAdapter.getOrder
+    // (needs per-offer GETs → I/O), never in this pure mapper.
     createdAt: order.created ?? nowIso,
     updatedAt: order.updated ?? nowIso,
     // Non-PII breadcrumb only — the seller-side status. Buyer email is kept OFF

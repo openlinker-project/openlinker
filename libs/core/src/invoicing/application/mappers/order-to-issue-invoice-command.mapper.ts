@@ -148,7 +148,10 @@ function buildBuyerProfile(order: Order, buyerTaxId: TaxIdentifier | null): Buye
   const name = deriveBuyerName(order, source);
   const address = toBuyerAddress(source);
 
-  return new BuyerProfile(name, buyerTaxId, address, type);
+  // #1797: thread the order's buyer e-mail (already captured from the
+  // source platform, #948) into the invoicing domain so providers that
+  // support InvoiceEmailSender can actually deliver to a known address.
+  return new BuyerProfile(name, buyerTaxId, address, type, order.customerEmail ?? null);
 }
 
 /**

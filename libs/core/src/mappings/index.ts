@@ -45,3 +45,14 @@ export type {
   FulfillmentRoutingResolution,
   CandidateProcessor,
 } from './domain/types/fulfillment-routing.types';
+
+// Delivery rider (#1792)
+export type { IDeliveryRiderService } from './application/interfaces/delivery-rider.service.interface';
+export { DeliveryRiderValues } from './domain/types/delivery-rider.types';
+export type {
+  DeliveryRider,
+  RiderSourceDeliveryMethod,
+  DeliveryRiderInput,
+  CandidateCarrier,
+  DeliveryRiderResolution,
+} from './domain/types/delivery-rider.types';

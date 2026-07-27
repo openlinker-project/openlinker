@@ -29,7 +29,7 @@ REST API rejects Basic-Auth over plain HTTP, see issue #1416 / PR #1421 fix).
 ![Test connection success, "Connection OK (287ms)"](screenshots/woocommerce/02-test-connection-success.png)
 
 ⚠️ If this fails with a 401, the cloudflared tunnel likely dropped and the `siteUrl` is stale —
-tell me and I'll restart the tunnel + update the connection config.
+restart the tunnel and update the connection config's `siteUrl` to the new tunnel URL.
 
 ## Part B — Publish a product to WooCommerce
 
@@ -53,24 +53,34 @@ tell me and I'll restart the tunnel + update the connection config.
 
 ![WooCommerce wp-admin Edit Product — adidas Originals Adicolor Classics 3-Stripes Tee, price 149 zł, description + product image correctly carried over from the master, status Draft](screenshots/woocommerce/05-wpadmin-product-created.png)
 
-> **Finding:** none on the happy path. Along the way, fixed 3 real bugs surfaced by this
-> walkthrough (all shipped, not just noted):
+> **Finding:** none on the happy path. Along the way, fixed 4 real UI bugs surfaced by this
+> walkthrough (all shipped, not just noted), plus one UX improvement:
 > - Publish-to-shop dialog: background content was visible through the overlay (missing
->   backdrop-blur) and, separately, product rows with long SKU/EAN text could overflow past the
->   dialog's rounded border (missing `overflow-x`/`min-width:0` on the CSS Grid picker list).
+>   backdrop-blur).
+> - Publish-to-shop dialog: product rows with long SKU/EAN text could overflow past the dialog's
+>   rounded border (missing `overflow-x`/`min-width:0` on the CSS Grid picker list).
 > - Toast notifications rendered *underneath* an open dialog (`z-index` collision) — invisible in
 >   practice.
-> - Configure step had no way back to the product-selection tray (only "Cancel", which discards
->   everything) — added a "← Back" button.
 > - Stock/price fields showed a blank input behind a "master" placeholder instead of the real
 >   current master value — now prefilled (editable) from master price/inventory, and "Use master
 >   stock/price for all" re-fills from master instead of silently clearing to blank.
+> - _UX improvement (not a bug):_ the Configure step had no way back to the product-selection tray
+>   (only "Cancel", which discards everything) - added a "← Back" button.
 
 ## Part C — Order ingestion (not applicable for this connection)
 
 **Skip this** — the WooCommerce connection in this demo only has `ProductPublisher` +
-`CategoryProvisioner` enabled, not `OrderSource`. There's no polling job or ingestion path wired
-up for it, so a test order placed in WooCommerce admin would never appear in OpenLinker's Orders
-list. If you want to exercise WooCommerce as an order source, that requires a *separate* connection
-configured with the `OrderSource`/`OrderProcessorManager` capabilities enabled — out of scope for
-this demo instance.
+`CategoryProvisioner` enabled, not `OrderSource`.
+
+The WooCommerce order-poll job *does* exist and *does* run: the `woocommerce-orders-poll` scheduler
+task (backed by `WooCommerceOrderSourceAdapter`) is gated by `OL_WOOCOMMERCE_POLL_SCHEDULER_ENABLED=true`
+(set on the demo worker — see the README scheduler-flags table). But that task declares
+`requiredCapability: 'OrderSource'`, so at tick time it only polls connections that have `OrderSource`
+enabled. This connection doesn't (it's a destination shop), so it's skipped —
+`listCapabilityAdapters('OrderSource')` never returns it. A test order placed in WooCommerce admin
+therefore never appears in OpenLinker's Orders list *for this connection*.
+
+So this is a not-enabled-on-this-connection situation, not a missing/unimplemented poll path. To
+exercise WooCommerce as an order source you'd enable `OrderSource` on a WooCommerce connection (or
+use a *separate* connection configured with `OrderSource`/`OrderProcessorManager`) — out of scope
+for this demo instance.

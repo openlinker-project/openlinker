@@ -73,6 +73,21 @@ describe('toIssueInvoiceCommand', () => {
     expect(cmd.buyer.name).toBe('Jan Kowalski');
   });
 
+  it('carries order.customerEmail into buyer.email (#1797)', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: makeOrder({ customerEmail: 'buyer@example.com' }),
+      connectionId: 'conn-1',
+    });
+
+    expect(cmd.buyer.email).toBe('buyer@example.com');
+  });
+
+  it('buyer.email is null when the order has no customerEmail (#1797)', () => {
+    const cmd = toIssueInvoiceCommand({ order: makeOrder(), connectionId: 'conn-1' });
+
+    expect(cmd.buyer.email).toBeNull();
+  });
+
   it('multi-line: items -> lines, currency from totals.currency, name fallback to sku then productId', () => {
     const order = makeOrder({
       totals: { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: 'EUR', taxTreatment: 'inclusive' },

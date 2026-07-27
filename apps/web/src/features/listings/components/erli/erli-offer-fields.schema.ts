@@ -2,10 +2,10 @@
  * Erli shared offer-field schema + helpers
  *
  * The single source of truth for the Erli-specific offer-creation fields
- * (dispatch time) shared by BOTH surfaces — `ErliCreateOfferWizard` (single)
- * and `ErliBulkConfigSection` (bulk). Extracting the Zod slice + the
- * config-parse / wire-mapping helpers here prevents the two surfaces from
- * drifting (#1096).
+ * (dispatch time) shared by the bulk surfaces — `ErliBulkConfigSection`
+ * (batch default) and `ErliBulkRowSection` (per-row override). Extracting the
+ * Zod slice + the config-parse / wire-mapping helpers here prevents the
+ * surfaces from drifting (#1096).
  *
  * Erli's `POST /products/{externalId}` requires `dispatchTime` ({ period,
  * unit }); the FE sends it on `overrides.platformParams.dispatchTime`, which

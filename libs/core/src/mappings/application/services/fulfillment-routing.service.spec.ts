@@ -86,6 +86,10 @@ describe('FulfillmentRoutingService', () => {
       update: jest.fn(),
       disable: jest.fn(),
     };
+    // Default active set for resolve/resolveBatch processor-availability checks
+    // (#1799): both processors a rule may point at are active unless a test
+    // narrows this. getCandidateProcessors tests override it explicitly.
+    connectionPort.list.mockResolvedValue(activeConnections(SOURCE, PS, INPOST));
     service = new FulfillmentRoutingService(repository, integrations, connectionPort);
   });
 
@@ -104,6 +108,27 @@ describe('FulfillmentRoutingService', () => {
         processorKind: 'ol_managed_carrier',
         processorConnectionId: INPOST,
         source: 'rule',
+        processorAvailable: true,
+      });
+    });
+
+    it('should report processorAvailable=false when the rule points at a non-active processor (#1799)', async () => {
+      repository.findRule.mockResolvedValue(
+        makeRule({ processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier, processorConnectionId: INPOST }),
+      );
+      // INPOST is disabled → absent from the active set.
+      connectionPort.list.mockResolvedValue(activeConnections(SOURCE, PS));
+
+      const result = await service.resolve({
+        sourceConnectionId: SOURCE,
+        sourceDeliveryMethodId: 'method-x',
+      });
+
+      expect(result).toEqual({
+        processorKind: 'ol_managed_carrier',
+        processorConnectionId: INPOST,
+        source: 'rule',
+        processorAvailable: false,
       });
     });
 
@@ -119,6 +144,7 @@ describe('FulfillmentRoutingService', () => {
         processorKind: 'omp_fulfilled',
         processorConnectionId: null,
         source: 'default',
+        processorAvailable: true,
       });
     });
 
@@ -131,6 +157,84 @@ describe('FulfillmentRoutingService', () => {
       expect(result.source).toBe('default');
       expect(result.processorKind).toBe('omp_fulfilled');
       expect(repository.findRule).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resolveBatch (#1791)', () => {
+    it('should resolve rule hits, default fallbacks, and no-method orders positionally', async () => {
+      repository.findBySourceConnectionId.mockResolvedValue([
+        makeRule({
+          sourceConnectionId: SOURCE,
+          sourceDeliveryMethodId: 'method-x',
+          processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier,
+          processorConnectionId: INPOST,
+        }),
+      ]);
+
+      const results = await service.resolveBatch([
+        { sourceConnectionId: SOURCE, sourceDeliveryMethodId: 'method-x' },
+        { sourceConnectionId: SOURCE, sourceDeliveryMethodId: 'method-unmapped' },
+        { sourceConnectionId: SOURCE, sourceDeliveryMethodId: null },
+      ]);
+
+      expect(results).toEqual([
+        { processorKind: 'ol_managed_carrier', processorConnectionId: INPOST, source: 'rule', processorAvailable: true },
+        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true },
+        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true },
+      ]);
+    });
+
+    it('should report processorAvailable=false for a batch rule hit on a non-active processor (#1799)', async () => {
+      repository.findBySourceConnectionId.mockResolvedValue([
+        makeRule({
+          sourceConnectionId: SOURCE,
+          sourceDeliveryMethodId: 'method-x',
+          processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier,
+          processorConnectionId: INPOST,
+        }),
+      ]);
+      connectionPort.list.mockResolvedValue(activeConnections(SOURCE, PS)); // INPOST disabled
+
+      const results = await service.resolveBatch([
+        { sourceConnectionId: SOURCE, sourceDeliveryMethodId: 'method-x' },
+      ]);
+
+      expect(results).toEqual([
+        { processorKind: 'ol_managed_carrier', processorConnectionId: INPOST, source: 'rule', processorAvailable: false },
+      ]);
+      // The active set is loaded once for the whole batch, not per order.
+      expect(connectionPort.list).toHaveBeenCalledTimes(1);
+    });
+
+    it('should read each distinct source connection at most once (no N+1)', async () => {
+      repository.findBySourceConnectionId.mockResolvedValue([]);
+
+      await service.resolveBatch([
+        { sourceConnectionId: SOURCE, sourceDeliveryMethodId: 'method-a' },
+        { sourceConnectionId: SOURCE, sourceDeliveryMethodId: 'method-b' },
+        { sourceConnectionId: SOURCE, sourceDeliveryMethodId: 'method-c' },
+        { sourceConnectionId: PS, sourceDeliveryMethodId: 'method-d' },
+      ]);
+
+      expect(repository.findBySourceConnectionId).toHaveBeenCalledTimes(2);
+      expect(repository.findBySourceConnectionId).toHaveBeenCalledWith(SOURCE);
+      expect(repository.findBySourceConnectionId).toHaveBeenCalledWith(PS);
+    });
+
+    it('should skip the repository entirely for an empty batch', async () => {
+      const results = await service.resolveBatch([]);
+
+      expect(results).toEqual([]);
+      expect(repository.findBySourceConnectionId).not.toHaveBeenCalled();
+    });
+
+    it('should not query connections whose orders all carry no delivery method', async () => {
+      const results = await service.resolveBatch([
+        { sourceConnectionId: SOURCE, sourceDeliveryMethodId: null },
+      ]);
+
+      expect(results).toEqual([{ processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true }]);
+      expect(repository.findBySourceConnectionId).not.toHaveBeenCalled();
     });
   });
 
