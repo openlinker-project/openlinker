@@ -43,6 +43,7 @@ import { Input } from '../../../shared/ui/input';
 import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { captureDemoEvent } from '../../demo';
 
 const STEP_LABELS = [
   'Store details',
@@ -110,6 +111,10 @@ export function WoocommerceSetupForm(): ReactElement {
       if (!valid) return;
     }
     setCompletedSteps((prev) => new Set(prev).add(stepIndex));
+    captureDemoEvent('demo_connection_wizard_step_advanced', {
+      platform: 'woocommerce',
+      step: STEP_LABELS[stepIndex],
+    });
     setStepIndex((i) => Math.min(i + 1, STEP_LABELS.length - 1));
   }
 

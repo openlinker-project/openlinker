@@ -22,6 +22,11 @@ import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode'
 import type { SessionUser } from '../../../shared/auth/session.types';
 import type { SuggestionResponse } from '../api/content.types';
 
+const captureDemoEvent = vi.fn();
+vi.mock('../../demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
+
 const viewerUser: SessionUser = {
   id: 'user_viewer',
   username: 'viewer',
@@ -66,7 +71,10 @@ async function waitForEnabledTrigger(): Promise<void> {
 }
 
 describe('SuggestionDialog', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    captureDemoEvent.mockClear();
+  });
 
   it('opens the dialog when the trigger is clicked', async () => {
     const mockApi = createMockApiClient();
@@ -260,6 +268,9 @@ describe('SuggestionDialog', () => {
       // both and throw. Query the unique `role="tooltip"` node instead.
       const tooltip = await screen.findByRole('tooltip');
       expect(tooltip).toHaveTextContent(DEMO_READ_ONLY_ACTION_MESSAGE);
+      expect(captureDemoEvent).toHaveBeenCalledWith('demo_ai_suggest_attempted', {
+        channel: 'master',
+      });
     });
 
     it('keeps the trigger enabled for an admin session even when the deployment is in demo mode', async () => {

@@ -1228,6 +1228,17 @@ textarea,
   background: var(--bg-surface-hover);
 }
 
+/* ── Open-source link (#1790) ── */
+.shell-workspace__github-link {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.shell-workspace__github-link:hover {
+  text-decoration: underline;
+}
+
 /* Mobile drawer — native <dialog>. Hidden on desktop. */
 .shell-drawer {
   padding: 0;

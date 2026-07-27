@@ -23,6 +23,7 @@ import { StatusBadge } from '../../../shared/ui/status-badge';
 import { KsefNumberingEditor } from './ksef-numbering-editor';
 import { KsefNumberingRoutingCard, type RoutingSeriesPrefill } from './ksef-numbering-routing-card';
 import { KSEF_TIME_ZONE, documentTypeLabel, RESET_POLICY_LABELS } from './ksef-numbering.lib';
+import { captureDemoEvent } from '../../../features/demo';
 
 interface KsefNumberingSeriesTabProps {
   connectionId: string;
@@ -57,6 +58,11 @@ export function KsefNumberingSeriesTab({
 
   const seriesQuery = useNumberingSeriesListQuery();
   const routesQuery = useNumberingRoutesQuery(connectionId);
+
+  function openCreate(): void {
+    captureDemoEvent('demo_ksef_series_editor_opened', { mode: 'create' });
+    setMode({ kind: 'create' });
+  }
 
   // When returning from the editor to the list, move focus to the Series heading.
   useEffect(() => {
@@ -124,7 +130,7 @@ export function KsefNumberingSeriesTab({
           title="No numbering series yet"
           message="Create a series before issuing invoices — KSeF needs a unique, sequential number for every document."
           action={
-            <Button tone="primary" onClick={() => setMode({ kind: 'create' })}>
+            <Button tone="primary" onClick={openCreate}>
               Add series
             </Button>
           }
@@ -165,7 +171,7 @@ export function KsefNumberingSeriesTab({
               </Select>
             </>
           ) : null}
-          <Button tone="primary" onClick={() => setMode({ kind: 'create' })}>
+          <Button tone="primary" onClick={openCreate}>
             Add series
           </Button>
         </div>
@@ -202,7 +208,13 @@ export function KsefNumberingSeriesTab({
                 <td className="mono-text tabular">{nextNumber(s)}</td>
                 <td>{RESET_POLICY_LABELS[s.resetPolicy]}</td>
                 <td className="numbering-table__actions">
-                  <Button tone="secondary" onClick={() => setMode({ kind: 'edit', series: s })}>
+                  <Button
+                    tone="secondary"
+                    onClick={() => {
+                      captureDemoEvent('demo_ksef_series_editor_opened', { mode: 'edit' });
+                      setMode({ kind: 'edit', series: s });
+                    }}
+                  >
                     Edit
                   </Button>
                 </td>

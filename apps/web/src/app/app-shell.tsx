@@ -46,6 +46,7 @@ import { CommandPaletteTrigger } from '../shared/ui/command-palette';
 import { DemoBanner } from '../shared/ui/demo-banner';
 import { useSystemConfigQuery } from '../features/system';
 import {
+  captureDemoEvent,
   disableDemoAnalytics,
   getDemoAnalyticsConsent,
   initDemoIntegrations,
@@ -155,14 +156,27 @@ function SidebarBrand(): ReactElement {
 interface WorkspaceFooterProps {
   onLogout?: () => void;
   username?: string;
+  location: 'sidebar_footer' | 'mobile_drawer_footer';
+  demoMode: boolean;
 }
 
-function WorkspaceFooter({ onLogout, username }: WorkspaceFooterProps): ReactElement {
+function WorkspaceFooter({ onLogout, username, location, demoMode }: WorkspaceFooterProps): ReactElement {
   return (
     <div className="shell-workspace">
       <div className="shell-workspace__header">
         <strong className="shell-workspace__name">Default organization</strong>
       </div>
+      {demoMode ? (
+        <a
+          className="shell-workspace__github-link"
+          href="https://github.com/openlinker-project/openlinker"
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => captureDemoEvent('demo_opensource_link_clicked', { location })}
+        >
+          View on GitHub ↗
+        </a>
+      ) : null}
       {username ? (
         <div className="shell-workspace__user">
           <span className="shell-workspace__username">{username}</span>
@@ -313,6 +327,7 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   const handleDisableAnalytics = useCallback((): void => {
     setDemoAnalyticsConsent('declined');
     setAnalyticsConsent('declined');
+    captureDemoEvent('demo_analytics_disabled', {});
     disableDemoAnalytics();
   }, []);
 
@@ -327,6 +342,8 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
         <WorkspaceFooter
           username={username}
           onLogout={username ? handleLogout : undefined}
+          location="sidebar_footer"
+          demoMode={demoMode}
         />
       </div>
 
@@ -352,6 +369,8 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
           <WorkspaceFooter
             username={username}
             onLogout={username ? handleLogout : undefined}
+            location="mobile_drawer_footer"
+            demoMode={demoMode}
           />
         </div>
       </dialog>

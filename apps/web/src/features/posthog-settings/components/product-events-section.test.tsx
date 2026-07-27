@@ -52,7 +52,7 @@ describe('ProductEventsSection', () => {
   it('dims the event-groups panel when disabled', () => {
     renderWithProviders(<Harness disabled />);
 
-    const groupCheckbox = screen.getByLabelText('conversion-intent') as HTMLInputElement;
+    const groupCheckbox = screen.getByLabelText('conversion-intent');
     expect(groupCheckbox).toBeDisabled();
   });
 

@@ -97,6 +97,134 @@ export const DemoEventCatalog = {
     group: 'conversion-intent',
     props: {} as Record<string, never>,
   },
+
+  // ── Connections / product import (#1789) ─────────────────────────────
+  demo_connection_platform_selected: {
+    description: 'Viewer picked a platform card on the new-connection page',
+    group: 'connections-reel',
+    props: { platformType: '' } as { platformType: string },
+  },
+  demo_adapters_catalog_viewed: {
+    description: 'Viewer loaded the adapters catalog page',
+    group: 'connections-reel',
+    props: { adapterCountBucket: '' } as { adapterCountBucket: string },
+  },
+  demo_connections_filtered: {
+    description: 'Viewer applied a filter on the connections list',
+    group: 'connections-reel',
+    props: { filter: '', value: '' } as { filter: string; value: string },
+  },
+  demo_connection_wizard_step_advanced: {
+    description: 'Viewer advanced a step in a platform connection setup wizard',
+    group: 'connections-reel',
+    props: { platform: '', step: '' } as { platform: string; step: string },
+  },
+  demo_connection_create_attempted: {
+    description:
+      'Viewer clicked "Create connection" — the locked write action — the primary connection-creation intent-to-convert signal',
+    group: 'conversion-intent',
+    props: { platform: '' } as { platform: string },
+  },
+  demo_connection_test_attempted: {
+    description:
+      'Viewer clicked "Test connection" — the locked write action — the primary connection-test intent-to-convert signal',
+    group: 'conversion-intent',
+    props: { platform: '' } as { platform: string },
+  },
+  demo_connection_sync_dialog_opened: {
+    description: 'Viewer opened the Trigger sync dialog for a connection',
+    group: 'connections-reel',
+    props: {} as Record<string, never>,
+  },
+
+  // ── Category mapping (#1789) ──────────────────────────────────────────
+  demo_category_mapping_opened: {
+    description: 'Viewer opened the category mapping page for a connection',
+    group: 'category-mapping-reel',
+    props: { mappedCountBucket: '' } as { mappedCountBucket: string },
+  },
+  demo_category_source_selected: {
+    description: 'Viewer changed the marketplace/source connection on the category mapping page',
+    group: 'category-mapping-reel',
+    props: {} as Record<string, never>,
+  },
+  demo_category_map_attempted: {
+    description:
+      'Viewer selected a category to map (not gated — the server may reject an invalid pairing, still a valid intent signal)',
+    group: 'category-mapping-reel',
+    props: {} as Record<string, never>,
+  },
+  demo_mapping_save_attempted: {
+    description:
+      'Viewer clicked "Save mappings" on a mapping panel (not gated — the server may reject the save)',
+    group: 'category-mapping-reel',
+    props: { mappingKind: '' } as { mappingKind: string },
+  },
+
+  // ── KSeF invoice numbering (#1789) ────────────────────────────────────
+  demo_ksef_numbering_tab_switched: {
+    description: 'Viewer switched tabs on the KSeF numbering page',
+    group: 'ksef-numbering-reel',
+    props: { tab: '' } as { tab: string },
+  },
+  demo_ksef_series_editor_opened: {
+    description: 'Viewer opened the KSeF numbering series editor',
+    group: 'ksef-numbering-reel',
+    props: { mode: 'create' } as { mode: 'create' | 'edit' },
+  },
+  demo_ksef_numbering_variable_inserted: {
+    description: 'Viewer inserted a numbering variable into the series template',
+    group: 'ksef-numbering-reel',
+    props: { variable: '' } as { variable: string },
+  },
+  demo_ksef_series_save_attempted: {
+    description:
+      'Viewer clicked "Save series" — the locked write action — the primary KSeF-numbering intent-to-convert signal',
+    group: 'conversion-intent',
+    props: { mode: 'create' } as { mode: 'create' | 'edit' },
+  },
+
+  // ── AI descriptions (#1790) ──────────────────────────────────────────
+  demo_ai_suggest_attempted: {
+    description:
+      'Viewer clicked "Suggest with AI" — the locked write action — the primary AI-description intent-to-convert signal',
+    group: 'conversion-intent',
+    props: { channel: '' } as { channel: string },
+  },
+  demo_content_publish_attempted: {
+    description: 'Viewer clicked "Publish" on a content (description) draft',
+    group: 'ai-descriptions',
+    props: { channel: '' } as { channel: string },
+  },
+
+  // ── Open source (#1790) ──────────────────────────────────────────────
+  demo_opensource_link_clicked: {
+    description: 'Viewer clicked the "View on GitHub" link in the app shell',
+    group: 'opensource',
+    props: { location: '' } as { location: string },
+  },
+
+  // ── Cross-cutting baseline (#1790) ───────────────────────────────────
+  demo_login_succeeded: {
+    description: 'Viewer successfully logged in',
+    group: 'baseline',
+    props: { role: '' } as { role: string },
+  },
+  demo_command_palette_opened: {
+    description: 'Viewer opened the ⌘K command palette',
+    group: 'baseline',
+    props: { trigger: 'keyboard' } as { trigger: 'keyboard' | 'click' },
+  },
+  demo_command_palette_result_selected: {
+    description: 'Viewer selected a result in the command palette',
+    group: 'baseline',
+    props: { source: '' } as { source: string },
+  },
+  demo_analytics_disabled: {
+    description: 'Viewer opted out of demo analytics via the banner',
+    group: 'baseline',
+    props: {} as Record<string, never>,
+  },
 } as const;
 
 export type DemoEventName = keyof typeof DemoEventCatalog;

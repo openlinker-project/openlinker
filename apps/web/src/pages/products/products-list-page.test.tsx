@@ -9,11 +9,13 @@ import {
 } from '../../test/test-utils';
 import { ProductsListPage } from './products-list-page';
 import type { PaginatedProducts } from '../../features/products/api/products.types';
+import type * as DemoModule from '../../features/demo';
 
 const captureDemoEvent = vi.fn();
-vi.mock('../../features/demo', () => ({
-  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
-}));
+vi.mock('../../features/demo', async (importOriginal): Promise<typeof DemoModule> => {
+  const actual = await importOriginal<typeof DemoModule>();
+  return { ...actual, captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args) };
+});
 
 const navigateMock = vi.fn();
 vi.mock('react-router-dom', async (): Promise<typeof ReactRouterDom> => {
