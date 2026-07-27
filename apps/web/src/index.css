@@ -6711,6 +6711,10 @@ a.kpi-card:focus-visible {
   background: var(--border-subtle);
 }
 .publish-dest-rail__option {
+  /* height + box-shadow reset - the global `button, .button {}` base (fixed
+     2rem height, accent box-shadow) otherwise survives and collapses this
+     two-line (name + kind-hint) option so its content overflows the padded
+     box. Mirrors the .variant-card__header reset (#1720). */
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -6718,10 +6722,12 @@ a.kpi-card:focus-visible {
   box-sizing: border-box;
   text-align: left;
   font: inherit;
+  height: auto;
   padding: var(--space-4) var(--space-4);
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
+  box-shadow: none;
   color: var(--text-primary);
   cursor: pointer;
 }
