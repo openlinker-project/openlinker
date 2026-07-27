@@ -451,6 +451,7 @@ Required implementation rules:
 - style modifiers after their base rules and keep state classes explicit, for example `status-pill--error` or `context-chip--info`
 - responsive overrides must match the layout model being changed; use grid overrides for grid layouts and flex overrides for flex layouts
 - add or extend shared primitives before introducing page-specific one-off styling
+- narrow-viewport table-to-cards (#1784): where a dense mapping/config table must stay usable on small screens, opt the table into `.data-table--stackable` and add a `data-label` to each `<td>`. At `<= 640px` a scoped block collapses each row into a card (source cell as the heading; remaining cells stack under their `data-label`). Prefer this over a "desktop-only" banner — the mapping page dropped `DesktopOnlyBanner` for it. The rule is scoped to the modifier so the app-wide `DataTable` is untouched.
 
 Recommended CSS structure for `apps/web/src/index.css`:
 
