@@ -11,6 +11,7 @@
  *
  * @module libs/core/src/listings/domain/ports
  */
+import type { ProductListingsCoverage } from '../types/offer-mapping.types';
 
 export interface ShopProductMappingRepositoryPort {
   /**
@@ -23,4 +24,15 @@ export interface ShopProductMappingRepositoryPort {
     connectionId: string,
     internalIds: ReadonlyArray<string>
   ): Promise<Map<string, number>>;
+
+  /**
+   * Count DISTINCT listed variants per (product, connection) for the given
+   * product IDs, scoped to `entityType = 'ShopProduct'`. The shop-side
+   * sibling of `OfferMappingRepositoryPort.countListedVariantsByProducts`
+   * (#1720) - closes the gap where a product published to a shop connection
+   * (#1042) reported zero coverage on the products cockpit.
+   */
+  countListedVariantsByProducts(
+    productIds: readonly string[]
+  ): Promise<readonly ProductListingsCoverage[]>;
 }

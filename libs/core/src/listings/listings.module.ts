@@ -23,6 +23,7 @@ import { AttributeProjectionService } from './application/services/attribute-pro
 import { OfferMappingRepository } from './infrastructure/persistence/repositories/offer-mapping.repository';
 import { ShopProductMappingRepository } from './infrastructure/persistence/repositories/shop-product-mapping.repository';
 import { PublishedVariantsService } from './application/services/published-variants.service';
+import { ShopProductMappingsService } from './application/services/shop-product-mappings.service';
 import { OfferCreationRecordOrmEntity } from './infrastructure/persistence/entities/offer-creation-record.orm-entity';
 import { OfferCreationRecordRepository } from './infrastructure/persistence/repositories/offer-creation-record.repository';
 import { BulkListingBatchOrmEntity } from './infrastructure/persistence/entities/bulk-listing-batch.orm-entity';
@@ -97,6 +98,7 @@ import {
   SHOP_ATTRIBUTE_READ_SERVICE_TOKEN,
   SHOP_PRODUCT_MAPPING_REPOSITORY_TOKEN,
   PUBLISHED_VARIANTS_SERVICE_TOKEN,
+  SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN,
 } from './listings.tokens';
 
 // Re-export tokens for convenience
@@ -138,6 +140,7 @@ export {
   SHOP_ATTRIBUTE_READ_SERVICE_TOKEN,
   SHOP_PRODUCT_MAPPING_REPOSITORY_TOKEN,
   PUBLISHED_VARIANTS_SERVICE_TOKEN,
+  SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN,
 } from './listings.tokens';
 
 @Module({
@@ -205,6 +208,7 @@ export {
     OfferStockRestoreService,
     ShopProductMappingRepository,
     PublishedVariantsService,
+    ShopProductMappingsService,
     {
       provide: OFFER_LINKING_SERVICE_TOKEN,
       useExisting: OfferLinkingService,
@@ -216,6 +220,10 @@ export {
     {
       provide: PUBLISHED_VARIANTS_SERVICE_TOKEN,
       useExisting: PublishedVariantsService,
+    },
+    {
+      provide: SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN,
+      useExisting: ShopProductMappingsService,
     },
     {
       provide: OFFER_MAPPING_SYNC_SERVICE_TOKEN,
@@ -390,6 +398,7 @@ export {
     SHOP_ATTRIBUTE_READ_SERVICE_TOKEN,
     SHOP_PRODUCT_MAPPING_REPOSITORY_TOKEN,
     PUBLISHED_VARIANTS_SERVICE_TOKEN,
+    SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN,
   ],
 })
 export class ListingsModule {}
