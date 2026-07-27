@@ -54,6 +54,9 @@ import { useDemoMode } from '../../features/system';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
 import { itemsSummary, paymentBadge, invoiceBadge } from '../../features/orders/lib/order-row';
+import { deriveDeliveryOutcome, hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
+import { DeliveryOutcomeChip } from '../../features/orders/components/delivery-chip';
+import { resolveDeliveryOwner } from '../../features/orders/lib/delivery-owner';
 import { capSelectionPerSource, sourcesAtCap } from '../../features/orders/lib/dispatch-input';
 import { BulkDispatchDialog } from '../../features/orders/components/bulk-dispatch-dialog';
 import { OrderRowDetail } from '../../features/orders/components/order-row-detail';
@@ -111,6 +114,17 @@ const HEALTH_SEGMENTS: readonly HealthSegment[] = [
  */
 function isOrderHealth(value: string | null): value is OrderHealthValue {
   return value !== null && (OrderHealthValues as readonly string[]).includes(value);
+}
+
+/**
+ * Whether the row's delivery rider is one OpenLinker could take over (#1776) —
+ * drives the quiet accent-edge + caret marker on a shop-fulfilled chip. The list
+ * stays button-free; the fix-it action lives on the order detail.
+ */
+function isTakeoverRider(rider: OrderRecord['deliveryRider']): boolean {
+  return (
+    rider?.rider === 'unmapped' || rider?.rider === 'not-connected' || rider?.rider === 'disabled'
+  );
 }
 
 /** Triage default ordering — soonest ship-by first (NULLs last), server-backed. */
@@ -317,6 +331,16 @@ export function OrdersListPage(): ReactElement {
     const map = new Map<string, string>();
     (connectionsQuery.data ?? []).forEach((c) => {
       map.set(c.id, c.platformType);
+    });
+    return map;
+  }, [connectionsQuery.data]);
+
+  // id → {name, platformType} for the delivery badge's owner resolution (#1776).
+  // Presentation-only lookup: it names the connection the BE already routed to.
+  const connectionInfoById = useMemo(() => {
+    const map = new Map<string, { name: string; platformType: string }>();
+    (connectionsQuery.data ?? []).forEach((c) => {
+      map.set(c.id, { name: c.name, platformType: c.platformType });
     });
     return map;
   }, [connectionsQuery.data]);
@@ -693,29 +717,62 @@ export function OrdersListPage(): ReactElement {
           const sla = slaBadge(order.slaState);
           const due = order.dispatchByAt ?? null;
           const view = formatShipBy(due);
+          // Estimated ship-by qualifier (#1776): a muted "est." label when the
+          // deadline is an OL-side estimate (Erli), absent for authoritative
+          // marketplace commitments (Allegro). Labelled for screen readers +
+          // hover so the convention isn't sight-only, and rendered as the same
+          // "est." text on every surface (order-detail, row-detail, list).
+          const estMark = order.dispatchByEstimated ? (
+            <span
+              className="text-muted"
+              aria-label="Estimated"
+              title="OpenLinker estimate - not a marketplace-confirmed deadline"
+            >
+              est.{' '}
+            </span>
+          ) : null;
           // Carrier at row level (#1617): the list can't fetch per-order
           // shipments, so `shipping.methodName` (the source's stated delivery
-          // method) is the best signal, falling back to the pickup-point name.
-          const carrier = parsed.shipping?.methodName ?? parsed.pickupPoint?.name ?? null;
-          // Offer "Generate label" ONLY when fulfillment is EXPLICITLY not-shipped
-          // and the order isn't cancelled (#1713). An undefined fulfillmentState
-          // (genuinely unknown) or a cancelled order shows the passive fulfillment
-          // badge instead — never a dead-end action.
+          // method) is the best signal, then the raw method id (#1776), then
+          // the pickup-point name. Snapshot-only is the correct ceiling here.
+          const carrier =
+            parsed.shipping?.methodName ??
+            parsed.shipping?.methodId ??
+            parsed.pickupPoint?.name ??
+            null;
+          // Mapping-aware delivery chip (#1793): outcome + rider stacked. The
+          // rider comes straight off the order response (BE-gated to `default`
+          // resolutions).
+          const deliveryOutcome = deriveDeliveryOutcome({
+            processorKind: order.deliveryResolution?.processorKind,
+            // Use the typed #1792 source-method fields (not the snapshot carrier
+            // proxy) so the list agrees with the detail for methodId-only orders.
+            hasMethod: Boolean(order.sourceDeliveryMethodId ?? order.sourceDeliveryMethodName),
+            // Snapshot-only divergence (documented, not silent): the list uses
+            // the rollup `fulfillmentState` because it can't fetch per-row
+            // shipments, whereas the detail uses booked-shipment presence.
+            isFulfilled:
+              order.fulfillmentState === 'dispatched' || order.fulfillmentState === 'delivered',
+            processorAvailable: order.deliveryResolution?.processorAvailable,
+            cancelled: parsed.status === 'cancelled',
+          });
+          // "Generate label" is offered ONLY when OpenLinker has a live own-carrier
+          // route (#1799): fulfillment EXPLICITLY not-shipped, the order isn't
+          // cancelled (#1713), and routing resolved to an available OL carrier.
+          // Shop-fulfilled / no-method / unmapped / not-connected / disabled-carrier
+          // orders have no OL label to generate — the passive fulfillment badge (and
+          // the delivery rider) show instead, never a dead-end action.
           const canGenerateLabel =
-            order.fulfillmentState === 'not-shipped' && parsed.status !== 'cancelled';
+            order.fulfillmentState === 'not-shipped' &&
+            parsed.status !== 'cancelled' &&
+            hasLiveOlCarrierRoute(order.deliveryResolution);
           return (
             <span className="orders-cell-stack">
-              {canGenerateLabel ? (
-                <Link
-                  className="orders-row-cta"
-                  to={`/orders/${order.internalOrderId}#shipment`}
-                >
-                  <span className="orders-row-cta__plus" aria-hidden="true">
-                    +
-                  </span>{' '}
-                  Generate label
-                </Link>
-              ) : (
+              {/* When the row offers "Generate label" the CTA is deferred to sit
+                  directly under the Awaiting-label delivery chip (the state it
+                  resolves), so the top slot only carries the passive fulfillment
+                  badge for non-actionable rows. */}
+              {canGenerateLabel ? null : (
                 <StatusBadge tone={f.tone} withDot compact>
                   {f.label}
                 </StatusBadge>
@@ -726,13 +783,41 @@ export function OrdersListPage(): ReactElement {
                     {sla.label}
                   </StatusBadge>
                   {view ? (
-                    <span className="text-muted orders-cell-sub mono tabular">{view.remaining}</span>
+                    <span className="text-muted orders-cell-sub mono tabular">
+                      {estMark}
+                      {view.remaining}
+                    </span>
                   ) : null}
                 </span>
               ) : due && view ? (
                 <StatusBadge tone={SHIP_BY_TONE[view.level]} withDot compact>
+                  {estMark}
                   {view.remaining}
                 </StatusBadge>
+              ) : null}
+              {/* The list carries no rider chip and no button: the owner badge
+                  says who ships, and a quiet accent edge + caret marks the rows
+                  OpenLinker could take over. The actionable banner + fix-it
+                  button live on the order-detail Delivery panel. */}
+              <DeliveryOutcomeChip
+                outcome={deliveryOutcome}
+                owner={resolveDeliveryOwner(
+                  order.deliveryResolution,
+                  order.deliveryRider,
+                  connectionInfoById,
+                )}
+                switchable={deliveryOutcome === 'shop-fulfilled' && isTakeoverRider(order.deliveryRider)}
+              />
+              {canGenerateLabel ? (
+                <Link
+                  className="orders-row-cta"
+                  to={`/orders/${order.internalOrderId}#shipment`}
+                >
+                  <span className="orders-row-cta__plus" aria-hidden="true">
+                    +
+                  </span>{' '}
+                  Generate label
+                </Link>
               ) : null}
               {carrier ? (
                 <span className="text-muted orders-cell-sub orders-carrier" title={carrier}>
@@ -1214,13 +1299,37 @@ export function OrdersListPage(): ReactElement {
                 const items = itemsSummary(parsed.items);
                 const pay = paymentBadge(parsed.paymentStatus);
                 const cust = customerName(parsed);
-                const carrier = parsed.shipping?.methodName ?? parsed.pickupPoint?.name ?? null;
+                // Snapshot-only (#1776): method name → method id → pickup name.
+                const carrier =
+                  parsed.shipping?.methodName ??
+                  parsed.shipping?.methodId ??
+                  parsed.pickupPoint?.name ??
+                  null;
+                // Mapping-aware delivery chip (#1793) — same derivation as the
+                // desktop cell.
+                const deliveryOutcome = deriveDeliveryOutcome({
+                  processorKind: order.deliveryResolution?.processorKind,
+                  // Typed #1792 source-method fields, to match the detail (see desktop cell).
+                  hasMethod: Boolean(
+                    order.sourceDeliveryMethodId ?? order.sourceDeliveryMethodName,
+                  ),
+                  // Snapshot-only divergence (documented): list uses the rollup
+                  // fulfillmentState; detail uses booked-shipment presence.
+                  isFulfilled:
+                    order.fulfillmentState === 'dispatched' ||
+                    order.fulfillmentState === 'delivered',
+                  processorAvailable: order.deliveryResolution?.processorAvailable,
+                  cancelled: parsed.status === 'cancelled',
+                });
                 const inv = parsed.invoice ? invoiceBadge(parsed.invoice) : null;
                 const fulfillment = fulfillmentBadge(order.fulfillmentState);
-                // Offer "Generate label" ONLY when explicitly not-shipped and not
-                // cancelled (#1713) — otherwise the passive fulfillment badge.
+                // "Generate label" only when there's a live OL carrier route
+                // (#1799), same gate as the desktop cell — otherwise the passive
+                // fulfillment badge (shop-fulfilled / unmapped / disabled / etc.).
                 const canGenerateLabel =
-                  order.fulfillmentState === 'not-shipped' && parsed.status !== 'cancelled';
+                  order.fulfillmentState === 'not-shipped' &&
+                  parsed.status !== 'cancelled' &&
+                  hasLiveOlCarrierRoute(order.deliveryResolution);
                 return (
                   <div className="orders-card-summary">
                     {items ? (
@@ -1283,26 +1392,45 @@ export function OrdersListPage(): ReactElement {
                       <div className="orders-card-facts__wide">
                         <dt>Shipment</dt>
                         <dd>
-                          {canGenerateLabel ? (
-                            <Link
-                              className="orders-row-cta"
-                              to={`/orders/${order.internalOrderId}#shipment`}
-                            >
-                              <span className="orders-row-cta__plus" aria-hidden="true">
-                                +
-                              </span>{' '}
-                              Generate label
-                            </Link>
-                          ) : (
-                            <span className="orders-cell-stack">
+                          <span className="orders-cell-stack">
+                            {/* CTA deferred under the Awaiting-label chip, mirroring
+                                the desktop shipment column. */}
+                            {canGenerateLabel ? null : (
                               <StatusBadge tone={fulfillment.tone} withDot compact>
                                 {fulfillment.label}
                               </StatusBadge>
-                              {carrier ? (
-                                <span className="text-muted orders-cell-sub">{carrier}</span>
-                              ) : null}
-                            </span>
-                          )}
+                            )}
+                            {/* Owner badge + quiet takeover marker, no rider chip
+                                and no button - mirrors the desktop cell. */}
+                            <DeliveryOutcomeChip
+                              outcome={deliveryOutcome}
+                              owner={resolveDeliveryOwner(
+                                order.deliveryResolution,
+                                order.deliveryRider,
+                                connectionInfoById,
+                              )}
+                              switchable={
+                                deliveryOutcome === 'shop-fulfilled' &&
+                                isTakeoverRider(order.deliveryRider)
+                              }
+                            />
+                            {canGenerateLabel ? (
+                              <Link
+                                className="orders-row-cta"
+                                to={`/orders/${order.internalOrderId}#shipment`}
+                              >
+                                <span className="orders-row-cta__plus" aria-hidden="true">
+                                  +
+                                </span>{' '}
+                                Generate label
+                              </Link>
+                            ) : null}
+                            {carrier ? (
+                              <span className="text-muted orders-cell-sub" title={carrier}>
+                                {carrier}
+                              </span>
+                            ) : null}
+                          </span>
                         </dd>
                       </div>
                     </dl>
@@ -1332,6 +1460,15 @@ export function OrdersListPage(): ReactElement {
                       </StatusBadge>
                     ) : shipBy ? (
                       <StatusBadge tone={SHIP_BY_TONE[shipBy.level]} withDot compact>
+                        {order.dispatchByEstimated ? (
+                          <span
+                            className="text-muted"
+                            aria-label="Estimated"
+                            title="OpenLinker estimate - not a marketplace-confirmed deadline"
+                          >
+                            est.{' '}
+                          </span>
+                        ) : null}
                         {shipBy.remaining}
                       </StatusBadge>
                     ) : null}

@@ -120,13 +120,22 @@ in the demo banner.
 | `OL_POSTHOG_KEY` | PostHog project API key (publishable, write-only ingestion key — never a personal/private key). Unset by default. |
 | `OL_POSTHOG_HOST` | PostHog ingestion host. Defaults to `https://eu.posthog.com` when `OL_POSTHOG_KEY` is set. |
 
-**Only run session recording against synthetic seed data.** Recording masks
-all form inputs and all rendered text (`maskAllInputs` + a mask-everything
-text selector), but a demo instance pointed at real shop data would still
-expose non-text signal (order IDs in URLs, image content, layout) to
-PostHog cloud. Session recording is intended for the seeded demo dataset
-only — never enable `OL_POSTHOG_KEY` on an instance connected to a live
-PrestaShop/Allegro/Erli store with real customer data.
+**Only run session recording against synthetic seed data. This is a hard
+requirement, not a precaution.** Recording masks **passwords only** (#1877)
+— every other input value and all rendered page text is captured verbatim,
+because a replay that masks everything shows layout and no content, which
+makes the recording useless.
+
+So a demo instance pointed at real shop data ships real buyer PII to
+PostHog cloud: customer names and addresses on the orders and customers
+surfaces, and tax IDs on the KSeF / invoicing surfaces — plus the non-text
+signal that was always exposed (order IDs in URLs, product image content,
+layout).
+
+Never set `OL_POSTHOG_KEY` on an instance connected to a live
+PrestaShop / Allegro / Erli / WooCommerce store with real customer data.
+If you need recordings against a realistic dataset, seed it synthetically
+rather than relaxing this rule.
 
 A visitor who accepted the consent prompt can revoke it at any time from
 the demo banner ("Disable" next to "Analytics on").

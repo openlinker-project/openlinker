@@ -9,10 +9,11 @@
  * returns its `platformType`.
  *
  * Returns `undefined` when the carrier can't be predicted — no matching rule,
- * an OMP-fulfilled route (the destination store ships it, no OL carrier), or a
- * processor connection that can't be resolved to a live connection — so callers
- * fall back to the full currency union and let the adapter preflight stay the
- * backstop.
+ * an OMP-fulfilled route (the destination store ships it, no OL carrier), a
+ * processor connection that can't be resolved to a live connection, or one whose
+ * status is not `active` (a disabled carrier is not a live route, #1799) — so
+ * callers fall back to the full currency union and let the adapter preflight
+ * stay the backstop.
  *
  * @module features/orders/hooks
  */
@@ -43,6 +44,11 @@ export function useRoutedCarrierPlatform(
     const processor = (connectionsQuery.data ?? []).find(
       (c) => c.id === rule.processorConnectionId,
     );
-    return processor?.platformType;
+    // A disabled (non-active) carrier is not a live route (#1799) — don't scope
+    // the COD currency field to it; fall back to the full union.
+    if (!processor || processor.status !== 'active') {
+      return undefined;
+    }
+    return processor.platformType;
   }, [deliveryMethodId, routingRulesQuery.data, connectionsQuery.data]);
 }

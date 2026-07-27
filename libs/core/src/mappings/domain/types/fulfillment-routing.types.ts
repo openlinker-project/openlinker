@@ -94,11 +94,19 @@ export interface FulfillmentRoutingQuery {
  * matched): under today's fan-out there is no single fulfilling OMP, so each
  * destination resolves its own carrier via the existing chain. It is non-null
  * for an explicit rule.
+ *
+ * `processorAvailable` reports whether the resolved processor connection is
+ * currently usable (status `active`). A rule pointing at a now-disabled (or
+ * otherwise non-active) processor still matches, but resolves `false` here so
+ * downstream reads don't present a dead route as live — mirroring the
+ * `status: 'active'` filter `getCandidateProcessors` already applies (#1799).
+ * Always `true` for the `default` fallback (no processor to gate).
  */
 export interface FulfillmentRoutingResolution {
   processorKind: FulfillmentProcessorKind;
   processorConnectionId: string | null;
   source: FulfillmentRoutingSource;
+  processorAvailable: boolean;
 }
 
 /**

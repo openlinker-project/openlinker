@@ -397,6 +397,7 @@ describe('FulfillmentStatusSyncService', () => {
         processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier,
         processorConnectionId: 'conn-inpost',
         source: 'rule',
+        processorAvailable: true,
       });
       orderRecords.findMany.mockResolvedValue({
         items: [makeOrderRecord()],
@@ -416,6 +417,7 @@ describe('FulfillmentStatusSyncService', () => {
         processorKind: FULFILLMENT_PROCESSOR_KIND.OmpFulfilled,
         processorConnectionId: 'conn-different-ps',
         source: 'rule',
+        processorAvailable: true,
       });
       orderRecords.findMany.mockResolvedValue({
         items: [makeOrderRecord()],
@@ -433,6 +435,7 @@ describe('FulfillmentStatusSyncService', () => {
         processorKind: FULFILLMENT_PROCESSOR_KIND.OmpFulfilled,
         processorConnectionId: PS,
         source: 'rule',
+        processorAvailable: true,
       });
       orderRecords.findMany.mockResolvedValue({
         items: [makeOrderRecord()],

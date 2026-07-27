@@ -27,7 +27,12 @@ import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/us
 import type { OrderSyncStatusValue } from '../../features/orders/api/orders.types';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 import { useConnectionsQuery } from '../../features/connections';
-import { useOrderShipmentsQuery, pickActiveShipment, getCarrierDisplayName } from '../../features/shipments';
+import {
+  useOrderShipmentsQuery,
+  pickActiveShipment,
+  getCarrierDisplayName,
+  SHIPPING_METHOD_LABEL,
+} from '../../features/shipments';
 import { OrderCustomerCard } from '../../features/orders/components/order-customer-card';
 import { OrderActivityTimeline } from '../../features/orders/components/order-activity-timeline';
 import { OrderShipmentPanel } from '../../features/orders/components/order-shipment-panel';
@@ -37,6 +42,8 @@ import { OrderHealthSummary } from '../../features/orders/components/order-healt
 import { OrderPricingPanel } from '../../features/orders/components/order-pricing-panel';
 import { OrderDeliveryPanel } from '../../features/orders/components/order-delivery-panel';
 import { deriveFulfillment } from '../../features/orders/lib/order-health';
+import { deriveDeliveryOutcome } from '../../features/orders/lib/delivery-outcome';
+import { resolveDeliveryOwner } from '../../features/orders/lib/delivery-owner';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
 
 const RAW_SNAPSHOT_ANCHOR_ID = 'order-raw-snapshot';
@@ -159,9 +166,56 @@ export function OrderDetailPage(): ReactElement {
   // and to `null` (rendered "-") when neither is available.
   const activeShipment = pickActiveShipment(shipmentsQuery.data?.items ?? null);
   const carrier =
-    getCarrierDisplayName(activeShipment?.carrier ?? null) ?? snapshot.shipping?.methodName ?? null;
+    getCarrierDisplayName(activeShipment?.carrier ?? null) ??
+    snapshot.shipping?.methodName ??
+    // Pickup-only orders (#1776) carry no method name but do name the point;
+    // surface it so the Carrier row isn't a bare "-".
+    snapshot.pickupPoint?.name ??
+    null;
+  // Shipment-derived delivery-method fallback (#1776) for the always-present
+  // Method row: when the snapshot carried no shipping line, fall back to the
+  // booked shipment's carrier, then its mapped `shippingMethod` label.
+  const methodFallback =
+    getCarrierDisplayName(activeShipment?.carrier ?? null) ??
+    (activeShipment ? SHIPPING_METHOD_LABEL[activeShipment.shippingMethod] : null);
+  // Mapping-aware delivery outcome (#1793): map the BE-computed routing kind +
+  // whether a shipment (label/tracking) is booked onto a physical outcome. A
+  // booked `activeShipment` means the carrier-driven path has a label
+  // (resolved); its absence reads as awaiting-label. `hasMethod` gates the
+  // shop-fulfilled vs no-method distinction on the default path.
+  const deliveryHasMethod = Boolean(
+    snapshot.shipping?.methodName ??
+      snapshot.shipping?.methodId ??
+      methodFallback ??
+      snapshot.pickupPoint?.name,
+  );
+  const deliveryOutcome = deriveDeliveryOutcome({
+    processorKind: order.deliveryResolution?.processorKind,
+    hasMethod: deliveryHasMethod,
+    // Fulfilled when an OL shipment is booked OR the rollup already reads
+    // dispatched/delivered (e.g. dispatched outside OpenLinker) - so the Carrier
+    // outcome agrees with the Shipment panel instead of showing "awaiting label"
+    // next to a "dispatched outside OpenLinker" note.
+    isFulfilled:
+      Boolean(activeShipment) ||
+      order.fulfillmentState === 'dispatched' ||
+      order.fulfillmentState === 'delivered',
+    processorAvailable: order.deliveryResolution?.processorAvailable,
+    cancelled: snapshot.status === 'cancelled',
+  });
   const sourcePlatformType =
     connections.find((c) => c.id === order.sourceConnectionId)?.platformType ?? null;
+  // Resolve the delivery owner (#1776) for the "Shipped by" row — id → name
+  // lookup only (never re-deriving routing). The carrier/shop split + names come
+  // from the BE resolution + rider through the connections directory.
+  const connectionsById = new Map(
+    connections.map((c) => [c.id, { name: c.name, platformType: c.platformType }] as const),
+  );
+  const deliveryOwner = resolveDeliveryOwner(
+    order.deliveryResolution,
+    order.deliveryRider,
+    connectionsById,
+  );
 
   // Internal ID is the header copy-chip; not duplicated here.
   const shipByView = formatShipBy(order.dispatchByAt ?? null);
@@ -197,6 +251,15 @@ export function OrderDetailPage(): ReactElement {
                 <StatusBadge tone={SHIP_BY_TONE[shipByView.level]} withDot compact>
                   {shipByView.remaining}
                 </StatusBadge>
+                {order.dispatchByEstimated ? (
+                  <span
+                    className="text-muted"
+                    aria-label="Estimated"
+                    title="OpenLinker estimate - not a marketplace-confirmed deadline"
+                  >
+                    est.
+                  </span>
+                ) : null}
               </span>
             ),
           },
@@ -314,6 +377,13 @@ export function OrderDetailPage(): ReactElement {
             pickupPoint={snapshot.pickupPoint}
             sourcePlatformType={sourcePlatformType}
             carrier={carrier}
+            methodFallback={methodFallback}
+            deliveryOutcome={deliveryOutcome}
+            deliveryOwner={deliveryOwner}
+            deliveryRider={order.deliveryRider}
+            sourceConnectionId={order.sourceConnectionId}
+            sourceDeliveryMethodId={order.sourceDeliveryMethodId}
+            sourceDeliveryMethodName={order.sourceDeliveryMethodName}
           />
           {/* Anchor wrappers (#1713) for the orders-list deep-link CTAs
               (`/orders/{id}#shipment`, `/orders/{id}#invoicing`). Page-level
