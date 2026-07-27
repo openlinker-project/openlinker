@@ -99,4 +99,12 @@ describe('ROLE_PERMISSIONS', () => {
       expect(ROLE_PERMISSIONS.viewer).not.toContain('ai:suggest');
     });
   });
+
+  describe('content:write (#1873)', () => {
+    it('should be held by admin and operator, but not viewer', () => {
+      expect(ROLE_PERMISSIONS.admin).toContain('content:write');
+      expect(ROLE_PERMISSIONS.operator).toContain('content:write');
+      expect(ROLE_PERMISSIONS.viewer).not.toContain('content:write');
+    });
+  });
 });
