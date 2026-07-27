@@ -30,7 +30,7 @@ have no order-create API — noted per-doc as an environment limitation, not a g
 | 3 | [`03-allegro.md`](./03-allegro.md) | Marketplace offer creation + order sync | ✅ Part A/B confirmed (3/3 offers created); Part C (order ingestion) not run — no sandbox order-create API; found #1438 (FE) + a dead-tunnel env issue (fixed) |
 | 4 | [`04-erli.md`](./04-erli.md) | Marketplace offer creation + order sync | ✅ Part A–D confirmed — 3/3 offers created; found & fixed 5 real bugs along the way; Part E (order ingestion) not run — no sandbox order-create API |
 | 5 | [`05-inpost.md`](./05-inpost.md) | Shipping label generation | ✅ Confirmed — label→download→dispatch clean; Part C (tracking) is a sandbox-side limitation, researched (InPost-side, not OL) |
-| 6 | [`06-dpd.md`](./06-dpd.md) | Shipping label generation | ✅ Confirmed — connection created + Active, real waybill generated (`0000876013430Q`), SOAP tracking path verified; 4 findings filed (#1775–#1778) |
+| 6 | [`06-dpd.md`](./06-dpd.md) | Shipping label generation | ✅ Confirmed — connection created + Active, real waybill generated (`0000876013430Q`), SOAP tracking path verified; 4 findings filed (#1775, #1777, #1778 fixed by #1781; #1776 open, promoted to an epic) |
 | 7 | [`07-ksef.md`](./07-ksef.md) | Invoicing + regulatory clearance | ✅ Confirmed — full issue→clearance→UPO cycle verified against real KSeF; found & fixed #1447 (missing Test connection) |
 
 ## Environment (as used in this run)

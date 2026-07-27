@@ -11,7 +11,8 @@ handy, skip this walkthrough for now and note it as blocked rather than guessing
 > passes OL's format validation but DPD rejects **every** shipment with
 > `INCORRECT_SENDER_POSTAL_CODE`, surfaced opaquely as `NOT_PROCESSED`. Use a code matching the
 > sender city (e.g. Warsaw `02-222`). Tracked in #1778 (validate at setup) and #1777 (surface the
-> real reason).
+> real reason). **Both fixed by #1781** (merged 2026-07-23, after this run) — current `main`
+> validates deliverability at setup and surfaces the real DPD rejection reason.
 
 ## Part A — Create the connection
 
@@ -32,8 +33,8 @@ handy, skip this walkthrough for now and note it as blocked rather than guessing
 > the demo connection was initially saved with `city: Warszawa` + `postalCode: 22-213` (Lublin
 > region). It passed OL's `NN-NNN` format validation and Test connection (auth is independent of
 > the sender address), but every label generation then failed at DPD (see Part B). Fixing the
-> sender postal code to `02-222` (valid Warsaw) resolved it. OL does not currently validate
-> deliverability at setup — filed as #1778.
+> sender postal code to `02-222` (valid Warsaw) resolved it. OL did not, at the time, validate
+> deliverability at setup — filed as #1778, **fixed by #1781** (merged 2026-07-23).
 
 ## Part B — Generate a shipping label
 
@@ -53,7 +54,8 @@ Same pattern as InPost — needs an existing order to attach a shipment to.
 >
 > **Two gaps observed on the generated DPD shipment:**
 > - The Delivery panel shows `CARRIER: — (awaiting)` and never resolves the carrier (DPD tracking
->   mapper doesn't emit `carrier` on the snapshot) — filed as #1775.
+>   mapper doesn't emit `carrier` on the snapshot) — filed as #1775, **fixed by #1781** (merged
+>   2026-07-23).
 > - On an Erli-sourced order the orders list/detail omit the delivery-method label + ship-by
 >   (Erli order snapshot carries no `shipping.methodName` / `dispatchByAt`) — filed as #1776.[^1776]
 
@@ -72,4 +74,5 @@ Same pattern as InPost — needs an existing order to attach a shipment to.
 > `// TODO confirm against the demo WSDL` note) is confirmed reachable: `getEventsForWaybillV1`
 > returns HTTP 200 with a valid `getEventsForWaybillV1Response` (`confirmId 0`, no events yet for a
 > freshly-generated waybill — expected). Host, SOAP client, and auth all work. Carrier backfill from
-> the tracking snapshot does not happen for DPD (see #1775).
+> the tracking snapshot did not happen for DPD at the time (see #1775, **fixed by #1781**, merged
+> 2026-07-23).
