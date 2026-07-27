@@ -32,6 +32,7 @@ import {
   MappingPairingBar,
   MAPPING_SOURCE_PICKER_ID,
 } from '../../features/mappings/components/mapping-pairing-bar';
+import { useConnectionQuery } from '../../features/connections';
 import { useMappingPairing } from '../../features/mappings/hooks/use-mapping-pairing';
 import { useStatusMappingsQuery, useUpsertStatusMappings } from '../../features/mappings/hooks/use-status-mappings';
 import { useCarrierMappingsQuery, useUpsertCarrierMappings } from '../../features/mappings/hooks/use-carrier-mappings';
@@ -54,7 +55,14 @@ import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-s
 
 type TabId = 'fulfillment' | 'status' | 'carriers' | 'payments' | 'order-states' | 'attribute-rules';
 
-const ALL_TABS: TabId[] = ['fulfillment', 'status', 'carriers', 'payments', 'order-states'];
+const ALL_TABS: TabId[] = [
+  'fulfillment',
+  'status',
+  'carriers',
+  'payments',
+  'order-states',
+  'attribute-rules',
+];
 
 function isTabId(value: string): value is TabId {
   return (ALL_TABS as string[]).includes(value);
@@ -65,7 +73,8 @@ function isTabId(value: string): value is TabId {
  * tab). Used to fetch only the option lists the visited tabs actually need,
  * instead of the whole 6-list bundle on page load. Order-states' source axis
  * is the static `OL_ORDER_STATUS_OPTIONS`, so it only needs the destination
- * status list.
+ * status list. Attribute rules (#1841) read no option bundle at all — the panel
+ * owns its own data — so the tab contributes no keys.
  */
 const OPTION_KEYS_BY_TAB: Record<TabId, (keyof MappingOptions)[]> = {
   fulfillment: ['allegroDeliveryMethods'],
@@ -73,10 +82,17 @@ const OPTION_KEYS_BY_TAB: Record<TabId, (keyof MappingOptions)[]> = {
   carriers: ['allegroDeliveryMethods', 'prestashopCarriers'],
   payments: ['allegroPaymentProviders', 'prestashopPaymentModules'],
   'order-states': ['prestashopOrderStatuses'],
+  'attribute-rules': [],
 };
 
-/** Precise per-tab empty-state copy (#1784 follow-up S15). */
-const EMPTY_STATE_MESSAGE_BY_TAB: Record<Exclude<TabId, 'fulfillment'>, string> = {
+/**
+ * Precise per-tab empty-state copy (#1784 follow-up S15). Fulfillment and
+ * attribute rules render their own panel-owned empty states.
+ */
+const EMPTY_STATE_MESSAGE_BY_TAB: Record<
+  Exclude<TabId, 'fulfillment' | 'attribute-rules'>,
+  string
+> = {
   status:
     'No mappings configured yet. Unmapped statuses fall back to the default status at sync time. Add one below.',
   carriers:
@@ -256,9 +272,9 @@ export function ConnectionMappingsPage(): ReactElement {
   // marketplace is an `OfferCreator` (supportedCapabilities), a shop is an
   // enabled `ProductPublisher` (enabledCapabilities). Capability-driven, never
   // platformType-based.
+  const connectionQuery = useConnectionQuery(connectionId);
   const supportsAttributeRules =
-    connectionQuery.data !== undefined &&
-    publishDestinationKind(connectionQuery.data) !== null;
+    connectionQuery.data !== undefined && publishDestinationKind(connectionQuery.data) !== null;
 
   // Routing rules feed two things: the Fulfillment tab and the routing-aware
   // carrier-banner count (#836). Gated to OrderSource connections and to the
@@ -289,6 +305,7 @@ export function ConnectionMappingsPage(): ReactElement {
       carriers: make('carriers'),
       payments: make('payments'),
       'order-states': make('order-states'),
+      'attribute-rules': make('attribute-rules'),
     } satisfies Record<TabId, (dirty: boolean) => void>;
   }, []);
 
@@ -333,17 +350,6 @@ export function ConnectionMappingsPage(): ReactElement {
 
   const backTo = { to: `/connections/${connectionId}`, label: 'Connection' } as const;
 
-  const tabs: { id: TabId; label: string }[] = [
-    ...(supportsOrderSource ? [{ id: 'fulfillment' as const, label: 'Fulfillment' }] : []),
-    { id: 'status' as const, label: 'Order Statuses' },
-    { id: 'carriers' as const, label: 'Carriers' },
-    { id: 'payments' as const, label: 'Payments' },
-    ...(supportsOrderProcessor ? [{ id: 'order-states' as const, label: 'Order States' }] : []),
-    ...(supportsAttributeRules
-      ? [{ id: 'attribute-rules' as const, label: 'Attribute Rules' }]
-      : []),
-  ];
-  const defaultTab = tabs[0].id;
   // ── Pairing-driven states (evaluated after all hooks) ───────────────────
 
   if (pairing.status === 'loading') {
@@ -448,6 +454,9 @@ export function ConnectionMappingsPage(): ReactElement {
     { id: 'carriers' as const, label: 'Carriers' },
     { id: 'payments' as const, label: 'Payments' },
     ...(supportsOrderProcessor ? [{ id: 'order-states' as const, label: 'Order States' }] : []),
+    ...(supportsAttributeRules
+      ? [{ id: 'attribute-rules' as const, label: 'Attribute Rules' }]
+      : []),
   ];
 
   // Per-panel error isolation (#484): a failure in one bundle key must not
