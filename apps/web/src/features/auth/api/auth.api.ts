@@ -3,9 +3,11 @@ import type {
   ForgotPasswordRequest,
   LoginRequest,
   LoginResponse,
+  MeResponse,
   OkResponse,
   RegisterRequest,
   ResetPasswordRequest,
+  UpdateAnalyticsConsentRequest,
 } from './auth.types';
 
 interface ApiRequest {
@@ -18,6 +20,7 @@ export interface AuthApi {
   forgotPassword: (input: ForgotPasswordRequest) => Promise<OkResponse>;
   resetPassword: (input: ResetPasswordRequest) => Promise<OkResponse>;
   confirmEmail: (input: ConfirmEmailRequest) => Promise<OkResponse>;
+  updateAnalyticsConsent: (input: UpdateAnalyticsConsentRequest) => Promise<MeResponse>;
 }
 
 export function createAuthApi(request: ApiRequest): AuthApi {
@@ -49,6 +52,12 @@ export function createAuthApi(request: ApiRequest): AuthApi {
     confirmEmail(input): Promise<OkResponse> {
       return request<OkResponse>('/auth/confirm-email', {
         method: 'POST',
+        body: JSON.stringify(input),
+      });
+    },
+    updateAnalyticsConsent(input): Promise<MeResponse> {
+      return request<MeResponse>('/auth/me/analytics-consent', {
+        method: 'PATCH',
         body: JSON.stringify(input),
       });
     },

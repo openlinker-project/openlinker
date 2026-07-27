@@ -28,6 +28,10 @@ export interface ConfirmEmailRequest {
   token: string;
 }
 
+export interface UpdateAnalyticsConsentRequest {
+  analyticsConsent: boolean;
+}
+
 export interface OkResponse {
   ok: true;
 }
