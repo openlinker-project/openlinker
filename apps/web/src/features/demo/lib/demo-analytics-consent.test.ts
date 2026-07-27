@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { stubUnavailableLocalStorage } from '../../../test/test-utils';
 import { DEMO_ANALYTICS_CONSENT_STORAGE_KEY } from '../demo.types';
 import {
   getDemoAnalyticsConsent,
@@ -32,18 +33,23 @@ describe('demo-analytics-consent', () => {
   });
 
   it('should not throw and should return null when localStorage.getItem throws', () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
-      throw new Error('storage disabled');
-    });
-    expect(() => getDemoAnalyticsConsent()).not.toThrow();
-    expect(getDemoAnalyticsConsent()).toBeNull();
+    const restore = stubUnavailableLocalStorage();
+    try {
+      expect(() => getDemoAnalyticsConsent()).not.toThrow();
+      expect(getDemoAnalyticsConsent()).toBeNull();
+    } finally {
+      restore();
+    }
   });
 
-  it('should not throw when localStorage.setItem throws', () => {
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-      throw new Error('storage disabled');
-    });
-    expect(() => setDemoAnalyticsConsent('accepted')).not.toThrow();
+  it('should not throw and should report failure when localStorage.setItem throws', () => {
+    const restore = stubUnavailableLocalStorage();
+    try {
+      expect(() => setDemoAnalyticsConsent('accepted')).not.toThrow();
+      expect(setDemoAnalyticsConsent('accepted')).toBe(false);
+    } finally {
+      restore();
+    }
   });
 });
 
@@ -112,14 +118,16 @@ describe('subscribeToDemoAnalyticsConsent (#1882)', () => {
   });
 
   it('should not notify when the write failed (storage unavailable)', () => {
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-      throw new Error('storage disabled');
-    });
+    const restore = stubUnavailableLocalStorage();
     const listener = vi.fn();
     const unsubscribe = subscribeToDemoAnalyticsConsent(listener);
 
-    expect(setDemoAnalyticsConsent('accepted')).toBe(false);
-    expect(listener).not.toHaveBeenCalled();
-    unsubscribe();
+    try {
+      expect(setDemoAnalyticsConsent('accepted')).toBe(false);
+      expect(listener).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+      restore();
+    }
   });
 });

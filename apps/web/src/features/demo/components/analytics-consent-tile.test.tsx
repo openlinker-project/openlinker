@@ -6,6 +6,7 @@ import {
   createMockApiClient,
   findToastDescription,
   renderWithProviders,
+  stubUnavailableLocalStorage,
 } from '../../../test/test-utils';
 import { DEMO_ANALYTICS_CONSENT_STORAGE_KEY } from '../demo.types';
 import { AnalyticsConsentTile } from './analytics-consent-tile';
@@ -29,13 +30,20 @@ const viewer = {
 const demoConfig = { demoMode: true };
 
 describe('AnalyticsConsentTile (#1882)', () => {
+  let restoreLocalStorage: (() => void) | null = null;
+
   beforeEach(() => {
     enableDemoAnalytics.mockClear();
     disableDemoAnalytics.mockClear();
     window.localStorage.clear();
   });
 
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    restoreLocalStorage?.();
+    restoreLocalStorage = null;
+    vi.restoreAllMocks();
+  });
 
   it('should render nothing when the deployment is not in demo mode', async () => {
     const apiClient = createMockApiClient({
@@ -150,6 +158,33 @@ describe('AnalyticsConsentTile (#1882)', () => {
     expect(window.localStorage.getItem(DEMO_ANALYTICS_CONSENT_STORAGE_KEY)).toBe('declined');
     expect(disableDemoAnalytics).toHaveBeenCalledTimes(1);
     expect(enableDemoAnalytics).not.toHaveBeenCalled();
+  });
+
+  it('should warn instead of claiming a clean save when the localStorage mirror fails', async () => {
+    restoreLocalStorage = stubUnavailableLocalStorage();
+    const updateAnalyticsConsent = vi.fn().mockResolvedValue({ ...viewer, analyticsConsent: true });
+    const apiClient = createMockApiClient({
+      system: { getConfig: vi.fn().mockResolvedValue(demoConfig) },
+      auth: { updateAnalyticsConsent },
+    });
+
+    renderWithProviders(<AnalyticsConsentTile />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(viewer),
+    });
+
+    await userEvent.click(await screen.findByRole('checkbox'));
+
+    await waitFor(() =>
+      expect(updateAnalyticsConsent).toHaveBeenCalledWith({ analyticsConsent: true }),
+    );
+    expect(
+      await findToastDescription(
+        'This browser blocks local storage, so you may be asked again on the next page load.',
+      ),
+    ).toBeInTheDocument();
+    // The DB write still happened, so the live opt-in must still take effect.
+    expect(enableDemoAnalytics).toHaveBeenCalledTimes(1);
   });
 
   it('should surface an error toast and leave PostHog + storage untouched when the call fails', async () => {

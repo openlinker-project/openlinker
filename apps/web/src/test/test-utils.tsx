@@ -607,6 +607,40 @@ export function getToastDescription(text: string | RegExp): HTMLElement {
   return screen.getByText(text, { selector: '.toast__description' });
 }
 
+/**
+ * Replaces `window.localStorage` with one that throws on every access, to
+ * exercise the private-browsing / blocked-storage branches. Returns a restore
+ * function — call it in `afterEach`.
+ *
+ * Why not `vi.spyOn(...)`: jsdom's `localStorage` is a Proxy whose set trap
+ * writes *stored items*, so both `Storage.prototype` and instance spies are
+ * order-dependent — they stop intercepting once another test in the same file
+ * restores mocks, silently turning "should not throw" assertions vacuous
+ * (#1884). Swapping the whole object out is deterministic.
+ */
+export function stubUnavailableLocalStorage(): () => void {
+  const original = window.localStorage;
+  const unavailable = (): never => {
+    throw new Error('storage disabled');
+  };
+
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      clear: unavailable,
+      getItem: unavailable,
+      key: unavailable,
+      length: 0,
+      removeItem: unavailable,
+      setItem: unavailable,
+    },
+  });
+
+  return () => {
+    Object.defineProperty(window, 'localStorage', { configurable: true, value: original });
+  };
+}
+
 export function renderWithProviders(
   ui: ReactElement,
   options: RenderWithProvidersOptions = {},

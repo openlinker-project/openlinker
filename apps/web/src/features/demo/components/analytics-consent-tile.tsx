@@ -33,11 +33,23 @@ export function AnalyticsConsentTile(): ReactElement | null {
     try {
       await mutation.mutateAsync({ analyticsConsent: next });
       const demoConsent: DemoAnalyticsConsent = next ? 'accepted' : 'declined';
-      setDemoAnalyticsConsent(demoConsent);
+      const mirrored = setDemoAnalyticsConsent(demoConsent);
       if (next) {
         enableDemoAnalytics();
       } else {
         disableDemoAnalytics();
+      }
+      if (!mirrored) {
+        // The DB write succeeded, but the pre-auth boot path reads localStorage
+        // — so the next page load would show the opposite state. Say so rather
+        // than reporting an unqualified "Saved" (#1884).
+        showToast({
+          tone: 'warning',
+          title: 'Saved to your account',
+          description:
+            'This browser blocks local storage, so you may be asked again on the next page load.',
+        });
+        return;
       }
       showToast({
         tone: 'success',
