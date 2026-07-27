@@ -41,4 +41,5 @@ describe('DemoEventCatalog', () => {
       expect(Object.keys(entry.props).length).toBeGreaterThan(0);
     }
   });
+
 });

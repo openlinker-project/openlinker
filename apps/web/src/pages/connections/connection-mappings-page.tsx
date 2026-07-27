@@ -315,6 +315,7 @@ export function ConnectionMappingsPage(): ReactElement {
         <TabsContent value="status">
           <MappingPanel
             title="Order Status Mappings"
+            mappingKind="status"
             description="Map Allegro order statuses to the corresponding PrestaShop order status IDs."
             sourceLabel="Allegro status"
             targetLabel="PrestaShop status"
@@ -340,6 +341,7 @@ export function ConnectionMappingsPage(): ReactElement {
           ) : null}
           <MappingPanel
             title="Carrier Mappings"
+            mappingKind="carriers"
             description="Map Allegro delivery method IDs to the corresponding PrestaShop carrier IDs."
             sourceLabel="Allegro delivery method"
             targetLabel="PrestaShop carrier"
@@ -357,6 +359,7 @@ export function ConnectionMappingsPage(): ReactElement {
         <TabsContent value="payments">
           <MappingPanel
             title="Payment Mappings"
+            mappingKind="payments"
             description="Map Allegro payment provider names to the corresponding PrestaShop payment module names."
             sourceLabel="Allegro payment provider"
             targetLabel="PrestaShop payment module"
@@ -375,6 +378,7 @@ export function ConnectionMappingsPage(): ReactElement {
           <TabsContent value="order-states">
             <MappingPanel
               title="Order-State Mappings"
+              mappingKind="order-state"
               description="Override which PrestaShop order state each OpenLinker status transitions to. Customised shops (renamed/added states) map here; unmapped statuses use the default-install state."
               sourceLabel="OpenLinker status"
               targetLabel="PrestaShop order state"

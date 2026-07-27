@@ -3,12 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../test/test-utils';
 import { AdaptersCatalogPage } from './adapters-catalog-page';
 import type { AdapterSummary } from '../../features/adapters/api/adapters.types';
+import type * as DemoModule from '../../features/demo';
 
 const captureDemoEvent = vi.fn();
-vi.mock('../../features/demo', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../features/demo')>()),
-  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
-}));
+vi.mock('../../features/demo', async (importOriginal): Promise<typeof DemoModule> => {
+  const actual = await importOriginal<typeof DemoModule>();
+  return { ...actual, captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args) };
+});
 
 const sampleAdapter: AdapterSummary = {
   adapterKey: 'prestashop.webservice.v1',

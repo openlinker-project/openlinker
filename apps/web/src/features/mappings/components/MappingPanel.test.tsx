@@ -21,6 +21,7 @@ vi.mock('../../demo', () => ({
 
 const baseProps = {
   title: 'Carrier Mappings',
+  mappingKind: 'carriers',
   description: 'Map Allegro delivery methods to PrestaShop carriers.',
   sourceLabel: 'Allegro delivery method',
   targetLabel: 'PrestaShop carrier',
@@ -308,7 +309,7 @@ describe('MappingPanel', () => {
       expect(onSave).toHaveBeenCalledWith([]);
     });
 
-    it('captures demo_mapping_save_attempted with the panel title when Save is clicked (#1789)', () => {
+    it('captures demo_mapping_save_attempted with the stable mappingKind when Save is clicked (#1789, #1875)', () => {
       render(
         <MappingPanel
           {...baseProps}
@@ -323,7 +324,7 @@ describe('MappingPanel', () => {
       fireEvent.click(screen.getByRole('button', { name: /save mappings/i }));
 
       expect(captureDemoEvent).toHaveBeenCalledWith('demo_mapping_save_attempted', {
-        mappingKind: 'Carrier Mappings',
+        mappingKind: 'carriers',
       });
     });
   });

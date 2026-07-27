@@ -21,6 +21,8 @@ export interface MappingRow {
 
 interface MappingPanelProps {
   title: string;
+  /** Stable machine key for analytics — independent of the display `title` (#1875). */
+  mappingKind: string;
   description: string;
   sourceLabel: string;
   targetLabel: string;
@@ -107,6 +109,7 @@ function optionPlainText(option: MappingOption): string {
 
 export function MappingPanel({
   title,
+  mappingKind,
   description,
   sourceLabel,
   targetLabel,
@@ -155,7 +158,7 @@ export function MappingPanel({
   }
 
   function handleSave(): void {
-    captureDemoEvent('demo_mapping_save_attempted', { mappingKind: title });
+    captureDemoEvent('demo_mapping_save_attempted', { mappingKind });
     onSave(localRows);
   }
 

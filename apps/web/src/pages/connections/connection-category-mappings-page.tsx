@@ -147,8 +147,8 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
   }
 
   function handleAllegroSelect(category: AllegroCategory, path: string): void {
-    captureDemoEvent('demo_category_map_attempted', {});
     if (!selectedCategoryId) return;
+    captureDemoEvent('demo_category_map_attempted', {});
     upsertMutation.mutate({
       prestashopCategoryId: selectedCategoryId,
       payload: {

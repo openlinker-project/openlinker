@@ -59,6 +59,11 @@ export function KsefNumberingSeriesTab({
   const seriesQuery = useNumberingSeriesListQuery();
   const routesQuery = useNumberingRoutesQuery(connectionId);
 
+  function openCreate(): void {
+    captureDemoEvent('demo_ksef_series_editor_opened', { mode: 'create' });
+    setMode({ kind: 'create' });
+  }
+
   // When returning from the editor to the list, move focus to the Series heading.
   useEffect(() => {
     if (mode.kind === 'list' && returningRef.current) {
@@ -125,13 +130,7 @@ export function KsefNumberingSeriesTab({
           title="No numbering series yet"
           message="Create a series before issuing invoices — KSeF needs a unique, sequential number for every document."
           action={
-            <Button
-              tone="primary"
-              onClick={() => {
-                captureDemoEvent('demo_ksef_series_editor_opened', { mode: 'create' });
-                setMode({ kind: 'create' });
-              }}
-            >
+            <Button tone="primary" onClick={openCreate}>
               Add series
             </Button>
           }
@@ -172,13 +171,7 @@ export function KsefNumberingSeriesTab({
               </Select>
             </>
           ) : null}
-          <Button
-            tone="primary"
-            onClick={() => {
-              captureDemoEvent('demo_ksef_series_editor_opened', { mode: 'create' });
-              setMode({ kind: 'create' });
-            }}
-          >
+          <Button tone="primary" onClick={openCreate}>
             Add series
           </Button>
         </div>

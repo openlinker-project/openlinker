@@ -13,12 +13,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../test/test-utils';
 import { ConnectionCategoryMappingsPage } from './connection-category-mappings-page';
 import type { Connection } from '../../features/connections/api/connections.types';
+import type * as DemoModule from '../../features/demo';
 
 const captureDemoEvent = vi.fn();
-vi.mock('../../features/demo', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../features/demo')>()),
-  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
-}));
+vi.mock('../../features/demo', async (importOriginal): Promise<typeof DemoModule> => {
+  const actual = await importOriginal<typeof DemoModule>();
+  return { ...actual, captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args) };
+});
 
 const PS_CATEGORIES = [{ id: '2', name: 'Men', parentId: '1', depth: 1, active: true }];
 
