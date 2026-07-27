@@ -1,8 +1,9 @@
 /**
  * User Repository — Unit Tests
  *
- * Verifies email normalization (#1625) and the Postgres unique-violation →
- * domain-exception conversion path in UserRepository.save.
+ * Verifies email normalization (#1625), the Postgres unique-violation →
+ * domain-exception conversion path in UserRepository.save, and the
+ * self-service analytics-consent update (#1882).
  *
  * @module libs/core/src/users/infrastructure/persistence/repositories
  */
@@ -40,6 +41,7 @@ describe('UserRepository', () => {
       findOne: jest.fn(),
       create: jest.fn((entityLike: Partial<UserOrmEntity>) => entityLike as UserOrmEntity),
       save: jest.fn(),
+      update: jest.fn(),
     } as unknown as jest.Mocked<Repository<UserOrmEntity>>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -171,6 +173,26 @@ describe('UserRepository', () => {
           status: 'pending',
         })
       ).rejects.toBe(error);
+    });
+  });
+
+  describe('updateAnalyticsConsent (#1882)', () => {
+    it('should update only the analytics_consent column for the given user', async () => {
+      await repository.updateAnalyticsConsent('user-uuid', true);
+
+      expect(ormRepository.update).toHaveBeenCalledWith(
+        { id: 'user-uuid' },
+        { analyticsConsent: true }
+      );
+    });
+
+    it('should persist a withdrawal (false) rather than skipping the falsy value', async () => {
+      await repository.updateAnalyticsConsent('user-uuid', false);
+
+      expect(ormRepository.update).toHaveBeenCalledWith(
+        { id: 'user-uuid' },
+        { analyticsConsent: false }
+      );
     });
   });
 });

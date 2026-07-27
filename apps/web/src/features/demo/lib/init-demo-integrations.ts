@@ -66,3 +66,11 @@ export async function initDemoIntegrations(config: SystemConfig | undefined): Pr
 export function disableDemoAnalytics(): void {
   posthogInstance?.opt_out_capturing();
 }
+
+/**
+ * Opts the current visitor back in to PostHog capture without a page reload.
+ * A no-op when PostHog was never initialized.
+ */
+export function enableDemoAnalytics(): void {
+  posthogInstance?.opt_in_capturing();
+}

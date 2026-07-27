@@ -1,6 +1,10 @@
-import { cleanup, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
-import { createAuthenticatedSessionAdapter, renderWithProviders } from '../../test/test-utils';
+import { cleanup, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  createAuthenticatedSessionAdapter,
+  createMockApiClient,
+  renderWithProviders,
+} from '../../test/test-utils';
 import { SettingsPage } from './settings-page';
 
 describe('SettingsPage', () => {
@@ -109,5 +113,33 @@ describe('SettingsPage', () => {
     expect(await screen.findByText('viewer@example.com')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'PostHog' })).not.toBeInTheDocument();
     expect(screen.queryByText('PostHog', { selector: '.toolbar-chip' })).not.toBeInTheDocument();
+  });
+
+  it('shows the analytics consent tile in demo mode (#1882)', async () => {
+    renderWithProviders(<SettingsPage />, {
+      apiClient: createMockApiClient({
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      }),
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Analytics' })).toBeInTheDocument();
+    expect(screen.getByText('Privacy', { selector: '.toolbar-chip' })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox')).toBeInTheDocument();
+  });
+
+  it('never renders the analytics consent tile outside demo mode', async () => {
+    const apiClient = createMockApiClient({
+      system: { getConfig: vi.fn().mockResolvedValue({ demoMode: false }) },
+    });
+
+    renderWithProviders(<SettingsPage />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await waitFor(() => expect(apiClient.system.getConfig).toHaveBeenCalled());
+    expect(screen.queryByRole('heading', { name: 'Analytics' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Privacy', { selector: '.toolbar-chip' })).not.toBeInTheDocument();
   });
 });
