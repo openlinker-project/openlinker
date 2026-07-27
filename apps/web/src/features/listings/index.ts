@@ -13,7 +13,7 @@ export { erliOfferValidation } from './components/erli/erli-offer-validation';
 export { AllegroBulkConfigSection } from './components/allegro/allegro-bulk-config-section';
 export { allegroBulkConfigIsComplete } from './components/allegro/allegro-bulk-config.schema';
 export { allegroOfferValidation } from './components/allegro/allegro-offer-validation';
-export { WoocommercePublishWizard } from './components/WoocommercePublishWizard';
+export { WoocommercePublishWizard } from './components/woocommerce-publish-wizard';
 // NOTE: `ShopPublishLauncher` is intentionally NOT re-exported here. It
 // imports the app-tier `useShopPublishWizard` binding, which imports the
 // plugin registry — re-exporting it from this barrel (which the WooCommerce

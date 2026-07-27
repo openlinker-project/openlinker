@@ -14,7 +14,7 @@ import { OfferProductPickerModal } from '../../features/listings/components/offe
 import {
   ShopPublishLauncher,
   selectShopPublishConnections,
-} from '../../features/listings/components/ShopPublishLauncher';
+} from '../../features/listings/components/shop-publish-launcher';
 import { useConnectionsQuery } from '../../features/connections';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';

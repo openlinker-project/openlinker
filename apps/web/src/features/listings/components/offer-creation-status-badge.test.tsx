@@ -5,7 +5,7 @@
  */
 import { render, screen, cleanup } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { OfferCreationStatusBadge } from './OfferCreationStatusBadge';
+import { OfferCreationStatusBadge } from './offer-creation-status-badge';
 import type { OfferCreationStatus } from '../api/listings.types';
 
 const STATUS_CASES: Array<{ status: OfferCreationStatus; label: string; tone: string }> = [

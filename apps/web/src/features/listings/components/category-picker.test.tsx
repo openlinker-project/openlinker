@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CategoryPicker } from './CategoryPicker';
+import { CategoryPicker } from './category-picker';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import type { AllegroCategory } from '../../mappings';
 
