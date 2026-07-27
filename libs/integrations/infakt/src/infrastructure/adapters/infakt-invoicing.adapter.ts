@@ -592,6 +592,14 @@ export class InfaktInvoicingAdapter
     this.logger.log(`Infakt invoice ${cmd.externalInvoiceId} marked as paid`);
   }
 
+  // KNOWN ISSUE (confirmed 2026-07-27): invoice correction does not work — blocked externally.
+  // OL surfaces a 422 (in-doubt) here, but that's just us relaying the provider's failure.
+  // Root cause: Infakt's own sandbox returns a 500 Internal Server Error on
+  // POST corrective_invoices.json regardless of payload (verified by patching the
+  // compiled HTTP client to log the raw response body). Reproduced with multiple
+  // correction shapes (quantity-zeroing and price-change), same 500 every time —
+  // not an OL-side validation or payload-shape bug. No action item here; remove
+  // this note once Infakt confirms their sandbox is fixed.
   async issueCorrection(cmd: IssueCorrectionCommand): Promise<IssueInvoiceResult> {
     const { originalProviderInvoiceId, reason, lines, documentType, idempotencyKey, orderId } =
       cmd;
