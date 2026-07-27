@@ -6739,6 +6739,17 @@ a.kpi-card:focus-visible {
   box-shadow: 0 0 0 1px var(--accent-primary);
   background: var(--accent-primary-soft);
 }
+/* `--selected`'s own background always wins the cascade over the plain
+   :hover rule above (same specificity, declared later), so hovering an
+   already-selected option showed no feedback at all. A relative
+   filter (not a new token) keeps this correct in both themes without
+   depending on --accent-primary-soft / --bg-surface-hover happening to
+   differ enough in lightness - in dark mode they sit at the identical
+   OKLCH lightness (28%), which made the effect invisible there while
+   still reading fine in light mode (96% vs 93%, near white). */
+.publish-dest-rail__option--selected:hover {
+  filter: brightness(0.93);
+}
 .publish-dest-rail__option:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus);
