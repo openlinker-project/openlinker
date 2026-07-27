@@ -420,6 +420,13 @@ processors the connection is allowed to route to. On the Mappings page the
 Fulfillment routing panel sits alongside the category/attribute mappings the
 connection also needs.
 
+![Fulfillment Routing panel](./assets/12-fulfillment-routing-panel.png)
+
+*The Fulfillment Routing panel on an Erli connection. Each row is an Erli
+delivery method; the **ROUTED TO** column shows the current processor, and the
+**CHANGE** dropdown lets you reassign it. Methods not listed here default to
+shop-fulfilled (operator-managed).*
+
 ### Configure it via the API (for scripted / demo provisioning)
 
 The panel is backed by two endpoints. First discover the candidate processors,
