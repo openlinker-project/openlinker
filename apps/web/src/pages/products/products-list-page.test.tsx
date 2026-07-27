@@ -219,6 +219,50 @@ describe('ProductsListPage', () => {
     expect(pills[1]).toHaveClass('coverage-pill--full');
   });
 
+  it('renders a coverage pill for a ShopProduct (WooCommerce) connection too (#1838 follow-up fix)', async () => {
+    // Coverage pills previously stayed keyed to the marketplace OfferCreator
+    // subset, so a product published to a shop connection (ShopProduct
+    // mapping, ProductPublisher capability) showed no coverage indication at
+    // all - this is the regression test for that fix.
+    const wooConnection = {
+      id: 'conn_woo',
+      name: 'My WooCommerce',
+      status: 'active',
+      platformType: 'woocommerce',
+      supportedCapabilities: ['OfferManager', 'ProductPublisher'],
+      enabledCapabilities: ['ProductPublisher'],
+    } as const;
+    const products: PaginatedProducts = {
+      items: [
+        {
+          ...sampleProducts.items[0]!,
+          listingsCoverage: [
+            { connectionId: 'conn_woo', platformType: 'woocommerce', listedVariants: 2 },
+          ],
+        },
+      ],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    };
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue(products) },
+      connections: { list: vi.fn().mockResolvedValue([wooConnection]) },
+    });
+
+    const { container } = renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    await waitFor(() => {
+      expect(container.querySelectorAll('.coverage-pill').length).toBeGreaterThan(0);
+    });
+    const pills = Array.from(container.querySelectorAll('.coverage-pill'));
+    expect(pills).toHaveLength(1);
+    expect(pills[0]).toHaveAttribute('data-channel', 'woocommerce');
+    // 2 of 2 variants listed → full.
+    expect(pills[0]).toHaveClass('coverage-pill--full');
+  });
+
   it('should show muted price with hover explanation when currency is absent', async () => {
     const mockApi = createMockApiClient({
       products: {

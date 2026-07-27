@@ -17,6 +17,8 @@ import { INVENTORY_QUERY_SERVICE_TOKEN } from '@openlinker/core/inventory';
 import type { IInventoryQueryService } from '@openlinker/core/inventory';
 import { OFFER_MAPPINGS_SERVICE_TOKEN } from '@openlinker/core/listings';
 import type { IOfferMappingsService } from '@openlinker/core/listings';
+import { SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN } from '@openlinker/core/listings';
+import type { IShopProductMappingsService } from '@openlinker/core/listings';
 
 function makeProduct(overrides: Partial<Product> = {}): Product {
   return {
@@ -80,6 +82,12 @@ function createMockOfferMappings(): jest.Mocked<IOfferMappingsService> {
   };
 }
 
+function createMockShopProductMappings(): jest.Mocked<IShopProductMappingsService> {
+  return {
+    countListedVariantsByProducts: jest.fn(),
+  };
+}
+
 function createMockIdentifierMapping(): jest.Mocked<IdentifierMappingPort> {
   return {
     getOrCreateInternalId: jest.fn(),
@@ -99,12 +107,14 @@ describe('ProductsController', () => {
   let identifierMapping: jest.Mocked<IdentifierMappingPort>;
   let inventoryQuery: jest.Mocked<IInventoryQueryService>;
   let offerMappings: jest.Mocked<IOfferMappingsService>;
+  let shopProductMappings: jest.Mocked<IShopProductMappingsService>;
 
   beforeEach(async () => {
     const mockProductsService = createMockProductsService();
     const mockIdentifierMapping = createMockIdentifierMapping();
     const mockInventoryQuery = createMockInventoryQuery();
     const mockOfferMappings = createMockOfferMappings();
+    const mockShopProductMappings = createMockShopProductMappings();
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ProductsController],
@@ -113,6 +123,7 @@ describe('ProductsController', () => {
         { provide: IDENTIFIER_MAPPING_SERVICE_TOKEN, useValue: mockIdentifierMapping },
         { provide: INVENTORY_QUERY_SERVICE_TOKEN, useValue: mockInventoryQuery },
         { provide: OFFER_MAPPINGS_SERVICE_TOKEN, useValue: mockOfferMappings },
+        { provide: SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN, useValue: mockShopProductMappings },
       ],
     }).compile();
 
@@ -121,6 +132,7 @@ describe('ProductsController', () => {
     identifierMapping = module.get(IDENTIFIER_MAPPING_SERVICE_TOKEN);
     inventoryQuery = module.get(INVENTORY_QUERY_SERVICE_TOKEN);
     offerMappings = module.get(OFFER_MAPPINGS_SERVICE_TOKEN);
+    shopProductMappings = module.get(SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN);
 
     jest.clearAllMocks();
 
@@ -129,6 +141,7 @@ describe('ProductsController', () => {
     // override where they assert enrichment mapping.
     inventoryQuery.getProductStockAggregates.mockResolvedValue([]);
     offerMappings.countListedVariantsByProducts.mockResolvedValue([]);
+    shopProductMappings.countListedVariantsByProducts.mockResolvedValue([]);
     productsService.getVariantCountsByProductIds.mockResolvedValue(new Map());
     identifierMapping.getExternalIds.mockResolvedValue([]);
   });
@@ -263,6 +276,14 @@ describe('ProductsController', () => {
           listedVariants: 2,
         },
       ]);
+      shopProductMappings.countListedVariantsByProducts.mockResolvedValue([
+        {
+          productId: 'ol_product_1',
+          connectionId: 'conn-woo-1',
+          platformType: 'woocommerce',
+          listedVariants: 1,
+        },
+      ]);
       productsService.getVariantCountsByProductIds.mockResolvedValue(
         new Map([['ol_product_1', 3]])
       );
@@ -279,6 +300,9 @@ describe('ProductsController', () => {
 
       expect(inventoryQuery.getProductStockAggregates).toHaveBeenCalledWith(['ol_product_1']);
       expect(offerMappings.countListedVariantsByProducts).toHaveBeenCalledWith(['ol_product_1']);
+      expect(shopProductMappings.countListedVariantsByProducts).toHaveBeenCalledWith([
+        'ol_product_1',
+      ]);
       expect(productsService.getVariantCountsByProductIds).toHaveBeenCalledWith(['ol_product_1']);
       expect(identifierMapping.getExternalIds).toHaveBeenCalledWith('Product', 'ol_product_1');
 
@@ -287,8 +311,11 @@ describe('ProductsController', () => {
       expect(item.totalReserved).toBe(3);
       expect(item.stockUpdatedAt).toBe('2026-05-01T12:00:00.000Z');
       expect(item.variantCount).toBe(3);
+      // Offer (marketplace) and ShopProduct (shop) coverage rows merge into
+      // the same per-product list (#1838 follow-up fix).
       expect(item.listingsCoverage).toEqual([
         { connectionId: 'conn-1', platformType: 'allegro', listedVariants: 2 },
+        { connectionId: 'conn-woo-1', platformType: 'woocommerce', listedVariants: 1 },
       ]);
       expect(item.externalIds).toEqual([
         { externalId: '42', platformType: 'prestashop', connectionId: 'conn-src' },
@@ -317,6 +344,7 @@ describe('ProductsController', () => {
       expect(result.items).toEqual([]);
       expect(inventoryQuery.getProductStockAggregates).not.toHaveBeenCalled();
       expect(offerMappings.countListedVariantsByProducts).not.toHaveBeenCalled();
+      expect(shopProductMappings.countListedVariantsByProducts).not.toHaveBeenCalled();
       expect(productsService.getVariantCountsByProductIds).not.toHaveBeenCalled();
       expect(identifierMapping.getExternalIds).not.toHaveBeenCalled();
     });

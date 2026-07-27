@@ -65,6 +65,7 @@ export type { IOfferMappingsService } from './application/services/offer-mapping
 export type { OfferMappingRepositoryPort } from './domain/ports/offer-mapping-repository.port';
 export type { ShopProductMappingRepositoryPort } from './domain/ports/shop-product-mapping-repository.port';
 export type { IPublishedVariantsService } from './application/services/published-variants.service.interface';
+export type { IShopProductMappingsService } from './application/services/shop-product-mappings.service.interface';
 export type {
   OfferMappingFilters,
   OfferMappingPagination,

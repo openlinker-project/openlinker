@@ -58,3 +58,6 @@ export const SHOP_ATTRIBUTE_READ_SERVICE_TOKEN = Symbol('IShopAttributeReadServi
 // Destination-aware duplicate guard (#1837)
 export const SHOP_PRODUCT_MAPPING_REPOSITORY_TOKEN = Symbol('ShopProductMappingRepositoryPort');
 export const PUBLISHED_VARIANTS_SERVICE_TOKEN = Symbol('IPublishedVariantsService');
+
+// Shop-side products cockpit coverage pills (#1838 follow-up fix)
+export const SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN = Symbol('IShopProductMappingsService');

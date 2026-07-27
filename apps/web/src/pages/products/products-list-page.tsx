@@ -237,15 +237,26 @@ export function ProductsListPage(): ReactElement {
 
   // Unified publish targets (#1828): offer marketplaces (OfferCreator) OR
   // online shops (ProductPublisher), capability-driven. Drives the publish
-  // CTAs + picker; the offer-coverage surfaces (gaps KPI, "Unlisted on" chips,
-  // coverage pills, per-row gap detection) stay keyed to the marketplace
-  // `offerManagerConnections` subset above, since coverage is offer-based.
+  // CTAs + picker. The gaps KPI / "Unlisted on" chips / per-row gap detection
+  // stay keyed to the marketplace `offerManagerConnections` subset above -
+  // "gap" is a narrower, offer-specific concept. The coverage PILLS, however,
+  // answer "is this published anywhere" and must include shop destinations
+  // too (#1838 follow-up fix - a product published to a WooCommerce
+  // connection previously rendered no pill at all).
   const publishDestinations = useMemo(
     () => selectPublishDestinations(connectionsQuery.data ?? []),
     [connectionsQuery.data],
   );
   const hasShopDestination = useMemo(
     () => publishDestinations.some((d) => d.kind === 'shop'),
+    [publishDestinations],
+  );
+  // Coverage-pill connection set (#1838 follow-up fix): every active publish
+  // destination (marketplace OR shop) - the same union `publishDestinations`
+  // already resolves, since a connection carries at most one listing-mapping
+  // kind (#1837) so it can never double-count here either.
+  const coveragePillConnections = useMemo(
+    () => publishDestinations.map((d) => d.connection),
     [publishDestinations],
   );
 
@@ -594,10 +605,10 @@ export function ProductsListPage(): ReactElement {
       <ListingsCoveragePills
         coverage={product.listingsCoverage}
         variantCount={product.variantCount ?? 0}
-        connections={offerManagerConnections}
+        connections={coveragePillConnections}
       />
     ),
-    [offerManagerConnections],
+    [coveragePillConnections],
   );
 
   const columns: DataTableColumn<Product>[] = useMemo(
