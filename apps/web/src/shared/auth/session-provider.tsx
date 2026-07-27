@@ -7,7 +7,10 @@ export interface SessionContextValue {
   isReady: boolean;
   session: Session;
   clearSession: () => Promise<void>;
-  refreshSession: () => Promise<void>;
+  /** Resolves with the freshly-fetched session so callers can react to it
+   * without a second `adapter.getSession()` round-trip (the `session` state
+   * update above is async and won't reflect in the same tick). */
+  refreshSession: () => Promise<Session>;
 }
 
 export const SessionContext = createContext<SessionContextValue | null>(null);
@@ -20,10 +23,11 @@ export function SessionProvider({ adapter, children }: SessionProviderProps): Re
   const [session, setSession] = useState<Session>(ANONYMOUS_SESSION);
   const [isReady, setIsReady] = useState(false);
 
-  const refreshSession = useCallback(async (): Promise<void> => {
+  const refreshSession = useCallback(async (): Promise<Session> => {
     const nextSession = await adapter.getSession();
     setSession(nextSession);
     setIsReady(true);
+    return nextSession;
   }, [adapter]);
 
   const clearSession = useCallback(async (): Promise<void> => {
