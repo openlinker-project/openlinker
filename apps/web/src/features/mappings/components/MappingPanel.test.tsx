@@ -313,4 +313,76 @@ describe('MappingPanel', () => {
       expect(onSave).toHaveBeenCalledWith([]);
     });
   });
+
+  describe('deep-link pre-focus (#1794)', () => {
+    it('pre-selects an unmapped, known focusSourceValue and shows the hint', () => {
+      render(
+        <MappingPanel
+          {...baseProps}
+          sourceOptions={[ALLEGRO_PACZKOMAT, ALLEGRO_KURIER]}
+          targetOptions={[PS_INPOST]}
+          savedRows={[]}
+          onSave={vi.fn()}
+          focusSourceValue={ALLEGRO_PACZKOMAT.value}
+          focusSourceName="Allegro Paczkomaty InPost"
+        />,
+      );
+
+      expect(
+        screen.getByText((_, element) => element?.textContent === 'Map Allegro Paczkomaty InPost to a prestashop carrier below.'),
+      ).toBeInTheDocument();
+      // The add-row source picker is now the searchable Combobox (#1784 I8),
+      // not a native <select> — assert the pre-selected label in its trigger
+      // text instead of a form-element `.value`.
+      const select = screen.getByRole('combobox', { name: /select allegro delivery method/i });
+      expect(select).toHaveTextContent('Allegro Paczkomaty InPost');
+
+      // savedRows is empty here — the pre-existing "no mappings configured
+      // yet" empty state and the deep-link focus hint are both role="status"
+      // and would otherwise announce together. Only the focus hint may render.
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+      expect(screen.queryByText(/No mappings configured yet/)).not.toBeInTheDocument();
+    });
+
+    it('does not pre-select or show the hint when focusSourceValue is already mapped', () => {
+      render(
+        <MappingPanel
+          {...baseProps}
+          sourceOptions={[ALLEGRO_PACZKOMAT]}
+          targetOptions={[PS_INPOST]}
+          savedRows={[{ sourceValue: ALLEGRO_PACZKOMAT.value, targetValue: PS_INPOST.value }]}
+          onSave={vi.fn()}
+          focusSourceValue={ALLEGRO_PACZKOMAT.value}
+          focusSourceName="Allegro Paczkomaty InPost"
+        />,
+      );
+
+      // Scoped to the deep-link hint specifically — with the sole source value
+      // already mapped, the panel also renders its own "All source values
+      // mapped." status (#1784 I8), a second unrelated role="status".
+      expect(screen.queryByText(/Allegro Paczkomaty InPost to a/i)).not.toBeInTheDocument();
+      const select = screen.getByRole('combobox', { name: /select allegro delivery method/i });
+      expect(select).toHaveTextContent('Select Allegro delivery method');
+    });
+
+    it('does not pre-select or show the hint when focusSourceValue is absent from sourceOptions', () => {
+      render(
+        <MappingPanel
+          {...baseProps}
+          sourceOptions={[ALLEGRO_KURIER]}
+          targetOptions={[PS_INPOST]}
+          savedRows={[]}
+          onSave={vi.fn()}
+          focusSourceValue="unknown-method-id"
+          focusSourceName="Unknown method"
+        />,
+      );
+
+      // Scoped to the deep-link hint specifically — the panel's pre-existing
+      // "no mappings configured yet" empty state also renders role="status".
+      expect(screen.queryByText(/Unknown method/)).not.toBeInTheDocument();
+      const select = screen.getByRole('combobox', { name: /select allegro delivery method/i });
+      expect(select).toHaveTextContent('Select Allegro delivery method');
+    });
+  });
 });

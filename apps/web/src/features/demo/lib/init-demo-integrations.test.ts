@@ -60,7 +60,7 @@ describe('initDemoIntegrations', () => {
     expect(posthogInit).not.toHaveBeenCalled();
   });
 
-  it('should init with masking options and the resolved autocapture/sessionRecording when all gates pass', async () => {
+  it('should init with password-only masking and the resolved autocapture/sessionRecording when all gates pass', async () => {
     getDemoAnalyticsConsent.mockReturnValue('accepted');
     await initDemoIntegrations(configuredPosthog);
     expect(posthogInit).toHaveBeenCalledWith('phc_abc', {
@@ -69,10 +69,22 @@ describe('initDemoIntegrations', () => {
       autocapture: true,
       capture_pageview: true,
       session_recording: {
-        maskAllInputs: true,
-        maskTextSelector: '*',
+        maskAllInputs: false,
+        maskInputOptions: { password: true },
       },
     });
+  });
+
+  it('should not mask rendered page text or non-password inputs (#1877)', async () => {
+    getDemoAnalyticsConsent.mockReturnValue('accepted');
+    await initDemoIntegrations(configuredPosthog);
+    const [, options] = posthogInit.mock.calls[0] as [string, Record<string, unknown>];
+    const sessionRecording = options.session_recording as Record<string, unknown>;
+    // A regression here means replays go back to being unwatchable.
+    expect(sessionRecording).not.toHaveProperty('maskTextSelector');
+    expect(sessionRecording.maskAllInputs).toBe(false);
+    // ...but the one guarantee that remains must hold.
+    expect(sessionRecording.maskInputOptions).toEqual({ password: true });
   });
 
   it('should omit session_recording entirely when the resolved config disables it', async () => {

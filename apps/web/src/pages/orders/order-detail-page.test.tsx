@@ -268,7 +268,9 @@ describe('OrderDetailPage', () => {
       renderDetail(api);
 
       expect(await screen.findByText('Carrier')).toBeInTheDocument();
-      expect(screen.getByText('-')).toBeInTheDocument();
+      // Both the always-present Method row (#1776) and the Carrier row fall back
+      // to "-" when the order has neither a source delivery method nor a shipment.
+      expect(screen.getAllByText('-')).toHaveLength(2);
     });
   });
 

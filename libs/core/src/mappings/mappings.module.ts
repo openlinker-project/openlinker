@@ -31,6 +31,7 @@ import { OrderStateMappingRepository } from './infrastructure/persistence/reposi
 import { FulfillmentRoutingRepository } from './infrastructure/persistence/repositories/fulfillment-routing.repository';
 import { MappingConfigService } from './application/services/mapping-config.service';
 import { FulfillmentRoutingService } from './application/services/fulfillment-routing.service';
+import { DeliveryRiderService } from './application/services/delivery-rider.service';
 import {
   MAPPING_CONFIG_SERVICE_TOKEN,
   STATUS_MAPPING_REPOSITORY_TOKEN,
@@ -41,6 +42,7 @@ import {
   ORDER_STATE_MAPPING_REPOSITORY_TOKEN,
   FULFILLMENT_ROUTING_REPOSITORY_TOKEN,
   FULFILLMENT_ROUTING_SERVICE_TOKEN,
+  DELIVERY_RIDER_SERVICE_TOKEN,
 } from './mappings.tokens';
 
 @Module({
@@ -71,6 +73,7 @@ import {
     FulfillmentRoutingRepository,
     MappingConfigService,
     FulfillmentRoutingService,
+    DeliveryRiderService,
     {
       provide: STATUS_MAPPING_REPOSITORY_TOKEN,
       useExisting: StatusMappingRepository,
@@ -107,11 +110,16 @@ import {
       provide: FULFILLMENT_ROUTING_SERVICE_TOKEN,
       useExisting: FulfillmentRoutingService,
     },
+    {
+      provide: DELIVERY_RIDER_SERVICE_TOKEN,
+      useExisting: DeliveryRiderService,
+    },
   ],
   exports: [
     MAPPING_CONFIG_SERVICE_TOKEN,
     MappingConfigService,
     FULFILLMENT_ROUTING_SERVICE_TOKEN,
+    DELIVERY_RIDER_SERVICE_TOKEN,
   ],
 })
 export class MappingsModule {}

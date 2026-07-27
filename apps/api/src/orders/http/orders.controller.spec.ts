@@ -23,12 +23,22 @@ import type {
 import { INVOICE_SERVICE_TOKEN } from '@openlinker/core/invoicing';
 import type { IInvoiceService } from '@openlinker/core/invoicing';
 import { InvoiceRecord } from '@openlinker/core/invoicing';
+import {
+  FULFILLMENT_ROUTING_SERVICE_TOKEN,
+  DELIVERY_RIDER_SERVICE_TOKEN,
+} from '@openlinker/core/mappings';
+import type {
+  IFulfillmentRoutingService,
+  IDeliveryRiderService,
+} from '@openlinker/core/mappings';
 
 describe('OrdersController', () => {
   let controller: OrdersController;
   let repository: jest.Mocked<OrderRecordRepositoryPort>;
   let retryService: jest.Mocked<IOrderDestinationRetryService>;
   let invoiceService: jest.Mocked<IInvoiceService>;
+  let fulfillmentRouting: jest.Mocked<IFulfillmentRoutingService>;
+  let deliveryRider: jest.Mocked<IDeliveryRiderService>;
 
   const mockOrder = new OrderRecord(
     'ol_order_001',
@@ -76,6 +86,25 @@ describe('OrdersController', () => {
       applyRegulatoryClearance: jest.fn(),
     };
 
+    const mockFulfillmentRouting: jest.Mocked<IFulfillmentRoutingService> = {
+      getRules: jest.fn(),
+      getCandidateProcessors: jest.fn(),
+      replaceRules: jest.fn(),
+      resolve: jest.fn(),
+      resolveBatch: jest.fn().mockResolvedValue([]),
+    };
+
+    const mockDeliveryRider: jest.Mocked<IDeliveryRiderService> = {
+      // Default: no actionable hint. Batch mirrors the input length so the
+      // controller's positional zip stays aligned.
+      resolve: jest.fn().mockResolvedValue({ rider: 'none' }),
+      resolveBatch: jest
+        .fn()
+        .mockImplementation((inputs: unknown[]) =>
+          Promise.resolve(inputs.map(() => ({ rider: 'none' })))
+        ),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [OrdersController],
       providers: [
@@ -91,6 +120,14 @@ describe('OrdersController', () => {
           provide: INVOICE_SERVICE_TOKEN,
           useValue: mockInvoiceService,
         },
+        {
+          provide: FULFILLMENT_ROUTING_SERVICE_TOKEN,
+          useValue: mockFulfillmentRouting,
+        },
+        {
+          provide: DELIVERY_RIDER_SERVICE_TOKEN,
+          useValue: mockDeliveryRider,
+        },
       ],
     }).compile();
 
@@ -98,6 +135,8 @@ describe('OrdersController', () => {
     repository = module.get(ORDER_RECORD_REPOSITORY_TOKEN);
     retryService = module.get(ORDER_DESTINATION_RETRY_SERVICE_TOKEN);
     invoiceService = module.get(INVOICE_SERVICE_TOKEN);
+    fulfillmentRouting = module.get(FULFILLMENT_ROUTING_SERVICE_TOKEN);
+    deliveryRider = module.get(DELIVERY_RIDER_SERVICE_TOKEN);
   });
 
   describe('listOrders', () => {
@@ -294,6 +333,136 @@ describe('OrdersController', () => {
       expect(result.items[0].dispatchByAt).toBe('2026-04-02T16:00:00.000Z');
       expect(result.items[1].dispatchByAt).toBeNull();
     });
+
+    it('should derive dispatchByEstimated from the snapshot dispatch window (#1776)', async () => {
+      const estimatedOrder = new OrderRecord(
+        'ol_order_est',
+        null,
+        'conn-source-001',
+        null,
+        { dispatchTime: { from: '2026-04-01T00:00:00Z', to: '2026-04-03T00:00:00Z', estimated: true } },
+        [],
+        'ready',
+        new Date('2026-04-01T00:00:00Z'),
+        new Date('2026-04-01T00:00:00Z'),
+        [],
+        new Date('2026-04-03T00:00:00Z')
+      );
+      repository.findMany.mockResolvedValue({ items: [estimatedOrder, mockOrder], total: 2 });
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      // Erli-style estimated window → true; authoritative/absent window → false.
+      expect(result.items[0].dispatchByEstimated).toBe(true);
+      expect(result.items[1].dispatchByEstimated).toBe(false);
+    });
+
+    it('should attach a batched deliveryResolution only to orders with a source delivery method (#1791)', async () => {
+      const orderWithMethod = new OrderRecord(
+        'ol_order_shipped',
+        null,
+        'conn-source-001',
+        null,
+        { shipping: { methodId: 'courier-standard' } },
+        [],
+        'ready',
+        new Date('2026-04-01T00:00:00Z'),
+        new Date('2026-04-01T00:00:00Z')
+      );
+      repository.findMany.mockResolvedValue({ items: [orderWithMethod, mockOrder], total: 2 });
+      fulfillmentRouting.resolveBatch.mockResolvedValue([
+        { processorKind: 'ol_managed_carrier', processorConnectionId: 'conn-inpost', source: 'rule', processorAvailable: true },
+      ]);
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(fulfillmentRouting.resolveBatch).toHaveBeenCalledWith([
+        { sourceConnectionId: 'conn-source-001', sourceDeliveryMethodId: 'courier-standard' },
+      ]);
+      expect(result.items[0].deliveryResolution).toEqual({
+        source: 'rule',
+        processorKind: 'ol_managed_carrier',
+        processorConnectionId: 'conn-inpost',
+        processorAvailable: true,
+      });
+      expect(result.items[1].deliveryResolution).toBeUndefined();
+    });
+
+    it('should skip resolveBatch entirely when no order in the page has a delivery method (#1791)', async () => {
+      repository.findMany.mockResolvedValue({ items: [mockOrder], total: 1 });
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(fulfillmentRouting.resolveBatch).not.toHaveBeenCalled();
+      expect(result.items[0].deliveryResolution).toBeUndefined();
+    });
+
+    it('should attach a batched deliveryRider next to deliveryResolution, threading the routing source (#1792)', async () => {
+      const orderWithMethod = new OrderRecord(
+        'ol_order_rider',
+        null,
+        'conn-source-001',
+        null,
+        { shipping: { methodId: 'ai-inpost-1', methodName: 'Allegro Paczkomat InPost' } },
+        [],
+        'ready',
+        new Date('2026-04-01T00:00:00Z'),
+        new Date('2026-04-01T00:00:00Z')
+      );
+      repository.findMany.mockResolvedValue({ items: [orderWithMethod, mockOrder], total: 2 });
+      fulfillmentRouting.resolveBatch.mockResolvedValue([
+        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true },
+      ]);
+      deliveryRider.resolveBatch.mockResolvedValue([
+        { rider: 'unmapped', candidateCarrier: { platformType: 'inpost', displayName: 'InPost' } },
+      ]);
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(deliveryRider.resolveBatch).toHaveBeenCalledWith([
+        {
+          sourceConnectionId: 'conn-source-001',
+          sourceDeliveryMethod: { name: 'Allegro Paczkomat InPost', typeId: 'ai-inpost-1' },
+          resolutionSource: 'default',
+          routedProcessorDisabled: false,
+        },
+      ]);
+      expect(result.items[0].deliveryRider).toEqual({
+        rider: 'unmapped',
+        candidateCarrier: { platformType: 'inpost', displayName: 'InPost' },
+      });
+      // Typed source-method projection (#1791/#1792) for the #1794 deep link.
+      expect(result.items[0].sourceDeliveryMethodId).toBe('ai-inpost-1');
+      expect(result.items[0].sourceDeliveryMethodName).toBe('Allegro Paczkomat InPost');
+      // No method on mockOrder → no rider attached; method fields null.
+      expect(result.items[1].deliveryRider).toBeUndefined();
+      expect(result.items[1].sourceDeliveryMethodId).toBeNull();
+      expect(result.items[1].sourceDeliveryMethodName).toBeNull();
+    });
+
+    it('should omit candidateCarrier from the rider DTO when the rider is "none" (#1792)', async () => {
+      const orderWithMethod = new OrderRecord(
+        'ol_order_rider_none',
+        null,
+        'conn-source-001',
+        null,
+        { shipping: { methodId: 'courier-1', methodName: 'Kurier standardowy' } },
+        [],
+        'ready',
+        new Date('2026-04-01T00:00:00Z'),
+        new Date('2026-04-01T00:00:00Z')
+      );
+      repository.findMany.mockResolvedValue({ items: [orderWithMethod], total: 1 });
+      fulfillmentRouting.resolveBatch.mockResolvedValue([
+        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true },
+      ]);
+      deliveryRider.resolveBatch.mockResolvedValue([{ rider: 'none' }]);
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(result.items[0].deliveryRider).toEqual({ rider: 'none' });
+      expect(result.items[0].deliveryRider).not.toHaveProperty('candidateCarrier');
+    });
   });
 
   describe('statusSummary', () => {
@@ -428,6 +597,96 @@ describe('OrdersController', () => {
       const result = await controller.getOrder('ol_order_001');
 
       expect(result.orderSnapshot).toEqual({ externalOrderId: 'EXT-123', items: [] });
+    });
+
+    it('should attach deliveryResolution when the order carries a source delivery method (#1791)', async () => {
+      const orderWithMethod = new OrderRecord(
+        'ol_order_shipped',
+        null,
+        'conn-source-001',
+        null,
+        { shipping: { methodId: 'courier-standard' } },
+        [],
+        'ready',
+        new Date('2026-04-01T00:00:00Z'),
+        new Date('2026-04-01T00:00:00Z')
+      );
+      repository.findById.mockResolvedValue(orderWithMethod);
+      fulfillmentRouting.resolve.mockResolvedValue({
+        processorKind: 'omp_fulfilled',
+        processorConnectionId: null,
+        source: 'default',
+        processorAvailable: true,
+      });
+
+      const result = await controller.getOrder('ol_order_shipped');
+
+      expect(fulfillmentRouting.resolve).toHaveBeenCalledWith({
+        sourceConnectionId: 'conn-source-001',
+        sourceDeliveryMethodId: 'courier-standard',
+      });
+      expect(result.deliveryResolution).toEqual({
+        source: 'default',
+        processorKind: 'omp_fulfilled',
+        processorConnectionId: null,
+        processorAvailable: true,
+      });
+    });
+
+    it('should leave deliveryResolution absent when the order carries no delivery method (#1791)', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(fulfillmentRouting.resolve).not.toHaveBeenCalled();
+      expect(result.deliveryResolution).toBeUndefined();
+    });
+
+    it('should attach the delivery rider on detail, built from the routing source + snapshot method (#1792)', async () => {
+      const orderWithMethod = new OrderRecord(
+        'ol_order_rider_detail',
+        null,
+        'conn-source-001',
+        null,
+        { shipping: { methodId: 'dpd-1', methodName: 'Kurier DPD' } },
+        [],
+        'ready',
+        new Date('2026-04-01T00:00:00Z'),
+        new Date('2026-04-01T00:00:00Z')
+      );
+      repository.findById.mockResolvedValue(orderWithMethod);
+      fulfillmentRouting.resolve.mockResolvedValue({
+        processorKind: 'omp_fulfilled',
+        processorConnectionId: null,
+        source: 'default',
+        processorAvailable: true,
+      });
+      deliveryRider.resolve.mockResolvedValue({
+        rider: 'not-connected',
+        candidateCarrier: { platformType: 'dpd', displayName: 'DPD' },
+      });
+
+      const result = await controller.getOrder('ol_order_rider_detail');
+
+      expect(deliveryRider.resolve).toHaveBeenCalledWith({
+        sourceConnectionId: 'conn-source-001',
+        sourceDeliveryMethod: { name: 'Kurier DPD', typeId: 'dpd-1' },
+        resolutionSource: 'default',
+        routedProcessorDisabled: false,
+      });
+      expect(result.deliveryRider).toEqual({
+        rider: 'not-connected',
+        candidateCarrier: { platformType: 'dpd', displayName: 'DPD' },
+      });
+    });
+
+    it('should not compute a rider when the order carries no delivery method (#1792)', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(deliveryRider.resolve).not.toHaveBeenCalled();
+      expect(result.deliveryRider).toBeUndefined();
     });
   });
 
