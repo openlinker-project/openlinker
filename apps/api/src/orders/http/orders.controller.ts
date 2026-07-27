@@ -33,12 +33,27 @@ import {
   IOrderDestinationRetryService,
   deriveSlaState,
 } from '@openlinker/core/orders';
-import type { OrderRecord, OrderSyncStatus, SyncAttempt } from '@openlinker/core/orders';
+import type {
+  OrderRecord,
+  OrderSyncStatus,
+  SyncAttempt,
+} from '@openlinker/core/orders';
 import {
   INVOICE_SERVICE_TOKEN,
   IInvoiceService,
 } from '@openlinker/core/invoicing';
 import type { InvoiceRecord } from '@openlinker/core/invoicing';
+import {
+  FULFILLMENT_ROUTING_SERVICE_TOKEN,
+  IFulfillmentRoutingService,
+  DELIVERY_RIDER_SERVICE_TOKEN,
+  IDeliveryRiderService,
+} from '@openlinker/core/mappings';
+import type {
+  FulfillmentRoutingResolution,
+  DeliveryRiderInput,
+  DeliveryRiderResolution,
+} from '@openlinker/core/mappings';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
 import { OrderHealthSummaryQueryDto } from './dto/order-health-summary-query.dto';
 import { OrderHealthSummaryResponseDto } from './dto/order-health-summary-response.dto';
@@ -49,6 +64,8 @@ import type { SyncAttemptResponseDto } from './dto/sync-attempt-response.dto';
 import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto';
 import { RetryOrderDestinationResponseDto } from './dto/retry-order-destination-response.dto';
 import type { OrderInvoiceProjectionDto } from './dto/order-invoice-projection.dto';
+import type { OrderDeliveryResolutionDto } from './dto/order-delivery-resolution.dto';
+import type { OrderDeliveryRiderDto } from './dto/order-delivery-rider.dto';
 
 @ApiBearerAuth()
 @ApiTags('orders')
@@ -60,7 +77,11 @@ export class OrdersController {
     @Inject(ORDER_DESTINATION_RETRY_SERVICE_TOKEN)
     private readonly destinationRetryService: IOrderDestinationRetryService,
     @Inject(INVOICE_SERVICE_TOKEN)
-    private readonly invoiceService: IInvoiceService
+    private readonly invoiceService: IInvoiceService,
+    @Inject(FULFILLMENT_ROUTING_SERVICE_TOKEN)
+    private readonly fulfillmentRouting: IFulfillmentRoutingService,
+    @Inject(DELIVERY_RIDER_SERVICE_TOKEN)
+    private readonly deliveryRider: IDeliveryRiderService
   ) {}
 
   @Get()
@@ -121,12 +142,25 @@ export class OrdersController {
     );
     const invoiceByOrderId = new Map(invoices.map((invoice) => [invoice.orderId, invoice]));
 
+    // Batch the delivery-routing-resolution + rider projection for the whole
+    // page (#1791/#1792): one `resolveBatch` per service (each collapsing to a
+    // small, fixed number of reads — the rider's carrier-state read is
+    // order-independent and happens once), not an N+1 of per-row calls. Only
+    // orders that carry a source delivery method are queried; the rest simply
+    // have no `deliveryResolution` / `deliveryRider` on their DTO.
+    const deliveryByOrderId = await this.resolveDeliveryForOrders(items);
+
     return {
       items: items.map((order) => {
         const dto = this.toDto(order);
         const invoice = invoiceByOrderId.get(order.internalOrderId);
         if (invoice) {
           dto.orderSnapshot = { ...dto.orderSnapshot, invoice: this.toInvoiceProjection(invoice) };
+        }
+        const delivery = deliveryByOrderId.get(order.internalOrderId);
+        if (delivery) {
+          dto.deliveryResolution = delivery.resolution;
+          dto.deliveryRider = delivery.rider;
         }
         return dto;
       }),
@@ -210,6 +244,20 @@ export class OrdersController {
     if (invoiceRecord) {
       dto.orderSnapshot = { ...dto.orderSnapshot, invoice: this.toInvoiceProjection(invoiceRecord) };
     }
+    // Delivery-routing-resolution + rider projection (#1791/#1792): a
+    // single-order counterpart to the list read's batched resolution below.
+    // Absent when the order carries no source delivery method — resolving would
+    // just echo the omp_fulfilled default with no delivery method to route.
+    if (order.sourceDeliveryMethodId) {
+      const resolution = await this.fulfillmentRouting.resolve({
+        sourceConnectionId: order.sourceConnectionId,
+        sourceDeliveryMethodId: order.sourceDeliveryMethodId,
+      });
+      dto.deliveryResolution = this.toDeliveryResolutionDto(resolution);
+      dto.deliveryRider = this.toDeliveryRiderDto(
+        await this.deliveryRider.resolve(this.toRiderInput(order, resolution))
+      );
+    }
     return dto;
   }
 
@@ -275,10 +323,19 @@ export class OrdersController {
       createdAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
       updatedAt: order.updatedAt instanceof Date ? order.updatedAt.toISOString() : order.updatedAt,
       dispatchByAt: order.dispatchByAt ? order.dispatchByAt.toISOString() : null,
+      // Ship-by estimate flag (#1776): a typed, fail-safe read off the snapshot's
+      // dispatch window. Erli marks its derived window `estimated: true`; Allegro
+      // leaves it absent (authoritative). Narrowing lives on the entity getter.
+      dispatchByEstimated: order.dispatchByEstimated,
       fulfillmentState,
       // BE-owned SLA bucket (#1108): single source of truth so the list filter +
       // badge agree. The FE renders only the live countdown off dispatchByAt.
       slaState: deriveSlaState(order.dispatchByAt, order.fulfillmentState, new Date()),
+      // Typed projection of the source delivery method (#1791/#1792) so the
+      // #1794 Add-mapping deep link reads named fields, not the untyped
+      // orderSnapshot blob. Read off the OrderRecord getters; null when absent.
+      sourceDeliveryMethodId: order.sourceDeliveryMethodId,
+      sourceDeliveryMethodName: order.sourceDeliveryMethodName,
     };
   }
 
@@ -298,6 +355,90 @@ export class OrdersController {
       regulatoryStatus: record.regulatoryStatus,
       clearanceReference: record.clearanceReference,
       confirmationDocumentAvailable,
+    };
+  }
+
+  /**
+   * Batched delivery-routing resolution for a page of orders (#1791). Queries
+   * `IFulfillmentRoutingService.resolveBatch` once for every order that
+   * carries a source delivery method (`OrderRecord.sourceDeliveryMethodId`,
+   * the same key the shipping dispatch seam resolves against) — the service
+   * itself further collapses that into one repository read per distinct
+   * `sourceConnectionId`, so this stays a small, fixed number of DB round
+   * trips regardless of page size, not an N+1 per order.
+   */
+  private async resolveDeliveryForOrders(
+    orders: OrderRecord[]
+  ): Promise<
+    Map<string, { resolution: OrderDeliveryResolutionDto; rider: OrderDeliveryRiderDto }>
+  > {
+    const ordersWithMethod = orders.filter(
+      (order): order is OrderRecord & { sourceDeliveryMethodId: string } =>
+        order.sourceDeliveryMethodId !== null
+    );
+    if (ordersWithMethod.length === 0) {
+      return new Map();
+    }
+    const resolutions = await this.fulfillmentRouting.resolveBatch(
+      ordersWithMethod.map((order) => ({
+        sourceConnectionId: order.sourceConnectionId,
+        sourceDeliveryMethodId: order.sourceDeliveryMethodId,
+      }))
+    );
+    // Rider inputs carry each order's resolution `source` (#1791) — the rider
+    // only fires on `default`. The service reads carrier state once for the
+    // whole batch (it is order-independent), so this stays cheap.
+    const riders = await this.deliveryRider.resolveBatch(
+      ordersWithMethod.map((order, i) => this.toRiderInput(order, resolutions[i]))
+    );
+    return new Map(
+      ordersWithMethod.map((order, i) => [
+        order.internalOrderId,
+        {
+          resolution: this.toDeliveryResolutionDto(resolutions[i]),
+          rider: this.toDeliveryRiderDto(riders[i]),
+        },
+      ])
+    );
+  }
+
+  private toDeliveryResolutionDto(
+    resolution: FulfillmentRoutingResolution
+  ): OrderDeliveryResolutionDto {
+    return {
+      source: resolution.source,
+      processorKind: resolution.processorKind,
+      processorConnectionId: resolution.processorConnectionId,
+      processorAvailable: resolution.processorAvailable,
+    };
+  }
+
+  /**
+   * Build the delivery-rider input (#1792) from an order + its #1791 routing
+   * resolution. The rider's `resolutionSource` is the resolution's `source`, so
+   * a live `rule`-resolved order short-circuits to `none` inside the service;
+   * `routedProcessorDisabled` (#1799) flags a `rule` whose processor connection
+   * is not active, driving the `disabled` (*Enable {carrier}*) rider.
+   */
+  private toRiderInput(
+    order: OrderRecord,
+    resolution: FulfillmentRoutingResolution
+  ): DeliveryRiderInput {
+    return {
+      sourceConnectionId: order.sourceConnectionId,
+      sourceDeliveryMethod: {
+        name: order.sourceDeliveryMethodName,
+        typeId: order.sourceDeliveryMethodId,
+      },
+      resolutionSource: resolution.source,
+      routedProcessorDisabled: resolution.source === 'rule' && !resolution.processorAvailable,
+    };
+  }
+
+  private toDeliveryRiderDto(rider: DeliveryRiderResolution): OrderDeliveryRiderDto {
+    return {
+      rider: rider.rider,
+      ...(rider.candidateCarrier ? { candidateCarrier: rider.candidateCarrier } : {}),
     };
   }
 

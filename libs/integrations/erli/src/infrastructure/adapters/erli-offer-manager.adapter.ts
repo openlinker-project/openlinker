@@ -132,7 +132,7 @@ import type { CachePort } from '@openlinker/shared';
 import { Logger } from '@openlinker/shared/logging';
 import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
 import { ErliConfigException } from '../../domain/exceptions/erli-config.exception';
-import { ERLI_PRODUCT_ID_PATTERN } from '../../erli.constants';
+import { ERLI_PRODUCT_ID_PATTERN, erliProductPath } from '../../erli.constants';
 import type { ErliDispatchTime } from '../../domain/types/erli-connection.types';
 import type { AllegroCategoryCatalogClient } from '../http/allegro-category-catalog-client';
 import type { IErliHttpClient } from '../http/erli-http-client.interface';
@@ -746,7 +746,7 @@ export class ErliOfferManagerAdapter
         this.connectionId,
       );
     }
-    return `products/${encodeURIComponent(rawId)}`;
+    return erliProductPath(rawId);
   }
 
   private buildCreateBody(cmd: CreateOfferCommand): ErliProductCreateBody {

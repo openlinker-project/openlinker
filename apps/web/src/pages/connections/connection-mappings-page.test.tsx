@@ -441,6 +441,87 @@ describe('ConnectionMappingsPage', () => {
     });
   });
 
+  describe('fix-it deep link (#1794)', () => {
+    const ALLEGRO_DELIVERY_OPTIONS: MappingOption[] = [
+      { value: 'method-1', label: 'InPost Paczkomat' },
+      { value: 'method-2', label: 'Kurier24' },
+    ];
+    const PS_CARRIERS: MappingOption[] = [{ value: '1', label: 'Click and collect' }];
+
+    function renderAtDeepLink(apiClient: ReturnType<typeof createMockApiClient>): void {
+      renderWithProviders(
+        <Routes>
+          <Route path="/connections/:connectionId/mappings" element={<ConnectionMappingsPage />} />
+        </Routes>,
+        {
+          apiClient,
+          route: '/connections/conn_1/mappings?tab=carriers&method=method-1&methodName=InPost%20Paczkomat',
+        },
+      );
+    }
+
+    it('opens the Carriers tab and pre-focuses the unmapped source method when the target route carries ?tab=carriers&method=', async () => {
+      const apiClient = buildApiClient({
+        mappings: {
+          getMappingOptions: buildOptionsResolver({
+            'source/order-statuses': STATUS_OPTIONS,
+            'destination/order-statuses': PS_STATUS_OPTIONS,
+            'source/delivery-methods': ALLEGRO_DELIVERY_OPTIONS,
+            'destination/carriers': PS_CARRIERS,
+          }),
+        },
+      });
+      renderAtDeepLink(apiClient);
+
+      // The Carriers tab is selected on initial render — not the default first tab.
+      const carriersTab = await screen.findByRole('tab', { name: 'Carriers' });
+      await waitFor(() => {
+        expect(carriersTab).toHaveAttribute('aria-selected', 'true');
+      });
+      expect(await screen.findByText('Carrier Mappings')).toBeInTheDocument();
+
+      // The unmapped source method carried via ?method= is pre-selected in the
+      // add-row picker — the searchable Combobox (#1784 I8), not a native
+      // <select>, so assert the pre-selected label in its trigger text.
+      await waitFor(() => {
+        const select = screen.getByRole('combobox', { name: /select allegro delivery method/i });
+        expect(select).toHaveTextContent('InPost Paczkomat');
+      });
+      expect(
+        screen.getByText((_, element) => element?.textContent === 'Map InPost Paczkomat to a prestashop carrier below.'),
+      ).toBeInTheDocument();
+    });
+
+    it('falls back to the first available tab when ?tab= names a tab unavailable on this connection', async () => {
+      // The page resolves tabs from the PAIRED destination's capabilities
+      // (#1784), not the opened connection's own — so to make "order-states"
+      // genuinely unavailable, strip OrderProcessorManager off the paired
+      // PrestaShop destination (source ALLEGRO keeps OrderSource, so
+      // Fulfillment is still the true fallback tab).
+      const destinationWithoutOrderProcessor: Connection = {
+        ...PRESTA,
+        supportedCapabilities: ['OrderSource'],
+      };
+      const apiClient = buildApiClient({
+        connectionList: [ALLEGRO, destinationWithoutOrderProcessor],
+      });
+      renderWithProviders(
+        <Routes>
+          <Route path="/connections/:connectionId/mappings" element={<ConnectionMappingsPage />} />
+        </Routes>,
+        { apiClient, route: '/connections/alg_1/mappings?tab=order-states' },
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Mapping Configuration')).toBeInTheDocument();
+      });
+      // With OrderSource capability the Fulfillment tab is tabs[0] — the true
+      // first available tab this connection falls back to.
+      const fulfillmentTab = await screen.findByRole('tab', { name: 'Fulfillment' });
+      expect(fulfillmentTab).toHaveAttribute('aria-selected', 'true');
+    });
+  });
+
   it('switches between tabs', async () => {
     renderAt(buildApiClient());
     await openTab('Carriers');

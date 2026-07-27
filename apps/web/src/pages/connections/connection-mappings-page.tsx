@@ -18,7 +18,7 @@
  */
 
 import { useCallback, useMemo, useState, type ReactElement, type ReactNode } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
 import { Alert } from '../../shared/ui/alert';
@@ -41,6 +41,7 @@ import {
 import { useRoutingRulesQuery } from '../../features/mappings/hooks/use-routing-rules';
 import { useMappingOptions } from '../../features/mappings/hooks/use-mapping-options';
 import { resolvePlatformLabel } from '../../features/mappings/lib/platform-label';
+import { DELIVERY_MAPPING_DEEP_LINK_PARAMS } from '../../features/mappings';
 import { usePlatforms } from '../../shared/plugins';
 import {
   OL_ORDER_STATUS_OPTIONS,
@@ -170,6 +171,14 @@ export function ConnectionMappingsPage(): ReactElement {
   const navigate = useNavigate();
   const platforms = usePlatforms();
 
+  // Fix-it deep link (#1794): the order-detail "Add mapping" rider links here
+  // with `?tab=carriers&method=<id>&methodName=<name>` so we open the Delivery
+  // (carriers) tab and pre-focus the unmapped source method.
+  const [searchParams] = useSearchParams();
+  const requestedTab = searchParams.get(DELIVERY_MAPPING_DEEP_LINK_PARAMS.tab);
+  const focusMethodId = searchParams.get(DELIVERY_MAPPING_DEEP_LINK_PARAMS.method);
+  const focusMethodName = searchParams.get(DELIVERY_MAPPING_DEEP_LINK_PARAMS.methodName);
+
   // Resolve the config-stamped source -> destination pairing (#1784). Drives
   // both the route strip and every platform label on the page.
   const pairing = useMappingPairing(connectionId);
@@ -193,8 +202,16 @@ export function ConnectionMappingsPage(): ReactElement {
     : false;
 
   // Lazy-load per tab (#1784 follow-up): only the tab open on load (`defaultTab`)
-  // plus tabs the operator has visited fetch their data.
-  const defaultTab: TabId = supportsOrderSource ? 'fulfillment' : 'status';
+  // plus tabs the operator has visited fetch their data. Honour the deep-link
+  // tab request (#1794) only when it names a tab that's actually available for
+  // this connection's resolved capabilities; otherwise fall back to the first.
+  const fallbackTab: TabId = supportsOrderSource ? 'fulfillment' : 'status';
+  const requestedTabAvailable =
+    requestedTab !== null &&
+    isTabId(requestedTab) &&
+    (requestedTab !== 'fulfillment' || supportsOrderSource) &&
+    (requestedTab !== 'order-states' || supportsOrderProcessor);
+  const defaultTab: TabId = requestedTabAvailable ? requestedTab : fallbackTab;
   const [visitedTabs, setVisitedTabs] = useState<ReadonlySet<TabId>>(new Set());
   const [activeTab, setActiveTab] = useState<TabId | null>(null);
   const [dirtyTabs, setDirtyTabs] = useState<ReadonlySet<TabId>>(new Set());
@@ -598,6 +615,8 @@ export function ConnectionMappingsPage(): ReactElement {
             onDirtyChange={dirtyHandlers.carriers}
             emptyStateMessage={EMPTY_STATE_MESSAGE_BY_TAB.carriers}
             dynamicOptionSuffix={` - exact ${sourceLabel} cost`}
+            focusSourceValue={focusMethodId}
+            focusSourceName={focusMethodName}
           />
         </TabsContent>
 

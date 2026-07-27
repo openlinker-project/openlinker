@@ -15,3 +15,4 @@ export const ATTRIBUTE_MAPPING_REPOSITORY_TOKEN = Symbol('AttributeMappingReposi
 export const ORDER_STATE_MAPPING_REPOSITORY_TOKEN = Symbol('OrderStateMappingRepositoryPort');
 export const FULFILLMENT_ROUTING_REPOSITORY_TOKEN = Symbol('FulfillmentRoutingRepositoryPort');
 export const FULFILLMENT_ROUTING_SERVICE_TOKEN = Symbol('IFulfillmentRoutingService');
+export const DELIVERY_RIDER_SERVICE_TOKEN = Symbol('IDeliveryRiderService');
