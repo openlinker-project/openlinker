@@ -263,6 +263,15 @@ export interface ErliProductResource {
   images?: ErliProductImage[];
   /** Category breadcrumb paths; the first path's leaf is the offer's category. */
   categories?: ErliProductCategoryNode[][];
+  /**
+   * Per-offer handling (dispatch) time (#1776). Read DEFENSIVELY off
+   * `GET /products/{externalId}`: the create body sets it, but whether the read
+   * echoes it back is not guaranteed on every Erli deployment. When present it
+   * supersedes the connection-wide `defaultDispatchTime` for the ship-by
+   * estimate; when absent the caller falls back to the connection default, so
+   * behaviour degrades to the connection-default derivation with no regression.
+   */
+  dispatchTime?: ErliDispatchTime;
   // ── Buyer-facing URL fields (#1752) ──
   // PROVISIONAL: unlike the read-side fields above, these two are NOT yet
   // confirmed against a live sandbox `GET /products/{externalId}` response.

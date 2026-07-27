@@ -55,6 +55,42 @@ export class ListingCreationRecordResponseDto {
   updatedAt!: string;
 }
 
+export class ShopCategoryResponseDto {
+  @ApiProperty({ description: 'Destination-native category id.' })
+  id!: string;
+
+  @ApiProperty({ description: 'Human-readable category name.' })
+  name!: string;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'Parent category id, or null for a root-level category.',
+  })
+  parentId!: string | null;
+}
+
+export class ShopAttributeResponseDto {
+  @ApiProperty({ description: 'Destination-native global-attribute id.' })
+  id!: string;
+
+  @ApiProperty({ description: 'Human-readable attribute name (e.g. "Color").' })
+  name!: string;
+
+  @ApiProperty({ description: 'Stable taxonomy slug (e.g. "pa_color").' })
+  slug!: string;
+}
+
+export class ShopAttributeTermResponseDto {
+  @ApiProperty({ description: 'Destination-native term id (threaded on publish as valuesIds).' })
+  id!: string;
+
+  @ApiProperty({ description: 'Human-readable term name (e.g. "Red").' })
+  name!: string;
+
+  @ApiProperty({ description: 'Stable term slug (e.g. "red").' })
+  slug!: string;
+}
+
 export class BulkShopPublishItemDto {
   @ApiProperty()
   internalVariantId!: string;

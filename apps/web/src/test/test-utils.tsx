@@ -313,6 +313,13 @@ export function createMockApiClient(
         .fn()
         .mockResolvedValue({ jobId: 'job-sp-1', listingCreationRecordId: 'sp-rec-1' }),
       getShopPublishStatus: vi.fn().mockResolvedValue(null),
+      // #1834 — default to "no shop categories" so the shop category picker
+      // renders its empty state in tests that don't override.
+      browseShopCategories: vi.fn().mockResolvedValue([]),
+      // #1835 — default to "no global attributes/terms" so the shop attribute
+      // picker renders its empty state in tests that don't override.
+      listShopAttributes: vi.fn().mockResolvedValue([]),
+      listShopAttributeTerms: vi.fn().mockResolvedValue([]),
       shopPublishBulk: vi.fn().mockResolvedValue({ batchId: 'sp-batch-1', items: [] }),
       getBulkShopPublishBatch: vi.fn().mockResolvedValue(null),
       getSellerPolicies: vi.fn().mockResolvedValue({
@@ -433,6 +440,9 @@ export function createMockApiClient(
       getRoutingRules: vi.fn().mockResolvedValue([]),
       replaceRoutingRules: vi.fn().mockResolvedValue([]),
       getRoutingCandidates: vi.fn().mockResolvedValue([]),
+      getAttributeRules: vi.fn().mockResolvedValue([]),
+      upsertAttributeRule: vi.fn().mockResolvedValue(undefined),
+      deleteAttributeRule: vi.fn().mockResolvedValue(undefined),
       ...overrides.mappings,
     } as ApiClient['mappings'],
     shipments: {
@@ -547,6 +557,7 @@ const DEFAULT_TEST_USER: SessionUser = {
     'inventory:read', 'inventory:write',
     'listings:read', 'listings:write',
     'ai:suggest',
+    'content:write',
     'invoices:read', 'invoices:write',
   ],
   analyticsConsent: true,

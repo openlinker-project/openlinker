@@ -312,11 +312,44 @@ export interface ShopPublishRequest {
   stock: number;
   price?: ShopPublishPrice;
   content?: ShopPublishContent;
+  /** Generate the product description with AI (#1840). Ignored when content.description is supplied. */
+  generateDescription?: boolean;
+  /** AI description tone hint; ignored when generateDescription is not true. */
+  descriptionTone?: 'concise' | 'detailed';
 }
 
 export interface ShopPublishResponse {
   jobId: string;
   listingCreationRecordId: string;
+}
+
+/**
+ * One node of a shop destination's category tree (#1834). Unlike a marketplace
+ * category, every node is a valid placement target (no `leaf` gate) and may also
+ * have children to drill into.
+ */
+export interface ShopCategory {
+  id: string;
+  name: string;
+  parentId: string | null;
+}
+
+/**
+ * A shop's store-wide global product attribute (#1835) — a reusable taxonomy the
+ * operator picks from (WooCommerce `pa_*`), distinct from a one-off free-text
+ * custom attribute. Terms are loaded on demand via `listShopAttributeTerms`.
+ */
+export interface ShopAttribute {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+/** One predefined term of a global attribute (#1835). */
+export interface ShopAttributeTerm {
+  id: string;
+  name: string;
+  slug: string;
 }
 
 export interface ShopPublishStatusResponse {
@@ -335,6 +368,23 @@ export interface BulkShopPublishItemRequest {
   internalVariantId: string;
   stock: number;
   price?: ShopPublishPrice;
+  /**
+   * Per-item content override (#1830); wins over the batch-shared `content`.
+   * Omitted ⇒ batch-shared content (or the master product) applies.
+   */
+  content?: ShopPublishContent;
+  /**
+   * Per-item destination category ids (#1830). Present (including an empty
+   * array ⇒ uncategorised) skips server-side category provisioning; omitted ⇒
+   * the builder provisions as before.
+   */
+  destinationCategoryIds?: string[];
+  /**
+   * Per-item neutral category parameters / attributes (#1830). Present
+   * (including empty) skips server-side attribute projection; omitted ⇒ the
+   * builder projects as before.
+   */
+  parameters?: OfferParameter[];
 }
 
 export interface BulkShopPublishRequest {
@@ -342,12 +392,28 @@ export interface BulkShopPublishRequest {
   items: BulkShopPublishItemRequest[];
   status: 'draft' | 'published';
   content?: ShopPublishContent;
+  /** Generate descriptions with AI for every product in the batch (#1840). */
+  generateDescription?: boolean;
+  /** Shared AI description tone hint; ignored when generateDescription is not true. */
+  descriptionTone?: 'concise' | 'detailed';
 }
 
 export interface BulkShopPublishItem {
   internalVariantId: string;
   jobId: string;
   listingCreationRecordId: string;
+}
+
+/** Destination-aware duplicate guard (#1837): request to check which variants
+ *  are already published on a destination connection. */
+export interface PublishedVariantsRequest {
+  connectionId: string;
+  variantIds: string[];
+}
+
+/** Subset of the requested variant ids already published on the connection. */
+export interface PublishedVariantsResponse {
+  publishedVariantIds: string[];
 }
 
 export interface BulkShopPublishResponse {

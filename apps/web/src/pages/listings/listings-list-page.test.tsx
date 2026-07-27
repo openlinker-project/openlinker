@@ -120,32 +120,22 @@ describe('ListingsListPage', () => {
     expect(await screen.findByRole('link', { name: 'Manage connections' })).toBeInTheDocument();
   });
 
-  it('should render the Create offer CTA enabled with no pre-filter', async () => {
+  it('renders a single "Publish products" entry (no separate shop CTA) with no pre-filter', async () => {
     const mockApi = createMockApiClient({
       listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
     });
 
     renderWithProviders(<ListingsListPage />, { apiClient: mockApi, sessionAdapter: createAuthenticatedSessionAdapter() });
 
-    const cta = await screen.findByRole('button', { name: /create offer/i });
+    const cta = await screen.findByRole('button', { name: /publish products/i });
     expect(cta).toBeInTheDocument();
     expect(cta).not.toBeDisabled();
-  });
-
-  it('hides the "Publish to shop" CTA when no ProductPublisher connection exists', async () => {
-    // Default connections mock returns a single PrestaShop connection with
-    // no ProductPublisher capability — the CTA must stay hidden.
-    const mockApi = createMockApiClient({
-      listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
-    });
-
-    renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
-
-    await screen.findByText('allegro-offer-999');
+    // The old duplicate CTAs are folded into the single unified entry (#1828).
+    expect(screen.queryByRole('button', { name: /create offer/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /publish to shop/i })).not.toBeInTheDocument();
   });
 
-  it('shows the "Publish to shop" CTA when a ProductPublisher connection exists', async () => {
+  it('keeps the single unified entry even when a ProductPublisher (shop) connection exists', async () => {
     const mockApi = createMockApiClient({
       listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
       connections: {
@@ -169,7 +159,8 @@ describe('ListingsListPage', () => {
 
     renderWithProviders(<ListingsListPage />, { apiClient: mockApi, sessionAdapter: createAuthenticatedSessionAdapter() });
 
-    expect(await screen.findByRole('button', { name: /publish to shop/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /publish products/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /publish to shop/i })).not.toBeInTheDocument();
   });
 
   describe('demo read-only viewer (#1663)', () => {
@@ -207,13 +198,11 @@ describe('ListingsListPage', () => {
       });
     }
 
-    it('shows both Create offer and Publish to shop enabled instead of hiding them', async () => {
+    it('shows the unified "Publish products" entry enabled instead of hiding it', async () => {
       renderWithProviders(<ListingsListPage />, { apiClient: demoApiClient(), ...viewerSession });
 
-      const createOffer = await screen.findByRole('button', { name: /create offer/i });
-      expect(createOffer).not.toBeDisabled();
-      const publishToShop = screen.getByRole('button', { name: /publish to shop/i });
-      expect(publishToShop).not.toBeDisabled();
+      const publish = await screen.findByRole('button', { name: /publish products/i });
+      expect(publish).not.toBeDisabled();
     });
 
     it('keeps the existing hide-when-missing behaviour for an unauthorized non-demo viewer', async () => {
@@ -241,8 +230,7 @@ describe('ListingsListPage', () => {
       renderWithProviders(<ListingsListPage />, { apiClient: mockApi, ...viewerSession });
 
       await screen.findByText('allegro-offer-999');
-      expect(screen.queryByRole('button', { name: /create offer/i })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /publish to shop/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /publish products/i })).not.toBeInTheDocument();
     });
   });
 });

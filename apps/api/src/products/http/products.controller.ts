@@ -27,7 +27,12 @@ import { IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/
 import type { Product, ProductVariant, ProductListSort } from '@openlinker/core/products';
 import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { IInventoryQueryService, INVENTORY_QUERY_SERVICE_TOKEN } from '@openlinker/core/inventory';
-import { IOfferMappingsService, OFFER_MAPPINGS_SERVICE_TOKEN } from '@openlinker/core/listings';
+import {
+  IOfferMappingsService,
+  OFFER_MAPPINGS_SERVICE_TOKEN,
+  IShopProductMappingsService,
+  SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN,
+} from '@openlinker/core/listings';
 import type { ProductListingsCoverage } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
 import { ListProductsQueryDto } from './dto/list-products-query.dto';
@@ -91,7 +96,9 @@ export class ProductsController {
     @Inject(INVENTORY_QUERY_SERVICE_TOKEN)
     private readonly inventoryQuery: IInventoryQueryService,
     @Inject(OFFER_MAPPINGS_SERVICE_TOKEN)
-    private readonly offerMappings: IOfferMappingsService
+    private readonly offerMappings: IOfferMappingsService,
+    @Inject(SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN)
+    private readonly shopProductMappings: IShopProductMappingsService
   ) {}
 
   @Get()
@@ -127,16 +134,21 @@ export class ProductsController {
     // ids (identifier mapping), all in parallel.
     if (items.length > 0) {
       const ids = items.map((p) => p.id);
-      const [aggregates, coverage, variantCounts, externalIdLists] = await Promise.all([
-        this.inventoryQuery.getProductStockAggregates(ids),
-        this.offerMappings.countListedVariantsByProducts(ids),
-        this.productsService.getVariantCountsByProductIds(ids),
-        Promise.all(ids.map((id) => this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Product, id))),
-      ]);
+      const [aggregates, offerCoverage, shopCoverage, variantCounts, externalIdLists] =
+        await Promise.all([
+          this.inventoryQuery.getProductStockAggregates(ids),
+          this.offerMappings.countListedVariantsByProducts(ids),
+          // Shop-destination coverage (#1838 follow-up fix): a product published
+          // to a WooCommerce connection previously showed no coverage indication
+          // because only Offer mappings fed this pipeline.
+          this.shopProductMappings.countListedVariantsByProducts(ids),
+          this.productsService.getVariantCountsByProductIds(ids),
+          Promise.all(ids.map((id) => this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Product, id))),
+        ]);
 
       const aggregateByProduct = new Map(aggregates.map((a) => [a.productId, a]));
       const coverageByProduct = new Map<string, ProductListingsCoverageDto[]>();
-      for (const row of coverage) {
+      for (const row of [...offerCoverage, ...shopCoverage]) {
         const list = coverageByProduct.get(row.productId) ?? [];
         list.push(this.toCoverageDto(row));
         coverageByProduct.set(row.productId, list);

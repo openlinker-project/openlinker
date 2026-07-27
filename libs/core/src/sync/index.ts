@@ -94,6 +94,7 @@ export {
   ShopProductPublishPayloadV1,
   ShopProductPublishPayloadV2,
   ShopProductPublishPayload,
+  ShopProductStatusSyncPayloadV1,
 } from './domain/types/shop-job-payloads.types';
 export type {
   InvoicingIssuePayloadV1,

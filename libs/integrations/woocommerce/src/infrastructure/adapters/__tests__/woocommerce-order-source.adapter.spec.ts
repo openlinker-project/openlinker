@@ -273,6 +273,38 @@ describe('WooCommerceOrderSourceAdapter', () => {
       expect(result.items[0].productRef).toEqual({ type: 'variant', externalId: '55' });
     });
 
+    it('should map shipping.methodName from the shipping line method_title so the delivery-method label populates (#1776)', async () => {
+      const order = makeOrder({
+        shipping_lines: [{ id: 1, method_id: 'flat_rate', method_title: 'Flat Rate', total: '5.00' }],
+      });
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.shipping).toEqual({ methodId: 'flat_rate', methodName: 'Flat Rate' });
+    });
+
+    it('should leave shipping absent when the order carries no shipping line (#1776)', async () => {
+      const order = makeOrder({ shipping_lines: [] });
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.shipping).toBeUndefined();
+    });
+
+    it('should not map a per-order dispatch deadline — WooCommerce exposes none, ship-by stays blank (#1776)', async () => {
+      const order = makeOrder({});
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.dispatchTime).toBeUndefined();
+    });
+
     it('should map product_id > 0 with variation_id = 0 to product ref', async () => {
       const order = makeOrder({
         line_items: [

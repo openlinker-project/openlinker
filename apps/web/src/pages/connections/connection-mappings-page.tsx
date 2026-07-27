@@ -18,7 +18,7 @@
  */
 
 import { useCallback, useMemo, useState, type ReactElement, type ReactNode } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
 import { Alert } from '../../shared/ui/alert';
@@ -26,10 +26,13 @@ import { Button } from '../../shared/ui/button';
 import { ConfirmDialog } from '../../shared/ui/confirm-dialog';
 import { MappingPanel, type MappingRow } from '../../features/mappings/components/MappingPanel';
 import { RoutingRulesPanel } from '../../features/mappings/components/routing-rules-panel';
+import { AttributeRulesPanel } from '../../features/mappings/components/attribute-rules-panel';
+import { publishDestinationKind } from '../../features/listings';
 import {
   MappingPairingBar,
   MAPPING_SOURCE_PICKER_ID,
 } from '../../features/mappings/components/mapping-pairing-bar';
+import { useConnectionQuery } from '../../features/connections';
 import { useMappingPairing } from '../../features/mappings/hooks/use-mapping-pairing';
 import { useStatusMappingsQuery, useUpsertStatusMappings } from '../../features/mappings/hooks/use-status-mappings';
 import { useCarrierMappingsQuery, useUpsertCarrierMappings } from '../../features/mappings/hooks/use-carrier-mappings';
@@ -41,6 +44,7 @@ import {
 import { useRoutingRulesQuery } from '../../features/mappings/hooks/use-routing-rules';
 import { useMappingOptions } from '../../features/mappings/hooks/use-mapping-options';
 import { resolvePlatformLabel } from '../../features/mappings/lib/platform-label';
+import { DELIVERY_MAPPING_DEEP_LINK_PARAMS } from '../../features/mappings';
 import { usePlatforms } from '../../shared/plugins';
 import {
   OL_ORDER_STATUS_OPTIONS,
@@ -49,9 +53,16 @@ import {
 } from '../../features/mappings/api/mappings.types';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 
-type TabId = 'fulfillment' | 'status' | 'carriers' | 'payments' | 'order-states';
+type TabId = 'fulfillment' | 'status' | 'carriers' | 'payments' | 'order-states' | 'attribute-rules';
 
-const ALL_TABS: TabId[] = ['fulfillment', 'status', 'carriers', 'payments', 'order-states'];
+const ALL_TABS: TabId[] = [
+  'fulfillment',
+  'status',
+  'carriers',
+  'payments',
+  'order-states',
+  'attribute-rules',
+];
 
 function isTabId(value: string): value is TabId {
   return (ALL_TABS as string[]).includes(value);
@@ -62,7 +73,8 @@ function isTabId(value: string): value is TabId {
  * tab). Used to fetch only the option lists the visited tabs actually need,
  * instead of the whole 6-list bundle on page load. Order-states' source axis
  * is the static `OL_ORDER_STATUS_OPTIONS`, so it only needs the destination
- * status list.
+ * status list. Attribute rules (#1841) read no option bundle at all — the panel
+ * owns its own data — so the tab contributes no keys.
  */
 const OPTION_KEYS_BY_TAB: Record<TabId, (keyof MappingOptions)[]> = {
   fulfillment: ['allegroDeliveryMethods'],
@@ -70,10 +82,17 @@ const OPTION_KEYS_BY_TAB: Record<TabId, (keyof MappingOptions)[]> = {
   carriers: ['allegroDeliveryMethods', 'prestashopCarriers'],
   payments: ['allegroPaymentProviders', 'prestashopPaymentModules'],
   'order-states': ['prestashopOrderStatuses'],
+  'attribute-rules': [],
 };
 
-/** Precise per-tab empty-state copy (#1784 follow-up S15). */
-const EMPTY_STATE_MESSAGE_BY_TAB: Record<Exclude<TabId, 'fulfillment'>, string> = {
+/**
+ * Precise per-tab empty-state copy (#1784 follow-up S15). Fulfillment and
+ * attribute rules render their own panel-owned empty states.
+ */
+const EMPTY_STATE_MESSAGE_BY_TAB: Record<
+  Exclude<TabId, 'fulfillment' | 'attribute-rules'>,
+  string
+> = {
   status:
     'No mappings configured yet. Unmapped statuses fall back to the default status at sync time. Add one below.',
   carriers:
@@ -170,6 +189,14 @@ export function ConnectionMappingsPage(): ReactElement {
   const navigate = useNavigate();
   const platforms = usePlatforms();
 
+  // Fix-it deep link (#1794): the order-detail "Add mapping" rider links here
+  // with `?tab=carriers&method=<id>&methodName=<name>` so we open the Delivery
+  // (carriers) tab and pre-focus the unmapped source method.
+  const [searchParams] = useSearchParams();
+  const requestedTab = searchParams.get(DELIVERY_MAPPING_DEEP_LINK_PARAMS.tab);
+  const focusMethodId = searchParams.get(DELIVERY_MAPPING_DEEP_LINK_PARAMS.method);
+  const focusMethodName = searchParams.get(DELIVERY_MAPPING_DEEP_LINK_PARAMS.methodName);
+
   // Resolve the config-stamped source -> destination pairing (#1784). Drives
   // both the route strip and every platform label on the page.
   const pairing = useMappingPairing(connectionId);
@@ -193,8 +220,16 @@ export function ConnectionMappingsPage(): ReactElement {
     : false;
 
   // Lazy-load per tab (#1784 follow-up): only the tab open on load (`defaultTab`)
-  // plus tabs the operator has visited fetch their data.
-  const defaultTab: TabId = supportsOrderSource ? 'fulfillment' : 'status';
+  // plus tabs the operator has visited fetch their data. Honour the deep-link
+  // tab request (#1794) only when it names a tab that's actually available for
+  // this connection's resolved capabilities; otherwise fall back to the first.
+  const fallbackTab: TabId = supportsOrderSource ? 'fulfillment' : 'status';
+  const requestedTabAvailable =
+    requestedTab !== null &&
+    isTabId(requestedTab) &&
+    (requestedTab !== 'fulfillment' || supportsOrderSource) &&
+    (requestedTab !== 'order-states' || supportsOrderProcessor);
+  const defaultTab: TabId = requestedTabAvailable ? requestedTab : fallbackTab;
   const [visitedTabs, setVisitedTabs] = useState<ReadonlySet<TabId>>(new Set());
   const [activeTab, setActiveTab] = useState<TabId | null>(null);
   const [dirtyTabs, setDirtyTabs] = useState<ReadonlySet<TabId>>(new Set());
@@ -231,6 +266,16 @@ export function ConnectionMappingsPage(): ReactElement {
     enabledOptionKeys,
   );
 
+  // Attribute mapping rules (#1841) feed attribute projection, which runs for
+  // marketplace offer creation and shop publish. Gate on the SAME publish-
+  // destination convention as the unified publish flow (#1828/#1829): a
+  // marketplace is an `OfferCreator` (supportedCapabilities), a shop is an
+  // enabled `ProductPublisher` (enabledCapabilities). Capability-driven, never
+  // platformType-based.
+  const connectionQuery = useConnectionQuery(connectionId);
+  const supportsAttributeRules =
+    connectionQuery.data !== undefined && publishDestinationKind(connectionQuery.data) !== null;
+
   // Routing rules feed two things: the Fulfillment tab and the routing-aware
   // carrier-banner count (#836). Gated to OrderSource connections and to the
   // tabs that actually read them; deduped with the panel's own subscription.
@@ -260,6 +305,7 @@ export function ConnectionMappingsPage(): ReactElement {
       carriers: make('carriers'),
       payments: make('payments'),
       'order-states': make('order-states'),
+      'attribute-rules': make('attribute-rules'),
     } satisfies Record<TabId, (dirty: boolean) => void>;
   }, []);
 
@@ -408,6 +454,9 @@ export function ConnectionMappingsPage(): ReactElement {
     { id: 'carriers' as const, label: 'Carriers' },
     { id: 'payments' as const, label: 'Payments' },
     ...(supportsOrderProcessor ? [{ id: 'order-states' as const, label: 'Order States' }] : []),
+    ...(supportsAttributeRules
+      ? [{ id: 'attribute-rules' as const, label: 'Attribute Rules' }]
+      : []),
   ];
 
   // Per-panel error isolation (#484): a failure in one bundle key must not
@@ -598,6 +647,8 @@ export function ConnectionMappingsPage(): ReactElement {
             onDirtyChange={dirtyHandlers.carriers}
             emptyStateMessage={EMPTY_STATE_MESSAGE_BY_TAB.carriers}
             dynamicOptionSuffix={` - exact ${sourceLabel} cost`}
+            focusSourceValue={focusMethodId}
+            focusSourceName={focusMethodName}
           />
         </TabsContent>
 
@@ -642,6 +693,12 @@ export function ConnectionMappingsPage(): ReactElement {
               onDirtyChange={dirtyHandlers['order-states']}
               emptyStateMessage={EMPTY_STATE_MESSAGE_BY_TAB['order-states']}
             />
+          </TabsContent>
+        )}
+
+        {supportsAttributeRules && (
+          <TabsContent value="attribute-rules">
+            <AttributeRulesPanel connectionId={connectionId} />
           </TabsContent>
         )}
       </Tabs>

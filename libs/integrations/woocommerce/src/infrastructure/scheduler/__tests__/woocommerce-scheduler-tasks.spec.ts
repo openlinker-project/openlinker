@@ -19,14 +19,44 @@ const makeConnection = (): Connection =>
   );
 
 describe('buildWooCommerceSchedulerTasks', () => {
-  it('should return exactly one task', () => {
+  it('should return the orders-poll + product-status-sync tasks', () => {
     const tasks = buildWooCommerceSchedulerTasks();
-    expect(tasks).toHaveLength(1);
+    expect(tasks.map((t) => t.taskId)).toEqual([
+      'woocommerce-orders-poll',
+      'woocommerce-product-status-sync',
+    ]);
   });
 
   it('should have correct taskId', () => {
     const [task] = buildWooCommerceSchedulerTasks();
     expect(task.taskId).toBe('woocommerce-orders-poll');
+  });
+
+  describe('product-status-sync task (#1845)', () => {
+    const statusTask = () =>
+      buildWooCommerceSchedulerTasks().find(
+        (t) => t.taskId === 'woocommerce-product-status-sync',
+      )!;
+
+    it('should be gated on the ProductPublisher capability and enqueue shop.product.statusSync', () => {
+      const task = statusTask();
+      expect(task.requiredCapability).toBe('ProductPublisher');
+      expect(task.jobType).toBe('shop.product.statusSync');
+      expect(task.enabledEnvVar).toBe('OL_WOOCOMMERCE_PRODUCT_STATUS_SYNC_SCHEDULER_ENABLED');
+    });
+
+    it('should build a V1 status-sync payload + shop-scoped idempotency key', () => {
+      const task = statusTask();
+      const conn = makeConnection();
+      expect(task.generatePayload(conn)).toEqual({
+        schemaVersion: 1,
+        cursorKey: 'shop.productStatus.scanOffset',
+        limit: 100,
+      });
+      expect(task.generateIdempotencyKey(conn, '2024-01-15-10-30')).toBe(
+        `shop:${conn.id}:product:status:sync:2024-01-15-10-30`,
+      );
+    });
   });
 
   it('should declare the correct enabledEnvVar', () => {

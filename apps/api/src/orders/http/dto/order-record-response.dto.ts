@@ -17,6 +17,8 @@ import { OrderRecordStatus, SlaState, FulfillmentRollupState } from '@openlinker
 import { OrderSyncStatusResponseDto } from './order-sync-status-response.dto';
 import { SyncAttemptResponseDto } from './sync-attempt-response.dto';
 import type { OrderInvoiceProjectionDto } from './order-invoice-projection.dto';
+import { OrderDeliveryResolutionDto } from './order-delivery-resolution.dto';
+import { OrderDeliveryRiderDto } from './order-delivery-rider.dto';
 
 export class OrderRecordResponseDto {
   @ApiProperty({ description: 'Internal order ID (e.g. ol_order_...)' })
@@ -75,6 +77,16 @@ export class OrderRecordResponseDto {
   dispatchByAt!: string | null;
 
   @ApiProperty({
+    description:
+      'True when `dispatchByAt` is an OL-side ESTIMATE rather than a marketplace-authoritative ' +
+      'commitment (#1776). Derived from the snapshot dispatch window\'s `estimated` flag: Erli derives ' +
+      'its ship-by from per-offer (falling back to connection-default) handling time and marks it estimated; ' +
+      'Allegro carries the platform-authoritative dispatch time and leaves it false. The FE renders a subtle ' +
+      '"~" qualifier next to the ship-by badge when true.',
+  })
+  dispatchByEstimated!: boolean;
+
+  @ApiProperty({
     enum: FulfillmentRollupStateValues,
     description:
       'Per-order fulfillment rollup (#1108) of the order\'s shipment lifecycle. "not-shipped" when no shipment has progressed (also the default for orders with no shipments).',
@@ -87,4 +99,36 @@ export class OrderRecordResponseDto {
       'Ship-by SLA bucket (#1108), server-derived from dispatchByAt + fulfillmentState (cleared to "none" once shipped). The single source of truth the list badge + filter agree on; the FE renders only the live countdown from dispatchByAt.',
   })
   slaState!: SlaState;
+
+  @ApiPropertyOptional({
+    type: OrderDeliveryResolutionDto,
+    description:
+      'Read-only projection (#1791) of how fulfillment routing resolved for this order\'s delivery ' +
+      'method — the outcome IFulfillmentRoutingService.resolve computes. Present on both the list and ' +
+      'detail reads when the order carries a source delivery method; absent otherwise. Never changes ' +
+      'routing behaviour — a pure derived read.',
+  })
+  deliveryResolution?: OrderDeliveryResolutionDto;
+
+  @ApiPropertyOptional({
+    type: OrderDeliveryRiderDto,
+    description:
+      'Read-only actionable delivery hint (#1792) for a "default"-resolved order — Add mapping / ' +
+      'Connect {carrier} / nothing. Present alongside deliveryResolution when the order carries a ' +
+      'source delivery method; absent otherwise. The heuristic only picks which hint to show — it ' +
+      'never influences routing/dispatch.',
+  })
+  deliveryRider?: OrderDeliveryRiderDto;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Source delivery method id (#1791) — the Add-mapping deep-link target.',
+  })
+  sourceDeliveryMethodId?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Source delivery method label (#1791).',
+  })
+  sourceDeliveryMethodName?: string | null;
 }

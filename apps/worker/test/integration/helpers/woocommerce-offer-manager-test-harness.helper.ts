@@ -23,7 +23,8 @@ import type {
   AdapterRegistryPort,
 } from '@openlinker/core/integrations';
 import { ADAPTER_FACTORY_RESOLVER_TOKEN, ADAPTER_REGISTRY_TOKEN } from '@openlinker/core/integrations';
-import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { Connection, IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
+import { IDENTIFIER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/identifier-mapping';
 import { WooCommerceOfferManagerAdapter } from '@openlinker/integrations-woocommerce/infrastructure/adapters/offer-manager/woocommerce-offer-manager.adapter';
 
 import type { WorkerIntegrationTestHarness } from '../setup';
@@ -48,6 +49,9 @@ export function installWooCommerceOfferManagerTestHarness(
   );
 
   const fake = new WooCommerceFakeHttpClient();
+  const identifierMapping = harness.get<IIdentifierMappingService>(
+    IDENTIFIER_MAPPING_SERVICE_TOKEN,
+  );
 
   adapterRegistry.register({
     adapterKey: WOOCOMMERCE_TEST_ADAPTER_KEY,
@@ -61,7 +65,7 @@ export function installWooCommerceOfferManagerTestHarness(
 
   factoryResolver.registerFactory(WOOCOMMERCE_TEST_ADAPTER_KEY, {
     createCapabilityAdapter: <T>(connection: Connection): Promise<T> => {
-      const adapter = new WooCommerceOfferManagerAdapter(fake, connection);
+      const adapter = new WooCommerceOfferManagerAdapter(fake, connection, identifierMapping);
       return Promise.resolve(adapter as unknown as T);
     },
   });

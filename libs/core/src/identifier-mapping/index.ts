@@ -13,6 +13,8 @@ export * from './domain/ports/identifier-mapping-repository.port';
 export * from './domain/ports/connection.port';
 export * from './domain/types/identifier-mapping.types';
 export * from './domain/types/connection.types';
+export * from './domain/types/stock-safety-buffer.types';
+export * from './domain/types/pricing-rule.types';
 export * from './domain/exceptions/duplicate-identifier-mapping.error';
 export * from './domain/exceptions/mapping-already-exists.error';
 export { ConnectionNotFoundException } from './domain/exceptions/connection-not-found.exception';

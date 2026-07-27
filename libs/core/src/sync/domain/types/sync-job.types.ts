@@ -37,6 +37,8 @@ export const JobTypeValues = [
 
   // Shop (cross-platform listing, ADR-024; executed by worker)
   'shop.product.publish',
+  // Steady-state shop product-status reconcile (#1845).
+  'shop.product.statusSync',
 
   // Shipping (core-owned; capability-scoped, executed by worker)
   'shipping.pickupPoint.refreshFrequent',

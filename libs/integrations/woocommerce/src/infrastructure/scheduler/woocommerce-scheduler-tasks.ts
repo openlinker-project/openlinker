@@ -30,5 +30,25 @@ export function buildWooCommerceSchedulerTasks(): SchedulerTaskConfig[] {
       generateIdempotencyKey: (connection: Connection, timestamp: string): string =>
         `marketplace:${connection.id}:wc:orders:poll:${timestamp}`,
     },
+    {
+      // Steady-state shop product-status reconcile (#1845): drains one page of a
+      // connection's published/draft products per tick and upserts the live
+      // shop-side status snapshot, so an unpublished/trashed product is
+      // detected. Gated on the `ProductPublisher` capability; the core sync
+      // service further no-ops when the adapter lacks `ShopProductStatusReader`.
+      taskId: 'woocommerce-product-status-sync',
+      platformType: 'woocommerce',
+      requiredCapability: 'ProductPublisher',
+      jobType: 'shop.product.statusSync',
+      cronExpression: '0 * * * *',
+      enabledEnvVar: 'OL_WOOCOMMERCE_PRODUCT_STATUS_SYNC_SCHEDULER_ENABLED',
+      generatePayload: (_connection: Connection) => ({
+        schemaVersion: 1 as const,
+        cursorKey: 'shop.productStatus.scanOffset',
+        limit: 100,
+      }),
+      generateIdempotencyKey: (connection: Connection, timestamp: string): string =>
+        `shop:${connection.id}:product:status:sync:${timestamp}`,
+    },
   ];
 }

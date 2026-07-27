@@ -82,6 +82,30 @@ describe('mapErliOrderToIncomingOrder', () => {
     expect(result.shipping).toEqual({ methodId: 'dpd' });
   });
 
+  it('should map methodName from delivery.name so the delivery-method label populates (#1776)', () => {
+    const result = mapErliOrderToIncomingOrder(
+      buildErliOrder({ delivery: { name: 'DPD Kurier', typeId: 'dpd', cod: false } }),
+    );
+
+    expect(result.shipping?.methodName).toBe('DPD Kurier');
+  });
+
+  describe('ship-by derivation moved out of the pure mapper (#1776)', () => {
+    // Ship-by is now derived in ErliOrderSourceAdapter.getOrder (needs per-offer
+    // GETs → I/O), so the pure mapper never sets dispatchTime — regardless of
+    // whether purchasedAt is present. See the order-source adapter spec for the
+    // per-offer + MAX + estimated + graceful-degrade coverage.
+    it('should never set dispatchTime (derivation lives in the order-source adapter)', () => {
+      expect(
+        mapErliOrderToIncomingOrder(buildErliOrder({ purchasedAt: '2026-06-16T09:59:00.000Z' }))
+          .dispatchTime,
+      ).toBeUndefined();
+      expect(
+        mapErliOrderToIncomingOrder(buildErliOrder({ purchasedAt: undefined })).dispatchTime,
+      ).toBeUndefined();
+    });
+  });
+
   it('should map a COD purchased order to processing + paymentStatus cod', () => {
     const result = mapErliOrderToIncomingOrder(
       buildErliOrder({ status: 'purchased', delivery: { cod: true } }),

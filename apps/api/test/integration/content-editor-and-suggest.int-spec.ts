@@ -43,6 +43,22 @@ async function loginAsViewer(
   return response.body.access_token as string;
 }
 
+async function loginAsOperator(
+  harness: IntegrationTestHarness,
+  username = 'operator',
+): Promise<string> {
+  const passwordHash = await bcrypt.hash('operator-pass', 4);
+  await harness.getDataSource().query(
+    `INSERT INTO users (username, email, password_hash, role) VALUES ($1, $2, $3, 'operator')`,
+    [username, `${username}@example.com`, passwordHash],
+  );
+  const response = await harness.getHttp()
+    .post('/v1/auth/login')
+    .send({ username, password: 'operator-pass' })
+    .expect(200);
+  return response.body.access_token as string;
+}
+
 async function seedProduct(ds: DataSource, suffix: string): Promise<string> {
   const productId = `ol_product_content_int_${suffix}`;
   const repo = ds.getRepository(ProductOrmEntity);
@@ -218,8 +234,8 @@ describe('Content Editor + AI Suggest Integration', () => {
     });
   });
 
-  describe('role guard', () => {
-    it('returns 403 to non-admin callers on every endpoint', async () => {
+  describe('role guard (#1873)', () => {
+    it('allows viewer to read content state, but returns 403 on every mutating endpoint', async () => {
       const http = harness.getHttp();
       const dataSource = harness.getDataSource();
       const productId = await seedProduct(dataSource, 'rbac');
@@ -228,7 +244,7 @@ describe('Content Editor + AI Suggest Integration', () => {
       await http
         .get(`/v1/products/${productId}/content`)
         .set('Authorization', `Bearer ${viewerToken}`)
-        .expect(403);
+        .expect(200);
 
       await http
         .post(`/v1/products/${productId}/content/draft`)
@@ -251,6 +267,36 @@ describe('Content Editor + AI Suggest Integration', () => {
       await http
         .post(`/v1/products/${productId}/content/suggest`)
         .set('Authorization', `Bearer ${viewerToken}`)
+        .send({ channel: 'allegro' })
+        .expect(403);
+    });
+
+    it('allows operator to read and save/discard/publish drafts, but keeps suggest admin-only', async () => {
+      const http = harness.getHttp();
+      const dataSource = harness.getDataSource();
+      const productId = await seedProduct(dataSource, 'rbac-operator');
+      const operatorToken = await loginAsOperator(harness);
+
+      await http
+        .get(`/v1/products/${productId}/content`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200);
+
+      await http
+        .post(`/v1/products/${productId}/content/draft`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ connectionId: null, fieldKey: 'description', value: 'operator draft' })
+        .expect(200);
+
+      await http
+        .post(`/v1/products/${productId}/content/discard`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ connectionId: null, fieldKey: 'description' })
+        .expect(204);
+
+      await http
+        .post(`/v1/products/${productId}/content/suggest`)
+        .set('Authorization', `Bearer ${operatorToken}`)
         .send({ channel: 'allegro' })
         .expect(403);
     });

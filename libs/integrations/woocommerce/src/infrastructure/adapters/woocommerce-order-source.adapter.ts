@@ -161,12 +161,20 @@ export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
       totals: mapTotals(order),
       shippingAddress: mapShippingAddress(order.shipping),
       billingAddress: mapBillingAddress(order.billing),
+      // Delivery-method label (#1776): mapped from the first shipping line's
+      // `method_title` whenever the order carries one, so the orders list/detail
+      // delivery-method label populates.
       shipping: order.shipping_lines[0]
         ? {
             methodId: order.shipping_lines[0].method_id,
             methodName: order.shipping_lines[0].method_title,
           }
         : undefined,
+      // Ship-by / dispatch deadline (#1776): WooCommerce core orders expose no
+      // dispatch / ship-by SLA (only date_created/modified/paid/completed), so
+      // `dispatchTime` is intentionally unmapped and the derived ship-by stays
+      // blank by design — no fabrication. Only sources with a per-order dispatch
+      // window (Allegro) populate ship-by.
       createdAt: normGmt(order.date_created_gmt, order.date_created),
       updatedAt: normGmt(order.date_modified_gmt, order.date_modified),
     };

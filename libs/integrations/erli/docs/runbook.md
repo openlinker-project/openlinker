@@ -48,6 +48,27 @@ Read these before relying on the integration in production.
   to populate the frozen-stock cache.
 - **Static API key.** No OAuth/refresh — rotate by replacing the key in the Erli
   seller panel and updating the connection credentials in OpenLinker.
+- **Estimated ship-by on orders.** Erli's order payload has no per-order dispatch
+  deadline field, so OpenLinker DERIVES the orders list/detail **Ship-by** in
+  `ErliOrderSourceAdapter.getOrder` (post-mapping): per line, the handling time is
+  the **per-offer** `dispatchTime` read back from `GET /products/{externalId}`,
+  falling back to the connection's shop-wide **default dispatch time**
+  (`config.defaultDispatchTime`) when the read carries none. Each line's deadline is
+  `purchasedAt + handlingTime`, and the window takes the **latest** (MAX) deadline
+  across lines (the order-level ship-by is when EVERY line must have shipped). For the
+  `day` unit the period is counted in **Polish working days** —
+  weekends AND Polish public holidays skipped, with day boundaries anchored at
+  **Europe/Warsaw** (see `@openlinker/shared/date`). Because the deadline is an
+  OpenLinker-side estimate, the window is flagged **`estimated`** and the UI shows a
+  subtle `~` / `est.` qualifier next to the Ship-by badge (Allegro's authoritative
+  `delivery.time.dispatch` carries no such qualifier). This is best-effort: if the
+  live `GET /products` read fails, that line degrades to the connection default
+  (ingestion never fails on it). If a line has no resolvable handling time (no
+  per-offer value AND no `defaultDispatchTime`), or the order has no `purchasedAt`,
+  the Ship-by field stays blank rather than being fabricated. The delivery-method
+  label shows whenever the Erli order carries a delivery method; when it doesn't, the
+  order-detail **Method** row falls back to the booked shipment's carrier/method and
+  the **Carrier** row still surfaces the carrier of record.
 
 ---
 

@@ -116,17 +116,15 @@ as Allegro's own wizard), turn on category browsing:
 Confirmed working end-to-end: correct name, price (149.00 zł), and product image (the PrestaShop
 storefront tunnel image fetch — no separate re-upload, per Erli's design).
 
-## Part E — Order ingestion from Erli (optional, requires a real sandbox order)
+## Part E — Order ingestion from Erli (not run — no sandbox order-create API)
 
-Per prior E2E notes, Erli's sandbox has no order-create API — only buyer-placed orders enter.
-This part may require driving the Erli sandbox storefront directly as a "buyer."
+Not exercised in this run: Erli's sandbox has no order-create API — only buyer-placed orders enter.
+Driving it would require placing an order on the Erli sandbox storefront directly as a "buyer."
+The steps below are what the flow *would* be; they were left unchecked deliberately.
 
 - [ ] If feasible, place a test order on the Erli sandbox storefront against the offer above
-- [ ] Wait for the `erli-orders-poll` scheduled job (every 5 min) or trigger manually
+- [ ] Wait for the `erli-orders-poll` scheduled job (every 5 min) or trigger manually (see the
+      README "Troubleshooting" section)
 - [ ] Confirm the order appears in OpenLinker's **Orders** list
 
-```
-[SCREENSHOT: OpenLinker Orders list showing the Erli order]
-```
-
-> **Finding:** _(fill in if anything here doesn't match expectations)_
+_(screenshot pending — step not run)_

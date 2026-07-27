@@ -18,6 +18,9 @@ import { z } from 'zod';
 
 export const ShopPublishVisibilityValues = ['draft', 'published'] as const;
 
+export const ShopPublishDescriptionToneValues = ['concise', 'detailed'] as const;
+export type ShopPublishDescriptionTone = (typeof ShopPublishDescriptionToneValues)[number];
+
 const stockFieldSchema = z
   .string()
   .trim()
@@ -47,6 +50,11 @@ export const woocommercePublishWizardSchema = z.object({
   // Bulk-mode only — one row per selected variant, seeded when the operator
   // finishes picking. Ignored by the single-publish submit path.
   items: z.array(bulkItemSchema),
+  // AI description generation (#1840). Applies to the single product or, in
+  // bulk mode, to every product in the batch. Tone is a hint forwarded to the
+  // prompt template; only meaningful when generateDescription is true.
+  generateDescription: z.boolean(),
+  descriptionTone: z.enum(ShopPublishDescriptionToneValues),
 });
 
 export type WoocommercePublishWizardValues = z.input<typeof woocommercePublishWizardSchema>;
@@ -61,6 +69,8 @@ export const WOOCOMMERCE_PUBLISH_SINGLE_DEFAULTS: WoocommercePublishWizardValues
   priceAmount: '',
   priceCurrency: WOOCOMMERCE_PUBLISH_DEFAULT_CURRENCY,
   items: [],
+  generateDescription: false,
+  descriptionTone: 'concise',
 };
 
 export const WOOCOMMERCE_PUBLISH_BULK_DEFAULTS: WoocommercePublishWizardValues = {
@@ -69,4 +79,6 @@ export const WOOCOMMERCE_PUBLISH_BULK_DEFAULTS: WoocommercePublishWizardValues =
   priceAmount: '',
   priceCurrency: WOOCOMMERCE_PUBLISH_DEFAULT_CURRENCY,
   items: [],
+  generateDescription: false,
+  descriptionTone: 'concise',
 };

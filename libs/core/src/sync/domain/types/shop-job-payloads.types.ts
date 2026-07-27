@@ -13,8 +13,11 @@
 import type {
   PublishProductStatus,
   PublishProductContent,
+  PublishProductCommerce,
   OfferParameter,
 } from '@openlinker/core/listings';
+
+import type { OfferDescriptionTone } from './marketplace-job-payloads.types';
 
 /**
  * Payload for `shop.product.publish` jobs (ADR-024).
@@ -44,6 +47,8 @@ export interface ShopProductPublishPayloadV1 {
   destinationCategoryIds?: string[];
   /** Optional owned-record content overrides (title, description, images, SEO). */
   content?: PublishProductContent;
+  /** Optional operator-supplied commerce fields (sale price, dimensions, tax). */
+  commerce?: PublishProductCommerce;
   /**
    * Neutral, section-tagged projected category parameters (#1072) — the same
    * `OfferParameter` channel the offer payload uses. Mirrors
@@ -53,6 +58,19 @@ export interface ShopProductPublishPayloadV1 {
   parameters?: OfferParameter[];
   /** Optional idempotency key forwarded to the adapter. */
   idempotencyKey?: string;
+  /**
+   * Shop-publish AI flag (#1840): when `true` the worker handler generates the
+   * product description via the `offer.description.suggest` prompt template
+   * (channel `woocommerce`) and fills `content.description` — unless an explicit
+   * operator description override is already present (which always wins).
+   * Omitted / `false` ⇒ no AI call (master description / operator override used).
+   */
+  generateDescription?: boolean;
+  /**
+   * Optional tone hint forwarded to the AI prompt template (#1840). Ignored when
+   * `generateDescription` is not `true`.
+   */
+  descriptionTone?: OfferDescriptionTone;
   /**
    * Pre-created listing-record id, if the caller wanted the record visible
    * before the job ran. When omitted, the #1042 execution service creates a
@@ -80,3 +98,19 @@ export interface ShopProductPublishPayloadV2
 
 /** Discriminated union of all `shop.product.publish` payload versions the worker handler accepts. */
 export type ShopProductPublishPayload = ShopProductPublishPayloadV1 | ShopProductPublishPayloadV2;
+
+/**
+ * Payload for `shop.product.statusSync` jobs (#1845). Drains one page of a
+ * connection's published/draft products, reads their live shop-side status via
+ * the `ShopProductStatusReader` sub-capability, and upserts the reconciled
+ * status snapshot. The connection id is taken from `job.connectionId`; the scan
+ * offset is persisted on a connection cursor (mirrors
+ * `MarketplaceOfferStatusSyncPayloadV1`).
+ */
+export interface ShopProductStatusSyncPayloadV1 {
+  schemaVersion: 1;
+  /** Page size (products to reconcile this run). Handler clamps/defaults. */
+  limit?: number;
+  /** Optional cursor-key override for the persisted scan offset. */
+  cursorKey?: string;
+}

@@ -123,8 +123,6 @@ export interface BulkVariantRow {
   override: BulkPerProductOverride;
   /** FE-only RHF value stash so reopening the editor restores entered values. */
   editFormValues?: Record<string, unknown>;
-  /** True when this row already has a live OfferMapping on the target connection (#1741, best-effort). */
-  alreadyListed?: boolean;
 }
 
 export interface BulkWizardRow {

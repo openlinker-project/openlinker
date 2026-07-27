@@ -34,6 +34,7 @@ import type {
 } from './bulk-wizard.types';
 import { BulkEditModal } from './bulk-edit-modal';
 import { BulkImageLightbox } from './bulk-image-lightbox';
+import { AlreadyListedChip } from '../already-listed-chip';
 import {
   FALLBACK_CHIP,
   NEUTRAL_BLOCKER_CHIPS,
@@ -50,6 +51,11 @@ interface BulkReviewStepProps {
   batchDeliveryPriceList?: string;
   /** Demo read-only viewer - gates the editor's field edits + "Save all" (#1704). */
   demoReadOnly: boolean;
+  /** Variants already published on the destination (#1837) - shown as a soft
+   *  "already on {destination}" chip; publishing again creates a duplicate. */
+  alreadyListedVariantIds: ReadonlySet<string>;
+  /** Destination name for the "already on {name}" chip copy. */
+  destinationName: string;
   onSetVariantIncluded: (productId: string, variantId: string, included: boolean) => void;
   onSetProductIncluded: (productId: string, included: boolean) => void;
   onSaveEditor: (
@@ -99,6 +105,8 @@ export function BulkReviewStep({
   canBrowseCategories,
   batchDeliveryPriceList,
   demoReadOnly,
+  alreadyListedVariantIds,
+  destinationName,
   onSetVariantIncluded,
   onSetProductIncluded,
   onSaveEditor,
@@ -321,6 +329,8 @@ export function BulkReviewStep({
             row={row}
             config={config}
             chips={blockerChips}
+            alreadyListedVariantIds={alreadyListedVariantIds}
+            destinationName={destinationName}
             open={expanded.has(row.productId)}
             onToggleExpand={() => {
               toggleExpand(row.productId);
@@ -423,6 +433,8 @@ interface ProductRowProps {
   row: BulkWizardRow;
   config: BulkWizardConfig;
   chips: Record<string, ChipDescriptor>;
+  alreadyListedVariantIds: ReadonlySet<string>;
+  destinationName: string;
   open: boolean;
   onToggleExpand: () => void;
   onSetVariantIncluded: (productId: string, variantId: string, included: boolean) => void;
@@ -435,6 +447,8 @@ function ProductRow({
   row,
   config,
   chips,
+  alreadyListedVariantIds,
+  destinationName,
   open,
   onToggleExpand,
   onSetVariantIncluded,
@@ -445,6 +459,7 @@ function ProductRow({
   const isMulti = row.variants.length > 1;
   const isSimple = row.variants.length === 1;
   const noVariants = row.variants.length === 0;
+  const anyAlreadyListed = row.variants.some((v) => alreadyListedVariantIds.has(v.variantId));
 
   const includedCount = row.variants.filter((v) => v.included).length;
   const allExcluded = row.variants.length > 0 && includedCount === 0;
@@ -553,12 +568,19 @@ function ProductRow({
               variant={row.variants[0]}
               chips={chips}
               label={distinguishingLabel(row.variants[0], 0)}
+              alreadyListed={alreadyListedVariantIds.has(row.variants[0].variantId)}
+              destinationName={destinationName}
               onFix={() => {
                 onEdit(row.variants[0].variantId);
               }}
             />
           ) : (
-            <AggregateChips ready={agg.ready} attn={agg.attn} off={agg.off} />
+            <>
+              <AggregateChips ready={agg.ready} attn={agg.attn} off={agg.off} />
+              {anyAlreadyListed ? (
+                <AlreadyListedChip destinationName={destinationName} title={`already on ${destinationName}`} />
+              ) : null}
+            </>
           )}
         </div>
         <div
@@ -602,6 +624,8 @@ function ProductRow({
               index={index}
               config={config}
               chips={chips}
+              alreadyListed={alreadyListedVariantIds.has(variant.variantId)}
+              destinationName={destinationName}
               onSetVariantIncluded={onSetVariantIncluded}
               onEdit={() => {
                 onEdit(variant.variantId);
@@ -620,6 +644,8 @@ interface VariantRowProps {
   index: number;
   config: BulkWizardConfig;
   chips: Record<string, ChipDescriptor>;
+  alreadyListed: boolean;
+  destinationName: string;
   onSetVariantIncluded: (productId: string, variantId: string, included: boolean) => void;
   onEdit: () => void;
 }
@@ -630,6 +656,8 @@ function VariantRow({
   index,
   config,
   chips,
+  alreadyListed,
+  destinationName,
   onSetVariantIncluded,
   onEdit,
 }: VariantRowProps): ReactElement {
@@ -673,7 +701,14 @@ function VariantRow({
         </div>
       </div>
       <div className="bulk-review__c-status bulk-review__chips">
-        <VariantChips variant={variant} chips={chips} onFix={onEdit} label={label} />
+        <VariantChips
+          variant={variant}
+          chips={chips}
+          onFix={onEdit}
+          label={label}
+          alreadyListed={alreadyListed}
+          destinationName={destinationName}
+        />
       </div>
       <div className="bulk-review__c-stock tabular">{stock.value ?? '-'}</div>
       <div className="bulk-review__c-price tabular">
@@ -693,18 +728,36 @@ function VariantChips({
   chips,
   onFix,
   label,
+  alreadyListed,
+  destinationName,
 }: {
   variant: BulkVariantRow;
   chips: Record<string, ChipDescriptor>;
   onFix: () => void;
   /** Human variant label ("Colour: Red" / "Variant 2") — never the raw ol_variant id. */
   label: string;
+  /** Already published on the destination (#1837) - soft warning, not a blocker. */
+  alreadyListed: boolean;
+  destinationName: string;
 }): ReactElement {
+  // The "already on {destination}" chip is a SOFT warning shown alongside the
+  // readiness/blocker chips - it never marks the variant not-ready (#1837).
+  const dupChip = alreadyListed ? <AlreadyListedChip destinationName={destinationName} title={`already on ${destinationName}`} /> : null;
   if (!variant.included) {
-    return <Chip descriptor={{ tone: 'neutral', label: 'excluded', fixable: false }} />;
+    return (
+      <>
+        <Chip descriptor={{ tone: 'neutral', label: 'excluded', fixable: false }} />
+        {dupChip}
+      </>
+    );
   }
   if (variant.blockers.length === 0) {
-    return <Chip descriptor={{ tone: 'success', label: 'ready', fixable: false }} />;
+    return (
+      <>
+        <Chip descriptor={{ tone: 'success', label: 'ready', fixable: false }} />
+        {dupChip}
+      </>
+    );
   }
   return (
     <>
@@ -719,6 +772,7 @@ function VariantChips({
           />
         );
       })}
+      {dupChip}
     </>
   );
 }

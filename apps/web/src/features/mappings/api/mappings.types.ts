@@ -158,6 +158,61 @@ export interface UpsertCategoryMappingPayload {
   allegroCategoryPath?: string;
 }
 
+// ── Attribute mapping rules (#1841) ────────────────────────────────────────
+
+/** The three operator rule kinds. Mirrors the BE `AttributeMappingRuleKind`. */
+export const AttributeRuleKindValues = ['fixed', 'copy-remap', 'place-value'] as const;
+export type AttributeRuleKind = (typeof AttributeRuleKindValues)[number];
+
+/** Product-metadata sources a `place-value` rule can read. */
+export const PlaceValueSourceValues = [
+  'name',
+  'variant',
+  'manufacturer',
+  'ean',
+  'sku',
+  'weight',
+] as const;
+export type PlaceValueSource = (typeof PlaceValueSourceValues)[number];
+
+export interface AttributeRuleValueRemap {
+  sourceValue: string;
+  destinationValue: string;
+}
+
+/** A persisted attribute mapping rule (flat wire shape). */
+export interface AttributeRule {
+  id: string;
+  destinationConnectionId: string;
+  destinationParameterName: string;
+  kind: AttributeRuleKind;
+  priority: number;
+  sourceConnectionId: string | null;
+  destinationCategoryId: string | null;
+  manufacturerMatch: string | null;
+  phraseMatch: string | null;
+  fixedValue: string | null;
+  sourceAttributeKey: string | null;
+  valueRemap: AttributeRuleValueRemap[] | null;
+  placeValueSource: PlaceValueSource | null;
+}
+
+/** Upsert payload for one attribute rule (`id` present ⇒ update). */
+export interface UpsertAttributeRulePayload {
+  id?: string;
+  destinationParameterName: string;
+  kind: AttributeRuleKind;
+  priority: number;
+  sourceConnectionId?: string | null;
+  destinationCategoryId?: string | null;
+  manufacturerMatch?: string | null;
+  phraseMatch?: string | null;
+  fixedValue?: string;
+  sourceAttributeKey?: string;
+  valueRemap?: AttributeRuleValueRemap[];
+  placeValueSource?: PlaceValueSource;
+}
+
 // ── Fulfillment routing (#836) ─────────────────────────────────────────────
 
 /** Mirrors the backend `FulfillmentProcessorKind` (`@openlinker/core/mappings`). */

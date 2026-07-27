@@ -52,6 +52,10 @@ provisionCategory(cmd: ProvisionCategoryCommand): Promise<CategoryProvisionResul
 
 Mirrors a source category path on the destination, creating missing nodes (`POST products/categories` with `parent`), returning the destination category id. It is ADR-023's placement step #1 — only shops implement it; marketplaces never can (you cannot create an Allegro/eBay category). Today no capability *creates* categories — `assignCategories` only attaches to existing ones — so this is net-new.
 
+**Read counterpart — `ShopCategoryBrowser` (#1834).** `CategoryProvisioner` writes (create-if-missing from a source path); an operator picking a *destination* category in the publish edit flow needs to *read* the shop's existing tree. `ShopCategoryBrowser` is the shop-side sibling of the marketplace `CategoryBrowser` (on `OfferManagerPort`): a `ShopProductManagerPort` sub-capability `browseCategories(parentId?) → ShopCategory[]` with an `isShopCategoryBrowser` guard, drilling down one parent level at a time. Because a shop places a product in *any* node (not a forced leaf), `ShopCategory` carries no `leaf` flag — every node is selectable and may also have children. It is advertised-without-dispatch (declared in the manifest for host/FE discovery, resolved by narrowing the dispatched `ProductPublisher` adapter — not a `CoreCapabilityValues` member, since it needs no independent registry dispatch). WooCommerce implements it over `GET products/categories` (parent-scoped, paged).
+
+**Structured attributes — `ShopAttributeReader` + publish linkage (#1835).** The publish command carries neutral category `parameters` (`OfferParameter[]`). A shop turns each into a product attribute, but a WooCommerce store has two kinds: *global* (`pa_*` taxonomies with predefined terms — store-wide, reusable, and the only kind that powers storefront filtering) and *custom* (ad-hoc free-text, per product). The initial publish path only emitted custom free-text attributes and dropped `valuesIds`, so operators could never target a real global attribute. `ShopAttributeReader` is a `ShopProductManagerPort` sub-capability — `listAttributes() → ShopAttribute[]` + `listAttributeTerms(attributeId) → ShopAttributeTerm[]` (both `{ id, name, slug }`), with an `isShopAttributeReader` guard — the *read* half an operator uses to pick a global attribute + terms. It is advertised-without-dispatch, same as `ShopCategoryBrowser`. The *write* half is in the WooCommerce adapter's `buildAttributes`: a parameter carrying `valuesIds` (resolved term ids) plus a numeric `id` (the global-attribute id) links the real global attribute as `{ id, options: <term names>, visible }` (WC resolves the option strings to the attribute's terms; term ids have no place in the product `attributes[]` wire), while any other parameter falls back to a free-text custom `{ name, options, visible }`. WooCommerce reads `GET products/attributes` + `GET products/attributes/{id}/terms` (paged).
+
 ### 3. Visibility is a first-class axis, not "active = visible"
 
 The command/result model a publication state distinct from record existence and from data sync: Woo `status` (draft→publish), Shopify `status` (ACTIVE/DRAFT) **plus** per-channel `publishablePublish`. Marketplace offers collapse this into activation; shops do not. The shop path must not assume create ⇒ visible.
@@ -132,6 +136,72 @@ sequenceDiagram
     Exec-->>Exec: record + outcome (ok | business_failure)
 ```
 
+## Update (#1836): native WooCommerce variable products / variations
+
+The "Deferred" list originally named variable-product / variations grouping as
+a follow-up (it was noted in the WooCommerce adapter's own doc header, not a
+named bullet here). #1836 lifts it: a **multi-variant** OL product now
+publishes as one shared WooCommerce `type:'variable'` parent + one
+`products/{parentId}/variations` entry per sibling, instead of N unrelated
+`type:'simple'` products. A **single-variant / simple** product is completely
+unaffected — it keeps the exact pre-#1836 simple-product path.
+
+**Neutral command shape.** `PublishProductCommand` gains an optional
+`variantGroup?: PublishProductVariantGroup` — the shop-publish sibling of the
+marketplace `OfferVariantGroup` (#1065), populated by
+`ProductPublishBuilderService` whenever `getVariantsByProductId(...).length > 1`
+(same populate rule as the marketplace side). It carries the OL product id as
+an opaque `groupId`, this variant's own distinguishing attribute values, and
+the **union of every sibling's** distinguishing values per attribute name
+(`groupAttributeValues`) — a shop parent record must declare its full
+variation-axis option set up front (WooCommerce "variation-flagged" attribute
+options; Shopify's `options` array would need the same shape), which a single
+sibling's own value cannot supply alone. `ProductPublishExecutionService`
+additionally resolves the PARENT's `ShopProduct` mapping (keyed on `groupId`)
+and stamps it onto `variantGroup.externalParentProductId` before dispatching
+to the adapter — mirroring exactly how it already resolves the variant's own
+`externalProductId` for an upsert.
+
+**Mapping model.** No schema change. The existing variant-keyed `ShopProduct`
+`IdentifierMapping` (entityType `'ShopProduct'`) already supports this: the
+variant's own mapping keys on the variant's internal id (unchanged), and the
+new parent mapping keys on the **product's** internal id. Both live in the
+same entityType without collision because variant and product internal ids
+are distinctly prefixed (`ol_variant_*` vs `ol_product_*`) — the reverse
+lookup (`internalId → external ids`) simply resolves two different rows for
+two different `internalId` inputs. `PublishProductResult` gains an optional
+`externalParentProductId`, populated whenever `variantGroup` was set; the
+execution service persists that mapping the first time it resolves, using the
+identical concurrency-safe swallow-or-conflict pattern (#1845) already in
+place for the variant's own mapping.
+
+**WooCommerce wire mapping.** The parent body's attributes merge the existing
+category-parameter attributes (unchanged) with one variation-flagged entry per
+distinguishing axis (`{ name, options: <every sibling's value for this axis>,
+visible: true, variation: true }`) — custom (not global `pa_*`) attributes,
+since `ProductVariant.attributes` are freeform names with no WC global-attribute
+id to link. The parent's slug is keyed on `groupId` (not the variant id) so
+every sibling resolves to the same stable slug regardless of which one
+triggers the parent upsert — the opposite of the per-item-slug discriminator
+the simple-product path uses precisely to keep siblings' slugs *distinct*. Each
+sibling's own `products/{parentId}/variations` entry carries its own
+price/sku/stock/image/barcode/weight/commerce fields and this variant's own
+value for each attribute (WC variation attributes use a singular `option`, not
+the parent/simple-product `options` array).
+
+**Known limitation, accepted for this MVP.** The parent's shared fields
+(content, categories, SEO, variation-flagged attribute options) are re-PUT on
+every sibling's publish, so they reflect whichever sibling published most
+recently rather than a merge — acceptable because publishes of the same
+product normally carry the same master-derived content. Separately, a 404 on
+the *parent* upsert (parent deleted shop-side between two sibling publishes)
+propagates as an unhandled `ProductPublishTargetNotFoundException` rather than
+auto-healing — unlike the variant's own stale-mapping recovery (#1846 fix 1),
+which already handles a stale *variation* target. Both are candidates for a
+follow-up if they surface in practice; neither risks silent data corruption
+(the exception path fails the job for a retry/investigation rather than
+mis-linking).
+
 ## Impact surface (audited)
 
 A new shop-listing capability touches, end-to-end (~13 new files, ~15 edits):
@@ -157,9 +227,9 @@ A new shop-listing capability touches, end-to-end (~13 new files, ~15 edits):
 
 **Pros:** honest modelling of two genuinely different destination shapes; shops get category *provisioning* + multi-category + draft/visibility that offers never had; the shared brain (ADR-023) and the neutral orchestration are reused, not duplicated; ERLI stays on `OfferManager` (validated); capability-presence routing means no `platformType` branching.
 
-**Cons / trade-offs:** the orchestration extraction is a refactor of the hottest subsystem (#726/#824 just landed) — sequence it carefully behind tests; two builder code-paths to maintain; the visibility axis adds state the offer model didn't have; WooCommerce global-attribute-on-variation writes are documented as REST-friction-prone (prefer per-product custom attributes initially); Shopify is GraphQL-forward (REST product endpoints legacy as of Oct 2024) — the adapter targets `productSet` + `publishablePublish`.
+**Cons / trade-offs:** the orchestration extraction is a refactor of the hottest subsystem (#726/#824 just landed) — sequence it carefully behind tests; two builder code-paths to maintain; the visibility axis adds state the offer model didn't have; WooCommerce variation attributes are custom (not global `pa_*`) since `ProductVariant.attributes` are freeform names with no global-attribute id to link (#1836); Shopify is GraphQL-forward (REST product endpoints legacy as of Oct 2024) — the adapter targets `productSet` + `publishablePublish`.
 
-**Deferred:** Shopify collections (orthogonal to categories); scheduled publication; per-channel publication fan-out beyond Online Store; bulk publish UX depth.
+**Deferred:** Shopify collections (orthogonal to categories); scheduled publication; per-channel publication fan-out beyond Online Store; bulk publish UX depth (partially realized — the bulk transport now round-trips optional per-item `content` / `destinationCategoryIds` / `parameters` overrides that beat the batch-shared / server-derived defaults, #1831; the FE editor that authors them is #1830). WooCommerce variable-product / variations grouping shipped in #1836 (see the dedicated update section above) — no longer deferred. Still deferred for WooCommerce: parent-mapping stale-recovery (a 404 on the parent upsert does not yet auto-heal, unlike the variant's own #1846 fix 1); Shopify's own variable-product equivalent (`productSet` with `options`) is unbuilt.
 
 ## Related
 

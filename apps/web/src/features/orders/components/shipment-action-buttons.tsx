@@ -35,6 +35,12 @@ interface ShipmentActionButtonsProps {
   /** Fired when operator clicks Generate Label. Parent toggles the inline
    * expansion of `<GenerateLabelForm>`. */
   onGenerateLabelClick: () => void;
+  /**
+   * The order's delivery method routes to a disabled carrier connection (#1799).
+   * Blocks Generate-label the same way an un-dispatchable payment does — the
+   * route is a dead end until the carrier is re-enabled. Defaults to false.
+   */
+  routeUnavailable?: boolean;
 }
 
 const CAN_GENERATE: ReadonlySet<ShipmentStatus | 'none'> = new Set([
@@ -69,6 +75,7 @@ export function ShipmentActionButtons({
   shipment,
   paymentStatus,
   onGenerateLabelClick,
+  routeUnavailable = false,
 }: ShipmentActionButtonsProps): ReactElement {
   const cancelMutation = useCancelShipmentMutation();
   const notifyMutation = useNotifyDispatchedMutation();
@@ -98,7 +105,7 @@ export function ShipmentActionButtons({
   // #928 — payment gate (block-list): only awaiting/refunded block dispatch.
   const paymentBlocksDispatch =
     paymentStatus !== undefined && PAYMENT_BLOCKS_DISPATCH.has(paymentStatus);
-  const canGenerate = CAN_GENERATE.has(status) && !paymentBlocksDispatch;
+  const canGenerate = CAN_GENERATE.has(status) && !paymentBlocksDispatch && !routeUnavailable;
   const canCancel = shipment !== null && CAN_CANCEL.has(shipment.status);
   const canNotify = shipment !== null && CAN_NOTIFY_DISPATCHED.has(shipment.status);
   // Label download needs both a retrievable lifecycle state AND a persisted
@@ -130,9 +137,16 @@ export function ShipmentActionButtons({
           aria-label={
             canGenerate
               ? 'Generate shipping label'
-              : paymentBlocksDispatch
-                ? "Awaiting payment — can't dispatch yet"
-                : 'Generate label not available in this state'
+              : // A shipment already past the regenerate-able states (e.g. label
+                // generated / dispatched) reports its state first - the route
+                // reason is irrelevant once a label exists.
+                !CAN_GENERATE.has(status)
+                ? 'Generate label not available in this state'
+                : routeUnavailable
+                  ? "Routed carrier isn't available to dispatch - resolve delivery routing first."
+                  : paymentBlocksDispatch
+                    ? "Awaiting payment — can't dispatch yet"
+                    : 'Generate label not available in this state'
           }
         >
           Generate label
