@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, PageLayout, SetupStepper } from '../../../../shared/ui';
+import { Alert, Button, PageLayout, SetupStepper } from '../../../../shared/ui';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import { usePlatforms, type OfferRowValidationInput } from '../../../../shared/plugins';
 import { useWriteAccess } from '../../../../shared/auth/use-permission';
@@ -23,15 +23,25 @@ import { useDemoMode } from '../../../system';
 import { useConnectionsQuery } from '../../../connections';
 import { captureDemoEvent } from '../../../demo';
 import { useBulkSubmitMutation } from '../../hooks/use-bulk-submit-mutation';
+import { useBulkShopPublishMutation } from '../../hooks/use-bulk-shop-publish-mutation';
 import { useBulkRequiredProductParams } from '../../hooks/use-bulk-required-product-params';
+import { usePublishedVariantsQuery } from '../../hooks/use-published-variants-query';
+import { publishDestinationKind } from '../../lib/publish-destinations';
+import { DuplicateGuardModal } from '../duplicate-guard-modal';
 import type {
   BulkOfferCreateRequest,
   BulkPerProductOverride,
 } from '../../api/bulk-listings.types';
+import type { BulkShopPublishItemRequest } from '../../api/listings.types';
 import type { Product, ProductVariant } from '../../../products';
 import { BulkConfigStep } from './bulk-config-step';
 import { BulkResolveStep, type BulkResolveOutcome } from './bulk-resolve-step';
 import { BulkReviewStep } from './bulk-review-step';
+import {
+  BulkShopReviewStep,
+  type ShopPublishVisibility,
+} from './bulk-shop-review-step';
+import { ShopPublishTracker } from '../ShopPublishTracker';
 import { BulkConfirmModal } from './bulk-confirm-modal';
 import {
   computeResolvedPrice,
@@ -77,8 +87,18 @@ const WIZARD_STEPS: { id: BulkWizardStep; label: string }[] = [
   { id: 'confirm', label: 'Confirm' },
 ];
 
+// Shops (#1829) skip the marketplace Resolve step (no category/EAN matching)
+// and publish straight from Review: Config -> Review.
+const SHOP_WIZARD_STEPS: { id: BulkWizardStep; label: string }[] = [
+  { id: 'config', label: 'Config' },
+  { id: 'review', label: 'Review' },
+];
+
 /** Stable empty list so a param-schema opt-out platform keeps a constant deps identity. */
 const EMPTY_CATEGORY_IDS: readonly string[] = [];
+
+/** Stable empty set so a render without published-variant data keeps a constant ref. */
+const EMPTY_ALREADY_LISTED: ReadonlySet<string> = new Set<string>();
 
 export function BulkWizard({
   products,
@@ -89,6 +109,7 @@ export function BulkWizard({
   const navigate = useNavigate();
   const { showToast } = useToast();
   const mutation = useBulkSubmitMutation();
+  const shopMutation = useBulkShopPublishMutation();
   const platforms = usePlatforms();
   const connectionsQuery = useConnectionsQuery();
 
@@ -101,6 +122,34 @@ export function BulkWizard({
   const [config, setConfig] = useState<BulkWizardConfig | null>(null);
   const [rows, setRows] = useState<BulkWizardRow[]>(() => seedRows(products, preSelectedVariantIds));
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Live-selected connection id (before config is committed) so the stepper +
+  // flow can branch by destination capability from the start (#1829). Seeded
+  // from the picker/URL preselect; updated by the Config step's selector.
+  const [liveConnectionId, setLiveConnectionId] = useState<string>(
+    preselectedConnectionId ?? '',
+  );
+  // Set once a shop batch submits, to swap the body for the publish tracker.
+  const [shopBatchId, setShopBatchId] = useState<string | null>(null);
+
+  // Capability-driven destination kind - never a platformType literal (#1829).
+  // Resolves from the committed config once known, else the live selection.
+  const activeConnectionId = config?.connectionId ?? liveConnectionId;
+  const activeConnection = useMemo(
+    () => (connectionsQuery.data ?? []).find((c) => c.id === activeConnectionId) ?? null,
+    [connectionsQuery.data, activeConnectionId],
+  );
+  const isShop = activeConnection ? publishDestinationKind(activeConnection) === 'shop' : false;
+  const wizardSteps = isShop ? SHOP_WIZARD_STEPS : WIZARD_STEPS;
+
+  // #1837 duplicate guard: soft-warn when included variants are already
+  // published on the destination (a duplicate offer on a marketplace, an
+  // upsert on a shop). Never blocks - surfaced as a chip + a confirm before the
+  // publish action commits.
+  const [dupGuardOpen, setDupGuardOpen] = useState(false);
+  const pendingShopPublishRef = useRef<{
+    items: BulkShopPublishItemRequest[];
+    status: ShopPublishVisibility;
+  } | null>(null);
 
   // Sync row state when the products list changes (dedup by product id so a
   // product surfaced twice yields one row / one fan-out, mirroring the BE seen
@@ -168,7 +217,8 @@ export function BulkWizard({
   // blockers whenever a category's schema resolves. Gated to Review so only
   // rows with resolved master data recompute.
   useEffect(() => {
-    if (!config || step !== 'review') return;
+    // Marketplace-only: shops carry no category/param blockers (#1829).
+    if (!config || step !== 'review' || isShop) return;
     setRows((prev) => {
       let changed = false;
       const next = prev.map((row) => {
@@ -195,16 +245,24 @@ export function BulkWizard({
       });
       return changed ? next : prev;
     });
-  }, [config, step, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit]);
+  }, [config, step, isShop, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit]);
 
   const handleConfigProceed = useCallback(
     (next: BulkWizardConfig) => {
-      const platform =
-        (connectionsQuery.data ?? []).find((c) => c.id === next.connectionId)?.platformType ??
-        'unknown';
-      captureDemoEvent('demo_offer_wizard_step_advanced', { platform, step: 'config' });
       setConfig(next);
-      setStep('resolve');
+      // Shops skip Resolve (no category/EAN matching) and go straight to
+      // Review; marketplaces resolve categories first (#1829). Derived from
+      // the committed connection so a switch in Config is honoured.
+      const nextConnection = (connectionsQuery.data ?? []).find(
+        (c) => c.id === next.connectionId,
+      );
+      captureDemoEvent('demo_offer_wizard_step_advanced', {
+        platform: nextConnection?.platformType ?? 'unknown',
+        step: 'config',
+      });
+      const nextIsShop =
+        nextConnection !== undefined && publishDestinationKind(nextConnection) === 'shop';
+      setStep(nextIsShop ? 'review' : 'resolve');
     },
     [connectionsQuery.data],
   );
@@ -404,21 +462,128 @@ export function BulkWizard({
     [config, rows, mutation, navigate, showToast, canGenerateDescription],
   );
 
+  // Shop branch submit (#1829): POST /listings/bulk-shop-publish, one item per
+  // included variant. On success the body swaps to the publish tracker.
+  const handleShopPublish = useCallback(
+    async (items: BulkShopPublishItemRequest[], status: ShopPublishVisibility) => {
+      if (!config || items.length === 0) return;
+      try {
+        const result = await shopMutation.mutateAsync({
+          request: {
+            connectionId: config.connectionId,
+            items,
+            status,
+            // #1840 - same Config-step toggle the marketplace branch reads
+            // (canGenerateDescription gates on write access, mirroring the
+            // marketplace request below).
+            ...(canGenerateDescription && config.generateDescription
+              ? { generateDescription: true }
+              : {}),
+          },
+        });
+        showToast({
+          tone: 'success',
+          title: 'Bulk publish started',
+          description: `${items.length.toLocaleString()} product ${items.length === 1 ? 'listing' : 'listings'} queued.`,
+        });
+        setShopBatchId(result.batchId);
+      } catch {
+        // Surfaced via shopMutation.error in the review step.
+      }
+    },
+    [config, shopMutation, showToast, canGenerateDescription],
+  );
+
   const counts = useMemo(() => countBatch(rows), [rows]);
   const marketplaceName = batchPlatform?.displayName ?? 'marketplace';
+
+  // Every seeded variant id, checked against the destination in one call.
+  const allSeededVariantIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const row of rows) {
+      for (const variant of row.variants) ids.push(variant.variantId);
+    }
+    return ids;
+  }, [rows]);
+
+  const publishedVariantsQuery = usePublishedVariantsQuery(
+    activeConnectionId || null,
+    allSeededVariantIds,
+  );
+  const alreadyListedSet = publishedVariantsQuery.data ?? EMPTY_ALREADY_LISTED;
+
+  // Included variants that are already published there - drives the guard gate.
+  const duplicateIncludedCount = useMemo(() => {
+    if (alreadyListedSet.size === 0) return 0;
+    let n = 0;
+    for (const row of rows) {
+      for (const variant of row.variants) {
+        if (variant.included && alreadyListedSet.has(variant.variantId)) n += 1;
+      }
+    }
+    return n;
+  }, [rows, alreadyListedSet]);
+
+  const dupGuardKind = isShop ? 'shop' : 'marketplace';
+  const dupGuardDestinationName = activeConnection?.name ?? marketplaceName;
+
+  // Marketplace publish gate: a duplicate opens the soft confirm first, which on
+  // confirm hands off to the existing submit-confirm modal.
+  const handleApproveAll = useCallback(() => {
+    if (duplicateIncludedCount > 0) {
+      setDupGuardOpen(true);
+      return;
+    }
+    setConfirmOpen(true);
+  }, [duplicateIncludedCount]);
+
+  // Shop publish gate: stash the built items, soft-confirm on a duplicate, else
+  // publish straight away.
+  const handleShopPublishRequested = useCallback(
+    (items: BulkShopPublishItemRequest[], status: ShopPublishVisibility) => {
+      if (duplicateIncludedCount > 0) {
+        pendingShopPublishRef.current = { items, status };
+        setDupGuardOpen(true);
+        return;
+      }
+      void handleShopPublish(items, status);
+    },
+    [duplicateIncludedCount, handleShopPublish],
+  );
+
+  const handleDupGuardConfirm = useCallback(() => {
+    setDupGuardOpen(false);
+    if (isShop) {
+      const pending = pendingShopPublishRef.current;
+      pendingShopPublishRef.current = null;
+      if (pending) void handleShopPublish(pending.items, pending.status);
+    } else {
+      setConfirmOpen(true);
+    }
+  }, [isShop, handleShopPublish]);
+
+  const currentStepIndex = Math.max(
+    0,
+    wizardSteps.findIndex((s) => s.id === step),
+  );
+  const stepperCurrent = shopBatchId !== null ? wizardSteps.length : currentStepIndex;
 
   return (
     <PageLayout
       eyebrow="Operations · Listings"
-      title="Bulk marketplace offer creation"
-      description={`Creating offers for ${rows.length} ${rows.length === 1 ? 'product' : 'products'} · ${counts.totalVariants} variants.`}
+      title={isShop ? 'Bulk shop product publishing' : 'Bulk marketplace offer creation'}
+      description={
+        isShop
+          ? `Publishing ${rows.length} ${rows.length === 1 ? 'product' : 'products'} · ${counts.totalVariants} variants to a shop.`
+          : `Creating offers for ${rows.length} ${rows.length === 1 ? 'product' : 'products'} · ${counts.totalVariants} variants.`
+      }
     >
       <div className="bulk-wizard">
         <div className="bulk-wizard__stepper">
           <SetupStepper
-            steps={WIZARD_STEPS.map((s) => s.label)}
-            currentStep={stepOrder(step)}
-            completedSteps={new Set(Array.from({ length: stepOrder(step) }, (_, i) => i))}
+            steps={wizardSteps.map((s) => s.label)}
+            currentStep={stepperCurrent}
+            completedSteps={new Set(Array.from({ length: stepperCurrent }, (_, i) => i))}
           />
         </div>
 
@@ -429,51 +594,82 @@ export function BulkWizard({
           </Alert>
         ) : null}
 
-        <div className={step === 'resolve' ? '' : 'bulk-wizard__body'}>
-          {step === 'config' && (
-            <BulkConfigStep
-              initial={config ?? {}}
-              preselectedConnectionId={preselectedConnectionId}
-              onProceed={handleConfigProceed}
-              onCancel={() => { void navigate(-1); }}
-            />
-          )}
-          {step === 'resolve' && config && (
-            <BulkResolveStep
-              rows={rows}
-              connectionId={config.connectionId}
-              pricingPolicy={config.pricingPolicy}
-              stockPolicy={config.stockPolicy}
-              currency={config.currency}
-              platformValidate={platformValidate}
-              destinationResolvesCategoryAtSubmit={destinationResolvesCategoryAtSubmit}
-              onComplete={handleResolveComplete}
-            />
-          )}
-          {step === 'review' && config && (
-            <BulkReviewStep
-              rows={rows}
-              connection={batchConnection}
-              config={config}
-              paramsResolving={paramsResolving}
-              platformBlockerChips={platformBlockerChips}
-              canBrowseCategories={destinationBrowsesCategories}
-              batchDeliveryPriceList={
-                typeof config.platformParams.deliveryPriceList === 'string'
-                  ? config.platformParams.deliveryPriceList
-                  : ''
-              }
-              demoReadOnly={write.demoReadOnly}
-              onSetVariantIncluded={setVariantIncluded}
-              onSetProductIncluded={setProductIncluded}
-              onSaveEditor={handleSaveEditor}
-              onApproveAll={() => { setConfirmOpen(true); }}
-              onBack={() => { setStep('config'); }}
-            />
-          )}
-        </div>
+        {shopBatchId !== null && config ? (
+          <div className="bulk-wizard__body">
+            <ShopPublishTracker connectionId={config.connectionId} batchId={shopBatchId} />
+            <div className="bulk-wizard__footer">
+              <div className="bulk-wizard__footer-spacer" />
+              <Button tone="primary" onClick={() => { void navigate('/listings'); }}>
+                Done
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className={step === 'resolve' ? '' : 'bulk-wizard__body'}>
+            {step === 'config' && (
+              <BulkConfigStep
+                initial={config ?? {}}
+                preselectedConnectionId={preselectedConnectionId}
+                onConnectionChange={setLiveConnectionId}
+                onProceed={handleConfigProceed}
+                onCancel={() => { void navigate(-1); }}
+              />
+            )}
+            {step === 'resolve' && config && !isShop && (
+              <BulkResolveStep
+                rows={rows}
+                connectionId={config.connectionId}
+                pricingPolicy={config.pricingPolicy}
+                stockPolicy={config.stockPolicy}
+                currency={config.currency}
+                platformValidate={platformValidate}
+                destinationResolvesCategoryAtSubmit={destinationResolvesCategoryAtSubmit}
+                onComplete={handleResolveComplete}
+              />
+            )}
+            {step === 'review' && config && isShop && (
+              <BulkShopReviewStep
+                rows={rows}
+                connection={activeConnection}
+                config={config}
+                demoReadOnly={write.demoReadOnly}
+                isSubmitting={shopMutation.isPending}
+                errorMessage={shopMutation.error ? shopMutation.error.message : null}
+                alreadyListedVariantIds={alreadyListedSet}
+                destinationName={dupGuardDestinationName}
+                onSetVariantIncluded={setVariantIncluded}
+                onSaveEditor={handleSaveEditor}
+                onBack={() => { setStep('config'); }}
+                onPublish={handleShopPublishRequested}
+              />
+            )}
+            {step === 'review' && config && !isShop && (
+              <BulkReviewStep
+                rows={rows}
+                connection={batchConnection}
+                config={config}
+                paramsResolving={paramsResolving}
+                platformBlockerChips={platformBlockerChips}
+                canBrowseCategories={destinationBrowsesCategories}
+                batchDeliveryPriceList={
+                  typeof config.platformParams.deliveryPriceList === 'string'
+                    ? config.platformParams.deliveryPriceList
+                    : ''
+                }
+                demoReadOnly={write.demoReadOnly}
+                alreadyListedVariantIds={alreadyListedSet}
+                destinationName={dupGuardDestinationName}
+                onSetVariantIncluded={setVariantIncluded}
+                onSetProductIncluded={setProductIncluded}
+                onSaveEditor={handleSaveEditor}
+                onApproveAll={handleApproveAll}
+                onBack={() => { setStep('config'); }}
+              />
+            )}
+          </div>
+        )}
 
-        {config ? (
+        {config && !isShop ? (
           <BulkConfirmModal
             open={confirmOpen}
             onOpenChange={setConfirmOpen}
@@ -492,13 +688,20 @@ export function BulkWizard({
             }}
           />
         ) : null}
+
+        {config ? (
+          <DuplicateGuardModal
+            open={dupGuardOpen}
+            onOpenChange={setDupGuardOpen}
+            kind={dupGuardKind}
+            destinationName={dupGuardDestinationName}
+            duplicateCount={duplicateIncludedCount}
+            onConfirm={handleDupGuardConfirm}
+          />
+        ) : null}
       </div>
     </PageLayout>
   );
-}
-
-function stepOrder(step: BulkWizardStep): number {
-  return WIZARD_STEPS.findIndex((s) => s.id === step);
 }
 
 /** Order-sensitive blocker-list equality. */

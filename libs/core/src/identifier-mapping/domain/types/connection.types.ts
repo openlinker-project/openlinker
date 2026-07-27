@@ -7,6 +7,8 @@
  *
  * @module libs/core/src/identifier-mapping/domain/types
  */
+import type { PricingRule } from './pricing-rule.types';
+
 /**
  * Platform type identifier (e.g., 'prestashop', 'allegro', 'shopify')
  */
@@ -64,6 +66,23 @@ export interface ConnectionConfig {
     triggerModel?: string;
     shippingLineName?: string;
   };
+  /**
+   * Per-connection stock safety buffer (#1844). Units of master stock held back
+   * as a reserve when publishing an offer / shop product or writing stock back to
+   * this destination: the published quantity is `max(0, masterStock - reserve)`.
+   * A missing/zero value preserves the pre-#1844 pass-through behaviour. Read via
+   * `readStockSafetyBuffer` and applied via `applyStockSafetyBuffer`
+   * (`stock-safety-buffer.types.ts`).
+   */
+  stockSafetyBuffer?: number;
+  /**
+   * Per-connection pricing-resolution rule (#1843). Markup/margin formula +
+   * rounding applied when a destination's price is derived from the master
+   * catalog price (no explicit per-item price override). A missing value
+   * preserves the pre-#1843 raw passthrough. Read via `readPricingRule` and
+   * applied via `applyPricingRule` (`pricing-rule.types.ts`).
+   */
+  pricingRule?: PricingRule;
   [key: string]: unknown;
 }
 

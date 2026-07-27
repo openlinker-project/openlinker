@@ -11,11 +11,6 @@ import { TimeDisplay } from '../../shared/ui/time-display';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
 import { OfferProductPickerModal } from '../../features/listings/components/offer-product-picker-modal';
-import {
-  ShopPublishLauncher,
-  selectShopPublishConnections,
-} from '../../features/listings/components/ShopPublishLauncher';
-import { useConnectionsQuery } from '../../features/connections';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import type {
@@ -143,17 +138,13 @@ export function ListingsListPage(): ReactElement {
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
 
-  const connectionsQuery = useConnectionsQuery();
-  const shopPublishConnections = selectShopPublishConnections(connectionsQuery.data ?? []);
-  const canPublishToShop = shopPublishConnections.length > 0;
   const demoMode = useDemoMode();
-  // "Create offer" and "Publish to shop" both open a wizard first — visible
+  // The unified "Publish products" entry opens a picker first — visible
   // (enabled) for a demo viewer per the useWriteAccess + ReadOnlyLock pattern
-  // (#1615/#1613); the wizards themselves gate their own final submit (#1663).
+  // (#1615/#1613); the downstream wizard gates its own final submit (#1663).
   const write = useWriteAccess('listings:write', demoMode);
 
   const [isWizardOpen, setIsWizardOpen] = useState(false);
-  const [isShopPublishOpen, setIsShopPublishOpen] = useState(false);
 
   return (
     <PageLayout
@@ -162,14 +153,7 @@ export function ListingsListPage(): ReactElement {
       description="Offer mapping workbench — browse offer-to-variant identifier mappings across platforms."
       actions={
         write.visible ? (
-          <>
-            <Button onClick={() => setIsWizardOpen(true)}>Create offer</Button>
-            {canPublishToShop ? (
-              <Button tone="secondary" onClick={() => setIsShopPublishOpen(true)}>
-                Publish to shop
-              </Button>
-            ) : null}
-          </>
+          <Button onClick={() => setIsWizardOpen(true)}>Publish products</Button>
         ) : null
       }
     >
@@ -282,8 +266,6 @@ export function ListingsListPage(): ReactElement {
         isOpen={isWizardOpen}
         onClose={() => setIsWizardOpen(false)}
       />
-
-      <ShopPublishLauncher open={isShopPublishOpen} onOpenChange={setIsShopPublishOpen} />
     </PageLayout>
   );
 }

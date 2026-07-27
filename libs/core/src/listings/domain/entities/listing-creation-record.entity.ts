@@ -16,6 +16,7 @@
 import type {
   ListingCreationError,
   ListingCreationStatus,
+  ShopPublishRequestSnapshot,
 } from '../types/listing-creation-record.types';
 
 export class ListingCreationRecord {
@@ -39,5 +40,13 @@ export class ListingCreationRecord {
      * Null when the adapter reported no warnings. Never set on failed records.
      */
     public readonly warnings: string[] | null = null,
+    /**
+     * Persisted per-item publish request snapshot (#1845). Enables the bulk
+     * shop-publish retry to rebuild the original payload for a failed child.
+     * Null for records created before the snapshot column existed / single
+     * publishes that opted out. Appended last so existing construction sites
+     * stay unchanged.
+     */
+    public readonly request: ShopPublishRequestSnapshot | null = null,
   ) {}
 }

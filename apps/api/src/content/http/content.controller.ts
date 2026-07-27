@@ -1,9 +1,13 @@
 /**
  * Content Controller
  *
- * Admin-only REST surface for the product-scoped content editor (#339) and
- * the AI description suggestion flow (#342). Delegates persistence and
- * publish to `IContentDraftService`, the read-side compose to
+ * REST surface for the product-scoped content editor (#339) and the AI
+ * description suggestion flow (#342). Read access (`getState`) is open to
+ * every authenticated role (#1873); draft/discard/publish are restricted to
+ * `admin`/`operator`; `suggest` stays `admin`-only in every environment since
+ * it triggers a real LLM completion (mirrors the `ai:suggest` FE permission,
+ * not loosened by this change). Delegates persistence and publish to
+ * `IContentDraftService`, the read-side compose to
  * `IContentStateReaderService`, and AI completion to
  * `IContentSuggestionService`. The controller itself only maps transport
  * concerns + domain exceptions to HTTP.
@@ -75,7 +79,7 @@ export class ContentController {
     private readonly suggestions: IContentSuggestionService,
   ) {}
 
-  @Roles('admin')
+  @Roles('admin', 'operator', 'viewer')
   @Get()
   @ApiOperation({ summary: 'Fetch master + channel content state for a product' })
   @ApiResponse({ status: 200, type: ContentStateResponseDto })
@@ -92,7 +96,7 @@ export class ContentController {
     });
   }
 
-  @Roles('admin')
+  @Roles('admin', 'operator')
   @Post('draft')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Save a draft value on the master or a channel override' })
@@ -114,7 +118,7 @@ export class ContentController {
     });
   }
 
-  @Roles('admin')
+  @Roles('admin', 'operator')
   @Post('discard')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Discard a pending draft on the master or a channel override' })
@@ -132,7 +136,7 @@ export class ContentController {
     });
   }
 
-  @Roles('admin')
+  @Roles('admin', 'operator')
   @Post('publish')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Publish the pending draft to the target platform' })

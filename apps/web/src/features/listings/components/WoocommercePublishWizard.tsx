@@ -269,6 +269,7 @@ export function WoocommercePublishWizard({
 
   const mode = finalMode;
   const status = form.watch('status');
+  const generateDescription = form.watch('generateDescription');
   const mutationError = mode === 'bulk' ? bulkMutation.error : singleMutation.error;
   const isPending = singleMutation.isPending || bulkMutation.isPending;
 
@@ -368,6 +369,9 @@ export function WoocommercePublishWizard({
           items,
           status: values.status,
           ...(content ? { content } : {}),
+          ...(values.generateDescription
+            ? { generateDescription: true, descriptionTone: values.descriptionTone }
+            : {}),
         };
         const result = await bulkMutation.mutateAsync({ request });
         showToast({
@@ -385,6 +389,9 @@ export function WoocommercePublishWizard({
           stock: stockValue,
           ...(price ? { price } : {}),
           ...(content ? { content } : {}),
+          ...(values.generateDescription
+            ? { generateDescription: true, descriptionTone: values.descriptionTone }
+            : {}),
         };
         const result = await singleMutation.mutateAsync({
           connectionId: connection.id,
@@ -700,6 +707,51 @@ export function WoocommercePublishWizard({
           </p>
         ) : null}
       </div>
+
+      <div className="form-field">
+        <span className="form-field__label">
+          Description{' '}
+          {mode === 'bulk' ? <span className="shop-publish-hint">applies to all</span> : null}
+        </span>
+        <label className="shop-publish-ai-toggle">
+          <input
+            type="checkbox"
+            checked={generateDescription}
+            onChange={(e) =>
+              form.setValue('generateDescription', e.target.checked, { shouldDirty: true })
+            }
+          />
+          <span>Generate {mode === 'bulk' ? 'descriptions' : 'a description'} with AI</span>
+        </label>
+        <p className="form-field__description">
+          {mode === 'bulk'
+            ? 'Each product gets an AI-written description from its master data. Products you have already given a description keep it.'
+            : "Writes the description from the product's master data at publish time. Leave off to use the master description."}
+        </p>
+        {generateDescription ? (
+          <FormField label="Tone" name="descriptionTone">
+            <select
+              className="input"
+              value={form.watch('descriptionTone')}
+              onChange={(e) =>
+                form.setValue('descriptionTone', e.target.value as 'concise' | 'detailed', {
+                  shouldDirty: true,
+                })
+              }
+            >
+              <option value="concise">Concise</option>
+              <option value="detailed">Detailed</option>
+            </select>
+          </FormField>
+        ) : null}
+      </div>
+
+      {/*
+        Per-row AI description override lives in the publish edit modal (#1830),
+        which is not merged yet. When it lands, add a per-item generateDescription
+        toggle there; the payload + worker already honor a per-item explicit
+        content.description (which always wins over this batch-level AI flag).
+      */}
 
       {mode === 'bulk' ? (
         <div className="form-field">

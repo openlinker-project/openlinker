@@ -333,7 +333,12 @@ export function ProductDetailPage(): ReactElement {
         open={pickerOpen}
         onOpenChange={setPickerOpen}
         productCount={1}
-        connections={offerCreatorConnections}
+        // Single-product offer creation stays marketplace-only here; shop
+        // publishing from the product detail page is #1830 (shop edit mode).
+        destinations={offerCreatorConnections.map((c) => ({
+          connection: c,
+          kind: 'marketplace' as const,
+        }))}
         onContinue={(connectionId) => {
           setPickerOpen(false);
           goToWizard(connectionId);

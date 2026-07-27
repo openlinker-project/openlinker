@@ -35,6 +35,7 @@ import {
   OFFER_MAPPING_REPOSITORY_TOKEN,
   OFFER_STATUS_READ_SERVICE_TOKEN,
   OFFER_STATUS_SYNC_SERVICE_TOKEN,
+  PUBLISHED_VARIANTS_SERVICE_TOKEN,
   OfferCreationRecord,
   SELLER_POLICIES_SERVICE_TOKEN,
   RESPONSIBLE_PRODUCER_SERVICE_TOKEN,
@@ -45,6 +46,7 @@ import type {
   IOfferCreationEnqueueService,
   IOfferStatusReadService,
   IOfferStatusSyncService,
+  IPublishedVariantsService,
   ISellerPoliciesService,
   IResponsibleProducerService,
   IDeliveryPriceListService,
@@ -75,6 +77,7 @@ describe('ListingsController', () => {
   let categoryResolution: jest.Mocked<ICategoryResolutionService>;
   let offerStatusRead: jest.Mocked<IOfferStatusReadService>;
   let offerStatusSync: jest.Mocked<Pick<IOfferStatusSyncService, 'refreshOne'>>;
+  let publishedVariants: jest.Mocked<IPublishedVariantsService>;
 
   const mockMapping = new IdentifierMapping(
     'uuid-1',
@@ -159,6 +162,9 @@ describe('ListingsController', () => {
     offerStatusSync = {
       refreshOne: jest.fn(),
     };
+    publishedVariants = {
+      getPublishedVariantIds: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ListingsController],
@@ -175,10 +181,40 @@ describe('ListingsController', () => {
         { provide: CATEGORY_RESOLUTION_SERVICE_TOKEN, useValue: categoryResolution },
         { provide: OFFER_STATUS_READ_SERVICE_TOKEN, useValue: offerStatusRead },
         { provide: OFFER_STATUS_SYNC_SERVICE_TOKEN, useValue: offerStatusSync },
+        { provide: PUBLISHED_VARIANTS_SERVICE_TOKEN, useValue: publishedVariants },
       ],
     }).compile();
 
     controller = module.get<ListingsController>(ListingsController);
+  });
+
+  describe('checkPublishedVariants (#1837)', () => {
+    it('should return the subset of variant ids already published on the connection', async () => {
+      publishedVariants.getPublishedVariantIds.mockResolvedValue(['v1', 'v3']);
+
+      const result = await controller.checkPublishedVariants({
+        connectionId: 'conn-1',
+        variantIds: ['v1', 'v2', 'v3'],
+      });
+
+      expect(result).toEqual({ publishedVariantIds: ['v1', 'v3'] });
+      expect(publishedVariants.getPublishedVariantIds).toHaveBeenCalledWith('conn-1', [
+        'v1',
+        'v2',
+        'v3',
+      ]);
+    });
+
+    it('should return an empty list when nothing is published', async () => {
+      publishedVariants.getPublishedVariantIds.mockResolvedValue([]);
+
+      const result = await controller.checkPublishedVariants({
+        connectionId: 'conn-1',
+        variantIds: ['v1'],
+      });
+
+      expect(result).toEqual({ publishedVariantIds: [] });
+    });
   });
 
   describe('listOfferMappings', () => {

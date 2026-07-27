@@ -36,3 +36,5 @@ export { ProductPublishExecutionService } from '../application/services/product-
 export { ProductPublishEnqueueService } from '../application/services/product-publish-enqueue.service';
 export { ListingCreationQueryService } from '../application/services/listing-creation-query.service';
 export { BulkShopPublishSubmitService } from '../application/services/bulk-shop-publish-submit.service';
+export { BulkShopPublishRetryService } from '../application/services/bulk-shop-publish-retry.service';
+export { ShopStatusSyncService } from '../application/services/shop-status-sync.service';

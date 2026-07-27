@@ -77,6 +77,61 @@ describe('WoocommercePublishWizard', () => {
     });
   });
 
+  it('threads the AI description toggle + tone into a single publish (#1840)', async () => {
+    const shopPublish = vi
+      .fn()
+      .mockResolvedValue({ jobId: 'job-1', listingCreationRecordId: 'rec-9' });
+    const apiClient = createMockApiClient({ listings: { shopPublish } });
+
+    renderWithProviders(
+      <WoocommercePublishWizard
+        connection={wooConnection}
+        defaultVariantId="ol_variant_1"
+        onCancel={vi.fn()}
+        onSubmitted={vi.fn()}
+      />,
+      { apiClient },
+    );
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: /generate a description with ai/i }));
+    fireEvent.change(await screen.findByRole('combobox', { name: /tone/i }), {
+      target: { value: 'detailed' },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /^publish$/i }));
+
+    await waitFor(() => {
+      expect(shopPublish).toHaveBeenCalledTimes(1);
+    });
+    const [, body] = shopPublish.mock.calls[0];
+    expect(body).toMatchObject({ generateDescription: true, descriptionTone: 'detailed' });
+  });
+
+  it('omits the AI flags when the toggle is left off (#1840)', async () => {
+    const shopPublish = vi
+      .fn()
+      .mockResolvedValue({ jobId: 'job-1', listingCreationRecordId: 'rec-9' });
+    const apiClient = createMockApiClient({ listings: { shopPublish } });
+
+    renderWithProviders(
+      <WoocommercePublishWizard
+        connection={wooConnection}
+        defaultVariantId="ol_variant_1"
+        onCancel={vi.fn()}
+        onSubmitted={vi.fn()}
+      />,
+      { apiClient },
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /^publish$/i }));
+
+    await waitFor(() => {
+      expect(shopPublish).toHaveBeenCalledTimes(1);
+    });
+    const [, body] = shopPublish.mock.calls[0];
+    expect(body.generateDescription).toBeUndefined();
+    expect(body.descriptionTone).toBeUndefined();
+  });
+
   it('submits a bulk publish and reports the batchId', async () => {
     const shopPublishBulk = vi.fn().mockResolvedValue({ batchId: 'batch-7', items: [] });
     const onSubmitted = vi.fn();

@@ -105,6 +105,8 @@ function baseProps() {
     platformBlockerChips: [],
     canBrowseCategories: true,
     demoReadOnly: false,
+    alreadyListedVariantIds: new Set<string>(),
+    destinationName: 'Test Marketplace',
     onSetVariantIncluded: vi.fn(),
     onSetProductIncluded: vi.fn(),
     onSaveEditor: vi.fn(),
@@ -166,5 +168,18 @@ describe('BulkReviewStep', () => {
     expect(screen.queryByRole('button', { name: 'Close image' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Zoom image of Doniczka Terra/ }));
     expect(screen.getByRole('button', { name: 'Close image' })).toBeInTheDocument();
+  });
+
+  it('renders the "already on {destination}" chip with an aria-hidden decorative dot (#1838)', () => {
+    renderWithProviders(
+      <BulkReviewStep
+        rows={[makeRow('prod_1', [variantRow('v1')])]}
+        {...baseProps()}
+        alreadyListedVariantIds={new Set(['v1'])}
+      />,
+    );
+    const chip = screen.getByText(/already on Test Marketplace/);
+    const dot = chip.parentElement?.querySelector('.bulk-chip__dot');
+    expect(dot).toHaveAttribute('aria-hidden', 'true');
   });
 });

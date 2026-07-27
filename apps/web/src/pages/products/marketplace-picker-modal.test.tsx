@@ -1,11 +1,12 @@
 /**
- * MarketplacePickerModal tests (#1096)
+ * MarketplacePickerModal tests (#1096, grouped for #1828)
  */
 import { screen, fireEvent, cleanup } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '../../test/test-utils';
 import { MarketplacePickerModal } from './marketplace-picker-modal';
 import type { Connection } from '../../features/connections';
+import type { PublishDestination, PublishDestinationKind } from '../../features/listings';
 
 const captureDemoEvent = vi.fn();
 vi.mock('../../features/demo', () => ({
@@ -28,20 +29,32 @@ function conn(id: string, platformType: string, name: string): Connection {
   };
 }
 
+function dest(
+  id: string,
+  platformType: string,
+  name: string,
+  kind: PublishDestinationKind,
+): PublishDestination {
+  return { connection: conn(id, platformType, name), kind };
+}
+
 describe('MarketplacePickerModal', () => {
   afterEach(() => {
     cleanup();
     captureDemoEvent.mockClear();
   });
 
-  it('lists each OfferManager connection and continues with the chosen one', () => {
+  it('lists each destination and continues with the chosen one', () => {
     const onContinue = vi.fn();
     renderWithProviders(
       <MarketplacePickerModal
         open
         onOpenChange={vi.fn()}
         productCount={6}
-        connections={[conn('c1', 'allegro', 'My Allegro'), conn('c2', 'erli', 'My Erli')]}
+        destinations={[
+          dest('c1', 'allegro', 'My Allegro', 'marketplace'),
+          dest('c2', 'erli', 'My Erli', 'marketplace'),
+        ]}
         onContinue={onContinue}
       />,
     );
@@ -49,7 +62,7 @@ describe('MarketplacePickerModal', () => {
     expect(screen.getByText('My Allegro')).toBeInTheDocument();
     expect(screen.getByText('My Erli')).toBeInTheDocument();
 
-    // Continue is disabled until a marketplace is picked.
+    // Continue is disabled until a destination is picked.
     const continueBtn = screen.getByRole('button', { name: /continue/i });
     expect(continueBtn).toBeDisabled();
 
@@ -66,7 +79,7 @@ describe('MarketplacePickerModal', () => {
         open
         onOpenChange={vi.fn()}
         productCount={1}
-        connections={[conn('c1', 'allegro', 'My Allegro')]}
+        destinations={[dest('c1', 'allegro', 'My Allegro', 'marketplace')]}
         onContinue={vi.fn()}
       />,
     );
@@ -77,5 +90,25 @@ describe('MarketplacePickerModal', () => {
     expect(captureDemoEvent).toHaveBeenCalledWith('demo_offer_marketplace_picked', {
       platform: 'allegro',
     });
+  });
+
+  it('groups marketplaces and online shops with capability-driven hints', () => {
+    renderWithProviders(
+      <MarketplacePickerModal
+        open
+        onOpenChange={vi.fn()}
+        productCount={2}
+        destinations={[
+          dest('c1', 'allegro', 'My Allegro', 'marketplace'),
+          dest('c3', 'woocommerce', 'My Shop', 'shop'),
+        ]}
+        onContinue={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Marketplaces')).toBeInTheDocument();
+    expect(screen.getByText('Online shops')).toBeInTheDocument();
+    expect(screen.getByText('Offer marketplace')).toBeInTheDocument();
+    expect(screen.getByText('Online shop')).toBeInTheDocument();
   });
 });

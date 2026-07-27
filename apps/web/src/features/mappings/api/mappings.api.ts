@@ -35,6 +35,8 @@ import type {
   RoutingRule,
   CandidateProcessor,
   UpsertRoutingRulesPayload,
+  AttributeRule,
+  UpsertAttributeRulePayload,
 } from './mappings.types';
 
 export interface MappingsApi {
@@ -76,6 +78,14 @@ export interface MappingsApi {
     payload: UpsertRoutingRulesPayload,
   ) => Promise<RoutingRule[]>;
   getRoutingCandidates: (connectionId: string) => Promise<CandidateProcessor[]>;
+
+  // Attribute mapping rules (#1841) — operator-authored, deterministic rule layer.
+  getAttributeRules: (connectionId: string) => Promise<AttributeRule[]>;
+  upsertAttributeRule: (
+    connectionId: string,
+    payload: UpsertAttributeRulePayload,
+  ) => Promise<AttributeRule>;
+  deleteAttributeRule: (connectionId: string, ruleId: string) => Promise<void>;
 }
 
 interface ApiRequest {
@@ -169,5 +179,19 @@ export function createMappingsApi(request: ApiRequest): MappingsApi {
       request<PrestashopCategory[]>(
         `/connections/${connectionId}/mappings/options/destination/categories`,
       ),
+
+    getAttributeRules: (connectionId) =>
+      request<AttributeRule[]>(`/connections/${connectionId}/attribute-rules`),
+
+    upsertAttributeRule: (connectionId, payload) =>
+      request<AttributeRule>(`/connections/${connectionId}/attribute-rules`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }),
+
+    deleteAttributeRule: (connectionId, ruleId) =>
+      request<void>(`/connections/${connectionId}/attribute-rules/${ruleId}`, {
+        method: 'DELETE',
+      }),
   };
 }

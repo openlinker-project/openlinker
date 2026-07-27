@@ -24,4 +24,7 @@ export const mappingsQueryKeys = {
   routingRules: (connectionId: string) => ['mappings', connectionId, 'routing-rules'] as const,
   routingCandidates: (connectionId: string) =>
     ['mappings', connectionId, 'routing-candidates'] as const,
+  /** Operator-authored attribute mapping rules for a connection (#1841). */
+  attributeRules: (connectionId: string) =>
+    ['mappings', connectionId, 'attribute-rules'] as const,
 };

@@ -7,7 +7,12 @@
  * @module libs/core/src/listings/application/types
  */
 
-import type { PublishProductContent, PublishProductStatus } from '@openlinker/core/listings';
+import type {
+  OfferParameter,
+  PublishProductCommerce,
+  PublishProductContent,
+  PublishProductStatus,
+} from '@openlinker/core/listings';
 import type { JobOutcome } from '@openlinker/core/sync';
 
 import type { ListingCreationRecord } from '../../domain/entities/listing-creation-record.entity';
@@ -25,6 +30,18 @@ export interface ExecutePublishProductInput {
   price?: { amount: number; currency: string };
   /** Optional owned-record content overrides. */
   content?: PublishProductContent;
+  /** Optional operator-supplied commerce fields (sale price, dimensions, tax). */
+  commerce?: PublishProductCommerce;
+  /**
+   * Optional per-item destination category override (#1831). Threaded to the
+   * builder, which uses it instead of server-side provisioning when present.
+   */
+  destinationCategoryIds?: string[];
+  /**
+   * Optional per-item neutral category parameters override (#1831). Threaded to
+   * the builder, which uses it instead of attribute projection when present.
+   */
+  parameters?: OfferParameter[];
   /** Optional idempotency key threaded to the adapter. */
   idempotencyKey?: string;
   /**

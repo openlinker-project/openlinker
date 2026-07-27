@@ -242,6 +242,50 @@ describe('ProductsListPage', () => {
     expect(pills[1]).toHaveClass('coverage-pill--full');
   });
 
+  it('renders a coverage pill for a ShopProduct (WooCommerce) connection too (#1838 follow-up fix)', async () => {
+    // Coverage pills previously stayed keyed to the marketplace OfferCreator
+    // subset, so a product published to a shop connection (ShopProduct
+    // mapping, ProductPublisher capability) showed no coverage indication at
+    // all - this is the regression test for that fix.
+    const wooConnection = {
+      id: 'conn_woo',
+      name: 'My WooCommerce',
+      status: 'active',
+      platformType: 'woocommerce',
+      supportedCapabilities: ['OfferManager', 'ProductPublisher'],
+      enabledCapabilities: ['ProductPublisher'],
+    } as const;
+    const products: PaginatedProducts = {
+      items: [
+        {
+          ...sampleProducts.items[0]!,
+          listingsCoverage: [
+            { connectionId: 'conn_woo', platformType: 'woocommerce', listedVariants: 2 },
+          ],
+        },
+      ],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    };
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue(products) },
+      connections: { list: vi.fn().mockResolvedValue([wooConnection]) },
+    });
+
+    const { container } = renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    await waitFor(() => {
+      expect(container.querySelectorAll('.coverage-pill').length).toBeGreaterThan(0);
+    });
+    const pills = Array.from(container.querySelectorAll('.coverage-pill'));
+    expect(pills).toHaveLength(1);
+    expect(pills[0]).toHaveAttribute('data-channel', 'woocommerce');
+    // 2 of 2 variants listed → full.
+    expect(pills[0]).toHaveClass('coverage-pill--full');
+  });
+
   it('should show muted price with hover explanation when currency is absent', async () => {
     const mockApi = createMockApiClient({
       products: {
@@ -622,7 +666,7 @@ describe('ProductsListPage', () => {
     await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
 
     expect(
-      screen.getByRole('button', { name: 'Create Allegro offers (1)' }),
+      screen.getByRole('button', { name: 'Publish to Allegro (1)' }),
     ).toBeInTheDocument();
     expect(screen.getByRole('region', { name: '1 product selected' })).toBeInTheDocument();
   });
@@ -646,7 +690,7 @@ describe('ProductsListPage', () => {
     await user.click(headerCheckbox);
 
     expect(
-      screen.getByRole('button', { name: 'Create Allegro offers (2)' }),
+      screen.getByRole('button', { name: 'Publish to Allegro (2)' }),
     ).toBeInTheDocument();
 
     // After selecting all, header checkbox should be "Unselect all visible"
@@ -672,7 +716,7 @@ describe('ProductsListPage', () => {
     await screen.findByText('Test Product');
     await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
     expect(
-      screen.getByRole('button', { name: 'Create Allegro offers (1)' }),
+      screen.getByRole('button', { name: 'Publish to Allegro (1)' }),
     ).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Clear' }));
@@ -696,7 +740,7 @@ describe('ProductsListPage', () => {
     await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
     await user.click(screen.getByRole('checkbox', { name: 'Select Another Product' }));
 
-    const cta = screen.getByRole('button', { name: 'Create Allegro offers (2)' });
+    const cta = screen.getByRole('button', { name: 'Publish to Allegro (2)' });
     await user.click(cta);
 
     expect(navigateMock).toHaveBeenCalledTimes(1);
@@ -727,7 +771,7 @@ describe('ProductsListPage', () => {
     await screen.findByText('Test Product');
     // Only the first product has a gap (1 of 2 variants listed on Allegro);
     // the second is fully covered (1/1), so exactly one row CTA renders.
-    const ctas = await screen.findAllByRole('button', { name: '+ Create offers' });
+    const ctas = await screen.findAllByRole('button', { name: '+ Publish' });
     expect(ctas).toHaveLength(1);
     await user.click(ctas[0]);
 
@@ -749,7 +793,7 @@ describe('ProductsListPage', () => {
 
     await screen.findByText('Test Product');
     expect(
-      screen.queryByRole('button', { name: '+ Create offers' }),
+      screen.queryByRole('button', { name: '+ Publish' }),
     ).not.toBeInTheDocument();
   });
 
@@ -769,7 +813,7 @@ describe('ProductsListPage', () => {
 
     // The bar still shows (Clear) but the create CTA is absent.
     expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Create .*offers/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Publish/ })).not.toBeInTheDocument();
   });
 
   it('opens the marketplace picker with 2+ OfferManager connections', async () => {
@@ -795,11 +839,11 @@ describe('ProductsListPage', () => {
     await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
 
     // Generic label (no single marketplace name) with 2+ connections.
-    const cta = await screen.findByRole('button', { name: 'Create offers (1)' });
+    const cta = await screen.findByRole('button', { name: 'Publish products (1)' });
     await user.click(cta);
 
-    // The picker modal appears; no navigation yet.
-    expect(await screen.findByText('Where should these list?')).toBeInTheDocument();
+    // The unified picker modal appears (#1838); no navigation yet.
+    expect(await screen.findByText('Publish products')).toBeInTheDocument();
     expect(navigateMock).not.toHaveBeenCalled();
   });
 
@@ -819,7 +863,7 @@ describe('ProductsListPage', () => {
     await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
 
     expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Create .*offers/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Publish/ })).not.toBeInTheDocument();
   });
 
   it('renders the create-offers CTA (enabled) for a demo read-only viewer', async () => {
@@ -838,7 +882,7 @@ describe('ProductsListPage', () => {
     await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
 
     expect(
-      await screen.findByRole('button', { name: 'Create Allegro offers (1)' }),
+      await screen.findByRole('button', { name: 'Publish to Allegro (1)' }),
     ).toBeEnabled();
   });
 });

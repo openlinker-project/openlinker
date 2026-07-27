@@ -10,11 +10,30 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ContentEditor } from './content-editor';
 import {
+  createAuthenticatedSessionAdapter,
   createMockApiClient,
   findToastDescription,
   renderWithProviders,
 } from '../../../test/test-utils';
+import type { SessionUser } from '../../../shared/auth/session.types';
 import type { ContentState } from '../api/content.types';
+
+const viewerUser: SessionUser = {
+  id: 'user_viewer',
+  username: 'viewer',
+  email: 'viewer@example.com',
+  role: 'viewer',
+  permissions: [
+    'connections:read',
+    'sync:read',
+    'integrations:read',
+    'adapters:read',
+    'orders:read',
+    'products:read',
+    'inventory:read',
+    'listings:read',
+  ],
+};
 
 function makeState(overrides: Partial<ContentState> = {}): ContentState {
   return {
@@ -93,7 +112,10 @@ describe('ContentEditor', () => {
       },
     });
 
-    renderWithProviders(<ContentEditor productId="ol_product_1" />, { apiClient: mockApi });
+    renderWithProviders(<ContentEditor productId="ol_product_1" />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     const textarea = await screen.findByDisplayValue('Current master description');
     const user = userEvent.setup();
@@ -233,7 +255,10 @@ describe('ContentEditor', () => {
         },
       });
 
-      renderWithProviders(<ContentEditor productId="ol_product_1" />, { apiClient: mockApi });
+      renderWithProviders(<ContentEditor productId="ol_product_1" />, {
+        apiClient: mockApi,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
 
       await screen.findByRole('tab', { name: /Master/ });
       const user = userEvent.setup();
@@ -271,7 +296,10 @@ describe('ContentEditor', () => {
         },
       });
 
-      renderWithProviders(<ContentEditor productId="ol_product_1" />, { apiClient: mockApi });
+      renderWithProviders(<ContentEditor productId="ol_product_1" />, {
+        apiClient: mockApi,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
 
       await screen.findByRole('tab', { name: /Master/ });
       const user = userEvent.setup();
@@ -280,6 +308,53 @@ describe('ContentEditor', () => {
 
       expect(await screen.findByText('plain old error')).toBeInTheDocument();
       expect(screen.queryByRole('list', { name: /allegro errors/i })).toBeNull();
+    });
+  });
+
+  describe('read-only gating for viewer role (#1873)', () => {
+    it('loads content state successfully for a viewer session (GET is no longer admin-only)', async () => {
+      const mockApi = createMockApiClient({
+        content: { get: vi.fn().mockResolvedValue(makeState()) },
+      });
+
+      renderWithProviders(<ContentEditor productId="ol_product_1" />, {
+        apiClient: mockApi,
+        sessionAdapter: createAuthenticatedSessionAdapter(viewerUser),
+      });
+
+      expect(await screen.findByDisplayValue('Current master description')).toBeInTheDocument();
+      expect(screen.queryByText('Unable to load content')).not.toBeInTheDocument();
+    });
+
+    it('renders Save/Discard/Publish disabled with a read-only reason for a viewer session', async () => {
+      const state = makeState({
+        master: {
+          baseValue: 'Current master description',
+          draftValue: 'Pending draft',
+          hasConflict: false,
+          updatedAt: '2026-04-20T10:00:00.000Z',
+          updatedBy: 'admin@example.com',
+        },
+      });
+      const saveDraft = vi.fn();
+      const mockApi = createMockApiClient({
+        content: { get: vi.fn().mockResolvedValue(state), saveDraft },
+      });
+
+      renderWithProviders(<ContentEditor productId="ol_product_1" />, {
+        apiClient: mockApi,
+        sessionAdapter: createAuthenticatedSessionAdapter(viewerUser),
+      });
+
+      await screen.findByRole('tab', { name: /Master/ });
+      expect(screen.getByText(/read-only access to content/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Save draft' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Discard draft' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Publish' })).toBeDisabled();
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('button', { name: 'Save draft' }));
+      expect(saveDraft).not.toHaveBeenCalled();
     });
   });
 });

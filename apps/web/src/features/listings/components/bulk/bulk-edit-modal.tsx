@@ -1,5 +1,21 @@
 /**
- * Bulk Edit Modal - per-variant two-pane editor (#1741)
+ * Bulk Edit Modal - per-variant two-pane editor (#1741 marketplace, #1830 shop)
+ *
+ * One editor serves both destination kinds. The two-pane shell (rail = Base +
+ * per-variant scopes, base->variant inherit/override, flat form for a simple
+ * product) is shared; the field set is chosen by capability, never platformType:
+ *
+ * - **marketplace** (`OfferCreator` destinations, #1741) - category-parameter
+ *   schema, EAN self-link, product-card link, Allegro grouping params, per-plugin
+ *   platform sections. Rendered by `BulkEditModalForm`.
+ * - **shop** (`ProductPublisher` destinations, #1830) - category placement in the
+ *   top crumb bar (via `ShopCategoryPickerModal`, gated on `ShopCategoryBrowser`),
+ *   structured attributes (via `ShopAttributePicker`, gated on `ShopAttributeReader`),
+ *   content (title/description/images), and price/stock. No category-parameter
+ *   schema and no EAN self-link. Rendered by `BulkShopEditModalForm`.
+ *
+ * `BulkEditModal` dispatches to the right form by `destinationKind`; the discard
+ * guard + dialog wrapper are shared.
  *
  * Edits one product's SHARED BASE override plus per-VARIANT overrides with
  * inherit/override semantics. Multi-variant products render a two-pane editor
@@ -64,6 +80,8 @@ import {
   toComboboxValue,
 } from '../category-parameters-step';
 import { BulkCategoryChooseModal } from './bulk-category-choose-modal';
+import { ShopCategoryPickerModal } from './shop-category-picker-modal';
+import { ShopAttributePicker } from './shop-attribute-picker';
 import { BulkImageLightbox } from './bulk-image-lightbox';
 import { blockerLabel, isVariantScopeFixable } from './bulk-blockers';
 import { ErliDeliveryPriceListOverrideField } from '../erli/erli-delivery-price-list-override-field';
@@ -228,6 +246,23 @@ interface BulkEditModalProps {
   /** Variant id to open focused on (from a Review-step blocker chip). */
   focusVariantId?: string;
   /**
+   * Which field set to render (#1830). `'marketplace'` (default) keeps the
+   * legacy offer editor; `'shop'` renders the `ProductPublisher` editor
+   * (category crumb + attributes + content + price/stock, no offer schema).
+   * Resolved by the caller from the connection's capability, never platformType.
+   */
+  destinationKind?: 'marketplace' | 'shop';
+  /**
+   * Shop destinations only (#1830). Whether the connection advertises the
+   * `ShopCategoryBrowser` sub-capability - gates the top category picker.
+   */
+  canBrowseShopCategories?: boolean;
+  /**
+   * Shop destinations only (#1830). Whether the connection advertises the
+   * `ShopAttributeReader` sub-capability - gates the global-attribute picker.
+   */
+  canPickShopAttributes?: boolean;
+  /**
    * Demo read-only viewer (#1704). Disables every field edit + image add/remove
    * and locks "Save all" behind a read-only tooltip, matching the Config +
    * Confirm gating - nothing persists to wizard state.
@@ -248,6 +283,9 @@ export function BulkEditModal({
   batchDeliveryPriceList,
   onSave,
   focusVariantId,
+  destinationKind = 'marketplace',
+  canBrowseShopCategories = false,
+  canPickShopAttributes = false,
   demoReadOnly = false,
 }: BulkEditModalProps): ReactElement | null {
   const [dirty, setDirty] = useState(false);
@@ -290,24 +328,45 @@ export function BulkEditModal({
             }
           }}
         >
-          <BulkEditModalForm
-            row={row}
-            connection={connection}
-            canBrowseCategories={canBrowseCategories}
-            currency={currency}
-            defaults={defaults}
-            batchPricingPolicy={pricingPolicy}
-            batchStockPolicy={stockPolicy}
-            batchDeliveryPriceList={batchDeliveryPriceList ?? ''}
-            focusVariantId={focusVariantId}
-            demoReadOnly={demoReadOnly}
-            onDirtyChange={setDirty}
-            onRequestClose={requestClose}
-            onSave={onSave}
-            onClose={() => {
-              onOpenChange(false);
-            }}
-          />
+          {destinationKind === 'shop' ? (
+            <BulkShopEditModalForm
+              row={row}
+              connection={connection}
+              canBrowseShopCategories={canBrowseShopCategories}
+              canPickShopAttributes={canPickShopAttributes}
+              currency={currency}
+              defaults={defaults}
+              batchPricingPolicy={pricingPolicy}
+              batchStockPolicy={stockPolicy}
+              focusVariantId={focusVariantId}
+              demoReadOnly={demoReadOnly}
+              onDirtyChange={setDirty}
+              onRequestClose={requestClose}
+              onSave={onSave}
+              onClose={() => {
+                onOpenChange(false);
+              }}
+            />
+          ) : (
+            <BulkEditModalForm
+              row={row}
+              connection={connection}
+              canBrowseCategories={canBrowseCategories}
+              currency={currency}
+              defaults={defaults}
+              batchPricingPolicy={pricingPolicy}
+              batchStockPolicy={stockPolicy}
+              batchDeliveryPriceList={batchDeliveryPriceList ?? ''}
+              focusVariantId={focusVariantId}
+              demoReadOnly={demoReadOnly}
+              onDirtyChange={setDirty}
+              onRequestClose={requestClose}
+              onSave={onSave}
+              onClose={() => {
+                onOpenChange(false);
+              }}
+            />
+          )}
         </DialogContent>
       </Dialog>
 
@@ -2418,4 +2477,1040 @@ function applyEditsToRow(
       };
     }),
   };
+}
+
+// ── Shop editor (#1830) ──────────────────────────────────────────────────────
+
+/**
+ * Merge a shop attribute into an accumulator, de-duplicating by global-attribute
+ * id (#1830 carry-over). The `ShopAttributePicker` can emit two params with the
+ * SAME id (e.g. Color=Red then Color=Blue); WooCommerce must not receive two
+ * `attributes[]` entries for one id, so we UNION the term values (and their
+ * aligned ids) instead of appending a duplicate. Custom attributes (no
+ * `valuesIds`) union by value string. Last write wins for `section`.
+ */
+export function mergeShopParameter(
+  existing: readonly OfferParameter[],
+  incoming: OfferParameter,
+): OfferParameter[] {
+  const index = existing.findIndex((p) => p.id === incoming.id);
+  if (index === -1) return [...existing, incoming];
+  const current = existing[index];
+  let merged: OfferParameter;
+  if (current.valuesIds && incoming.valuesIds) {
+    const seen = new Set(current.valuesIds);
+    const values = [...(current.values ?? [])];
+    const valuesIds = [...current.valuesIds];
+    incoming.valuesIds.forEach((vid, i) => {
+      if (seen.has(vid)) return;
+      seen.add(vid);
+      valuesIds.push(vid);
+      values.push(incoming.values?.[i] ?? vid);
+    });
+    merged = { ...current, values, valuesIds, section: incoming.section };
+  } else {
+    const values = Array.from(new Set([...(current.values ?? []), ...(incoming.values ?? [])]));
+    merged = { ...current, values, section: incoming.section };
+  }
+  return existing.map((p, i) => (i === index ? merged : p));
+}
+
+/** Human label for one collected shop attribute (id + its chosen values). */
+function shopParameterLabel(parameter: OfferParameter): string {
+  const values = (parameter.values ?? []).join(', ');
+  return values === '' ? parameter.id : `${parameter.id}: ${values}`;
+}
+
+/**
+ * Per-variant shop overrides (#1830). Absent key ⇒ inherited from base.
+ * `parameters` mirrors the base scope's whole-array-replace attribute model
+ * (#1835, `mergeShopParameter`) rather than a per-param diff map - the shop
+ * attribute picker adds/removes whole `OfferParameter` entries, not
+ * per-field values like the marketplace category-parameters form.
+ */
+interface ShopVariantEdit {
+  description?: string;
+  price?: string;
+  parameters?: OfferParameter[];
+}
+
+function initShopVariantEdit(variant: BulkVariantRow): ShopVariantEdit {
+  const o = variant.override.overrides ?? {};
+  return {
+    description: typeof o.description === 'string' ? o.description : undefined,
+    price: variant.override.price !== undefined ? String(variant.override.price.amount) : undefined,
+    parameters: Array.isArray(o.parameters) ? o.parameters : undefined,
+  };
+}
+
+/** Read a previously-stashed shop category breadcrumb from the FE-only edit stash. */
+function readStashedShopPath(editFormValues: Record<string, unknown> | undefined): string[] | null {
+  const shop = editFormValues?.shop;
+  if (shop && typeof shop === 'object' && 'categoryPathNames' in shop) {
+    const p = (shop as { categoryPathNames?: unknown }).categoryPathNames;
+    if (Array.isArray(p) && p.every((x): x is string => typeof x === 'string')) return p;
+  }
+  return null;
+}
+
+/** Concrete price a shop variant inherits when un-overridden (policy-resolved). */
+function shopInheritedPrice(pricingPolicy: PricingPolicy, masterPrice: number | null): string {
+  const resolved = computeResolvedPrice(pricingPolicy, masterPrice, {});
+  return resolved.value !== null ? resolved.value.toFixed(2) : '';
+}
+
+interface BulkShopEditModalFormProps {
+  row: BulkWizardRow;
+  connection: Connection;
+  canBrowseShopCategories: boolean;
+  canPickShopAttributes: boolean;
+  currency: string;
+  defaults: { publishImmediately: boolean };
+  batchPricingPolicy: PricingPolicy;
+  batchStockPolicy: StockPolicy;
+  focusVariantId?: string;
+  demoReadOnly: boolean;
+  onDirtyChange: (dirty: boolean) => void;
+  onRequestClose: () => void;
+  onSave: BulkEditModalProps['onSave'];
+  onClose: () => void;
+}
+
+function BulkShopEditModalForm({
+  row,
+  connection,
+  canBrowseShopCategories,
+  canPickShopAttributes,
+  currency,
+  defaults,
+  batchPricingPolicy,
+  batchStockPolicy,
+  focusVariantId,
+  demoReadOnly,
+  onDirtyChange,
+  onRequestClose,
+  onSave,
+  onClose,
+}: BulkShopEditModalFormProps): ReactElement {
+  const connectionId = connection.id;
+  const isMultiVariant = row.variants.length > 1;
+  const masterImages = useMemo(
+    () => (row.product?.images ?? []).filter((u): u is string => typeof u === 'string' && u.trim() !== ''),
+    [row.product?.images],
+  );
+  const baseOverrides = row.override.overrides ?? {};
+
+  const [scope, setScope] = useState<string>(
+    () => (isMultiVariant && focusVariantId ? focusVariantId : isMultiVariant ? 'base' : 'simple'),
+  );
+
+  const [title, setTitle] = useState<string>(() => baseOverrides.title ?? row.product?.name ?? '');
+  const [titleTouched, setTitleTouched] = useState(false);
+  const [description, setDescription] = useState<string>(() =>
+    typeof baseOverrides.description === 'string' ? baseOverrides.description : row.product?.description ?? '',
+  );
+  const [categoryId, setCategoryId] = useState<string>(() => baseOverrides.destinationCategoryIds?.[0] ?? '');
+  const [categoryPathNames, setCategoryPathNames] = useState<string[] | null>(() =>
+    readStashedShopPath(row.editFormValues),
+  );
+  const [baseImageUrls, setBaseImageUrls] = useState<string[] | undefined>(() =>
+    Array.isArray(baseOverrides.imageUrls) ? baseOverrides.imageUrls : undefined,
+  );
+  const [parameters, setParameters] = useState<OfferParameter[]>(() =>
+    Array.isArray(baseOverrides.parameters) ? baseOverrides.parameters : [],
+  );
+  const [priceAmount, setPriceAmount] = useState<string>(() =>
+    row.override.price !== undefined ? String(row.override.price.amount) : '',
+  );
+  const [stock, setStock] = useState<number>(() => row.override.stock ?? row.masterStock ?? 0);
+  const [pricingPolicy, setPricingPolicy] = useState<PricingPolicy>(
+    () => row.override.pricingPolicy ?? batchPricingPolicy,
+  );
+  const [stockPolicy, setStockPolicy] = useState<StockPolicy>(
+    () => row.override.stockPolicy ?? batchStockPolicy,
+  );
+
+  const [variantEdits, setVariantEdits] = useState<Record<string, ShopVariantEdit>>(() => {
+    const map: Record<string, ShopVariantEdit> = {};
+    for (const v of row.variants) map[v.variantId] = initShopVariantEdit(v);
+    return map;
+  });
+  const [included, setIncluded] = useState<Record<string, boolean>>(() => {
+    const map: Record<string, boolean> = {};
+    for (const v of row.variants) map[v.variantId] = v.included;
+    return map;
+  });
+
+  const [catModalOpen, setCatModalOpen] = useState(false);
+  const [zoomSrc, setZoomSrc] = useState<string | null>(null);
+
+  // ── Dirty tracking (vs the on-open snapshot) ──
+  const snapshotRef = useRef<string | null>(null);
+  const liveState = JSON.stringify({
+    title,
+    description,
+    categoryId,
+    baseImageUrls,
+    parameters,
+    priceAmount,
+    stock,
+    pricingPolicy,
+    stockPolicy,
+    variantEdits,
+    included,
+  });
+  if (snapshotRef.current === null) snapshotRef.current = liveState;
+  useEffect(() => {
+    onDirtyChange(liveState !== snapshotRef.current);
+  }, [liveState, onDirtyChange]);
+
+  const patchVariant = useCallback((variantId: string, patch: Partial<ShopVariantEdit>): void => {
+    setVariantEdits((prev) => ({ ...prev, [variantId]: { ...prev[variantId], ...patch } }));
+  }, []);
+
+  const addAttribute = useCallback((parameter: OfferParameter): void => {
+    setParameters((prev) => mergeShopParameter(prev, parameter));
+  }, []);
+  const removeAttribute = useCallback((id: string): void => {
+    setParameters((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+
+  // Per-variant attribute overrides (field-completeness parity with the
+  // marketplace variant panel's category-parameter overrides). Absent
+  // `edit.parameters` ⇒ inherits the live base list; any add/remove pins an
+  // explicit array for that variant.
+  const addVariantAttribute = useCallback(
+    (variantId: string, parameter: OfferParameter): void => {
+      setVariantEdits((prev) => {
+        const current = prev[variantId];
+        const effective = current.parameters ?? parameters;
+        return { ...prev, [variantId]: { ...current, parameters: mergeShopParameter(effective, parameter) } };
+      });
+    },
+    [parameters],
+  );
+  const removeVariantAttribute = useCallback(
+    (variantId: string, id: string): void => {
+      setVariantEdits((prev) => {
+        const current = prev[variantId];
+        const effective = current.parameters ?? parameters;
+        return { ...prev, [variantId]: { ...current, parameters: effective.filter((p) => p.id !== id) } };
+      });
+    },
+    [parameters],
+  );
+
+  const scopeList = useMemo(() => {
+    if (!isMultiVariant) return [{ id: 'simple', label: 'Product fields' }];
+    return [
+      { id: 'base', label: 'Shared base' },
+      ...row.variants.map((v, i) => ({ id: v.variantId, label: distinguishingLabel(v, i) })),
+    ];
+  }, [isMultiVariant, row.variants]);
+
+  const scopeStatus = useCallback(
+    (id: string): ScopeStatusKind => {
+      if (id === 'base' || id === 'simple') return 'base';
+      return included[id] ? 'ok' : 'off';
+    },
+    [included],
+  );
+
+  const onRailKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    event.preventDefault();
+    const idx = scopeList.findIndex((s) => s.id === scope);
+    const nextIdx =
+      event.key === 'ArrowDown' ? Math.min(scopeList.length - 1, idx + 1) : Math.max(0, idx - 1);
+    const nextId = scopeList[nextIdx].id;
+    setScope(nextId);
+    event.currentTarget.querySelector<HTMLElement>(`[data-scope="${nextId}"]`)?.focus();
+  };
+
+  const crumbContent =
+    categoryPathNames && categoryPathNames.length > 0 ? (
+      categoryPathNames.map((name, i) => (
+        <Fragment key={`${name}-${i}`}>
+          {i > 0 ? <span className="sep"> › </span> : null}
+          {i === categoryPathNames.length - 1 ? <b>{name}</b> : name}
+        </Fragment>
+      ))
+    ) : categoryId ? (
+      <span className="mono-text">{categoryId}</span>
+    ) : (
+      <span className="bulk-editor__cat-missing">Not set</span>
+    );
+
+  const applyCategory = (nextId: string, pathNames: string[]): void => {
+    setCategoryId(nextId);
+    setCategoryPathNames(pathNames);
+  };
+
+  const handleSaveAll = (): void => {
+    if (title.trim() === '') {
+      setTitleTouched(true);
+      setScope(isMultiVariant ? 'base' : 'simple');
+      return;
+    }
+
+    const overrides: BulkOfferOverrides = {
+      title: title.trim(),
+      description: description.trim() === '' ? null : description.trim(),
+      ...(baseImageUrls !== undefined ? { imageUrls: baseImageUrls } : {}),
+      ...(parameters.length > 0 ? { parameters } : {}),
+      ...(categoryId.trim() !== '' ? { destinationCategoryIds: [categoryId.trim()] } : {}),
+    };
+
+    const pricingDiverges = isMultiVariant && !pricingPolicyEquals(pricingPolicy, batchPricingPolicy);
+    const stockDiverges = isMultiVariant && !stockPolicyEquals(stockPolicy, batchStockPolicy);
+    const baseAmount = priceAmount.trim();
+    const baseOverride: BulkPerProductOverride = {
+      publishImmediately: defaults.publishImmediately,
+      ...(!isMultiVariant && baseAmount !== ''
+        ? { price: { amount: Number(baseAmount.replace(',', '.')), currency } }
+        : {}),
+      ...(!isMultiVariant ? { stock: Number(stock) } : {}),
+      ...(pricingDiverges ? { pricingPolicy } : {}),
+      ...(stockDiverges ? { stockPolicy } : {}),
+      overrides,
+    };
+
+    const perVariantOverrides: Record<string, BulkPerProductOverride> = {};
+    if (isMultiVariant) {
+      for (const variant of row.variants) {
+        const edit = variantEdits[variant.variantId];
+        const variantOverrides: BulkOfferOverrides = {};
+        if (edit.description !== undefined) variantOverrides.description = edit.description;
+        if (edit.parameters !== undefined) variantOverrides.parameters = edit.parameters;
+        const override: BulkPerProductOverride = {
+          ...(edit.price !== undefined && edit.price.trim() !== ''
+            ? { price: { amount: Number(edit.price.replace(',', '.')), currency } }
+            : {}),
+          ...(Object.keys(variantOverrides).length > 0 ? { overrides: variantOverrides } : {}),
+        };
+        if (Object.keys(override).length > 0) perVariantOverrides[variant.variantId] = override;
+      }
+    }
+
+    const editFormValues: Record<string, unknown> = {
+      shop: { title, description, categoryId, categoryPathNames, baseImageUrls, parameters, priceAmount, stock },
+    };
+
+    onSave(row.productId, baseOverride, perVariantOverrides, { ...included }, editFormValues);
+    onClose();
+  };
+
+  const productTypeLabel = isMultiVariant
+    ? `${row.variants.length} variants`
+    : 'Simple product · no variants';
+  const visibilityLabel = defaults.publishImmediately ? 'Published' : 'Draft';
+
+  return (
+    <>
+      <div className="bulk-editor__head">
+        <DialogTitle className="bulk-editor__title">
+          Edit product <span>- {row.product?.name ?? row.productId}</span>
+        </DialogTitle>
+        <Button
+          tone="ghost"
+          type="button"
+          className="button--icon"
+          aria-label="Close editor"
+          onClick={onRequestClose}
+        >
+          ×
+        </Button>
+      </div>
+      <DialogDescription className="sr-only">
+        Edit the shared base product and per-variant overrides for this shop listing.
+      </DialogDescription>
+
+      {canBrowseShopCategories ? (
+        <div className="bulk-editor__cat-chip">
+          <Button
+            tone="ghost"
+            type="button"
+            className="bulk-editor__cat-change"
+            onClick={() => setCatModalOpen(true)}
+          >
+            change ↱
+          </Button>
+          <span className="eyebrow">Category</span>
+          <button
+            type="button"
+            className="bulk-editor__cat-crumb crumb"
+            onClick={() => setCatModalOpen(true)}
+            aria-label="Change category"
+          >
+            {crumbContent}
+          </button>
+        </div>
+      ) : null}
+
+      <div className="bulk-editor__ptype">{productTypeLabel}</div>
+
+      <div className={['bulk-editor__body', isMultiVariant ? '' : 'bulk-editor__body--simple'].filter(Boolean).join(' ')}>
+        {isMultiVariant ? (
+          <nav
+            className="bulk-editor__rail"
+            role="radiogroup"
+            aria-label="Variant scope selector"
+            onKeyDown={onRailKeyDown}
+          >
+            <div className="eyebrow bulk-editor__rail-eyebrow">Scope</div>
+            <RailItem
+              id="base"
+              label="Shared base"
+              status="base"
+              active={scope === 'base'}
+              excluded={false}
+              onSelect={setScope}
+            />
+            <div className="bulk-editor__rail-sep" />
+            <div className="eyebrow bulk-editor__rail-eyebrow">Variants</div>
+            {row.variants.map((v, i) => (
+              <RailItem
+                key={v.variantId}
+                id={v.variantId}
+                label={distinguishingLabel(v, i)}
+                status={scopeStatus(v.variantId)}
+                active={scope === v.variantId}
+                excluded={!included[v.variantId]}
+                onSelect={setScope}
+              />
+            ))}
+          </nav>
+        ) : null}
+
+        <div className="bulk-editor__scopes">
+          <fieldset
+            disabled={demoReadOnly}
+            style={{ border: 0, margin: 0, padding: 0, minWidth: 0, display: 'contents' }}
+          >
+            {isMultiVariant ? (
+              <AccordionHead
+                id="base"
+                label="Shared base"
+                status="base"
+                active={scope === 'base'}
+                onSelect={setScope}
+              />
+            ) : null}
+            <ShopBaseScopeForm
+              mode={isMultiVariant ? 'base' : 'simple'}
+              active={scope === (isMultiVariant ? 'base' : 'simple')}
+              connectionId={connectionId}
+              channel={connection.platformType}
+              productId={row.product?.id ?? ''}
+              canPickShopAttributes={canPickShopAttributes}
+              currency={currency}
+              visibilityLabel={visibilityLabel}
+              title={title}
+              titleError={titleTouched && title.trim() === ''}
+              onTitleChange={(next) => {
+                setTitle(next);
+                if (next.trim() !== '') setTitleTouched(false);
+              }}
+              description={description}
+              onDescriptionChange={setDescription}
+              masterImages={masterImages}
+              baseImageUrls={baseImageUrls}
+              onBaseImageUrlsChange={setBaseImageUrls}
+              onZoom={setZoomSrc}
+              parameters={parameters}
+              onAddAttribute={addAttribute}
+              onRemoveAttribute={removeAttribute}
+              priceAmount={priceAmount}
+              onPriceAmountChange={setPriceAmount}
+              stock={stock}
+              onStockChange={setStock}
+              pricingPolicy={pricingPolicy}
+              onPricingPolicyChange={setPricingPolicy}
+              stockPolicy={stockPolicy}
+              onStockPolicyChange={setStockPolicy}
+              simpleIncluded={included[row.variants[0].variantId]}
+              onSimpleIncludedChange={(next) =>
+                setIncluded((prev) => ({ ...prev, [row.variants[0].variantId]: next }))
+              }
+            />
+
+            {isMultiVariant
+              ? row.variants.map((v, i) => (
+                  <Fragment key={v.variantId}>
+                    <AccordionHead
+                      id={v.variantId}
+                      label={distinguishingLabel(v, i)}
+                      status={scopeStatus(v.variantId)}
+                      active={scope === v.variantId}
+                      onSelect={setScope}
+                    />
+                    {scope === v.variantId ? (
+                      <ShopVariantScopeForm
+                        variant={v}
+                        index={i}
+                        edit={variantEdits[v.variantId]}
+                        included={included[v.variantId]}
+                        baseDescription={description}
+                        basePriceValue={shopInheritedPrice(pricingPolicy, v.masterPrice)}
+                        canPickShopAttributes={canPickShopAttributes}
+                        connectionId={connectionId}
+                        baseParameters={parameters}
+                        onAddAttribute={(parameter) => addVariantAttribute(v.variantId, parameter)}
+                        onRemoveAttribute={(id) => removeVariantAttribute(v.variantId, id)}
+                        onPatch={(patch) => patchVariant(v.variantId, patch)}
+                        onIncludedChange={(next) =>
+                          setIncluded((prev) => ({ ...prev, [v.variantId]: next }))
+                        }
+                      />
+                    ) : null}
+                  </Fragment>
+                ))
+              : null}
+          </fieldset>
+        </div>
+      </div>
+
+      <div className="bulk-editor__foot">
+        <span className="grow">
+          {isMultiVariant
+            ? scope === 'base'
+              ? 'Editing shared base - changes cascade to every variant that has not overridden the field.'
+              : 'Editing one variant - only overridden fields diverge from the base.'
+            : 'Simple product - no variants. These fields apply to the single listing.'}
+        </span>
+        <Button tone="ghost" type="button" onClick={onRequestClose}>
+          Cancel
+        </Button>
+        <ReadOnlyLock active={demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <Button tone="primary" type="button" disabled={demoReadOnly} onClick={handleSaveAll}>
+            Save all
+          </Button>
+        </ReadOnlyLock>
+      </div>
+
+      {canBrowseShopCategories ? (
+        <ShopCategoryPickerModal
+          open={catModalOpen}
+          onOpenChange={setCatModalOpen}
+          connectionId={connectionId}
+          productName={row.product?.name ?? row.productId}
+          selectedId={categoryId || null}
+          onSelect={applyCategory}
+        />
+      ) : null}
+
+      {zoomSrc ? (
+        <BulkImageLightbox
+          src={zoomSrc}
+          name={row.product?.name ?? 'Product image'}
+          onClose={() => setZoomSrc(null)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+// ── Shop base / simple scope form ────────────────────────────────────────────
+
+interface ShopBaseScopeFormProps {
+  mode: 'base' | 'simple';
+  active: boolean;
+  connectionId: string;
+  channel: string;
+  productId: string;
+  canPickShopAttributes: boolean;
+  currency: string;
+  visibilityLabel: string;
+  title: string;
+  titleError: boolean;
+  onTitleChange: (next: string) => void;
+  description: string;
+  onDescriptionChange: (next: string) => void;
+  masterImages: string[];
+  baseImageUrls: string[] | undefined;
+  onBaseImageUrlsChange: (next: string[] | undefined) => void;
+  onZoom: (src: string) => void;
+  parameters: OfferParameter[];
+  onAddAttribute: (parameter: OfferParameter) => void;
+  onRemoveAttribute: (id: string) => void;
+  priceAmount: string;
+  onPriceAmountChange: (next: string) => void;
+  stock: number;
+  onStockChange: (next: number) => void;
+  pricingPolicy: PricingPolicy;
+  onPricingPolicyChange: (next: PricingPolicy) => void;
+  stockPolicy: StockPolicy;
+  onStockPolicyChange: (next: StockPolicy) => void;
+  simpleIncluded: boolean;
+  onSimpleIncludedChange: (next: boolean) => void;
+}
+
+function ShopBaseScopeForm({
+  mode,
+  active,
+  connectionId,
+  channel,
+  productId,
+  canPickShopAttributes,
+  currency,
+  visibilityLabel,
+  title,
+  titleError,
+  onTitleChange,
+  description,
+  onDescriptionChange,
+  masterImages,
+  baseImageUrls,
+  onBaseImageUrlsChange,
+  onZoom,
+  parameters,
+  onAddAttribute,
+  onRemoveAttribute,
+  priceAmount,
+  onPriceAmountChange,
+  stock,
+  onStockChange,
+  pricingPolicy,
+  onPricingPolicyChange,
+  stockPolicy,
+  onStockPolicyChange,
+  simpleIncluded,
+  onSimpleIncludedChange,
+}: ShopBaseScopeFormProps): ReactElement {
+  const [addingImage, setAddingImage] = useState(false);
+  const [newImageUrl, setNewImageUrl] = useState('');
+  const effectiveImages = baseImageUrls ?? masterImages;
+  const imagesOverridden = baseImageUrls !== undefined;
+  const classes = ['bulk-editor__form', active ? 'bulk-editor__form--acc-open' : ''].filter(Boolean).join(' ');
+
+  return (
+    <div className={classes} hidden={!active} data-form={mode}>
+      <div className="bulk-editor__scope-head">
+        <h4>{mode === 'simple' ? 'Product fields' : 'Shared base'}</h4>
+        <div className="grow" />
+        {mode === 'simple' ? (
+          <label className="checkbox-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            <input
+              type="checkbox"
+              checked={simpleIncluded}
+              onChange={(e) => onSimpleIncludedChange(e.target.checked)}
+            />
+            <span>Include in this batch</span>
+          </label>
+        ) : (
+          <ProvBadge kind="defaults" />
+        )}
+      </div>
+
+      <FormField
+        name="shop-edit-title"
+        label="Title"
+        description="The product name shown in the shop."
+        error={titleError ? 'Title is required' : undefined}
+      >
+        <Input
+          value={title}
+          onChange={(e) => onTitleChange(e.target.value)}
+          className="bulk-editor__input"
+          aria-invalid={titleError}
+          aria-label="Title"
+        />
+      </FormField>
+
+      <div className="bulk-editor__field">
+        <label>
+          Description
+          {productId !== '' ? (
+            <span style={{ marginLeft: 'auto' }}>
+              <SuggestionDialog
+                productId={productId}
+                channel={channel}
+                onApply={(suggestion) => onDescriptionChange(suggestion)}
+              />
+            </span>
+          ) : null}
+        </label>
+        <Textarea
+          value={description}
+          onChange={(e) => onDescriptionChange(e.target.value)}
+          className="bulk-editor__input"
+          rows={6}
+          aria-label="Description"
+        />
+        <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+          Plain text. Shared by every variant unless a variant overrides it.
+        </div>
+      </div>
+
+      {mode === 'simple' ? (
+        <div className="bulk-editor__row2">
+          <div className="bulk-editor__field">
+            <label>Price ({currency})</label>
+            <Input
+              value={priceAmount}
+              onChange={(e) => onPriceAmountChange(e.target.value)}
+              className="bulk-editor__input"
+              inputMode="decimal"
+              placeholder="79.00"
+              aria-label="Price"
+            />
+            <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+              Leave blank to publish at the master price.
+            </div>
+          </div>
+          <div className="bulk-editor__field">
+            <label>Stock</label>
+            <Input
+              type="number"
+              min={0}
+              value={stock}
+              onChange={(e) => onStockChange(Number(e.target.value))}
+              className="bulk-editor__input"
+              aria-label="Stock"
+            />
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="bulk-editor__row2">
+            <FormField
+              name="shop-edit-pricing-policy"
+              label="Price policy"
+              description="Per-product override of the batch pricing policy."
+            >
+              <select
+                className="bulk-editor__input"
+                aria-label="Price policy"
+                value={pricingPolicy.mode}
+                onChange={(e) =>
+                  onPricingPolicyChange(nextPricingPolicy(e.target.value as PricingPolicyMode, pricingPolicy))
+                }
+              >
+                <option value="use-master">Use master price</option>
+                <option value="markup">Markup on master price</option>
+                <option value="flat">Flat price for all variants</option>
+              </select>
+            </FormField>
+            <FormField
+              name="shop-edit-stock-policy"
+              label="Stock policy"
+              description="Per-product override of the batch stock policy."
+            >
+              <select
+                className="bulk-editor__input"
+                aria-label="Stock policy"
+                value={stockPolicy.mode}
+                onChange={(e) =>
+                  onStockPolicyChange(nextStockPolicy(e.target.value as StockPolicyMode, stockPolicy))
+                }
+              >
+                <option value="use-master">Use master stock</option>
+                <option value="cap">Cap master stock</option>
+                <option value="flat">Flat stock for all variants</option>
+              </select>
+            </FormField>
+          </div>
+
+          {pricingPolicy.mode !== 'use-master' ? (
+            <FormField
+              name="shop-edit-pricing-param"
+              label={pricingPolicy.mode === 'markup' ? 'Markup %' : `Flat price (${currency})`}
+            >
+              <Input
+                className="bulk-editor__input"
+                inputMode="decimal"
+                value={pricingParamValue(pricingPolicy)}
+                aria-label={pricingPolicy.mode === 'markup' ? 'Markup percent' : 'Flat price'}
+                onChange={(e) => onPricingPolicyChange(withPricingParam(pricingPolicy, e.target.value))}
+              />
+            </FormField>
+          ) : null}
+
+          {stockPolicy.mode !== 'use-master' ? (
+            <FormField name="shop-edit-stock-param" label={stockPolicy.mode === 'cap' ? 'Cap at' : 'Stock'}>
+              <Input
+                type="number"
+                min={1}
+                className="bulk-editor__input"
+                value={stockParamValue(stockPolicy)}
+                aria-label={stockPolicy.mode === 'cap' ? 'Cap at' : 'Flat stock'}
+                onChange={(e) => onStockPolicyChange(withStockParam(stockPolicy, e.target.value))}
+              />
+            </FormField>
+          ) : null}
+        </>
+      )}
+
+      <div className="bulk-editor__field">
+        <label>
+          Images {imagesOverridden ? <ProvBadge kind="override" /> : <ProvBadge kind="master" />}
+          {imagesOverridden ? (
+            <button
+              type="button"
+              className="bulk-editor__reset"
+              onClick={() => onBaseImageUrlsChange(undefined)}
+            >
+              ↺ reset to master
+            </button>
+          ) : null}
+        </label>
+        <div className="bulk-editor__img-strip bulk-editor__img-strip--editable">
+          {effectiveImages.map((url, i) => (
+            <span className="bulk-editor__img-thumb" key={`${url}-${i}`}>
+              <ThumbZoomButton url={url} onZoom={onZoom} />
+              <button
+                type="button"
+                className="bulk-editor__img-x"
+                aria-label="Remove image"
+                onClick={() => {
+                  const base = baseImageUrls ?? masterImages;
+                  onBaseImageUrlsChange(base.filter((_, idx) => idx !== i));
+                }}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          {!addingImage ? (
+            <button
+              type="button"
+              className="bulk-editor__img-add"
+              aria-label="Add image"
+              onClick={() => setAddingImage(true)}
+            >
+              ＋
+            </button>
+          ) : null}
+        </div>
+        {addingImage ? (
+          <div className="bulk-editor__img-add-row">
+            <Input
+              className="bulk-editor__input"
+              value={newImageUrl}
+              onChange={(e) => setNewImageUrl(e.target.value)}
+              placeholder="https://example.com/image.jpg"
+              aria-label="New image URL"
+            />
+            <Button
+              tone="primary"
+              type="button"
+              className="button--sm"
+              onClick={() => {
+                const url = newImageUrl.trim();
+                if (url === '') return;
+                const base = baseImageUrls ?? masterImages;
+                onBaseImageUrlsChange([...base, url]);
+                setNewImageUrl('');
+                setAddingImage(false);
+              }}
+            >
+              Add
+            </Button>
+            <Button
+              tone="ghost"
+              type="button"
+              className="button--sm"
+              onClick={() => {
+                setNewImageUrl('');
+                setAddingImage(false);
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        ) : null}
+        <div className="hint" style={{ color: 'var(--text-muted)', margin: '5px 0 0' }}>
+          {effectiveImages.length === 0 ? 'No images yet - add an image URL to include one. ' : ''}
+          Shared image set for every variant. Add or remove to override the master set.
+        </div>
+      </div>
+
+      {canPickShopAttributes ? (
+        <div className="bulk-editor__platform-slot">
+          <div className="bulk-editor__slot-tag">
+            <span className="eyebrow">Attributes</span>
+          </div>
+          {parameters.length > 0 ? (
+            <ul className="shop-attr-picker__added" role="list">
+              {parameters.map((p) => (
+                <li key={p.id} className="shop-attr-picker__added-item">
+                  <span className="shop-attr-picker__added-label">{shopParameterLabel(p)}</span>
+                  <button
+                    type="button"
+                    className="bulk-editor__img-x"
+                    aria-label={`Remove attribute ${p.id}`}
+                    onClick={() => onRemoveAttribute(p.id)}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <ShopAttributePicker connectionId={connectionId} onAdd={onAddAttribute} />
+        </div>
+      ) : null}
+
+      <div className="bulk-editor__field">
+        <label>Visibility</label>
+        <Input className="bulk-editor__input" value={visibilityLabel} readOnly aria-readonly="true" />
+        <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+          Draft or published is chosen for the whole batch on the Review step.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Shop variant scope form ──────────────────────────────────────────────────
+
+interface ShopVariantScopeFormProps {
+  variant: BulkVariantRow;
+  index: number;
+  edit: ShopVariantEdit;
+  included: boolean;
+  baseDescription: string;
+  basePriceValue: string;
+  /** Gates the Attributes block (ShopAttributeReader capability, #1835). */
+  canPickShopAttributes: boolean;
+  connectionId: string;
+  /** Live base-scope attribute list this variant inherits when un-overridden. */
+  baseParameters: OfferParameter[];
+  onAddAttribute: (parameter: OfferParameter) => void;
+  onRemoveAttribute: (id: string) => void;
+  onPatch: (patch: Partial<ShopVariantEdit>) => void;
+  onIncludedChange: (next: boolean) => void;
+}
+
+function ShopVariantScopeForm({
+  variant,
+  index,
+  edit,
+  included,
+  baseDescription,
+  basePriceValue,
+  canPickShopAttributes,
+  connectionId,
+  baseParameters,
+  onAddAttribute,
+  onRemoveAttribute,
+  onPatch,
+  onIncludedChange,
+}: ShopVariantScopeFormProps): ReactElement {
+  const label = distinguishingLabel(variant, index);
+  const effectiveParameters = edit.parameters ?? baseParameters;
+  const parametersOverridden = edit.parameters !== undefined;
+  const formClasses = [
+    'bulk-editor__form',
+    'bulk-editor__form--acc-open',
+    included ? '' : 'bulk-editor__form--excluded',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  return (
+    <div className={formClasses} data-form={variant.variantId}>
+      <div className="bulk-editor__scope-head">
+        <h4>Variant · {label}</h4>
+        <div className="grow" />
+        <label className="checkbox-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <input type="checkbox" checked={included} onChange={(e) => onIncludedChange(e.target.checked)} />
+          <span>Include in this batch</span>
+        </label>
+      </div>
+
+      {!included ? (
+        <div className="bulk-editor__excl-note">
+          This variant is excluded - it will not be published. Switch it back on to include it.
+        </div>
+      ) : null}
+
+      <div className="eyebrow" style={{ marginBottom: 'var(--space-3)' }}>
+        Per-variant
+      </div>
+
+      <div className="bulk-editor__field">
+        <label>
+          Description {edit.description !== undefined ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />}
+          {edit.description !== undefined ? (
+            <button type="button" className="bulk-editor__reset" onClick={() => onPatch({ description: undefined })}>
+              ↺ reset to base
+            </button>
+          ) : null}
+        </label>
+        <Textarea
+          className={[
+            'bulk-editor__input',
+            edit.description !== undefined ? 'bulk-editor__input--overridden' : 'bulk-editor__input--inherited',
+          ].join(' ')}
+          rows={4}
+          value={edit.description !== undefined ? edit.description : baseDescription}
+          aria-label={`Description for ${label}`}
+          onChange={(e) => onPatch({ description: e.target.value === baseDescription ? undefined : e.target.value })}
+        />
+      </div>
+
+      {canPickShopAttributes ? (
+        <div className="bulk-editor__field">
+          <label>
+            Attributes {parametersOverridden ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />}
+            {parametersOverridden ? (
+              <button type="button" className="bulk-editor__reset" onClick={() => onPatch({ parameters: undefined })}>
+                ↺ reset to base
+              </button>
+            ) : null}
+          </label>
+          {effectiveParameters.length > 0 ? (
+            <ul className="shop-attr-picker__added" role="list">
+              {effectiveParameters.map((p) => (
+                <li key={p.id} className="shop-attr-picker__added-item">
+                  <span className="shop-attr-picker__added-label">{shopParameterLabel(p)}</span>
+                  <button
+                    type="button"
+                    className="bulk-editor__img-x"
+                    aria-label={`Remove attribute ${p.id} for ${label}`}
+                    onClick={() => onRemoveAttribute(p.id)}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <ShopAttributePicker connectionId={connectionId} onAdd={onAddAttribute} />
+          <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+            {parametersOverridden
+              ? 'Custom attribute set for this variant.'
+              : 'Inherits the base attributes - add or remove to override for this variant.'}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="bulk-editor__row2">
+        <div className="bulk-editor__field">
+          <label>
+            Stock <ProvBadge kind="master" />
+          </label>
+          <Input
+            className="bulk-editor__input bulk-editor__input--inherited"
+            value={variant.masterStock ?? 0}
+            readOnly
+            aria-readonly="true"
+          />
+          <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+            Authoritative from master inventory.
+          </div>
+        </div>
+
+        <InheritableTextField
+          label="Price"
+          overridden={edit.price !== undefined}
+          value={edit.price ?? ''}
+          baseValue={basePriceValue}
+          ariaLabel={`Price for ${label}`}
+          onChange={(next) => onPatch({ price: next })}
+        />
+      </div>
+    </div>
+  );
 }

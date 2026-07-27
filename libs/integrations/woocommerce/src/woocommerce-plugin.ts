@@ -57,6 +57,25 @@ export const woocommerceAdapterManifest: AdapterMetadata = {
     'OrderSource',
     'ProductPublisher',
     'CategoryProvisioner',
+    // Shop-side category browse (#1834). Advertised-without-dispatch: declared
+    // here for host/FE discovery, resolved by narrowing the dispatched
+    // ProductPublisher adapter with `isShopCategoryBrowser` (never via
+    // getCapabilityAdapter('ShopCategoryBrowser')). Backs the publish edit
+    // flow's destination-category picker.
+    'ShopCategoryBrowser',
+    // Shop-side global attribute read (#1835). Advertised-without-dispatch:
+    // declared here for host/FE discovery, resolved by narrowing the dispatched
+    // ProductPublisher adapter with `isShopAttributeReader` (never via
+    // getCapabilityAdapter('ShopAttributeReader')). Backs the publish edit flow's
+    // structured attribute picker (global attribute + terms; custom free-text
+    // fallback).
+    'ShopAttributeReader',
+    // Shop-side publication status read (#1845). Advertised-without-dispatch:
+    // declared here for host/FE discovery, resolved by narrowing the dispatched
+    // ProductPublisher adapter with `isShopProductStatusReader` (never via
+    // getCapabilityAdapter('ShopProductStatusReader')). Backs the steady-state
+    // `ShopStatusSyncService` reconcile scheduler.
+    'ShopProductStatusReader',
     // Inventory write-back to published products (#1498). Quantity-only —
     // WooCommerce is a destination shop, not a marketplace: no OfferCreator /
     // OfferLister sub-capabilities, so offer-creation flows (gated on
@@ -204,7 +223,12 @@ export function createWooCommercePlugin(deps?: CreateWooCommercePluginDeps): Ada
                 new WooCommerceProductPublisherAdapter(httpClient, connection),
               CategoryProvisioner: () =>
                 new WooCommerceProductPublisherAdapter(httpClient, connection),
-              OfferManager: () => new WooCommerceOfferManagerAdapter(httpClient, connection),
+              OfferManager: () =>
+                new WooCommerceOfferManagerAdapter(
+                  httpClient,
+                  connection,
+                  host.identifierMapping,
+                ),
             },
             WOOCOMMERCE_BRAND,
           ),

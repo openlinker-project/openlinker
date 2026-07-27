@@ -55,6 +55,37 @@ export interface ListingCreationRecordRepositoryPort {
   ): Promise<ListingCreationRecord | null>;
 
   /**
+   * Return one page of the connection's records whose status is `published` or
+   * `draft` and that carry a non-null `externalProductId`, ordered
+   * `createdAt ASC` for a stable rolling scan. Backs the steady-state shop
+   * status reconcile (#1845) — the shop-side counterpart to the offer path's
+   * `offer_mappings` enumeration. Returns `{ items, total }` so the sync can
+   * wrap its scan offset at the end of the set.
+   */
+  findPublishedByConnection(
+    connectionId: string,
+    options: { limit: number; offset: number },
+  ): Promise<{ items: ListingCreationRecord[]; total: number }>;
+
+  /**
+   * Delete a record by id. Idempotent - deleting an unknown id is a no-op.
+   * Used to clean up an orphaned pre-created record whose enqueue failed
+   * mid-fan-out so the bulk batch's persisted-record set matches its
+   * reconciled `totalCount` (#1845 partial-submit atomicity, mirrors the offer
+   * path's `OfferCreationRecordRepositoryPort.deleteById`).
+   */
+  deleteById(id: string): Promise<void>;
+
+  /**
+   * Reset a record for retry (#1845): atomically set `status='pending'` and
+   * clear `externalProductId`, `errors`, and `warnings`. The `request` snapshot
+   * is intentionally preserved so the retry can reconstruct the original publish
+   * payload. Idempotent at `pending`. Throws
+   * `ListingCreationRecordNotFoundException` if the record does not exist.
+   */
+  resetForRetry(id: string): Promise<ListingCreationRecord>;
+
+  /**
    * Update status (and optionally errors). `errors` semantics: omit to
    * preserve, `null` to clear, array to replace. Throws
    * `ListingCreationRecordNotFoundException` if the record does not exist.

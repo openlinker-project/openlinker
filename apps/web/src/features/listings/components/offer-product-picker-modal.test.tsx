@@ -211,28 +211,28 @@ describe('OfferProductPickerModal', () => {
     expect(screen.getByText(/1 offer selected across.*1 product/i)).toBeInTheDocument();
   });
 
-  it('auto-resolves the sole eligible connection (no picker shown)', async () => {
+  it('auto-resolves the sole eligible destination (pre-selected)', async () => {
     renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
       apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]),
     });
     await screen.findByText('Product p1');
-    expect(screen.queryByLabelText(/marketplace connection/i)).not.toBeInTheDocument();
-    // Selecting one product is enough to enable Continue (connection auto-resolved).
+    // The sole destination renders in the rail, already selected.
+    expect(screen.getByRole('radio', { name: /Allegro/ })).toHaveAttribute('aria-checked', 'true');
+    // Selecting one product is enough to enable Continue (destination auto-resolved).
     fireEvent.click(screen.getByLabelText('Select Product p1'));
     expect(screen.getByRole('button', { name: /continue/i })).toBeEnabled();
   });
 
-  it('requires a connection pick when 2+ eligible connections exist', async () => {
+  it('requires a destination pick when 2+ eligible destinations exist', async () => {
     renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
       apiClient: mocks([conn('conn_a', 'Allegro', 'allegro'), conn('conn_e', 'Erli', 'erli')]),
     });
     fireEvent.click(await screen.findByLabelText('Select Product p1'));
     // Disabled Continue is wrapped in a tooltip trigger; re-query after the
-    // connection pick since the enabled button is a fresh DOM node.
+    // destination pick since the enabled button is a fresh DOM node.
     expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
 
-    const select = screen.getByLabelText<HTMLSelectElement>(/marketplace connection/i);
-    fireEvent.change(select, { target: { value: 'conn_e' } });
+    fireEvent.click(screen.getByRole('radio', { name: /Erli/ }));
     const continueBtn = screen.getByRole('button', { name: /continue/i });
     expect(continueBtn).toBeEnabled();
 
@@ -248,12 +248,12 @@ describe('OfferProductPickerModal', () => {
     expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
   });
 
-  it('shows a warning when no eligible connection exists', async () => {
+  it('shows a warning when no eligible destination exists', async () => {
     renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
       apiClient: mocks([]),
     });
     expect(
-      await screen.findByText(/no marketplace connections available/i),
+      await screen.findByText(/no publish destinations available/i),
     ).toBeInTheDocument();
   });
 
@@ -265,9 +265,9 @@ describe('OfferProductPickerModal', () => {
       ]),
     });
     await screen.findByText('Product p1');
-    // Exactly one eligible → no picker, read-only "Publishing to" line instead.
-    expect(screen.queryByLabelText(/marketplace connection/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/publishing to:/i)).toBeInTheDocument();
+    // Exactly one eligible → sole destination pre-selected in the rail.
+    expect(screen.getByRole('radio', { name: /eligible/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByRole('radio', { name: /noCreator/ })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText('Select Product p1'));
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
@@ -285,9 +285,9 @@ describe('OfferProductPickerModal', () => {
       ]),
     });
     expect(
-      await screen.findByText(/no marketplace connections available/i),
+      await screen.findByText(/no publish destinations available/i),
     ).toBeInTheDocument();
-    expect(screen.queryByLabelText(/marketplace connection/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('radiogroup', { name: /publish destination/i })).not.toBeInTheDocument();
   });
 
   it('resets selection when the dialog is closed and reopened', async () => {
@@ -438,6 +438,50 @@ describe('OfferProductPickerModal', () => {
       fireEvent.click(screen.getByRole('button', { name: /retry/i }));
       await waitFor(() => expect(getById.mock.calls.length).toBeGreaterThan(before));
     });
+  });
+
+  function shopConn(id: string, name: string): Connection {
+    return {
+      id,
+      name,
+      platformType: 'woocommerce',
+      status: 'active',
+      config: {},
+      credentialsBacked: true,
+      adapterKey: 'woocommerce.restapi.v3',
+      enabledCapabilities: ['ProductPublisher'],
+      supportedCapabilities: ['ProductPublisher'],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    } as unknown as Connection;
+  }
+
+  it('groups marketplaces and shops, and routes a shop pick to the bulk wizard (#1829)', async () => {
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+      apiClient: mocks([conn('conn_a', 'Allegro', 'allegro'), shopConn('conn_w', 'My Shop')]),
+    });
+    fireEvent.click(await screen.findByLabelText('Select Product p1'));
+    // Both groups render with capability-driven hints.
+    expect(screen.getByText('Marketplaces')).toBeInTheDocument();
+    expect(screen.getByText('Online shops')).toBeInTheDocument();
+
+    // Choosing the shop navigates to the SAME bulk wizard route as a
+    // marketplace - the wizard branches by capability (#1829).
+    fireEvent.click(screen.getByRole('radio', { name: /My Shop/ }));
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    const qs = continueUrlParams();
+    expect(qs.get('productIds')).toBe('p1');
+    expect(qs.get('connectionId')).toBe('conn_w');
+  });
+
+  it('always surfaces shop destinations alongside marketplaces (#1829)', async () => {
+    renderWithProviders(<OfferProductPickerModal isOpen onClose={vi.fn()} />, {
+      apiClient: mocks([conn('conn_a', 'Allegro', 'allegro'), shopConn('conn_w', 'My Shop')]),
+    });
+    await screen.findByText('Product p1');
+    expect(screen.getByRole('radio', { name: /Allegro/ })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /My Shop/ })).toBeInTheDocument();
+    expect(screen.getByText('Online shops')).toBeInTheDocument();
   });
 
   it('navigates between the product list and review steps (two-step wizard)', async () => {

@@ -19,10 +19,11 @@ import { Logger } from '@openlinker/shared/logging';
 import type { ShopProductManagerPort } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 
+import type { BulkListingBatch } from '../../domain/entities/bulk-listing-batch.entity';
 import { EmptyBulkSubmissionException } from '../../domain/exceptions/empty-bulk-submission.exception';
 import { BulkListingBatchRepositoryPort } from '../../domain/ports/bulk-listing-batch-repository.port';
 import { ListingCreationRecordRepositoryPort } from '../../domain/ports/listing-creation-record-repository.port';
-import { BULK_BATCH_STATUS } from '../../domain/types/bulk-listing-batch.types';
+import { BULK_BATCH_STATUS, type BulkBatchStatus } from '../../domain/types/bulk-listing-batch.types';
 import {
   BULK_LISTING_BATCH_REPOSITORY_TOKEN,
   LISTING_CREATION_RECORD_REPOSITORY_TOKEN,
@@ -75,14 +76,32 @@ export class BulkShopPublishSubmitService implements IBulkShopPublishSubmitServi
       sharedConfig: {
         status: input.status,
         ...(input.content !== undefined && { content: input.content }),
+        ...(input.commerce !== undefined && { commerce: input.commerce }),
       },
     });
 
-    // 3. Fan out through the single-publish primitive. First enqueue failure
-    //    marks the batch failed and re-throws (mirrors BulkListingSubmitService).
+    // 3. Fan out through the single-publish primitive. On a mid-fan-out failure
+    //    the batch is reconciled so it can still reach a terminal status
+    //    (partial-submit atomicity, mirrors BulkListingSubmitService #1741):
+    //    - if >=1 child reached the stream, reconcile `totalCount` down to what
+    //      was enqueued, delete any orphaned pre-created record (the child whose
+    //      enqueue threw after `enqueuePublish` persisted its record but before
+    //      the stream write), then LEVEL-triggered terminal check -> 'running'
+    //      or a terminal status. Without this the counter gate
+    //      (`succeeded + failed === totalCount`) could never terminate and the
+    //      batch would strand in 'running' forever.
+    //    - if nothing enqueued, flip terminal 'failed'.
+    //    The underlying enqueue error is always re-thrown so the operator learns
+    //    the submit was partial.
     const items: BulkShopPublishItem[] = [];
+    const enqueuedRecordIds = new Set<string>();
     try {
       for (const item of input.items) {
+        // Per-item content (#1831) WINS over the batch-shared content; each
+        // per-item category/parameter override is threaded straight through so
+        // the builder uses it instead of its server-derived default. Omitted
+        // fields fall back to batch-shared / server-derived behavior.
+        const content = item.content ?? input.content;
         const { jobId, listingCreationRecord } = await this.enqueue.enqueuePublish({
           connectionId: input.connectionId,
           internalVariantId: item.internalVariantId,
@@ -90,8 +109,22 @@ export class BulkShopPublishSubmitService implements IBulkShopPublishSubmitServi
           stock: item.stock,
           bulkBatchId: batch.id,
           ...(item.price !== undefined && { price: item.price }),
-          ...(input.content !== undefined && { content: input.content }),
+          ...(content !== undefined && { content }),
+          ...(input.commerce !== undefined && { commerce: input.commerce }),
+          ...(item.destinationCategoryIds !== undefined && {
+            destinationCategoryIds: item.destinationCategoryIds,
+          }),
+          ...(item.parameters !== undefined && { parameters: item.parameters }),
+          // Batch-scoped AI flags (#1840) — applied to every child publish. A
+          // child's own explicit description override still wins in the worker.
+          ...(input.generateDescription !== undefined && {
+            generateDescription: input.generateDescription,
+          }),
+          ...(input.descriptionTone !== undefined && {
+            descriptionTone: input.descriptionTone,
+          }),
         });
+        enqueuedRecordIds.add(listingCreationRecord.id);
         items.push({
           internalVariantId: item.internalVariantId,
           jobId,
@@ -99,10 +132,30 @@ export class BulkShopPublishSubmitService implements IBulkShopPublishSubmitServi
         });
       }
     } catch (error) {
-      this.logger.warn(
-        `Bulk publish batch ${batch.id} enqueue failed after ${items.length}/${input.items.length} jobs: ${(error as Error).message}`,
+      const enqueued = items.length;
+      this.logger.error(
+        `Bulk publish batch ${batch.id} enqueue failed after ${enqueued}/${input.items.length} jobs: ${(error as Error).message}`,
+        (error as Error).stack,
       );
-      await this.bulkBatchRepository.updateStatus(batch.id, BULK_BATCH_STATUS.Failed);
+      // Best-effort reconciliation; if it also fails the underlying enqueue
+      // error still propagates and dominates the FE message.
+      try {
+        await this.deleteOrphanRecords(batch.id, enqueuedRecordIds);
+        if (enqueued > 0) {
+          const reconciled = await this.bulkBatchRepository.updateTotalCount(batch.id, enqueued);
+          const nextStatus = isBatchFinished(reconciled)
+            ? deriveTerminalStatus(reconciled)
+            : BULK_BATCH_STATUS.Running;
+          await this.bulkBatchRepository.updateStatus(batch.id, nextStatus);
+        } else {
+          await this.bulkBatchRepository.updateStatus(batch.id, BULK_BATCH_STATUS.Failed);
+        }
+      } catch (reconcileError) {
+        this.logger.error(
+          `Bulk publish batch ${batch.id} partial-submit reconciliation also failed: ${(reconcileError as Error).message}`,
+          (reconcileError as Error).stack,
+        );
+      }
       throw error;
     }
 
@@ -110,6 +163,25 @@ export class BulkShopPublishSubmitService implements IBulkShopPublishSubmitServi
     await this.bulkBatchRepository.updateStatus(batch.id, BULK_BATCH_STATUS.Running);
 
     return { batchId: batch.id, items };
+  }
+
+  /**
+   * Delete pre-created records for the batch that never reached the stream
+   * (#1845). `enqueuePublish` persists the record before enqueuing, so a stream
+   * write that throws leaves an orphaned pending record with no job — deleting
+   * it keeps the persisted-record set aligned with the reconciled `totalCount`.
+   * Best-effort; each delete is idempotent.
+   */
+  private async deleteOrphanRecords(
+    batchId: string,
+    enqueuedRecordIds: ReadonlySet<string>,
+  ): Promise<void> {
+    const records = await this.listingRecords.findByBulkBatchId(batchId);
+    for (const record of records) {
+      if (!enqueuedRecordIds.has(record.id)) {
+        await this.listingRecords.deleteById(record.id);
+      }
+    }
   }
 
   async getBatch(batchId: string): Promise<BulkShopPublishBatchSummary | null> {
@@ -120,4 +192,24 @@ export class BulkShopPublishSubmitService implements IBulkShopPublishSubmitServi
     const records = await this.listingRecords.findByBulkBatchId(batchId);
     return { batch, records };
   }
+}
+
+/**
+ * True once every child of the batch has terminated
+ * (`succeededCount + failedCount === totalCount`) — the counter gate.
+ */
+function isBatchFinished(batch: BulkListingBatch): boolean {
+  return batch.succeededCount + batch.failedCount === batch.totalCount;
+}
+
+/**
+ * Derive the terminal batch status from its post-reconcile counters (#1845).
+ * Same rule as `BulkListingProgressService`: all-succeeded ⇒ completed,
+ * all-failed ⇒ failed, mixed ⇒ partially-failed. Call only when
+ * {@link isBatchFinished} holds.
+ */
+function deriveTerminalStatus(batch: BulkListingBatch): BulkBatchStatus {
+  if (batch.failedCount === 0) return BULK_BATCH_STATUS.Completed;
+  if (batch.succeededCount === 0) return BULK_BATCH_STATUS.Failed;
+  return BULK_BATCH_STATUS.PartiallyFailed;
 }
