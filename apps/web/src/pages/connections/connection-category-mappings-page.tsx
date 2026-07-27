@@ -13,7 +13,7 @@
  * @module apps/web/src/pages/connections
  */
 
-import { useEffect, useMemo, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { CategoryMappingTree } from '../../features/mappings/components/CategoryMappingTree';
@@ -29,6 +29,7 @@ import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-s
 import { DesktopOnlyBanner } from '../../shared/ui/desktop-only-banner';
 import { Select } from '../../shared/ui/select';
 import type { AllegroCategory } from '../../features/mappings/api/mappings.types';
+import { bucketCount, captureDemoEvent } from '../../features/demo';
 
 const MARKETPLACE_PICK_STORAGE_PREFIX = 'openlinker.categoryMappings.lastMarketplace.';
 
@@ -111,7 +112,31 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
     [mappings, selectedCategoryId],
   );
 
+  const isLoading =
+    connectionsQuery.isLoading || mappingsQuery.isLoading || prestashopCategoriesQuery.isLoading;
+  const loadError =
+    connectionsQuery.error ?? mappingsQuery.error ?? prestashopCategoriesQuery.error ?? null;
+
+  // Fire once per successful load, not on every refetch — demo-mode
+  // analytics only (#1789), no-op elsewhere.
+  const hasFiredMappingOpenedRef = useRef(false);
+  useEffect(() => {
+    if (
+      !isLoading &&
+      !loadError &&
+      marketplaceConnections.length > 0 &&
+      categories.length > 0 &&
+      !hasFiredMappingOpenedRef.current
+    ) {
+      hasFiredMappingOpenedRef.current = true;
+      captureDemoEvent('demo_category_mapping_opened', {
+        mappedCountBucket: bucketCount(mappedCount),
+      });
+    }
+  }, [isLoading, loadError, marketplaceConnections.length, categories.length, mappedCount]);
+
   function handleMarketplaceChange(nextId: string): void {
+    captureDemoEvent('demo_category_source_selected', {});
     if (nextId) persistPick(connectionId, nextId);
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -122,6 +147,7 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
   }
 
   function handleAllegroSelect(category: AllegroCategory, path: string): void {
+    captureDemoEvent('demo_category_map_attempted', {});
     if (!selectedCategoryId) return;
     upsertMutation.mutate({
       prestashopCategoryId: selectedCategoryId,
@@ -139,11 +165,6 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
   }
 
   const backTo = { to: `/connections/${connectionId}`, label: 'Connection' };
-
-  const isLoading =
-    connectionsQuery.isLoading || mappingsQuery.isLoading || prestashopCategoriesQuery.isLoading;
-  const loadError =
-    connectionsQuery.error ?? mappingsQuery.error ?? prestashopCategoriesQuery.error ?? null;
 
   if (isLoading) {
     return (

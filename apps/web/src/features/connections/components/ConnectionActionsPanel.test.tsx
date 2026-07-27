@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createMockApiClient,
   renderWithProviders,
@@ -7,6 +7,11 @@ import {
   createAuthenticatedSessionAdapter,
 } from '../../../test/test-utils';
 import { ConnectionActionsPanel } from './ConnectionActionsPanel';
+
+const captureDemoEvent = vi.fn();
+vi.mock('../../demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
 
 // jsdom does not implement showModal/close — stub them on HTMLDialogElement
 beforeAll(() => {
@@ -21,6 +26,9 @@ beforeAll(() => {
 const adminSession = { sessionAdapter: createAuthenticatedSessionAdapter() };
 
 describe('ConnectionActionsPanel', () => {
+  beforeEach(() => {
+    captureDemoEvent.mockClear();
+  });
   afterEach(cleanup);
 
   it('renders edit, trigger sync, and disable actions for an active connection', async () => {
@@ -83,6 +91,8 @@ describe('ConnectionActionsPanel', () => {
 
     // Dialog is now open — job type select should be visible
     expect(screen.getByRole('combobox', { name: /job type/i })).toBeInTheDocument();
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_connection_sync_dialog_opened', {});
   });
 
   describe('demo read-only viewer (#1615)', () => {
@@ -109,6 +119,11 @@ describe('ConnectionActionsPanel', () => {
       expect(screen.getByRole('button', { name: /trigger sync/i })).not.toBeDisabled();
       expect(screen.getByRole('button', { name: 'Disable' })).toBeDisabled();
       expect(screen.getByRole('button', { name: /configure webhooks/i })).toBeDisabled();
+
+      fireEvent.click(document.querySelector('.read-only-lock') as Element);
+      expect(captureDemoEvent).toHaveBeenCalledWith('demo_connection_test_attempted', {
+        platform: 'prestashop',
+      });
     });
 
     it('opens the TriggerSyncDialog with an enabled job type select but a disabled Trigger submit', async () => {

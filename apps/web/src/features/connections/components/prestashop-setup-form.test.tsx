@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useLocation } from 'react-router-dom';
 import { PrestashopSetupForm } from './prestashop-setup-form';
 import {
@@ -8,6 +8,11 @@ import {
   renderWithProviders,
   sampleConnection,
 } from '../../../test/test-utils';
+
+const captureDemoEvent = vi.fn();
+vi.mock('../../demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
 
 function LocationProbe(): ReactElement {
   const location = useLocation();
@@ -50,7 +55,27 @@ async function advanceToStep(container: HTMLElement, targetStep: number): Promis
 }
 
 describe('PrestashopSetupForm', () => {
+  beforeEach(() => {
+    captureDemoEvent.mockClear();
+  });
   afterEach(cleanup);
+
+  it('captures demo_connection_wizard_step_advanced on each Next click (#1789)', async () => {
+    const view = renderWithProviders(<PrestashopSetupForm />);
+
+    fillCredentialsStep(view.container, {
+      name: 'Main store',
+      url: 'https://shop.example.com',
+      key: 'WSKEY123',
+    });
+
+    await advanceOneStep(view.container);
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_connection_wizard_step_advanced', {
+      platform: 'prestashop',
+      step: 'Credentials',
+    });
+  });
 
   it('submits a PrestaShop connection after walking through every step', async () => {
     const create = vi.fn().mockResolvedValue(sampleConnection);

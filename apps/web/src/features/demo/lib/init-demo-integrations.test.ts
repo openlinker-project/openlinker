@@ -188,3 +188,57 @@ describe('disableDemoAnalytics', () => {
     expect(posthogOptOut).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('captureDemoEvent buffering before init resolves (#1790)', () => {
+  beforeEach(() => {
+    posthogInit.mockClear();
+    posthogOptOut.mockClear();
+    posthogCapture.mockClear();
+    getDemoAnalyticsConsent.mockReset();
+  });
+
+  it('replays a captureDemoEvent call issued before initDemoIntegrations resolves, once init succeeds', async () => {
+    vi.resetModules();
+    const mod = await import('./init-demo-integrations');
+    getDemoAnalyticsConsent.mockReturnValue('accepted');
+
+    const configWithBaseline: SystemConfig = {
+      ...configuredPosthog,
+      demoIntegrations: {
+        posthog: {
+          ...configuredPosthog.demoIntegrations!.posthog!,
+          enabledEventGroups: ['baseline'],
+        },
+      },
+    };
+
+    // `initDemoIntegrations` runs synchronously up to its first `await` (the
+    // dynamic `posthog-js` import), so `posthogInstance` is still null here —
+    // this call must be buffered, not dropped.
+    const initPromise = mod.initDemoIntegrations(configWithBaseline);
+    mod.captureDemoEvent('demo_login_succeeded', { role: 'admin' });
+    await initPromise;
+
+    expect(posthogCapture).toHaveBeenCalledWith('demo_login_succeeded', { role: 'admin' });
+  });
+
+  it('never replays a buffered event once init has settled to a non-demo outcome, even across a later successful init', async () => {
+    vi.resetModules();
+    const mod = await import('./init-demo-integrations');
+    getDemoAnalyticsConsent.mockReturnValue('accepted');
+
+    // Resolves via the early-return (not demo mode) path, flipping the
+    // one-shot `initSettled` flag.
+    await mod.initDemoIntegrations({ demoMode: false });
+    mod.captureDemoEvent('demo_login_succeeded', { role: 'admin' });
+
+    // A later, separate successful init in the same session must not replay
+    // an event that arrived after the session's outcome was already settled.
+    await mod.initDemoIntegrations(configuredPosthog);
+
+    expect(posthogCapture).not.toHaveBeenCalledWith(
+      'demo_login_succeeded',
+      expect.anything(),
+    );
+  });
+});

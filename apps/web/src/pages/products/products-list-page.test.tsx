@@ -11,7 +11,8 @@ import { ProductsListPage } from './products-list-page';
 import type { PaginatedProducts } from '../../features/products/api/products.types';
 
 const captureDemoEvent = vi.fn();
-vi.mock('../../features/demo', () => ({
+vi.mock('../../features/demo', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../features/demo')>()),
   captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
 }));
 
