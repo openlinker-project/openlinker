@@ -48,6 +48,10 @@ describe('isPlPublicHoliday', () => {
     expect(isPlPublicHoliday(new Date('2026-06-04T09:00:00.000Z'))).toBe(true);
   });
 
+  it('should flag Wigilia (Dec 24, statutory non-working day since 2025)', () => {
+    expect(isPlPublicHoliday(new Date('2026-12-24T09:00:00.000Z'))).toBe(true);
+  });
+
   it('should not flag a plain working day', () => {
     expect(isPlPublicHoliday(new Date('2026-06-16T09:00:00.000Z'))).toBe(false);
   });
@@ -94,6 +98,14 @@ describe('addWorkingDays', () => {
     // Thu Jun 4 (Corpus Christi) skipped → Fri Jun 5.
     const result = addWorkingDays(new Date('2026-06-03T09:00:00.000Z'), 1);
     expect(warsawDate(result)).toBe('2026-06-05');
+  });
+
+  it('should skip Wigilia chained with the following public holidays and weekend', () => {
+    // 2026-12-24 (Wigilia, Thu) and 12-25 (Boże Narodzenie, Fri) are holidays;
+    // 12-26/27 (Sat/Sun) are the weekend. Wed Dec 23 + 1 working day lands on
+    // the next actual working day, Mon Dec 28 — skipping all four in between.
+    const result = addWorkingDays(new Date('2026-12-23T09:00:00.000Z'), 1);
+    expect(warsawDate(result)).toBe('2026-12-28');
   });
 
   it('should classify the calendar day at Warsaw offset, not UTC', () => {

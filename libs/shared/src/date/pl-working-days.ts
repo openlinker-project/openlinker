@@ -17,7 +17,13 @@
 
 const PL_TIME_ZONE = 'Europe/Warsaw';
 
-/** Fixed-date Polish public holidays as `[month (1-12), day]` pairs. */
+/**
+ * Fixed-date Polish public holidays as `[month (1-12), day]` pairs.
+ *
+ * 24 December (Wigilia) was added as a statutory non-working day by the
+ * amendment to the ustawa o dniach wolnych od pracy, effective from 2025 —
+ * included unconditionally since this helper has no pre-2025 callers.
+ */
 const PL_FIXED_HOLIDAYS: ReadonlyArray<readonly [number, number]> = [
   [1, 1], // Nowy Rok
   [1, 6], // Święto Trzech Króli
@@ -26,6 +32,7 @@ const PL_FIXED_HOLIDAYS: ReadonlyArray<readonly [number, number]> = [
   [8, 15], // Wniebowzięcie NMP
   [11, 1], // Wszystkich Świętych
   [11, 11], // Święto Niepodległości
+  [12, 24], // Wigilia (statutory non-working day from 2025)
   [12, 25], // Boże Narodzenie (1. dzień)
   [12, 26], // Boże Narodzenie (2. dzień)
 ];
