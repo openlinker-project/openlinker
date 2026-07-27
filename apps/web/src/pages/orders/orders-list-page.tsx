@@ -24,7 +24,7 @@
  *
  * @module pages/orders
  */
-import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -51,6 +51,7 @@ import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
 import { useDemoMode } from '../../features/system';
+import { captureDemoEvent } from '../../features/demo';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
 import { itemsSummary, paymentBadge, invoiceBadge } from '../../features/orders/lib/order-row';
@@ -337,6 +338,16 @@ export function OrdersListPage(): ReactElement {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
 
+  // Fire once per successful list load, not on every filter/page refetch —
+  // demo-mode analytics only (#1788), no-op elsewhere.
+  const hasFiredOrdersViewedRef = useRef(false);
+  useEffect(() => {
+    if (query.data && !hasFiredOrdersViewedRef.current) {
+      hasFiredOrdersViewedRef.current = true;
+      captureDemoEvent('demo_orders_viewed', {});
+    }
+  }, [query.data]);
+
   // Parse each row's snapshot once per page (#1713) — the order / customer /
   // shipment / money cells and the mobile summary all read the same parse
   // instead of re-parsing per cell. Keyed by internalOrderId over the current
@@ -564,6 +575,7 @@ export function OrdersListPage(): ReactElement {
                 id={order.internalOrderId}
                 name={formatOrderRef(parsed.orderNumber) || order.internalOrderId}
                 to={order.internalOrderId}
+                onNavigate={() => captureDemoEvent('demo_order_opened', {})}
               />
               {items ? (
                 <span className="orders-items-line">
@@ -875,6 +887,10 @@ export function OrdersListPage(): ReactElement {
   }
 
   function toggleBreaching(): void {
+    captureDemoEvent('demo_orders_filtered', {
+      filter: 'sla_breaching',
+      value: String(!breaching),
+    });
     setSearchParams((prev) => {
       const p = new URLSearchParams(prev);
       if (breaching) {
@@ -961,7 +977,10 @@ export function OrdersListPage(): ReactElement {
             .filter(Boolean)
             .join(' ')}
           aria-pressed={health === undefined}
-          onClick={() => { setHealthFilter(null); }}
+          onClick={() => {
+            captureDemoEvent('demo_orders_filtered', { filter: 'health', value: 'all' });
+            setHealthFilter(null);
+          }}
         >
           <MetricCard label="All orders" value={summary ? String(summary.total) : '—'} />
         </button>
@@ -973,7 +992,10 @@ export function OrdersListPage(): ReactElement {
               .filter(Boolean)
               .join(' ')}
             aria-pressed={health === segment.key}
-            onClick={() => { setHealthFilter(segment.key); }}
+            onClick={() => {
+              captureDemoEvent('demo_orders_filtered', { filter: 'health', value: segment.key });
+              setHealthFilter(segment.key);
+            }}
           >
             <MetricCard label={segment.label} tone={segment.tone} value={segmentCount(segment)} />
           </button>
@@ -1163,6 +1185,7 @@ export function OrdersListPage(): ReactElement {
                     id={order.internalOrderId}
                     name={formatOrderRef(parsed.orderNumber) || order.internalOrderId}
                     to={order.internalOrderId}
+                    onNavigate={() => captureDemoEvent('demo_order_opened', {})}
                   />
                 );
               },

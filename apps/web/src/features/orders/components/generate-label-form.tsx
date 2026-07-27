@@ -27,6 +27,7 @@ import { useForm, type SubmitHandler } from 'react-hook-form';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { useConnectionsQuery } from '../../connections';
+import { captureDemoEvent } from '../../demo';
 import { usePlatform } from '../../../shared/plugins';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -338,6 +339,11 @@ export function GenerateLabelForm({
   }, [mutation.isPending]);
 
   const onSubmit: SubmitHandler<GenerateLabelFormSubmission> = async (values) => {
+    // No ReadOnlyLock exists in this chain (#1788) — fire directly on a real
+    // submit attempt, not via a locked-wrapper click.
+    captureDemoEvent('demo_label_generate_attempted', {
+      carrier: routedCarrierPlatform ?? 'unknown',
+    });
     // COD payload by state (#1435). Prepaid / blocked orders never send COD; a
     // marketplace-sourced amount is sent verbatim; otherwise the operator-typed
     // amount is honoured (COD-unsourced marketplace order, or an unreported-

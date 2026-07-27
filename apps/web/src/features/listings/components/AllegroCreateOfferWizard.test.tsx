@@ -11,6 +11,11 @@ import {
   createMockApiClient,
 } from '../../../test/test-utils';
 import { AllegroCreateOfferWizard } from './AllegroCreateOfferWizard';
+
+const captureDemoEvent = vi.fn();
+vi.mock('../../demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
 // NOTE: tests for the connection-picker UX moved to OfferCreationLauncher.test.tsx
 // as part of #608. The wizard is now content-only; the launcher owns the
 // Dialog chrome and the connection-pick flow.
@@ -142,6 +147,7 @@ async function advanceToStep2(): Promise<void> {
 describe('AllegroCreateOfferWizard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    captureDemoEvent.mockClear();
   });
 
   afterEach(() => {
@@ -1546,6 +1552,65 @@ describe('AllegroCreateOfferWizard', () => {
       expect(submitButton).toBeDisabled();
 
       fireEvent.click(submitButton);
+      expect(createOffer).not.toHaveBeenCalled();
+    });
+
+    it('captures demo_offer_wizard_step_advanced/review_reached/create_attempted while walking to Review (#1788)', async () => {
+      const createOffer = vi.fn();
+      const mockApi = defaultMocks({
+        listings: { createOffer, getSellerPolicies: vi.fn().mockResolvedValue(policies) },
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      });
+
+      renderWithProviders(
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await advanceToStep2();
+      expect(captureDemoEvent).toHaveBeenCalledWith('demo_offer_wizard_step_advanced', {
+        platform: 'allegro',
+        step: 'Variant',
+      });
+
+      await pickFirstLeafCategory();
+      fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
+      fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+      expect(captureDemoEvent).toHaveBeenCalledWith('demo_offer_wizard_step_advanced', {
+        platform: 'allegro',
+        step: 'Offer details',
+      });
+
+      await advanceThroughEmptyParameters();
+      expect(captureDemoEvent).toHaveBeenCalledWith('demo_offer_wizard_step_advanced', {
+        platform: 'allegro',
+        step: 'Category parameters',
+      });
+
+      const deliverySelect = await screen.findByLabelText(/delivery policy/i);
+      fireEvent.change(deliverySelect, { target: { value: 'del-1' } });
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+      expect(captureDemoEvent).toHaveBeenCalledWith('demo_offer_wizard_step_advanced', {
+        platform: 'allegro',
+        step: 'Policies',
+      });
+      expect(captureDemoEvent).toHaveBeenCalledWith('demo_offer_wizard_review_reached', {
+        platform: 'allegro',
+      });
+
+      await screen.findByRole('button', { name: /create offer/i });
+      fireEvent.click(document.querySelector('.read-only-lock') as Element);
+
+      expect(captureDemoEvent).toHaveBeenCalledWith('demo_offer_create_attempted', {
+        platform: 'allegro',
+        mode: 'create',
+      });
       expect(createOffer).not.toHaveBeenCalled();
     });
   });

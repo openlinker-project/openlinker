@@ -20,10 +20,22 @@ interface ReadOnlyLockProps {
   active: boolean;
   /** Tooltip copy explaining why the affordance is disabled. */
   message: string;
+  /**
+   * Fired when the locked wrapper is clicked (the disabled control inside
+   * emits no pointer events, so this is the only reachable click signal).
+   * Only ever attached when `active` — demo-event intent-click instrumentation
+   * (#1788) is the primary consumer.
+   */
+  onLockedClick?: () => void;
   children: ReactNode;
 }
 
-export function ReadOnlyLock({ active, message, children }: ReadOnlyLockProps): ReactElement {
+export function ReadOnlyLock({
+  active,
+  message,
+  onLockedClick,
+  children,
+}: ReadOnlyLockProps): ReactElement {
   if (!active) {
     return <>{children}</>;
   }
@@ -31,7 +43,7 @@ export function ReadOnlyLock({ active, message, children }: ReadOnlyLockProps): 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="read-only-lock" tabIndex={0}>
+        <span className="read-only-lock" tabIndex={0} onClick={onLockedClick}>
           {children}
         </span>
       </TooltipTrigger>

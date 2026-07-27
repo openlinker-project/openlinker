@@ -6,12 +6,21 @@
  * shipping connection's platformType.
  */
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
 import { OrderShipmentPanel } from './order-shipment-panel';
 import type { Connection } from '../../connections';
 import type { Shipment } from '../../shipments';
 import type { OrderRecord } from '../api/orders.types';
+
+const captureDemoEvent = vi.fn();
+vi.mock('../../demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
+
+beforeEach(() => {
+  captureDemoEvent.mockClear();
+});
 
 afterEach(cleanup);
 
@@ -143,6 +152,24 @@ describe('OrderShipmentPanel — empty state', () => {
 
     expect(await screen.findByText('No shipment yet')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Generate label/i })).toBeInTheDocument();
+  });
+
+  it('captures demo_label_form_opened with entry=empty_state when the empty-state CTA is clicked (#1788)', async () => {
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, { apiClient });
+
+    const button = await screen.findByRole('button', { name: /Generate label/i });
+    fireEvent.click(button);
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_label_form_opened', {
+      entry: 'empty_state',
+    });
   });
 });
 
@@ -303,6 +330,31 @@ describe('OrderShipmentPanel — action button matrix (§3.4)', () => {
     expect((cancel as HTMLButtonElement).disabled).toBe(!expected.cancel);
     expect((notify as HTMLButtonElement).disabled).toBe(!expected.notify);
     expect((download as HTMLButtonElement).disabled).toBe(!expected.download);
+  });
+
+  it('captures demo_label_form_opened with entry=active_shipment_row when the row Generate button is clicked (#1788)', async () => {
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({
+          items: [makeShipment({ status: 'draft', labelPdfRef: 'shipx:label:1' })],
+          total: 1,
+          limit: 20,
+          offset: 0,
+        }),
+      },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, { apiClient });
+
+    const generate = await screen.findByRole('button', {
+      name: /Generate label|Generate shipping label/i,
+    });
+    fireEvent.click(generate);
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_label_form_opened', {
+      entry: 'active_shipment_row',
+    });
   });
 
   it('should disable Download label when the shipment has no labelPdfRef even if dispatched', async () => {

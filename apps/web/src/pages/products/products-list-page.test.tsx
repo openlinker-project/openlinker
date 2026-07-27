@@ -10,6 +10,11 @@ import {
 import { ProductsListPage } from './products-list-page';
 import type { PaginatedProducts } from '../../features/products/api/products.types';
 
+const captureDemoEvent = vi.fn();
+vi.mock('../../features/demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
+
 const navigateMock = vi.fn();
 vi.mock('react-router-dom', async (): Promise<typeof ReactRouterDom> => {
   const actual = await vi.importActual<typeof ReactRouterDom>('react-router-dom');
@@ -128,6 +133,7 @@ describe('ProductsListPage', () => {
     // timers so we can flush pending debounce timers in afterEach.
     vi.useFakeTimers({ shouldAdvanceTime: true });
     navigateMock.mockReset();
+    captureDemoEvent.mockClear();
   });
 
   afterEach(() => {
@@ -165,6 +171,21 @@ describe('ProductsListPage', () => {
     expect(screen.getByText(/29[.,]99/)).toBeInTheDocument();
     expect(screen.getByText(/PLN/)).toBeInTheDocument();
     expect(screen.getByText('Another Product')).toBeInTheDocument();
+  });
+
+  it('captures demo_products_viewed once with a result-count bucket on load (#1788)', async () => {
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+    });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_products_viewed', {
+      resultCountBucket: '1-10',
+    });
+    expect(captureDemoEvent).toHaveBeenCalledTimes(1);
   });
 
   it('passes default server params (sort createdAt desc, page size 20) to the list call', async () => {
