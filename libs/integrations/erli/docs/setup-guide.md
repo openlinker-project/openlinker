@@ -413,19 +413,23 @@ buyer chose) to a **processor**:
 
 ### Configure it in the UI (recommended)
 
-Open the Erli connection → **Mappings** → the **Fulfillment routing** panel
-(`/connections/:connectionId/mappings`). For each Erli delivery method, pick the
-carrier connection that should fulfil it, then save. The panel lists the
-processors the connection is allowed to route to. On the Mappings page the
-Fulfillment routing panel sits alongside the category/attribute mappings the
-connection also needs.
+Open the Erli connection → **Mappings** (`/connections/:connectionId/mappings`)
+→ the **Fulfillment** tab. It is the first tab and the default landing tab for
+any connection whose adapter has the `OrderSource` capability, so an Erli
+connection opens straight onto it; you can also deep-link with
+`?tab=fulfillment`. For each Erli delivery method, pick the carrier connection
+that should fulfil it, then save. The panel lists only the processors this
+connection is allowed to route to.
 
 ![Fulfillment Routing panel](./assets/12-fulfillment-routing-panel.png)
 
-*The Fulfillment Routing panel on an Erli connection. Each row is an Erli
-delivery method; the **ROUTED TO** column shows the current processor, and the
-**CHANGE** dropdown lets you reassign it. Methods not listed here default to
-shop-fulfilled (operator-managed).*
+*The Fulfillment Routing panel on an Erli connection, as of the tabbed Mappings
+layout (#1809): the tab strip across the top, the connection-pair strip naming
+the paired destination, then one row per Erli delivery method. **ROUTED TO**
+shows the method's current processor and **CHANGE** reassigns it. This capture
+is the fresh-connection state — with no carrier connection configured yet, every
+method sits on the default order-management platform (shop-fulfilled), which is
+exactly the state this section exists to get you out of.*
 
 ### Configure it via the API (for scripted / demo provisioning)
 
