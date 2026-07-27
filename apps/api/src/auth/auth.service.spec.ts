@@ -38,6 +38,7 @@ describe('AuthService', () => {
       findByEmail: jest.fn().mockResolvedValue(null),
       findById: jest.fn(),
       save: jest.fn(),
+      updateAnalyticsConsent: jest.fn(),
     } as unknown as jest.Mocked<UserRepositoryPort>;
 
     const mockJwtService = {
@@ -181,6 +182,52 @@ describe('AuthService', () => {
       userRepository.findById.mockResolvedValue(null);
 
       await expect(service.getMe('ghost-id')).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('updateAnalyticsConsent (#1882)', () => {
+    const makeConsentUser = (analyticsConsent: boolean): User =>
+      new User(
+        'user-uuid-123',
+        'demo_user',
+        'demo@example.com',
+        '$2a$10$hash',
+        'viewer',
+        'active',
+        new Date(),
+        new Date(),
+        analyticsConsent
+      );
+
+    it('should persist the new consent and return the re-read user', async () => {
+      userRepository.findById
+        .mockResolvedValueOnce(makeConsentUser(false))
+        .mockResolvedValueOnce(makeConsentUser(true));
+
+      const result = await service.updateAnalyticsConsent('user-uuid-123', true);
+
+      expect(userRepository.updateAnalyticsConsent).toHaveBeenCalledWith('user-uuid-123', true);
+      expect(result.analyticsConsent).toBe(true);
+    });
+
+    it('should return the persisted value rather than echoing the request', async () => {
+      // Repository re-read is authoritative: if it reports false, so do we.
+      userRepository.findById
+        .mockResolvedValueOnce(makeConsentUser(false))
+        .mockResolvedValueOnce(makeConsentUser(false));
+
+      const result = await service.updateAnalyticsConsent('user-uuid-123', true);
+
+      expect(result.analyticsConsent).toBe(false);
+    });
+
+    it('should throw UnauthorizedException and not write when the user no longer exists', async () => {
+      userRepository.findById.mockResolvedValue(null);
+
+      await expect(service.updateAnalyticsConsent('ghost-id', true)).rejects.toThrow(
+        UnauthorizedException
+      );
+      expect(userRepository.updateAnalyticsConsent).not.toHaveBeenCalled();
     });
   });
 });

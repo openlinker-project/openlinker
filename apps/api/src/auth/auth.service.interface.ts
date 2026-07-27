@@ -14,4 +14,10 @@ export interface IAuthService {
   validateUser(username: string, password: string): Promise<User | null>;
   login(user: User): LoginResponseDto;
   getMe(userId: string): Promise<User>;
+  /**
+   * Persists the caller's own analytics opt-in and returns the refreshed user
+   * so the controller can answer with the authoritative post-update state
+   * rather than echoing the request body (#1882).
+   */
+  updateAnalyticsConsent(userId: string, analyticsConsent: boolean): Promise<User>;
 }

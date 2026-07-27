@@ -117,6 +117,7 @@ export function createMockApiClient(
       forgotPassword: vi.fn().mockResolvedValue({ ok: true }),
       resetPassword: vi.fn().mockResolvedValue({ ok: true }),
       confirmEmail: vi.fn().mockResolvedValue({ ok: true }),
+      updateAnalyticsConsent: vi.fn().mockResolvedValue({ ...DEFAULT_TEST_USER }),
       ...overrides.auth,
     } as ApiClient['auth'],
     connections: {

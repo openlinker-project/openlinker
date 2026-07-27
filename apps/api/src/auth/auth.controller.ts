@@ -3,8 +3,9 @@
  *
  * HTTP REST API endpoints for authentication. Provides login, current-user,
  * refresh, logout, and password reset endpoints. Login, refresh, logout,
- * and password-reset endpoints are public; /auth/me requires a valid JWT
- * bearer token (enforced by global guard).
+ * and password-reset endpoints are public; /auth/me and the self-service
+ * /auth/me/analytics-consent preference update require a valid JWT bearer
+ * token (enforced by global guard).
  *
  * The refresh / logout endpoints are public from the JWT auth standpoint
  * (no bearer required) but gated by CsrfGuard so cookie credentials
@@ -23,6 +24,7 @@ import {
   HttpException,
   HttpStatus,
   Inject,
+  Patch,
   Post,
   Req,
   Res,
@@ -57,6 +59,7 @@ import { OkResponseDto } from './dto/ok-response.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ConfirmEmailDto } from './dto/confirm-email.dto';
 import { ResendConfirmationDto } from './dto/resend-confirmation.dto';
+import { UpdateAnalyticsConsentDto } from './dto/update-analytics-consent.dto';
 import { AuthenticatedUser } from './auth.types';
 import {
   IPasswordResetService,
@@ -299,6 +302,24 @@ export class AuthController {
   async getMe(@CurrentUser() user: AuthenticatedUser): Promise<UserResponseDto> {
     const fullUser = await this.authService.getMe(user.id);
     return UserResponseDto.fromDomain(fullUser);
+  }
+
+  // Deliberately carries no @Roles: this is a self-service preference on the
+  // caller's OWN account, so every authenticated role — viewer included, which
+  // is what a demo signup gets — must be able to change it (#1882).
+  @Patch('me/analytics-consent')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Update the current user's demo analytics consent" })
+  @ApiResponse({ status: 200, description: 'Updated current user', type: UserResponseDto })
+  @ApiResponse({ status: 400, description: 'Validation error (analyticsConsent is not a boolean)' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async updateAnalyticsConsent(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateAnalyticsConsentDto,
+  ): Promise<UserResponseDto> {
+    const updated = await this.authService.updateAnalyticsConsent(user.id, dto.analyticsConsent);
+    return UserResponseDto.fromDomain(updated);
   }
 
   @Public()

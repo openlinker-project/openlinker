@@ -38,6 +38,8 @@ import { REGISTRATION_SERVICE_TOKEN } from './registration.service.interface';
 import type { IEmailConfirmationService } from './email-confirmation.service.interface';
 import { EMAIL_CONFIRMATION_SERVICE_TOKEN } from './email-confirmation.service.interface';
 import { PATH_METADATA } from '@nestjs/common/constants';
+import { IS_PUBLIC_KEY } from './decorators/public.decorator';
+import { ROLES_KEY } from './decorators/roles.decorator';
 import { API_VERSION_LABEL } from '../app-info/app-info.types';
 import { REFRESH_COOKIE_NAME, REFRESH_COOKIE_PATH } from './auth.cookies';
 
@@ -67,6 +69,7 @@ describe('AuthController', () => {
       validateUser: jest.fn(),
       login: jest.fn(),
       getMe: jest.fn(),
+      updateAnalyticsConsent: jest.fn(),
     };
     const mockPasswordResetService: jest.Mocked<IPasswordResetService> = {
       requestReset: jest.fn(),
@@ -425,6 +428,62 @@ describe('AuthController', () => {
       expect(result.role).toBe('admin');
       expect(result.permissions).toBeDefined();
       expect(result.permissions.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('PATCH /auth/me/analytics-consent (#1882)', () => {
+    const makeViewer = (analyticsConsent: boolean): User =>
+      new User(
+        'viewer-uuid-1',
+        'demo_user',
+        'demo@example.com',
+        '$2a$10$hash',
+        'viewer',
+        'active',
+        new Date(),
+        new Date(),
+        analyticsConsent
+      );
+
+    it('should persist the requested consent and answer with the refreshed user', async () => {
+      const updated = makeViewer(true);
+      authService.updateAnalyticsConsent.mockResolvedValue(updated);
+
+      const result = await controller.updateAnalyticsConsent(
+        { id: updated.id, username: updated.username, role: 'viewer' },
+        { analyticsConsent: true }
+      );
+
+      expect(authService.updateAnalyticsConsent).toHaveBeenCalledWith(updated.id, true);
+      expect(result.analyticsConsent).toBe(true);
+      expect(result.id).toBe(updated.id);
+    });
+
+    it('should pass a withdrawal (false) through unchanged', async () => {
+      const updated = makeViewer(false);
+      authService.updateAnalyticsConsent.mockResolvedValue(updated);
+
+      const result = await controller.updateAnalyticsConsent(
+        { id: updated.id, username: updated.username, role: 'viewer' },
+        { analyticsConsent: false }
+      );
+
+      expect(authService.updateAnalyticsConsent).toHaveBeenCalledWith(updated.id, false);
+      expect(result.analyticsConsent).toBe(false);
+    });
+
+    it('should carry no @Roles metadata so a viewer can change their own preference', () => {
+      const handler = AuthController.prototype.updateAnalyticsConsent;
+      const roles = Reflect.getMetadata(ROLES_KEY, handler) as unknown[] | undefined;
+
+      expect(roles).toBeUndefined();
+    });
+
+    it('should not be @Public — the handler needs an authenticated caller', () => {
+      const handler = AuthController.prototype.updateAnalyticsConsent;
+      const isPublic = Reflect.getMetadata(IS_PUBLIC_KEY, handler) as boolean | undefined;
+
+      expect(isPublic).toBeUndefined();
     });
   });
 });
