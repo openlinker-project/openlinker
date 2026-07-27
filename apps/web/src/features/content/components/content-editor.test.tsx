@@ -104,7 +104,10 @@ describe('ContentEditor', () => {
       },
     });
 
-    renderWithProviders(<ContentEditor productId="ol_product_1" />, { apiClient: mockApi });
+    renderWithProviders(<ContentEditor productId="ol_product_1" />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     const textarea = await screen.findByDisplayValue('Current master description');
     const user = userEvent.setup();
@@ -185,7 +188,10 @@ describe('ContentEditor', () => {
         },
       });
 
-      renderWithProviders(<ContentEditor productId="ol_product_1" />, { apiClient: mockApi });
+      renderWithProviders(<ContentEditor productId="ol_product_1" />, {
+        apiClient: mockApi,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
 
       await screen.findByRole('tab', { name: /Master/ });
       const user = userEvent.setup();
@@ -223,7 +229,10 @@ describe('ContentEditor', () => {
         },
       });
 
-      renderWithProviders(<ContentEditor productId="ol_product_1" />, { apiClient: mockApi });
+      renderWithProviders(<ContentEditor productId="ol_product_1" />, {
+        apiClient: mockApi,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
 
       await screen.findByRole('tab', { name: /Master/ });
       const user = userEvent.setup();
