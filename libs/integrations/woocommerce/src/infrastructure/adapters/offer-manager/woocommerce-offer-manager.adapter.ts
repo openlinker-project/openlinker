@@ -11,11 +11,13 @@
  * re-asserts `manage_stock: true`, so a product whose managed-stock flag was
  * flipped off shop-side becomes managed again on the next master change.
  *
- * 404 = clean skip: nothing deletes a `ShopProduct` mapping when the product
- * is removed shop-side, so the PUT can 404 forever. Treating it as a skip
- * (warn log, resolve) prevents a retry-to-dead job on every stock change for
- * a stale mapping. All other errors propagate — 401/403 feed the auth-failure
- * classifier, network/5xx feed the runner's transient-retry path.
+ * 404 = stale mapping cleanup: the mapped WC product was removed shop-side, so
+ * the PUT 404s. Rather than silently skipping forever (a dead mapping that
+ * 404s on every future stock change), delete the `ShopProduct` identifier
+ * mapping for this (external product id, connection) and resolve — the next
+ * publish then re-creates the product and writes a fresh mapping (#1846 fix 5).
+ * All other errors propagate — 401/403 feed the auth-failure classifier,
+ * network/5xx feed the runner's transient-retry path.
  *
  * Published WC products are standalone simple products today, so the plain
  * product endpoint suffices — `/variations` handling is a deferred publisher
@@ -29,7 +31,11 @@
  * @implements {OfferManagerPort}
  */
 import type { OfferManagerPort, UpdateOfferQuantityCommand } from '@openlinker/core/listings';
-import type { Connection } from '@openlinker/core/identifier-mapping';
+import {
+  CORE_ENTITY_TYPE,
+  type Connection,
+  type IdentifierMappingPort,
+} from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
@@ -45,6 +51,7 @@ export class WooCommerceOfferManagerAdapter implements OfferManagerPort {
   constructor(
     private readonly httpClient: IWooCommerceHttpClient,
     private readonly connection: Connection,
+    private readonly identifierMapping: IdentifierMappingPort,
   ) {}
 
   async updateOfferQuantity(cmd: UpdateOfferQuantityCommand): Promise<void> {
@@ -75,8 +82,15 @@ export class WooCommerceOfferManagerAdapter implements OfferManagerPort {
       if (error instanceof WooCommerceHttpResponseException && error.statusCode === 404) {
         this.logger.warn(
           `WooCommerce product ${wcProductId} not found on connection ${this.connection.id} — ` +
-            `stale ShopProduct mapping (product removed shop-side?). Skipping stock write ` +
-            `(quantity=${cmd.quantity} not propagated).`,
+            `stale ShopProduct mapping (product removed shop-side?). Deleting the mapping so a ` +
+            `future publish re-creates it (quantity=${cmd.quantity} not propagated this run).`,
+        );
+        // Clean the dead mapping (idempotent) so it stops 404'ing on every stock
+        // change; the next publish re-creates the product and writes a fresh one.
+        await this.identifierMapping.deleteMapping(
+          CORE_ENTITY_TYPE.ShopProduct,
+          String(wcProductId),
+          this.connection.id,
         );
         return;
       }

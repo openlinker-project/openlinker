@@ -2,10 +2,12 @@
  * Listings Coverage Pills
  *
  * Per-connection listings coverage for the products cockpit (#1720). Renders
- * one pill per ACTIVE OfferCreator connection - strictly connection-driven:
- * coverage rows for connections the operator no longer has (or that lack the
- * OfferCreator capability) are ignored, and a connection with no coverage row
- * renders as a 0/{variantCount} "none" pill. Visual states:
+ * one pill per ACTIVE publish-destination connection - strictly
+ * connection-driven: coverage rows for connections the operator no longer has
+ * are ignored, and a connection with no coverage row renders as a
+ * 0/{variantCount} "none" pill. The `connections` prop is capability-agnostic
+ * here (marketplace OfferCreator or shop ProductPublisher, #1838 follow-up
+ * fix); the caller decides which connections qualify. Visual states:
  * - full:    listed >= variantCount and variantCount > 0 (success)
  * - partial: 0 < listed < variantCount (warning)
  * - none:    listed = 0 or variantCount = 0 (muted)
@@ -20,7 +22,7 @@ import { usePlatforms } from '../../shared/plugins';
 export interface ListingsCoveragePillsProps {
   coverage: ProductListingsCoverage[] | undefined;
   variantCount: number;
-  /** Active OfferCreator connections - the pill set is derived from these. */
+  /** Active publish-destination connections - the pill set is derived from these. */
   connections: readonly Connection[];
 }
 

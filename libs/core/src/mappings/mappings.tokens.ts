@@ -12,6 +12,7 @@ export const CARRIER_MAPPING_REPOSITORY_TOKEN = Symbol('CarrierMappingRepository
 export const PAYMENT_MAPPING_REPOSITORY_TOKEN = Symbol('PaymentMappingRepositoryPort');
 export const CATEGORY_MAPPING_REPOSITORY_TOKEN = Symbol('CategoryMappingRepositoryPort');
 export const ATTRIBUTE_MAPPING_REPOSITORY_TOKEN = Symbol('AttributeMappingRepositoryPort');
+export const ATTRIBUTE_MAPPING_RULE_REPOSITORY_TOKEN = Symbol('AttributeMappingRuleRepositoryPort');
 export const ORDER_STATE_MAPPING_REPOSITORY_TOKEN = Symbol('OrderStateMappingRepositoryPort');
 export const FULFILLMENT_ROUTING_REPOSITORY_TOKEN = Symbol('FulfillmentRoutingRepositoryPort');
 export const FULFILLMENT_ROUTING_SERVICE_TOKEN = Symbol('IFulfillmentRoutingService');

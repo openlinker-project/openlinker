@@ -20,14 +20,26 @@ import {
   NotFoundException,
   Param,
   Post,
+  Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 
 import {
   IListingCreationQueryService,
   IProductPublishEnqueueService,
+  IShopAttributeReadService,
+  IShopCategoryBrowseService,
   LISTING_CREATION_QUERY_SERVICE_TOKEN,
   PRODUCT_PUBLISH_ENQUEUE_SERVICE_TOKEN,
+  SHOP_ATTRIBUTE_READ_SERVICE_TOKEN,
+  SHOP_CATEGORY_BROWSE_SERVICE_TOKEN,
 } from '@openlinker/core/listings';
 import type { ListingCreationRecord } from '@openlinker/core/listings';
 
@@ -35,6 +47,9 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { PublishProductRequestDto } from './dto/publish-product.dto';
 import {
   ListingCreationRecordResponseDto,
+  ShopAttributeResponseDto,
+  ShopAttributeTermResponseDto,
+  ShopCategoryResponseDto,
   ShopPublishResponseDto,
 } from './dto/shop-publish-response.dto';
 
@@ -47,6 +62,10 @@ export class ShopPublishController {
     private readonly enqueue: IProductPublishEnqueueService,
     @Inject(LISTING_CREATION_QUERY_SERVICE_TOKEN)
     private readonly query: IListingCreationQueryService,
+    @Inject(SHOP_CATEGORY_BROWSE_SERVICE_TOKEN)
+    private readonly categoryBrowse: IShopCategoryBrowseService,
+    @Inject(SHOP_ATTRIBUTE_READ_SERVICE_TOKEN)
+    private readonly attributeRead: IShopAttributeReadService,
   ) {}
 
   @Roles('admin', 'operator')
@@ -73,9 +92,76 @@ export class ShopPublishController {
       stock: dto.stock,
       ...(dto.price !== undefined && { price: dto.price }),
       ...(dto.content !== undefined && { content: dto.content }),
+      ...(dto.commerce !== undefined && { commerce: dto.commerce }),
+      ...(dto.generateDescription !== undefined && {
+        generateDescription: dto.generateDescription,
+      }),
+      ...(dto.descriptionTone !== undefined && { descriptionTone: dto.descriptionTone }),
       ...(idempotencyKey !== undefined && { idempotencyKey }),
     });
     return { jobId, listingCreationRecordId: listingCreationRecord.id };
+  }
+
+  @Get('categories')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Browse a shop connection\'s existing category tree',
+    description:
+      'Resolves the connection ProductPublisher adapter, narrows it to the ShopCategoryBrowser sub-capability, and returns the direct child categories under parentId (root level when omitted). Backs the publish edit flow category picker.',
+  })
+  @ApiQuery({
+    name: 'parentId',
+    required: false,
+    description: 'Parent category id; omit for root-level categories.',
+  })
+  @ApiResponse({ status: 200, description: 'Category nodes', type: [ShopCategoryResponseDto] })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({ status: 409, description: 'Connection disabled' })
+  @ApiResponse({ status: 422, description: 'Adapter does not support shop category browsing' })
+  async browseCategories(
+    @Param('connectionId') connectionId: string,
+    @Query('parentId') parentId?: string,
+  ): Promise<ShopCategoryResponseDto[]> {
+    const categories = await this.categoryBrowse.browseCategories(connectionId, parentId);
+    return categories.map((c) => ({ id: c.id, name: c.name, parentId: c.parentId }));
+  }
+
+  @Get('attributes')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Browse a shop connection's global product attributes",
+    description:
+      'Resolves the connection ProductPublisher adapter, narrows it to the ShopAttributeReader sub-capability, and returns the store-wide global attributes. Backs the publish edit flow structured attribute picker.',
+  })
+  @ApiResponse({ status: 200, description: 'Global attributes', type: [ShopAttributeResponseDto] })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({ status: 409, description: 'Connection disabled' })
+  @ApiResponse({ status: 422, description: 'Adapter does not support shop attribute reading' })
+  async listAttributes(
+    @Param('connectionId') connectionId: string,
+  ): Promise<ShopAttributeResponseDto[]> {
+    const attributes = await this.attributeRead.listAttributes(connectionId);
+    return attributes.map((a) => ({ id: a.id, name: a.name, slug: a.slug }));
+  }
+
+  @Get('attributes/:attributeId/terms')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'attributeId', description: 'Destination-native global-attribute id.' })
+  @ApiOperation({
+    summary: "Browse a global attribute's predefined terms",
+    description:
+      'Returns the predefined terms of one global attribute for the connection, via the ShopAttributeReader sub-capability. The term ids are threaded back on publish as the neutral valuesIds global-attribute linkage.',
+  })
+  @ApiResponse({ status: 200, description: 'Attribute terms', type: [ShopAttributeTermResponseDto] })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({ status: 409, description: 'Connection disabled' })
+  @ApiResponse({ status: 422, description: 'Adapter does not support shop attribute reading' })
+  async listAttributeTerms(
+    @Param('connectionId') connectionId: string,
+    @Param('attributeId') attributeId: string,
+  ): Promise<ShopAttributeTermResponseDto[]> {
+    const terms = await this.attributeRead.listAttributeTerms(connectionId, attributeId);
+    return terms.map((t) => ({ id: t.id, name: t.name, slug: t.slug }));
   }
 
   @Get(':recordId')

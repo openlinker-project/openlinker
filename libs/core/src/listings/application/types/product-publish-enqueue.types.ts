@@ -9,7 +9,11 @@
  * @module libs/core/src/listings/application/types
  */
 
+import type { OfferDescriptionTone } from '@openlinker/core/sync';
+
+import type { OfferParameter } from '../../domain/types/offer-parameter.types';
 import type {
+  PublishProductCommerce,
   PublishProductContent,
   PublishProductStatus,
 } from '../../domain/types/product-publish.types';
@@ -28,8 +32,31 @@ export interface EnqueueProductPublishInput {
   price?: { amount: number; currency: string };
   /** Optional owned-record content overrides (title, description, images, SEO). */
   content?: PublishProductContent;
+  /** Optional operator-supplied commerce fields (sale price, dimensions, tax). */
+  commerce?: PublishProductCommerce;
+  /**
+   * Optional per-item destination category override (#1831). Present ⇒ the
+   * builder skips server-side provisioning and uses these ids; omitted ⇒ the
+   * builder provisions category placement as today.
+   */
+  destinationCategoryIds?: string[];
+  /**
+   * Optional per-item neutral category parameters override (#1831). Present ⇒
+   * the builder skips attribute projection and uses these; omitted ⇒ the builder
+   * projects the variant's attributes as today.
+   */
+  parameters?: OfferParameter[];
   /** Optional idempotency key; defaults to `shop-publish:{recordId}` (single) / a batch-scoped key (bulk). */
   idempotencyKey?: string;
+  /**
+   * AI flag (#1840): when `true`, the worker handler generates the product
+   * description via the `offer.description.suggest` prompt template and fills
+   * `content.description` (unless an explicit operator description override is
+   * already present). Omitted / `false` ⇒ no AI call.
+   */
+  generateDescription?: boolean;
+  /** Optional AI tone hint forwarded on the payload; ignored when `generateDescription` is not `true`. */
+  descriptionTone?: OfferDescriptionTone;
   /**
    * Parent bulk-batch id when this enqueue is part of a bulk submission (#1044).
    * Present ⇒ the V2 payload is emitted and the child record carries the batch id

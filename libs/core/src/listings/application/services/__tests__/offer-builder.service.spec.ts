@@ -159,6 +159,72 @@ describe('OfferBuilderService', () => {
       });
     });
 
+    it('subtracts the per-connection stock safety buffer, flooring at 0 (#1844)', async () => {
+      connectionPort.get.mockResolvedValue({
+        ...defaultConnection,
+        config: { masterCatalogConnectionId: MASTER_CONN_ID, stockSafetyBuffer: 4 },
+      } as Connection);
+
+      const buffered = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 10,
+      });
+      expect(buffered.stock).toBe(6);
+
+      const floored = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 2,
+      });
+      expect(floored.stock).toBe(0);
+    });
+
+    it('resolves the master price unchanged when no pricing rule is configured (#1843)', async () => {
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+      expect(result.price).toEqual({ amount: 49.99, currency: 'PLN' });
+    });
+
+    it('applies the connection pricing rule to the master price (#1843)', async () => {
+      connectionPort.get.mockResolvedValue({
+        ...defaultConnection,
+        config: {
+          masterCatalogConnectionId: MASTER_CONN_ID,
+          pricingRule: { type: 'markup', percent: 20 },
+        },
+      } as Connection);
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+      // 49.99 * 1.2 = 59.988 -> rounds to 59.99
+      expect(result.price).toEqual({ amount: 59.99, currency: 'PLN' });
+    });
+
+    it('does not apply the pricing rule when an explicit input.price is supplied (#1843)', async () => {
+      connectionPort.get.mockResolvedValue({
+        ...defaultConnection,
+        config: {
+          masterCatalogConnectionId: MASTER_CONN_ID,
+          pricingRule: { type: 'markup', percent: 50 },
+        },
+      } as Connection);
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        price: { amount: 10, currency: 'PLN' },
+      });
+      expect(result.price).toEqual({ amount: 10, currency: 'PLN' });
+    });
+
     it('lifts overrides.productCardId to the top-level command (#808)', async () => {
       const result = await service.buildCreateOfferCommand({
         internalVariantId: VARIANT_ID,
@@ -693,12 +759,15 @@ describe('OfferBuilderService', () => {
         stock: 1,
       });
 
-      expect(attributeProjection.project).toHaveBeenCalledWith({
-        sourceConnectionId: MASTER_CONN_ID,
-        destinationConnectionId: MARKETPLACE_CONN_ID,
-        destinationCategoryId: 'allegro-cat-999',
-        attributes: { Color: 'Red' },
-      });
+      expect(attributeProjection.project).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceConnectionId: MASTER_CONN_ID,
+          destinationConnectionId: MARKETPLACE_CONN_ID,
+          destinationCategoryId: 'allegro-cat-999',
+          attributes: { Color: 'Red' },
+          metadata: expect.objectContaining({ productName: 'Test Product' }),
+        })
+      );
       expect(result.parameters).toEqual([
         { id: '224017', valuesIds: ['11954'], section: 'product' },
       ]);

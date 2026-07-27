@@ -100,6 +100,9 @@ describe('OrderSyncService', () => {
       getAttributeMappingsByProvenance: jest.fn(),
       upsertAttributeMapping: jest.fn(),
       deleteAttributeMapping: jest.fn(),
+      getAttributeMappingRules: jest.fn(),
+      upsertAttributeMappingRule: jest.fn(),
+      deleteAttributeMappingRule: jest.fn(),
     } as jest.Mocked<IMappingConfigService>;
 
     syncLock = {

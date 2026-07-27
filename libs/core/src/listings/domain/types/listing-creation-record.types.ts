@@ -15,6 +15,40 @@
  */
 
 import type { OfferCreationError } from './offer-creation-record.types';
+import type { OfferParameter } from './offer-parameter.types';
+import type {
+  PublishProductCommerce,
+  PublishProductContent,
+  PublishProductStatus,
+} from './product-publish.types';
+
+/**
+ * Persisted snapshot of the original per-item publish request (#1845). Captures
+ * the neutral fields needed to rebuild a `shop.product.publish` payload on retry
+ * without re-deriving them - the shop-side sibling of
+ * `OfferCreationRequestSnapshot`. Stored on the `ListingCreationRecord` at
+ * enqueue time; the retry service reads it to re-run only the failed children.
+ * Batch-scoped AI/shared flags are NOT carried here (they live on the batch's
+ * `sharedConfig`, mirroring the offer path).
+ */
+export interface ShopPublishRequestSnapshot {
+  /** OL internal variant id being published. */
+  internalVariantId: string;
+  /** Target publication state (draft vs published). */
+  status: PublishProductStatus;
+  /** Stock quantity as a product/variant field on the shop. */
+  stock: number;
+  /** Explicit price; omitted when the builder should fall back to master. */
+  price?: { amount: number; currency: string };
+  /** Destination category ids resolved upstream. Omitted when deferred/manual. */
+  destinationCategoryIds?: string[];
+  /** Owned-record content overrides (title, description, images, SEO). */
+  content?: PublishProductContent;
+  /** Operator-supplied commerce fields (sale price, dimensions, tax). */
+  commerce?: PublishProductCommerce;
+  /** Neutral projected category parameters (same channel the offer path uses). */
+  parameters?: OfferParameter[];
+}
 
 /**
  * Neutral structured error persisted in `ListingCreationRecord.errors`. Reuses
@@ -68,4 +102,6 @@ export interface CreateListingCreationRecordInput {
   bulkBatchId?: string | null;
   /** Non-fatal warnings emitted by the adapter on a successful publish (#1131). Null/omitted when none. */
   warnings?: string[] | null;
+  /** Persisted per-item publish request snapshot for retry (#1845). Null/omitted when not captured. */
+  request?: ShopPublishRequestSnapshot | null;
 }

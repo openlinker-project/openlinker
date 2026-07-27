@@ -18,6 +18,8 @@ export { CategoryMapping } from './domain/entities/category-mapping.entity';
 export { OrderStateMapping } from './domain/entities/order-state-mapping.entity';
 export { AttributeMapping } from './domain/entities/attribute-mapping.entity';
 export { AttributeValueMapping } from './domain/entities/attribute-value-mapping.entity';
+export { AttributeMappingRule } from './domain/entities/attribute-mapping-rule.entity';
+export { AttributeMappingRuleNotFoundException } from './domain/exceptions/attribute-mapping-rule-not-found.exception';
 export type {
   StatusMappingInput,
   CarrierMappingInput,
@@ -26,6 +28,17 @@ export type {
   OrderStateMappingInput,
   AttributeMappingInput,
 } from './domain/types/mapping.types';
+export {
+  AttributeMappingRuleKindValues,
+  PlaceValueSourceValues,
+} from './domain/types/attribute-mapping-rule.types';
+export type {
+  AttributeMappingRuleKind,
+  PlaceValueSource,
+  AttributeMappingRuleConfig,
+  AttributeMappingRuleInput,
+  AttributeRuleValueRemap,
+} from './domain/types/attribute-mapping-rule.types';
 
 // Fulfillment routing (#832)
 export type { IFulfillmentRoutingService } from './application/interfaces/fulfillment-routing.service.interface';
