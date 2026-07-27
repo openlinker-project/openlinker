@@ -493,16 +493,23 @@ describe('ConnectionMappingsPage', () => {
     });
 
     it('falls back to the first available tab when ?tab= names a tab unavailable on this connection', async () => {
-      const apiClient = buildApiClient();
-      apiClient.connections.getById = vi.fn().mockResolvedValue({
-        ...sampleConnection,
+      // The page resolves tabs from the PAIRED destination's capabilities
+      // (#1784), not the opened connection's own — so to make "order-states"
+      // genuinely unavailable, strip OrderProcessorManager off the paired
+      // PrestaShop destination (source ALLEGRO keeps OrderSource, so
+      // Fulfillment is still the true fallback tab).
+      const destinationWithoutOrderProcessor: Connection = {
+        ...PRESTA,
         supportedCapabilities: ['OrderSource'],
+      };
+      const apiClient = buildApiClient({
+        connectionList: [ALLEGRO, destinationWithoutOrderProcessor],
       });
       renderWithProviders(
         <Routes>
           <Route path="/connections/:connectionId/mappings" element={<ConnectionMappingsPage />} />
         </Routes>,
-        { apiClient, route: '/connections/conn_1/mappings?tab=order-states' },
+        { apiClient, route: '/connections/alg_1/mappings?tab=order-states' },
       );
 
       await waitFor(() => {
@@ -510,7 +517,7 @@ describe('ConnectionMappingsPage', () => {
       });
       // With OrderSource capability the Fulfillment tab is tabs[0] — the true
       // first available tab this connection falls back to.
-      const fulfillmentTab = screen.getByRole('tab', { name: 'Fulfillment' });
+      const fulfillmentTab = await screen.findByRole('tab', { name: 'Fulfillment' });
       expect(fulfillmentTab).toHaveAttribute('aria-selected', 'true');
     });
   });
