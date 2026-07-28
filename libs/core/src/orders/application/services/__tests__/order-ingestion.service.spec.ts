@@ -1021,12 +1021,19 @@ describe('OrderIngestionService', () => {
     });
 
     it('all missing-mapping (no stale refs) marks the record awaiting_mapping', async () => {
-      orderItemRefResolver.tryResolve.mockResolvedValueOnce({
-        resolved: false,
-        productRef: { type: 'offer', externalId: 'offer-a' },
-        reason: 'no mapping a',
-        kind: 'missing_mapping' as const,
-      });
+      orderItemRefResolver.tryResolve
+        .mockResolvedValueOnce({
+          resolved: false,
+          productRef: { type: 'offer', externalId: 'offer-a' },
+          reason: 'no mapping a',
+          kind: 'missing_mapping' as const,
+        })
+        .mockResolvedValueOnce({
+          resolved: false,
+          productRef: { type: 'offer', externalId: 'offer-b' },
+          reason: 'no mapping b',
+          kind: 'missing_mapping' as const,
+        });
 
       await expect(
         service.syncOrderFromSource(connectionId, externalOrderId)

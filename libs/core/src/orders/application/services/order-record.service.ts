@@ -24,12 +24,9 @@ import type {
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import { getPiiConfig } from '@openlinker/shared/config';
 import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
-import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()
 export class OrderRecordService implements IOrderRecordService {
-  private readonly logger = new Logger(OrderRecordService.name);
-
   constructor(
     @Inject(ORDER_RECORD_REPOSITORY_TOKEN)
     private readonly repository: OrderRecordRepositoryPort
@@ -308,32 +305,11 @@ export class OrderRecordService implements IOrderRecordService {
     internalOrderId: string,
     input: { status: OrderRecordStatus; reason: string }
   ): Promise<void> {
-    const existing = await this.repository.findById(internalOrderId);
-    if (!existing) {
-      // Defensive only: persistIncomingSnapshot always runs first in the
-      // ingestion flow, so this record should already exist.
-      this.logger.debug(
-        `markItemResolutionFailure: no order record found for ${internalOrderId} — skipping`
-      );
-      return;
-    }
-
-    const updated = new OrderRecord(
-      existing.internalOrderId,
-      existing.customerId,
-      existing.sourceConnectionId,
-      existing.sourceEventId,
-      existing.orderSnapshot,
-      existing.syncStatus,
-      input.status,
-      existing.createdAt,
-      new Date(),
-      existing.syncAttempts,
-      existing.dispatchByAt,
-      existing.fulfillmentState,
-      input.reason
-    );
-    await this.repository.upsert(updated);
+    // Narrow absolute-set on recordStatus + mappingFailureReason only (#1689
+    // review) — no read-modify-write, so it can't clobber a concurrent write
+    // to any other column on the same row (e.g. a syncStatus update racing
+    // in from OrderSyncService). Mirrors updateFulfillmentState's pattern.
+    await this.repository.updateItemResolutionFailure(internalOrderId, input);
   }
 
   /**

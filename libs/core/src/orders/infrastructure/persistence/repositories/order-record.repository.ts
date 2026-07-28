@@ -513,6 +513,22 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     await this.repository.update({ internalOrderId }, { fulfillmentState });
   }
 
+  /**
+   * Push the honest item-resolution-failure state onto the order record
+   * (#1689). Narrow absolute-set on `recordStatus` + `mappingFailureReason`
+   * only — no read-modify-write, so it can't race a concurrent write to any
+   * other column on the same row (mirrors {@link updateFulfillmentState}).
+   */
+  async updateItemResolutionFailure(
+    internalOrderId: string,
+    input: { status: OrderRecordStatus; reason: string }
+  ): Promise<void> {
+    await this.repository.update(
+      { internalOrderId },
+      { recordStatus: input.status, mappingFailureReason: input.reason }
+    );
+  }
+
   async upsert(orderRecord: OrderRecord): Promise<OrderRecord> {
     const entity = this.toOrm(orderRecord);
     // TypeORM save() performs upsert on primary key (internalOrderId)
