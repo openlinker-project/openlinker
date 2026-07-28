@@ -179,6 +179,7 @@ describe('SchedulerService', () => {
         'pending-recovery',
         'pickup-point-refresh',
         'regulatory-status-reconcile',
+        'stale-offer-pause-sweep',
       ]);
     });
 
