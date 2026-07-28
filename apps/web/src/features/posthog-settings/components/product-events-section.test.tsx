@@ -59,14 +59,14 @@ describe('ProductEventsSection', () => {
   it('toggles a group on and off in the form', () => {
     renderWithProviders(<Harness disabled={false} />);
 
-    const groupCheckbox = screen.getByLabelText('conversion-intent') as HTMLInputElement;
-    expect(groupCheckbox.checked).toBe(false);
+    const groupCheckbox = screen.getByLabelText('conversion-intent');
+    expect(groupCheckbox).not.toBeChecked();
 
     fireEvent.click(groupCheckbox);
-    expect(groupCheckbox.checked).toBe(true);
+    expect(groupCheckbox).toBeChecked();
 
     fireEvent.click(groupCheckbox);
-    expect(groupCheckbox.checked).toBe(false);
+    expect(groupCheckbox).not.toBeChecked();
   });
 
   it('renders the read-only catalog with each event description', () => {
