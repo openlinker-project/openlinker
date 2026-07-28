@@ -14,6 +14,7 @@ import type {
 } from '@openlinker/core/inventory';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import { MasterProductNotFoundError } from '@openlinker/core/products';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import type {
   IPrestashopInventoryMapper,
@@ -134,65 +135,76 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
       `Listing inventory for product: ${productId} (connection: ${this.connection.id})`
     );
 
-    // Resolve internal product ID → PrestaShop product ID.
-    const externalIds = await this.identifierMapping.getExternalIds(
-      CORE_ENTITY_TYPE.Product,
-      productId
-    );
-    const prestashopProductId = externalIds.find(
-      (e: { connectionId: string }) => e.connectionId === this.connection.id
-    );
-
-    if (!prestashopProductId) {
-      throw new PrestashopResourceNotFoundException(
-        `Product not found: ${productId} (no external ID mapping for connection ${this.connection.id})`,
+    try {
+      // Resolve internal product ID → PrestaShop product ID.
+      const externalIds = await this.identifierMapping.getExternalIds(
         CORE_ENTITY_TYPE.Product,
-        productId,
-        this.connection.id
+        productId
       );
-    }
-
-    const rawExternalId = prestashopProductId.externalId;
-    const psProductId = rawExternalId.startsWith('product:')
-      ? rawExternalId.slice('product:'.length)
-      : rawExternalId;
-
-    // All stock rows for the product: the id_product_attribute=0 aggregate plus
-    // one row per combination.
-    const stockRecords = await this.httpClient.listResources<PrestashopStockAvailable>(
-      'stock_availables',
-      { custom: { id_product: psProductId } }
-    );
-
-    if (stockRecords.length === 0) {
-      throw new PrestashopResourceNotFoundException(
-        `Inventory not found for product: ${productId}`,
-        CORE_ENTITY_TYPE.Inventory,
-        productId,
-        this.connection.id
+      const prestashopProductId = externalIds.find(
+        (e: { connectionId: string }) => e.connectionId === this.connection.id
       );
-    }
 
-    const combinationRows = stockRecords.filter(
-      (record) => Number(record.id_product_attribute) !== 0
-    );
-
-    // Multi-variant: one variant-keyed Inventory per combination. The
-    // id_product_attribute=0 aggregate is ignored — the per-combination rows
-    // carry the real per-variant stock.
-    if (combinationRows.length > 0) {
-      const inventories: Inventory[] = [];
-      for (const record of combinationRows) {
-        inventories.push(
-          await this.toVariantInventory(record, productId, String(record.id_product_attribute))
+      if (!prestashopProductId) {
+        throw new PrestashopResourceNotFoundException(
+          `Product not found: ${productId} (no external ID mapping for connection ${this.connection.id})`,
+          CORE_ENTITY_TYPE.Product,
+          productId,
+          this.connection.id
         );
       }
-      return inventories;
-    }
 
-    // Simple product: the single aggregate row maps to the deterministic
-    // synthetic variant (mirrors the product adapter's `product:<id>` scheme).
-    return [await this.toVariantInventory(stockRecords[0], productId, `product:${psProductId}`)];
+      const rawExternalId = prestashopProductId.externalId;
+      const psProductId = rawExternalId.startsWith('product:')
+        ? rawExternalId.slice('product:'.length)
+        : rawExternalId;
+
+      // All stock rows for the product: the id_product_attribute=0 aggregate plus
+      // one row per combination.
+      const stockRecords = await this.httpClient.listResources<PrestashopStockAvailable>(
+        'stock_availables',
+        { custom: { id_product: psProductId } }
+      );
+
+      if (stockRecords.length === 0) {
+        throw new PrestashopResourceNotFoundException(
+          `Inventory not found for product: ${productId}`,
+          CORE_ENTITY_TYPE.Inventory,
+          productId,
+          this.connection.id
+        );
+      }
+
+      const combinationRows = stockRecords.filter(
+        (record) => Number(record.id_product_attribute) !== 0
+      );
+
+      // Multi-variant: one variant-keyed Inventory per combination. The
+      // id_product_attribute=0 aggregate is ignored — the per-combination rows
+      // carry the real per-variant stock.
+      if (combinationRows.length > 0) {
+        const inventories: Inventory[] = [];
+        for (const record of combinationRows) {
+          inventories.push(
+            await this.toVariantInventory(record, productId, String(record.id_product_attribute))
+          );
+        }
+        return inventories;
+      }
+
+      // Simple product: the single aggregate row maps to the deterministic
+      // synthetic variant (mirrors the product adapter's `product:<id>` scheme).
+      return [await this.toVariantInventory(stockRecords[0], productId, `product:${psProductId}`)];
+    } catch (error) {
+      // Translate the platform not-found (missing mapping OR zero stock rows,
+      // i.e. deleted at the master) into the neutral core error so core
+      // services can distinguish deletion from a transient failure (#1688,
+      // mirrors the product-master adapter's #1599 translation).
+      if (error instanceof PrestashopResourceNotFoundException) {
+        throw new MasterProductNotFoundError(productId, this.connection.id, error);
+      }
+      throw error;
+    }
   }
 
   /**

@@ -24,6 +24,7 @@ import type {
 } from '@openlinker/core/inventory';
 import { InventoryItemEntity as InventoryItem } from '@openlinker/core/inventory';
 import type { IProductsService, ProductVariant } from '@openlinker/core/products';
+import { MasterProductNotFoundError } from '@openlinker/core/products';
 import type { EventPublisherPort } from '@openlinker/core/events';
 
 describe('MasterInventorySyncService', () => {
@@ -132,6 +133,7 @@ describe('MasterInventorySyncService', () => {
         itemsWritten: 1,
         availableQuantity: 9,
         reservedQuantity: 3,
+        masterDeleted: false,
       });
     });
 
@@ -173,6 +175,7 @@ describe('MasterInventorySyncService', () => {
         itemsWritten: 2,
         availableQuantity: 14,
         reservedQuantity: 1,
+        masterDeleted: false,
       });
       // Adapter supplies the per-combination variantIds — no products-service fallback.
       expect(productsService.getVariantsByProductId).not.toHaveBeenCalled();
@@ -316,6 +319,73 @@ describe('MasterInventorySyncService', () => {
 
       expect(inventoryService.setInventory).not.toHaveBeenCalled();
       expect(inventoryService.pruneStaleVariants).not.toHaveBeenCalled();
+    });
+  });
+
+  // Master deletion (#1688): when the InventoryMasterPort adapter's
+  // `listInventory` throws the neutral MasterProductNotFoundError (adapters
+  // translate their own platform 404 at the port boundary), the sync marks
+  // every inventory row stale (empty keep-set), emits `master.product.stale`,
+  // and reports `masterDeleted: true` — instead of letting the exception
+  // propagate as a retryable transient failure. Mirrors the equivalent
+  // `MasterProductSyncService` coverage.
+  describe('master deletion (#1688)', () => {
+    it('marks all rows stale, emits master.product.stale and reports masterDeleted on a not-found', async () => {
+      inventoryAdapter.listInventory.mockRejectedValueOnce(
+        new MasterProductNotFoundError(internalProductId, connectionId)
+      );
+      (inventoryService.pruneStaleVariants as jest.Mock).mockResolvedValueOnce({
+        markedCount: 2,
+        variantIds: ['ol_variant_1', 'ol_variant_2'],
+      });
+
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      // Empty keep-set ⇒ mark every known row for the product stale.
+      expect(inventoryService.pruneStaleVariants).toHaveBeenCalledWith(internalProductId, []);
+      expect(inventoryService.setInventory).not.toHaveBeenCalled();
+      expect(eventPublisher.publish).toHaveBeenCalledWith(
+        'events.master.deletion',
+        expect.objectContaining({
+          eventType: 'master.product.stale',
+          payloadJson: JSON.stringify({
+            connectionId,
+            internalProductId,
+            variantIds: ['ol_variant_1', 'ol_variant_2'],
+          }),
+        })
+      );
+      expect(result).toEqual({
+        internalProductId,
+        itemsWritten: 0,
+        availableQuantity: 0,
+        reservedQuantity: 0,
+        masterDeleted: true,
+      });
+    });
+
+    it('does not publish when the deletion prune flags no variant rows', async () => {
+      inventoryAdapter.listInventory.mockRejectedValueOnce(
+        new MasterProductNotFoundError(internalProductId, connectionId)
+      );
+      (inventoryService.pruneStaleVariants as jest.Mock).mockResolvedValueOnce({
+        markedCount: 0,
+        variantIds: [],
+      });
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(eventPublisher.publish).not.toHaveBeenCalled();
+    });
+
+    it('rethrows a transient (non-not-found) adapter error unchanged', async () => {
+      const boom = new Error('ECONNRESET');
+      inventoryAdapter.listInventory.mockRejectedValueOnce(boom);
+
+      await expect(service.syncFromMasterByExternalId(connectionId, externalId)).rejects.toBe(boom);
+
+      expect(inventoryService.pruneStaleVariants).not.toHaveBeenCalled();
+      expect(eventPublisher.publish).not.toHaveBeenCalled();
     });
   });
 

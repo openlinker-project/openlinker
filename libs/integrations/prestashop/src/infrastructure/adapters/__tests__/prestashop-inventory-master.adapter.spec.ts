@@ -15,6 +15,7 @@ import {
   PrestashopResourceNotFoundException,
   PrestashopNotSupportedException,
 } from '@openlinker/integrations-prestashop';
+import { MasterProductNotFoundError } from '@openlinker/core/products';
 import type { PrestashopStockAvailable } from '../../mappers/prestashop.mapper.interface';
 import type { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
@@ -388,16 +389,16 @@ describe('PrestashopInventoryMasterAdapter', () => {
       );
     });
 
-    it('throws PrestashopResourceNotFoundException when the product has no external mapping', async () => {
+    it('throws MasterProductNotFoundError when the product has no external mapping (#1688)', async () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([]);
 
       await expect(adapter.listInventory('internal-product-x')).rejects.toThrow(
-        PrestashopResourceNotFoundException
+        MasterProductNotFoundError
       );
     });
 
-    it('throws PrestashopResourceNotFoundException when no stock rows exist', async () => {
+    it('throws MasterProductNotFoundError when no stock rows exist (#1688)', async () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
         { connectionId: connection.id, externalId: '42', entityType: 'Product' },
@@ -406,7 +407,7 @@ describe('PrestashopInventoryMasterAdapter', () => {
       mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
 
       await expect(adapter.listInventory('internal-product-123')).rejects.toThrow(
-        PrestashopResourceNotFoundException
+        MasterProductNotFoundError
       );
     });
   });

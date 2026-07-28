@@ -12,6 +12,8 @@
 import { WooCommerceInventoryMasterAdapter } from '../woocommerce-inventory-master.adapter';
 import { WooCommerceResourceNotFoundException } from '../../../../domain/exceptions/woocommerce-resource-not-found.exception';
 import { WooCommerceNotSupportedException } from '../../../../domain/exceptions/woocommerce-not-supported.exception';
+import { WooCommerceHttpResponseException } from '../../../http/woocommerce-http-response.exception';
+import { MasterProductNotFoundError } from '@openlinker/core/products';
 import type { IWooCommerceHttpClient } from '../../../http/woocommerce-http-client.interface';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
@@ -177,9 +179,18 @@ describe('WooCommerceInventoryMasterAdapter', () => {
       expect(row.quantity).toBe(5);
     });
 
-    it('should throw WooCommerceResourceNotFoundException when product has no mapping', async () => {
+    it('should throw MasterProductNotFoundError when product has no mapping (#1688)', async () => {
       await expect(adapter.listInventory('ol-unmapped')).rejects.toBeInstanceOf(
-        WooCommerceResourceNotFoundException,
+        MasterProductNotFoundError,
+      );
+    });
+
+    it('should translate a WooCommerceHttpResponseException(404) on the product GET to MasterProductNotFoundError (#1688)', async () => {
+      seedProductMapping(identifierMapping, 'ol-product-deleted', 404);
+      httpClient.get.mockRejectedValue(new WooCommerceHttpResponseException(404, 'Not found'));
+
+      await expect(adapter.listInventory('ol-product-deleted')).rejects.toBeInstanceOf(
+        MasterProductNotFoundError,
       );
     });
   });

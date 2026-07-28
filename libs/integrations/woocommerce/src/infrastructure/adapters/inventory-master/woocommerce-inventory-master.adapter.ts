@@ -20,6 +20,7 @@ import type {
 } from '@openlinker/core/inventory';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import { MasterProductNotFoundError } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
@@ -63,13 +64,38 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
   async listInventory(productId: string): Promise<Inventory[]> {
     this.logger.debug(`Listing inventory for product: ${productId} (connection: ${this.connection.id})`);
 
-    const wcId = await this.resolveWcProductId(productId);
-    const product = await this.httpClient.get<WooCommerceProduct>(`/wp-json/wc/v3/products/${wcId}`);
+    try {
+      const wcId = await this.resolveWcProductId(productId);
 
-    if (product.type === 'variable') {
-      return this.listVariableInventory(productId, wcId, product);
+      let product: WooCommerceProduct;
+      try {
+        product = await this.httpClient.get<WooCommerceProduct>(`/wp-json/wc/v3/products/${wcId}`);
+      } catch (err) {
+        if (err instanceof WooCommerceHttpResponseException && err.statusCode === 404) {
+          throw new WooCommerceResourceNotFoundException(
+            `WooCommerce product ${wcId} not found (deleted?)`,
+            'Product',
+            productId,
+            this.connection.id,
+          );
+        }
+        throw err;
+      }
+
+      if (product.type === 'variable') {
+        return this.listVariableInventory(productId, wcId, product);
+      }
+      return this.listSimpleInventory(productId, wcId, product);
+    } catch (error) {
+      // Translate the platform not-found (missing mapping OR a 404, i.e.
+      // deleted at the master) into the neutral core error so core services
+      // can distinguish deletion from a transient failure (#1688, mirrors the
+      // product-master adapter's #1599 translation).
+      if (error instanceof WooCommerceResourceNotFoundException) {
+        throw new MasterProductNotFoundError(productId, this.connection.id, error);
+      }
+      throw error;
     }
-    return this.listSimpleInventory(productId, wcId, product);
   }
 
   async getInventory(productId: string, _locationId?: string): Promise<Inventory> {

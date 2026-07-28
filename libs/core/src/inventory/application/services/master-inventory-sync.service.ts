@@ -16,7 +16,9 @@ import {
   PRODUCTS_SERVICE_TOKEN,
   MASTER_DELETION_EVENT_STREAM,
   MASTER_DELETION_EVENT_SCHEMA_VERSION,
+  MASTER_PRODUCT_STALE_EVENT,
   MASTER_VARIANT_STALE_EVENT,
+  MasterProductNotFoundError,
 } from '@openlinker/core/products';
 import { EventPublisherPort, EVENT_PUBLISHER_TOKEN } from '@openlinker/core/events';
 import { INVENTORY_SERVICE_TOKEN } from '../../inventory.tokens';
@@ -67,8 +69,20 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
 
     // One Inventory per variant — per-combination rows for multi-variant
     // products, the synthetic variant for simple products (#823). The sync
-    // writes one variant-keyed canonical row per entry.
-    const inventories = await inventoryAdapter.listInventory(internalProductId);
+    // writes one variant-keyed canonical row per entry. A master-side deletion
+    // surfaces as the neutral MasterProductNotFoundError (adapters translate
+    // their platform not-found at the listInventory port boundary, #1688) —
+    // distinct from a transient failure, which rethrows unchanged so the job
+    // stays retryable.
+    let inventories: InventoryPortInterface[];
+    try {
+      inventories = await inventoryAdapter.listInventory(internalProductId);
+    } catch (error) {
+      if (error instanceof MasterProductNotFoundError) {
+        return this.handleMasterDeletion(connectionId, externalId, internalProductId);
+      }
+      throw error;
+    }
 
     let availableQuantity = 0;
     let reservedQuantity = 0;
@@ -82,8 +96,12 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     }
 
     // Soft-mark any previously-known variant absent from this master response as
-    // stale (#1478). Runs unconditionally — an empty response marks every row for
-    // the product stale (product fully removed at the master).
+    // stale. A genuine full deletion is caught above via MasterProductNotFoundError
+    // before ever reaching here (#1688); this prune instead catches a PARTIAL
+    // removal (some variants gone, the product itself still resolves) or an
+    // adapter returning an empty list without throwing (e.g. a variable product
+    // with zero variations) — runs unconditionally, so an empty response still
+    // marks every currently-known row stale (#1478).
     const pruneResult = await this.inventoryService.pruneStaleVariants(
       internalProductId,
       currentVariantIds
@@ -93,18 +111,10 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     // Disjoint from the product-sync emission — a full deletion produces one from
     // each sync path; consumers dedupe by (productId, variantIds) as needed.
     if (pruneResult.variantIds.length > 0) {
-      const now = new Date().toISOString();
-      await this.eventPublisher.publish(MASTER_DELETION_EVENT_STREAM, {
-        eventId: randomUUID(),
-        eventType: MASTER_VARIANT_STALE_EVENT,
-        payloadJson: JSON.stringify({
-          connectionId,
-          internalProductId,
-          variantIds: pruneResult.variantIds,
-        }),
-        metadataJson: JSON.stringify({ schemaVersion: MASTER_DELETION_EVENT_SCHEMA_VERSION }),
-        occurredAt: now,
-        publishedAt: now,
+      await this.publishDeletionEvent(MASTER_VARIANT_STALE_EVENT, {
+        connectionId,
+        internalProductId,
+        variantIds: pruneResult.variantIds,
       });
     }
 
@@ -117,7 +127,55 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       itemsWritten: inventories.length,
       availableQuantity,
       reservedQuantity,
+      masterDeleted: false,
     };
+  }
+
+  /**
+   * Product deleted at the master (its inventory no longer resolves there):
+   * mark every one of its inventory rows stale (empty keep-set), emit
+   * `master.product.stale`, and signal the deletion so the worker handler does
+   * NOT retry a permanent condition (#1688, mirrors
+   * `MasterProductSyncService.handleMasterDeletion`, #1599).
+   */
+  private async handleMasterDeletion(
+    connectionId: string,
+    externalId: string,
+    internalProductId: string
+  ): Promise<MasterInventorySyncResult> {
+    const pruneResult = await this.inventoryService.pruneStaleVariants(internalProductId, []);
+    if (pruneResult.variantIds.length > 0) {
+      await this.publishDeletionEvent(MASTER_PRODUCT_STALE_EVENT, {
+        connectionId,
+        internalProductId,
+        variantIds: pruneResult.variantIds,
+      });
+    }
+    this.logger.warn(
+      `Master inventory deleted at source — marked rows stale (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, markedStale=${pruneResult.markedCount})`
+    );
+    return {
+      internalProductId,
+      itemsWritten: 0,
+      availableQuantity: 0,
+      reservedQuantity: 0,
+      masterDeleted: true,
+    };
+  }
+
+  private async publishDeletionEvent(
+    eventType: typeof MASTER_VARIANT_STALE_EVENT | typeof MASTER_PRODUCT_STALE_EVENT,
+    payload: { connectionId: string; internalProductId: string; variantIds: string[] }
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    await this.eventPublisher.publish(MASTER_DELETION_EVENT_STREAM, {
+      eventId: randomUUID(),
+      eventType,
+      payloadJson: JSON.stringify(payload),
+      metadataJson: JSON.stringify({ schemaVersion: MASTER_DELETION_EVENT_SCHEMA_VERSION }),
+      occurredAt: now,
+      publishedAt: now,
+    });
   }
 
   private async toDomainInventoryItem(
