@@ -1,6 +1,6 @@
 # Product Spec — #1902 Polish e-receipt (e-paragon) support via eparagony.pl
 
-**Status:** phase A in progress
+**Status:** phase A complete (Gate A: maintainer confirmed build intent 2026-07-28); phase B complete; phase C in progress — pending Gate C
 **Parent issue:** [#1902](https://github.com/openlinker-project/openlinker/issues/1902)
 **Started:** 2026-07-28
 **Last updated:** 2026-07-28
@@ -97,11 +97,79 @@ eparagony.pl itself is a **channel**, not a user. If a distribution argument car
 
 ## 3. Evidence & user research
 
-> Phase B — not started.
+> **Phase B — vendor-surface research complete 2026-07-28. User-pull research NOT done (see gap below).**
+
+### Decision context
+
+The maintainer confirmed at Gate A that we build. Recorded honestly: this is a **maintainer decision on strategic grounds, not an evidence-led conclusion**. The evidence assembled in Phase A runs the other way — no forcing function, no mandate, and a persona that narrowed to §4-category sellers once the COD route was retracted. Phase B was therefore re-scoped from "should we?" to **"what exactly must we build, and on what commercial terms?"**
+
+### The parity spec — what eparagony.pl's BaseLinker connector actually does
+
+Their Base connector is the de-facto definition of "parity", and it is **not** push-only:
+
+- Orders flow automatically from Base → eparagony.pl, which generates the fiscal e-receipt.
+- **Status flows back** — *"pełną kontrolę nad procesem wystawiania i wydawania eparagonów dzięki widocznym statusom"*.
+- **Each receipt gets a unique link, surfaced in the Base panel.**
+
+So the minimum credible shape is order push **+ receipt status and link read-back onto the order**. A push-only MVP would be visibly thinner than what their BaseLinker users already have.
+
+Seller-side prerequisites are unchanged by any integration choice: vendor-proprietary printer-control software on a Windows/Linux/macOS machine or server, an online fiscal printer (Posnet / Novitus / Elzab) with constant connectivity, and a `serwisant` visit to configure the device. Vendor states ~90 minutes setup for a non-technical user.
+
+### Commercially significant finding — integrator tier vs custom-API tier
+
+eparagony.pl prices connection **by integration class**, charged to the seller on top of a volume-tiered base licence (49–349 zł/mo):
+
+| Class | Add-on (by volume tier) | Examples |
+|---|---|---|
+| **Integrators** | **+19 / +39 / +69 zł** | BaseLinker/Base, SellAsist, Apilo, ZynqPro |
+| eCommerce platforms | +39 / +59–69 / +89–119 zł | WooCommerce, Shopify, PrestaShop |
+| ERP / accounting | +49–59 / +79–119 / +129–159 zł | Comarch, enova365, Subiekt |
+| **Custom API** | **+79 / +129 / +189 zł** | anyone self-integrating |
+
+**OpenLinker is categorically an integrator** — same shelf as BaseLinker, Apilo, SellAsist. If OL lands in the *Integrators* class our users pay **19–69 zł/mo**; if OL is treated as a *Custom API* customer they pay **79–189 zł/mo**. That is a **~60–120 zł/month difference per seller, permanently**, on a decision that costs us nothing but a conversation.
+
+The vendor also states they *"in selected cases create integrators for specific systems"*, and runs a partner programme (a 10% discount is mentioned; revenue-share terms undisclosed).
+
+### Vendor surface — corrections to the earlier deep-research pass
+
+Read from the live integrations page 2026-07-28:
+
+- **~60 integrations, not "20+"** as the vendor's homepage claims.
+- **IdoSell and AtomStore ARE listed.** The deep-research pass *refuted* that claim during adversarial verification — a **false negative**. Do not rely on that refutation.
+- **`Virtual Kasy` remains "wkrótce".** This matters: a shipped `kasa wirtualna` lane was one of the conditions that would have made device-free issuance possible. It has not fired.
+- **LinkerCloud** (another integrator) is also "wkrótce" — the integrator shelf is actively being filled.
+- API documentation and sandbox remain **gated behind registration**; sandbox by email request to `pomoc@eparagony.pl`. No public OpenAPI/Swagger, no published plugin source found.
+
+### Evidence gap — explicitly not closed
+
+**No user-pull evidence exists.** Zero inbound OpenLinker requests; no interviews with §4-category sellers; the re-keying cost remains unquantified. The build decision does not rest on user demand, and the spec should not pretend otherwise. If v1 is not adopted, this gap is the most likely explanation and the first thing to revisit.
+
+---
 
 ## 4. Solution exploration
 
-> Phase C — not started.
+> **Phase C — draft, pending Gate C**
+
+The framing constraint holds for every shape: OL never issues a receipt. Every option below is orchestration + surfacing.
+
+| # | Shape | What the operator gets | Who builds | Seller's monthly add-on | Effort (us) |
+|---|---|---|---|---|---|
+| **A** | **Get listed as an Integrator; OL builds against their API** | Orders auto-push; receipt status + link on the OL order | OL | **19–69 zł** (integrator tier) | ~S–M |
+| **B** | Self-serve Custom API integration | Same as A | OL | 79–189 zł | ~S–M |
+| **C** | Ask eparagony.pl to build the OL connector | Same, plus OL appears in their catalogue | **Them** | integrator tier | ~0, but no control |
+| **D** | Push-only MVP (no status read-back) | Orders reach the hub; no receipt visibility in OL | OL | either tier | ~S |
+| **E** | Vendor-neutral `ReceiptHub` seam, eparagony as first adapter | Same as A, plus a second PL hub could implement later | OL | either tier | ~M–L |
+
+**Trade-offs:**
+
+- **A vs B** differ only in a commercial conversation, but that conversation is worth **60–120 zł/month to every one of our users** and puts OL on their integrations page — a distribution surface. A dominates B; B is the fallback if they decline.
+- **C** is cheapest for us and lands the catalogue listing, but hands them control of quality, roadmap and breakage. Their own Base doc frames such connectors as *"integracja zewnętrzna"*, so support ownership would be ambiguous.
+- **D** ships fastest but is *visibly* thinner than the BaseLinker connector our target sellers may already know. If the point is parity, D fails the point.
+- **E** is the architecturally tidy option, but there is no second PL hub committed and no evidence anyone wants one. Building the abstraction now is speculative generality; the adapter boundary can be extracted later if a second hub appears.
+
+**Recommendation: A, with C as an explicit ask in the same conversation.** Open the vendor conversation seeking integrator-class listing; offer that we build it (A) but ask whether they'd prefer to (C). Either answer is a good outcome; the failure mode is silently defaulting to B and charging our users 60–120 zł/month more than necessary. Scope to order-push **plus** status/link read-back — matching the Base connector, not a thinner cut.
+
+**Deliberately not chosen: E.** Recorded so a future maintainer knows the vendor-neutral seam was considered and deferred, not overlooked.
 
 ## 5. Product specification
 
@@ -124,6 +192,10 @@ eparagony.pl itself is a **channel**, not a user. If a distribution argument car
 | Date | Decision | Rationale |
 |---|---|---|
 | 2026-07-28 | Spec opened from #1902 | Prior deep-research pass (2026-07-28, 25 claims adversarially verified) supplied the legal and vendor baseline; recorded in #1902 as inputs, not conclusions. |
+| 2026-07-28 | **Gate A: build** | Maintainer decision on strategic grounds. Recorded plainly: the assembled evidence runs the other way (no mandate, no user-pull, persona narrowed to §4 categories). Phase B re-scoped from "should we?" to "what exactly, on what terms?". |
+| 2026-07-28 | Target the **Integrator** pricing class, not Custom API | OL is categorically an integrator (same shelf as BaseLinker/Apilo/SellAsist). Integrator add-on is 19–69 zł/mo vs 79–189 zł for Custom API — a permanent 60–120 zł/mo saving *for our users*, contingent only on a vendor conversation. |
+| 2026-07-28 | Scope includes **status/link read-back**, not push-only | Their BaseLinker connector surfaces receipt status and a per-receipt link in the Base panel. A push-only MVP would be visibly thinner than what the target seller may already have. |
+| 2026-07-28 | Vendor-neutral `ReceiptHub` seam **deferred, not overlooked** | No second PL hub committed, no demand signal for one. Extract the boundary if/when a second appears. |
 | 2026-07-28 | **COD is not a route into the persona — retracted** | Courier-remitted `pobranie` preserves the mail-order exemption (interpretacja 0113-KDIPT1-3.4012.42.2025.2.ALN, KIS, 24.03.2025). The Phase A draft, and the Gate A briefing, wrongly assumed the opposite and called COD the likely-larger population. Addressable base is therefore §4 categories only — materially smaller. |
 | 2026-07-28 | Annex position is **poz. 41**, not poz. 36 | Read from the official Dz.U. 2024 poz. 1902 PDF. Secondary sources cite 36 / 15 / 41 inconsistently; the primary text settles it. |
 | 2026-07-28 | Receipts modelled as **distinct from** invoicing | Different issuer (fiscal device vs. software), device dependency, and legal basis. Extending `InvoicingPort`/`DocumentType` would be a category error. Carried into every later phase as a fixed constraint. |
