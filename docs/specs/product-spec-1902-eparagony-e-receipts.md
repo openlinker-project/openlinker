@@ -61,12 +61,21 @@ This is **not** an `InvoicingPort` `DocumentType`. An invoice and a fiscal recei
 
 ### What makes someone a member of this persona
 
-Membership is **legally determined**, which is unusually crisp for a persona definition. A seller is in scope iff they cannot use the mail-order exemption (annex poz. 36 of Dz.U. 2024 poz. 1902), which happens when either:
+Membership is **legally determined**, which is unusually crisp for a persona definition. A seller is in scope iff they cannot use the mail-order exemption — **poz. 41** of the annex to Dz.U. 2024 poz. 1902 (verified against the official Dziennik Ustaw text; secondary sources variously cite poz. 36 / poz. 15 / poz. 41 — **poz. 41 is correct**).
 
-1. **They trade in a §4-excluded category** — consumer electronics (computers/laptops/tablets, RTV/telecom), photographic equipment, precious-metal goods, perfumes and eau de toilette, tobacco, alcohol, motor-vehicle parts and accessories, recorded/unrecorded media, motor fuels, LPG; **or**
-2. **They take cash or COD** — any cash element breaks the exemption's "payment in full via bank/post" condition. Given COD's persistence in PL e-commerce, this may be the larger of the two routes.
+> *"Dostawa towarów w systemie wysyłkowym (pocztą lub przesyłkami kurierskimi), jeżeli dostawca towaru otrzyma w całości zapłatę za wykonaną czynność za pośrednictwem poczty, banku lub spółdzielczej kasy oszczędnościowo-kredytowej (odpowiednio na rachunek bankowy podatnika …), a z ewidencji i dowodów dokumentujących zapłatę jednoznacznie wynika, jakiej konkretnie czynności dotyczyła i na czyją rzecz została dokonana (dane nabywcy, w tym jego adres)"*
 
-Everyone else — the majority of pure PL e-commerce — is exempt and **has no receipt to issue at all**. They are not a degraded-experience user of this feature; they are a non-user.
+**There is effectively one route in, not two — corrected 2026-07-28.**
+
+**Route A — §4-excluded category (the real route).** §4 ust. 1 disapplies the exemption for enumerated goods regardless of payment method. Verified from the official text: LPG and motor fuels; engine parts, engines, vehicle bodies, trailers/semi-trailers, containers, vehicle parts and accessories (excluding motorcycles); **desktop and portable computers incl. laptops and tablets, peripherals, games consoles and their parts**; **electronics incl. TVs, radios, speakers, telephones incl. smartphones, smartwatches, antennas, displays, monitors, recording/playback devices, navigation, storage devices, alarms**; optical goods; electric motors, generators, transformers; **photographic equipment incl. cameras, lenses, projectors**; **precious-metal goods**; **recorded and unrecorded digital and analogue data media**; tobacco. (Perfumes/eau de toilette and alcohol also appear in §4 per secondary sources; not re-verified line-by-line from the PDF.)
+
+**Route B — cash/COD: RETRACTED as a route.** The Phase A draft asserted that COD breaks the "payment in full via bank" condition, and I told the maintainer at Gate A that COD was *probably the larger population*. **That was wrong.** Courier-collected `pobranie` remitted to the seller's bank account **preserves** the exemption. Confirmed by interpretacja indywidualna **0113-KDIPT1-3.4012.42.2025.2.ALN** (Dyrektor KIS, 24 March 2025), which addresses precisely this fact pattern and holds the exemption applies through 31.12.2027, provided the funds reach the seller non-cash and the records identify transaction and buyer (incl. address). Two independent secondary sources report the same ruling.
+
+Residual cash exposure is narrow: a seller who takes **genuine cash in hand** (personal collection / odbiór osobisty za gotówkę), or whose payment records cannot identify the transaction and buyer. Both are edge cases for an online-first seller, not a population.
+
+**Consequence for this spec:** the addressable base is **materially smaller than the Phase A draft assumed** — it is essentially "PL online sellers trading in §4 categories", not "§4 sellers plus everyone who offers COD". This shrinks the persona and weakens the case for building. Carried into Phase C as a primary input.
+
+Everyone else — the majority of pure PL e-commerce, now explicitly **including ordinary COD sellers** — is exempt and **has no receipt to issue at all**. They are not a degraded-experience user of this feature; they are a non-user.
 
 ### Secondary consideration — not a persona
 
@@ -74,9 +83,15 @@ eparagony.pl itself is a **channel**, not a user. If a distribution argument car
 
 ### Persona ambiguities to resolve at Gate A
 
-1. **Is the §4 route or the COD route the primary one?** They imply different sellers and different marketing. Untested.
-2. **Does this persona overlap OL's actual current users at all?** OL's existing integrations skew Allegro + PrestaShop/WooCommerce + InPost/DPD. Whether any known deployment sits in a §4 category is unknown — and if the answer is "none", that is a strong DEFER signal.
+1. ~~**Is the §4 route or the COD route the primary one?**~~ **RESOLVED 2026-07-28** — there is only the §4 route; see the retraction above. The persona is narrower than drafted.
+2. **Does this persona overlap OL's actual current users at all?** OL's existing integrations skew Allegro + PrestaShop/WooCommerce + InPost/DPD. Whether any known deployment sits in a §4 category is unknown — and if the answer is "none", that is a strong DEFER signal. **Now the single most decision-relevant open question**, since resolving #1 removed the broader population that would have made this moot.
 3. **Would this persona even be an OL user?** A seller with a fiscal printer, a `serwisant` relationship, and (likely) Subiekt/Comarch already has an ERP that eparagony.pl integrates directly. OL may be redundant in their stack for this purpose.
+
+### Sources for this section
+
+- Official regulation text: [Dz.U. 2024 poz. 1902 (PDF)](https://dziennikustaw.gov.pl/D2024000190201.pdf) — poz. 41 of the annex and §4 ust. 1 read directly from the Dziennik Ustaw text, 2026-07-28.
+- Interpretacja indywidualna 0113-KDIPT1-3.4012.42.2025.2.ALN, Dyrektor KIS, 24.03.2025 — COD-via-courier preserves the exemption. Reported by [inforlex](https://www.inforlex.pl/dok/tresc,FOB0000000000006897971,Zwolnienie-z-obowiazku-ewidencjonowania-sprzedazy-za-pomoca-kas-rejestrujacych-przy-sprzedazy-wysylkowej-towarow-za-pobraniem-Interpretacja-indywidualna-z-dnia-24-marca-2025-r-Dyrektor-Krajowej.html) and [jpk.info.pl](https://jpk.info.pl/aktualnosci/2025/sprzedaz-wysylkowa-bez-kasy-fiskalnej/).
+- **Caveat:** an interpretacja indywidualna binds only the applicant. It is strong evidence of the tax authority's settled reading, not universally binding law. Sufficient for a product decision; would need a seller's own confirmation before any compliance claim is made to them.
 
 ---
 
@@ -109,4 +124,6 @@ eparagony.pl itself is a **channel**, not a user. If a distribution argument car
 | Date | Decision | Rationale |
 |---|---|---|
 | 2026-07-28 | Spec opened from #1902 | Prior deep-research pass (2026-07-28, 25 claims adversarially verified) supplied the legal and vendor baseline; recorded in #1902 as inputs, not conclusions. |
+| 2026-07-28 | **COD is not a route into the persona — retracted** | Courier-remitted `pobranie` preserves the mail-order exemption (interpretacja 0113-KDIPT1-3.4012.42.2025.2.ALN, KIS, 24.03.2025). The Phase A draft, and the Gate A briefing, wrongly assumed the opposite and called COD the likely-larger population. Addressable base is therefore §4 categories only — materially smaller. |
+| 2026-07-28 | Annex position is **poz. 41**, not poz. 36 | Read from the official Dz.U. 2024 poz. 1902 PDF. Secondary sources cite 36 / 15 / 41 inconsistently; the primary text settles it. |
 | 2026-07-28 | Receipts modelled as **distinct from** invoicing | Different issuer (fiscal device vs. software), device dependency, and legal basis. Extending `InvoicingPort`/`DocumentType` would be a category error. Carried into every later phase as a fixed constraint. |
