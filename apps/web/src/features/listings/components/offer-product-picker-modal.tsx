@@ -39,6 +39,13 @@
  * wizard then seeds all their variants), products picked at variant granularity
  * contribute their explicit subset.
  *
+ * Split (#1819) into this orchestrator + `offer-product-picker-row.tsx` (the
+ * per-product / per-variant list rows) + `offer-product-picker-rail.tsx` (the
+ * selection review rail) + pure derivation helpers in
+ * `../lib/offer-product-picker-selectors.ts` and
+ * `../lib/publish-destinations.ts`. This file owns all state, queries, and
+ * callbacks; the two sub-components are presentational.
+ *
  * @module apps/web/src/features/listings/components
  */
 import {
@@ -53,7 +60,6 @@ import { useNavigate } from 'react-router-dom';
 
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
-import { CheckboxCell } from '../../../shared/ui/checkbox-cell';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import {
   Dialog,
@@ -62,26 +68,26 @@ import {
   DialogTitle,
 } from '../../../shared/ui/dialog';
 import { Input } from '../../../shared/ui/input';
-import { ProductThumbnail } from '../../../shared/ui/product-thumbnail';
-import { Tooltip, TooltipContent, TooltipTrigger } from '../../../shared/ui/tooltip';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
 import { useConnectionsQuery } from '../../connections';
-import { useProductQuery, useProductsQuery } from '../../products';
+import { useProductsQuery } from '../../products';
 import type { Product, ProductVariant } from '../../products';
-import { selectPublishDestinations } from '../lib/publish-destinations';
-import { PublishDestinationRail } from './publish-destination-rail';
+import {
+  computeItemCount,
+  computeNeedEanCount,
+  computeRailGroups,
+} from '../lib/offer-product-picker-selectors';
+import { resolvePublishDestination, selectPublishDestinations } from '../lib/publish-destinations';
+import { OfferProductPickerRail } from './offer-product-picker-rail';
+import { OfferProductPickerRow } from './offer-product-picker-row';
+import {
+  OFFER_PICKER_PRODUCT_CAP,
+  type PickerStep,
+  type SelectionEntry,
+} from './offer-product-picker.types';
 
-/** Max distinct products per batch (mirrors the `/products` BULK_SELECTION_CAP,
- *  kept local per R1 to avoid a `features -> pages` import). */
-const OFFER_PICKER_PRODUCT_CAP = 100;
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
-
-/** Per-product selection: whole product, or an explicit variant subset. */
-type SelectionEntry = 'ALL' | Set<string>;
-
-/** Two-step wizard step (meaningful only <=1023px; desktop shows both regions). */
-type PickerStep = 'products' | 'review';
 
 interface OfferProductPickerModalProps {
   isOpen: boolean;
@@ -95,224 +101,6 @@ interface OfferProductPickerModalProps {
   initialProductIds?: readonly string[];
   /** Product objects for `initialProductIds`, so the rail can render names/images immediately without waiting on this picker's own paginated query to reach them. */
   initialProductMeta?: readonly Product[];
-}
-
-function variantLabel(product: Product, variant: ProductVariant): string {
-  const attrs = variant.attributes ? Object.values(variant.attributes).join(' · ') : '';
-  if (attrs) return `${product.name} - ${attrs}`;
-  if (variant.sku) return `${product.name} - ${variant.sku}`;
-  return product.name;
-}
-
-/** Short, product-name-free label for the rail review (attrs, else SKU, else id). */
-function variantShortLabel(variant: ProductVariant): string {
-  const attrs = variant.attributes ? Object.values(variant.attributes).join(' · ') : '';
-  return attrs || variant.sku || variant.id;
-}
-
-/** Whether a variant carries a barcode (EAN or GTIN). */
-function variantHasBarcode(variant: ProductVariant): boolean {
-  return (variant.ean ?? variant.gtin ?? '').trim() !== '';
-}
-
-function firstImage(images: string[] | null | undefined): string | null {
-  return images && images.length > 0 ? images[0] : null;
-}
-
-/**
- * One product row. Lazily loads its variants when expanded (passing an empty
- * id keeps `useProductQuery` disabled until then). Computes its own tri-state
- * and reports its loaded variants up so the parent can total items across
- * products and render the selection rail even after paging away.
- */
-interface PickerProductRowProps {
-  product: Product;
-  isExpanded: boolean;
-  entry: SelectionEntry | undefined;
-  capBlocked: boolean;
-  onToggleExpand: () => void;
-  onSelectAll: () => void;
-  onClear: () => void;
-  onToggleVariant: (variantId: string, loadedVariantIds: string[]) => void;
-  onVariantsLoaded: (variants: ProductVariant[]) => void;
-}
-
-function PickerProductRow({
-  product,
-  isExpanded,
-  entry,
-  capBlocked,
-  onToggleExpand,
-  onSelectAll,
-  onClear,
-  onToggleVariant,
-  onVariantsLoaded,
-}: PickerProductRowProps): ReactElement {
-  const detailQuery = useProductQuery(isExpanded ? product.id : '');
-  const loadedVariants = useMemo(
-    () => detailQuery.data?.variants ?? [],
-    [detailQuery.data],
-  );
-  const loadedVariantIds = useMemo(() => loadedVariants.map((v) => v.id), [loadedVariants]);
-
-  // Report loaded variants up for the item-count total + rail review.
-  useEffect(() => {
-    if (isExpanded && detailQuery.data) {
-      onVariantsLoaded(loadedVariants);
-    }
-  }, [isExpanded, detailQuery.data, loadedVariants, onVariantsLoaded]);
-
-  const selectedVariantIds = entry instanceof Set ? entry : null;
-  const allLoadedSelected =
-    loadedVariantIds.length > 0 &&
-    selectedVariantIds !== null &&
-    loadedVariantIds.every((id) => selectedVariantIds.has(id));
-
-  const checkboxState: 'all' | 'some' | 'none' =
-    entry === 'ALL' || allLoadedSelected
-      ? 'all'
-      : selectedVariantIds !== null && selectedVariantIds.size > 0
-        ? 'some'
-        : 'none';
-
-  const handleToggleProduct = (): void => {
-    if (checkboxState === 'all') onClear();
-    else onSelectAll();
-  };
-
-  const variantCount = product.variantCount;
-  const isSimple = typeof variantCount === 'number' && variantCount <= 1;
-  const rowClasses = [
-    'offer-product-picker__prow',
-    isExpanded ? 'offer-product-picker__prow--open' : '',
-    isSimple ? 'offer-product-picker__prow--simple' : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
-
-  return (
-    <li className={rowClasses}>
-      <div className="offer-product-picker__prow-main">
-        {/* Full 44px hit area for whole-product selection so it matches the
-            variant rows' tap target on mobile (a bare checkbox is ~16px). The
-            wrapping label toggles the nested checkbox natively. */}
-        <label className="offer-product-picker__prow-check">
-          <CheckboxCell
-            state={checkboxState}
-            onToggle={handleToggleProduct}
-            disabled={capBlocked}
-            ariaLabel={`Select ${product.name}`}
-            tooltip={
-              capBlocked
-                ? `Maximum ${OFFER_PICKER_PRODUCT_CAP} products per batch reached`
-                : undefined
-            }
-          />
-        </label>
-        <button
-          type="button"
-          className="offer-product-picker__prow-toggle"
-          onClick={onToggleExpand}
-          aria-expanded={isExpanded}
-          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${product.name}`}
-        >
-          <ProductThumbnail name={product.name} src={firstImage(product.images)} size="md" />
-          <span className="offer-product-picker__pname">
-            <b>{product.name}</b>
-            <small className="mono-text">{product.sku ?? '—'}</small>
-          </span>
-          {typeof variantCount === 'number' ? (
-            <span
-              className={`offer-product-picker__vcount${
-                isSimple ? ' offer-product-picker__vcount--simple' : ''
-              }`}
-            >
-              {variantCount} {variantCount === 1 ? 'variant' : 'variants'}
-            </span>
-          ) : null}
-          <span className="offer-product-picker__chev" aria-hidden="true">
-            ▸
-          </span>
-        </button>
-      </div>
-
-      {isExpanded ? (
-        <ul className="offer-product-picker__vrows">
-          {detailQuery.isLoading ? (
-            <li className="muted-text">Loading variants…</li>
-          ) : detailQuery.error ? (
-            <li>
-              <Alert
-                tone="error"
-                title="Unable to load variants"
-                action={
-                  <Button
-                    tone="secondary"
-                    type="button"
-                    onClick={() => void detailQuery.refetch()}
-                  >
-                    Retry
-                  </Button>
-                }
-              >
-                {detailQuery.error.message}
-              </Alert>
-            </li>
-          ) : loadedVariants.length === 0 ? (
-            <li className="muted-text">No variants on this product.</li>
-          ) : (
-            loadedVariants.map((variant) => {
-              const picked = entry === 'ALL' || (selectedVariantIds?.has(variant.id) ?? false);
-              const hasBarcode = variantHasBarcode(variant);
-              return (
-                <li key={variant.id}>
-                  <label
-                    className={`offer-product-picker__vrow${picked ? ' offer-product-picker__vrow--picked' : ''}`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={picked}
-                      disabled={capBlocked}
-                      onChange={() => onToggleVariant(variant.id, loadedVariantIds)}
-                    />
-                    <ProductThumbnail
-                      name={variantShortLabel(variant)}
-                      src={null}
-                      size="sm"
-                    />
-                    <span className="offer-product-picker__vname">
-                      <b>{variantLabel(detailQuery.data ?? product, variant)}</b>
-                      <small className={`mono-text${hasBarcode ? '' : ' offer-product-picker__vname-bad'}`}>
-                        SKU {variant.sku ?? '—'} · {hasBarcode ? `EAN ${variant.ean ?? variant.gtin ?? '—'}` : 'no EAN'}
-                      </small>
-                    </span>
-                  </label>
-                </li>
-              );
-            })
-          )}
-        </ul>
-      ) : null}
-    </li>
-  );
-}
-
-/** Derived per-product row for the selection rail. */
-interface RailGroup {
-  productId: string;
-  name: string;
-  imageSrc: string | null;
-  whole: boolean;
-  totalVariants: number;
-  /**
-   * Barcode readiness for a whole-product pick, derived from loaded variant
-   * metadata; `null` for a subset pick (which shows per-variant chips instead).
-   * `loaded: false` means the product's variants have not been fetched yet, so
-   * the chip must read "not checked" rather than a confident "ready".
-   */
-  wholeEan: { loaded: boolean; needCount: number } | null;
-  /** Selected variants for a subset pick; `null` for a whole-product pick. */
-  selected: { id: string; label: string; hasBarcode: boolean }[] | null;
 }
 
 export function OfferProductPickerModal({
@@ -391,16 +179,10 @@ export function OfferProductPickerModal({
 
   // Auto-resolve when exactly one eligible destination exists; otherwise the
   // operator picks one from the grouped rail (or gets a warning when none exist).
-  const resolvedConnectionId =
-    eligibleDestinations.length === 1
-      ? eligibleDestinations[0]!.connection.id
-      : pickedConnectionId || null;
-
-  const resolvedDestination =
-    resolvedConnectionId !== null
-      ? eligibleDestinations.find((d) => d.connection.id === resolvedConnectionId) ?? null
-      : null;
-  const resolvedKind = resolvedDestination?.kind ?? null;
+  const { resolvedConnectionId, resolvedKind } = resolvePublishDestination(
+    eligibleDestinations,
+    pickedConnectionId,
+  );
 
   const productsQuery = useProductsQuery(
     { search: debouncedSearch || undefined },
@@ -516,80 +298,40 @@ export function OfferProductPickerModal({
     setSelection(new Map());
   }, []);
 
+  // Remove a single selected variant from the rail; looks up this product's
+  // loaded variant ids so `toggleVariant` can materialize an 'ALL' entry
+  // before removing, same as toggling from the product row.
+  const removeVariant = useCallback(
+    (productId: string, variantId: string) => {
+      toggleVariant(
+        productId,
+        variantId,
+        (variantMeta.get(productId) ?? []).map((v) => v.id),
+      );
+    },
+    [toggleVariant, variantMeta],
+  );
+
   // Item total across products: an explicit set counts its size; a whole
   // product counts its known variant count (loaded count, else the list
   // query's own variantCount, else 1 for a genuinely-unknown product).
-  const itemCount = useMemo(() => {
-    let sum = 0;
-    for (const [productId, entry] of selection) {
-      if (entry instanceof Set) sum += entry.size;
-      else sum += variantCounts.get(productId) ?? productMeta.get(productId)?.variantCount ?? 1;
-    }
-    return sum;
-  }, [selection, variantCounts, productMeta]);
+  const itemCount = useMemo(
+    () => computeItemCount(selection, variantCounts, productMeta),
+    [selection, variantCounts, productMeta],
+  );
 
   // Per-product rail rows, derived from the selection + accumulated metadata.
-  const railGroups = useMemo<RailGroup[]>(() => {
-    const groups: RailGroup[] = [];
-    for (const [productId, entry] of selection) {
-      const meta = productMeta.get(productId);
-      const variants = variantMeta.get(productId) ?? meta?.variants ?? [];
-      const totalVariants =
-        variantCounts.get(productId) ?? meta?.variantCount ?? (variants.length || 1);
-      if (entry === 'ALL') {
-        const loadedVariants = variantMeta.get(productId);
-        const wholeEan = loadedVariants
-          ? {
-              loaded: true,
-              needCount: loadedVariants.filter((v) => !variantHasBarcode(v)).length,
-            }
-          : { loaded: false, needCount: 0 };
-        groups.push({
-          productId,
-          name: meta?.name ?? productId,
-          imageSrc: firstImage(meta?.images),
-          whole: true,
-          totalVariants,
-          wholeEan,
-          selected: null,
-        });
-        continue;
-      }
-      const selected = [...entry].map((variantId) => {
-        const variant = variants.find((v) => v.id === variantId);
-        return {
-          id: variantId,
-          label: variant ? variantShortLabel(variant) : variantId,
-          hasBarcode: variant ? variantHasBarcode(variant) : true,
-        };
-      });
-      groups.push({
-        productId,
-        name: meta?.name ?? productId,
-        imageSrc: firstImage(meta?.images),
-        whole: false,
-        totalVariants,
-        wholeEan: null,
-        selected,
-      });
-    }
-    return groups;
-  }, [selection, productMeta, variantMeta, variantCounts]);
+  const railGroups = useMemo(
+    () => computeRailGroups(selection, productMeta, variantMeta, variantCounts),
+    [selection, productMeta, variantMeta, variantCounts],
+  );
 
   // Selected variants (across groups) whose barcode is missing, best-effort
   // from loaded metadata. Whole-product picks contribute their known variants.
-  const needEanCount = useMemo(() => {
-    let sum = 0;
-    for (const group of railGroups) {
-      if (group.selected === null) {
-        const variants = variantMeta.get(group.productId) ?? [];
-        sum += variants.filter((v) => !variantHasBarcode(v)).length;
-      } else {
-        sum += group.selected.filter((s) => !s.hasBarcode).length;
-      }
-    }
-    return sum;
-  }, [railGroups, variantMeta]);
+  const needEanCount = useMemo(
+    () => computeNeedEanCount(railGroups, variantMeta),
+    [railGroups, variantMeta],
+  );
 
   const handleContinue = useCallback(() => {
     if (selection.size === 0 || resolvedConnectionId === null) return;
@@ -729,7 +471,7 @@ export function OfferProductPickerModal({
                 ) : (
                   <ul className="offer-product-picker__prows">
                     {products.map((product) => (
-                      <PickerProductRow
+                      <OfferProductPickerRow
                         key={product.id}
                         product={product}
                         isExpanded={expanded.has(product.id)}
@@ -800,218 +542,28 @@ export function OfferProductPickerModal({
               </div>
             </section>
 
-            <aside className="offer-product-picker__rail" aria-label="Selection">
-              <div className="offer-product-picker__rail-head">
-                <button
-                  ref={railBackRef}
-                  type="button"
-                  className="offer-product-picker__rail-back"
-                  aria-label="Back to products"
-                  onClick={() => setStep('products')}
-                >
-                  ‹
-                </button>
-                <div className="offer-product-picker__rail-titlebar">
-                  <span className="offer-product-picker__rail-title">In this batch</span>
-                  <Button
-                    tone="ghost"
-                    type="button"
-                    className="button--sm"
-                    disabled={selection.size === 0}
-                    onClick={clearSelection}
-                  >
-                    Clear all
-                  </Button>
-                </div>
-              </div>
-
-              <div className="offer-product-picker__rail-counts">
-                <div>
-                  <span className="offer-product-picker__rail-n tabular">{itemCount}</span>
-                  <span className="offer-product-picker__rail-lbl">
-                    {resolvedKind === 'shop' ? 'listings' : 'offers'}
-                  </span>
-                </div>
-                <div>
-                  <span className="offer-product-picker__rail-n tabular">{selection.size}</span>
-                  <span className="offer-product-picker__rail-lbl">products</span>
-                </div>
-                <div>
-                  <span className="offer-product-picker__rail-n offer-product-picker__rail-n--warn tabular">
-                    {needEanCount}
-                  </span>
-                  <span className="offer-product-picker__rail-lbl">need EAN</span>
-                </div>
-              </div>
-
-              <div className="offer-product-picker__rail-body">
-                {railGroups.length === 0 ? (
-                  <p className="offer-product-picker__rail-empty">
-                    Nothing selected yet. Tick products or variants on the left.
-                  </p>
-                ) : (
-                  railGroups.map((group) => {
-                    const isPartial =
-                      group.selected !== null && group.selected.length < group.totalVariants;
-                    return (
-                      <div className="offer-product-picker__selgrp" key={group.productId}>
-                        <div className="offer-product-picker__selgrp-head">
-                          <ProductThumbnail
-                            name={group.name}
-                            src={group.imageSrc}
-                            size="sm"
-                          />
-                          <b>{group.name}</b>
-                          {group.whole ? (
-                            group.wholeEan && !group.wholeEan.loaded ? (
-                              <span className="bulk-chip bulk-chip--neutral">
-                                <span className="bulk-chip__dot" />
-                                not checked
-                              </span>
-                            ) : group.wholeEan && group.wholeEan.needCount > 0 ? (
-                              <span className="bulk-chip bulk-chip--warning">
-                                <span className="bulk-chip__dot" />
-                                {group.wholeEan.needCount} need EAN
-                              </span>
-                            ) : (
-                              <span className="bulk-chip bulk-chip--success">
-                                <span className="bulk-chip__dot" />
-                                ready
-                              </span>
-                            )
-                          ) : isPartial ? (
-                            <span className="bulk-chip bulk-chip--warning">
-                              <span className="bulk-chip__dot" />
-                              {group.selected!.length} of {group.totalVariants}
-                            </span>
-                          ) : (
-                            <span className="bulk-chip bulk-chip--success">
-                              <span className="bulk-chip__dot" />
-                              ready
-                            </span>
-                          )}
-                          <button
-                            type="button"
-                            className="offer-product-picker__rm"
-                            aria-label={`Remove ${group.name}`}
-                            onClick={() => clearProduct(group.productId)}
-                          >
-                            ×
-                          </button>
-                        </div>
-                        {group.whole ? (
-                          <div className="offer-product-picker__seltag offer-product-picker__seltag--muted">
-                            <span className="offer-product-picker__seltag-dot" />
-                            Whole product · {group.totalVariants}{' '}
-                            {group.totalVariants === 1 ? 'variant' : 'variants'}
-                          </div>
-                        ) : (
-                          group.selected!.map((variant) => (
-                            <div className="offer-product-picker__seltag" key={variant.id}>
-                              <span className="offer-product-picker__seltag-dot" />
-                              {variant.label}
-                              {variant.hasBarcode ? null : (
-                                <span className="bulk-chip bulk-chip--warning">
-                                  <span className="bulk-chip__dot" />
-                                  no EAN
-                                </span>
-                              )}
-                              <button
-                                type="button"
-                                className="offer-product-picker__rm offer-product-picker__rm--tag"
-                                aria-label={`Remove ${variant.label}`}
-                                onClick={() =>
-                                  toggleVariant(
-                                    group.productId,
-                                    variant.id,
-                                    (variantMeta.get(group.productId) ?? []).map((v) => v.id),
-                                  )
-                                }
-                              >
-                                ×
-                              </button>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              <div className="offer-product-picker__rail-foot">
-                {connectionsQuery.isLoading ? (
-                  <p className="muted-text">Loading destinations…</p>
-                ) : connectionsQuery.error ? (
-                  <Alert
-                    tone="error"
-                    title="Unable to load connections"
-                    action={
-                      <Button
-                        tone="secondary"
-                        type="button"
-                        onClick={() => void connectionsQuery.refetch()}
-                      >
-                        Retry
-                      </Button>
-                    }
-                  >
-                    {connectionsQuery.error.message}
-                  </Alert>
-                ) : eligibleDestinations.length === 0 ? (
-                  <Alert tone="warning" title="No publish destinations available">
-                    Add an active marketplace (offer creation) or online shop (product publishing)
-                    connection before publishing.
-                  </Alert>
-                ) : (
-                  <div className="offer-product-picker__rail-conn">
-                    <span className="offer-product-picker__eyebrow" id="publishDestinationLabel">
-                      Publish to <span className="offer-product-picker__req">*</span>
-                    </span>
-                    <PublishDestinationRail
-                      destinations={eligibleDestinations}
-                      selectedConnectionId={resolvedConnectionId}
-                      onSelect={setPickedConnectionId}
-                      labelledBy="publishDestinationLabel"
-                    />
-                  </div>
-                )}
-
-                <p className="offer-product-picker__rail-summary" aria-live="polite">
-                  {selectionSummary}
-                </p>
-
-                <div className="offer-product-picker__rail-actions">
-                  <Button tone="ghost" type="button" onClick={requestClose}>
-                    Cancel
-                  </Button>
-                  {canContinue ? (
-                    <Button type="button" onClick={handleContinue}>
-                      Continue →
-                    </Button>
-                  ) : (
-                    // Disabled buttons swallow hover, so the span is the tooltip
-                    // trigger and the button inside opts out of pointer events.
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="offer-product-picker__continue-wrap" tabIndex={0}>
-                          <Button type="button" disabled>
-                            Continue →
-                          </Button>
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {selection.size === 0
-                          ? 'Select at least one product, then choose a destination.'
-                          : eligibleDestinations.length === 0
-                            ? 'Add an active marketplace or shop connection before publishing.'
-                            : 'Choose a destination to publish to first.'}
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
-              </div>
-            </aside>
+            <OfferProductPickerRail
+              railBackRef={railBackRef}
+              onBack={() => setStep('products')}
+              railGroups={railGroups}
+              itemCount={itemCount}
+              needEanCount={needEanCount}
+              selectionSize={selection.size}
+              onClearSelection={clearSelection}
+              onRemoveProduct={clearProduct}
+              onRemoveVariant={removeVariant}
+              connectionsLoading={connectionsQuery.isLoading}
+              connectionsError={connectionsQuery.error}
+              onRetryConnections={() => void connectionsQuery.refetch()}
+              eligibleDestinations={eligibleDestinations}
+              resolvedConnectionId={resolvedConnectionId}
+              resolvedKind={resolvedKind}
+              onSelectConnection={setPickedConnectionId}
+              canContinue={canContinue}
+              onContinue={handleContinue}
+              onCancel={requestClose}
+              selectionSummary={selectionSummary}
+            />
           </div>
         </DialogContent>
       </Dialog>
