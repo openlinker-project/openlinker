@@ -179,7 +179,10 @@ describe('ContentEditor', () => {
         content: { get: vi.fn().mockResolvedValue(stateWithPublishableMaster) },
       });
 
-      renderWithProviders(<ContentEditor productId="ol_product_1" />, { apiClient: mockApi });
+      renderWithProviders(<ContentEditor productId="ol_product_1" />, {
+        apiClient: mockApi,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
 
       await screen.findByRole('tab', { name: /Master/ });
       const user = userEvent.setup();
@@ -211,7 +214,10 @@ describe('ContentEditor', () => {
         content: { get: vi.fn().mockResolvedValue(stateWithPublishableChannel) },
       });
 
-      renderWithProviders(<ContentEditor productId="ol_product_1" />, { apiClient: mockApi });
+      renderWithProviders(<ContentEditor productId="ol_product_1" />, {
+        apiClient: mockApi,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
 
       const user = userEvent.setup();
       await user.click(await screen.findByRole('tab', { name: /Allegro PL/ }));

@@ -73,7 +73,11 @@ describe('ProductEventsSection', () => {
     renderWithProviders(<Harness disabled={false} />);
 
     expect(screen.getByText('demo_viewer_locked_action_clicked')).toBeInTheDocument();
-    expect(screen.getByText(/intent-to-convert signal/)).toBeInTheDocument();
+    // Scoped to this event's exact description tail — the catalog now has
+    // several other "intent-to-convert signal" entries (#1788/#1789/#1790
+    // conversion-intent events), so a bare /intent-to-convert signal/ match
+    // is no longer unique.
+    expect(screen.getByText(/for a read-only demo session/)).toBeInTheDocument();
   });
 });
 

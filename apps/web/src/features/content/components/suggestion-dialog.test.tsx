@@ -8,7 +8,7 @@
  * `useWriteAccess` + `ReadOnlyLock` pattern (#1668): visible-but-disabled
  * for a demo viewer, hidden for a genuinely unauthorized non-demo session.
  */
-import { cleanup, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SuggestionDialog } from './suggestion-dialog';
@@ -256,7 +256,14 @@ describe('SuggestionDialog', () => {
         expect(screen.getByRole('button', { name: /Suggest with AI/ })).toBeDisabled(),
       );
 
-      await user.click(screen.getByRole('button', { name: /Suggest with AI/ }));
+      // A natively-disabled <button> emits no pointer events at all — the
+      // click never bubbles to the wrapping `.read-only-lock` span — so the
+      // intent-click signal is only reachable via the wrapper itself. Uses
+      // `fireEvent` (not `userEvent.click`) to avoid userEvent's own
+      // hover/unhover choreography interfering with the explicit `user.hover`
+      // below, same as the bulk-confirm-modal precedent (#1788).
+      const lockWrapper = document.querySelector('.read-only-lock') as HTMLElement;
+      fireEvent.click(lockWrapper);
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
       expect(suggest).not.toHaveBeenCalled();
 

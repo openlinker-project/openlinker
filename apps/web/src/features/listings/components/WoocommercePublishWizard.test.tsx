@@ -400,9 +400,14 @@ describe('WoocommercePublishWizard', () => {
       await screen.findByPlaceholderText('master');
       fireEvent.click(screen.getByRole('button', { name: /^review$/i }));
 
-      expect(captureDemoEvent).toHaveBeenCalledWith('demo_offer_wizard_review_reached', {
-        platform: 'woocommerce',
-      });
+      // The Review click chains through `form.trigger()` (async validation)
+      // before firing the capture — assert after it settles, not
+      // synchronously on the next tick.
+      await waitFor(() =>
+        expect(captureDemoEvent).toHaveBeenCalledWith('demo_offer_wizard_review_reached', {
+          platform: 'woocommerce',
+        }),
+      );
 
       await screen.findByRole('button', { name: /confirm & publish/i });
       await waitFor(() =>
