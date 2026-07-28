@@ -25,6 +25,12 @@ function renderLayout(
       <Route path="/login" element={<GuestLayout />}>
         <Route index element={<TestChild />} />
       </Route>
+      <Route path="/register" element={<GuestLayout />}>
+        <Route index element={<TestChild />} />
+      </Route>
+      <Route path="/forgot-password" element={<GuestLayout />}>
+        <Route index element={<TestChild />} />
+      </Route>
       <Route path="/" element={<DashboardSentinel />} />
     </Routes>,
     { route: options?.route ?? '/login', sessionAdapter, apiClient: options?.apiClient }
@@ -45,7 +51,7 @@ describe('GuestLayout', () => {
     expect(await screen.findByText('Dashboard page')).toBeInTheDocument();
   });
 
-  describe('marketing UTM capture (#1900)', () => {
+  describe('marketing UTM capture (captureMarketingLanding)', () => {
     afterEach(() => {
       vi.unstubAllGlobals();
       window.sessionStorage.clear();
@@ -103,6 +109,62 @@ describe('GuestLayout', () => {
       renderLayout(undefined, { apiClient, route: '/login' });
 
       await screen.findByText('Guest content');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('should not capture on /forgot-password even when a utm param is present', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+      vi.stubGlobal('fetch', fetchMock);
+      const apiClient = createMockApiClient({
+        system: {
+          getConfig: vi.fn().mockResolvedValue({
+            demoMode: true,
+            demoIntegrations: {
+              posthog: {
+                key: 'phc_abc',
+                host: 'https://eu.i.posthog.com',
+                autocapture: true,
+                sessionRecording: true,
+              },
+            },
+          }),
+        },
+      });
+
+      renderLayout(undefined, {
+        apiClient,
+        route: '/forgot-password?utm_source=email&utm_campaign=demo_invite_2026_07',
+      });
+
+      await screen.findByText('Guest content');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('should not capture when the session is already authenticated even with a utm param present', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+      vi.stubGlobal('fetch', fetchMock);
+      const apiClient = createMockApiClient({
+        system: {
+          getConfig: vi.fn().mockResolvedValue({
+            demoMode: true,
+            demoIntegrations: {
+              posthog: {
+                key: 'phc_abc',
+                host: 'https://eu.i.posthog.com',
+                autocapture: true,
+                sessionRecording: true,
+              },
+            },
+          }),
+        },
+      });
+
+      renderLayout(createAuthenticatedSessionAdapter(), {
+        apiClient,
+        route: '/login?utm_source=email&utm_campaign=demo_invite_2026_07',
+      });
+
+      await screen.findByText('Dashboard page');
       expect(fetchMock).not.toHaveBeenCalled();
     });
   });

@@ -4,9 +4,10 @@
  * Fire-and-forget UTM/campaign attribution for a visitor's FIRST landing hit
  * on a demo instance — independent of the analytics-consent gate that guards
  * `initDemoIntegrations` (session recording + full posthog-js SDK). That gate
- * exists because session recording plays back page content (ADR-032, #1301's
- * explicitly-rejected "skip consent" alternative); this capture carries none
- * of that weight, so it is not subject to the same gate:
+ * exists because session recording plays back page content, which is far
+ * more privacy-sensitive than a single de-identified attribution event; this
+ * capture carries none of that weight, so it is not subject to the same
+ * gate:
  *
  * - never loads `posthog-js` — a single `fetch` to PostHog's REST capture
  *   endpoint, so autocapture/session-recording code never reaches the page
@@ -63,15 +64,21 @@ function resolvePosthogCaptureConfig(
 
 /**
  * Whether a page load would actually trigger `captureMarketingLanding` —
- * i.e. demo mode is on, PostHog is configured, and the URL carries a UTM
- * param. Consumed by the /login and /register footnote so it never claims a
- * capture happened when the underlying config can't actually send one.
+ * i.e. demo mode is on, PostHog is configured, the URL carries a UTM param,
+ * and this tab hasn't already captured a landing. Consumed by the /login and
+ * /register footnote so it never claims a capture happened (or will happen)
+ * when the underlying capture would actually no-op — e.g. a same-tab reload
+ * or back-navigation after the tab's one-per-tab capture already fired.
  */
 export function isMarketingLandingTrackable(
   config: SystemConfig | undefined,
   search: string
 ): boolean {
-  return Boolean(resolvePosthogCaptureConfig(config)?.key) && hasMarketingUtmParams(search);
+  return (
+    Boolean(resolvePosthogCaptureConfig(config)?.key) &&
+    hasMarketingUtmParams(search) &&
+    !alreadyCapturedThisTab()
+  );
 }
 
 function alreadyCapturedThisTab(): boolean {

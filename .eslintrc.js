@@ -281,9 +281,10 @@ module.exports = {
       },
     },
     {
-      // Marketing-landing capture (#1900) posts directly to PostHog's own
-      // ingestion host, not our API — it must bypass the app's authenticated
-      // API client entirely and is exempt from the no-restricted-globals rule.
+      // The captureMarketingLanding marketing-landing capture posts directly
+      // to PostHog's own ingestion host, not our API — it must bypass the
+      // app's authenticated API client entirely and is exempt from the
+      // no-restricted-globals rule.
       files: ['apps/web/src/features/demo/lib/capture-marketing-landing.ts'],
       rules: {
         'no-restricted-globals': 'off',

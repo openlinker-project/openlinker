@@ -61,6 +61,22 @@ describe('isMarketingLandingTrackable', () => {
   it('should return false when the URL carries no utm params', () => {
     expect(isMarketingLandingTrackable(configuredPosthog, '?ref=whatever')).toBe(false);
   });
+
+  it('should return false once the tab has already captured a landing', () => {
+    const originalLocation = window.location;
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal('fetch', fetchMock);
+    window.sessionStorage.clear();
+    setLocation('?utm_source=email');
+
+    captureMarketingLanding(configuredPosthog);
+
+    expect(isMarketingLandingTrackable(configuredPosthog, '?utm_source=email')).toBe(false);
+
+    window.sessionStorage.clear();
+    vi.unstubAllGlobals();
+    Object.defineProperty(window, 'location', { value: originalLocation, writable: true });
+  });
 });
 
 describe('captureMarketingLanding', () => {
