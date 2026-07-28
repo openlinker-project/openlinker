@@ -5,7 +5,7 @@
  */
 import { render, screen, cleanup } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { OfferCreationErrorList } from './OfferCreationErrorList';
+import { OfferCreationErrorList } from './offer-creation-error-list';
 import type { OfferCreationError } from '../api/listings.types';
 
 describe('OfferCreationErrorList', () => {

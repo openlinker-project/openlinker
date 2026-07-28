@@ -15,7 +15,7 @@
 import { screen, cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
-import { ShopPublishLauncher } from './ShopPublishLauncher';
+import { ShopPublishLauncher } from './shop-publish-launcher';
 import type { Connection } from '../../connections';
 
 const wooConnection: Connection = {
