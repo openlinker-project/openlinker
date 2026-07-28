@@ -123,3 +123,11 @@ export function captureDemoEvent<E extends DemoEventName>(
   }
   posthogInstance.capture(event, props);
 }
+
+/**
+ * Opts the current visitor back in to PostHog capture without a page reload.
+ * A no-op when PostHog was never initialized.
+ */
+export function enableDemoAnalytics(): void {
+  posthogInstance?.opt_in_capturing();
+}

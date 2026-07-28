@@ -75,6 +75,10 @@ export class UserRepository implements UserRepositoryPort {
     await this.ormRepository.update({ id: userId }, { role });
   }
 
+  async updateAnalyticsConsent(userId: string, analyticsConsent: boolean): Promise<void> {
+    await this.ormRepository.update({ id: userId }, { analyticsConsent });
+  }
+
   async approveUser(userId: string, role: UserRole): Promise<void> {
     await this.ormRepository.update({ id: userId }, { role, status: 'active' });
   }

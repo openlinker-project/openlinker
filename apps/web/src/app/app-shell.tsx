@@ -51,6 +51,7 @@ import {
   getDemoAnalyticsConsent,
   initDemoIntegrations,
   setDemoAnalyticsConsent,
+  subscribeToDemoAnalyticsConsent,
   type DemoAnalyticsConsent,
 } from '../features/demo';
 
@@ -308,6 +309,12 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
     // would otherwise show while analytics stays off (fail-safe, consistent).
     setAnalyticsConsent(persisted ? seeded : 'declined');
   }, [isReady, session, analyticsConsent]);
+
+  // Keep the banner in step with consent changed elsewhere (#1882): the
+  // /settings toggle writes localStorage in THIS tab (custom event) and any
+  // other open tab sees the native `storage` event. Without this the banner
+  // would keep claiming "analytics on" until a reload.
+  useEffect(() => subscribeToDemoAnalyticsConsent(setAnalyticsConsent), []);
 
   // Demo-only analytics (#1301) — attempt init once the config query has
   // settled and once consent resolves to 'accepted'. The loader's own guards

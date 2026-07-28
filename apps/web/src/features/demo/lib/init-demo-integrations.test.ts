@@ -1,12 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SystemConfig } from '../../system';
-import { captureDemoEvent, disableDemoAnalytics, initDemoIntegrations } from './init-demo-integrations';
+import {
+  captureDemoEvent, 
+  disableDemoAnalytics,
+  enableDemoAnalytics,
+  initDemoIntegrations,
+} from './init-demo-integrations';
 
 const posthogInit = vi.fn();
 const posthogOptOut = vi.fn();
 const posthogCapture = vi.fn();
+const posthogOptIn = vi.fn();
 vi.mock('posthog-js', () => ({
-  default: { init: posthogInit, opt_out_capturing: posthogOptOut, capture: posthogCapture },
+  default: {
+    init: posthogInit,
+    opt_out_capturing: posthogOptOut, capture: posthogCapture,
+    opt_in_capturing: posthogOptIn,
+  },
 }));
 
 const getDemoAnalyticsConsent = vi.fn();
@@ -198,6 +208,31 @@ describe('disableDemoAnalytics', () => {
     disableDemoAnalytics();
 
     expect(posthogOptOut).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('enableDemoAnalytics (#1882)', () => {
+  beforeEach(() => {
+    posthogInit.mockClear();
+    posthogOptIn.mockClear();
+    getDemoAnalyticsConsent.mockReset();
+  });
+
+  it('should opt the visitor back in without a reload after PostHog was initialized', async () => {
+    getDemoAnalyticsConsent.mockReturnValue('accepted');
+    await initDemoIntegrations(configuredPosthog);
+
+    enableDemoAnalytics();
+
+    expect(posthogOptIn).toHaveBeenCalledTimes(1);
+  });
+
+  it('should be a no-op when PostHog was never initialized', async () => {
+    vi.resetModules();
+    const fresh = await import('./init-demo-integrations');
+
+    expect(() => fresh.enableDemoAnalytics()).not.toThrow();
+    expect(posthogOptIn).not.toHaveBeenCalled();
   });
 });
 

@@ -24,6 +24,12 @@ export interface UserRepositoryPort {
   updatePasswordHash(userId: string, passwordHash: string): Promise<void>;
   updateStatus(userId: string, status: UserStatus): Promise<void>;
   updateRole(userId: string, role: UserRole): Promise<void>;
+  /**
+   * Self-service update of the account's demo-analytics opt-in (#1882).
+   * Separate from `save` because it is the one user-owned field a viewer may
+   * change on their own account after registration.
+   */
+  updateAnalyticsConsent(userId: string, analyticsConsent: boolean): Promise<void>;
   approveUser(userId: string, role: UserRole): Promise<void>;
   deleteById(userId: string): Promise<void>;
 

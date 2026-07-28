@@ -43,7 +43,23 @@ export function ReadOnlyLock({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="read-only-lock" tabIndex={0} onClick={onLockedClick}>
+        <span
+          className="read-only-lock"
+          tabIndex={0}
+          onClick={onLockedClick}
+          onKeyDown={(e) => {
+            // The wrapper is in the tab order (for the tooltip), so keyboard
+            // users must be able to reach the same locked-click signal a mouse
+            // user does — otherwise the intent-to-convert metric is mouse-only
+            // and the affordance is a keyboard dead end. No `role="button"`:
+            // the wrapper contains an already-disabled <button>, and nesting a
+            // button role around it would misreport the semantics.
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault(); // Space would otherwise scroll the page.
+              onLockedClick?.();
+            }
+          }}
+        >
           {children}
         </span>
       </TooltipTrigger>

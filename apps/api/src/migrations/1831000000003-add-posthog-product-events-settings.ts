@@ -1,7 +1,7 @@
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddPosthogProductEventsSettings1829000000000 implements MigrationInterface {
-  name = 'AddPosthogProductEventsSettings1829000000000';
+export class AddPosthogProductEventsSettings1831000000003 implements MigrationInterface {
+  name = 'AddPosthogProductEventsSettings1831000000003';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

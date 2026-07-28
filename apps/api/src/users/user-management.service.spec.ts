@@ -36,6 +36,7 @@ const makeRepo = (): jest.Mocked<UserRepositoryPort> => ({
   deleteById: jest.fn(),
   deactivateAdminAtomically: jest.fn(),
   updateAdminRoleAtomically: jest.fn(),
+  updateAnalyticsConsent: jest.fn(),
   deleteAdminAtomically: jest.fn(),
   findStaleViewerAccounts: jest.fn(),
 });

@@ -117,6 +117,7 @@ export function createMockApiClient(
       forgotPassword: vi.fn().mockResolvedValue({ ok: true }),
       resetPassword: vi.fn().mockResolvedValue({ ok: true }),
       confirmEmail: vi.fn().mockResolvedValue({ ok: true }),
+      updateAnalyticsConsent: vi.fn().mockResolvedValue({ ...DEFAULT_TEST_USER }),
       ...overrides.auth,
     } as ApiClient['auth'],
     connections: {
@@ -606,6 +607,40 @@ export function findToastDescription(text: string | RegExp): Promise<HTMLElement
 
 export function getToastDescription(text: string | RegExp): HTMLElement {
   return screen.getByText(text, { selector: '.toast__description' });
+}
+
+/**
+ * Replaces `window.localStorage` with one that throws on every access, to
+ * exercise the private-browsing / blocked-storage branches. Returns a restore
+ * function — call it in `afterEach`.
+ *
+ * Why not `vi.spyOn(...)`: jsdom's `localStorage` is a Proxy whose set trap
+ * writes *stored items*, so both `Storage.prototype` and instance spies are
+ * order-dependent — they stop intercepting once another test in the same file
+ * restores mocks, silently turning "should not throw" assertions vacuous
+ * (#1884). Swapping the whole object out is deterministic.
+ */
+export function stubUnavailableLocalStorage(): () => void {
+  const original = window.localStorage;
+  const unavailable = (): never => {
+    throw new Error('storage disabled');
+  };
+
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      clear: unavailable,
+      getItem: unavailable,
+      key: unavailable,
+      length: 0,
+      removeItem: unavailable,
+      setItem: unavailable,
+    },
+  });
+
+  return () => {
+    Object.defineProperty(window, 'localStorage', { configurable: true, value: original });
+  };
 }
 
 export function renderWithProviders(

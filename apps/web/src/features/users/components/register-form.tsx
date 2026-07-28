@@ -150,9 +150,14 @@ export function RegisterForm({ demoMode = false }: RegisterFormProps): ReactElem
           <input type="checkbox" {...form.register('analyticsConsent')} />
           <span className="guest-form__consent-text">
             <strong>Share anonymous usage analytics</strong>
+            {/* Keep in step with the masking config in
+                features/demo/lib/init-demo-integrations.ts — #1878 narrowed it
+                to passwords only, so the old "all inputs masked" wording was a
+                false claim on the signup path (#1882). */}
             <span className="guest-form__consent-hint">
-              Optional. Helps us improve OpenLinker. Includes session recording with all inputs
-              masked. Off unless you tick this; you can change it anytime after signing in.
+              Optional. Helps us improve OpenLinker. Includes session recording — passwords are
+              never recorded, but other text you type and view may be. Off unless you tick this;
+              you can change it anytime on Settings.
             </span>
           </span>
         </label>

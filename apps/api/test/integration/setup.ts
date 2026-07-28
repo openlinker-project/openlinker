@@ -145,6 +145,10 @@ const harness = createIntegrationTestHarness({
     OL_ERLI_ORDERS_POLL_SCHEDULER_ENABLED: 'false',
     OL_INVENTORY_SYNC_ENABLED: 'false',
     OL_PRODUCT_SYNC_ENABLED: 'false',
+    OL_PICKUP_POINT_REFRESH_ENABLED: 'false',
+    OL_REGULATORY_RECONCILE_ENABLED: 'false',
+    OL_OFFLINE_RESUBMIT_ENABLED: 'false',
+    OL_PENDING_RECOVERY_ENABLED: 'false',
 
     // Integration tests seed users explicitly via loginAsAdmin / seedUser
     // helpers. Letting BootstrapAdminService also insert a default `admin`

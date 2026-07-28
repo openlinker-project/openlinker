@@ -78,4 +78,12 @@ export class AuthService implements IAuthService {
     }
     return user;
   }
+
+  async updateAnalyticsConsent(userId: string, analyticsConsent: boolean): Promise<User> {
+    // getMe first so a deleted-but-still-bearing-a-valid-JWT caller gets a 401
+    // instead of a silent no-op UPDATE reported back as success.
+    await this.getMe(userId);
+    await this.userRepository.updateAnalyticsConsent(userId, analyticsConsent);
+    return this.getMe(userId);
+  }
 }
