@@ -19,8 +19,8 @@ import { Button } from '../../../shared/ui/button';
 import { useOfferCreationStatusQuery } from '../hooks/use-offer-creation-status-query';
 import { TERMINAL_OFFER_CREATION_STATUSES } from '../api/listings.types';
 import { buildAllegroSellerPanelUrl } from '../lib/allegro-seller-panel-url';
-import { OfferCreationStatusBadge } from './OfferCreationStatusBadge';
-import { OfferCreationErrorList } from './OfferCreationErrorList';
+import { OfferCreationStatusBadge } from './offer-creation-status-badge';
+import { OfferCreationErrorList } from './offer-creation-error-list';
 
 interface OfferCreationTrackerProps {
   connectionId: string;

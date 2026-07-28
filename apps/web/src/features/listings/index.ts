@@ -27,7 +27,7 @@ export { erliOfferValidation } from './components/erli/erli-offer-validation';
 export { AllegroBulkConfigSection } from './components/allegro/allegro-bulk-config-section';
 export { allegroBulkConfigIsComplete } from './components/allegro/allegro-bulk-config.schema';
 export { allegroOfferValidation } from './components/allegro/allegro-offer-validation';
-export { WoocommercePublishWizard } from './components/WoocommercePublishWizard';
+export { WoocommercePublishWizard } from './components/woocommerce-publish-wizard';
 // Shop destination category picker (#1834). Self-contained modal + hook so the
 // shop edit modal (#1830) can mount it where the marketplace path mounts
 // `BulkCategoryChooseModal`, gated on the shop `ShopCategoryBrowser` capability.

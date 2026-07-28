@@ -11,7 +11,7 @@ import {
   findToastTitle,
   renderWithProviders,
 } from '../../../test/test-utils';
-import { EditOfferDrawer } from './EditOfferDrawer';
+import { EditOfferDrawer } from './edit-offer-drawer';
 import type { OfferMapping } from '../api/listings.types';
 
 const mockMapping: OfferMapping = {

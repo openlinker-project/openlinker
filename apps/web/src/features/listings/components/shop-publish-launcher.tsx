@@ -31,7 +31,7 @@ import { Link } from 'react-router-dom';
 import { Select } from '../../../shared/ui/select';
 import { useConnectionsQuery } from '../../connections';
 import type { Connection } from '../../connections';
-import { ShopPublishTracker } from './ShopPublishTracker';
+import { ShopPublishTracker } from './shop-publish-tracker';
 
 interface ShopPublishLauncherProps {
   open: boolean;
