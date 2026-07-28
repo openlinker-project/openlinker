@@ -40,6 +40,7 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+          token: ${{ secrets.GH_TOKEN }}
 
       # openlinker.io/changelog renders this repo's GitHub Releases at build time.
       # A tag pushed by release-please's default GITHUB_TOKEN can't re-trigger a
