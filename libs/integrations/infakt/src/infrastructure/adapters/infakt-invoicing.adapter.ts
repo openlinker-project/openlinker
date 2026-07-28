@@ -53,6 +53,7 @@ import { InvoiceRecord, UnsupportedRegulatoryDocumentKindError } from '@openlink
 import type { IInfaktHttpClient } from '../http/infakt-http-client.interface';
 import { InfaktApiError } from '../../domain/exceptions/infakt-api.error';
 import type {
+  InfaktAsyncTaskAccepted,
   InfaktBankAccount,
   InfaktClient,
   InfaktCorrectiveInvoiceServiceRequest,
@@ -240,20 +241,6 @@ function fromGroszy(amountGroszy: number): number {
 }
 
 /**
- * Converts an integer-groszy amount to the corrective_invoices.json wire
- * format: a dot-decimal "amount currency" STRING like `"811.37 PLN"`.
- * Verified live (2026-07-03): corrective_invoices.json 500s on the
- * invoices.json integer-groszy shape — the two endpoints' formats DIFFER.
- *
- * PLN-only assumption: the currency suffix is hardcoded to " PLN" because
- * inFakt is a Polish-only provider and `InfaktInvoice` carries no currency
- * field to read a per-document currency from.
- */
-function groszyToAmountString(amountGroszy: number): string {
-  return `${(amountGroszy / 100).toFixed(2)} PLN`;
-}
-
-/**
  * A record with neutral `documentType: 'corrected'` is an Infakt CORRECTIVE
  * invoice — a distinct resource living under `corrective_invoices/…`, NOT
  * `invoices/…` (verified live, 2026-07-03: `GET /invoices/{uuid}.json`
@@ -263,6 +250,15 @@ function groszyToAmountString(amountGroszy: number): string {
 function isCorrectionRecord(documentType: string): boolean {
   return documentType === 'corrected';
 }
+
+/**
+ * Poll cadence for `async/corrective_invoices/status/{ref}.json` (#1763).
+ * Not independently verified against the live sandbox — no sandbox
+ * credentials were available while making this fix — chosen to match the
+ * KSeF adapter's clearance-poll cadence as a reasonable default.
+ */
+const CORRECTION_ASYNC_POLL_INTERVAL_MS = 2000;
+const CORRECTION_ASYNC_POLL_TIMEOUT_MS = 30000;
 
 export class InfaktInvoicingAdapter
   implements
@@ -593,8 +589,7 @@ export class InfaktInvoicingAdapter
   }
 
   async issueCorrection(cmd: IssueCorrectionCommand): Promise<IssueInvoiceResult> {
-    const { originalProviderInvoiceId, reason, lines, documentType, idempotencyKey, orderId } =
-      cmd;
+    const { originalProviderInvoiceId, lines, documentType, idempotencyKey, orderId } = cmd;
 
     // Fetch original to build the before/after service arrays
     const original = await this.http.get<InfaktInvoice>(
@@ -603,10 +598,20 @@ export class InfaktInvoicingAdapter
     );
 
     // Build correction services: original row (correction: false) + corrected
-    // row (correction: true), paired per `group`. NOTE the wire formats:
-    // corrective_invoices.json wants a decimal "amount currency" STRING for
-    // `unit_net_price` and a STRING `quantity` — the invoices.json
-    // integer-groszy / numeric shapes 500 here (verified live, 2026-07-03).
+    // row (correction: true), paired per `group`.
+    //
+    // #1763: wire format for `unit_net_price`/`quantity` on this endpoint —
+    // the previous decimal "amount currency" STRING format (e.g. "811.37 PLN")
+    // was carried over from testing against the bare `corrective_invoices.json`
+    // path, which turned out to 500 on EVERY payload regardless of shape (the
+    // root #1763 bug — see the async-endpoint fix above). That means the prior
+    // "verified live" claim behind the string format was never actually
+    // confirmed against a working endpoint. Now on the correct
+    // `async/corrective_invoices.json` path, using the SAME plain-integer-
+    // groszy / numeric-quantity format as `async/invoices.json` (see
+    // toGroszy/fromGroszy) as the consistent default — not independently
+    // live-verified for this specific field either, but no longer resting on
+    // a demonstrably-invalid prior test.
     const correctionServices: InfaktCorrectiveInvoiceServiceRequest[] =
       original.services.flatMap((svc, idx) => {
         const corrLine = lines.find((l) => l.originalLineNumber === idx + 1);
@@ -633,15 +638,15 @@ export class InfaktInvoicingAdapter
           // Original "before" row
           {
             ...shared,
-            quantity: String(svc.quantity),
-            unit_net_price: groszyToAmountString(toGroszy(originalNet)),
+            quantity: svc.quantity,
+            unit_net_price: toGroszy(originalNet),
             correction: false,
           },
           // Corrected "after" row
           {
             ...shared,
-            quantity: String(corrQty),
-            unit_net_price: groszyToAmountString(corrPriceGroszy),
+            quantity: corrQty,
+            unit_net_price: corrPriceGroszy,
             correction: true,
           },
         ];
@@ -653,6 +658,14 @@ export class InfaktInvoicingAdapter
     // ignore every correction field and create a plain, unlinked VAT invoice
     // (verified live, 2026-07-03). Fiscally wrong, hence the belt-and-
     // suspenders kind check below too.
+    //
+    // #1763: creating a correction is inFakt's DOCUMENTED asynchronous
+    // creation flow — `POST /api/v3/async/corrective_invoices.json`
+    // (confirmed against inFakt's own published API reference, same async
+    // contract as `async/invoices.json`) — not the bare `corrective_invoices.json`
+    // path this adapter previously called, which 500s on every payload
+    // regardless of shape (consistent with hitting an unsupported/removed
+    // path rather than a genuine provider bug). See `createCorrectionAsync`.
     const payload = {
       corrective_invoice: {
         // Per-connection setting (#1303) — see `this.paymentMethod` doc.
@@ -665,34 +678,37 @@ export class InfaktInvoicingAdapter
         ...this.bankAccountFields(),
         corrected_invoice_number: original.number,
         corrected_invoice_date: original.invoice_date ?? new Date().toISOString().slice(0, 10),
-        correction_reason_symbol: 'other',
-        correction_reason: reason ?? 'Korekta',
+        // Documented alongside corrected_invoice_number/_date as a third,
+        // unambiguous way to identify the original document (#1763 diagnostic
+        // step — the number+date pair alone still 422'd with the generic
+        // "Nie udało się stworzyć faktury" on the newly-fixed async endpoint).
+        corrected_invoice_uuid: original.uuid,
+        // #1763: `correction_reason_symbol` is documented READ-ONLY (Infakt
+        // sets it server-side) — the adapter previously sent it anyway. The
+        // WRITABLE field is `correction_reason` itself: "Zapis: symbol
+        // powodu; odczyt: polska nazwa" (write: reason SYMBOL; read: the
+        // Polish display name) — i.e. it takes a value from Infakt's closed
+        // reason-code vocabulary, not arbitrary free text, mirroring how
+        // `tax_symbol` elsewhere in this API is a small fixed set rather than
+        // a free string. `IssueCorrectionCommand.reason` is core's
+        // intentionally free-text field (no neutral reason-code vocabulary
+        // exists in core today), so it cannot be forwarded as-is; `'other'`
+        // is the one documented/known-valid symbol. Losing the operator's
+        // free text here is an accepted limitation until core grows a neutral
+        // correction-reason-code vocabulary to map from.
+        correction_reason: 'other',
         services: correctionServices,
         ...(idempotencyKey ? { external_id: idempotencyKey } : {}),
       },
     };
 
     // InfaktApiError carries `failureMode`; propagate as-is (see issueInvoice).
-    const invoice = await this.http.post<InfaktInvoice>('corrective_invoices.json', payload);
-
-    // Belt-and-suspenders for the silent-downgrade class of bug (#1337): if
-    // the provider created anything other than a real correction, fail loudly
-    // instead of persisting a record that claims a corrective linkage the
-    // document doesn't have. Status 502 (not 4xx) is deliberate: a document WAS
-    // created here (just of the wrong kind), so this is `failureMode: 'in-doubt'`
-    // — a 4xx `'rejected'` would tell core "no document exists, safe to
-    // re-attempt", which could spawn a SECOND orphaned corrective on retry
-    // (the corrective external_id dedup is unverified — see the retry-safety
-    // note below). `in-doubt` forces manual review instead of an auto-retry loop.
-    // NOTE: the expected *response* kind is 'correction' (not 'corrective') —
-    // don't loosen this check to accept 'corrective' as a "fix".
-    if (invoice.kind !== 'correction') {
-      throw new InfaktApiError(
-        `Infakt returned kind "${invoice.kind}" instead of "correction" for corrective_invoices.json — document ${invoice.uuid} is not a correction of ${original.number ?? originalProviderInvoiceId}`,
-        502,
-        invoice,
-      );
-    }
+    // The silent-downgrade guard (#1337) — refusing to persist a record for
+    // anything other than a real correction — now lives inside
+    // `awaitCorrectionTask`, gated on the task envelope's confirmed-live
+    // `invoice_kind: 'corrective_invoice'` field, before this hydrated
+    // `invoice` is even fetched.
+    const invoice = await this.createCorrectionAsync(payload);
 
     this.logger.log(`Infakt correction created: ${invoice.uuid} (${invoice.number ?? 'draft'})`);
 
@@ -917,5 +933,68 @@ export class InfaktInvoicingAdapter
   private bankAccountFields(): { bank_account: string; bank_name: string } | Record<string, never> {
     if (this.paymentMethod !== 'transfer' || !this.bankAccount) return {};
     return { bank_account: this.bankAccount.accountNumber, bank_name: this.bankAccount.bankName };
+  }
+
+  /**
+   * Posts to inFakt's documented async correction endpoint (#1763), polls
+   * `async/corrective_invoices/status/{ref}.json` until the task leaves
+   * `processing_code: 100` ("still processing"), then hydrates the full
+   * invoice via `GET corrective_invoices/{uuid}.json` — the task envelope
+   * itself never carries the full invoice fields (number, client_id, …).
+   *
+   * Terminal-success shape confirmed live (2026-07-28) against the sandbox:
+   * `processing_code: 201`, `processing_description: "Faktura stworzona"`,
+   * `action: "create_invoice"`, `invoice_kind: "corrective_invoice"`,
+   * `invoice_uuid: "<uuid>"`. An earlier version of this method checked for a
+   * `uuid` field directly on the task response (there is none — the field is
+   * `invoice_uuid`) and treated every non-100 code as failure, which
+   * misclassified this exact success as an error.
+   */
+  private async createCorrectionAsync(payload: unknown): Promise<InfaktInvoice> {
+    const accepted = await this.http.post<InfaktAsyncTaskAccepted>(
+      'async/corrective_invoices.json',
+      payload,
+    );
+    return this.awaitCorrectionTask(accepted);
+  }
+
+  private async awaitCorrectionTask(initial: InfaktAsyncTaskAccepted): Promise<InfaktInvoice> {
+    const taskRef = initial.invoice_task_reference_number;
+    const deadline = Date.now() + CORRECTION_ASYNC_POLL_TIMEOUT_MS;
+    let last = initial;
+    while (last.processing_code === 100) {
+      if (Date.now() >= deadline) {
+        throw new InfaktApiError(
+          `Infakt async correction task ${taskRef} did not resolve within ${CORRECTION_ASYNC_POLL_TIMEOUT_MS}ms`,
+          504,
+          last,
+        );
+      }
+      await this.sleep(CORRECTION_ASYNC_POLL_INTERVAL_MS);
+      last = await this.http.get<InfaktAsyncTaskAccepted>(
+        `async/corrective_invoices/status/${encodeURIComponent(taskRef)}.json`,
+      );
+    }
+
+    // Belt-and-suspenders (#1337 precedent): the only confirmed-live success
+    // shape is `invoice_kind: 'corrective_invoice'` + a populated
+    // `invoice_uuid`. Anything else — a processing_code outside 100
+    // (processing) that still lacks these fields — fails loudly rather than
+    // persisting a record with no real document behind it.
+    if (!last.invoice_uuid || last.invoice_kind !== 'corrective_invoice') {
+      throw new InfaktApiError(
+        `Infakt async correction task ${taskRef} did not resolve to a corrective_invoice (processing_code ${last.processing_code}): ${last.processing_description}`,
+        502,
+        last,
+      );
+    }
+
+    return this.http.get<InfaktInvoice>(
+      `corrective_invoices/${encodeURIComponent(last.invoice_uuid)}.json`,
+    );
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

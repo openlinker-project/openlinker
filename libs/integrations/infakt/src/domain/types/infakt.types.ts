@@ -124,22 +124,24 @@ export interface InfaktListResponse<T> {
 }
 
 /**
- * One "before"/"after" service row on a POST /corrective_invoices.json request.
+ * One "before"/"after" service row on a POST /async/corrective_invoices.json
+ * request. Rows come in pairs per `group`: `correction: false` (original
+ * values) then `correction: true` (corrected values).
  *
- * The corrective endpoint's wire formats DIFFER from invoices.json (verified
- * live, 2026-07-03): `unit_net_price` is a decimal "amount currency" STRING
- * (e.g. `"811.37 PLN"`) and `quantity` is an integer-or-decimal STRING (the
- * adapter sends `String(quantity)`, e.g. `"1"` / `"0"`) — sending the
- * invoices.json integer-groszy / numeric-quantity shapes here
- * 500s. Rows come in pairs per `group`: `correction: false` (original values)
- * then `correction: true` (corrected values).
+ * `unit_net_price`/`quantity` use the same plain-integer-groszy / numeric
+ * shape as `async/invoices.json` (see toGroszy/fromGroszy) — #1763 replaced
+ * an earlier decimal "amount currency" STRING assumption (e.g. `"811.37 PLN"`)
+ * that was only ever tested against the bare `corrective_invoices.json` path,
+ * which turned out to 500 on every payload regardless of shape (the root
+ * #1763 bug). Not independently live-verified for this specific field on the
+ * corrected `async/` path.
  */
 export interface InfaktCorrectiveInvoiceServiceRequest {
   name: string;
   tax_symbol: string;
-  quantity: string;
+  quantity: number;
   unit: string;
-  unit_net_price: string;
+  unit_net_price: number;
   group: string;
   correction: boolean;
 }
@@ -156,6 +158,32 @@ export interface InfaktSendToKsefResponse {
     request_created_at: string | null;
     request_finished_at: string | null;
   };
+}
+
+/**
+ * Task-accepted envelope returned by inFakt's `async/*.json` creation
+ * endpoints (e.g. `POST async/invoices.json`, `POST async/corrective_invoices.json`)
+ * — confirmed against inFakt's own published API reference. `processing_code:
+ * 100` means "accepted, still processing"; the terminal outcome is only known
+ * via `GET async/{resource}/status/{invoice_task_reference_number}.json`.
+ */
+export interface InfaktAsyncTaskAccepted {
+  invoice_task_reference_number: string;
+  processing_code: number;
+  processing_description: string;
+  timestamps: {
+    task_created_at: string;
+  };
+  /**
+   * Present on the TERMINAL status response once the task resolves — verified
+   * live (2026-07-28) for a corrective-invoice task: `processing_code: 201`,
+   * `processing_description: "Faktura stworzona"`, `action: "create_invoice"`,
+   * `invoice_kind: "corrective_invoice"`, `invoice_uuid: "<uuid>"`. Absent
+   * while still processing (`processing_code: 100`).
+   */
+  action?: string;
+  invoice_kind?: string;
+  invoice_uuid?: string;
 }
 
 /** Wire shape for `GET /bank_accounts.json` entries (#1303 follow-up). */
