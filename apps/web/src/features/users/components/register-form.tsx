@@ -21,12 +21,17 @@ import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
+import { MarketingTrackingFootnote } from '../../demo';
 
 interface RegisterFormProps {
   demoMode?: boolean;
+  showTrackingFootnote?: boolean;
 }
 
-export function RegisterForm({ demoMode = false }: RegisterFormProps): ReactElement {
+export function RegisterForm({
+  demoMode = false,
+  showTrackingFootnote = false,
+}: RegisterFormProps): ReactElement {
   const register = useRegisterMutation();
   const [submitted, setSubmitted] = useState(false);
 
@@ -97,11 +102,13 @@ export function RegisterForm({ demoMode = false }: RegisterFormProps): ReactElem
 
       {demoMode ? (
         <div className="guest-form__demo-callout">
-          <span className="guest-form__demo-callout-icon" aria-hidden="true">⚡</span>
+          <span className="guest-form__demo-callout-icon" aria-hidden="true">
+            ⚡
+          </span>
           <div>
             <strong>Demo mode active</strong> — no approval needed. Your account is set to
-            read-only. We'll email you a confirmation link; click it to activate your account
-            before signing in.
+            read-only. We'll email you a confirmation link; click it to activate your account before
+            signing in.
           </div>
         </div>
       ) : null}
@@ -156,24 +163,22 @@ export function RegisterForm({ demoMode = false }: RegisterFormProps): ReactElem
                 false claim on the signup path (#1882). */}
             <span className="guest-form__consent-hint">
               Optional. Helps us improve OpenLinker. Includes session recording — passwords are
-              never recorded, but other text you type and view may be. Off unless you tick this;
-              you can change it anytime on Settings.
+              never recorded, but other text you type and view may be. Off unless you tick this; you
+              can change it anytime on Settings.
             </span>
           </span>
         </label>
       ) : null}
 
       <Button type="submit" tone="primary" disabled={register.isPending}>
-        {register.isPending
-          ? 'Submitting…'
-          : demoMode
-            ? 'Start exploring →'
-            : 'Request access'}
+        {register.isPending ? 'Submitting…' : demoMode ? 'Start exploring →' : 'Request access'}
       </Button>
 
       <p className="guest-form__footer-link">
         Already have an account? <Link to="/login">Sign in</Link>
       </p>
+
+      {showTrackingFootnote ? <MarketingTrackingFootnote /> : null}
     </form>
   );
 }
