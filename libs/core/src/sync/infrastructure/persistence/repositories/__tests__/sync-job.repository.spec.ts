@@ -347,6 +347,7 @@ describe('SyncJobRepository', () => {
       expect(ormRepository.update).toHaveBeenCalledWith(jobId, {
         status: 'succeeded',
         outcome: 'ok',
+        outcomeReason: null,
         lockedAt: null,
         lockedBy: null,
         lastError: null,
@@ -363,6 +364,24 @@ describe('SyncJobRepository', () => {
       expect(ormRepository.update).toHaveBeenCalledWith(jobId, {
         status: 'succeeded',
         outcome: 'business_failure',
+        outcomeReason: null,
+        lockedAt: null,
+        lockedBy: null,
+        lastError: null,
+      });
+    });
+
+    it('should persist outcomeReason alongside outcome when the handler supplies one (#1689)', async () => {
+      const jobId = randomUUID();
+
+      ormRepository.update.mockResolvedValue({ affected: 1, generatedMaps: [], raw: [] });
+
+      await repository.markSucceeded(jobId, 'business_failure', 'master_deleted');
+
+      expect(ormRepository.update).toHaveBeenCalledWith(jobId, {
+        status: 'succeeded',
+        outcome: 'business_failure',
+        outcomeReason: 'master_deleted',
         lockedAt: null,
         lockedBy: null,
         lastError: null,

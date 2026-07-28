@@ -10,7 +10,7 @@
  */
 export class InvalidSyncJobStateError extends Error {
   constructor(
-    public readonly field: 'jobType' | 'status' | 'outcome',
+    public readonly field: 'jobType' | 'status' | 'outcome' | 'outcomeReason',
     public readonly value: string,
     public readonly jobId?: string,
   ) {

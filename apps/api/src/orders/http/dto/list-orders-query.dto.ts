@@ -76,7 +76,7 @@ export class ListOrdersQueryDto {
   @ApiPropertyOptional({
     enum: OrderRecordStatusValues,
     description:
-      'Filter by record status (ready = fully resolved, awaiting_mapping = item refs unresolved)',
+      'Filter by record status (ready = fully resolved, awaiting_mapping = item refs unresolved (self-healing), source_deleted = permanently unresolvable (#1689))',
   })
   @IsOptional()
   @IsEnum(OrderRecordStatusValues)
@@ -85,7 +85,7 @@ export class ListOrdersQueryDto {
   @ApiPropertyOptional({
     enum: OrderHealthValues,
     description:
-      'Filter by derived health bucket (#929) — partitions the set: awaiting_mapping | needs_attention | synced | awaiting_dispatch',
+      'Filter by derived health bucket (#929) — partitions the set: source_deleted | awaiting_mapping | needs_attention | synced | awaiting_dispatch',
   })
   @IsOptional()
   @IsEnum(OrderHealthValues)

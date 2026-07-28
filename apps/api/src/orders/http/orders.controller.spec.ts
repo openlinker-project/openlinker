@@ -469,6 +469,7 @@ describe('OrdersController', () => {
     it('should return per-health-bucket counts from the repository (#929)', async () => {
       repository.countByHealth.mockResolvedValue({
         total: 11,
+        sourceDeleted: 0,
         awaitingMapping: 0,
         needsAttention: 1,
         synced: 1,
@@ -485,6 +486,7 @@ describe('OrdersController', () => {
     it('should forward only the scope subset (source/date) to the repository (#929)', async () => {
       repository.countByHealth.mockResolvedValue({
         total: 0,
+        sourceDeleted: 0,
         awaitingMapping: 0,
         needsAttention: 0,
         synced: 0,

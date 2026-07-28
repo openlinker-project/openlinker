@@ -112,16 +112,39 @@ export const JobOutcomeValues = ['ok', 'business_failure'] as const;
 export type JobOutcome = (typeof JobOutcomeValues)[number];
 
 /**
+ * Job Outcome Reason Values
+ *
+ * Stable machine-readable codes for WHY a job reached a given `outcome` —
+ * distinct from `outcome` itself (the business result). Extensible: other
+ * `business_failure` producers add their own codes over time.
+ *
+ * - `'master_deleted'`: the source product/variant was deleted at its master
+ *   (#1599) — `master.product.syncByExternalId` returns `business_failure`
+ *   with this reason rather than retrying a permanent condition.
+ */
+export const JobOutcomeReasonValues = ['master_deleted'] as const;
+
+/**
+ * Job Outcome Reason
+ *
+ * Derived union type from JobOutcomeReasonValues.
+ */
+export type JobOutcomeReason = (typeof JobOutcomeReasonValues)[number];
+
+/**
  * Sync Job Handler Result
  *
  * Returned by every `SyncJobHandler.execute` implementation on the success
  * (no-throw) path. Carries the *business* outcome of the run, threaded back
  * through the worker runner to `sync_jobs.outcome` (issue #400 — Plan B for
  * #391). Handlers without a meaningful business-failure branch return
- * `{ outcome: 'ok' }` unconditionally.
+ * `{ outcome: 'ok' }` unconditionally. `outcomeReason` is an optional stable
+ * code further classifying WHY (e.g. `'master_deleted'`) — persisted
+ * alongside `outcome` on the succeeded path (#1689).
  */
 export interface SyncJobHandlerResult {
   outcome: JobOutcome;
+  outcomeReason?: JobOutcomeReason;
 }
 
 /**
@@ -330,6 +353,13 @@ export interface SyncJob extends SyncJobRequest {
    *   or this is a historical row predating the outcome column (#400).
    */
   outcome?: JobOutcome | null;
+
+  /**
+   * Stable machine-readable reason further classifying `outcome` (#1689).
+   * `null`/absent when the outcome needs no finer classification, or for
+   * historical rows predating the column.
+   */
+  outcomeReason?: JobOutcomeReason | null;
 
   /**
    * Creation timestamp

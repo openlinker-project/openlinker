@@ -18,14 +18,18 @@ import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import type {
   OrderRecordFilters,
   OrderRecordPagination,
+  OrderRecordStatus,
   PaginatedOrderRecords,
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import { getPiiConfig } from '@openlinker/shared/config';
 import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
+import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()
 export class OrderRecordService implements IOrderRecordService {
+  private readonly logger = new Logger(OrderRecordService.name);
+
   constructor(
     @Inject(ORDER_RECORD_REPOSITORY_TOKEN)
     private readonly repository: OrderRecordRepositoryPort
@@ -298,6 +302,38 @@ export class OrderRecordService implements IOrderRecordService {
     fulfillmentState: FulfillmentRollupState
   ): Promise<void> {
     await this.repository.updateFulfillmentState(internalOrderId, fulfillmentState);
+  }
+
+  async markItemResolutionFailure(
+    internalOrderId: string,
+    input: { status: OrderRecordStatus; reason: string }
+  ): Promise<void> {
+    const existing = await this.repository.findById(internalOrderId);
+    if (!existing) {
+      // Defensive only: persistIncomingSnapshot always runs first in the
+      // ingestion flow, so this record should already exist.
+      this.logger.debug(
+        `markItemResolutionFailure: no order record found for ${internalOrderId} — skipping`
+      );
+      return;
+    }
+
+    const updated = new OrderRecord(
+      existing.internalOrderId,
+      existing.customerId,
+      existing.sourceConnectionId,
+      existing.sourceEventId,
+      existing.orderSnapshot,
+      existing.syncStatus,
+      input.status,
+      existing.createdAt,
+      new Date(),
+      existing.syncAttempts,
+      existing.dispatchByAt,
+      existing.fulfillmentState,
+      input.reason
+    );
+    await this.repository.upsert(updated);
   }
 
   /**

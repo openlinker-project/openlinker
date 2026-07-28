@@ -58,6 +58,12 @@ export class OrderRecord {
      * into the shipping context.
      */
     public readonly fulfillmentState: FulfillmentRollupState | null = null,
+    /**
+     * Operator-facing reason the item resolution failed at ingestion (#1689),
+     * set alongside `recordStatus = 'awaiting_mapping' | 'source_deleted'`.
+     * `null` for a `'ready'` record, or a historical row predating the column.
+     */
+    public readonly mappingFailureReason: string | null = null,
   ) {}
 
   /**

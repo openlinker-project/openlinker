@@ -89,6 +89,7 @@ function paginated(items: OrderRecord[]): PaginatedOrders {
 
 const emptySummary: OrderHealthSummary = {
   total: 0,
+  sourceDeleted: 0,
   awaitingMapping: 0,
   needsAttention: 0,
   synced: 0,
@@ -170,6 +171,7 @@ describe('OrdersListPage', () => {
   it('should render status segments with counts from the summary endpoint (#929)', async () => {
     const statusSummary = vi.fn().mockResolvedValue({
       total: 11,
+      sourceDeleted: 0,
       needsAttention: 1,
       awaitingMapping: 0,
       awaitingDispatch: 9,

@@ -37,6 +37,18 @@ export type JobStatus = (typeof JOB_STATUS_VALUES)[number];
 export const JOB_OUTCOME_VALUES = ['ok', 'business_failure'] as const;
 export type JobOutcome = (typeof JOB_OUTCOME_VALUES)[number];
 
+/**
+ * Stable machine-readable code further classifying `outcome` (#1689) —
+ * distinct from `outcome` itself. `null`/absent when the outcome needs no
+ * finer classification, or for historical rows predating the column.
+ *
+ * - `'master_deleted'`: the source product/variant was deleted at its master
+ *   (#1599) — the master-product-sync job's `business_failure` was caused by
+ *   this, distinguishing it from any other business failure.
+ */
+export const JOB_OUTCOME_REASON_VALUES = ['master_deleted'] as const;
+export type JobOutcomeReason = (typeof JOB_OUTCOME_REASON_VALUES)[number];
+
 export const JOB_TYPE_VALUES = [
   'marketplace.orders.poll',
   'marketplace.order.sync',
@@ -59,6 +71,7 @@ export interface SyncJob {
   connectionId: string;
   status: JobStatus;
   outcome: JobOutcome | null;
+  outcomeReason?: JobOutcomeReason | null;
   attempts: number;
   maxAttempts: number;
   nextRunAt: string;

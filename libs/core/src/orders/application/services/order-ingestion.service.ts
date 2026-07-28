@@ -54,6 +54,8 @@ import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import type { Order } from '../../domain/types/order.types';
 import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
 import type { OrderRecord } from '../../domain/entities/order-record.entity';
+import type { OrderRecordStatus } from '../../domain/types/order-record.types';
+import type { ItemResolutionFailureKind } from './order-item-ref-resolver.types';
 import { Logger } from '@openlinker/shared/logging';
 import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
 
@@ -298,7 +300,8 @@ export class OrderIngestionService implements IOrderIngestionService {
 
     // Step 3: attempt item resolution (non-throwing)
     const resolvedItems: Order['items'] = [];
-    const unresolvedRefs: Array<{ itemId: string; reason: string }> = [];
+    const unresolvedRefs: Array<{ itemId: string; reason: string; kind: ItemResolutionFailureKind }> =
+      [];
 
     for (const item of incoming.items) {
       const result = await this.orderItemRefResolver.tryResolve(connectionId, item.productRef);
@@ -314,14 +317,25 @@ export class OrderIngestionService implements IOrderIngestionService {
           imageUrl: item.imageUrl,
         });
       } else {
-        unresolvedRefs.push({ itemId: item.id, reason: result.reason });
+        unresolvedRefs.push({ itemId: item.id, reason: result.reason, kind: result.kind });
       }
     }
 
-    // Step 4: if any unresolved, throw so the job runner retries with backoff
+    // Step 4: if any unresolved, persist the honest record state (#1689) then
+    // throw so the job runner retries with backoff. A `source_deleted` ref is
+    // a permanently unresolvable state (deleted at the master, #1599) — distinct
+    // from the ordinary, self-healing `awaiting_mapping` gap; the retry itself
+    // is unchanged (review #11 — routing a stale line to a terminal outcome
+    // and partial-order fulfilment — is out of scope for this issue).
     if (unresolvedRefs.length > 0) {
       const first = unresolvedRefs[0];
       const firstItem = incoming.items.find((i) => i.id === first.itemId);
+      const firstStaleRef = unresolvedRefs.find((ref) => ref.kind === 'source_deleted');
+      const recordStatus: OrderRecordStatus = firstStaleRef ? 'source_deleted' : 'awaiting_mapping';
+      await this.orderRecordService.markItemResolutionFailure(internalOrderId, {
+        status: recordStatus,
+        reason: (firstStaleRef ?? first).reason,
+      });
       throw new MissingOrderItemMappingError(
         connectionId,
         firstItem?.productRef ?? { type: 'offer', externalId: first.itemId },

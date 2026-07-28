@@ -59,10 +59,20 @@ export class OrderRecordResponseDto {
   @ApiProperty({
     description:
       'Record resolution status. "ready" = all item refs resolved (orderSnapshot contains internal IDs). ' +
-      '"awaiting_mapping" = item refs unresolved (orderSnapshot contains raw IncomingOrder with external offer refs).',
+      '"awaiting_mapping" = item refs unresolved (orderSnapshot contains raw IncomingOrder with external offer refs); ' +
+      'self-healing once the mapping lands. "source_deleted" (#1689) = at least one item ref is permanently ' +
+      'unresolvable — the mapped variant was deleted at its master (#1599).',
     enum: OrderRecordStatusValues,
   })
   recordStatus!: OrderRecordStatus;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Operator-facing reason item resolution failed at ingestion (#1689), set alongside ' +
+      'recordStatus = "awaiting_mapping" | "source_deleted". null for a "ready" record.',
+  })
+  mappingFailureReason!: string | null;
 
   @ApiProperty({ description: 'Order last-update timestamp (ISO 8601)' })
   updatedAt!: string;

@@ -54,10 +54,13 @@ describe('MasterProductSyncHandler', () => {
     await expect(handler.execute(createJob())).resolves.toEqual({ outcome: 'ok' });
   });
 
-  it('returns outcome=business_failure when the product was deleted at the master', async () => {
+  it('returns outcome=business_failure with outcomeReason=master_deleted when the product was deleted at the master', async () => {
     masterProductSync.syncFromMasterByExternalId.mockResolvedValueOnce(result(true));
 
-    await expect(handler.execute(createJob())).resolves.toEqual({ outcome: 'business_failure' });
+    await expect(handler.execute(createJob())).resolves.toEqual({
+      outcome: 'business_failure',
+      outcomeReason: 'master_deleted',
+    });
   });
 
   it('wraps a transient service error in a retryable SyncJobExecutionError', async () => {

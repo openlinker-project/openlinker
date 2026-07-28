@@ -47,6 +47,7 @@ export type {
   JobType,
   JobStatus,
   JobOutcome,
+  JobOutcomeReason,
   SyncJobFilters,
   SyncJobPagination,
   PaginatedSyncJobs,
@@ -59,6 +60,7 @@ export {
   JobTypeValues,
   JobStatusValues,
   JobOutcomeValues,
+  JobOutcomeReasonValues,
   BULK_RETRY_MAX_BATCH_SIZE,
   SYNC_JOBS_EVENT_STREAM,
 } from './domain/types/sync-job.types';
