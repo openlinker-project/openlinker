@@ -76,9 +76,7 @@ describe('RegisterForm', () => {
   it('should show a dedicated message when registration fails with a 409 (#1625)', async () => {
     const mockApi = createMockApiClient({
       auth: {
-        register: vi
-          .fn()
-          .mockRejectedValue(new ApiError('Email already registered', 409, null)),
+        register: vi.fn().mockRejectedValue(new ApiError('Email already registered', 409, null)),
       },
     });
     renderWithProviders(<RegisterForm />, { apiClient: mockApi });
@@ -146,7 +144,7 @@ describe('RegisterForm', () => {
 
       await screen.findByText(/check your email to confirm your account/i);
       expect(registerFn).toHaveBeenCalledWith(
-        expect.objectContaining({ username: 'demo_user', analyticsConsent: false }),
+        expect.objectContaining({ username: 'demo_user', analyticsConsent: false })
       );
     });
 
@@ -160,14 +158,12 @@ describe('RegisterForm', () => {
       await userEvent.type(screen.getByLabelText('Password'), 'password123');
       await userEvent.type(screen.getByLabelText('Confirm password'), 'password123');
       await userEvent.click(
-        screen.getByRole('checkbox', { name: /share anonymous usage analytics/i }),
+        screen.getByRole('checkbox', { name: /share anonymous usage analytics/i })
       );
       await userEvent.click(screen.getByRole('button', { name: /start exploring/i }));
 
       await screen.findByText(/check your email to confirm your account/i);
-      expect(registerFn).toHaveBeenCalledWith(
-        expect.objectContaining({ analyticsConsent: true }),
-      );
+      expect(registerFn).toHaveBeenCalledWith(expect.objectContaining({ analyticsConsent: true }));
     });
 
     it('should show demo success copy after registration in demo mode', async () => {
@@ -182,7 +178,23 @@ describe('RegisterForm', () => {
       await userEvent.type(screen.getByLabelText('Confirm password'), 'password123');
       await userEvent.click(screen.getByRole('button', { name: /start exploring/i }));
 
-      expect(await screen.findByText(/check your email to confirm your account/i)).toBeInTheDocument();
+      expect(
+        await screen.findByText(/check your email to confirm your account/i)
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('tracking footnote', () => {
+    it('should show the footnote when showTrackingFootnote is true', () => {
+      renderWithProviders(<RegisterForm showTrackingFootnote />);
+
+      expect(screen.getByText(/logged for analytics/i)).toBeInTheDocument();
+    });
+
+    it('should not show the footnote when showTrackingFootnote is false', () => {
+      renderWithProviders(<RegisterForm showTrackingFootnote={false} />);
+
+      expect(screen.queryByText(/logged for analytics/i)).not.toBeInTheDocument();
     });
   });
 });
