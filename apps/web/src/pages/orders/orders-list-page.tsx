@@ -102,6 +102,7 @@ interface HealthSegment {
 }
 
 const HEALTH_SEGMENTS: readonly HealthSegment[] = [
+  { key: 'source_deleted', label: 'Source deleted', tone: 'error', countKey: 'sourceDeleted' },
   { key: 'needs_attention', label: 'Needs attention', tone: 'error', countKey: 'needsAttention' },
   { key: 'awaiting_mapping', label: 'Awaiting mapping', tone: 'warning', countKey: 'awaitingMapping' },
   { key: 'awaiting_dispatch', label: 'Awaiting dispatch', tone: 'info', countKey: 'awaitingDispatch' },
@@ -578,7 +579,10 @@ export function OrdersListPage(): ReactElement {
           // rows widened the table past the viewport for every other row.
           const failed = order.syncStatus.find((s) => s.status === 'failed');
           const canRetry =
-            failed !== undefined && order.recordStatus !== 'awaiting_mapping' && retryWrite.visible;
+            failed !== undefined &&
+            order.recordStatus !== 'awaiting_mapping' &&
+            order.recordStatus !== 'source_deleted' &&
+            retryWrite.visible;
           const isRetrying =
             retryMutation.isPending &&
             retryMutation.variables?.internalOrderId === order.internalOrderId;
@@ -1472,7 +1476,10 @@ export function OrdersListPage(): ReactElement {
                         {shipBy.remaining}
                       </StatusBadge>
                     ) : null}
-                    {failed && order.recordStatus !== 'awaiting_mapping' && retryWrite.visible ? (
+                    {failed &&
+                    order.recordStatus !== 'awaiting_mapping' &&
+                    order.recordStatus !== 'source_deleted' &&
+                    retryWrite.visible ? (
                       <ReadOnlyLock
                         active={retryWrite.demoReadOnly}
                         message={DEMO_READ_ONLY_ACTION_MESSAGE}

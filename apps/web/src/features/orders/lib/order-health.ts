@@ -27,23 +27,30 @@ import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 // CANONICAL PRECEDENCE (highest wins) — single FE source of truth and the twin
 // of the SQL in `OrderRecordRepository.countByHealth` / `applyHealthFilter`;
 // keep both in lockstep:
-//   1. awaiting_mapping  — recordStatus = 'awaiting_mapping' (can't sync yet)
-//   2. needs_attention   — not awaiting_mapping AND any destination failed
-//   3. synced            — not awaiting_mapping, no failed, AND any synced
-//   4. awaiting_dispatch — the residual (no failed, no synced)
+//   1. source_deleted    — recordStatus = 'source_deleted' (permanently
+//                          unresolvable — deleted at the master, #1689)
+//   2. awaiting_mapping  — recordStatus = 'awaiting_mapping' (can't sync yet)
+//   3. needs_attention   — not awaiting_mapping/source_deleted AND any destination failed
+//   4. synced            — not awaiting_mapping/source_deleted, no failed, AND any synced
+//   5. awaiting_dispatch — the residual (no failed, no synced)
 
 export interface OrderHealthView {
   key: OrderHealthValue;
   tone: StatusBadgeTone;
   /** Row-badge label. */
   label: string;
-  /** Plain-language cause, present only for `needs_attention`. */
+  /**
+   * Plain-language cause. Present for `needs_attention` (destination sync
+   * error), and for `source_deleted` / `awaiting_mapping` (#1689) when the
+   * BE supplied `mappingFailureReason`.
+   */
   reason?: string;
 }
 
 /** Static label + tone per bucket. Shared by the row badge and the KPI segments. */
 export const ORDER_HEALTH_META: Record<OrderHealthValue, { label: string; tone: StatusBadgeTone }> =
   {
+    source_deleted: { label: 'Source deleted', tone: 'error' },
     awaiting_mapping: { label: 'Awaiting mapping', tone: 'warning' },
     needs_attention: { label: 'Sync failed', tone: 'error' },
     synced: { label: 'Synced', tone: 'success' },
@@ -55,8 +62,20 @@ export const ORDER_HEALTH_META: Record<OrderHealthValue, { label: string; tone: 
  * record's own already-loaded fields — no I/O.
  */
 export function deriveOrderHealth(order: OrderRecord): OrderHealthView {
+  if (order.recordStatus === 'source_deleted') {
+    return {
+      key: 'source_deleted',
+      ...ORDER_HEALTH_META.source_deleted,
+      reason: order.mappingFailureReason ?? undefined,
+    };
+  }
+
   if (order.recordStatus === 'awaiting_mapping') {
-    return { key: 'awaiting_mapping', ...ORDER_HEALTH_META.awaiting_mapping };
+    return {
+      key: 'awaiting_mapping',
+      ...ORDER_HEALTH_META.awaiting_mapping,
+      reason: order.mappingFailureReason ?? undefined,
+    };
   }
 
   const failed = order.syncStatus.find((s) => s.status === 'failed');

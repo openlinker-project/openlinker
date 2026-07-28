@@ -62,7 +62,7 @@ export class MasterProductSyncHandler implements SyncJobHandler {
         this.logger.warn(
           `Master product sync: product deleted at master (job ${job.id}, connection: ${job.connectionId}, externalId: ${String(payload.externalId)})`
         );
-        return { outcome: 'business_failure' };
+        return { outcome: 'business_failure', outcomeReason: 'master_deleted' };
       }
 
       return { outcome: 'ok' };

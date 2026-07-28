@@ -165,8 +165,29 @@ describe('OrderItemRefResolverService', () => {
       if (!result.resolved) {
         expect(result.productRef).toEqual(productRef);
         expect(result.reason).toContain('deleted at the master');
+        expect(result.kind).toBe('source_deleted');
       }
     });
+
+    it.each([
+      ['variant' as const, 'ol_variant_1'],
+      ['sku' as const, 'SKU-1'],
+    ])(
+      'tryResolve tags a stale %s ref with kind=source_deleted',
+      async (type, externalId) => {
+        identifierMapping.getInternalId.mockResolvedValueOnce('ol_variant_1');
+        productsService.getVariant.mockResolvedValueOnce(
+          makeStaleVariant('ol_variant_1', 'ol_product_1')
+        );
+
+        const result = await service.tryResolve(connectionId, { type, externalId });
+
+        expect(result.resolved).toBe(false);
+        if (!result.resolved) {
+          expect(result.kind).toBe('source_deleted');
+        }
+      }
+    );
   });
 
   describe('tryResolve', () => {
@@ -196,6 +217,7 @@ describe('OrderItemRefResolverService', () => {
       if (!result.resolved) {
         expect(result.productRef).toEqual(productRef);
         expect(result.reason).toBeTruthy();
+        expect(result.kind).toBe('missing_mapping');
       }
     });
 
@@ -209,6 +231,9 @@ describe('OrderItemRefResolverService', () => {
       });
 
       expect(result.resolved).toBe(false);
+      if (!result.resolved) {
+        expect(result.kind).toBe('missing_mapping');
+      }
     });
 
     it('should re-throw non-MissingOrderItemMappingError errors', async () => {

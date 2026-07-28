@@ -21,9 +21,15 @@ export const OrderSyncStatusFilterValues = ['pending', 'syncing', 'synced', 'fai
 export type OrderSyncStatusFilter = (typeof OrderSyncStatusFilterValues)[number];
 
 /**
- * Record status values — tracks whether all item refs have been resolved
+ * Record status values — tracks whether all item refs have been resolved.
+ *
+ * `'source_deleted'` (#1689): at least one item ref failed resolution because
+ * the mapped variant is `isStale` — deleted at its master (#1599). Distinct
+ * from `'awaiting_mapping'` (an ordinary "not synced yet" gap that resolves
+ * itself once the mapping lands): a deleted source item never resolves on its
+ * own.
  */
-export const OrderRecordStatusValues = ['ready', 'awaiting_mapping'] as const;
+export const OrderRecordStatusValues = ['ready', 'awaiting_mapping', 'source_deleted'] as const;
 
 /**
  * Record status type
@@ -43,17 +49,22 @@ export type OrderRecordStatus = (typeof OrderRecordStatusValues)[number];
  * truth; the FE `deriveOrderHealth` helper and the SQL in
  * `OrderRecordRepository.countByHealth` / `applyHealthFilter` must both encode
  * exactly this order:
- *   1. `awaiting_mapping`  — `recordStatus = 'awaiting_mapping'` (can't sync yet)
- *   2. `needs_attention`   — not awaiting_mapping AND any destination `failed`
- *   3. `synced`            — not awaiting_mapping, no failed, AND any `synced`
- *   4. `awaiting_dispatch` — the residual: everything else (no failed, no
+ *   1. `source_deleted`   — `recordStatus = 'source_deleted'` (permanently
+ *                            unresolvable — the source item was deleted at
+ *                            its master, #1689)
+ *   2. `awaiting_mapping`  — `recordStatus = 'awaiting_mapping'` (can't sync yet)
+ *   3. `needs_attention`   — not awaiting_mapping/source_deleted AND any destination `failed`
+ *   4. `synced`            — not awaiting_mapping/source_deleted, no failed, AND any `synced`
+ *   5. `awaiting_dispatch` — the residual: everything else (no failed, no
  *                            synced: empty `syncStatus[]` / pending / syncing)
  *
- * Buckets 2–4 gate on `NOT awaiting_mapping` (not `recordStatus = 'ready'`) so
- * the four remain a complete partition for ANY `recordStatus` value — a future
- * status can't silently leave rows uncounted and break the cards' sum-to-total.
+ * Buckets 3–5 gate on `NOT awaiting_mapping AND NOT source_deleted` (not
+ * `recordStatus = 'ready'`) so the five remain a complete partition for ANY
+ * `recordStatus` value — a future status can't silently leave rows uncounted
+ * and break the cards' sum-to-total.
  */
 export const OrderHealthValues = [
+  'source_deleted',
   'awaiting_mapping',
   'needs_attention',
   'synced',
@@ -71,6 +82,7 @@ export type OrderHealth = (typeof OrderHealthValues)[number];
  */
 export interface OrderHealthSummary {
   total: number;
+  sourceDeleted: number;
   awaitingMapping: number;
   needsAttention: number;
   synced: number;

@@ -9,12 +9,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   JobOutcomeValues,
+  JobOutcomeReasonValues,
   JobStatusValues,
   JobTypeValues,
   JobStatus,
   JobType,
 } from '@openlinker/core/sync';
-import type { JobOutcome } from '@openlinker/core/sync';
+import type { JobOutcome, JobOutcomeReason } from '@openlinker/core/sync';
 
 export class SyncJobResponseDto {
   @ApiProperty({ description: 'Job UUID' })
@@ -36,6 +37,16 @@ export class SyncJobResponseDto {
       'Business outcome of the job (only set on the succeeded path). `ok` = business operation succeeded; `business_failure` = orchestration ran cleanly but the business operation was rejected terminally (e.g. marketplace validation failed). `null` for queued / running / dead jobs and historical rows pre-dating issue #400.',
   })
   outcome!: JobOutcome | null;
+
+  @ApiPropertyOptional({
+    enum: JobOutcomeReasonValues,
+    nullable: true,
+    description:
+      'Stable machine-readable code further classifying `outcome` (#1689), e.g. `master_deleted` when a ' +
+      'business_failure was caused by the source product being deleted at its master — distinguishing that ' +
+      'from any other business failure. `null` when the outcome needs no finer classification.',
+  })
+  outcomeReason!: JobOutcomeReason | null;
 
   @ApiProperty({ description: 'Number of execution attempts so far' })
   attempts!: number;

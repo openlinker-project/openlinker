@@ -419,6 +419,7 @@ export function OrderDetailPage(): ReactElement {
           recordStatus={order.recordStatus}
           syncAttempts={order.syncAttempts}
           sourceConnectionId={order.sourceConnectionId}
+          mappingFailureReason={order.mappingFailureReason}
         />
       </section>
 

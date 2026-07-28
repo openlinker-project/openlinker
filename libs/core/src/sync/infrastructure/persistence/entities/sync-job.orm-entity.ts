@@ -42,6 +42,14 @@ export class SyncJobOrmEntity {
   @Column({ type: 'varchar', nullable: true })
   outcome!: string | null;
 
+  /**
+   * Stable machine-readable code further classifying `outcome` (#1689),
+   * e.g. `'master_deleted'`. Null when the outcome needs no finer
+   * classification, or for historical rows predating the column.
+   */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  outcomeReason!: string | null;
+
   @Column({ type: 'varchar', unique: true })
   idempotencyKey!: string;
 

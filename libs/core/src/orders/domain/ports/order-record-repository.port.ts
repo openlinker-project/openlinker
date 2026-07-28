@@ -14,6 +14,7 @@ import type {
   PaginatedOrderRecords,
   OrderHealthSummary,
   OrderHealthSummaryFilters,
+  OrderRecordStatus,
 } from '../types/order-record.types';
 import type { OrderSlaSummary } from '../types/order-sla.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
@@ -83,5 +84,20 @@ export interface OrderRecordRepositoryPort {
   updateFulfillmentState(
     internalOrderId: string,
     fulfillmentState: FulfillmentRollupState
+  ): Promise<void>;
+
+  /**
+   * Push the honest item-resolution-failure state onto the order record
+   * (#1689) — either the ordinary, self-healing `'awaiting_mapping'` gap or
+   * the permanently-unresolvable `'source_deleted'` state, with the
+   * operator-facing reason. Narrow absolute-set (no read-modify-write),
+   * mirroring {@link updateFulfillmentState}. No-op (no throw) when the order
+   * row doesn't exist — the ingestion flow always persists the incoming
+   * snapshot before item resolution runs, so this should never happen in
+   * practice; it's a defensive guard, not an expected path.
+   */
+  updateItemResolutionFailure(
+    internalOrderId: string,
+    input: { status: OrderRecordStatus; reason: string }
   ): Promise<void>;
 }

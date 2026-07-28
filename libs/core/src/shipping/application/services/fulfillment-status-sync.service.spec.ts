@@ -95,6 +95,7 @@ describe('FulfillmentStatusSyncService', () => {
       getOrderRecord: jest.fn(),
       findMany: jest.fn(),
       updateFulfillmentState: jest.fn(),
+      markItemResolutionFailure: jest.fn(),
     };
 
     routing = {
