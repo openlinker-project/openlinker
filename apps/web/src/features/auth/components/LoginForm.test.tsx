@@ -118,7 +118,25 @@ describe('LoginForm', () => {
       const view = renderWithProviders(<LoginForm demoMode={false} />);
       const container = within(view.container);
 
-      expect(container.queryByRole('link', { name: /create a free demo account/i })).not.toBeInTheDocument();
+      expect(
+        container.queryByRole('link', { name: /create a free demo account/i })
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe('tracking footnote', () => {
+    it('should show the footnote when showTrackingFootnote is true', () => {
+      const view = renderWithProviders(<LoginForm showTrackingFootnote />);
+      const container = within(view.container);
+
+      expect(container.getByText(/logged for analytics/i)).toBeInTheDocument();
+    });
+
+    it('should not show the footnote when showTrackingFootnote is false', () => {
+      const view = renderWithProviders(<LoginForm showTrackingFootnote={false} />);
+      const container = within(view.container);
+
+      expect(container.queryByText(/logged for analytics/i)).not.toBeInTheDocument();
     });
   });
 });

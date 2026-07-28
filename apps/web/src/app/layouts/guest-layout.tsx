@@ -1,10 +1,26 @@
 import type { ReactElement } from 'react';
+import { useEffect } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useSession } from '../../shared/auth/use-session';
 import { LoadingState } from '../../shared/ui/feedback-state';
+import { useSystemConfigQuery } from '../../features/system';
+import { captureMarketingLanding } from '../../features/demo';
 
 export function GuestLayout(): ReactElement {
   const { isReady, session } = useSession();
+  const systemConfigQuery = useSystemConfigQuery();
+
+  // Marketing UTM capture (#1900) — the single mount point for every guest
+  // route (login, register, forgot/reset password), so it fires on whichever
+  // one a visitor actually lands on. Deliberately NOT gated on session
+  // readiness: it never reads session state and must fire even if the
+  // visitor never signs in this tab.
+  useEffect(() => {
+    if (!systemConfigQuery.isSuccess) {
+      return;
+    }
+    captureMarketingLanding(systemConfigQuery.data);
+  }, [systemConfigQuery.isSuccess, systemConfigQuery.data]);
 
   if (!isReady) {
     return (
