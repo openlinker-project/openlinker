@@ -20,6 +20,7 @@ import type {
   OfferMappingPagination,
   PaginatedOfferMappings,
   ProductListingsCoverage,
+  StaleMappedVariant,
 } from '../../../domain/types/offer-mapping.types';
 
 const OFFER_ENTITY_TYPE: CoreEntityType = CORE_ENTITY_TYPE.Offer;
@@ -150,6 +151,35 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       connectionId: row.connectionId,
       platformType: row.platformType,
       listedVariants: Number(row.listedVariants),
+    }));
+  }
+
+  async findStaleMappedVariants(
+    connectionId: string,
+    options: { limit: number; staleSince: Date }
+  ): Promise<readonly StaleMappedVariant[]> {
+    const rows = await this.repository
+      .createQueryBuilder('mapping')
+      .select('pv."id"', 'variantId')
+      .addSelect('mapping.externalId', 'externalOfferId')
+      .addSelect('pv."staleAt"', 'staleAt')
+      // Read-model reporting join onto the products-context table by name —
+      // no cross-context ORM-entity import, mirroring
+      // countListedVariantsByProducts (#1720; columns are camelCase and must
+      // be double-quoted in raw fragments).
+      .innerJoin('product_variants', 'pv', 'pv."id" = mapping."internalId"')
+      .where('mapping.entityType = :entityType', { entityType: OFFER_ENTITY_TYPE })
+      .andWhere('mapping.connectionId = :connectionId', { connectionId })
+      .andWhere('pv."isStale" = true')
+      .andWhere('pv."staleAt" >= :staleSince', { staleSince: options.staleSince })
+      .orderBy('pv."staleAt"', 'DESC')
+      .take(options.limit)
+      .getRawMany<{ variantId: string; externalOfferId: string; staleAt: Date }>();
+
+    return rows.map((row) => ({
+      variantId: row.variantId,
+      externalOfferId: row.externalOfferId,
+      staleAt: row.staleAt,
     }));
   }
 

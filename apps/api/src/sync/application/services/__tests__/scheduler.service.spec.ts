@@ -100,6 +100,7 @@ describe('SchedulerService', () => {
         'OL_REGULATORY_RECONCILE_CRON',
         'OL_OFFLINE_RESUBMIT_CRON',
         'OL_PENDING_RECOVERY_CRON',
+        'OL_STALE_OFFER_PAUSE_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';
@@ -392,6 +393,7 @@ describe('SchedulerService', () => {
         'OL_REGULATORY_RECONCILE_CRON',
         'OL_OFFLINE_RESUBMIT_CRON',
         'OL_PENDING_RECOVERY_CRON',
+        'OL_STALE_OFFER_PAUSE_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';
@@ -463,6 +465,87 @@ describe('SchedulerService', () => {
 
       const key = task!.generateIdempotencyKey(createConnection('conn-inv-1'), '2026-06-05-03-30');
       expect(key).toBe('invoicing:conn-inv-1:regulatoryStatus:reconcile:2026-06-05-03-30');
+    });
+  });
+
+  describe('stale-offer-pause-sweep task (#1689)', () => {
+    const defaultConfigGet = (key: string, defaultValue?: unknown): unknown => {
+      const cronKeys = [
+        'OL_INVENTORY_SYNC_CRON',
+        'OL_PRODUCT_SYNC_CRON',
+        'OL_PICKUP_POINT_REFRESH_CRON',
+        'OL_REGULATORY_RECONCILE_CRON',
+        'OL_OFFLINE_RESUBMIT_CRON',
+        'OL_PENDING_RECOVERY_CRON',
+        'OL_STALE_OFFER_PAUSE_CRON',
+      ];
+      if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
+      return 'true';
+    };
+
+    const getRegisteredTask = (): SchedulerTaskConfig | undefined =>
+      (service as unknown as { tasks: SchedulerTaskConfig[] }).tasks.find(
+        (t) => t.taskId === 'stale-offer-pause-sweep'
+      );
+
+    it('registers the task by default (opt-out, not opt-in — unlike offline-resubmit)', () => {
+      configService.get.mockImplementation(defaultConfigGet);
+
+      service.onApplicationBootstrap();
+
+      const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
+      expect(registeredJobs).toContain('stale-offer-pause-sweep');
+    });
+
+    it('is capability-scoped to OfferManager', async () => {
+      configService.get.mockImplementation(defaultConfigGet);
+      const conn = createConnection('conn-offer-1');
+      integrationsService.listCapabilityAdapters.mockResolvedValue([
+        { connectionId: 'conn-offer-1', connection: conn, adapter: {} as never, metadata: {} as never },
+      ]);
+
+      service.onApplicationBootstrap();
+      const task = getRegisteredTask();
+      const connections = await task!.connectionFilter!();
+
+      expect(integrationsService.listCapabilityAdapters).toHaveBeenCalledWith({
+        capability: 'OfferManager',
+        lazy: true,
+      });
+      expect(connections).toEqual([conn]);
+    });
+
+    it('uses jobType marketplace.offer.pauseStaleSweep and a payload with schemaVersion + limit', () => {
+      configService.get.mockImplementation(defaultConfigGet);
+
+      service.onApplicationBootstrap();
+      const task = getRegisteredTask();
+
+      expect(task?.jobType).toBe('marketplace.offer.pauseStaleSweep');
+      const payload = task!.generatePayload(createConnection('conn-offer-1'));
+      expect(payload).toEqual({ schemaVersion: 1, limit: 200 });
+    });
+
+    it('does not register the task when OL_STALE_OFFER_PAUSE_ENABLED is "false"', () => {
+      configService.get.mockImplementation((key: string, defaultValue?: unknown) => {
+        if (key === 'OL_STALE_OFFER_PAUSE_ENABLED') return 'false';
+        return defaultConfigGet(key, defaultValue);
+      });
+
+      service.onApplicationBootstrap();
+
+      const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
+      expect(registeredJobs).not.toContain('stale-offer-pause-sweep');
+    });
+
+    it('generates a minute-rounded per-connection idempotency key', () => {
+      configService.get.mockImplementation(defaultConfigGet);
+
+      service.onApplicationBootstrap();
+      const task = getRegisteredTask();
+
+      const key = task!.generateIdempotencyKey(createConnection('conn-offer-1'), '2026-07-27-17-00');
+      expect(key).toBe('marketplace:conn-offer-1:offer:pauseStaleSweep:2026-07-27-17-00');
     });
   });
 });

@@ -74,6 +74,8 @@ export {
   MarketplaceOfferStatusSyncPayloadV1,
   MarketplaceOfferRefreshSnapshotPayloadV1,
   MarketplaceOfferStockRestorePayloadV1,
+  MarketplaceOfferPauseStalePayloadV1,
+  MarketplaceOfferPauseStaleSweepPayloadV1,
   MarketplaceShipmentStatusSyncPayloadV1,
   MarketplaceShipmentSyncByExternalIdPayloadV1,
   MarketplaceFulfillmentStatusSyncPayloadV1,

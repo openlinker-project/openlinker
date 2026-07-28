@@ -50,6 +50,8 @@ export const JOB_TYPE_VALUES = [
   'master.inventory.syncByExternalId',
   'master.variants.autoMatch',
   'inventory.propagateToMarketplaces',
+  'marketplace.offer.pauseStale', // Internal job — not user-triggerable; listed here for status display only.
+  'marketplace.offer.pauseStaleSweep',
 ] as const;
 export type JobType = (typeof JOB_TYPE_VALUES)[number];
 

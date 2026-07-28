@@ -381,7 +381,17 @@ describe('MasterInventorySyncService', () => {
     });
 
     it('publishes master.variant.stale when the prune flags variant rows (#1599)', async () => {
-      inventoryAdapter.listInventory.mockResolvedValue([]);
+      inventoryAdapter.listInventory.mockResolvedValue([
+        {
+          id: 'inv-still-here',
+          productId: internalProductId,
+          variantId: 'ol_variant_kept',
+          quantity: 1,
+          reserved: 0,
+          available: 1,
+          updatedAt: new Date('2026-05-01T10:00:00Z'),
+        },
+      ]);
       (inventoryService.pruneStaleVariants as jest.Mock).mockResolvedValueOnce({
         markedCount: 2,
         variantIds: ['ol_variant_gone'],
@@ -391,15 +401,24 @@ describe('MasterInventorySyncService', () => {
 
       expect(eventPublisher.publish).toHaveBeenCalledWith(
         'events.master.deletion',
-        expect.objectContaining({
-          eventType: 'master.variant.stale',
-          payloadJson: JSON.stringify({
-            connectionId,
-            internalProductId,
-            variantIds: ['ol_variant_gone'],
-          }),
-        })
+        expect.objectContaining({ eventType: 'master.variant.stale' })
       );
+      const [, envelope] = eventPublisher.publish.mock.calls[0];
+      const payload = JSON.parse(envelope.payloadJson) as {
+        connectionId: string;
+        internalProductId: string;
+        variantIds: string[];
+        externalId: string;
+        correlationId: string;
+      };
+      expect(payload).toMatchObject({
+        connectionId,
+        internalProductId,
+        variantIds: ['ol_variant_gone'],
+        externalId,
+      });
+      expect(typeof payload.correlationId).toBe('string');
+      expect(payload.correlationId.length).toBeGreaterThan(0);
     });
 
     it('does not publish when the prune flags no variant rows', async () => {
@@ -412,6 +431,21 @@ describe('MasterInventorySyncService', () => {
       await service.syncFromMasterByExternalId(connectionId, externalId);
 
       expect(eventPublisher.publish).not.toHaveBeenCalled();
+    });
+
+    it('publishes master.product.stale for a product-level-row-only prune (markedCount > 0, no distinct variantIds — previously silent)', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([]);
+      (inventoryService.pruneStaleVariants as jest.Mock).mockResolvedValueOnce({
+        markedCount: 1,
+        variantIds: [],
+      });
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(eventPublisher.publish).toHaveBeenCalledWith(
+        'events.master.deletion',
+        expect.objectContaining({ eventType: 'master.product.stale' })
+      );
     });
   });
 

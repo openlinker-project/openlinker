@@ -16,6 +16,7 @@ describe('PublishedVariantsService', () => {
       findMany: jest.fn(),
       countByConnectionAndVariants: jest.fn(),
       countListedVariantsByProducts: jest.fn(),
+      findStaleMappedVariants: jest.fn(),
     };
     shopRepo = {
       countByConnectionAndVariants: jest.fn(),

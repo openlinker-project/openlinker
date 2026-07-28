@@ -14,6 +14,7 @@ import type { JobEnqueuePort } from '@openlinker/core/sync';
 import type { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { InventoryItemEntity } from '@openlinker/core/inventory';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
+import type { IProductsService } from '@openlinker/core/products';
 
 /**
  * Build a lazy `listCapabilityAdapters` entry for the ShopProduct fan-out
@@ -34,6 +35,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
   let inventoryService: jest.Mocked<IInventoryService>;
   let jobEnqueue: jest.Mocked<JobEnqueuePort>;
   let integrationsService: jest.Mocked<IIntegrationsService>;
+  let productsService: jest.Mocked<Pick<IProductsService, 'getVariant'>>;
 
   /** Route getExternalIds by entityType so the two fan-out branches are independent. */
   const mockMappings = (byEntityType: Partial<Record<string, ExternalIdMapping[]>>): void => {
@@ -66,11 +68,16 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
       listCapabilityAdapters: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<IIntegrationsService>;
 
+    productsService = {
+      getVariant: jest.fn().mockResolvedValue(null),
+    };
+
     handler = new InventoryPropagateToMarketplacesHandler(
       identifierMapping,
       inventoryService,
       jobEnqueue,
-      integrationsService
+      integrationsService,
+      productsService as unknown as IProductsService
     );
   });
 
@@ -133,6 +140,39 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
             quantity: 100,
           }),
         })
+      );
+    });
+
+    it('should not enqueue an offer-quantity update when the variant is stale (#1689)', async () => {
+      const job = createJob({ productId: 'product-id', variantId: 'variant-id' });
+      const inventory = new InventoryItemEntity(
+        'inventory-id',
+        'product-id',
+        'variant-id',
+        100,
+        0,
+        null,
+        new Date()
+      );
+
+      inventoryService.getInventory.mockResolvedValue(inventory);
+      productsService.getVariant.mockResolvedValue({
+        id: 'variant-id',
+        productId: 'product-id',
+        sku: null,
+        attributes: null,
+        ean: null,
+        gtin: null,
+        isStale: true,
+        staleAt: new Date(),
+      });
+
+      await handler.execute(job);
+
+      expect(productsService.getVariant).toHaveBeenCalledWith('variant-id');
+      expect(identifierMapping.getExternalIds).not.toHaveBeenCalledWith('Offer', 'variant-id');
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalledWith(
+        expect.objectContaining({ jobType: 'marketplace.offerQuantity.update' })
       );
     });
 

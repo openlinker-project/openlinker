@@ -12,6 +12,7 @@ import type {
   OfferMappingPagination,
   PaginatedOfferMappings,
   ProductListingsCoverage,
+  StaleMappedVariant,
 } from '../types/offer-mapping.types';
 
 export interface OfferMappingRepositoryPort {
@@ -50,4 +51,18 @@ export interface OfferMappingRepositoryPort {
   countListedVariantsByProducts(
     productIds: readonly string[]
   ): Promise<readonly ProductListingsCoverage[]>;
+
+  /**
+   * Find Offer mappings on a connection whose mapped variant is currently
+   * stale (#1689) — the read-model backing the stale-offer-pause reconcile
+   * sweep. Joins the products-context `product_variants` table by name (a
+   * read-model reporting join, not a cross-context ORM-entity import — same
+   * pattern as `countListedVariantsByProducts`), filtered to
+   * `isStale = true AND staleAt >= staleSince`, ordered by `staleAt DESC`,
+   * capped at `limit`.
+   */
+  findStaleMappedVariants(
+    connectionId: string,
+    options: { limit: number; staleSince: Date }
+  ): Promise<readonly StaleMappedVariant[]>;
 }

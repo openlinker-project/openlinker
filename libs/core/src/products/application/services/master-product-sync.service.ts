@@ -51,6 +51,10 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     connectionId: string,
     externalId: string
   ): Promise<MasterProductSyncResult> {
+    // One correlation id per sync run — ties log lines, the deletion event,
+    // and (downstream, #1689) the stale-offer-pause job together.
+    const correlationId = randomUUID();
+
     // Resolve internal product ID
     const internalProductId = await this.identifierMapping.getOrCreateInternalId(
       CORE_ENTITY_TYPE.Product,
@@ -75,7 +79,7 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       variantsFromAdapter = await productAdapter.getProductVariants(internalProductId);
     } catch (error) {
       if (error instanceof MasterProductNotFoundError) {
-        return this.handleMasterDeletion(connectionId, externalId, internalProductId);
+        return this.handleMasterDeletion(connectionId, externalId, internalProductId, correlationId);
       }
       throw error;
     }
@@ -106,20 +110,25 @@ export class MasterProductSyncService implements IMasterProductSyncService {
         variants.map((v) => v.id)
       );
       if (markedStale.length > 0) {
-        await this.publishDeletionEvent(MASTER_VARIANT_STALE_EVENT, {
+        this.logger.warn(
+          `Master product sync marked variants stale (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, correlationId: ${correlationId}, markedStale=${markedStale.length})`
+        );
+        await this.publishDeletionEvent(false, {
           connectionId,
           internalProductId,
           variantIds: markedStale,
+          externalId,
+          correlationId,
         });
       }
     } else {
       this.logger.warn(
-        `Master product sync returned 0 variants for an existing product — skipping prune to avoid staling all variants on a possibly-transient empty response (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId})`
+        `Master product sync returned 0 variants for an existing product — skipping prune to avoid staling all variants on a possibly-transient empty response (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, correlationId: ${correlationId})`
       );
     }
 
     this.logger.debug(
-      `Master product sync complete (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, variants: ${variants.length}, markedStale=${markedStale.length})`
+      `Master product sync complete (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, correlationId: ${correlationId}, variants: ${variants.length}, markedStale=${markedStale.length})`
     );
 
     return {
@@ -137,18 +146,21 @@ export class MasterProductSyncService implements IMasterProductSyncService {
   private async handleMasterDeletion(
     connectionId: string,
     externalId: string,
-    internalProductId: string
+    internalProductId: string,
+    correlationId: string
   ): Promise<MasterProductSyncResult> {
     const markedStale = await this.productsService.markVariantsStaleExcept(internalProductId, []);
     if (markedStale.length > 0) {
-      await this.publishDeletionEvent(MASTER_PRODUCT_STALE_EVENT, {
+      await this.publishDeletionEvent(true, {
         connectionId,
         internalProductId,
         variantIds: markedStale,
+        externalId,
+        correlationId,
       });
     }
     this.logger.warn(
-      `Master product deleted — marked variants stale (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, markedStale=${markedStale.length})`
+      `Master product deleted — marked variants stale (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, correlationId: ${correlationId}, markedStale=${markedStale.length})`
     );
     return {
       internalProductId,
@@ -157,10 +169,16 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     };
   }
 
+  /**
+   * Derives the event type from whether the whole product was pruned (empty
+   * keep-set, `handleMasterDeletion`) versus a partial variant-level prune —
+   * a single derivation point so the two call sites can't drift out of sync.
+   */
   private async publishDeletionEvent(
-    eventType: typeof MASTER_VARIANT_STALE_EVENT | typeof MASTER_PRODUCT_STALE_EVENT,
+    wholeProduct: boolean,
     payload: MasterDeletionEventPayload
   ): Promise<void> {
+    const eventType = wholeProduct ? MASTER_PRODUCT_STALE_EVENT : MASTER_VARIANT_STALE_EVENT;
     const now = new Date().toISOString();
     await this.eventPublisher.publish(MASTER_DELETION_EVENT_STREAM, {
       eventId: randomUUID(),

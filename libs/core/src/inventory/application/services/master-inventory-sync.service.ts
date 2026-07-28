@@ -16,7 +16,9 @@ import {
   PRODUCTS_SERVICE_TOKEN,
   MASTER_DELETION_EVENT_STREAM,
   MASTER_DELETION_EVENT_SCHEMA_VERSION,
+  MASTER_PRODUCT_STALE_EVENT,
   MASTER_VARIANT_STALE_EVENT,
+  type MasterDeletionEventPayload,
 } from '@openlinker/core/products';
 import { EventPublisherPort, EVENT_PUBLISHER_TOKEN } from '@openlinker/core/events';
 import { INVENTORY_SERVICE_TOKEN } from '../../inventory.tokens';
@@ -92,16 +94,30 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     // Emit the master-deletion signal from the inventory prune path too (#1599).
     // Disjoint from the product-sync emission — a full deletion produces one from
     // each sync path; consumers dedupe by (productId, variantIds) as needed.
-    if (pruneResult.variantIds.length > 0) {
+    //
+    // Gated on markedCount (not variantIds.length) — a product-level, NULL-variant
+    // row contributes to markedCount but not to variantIds, and previously such a
+    // prune emitted nothing at all (#1689).
+    if (pruneResult.markedCount > 0) {
+      const correlationId = randomUUID();
+      // No variant rows survived this sync at all ⇒ the whole product is gone at
+      // the master, mirroring the products-context derivation (empty keep-set).
+      const wholeProduct = currentVariantIds.length === 0;
+      this.logger.warn(
+        `Master inventory sync marked rows stale (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, correlationId: ${correlationId}, markedRows=${pruneResult.markedCount}, markedVariants=${pruneResult.variantIds.length})`
+      );
+      const payload: MasterDeletionEventPayload = {
+        connectionId,
+        internalProductId,
+        variantIds: pruneResult.variantIds,
+        externalId,
+        correlationId,
+      };
       const now = new Date().toISOString();
       await this.eventPublisher.publish(MASTER_DELETION_EVENT_STREAM, {
         eventId: randomUUID(),
-        eventType: MASTER_VARIANT_STALE_EVENT,
-        payloadJson: JSON.stringify({
-          connectionId,
-          internalProductId,
-          variantIds: pruneResult.variantIds,
-        }),
+        eventType: wholeProduct ? MASTER_PRODUCT_STALE_EVENT : MASTER_VARIANT_STALE_EVENT,
+        payloadJson: JSON.stringify(payload),
         metadataJson: JSON.stringify({ schemaVersion: MASTER_DELETION_EVENT_SCHEMA_VERSION }),
         occurredAt: now,
         publishedAt: now,

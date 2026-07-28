@@ -25,6 +25,9 @@ export const JobTypeValues = [
   'marketplace.offer.statusSync',
   'marketplace.offer.refreshSnapshot',
   'marketplace.offer.stockRestore',
+  // Stale-variant offer pause: trigger (event-driven) and sweep (reconcile) (#1689).
+  'marketplace.offer.pauseStale',
+  'marketplace.offer.pauseStaleSweep',
   'marketplace.shipment.statusSync',
   'marketplace.shipment.syncByExternalId',
   'marketplace.fulfillment.statusSync',

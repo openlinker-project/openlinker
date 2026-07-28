@@ -585,6 +585,51 @@ describe('BulkListingSubmitService', () => {
       expect(inventoryQuery.getAvailabilityByVariantIds).toHaveBeenCalledWith(['v-a', 'v-c']);
     });
 
+    it('skips a stale sibling variant deleted at the master (#1689)', async () => {
+      products.getVariant.mockResolvedValue(variant({ id: 'v-a', productId: 'P', ean: '111' }));
+      products.getVariantsByProductId.mockResolvedValue([
+        variant({ id: 'v-a', productId: 'P', ean: '111' }),
+        variant({ id: 'v-b', productId: 'P', ean: '222', isStale: true, staleAt: new Date() }),
+        variant({ id: 'v-c', productId: 'P', gtin: '333' }),
+      ]);
+      inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
+        { productVariantId: 'v-a', totalAvailable: 4, locationCount: 1 },
+        { productVariantId: 'v-c', totalAvailable: 2, locationCount: 1 },
+      ]);
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['v-a'],
+        sharedConfig: { stock: 7, publishImmediately: false },
+      });
+
+      expect(enqueueService.enqueueCreation.mock.calls.map((c) => c[0].internalVariantId)).toEqual([
+        'v-a',
+        'v-c',
+      ]);
+    });
+
+    it('skips a stale directly-selected variant entirely — zero jobs, empty-submission guard fires', async () => {
+      products.getVariant.mockResolvedValue(
+        variant({ id: 'v-a', productId: 'P', ean: '111', isStale: true, staleAt: new Date() })
+      );
+      products.getVariantsByProductId.mockResolvedValue([
+        variant({ id: 'v-a', productId: 'P', ean: '111', isStale: true, staleAt: new Date() }),
+      ]);
+
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['v-a'],
+          sharedConfig: { stock: 7, publishImmediately: false },
+        })
+      ).rejects.toBeInstanceOf(EmptyBulkSubmissionException);
+
+      expect(enqueueService.enqueueCreation).not.toHaveBeenCalled();
+    });
+
     it('still lists the selected variant when the product variant list omits it (defensive)', async () => {
       products.getVariant.mockResolvedValue(variant({ id: 'v-a', productId: 'P', ean: '111' }));
       // Inconsistent: siblings do not include the selected v-a.
