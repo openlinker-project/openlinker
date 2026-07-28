@@ -9,7 +9,12 @@ export {
   setDemoAnalyticsConsent,
   subscribeToDemoAnalyticsConsent,
 } from './lib/demo-analytics-consent';
+export {
+  captureMarketingLanding,
+  isMarketingLandingTrackable,
+} from './lib/capture-marketing-landing';
 export { AnalyticsConsentTile } from './components/analytics-consent-tile';
+export { MarketingTrackingFootnote } from './components/marketing-tracking-footnote';
 export { DEMO_ANALYTICS_CONSENT_STORAGE_KEY } from './demo.types';
 export { DemoEventCatalog } from './lib/demo-events';
 export { bucketCount } from './lib/bucket-count';

@@ -18,3 +18,11 @@ export const DEMO_ANALYTICS_CONSENT_CHANGE_EVENT = 'openlinker:demo-analytics-co
 
 export const DemoAnalyticsConsentValues = ['accepted', 'declined'] as const;
 export type DemoAnalyticsConsent = (typeof DemoAnalyticsConsentValues)[number];
+
+/**
+ * Per-tab de-dup flag for the consent-independent `captureMarketingLanding`
+ * marketing-UTM capture. Session-scoped (not localStorage) — a fresh tab
+ * re-evaluates the landing URL, but repeated renders within the same tab
+ * don't re-fire.
+ */
+export const MARKETING_LANDING_CAPTURED_STORAGE_KEY = 'openlinker.marketingLandingCaptured';
