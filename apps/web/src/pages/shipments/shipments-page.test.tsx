@@ -1,10 +1,15 @@
-import { cleanup, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
+import {
+  renderWithProviders,
+  createMockApiClient,
+  createAuthenticatedSessionAdapter,
+} from '../../test/test-utils';
 import { mockMobileViewport } from '../../test/viewport';
 import { ShipmentsPage } from './shipments-page';
 import type { PaginatedShipments, Shipment } from '../../features/shipments/api/shipments.types';
 import type { Connection } from '../../features/connections/api/connections.types';
+import type { SessionUser } from '../../shared/auth/session.types';
 
 function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
   return {
@@ -16,6 +21,8 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     status: 'generated',
     providerShipmentId: 'shipx-1',
     paczkomatId: 'POZ08A',
+    sourceDeliveryMethodId: null,
+    deliveryIntent: null,
     trackingNumber: '6800000001',
     carrier: 'inpost',
     labelPdfRef: 'shipx:label:1',
@@ -72,9 +79,16 @@ describe('ShipmentsPage', () => {
 
     renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
 
-    // Status word renders in both the table cell and the mobile card meta.
-    expect((await screen.findAllByText('generated')).length).toBeGreaterThan(0);
-    expect(screen.getByText('Shipments')).toBeInTheDocument();
+    // Scoped to the table body (not `findAllByText`, which also matches the
+    // status-filter dropdown's static `<option>generated</option>` before any
+    // data has loaded — a false-positive that would let this assertion pass
+    // vacuously without the query ever resolving).
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('generated')).toBeInTheDocument();
+    // `getByRole('heading', ...)` (not `getByText`), since the DataTable's
+    // sr-only `<caption>Shipments</caption>` shares the same text as the page
+    // title once the real table (rather than the loading skeleton) is mounted.
+    expect(screen.getByRole('heading', { name: 'Shipments' })).toBeInTheDocument();
   });
 
   it('should pass URL filters through to the query (incl. hasTracking=false coercion)', async () => {
@@ -315,7 +329,10 @@ describe('ShipmentsPage — failed-shipment hint (#1800)', () => {
       connections: { list: vi.fn().mockResolvedValue([]) },
     });
 
-    renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+    renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     // The message renders in the status cell (table + mobile card => >=1).
     expect(
@@ -343,7 +360,10 @@ describe('ShipmentsPage — failed-shipment hint (#1800)', () => {
         connections: { list: vi.fn().mockResolvedValue([]) },
       });
 
-      const { container } = renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+      const { container } = renderWithProviders(<ShipmentsPage />, {
+        apiClient: mockApi,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
 
       await screen.findByText(/sender postal code not serviceable/i);
       // Assert the reason rendered *inside* a card (not merely somewhere on the
@@ -371,5 +391,664 @@ describe('ShipmentsPage — failed-shipment hint (#1800)', () => {
 
     expect((await screen.findAllByText('delivered')).length).toBeGreaterThan(0);
     expect(container.querySelector('.shipment-status-cell__error')).toBeNull();
+  });
+});
+
+describe('ShipmentsPage — row accordion + Order/Provider columns (#1826)', () => {
+  afterEach(cleanup);
+
+  it('should expand and collapse the row accordion, showing the Regenerate action', async () => {
+    const failed = makeShipment({
+      id: 'ol_shipment_failed',
+      status: 'failed',
+      // Pre-waybill: a `failed` row that still holds a carrier waybill is
+      // deliberately NOT offered a Regenerate link (#1905).
+      providerShipmentId: null,
+      errorMessage: 'DPD rejected: sender postal code not serviceable',
+      failedAt: '2026-05-20T12:00:00.000Z',
+      trackingNumber: null,
+    });
+    const mockApi = createMockApiClient({
+      shipments: { list: vi.fn().mockResolvedValue(page([failed])) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const toggle = await screen.findByRole('button', {
+      name: `Expand details for shipment ${failed.id}`,
+    });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('link', { name: /regenerate label/i })).not.toBeInTheDocument();
+
+    fireEvent.click(toggle);
+
+    expect(
+      await screen.findByRole('link', { name: /regenerate label/i }),
+    ).toBeInTheDocument();
+    const expandedToggle = screen.getByRole('button', {
+      name: `Collapse details for shipment ${failed.id}`,
+    });
+    // The attribute, not just the label — nothing else in the repo pins it,
+    // and AT users depend on it rather than on the accessible name.
+    expect(expandedToggle).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.click(expandedToggle);
+    expect(screen.queryByRole('link', { name: /regenerate label/i })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: `Expand details for shipment ${failed.id}` }),
+    ).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('should render the Order column id as a link to the order (not "Unknown")', async () => {
+    const mockApi = createMockApiClient({
+      shipments: { list: vi.fn().mockResolvedValue(page([makeShipment()])) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+    const table = await screen.findByRole('table');
+    // The link's own accessible name is the full order id — a plain, unlinked
+    // "Unknown" (the pre-fix EntityLabel fallback for a missing `name`) would
+    // fail this `getByRole` lookup outright, so a successful match already
+    // proves the id itself isn't rendering as "Unknown".
+    const orderLink = within(table).getByRole('link', { name: 'ol_order_1' });
+    expect(orderLink).toHaveAttribute('href', '/orders/ol_order_1');
+  });
+
+  it('should keep the column header "Connection" while rendering it as a ConnectionDot (#1905)', async () => {
+    const mockApi = createMockApiClient({
+      shipments: { list: vi.fn().mockResolvedValue(page([makeShipment({ connectionId: 'conn_inpost' })])) },
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+    const table = await screen.findByRole('table');
+    // "Connection" is the vocabulary six other tables use for this column, and
+    // this page's own filter still says "All connections" — a brief rename to
+    // "Provider" left the operator hunting for a filter that doesn't exist.
+    expect(within(table).getByText('Connection')).toBeInTheDocument();
+    expect(within(table).queryByText('Provider')).not.toBeInTheDocument();
+    // Scoped to the visible provider cell — `ConnectionDot` also carries a
+    // duplicate `sr-only` "InPost" for its accessible name, and "InPost" is
+    // separately an `<option>` in the toolbar's connection filter.
+    const providerCell = table.querySelector('.shipments-page__provider');
+    expect(providerCell).not.toBeNull();
+    expect(within(providerCell as HTMLElement).getByText('InPost', { selector: 'span:not(.sr-only)' })).toBeInTheDocument();
+  });
+
+  it('should render the Action column with a plain, non-interactive severity label per status', async () => {
+    const mockApi = createMockApiClient({
+      shipments: {
+        list: vi.fn().mockResolvedValue(
+          page([
+            makeShipment({
+              id: 'ol_shipment_failed',
+              status: 'failed',
+              errorMessage: 'carrier rejected the sender postcode',
+            }),
+            makeShipment({ id: 'ol_shipment_draft', status: 'draft' }),
+            makeShipment({ id: 'ol_shipment_generated', status: 'generated' }),
+            makeShipment({ id: 'ol_shipment_delivered', status: 'delivered' }),
+          ]),
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('Action')).toBeInTheDocument();
+    expect(within(table).getByText('Fix')).toBeInTheDocument();
+    expect(within(table).getByText('Finish')).toBeInTheDocument();
+    expect(within(table).getByText('Send')).toBeInTheDocument();
+    expect(within(table).getByText('View')).toBeInTheDocument();
+    // Plain text, not a second interactive control — no button/link role.
+    const severityCell = within(table).getByText('Fix');
+    expect(severityCell.tagName).toBe('SPAN');
+    expect(severityCell.closest('button, a')).toBeNull();
+  });
+
+  it('should label an omp/branch-1 row "View" regardless of status (never implies a Generate action)', async () => {
+    const mockApi = createMockApiClient({
+      shipments: {
+        list: vi.fn().mockResolvedValue(
+          page([
+            makeShipment({ id: 'ol_shipment_omp', status: 'cancelled', shippingMethod: 'omp' }),
+          ]),
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('View')).toBeInTheDocument();
+    expect(within(table).queryByText('Finish')).not.toBeInTheDocument();
+  });
+
+  it('should collapse every severity label to "View" for a session without shipments:write', async () => {
+    const viewer: SessionUser = {
+      id: 'user_viewer',
+      username: 'viewer',
+      email: 'viewer@example.com',
+      role: 'viewer',
+      permissions: ['shipments:read'],
+    };
+    const mockApi = createMockApiClient({
+      shipments: {
+        list: vi.fn().mockResolvedValue(
+          page([
+            makeShipment({
+              id: 'ol_shipment_failed',
+              status: 'failed',
+              errorMessage: 'carrier rejected the sender postcode',
+            }),
+            makeShipment({ id: 'ol_shipment_draft', status: 'draft' }),
+          ]),
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(viewer),
+    });
+
+    const table = await screen.findByRole('table');
+    // Telling a viewer to "Fix" something they hold no permission to touch is
+    // a dead end — the accordion offers them no write affordance either.
+    expect(within(table).getAllByText('View').length).toBe(2);
+    expect(within(table).queryByText('Fix')).not.toBeInTheDocument();
+    expect(within(table).queryByText('Finish')).not.toBeInTheDocument();
+  });
+
+  it('should freeze Status + Order (the row identity) via stickyLeftColumns', async () => {
+    const mockApi = createMockApiClient({
+      shipments: { list: vi.fn().mockResolvedValue(page([makeShipment()])) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+    const table = await screen.findByRole('table');
+    // `DataTable` marks a frozen column's header/cell with `data-table__sticky-col`
+    // and freezes the auto expander cell alongside them — so the header row
+    // carries three: expander + Status + Order. Freezing Status alone left a
+    // horizontally-scrolled row showing a failure with no way to tell which
+    // order it belonged to (#1905).
+    const frozenHeaders = table.querySelectorAll('thead .data-table__sticky-col');
+    expect(frozenHeaders.length).toBe(3);
+    // The Order header is the outermost frozen data column.
+    const headers = Array.from(table.querySelectorAll('thead th')).map((th) => th.textContent);
+    expect(headers[1]).toContain('Status');
+    expect(headers[2]).toContain('Order');
+  });
+});
+
+describe('ShipmentsPage — cause-first triage strip (#1826)', () => {
+  afterEach(cleanup);
+
+  it('should show the triage strip when >=2 failed shipments share a normalised cause', async () => {
+    const shared = 'DPD rejected: sender postcode 00-000 not serviceable';
+    const mockApi = createMockApiClient({
+      shipments: {
+        list: vi.fn().mockResolvedValue(
+          page([
+            makeShipment({ id: 'ol_shipment_a', status: 'failed', errorMessage: shared }),
+            makeShipment({
+              id: 'ol_shipment_b',
+              status: 'failed',
+              errorMessage: 'DPD rejected: sender postcode 11-111 not serviceable',
+            }),
+          ]),
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    expect(await screen.findByText(/report the same carrier message/i)).toBeInTheDocument();
+  });
+
+  it('should resolve the connection name into the strip instead of leaving a bare id', async () => {
+    const shared = 'DPD rejected: sender postcode 00-000 not serviceable';
+    const mockApi = createMockApiClient({
+      shipments: {
+        list: vi.fn().mockResolvedValue(
+          page([
+            makeShipment({ id: 'ol_shipment_a', status: 'failed', connectionId: 'conn_inpost', errorMessage: shared }),
+            makeShipment({
+              id: 'ol_shipment_b',
+              status: 'failed',
+              connectionId: 'conn_inpost',
+              errorMessage: 'DPD rejected: sender postcode 11-111 not serviceable',
+            }),
+          ]),
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const strip = await screen.findByText(/report the same carrier message/i);
+    expect(strip.textContent).toContain('InPost');
+  });
+
+  it('should cap the rendered strips at two and collapse the rest into a count', async () => {
+    // One live region per group on a 20-row page pushes the table below the
+    // fold and announces a wall of text (#1905). Three distinct causes here.
+    const failures = ['alpha rejection', 'beta rejection', 'gamma rejection'].flatMap((cause, i) => [
+      makeShipment({ id: `ol_shipment_${i}_a`, status: 'failed', errorMessage: cause }),
+      makeShipment({ id: `ol_shipment_${i}_b`, status: 'failed', errorMessage: `${cause} 42` }),
+    ]);
+    const mockApi = createMockApiClient({
+      shipments: { list: vi.fn().mockResolvedValue(page(failures)) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await screen.findByRole('table');
+    expect(screen.getAllByText(/report the same carrier message/i).length).toBe(2);
+    expect(
+      screen.getByText(/\+1 more group with a shared carrier message\./i),
+    ).toBeInTheDocument();
+  });
+
+  it('should not show the triage strip when only 1 shipment has a given cause', async () => {
+    const mockApi = createMockApiClient({
+      shipments: {
+        list: vi.fn().mockResolvedValue(
+          page([makeShipment({ id: 'ol_shipment_a', status: 'failed', errorMessage: 'a lone rejection' })]),
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await screen.findByRole('table');
+    expect(screen.queryByText(/report the same carrier message/i)).not.toBeInTheDocument();
+  });
+
+  it('should hide the triage strip entirely for a viewer session even with a shared cause', async () => {
+    const viewer: SessionUser = {
+      id: 'user_viewer',
+      username: 'viewer',
+      email: 'viewer@example.com',
+      role: 'viewer',
+      permissions: ['shipments:read'],
+    };
+    const shared = 'DPD rejected: sender postcode 00-000 not serviceable';
+    const mockApi = createMockApiClient({
+      shipments: {
+        list: vi.fn().mockResolvedValue(
+          page([
+            makeShipment({ id: 'ol_shipment_a', status: 'failed', errorMessage: shared }),
+            makeShipment({
+              id: 'ol_shipment_b',
+              status: 'failed',
+              errorMessage: 'DPD rejected: sender postcode 11-111 not serviceable',
+            }),
+          ]),
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(viewer),
+    });
+
+    await screen.findByRole('table');
+    expect(screen.queryByText(/report the same carrier message/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('ShipmentsPage — viewer-role redaction (#1826)', () => {
+  afterEach(cleanup);
+
+  const viewer: SessionUser = {
+    id: 'user_viewer',
+    username: 'viewer',
+    email: 'viewer@example.com',
+    role: 'viewer',
+    permissions: ['shipments:read'],
+  };
+
+  it('should redact the raw errorMessage in the status cell for a viewer session', async () => {
+    const failed = makeShipment({
+      id: 'ol_shipment_failed',
+      status: 'failed',
+      errorMessage: 'DPD rejected: sender postal code not serviceable',
+      failedAt: '2026-05-20T12:00:00.000Z',
+      trackingNumber: null,
+    });
+    const mockApi = createMockApiClient({
+      shipments: { list: vi.fn().mockResolvedValue(page([failed])) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(viewer),
+    });
+
+    expect(await screen.findByText('Details hidden for this role.')).toBeInTheDocument();
+    expect(screen.queryByText(/sender postal code not serviceable/i)).not.toBeInTheDocument();
+  });
+
+  it('should not leak the raw errorMessage via the status cell\'s title tooltip for a viewer session', async () => {
+    // The third redaction surface named in AC-105 alongside the status-cell
+    // text and the accordion. The visible text can be redacted while a stale
+    // `title={shipment.errorMessage}` still exposes the raw string on hover —
+    // exactly the leak an earlier pass on this issue missed, so it gets its
+    // own assertion rather than riding on the text-redaction test above.
+    const failed = makeShipment({
+      id: 'ol_shipment_failed',
+      status: 'failed',
+      errorMessage: 'DPD rejected: sender postal code not serviceable',
+      failedAt: '2026-05-20T12:00:00.000Z',
+      trackingNumber: null,
+    });
+    const mockApi = createMockApiClient({
+      shipments: { list: vi.fn().mockResolvedValue(page([failed])) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    const { container } = renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(viewer),
+    });
+
+    await screen.findByText('Details hidden for this role.');
+    const messageEl = container.querySelector('.shipment-status-cell__error-message');
+    expect(messageEl).not.toBeNull();
+    expect(messageEl).not.toHaveAttribute('title');
+    // Belt-and-braces: no element anywhere carries the raw text as a title.
+    expect(
+      container.querySelector('[title*="sender postal code not serviceable"]'),
+    ).toBeNull();
+  });
+
+  it('should still expose the raw errorMessage on the title tooltip for an admin/operator session', async () => {
+    const failed = makeShipment({
+      id: 'ol_shipment_failed',
+      status: 'failed',
+      errorMessage: 'DPD rejected: sender postal code not serviceable',
+      failedAt: '2026-05-20T12:00:00.000Z',
+      trackingNumber: null,
+    });
+    const mockApi = createMockApiClient({
+      shipments: { list: vi.fn().mockResolvedValue(page([failed])) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    const { container } = renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await screen.findAllByText(/sender postal code not serviceable/i);
+    expect(container.querySelector('.shipment-status-cell__error-message')).toHaveAttribute(
+      'title',
+      'DPD rejected: sender postal code not serviceable',
+    );
+  });
+
+  it('should NOT redact for an operator session (holds shipments:write, unlike viewer)', async () => {
+    // The permission boundary has three roles; admin (the default fixture) and
+    // viewer were covered, operator was not. `ROLE_PERMISSIONS.operator`
+    // includes `shipments:write`, so an operator must see the raw message.
+    const operator: SessionUser = {
+      id: 'user_operator',
+      username: 'operator',
+      email: 'operator@example.com',
+      role: 'operator',
+      permissions: ['shipments:read', 'shipments:write'],
+    };
+    const failed = makeShipment({
+      id: 'ol_shipment_failed',
+      status: 'failed',
+      errorMessage: 'DPD rejected: sender postal code not serviceable',
+      failedAt: '2026-05-20T12:00:00.000Z',
+      trackingNumber: null,
+    });
+    const mockApi = createMockApiClient({
+      shipments: { list: vi.fn().mockResolvedValue(page([failed])) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(operator),
+    });
+
+    expect(
+      (await screen.findAllByText(/sender postal code not serviceable/i)).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText('Details hidden for this role.')).not.toBeInTheDocument();
+  });
+
+  it('should redact for an anonymous (no-session) render — usePermission fails closed', async () => {
+    const failed = makeShipment({
+      id: 'ol_shipment_failed',
+      status: 'failed',
+      errorMessage: 'DPD rejected: sender postal code not serviceable',
+      failedAt: '2026-05-20T12:00:00.000Z',
+      trackingNumber: null,
+    });
+    const mockApi = createMockApiClient({
+      shipments: { list: vi.fn().mockResolvedValue(page([failed])) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    // No `sessionAdapter` → the noop (unauthenticated) adapter.
+    renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+    expect(await screen.findByText('Details hidden for this role.')).toBeInTheDocument();
+    expect(screen.queryByText(/sender postal code not serviceable/i)).not.toBeInTheDocument();
+  });
+
+  it('should keep the status chip and accordion visible but hide write actions for a viewer session', async () => {
+    const failed = makeShipment({
+      id: 'ol_shipment_failed',
+      status: 'failed',
+      errorMessage: 'DPD rejected: sender postal code not serviceable',
+      failedAt: '2026-05-20T12:00:00.000Z',
+      trackingNumber: null,
+    });
+    const mockApi = createMockApiClient({
+      shipments: { list: vi.fn().mockResolvedValue(page([failed])) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(viewer),
+    });
+
+    // Chip stays visible (redacted, not hidden).
+    expect(await screen.findByText('failed')).toBeInTheDocument();
+
+    const toggle = screen.getByRole('button', { name: `Expand details for shipment ${failed.id}` });
+    fireEvent.click(toggle);
+
+    // Scoped to the accordion — the status cell shows the same redacted
+    // placeholder, so an unscoped query would find two matches.
+    await screen.findByText('Shipment failed'); // the accordion's own field label
+    const detail = document.querySelector('.data-table__detail') as HTMLElement;
+    expect(detail).not.toBeNull();
+    expect(within(detail).getByText('Details hidden for this role.')).toBeInTheDocument();
+    expect(within(detail).queryByRole('link', { name: /regenerate label/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /review connection settings/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('ShipmentsPage — mobile card parity (#1826)', () => {
+  afterEach(cleanup);
+
+  it('links the card to the order (restores navigation dropped when rowHref was removed)', async () => {
+    const viewport = mockMobileViewport();
+    try {
+      const mockApi = createMockApiClient({
+        shipments: {
+          list: vi.fn().mockResolvedValue(
+            page([makeShipment({ id: 'ol_shipment_1', orderId: 'ol_order_1', customerId: 'ol_customer_1' })]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([]) },
+      });
+
+      const { container } = renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+      const card = await waitFor(() => {
+        const el = container.querySelector('.data-table__card');
+        expect(el).not.toBeNull();
+        return el as HTMLElement;
+      });
+      // Even though this shipment carries a `customerId` (previously the
+      // condition that suppressed the order fallback in `subtitle`), the
+      // card's `title` is now unconditionally the order link.
+      const orderLink = within(card).getByRole('link', { name: 'ol_order_1' });
+      expect(orderLink).toHaveAttribute('href', '/orders/ol_order_1');
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it('shows the severity label in the card summary', async () => {
+    const viewport = mockMobileViewport();
+    try {
+      const mockApi = createMockApiClient({
+        shipments: {
+          list: vi.fn().mockResolvedValue(
+            page([
+              makeShipment({
+                status: 'failed',
+                errorMessage: 'carrier rejected the sender postcode',
+              }),
+            ]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([]) },
+      });
+
+      const { container } = renderWithProviders(<ShipmentsPage />, {
+        apiClient: mockApi,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+
+      const card = await waitFor(() => {
+        const el = container.querySelector('.data-table__card');
+        expect(el).not.toBeNull();
+        return el as HTMLElement;
+      });
+      expect(within(card).getByText('Fix')).toBeInTheDocument();
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it('redacts the raw errorMessage for a viewer session in card mode too', async () => {
+    const viewer: SessionUser = {
+      id: 'user_viewer',
+      username: 'viewer',
+      email: 'viewer@example.com',
+      role: 'viewer',
+      permissions: ['shipments:read'],
+    };
+    const viewport = mockMobileViewport();
+    try {
+      const failed = makeShipment({
+        id: 'ol_shipment_failed',
+        status: 'failed',
+        errorMessage: 'DPD rejected: sender postal code not serviceable',
+        failedAt: '2026-05-20T12:00:00.000Z',
+        trackingNumber: null,
+      });
+      const mockApi = createMockApiClient({
+        shipments: { list: vi.fn().mockResolvedValue(page([failed])) },
+        connections: { list: vi.fn().mockResolvedValue([]) },
+      });
+
+      const { container } = renderWithProviders(<ShipmentsPage />, {
+        apiClient: mockApi,
+        sessionAdapter: createAuthenticatedSessionAdapter(viewer),
+      });
+
+      await waitFor(() => {
+        expect(container.querySelector('.data-table__card')).not.toBeNull();
+      });
+      expect(await screen.findByText('Details hidden for this role.')).toBeInTheDocument();
+      expect(
+        screen.queryByText(/sender postal code not serviceable/i),
+      ).not.toBeInTheDocument();
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it('shows the triage strip above the card list for an admin/operator session', async () => {
+    const viewport = mockMobileViewport();
+    try {
+      const shared = 'DPD rejected: sender postcode 00-000 not serviceable';
+      const mockApi = createMockApiClient({
+        shipments: {
+          list: vi.fn().mockResolvedValue(
+            page([
+              makeShipment({ id: 'ol_shipment_a', status: 'failed', errorMessage: shared }),
+              makeShipment({
+                id: 'ol_shipment_b',
+                status: 'failed',
+                errorMessage: 'DPD rejected: sender postcode 11-111 not serviceable',
+              }),
+            ]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([]) },
+      });
+
+      renderWithProviders(<ShipmentsPage />, {
+        apiClient: mockApi,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+
+      expect(
+        await screen.findByText(/report the same carrier message/i),
+      ).toBeInTheDocument();
+    } finally {
+      viewport.restore();
+    }
   });
 });

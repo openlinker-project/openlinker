@@ -564,6 +564,56 @@ describe('GenerateLabelForm — happy path', () => {
 
 // ── #839 AC-3 — pickup-point retry hint ─────────────────────────────────
 
+describe('GenerateLabelForm — initialPaczkomatId precedence (#1826)', () => {
+  it('shows the buyer-selected pickup point, not a stale initialPaczkomatId, when the snapshot has one (read-only field must stay truthful)', async () => {
+    // `makeOrder()`'s default snapshot carries `pickupPoint: { id: 'POZ08A' }`
+    // — the buyer's real, current selection. `initialPaczkomatId` here stands
+    // in for a *different*, already-failed shipment's locker id (e.g. the
+    // operator's earlier attempt used the wrong code). The read-only field is
+    // labelled "Buyer-selected" — it must never show anything else.
+    renderWithProviders(
+      <GenerateLabelForm
+        order={makeOrder()}
+        initialPaczkomatId="POZ99Z"
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    const field = await screen.findByLabelText('Paczkomat');
+    expect(field).toHaveValue('POZ08A');
+    expect(field).toHaveAttribute('readonly');
+    expect(screen.queryByDisplayValue('POZ99Z')).toBeNull();
+  });
+
+  it('pre-fills the editable InPost field with initialPaczkomatId when the snapshot has no buyer-selected pickup point', async () => {
+    const baseSnapshot = makeOrder().orderSnapshot as Record<string, unknown>;
+    const snapshotWithoutPickupPoint = { ...baseSnapshot };
+    delete snapshotWithoutPickupPoint.pickupPoint;
+    const order = makeOrder({
+      orderSnapshot: {
+        ...snapshotWithoutPickupPoint,
+        // Locker-classified method (matches the `LOCKER_METHOD_RE` regex) so
+        // the paczkomat field still renders even with no `pickupPoint`.
+        shipping: { methodId: 'inpost-paczkomat', methodName: 'InPost Paczkomat' },
+      },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm
+        order={order}
+        initialPaczkomatId="POZ99Z"
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    const field = await screen.findByLabelText('Paczkomat');
+    expect(field).toHaveValue('POZ99Z');
+    expect(field).not.toHaveAttribute('readonly');
+  });
+});
+
 describe('GenerateLabelForm — AC-3 pickup-point retry hint (#839)', () => {
   // A genuine unresolved-locker order: a locker delivery method, but the
   // pickup point hasn't arrived yet (#954 — the hint's legitimate case). The
