@@ -42,20 +42,41 @@ test.describe('WooCommerce fulfillment status read-back', () => {
     world,
     jobs,
   }) => {
-    const wcDestination = world.connectionWithCapability('OrderProcessorManager', 'woocommerce');
-    test.skip(!wcDestination, 'no WooCommerce connection configured as OrderProcessorManager on this stack');
-
-    // Find an order this WC connection has already synced to (produced by
-    // order-destination.spec.ts, or any prior run) — the job scans OL Order
-    // Records mirrored to this connection, so it needs at least one to exist.
-    const orders = await api.orders.list({ limit: 50 });
-    const candidate = orders.items.find((o) =>
-      o.syncStatus.some((s) => s.destinationConnectionId === wcDestination!.id && s.status === 'synced'),
+    // Resolve the destination FROM an already-synced order rather than
+    // guessing a connection up front. `world.connectionWithCapability(...)`
+    // returns the first WC connection carrying `OrderProcessorManager` in
+    // connection-creation order — on a stack where the SAME WC store is
+    // registered twice (one connection as OrderSource, a distinct one as
+    // OrderProcessorManager, per `order-destination.spec.ts`'s own topology
+    // requirement), the source connection also carries OrderProcessorManager
+    // and was created first, so the naive lookup silently picked the SOURCE.
+    // `OrderSyncService` never syncs an order back to its own source, so no
+    // order could ever satisfy the (wrong) candidate connection and this test
+    // self-skipped unconditionally, independent of whether a real sync had
+    // happened. Scanning orders first and deriving the connection from an
+    // actual `synced` entry is correct regardless of connection topology or
+    // creation order.
+    const wcConnectionIds = new Set(
+      world.connectionsWithCapability('OrderProcessorManager')
+        .filter((c) => c.platformType === 'woocommerce')
+        .map((c) => c.id),
     );
-    test.skip(!candidate, 'no order synced to the WooCommerce destination connection yet (run order-destination.spec.ts first)');
+    test.skip(wcConnectionIds.size === 0, 'no WooCommerce connection configured as OrderProcessorManager on this stack');
 
-    const job = await jobs.syncFulfillmentStatus(wcDestination!.id, {
-      cursorKey: `e2e.${wcDestination!.id}.fulfillmentStatus.scanOffset`,
+    const orders = await api.orders.list({ limit: 50 });
+    let wcDestinationId: string | undefined;
+    const candidate = orders.items.find((o) =>
+      o.syncStatus.some((s) => {
+        const match = wcConnectionIds.has(s.destinationConnectionId) && s.status === 'synced';
+        if (match) wcDestinationId = s.destinationConnectionId;
+        return match;
+      }),
+    );
+    test.skip(!candidate, 'no order synced to a WooCommerce destination connection yet (run order-destination.spec.ts first)');
+    const wcDestination = world.connections.find((c) => c.id === wcDestinationId)!;
+
+    const job = await jobs.syncFulfillmentStatus(wcDestination.id, {
+      cursorKey: `e2e.${wcDestination.id}.fulfillmentStatus.scanOffset`,
       timeoutMs: 60_000,
     });
     expect(job.status, 'fulfillment-status-sync job reached a terminal status').toBe('succeeded');
@@ -66,7 +87,7 @@ test.describe('WooCommerce fulfillment status read-back', () => {
     // read as "not yet fulfilled, skip"). Assert loosely: if a row exists, it
     // must be attributable to this connection.
     if (shipment) {
-      expect(shipment.connectionId).toBe(wcDestination!.id);
+      expect(shipment.connectionId).toBe(wcDestination.id);
       expect(shipment.orderId).toBe(candidate!.internalOrderId);
     }
   });

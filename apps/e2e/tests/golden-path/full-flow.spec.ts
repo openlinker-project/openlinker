@@ -1625,7 +1625,11 @@ async function createBulkOffers(ctx: {
   }
 
   await pages.productsList.goto();
-  await pages.productsList.selectProduct(state.product!.name);
+  // Disambiguate by SKU, not name — see the same fix in
+  // `golden-path/operator-setup.spec.ts`'s `runBulkOfferSegment`: this stack
+  // can carry same-named products from different masters, and `hasText` is a
+  // substring match that resolves to more than one row on a bare name.
+  await pages.productsList.selectProduct(state.product!.sku ?? state.product!.name);
   const wizard = await pages.productsList.startBulkOfferCreation(connectionName);
   await wizard.selectConnectionIfPresent(connectionName);
   // Config ("Proceed →") → auto-advancing Resolve → Review ("Create offers (N)"),

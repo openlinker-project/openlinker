@@ -33,16 +33,39 @@ export class ProductsListPage {
     return this.page.getByLabel('Search products by name or SKU', { exact: true });
   }
 
-  /** The row-select checkbox for a product identified by visible text (name/SKU). */
+  /**
+   * The row-select checkbox for a product identified by visible text (name or
+   * SKU). Matched via a descendant EXACT-text locator (`products-list-page
+   * .tsx:651-653`, the SKU's own `<span>`), not `hasText`'s substring match
+   * against the row's whole flattened text: a SKU like `OL-ADIDAS-IA4845` is
+   * itself a substring of a sibling product's `OL-ADIDAS-IA4845-S`, and this
+   * stack routinely carries same-named products from different masters with
+   * exactly that kind of SKU-prefix overlap. (A `\b`/lookaround regex against
+   * the row's full text is the wrong tool here too — `-` is a non-word
+   * character, so word-boundary tricks don't reliably land on the SKU's own
+   * token boundary once other row content is concatenated in.)
+   */
   selectRowCheckbox(productText: string): Locator {
     return this.page
       .getByRole('row')
-      .filter({ hasText: productText })
+      .filter({ has: this.page.getByText(productText, { exact: true }) })
       .getByRole('checkbox');
   }
 
+  /**
+   * Select a product by visible text, searching for it first.
+   *
+   * The table paginates at 20 rows (`products-list-page.tsx:68 PAGE_SIZE`)
+   * while callers resolve their target through the API over a much wider scan
+   * (`world.findMultiVariantProduct` walks 50) — so the chosen product is
+   * routinely on page 2+ and simply absent from the DOM. Filtering first makes
+   * the selection independent of where the product happens to sort.
+   */
   async selectProduct(productText: string): Promise<void> {
-    await this.selectRowCheckbox(productText).check();
+    await this.searchField.fill(productText);
+    const checkbox = this.selectRowCheckbox(productText);
+    await expect(checkbox).toBeVisible({ timeout: 15_000 });
+    await checkbox.check();
   }
 
   /**

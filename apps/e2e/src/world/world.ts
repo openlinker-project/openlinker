@@ -114,17 +114,29 @@ export async function buildWorld(api: ApiClient): Promise<World> {
     minVariants = 2,
     opts: { requireEans?: boolean } = {},
   ): Promise<Product | undefined> => {
-    const products = await listProducts(50);
-    for (const summary of products) {
-      const variants = await variantsOf(summary.id);
-      if (variants.length < minVariants) continue;
-      // The golden path maps offers and resolves orders BY EAN — a
-      // multi-variant product whose variants lack barcodes (e.g. the demo
-      // "Resin Ring") would pass S0 and then strand every later segment.
-      if (opts.requireEans && !variants.every((v) => !!(v.ean ?? v.gtin))) continue;
-      return { ...summary, variants };
+    // Page through the WHOLE catalogue rather than scanning a fixed first
+    // page. The previous `listProducts(50)` silently gave up past 50 products,
+    // so on a stack with more than that the only qualifying multi-variant
+    // product could sit outside the window and the caller would report "no
+    // multi-variant product exists" — a false negative that moves with list
+    // ordering (any publish/sync bumps `updatedAt` and reshuffles), making it
+    // look intermittent rather than systematic.
+    const pageSize = 50;
+    for (let offset = 0; ; offset += pageSize) {
+      const page = await api.products.list({ limit: pageSize, offset });
+      for (const summary of page.items) {
+        const variants = await variantsOf(summary.id);
+        if (variants.length < minVariants) continue;
+        // The golden path maps offers and resolves orders BY EAN — a
+        // multi-variant product whose variants lack barcodes (e.g. the demo
+        // "Resin Ring") would pass S0 and then strand every later segment.
+        if (opts.requireEans && !variants.every((v) => !!(v.ean ?? v.gtin))) continue;
+        return { ...summary, variants };
+      }
+      if (page.items.length < pageSize || offset + pageSize >= page.total) {
+        return undefined;
+      }
     }
-    return undefined;
   };
 
   const connectionsWithCapability = (capability: string): Connection[] =>

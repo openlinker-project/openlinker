@@ -65,11 +65,18 @@ test.describe('operator setup (S1-S4)', () => {
     pages,
     poll,
   }) => {
-    const woocommerce = world.connectionsWithCapability('ProductPublisher')[0];
-    test.skip(!woocommerce, 'no ProductPublisher (shop) connection on this stack');
-
-    const beforeCount = (await api.listings.list({ connectionId: woocommerce.id, limit: 1 }))
-      .total;
+    // `connectionsWithCapability('ProductPublisher')` unscoped also matches
+    // PrestaShop: its ADAPTER supports ProductPublisher (declared in
+    // `supportedCapabilities`) even though this connection never enables it
+    // (it's the master, not a publish target) — `connectionsWithCapability`'s
+    // enabled-OR-supported union (by design, for FE surface gating) picked it
+    // as connections[0] since it was created first, and the picker rail then
+    // correctly refused to offer a destination the UI never enabled. Scope to
+    // `woocommerce` explicitly — this test's whole point is publishing TO
+    // WooCommerce, not "whatever ProductPublisher-capable connection sorts
+    // first".
+    const woocommerce = world.connectionWithCapability('ProductPublisher', PlatformType.woocommerce);
+    test.skip(!woocommerce, 'no WooCommerce ProductPublisher (shop) connection on this stack');
 
     // #1754/#1829: /listings has a single "Publish products" CTA that opens the
     // unified picker; a shop destination continues into the SAME bulk wizard as
@@ -80,22 +87,28 @@ test.describe('operator setup (S1-S4)', () => {
     // Select the first product's variant (row-scoped) and drive the wizard to publish.
     const firstProduct = (await api.products.list({ limit: 1 })).items[0];
     expect(firstProduct, 'a product must exist to publish (run S1 first)').toBeTruthy();
+    const variants = await world.variantsOf(firstProduct.id);
+    const targetVariantId = variants[0]?.id;
+    expect(targetVariantId, 'the target product must have at least one variant').toBeTruthy();
     await picker.selectFirstVariantOf(firstProduct.name);
-    await picker.chooseDestination(woocommerce.name);
+    await picker.chooseDestination(woocommerce!.name);
     await picker.continueToWizard();
 
     await pages.bulkOfferWizard.expectOnConfigStep();
     await pages.bulkOfferWizard.publishToShop({ visibility: 'published' });
 
-    // OL records the publish as a new listing/mapping for the shop connection —
-    // the count must strictly grow past the pre-publish baseline.
-    const after = await test.step('poll OL listings for the new shop mapping', async () =>
+    // A shop publish writes a `ShopProduct` identifier mapping, a DISTINCT
+    // entity from the `Offer` mappings `GET /listings` lists (marketplace
+    // only) — keyed by VARIANT id, so it never surfaces on `GET /products`
+    // either. `POST /listings/published-variants` (#1837's duplicate guard)
+    // is the one API surface that reads both mapping kinds, so it is the
+    // only correct way to confirm a shop publish from outside the UI.
+    await test.step('poll for the published-variant mapping to appear', () =>
       poll.until(
-        () => api.listings.list({ connectionId: woocommerce.id, limit: 1 }),
-        (page) => page.total > beforeCount,
-        { message: 'a new WooCommerce listing mapping to appear', timeoutMs: 120_000 },
+        () => api.listings.publishedVariants(woocommerce!.id, [targetVariantId]),
+        (published) => published.includes(targetVariantId),
+        { message: 'the published variant to appear on the WooCommerce connection', timeoutMs: 60_000 },
       ));
-    expect(after.total).toBeGreaterThan(beforeCount);
   });
 
   test('S3 — Allegro bulk offer wizard creates and maps variant offers', async ({
@@ -142,7 +155,12 @@ async function runBulkOfferSegment(ctx: {
   const before = (await api.listings.list({ connectionId, limit: 1 })).total;
 
   await pages.productsList.goto();
-  await pages.productsList.selectProduct(product!.name);
+  // Disambiguate by SKU, not name: this stack carries same-named products
+  // from different masters (e.g. a PrestaShop-mastered multi-variant product
+  // and an unrelated WooCommerce-mastered simple product sharing one name),
+  // and `hasText` is a substring match — filtering by name alone can resolve
+  // to more than one row.
+  await pages.productsList.selectProduct(product!.sku ?? product!.name);
   const wizard = await pages.productsList.startBulkOfferCreation(connectionName);
   await wizard.selectConnectionIfPresent(connectionName);
 

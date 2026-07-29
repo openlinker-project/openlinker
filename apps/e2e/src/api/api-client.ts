@@ -506,6 +506,21 @@ export class ApiClient {
       this.request<OfferCreationStatus>(
         `/listings/connections/${connectionId}/offers/creation/${offerCreationRecordId}`,
       ),
+    /**
+     * Destination-aware duplicate guard (#1837): reports which of the given
+     * variant ids already have a listing on `connectionId` — an `Offer`
+     * mapping for a marketplace, a `ShopProduct` mapping for a shop. This is
+     * the ONLY API surface that reflects a shop publish: `GET /listings`
+     * lists `Offer` (marketplace) mappings exclusively, and `GET /products`
+     * never surfaces `ShopProduct` rows (a distinct identifier-mapping
+     * entityType, keyed by variant id, not product id) — a shop-publish
+     * result is otherwise invisible to this API client.
+     */
+    publishedVariants: (connectionId: string, variantIds: string[]): Promise<string[]> =>
+      this.request<{ publishedVariantIds: string[] }>('/listings/published-variants', {
+        method: 'POST',
+        body: JSON.stringify({ connectionId, variantIds }),
+      }).then((response) => response.publishedVariantIds),
   };
 
   // ── Orders ──────────────────────────────────────────────────────────────
