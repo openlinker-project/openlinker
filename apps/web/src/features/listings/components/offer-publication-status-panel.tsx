@@ -19,7 +19,7 @@ import { TimeDisplay } from '../../../shared/ui/time-display';
 import { listingsQueryKeys } from '../api/listings.query-keys';
 import type { OfferPublicationStatusResponse } from '../api/listings.types';
 import { useOfferPublicationStatusQuery } from '../hooks/use-offer-publication-status-query';
-import { OfferPublicationStatusBadge } from './OfferPublicationStatusBadge';
+import { OfferPublicationStatusBadge } from './offer-publication-status-badge';
 
 interface OfferPublicationStatusPanelProps {
   productId: string;

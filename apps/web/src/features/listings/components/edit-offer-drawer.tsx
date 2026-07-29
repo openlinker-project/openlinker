@@ -20,7 +20,7 @@ import { useUpdateOfferFields } from '../hooks/use-update-offer-fields';
 import type { OfferMapping } from '../api/listings.types';
 import type { UpdateOfferFieldsPayload } from '../api/listings.types';
 import { editOfferFieldsSchema, type EditOfferFieldsValues } from './edit-offer-fields.schema';
-import { OfferDescriptionEditor } from './OfferDescriptionEditor';
+import { OfferDescriptionEditor } from './offer-description-editor';
 import { SuggestionDialog } from '../../content';
 
 interface EditOfferDrawerProps {

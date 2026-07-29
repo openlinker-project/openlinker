@@ -6,7 +6,7 @@
 import { screen, waitFor, cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
-import { OfferCreationTracker } from './OfferCreationTracker';
+import { OfferCreationTracker } from './offer-creation-tracker';
 import type {
   OfferCreationStatus,
   OfferCreationStatusResponse,

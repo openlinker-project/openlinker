@@ -41,7 +41,7 @@ import {
   BulkShopReviewStep,
   type ShopPublishVisibility,
 } from './bulk-shop-review-step';
-import { ShopPublishTracker } from '../ShopPublishTracker';
+import { ShopPublishTracker } from '../shop-publish-tracker';
 import { BulkConfirmModal } from './bulk-confirm-modal';
 import {
   computeResolvedPrice,
