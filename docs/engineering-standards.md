@@ -1204,6 +1204,19 @@ async createProduct(@Body() dto: CreateProductDto): Promise<ProductResponse> {
 }
 ```
 
+### MCP-protocol routes
+
+The MCP Streamable-HTTP ingress (`apps/api/src/mcp/transport/`, #1486) does **not** use the global
+`JwtAuthGuard`. It is `@Public()` (to opt out of that guard) + `VERSION_NEUTRAL` (a URL pasted into an MCP
+client's config must not drift under the `/v1` prefix) + the MCP SDK's `requireBearerAuth` middleware, which
+validates against OL's `OAuthTokenVerifier` implementation.
+
+Admin token management (`/mcp/tokens`) is the opposite — ordinary session auth with `@Roles('admin')`. Keep the
+two auth models in **separate controllers** so they never blur.
+
+**Never log or serialize an `AuthInfo` wholesale** — it carries the raw bearer token. Log a redacted projection
+built from `AuthInfo.extra` (`{ mcpTokenId, olUserId, olRole, scopes }`).
+
 ### Type Safety
 
 **Avoid `any` type**. Use `unknown` if type is truly unknown, then narrow it:

@@ -28,6 +28,9 @@
     "dev:allegro:capture-cat-params": "NODE_OPTIONS='-r ts-node/register -r tsconfig-paths/register' node scripts/capture-allegro-cat-params.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/express": "^2.0.0",
+    "@modelcontextprotocol/node": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
     "@nestjs/axios": "3.0.2",
     "@nestjs/common": "10.3.0",
     "@nestjs/config": "3.2.0",

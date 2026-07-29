@@ -538,6 +538,19 @@ Each is an independent interface + co-located `is{Capability}(adapter)` type gua
 
 This same `getCapabilityAdapter` seam — with its per-connection gating and encrypted credential isolation sitting below it — is the mount point for exposing OpenLinker as an **MCP server** (agents drive OL), where MCP tools become a new Interface-layer adapter over the existing application services and `tools/list` is dynamic and capability-declared (each tool declares a required capability/sub-capability and is registered iff an in-scope connection supports it — a base port backs several tools, a decomposed port one per sub-capability; `connectionId` as an argument, via the `is{Capability}` guards). See [ADR-033](./architecture/adrs/033-openlinker-as-mcp-server.md) for the decision, security model, and phased plan, and [ADR-034](./architecture/adrs/034-mcp-authorization-user-issued-pats.md) for the auth layer (OL as an OAuth 2.1 Resource Server validating user-issued Personal Access Tokens; an OAuth Authorization Server is a deferred optional upgrade).
 
+**MCP auth is shipped (Phase 0, #1486).** OL is an OAuth 2.1 **Resource Server** that validates its own
+user-issued Personal Access Tokens — there is no Authorization Server. The seam is the MCP SDK's own
+`OAuthTokenVerifier` interface, implemented by `OlMcpTokenVerifier` (`apps/api/src/mcp/auth/`); the SDK's
+`requireBearerAuth` middleware then owns the 401/403 split, the `WWW-Authenticate` challenge, and scope
+enforcement. Tokens are opaque (`olmcp_`-prefixed, SHA-256 at rest) with mandatory expiry, `mcp:read`/`mcp:write`
+scopes, and an RFC 8707 `resource` binding; they live in `mcp_tokens` in the **users** bounded context, because a
+service outside that context may not inject a `*RepositoryPort` — `apps/api/src/mcp/` crosses the boundary
+through `IMcpTokenService` (`MCP_TOKEN_SERVICE_TOKEN`) instead. A token resolves to its owning OL user and
+**inherits that user's RBAC role**, so it can never exceed its owner. The principal reaches tool handlers as
+`ctx.authInfo`; note that `AuthInfo` carries the **raw bearer token**, so it must never be logged or serialized
+wholesale — consumers log a redacted projection from `AuthInfo.extra`. Adding an OAuth AS later swaps the
+verifier implementation and nothing else.
+
 ---
 
 ## Identifier Mapping Service
