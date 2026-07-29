@@ -33,16 +33,47 @@ import {
 } from '@nestjs/common';
 import { requireBearerAuth } from '@modelcontextprotocol/express';
 import { UsersModule } from '@openlinker/core/users';
+import { ProductsModule } from '@openlinker/core/products';
+import { InventoryModule } from '@openlinker/core/inventory';
+import { OrdersModule } from '@openlinker/core/orders';
 import { AppInfoModule } from '../app-info/app-info.module';
+// The HOST integrations module (apps/api), NOT the core one — it provides
+// CONNECTION_SERVICE_TOKEN and re-exports CoreIntegrationsModule (which
+// carries INTEGRATIONS_SERVICE_TOKEN), so this single import covers both
+// capability gating and `list_connections`. Aliased because the core module
+// exports a class of the same name; an unaliased import here would be a
+// silent shadowing bug.
+import { IntegrationsModule as HostIntegrationsModule } from '../integrations/integrations.module';
 import { MCP_TRANSPORT_PATH } from './mcp-resource';
 import { OlMcpTokenVerifier } from './auth/ol-mcp-token.verifier';
 import { McpTokensController } from './http/mcp-tokens.controller';
 import { McpTransportController } from './transport/mcp-transport.controller';
+import { McpAuditLogger } from './tools/audit/mcp-audit.logger';
+import { McpRateLimiter } from './tools/ratelimit/mcp-rate-limiter';
+import { MCP_RATE_LIMITER_TOKEN } from './tools/ratelimit/mcp-rate-limiter.interface';
+import { McpToolRegistryService } from './tools/tool-registry.service';
+import { MCP_TOOL_REGISTRY_SERVICE_TOKEN } from './tools/tool-registry.service.interface';
+import { mcpToolDefinitionsProvider } from './tools/mcp-tool-definitions.provider';
 
 @Module({
-  imports: [UsersModule, AppInfoModule],
+  imports: [
+    UsersModule,
+    AppInfoModule,
+    HostIntegrationsModule,
+    ProductsModule,
+    InventoryModule,
+    OrdersModule,
+  ],
   controllers: [McpTokensController, McpTransportController],
-  providers: [OlMcpTokenVerifier],
+  providers: [
+    OlMcpTokenVerifier,
+    McpAuditLogger,
+    McpRateLimiter,
+    { provide: MCP_RATE_LIMITER_TOKEN, useExisting: McpRateLimiter },
+    mcpToolDefinitionsProvider,
+    McpToolRegistryService,
+    { provide: MCP_TOOL_REGISTRY_SERVICE_TOKEN, useExisting: McpToolRegistryService },
+  ],
   exports: [OlMcpTokenVerifier],
 })
 export class McpModule implements NestModule {

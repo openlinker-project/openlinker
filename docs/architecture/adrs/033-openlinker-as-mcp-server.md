@@ -47,6 +47,56 @@ Countervailing forces: protocol churn (the ~28 Jul 2026 revision is the largest 
 
 **Migration path:** none for existing behavior — purely additive. The MCP module is opt-in and inert until Phase 0 auth ships.
 
+## Phase 1 amendments (#1487)
+
+Two decisions made while implementing the read-only tool surface, both refining
+(not reversing) the decision above.
+
+### Tools are capability-*gated* but OL-store-*backed*
+
+The tool surface stays dynamic and capability-declared as decided above: a tool
+is registered iff at least one connection supports and enables its capability.
+But the tools **read OpenLinker's own store** (`IProductsService`,
+`IInventoryQueryService`, `IOrderRecordService`) rather than calling the
+capability port's adapter.
+
+Reaching through `ProductMasterPort` / `InventoryMasterPort` / `OrderSourcePort`
+was the obvious first reading of "expose these capabilities as tools", and it is
+wrong on four counts:
+
+1. **It defeats `OL_STORE_PII`.** `IOrderRecordService.persistOrder` nulls buyer
+   PII at ingestion when the operator disables PII storage;
+   `OrderSourcePort.getOrder` re-fetches it raw from the platform regardless.
+   An operator's deliberate privacy decision would be silently bypassed.
+2. **It spends the operator's marketplace API quota** — one live platform call
+   per tool invocation, on an autonomous agent's behalf. The per-token limiter
+   caps OL calls; it cannot cap downstream cost, which is the scarcer resource.
+3. **It breaks identifier consistency.** `OrderSourcePort` is an *ingestion*
+   port returning external-id-keyed data, which will not join against the
+   internal-id-keyed product tools.
+4. **It bypasses the variant-keyed inventory model** ([ADR-010](./010-variant-keyed-master-inventory.md)).
+
+Consequence: the gate and the data are now **independent facts** — a passing gate
+does not imply data exists, and a disabled connection hides tools whose data OL
+still holds. Each tool's description states this, because an agent cannot
+otherwise distinguish "no data" from "not configured". A future explicit
+`refresh_*` tool can go to the platform *deliberately*, rather than every read
+doing so implicitly.
+
+### `notifications/tools/list_changed` is not implemented
+
+The Phase-1 issue asked that adding/removing a connection republish the tool list
+via `notifications/tools/list_changed`. It is **not implementable as written and
+also unnecessary**, because `createMcpHandler` builds a fresh `McpServer` per
+HTTP request (the stateless, multi-replica-safe model this ADR chose): there is
+no long-lived session to push a notification over.
+
+The same statelessness makes the notification moot — `tools/list` is recomputed
+from live capability state on every call, so it cannot go stale. OL therefore
+does not advertise `tools.listChanged` and never calls `sendToolListChanged()`.
+The alternative (sessionful serving) would reverse this ADR's transport decision
+to correct staleness that cannot occur.
+
 ## References
 
 - Related issues: #1350 (this EPIC), #1036 / [ADR-023](./023-cross-platform-category-and-attribute-projection.md) (neutral mapping shapes)

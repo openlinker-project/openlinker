@@ -1215,7 +1215,30 @@ Admin token management (`/mcp/tokens`) is the opposite — ordinary session auth
 two auth models in **separate controllers** so they never blur.
 
 **Never log or serialize an `AuthInfo` wholesale** — it carries the raw bearer token. Log a redacted projection
-built from `AuthInfo.extra` (`{ mcpTokenId, olUserId, olRole, scopes }`).
+built from `AuthInfo.extra` via `redactPrincipal` (`{ mcpTokenId, olUserId, olRole, scopes }`).
+
+#### MCP tools (`*.tool.ts`, #1487)
+
+An MCP tool is declared as an `McpToolDefinition` in a `*.tool.ts` file under `apps/api/src/mcp/tools/read/`
+(or `.../write/` when #1489 lands), exported by a `create{Name}Tool(deps)` factory that takes its core service
+directly. The suffix marks "a unit of agent-facing capability", parallel to `*.controller.ts` for HTTP.
+
+Rules:
+
+- **A tool file contains only its read and its projection.** Rate limiting, audit logging, and error mapping are
+  applied once by `McpToolRegistryService`'s per-call wrapper. A tool that imports the limiter or the audit
+  logger is a bug — those concerns must not be re-implementable per tool, or one will eventually be forgotten
+  (most likely releasing an in-flight slot on the throw path).
+- **Always project; never return a domain entity or a snapshot wholesale.** A tool result is handed to an
+  external LLM provider acting as a de-facto sub-processor. Projections are explicit allowlists so that fields
+  added to the underlying shape later cannot silently start leaking — this is why `get_order` enumerates line-item
+  fields rather than spreading them, and why `list_connections` never returns a `Connection`.
+- **Only accept an argument the underlying read actually honours.** Where a read has no connection axis (e.g.
+  inventory), omit `connectionId` from the schema rather than accepting and ignoring it — a calling agent infers
+  meaning from the schema and would wrongly believe it had scoped the result.
+- **Descriptions are agent-facing copy, not documentation.** The model reads the description to decide whether to
+  call the tool and how to interpret an empty result. Because tool *registration* is capability-gated while the
+  data comes from OL's own store, an empty result can mean "no data yet" — say so explicitly.
 
 ### Type Safety
 
