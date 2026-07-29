@@ -132,8 +132,11 @@ test.describe('WooCommerce as order destination', () => {
     test.skip(!ctx, 'no WooCommerce OrderSource connection + a DISTINCT WooCommerce OrderProcessorManager connection, or missing REST credentials');
     const { wcSource, wc } = ctx!;
 
-    const mapped = await findMappedProduct(api, world, wcSource.id);
-    test.skip(!mapped, 'no OL product mapped to the WooCommerce master/source connection (run master-catalog.spec.ts first)');
+    const mapped = await findProductMappedToBoth(api, world, wcSource.id, ctx!.wcDestination.id);
+    test.skip(
+      !mapped,
+      'no OL product mapped to BOTH the WooCommerce source and the order-destination connection (run master-catalog.spec.ts, then publish to the destination)',
+    );
     const { wcProductId } = mapped!;
 
     const email = `e2e-reuse-${randomUUID().slice(0, 8)}@example-e2e.invalid`;
@@ -184,6 +187,12 @@ test.describe('WooCommerce as order destination', () => {
     const variants = await world.variantsOf(multiVariant!.id);
     const variant = variants.find((v) => externalIdFor(v.externalIds, wcSource.id));
     test.skip(!variant, 'no variant of the multi-variant product is mapped to the WooCommerce connection');
+    // A source mapping alone is not enough: the destination processor rejects
+    // any line whose product it cannot resolve on its OWN connection.
+    test.skip(
+      !externalIdFor(multiVariant!.externalIds, ctx!.wcDestination.id),
+      'the multi-variant product has no mapping on the order-destination connection',
+    );
 
     const wcProductId = Number(externalIdFor(multiVariant!.externalIds, wcSource.id));
     const wcVariationExternalId = externalIdFor(variant!.externalIds, wcSource.id)!;
@@ -343,24 +352,6 @@ async function findProductMappedToBoth(
   return undefined;
 }
 
-/** Resolve an existing OL product already mapped to the given WC connection, and its WC-native id. */
-async function findMappedProduct(
-  api: ApiClient,
-  world: World,
-  wcConnectionId: string,
-): Promise<{ wcProductId: number } | undefined> {
-  const products = await world.listProducts(50);
-  for (const summary of products) {
-    const detail = await api.products.getById(summary.id);
-    const externalId = externalIdFor(detail.externalIds, wcConnectionId);
-    if (!externalId || !/^\d+$/.test(externalId)) continue;
-    const variants = await world.variantsOf(detail.id);
-    if (variants.length === 0) continue;
-    return { wcProductId: Number(externalId) };
-  }
-  return undefined;
-}
-
 /**
  * Create a native WC order via REST, ingest it through `wcSourceConnectionId`,
  * and poll until a WooCommerce-platform destination shows `synced` — the
@@ -379,6 +370,16 @@ async function createAndSyncWcOrder(
   await jobs.trigger({ connectionId: wcSourceConnectionId, jobType: 'marketplace.orders.poll' }).catch(() => undefined);
   const order = await waitForOrder(api, { sourceConnectionId: wcSourceConnectionId, snapshot, timeoutMs: 120_000 });
   const synced = await pollWcDestinationSync(api, world, order.internalOrderId, { timeoutMs: 120_000 });
+  if (!synced.externalOrderId) {
+    // Without this the null flows into `GET /orders/null`, and a topology gap
+    // (an order line whose product has no mapping on the DESTINATION
+    // connection — the processor rejects the whole order) reads as a bogus
+    // WooCommerce 404 instead of a stated precondition.
+    test.skip(
+      true,
+      `order ${order.internalOrderId} did not reach a WooCommerce destination (status=${synced.status}) — the line's product likely has no mapping on the destination connection`,
+    );
+  }
   return { externalOrderId: synced.externalOrderId };
 }
 

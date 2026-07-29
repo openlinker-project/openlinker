@@ -70,7 +70,16 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   reporter: [['list'], ['html', { open: 'never' }]],
-  timeout: 90_000,
+  // Backstop, not the primary bound. Specs here chain several individually
+  // bounded waits — job pollers (120 s), order ingestion (180 s), regulatory
+  // clearance (300 s) — and a 90 s ceiling sat BELOW those budgets, so a test
+  // that legitimately used its own allowance was aborted with a bare "Test
+  // timeout exceeded" instead of the poller's diagnostic. Some (e.g. the
+  // two-order customer-reuse case, which spends 2 x 240 s) could never pass at
+  // all. Responsiveness does not depend on this value: every UI wait is capped
+  // by `expect.timeout` / `actionTimeout` below, and every backend wait carries
+  // its own `timeoutMs`, so a broken test still fails at the responsible step.
+  timeout: 600_000,
   expect: { timeout: 15_000 },
   use: {
     baseURL: env.webUrl,
@@ -193,14 +202,6 @@ export default defineConfig({
       name: 'invoicing',
       testMatch: /invoicing\/.*\.spec\.ts/,
       retries: 0,
-      // Regulatory clearance is the slowest wait in the repo: inFakt relays to
-      // KSeF asynchronously (~90 s observed, and the specs budget a 300 s poll
-      // on top of order synthesis + issuance). That exceeds the 90 s global
-      // per-test timeout, which would abort the test mid-poll and report a
-      // bare "Test timeout exceeded" instead of the poller's own diagnostic.
-      // The ceiling is set above the sum of the in-test budgets so a genuine
-      // hang still fails at the responsible poller.
-      timeout: 600_000,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
