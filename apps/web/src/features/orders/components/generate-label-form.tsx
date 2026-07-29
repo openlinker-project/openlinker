@@ -80,6 +80,15 @@ import {
 interface GenerateLabelFormProps {
   /** The full order record — supplies recipient pre-fill + routing keys. */
   order: OrderRecord;
+  /**
+   * Paczkomat/pickup-point id from a prior failed shipment (#1826 deep-link
+   * retry) — the only field a failed `Shipment` persists that's worth
+   * forwarding on retry. Takes precedence over the snapshot's buyer-selected
+   * pickup point when supplied. Parcel dimensions/weight are never persisted
+   * on `Shipment`, so they're never pre-filled — the operator retypes them
+   * on every attempt, same as a fresh generate-label call.
+   */
+  initialPaczkomatId?: string;
   /** Called after a successful submission so the parent can collapse the
    * inline expansion. */
   onSuccess: () => void;
@@ -118,6 +127,7 @@ function isWithinPickupPointRetryWindow(createdAtIso: string): boolean {
 
 export function GenerateLabelForm({
   order,
+  initialPaczkomatId,
   onSuccess,
   onCancel,
 }: GenerateLabelFormProps): ReactElement {
@@ -199,9 +209,14 @@ export function GenerateLabelForm({
       width: '',
       height: '',
       weightGrams: '',
-      // Allegro flow: paczkomatId is pre-filled buyer-selected; InPost flow:
-      // operator types (picker deferred per plan).
-      paczkomatId: snapshot.pickupPoint?.id ?? '',
+      // Allegro flow: paczkomatId is pre-filled buyer-selected AND rendered
+      // read-only (`paczkomatIsBuyerSelected` below) — it must never show
+      // anything but the buyer's actual current selection, so
+      // `snapshot.pickupPoint?.id` wins here. InPost flow: no buyer-selected
+      // point exists, so a #1826 retry deep-link's `initialPaczkomatId` (the
+      // failed shipment's own persisted, operator-typed locker id) pre-fills
+      // the editable field instead of leaving the operator to retype it.
+      paczkomatId: snapshot.pickupPoint?.id ?? initialPaczkomatId ?? '',
       // Locker size — required by the BE for paczkomat shipments (#764).
       lockerTemplate: 'medium',
       // COD (#1435) — payment-status-driven. The amount is sourced from the
