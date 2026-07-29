@@ -171,6 +171,33 @@ The framing constraint holds for every shape: OL never issues a receipt. Every o
 
 **Deliberately not chosen: E.** Recorded so a future maintainer knows the vendor-neutral seam was considered and deferred, not overlooked.
 
+> **Superseded 2026-07-29** — the maintainer asked whether the seam should be internationally general, not PL-neutral. A second deep-research pass (below) materially changes the answer to E. See §4a.
+
+### 4a. International fiscalisation — second research pass (2026-07-29)
+
+**Question asked:** is a generalised, cross-country fiscalisation port a sound abstraction to design now from a Polish-only first implementation?
+
+**Answer: yes — and we should not invent the contract, because two vendors have already published it.**
+
+**Finding 1 — the abstraction is proven, twice, commercially.**
+[fiskaltrust/middleware](https://github.com/fiskaltrust/middleware) (EUPL-1.2, ~4,866 commits, active) self-describes as *"an integrated set of highly configurable software components for POS systems to abstract the complexity of national fiscalization laws"*, and its API docs state *"The Middleware provides the exact same interface across all markets."* [efsta EFR](https://docs.efsta.eu/efr/api/) states *"The API is a generic interface that can be used for all countries."* The "is a single port even coherent?" question therefore has an empirical answer rather than an architectural opinion.
+
+**Finding 2 — the shape they converged on is our existing pattern.** A neutral transaction contract above; a per-country trust-anchor adapter below. fiskaltrust splits into Queue (neutral lifecycle + *"the logic that transforms international requests into country-specific ones"*) and **SCU** — *"abstractions of local signing devices or services, and therefore country-specific"* — with `scu-at`, `scu-be`, `scu-de`, `scu-es`, `scu-gr`, `scu-it`, `scu-me`, `scu-pt` in-repo. Device-anchored (IT), module-anchored (DE/AT) and certified-software (PT/ES) regimes all sit behind **one seam**.
+
+**Finding 3 — the invariant core is narrow and real.** fiskaltrust API v0 exposes three operations: `Echo`, `Sign` (*"sign different types of receipts according to local fiscalization regulations… returns the data that need to be printed onto the receipt"*), `Journal`. efsta: only `/register` and `/cfg` are mandatory. Two independent vendors, same minimal core: **register a transaction, get back what must be printed.**
+
+**Finding 4 — the leak that matters, and it bites in Poland.** efsta requires additional `/peri/*` endpoints (`peri/print`, `peri/print/state`) *"to directly print"* in **fiscal-printer countries** — i.e. the mandatory registration core is necessary everywhere but **sufficient only in non-device regimes**. A registration-only port **would not cover Poland or Italy.** A device/peripheral sub-capability is required from day one, not later.
+
+Second leak: export/audit is irreducibly country-shaped (DSFinV-K for DE, DEP7 for AT, NF525 for FR, SAF-T for PT). Third: both vendors encode country *in the data* — fiskaltrust's `ftReceiptCase` is an Int64 carrying the ISO-3166 country code in its bytes, with per-country valid-value tables; efsta's "generic" interface carries `FR_NAF`/`FR_SRN`/`DE_Agentur`/`DE_STNR`. Closer to a **tagged union** than a neutral contract.
+
+**Finding 5 — the taxonomy is the right axis but must not be hard-coded.** Trust-anchor class is **not stable per country**. Italy is mid-migration from RT device to certified software (legal basis 2025, operation from 1 Jan 2026, portal 5 Mar 2026) — anchored on an *accredited provider*, not arbitrary software. Czechia has **no obligation today** (EET abolished 1 Jan 2023), returning 1 Jan 2027 as pure remote reporting. A port that encodes "Poland = device" as a type will age badly; the anchor belongs in the adapter, not the contract.
+
+**Finding 6 — efsta already covers Poland; fiskaltrust does not.** efsta documents 17 jurisdictions (`AT BE CZ DE DK ES FR HR HU IT LT NO PL PT SE SI SK`). fiskaltrust covers roughly AT/DE/FR/IT/ES/PT/GR. **Strategic consequence:** integrating efsta is a candidate route to PL **plus** 16 other markets through one adapter — a different roadmap shape from the eparagony.pl connector, and one that serves the "not only PL" goal directly. Commercial terms unknown.
+
+**Finding 7 — the potentially-disqualifying question is NOT settled.** Does OpenLinker itself need per-country certification? Evidence is **circumstantial only**: fiskaltrust and efsta hold the certifications and expose plain APIs to arbitrary integrators (Microsoft Dynamics 365 Commerce and Erply integrate without being homologated per country), which strongly suggests an orchestrator behind a certified provider does not need its own homologation. **But this was not verified against any regulator's text**, and Portugal (certified-software regime) deserves a direct legal check. The research flags this as *"the weakest and most consequential item in the report"*. **Treat as an open risk, not a cleared one.**
+
+**Scope caveat — what this pass did NOT answer.** Adversarial verification concentrated on the middleware question. **The regime inventory is essentially unanswered**: only Italy and Czechia were verified. Germany, Austria, Portugal, Spain (Verifactu/TicketBAI — the most time-sensitive), Hungary, Croatia, Slovenia, Greece, Romania and the Nordics remain **unverified**. Two Italy claims were *refuted* as stated, and even "Poland's trust anchor is a GUM-approved device" only reached 1-2. **No date-bearing regime claim from this pass should be published without independent checking.**
+
 ## 5. Product specification
 
 > Phase D — not started.
