@@ -10,6 +10,7 @@ export { User } from './domain/entities/user.entity';
 export { PasswordResetToken } from './domain/entities/password-reset-token.entity';
 export { RefreshToken } from './domain/entities/refresh-token.entity';
 export { EmailConfirmationToken } from './domain/entities/email-confirmation-token.entity';
+export { McpToken } from './domain/entities/mcp-token.entity';
 export type { UserRepositoryPort } from './domain/ports/user-repository.port';
 export type { PasswordResetTokenRepositoryPort } from './domain/ports/password-reset-token-repository.port';
 export type { PasswordResetNotifierPort } from './domain/ports/password-reset-notifier.port';
@@ -47,6 +48,28 @@ export {
   parseRefreshTokenRevocationReason,
 } from './domain/types/refresh-token.types';
 export type { RefreshTokenRevocationReason } from './domain/types/refresh-token.types';
+export {
+  McpTokenScopeValues,
+  McpTokenRevocationReasonValues,
+  parseMcpTokenScopes,
+  parseMcpTokenRevocationReason,
+} from './domain/types/mcp-token.types';
+export type {
+  McpTokenScope,
+  McpTokenRevocationReason,
+} from './domain/types/mcp-token.types';
+export type { IMcpTokenService } from './application/services/mcp-token.service.interface';
+export {
+  MCP_TOKEN_DEFAULT_EXPIRY_DAYS,
+  MCP_TOKEN_MAX_EXPIRY_DAYS,
+  MCP_TOKEN_PREFIX,
+} from './application/types/mcp-token.types';
+export type {
+  McpPrincipal,
+  McpTokenSummary,
+  MintMcpTokenInput,
+  MintedMcpToken,
+} from './application/types/mcp-token.types';
 
 // Users-context ORM entities have no external consumer today; the TypeORM CLI
 // discovers them via the `**/*.orm-entity.{ts,js}` glob in
