@@ -64,17 +64,39 @@ const ADDRESS_B: WooCommerceAddressInput = {
 };
 
 test.describe('WooCommerce as order destination', () => {
+  // Spec-owned destination connection: created (or adopted) once for this
+  // file, disabled again on the way out so the order fan-out returns to its
+  // normal shape for every other spec and for manual use of the stack.
+  let destination: Connection | null = null;
+
+  test.beforeAll(async ({ api, world }) => {
+    const wcSource = pickWooCommerceConnection(world, 'OrderSource');
+    if (!wcSource) return;
+    destination = await ensureDestinationConnection(api, world, wcSource).catch(() => null);
+  });
+
+  test.afterAll(async ({ api }) => {
+    if (destination) {
+      await releaseDestinationConnection(api, destination.id);
+    }
+  });
+
   test('an order sourced from WooCommerce is created in a WooCommerce destination with correct lines, price and status', async ({
     api,
     world,
     jobs,
   }) => {
-    const ctx = resolveContext(world);
+    const ctx = resolveContext(world, destination);
     test.skip(!ctx, 'no WooCommerce OrderSource connection + a DISTINCT WooCommerce OrderProcessorManager connection, or missing REST credentials');
     const { wcSource, wc } = ctx!;
 
-    const mapped = await findMappedProduct(api, world, wcSource.id);
-    test.skip(!mapped, 'no OL product mapped to the WooCommerce master/source connection (run master-catalog.spec.ts first)');
+    const mapped = await findProductMappedToBoth(api, world, wcSource.id, ctx!.wcDestination.id);
+    test.skip(
+      !mapped,
+      'no OL product mapped to BOTH the WooCommerce source and the destination connection — ' +
+        'run master-catalog.spec.ts for the source half, and seed the destination mapping ' +
+        '(same-store topology cannot publish a duplicate SKU to create it)',
+    );
     const { wcProductId } = mapped!;
     const quantity = 1;
 
@@ -106,7 +128,7 @@ test.describe('WooCommerce as order destination', () => {
     world,
     jobs,
   }) => {
-    const ctx = resolveContext(world);
+    const ctx = resolveContext(world, destination);
     test.skip(!ctx, 'no WooCommerce OrderSource connection + a DISTINCT WooCommerce OrderProcessorManager connection, or missing REST credentials');
     const { wcSource, wc } = ctx!;
 
@@ -153,7 +175,7 @@ test.describe('WooCommerce as order destination', () => {
     world,
     jobs,
   }) => {
-    const ctx = resolveContext(world);
+    const ctx = resolveContext(world, destination);
     test.skip(!ctx, 'no WooCommerce OrderSource connection + a DISTINCT WooCommerce OrderProcessorManager connection, or missing REST credentials');
     const { wcSource, wc } = ctx!;
 
@@ -171,12 +193,12 @@ test.describe('WooCommerce as order destination', () => {
     const wcVariationId = Number(wcVariationExternalId);
 
     const email = `e2e-variant-${randomUUID().slice(0, 8)}@example-e2e.invalid`;
-    const destination = await createAndSyncWcOrder(api, world, jobs, wc, wcSource.id, {
+    const syncedDestination = await createAndSyncWcOrder(api, world, jobs, wc, wcSource.id, {
       billing: { ...ADDRESS_A, email },
       lineItems: [{ productId: wcProductId, variationId: wcVariationId, quantity: 1 }],
     });
 
-    const destinationOrder = await wc.getOrder(destination.externalOrderId!);
+    const destinationOrder = await wc.getOrder(syncedDestination.externalOrderId!);
     const line = destinationOrder.lineItems.find((l) => l.productId === wcProductId);
     expect(line, 'destination WC order carries a line for the product').toBeTruthy();
     expect(
@@ -211,35 +233,114 @@ function pickWooCommerceConnection(world: World, capability: string): Connection
   return (enabled.length > 0 ? enabled : candidates)[0];
 }
 
+
 /**
- * A genuinely distinct destination is required: `OrderSyncService` never
- * syncs an order back to its own source connection (correctly — pushing an
- * order back into the very shop it came from would be nonsensical), so a
- * same-connection "source == destination" topology would never produce a
- * WooCommerce syncStatus entry and this scenario would hang until its poll
- * timeout rather than fail fast. This suite therefore requires two distinct
- * WooCommerce connections (two independent stores, or one store registered
- * twice under separate OL connections with the product genuinely published
- * to the destination) and skips cleanly otherwise, rather than the earlier
- * "works whether same or different connection" assumption which doesn't
- * hold given the source-exclusion behavior.
+ * Name of the throwaway destination connection this spec owns end to end.
+ * Stable (not run-unique) so a leaked one from a hard-killed run is ADOPTED on
+ * the next run rather than duplicated into a pile of stale connections.
  */
-function pickDistinctWooCommerceDestination(world: World, excludeId: string): Connection | undefined {
-  const candidates = world
-    .connectionsWithCapability('OrderProcessorManager')
-    .filter((c) => c.platformType === 'woocommerce' && c.id !== excludeId);
-  const enabled = candidates.filter((c) => c.enabledCapabilities.includes('OrderProcessorManager'));
-  return (enabled.length > 0 ? enabled : candidates)[0];
+export const E2E_DESTINATION_CONNECTION_NAME = 'WooCommerce (order destination, e2e)';
+
+/**
+ * Find-or-create the distinct destination connection this spec requires.
+ *
+ * The topology is spec-owned rather than hand-curated on the stack, because a
+ * persistent second `OrderProcessorManager` connection is not inert: OL fans
+ * every ingested order out to EVERY destination carrying that capability, so a
+ * always-on second WooCommerce destination makes unrelated orders (and the
+ * order-detail UI other specs assert against) show extra sync failures for the
+ * whole session. Owning its lifecycle here confines that to this spec's run.
+ *
+ * Mirrors the source connection's `siteUrl` + master pairing, so the pair is a
+ * genuine "same store registered twice" topology - the shape this suite's
+ * header documents as the supported single-store alternative to two real stores.
+ */
+async function ensureDestinationConnection(
+  api: ApiClient,
+  world: World,
+  wcSource: Connection,
+): Promise<Connection | null> {
+  const existing = world
+    .connectionsFor('woocommerce')
+    .find((c) => c.name === E2E_DESTINATION_CONNECTION_NAME);
+  if (existing) {
+    // Adopt a leaked/previous one, re-enabling it if a prior run disabled it.
+    return existing.status === 'active'
+      ? existing
+      : api.connections.update(existing.id, { status: 'active' });
+  }
+
+  const consumerKey = process.env.OL_WC_CONSUMER_KEY?.trim();
+  const consumerSecret = process.env.OL_WC_CONSUMER_SECRET?.trim();
+  const siteUrl = wcSource.config?.['siteUrl'];
+  if (!consumerKey || !consumerSecret || typeof siteUrl !== 'string') return null;
+
+  return api.connections.create({
+    name: E2E_DESTINATION_CONNECTION_NAME,
+    platformType: 'woocommerce',
+    config: {
+      siteUrl,
+      ...(typeof wcSource.config?.['masterCatalogConnectionId'] === 'string'
+        ? { masterCatalogConnectionId: wcSource.config['masterCatalogConnectionId'] }
+        : {}),
+    },
+    credentials: { consumerKey, consumerSecret },
+    enabledCapabilities: ['OrderProcessorManager', 'ProductPublisher', 'CategoryProvisioner'],
+  });
 }
 
-function resolveContext(world: World): OrderDestinationContext | null {
+/**
+ * Disable (never delete) the spec-owned destination. Disabling drops it out of
+ * the order fan-out immediately, while keeping its id - and therefore the
+ * `ShopProduct` / product identifier mappings keyed to it - intact, so the next
+ * run adopts a connection that is already mapped instead of re-seeding.
+ */
+async function releaseDestinationConnection(api: ApiClient, connectionId: string): Promise<void> {
+  await api.connections.update(connectionId, { status: 'disabled' }).catch(() => undefined);
+}
+
+function resolveContext(world: World, wcDestination: Connection | null): OrderDestinationContext | null {
   const wcSource = pickWooCommerceConnection(world, 'OrderSource');
   if (!wcSource) return null;
-  const wcDestination = pickDistinctWooCommerceDestination(world, wcSource.id);
-  if (!wcDestination) return null;
+  if (!wcDestination || wcDestination.id === wcSource.id) return null;
   const wc = buildWooCommerceClient(wcSource);
   if (!wc) return null;
   return { wcSource, wcDestination, wc };
+}
+
+/**
+ * A product mapped to BOTH the source and the destination connection.
+ *
+ * The destination half matters and is not implied by the source half: OL's
+ * order-processor refuses to create "silent partial orders", so it hard-fails
+ * a line whose product has no mapping on the DESTINATION connection. On a
+ * two-real-stores topology the destination mapping appears naturally from a
+ * publish; on the single-store topology this suite also supports, the second
+ * connection points at the same physical shop, so its mapping has to be seeded
+ * once (a publish would try to CREATE a duplicate product and be rejected by
+ * the shop on the duplicate SKU).
+ *
+ * Returning null here yields a precise skip instead of a sync failure that
+ * looks like a product defect.
+ */
+async function findProductMappedToBoth(
+  api: ApiClient,
+  world: World,
+  sourceConnectionId: string,
+  destinationConnectionId: string,
+): Promise<{ wcProductId: number } | undefined> {
+  const products = await world.listProducts(50);
+  for (const summary of products) {
+    const detail = await api.products.getById(summary.id);
+    const sourceExternalId = externalIdFor(detail.externalIds, sourceConnectionId);
+    const destinationExternalId = externalIdFor(detail.externalIds, destinationConnectionId);
+    if (!sourceExternalId || !/^\d+$/.test(sourceExternalId)) continue;
+    if (!destinationExternalId) continue;
+    const variants = await world.variantsOf(detail.id);
+    if (variants.length === 0) continue;
+    return { wcProductId: Number(sourceExternalId) };
+  }
+  return undefined;
 }
 
 /** Resolve an existing OL product already mapped to the given WC connection, and its WC-native id. */
