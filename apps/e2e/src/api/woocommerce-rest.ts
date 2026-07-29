@@ -133,9 +133,18 @@ export class WooCommerceRestClient {
   /** Find the first product matching an exact SKU, or null. */
   async getProductBySku(sku: string): Promise<WooCommerceProductView | null> {
     const body = await this.get(`/products?sku=${encodeURIComponent(sku)}`);
-    const rows = asArray(body);
+    // The `sku` filter also matches VARIATIONS, and a variation is not the
+    // product parity should run against: its `name` carries the attribute
+    // suffix WooCommerce appends ("Parent - S"), so comparing it to the OL
+    // product name fails on a difference that is not a defect. A multi-variant
+    // publish (#1836) creates a `variable` parent that carries NO sku of its
+    // own, so skipping variations correctly yields null here and lets the
+    // caller fall back to the exact-name lookup, which finds the parent.
+    const rows = asArray(body)
+      .map((row) => asRecord(row))
+      .filter((row) => asStringOrNull(pick(row, 'type')) !== 'variation');
     if (rows.length === 0) return null;
-    return this.toProductView(asRecord(rows[0]));
+    return this.toProductView(rows[0]);
   }
 
   /**

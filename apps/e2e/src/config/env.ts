@@ -82,6 +82,24 @@ export interface E2eEnv {
    * scripts the mapping). Defaults to `261481` (Wino bezalkoholowe) - the SAME
    * leaf the default `freshAllegroCategoryPath` breadcrumb resolves to, so a
    * default-config fresh-product run keeps Allegro/Erli category parity.
+   *
+   * DO NOT change this default without re-verifying that the offer can still be
+   * BOUGHT. A fresh product carries a SYNTHETIC barcode (`freshVariantEan`) that
+   * is structurally valid but registered with nobody, and Allegro's validator
+   * checks the GTIN against the GS1 database per category. `261481` is the one
+   * leaf verified to let a synthetic EAN through — an offer created there goes
+   * active and is purchasable, which is what makes the attended S5-S9 segments
+   * reachable at all.
+   *
+   * Verified 2026-07-30 that `89508` (children's clothing, 7 required params —
+   * an attractive choice when demonstrating parameter fill) does NOT: both
+   * sibling offers were created correctly, WITH every required parameter
+   * resolved and the Allegro catalogue linked, then stuck in `szkic` with
+   * "Podany EAN (GTIN) jest niepoprawny. Podaj EAN (GTIN), który istnieje w
+   * bazie GS1." Nothing on our side is wrong in that case — the barcode simply
+   * is not real — so the run cannot proceed past the purchase pause. Using a
+   * parameter-rich category therefore needs a genuinely GS1-registered EAN,
+   * not a generated one.
    */
   freshAllegroCategoryId: string;
   /**

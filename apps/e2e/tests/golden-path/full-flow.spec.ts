@@ -333,10 +333,28 @@ test.describe('golden path — full flow (S0-S9)', () => {
       // (#1485); category mapping is still a known WooCommerce-publish gap ("not
       // implemented in MVP") — recorded below rather than failed, so the report
       // stays honest.
+      // A MULTI-variant product publishes as a WooCommerce `variable` parent
+      // plus one variation per sibling (#1836), and a variable parent carries no
+      // price of its own — the price lives on each variation. Comparing the
+      // parent's price would therefore assert null against the master price for
+      // every multi-variant product. Read the price off the variation matching
+      // the primary variant instead, and keep the parent comparison for the
+      // simple-product shape.
+      let wcPrice = wcProduct!.price ?? undefined;
+      if (wcProduct!.type === 'variable') {
+        const variations = await wc.getProductVariations(wcProduct!.id);
+        const match =
+          (wcSku ? variations.find((v) => v.sku === wcSku) : undefined) ?? variations[0];
+        wcPrice = match?.price ?? undefined;
+        expect(
+          variations.length,
+          'a variable WooCommerce parent exposes one variation per OL sibling',
+        ).toBeGreaterThan(0);
+      }
       assertProductFieldParity({
         label: 'OL↔WC product',
         expected: { name: state.product!.name, price: state.product!.price ?? undefined },
-        actual: { name: wcProduct!.name, price: wcProduct!.price ?? undefined },
+        actual: { name: wcProduct!.name, price: wcPrice },
       });
       if (!wcProduct!.sku) {
         testInfo.annotations.push({
