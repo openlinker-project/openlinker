@@ -209,6 +209,8 @@ export interface BulkBatchRecordSummary {
   externalOfferId: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Structured failure reasons; populated only when `status === 'failed'`. */
+  errors: Array<{ code?: string; field?: string; message?: string }> | null;
 }
 
 /** GET /listings/bulk-create/:batchId */

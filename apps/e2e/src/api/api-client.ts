@@ -471,6 +471,15 @@ export class ApiClient {
 
   // ── Listings (offers) ───────────────────────────────────────────────────
   listings = {
+    /**
+     * A bulk offer-creation batch and its per-record failure reasons.
+     *
+     * A batch whose every job is rejected still exists and reports its reason
+     * here; callers waiting only on the downstream effect (offer mappings)
+     * would otherwise see nothing but a timeout.
+     */
+    bulkBatch: (batchId: string): Promise<BulkBatchSummary> =>
+      this.request<BulkBatchSummary>(`/listings/bulk-create/${batchId}`),
     list: (query?: ListListingsQuery): Promise<Paginated<OfferMapping>> =>
       this.request<Paginated<OfferMapping>>(
         `/listings${buildQuery({

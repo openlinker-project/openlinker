@@ -63,7 +63,16 @@ export interface World {
    */
   findMultiVariantProduct(
     minVariants?: number,
-    opts?: { requireEans?: boolean },
+    opts?: {
+      requireEans?: boolean;
+      /**
+       * Extra, caller-supplied eligibility check applied to each otherwise
+       * qualifying candidate. Runs inside the paging loop so the search
+       * continues past a rejected product instead of returning the first
+       * structural match and leaving the caller to fail on it.
+       */
+      accept?: (product: Product, variants: ProductVariant[]) => Promise<boolean>;
+    },
   ): Promise<Product | undefined>;
   /** Resolve a product's variants. */
   variantsOf(productId: string): Promise<ProductVariant[]>;
@@ -112,7 +121,10 @@ export async function buildWorld(api: ApiClient): Promise<World> {
 
   const findMultiVariantProduct = async (
     minVariants = 2,
-    opts: { requireEans?: boolean } = {},
+    opts: {
+      requireEans?: boolean;
+      accept?: (product: Product, variants: ProductVariant[]) => Promise<boolean>;
+    } = {},
   ): Promise<Product | undefined> => {
     // Page through the WHOLE catalogue rather than scanning a fixed first
     // page. The previous `listProducts(50)` silently gave up past 50 products,
@@ -131,7 +143,9 @@ export async function buildWorld(api: ApiClient): Promise<World> {
         // multi-variant product whose variants lack barcodes (e.g. the demo
         // "Resin Ring") would pass S0 and then strand every later segment.
         if (opts.requireEans && !variants.every((v) => !!(v.ean ?? v.gtin))) continue;
-        return { ...summary, variants };
+        const candidate = { ...summary, variants };
+        if (opts.accept && !(await opts.accept(candidate, variants))) continue;
+        return candidate;
       }
       if (page.items.length < pageSize || offset + pageSize >= page.total) {
         return undefined;

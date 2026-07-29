@@ -148,8 +148,28 @@ async function runBulkOfferSegment(ctx: {
 }): Promise<void> {
   const { api, world, pages, poll, connectionName, connectionId } = ctx;
 
-  const product = await world.findMultiVariantProduct(2, { requireEans: true });
-  expect(product, 'a multi-variant product must exist (run S1 first)').toBeTruthy();
+  // Needs a product with at least one variant NOT already listed on this
+  // connection. `BulkListingSubmitService` drops already-listed variants before
+  // persisting the batch (#1741's authoritative duplicate guard) and rejects
+  // the submit when that leaves nothing — so a product every sibling of which
+  // an earlier run already published fails with "requires at least one
+  // productId", which reads like a defect but is the guard working. The
+  // sandbox accumulates offers across runs, so eligibility moves over time and
+  // cannot be pinned to a fixed fixture.
+  const product = await world.findMultiVariantProduct(2, {
+    requireEans: true,
+    accept: async (_candidate, variants) => {
+      const listed = await api.listings.publishedVariants(
+        connectionId,
+        variants.map((v) => v.id),
+      );
+      return listed.length < variants.length;
+    },
+  });
+  test.skip(
+    !product,
+    `no multi-variant product with an unlisted variant on ${connectionName} — every candidate is already published there`,
+  );
 
   const before = (await api.listings.list({ connectionId, limit: 1 })).total;
 
@@ -170,9 +190,27 @@ async function runBulkOfferSegment(ctx: {
   expect(progress.batchId).toBeTruthy();
 
   // OL-authoritative assertion: offer mappings appear for the connection.
-  await poll.until(
-    () => api.listings.list({ connectionId, limit: 25 }),
-    (page) => page.total > before,
-    { message: `offer mappings to appear for ${connectionName}`, timeoutMs: 120_000 },
-  );
+  //
+  // A batch whose jobs are all REJECTED still exists, so this wait can only
+  // ever time out on one — reporting "no mappings appeared" for what is really
+  // a business rejection (e.g. a required offer parameter with no resolvable
+  // value). Surface the batch's own error text instead of the bare timeout.
+  try {
+    await poll.until(
+      () => api.listings.list({ connectionId, limit: 25 }),
+      (page) => page.total > before,
+      { message: `offer mappings to appear for ${connectionName}`, timeoutMs: 120_000 },
+    );
+  } catch (error) {
+    const batch = await api.listings.bulkBatch(progress.batchId).catch(() => null);
+    const reasons = (batch?.records ?? [])
+      .filter((r) => r.status === 'failed')
+      .flatMap((r) => (r.errors ?? []).map((e) => `${e.code ?? 'ERROR'} ${e.field ?? ''}: ${e.message ?? ''}`.trim()));
+    if (reasons.length > 0) {
+      throw new Error(
+        `batch ${progress.batchId} on ${connectionName} rejected ${batch?.failedCount ?? '?'}/${batch?.totalCount ?? '?'} offers:\n- ${[...new Set(reasons)].join('\n- ')}`,
+      );
+    }
+    throw error;
+  }
 }
