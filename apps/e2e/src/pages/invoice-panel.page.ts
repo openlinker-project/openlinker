@@ -22,6 +22,32 @@ export class InvoicePanel {
     return this.page.getByRole('button', { name: 'Issue' });
   }
 
+  /** The multi-connection picker, present only when >1 invoicing connection exists. */
+  get connectionPicker(): Locator {
+    return this.page.locator('#invoice-connection');
+  }
+
+  /**
+   * Pick the invoicing connection the assertions target.
+   *
+   * `OrderInvoicePanel` auto-resolves the connection only when the stack has
+   * exactly ONE invoicing connection; with two or more (the demo stack runs
+   * KSeF + inFakt) it starts unselected behind a picker, and the
+   * provider-specific `invoiceDetailSection` slot — which owns the FA(3)
+   * "View" action — never mounts until a choice is made. A no-op when the
+   * picker is absent.
+   */
+  async selectConnection(connectionName: string): Promise<void> {
+    // The panel renders a skeleton until the connections query settles, so the
+    // picker's absence is only meaningful once loading has finished.
+    await expect(this.page.locator('.order-invoice-panel')).toBeVisible();
+    await expect(this.page.locator('.order-invoice-panel--loading')).toHaveCount(0);
+    if ((await this.connectionPicker.count()) === 0) {
+      return;
+    }
+    await this.connectionPicker.selectOption({ label: connectionName });
+  }
+
   /** "View" action for the FA(3) document (KSeF invoice detail section). */
   get fa3ViewButton(): Locator {
     // `exact` so it doesn't also match the sibling "Preview" button (both are

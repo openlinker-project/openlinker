@@ -33,13 +33,32 @@ export interface SynthesizeOrderOptions {
   /** Override unit gross (tax-incl) price; defaults to the variant/product price. */
   unitPriceTaxIncl?: number;
   /**
-   * Gross (tax-incl) shipping cost. Defaults to `9.99` (non-zero) so the
-   * invoice mapper's shipping line (`toShippingLine`, order-to-issue-invoice
-   * mapper) actually renders — a zero-shipping order would silently skip the
-   * assertion this suite's scenario 1 needs (#1567).
+   * Requested gross (tax-incl) shipping cost, defaulting to `9.99`.
+   *
+   * NOT honoured by PrestaShop. Verified live against the demo install: the
+   * raw webservice `POST /api/orders` unconditionally resets `id_carrier` to
+   * `1` and `total_shipping*` to `0`, whatever the request sends and whatever
+   * the referenced cart carries (tried with the cart's `id_carrier` AND a
+   * fully-serialized `delivery_option` pointing at each chargeable carrier).
+   * That is the documented #503/#898 behaviour — the raw webservice bypasses
+   * `validateOrder`, which is exactly why OL's own order-create path goes
+   * through the OL module's `importorder` endpoint instead (ADR-016).
+   *
+   * The field stays on the wire because it expresses the intended order, but
+   * a synthesized order always ingests with `totals.shipping = 0`. Assertions
+   * on a shipping line must therefore be conditional on the INGESTED value —
+   * see the `infakt-provider` spec.
    */
   shippingTaxIncl?: number;
-  /** How long to wait for OL to ingest the synthesized order. Default 60s. */
+  /**
+   * How long to wait for OL to ingest the synthesized order. Default 180s.
+   *
+   * The wait covers queue latency, not just execution: synthesis enqueues a
+   * `marketplace.orders.poll` job that runs behind whatever the stack's
+   * schedulers already queued (30+ jobs is normal on the shared demo stack),
+   * so a 60 s budget failed intermittently while the job was merely waiting
+   * its turn.
+   */
   timeoutMs?: number;
 }
 
@@ -186,7 +205,7 @@ export async function synthesizeOrder(
   const order = await waitForOrder(api, {
     sourceConnectionId: prestashop.id,
     snapshot,
-    timeoutMs: options.timeoutMs ?? 60_000,
+    timeoutMs: options.timeoutMs ?? 180_000,
     intervalMs: 3_000,
   });
 

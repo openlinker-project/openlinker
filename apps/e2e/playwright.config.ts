@@ -193,6 +193,14 @@ export default defineConfig({
       name: 'invoicing',
       testMatch: /invoicing\/.*\.spec\.ts/,
       retries: 0,
+      // Regulatory clearance is the slowest wait in the repo: inFakt relays to
+      // KSeF asynchronously (~90 s observed, and the specs budget a 300 s poll
+      // on top of order synthesis + issuance). That exceeds the 90 s global
+      // per-test timeout, which would abort the test mid-poll and report a
+      // bare "Test timeout exceeded" instead of the poller's own diagnostic.
+      // The ceiling is set above the sum of the in-test budgets so a genuine
+      // hang still fails at the responsible poller.
+      timeout: 600_000,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },

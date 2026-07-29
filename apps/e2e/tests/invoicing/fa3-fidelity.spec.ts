@@ -77,6 +77,7 @@ test.describe('invoicing: FA(3) field parity + preview', () => {
     // Scenario 6: the rebuilt FA(3) preview, driven for real in the browser.
     const content = await api.invoices.getContent(accepted.id);
     const orderDetail = await pages.ordersList.open(synthesized.order.internalOrderId);
+    await orderDetail.invoice.selectConnection(ksef!.name);
     await orderDetail.invoice.openFa3Preview();
     const rows = orderDetail.invoice.fa3LineItemsTable.first().locator('tbody tr');
     await expect(rows).toHaveCount(content.lines.length);
