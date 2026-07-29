@@ -270,8 +270,30 @@ Qualitative, per Stage 1 calibration — no adoption percentages we cannot measu
 
 Top product-direction risks only. Engineering risks belong in Tier 2 plans.
 
-**R1 — Per-country certification liability is unverified. *Potentially invalidating.***
-We do not know from any regulator's text whether an orchestrator behind a certified provider needs its own homologation. Evidence is circumstantial: fiskaltrust and efsta hold the certifications and expose plain APIs to arbitrary integrators (Microsoft Dynamics, Erply integrate without being homologated). The second research pass flagged this as *"the weakest and most consequential item in the report"*. **Must be closed before code ships**, not before code starts.
+**R1 — Per-country certification liability. ✅ CLOSED FOR POLAND (2026-07-29, #1906). Portugal unresolved (advisory).**
+
+**Poland — answered from primary text. OpenLinker carries no homologation obligation.**
+
+Source: consolidated *ustawa o podatku od towarów i usług*, **Dz.U. 2025 poz. 775** (tekst jednolity, Obwieszczenie Marszałka Sejmu z 21.05.2025), retrieved via the Sejm ELI API and read directly.
+
+**art. 111 ust. 6b** places the obligation on a closed, named set of parties:
+
+> *"**Producenci krajowi i podmioty dokonujące wewnątrzwspólnotowego nabycia lub importu kas rejestrujących w celu wprowadzenia ich na terytorium kraju do obrotu** są obowiązani do uzyskania dla danego typu kas rejestrujących potwierdzenia Prezesa Głównego Urzędu Miar, że kasy te spełniają funkcje wymienione w ust. 6a i wymagania techniczne dla kas rejestrujących."*
+
+i.e. **manufacturers of cash registers, and those importing / intra-Community-acquiring them to place on the Polish market.** OpenLinker is none of these. It neither produces nor places a `kasa rejestrująca` on the market; it sends transaction data to a hub that drives a device someone else manufactured and homologated.
+
+**art. 111 ust. 6a** confirms the obligation is a property *of the device*: the `kasa` must ensure correct recording, storage and secure transmission to the Centralne Repozytorium Kas, and its **pamięć fiskalna** must carry a unique number assigned by the minister. These are device capabilities, not properties of upstream software.
+
+**The precise boundary — art. 111b.** Software *can* be a cash register: ust. 1 permits `kasy rejestrujące mające postać oprogramowania` for defined groups of taxpayers/activities, and ust. 2 states *"Do kas rejestrujących, o których mowa w ust. 1, przepisy art. 111 i art. 111a **stosuje się odpowiednio**"* — so a software cash register **does** attract art. 111 ust. 6b.
+
+> **The line is therefore: FEEDING a `kasa` carries no obligation; BEING a `kasa` does.** OpenLinker must stay on the feeding side. If OL ever shipped something that itself performs fiscal registration — rather than handing off to a certified device or a certified `kasa wirtualna` — art. 111 ust. 6b would attach and this risk reopens.
+
+*Near-miss guarded against:* **ust. 6fa** requires a GUM decision when the `program pracy kasy rejestrującej` changes. That is the device's own operating program, not integrating software. Do not misread it as covering upstream systems.
+
+*Scope note:* this establishes what the statute says. It is not legal advice, and no seller-facing compliance claim should be made on it without a professional opinion (per #1906's stated out-of-scope).
+
+**Portugal — ❌ could not establish. Advisory only; does not block v1.**
+Attempted: WebSearch (session budget exhausted by the two prior research passes); `diariodarepublica.pt` search endpoints (HTTP 301); the Portaria 363/2010 detail page (HTTP 200 but a JavaScript shell — 24 characters of extractable text); `info.portaldasfinancas.gov.pt` (404) and `portaldasfinancas.gov.pt` (302). **Unresolved:** whether Portugal's certified-software regime attaches to software that *issues* invoices only, or reaches upstream systems that merely transmit to certified software. Closing it needs either a JS-rendered fetch of the DRE page or restored search budget. **Consequence if adverse:** would constrain generalising the port into PT, not the PL v1.
 
 **R2 — No user-pull evidence at all.**
 Zero inbound requests; no interviews with §4-category sellers; the re-keying cost was never quantified. The build rests on a maintainer strategic call, not demand. If v1 goes unused, this is the reason, and it was known in advance.
@@ -279,8 +301,25 @@ Zero inbound requests; no interviews with §4-category sellers; the re-keying co
 **R3 — Integrator classification may be declined.**
 If eparagony.pl treats OL as a Custom-API customer instead, our users pay 79–189 zł/mo rather than 19–69 — permanently, per seller. This is decided in a conversation, not by code, and the default path lands in the expensive class.
 
-**R4 — Counterparty standing never checked.**
-Platforma Detalistów sp. z o.o. has had no KRS or financial review across two research passes. We would be taking a product dependency on an unexamined company.
+**R4 — Counterparty standing. ✅ CHECKED (2026-07-29, #1906). No red flags; one limitation.**
+
+Retrieved from the Ministry of Justice KRS API (`OdpisAktualny`, stan z dnia 14.07.2026) and the Ministry of Finance VAT whitelist (`wl-api.mf.gov.pl`). NIP sourced from the vendor's own site, then used as the authoritative key.
+
+| | |
+|---|---|
+| Legal name | PLATFORMA DETALISTÓW SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ |
+| KRS | 0000697156 |
+| NIP / REGON | 5213796333 / 368414541 |
+| Registered | 2017-10-31 (≈8.7 years trading) |
+| Seat | ul. Twarda 18, 00-105 Warszawa |
+| Share capital | **47 100,00 PLN** |
+| VAT status | **Czynny** (active) |
+| Board | 4 members; representation by **two members acting jointly** |
+| **Dział 6** (liquidation / bankruptcy / restructuring) | **EMPTY — no entries** |
+
+**Read:** an eight-year-old, VAT-active company with a clean register — no liquidation, bankruptcy or restructuring proceedings. Nothing here argues against a dependency.
+
+**Limitation — financial health was NOT assessed.** Share capital of 47 100 PLN is small but unremarkable for a Polish sp. z o.o. and says nothing about solvency. Filed financial statements live in the *Repozytorium Dokumentów Finansowych*, a separate system not queried here. If this dependency ever becomes load-bearing (e.g. a revenue-sharing partnership rather than a connector), pull the RDF filings before relying on it.
 
 **R5 — Over-claiming compliance.**
 The persona is legally defined and most PL e-commerce is *exempt* (courier COD preserves the exemption — see §2). If OL's UI implies a seller needs receipts, or that using this makes them compliant, we mislead them about their own tax position. Copy must describe what OL did, never what the law requires of them.
@@ -315,6 +354,9 @@ Two deep-research passes back this spec. Both had material errors worth knowing 
 | Date | Decision | Rationale |
 |---|---|---|
 | 2026-07-28 | Spec opened from #1902 | Prior deep-research pass (2026-07-28, 25 claims adversarially verified) supplied the legal and vendor baseline; recorded in #1902 as inputs, not conclusions. |
+| 2026-07-29 | **R1 closed for Poland** (#1906) | art. 111 ust. 6b of the VAT act (Dz.U. 2025 poz. 775) puts the GUM homologation duty on *manufacturers and importers of cash registers*. art. 111b ust. 2 applies art. 111 *odpowiednio* to software-form registers — so the line is **feeding a `kasa` (no duty) vs being one (duty)**. OL stays on the feeding side. |
+| 2026-07-29 | **R4 checked** (#1906) | KRS 0000697156, registered 2017, VAT-czynny, Dział 6 empty (no liquidation/bankruptcy). Financial statements not pulled — noted as a limitation. |
+| 2026-07-29 | Portugal left open | Access-blocked, not ambiguous. Advisory and non-blocking for v1; recorded with what was tried. |
 | 2026-07-28 | **Gate A: build** | Maintainer decision on strategic grounds. Recorded plainly: the assembled evidence runs the other way (no mandate, no user-pull, persona narrowed to §4 categories). Phase B re-scoped from "should we?" to "what exactly, on what terms?". |
 | 2026-07-28 | Target the **Integrator** pricing class, not Custom API | OL is categorically an integrator (same shelf as BaseLinker/Apilo/SellAsist). Integrator add-on is 19–69 zł/mo vs 79–189 zł for Custom API — a permanent 60–120 zł/mo saving *for our users*, contingent only on a vendor conversation. |
 | 2026-07-28 | Scope includes **status/link read-back**, not push-only | Their BaseLinker connector surfaces receipt status and a per-receipt link in the Base panel. A push-only MVP would be visibly thinner than what the target seller may already have. |
