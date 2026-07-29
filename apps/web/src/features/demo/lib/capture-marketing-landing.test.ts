@@ -14,6 +14,8 @@ const configuredPosthog: SystemConfig = {
       host: 'https://eu.i.posthog.com',
       autocapture: true,
       sessionRecording: true,
+      productEventsEnabled: true,
+      enabledEventGroups: [],
     },
   },
 };
