@@ -35,6 +35,16 @@ test.describe('access-control: demo mode', () => {
     // guest form instead of redirecting an authenticated session to the shell.
     const context = await browser.newContext({ baseURL: env.webUrl });
     try {
+      // `browser.newContext()` is documented as storage-isolated from every
+      // other context, but on this stack it is observed to hand back a context
+      // that already carries the OTHER (admin) context's `ol_refresh`/`ol_csrf`
+      // cookies before any navigation happens — reproduced 5/5 with a debug
+      // probe dumping `context.cookies()` immediately after creation, with
+      // GuestLayout then redirecting the "guest" page straight to the
+      // authenticated shell (`session.status === 'authenticated'`). Whatever the
+      // exact CDP/Chromium mechanism, clearing cookies makes the context match
+      // what this test actually needs — genuinely logged out — regardless of it.
+      await context.clearCookies();
       const page = await context.newPage();
       // First navigation of this context against a possibly-cold web container:
       // wait for the SPA to be interactive before asserting (issue #1513).
