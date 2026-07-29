@@ -105,5 +105,58 @@ export interface AdapterMetadata {
    * `DuplicatePlatformDefaultException`. (#571)
    */
   isDefault?: boolean;
+
+  /**
+   * Declares how this destination groups sibling variants into one
+   * buyer-facing listing, and therefore whether — and how consequentially —
+   * a single variant may carry its own category (#1924).
+   *
+   * Advertised-without-dispatch, same as `CategoryBrowser` /
+   * `EanCategoryMatcher` on Allegro (#1367) and `ShopCategoryBrowser` on
+   * WooCommerce (#1834): read directly off the manifest for host/FE
+   * discovery, never resolved through `getCapabilityAdapter` (it is not a
+   * capability name).
+   *
+   * Absent when an adapter declares nothing — use
+   * {@link resolveVariantGroupingModel} rather than reading this field
+   * directly, so the most-restrictive default is always applied.
+   */
+  variantGrouping?: VariantGroupingModel;
+}
+
+/**
+ * Variant-grouping model values (#1924).
+ *
+ * - `'catalog-implicit'` — siblings group by sharing a catalog product keyed
+ *   by category (Allegro). Giving one variant its own category is a real,
+ *   consequential choice: it splits that variant out of the grouped listing.
+ * - `'explicit-group'` — grouping is carried by an explicit group id,
+ *   independent of category (Erli's `externalVariantGroup`). A per-variant
+ *   category is ordinary metadata — no split, no confirm.
+ * - `'parent-child'` — the variant is not a taxonomy-bearing object at all
+ *   (a WooCommerce product variation has no `categories` field); category is
+ *   structurally parent-only.
+ */
+export const VariantGroupingModelValues = [
+  'catalog-implicit',
+  'explicit-group',
+  'parent-child',
+] as const;
+
+/** Derived union type from {@link VariantGroupingModelValues}. */
+export type VariantGroupingModel = (typeof VariantGroupingModelValues)[number];
+
+/**
+ * Resolve the effective variant-grouping model for an adapter, defaulting to
+ * the most restrictive shape (`'parent-child'`) when the adapter declares
+ * nothing (#1924). The opposite default would let an undeclared destination
+ * silently offer a per-variant category override its API cannot actually
+ * carry — the operator would only discover that from a rejected publish.
+ * Pure, no I/O.
+ */
+export function resolveVariantGroupingModel(
+  metadata: Pick<AdapterMetadata, 'variantGrouping'> | undefined | null
+): VariantGroupingModel {
+  return metadata?.variantGrouping ?? 'parent-child';
 }
 

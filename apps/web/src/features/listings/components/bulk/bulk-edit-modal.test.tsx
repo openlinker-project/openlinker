@@ -784,6 +784,164 @@ describe('BulkEditModal', () => {
       });
     });
 
+    describe('per-variant category override (#1924)', () => {
+      // A dedicated fixture (not the shared `connection` used everywhere else in
+      // this file) so declaring `variantGrouping` here can never make an
+      // unrelated grouping-param test's `getByText('Override for this variant')`
+      // ambiguous (that button label is intentionally shared between the two
+      // ladders).
+      const catalogImplicitConnection: Connection = {
+        ...connection,
+        variantGrouping: 'catalog-implicit',
+      };
+      const parentChildConnection: Connection = {
+        ...connection,
+        id: 'conn_woo',
+        platformType: 'woocommerce',
+        variantGrouping: 'parent-child',
+      };
+
+      it('renders an interactive ladder for a catalog-implicit destination (Allegro-like)', async () => {
+        const apiClient = createMockApiClient({
+          mappings: {
+            getAllegroCategories: vi.fn().mockResolvedValue([
+              { id: 'cat-tester', name: 'Testery perfum', parentId: null, leaf: true },
+            ]),
+          },
+        });
+        renderWithProviders(
+          <BulkEditModal
+            open
+            onOpenChange={() => undefined}
+            row={makeMultiRow()}
+            connection={catalogImplicitConnection}
+            canBrowseCategories={true}
+            currency="PLN"
+            defaults={DEFAULTS}
+            focusVariantId="var_m"
+            onSave={() => undefined}
+          />,
+          { apiClient },
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: 'Override for this variant' }));
+        expect(screen.getByText(/splits it into its own Allegro listing/)).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Override anyway' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Select' }));
+
+        expect(screen.getByText('splits listing')).toBeInTheDocument();
+        expect(screen.getByText('Testery perfum')).toBeInTheDocument();
+      });
+
+      it('emits the per-variant categoryId override on save (#1924)', async () => {
+        const onSave = vi.fn();
+        const apiClient = createMockApiClient({
+          mappings: {
+            getAllegroCategories: vi.fn().mockResolvedValue([
+              { id: 'cat-tester', name: 'Testery perfum', parentId: null, leaf: true },
+            ]),
+          },
+        });
+        renderWithProviders(
+          <BulkEditModal
+            open
+            onOpenChange={() => undefined}
+            // Base carries its own resolved category so the base form's
+            // required-categoryId validation doesn't block "Save all" - this
+            // test is only about the variant-tier override layering on top.
+            row={{ ...makeMultiRow(), resolvedCategoryId: 'cat-base' }}
+            connection={catalogImplicitConnection}
+            canBrowseCategories={true}
+            currency="PLN"
+            defaults={DEFAULTS}
+            focusVariantId="var_m"
+            onSave={onSave}
+          />,
+          { apiClient },
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: 'Override for this variant' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Override anyway' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Select' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+
+        await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+        const perVariantOverrides = onSave.mock.calls[0][2] as Record<string, { overrides?: { categoryId?: string } }>;
+        expect(perVariantOverrides.var_m?.overrides?.categoryId).toBe('cat-tester');
+      });
+
+      it('reset-to-shared clears the per-variant category and re-locks it to inherited', async () => {
+        const apiClient = createMockApiClient({
+          mappings: {
+            getAllegroCategories: vi.fn().mockResolvedValue([
+              { id: 'cat-tester', name: 'Testery perfum', parentId: null, leaf: true },
+            ]),
+          },
+        });
+        renderWithProviders(
+          <BulkEditModal
+            open
+            onOpenChange={() => undefined}
+            row={makeMultiRow()}
+            connection={catalogImplicitConnection}
+            canBrowseCategories={true}
+            currency="PLN"
+            defaults={DEFAULTS}
+            focusVariantId="var_m"
+            onSave={() => undefined}
+          />,
+          { apiClient },
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: 'Override for this variant' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Override anyway' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Select' }));
+        expect(screen.getByText('splits listing')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByText(/reset to shared/));
+        expect(screen.queryByText('splits listing')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Override for this variant' })).toBeInTheDocument();
+      });
+
+      it('renders read-only with no override affordance for a parent-child destination (WooCommerce-like)', () => {
+        renderWithProviders(
+          <BulkEditModal
+            open
+            onOpenChange={() => undefined}
+            row={makeMultiRow()}
+            connection={parentChildConnection}
+            canBrowseCategories={false}
+            currency="PLN"
+            defaults={DEFAULTS}
+            focusVariantId="var_m"
+            onSave={() => undefined}
+          />,
+        );
+
+        expect(screen.queryByRole('button', { name: 'Override for this variant' })).not.toBeInTheDocument();
+        expect(screen.getByText(/cannot be overridden per variant here/)).toBeInTheDocument();
+      });
+
+      it('renders read-only with no override affordance when the adapter declares no variantGrouping (locked default)', () => {
+        renderWithProviders(
+          <BulkEditModal
+            open
+            onOpenChange={() => undefined}
+            row={makeMultiRow()}
+            connection={connection}
+            canBrowseCategories={true}
+            currency="PLN"
+            defaults={DEFAULTS}
+            focusVariantId="var_m"
+            onSave={() => undefined}
+          />,
+        );
+
+        expect(screen.queryByRole('button', { name: 'Override for this variant' })).not.toBeInTheDocument();
+      });
+    });
+
     it('emits a per-variant EAN override when the operator edits a sibling EAN', async () => {
       const onSave = vi.fn();
       renderWithProviders(

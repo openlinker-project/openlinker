@@ -43,6 +43,32 @@ export const CORE_CAPABILITY_VALUES = [
  */
 export type CoreCapability = (typeof CORE_CAPABILITY_VALUES)[number];
 
+/**
+ * How a destination groups sibling variants into one listing, and therefore
+ * whether - and how consequentially - a single variant may carry its own
+ * category. Mirrors `VariantGroupingModelValues` on the backend (#1924).
+ */
+export const VARIANT_GROUPING_MODEL_VALUES = [
+  'catalog-implicit',
+  'explicit-group',
+  'parent-child',
+] as const;
+
+export type VariantGroupingModel = (typeof VARIANT_GROUPING_MODEL_VALUES)[number];
+
+/**
+ * Resolve the effective variant-grouping model for a connection, defaulting
+ * to the most restrictive shape (`'parent-child'`) when absent — mirrors the
+ * backend's `resolveVariantGroupingModel` (#1924). The API always sends a
+ * resolved value; this keeps older/hand-rolled test fixtures that omit the
+ * field working without a mass edit.
+ */
+export function resolveVariantGroupingModel(
+  connection: Pick<Connection, 'variantGrouping'> | undefined | null
+): VariantGroupingModel {
+  return connection?.variantGrouping ?? 'parent-child';
+}
+
 export interface Connection {
   id: string;
   name: string;
@@ -54,6 +80,8 @@ export interface Connection {
   adapterKey?: string;
   enabledCapabilities: string[];
   supportedCapabilities: string[];
+  /** Derived from the resolved adapter's manifest (#1924). Read via `resolveVariantGroupingModel`, not directly, so an absent value still resolves to the locked default. */
+  variantGrouping?: VariantGroupingModel;
   createdAt: string;
   updatedAt: string;
 }
