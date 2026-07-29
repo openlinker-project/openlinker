@@ -21,6 +21,7 @@ import { useDemoMode } from '../../../features/system';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { KsefNumberingAuditTab } from './ksef-numbering-audit-tab';
 import { KsefNumberingSeriesTab } from './ksef-numbering-series-tab';
+import { captureDemoEvent } from '../../../features/demo';
 
 const TAB_VALUES = ['series', 'audit'] as const;
 type TabValue = (typeof TAB_VALUES)[number];
@@ -41,6 +42,7 @@ export function KsefNumberingPage(): ReactElement {
   const activeTab: TabValue = isTabValue(searchParams.get('tab')) ? (searchParams.get('tab') as TabValue) : 'series';
 
   function setTab(next: string): void {
+    captureDemoEvent('demo_ksef_numbering_tab_switched', { tab: next });
     setSearchParams(
       (prev) => {
         const params = new URLSearchParams(prev);

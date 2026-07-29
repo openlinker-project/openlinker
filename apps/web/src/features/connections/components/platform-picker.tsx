@@ -9,6 +9,7 @@
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { usePlatforms } from '../../../shared/plugins';
+import { captureDemoEvent } from '../../demo';
 
 export function PlatformPicker(): ReactElement {
   const plugins = usePlatforms();
@@ -21,7 +22,15 @@ export function PlatformPicker(): ReactElement {
       <ul className="platform-picker__list">
         {cards.map((card) => (
           <li key={card.platformType}>
-            <Link to={card.to} className="platform-picker__card">
+            <Link
+              to={card.to}
+              className="platform-picker__card"
+              onClick={() =>
+                captureDemoEvent('demo_connection_platform_selected', {
+                  platformType: card.platformType,
+                })
+              }
+            >
               <div className="platform-picker__card-header">
                 <h3 className="platform-picker__card-title">{card.title}</h3>
                 <span className="toolbar-chip">{card.badge}</span>

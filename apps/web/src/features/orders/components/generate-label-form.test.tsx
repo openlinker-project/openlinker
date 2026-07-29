@@ -7,7 +7,7 @@
  * focused on the first input and the submit is enabled.
  */
 import { cleanup, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 
 import {
   renderWithProviders,
@@ -17,6 +17,15 @@ import {
 import { ApiError } from '../../../shared/api/api-error';
 import { GenerateLabelForm } from './generate-label-form';
 import type { OrderRecord } from '../api/orders.types';
+
+const captureDemoEvent = vi.fn();
+vi.mock('../../demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
+
+beforeEach(() => {
+  captureDemoEvent.mockClear();
+});
 
 afterEach(cleanup);
 
@@ -502,6 +511,28 @@ describe('GenerateLabelForm — happy path', () => {
     await waitFor(() => expect(downloadLabel).toHaveBeenCalledWith('ol_shipment_99'));
     expect(downloadLabel).toHaveBeenCalledTimes(1);
     vi.restoreAllMocks();
+  });
+
+  it('captures demo_label_generate_attempted with the routed carrier on submit (#1788)', async () => {
+    const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
+    const apiClient = createMockApiClient({ shipments: { generateLabel } });
+
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    await waitFor(() => expect(generateLabel).toHaveBeenCalled());
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_label_generate_attempted', {
+      carrier: 'unknown',
+    });
   });
 
   it('should NOT auto-download when generation resolves omp_fulfilled (no label)', async () => {

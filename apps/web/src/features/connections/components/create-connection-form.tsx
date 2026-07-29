@@ -24,6 +24,7 @@ import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
+import { captureDemoEvent } from '../../demo';
 
 const DEFAULT_CONFIG = JSON.stringify(
   {
@@ -215,7 +216,13 @@ export function CreateConnectionForm(): ReactElement {
 
         {requiresExternalAuthRedirect ? null : (
           <div className="form-actions">
-            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock
+              active={write.demoReadOnly}
+              message={DEMO_READ_ONLY_ACTION_MESSAGE}
+              onLockedClick={() =>
+                captureDemoEvent('demo_connection_create_attempted', { platform: watchedPlatformType })
+              }
+            >
               <Button type="submit" disabled={createConnection.isPending || write.demoReadOnly}>
                 {createConnection.isPending ? 'Creating...' : 'Create connection'}
               </Button>

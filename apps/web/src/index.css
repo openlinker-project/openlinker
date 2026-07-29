@@ -1228,6 +1228,17 @@ textarea,
   background: var(--bg-surface-hover);
 }
 
+/* ── Open-source link (#1790) ── */
+.shell-workspace__github-link {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.shell-workspace__github-link:hover {
+  text-decoration: underline;
+}
+
 /* Mobile drawer — native <dialog>. Hidden on desktop. */
 .shell-drawer {
   padding: 0;
@@ -3833,6 +3844,21 @@ a.delivery-rider-banner__button:focus-visible {
   display: inline-flex;
 }
 
+/* A natively-disabled <button> suppresses click activation entirely — the
+   event never fires, so it can never bubble to this wrapper's own onClick.
+   Without this rule the demo-event intent-click capture (#1788) and the
+   click-to-focus path silently never fire in a real browser, even though
+   the disabled button visually fills the wrapper. Setting pointer-events:
+   none on the disabled control makes the wrapper itself the actual click
+   target, so a normal (non-suppressed) click event lands on the span.
+   Hover/focus-driven behavior (the Radix tooltip) is unaffected — mouse
+   enter/leave tracking on an ancestor isn't part of click activation
+   suppression, so the tooltip already worked without this rule. */
+.read-only-lock > :disabled,
+.read-only-lock > [aria-disabled='true'] {
+  pointer-events: none;
+}
+
 /* ── InPost webhook runbook (#1473) ── */
 .action-list__item-actions {
   display: flex;
@@ -6317,6 +6343,65 @@ a.kpi-card:focus-visible {
 .posthog-settings-hint {
   font-size: 0.8125rem;
   margin-top: 0.5rem;
+}
+
+/* ── Product Events section (#1787) ── */
+.posthog-settings-product-events {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.posthog-settings-event-groups {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  transition: opacity 0.15s ease;
+}
+
+.posthog-settings-event-groups[data-disabled='true'] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.posthog-settings-event-groups__title,
+.posthog-settings-event-catalog__title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: 0 0 0.5rem;
+}
+
+.posthog-settings-event-catalog {
+  margin-top: 1rem;
+}
+
+.posthog-settings-event-catalog__row {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.posthog-settings-event-catalog__row:last-child {
+  border-bottom: none;
+}
+
+.posthog-settings-event-catalog__name {
+  font-size: 0.8125rem;
+}
+
+.posthog-settings-event-catalog__description {
+  font-size: 0.8125rem;
+  margin: 0;
+}
+
+.posthog-settings-event-catalog__props {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
 }
 
 .create-offer-variant-picker {

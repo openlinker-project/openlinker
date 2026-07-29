@@ -22,6 +22,10 @@ export interface PosthogSettingsView {
   customHost: string | null;
   autocapture: boolean;
   sessionRecording: boolean;
+  /** Master toggle for demo-mode product events (#1787), independent of autocapture. */
+  productEventsEnabled: boolean;
+  /** Enabled demo-event group names, derived client-side from the events catalog. */
+  enabledEventGroups: string[];
   apiKeyConfigured: boolean;
   wouldOverrideEnv: boolean;
   overriddenEnvVars: string[];
@@ -36,6 +40,8 @@ export interface UpdatePosthogSettingsInput {
   customHost: string | null;
   autocapture: boolean;
   sessionRecording: boolean;
+  productEventsEnabled: boolean;
+  enabledEventGroups: string[];
 }
 
 /** Body for `PUT /posthog-settings/credentials`. Server trims `apiKey`. */
