@@ -23,6 +23,7 @@ import { PlatformType } from '../../src/world/world';
 import {
   buildPickupRecipient,
   ensureCarrierRouting,
+  resolveDispatchedShipment,
   resolveOrderDeliveryMethodId,
   resolveShippingTestOrder,
 } from '../../src/support/shipments';
@@ -66,8 +67,8 @@ test.describe('shipping — routing matrix', () => {
       parcel: { template: 'small' },
       paczkomatId: env.paczkomatId!,
     });
-    const shipment = dispatch.shipment ?? (await api.shipments.active(order!.internalOrderId));
-    expect(shipment!.connectionId, 'shipment dispatched through the InPost connection').toBe(
+    const shipment = await resolveDispatchedShipment(api, dispatch, order!.internalOrderId);
+    expect(shipment.connectionId, 'shipment dispatched through the InPost connection').toBe(
       inpost!.id,
     );
   });

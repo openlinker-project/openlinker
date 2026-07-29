@@ -14,11 +14,12 @@
 import { test, expect } from '../../src/fixtures/test';
 import { ApiError } from '../../src/api/api-error';
 import {
+  SYNTHETIC_COURIER_PARCEL,
   buildCourierRecipient,
   buildPickupRecipient,
   isCourierUnprovisionedError,
+  resolveDispatchedShipment,
   setUpShippingTestOrder,
-  SYNTHETIC_COURIER_PARCEL,
 } from '../../src/support/shipments';
 
 test.describe('shipping — InPost declared value / insurance', () => {
@@ -38,9 +39,9 @@ test.describe('shipping — InPost declared value / insurance', () => {
       paczkomatId: env.paczkomatId!,
       insuredValue: { amount: '250.00', currency: 'PLN' },
     });
-    const shipment = dispatch.shipment ?? (await api.shipments.active(order.internalOrderId));
+    const shipment = await resolveDispatchedShipment(api, dispatch, order.internalOrderId);
     expect(shipment, 'an insured paczkomat shipment was created').toBeTruthy();
-    expect(shipment!.shippingMethod).toBe('paczkomat');
+    expect(shipment.shippingMethod).toBe('paczkomat');
   });
 
   test('generates a courier label with a declared value (insurance)', async ({ api, world, env }) => {
@@ -66,9 +67,9 @@ test.describe('shipping — InPost declared value / insurance', () => {
       }
       throw error;
     }
-    const shipment = dispatch.shipment ?? (await api.shipments.active(order.internalOrderId));
+    const shipment = await resolveDispatchedShipment(api, dispatch, order.internalOrderId);
     expect(shipment, 'an insured courier shipment was created').toBeTruthy();
-    expect(shipment!.shippingMethod).toBe('kurier');
+    expect(shipment.shippingMethod).toBe('kurier');
   });
 
   test('rejects a malformed insured-value amount at the API boundary (400)', async ({ api, world, env }) => {

@@ -20,10 +20,11 @@
  */
 import { test, expect } from '../../src/fixtures/test';
 import {
+  SYNTHETIC_COURIER_PARCEL,
   buildCourierRecipient,
   isCourierUnprovisionedError,
+  resolveDispatchedShipment,
   setUpShippingTestOrder,
-  SYNTHETIC_COURIER_PARCEL,
 } from '../../src/support/shipments';
 
 test.describe('shipping — InPost dispatch (handover) protocol', () => {
@@ -59,9 +60,9 @@ test.describe('shipping — InPost dispatch (handover) protocol', () => {
         }
         throw error;
       }
-      const shipment = dispatch.shipment ?? (await api.shipments.active(order.internalOrderId));
+      const shipment = await resolveDispatchedShipment(api, dispatch, order.internalOrderId);
       expect(shipment, `shipment #${i + 1} was created`).toBeTruthy();
-      shipmentIds.push(shipment!.id);
+      shipmentIds.push(shipment.id);
     }
 
     // Bounded retry: ShipX confirms a shipment asynchronously; drive the

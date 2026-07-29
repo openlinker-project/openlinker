@@ -21,11 +21,12 @@
 import { test, expect } from '../../src/fixtures/test';
 import { ApiError } from '../../src/api/api-error';
 import {
+  SYNTHETIC_COURIER_PARCEL,
   buildCourierRecipient,
   buildPickupRecipient,
   isCourierUnprovisionedError,
+  resolveDispatchedShipment,
   setUpShippingTestOrder,
-  SYNTHETIC_COURIER_PARCEL,
 } from '../../src/support/shipments';
 
 test.describe('shipping — InPost COD (pobranie)', () => {
@@ -52,9 +53,9 @@ test.describe('shipping — InPost COD (pobranie)', () => {
       }
       throw error;
     }
-    const shipment = dispatch.shipment ?? (await api.shipments.active(order.internalOrderId));
+    const shipment = await resolveDispatchedShipment(api, dispatch, order.internalOrderId);
     expect(shipment, 'a COD shipment was created').toBeTruthy();
-    expect(shipment!.shippingMethod).toBe('kurier');
+    expect(shipment.shippingMethod).toBe('kurier');
   });
 
   test('generates a paczkomat label with a valid COD amount (#1554)', async ({ api, world, env }) => {
@@ -73,9 +74,9 @@ test.describe('shipping — InPost COD (pobranie)', () => {
       paczkomatId: env.paczkomatId!,
       cod: { amount: '50.00', currency: 'PLN' },
     });
-    const shipment = dispatch.shipment ?? (await api.shipments.active(order.internalOrderId));
+    const shipment = await resolveDispatchedShipment(api, dispatch, order.internalOrderId);
     expect(shipment, 'a COD paczkomat shipment was created').toBeTruthy();
-    expect(shipment!.shippingMethod).toBe('paczkomat');
+    expect(shipment.shippingMethod).toBe('paczkomat');
   });
 
   test('rejects a malformed COD amount at the API boundary (400)', async ({ api, world, env }) => {

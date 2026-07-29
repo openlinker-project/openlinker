@@ -24,11 +24,12 @@
 import { test, expect } from '../../src/fixtures/test';
 import { PlatformType } from '../../src/world/world';
 import {
+  SYNTHETIC_COURIER_PARCEL,
   buildCourierRecipient,
   ensureCarrierRouting,
+  resolveDispatchedShipment,
   resolveOrderDeliveryMethodId,
   resolveShippingTestOrder,
-  SYNTHETIC_COURIER_PARCEL,
 } from '../../src/support/shipments';
 import { buildInpostTrackingEnvelope, signInpostWebhook } from '../../src/support/webhooks';
 
@@ -65,15 +66,15 @@ test.describe('shipping — inbound ShipX status webhook', () => {
       recipient: buildCourierRecipient(order!),
       parcel: { ...SYNTHETIC_COURIER_PARCEL },
     });
-    const shipment = dispatch.shipment ?? (await api.shipments.active(order!.internalOrderId));
+    const shipment = await resolveDispatchedShipment(api, dispatch, order!.internalOrderId);
     expect(shipment, 'a shipment exists for the webhook to reference').toBeTruthy();
-    expect(shipment!.providerShipmentId, 'shipment carries a ShipX provider id').toBeTruthy();
+    expect(shipment.providerShipmentId, 'shipment carries a ShipX provider id').toBeTruthy();
 
     const rotated = await api.connections.rotateWebhookSecret(inpost!.id);
     const since = new Date(Date.now() - 5_000).toISOString();
     const signed = signInpostWebhook(
       rotated.secret,
-      buildInpostTrackingEnvelope({ providerShipmentId: shipment!.providerShipmentId! }),
+      buildInpostTrackingEnvelope({ providerShipmentId: shipment.providerShipmentId! }),
     );
 
     const result = await api.webhooks.sendInbound(
@@ -95,13 +96,13 @@ test.describe('shipping — inbound ShipX status webhook', () => {
           since,
           limit: 100,
         }),
-      (page) => page.items.some((d) => d.externalId === shipment!.providerShipmentId),
+      (page) => page.items.some((d) => d.externalId === shipment.providerShipmentId),
       {
-        message: `webhook delivery for shipment ${shipment!.providerShipmentId} to be recorded`,
+        message: `webhook delivery for shipment ${shipment.providerShipmentId} to be recorded`,
         timeoutMs: 30_000,
       },
     );
-    const delivery = recorded.items.find((d) => d.externalId === shipment!.providerShipmentId)!;
+    const delivery = recorded.items.find((d) => d.externalId === shipment.providerShipmentId)!;
     expect(delivery.signatureValid).toBe(true);
     expect(delivery.provider).toBe(PROVIDER);
 
@@ -114,16 +115,16 @@ test.describe('shipping — inbound ShipX status webhook', () => {
           limit: 100,
         }),
       (page) => {
-        const row = page.items.find((d) => d.externalId === shipment!.providerShipmentId);
+        const row = page.items.find((d) => d.externalId === shipment.providerShipmentId);
         return !!row && row.status === 'job_enqueued' && !!row.downstreamJobId;
       },
       {
-        message: `webhook delivery for shipment ${shipment!.providerShipmentId} to reach status=job_enqueued`,
+        message: `webhook delivery for shipment ${shipment.providerShipmentId} to reach status=job_enqueued`,
         timeoutMs: 60_000,
       },
     );
     const enqueuedRow = enqueued.items.find(
-      (d) => d.externalId === shipment!.providerShipmentId,
+      (d) => d.externalId === shipment.providerShipmentId,
     )!;
     expect(enqueuedRow.downstreamJobType).toBe('marketplace.shipment.syncByExternalId');
 

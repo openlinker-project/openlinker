@@ -18,10 +18,11 @@
  */
 import { test, expect } from '../../src/fixtures/test';
 import {
+  SYNTHETIC_COURIER_PARCEL,
   buildCourierRecipient,
   isCourierUnprovisionedError,
+  resolveDispatchedShipment,
   setUpShippingTestOrder,
-  SYNTHETIC_COURIER_PARCEL,
   waitForTrackingBackfill,
 } from '../../src/support/shipments';
 
@@ -53,7 +54,7 @@ test.describe('shipping — tracking-number backfill (courier)', () => {
       }
       throw error;
     }
-    const shipment = dispatch.shipment ?? (await api.shipments.active(order.internalOrderId));
+    const shipment = await resolveDispatchedShipment(api, dispatch, order.internalOrderId);
     expect(shipment, 'a courier shipment was created').toBeTruthy();
 
     // Identical poller to golden-path S6 (#1521 / PR #1681) — the ShipX
@@ -62,7 +63,7 @@ test.describe('shipping — tracking-number backfill (courier)', () => {
     const backfill = await waitForTrackingBackfill(
       api,
       jobs,
-      { shipmentId: shipment!.id, inpostConnectionId },
+      { shipmentId: shipment.id, inpostConnectionId },
       { timeoutMs: 120_000, intervalMs: 5_000 },
     );
     if (backfill.timedOut) {

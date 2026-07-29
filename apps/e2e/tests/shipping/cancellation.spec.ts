@@ -15,10 +15,11 @@
 import { test, expect } from '../../src/fixtures/test';
 import { ApiError } from '../../src/api/api-error';
 import {
+  SYNTHETIC_COURIER_PARCEL,
   buildCourierRecipient,
   isCourierUnprovisionedError,
+  resolveDispatchedShipment,
   setUpShippingTestOrder,
-  SYNTHETIC_COURIER_PARCEL,
 } from '../../src/support/shipments';
 
 test.describe('shipping — InPost cancellation + regeneration', () => {
@@ -48,12 +49,12 @@ test.describe('shipping — InPost cancellation + regeneration', () => {
       }
       throw error;
     }
-    const original = dispatch.shipment ?? (await api.shipments.active(order.internalOrderId));
+    const original = await resolveDispatchedShipment(api, dispatch, order.internalOrderId);
     expect(original, 'a shipment was created to cancel').toBeTruthy();
 
     let cancelled;
     try {
-      cancelled = await api.shipments.cancel(original!.id);
+      cancelled = await api.shipments.cancel(original.id);
     } catch (error) {
       // ShipX confirms shipments asynchronously and cancellation is only
       // valid pre-confirmation; a genuine sandbox-timing race (the shipment
@@ -63,7 +64,7 @@ test.describe('shipping — InPost cancellation + regeneration', () => {
         testInfo.annotations.push({
           type: 'cancellation',
           description:
-            `shipment ${original!.id} could not be cancelled (HTTP ${error.status}) — likely already ` +
+            `shipment ${original.id} could not be cancelled (HTTP ${error.status}) — likely already ` +
             'confirmed carrier-side before the cancel request landed; a sandbox-timing race, not a ' +
             'regression',
         });
@@ -78,7 +79,7 @@ test.describe('shipping — InPost cancellation + regeneration', () => {
       // Cancelling an already-cancelled shipment is rejected, not a silent no-op.
       let recancelled: ApiError | undefined;
       try {
-        await api.shipments.cancel(original!.id);
+        await api.shipments.cancel(original.id);
       } catch (error) {
         recancelled = error instanceof ApiError ? error : undefined;
       }
@@ -96,9 +97,8 @@ test.describe('shipping — InPost cancellation + regeneration', () => {
       recipient: buildCourierRecipient(order),
       parcel: { ...SYNTHETIC_COURIER_PARCEL },
     });
-    const regenerated =
-      redispatch.shipment ?? (await api.shipments.active(order.internalOrderId));
+    const regenerated = await resolveDispatchedShipment(api, redispatch, order.internalOrderId);
     expect(regenerated, 'a new shipment was dispatched after cancellation').toBeTruthy();
-    expect(regenerated!.id, 'the regenerated shipment is a distinct row').not.toBe(original!.id);
+    expect(regenerated.id, 'the regenerated shipment is a distinct row').not.toBe(original.id);
   });
 });

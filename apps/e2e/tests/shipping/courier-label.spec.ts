@@ -18,10 +18,11 @@
 import { test, expect } from '../../src/fixtures/test';
 import { ApiError } from '../../src/api/api-error';
 import {
+  SYNTHETIC_COURIER_PARCEL,
   buildCourierRecipient,
   isCourierUnprovisionedError,
+  resolveDispatchedShipment,
   setUpShippingTestOrder,
-  SYNTHETIC_COURIER_PARCEL,
 } from '../../src/support/shipments';
 
 test.describe('shipping — InPost courier label', () => {
@@ -52,18 +53,18 @@ test.describe('shipping — InPost courier label', () => {
       }
       throw error instanceof ApiError ? error : (error as Error);
     }
-    const shipment = dispatch.shipment ?? (await api.shipments.active(order.internalOrderId));
+    const shipment = await resolveDispatchedShipment(api, dispatch, order.internalOrderId);
     expect(shipment, 'a shipment was created for the courier dispatch').toBeTruthy();
-    expect(shipment!.connectionId, 'shipment routed to the InPost connection').toBe(inpostConnectionId);
-    expect(shipment!.shippingMethod, 'resolved carrier method for deliveryIntent=address').toBe(
+    expect(shipment.connectionId, 'shipment routed to the InPost connection').toBe(inpostConnectionId);
+    expect(shipment.shippingMethod, 'resolved carrier method for deliveryIntent=address').toBe(
       'kurier',
     );
-    expect(shipment!.providerShipmentId, 'ShipX assigned a provider shipment id').toBeTruthy();
+    expect(shipment.providerShipmentId, 'ShipX assigned a provider shipment id').toBeTruthy();
 
     // ShipX renders the label document asynchronously — poll briefly rather
     // than asserting the first response (mirrors golden-path S6).
     await poll.until(
-      () => api.shipments.getLabel(shipment!.id),
+      () => api.shipments.getLabel(shipment.id),
       (l) => l.ok && l.byteLength > 0,
       { message: 'courier label PDF to become retrievable', timeoutMs: 60_000, intervalMs: 5_000 },
     );
