@@ -60,11 +60,21 @@ Commits.
 4. `cd.yml` fires on the tag → builds the image → deploys to **prod**
    (`OL_DEMO_MODE` off) and **demo** (`OL_DEMO_MODE=true` + seed).
 
-> **CD trigger caveat:** a tag pushed by release-please's default `GITHUB_TOKEN`
-> will not trigger a *separate* workflow. Either run the deploy steps in the same
-> job (gated on `steps.release.outputs.release_created`), or authenticate
-> release-please with a PAT / GitHub App token so the tag push re-triggers
-> `on: push: tags`. (`cd.yml` deploy wiring is deferred until deploy targets exist.)
+> **CD trigger:** a tag pushed by the default `GITHUB_TOKEN` will not trigger a
+> *separate* workflow, which is why `cd.yml` did not fire on the first releases.
+> release-please therefore authenticates with a PAT (`secrets.GH_TOKEN`, scoped to
+> `contents: write` + `pull-requests: write`) so its tag push re-triggers
+> `on: push: tags` (#1891). Three consequences worth knowing:
+>
+> - The Release PR is now opened by the PAT owner's account, so **CI runs on it**
+>   (a bot-opened PR produced no checks at all). The flip side: the PAT owner
+>   cannot approve their own Release PR, so someone else has to review it.
+> - If the PAT expires or is revoked, release-please **fails outright** rather than
+>   falling back to `GITHUB_TOKEN` - rotate it deliberately, and prefer a GitHub App
+>   token if the long-lived-PAT exposure becomes a concern.
+> - `cd.yml` also carries `workflow_dispatch` for manually re-running a deploy. The
+>   `demo` environment's deployment branch policy restricts that to `main` and `v*`
+>   tags, so a dispatch from an arbitrary branch is rejected at the environment gate.
 
 ## Cutting the first tag (`v0.1.0` baseline)
 
