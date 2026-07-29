@@ -597,8 +597,7 @@ export class BulkOfferWizard {
     await expect(dialog).toBeVisible({ timeout: 15_000 });
     await this.focusBaseScope(dialog);
 
-    await this.ensureCategoryResolved(dialog);
-    let changed = false;
+    let changed = await this.ensureCategoryResolved(dialog);
     changed = (await this.fillRequiredTextField(dialog, 'Title', 'E2E offer')) || changed;
     changed =
       (await this.fillRequiredTextField(
@@ -688,7 +687,7 @@ export class BulkOfferWizard {
    *    picker that does not exist, so passing one throws rather than silently
    *    leaving the category unset.
    */
-  private async ensureCategoryResolved(dialog: Locator): Promise<void> {
+  private async ensureCategoryResolved(dialog: Locator): Promise<boolean> {
     const paramsSignal = dialog
       .locator('fieldset.category-parameters-step__group')
       .or(dialog.getByText('Loading category parameters'))
@@ -712,23 +711,31 @@ export class BulkOfferWizard {
           'the borrowed-taxonomy editor should expose an "Allegro category ID" field',
         ).toHaveCount(1, { timeout: 10_000 });
         await field.fill(this.categoryId);
-        if (await this.isVisibleWithin(paramsSignal, 20_000)) return;
+        if (await this.isVisibleWithin(paramsSignal, 20_000)) return true;
         throw new Error(
           `Filling the Allegro category ID "${this.categoryId}" never surfaced a parameter ` +
             'schema — the category-parameters query for that id did not resolve.',
         );
       }
       // Blank is a supported operator choice (resolve at submit); no schema loads.
-      return;
+      return false;
     }
 
     const categoryMissing = dialog.getByRole('img', { name: 'Category is required' });
+    // Picking a category IS an edit. Reported so `fillRowEditor`'s `if-changed`
+    // mode saves it: a row whose category only resolved here, and whose required
+    // params then all came pre-filled, used to be CANCELLED — discarding the
+    // pick. The submit then carried no category, the server resolved its own
+    // from the mappings, and its required params (never shown in this editor)
+    // came back as PARAMETER_REQUIRED.
+    let picked = false;
     if ((await categoryMissing.count()) > 0) {
       await changeCategoryButton.click();
       await this.pickCategoryInChooseModal(this.categoryPath);
+      picked = true;
     }
 
-    if (await this.isVisibleWithin(paramsSignal, 20_000)) return;
+    if (await this.isVisibleWithin(paramsSignal, 20_000)) return picked;
 
     throw new Error(
       'The bulk edit modal never surfaced a category parameter schema. The category is either ' +

@@ -115,10 +115,20 @@ test.describe('operator setup (S1-S4)', () => {
     world,
     pages,
     poll,
+    env,
   }) => {
     const allegro = world.connectionFor(PlatformType.allegro);
     test.skip(!allegro, 'no Allegro connection on this stack');
-    await runBulkOfferSegment({ api, world, pages, poll, connectionName: allegro!.name, connectionId: allegro!.id });
+    await runBulkOfferSegment({
+      api,
+      world,
+      pages,
+      poll,
+      connectionName: allegro!.name,
+      connectionId: allegro!.id,
+      platformType: PlatformType.allegro,
+      erliCategoryPath: env.freshAllegroCategoryPath,
+    });
   });
 
   test('S4 — Erli bulk offer wizard creates offers (borrowed taxonomy)', async ({
@@ -126,10 +136,20 @@ test.describe('operator setup (S1-S4)', () => {
     world,
     pages,
     poll,
+    env,
   }) => {
     const erli = world.connectionFor(PlatformType.erli);
     test.skip(!erli, 'no Erli connection on this stack');
-    await runBulkOfferSegment({ api, world, pages, poll, connectionName: erli!.name, connectionId: erli!.id });
+    await runBulkOfferSegment({
+      api,
+      world,
+      pages,
+      poll,
+      connectionName: erli!.name,
+      connectionId: erli!.id,
+      platformType: PlatformType.erli,
+      erliCategoryPath: env.freshAllegroCategoryPath,
+    });
   });
 });
 
@@ -145,8 +165,12 @@ async function runBulkOfferSegment(ctx: {
   poll: import('../../src/support/poller').Poller;
   connectionName: string;
   connectionId: string;
+  platformType: string;
+  /** Breadcrumb to the Allegro leaf an Erli row is filed under. */
+  erliCategoryPath: string[];
 }): Promise<void> {
-  const { api, world, pages, poll, connectionName, connectionId } = ctx;
+  const { api, world, pages, poll, connectionName, connectionId, platformType, erliCategoryPath } =
+    ctx;
 
   // Needs a product with at least one variant NOT already listed on this
   // connection. `BulkListingSubmitService` drops already-listed variants before
@@ -185,7 +209,28 @@ async function runBulkOfferSegment(ctx: {
 
   // Config ("Proceed →") → auto-advancing Resolve → Review ("Create offers (N)"),
   // failing fast if any review row needs attention.
-  await wizard.advanceToConfirmModal();
+  //
+  // The per-destination options mirror `full-flow.spec.ts`'s own bulk segment.
+  // Omitting them is not a smaller version of the same run — a borrowed-taxonomy
+  // destination (Erli) resolves NO category in the wizard preview and exposes a
+  // plain "Allegro category ID" field instead of a tree, so without an explicit
+  // id its editor never loads a parameter schema, the required-parameter top-up
+  // finds nothing to fill, and every job is rejected server-side with
+  // PARAMETER_REQUIRED. Pass the same leaf id the Allegro row maps to.
+  const primaryVariant = product!.variants?.[0];
+  await wizard.advanceToConfirmModal({
+    requiresDeliveryPolicy: platformType === PlatformType.allegro,
+    // A buyable Erli offer additionally needs the batch-default delivery price
+    // list (#1530) + responsible producer (#1531) from the config step.
+    requiresErliBuyabilityFields: platformType === PlatformType.erli,
+    gtin: primaryVariant?.ean ?? primaryVariant?.gtin ?? undefined,
+    // Erli's category does not auto-resolve in the wizard preview, so its editor
+    // opens the category browser. Drive it to the SAME leaf the Allegro row maps
+    // to (golden-path parity) instead of "first reachable" — an arbitrary leaf's
+    // parameter schema may not even load, and the offer would land in the wrong
+    // place regardless.
+    categoryPath: platformType === PlatformType.erli ? erliCategoryPath : undefined,
+  });
   const progress = await wizard.confirmCreation();
   expect(progress.batchId).toBeTruthy();
 
