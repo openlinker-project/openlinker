@@ -56,6 +56,7 @@ import type {
   InfaktAsyncTaskAccepted,
   InfaktBankAccount,
   InfaktClient,
+  InfaktCorrectiveInvoiceRequest,
   InfaktCorrectiveInvoiceServiceRequest,
   InfaktInvoice,
   InfaktKsefStatus,
@@ -253,9 +254,23 @@ function isCorrectionRecord(documentType: string): boolean {
 
 /**
  * Poll cadence for `async/corrective_invoices/status/{ref}.json` (#1763).
- * Not independently verified against the live sandbox — no sandbox
- * credentials were available while making this fix — chosen to match the
- * KSeF adapter's clearance-poll cadence as a reasonable default.
+ * The interval mirrors the KSeF adapter's clearance-poll cadence; the cadence
+ * itself was never measured under load — in every live sandbox run
+ * (2026-07-28/29) the task had already resolved by the first status read, so
+ * the p99 is unknown.
+ *
+ * Consequence of the timeout: `awaitCorrectionTask` throws 504 →
+ * `failureMode: 'in-doubt'`, so a correction Infakt takes longer than this to
+ * process parks the record for manual reconciliation even though it will
+ * likely succeed moments later. The task reference is carried in the error
+ * message so the operator can reconcile it. 30s is deliberately conservative
+ * for a document-creation pipeline that also relays to KSeF — worth raising
+ * once the real cadence can be measured.
+ *
+ * The 30s ceiling fits both call paths: the worker's stuck-job lock threshold
+ * is 15 minutes (`SyncJobRunner.STUCK_JOB_TIMEOUT_MINUTES`), and the HTTP path
+ * (`POST /v1/invoices/{id}/correct`) is an operator-initiated synchronous
+ * request with no shorter server-side budget.
  */
 const CORRECTION_ASYNC_POLL_INTERVAL_MS = 2000;
 const CORRECTION_ASYNC_POLL_TIMEOUT_MS = 30000;
@@ -608,7 +623,7 @@ export class InfaktInvoicingAdapter
   }
 
   async issueCorrection(cmd: IssueCorrectionCommand): Promise<IssueInvoiceResult> {
-    const { originalProviderInvoiceId, lines, documentType, idempotencyKey, orderId } = cmd;
+    const { originalProviderInvoiceId, reason, lines, documentType, idempotencyKey, orderId } = cmd;
 
     // Fetch original to build the before/after service arrays
     const original = await this.http.get<InfaktInvoice>(
@@ -616,18 +631,35 @@ export class InfaktInvoicingAdapter
       { invoice_type: 'vat' },
     );
 
+    // The operator's free-text reason cannot be forwarded to this provider
+    // (see `correction_reason` on the payload below). Log the loss so it is
+    // observable at runtime rather than only discoverable by reading this
+    // adapter — an operator typing "agreed with buyer over phone" otherwise
+    // has no way to learn the text never left OL (#1899 review).
+    if (reason) {
+      this.logger.warn(
+        `Infakt correction of ${originalProviderInvoiceId}: operator reason discarded — ` +
+          `Infakt's correction_reason takes a closed symbol vocabulary, not free text: "${reason}"`,
+      );
+    }
+
     // A line number outside 1..original.services.length matches no original
     // row below, so every group would emit an IDENTICAL before/after pair —
     // Infakt happily accepts that and mints a real, fiscally meaningless
     // 0.00 PLN corrective document, which then goes to KSeF (reproduced live
     // 2026-07-29: an `originalLineNumber: 99` typo produced `3/KOR/07/2026`
-    // with `gross_price: 0`). Reject BEFORE the POST. Status 422 (a 4xx →
-    // `failureMode: 'rejected'`) is deliberate: nothing crossed the provider
-    // boundary, so the operator can safely re-submit with a valid line.
+    // with `gross_price: 0`). A DUPLICATE line number is the same class of
+    // defect from the other direction: two corrected rows would be emitted
+    // for one group, so the group's before/after pairing — which is what
+    // Infakt computes the correction delta from — is no longer well-defined.
+    // Reject both BEFORE the POST. Status 422 (a 4xx → `failureMode:
+    // 'rejected'`) is deliberate: nothing crossed the provider boundary, so
+    // the operator can safely re-submit with valid lines.
     const lineCount = original.services.length;
-    const outOfRange = lines
-      .map((l) => l.originalLineNumber)
-      .filter((n) => !Number.isInteger(n) || n < 1 || n > lineCount);
+    const requestedLines = lines.map((l) => l.originalLineNumber);
+    const outOfRange = requestedLines.filter(
+      (n) => !Number.isInteger(n) || n < 1 || n > lineCount,
+    );
     if (outOfRange.length > 0) {
       throw new InfaktApiError(
         `Correction references line number(s) ${outOfRange.join(', ')} that do not exist on invoice ` +
@@ -635,6 +667,15 @@ export class InfaktInvoicingAdapter
           `issue a correction that would change nothing`,
         422,
         { correctedInvoiceUuid: original.uuid, lineCount, outOfRange },
+      );
+    }
+    const duplicated = [...new Set(requestedLines.filter((n, i) => requestedLines.indexOf(n) !== i))];
+    if (duplicated.length > 0) {
+      throw new InfaktApiError(
+        `Correction references line number(s) ${duplicated.join(', ')} more than once on invoice ` +
+          `${original.number ?? originalProviderInvoiceId} — a line can only be corrected to one value`,
+        422,
+        { correctedInvoiceUuid: original.uuid, duplicated },
       );
     }
 
@@ -697,7 +738,8 @@ export class InfaktInvoicingAdapter
     // `kind: 'corrective'` payload to invoices.json makes Infakt SILENTLY
     // ignore every correction field and create a plain, unlinked VAT invoice
     // (verified live, 2026-07-03). Fiscally wrong, hence the belt-and-
-    // suspenders kind check below too.
+    // suspenders `kind` assertion on the hydrated document in
+    // `awaitCorrectionTask` too.
     //
     // #1763: creating a correction is inFakt's DOCUMENTED asynchronous
     // creation flow — `POST /api/v3/async/corrective_invoices.json`
@@ -706,7 +748,7 @@ export class InfaktInvoicingAdapter
     // path this adapter previously called, which 500s on every payload
     // regardless of shape (consistent with hitting an unsupported/removed
     // path rather than a genuine provider bug). See `createCorrectionAsync`.
-    const payload = {
+    const payload: InfaktCorrectiveInvoiceRequest = {
       corrective_invoice: {
         // Per-connection setting (#1303) — see `this.paymentMethod` doc.
         payment_method: this.paymentMethod,
@@ -744,10 +786,10 @@ export class InfaktInvoicingAdapter
 
     // InfaktApiError carries `failureMode`; propagate as-is (see issueInvoice).
     // The silent-downgrade guard (#1337) — refusing to persist a record for
-    // anything other than a real correction — now lives inside
-    // `awaitCorrectionTask`, gated on the task envelope's confirmed-live
-    // `invoice_kind: 'corrective_invoice'` field, before this hydrated
-    // `invoice` is even fetched.
+    // anything other than a real correction — lives inside
+    // `awaitCorrectionTask`: the task envelope's `invoice_kind` is checked
+    // first (it names the REQUESTED resource), then the created document's own
+    // `kind` once hydrated (the actual outcome).
     const invoice = await this.createCorrectionAsync(payload);
 
     this.logger.log(`Infakt correction created: ${invoice.uuid} (${invoice.number ?? 'draft'})`);
@@ -990,7 +1032,9 @@ export class InfaktInvoicingAdapter
    * `invoice_uuid`) and treated every non-100 code as failure, which
    * misclassified this exact success as an error.
    */
-  private async createCorrectionAsync(payload: unknown): Promise<InfaktInvoice> {
+  private async createCorrectionAsync(
+    payload: InfaktCorrectiveInvoiceRequest,
+  ): Promise<InfaktInvoice> {
     const accepted = await this.http.post<InfaktAsyncTaskAccepted>(
       'async/corrective_invoices.json',
       payload,
@@ -1031,9 +1075,27 @@ export class InfaktInvoicingAdapter
       );
     }
 
-    return this.http.get<InfaktInvoice>(
+    const invoice = await this.http.get<InfaktInvoice>(
       `corrective_invoices/${encodeURIComponent(last.invoice_uuid)}.json`,
     );
+
+    // The real #1337 guard: assert the kind of the document that was ACTUALLY
+    // created, not the kind the task envelope says was requested. Posting a
+    // correction payload to the wrong resource makes Infakt silently ignore
+    // every correction field and mint a plain, unlinked VAT invoice (verified
+    // live, 2026-07-03) — fiscally wrong, and only visible on the hydrated
+    // document. Kept at 502 → `failureMode: 'in-doubt'` (not `'rejected'`):
+    // a document DOES exist at the provider, so core must not auto-re-attempt
+    // and mint a second one.
+    if (invoice.kind !== 'correction') {
+      throw new InfaktApiError(
+        `Infakt async correction task ${taskRef} created a '${invoice.kind}' document (${invoice.uuid}) instead of a correction — refusing to persist it as one`,
+        502,
+        invoice,
+      );
+    }
+
+    return invoice;
   }
 
   private sleep(ms: number): Promise<void> {

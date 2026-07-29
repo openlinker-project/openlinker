@@ -150,6 +150,30 @@ export interface InfaktCorrectiveInvoiceServiceRequest {
   correction: boolean;
 }
 
+/**
+ * Body of a `POST /async/corrective_invoices.json` request, under its
+ * `corrective_invoice` wrapper key (#1763).
+ *
+ * `correction_reason` is the WRITABLE reason field and takes a value from
+ * Infakt's closed reason-code vocabulary, NOT free text ("Zapis: symbol
+ * powodu; odczyt: polska nazwa"). The read-only `correction_reason_symbol`
+ * is deliberately absent — Infakt sets it server-side and rejects it here.
+ */
+export interface InfaktCorrectiveInvoiceRequest {
+  corrective_invoice: {
+    payment_method: string;
+    client_id: number | null;
+    bank_account?: string;
+    bank_name?: string;
+    corrected_invoice_number: string | null;
+    corrected_invoice_date: string;
+    corrected_invoice_uuid: string;
+    correction_reason: string;
+    services: InfaktCorrectiveInvoiceServiceRequest[];
+    external_id?: string;
+  };
+}
+
 /** Response from POST /invoices/{uuid}/send_to_ksef.json */
 export interface InfaktSendToKsefResponse {
   request_uuid: string;

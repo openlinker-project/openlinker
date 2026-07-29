@@ -960,21 +960,28 @@ describe('InfaktInvoicingAdapter', () => {
       // `processing_code: 100` = "Zlecenie przyjęte" (accepted, still
       // processing) — the POST response carries no invoice_uuid yet, so the
       // adapter must poll the status endpoint to a terminal state.
-      seedAsyncCorrection({ processing_code: 100, processing_description: 'Zlecenie przyjęte' });
-      http.seed(
-        'GET',
-        'async/corrective_invoices/status/task-ref-1.json',
-        asyncTaskFixture(),
-      );
+      //
+      // Fake timers so the 2s poll interval is not actually slept through —
+      // the unit suite's budget is ~2-3s in total (#1899 review).
+      jest.useFakeTimers();
+      try {
+        seedAsyncCorrection({ processing_code: 100, processing_description: 'Zlecenie przyjęte' });
+        http.seed('GET', 'async/corrective_invoices/status/task-ref-1.json', asyncTaskFixture());
 
-      const { record } = await adapter.issueCorrection(baseCmd);
+        const pending = adapter.issueCorrection(baseCmd);
+        await jest.advanceTimersByTimeAsync(2000);
+        const { record } = await pending;
 
-      expect(
-        http.calls.some(
-          (c) => c.method === 'GET' && c.path === 'async/corrective_invoices/status/task-ref-1.json',
-        ),
-      ).toBe(true);
-      expect(record.providerInvoiceId).toBe('corr-uuid-1');
+        expect(
+          http.calls.some(
+            (c) =>
+              c.method === 'GET' && c.path === 'async/corrective_invoices/status/task-ref-1.json',
+          ),
+        ).toBe(true);
+        expect(record.providerInvoiceId).toBe('corr-uuid-1');
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('should classify a 4xx terminal processing_code as failureMode: rejected (#1763)', async () => {
@@ -1050,6 +1057,65 @@ describe('InfaktInvoicingAdapter', () => {
       expect(
         http.calls.some((c) => c.method === 'POST' && c.path === 'async/corrective_invoices.json'),
       ).toBe(false);
+    });
+
+    it('should reject a duplicated line number, before any POST (#1899 review)', async () => {
+      // Two corrected rows for one group leaves the group's before/after
+      // pairing — what Infakt computes the delta from — undefined. Same
+      // pre-POST 422 / `rejected` class as the out-of-range guard.
+      seedAsyncCorrection();
+
+      await expect(
+        adapter.issueCorrection({
+          ...baseCmd,
+          lines: [
+            { originalLineNumber: 1, newUnitPriceGross: 10 },
+            { originalLineNumber: 1, newUnitPriceGross: 20 },
+          ],
+        }),
+      ).rejects.toMatchObject({
+        name: 'InfaktApiError',
+        statusCode: 422,
+        failureMode: 'rejected',
+      });
+      expect(
+        http.calls.some((c) => c.method === 'POST' && c.path === 'async/corrective_invoices.json'),
+      ).toBe(false);
+    });
+
+    it('should reject a hydrated document whose kind is not a correction (#1337 guard, #1899 review)', async () => {
+      // The task envelope's `invoice_kind` names the REQUESTED resource, so it
+      // cannot catch the provider silently minting a plain VAT invoice from a
+      // correction payload (the original #1337 defect, verified live
+      // 2026-07-03). The created document's own `kind` is the only field that
+      // can. 502 → `in-doubt`: a document DOES exist, so core must not
+      // auto-re-attempt and mint a second one.
+      seedAsyncCorrection({}, { kind: 'vat' });
+
+      await expect(adapter.issueCorrection(baseCmd)).rejects.toMatchObject({
+        name: 'InfaktApiError',
+        statusCode: 502,
+        failureMode: 'in-doubt',
+      });
+      expect(http.calls.some((c) => c.path.endsWith('send_to_ksef.json'))).toBe(false);
+    });
+
+    it('should warn that the operator free-text reason is discarded (#1899 review)', async () => {
+      // Infakt's correction_reason takes a closed symbol vocabulary, so
+      // cmd.reason cannot be forwarded — the loss must at least be observable.
+      seedAsyncCorrection();
+
+      await adapter.issueCorrection(baseCmd);
+
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('Zwrot towaru'));
+    });
+
+    it('should not warn when no correction reason was supplied (#1899 review)', async () => {
+      seedAsyncCorrection();
+
+      await adapter.issueCorrection({ ...baseCmd, reason: undefined });
+
+      expect(logger.warn).not.toHaveBeenCalled();
     });
 
     it('should send integer-groszy unit_net_price and numeric quantity, paired per string group (#1763)', async () => {
