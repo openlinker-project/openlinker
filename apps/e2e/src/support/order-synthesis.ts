@@ -25,7 +25,7 @@ import type { World } from '../world/world';
 import { PlatformType } from '../world/world';
 import type { Product, ProductVariant } from '../api/api.types';
 import { PrestashopWebserviceClient } from '../api/prestashop-webservice';
-import { snapshotOrderIds, waitForOrder } from './orders';
+import { waitForOrderByExternalId } from './orders';
 
 export interface SynthesizeOrderOptions {
   /** Quantity of the driver variant to sell. Defaults to 1. */
@@ -64,7 +64,7 @@ export interface SynthesizeOrderOptions {
 
 export interface SynthesizedOrder {
   /** The OL order, once ingested and ready. */
-  order: Awaited<ReturnType<typeof waitForOrder>>;
+  order: Awaited<ReturnType<typeof waitForOrderByExternalId>>;
   /** The PrestaShop-native order id the webservice created. */
   externalOrderId: string;
   /** The driver product/variant the order was synthesized for. */
@@ -200,13 +200,21 @@ export async function synthesizeOrder(
     ],
   });
 
-  const snapshot = await snapshotOrderIds(api, prestashop.id);
-  await jobs.trigger({ connectionId: prestashop.id, jobType: 'marketplace.orders.poll' });
-  const order = await waitForOrder(api, {
+  // Match the ingested order by the PrestaShop id we just created, not by
+  // "an order id absent from a snapshot". The snapshot could only be taken
+  // AFTER the create returned, and PrestaShop's webhook often ingests the
+  // order before that call lands — the order then sits INSIDE the snapshot and
+  // the wait can never be satisfied. Identity beats novelty, and it also
+  // removes any confusion with orders other activity produces concurrently.
+  const order = await waitForOrderByExternalId(api, {
     sourceConnectionId: prestashop.id,
-    snapshot,
+    externalOrderId: created.id,
     timeoutMs: options.timeoutMs ?? 180_000,
     intervalMs: 3_000,
+    // The webhook is the fast path; re-triggering the poll each round is the
+    // backstop for a dropped delivery or a job queued behind the backlog.
+    retriggerPoll: () =>
+      jobs.trigger({ connectionId: prestashop.id, jobType: 'marketplace.orders.poll' }),
   });
 
   return { order, externalOrderId: created.id, product, variant };
