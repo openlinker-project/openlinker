@@ -628,8 +628,22 @@ export class ApiClient {
 
   // ── Shipments ───────────────────────────────────────────────────────────
   shipments = {
-    active: (orderId: string): Promise<Shipment | null> =>
-      this.request<Shipment | null>(`/shipments/active${buildQuery({ orderId })}`),
+    /**
+     * The active shipment for an order, or `null` when it has none.
+     *
+     * The endpoint answers "no active shipment" with a 404, which `request`
+     * turns into a throw — so the declared `| null` was unreachable and every
+     * caller's absence-handling branch was dead. Only the 404 is swallowed;
+     * any other failure still propagates.
+     */
+    active: async (orderId: string): Promise<Shipment | null> => {
+      try {
+        return await this.request<Shipment>(`/shipments/active${buildQuery({ orderId })}`);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return null;
+        throw error;
+      }
+    },
     getById: (id: string): Promise<Shipment> => this.request<Shipment>(`/shipments/${id}`),
     /** Retrieve the generated label bytes (PDF/ZPL/PNG). */
     getLabel: (id: string): Promise<RawResponse> => this.requestRaw(`/shipments/${id}/label`),

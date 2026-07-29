@@ -114,10 +114,22 @@ export async function waitForOrderByExternalId(
     sourceConnectionId?: string;
     timeoutMs?: number;
     intervalMs?: number;
+    /**
+     * Re-run the source's ingestion poll before each probe. One up-front
+     * trigger is not enough on a loaded stack: the enqueued poll waits behind
+     * the scheduler's own backlog, and a cursor-paged feed can need several
+     * ticks to reach a just-created order. Failures are swallowed — a poll
+     * that cannot be triggered is a slower path to the same answer, not a
+     * reason to fail early.
+     */
+    retriggerPoll?: () => Promise<unknown>;
   },
 ): Promise<OrderRecord> {
   const found = await pollUntil<OrderRecord | undefined>(
     async () => {
+      if (options.retriggerPoll) {
+        await options.retriggerPoll().catch(() => undefined);
+      }
       const page = await api.orders.list({
         sourceConnectionId: options.sourceConnectionId,
         limit: 100,

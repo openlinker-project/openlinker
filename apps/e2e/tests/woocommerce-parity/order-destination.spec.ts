@@ -107,11 +107,11 @@ test.describe('WooCommerce as order destination', () => {
       lineItems: [{ productId: wcProductId, quantity }],
     });
 
-    await jobs.trigger({ connectionId: wcSource.id, jobType: 'marketplace.orders.poll' }).catch(() => undefined);
     const order = await waitForOrderByExternalId(api, {
       sourceConnectionId: wcSource.id,
       externalOrderId: String(sourceOrder.id),
       timeoutMs: 120_000,
+      retriggerPoll: () => jobs.trigger({ connectionId: wcSource.id, jobType: 'marketplace.orders.poll' }),
     });
 
     const synced = await pollWcDestinationSync(api, world, order.internalOrderId, { timeoutMs: 120_000 });
@@ -373,11 +373,11 @@ async function createAndSyncWcOrder(
     billing: input.billing,
     lineItems: input.lineItems,
   });
-  await jobs.trigger({ connectionId: wcSourceConnectionId, jobType: 'marketplace.orders.poll' }).catch(() => undefined);
   const order = await waitForOrderByExternalId(api, {
     sourceConnectionId: wcSourceConnectionId,
     externalOrderId: String(sourceOrder.id),
     timeoutMs: 120_000,
+    retriggerPoll: () => jobs.trigger({ connectionId: wcSourceConnectionId, jobType: 'marketplace.orders.poll' }),
   });
   const synced = await pollWcDestinationSync(api, world, order.internalOrderId, { timeoutMs: 120_000 });
   if (!synced.externalOrderId) {

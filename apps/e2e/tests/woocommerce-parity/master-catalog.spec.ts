@@ -19,6 +19,17 @@ import { buildWooCommerceClient } from '../../src/support/woocommerce-client';
 import { externalIdFor } from '../../src/support/external-ids';
 import type { Product } from '../../src/api/api.types';
 
+/**
+ * WooCommerce reports NEGATIVE `stock_quantity` for a backordered product (a
+ * long-lived test store reaches this after enough synthesized orders). The
+ * adapter deliberately floors it at 0 (`parseStockQuantity`) — a backordered
+ * product has no availability to publish onward — so the expectation must be
+ * the floored value, not the raw one.
+ */
+function clampStock(wcStockQuantity: number | null): number {
+  return Math.max(0, wcStockQuantity ?? 0);
+}
+
 test.describe('WooCommerce as master catalogue', () => {
   test('simple + multi-variant products land in OL with per-variation stock and EANs', async ({
     api,
@@ -92,7 +103,7 @@ test.describe('WooCommerce as master catalogue', () => {
         const match = wcVariations.find((v) => v.ean && norm(v.ean) === norm(variant.ean));
         expect(match, `OL variant EAN ${variant.ean} present on a WC variation`).toBeTruthy();
         if (match && hasInventoryMaster) {
-          const expectedStock = match.stockQuantity;
+          const expectedStock = clampStock(match.stockQuantity);
           // master.inventory.syncAll (like master.product.syncAll) returns
           // 'succeeded' as soon as it has fanned out per-variant sub-jobs, not
           // once they've all landed — poll until the number actually converges
@@ -115,7 +126,7 @@ test.describe('WooCommerce as master catalogue', () => {
         }
       }
     } else if (hasInventoryMaster && wcView.stockQuantity !== null) {
-      const expectedStock = wcView.stockQuantity;
+      const expectedStock = clampStock(wcView.stockQuantity);
       const total = await poll.until(
         async () => {
           const avail = await api.inventory.availability(variants.map((v) => v.id));
