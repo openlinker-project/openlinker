@@ -824,6 +824,9 @@ describe('BulkEditModal', () => {
           { apiClient },
         );
 
+        // Category lives inside the collapsed per-variant accordion (#1924).
+        fireEvent.click(screen.getByText('Override base title / description / category'));
+
         fireEvent.click(screen.getByRole('button', { name: 'Override for this variant' }));
         expect(screen.getByText(/splits it into its own Allegro listing/)).toBeInTheDocument();
 
@@ -861,6 +864,7 @@ describe('BulkEditModal', () => {
           { apiClient },
         );
 
+        fireEvent.click(screen.getByText('Override base title / description / category'));
         fireEvent.click(screen.getByRole('button', { name: 'Override for this variant' }));
         fireEvent.click(screen.getByRole('button', { name: 'Override anyway' }));
         fireEvent.click(await screen.findByRole('button', { name: 'Select' }));
@@ -894,6 +898,7 @@ describe('BulkEditModal', () => {
           { apiClient },
         );
 
+        fireEvent.click(screen.getByText('Override base title / description / category'));
         fireEvent.click(screen.getByRole('button', { name: 'Override for this variant' }));
         fireEvent.click(screen.getByRole('button', { name: 'Override anyway' }));
         fireEvent.click(await screen.findByRole('button', { name: 'Select' }));
@@ -919,6 +924,7 @@ describe('BulkEditModal', () => {
           />,
         );
 
+        fireEvent.click(screen.getByText('Override base title / description / category'));
         expect(screen.queryByRole('button', { name: 'Override for this variant' })).not.toBeInTheDocument();
         expect(screen.getByText(/cannot be overridden per variant here/)).toBeInTheDocument();
       });
@@ -938,6 +944,7 @@ describe('BulkEditModal', () => {
           />,
         );
 
+        fireEvent.click(screen.getByText('Override base title / description / category'));
         expect(screen.queryByRole('button', { name: 'Override for this variant' })).not.toBeInTheDocument();
       });
     });

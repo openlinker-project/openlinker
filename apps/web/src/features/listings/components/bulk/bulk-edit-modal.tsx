@@ -982,6 +982,7 @@ function BulkEditModalForm({
                       masterImages={masterImages}
                       onZoom={setZoomSrc}
                       connection={connection}
+                      baseCategoryPathNames={displayPathNames}
                       categoryParameters={renderableCategoryParameters}
                       duplicateEan={dupEanIds.has(v.variantId)}
                       onPatch={(patch) => patchVariant(v.variantId, patch)}
@@ -1688,6 +1689,8 @@ interface VariantScopeFormProps {
   masterImages: string[];
   /** Drives the per-variant category bar's declared grouping model (#1924). */
   connection: Connection;
+  /** Resolved breadcrumb for the shared base's category, already computed once by the parent (#1924) - shown instead of the raw id. Null when unresolved (falls back to the id). */
+  baseCategoryPathNames: string[] | null;
   categoryParameters: CategoryParameter[];
   duplicateEan: boolean;
   /** Opens the shared zoom lightbox for an image url (always allowed, #1741). */
@@ -1707,6 +1710,7 @@ function VariantScopeForm({
   basePriceValue,
   masterImages,
   connection,
+  baseCategoryPathNames,
   categoryParameters,
   duplicateEan,
   onZoom,
@@ -1768,6 +1772,13 @@ function VariantScopeForm({
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const [ownCategoryPathNames, setOwnCategoryPathNames] = useState<string[] | null>(null);
   const hasOwnCategory = edit.categoryId !== undefined;
+  // Breadcrumb name instead of the raw id when the base's path is already
+  // resolved (#1924) - falls back to the id (or "Not set on base") only
+  // while the path hasn't resolved yet.
+  const baseCategoryDisplay =
+    baseCategoryPathNames && baseCategoryPathNames.length > 0
+      ? baseCategoryPathNames.join(' › ')
+      : baseValues.categoryId || 'Not set on base';
 
   const ownCategoryParametersQuery = useCategoryParametersQuery(
     connectionId,
@@ -2032,10 +2043,13 @@ function VariantScopeForm({
         Per-variant
       </div>
 
-      {/* Title + description overrides - collapsed at the top; inherit base by default. */}
+      {/* Title / description / category overrides - collapsed at the top;
+          inherit base by default. Category joins this accordion (#1924)
+          rather than getting its own - all three are rarely-touched
+          per-variant overrides. */}
       <details className="bulk-editor__field">
         <summary style={{ cursor: 'pointer', color: 'var(--accent-primary)' }}>
-          Override base title / description
+          Override base title / description / category
         </summary>
         <div style={{ marginTop: 'var(--space-3)' }}>
           <InheritableTextField
@@ -2068,8 +2082,132 @@ function VariantScopeForm({
               }
             />
           </div>
+
+          {/* Per-variant category (#1924). Only `'catalog-implicit'` (Allegro)
+              renders the interactive ladder - giving this variant its own
+              category is a real, consequential choice there (it leaves the
+              grouped listing). Every other declared model (or none) renders
+              read-only: `'explicit-group'` (Erli) has no browsable picker yet
+              (#1045 follow-up), `'parent-child'` (WooCommerce) is
+              structurally parent-only, and an undeclared adapter resolves to
+              the same locked shape. */}
+          <div className="bulk-editor__field">
+            <label>
+              Category {hasOwnCategory ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />}
+            </label>
+            {!canOverrideCategory ? (
+              <>
+                <Input
+                  className="bulk-editor__input bulk-editor__input--inherited"
+                  value={baseCategoryDisplay}
+                  readOnly
+                  aria-readonly="true"
+                />
+                <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                  {variantGroupingModel === 'parent-child'
+                    ? 'Category is set on the parent product - it cannot be overridden per variant here.'
+                    : 'Shared across all variants.'}
+                </div>
+              </>
+            ) : hasOwnCategory ? (
+              <>
+                <div className="bulk-editor__cat-chip">
+                  <span className="mono-text">
+                    {ownCategoryPathNames && ownCategoryPathNames.length > 0
+                      ? ownCategoryPathNames.join(' › ')
+                      : edit.categoryId}
+                  </span>
+                  <span className="bulk-editor__prov bulk-editor__prov--split">splits listing</span>
+                </div>
+                <div
+                  className="bulk-editor__scope-toggles"
+                  style={{ marginTop: 'var(--space-2)', gap: 'var(--space-2)' }}
+                >
+                  <Button
+                    tone="ghost"
+                    type="button"
+                    className="button--sm"
+                    onClick={() => setCategoryPickerOpen(true)}
+                  >
+                    Change category
+                  </Button>
+                  <button
+                    type="button"
+                    className="bulk-editor__reset"
+                    onClick={() => {
+                      onPatch({ categoryId: undefined });
+                      setOwnCategoryPathNames(null);
+                      setCategoryWarn(false);
+                    }}
+                  >
+                    ↺ reset to shared
+                  </button>
+                </div>
+                <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                  Publishes as its own listing, outside the grouped card.
+                </div>
+              </>
+            ) : categoryWarn ? (
+              <div className="bulk-editor__split-warn" role="alert">
+                <p>
+                  Giving this variant its own category splits it into its own Allegro listing - it stops
+                  grouping with the other variants.
+                </p>
+                <div className="bulk-editor__split-warn-actions">
+                  <Button
+                    tone="primary"
+                    type="button"
+                    className="button--sm"
+                    onClick={() => {
+                      setCategoryWarn(false);
+                      setCategoryPickerOpen(true);
+                    }}
+                  >
+                    Override anyway
+                  </Button>
+                  <Button tone="ghost" type="button" className="button--sm" onClick={() => setCategoryWarn(false)}>
+                    Keep shared
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <Input
+                  className="bulk-editor__input bulk-editor__input--inherited"
+                  value={baseCategoryDisplay}
+                  readOnly
+                  aria-readonly="true"
+                />
+                <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                  Shared across all variants - overriding splits this variant into its own listing.
+                </div>
+                <button
+                  type="button"
+                  className="bulk-editor__override-link"
+                  onClick={() => setCategoryWarn(true)}
+                >
+                  Override for this variant
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </details>
+
+      {canOverrideCategory ? (
+        <BulkCategoryChooseModal
+          open={categoryPickerOpen}
+          onOpenChange={setCategoryPickerOpen}
+          connectionId={connectionId}
+          productName={`${label} (variant)`}
+          selectedId={edit.categoryId ?? null}
+          scope="variant"
+          onSelect={(categoryId, pathNames) => {
+            onPatch({ categoryId });
+            setOwnCategoryPathNames(pathNames);
+          }}
+        />
+      ) : null}
 
       {/* EAN - from master, editable, GS1 + intra-group duplicate validated. */}
       <div className="bulk-editor__field">
@@ -2211,130 +2349,6 @@ function VariantScopeForm({
             : 'Inherits the base images - add or remove to override for this variant.'}
         </div>
       </div>
-
-      {/* Per-variant category (#1924). Only `'catalog-implicit'` (Allegro)
-          renders the interactive ladder - giving this variant its own
-          category is a real, consequential choice there (it leaves the
-          grouped listing). Every other declared model (or none) renders
-          read-only: `'explicit-group'` (Erli) has no browsable picker yet
-          (#1045 follow-up), `'parent-child'` (WooCommerce) is structurally
-          parent-only, and an undeclared adapter resolves to the same locked
-          shape. */}
-      <div className="bulk-editor__field">
-        <label>
-          Category {hasOwnCategory ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />}
-        </label>
-        {!canOverrideCategory ? (
-          <>
-            <Input
-              className="bulk-editor__input bulk-editor__input--inherited"
-              value={baseValues.categoryId || 'Not set on base'}
-              readOnly
-              aria-readonly="true"
-            />
-            <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-              {variantGroupingModel === 'parent-child'
-                ? 'Category is set on the parent product - it cannot be overridden per variant here.'
-                : 'Shared across all variants.'}
-            </div>
-          </>
-        ) : hasOwnCategory ? (
-          <>
-            <div className="bulk-editor__cat-chip">
-              <span className="mono-text">
-                {ownCategoryPathNames && ownCategoryPathNames.length > 0
-                  ? ownCategoryPathNames.join(' › ')
-                  : edit.categoryId}
-              </span>
-              <span className="bulk-editor__prov bulk-editor__prov--split">splits listing</span>
-            </div>
-            <div
-              className="bulk-editor__scope-toggles"
-              style={{ marginTop: 'var(--space-2)', gap: 'var(--space-2)' }}
-            >
-              <Button
-                tone="ghost"
-                type="button"
-                className="button--sm"
-                onClick={() => setCategoryPickerOpen(true)}
-              >
-                Change category
-              </Button>
-              <button
-                type="button"
-                className="bulk-editor__reset"
-                onClick={() => {
-                  onPatch({ categoryId: undefined });
-                  setOwnCategoryPathNames(null);
-                  setCategoryWarn(false);
-                }}
-              >
-                ↺ reset to shared
-              </button>
-            </div>
-            <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-              Publishes as its own listing, outside the grouped card.
-            </div>
-          </>
-        ) : categoryWarn ? (
-          <div className="bulk-editor__split-warn" role="alert">
-            <p>
-              Giving this variant its own category splits it into its own Allegro listing - it stops
-              grouping with the other variants.
-            </p>
-            <div className="bulk-editor__split-warn-actions">
-              <Button
-                tone="primary"
-                type="button"
-                className="button--sm"
-                onClick={() => {
-                  setCategoryWarn(false);
-                  setCategoryPickerOpen(true);
-                }}
-              >
-                Override anyway
-              </Button>
-              <Button tone="ghost" type="button" className="button--sm" onClick={() => setCategoryWarn(false)}>
-                Keep shared
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <>
-            <Input
-              className="bulk-editor__input bulk-editor__input--inherited"
-              value={baseValues.categoryId || 'Not set on base'}
-              readOnly
-              aria-readonly="true"
-            />
-            <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-              Shared across all variants - overriding splits this variant into its own listing.
-            </div>
-            <button
-              type="button"
-              className="bulk-editor__override-link"
-              onClick={() => setCategoryWarn(true)}
-            >
-              Override for this variant
-            </button>
-          </>
-        )}
-      </div>
-
-      {canOverrideCategory ? (
-        <BulkCategoryChooseModal
-          open={categoryPickerOpen}
-          onOpenChange={setCategoryPickerOpen}
-          connectionId={connectionId}
-          productName={`${label} (variant)`}
-          selectedId={edit.categoryId ?? null}
-          scope="variant"
-          onSelect={(categoryId, pathNames) => {
-            onPatch({ categoryId });
-            setOwnCategoryPathNames(pathNames);
-          }}
-        />
-      ) : null}
 
       {/* Category parameters - inheritable; required first, optional collapsed
           behind an expander (mirrors the base CategoryParametersStep). Once
