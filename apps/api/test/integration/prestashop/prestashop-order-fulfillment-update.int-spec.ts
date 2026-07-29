@@ -48,6 +48,7 @@ import { getTestHarness, IntegrationTestHarness } from '../setup';
 import {
   PrestashopTestContainer,
   startPrestashopContainer,
+  startSharedPrestashopContainer,
 } from '../helpers/prestashop-container.helper';
 import {
   DefaultPrestashopCarriers,
@@ -214,7 +215,12 @@ describe('PrestaShop order fulfillment update (#858)', () => {
     // Order creation now goes through the module's importorder → validateOrder
     // endpoint (ADR-016), so seeding the order to transition requires the module
     // installed + the webhook secret wired. #716 keeps this path enabled in CI.
-    ps = await startPrestashopContainer({ installOlModule: INSTALL_OL_MODULE });
+    // Shared across the PS specs (#1920). The escape hatch still works: with
+    // OL_SKIP_PS_MODULE_INSTALL=true this spec takes its own module-less
+    // container instead of the shared module-installed one.
+    ps = INSTALL_OL_MODULE
+      ? await startSharedPrestashopContainer()
+      : await startPrestashopContainer({ installOlModule: false });
     if (INSTALL_OL_MODULE) {
       priorWebhookSecretEnv = process.env[WEBHOOK_SECRET_ENV_KEY];
       process.env[WEBHOOK_SECRET_ENV_KEY] = ps.webhookSharedSecret;
