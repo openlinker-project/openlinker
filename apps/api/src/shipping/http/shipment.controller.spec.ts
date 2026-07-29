@@ -41,9 +41,14 @@ import type { IOrderRecordService, OrderRecord } from '@openlinker/core/orders';
 import type { Response } from 'express';
 
 import { ShipmentController, extensionForContentType } from './shipment.controller';
+import { REDACTED_ERROR_MESSAGE } from './dto/shipment-response.dto';
 import type { BulkGenerateLabelsDto } from './dto/bulk-generate-labels.dto';
 import type { GenerateLabelDto } from './dto/generate-label.dto';
 import type { ListShipmentsQueryDto } from './dto/list-shipments-query.dto';
+import type { AuthenticatedUser } from '../../auth/auth.types';
+
+const ADMIN_USER: AuthenticatedUser = { id: 'user_1', username: 'admin', role: 'admin' };
+const VIEWER_USER: AuthenticatedUser = { id: 'user_2', username: 'viewer', role: 'viewer' };
 
 function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
   return new Shipment(
@@ -56,11 +61,11 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.paczkomatId ?? 'POZ08A',
     overrides.trackingNumber ?? '6800000001',
     overrides.labelPdfRef ?? 'shipx:label:1',
-    null,
-    null,
-    null,
-    null,
-    null,
+    overrides.dispatchedAt ?? null,
+    overrides.deliveredAt ?? null,
+    overrides.cancelledAt ?? null,
+    overrides.failedAt ?? null,
+    overrides.errorMessage ?? null,
     new Date('2026-05-20T10:00:00.000Z'),
     new Date('2026-05-20T10:00:00.000Z'),
     overrides.sourceDeliveryMethodId ?? null,
@@ -133,7 +138,7 @@ describe('ShipmentController', () => {
         offset: 20,
       };
 
-      const result = await controller.list(dto);
+      const result = await controller.list(dto, ADMIN_USER);
 
       expect(query.list).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -154,7 +159,7 @@ describe('ShipmentController', () => {
     it('should default limit/offset and leave undefined date bounds undefined', async () => {
       query.list.mockResolvedValue({ items: [], total: 0 });
 
-      await controller.list({});
+      await controller.list({}, ADMIN_USER);
 
       expect(query.list).toHaveBeenCalledWith(
         expect.objectContaining({ createdFrom: undefined, createdTo: undefined }),
@@ -179,7 +184,7 @@ describe('ShipmentController', () => {
         ),
       );
 
-      const result = await controller.list({});
+      const result = await controller.list({}, ADMIN_USER);
 
       expect(result.items[0].customerId).toBe('ol_customer_a');
       expect(result.items[1].customerId).toBe('ol_customer_a');
@@ -192,7 +197,7 @@ describe('ShipmentController', () => {
       query.list.mockResolvedValue({ items: [makeShipment({ orderId: 'ol_order_x' })], total: 1 });
       orders.getOrderRecord.mockRejectedValue(new Error('db blip'));
 
-      const result = await controller.list({});
+      const result = await controller.list({}, ADMIN_USER);
 
       expect(result.items).toHaveLength(1);
       expect(result.items[0].customerId).toBeNull();
@@ -201,17 +206,21 @@ describe('ShipmentController', () => {
 
   describe('getActive', () => {
     it('should throw BadRequest when orderId is missing', async () => {
-      await expect(controller.getActive(undefined)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(controller.getActive(undefined, ADMIN_USER)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
     });
 
     it('should throw NotFound when no active shipment exists', async () => {
       query.getActiveByOrderId.mockResolvedValue(null);
-      await expect(controller.getActive('ol_order_1')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(controller.getActive('ol_order_1', ADMIN_USER)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
 
     it('should return the active shipment', async () => {
       query.getActiveByOrderId.mockResolvedValue(makeShipment());
-      const result = await controller.getActive('ol_order_1');
+      const result = await controller.getActive('ol_order_1', ADMIN_USER);
       expect(result.id).toBe('ol_shipment_1');
     });
   });
@@ -219,13 +228,74 @@ describe('ShipmentController', () => {
   describe('getById', () => {
     it('should throw NotFound when absent', async () => {
       query.getById.mockResolvedValue(null);
-      await expect(controller.getById('missing')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(controller.getById('missing', ADMIN_USER)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
 
     it('should return the shipment DTO', async () => {
       query.getById.mockResolvedValue(makeShipment());
-      const result = await controller.getById('ol_shipment_1');
+      const result = await controller.getById('ol_shipment_1', ADMIN_USER);
       expect(result.trackingNumber).toBe('6800000001');
+      expect(result.deliveryIntent).toBeNull();
+    });
+
+    it('should pass through a non-null deliveryIntent (#1826)', async () => {
+      query.getById.mockResolvedValue(makeShipment({ deliveryIntent: 'pickup_point' }));
+      const result = await controller.getById('ol_shipment_1', ADMIN_USER);
+      expect(result.deliveryIntent).toBe('pickup_point');
+    });
+  });
+
+  describe('errorMessage redaction (#1826)', () => {
+    it('should return the raw errorMessage on GET /shipments for an admin/operator session', async () => {
+      query.list.mockResolvedValue({
+        items: [
+          makeShipment({ status: 'failed', errorMessage: 'DPD rejected: sender postcode invalid' }),
+        ],
+        total: 1,
+      });
+
+      const result = await controller.list({}, ADMIN_USER);
+
+      expect(result.items[0].errorMessage).toBe('DPD rejected: sender postcode invalid');
+    });
+
+    it('should leave a null errorMessage as null for a viewer session (nothing to redact)', async () => {
+      query.list.mockResolvedValue({
+        items: [makeShipment({ status: 'delivered', errorMessage: null })],
+        total: 1,
+      });
+
+      const result = await controller.list({}, VIEWER_USER);
+
+      expect(result.items[0].errorMessage).toBeNull();
+    });
+
+    it('should redact a non-null errorMessage on GET /shipments for a viewer session', async () => {
+      const shipment = makeShipment({
+        status: 'failed',
+        errorMessage: 'DPD rejected: sender postcode invalid',
+      });
+      query.list.mockResolvedValue({ items: [shipment], total: 1 });
+
+      const result = await controller.list({}, VIEWER_USER);
+
+      expect(result.items[0].errorMessage).toBe(REDACTED_ERROR_MESSAGE);
+    });
+
+    it('should redact on GET /shipments/:id for a viewer session, and pass through for admin', async () => {
+      const shipment = makeShipment({
+        status: 'failed',
+        errorMessage: 'DPD rejected: sender postcode invalid',
+      });
+      query.getById.mockResolvedValue(shipment);
+
+      const viewerResult = await controller.getById('ol_shipment_1', VIEWER_USER);
+      expect(viewerResult.errorMessage).toBe(REDACTED_ERROR_MESSAGE);
+
+      const adminResult = await controller.getById('ol_shipment_1', ADMIN_USER);
+      expect(adminResult.errorMessage).toBe('DPD rejected: sender postcode invalid');
     });
   });
 

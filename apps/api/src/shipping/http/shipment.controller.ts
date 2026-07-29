@@ -68,8 +68,11 @@ import {
   OrderNotDispatchablePaymentStatusException,
 } from '@openlinker/core/shipping';
 import { type IOrderRecordService, ORDER_RECORD_SERVICE_TOKEN } from '@openlinker/core/orders';
+import { ROLE_PERMISSIONS } from '@openlinker/core/users';
 import { Logger } from '@openlinker/shared/logging';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { AuthenticatedUser } from '../../auth/auth.types';
 import { BulkDispatchResultResponseDto } from './dto/bulk-dispatch-result-response.dto';
 import { BulkGenerateLabelsDto } from './dto/bulk-generate-labels.dto';
 import { DispatchResultResponseDto } from './dto/dispatch-result-response.dto';
@@ -107,7 +110,10 @@ export class ShipmentController {
   @ApiOperation({ summary: 'List shipments across orders and connections' })
   @ApiResponse({ status: 200, type: PaginatedShipmentsResponseDto })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async list(@Query() query: ListShipmentsQueryDto): Promise<PaginatedShipmentsResponseDto> {
+  async list(
+    @Query() query: ListShipmentsQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<PaginatedShipmentsResponseDto> {
     const limit = query.limit ?? 20;
     const offset = query.offset ?? 0;
     const filters: ShipmentFilters = {
@@ -120,11 +126,16 @@ export class ShipmentController {
       createdTo: query.createdTo ? new Date(query.createdTo) : undefined,
     };
 
+    const canWrite = this.hasShipmentsWrite(user);
     const page = await this.query.list(filters, { limit, offset });
     const customerByOrder = await this.resolveCustomerIds(page.items.map((s) => s.orderId));
     return {
       items: page.items.map((shipment) =>
-        ShipmentResponseDto.fromDomain(shipment, customerByOrder.get(shipment.orderId) ?? null),
+        ShipmentResponseDto.fromDomain(
+          shipment,
+          customerByOrder.get(shipment.orderId) ?? null,
+          canWrite,
+        ),
       ),
       total: page.total,
       limit,
@@ -139,7 +150,10 @@ export class ShipmentController {
   @ApiQuery({ name: 'orderId', type: String, required: true })
   @ApiResponse({ status: 200, type: ShipmentResponseDto })
   @ApiResponse({ status: 404, description: 'No active shipment for the order' })
-  async getActive(@Query('orderId') orderId?: string): Promise<ShipmentResponseDto> {
+  async getActive(
+    @Query('orderId') orderId: string | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ShipmentResponseDto> {
     if (!orderId) {
       throw new BadRequestException('orderId query parameter is required');
     }
@@ -147,19 +161,30 @@ export class ShipmentController {
     if (!shipment) {
       throw new NotFoundException(`No active shipment for order: ${orderId}`);
     }
-    return ShipmentResponseDto.fromDomain(shipment, await this.resolveCustomerId(shipment.orderId));
+    return ShipmentResponseDto.fromDomain(
+      shipment,
+      await this.resolveCustomerId(shipment.orderId),
+      this.hasShipmentsWrite(user),
+    );
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a shipment by id' })
   @ApiResponse({ status: 200, type: ShipmentResponseDto })
   @ApiResponse({ status: 404, description: 'Shipment not found' })
-  async getById(@Param('id') id: string): Promise<ShipmentResponseDto> {
+  async getById(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ShipmentResponseDto> {
     const shipment = await this.query.getById(id);
     if (!shipment) {
       throw new NotFoundException(`Shipment not found: ${id}`);
     }
-    return ShipmentResponseDto.fromDomain(shipment, await this.resolveCustomerId(shipment.orderId));
+    return ShipmentResponseDto.fromDomain(
+      shipment,
+      await this.resolveCustomerId(shipment.orderId),
+      this.hasShipmentsWrite(user),
+    );
   }
 
   @Get(':id/label')
@@ -334,6 +359,17 @@ export class ShipmentController {
       throw new NotFoundException(`Shipment not found: ${id}`);
     }
     return NotifyDispatchedResponseDto.fromResult(result);
+  }
+
+  /**
+   * Server-side redaction gate (#1826) — mirrors the FE's `usePermission
+   * ('shipments:write')` check so a `viewer` session can't bypass the raw
+   * `errorMessage` redaction by reading this endpoint's JSON directly. The
+   * FE gate stays too (it also drives write-affordance visibility, not just
+   * this one field), but this is the actual enforcement boundary.
+   */
+  private hasShipmentsWrite(user: AuthenticatedUser): boolean {
+    return ROLE_PERMISSIONS[user.role].includes('shipments:write');
   }
 
   /**

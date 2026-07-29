@@ -7,7 +7,12 @@
  */
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
+import {
+  renderWithProviders,
+  createMockApiClient,
+  createAuthenticatedSessionAdapter,
+} from '../../../test/test-utils';
+import type { SessionUser } from '../../../shared/auth/session.types';
 import { OrderShipmentPanel } from './order-shipment-panel';
 import type { Connection } from '../../connections';
 import type { Shipment } from '../../shipments';
@@ -74,6 +79,8 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     status: 'dispatched',
     providerShipmentId: 'prov-1',
     paczkomatId: 'POZ08A',
+    sourceDeliveryMethodId: null,
+    deliveryIntent: null,
     trackingNumber: '6800000001',
     carrier: 'inpost',
     labelPdfRef: null,
@@ -568,13 +575,49 @@ describe('OrderShipmentPanel — persisted rejection (#1800)', () => {
       },
     });
 
-    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, { apiClient });
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     expect(
       await screen.findByText(/sender postal code is not serviceable/i),
     ).toBeInTheDocument();
     // failedAt renders as a relative/absolute time — the "Failed" label anchors it.
     expect(screen.getByText(/^Failed/)).toBeInTheDocument();
+  });
+
+  it('should redact the raw errorMessage for a viewer session (#1826) — the order-detail panel is one click away from the /shipments row this fix also applies to', async () => {
+    const viewer: SessionUser = {
+      id: 'user_viewer',
+      username: 'viewer',
+      email: 'viewer@example.com',
+      role: 'viewer',
+      permissions: ['shipments:read'],
+    };
+    const shipment = makeShipment({
+      status: 'failed',
+      errorMessage: 'DPD rejected the shipment: sender postal code is not serviceable.',
+      failedAt: '2026-05-28T12:30:00.000Z',
+      trackingNumber: null,
+      carrier: 'dpd',
+    });
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(viewer),
+    });
+
+    expect(await screen.findByText('Details hidden for this role.')).toBeInTheDocument();
+    expect(
+      screen.queryByText(/sender postal code is not serviceable/i),
+    ).not.toBeInTheDocument();
   });
 
   it('should not render a persisted-error Alert for a non-failed shipment carrying a stale errorMessage', async () => {
@@ -599,5 +642,170 @@ describe('OrderShipmentPanel — persisted rejection (#1800)', () => {
     await screen.findByText('Shipment');
     expect(screen.queryByText('previous transient error')).toBeNull();
     expect(container.querySelector('.order-shipment-panel__error')).toBeNull();
+  });
+});
+
+describe('OrderShipmentPanel — deep-link auto-open (#1826)', () => {
+  it('auto-expands the form and pre-fills paczkomatId when autoOpenForShipmentId matches a shipment', async () => {
+    const shipment = makeShipment({
+      id: 'ol_shipment_failed',
+      status: 'failed',
+      errorMessage: 'sender postcode invalid',
+      failedAt: '2026-05-28T12:30:00.000Z',
+      paczkomatId: 'POZ08A',
+      trackingNumber: null,
+    });
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(
+      <OrderShipmentPanel order={makeOrder()} autoOpenForShipmentId="ol_shipment_failed" />,
+      { apiClient },
+    );
+
+    // The form opens automatically (no click needed) once the matching
+    // shipment resolves, and the locker id is pre-filled from that shipment.
+    const paczkomatInput = await screen.findByDisplayValue('POZ08A');
+    expect(paczkomatInput).toBeInTheDocument();
+  });
+
+  it('does not auto-open when autoOpenForShipmentId matches no shipment on this order (stale/foreign link)', async () => {
+    const shipment = makeShipment({ id: 'ol_shipment_1', status: 'generated' });
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(
+      <OrderShipmentPanel order={makeOrder()} autoOpenForShipmentId="ol_shipment_does_not_exist" />,
+      { apiClient },
+    );
+
+    await screen.findByText('Shipment');
+    expect(screen.queryByText('Recipient')).toBeNull();
+  });
+
+  it('does not auto-open on a payment-blocked order (#928) — lands on the disabled Generate-label button instead', async () => {
+    const shipment = makeShipment({
+      id: 'ol_shipment_failed',
+      status: 'failed',
+      errorMessage: 'sender postcode invalid',
+      paczkomatId: 'POZ08A',
+      trackingNumber: null,
+    });
+    const order = makeOrder({
+      orderSnapshot: {
+        ...(makeOrder().orderSnapshot as Record<string, unknown>),
+        paymentStatus: 'awaiting',
+      },
+    });
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(
+      <OrderShipmentPanel order={order} autoOpenForShipmentId="ol_shipment_failed" />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    await screen.findByText(/sender postcode invalid/i);
+    expect(screen.queryByDisplayValue('POZ08A')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: "Awaiting payment — can't dispatch yet" }),
+    ).toBeInTheDocument();
+  });
+
+  it('does not auto-open when the order has no live OL carrier route (#1799) — lands on the disabled Generate-label button instead', async () => {
+    const shipment = makeShipment({
+      id: 'ol_shipment_failed',
+      status: 'failed',
+      errorMessage: 'sender postcode invalid',
+      paczkomatId: 'POZ08A',
+      trackingNumber: null,
+    });
+    const order = makeOrder({
+      deliveryResolution: {
+        source: 'rule',
+        processorKind: 'ol_managed_carrier',
+        processorConnectionId: 'conn-inpost',
+        processorAvailable: false,
+      },
+    });
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(
+      <OrderShipmentPanel order={order} autoOpenForShipmentId="ol_shipment_failed" />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    await screen.findByText(/sender postcode invalid/i);
+    expect(screen.queryByDisplayValue('POZ08A')).toBeNull();
+    expect(
+      screen.getByRole('button', {
+        name: "Routed carrier isn't available to dispatch - resolve delivery routing first.",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('does not re-open the form after the operator dismisses it via Cancel', async () => {
+    // Regression guard for the id-vs-object-identity latch: before the fix,
+    // the auto-open effect's dependency was the *object* returned by
+    // `.find()`, not its id. A query refetch (e.g. `useGenerateLabelMutation`
+    // invalidating the shipments domain, or a window-refocus refetch) resolves
+    // a brand-new object literal carrying the same shipment id, which
+    // recomputes the `useMemo` and re-fires the effect — silently re-opening
+    // a form the operator just dismissed. The `useRef` latch below is keyed
+    // on `retryTargetShipment.id`, so it stays closed regardless of how many
+    // times an equivalent-but-referentially-new shipment object arrives.
+    const shipment = makeShipment({
+      id: 'ol_shipment_failed',
+      status: 'failed',
+      errorMessage: 'sender postcode invalid',
+      paczkomatId: 'POZ08A',
+      trackingNumber: null,
+    });
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(
+      <OrderShipmentPanel order={makeOrder()} autoOpenForShipmentId="ol_shipment_failed" />,
+      { apiClient },
+    );
+
+    const paczkomatInput = await screen.findByDisplayValue('POZ08A');
+    // Two "Cancel" buttons are on screen — `ShipmentActionButtons`'s (disabled,
+    // cancels the shipment itself) and `GenerateLabelForm`'s own (enabled,
+    // dismisses the inline form). Scope to the enabled one.
+    const formCancelButton = screen
+      .getAllByRole('button', { name: 'Cancel' })
+      .find((button) => !button.hasAttribute('disabled'));
+    expect(formCancelButton).toBeDefined();
+    fireEvent.click(formCancelButton as HTMLElement);
+
+    await waitFor(() => {
+      expect(screen.queryByDisplayValue('POZ08A')).toBeNull();
+    });
+    // Settle any pending microtasks/effects, then confirm it stays closed.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByDisplayValue('POZ08A')).toBeNull();
+    expect(paczkomatInput).not.toBeInTheDocument();
   });
 });

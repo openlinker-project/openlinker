@@ -3150,7 +3150,12 @@ a.delivery-rider-banner__button:focus-visible {
    Inset "drawer" (#1713): a recessed panel (the muted surface token reads
    recessed in both light and dark, matching the mobile facts grid) with side
    padding, set apart from the row above. */
-.orders-detail {
+/* The accordion/row detail-grid cluster. Shared by the orders list's row
+   detail and the shipments list's (#1826) — each feature uses its own class
+   names so neither is styled by the other's selector, but they share one rule
+   set so the two accordions can't visually drift. */
+.orders-detail,
+.shipment-detail-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: var(--space-4) var(--space-5);
@@ -3162,18 +3167,21 @@ a.delivery-rider-banner__button:focus-visible {
 }
 
 /* Full-width detail row (the itemised line list) spanning the auto-fill grid. */
-.orders-detail__field--wide {
+.orders-detail__field--wide,
+.shipment-detail-grid__field--wide {
   grid-column: 1 / -1;
 }
 
-.orders-detail__field {
+.orders-detail__field,
+.shipment-detail-grid__field {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
 }
 
-.orders-detail__label {
+.orders-detail__label,
+.shipment-detail-grid__label {
   font-family: var(--font-mono);
   font-size: 0.625rem;
   font-weight: 500;
@@ -3182,7 +3190,8 @@ a.delivery-rider-banner__button:focus-visible {
   color: var(--text-muted);
 }
 
-.orders-detail__value {
+.orders-detail__value,
+.shipment-detail-grid__value {
   margin: 0;
   font-size: 0.8125rem;
   color: var(--text-primary);
@@ -11520,6 +11529,54 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .shipment-status-cell__error-time {
   font-size: 0.6875rem;
   color: var(--text-muted);
+}
+
+/* ── Shipments list — row-accordion recovery detail (#1826) ─────────────── */
+.shipment-row-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.shipment-row-detail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.shipments-page__provider {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Action-column severity label (#1826) — plain, non-interactive text riding
+   alongside the row's real control (the `expandable` toggle). Deliberately
+   NO chip/border/dot/background — that styling would read as a second
+   clickable control, which an earlier UX pass on this issue's mockup
+   specifically flagged and reversed. Color is reinforcement only; the word
+   itself (Fix/Finish/Send/View) is the actual signal. */
+.shipments-page__severity {
+  font-weight: 600;
+  font-size: 0.8125rem;
+}
+
+.shipments-page__severity[data-severity='Fix'] {
+  color: var(--status-error);
+}
+
+.shipments-page__severity[data-severity='Finish'] {
+  color: var(--status-warning-fg);
+}
+
+.shipments-page__severity[data-severity='Send'] {
+  color: var(--status-info-fg);
+}
+
+.shipments-page__severity[data-severity='View'] {
+  color: var(--text-muted);
+  font-weight: 400;
 }
 
 /* #1800 — mobile card view. The dense desktop table row keeps the reason on

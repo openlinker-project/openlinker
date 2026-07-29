@@ -63,6 +63,16 @@ export const DELIVERY_INTENT_VALUES = ['pickup_point', 'address'] as const;
 export type DeliveryIntent = (typeof DELIVERY_INTENT_VALUES)[number];
 
 /**
+ * Operator-readable label per delivery intent (#1826). `Record<DeliveryIntent,
+ * string>` (not `Partial<>`) so a new intent fails type-check until labelled —
+ * same discipline as `SHIPPING_METHOD_LABEL`.
+ */
+export const DELIVERY_INTENT_LABEL: Record<DeliveryIntent, string> = {
+  pickup_point: 'Pickup point',
+  address: 'Doorstep address',
+};
+
+/**
  * Operator-readable label per shipping method. Used by the `/shipments`
  * Method column and the method-filter dropdown so the UI doesn't surface raw
  * enum values. `Record<ShippingMethod, string>` (not `Partial<>`) so a new
@@ -87,6 +97,11 @@ export interface Shipment {
   status: ShipmentStatus;
   providerShipmentId: string | null;
   paczkomatId: string | null;
+  /** Source marketplace delivery-method id this shipment was routed from (#1826). */
+  sourceDeliveryMethodId: string | null;
+  /** Carrier-neutral delivery intent the dispatch was requested with (#979, ADR-020, #1826).
+   * Null for branch-1/omp projection rows (no label, no intent). */
+  deliveryIntent: DeliveryIntent | null;
   trackingNumber: string | null;
   /**
    * Actual carrier-of-record (#769) — distinct from the dispatcher

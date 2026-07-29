@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../test/test-utils';
 import { OrderDetailPage } from './order-detail-page';
 import type { OrderRecord } from '../../features/orders/api/orders.types';
+import type { Connection } from '../../features/connections';
 
 const sampleOrder: OrderRecord = {
   internalOrderId: 'ol_order_abc123',
@@ -222,6 +223,8 @@ describe('OrderDetailPage', () => {
                 status: 'dispatched',
                 providerShipmentId: 'prov-1',
                 paczkomatId: 'POZ08A',
+                sourceDeliveryMethodId: null,
+                deliveryIntent: null,
                 trackingNumber: 'TRACK-1',
                 carrier: 'inpost',
                 labelPdfRef: null,
@@ -359,6 +362,111 @@ describe('OrderDetailPage', () => {
       // promise settles. Looking up by name covers the new accessible label.
       const retryingButton = await screen.findByRole('button', { name: 'Retrying…' });
       expect(retryingButton).toBeDisabled();
+    });
+  });
+
+  describe('shipment deep-link (#1826)', () => {
+    const shippingConnection: Connection = {
+      ...sampleConnection,
+      id: 'conn-shipping',
+      supportedCapabilities: ['ShippingProviderManager'],
+      enabledCapabilities: ['ShippingProviderManager'],
+    };
+
+    // A live OL-managed-carrier route + a paczkomat-shaped snapshot (mirrors
+    // order-shipment-panel.test.tsx's makeOrder()) so GenerateLabelForm
+    // resolves shippingMethod === 'paczkomat' and renders the paczkomatId
+    // field rather than gating on "no routing resolved" / courier-only fields.
+    const orderWithPaczkomatRoute: OrderRecord = {
+      ...sampleOrder,
+      orderSnapshot: {
+        id: '1234',
+        orderNumber: 'A-1234',
+        customerEmail: 'buyer@example.com',
+        shippingAddress: {
+          firstName: 'Anna',
+          lastName: 'Kowalska',
+          address1: 'Krakowska 12',
+          city: 'Poznań',
+          postalCode: '60-001',
+          country: 'PL',
+          phone: '+48500600700',
+        },
+        shipping: { methodId: 'allegro-courier', methodName: 'Kurier Allegro' },
+        pickupPoint: { id: 'POZ08A', name: 'Paczkomat POZ08A' },
+      },
+      deliveryResolution: {
+        source: 'rule',
+        processorKind: 'ol_managed_carrier',
+        processorConnectionId: shippingConnection.id,
+        processorAvailable: true,
+      },
+    };
+
+    function renderWithRoute(apiClient: ReturnType<typeof createMockApiClient>, route: string): void {
+      renderWithProviders(
+        <Routes>
+          <Route path="/orders/:internalOrderId" element={<OrderDetailPage />} />
+        </Routes>,
+        { apiClient, route },
+      );
+    }
+
+    it('reads ?retryShipmentId= and auto-opens the form with the shipment pre-filled', async () => {
+      const api = createMockApiClient({
+        orders: { getById: vi.fn().mockResolvedValue(orderWithPaczkomatRoute) },
+        connections: { list: vi.fn().mockResolvedValue([shippingConnection]) },
+        shipments: {
+          list: vi.fn().mockResolvedValue({
+            items: [
+              {
+                id: 'ol_shipment_failed',
+                orderId: orderWithPaczkomatRoute.internalOrderId,
+                customerId: null,
+                connectionId: shippingConnection.id,
+                shippingMethod: 'paczkomat',
+                status: 'failed',
+                providerShipmentId: null,
+                paczkomatId: 'POZ08A',
+                sourceDeliveryMethodId: null,
+                deliveryIntent: null,
+                trackingNumber: null,
+                carrier: null,
+                labelPdfRef: null,
+                dispatchedAt: null,
+                deliveredAt: null,
+                cancelledAt: null,
+                failedAt: '2026-05-01T10:00:00.000Z',
+                errorMessage: 'sender postcode invalid',
+                createdAt: '2026-05-01T09:00:00.000Z',
+                updatedAt: '2026-05-01T10:00:00.000Z',
+              },
+            ],
+            total: 1,
+            limit: 20,
+            offset: 0,
+          }),
+        },
+      });
+
+      renderWithRoute(api, '/orders/ol_order_abc123?retryShipmentId=ol_shipment_failed');
+
+      expect(await screen.findByDisplayValue('POZ08A')).toBeInTheDocument();
+    });
+
+    it('leaves the form collapsed when no retryShipmentId param is present', async () => {
+      const api = createMockApiClient({
+        orders: { getById: vi.fn().mockResolvedValue(orderWithPaczkomatRoute) },
+        connections: { list: vi.fn().mockResolvedValue([shippingConnection]) },
+        shipments: {
+          list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+        },
+      });
+
+      renderWithRoute(api, '/orders/ol_order_abc123');
+
+      await screen.findByText('No shipment yet');
+      expect(screen.queryByText('Recipient')).toBeNull();
     });
   });
 });

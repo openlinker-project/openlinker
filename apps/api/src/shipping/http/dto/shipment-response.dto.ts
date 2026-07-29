@@ -6,11 +6,26 @@
  * `connectionId` is a UUID reference, not a credential. Timestamps are
  * serialized as ISO-8601 strings.
  *
+ * `errorMessage` redaction (#1826): the raw carrier rejection text may embed
+ * address fragments (a rejected sender/recipient postcode), which the
+ * `viewer` role is not trusted to see (see `PermissionValues['shipments:write']`
+ * in `@openlinker/core/users`). The FE's own redaction of this field is
+ * enforced HERE too — not just client-side — because a `viewer` session can
+ * otherwise read the raw value directly off this endpoint's JSON regardless
+ * of what the UI hides. `fromDomain`'s `canWrite` parameter (resolved by the
+ * controller from the requester's role) is the single choke point every read
+ * path goes through.
+ *
  * @module apps/api/src/shipping/http/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
-import { ShipmentStatusValues, ShippingMethodValues , ShipmentStatus, ShippingMethod } from '@openlinker/core/shipping';
-import type { Shipment } from '@openlinker/core/shipping';
+import { ShipmentStatusValues, ShippingMethodValues, DeliveryIntentValues, ShipmentStatus, ShippingMethod } from '@openlinker/core/shipping';
+import type { Shipment, DeliveryIntent } from '@openlinker/core/shipping';
+
+/** Mirrors the FE's redaction placeholder (`shipments-page.tsx`,
+ *  `shipment-row-detail.tsx`) so the copy is identical regardless of which
+ *  layer ends up doing the redacting for a given caller. */
+export const REDACTED_ERROR_MESSAGE = 'Details hidden for this role.';
 
 export class ShipmentResponseDto {
   @ApiProperty({ description: 'Internal shipment id (ol_shipment_*)' })
@@ -47,6 +62,14 @@ export class ShipmentResponseDto {
   })
   sourceDeliveryMethodId!: string | null;
 
+  @ApiProperty({
+    enum: DeliveryIntentValues,
+    nullable: true,
+    description:
+      'Carrier-neutral delivery intent the dispatch was requested with (#979, ADR-020). Null for branch-1/omp projection rows (no label, no intent).',
+  })
+  deliveryIntent!: DeliveryIntent | null;
+
   @ApiProperty({ nullable: true })
   trackingNumber!: string | null;
 
@@ -81,7 +104,19 @@ export class ShipmentResponseDto {
   @ApiProperty({ type: String, format: 'date-time' })
   updatedAt!: string;
 
-  static fromDomain(shipment: Shipment, customerId: string | null = null): ShipmentResponseDto {
+  /**
+   * @param canWrite Whether the requester holds `shipments:write` (resolved
+   *   by the controller from `@CurrentUser()`'s role via `ROLE_PERMISSIONS`).
+   *   Defaults to `true` for the command endpoints (generate-label / cancel /
+   *   notify-dispatched), which are already `@Roles('admin', 'operator')`-
+   *   gated at the route level — a caller who reached those handlers always
+   *   holds the permission, so there's nothing to redact.
+   */
+  static fromDomain(
+    shipment: Shipment,
+    customerId: string | null = null,
+    canWrite = true,
+  ): ShipmentResponseDto {
     const dto = new ShipmentResponseDto();
     dto.id = shipment.id;
     dto.orderId = shipment.orderId;
@@ -92,6 +127,7 @@ export class ShipmentResponseDto {
     dto.providerShipmentId = shipment.providerShipmentId;
     dto.paczkomatId = shipment.paczkomatId;
     dto.sourceDeliveryMethodId = shipment.sourceDeliveryMethodId;
+    dto.deliveryIntent = shipment.deliveryIntent;
     dto.trackingNumber = shipment.trackingNumber;
     dto.carrier = shipment.carrier;
     dto.labelPdfRef = shipment.labelPdfRef;
@@ -99,7 +135,8 @@ export class ShipmentResponseDto {
     dto.deliveredAt = shipment.deliveredAt?.toISOString() ?? null;
     dto.cancelledAt = shipment.cancelledAt?.toISOString() ?? null;
     dto.failedAt = shipment.failedAt?.toISOString() ?? null;
-    dto.errorMessage = shipment.errorMessage;
+    dto.errorMessage =
+      canWrite || shipment.errorMessage === null ? shipment.errorMessage : REDACTED_ERROR_MESSAGE;
     dto.createdAt = shipment.createdAt.toISOString();
     dto.updatedAt = shipment.updatedAt.toISOString();
     return dto;

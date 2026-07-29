@@ -55,6 +55,8 @@ function shipment(id: string, carrier: string, connectionId: string): Shipment {
     status: 'generated',
     providerShipmentId: 'prov_1',
     paczkomatId: null,
+    sourceDeliveryMethodId: null,
+    deliveryIntent: null,
     trackingNumber: null,
     carrier,
     labelPdfRef: 'ref',

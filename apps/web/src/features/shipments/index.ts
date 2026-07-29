@@ -27,6 +27,7 @@ export {
   SHIPPING_METHOD_LABEL,
   SHIPPING_METHOD_VALUES,
   SHIPMENT_STATUS_VALUES,
+  DELIVERY_INTENT_LABEL,
   BULK_DISPATCH_MAX_ITEMS,
 } from './api/shipments.types';
 export {
@@ -52,3 +53,9 @@ export { buildCarrierTrackingUrl, getCarrierDisplayName } from './lib/carrier-tr
 export { pickActiveShipment } from './lib/pick-active-shipment';
 export { extractShippingFieldErrors } from './lib/extract-shipping-field-errors';
 export { extractShippingTraceId } from './lib/extract-shipping-trace-id';
+export {
+  CAN_GENERATE,
+  CAN_CANCEL,
+  CAN_NOTIFY_DISPATCHED,
+  CAN_DOWNLOAD_LABEL,
+} from './lib/shipment-action-eligibility';

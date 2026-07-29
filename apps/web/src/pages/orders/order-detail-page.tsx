@@ -11,7 +11,7 @@
  * @module apps/web/src/pages/orders
  */
 import { useCallback, useEffect, type ReactElement } from 'react';
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Alert } from '../../shared/ui/alert';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
@@ -71,6 +71,13 @@ export function OrderDetailPage(): ReactElement {
   const retry = useRetryOrderDestinationMutation();
   const { showToast } = useToast();
   const location = useLocation();
+  // Deep-link recovery target from a `/shipments` row's Regenerate/Generate
+  // action (#1826): `/orders/:orderId?retryShipmentId={id}` — a query param
+  // (not router `state`) so the link is shareable/bookmarkable and survives
+  // a hard refresh. Left on the URL after use (not stripped) for the same
+  // reason. Independent of the existing `#shipment` hash-scroll (#1713).
+  const [searchParams] = useSearchParams();
+  const retryShipmentId = searchParams.get('retryShipmentId') ?? undefined;
 
   // Scroll to the section a deep-link CTA targets (#1713): the orders-list
   // "Generate label" / "Issue invoice" actions land here on `#shipment` /
@@ -390,7 +397,7 @@ export function OrderDetailPage(): ReactElement {
               divs so the target exists even while a panel is capability-gated
               (renders null) or still loading. */}
           <div id="shipment" tabIndex={-1}>
-            <OrderShipmentPanel order={order} />
+            <OrderShipmentPanel order={order} autoOpenForShipmentId={retryShipmentId} />
           </div>
           <div id="invoicing" tabIndex={-1}>
             <OrderInvoicePanel order={order} />

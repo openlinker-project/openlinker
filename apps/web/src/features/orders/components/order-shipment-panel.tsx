@@ -9,7 +9,7 @@
  *
  * @module apps/web/src/features/orders/components
  */
-import { useMemo, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 
 import { useConnectionsQuery } from '../../connections';
 import { captureDemoEvent } from '../../demo';
@@ -18,8 +18,10 @@ import {
   pickActiveShipment,
   ShipmentStatusBadge,
   useOrderShipmentsQuery,
+  CAN_GENERATE,
   type Shipment,
 } from '../../shipments';
+import { usePermission } from '../../../shared/auth/use-permission';
 import { usePlatform, type Platform } from '../../../shared/plugins';
 import { Alert } from '../../../shared/ui/alert';
 import { LoadingState, ErrorState, EmptyState } from '../../../shared/ui/feedback-state';
@@ -34,7 +36,7 @@ import { hasLiveOlCarrierRoute } from '../lib/delivery-outcome';
 import { SHOP_FULFILLED_NO_DUP_LABEL } from '../lib/delivery-copy';
 import { DeliveryRiderAction } from './delivery-rider-action';
 import { GenerateLabelForm } from './generate-label-form';
-import { ShipmentActionButtons } from './shipment-action-buttons';
+import { ShipmentActionButtons, PAYMENT_BLOCKS_DISPATCH } from './shipment-action-buttons';
 import { ShipmentLifecycleRail } from './shipment-lifecycle-rail';
 import { ShipmentTrackingLink } from './shipment-tracking-link';
 
@@ -77,20 +79,41 @@ function shopFulfilledMessage(shopName: string | null): string {
 
 interface OrderShipmentPanelProps {
   order: OrderRecord;
+  /**
+   * Deep-link recovery target (#1826): when set, matches one of this order's
+   * shipments, AND that shipment is currently retry-eligible (see the
+   * auto-open effect's gate), auto-expands `<GenerateLabelForm>` and offers
+   * that shipment's `paczkomatId` as the locker pre-fill — the only field
+   * from a failed shipment that's actually persisted (parcel dimensions and
+   * weight never are, so they stay operator-typed same as any fresh attempt).
+   * The form itself decides whether that pre-fill wins: a buyer-selected
+   * pickup point in the order snapshot always takes precedence, since that
+   * field renders read-only and must stay truthful. Sourced from the
+   * `/shipments` list's `?retryShipmentId=` query param via `OrderDetailPage`.
+   */
+  autoOpenForShipmentId?: string;
 }
 
-export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactElement | null {
+export function OrderShipmentPanel({
+  order,
+  autoOpenForShipmentId,
+}: OrderShipmentPanelProps): ReactElement | null {
   const connectionsQuery = useConnectionsQuery();
   const shipmentsQuery = useOrderShipmentsQuery(order.internalOrderId);
   const [formOpen, setFormOpen] = useState(false);
+  const canWrite = usePermission('shipments:write');
 
   // #928 — source-reported payment status drives the dispatch gate on the
-  // action row below. Parsed from the order snapshot here (server state stays in
-  // the page-level query); the presentational button receives it as a prop.
+  // action row below, AND the deep-link auto-open guard (must reject the
+  // same way the button below it would). Parsed from the order snapshot here
+  // (server state stays in the page-level query); the presentational button
+  // receives it as a prop.
   const paymentStatus = useMemo(
     () => parseOrderSnapshot(order.orderSnapshot).paymentStatus,
     [order.orderSnapshot],
   );
+  const paymentBlocksDispatch =
+    paymentStatus !== undefined && PAYMENT_BLOCKS_DISPATCH.has(paymentStatus);
 
   // OpenLinker only generates a label when routing resolves to a LIVE own-carrier
   // route (#1799). A shop-fulfilled / no-method / unmapped / not-connected /
@@ -98,6 +121,45 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
   // CTAs are suppressed and the operator is pointed at delivery routing instead
   // (the Delivery panel's rider, or a "fulfilled by the shop" note here).
   const olCarrierRoute = hasLiveOlCarrierRoute(order.deliveryResolution);
+
+  // Resolve the deep-link target by id (not `pickActiveShipment`'s "most
+  // relevant row" precedence) — the operator's retry always targets the
+  // exact shipment they clicked from `/shipments`, whichever row that is.
+  const retryTargetShipment = useMemo(
+    () =>
+      autoOpenForShipmentId
+        ? (shipmentsQuery.data?.items.find((s) => s.id === autoOpenForShipmentId) ?? null)
+        : null,
+    [autoOpenForShipmentId, shipmentsQuery.data],
+  );
+
+  // Deep-link auto-open (#1826).
+  //
+  // Latched by shipment *id*, not object identity: `retryTargetShipment` is
+  // recomputed from `shipmentsQuery.data` on every refetch, so a successful
+  // `useGenerateLabelMutation` (which invalidates the shipments query) — or
+  // any background refetch after the operator explicitly clicked Cancel —
+  // would otherwise hand the effect a *new* object carrying the *same* id and
+  // re-open the form. The ref makes the auto-open fire once per target id,
+  // ever, for the life of this mount.
+  //
+  // Gated on the same eligibility `<ShipmentActionButtons>` enforces below
+  // (`CAN_GENERATE` + the payment gate + the live-route gate) — without this,
+  // a `/shipments` retry link for a payment-blocked or route-unavailable
+  // order would open a live, submittable form behind the very button that's
+  // supposed to be the single source of truth for whether retrying is
+  // allowed right now.
+  const autoOpenedForShipmentId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!retryTargetShipment) return;
+    if (autoOpenedForShipmentId.current === retryTargetShipment.id) return;
+    const eligible =
+      CAN_GENERATE.has(retryTargetShipment.status) && !paymentBlocksDispatch && olCarrierRoute;
+    if (!eligible) return;
+    autoOpenedForShipmentId.current = retryTargetShipment.id;
+    setFormOpen(true);
+  }, [retryTargetShipment, paymentBlocksDispatch, olCarrierRoute]);
+
   const rider = order.deliveryRider;
   const takeover = isTakeoverRider(rider);
   const candidateCarrier = rider?.candidateCarrier?.displayName ?? 'a carrier';
@@ -192,6 +254,7 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
             shipment={activeShipment}
             shippingPlatformType={shippingConnection?.platformType ?? null}
             paymentStatus={paymentStatus}
+            canWrite={canWrite}
             mutationError={null /* surfaced via the action-buttons own state */}
           />
         </>
@@ -278,6 +341,7 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
       {formOpen ? (
         <GenerateLabelForm
           order={order}
+          initialPaczkomatId={retryTargetShipment?.paczkomatId ?? undefined}
           onSuccess={() => setFormOpen(false)}
           onCancel={() => setFormOpen(false)}
         />
@@ -290,11 +354,15 @@ function OrderShipmentPanelBody({
   shipment,
   shippingPlatformType,
   paymentStatus,
+  canWrite,
   mutationError,
 }: {
   shipment: Shipment;
   shippingPlatformType: string | null;
   paymentStatus: PaymentStatus | undefined;
+  /** `usePermission('shipments:write')` — gates the raw carrier `errorMessage`
+   *  the same way `/shipments`' status cell and row accordion do (#1826). */
+  canWrite: boolean;
   mutationError: string | null;
 }): ReactElement {
   // Resolve the shipping platform's contribution here (a component) rather than
@@ -308,10 +376,17 @@ function OrderShipmentPanelBody({
       {/* Persisted rejection (#1800) — the richer `errorMessage` / `failedAt`
           the dispatch service stores on a failed shipment is otherwise only
           visible synchronously during the failing mutation; render it here so
-          an operator revisiting a `failed` shipment still sees why. */}
+          an operator revisiting a `failed` shipment still sees why.
+          Viewer-role redaction (#1826): this is the third of the three
+          surfaces that carry the raw carrier message — `/shipments`' status
+          cell (+ its `title`) and row accordion are the other two — and must
+          stay in lockstep with them, since this panel is one click away from
+          the Order-column link the `/shipments` fix added. */}
       {shipment.status === 'failed' && shipment.errorMessage ? (
         <Alert tone="error" className="order-shipment-panel__error">
-          <p className="order-shipment-panel__error-message">{shipment.errorMessage}</p>
+          <p className="order-shipment-panel__error-message">
+            {canWrite ? shipment.errorMessage : 'Details hidden for this role.'}
+          </p>
           {shipment.failedAt ? (
             <p className="order-shipment-panel__error-meta">
               Failed <TimeDisplay iso={shipment.failedAt} />

@@ -14,13 +14,17 @@ import {
   useCancelShipmentMutation,
   useNotifyDispatchedMutation,
   useLabelDownload,
+  getCarrierDisplayName,
+  CAN_GENERATE,
+  CAN_CANCEL,
+  CAN_NOTIFY_DISPATCHED,
+  CAN_DOWNLOAD_LABEL,
   type Shipment,
   type ShipmentStatus,
 } from '../../shipments';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { getCarrierDisplayName } from '../../shipments';
 import type { PaymentStatus } from '../api/order-snapshot.schema';
 
 interface ShipmentActionButtonsProps {
@@ -43,33 +47,18 @@ interface ShipmentActionButtonsProps {
   routeUnavailable?: boolean;
 }
 
-const CAN_GENERATE: ReadonlySet<ShipmentStatus | 'none'> = new Set([
-  'none',
-  'draft',
-  'delivered',
-  'failed',
-  'cancelled',
-]);
-
 /**
  * Payment statuses that BLOCK dispatch (#928). Block-list polarity, not
  * allow-list: only these explicitly block. `paid`, `cod`, `undefined` (payment
  * unknown — PrestaShop / legacy orders), and any future union member the FE
  * doesn't yet handle all permit dispatch, so a new backend value never silently
  * blocks shipping until the FE consciously adds it here.
+ *
+ * Exported (#1826) — also consumed by `OrderShipmentPanel`'s deep-link
+ * auto-open guard, which must apply the same payment gate this button does
+ * rather than opening the form unconditionally.
  */
-const PAYMENT_BLOCKS_DISPATCH: ReadonlySet<PaymentStatus> = new Set(['awaiting', 'refunded']);
-
-const CAN_CANCEL: ReadonlySet<ShipmentStatus> = new Set(['generated']);
-const CAN_NOTIFY_DISPATCHED: ReadonlySet<ShipmentStatus> = new Set(['generated']);
-// A label document exists once the shipment is generated and stays retrievable
-// through the carrier-tracked lifecycle; cancelled/failed/draft have none.
-const CAN_DOWNLOAD_LABEL: ReadonlySet<ShipmentStatus> = new Set([
-  'generated',
-  'dispatched',
-  'in-transit',
-  'delivered',
-]);
+export const PAYMENT_BLOCKS_DISPATCH: ReadonlySet<PaymentStatus> = new Set(['awaiting', 'refunded']);
 
 export function ShipmentActionButtons({
   shipment,
