@@ -8,7 +8,7 @@
 # Adds a single Caddy service that terminates TLS (automatic Let's Encrypt
 # certificates, zero manual ACME config) and routes by hostname to the
 # existing web/api/prestashop/woocommerce services. Caddy reaches them over
-# the internal Compose network by SERVICE NAME (web:80, api:3000,
+# the internal Compose network by SERVICE NAME (web:8080, api:3000,
 # prestashop:80, woocommerce:8080) — it does NOT depend on those services
 # publishing host ports, so this overlay works whether or not the
 # loopback-binding hardening from #1400/#1402 has landed, and avoids a

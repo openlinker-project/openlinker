@@ -90,35 +90,42 @@ COPY apps/web/package.json ./apps/web/
 
 # Install production dependencies only
 # Skip prepare scripts to avoid husky installation in Docker
+#
+# The trailing `chown` is folded into THIS layer on purpose (#1411): it covers
+# the manifest COPYs above plus everything `pnpm install` just wrote, and
+# because the files are created and chowned in the same layer no duplicate
+# copy is stored. Every later COPY uses `--chown=node:node` instead, so no
+# stage needs a standalone `RUN chown -R /app` (which would re-write the whole
+# tree — node_modules included — into a fresh layer of the final image).
 RUN npm install -g pnpm@10.33.4 && \
-    pnpm install --prod --ignore-scripts
+    pnpm install --prod --ignore-scripts && \
+    chown -R node:node /app
 
 # Copy built application and dependencies
 # NOTE: same enumerated package set as the `base` stage's manifest COPY list
 # above — add a plugin's dist here whenever it's added there.
-COPY --from=base /app/apps/api/dist ./apps/api/dist
-COPY --from=base /app/libs/core/dist ./libs/core/dist
-COPY --from=base /app/libs/shared/dist ./libs/shared/dist
-COPY --from=base /app/libs/plugin-sdk/dist ./libs/plugin-sdk/dist
-COPY --from=base /app/libs/integrations/ai/dist ./libs/integrations/ai/dist
-COPY --from=base /app/libs/integrations/allegro/dist ./libs/integrations/allegro/dist
-COPY --from=base /app/libs/integrations/dpd-polska/dist ./libs/integrations/dpd-polska/dist
-COPY --from=base /app/libs/integrations/erli/dist ./libs/integrations/erli/dist
-COPY --from=base /app/libs/integrations/infakt/dist ./libs/integrations/infakt/dist
-COPY --from=base /app/libs/integrations/inpost/dist ./libs/integrations/inpost/dist
-COPY --from=base /app/libs/integrations/ksef/dist ./libs/integrations/ksef/dist
-COPY --from=base /app/libs/integrations/prestashop/dist ./libs/integrations/prestashop/dist
-COPY --from=base /app/libs/integrations/subiekt/dist ./libs/integrations/subiekt/dist
-COPY --from=base /app/libs/integrations/woocommerce/dist ./libs/integrations/woocommerce/dist
-COPY --from=base /app/node_modules ./node_modules
-COPY --from=base /app/apps/api/node_modules ./apps/api/node_modules
-COPY --from=base /app/libs/core/node_modules ./libs/core/node_modules
-COPY --from=base /app/libs/shared/node_modules ./libs/shared/node_modules
+COPY --from=base --chown=node:node /app/apps/api/dist ./apps/api/dist
+COPY --from=base --chown=node:node /app/libs/core/dist ./libs/core/dist
+COPY --from=base --chown=node:node /app/libs/shared/dist ./libs/shared/dist
+COPY --from=base --chown=node:node /app/libs/plugin-sdk/dist ./libs/plugin-sdk/dist
+COPY --from=base --chown=node:node /app/libs/integrations/ai/dist ./libs/integrations/ai/dist
+COPY --from=base --chown=node:node /app/libs/integrations/allegro/dist ./libs/integrations/allegro/dist
+COPY --from=base --chown=node:node /app/libs/integrations/dpd-polska/dist ./libs/integrations/dpd-polska/dist
+COPY --from=base --chown=node:node /app/libs/integrations/erli/dist ./libs/integrations/erli/dist
+COPY --from=base --chown=node:node /app/libs/integrations/infakt/dist ./libs/integrations/infakt/dist
+COPY --from=base --chown=node:node /app/libs/integrations/inpost/dist ./libs/integrations/inpost/dist
+COPY --from=base --chown=node:node /app/libs/integrations/ksef/dist ./libs/integrations/ksef/dist
+COPY --from=base --chown=node:node /app/libs/integrations/prestashop/dist ./libs/integrations/prestashop/dist
+COPY --from=base --chown=node:node /app/libs/integrations/subiekt/dist ./libs/integrations/subiekt/dist
+COPY --from=base --chown=node:node /app/libs/integrations/woocommerce/dist ./libs/integrations/woocommerce/dist
+COPY --from=base --chown=node:node /app/node_modules ./node_modules
+COPY --from=base --chown=node:node /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=base --chown=node:node /app/libs/core/node_modules ./libs/core/node_modules
+COPY --from=base --chown=node:node /app/libs/shared/node_modules ./libs/shared/node_modules
 
-# Drop root (#1411) — same rationale as the `base` stage above. COPY always
-# executes as root regardless of a later USER instruction, so this catches
-# both the manifest/prod-install files and everything copied in from `base`.
-RUN chown -R node:node /app
+# Drop root (#1411) — same rationale as the `base` stage above. Ownership is
+# already correct: the prod-install layer chowned what it created, and every
+# `COPY --from=base` above carries `--chown=node:node`.
 USER node
 
 # Expose port
@@ -137,13 +144,11 @@ CMD ["node", "apps/api/dist/apps/api/src/main.js"]
 # is ever used outside the demo.
 FROM production AS worker
 
-# `production` already dropped to USER node — regain root for the COPY +
-# chown below (COPY itself always runs as root regardless of USER; the
-# `RUN chown` does not), then re-drop before CMD.
-USER root
-COPY --from=base /app/apps/worker/dist ./apps/worker/dist
-COPY --from=base /app/apps/worker/node_modules ./apps/worker/node_modules
-RUN chown -R node:node /app/apps/worker
-USER node
+# `production` already dropped to USER node, and that carries over here.
+# COPY is executed by the builder itself (always as root, regardless of the
+# active USER), so `--chown=node:node` sets the final ownership inline — no
+# `USER root` round-trip and no extra `RUN chown` layer.
+COPY --from=base --chown=node:node /app/apps/worker/dist ./apps/worker/dist
+COPY --from=base --chown=node:node /app/apps/worker/node_modules ./apps/worker/node_modules
 
 CMD ["node", "apps/worker/dist/apps/worker/src/main.js"]

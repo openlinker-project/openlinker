@@ -55,8 +55,9 @@ the WSL-hosted OpenLinker reaches the Windows-hosted bridge at
 ## Prerequisites
 
 - **Windows 11** with **WSL2** + an Ubuntu distro.
-- Inside WSL: **Node.js 18+**, **pnpm 9+**, and **Docker** (Docker Desktop with WSL2
-  integration, or Docker Engine inside the distro).
+- Inside WSL: **Node.js 22+**, **pnpm 10+**, and **Docker** (Docker Desktop with WSL2
+  integration, or Docker Engine inside the distro). The authoritative version table
+  is [`README.md` § Runtime requirements](../../../../README.md#runtime-requirements).
 - On Windows: **Subiekt nexo PRO + Sfera**, **.NET 8 runtime/SDK**, **SQL Server** (the
   `INSERTNEXO` instance the nexo installer creates), and the
   [`openlinker-subiekt-bridge`](https://github.com/openlinker-project/openlinker-subiekt-bridge)
@@ -71,7 +72,8 @@ the WSL-hosted OpenLinker reaches the Windows-hosted bridge at
 From the repo root inside WSL:
 
 ```bash
-pnpm dev:stack:up            # postgres, redis, mysql, phpmyadmin, prestashop
+pnpm dev:stack:up            # postgres, redis, mysql, prestashop
+pnpm dev:stack:devtools:up   # optional: adds phpmyadmin (devtools profile)
 pnpm dev:stack:seed-prestashop   # seed currency + demo products into PrestaShop
 ```
 
@@ -104,7 +106,7 @@ The stack (from `docker-compose.yml`):
 |---|---|---|
 | PrestaShop storefront | `http://localhost:8080` | 302-redirects to `/en/` once installed |
 | PrestaShop back office | `http://localhost:8080/admin-dev/` | login `demo@prestashop.com` / `prestashop_demo` |
-| phpMyAdmin | `http://localhost:8081` | user `root` / password `root` |
+| phpMyAdmin | `http://localhost:8081` | user `root` / password `root`; opt-in via `pnpm dev:stack:devtools:up` |
 | Postgres (OpenLinker DB) | `localhost:5432` | `postgres` / `postgres`, db `openlinker` |
 | Redis | `localhost:6379` | |
 | MySQL (PrestaShop DB) | `localhost:3306` | `prestashop` / `prestashop` |

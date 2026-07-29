@@ -48,7 +48,11 @@ services:
       retries: 5
 
   redis:
-    image: redis:8.4-bookworm
+    # 8.4 is the version the container standard pins; the `-alpine` variant is
+    # ours, to stay consistent with every other slim base in this file
+    # (postgres:17-alpine, caddy:2.11-alpine, node:…-alpine3.24) and keep the
+    # one-command demo pull small. The standard names the version, not the base.
+    image: redis:8.4-alpine
     container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-redis
     ports:
       - '${OL_BIND_ADDRESS:-127.0.0.1}:${REDIS_HOST_PORT:-6379}:6379'

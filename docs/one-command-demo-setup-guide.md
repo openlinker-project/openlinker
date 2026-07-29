@@ -52,6 +52,21 @@ tier — API + Worker + admin UI.
 > data** — the two flows are *not* isolated. Stop (and, if needed, wipe) one
 > before running the other: `pnpm dev:stack:down` or `pnpm demo:down -v`.
 
+> ⚠️ **Upgrading from a pre-#1411 stack (one-time).** Named volumes were renamed
+> `_data` → `-data` and PostgreSQL moved 16 → 17, so your first `pnpm demo:up`
+> after pulling boots with an **empty database and no warning** — the old data
+> lives on in orphaned `openlinker_*_data` volumes. Confirm you don't need it,
+> then reclaim the disk:
+>
+> ```bash
+> docker volume rm \
+>   openlinker_postgres_data openlinker_redis_data openlinker_mysql_data \
+>   openlinker_prestashop_data openlinker_woocommerce_mysql_data \
+>   openlinker_woocommerce_data openlinker_caddy_data openlinker_caddy_config
+> ```
+>
+> Full note: [`README.md` § Runtime requirements](../README.md#runtime-requirements).
+
 ---
 
 ## 2. Environment variables (`.env`)
@@ -174,7 +189,7 @@ pnpm demo:down      # stop the stack (add -v to also wipe the data volumes)
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build \
-  postgres redis mysql phpmyadmin woocommerce-mysql woocommerce prestashop migrate api worker web
+  postgres redis mysql woocommerce-mysql woocommerce prestashop migrate api worker web
 ```
 
 Boot order is enforced by `depends_on` (not the CLI service list):
