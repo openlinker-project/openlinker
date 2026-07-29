@@ -35,6 +35,8 @@ function record(over: Record<string, unknown> = {}): Record<string, unknown> {
 describe('ShopPublishController', () => {
   let enqueue: { enqueuePublish: jest.Mock };
   let query: { getById: jest.Mock };
+  let categoryBrowse: { browseCategories: jest.Mock };
+  let attributeRead: { listAttributes: jest.Mock; listAttributeTerms: jest.Mock };
   let controller: ShopPublishController;
 
   beforeEach(() => {
@@ -44,7 +46,14 @@ describe('ShopPublishController', () => {
         .mockResolvedValue({ jobId: 'job-1', listingCreationRecord: { id: 'rec-1' } }),
     };
     query = { getById: jest.fn() };
-    controller = new ShopPublishController(enqueue as never, query as never);
+    categoryBrowse = { browseCategories: jest.fn() };
+    attributeRead = { listAttributes: jest.fn(), listAttributeTerms: jest.fn() };
+    controller = new ShopPublishController(
+      enqueue as never,
+      query as never,
+      categoryBrowse as never,
+      attributeRead as never,
+    );
   });
 
   it('should enqueue a publish and return job + record ids', async () => {
@@ -77,6 +86,35 @@ describe('ShopPublishController', () => {
   it('should 404 when the record is unknown', async () => {
     query.getById.mockResolvedValue(null);
     await expect(controller.getRecord('nope')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('should browse categories and map them to the response DTO', async () => {
+    categoryBrowse.browseCategories.mockResolvedValue([
+      { id: '10', name: 'Clothing', parentId: null },
+      { id: '20', name: 'Sneakers', parentId: '11' },
+    ]);
+    const result = await controller.browseCategories(CONN, '11');
+    expect(categoryBrowse.browseCategories).toHaveBeenCalledWith(CONN, '11');
+    expect(result).toEqual([
+      { id: '10', name: 'Clothing', parentId: null },
+      { id: '20', name: 'Sneakers', parentId: '11' },
+    ]);
+  });
+
+  it('should list global attributes and map them to the response DTO (#1835)', async () => {
+    attributeRead.listAttributes.mockResolvedValue([
+      { id: '6', name: 'Color', slug: 'pa_color' },
+    ]);
+    const result = await controller.listAttributes(CONN);
+    expect(attributeRead.listAttributes).toHaveBeenCalledWith(CONN);
+    expect(result).toEqual([{ id: '6', name: 'Color', slug: 'pa_color' }]);
+  });
+
+  it('should list attribute terms and map them to the response DTO (#1835)', async () => {
+    attributeRead.listAttributeTerms.mockResolvedValue([{ id: '31', name: 'Red', slug: 'red' }]);
+    const result = await controller.listAttributeTerms(CONN, '6');
+    expect(attributeRead.listAttributeTerms).toHaveBeenCalledWith(CONN, '6');
+    expect(result).toEqual([{ id: '31', name: 'Red', slug: 'red' }]);
   });
 });
 

@@ -10,7 +10,7 @@
  */
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
-import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthController } from './auth.controller';
 import { AUTH_SERVICE_TOKEN } from './auth.service.interface';
@@ -18,6 +18,9 @@ import type { IAuthService } from './auth.service.interface';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
 import {
+  EmailConfirmationRateLimitedException,
+  EmailNotConfirmedException,
+  InvalidEmailConfirmationTokenException,
   InvalidPasswordResetTokenException,
   RefreshTokenReuseDetectedException,
   User,
@@ -26,11 +29,17 @@ import type { IPasswordResetService } from './password-reset.service.interface';
 import { PASSWORD_RESET_SERVICE_TOKEN } from './password-reset.service.interface';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ConfirmEmailDto } from './dto/confirm-email.dto';
+import { ResendConfirmationDto } from './dto/resend-confirmation.dto';
 import type { IRefreshTokenService } from './refresh-token.service.interface';
 import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
 import type { IRegistrationService } from './registration.service.interface';
 import { REGISTRATION_SERVICE_TOKEN } from './registration.service.interface';
+import type { IEmailConfirmationService } from './email-confirmation.service.interface';
+import { EMAIL_CONFIRMATION_SERVICE_TOKEN } from './email-confirmation.service.interface';
 import { PATH_METADATA } from '@nestjs/common/constants';
+import { IS_PUBLIC_KEY } from './decorators/public.decorator';
+import { ROLES_KEY } from './decorators/roles.decorator';
 import { API_VERSION_LABEL } from '../app-info/app-info.types';
 import { REFRESH_COOKIE_NAME, REFRESH_COOKIE_PATH } from './auth.cookies';
 
@@ -53,12 +62,14 @@ describe('AuthController', () => {
   let authService: jest.Mocked<IAuthService>;
   let passwordResetService: jest.Mocked<IPasswordResetService>;
   let refreshTokenService: jest.Mocked<IRefreshTokenService>;
+  let emailConfirmationService: jest.Mocked<IEmailConfirmationService>;
 
   beforeEach(async () => {
     const mockAuthService: jest.Mocked<IAuthService> = {
       validateUser: jest.fn(),
       login: jest.fn(),
       getMe: jest.fn(),
+      updateAnalyticsConsent: jest.fn(),
     };
     const mockPasswordResetService: jest.Mocked<IPasswordResetService> = {
       requestReset: jest.fn(),
@@ -72,6 +83,11 @@ describe('AuthController', () => {
     const mockRegistrationService: jest.Mocked<IRegistrationService> = {
       register: jest.fn(),
     };
+    const mockEmailConfirmationService: jest.Mocked<IEmailConfirmationService> = {
+      sendConfirmation: jest.fn(),
+      confirmEmail: jest.fn(),
+      resendConfirmation: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
@@ -80,6 +96,7 @@ describe('AuthController', () => {
         { provide: PASSWORD_RESET_SERVICE_TOKEN, useValue: mockPasswordResetService },
         { provide: REFRESH_TOKEN_SERVICE_TOKEN, useValue: mockRefreshTokenService },
         { provide: REGISTRATION_SERVICE_TOKEN, useValue: mockRegistrationService },
+        { provide: EMAIL_CONFIRMATION_SERVICE_TOKEN, useValue: mockEmailConfirmationService },
       ],
     }).compile();
 
@@ -87,6 +104,7 @@ describe('AuthController', () => {
     authService = module.get(AUTH_SERVICE_TOKEN);
     passwordResetService = module.get(PASSWORD_RESET_SERVICE_TOKEN);
     refreshTokenService = module.get(REFRESH_TOKEN_SERVICE_TOKEN);
+    emailConfirmationService = module.get(EMAIL_CONFIRMATION_SERVICE_TOKEN);
   });
 
   describe('refresh cookie path drift guard (#1327)', () => {
@@ -151,6 +169,18 @@ describe('AuthController', () => {
 
       await expect(controller.login(dto, res as unknown as Response)).rejects.toThrow(
         UnauthorizedException,
+      );
+      expect(authService.login).not.toHaveBeenCalled();
+      expect(refreshTokenService.issue).not.toHaveBeenCalled();
+      expect(res.cookie).not.toHaveBeenCalled();
+    });
+
+    it('converts EmailNotConfirmedException to a 403 with a clear message (#1624)', async () => {
+      authService.validateUser.mockRejectedValue(new EmailNotConfirmedException());
+      const res = makeMockResponse();
+
+      await expect(controller.login(dto, res as unknown as Response)).rejects.toThrow(
+        ForbiddenException,
       );
       expect(authService.login).not.toHaveBeenCalled();
       expect(refreshTokenService.issue).not.toHaveBeenCalled();
@@ -312,6 +342,78 @@ describe('AuthController', () => {
     });
   });
 
+  describe('POST /auth/confirm-email', () => {
+    const dto: ConfirmEmailDto = Object.assign(new ConfirmEmailDto(), { token: 'raw-token' });
+
+    it('returns ok on success and delegates to the service', async () => {
+      emailConfirmationService.confirmEmail.mockResolvedValue();
+
+      await expect(controller.confirmEmail(dto)).resolves.toEqual({ ok: true });
+      expect(emailConfirmationService.confirmEmail).toHaveBeenCalledWith('raw-token');
+    });
+
+    it('converts InvalidEmailConfirmationTokenException to 400', async () => {
+      emailConfirmationService.confirmEmail.mockRejectedValue(
+        new InvalidEmailConfirmationTokenException(),
+      );
+      await expect(controller.confirmEmail(dto)).rejects.toThrow(BadRequestException);
+    });
+
+    it('returns a generic message and never leaks the internal user id (finding 1)', async () => {
+      // EmailConfirmationService.confirmEmail already remaps
+      // UserNotPendingConfirmationException to
+      // InvalidEmailConfirmationTokenException internally before it ever
+      // reaches the controller — asserted directly in
+      // email-confirmation.service.spec.ts. This test exercises the
+      // controller's own generic-message mapping on the exception it
+      // actually receives.
+      emailConfirmationService.confirmEmail.mockRejectedValue(
+        new InvalidEmailConfirmationTokenException(),
+      );
+
+      await expect(controller.confirmEmail(dto)).rejects.toMatchObject({
+        response: { message: 'This confirmation link is invalid or has expired.' },
+      });
+      // Must never surface the raw domain-exception message, which embeds
+      // the internal user id.
+      await expect(controller.confirmEmail(dto)).rejects.not.toMatchObject({
+        message: expect.stringContaining('ol_user_super-secret-internal-uuid'),
+      });
+    });
+  });
+
+  describe('POST /auth/resend-confirmation', () => {
+    const makeIpReq = (ip = '203.0.113.7'): Request => ({ ip }) as unknown as Request;
+
+    it('always returns 200 and delegates to the service', async () => {
+      emailConfirmationService.resendConfirmation.mockResolvedValue();
+      const dto: ResendConfirmationDto = Object.assign(new ResendConfirmationDto(), {
+        email: 'demo@test.com',
+      });
+
+      const result = await controller.resendConfirmation(dto, makeIpReq());
+
+      expect(result).toEqual({ ok: true });
+      expect(emailConfirmationService.resendConfirmation).toHaveBeenCalledWith(
+        'demo@test.com',
+        '203.0.113.7',
+      );
+    });
+
+    it('converts EmailConfirmationRateLimitedException to 429 (review finding 2)', async () => {
+      emailConfirmationService.resendConfirmation.mockRejectedValue(
+        new EmailConfirmationRateLimitedException(),
+      );
+      const dto: ResendConfirmationDto = Object.assign(new ResendConfirmationDto(), {
+        email: 'demo@test.com',
+      });
+
+      await expect(controller.resendConfirmation(dto, makeIpReq())).rejects.toMatchObject({
+        status: 429,
+      });
+    });
+  });
+
   describe('GET /auth/me', () => {
     it('returns UserResponseDto with role and permissions for the authenticated user', async () => {
       const user = makeUser();
@@ -326,6 +428,62 @@ describe('AuthController', () => {
       expect(result.role).toBe('admin');
       expect(result.permissions).toBeDefined();
       expect(result.permissions.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('PATCH /auth/me/analytics-consent (#1882)', () => {
+    const makeViewer = (analyticsConsent: boolean): User =>
+      new User(
+        'viewer-uuid-1',
+        'demo_user',
+        'demo@example.com',
+        '$2a$10$hash',
+        'viewer',
+        'active',
+        new Date(),
+        new Date(),
+        analyticsConsent
+      );
+
+    it('should persist the requested consent and answer with the refreshed user', async () => {
+      const updated = makeViewer(true);
+      authService.updateAnalyticsConsent.mockResolvedValue(updated);
+
+      const result = await controller.updateAnalyticsConsent(
+        { id: updated.id, username: updated.username, role: 'viewer' },
+        { analyticsConsent: true }
+      );
+
+      expect(authService.updateAnalyticsConsent).toHaveBeenCalledWith(updated.id, true);
+      expect(result.analyticsConsent).toBe(true);
+      expect(result.id).toBe(updated.id);
+    });
+
+    it('should pass a withdrawal (false) through unchanged', async () => {
+      const updated = makeViewer(false);
+      authService.updateAnalyticsConsent.mockResolvedValue(updated);
+
+      const result = await controller.updateAnalyticsConsent(
+        { id: updated.id, username: updated.username, role: 'viewer' },
+        { analyticsConsent: false }
+      );
+
+      expect(authService.updateAnalyticsConsent).toHaveBeenCalledWith(updated.id, false);
+      expect(result.analyticsConsent).toBe(false);
+    });
+
+    it('should carry no @Roles metadata so a viewer can change their own preference', () => {
+      const handler = AuthController.prototype.updateAnalyticsConsent;
+      const roles = Reflect.getMetadata(ROLES_KEY, handler) as unknown[] | undefined;
+
+      expect(roles).toBeUndefined();
+    });
+
+    it('should not be @Public — the handler needs an authenticated caller', () => {
+      const handler = AuthController.prototype.updateAnalyticsConsent;
+      const isPublic = Reflect.getMetadata(IS_PUBLIC_KEY, handler) as boolean | undefined;
+
+      expect(isPublic).toBeUndefined();
     });
   });
 });

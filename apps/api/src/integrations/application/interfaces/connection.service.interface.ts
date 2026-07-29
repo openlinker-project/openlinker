@@ -20,6 +20,8 @@ import type { ConnectionCreateInput } from './connection.service.types';
 
 export type { ConnectionCreateInput };
 
+export const CONNECTION_SERVICE_TOKEN = Symbol('IConnectionService');
+
 export interface IConnectionService {
   /**
    * Create a new connection

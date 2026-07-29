@@ -33,14 +33,21 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import { Logger } from '@openlinker/shared/logging';
-import { CONNECTION_PORT_TOKEN, ConnectionPort } from '@openlinker/core/identifier-mapping';
+import {
+  CONNECTION_PORT_TOKEN,
+  ConnectionPort,
+  applyPricingRule,
+  applyStockSafetyBuffer,
+  isPresentButInvalidStockSafetyBuffer,
+  readPricingRule,
+  readStockSafetyBuffer,
+} from '@openlinker/core/identifier-mapping';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type {
   CreateOfferCommand,
   CreateOfferOverrides,
   OfferManagerPort,
   OfferParameter,
-  OfferVariantAttribute,
   OfferVariantGroup,
   SourceAttribute,
   SourceCategoryRef,
@@ -64,6 +71,9 @@ import { IAttributeProjectionService } from '../interfaces/attribute-projection.
 import { ICategoryResolutionService } from '../interfaces/category-resolution.service.interface';
 import type { IOfferBuilderService } from '../interfaces/offer-builder.service.interface';
 import type { BuildCreateOfferCommandInput } from '../types/offer-builder.types';
+import type { AttributeProjectionMetadata } from '../types/attribute-projection.types';
+import { buildProjectionMetadata } from './build-projection-metadata';
+import { flattenAttributes } from './variant-attributes.util';
 
 @Injectable()
 export class OfferBuilderService implements IOfferBuilderService {
@@ -127,9 +137,15 @@ export class OfferBuilderService implements IOfferBuilderService {
       ? destination.getBorrowedTaxonomy()
       : undefined;
 
+    // #1741: an operator-supplied per-offer EAN override wins over the variant's
+    // own barcode at BOTH catalog sites (category-resolution-by-barcode below and
+    // the `variantBarcode` self-link), so a corrected/rescued EAN actually links
+    // the card and groups instead of reaching the builder as null.
+    const effectiveBarcode = input.overrides?.ean ?? variant.ean ?? variant.gtin ?? null;
+
     const categoryId = await this.resolveCategory(
       input,
-      variant.ean ?? variant.gtin ?? null,
+      effectiveBarcode,
       product.categories,
       { borrowedTaxonomy, sourceConnectionId: masterConnectionId }
     );
@@ -142,7 +158,7 @@ export class OfferBuilderService implements IOfferBuilderService {
       });
     }
 
-    const price = this.resolvePrice(input, product, issues);
+    const price = this.resolvePrice(input, product, connection.config, issues);
 
     // Gate 1 — category / price. Throw before projection: projection needs a
     // resolved category, and surfacing all field problems at once is the
@@ -161,7 +177,8 @@ export class OfferBuilderService implements IOfferBuilderService {
           masterConnectionId,
           categoryId,
           variant.attributes ?? {},
-          borrowedTaxonomy
+          borrowedTaxonomy,
+          buildProjectionMetadata(product, variant, effectiveBarcode)
         )
       : [];
 
@@ -221,7 +238,10 @@ export class OfferBuilderService implements IOfferBuilderService {
       connectionId: input.connectionId,
       // `price` is guaranteed defined here because `issues` would have caught it above.
       price: price as { amount: number; currency: string },
-      stock: input.stock,
+      // #1844 — hold back the destination's per-connection stock safety buffer so
+      // a fast-moving item keeps a cushion and can't oversell between syncs.
+      // Default reserve 0 => master stock passes through unchanged.
+      stock: applyStockSafetyBuffer(input.stock, this.resolveStockReserve(input.connectionId, connection.config)),
       publishImmediately: input.publishImmediately ?? false,
       overrides: Object.keys(cleanedOverrides).length > 0 ? cleanedOverrides : undefined,
       idempotencyKey: input.idempotencyKey,
@@ -239,7 +259,7 @@ export class OfferBuilderService implements IOfferBuilderService {
       ...(parameters.length > 0 ? { parameters } : {}),
       // #431 — smart-link by barcode. Pre-resolved here so adapters that
       // need it (Allegro) don't have to re-fetch the variant.
-      variantBarcode: variant.ean ?? variant.gtin ?? null,
+      variantBarcode: effectiveBarcode,
       // #808 — smart-link by pre-resolved catalogue card. When the wizard
       // already matched a unique product card by EAN, thread its id straight
       // through so the adapter links it (and inherits its required product
@@ -318,13 +338,16 @@ export class OfferBuilderService implements IOfferBuilderService {
     sourceConnectionId: string,
     destinationCategoryId: string,
     attributes: Record<string, string>,
-    borrowedTaxonomy: TaxonomyOwner | undefined
+    borrowedTaxonomy: TaxonomyOwner | undefined,
+    metadata: AttributeProjectionMetadata
   ): Promise<OfferParameter[]> {
     const projection = await this.attributeProjection.project({
       sourceConnectionId,
       destinationConnectionId: input.connectionId,
       destinationCategoryId,
       attributes,
+      // #1841 — product-derived metadata for operator place-value / scope rules.
+      metadata,
       // #1045 — reuse the owner's attribute mappings for a borrows destination.
       ...(borrowedTaxonomy ? { borrowedTaxonomy } : {}),
     });
@@ -419,9 +442,19 @@ export class OfferBuilderService implements IOfferBuilderService {
     }
   }
 
+  /**
+   * Resolve `command.price`. An explicit `input.price` always wins (per-item
+   * operator/UI-resolved price, e.g. the bulk wizard's client-side pricing
+   * policy) and is used verbatim — no rule applies to it. Otherwise falls back
+   * to the master catalog price, run through the connection's pricing-resolution
+   * rule (#1843, `pricing-rule.types.ts`) — markup/margin formula + rounding.
+   * A connection with no configured rule is untouched (`applyPricingRule`
+   * returns the master price unchanged), preserving the pre-#1843 passthrough.
+   */
   private resolvePrice(
     input: BuildCreateOfferCommandInput,
     product: { price: number | null; currency: string | null },
+    connectionConfig: Parameters<typeof readPricingRule>[0],
     issues: OfferBuilderValidationIssue[]
   ): { amount: number; currency: string } | null {
     if (input.price) {
@@ -457,7 +490,16 @@ export class OfferBuilderService implements IOfferBuilderService {
       });
       return null;
     }
-    return { amount, currency };
+    const resolvedAmount = applyPricingRule(amount, readPricingRule(connectionConfig));
+    if (resolvedAmount <= 0) {
+      issues.push({
+        field: 'price.amount',
+        code: 'NON_POSITIVE',
+        message: `Resolved price (${resolvedAmount}) from the connection's pricing rule is not a positive value; provide input.price explicitly or adjust the pricing rule`,
+      });
+      return null;
+    }
+    return { amount: resolvedAmount, currency };
   }
 
   private readMasterCatalogConnectionId(
@@ -466,6 +508,26 @@ export class OfferBuilderService implements IOfferBuilderService {
     if (!config) return null;
     const value = config['masterCatalogConnectionId'];
     return typeof value === 'string' && value.length > 0 ? value : null;
+  }
+
+  /**
+   * #1844 — resolve the per-connection stock reserve, warning when a present
+   * `config.stockSafetyBuffer` coerced to 0. A mistyped buffer (e.g. `"5"` or a
+   * negative number) silently drops the oversell protection the operator thinks
+   * they configured, so surface it rather than fail silently.
+   */
+  private resolveStockReserve(
+    connectionId: string,
+    config: Parameters<typeof readStockSafetyBuffer>[0]
+  ): number {
+    if (isPresentButInvalidStockSafetyBuffer(config)) {
+      this.logger.warn(
+        `Connection ${connectionId} has a stockSafetyBuffer that is present but invalid ` +
+          `(non-numeric, negative, zero, or non-finite) — it coerces to 0, so no stock ` +
+          `reserve is applied. Set a positive integer to enable oversell protection.`
+      );
+    }
+    return readStockSafetyBuffer(config);
   }
 }
 
@@ -498,11 +560,3 @@ function slugifyFeatureName(name: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-function flattenAttributes(
-  attributes: Record<string, string> | null
-): OfferVariantAttribute[] {
-  return Object.entries(attributes ?? {})
-    .filter(([name, value]) => name.length > 0 && value.length > 0)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([name, value]) => ({ name, value }));
-}

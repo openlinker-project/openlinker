@@ -116,6 +116,8 @@ export function createMockApiClient(
       register: vi.fn().mockResolvedValue({ ok: true }),
       forgotPassword: vi.fn().mockResolvedValue({ ok: true }),
       resetPassword: vi.fn().mockResolvedValue({ ok: true }),
+      confirmEmail: vi.fn().mockResolvedValue({ ok: true }),
+      updateAnalyticsConsent: vi.fn().mockResolvedValue({ ...DEFAULT_TEST_USER }),
       ...overrides.auth,
     } as ApiClient['auth'],
     connections: {
@@ -230,7 +232,6 @@ export function createMockApiClient(
         limit: 20,
         offset: 0,
       }),
-      getById: vi.fn().mockResolvedValue(null),
       ...overrides.inventory,
     } as ApiClient['inventory'],
     invoicing: {
@@ -313,6 +314,13 @@ export function createMockApiClient(
         .fn()
         .mockResolvedValue({ jobId: 'job-sp-1', listingCreationRecordId: 'sp-rec-1' }),
       getShopPublishStatus: vi.fn().mockResolvedValue(null),
+      // #1834 — default to "no shop categories" so the shop category picker
+      // renders its empty state in tests that don't override.
+      browseShopCategories: vi.fn().mockResolvedValue([]),
+      // #1835 — default to "no global attributes/terms" so the shop attribute
+      // picker renders its empty state in tests that don't override.
+      listShopAttributes: vi.fn().mockResolvedValue([]),
+      listShopAttributeTerms: vi.fn().mockResolvedValue([]),
       shopPublishBulk: vi.fn().mockResolvedValue({ batchId: 'sp-batch-1', items: [] }),
       getBulkShopPublishBatch: vi.fn().mockResolvedValue(null),
       getSellerPolicies: vi.fn().mockResolvedValue({
@@ -331,6 +339,9 @@ export function createMockApiClient(
       // #410 — default to "no parameters" so the wizard's category step
       // renders the friendly empty state in tests that don't override.
       getCategoryParameters: vi.fn().mockResolvedValue({ parameters: [] }),
+      // #1752 — default to an empty breadcrumb so the listing drawer falls back
+      // to the raw category id in tests that don't exercise category resolution.
+      getCategoryPath: vi.fn().mockResolvedValue({ path: [] }),
       // #635 — default the Allegro catalog match to "no_match" so tests
       // that don't exercise the catalog-prefill flow render the wizard
       // without a panel and without a real network call. `getCatalogProduct`
@@ -352,6 +363,40 @@ export function createMockApiClient(
       }),
       ...overrides.listings,
     } as ApiClient['listings'],
+    mailerSettings: {
+      get: vi.fn().mockResolvedValue({
+        transport: 'console',
+        smtpHost: null,
+        smtpPort: null,
+        smtpSecure: false,
+        fromAddress: null,
+        smtpPasswordConfigured: false,
+        updatedAt: null,
+        updatedBy: null,
+      }),
+      update: vi.fn().mockResolvedValue(undefined),
+      setCredentials: vi.fn().mockResolvedValue(undefined),
+      clearCredentials: vi.fn().mockResolvedValue(undefined),
+      ...overrides.mailerSettings,
+    } as ApiClient['mailerSettings'],
+    posthogSettings: {
+      get: vi.fn().mockResolvedValue({
+        enabled: false,
+        region: 'eu',
+        customHost: null,
+        autocapture: false,
+        sessionRecording: false,
+        apiKeyConfigured: false,
+        wouldOverrideEnv: false,
+        overriddenEnvVars: [],
+        updatedAt: null,
+        updatedBy: null,
+      }),
+      update: vi.fn().mockResolvedValue(undefined),
+      setCredentials: vi.fn().mockResolvedValue(undefined),
+      clearCredentials: vi.fn().mockResolvedValue(undefined),
+      ...overrides.posthogSettings,
+    } as ApiClient['posthogSettings'],
     products: {
       list: vi.fn().mockResolvedValue({
         items: [],
@@ -392,9 +437,13 @@ export function createMockApiClient(
       getOrderStateMappings: vi.fn().mockResolvedValue([]),
       upsertOrderStateMappings: vi.fn().mockResolvedValue([]),
       getMappingOptions: vi.fn().mockResolvedValue([]),
+      getCategoryPath: vi.fn().mockResolvedValue([]),
       getRoutingRules: vi.fn().mockResolvedValue([]),
       replaceRoutingRules: vi.fn().mockResolvedValue([]),
       getRoutingCandidates: vi.fn().mockResolvedValue([]),
+      getAttributeRules: vi.fn().mockResolvedValue([]),
+      upsertAttributeRule: vi.fn().mockResolvedValue(undefined),
+      deleteAttributeRule: vi.fn().mockResolvedValue(undefined),
       ...overrides.mappings,
     } as ApiClient['mappings'],
     shipments: {
@@ -509,7 +558,10 @@ const DEFAULT_TEST_USER: SessionUser = {
     'inventory:read', 'inventory:write',
     'listings:read', 'listings:write',
     'ai:suggest',
+    'content:write',
+    'invoices:read', 'invoices:write',
   ],
+  analyticsConsent: true,
 };
 
 export function createAuthenticatedSessionAdapter(
@@ -553,6 +605,40 @@ export function findToastDescription(text: string | RegExp): Promise<HTMLElement
 
 export function getToastDescription(text: string | RegExp): HTMLElement {
   return screen.getByText(text, { selector: '.toast__description' });
+}
+
+/**
+ * Replaces `window.localStorage` with one that throws on every access, to
+ * exercise the private-browsing / blocked-storage branches. Returns a restore
+ * function — call it in `afterEach`.
+ *
+ * Why not `vi.spyOn(...)`: jsdom's `localStorage` is a Proxy whose set trap
+ * writes *stored items*, so both `Storage.prototype` and instance spies are
+ * order-dependent — they stop intercepting once another test in the same file
+ * restores mocks, silently turning "should not throw" assertions vacuous
+ * (#1884). Swapping the whole object out is deterministic.
+ */
+export function stubUnavailableLocalStorage(): () => void {
+  const original = window.localStorage;
+  const unavailable = (): never => {
+    throw new Error('storage disabled');
+  };
+
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      clear: unavailable,
+      getItem: unavailable,
+      key: unavailable,
+      length: 0,
+      removeItem: unavailable,
+      setItem: unavailable,
+    },
+  });
+
+  return () => {
+    Object.defineProperty(window, 'localStorage', { configurable: true, value: original });
+  };
 }
 
 export function renderWithProviders(

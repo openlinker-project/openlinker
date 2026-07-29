@@ -21,6 +21,7 @@ export const BULK_LISTING_SUBMIT_SERVICE_TOKEN = Symbol('IBulkListingSubmitServi
 export const BULK_LISTING_RETRY_SERVICE_TOKEN = Symbol('IBulkListingRetryService');
 export const OFFER_STATUS_POLL_SERVICE_TOKEN = Symbol('IOfferStatusPollService');
 export const OFFER_STATUS_SYNC_SERVICE_TOKEN = Symbol('IOfferStatusSyncService');
+export const OFFER_STATUS_READ_SERVICE_TOKEN = Symbol('IOfferStatusReadService');
 export const OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN = Symbol('OfferStatusSnapshotRepositoryPort');
 export const SELLER_POLICIES_SERVICE_TOKEN = Symbol('ISellerPoliciesService');
 export const SELLER_POLICIES_CACHE_TOKEN = Symbol('SellerPoliciesCacheRepositoryPort');
@@ -40,3 +41,23 @@ export const PRODUCT_PUBLISH_EXECUTION_SERVICE_TOKEN = Symbol('IProductPublishEx
 export const PRODUCT_PUBLISH_ENQUEUE_SERVICE_TOKEN = Symbol('IProductPublishEnqueueService');
 export const LISTING_CREATION_QUERY_SERVICE_TOKEN = Symbol('IListingCreationQueryService');
 export const BULK_SHOP_PUBLISH_SUBMIT_SERVICE_TOKEN = Symbol('IBulkShopPublishSubmitService');
+
+// Shop-side category browse (#1834)
+export const SHOP_CATEGORY_BROWSE_SERVICE_TOKEN = Symbol('IShopCategoryBrowseService');
+// Shop publish retry (#1845)
+export const BULK_SHOP_PUBLISH_RETRY_SERVICE_TOKEN = Symbol('IBulkShopPublishRetryService');
+// Shop product status reconcile (#1845)
+export const SHOP_STATUS_SYNC_SERVICE_TOKEN = Symbol('IShopStatusSyncService');
+export const SHOP_PRODUCT_STATUS_SNAPSHOT_REPOSITORY_TOKEN = Symbol(
+  'ShopProductStatusSnapshotRepositoryPort',
+);
+
+// Shop-side global attribute read (#1835)
+export const SHOP_ATTRIBUTE_READ_SERVICE_TOKEN = Symbol('IShopAttributeReadService');
+
+// Destination-aware duplicate guard (#1837)
+export const SHOP_PRODUCT_MAPPING_REPOSITORY_TOKEN = Symbol('ShopProductMappingRepositoryPort');
+export const PUBLISHED_VARIANTS_SERVICE_TOKEN = Symbol('IPublishedVariantsService');
+
+// Shop-side products cockpit coverage pills (#1838 follow-up fix)
+export const SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN = Symbol('IShopProductMappingsService');

@@ -22,6 +22,7 @@ import type {
   OrderStateMapping,
   CategoryMapping,
   AllegroCategory,
+  CategoryPathNode,
   PrestashopCategory,
   MappingOption,
   MappingSide,
@@ -34,6 +35,8 @@ import type {
   RoutingRule,
   CandidateProcessor,
   UpsertRoutingRulesPayload,
+  AttributeRule,
+  UpsertAttributeRulePayload,
 } from './mappings.types';
 
 export interface MappingsApi {
@@ -65,6 +68,7 @@ export interface MappingsApi {
   upsertCategoryMapping: (connectionId: string, prestashopCategoryId: string, payload: UpsertCategoryMappingPayload) => Promise<CategoryMapping>;
   deleteCategoryMapping: (connectionId: string, prestashopCategoryId: string) => Promise<void>;
   getAllegroCategories: (connectionId: string, parentId?: string) => Promise<AllegroCategory[]>;
+  getCategoryPath: (connectionId: string, categoryId: string) => Promise<CategoryPathNode[]>;
   getPrestashopCategories: (connectionId: string) => Promise<PrestashopCategory[]>;
 
   // Fulfillment routing (#836) — sibling of /mappings, keyed on the source connection.
@@ -74,6 +78,14 @@ export interface MappingsApi {
     payload: UpsertRoutingRulesPayload,
   ) => Promise<RoutingRule[]>;
   getRoutingCandidates: (connectionId: string) => Promise<CandidateProcessor[]>;
+
+  // Attribute mapping rules (#1841) — operator-authored, deterministic rule layer.
+  getAttributeRules: (connectionId: string) => Promise<AttributeRule[]>;
+  upsertAttributeRule: (
+    connectionId: string,
+    payload: UpsertAttributeRulePayload,
+  ) => Promise<AttributeRule>;
+  deleteAttributeRule: (connectionId: string, ruleId: string) => Promise<void>;
 }
 
 interface ApiRequest {
@@ -156,9 +168,30 @@ export function createMappingsApi(request: ApiRequest): MappingsApi {
       );
     },
 
+    getCategoryPath: (connectionId, categoryId) =>
+      request<CategoryPathNode[]>(
+        `/connections/${connectionId}/mappings/options/source/categories/${encodeURIComponent(
+          categoryId,
+        )}/path`,
+      ),
+
     getPrestashopCategories: (connectionId) =>
       request<PrestashopCategory[]>(
         `/connections/${connectionId}/mappings/options/destination/categories`,
       ),
+
+    getAttributeRules: (connectionId) =>
+      request<AttributeRule[]>(`/connections/${connectionId}/attribute-rules`),
+
+    upsertAttributeRule: (connectionId, payload) =>
+      request<AttributeRule>(`/connections/${connectionId}/attribute-rules`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }),
+
+    deleteAttributeRule: (connectionId, ruleId) =>
+      request<void>(`/connections/${connectionId}/attribute-rules/${ruleId}`, {
+        method: 'DELETE',
+      }),
   };
 }

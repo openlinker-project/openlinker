@@ -215,6 +215,41 @@ export interface MarketplaceOfferStatusSyncPayloadV1 {
 }
 
 /**
+ * Payload for `marketplace.offer.refreshSnapshot` jobs (#1760).
+ *
+ * Post-terminal one-shot reconcile: the creation poller (#447) terminalises a
+ * record to `draft` / `failed(POLL_TIMEOUT)` when Allegro's validator outran
+ * the poll budget; Allegro may activate the offer minutes later. This bounded,
+ * delayed job re-reads the live publication status (`OfferStatusReader`) and
+ * upserts `offer_status_snapshots`, so the operator-facing live status (#816
+ * read surface) reflects the late activation without waiting for the hourly
+ * steady-state sync. The handler re-schedules `attempt + 1` (up to a small cap)
+ * only while the offer is still not terminally published.
+ *
+ * Connection id comes from `job.connectionId`, not the payload.
+ */
+export interface MarketplaceOfferRefreshSnapshotPayloadV1 {
+  schemaVersion: 1;
+  /** Marketplace-native offer id to re-read (e.g. Allegro `7781896308`). */
+  externalOfferId: string;
+  /** Internal OL variant the offer is mapped to (carried for the snapshot upsert). */
+  internalVariantId: string;
+  /** Reconcile attempt, 1-based. The handler bounds re-scheduling by this. */
+  attempt: number;
+}
+
+/**
+ * Delay (seconds) before reconcile `attempt` N runs, indexed by `attempt - 1`
+ * (#1760): ~2 min, ~8 min, ~20 min. Chosen to comfortably outlast the ~9-min
+ * creation-poll budget so a late Allegro activation is caught well before the
+ * hourly steady-state sync. Length defines the attempt cap.
+ */
+export const OFFER_REFRESH_SNAPSHOT_DELAYS_SECONDS = [120, 480, 1200] as const;
+
+/** Max reconcile attempts (#1760) — derived from the delay schedule length. */
+export const OFFER_REFRESH_SNAPSHOT_MAX_ATTEMPTS = OFFER_REFRESH_SNAPSHOT_DELAYS_SECONDS.length;
+
+/**
  * Payload for `marketplace.offer.stockRestore` jobs (#1146).
  *
  * Enqueued by the `OrderIngestionService` cancellation-observe hook when an

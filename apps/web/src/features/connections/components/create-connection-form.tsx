@@ -20,6 +20,10 @@ import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { Textarea } from '../../../shared/ui/textarea';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { useDemoMode } from '../../system';
 
 const DEFAULT_CONFIG = JSON.stringify(
   {
@@ -45,6 +49,11 @@ export function CreateConnectionForm(): ReactElement {
   const navigate = useNavigate();
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const plugins = usePlatforms();
+  const demoMode = useDemoMode();
+  // The page-level "New connection" CTA that opens this form stays enabled
+  // for a demo viewer (#1667); only this form's own final submit is locked,
+  // matching EditConnectionForm's "Save changes" treatment (#1615).
+  const write = useWriteAccess('connections:write', demoMode);
   const platformOptions = plugins.map((p) => ({ value: p.platformType, label: p.displayName }));
   const form = useForm<CreateConnectionFormValues, undefined, CreateConnectionFormSubmission>({
     defaultValues: DEFAULT_VALUES,
@@ -206,9 +215,11 @@ export function CreateConnectionForm(): ReactElement {
 
         {requiresExternalAuthRedirect ? null : (
           <div className="form-actions">
-            <Button type="submit" disabled={createConnection.isPending}>
-              {createConnection.isPending ? 'Creating...' : 'Create connection'}
-            </Button>
+            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <Button type="submit" disabled={createConnection.isPending || write.demoReadOnly}>
+                {createConnection.isPending ? 'Creating...' : 'Create connection'}
+              </Button>
+            </ReadOnlyLock>
             <Button tone="secondary" onClick={() => setIsResetDialogOpen(true)} disabled={createConnection.isPending}>
               Reset draft
             </Button>

@@ -241,4 +241,62 @@ describe('SyncJobDetailPage', () => {
       expect(getOfferCreationStatus).not.toHaveBeenCalled();
     });
   });
+
+  describe('demo read-only viewer (#1667)', () => {
+    const viewerSession = createAuthenticatedSessionAdapter({
+      id: 'u2',
+      username: 'viewer',
+      email: null,
+      role: 'viewer',
+      permissions: ['sync:read'],
+    });
+
+    const deadJob: SyncJob = {
+      ...sampleJob,
+      status: 'dead',
+      attempts: 3,
+      lastError: 'timeout',
+    };
+
+    it('renders Retry visible but disabled with a read-only tooltip for a demo viewer', async () => {
+      const mockApi = createMockApiClient({
+        syncJobs: { getById: vi.fn().mockResolvedValue(deadJob) },
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      });
+
+      renderWithProviders(
+        <Routes>
+          <Route path="/sync-jobs/:id" element={<SyncJobDetailPage />} />
+        </Routes>,
+        {
+          apiClient: mockApi,
+          route: '/sync-jobs/job_abc12345-1111-2222-3333-444444444444',
+          sessionAdapter: viewerSession,
+        },
+      );
+
+      const retryButton = await screen.findByRole('button', { name: 'Retry' });
+      expect(retryButton).toBeDisabled();
+    });
+
+    it('keeps the existing hide-when-missing behaviour for an unauthorized non-demo viewer', async () => {
+      const mockApi = createMockApiClient({
+        syncJobs: { getById: vi.fn().mockResolvedValue(deadJob) },
+      });
+
+      renderWithProviders(
+        <Routes>
+          <Route path="/sync-jobs/:id" element={<SyncJobDetailPage />} />
+        </Routes>,
+        {
+          apiClient: mockApi,
+          route: '/sync-jobs/job_abc12345-1111-2222-3333-444444444444',
+          sessionAdapter: viewerSession,
+        },
+      );
+
+      await screen.findByText('Job failed after 3 attempts');
+      expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+    });
+  });
 });

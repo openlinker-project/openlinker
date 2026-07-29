@@ -11,6 +11,7 @@ import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTIT
 import { IProductsService, PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
 import type { IncomingOrderItemRef } from '../../domain/types/incoming-order.types';
 import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
+import { StaleOrderItemError } from '../../domain/exceptions/stale-order-item.error';
 import type { IOrderItemRefResolverService } from '../interfaces/order-item-ref-resolver.service.interface';
 import type {
   ItemResolutionResult,
@@ -36,7 +37,10 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
       const result = await this.resolve(connectionId, productRef);
       return { resolved: true, ...result };
     } catch (error) {
-      if (error instanceof MissingOrderItemMappingError) {
+      if (
+        error instanceof MissingOrderItemMappingError ||
+        error instanceof StaleOrderItemError
+      ) {
         return { resolved: false, productRef, reason: error.message };
       }
       throw error;
@@ -68,6 +72,9 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
             productRef,
             'identifier_mappings:Offer:variant-missing'
           );
+        }
+        if (variant.isStale) {
+          throw new StaleOrderItemError(connectionId, productRef, variant.id);
         }
         return { internalProductId: variant.productId, internalVariantId: variant.id };
       }
@@ -107,6 +114,9 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
             'identifier_mappings:ProductVariant:variant-missing'
           );
         }
+        if (variant.isStale) {
+          throw new StaleOrderItemError(connectionId, productRef, variant.id);
+        }
         return { internalProductId: variant.productId, internalVariantId: variant.id };
       }
       case 'sku': {
@@ -124,6 +134,9 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
         }
         const variant = await this.productsService.getVariant(internalId);
         if (variant) {
+          if (variant.isStale) {
+            throw new StaleOrderItemError(connectionId, productRef, variant.id);
+          }
           return { internalProductId: variant.productId, internalVariantId: variant.id };
         }
         return { internalProductId: internalId };

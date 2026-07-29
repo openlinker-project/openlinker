@@ -22,6 +22,7 @@ import {
   UserNotActiveException,
   UserNotDeactivatedException,
   UserNotPendingException,
+  UserNotPendingConfirmationException,
   UserRepositoryPort,
   USER_REPOSITORY_TOKEN,
 } from '@openlinker/core/users';
@@ -118,6 +119,15 @@ export class UserManagementService implements IUserManagementService {
       await this.userRepository.deleteById(userId);
     }
     this.logger.log(`User deleted: ${userId}`);
+  }
+
+  async confirmEmail(userId: string): Promise<void> {
+    const user = await this.requireUser(userId);
+    if (user.status !== 'pending_confirmation') {
+      throw new UserNotPendingConfirmationException(userId);
+    }
+    await this.userRepository.updateStatus(userId, 'active');
+    this.logger.log(`User email confirmed and activated: ${userId}`);
   }
 
   private async requireUser(userId: string): Promise<User> {

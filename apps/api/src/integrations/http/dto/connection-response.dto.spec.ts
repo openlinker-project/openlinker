@@ -1,8 +1,11 @@
 /**
- * ConnectionResponseDto — secret redaction unit tests (#1124)
+ * ConnectionResponseDto — secret redaction unit tests (#1124, #1616)
  *
- * Verifies that the role-aware static factory (ADR-027) never leaks raw
- * config values to non-admin callers (deny-by-default, not late-blanking).
+ * Verifies that the role-aware static factory never leaks raw config values
+ * to non-admin callers (deny-by-default, not late-blanking), and that the
+ * demo-mode-aware relaxation (#1616) only widens visibility for the
+ * read-only 'viewer' role while a deployment is in demo mode — a production
+ * 'operator', or any role outside demo mode, still gets a blanked config.
  *
  * @module apps/api/src/integrations/http/dto
  */
@@ -31,9 +34,55 @@ describe('ConnectionResponseDto.fromDomain', () => {
       expect(dto.config).toEqual({ baseUrl: 'https://shop.example.com', apiKey: 'secret-key-123' });
     });
 
-    it('should return empty config for viewer role', () => {
+    it('should return empty config for viewer role outside demo mode', () => {
       const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities, 'viewer');
       expect(dto.config).toEqual({});
+    });
+
+    it('should return empty config for viewer role when demo mode is explicitly disabled', () => {
+      const dto = ConnectionResponseDto.fromDomain(
+        baseConnection,
+        supportedCapabilities,
+        'viewer',
+        false
+      );
+      expect(dto.config).toEqual({});
+    });
+
+    it('should return real config for viewer role when demo mode is enabled (#1616)', () => {
+      const dto = ConnectionResponseDto.fromDomain(
+        baseConnection,
+        supportedCapabilities,
+        'viewer',
+        true
+      );
+      expect(dto.config).toEqual({
+        baseUrl: 'https://shop.example.com',
+        apiKey: 'secret-key-123',
+      });
+    });
+
+    it('should still blank config for operator role even when demo mode is enabled (#1124 protection preserved)', () => {
+      const dto = ConnectionResponseDto.fromDomain(
+        baseConnection,
+        supportedCapabilities,
+        'operator',
+        true
+      );
+      expect(dto.config).toEqual({});
+    });
+
+    it('should return full config for admin role regardless of demo mode flag', () => {
+      const dto = ConnectionResponseDto.fromDomain(
+        baseConnection,
+        supportedCapabilities,
+        'admin',
+        false
+      );
+      expect(dto.config).toEqual({
+        baseUrl: 'https://shop.example.com',
+        apiKey: 'secret-key-123',
+      });
     });
 
     it('should return empty config when role is undefined (no secret reaches unauthenticated callers)', () => {

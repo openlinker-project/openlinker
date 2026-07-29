@@ -21,9 +21,11 @@
  */
 import type { PluginApiNamespaces } from '../app/api/api-client';
 import { allegroMockApiNamespaces } from '../plugins/allegro/allegro.mocks';
+import { ksefMockApiNamespaces } from '../plugins/ksef/ksef.mocks';
 
 export type PluginMockApiNamespacesFactory = () => Partial<PluginApiNamespaces>;
 
 export const IN_TREE_MOCK_API_NAMESPACES: readonly PluginMockApiNamespacesFactory[] = [
   allegroMockApiNamespaces,
+  ksefMockApiNamespaces,
 ];

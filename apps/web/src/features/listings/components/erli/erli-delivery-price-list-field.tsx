@@ -3,8 +3,8 @@
  *
  * Shared, content-only picker for Erli's delivery price list ("cennik
  * dostawy") — the selection that makes a created offer buyable (without it Erli
- * reports "brak metody dostawy"). Consumed by BOTH `ErliCreateOfferWizard`
- * (single) and `ErliBulkConfigSection` (bulk) so the field never drifts.
+ * reports "brak metody dostawy"). Consumed by `ErliBulkConfigSection` as the
+ * batch-level delivery selection.
  *
  * Options are fetched live from Erli per-connection via
  * `useDeliveryPriceListsQuery`. Controlled via `value` + `onChange` (the price

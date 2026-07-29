@@ -16,6 +16,14 @@
  *   - canRetryInvoice() is the single gate (failed+rejected only)
  *   - in-doubt shows "Check {provider}"/"Mark resolved" (no-op for Wave A)
  *
+ * Write-access gating (#1613): the Issue/Retry affordances are gated behind
+ * the `invoices:write` permission via `useWriteAccess`, reusing the SAME
+ * visible-but-disabled-with-a-tooltip pattern as `ConnectionActionsPanel`
+ * (#1615) rather than only reacting to the resulting 403 after the fact. A
+ * demo read-only viewer still sees the action (disabled, `ReadOnlyLock`
+ * tooltip); a genuinely unauthorized non-demo session keeps the pre-existing
+ * hide-when-missing behaviour.
+ *
  * @module apps/web/src/features/invoicing/components
  */
 import { useMemo, useState, type ReactElement } from 'react';
@@ -35,12 +43,16 @@ import { Select } from '../../../shared/ui/select';
 import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-list';
 import { ApiError } from '../../../shared/api/api-error';
 import { usePlatform } from '../../../shared/plugins';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { useDemoMode } from '../../system';
 
 import type { OrderRecord } from '../../orders';
 import type { InvoiceRecord } from '../api/invoicing.types';
 import { useOrderInvoiceQuery } from '../hooks/use-order-invoice-query';
 import { useIssueInvoiceMutation } from '../hooks/use-issue-invoice-mutation';
-import { resolveIssueErrorMessage } from '../lib/issue-error-message';
+import { resolveIssueErrorMessage, isMissingNumberingSeriesError } from '../lib/issue-error-message';
 import { deriveInvoiceDisplayStatus, canRetryInvoice, resolveFailureCopy } from '../lib/derive-invoice-display';
 import { InvoiceStatusBadge } from './invoice-status-badge';
 import { RegulatoryStatusBadge } from './regulatory-status-badge';
@@ -174,12 +186,18 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
   const invoiceQuery = useOrderInvoiceQuery(order.internalOrderId, invoicingConnectionId);
   const issueMutation = useIssueInvoiceMutation();
 
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('invoices:write', demoMode);
+
   // Per-provider plugin slots (resolved via platformType — ZERO literal strings here)
   const platform = usePlatform(invoicingConnection?.platformType);
   const InvoiceDetailSection = platform?.invoiceDetailSection ?? null;
   const InvoiceCorrectionFlow = platform?.invoiceCorrectionFlow ?? null;
 
   const [correctionOpen, setCorrectionOpen] = useState(false);
+  // AC #6: an issue-without-a-numbering-series rejection is surfaced as an
+  // actionable CTA (link to the numbering page), not a bare toast.
+  const [missingNumbering, setMissingNumbering] = useState(false);
 
   // Loading skeleton while connections settle
   if (connectionsQuery.isLoading) {
@@ -265,6 +283,7 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
 
   const handleIssue = (): void => {
     if (!invoicingConnection) return;
+    setMissingNumbering(false);
     issueMutation.mutate(
       { connectionId: invoicingConnection.id, orderId: order.internalOrderId, documentType },
       {
@@ -276,6 +295,12 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
           });
         },
         onError: (error) => {
+          // Missing-numbering-series surfaces as a persistent CTA below (no toast,
+          // so the error isn't surfaced twice).
+          if (isMissingNumberingSeriesError(error)) {
+            setMissingNumbering(true);
+            return;
+          }
           showToast({
             tone: 'error',
             title: t('invoice.action.issueFailed', 'Could not issue invoice'),
@@ -323,6 +348,28 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
           >
             {t('invoice.query.retry', 'Retry')}
           </Button>
+        </Alert>
+      ) : null}
+
+      {/* AC #6: no numbering series configured — actionable CTA, not a toast */}
+      {missingNumbering && invoicingConnection ? (
+        <Alert
+          tone="warning"
+          className="order-invoice-panel__error"
+          title={t('invoice.numbering.missingTitle', 'Numbering not configured')}
+          action={
+            <Link
+              className="button button--primary button--sm"
+              to={`/connections/${invoicingConnection.id}/numbering`}
+            >
+              {t('invoice.numbering.configure', 'Configure numbering')}
+            </Link>
+          }
+        >
+          {t(
+            'invoice.numbering.missingBody',
+            'This connection has no invoice numbering series configured. Set one up before issuing invoices.',
+          )}
         </Alert>
       ) : null}
 
@@ -405,7 +452,7 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
               </span>
             </div>
           </div>
-          {canRetryInvoice(invoice) ? (
+          {canRetryInvoice(invoice) && write.visible ? (
             <div className="order-invoice-panel__actions">
               <span className="text-muted" style={{ fontSize: '11.5px' }}>
                 {t(
@@ -414,13 +461,15 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
                 )}
               </span>
               <span className="spacer" />
-              <Button
-                tone="secondary"
-                onClick={handleIssue}
-                disabled={issueMutation.isPending}
-              >
-                {t('invoice.action.retry', 'Retry')}
-              </Button>
+              <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                <Button
+                  tone="secondary"
+                  onClick={handleIssue}
+                  disabled={issueMutation.isPending || write.demoReadOnly}
+                >
+                  {t('invoice.action.retry', 'Retry')}
+                </Button>
+              </ReadOnlyLock>
             </div>
           ) : null}
         </>
@@ -479,17 +528,20 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
         </>
       ) : null}
 
-      {/* ── Not issued: Issue button + DocumentTypeSelect ── */}
-      {!requiresConnectionPick && !invoiceQuery.isError && !invoiceQuery.isLoading && displayStatus === 'not-issued' ? (
-        <div className="order-invoice-panel__actions">
+      {/* ── Not issued: DocumentTypeSelect (fills the row) + primary Issue ── */}
+      {!requiresConnectionPick && !invoiceQuery.isError && !invoiceQuery.isLoading && displayStatus === 'not-issued' && write.visible ? (
+        <div className="order-invoice-panel__actions order-invoice-panel__actions--issue">
           <DocumentTypeSelect
             value={documentType}
             onChange={setDocumentType}
-            disabled={issueMutation.isPending}
+            disabled={issueMutation.isPending || write.demoReadOnly}
+            className="order-invoice-panel__doc-type"
           />
-          <Button tone="primary" onClick={handleIssue} disabled={issueMutation.isPending}>
-            {t('invoice.action.issue', 'Issue invoice')}
-          </Button>
+          <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <Button tone="primary" onClick={handleIssue} disabled={issueMutation.isPending || write.demoReadOnly}>
+              {t('invoice.action.issue', 'Issue invoice')}
+            </Button>
+          </ReadOnlyLock>
         </div>
       ) : null}
     </section>

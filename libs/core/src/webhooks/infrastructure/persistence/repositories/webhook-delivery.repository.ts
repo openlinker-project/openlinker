@@ -65,20 +65,37 @@ export class WebhookDeliveryRepository implements WebhookDeliveryRepositoryPort 
     if (input.payload !== undefined) overlay.payload = input.payload;
     if (input.status !== undefined) overlay.status = input.status;
 
-    const updateKeys = Object.keys(overlay) as (keyof WebhookDeliveryOrmEntity)[];
+    const insertData: Record<string, unknown> = { ...values, ...overlay };
+    const columns = Object.keys(insertData);
+    const placeholders = columns.map((_, i) => `$${i + 1}`);
+    const params = columns.map((col) =>
+      col === 'payload' && insertData[col] != null
+        ? JSON.stringify(insertData[col])
+        : insertData[col]
+    );
 
-    await this.repository
-      .createQueryBuilder()
-      .insert()
-      .into(WebhookDeliveryOrmEntity)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument -- typeorm QueryBuilder `.values()` typing rejects the dynamic overlay-merge shape we build above
-      .values({ ...values, ...overlay } as any)
-      .orUpdate(updateKeys.length > 0 ? (updateKeys as string[]) : ['updatedAt'], [
-        'provider',
-        'connectionId',
-        'eventId',
-      ])
-      .execute();
+    // On conflict, refresh only the caller-supplied overlay columns (plus the
+    // update timestamp), matching the previous `.orUpdate(updateKeys, ...)`.
+    const setAssignments = [
+      ...Object.keys(overlay).map((col) => `"${col}" = EXCLUDED."${col}"`),
+      `"updatedAt" = now()`,
+    ];
+
+    // Raw parameterized INSERT ... ON CONFLICT DO UPDATE instead of TypeORM's
+    // QueryBuilder. `QueryBuilder.insert()` lazily `require()`s InsertQueryBuilder
+    // to sidestep a circular import; under jest's per-file module sandbox that
+    // lazy require can resolve to `undefined` ("InsertQueryBuilderCls is not a
+    // constructor") when invoked from the long-lived webhook consumer loop,
+    // which silently dropped the handler's delivery-stamp write (#1511). Column
+    // names are a fixed whitelist of entity fields (never user input); every
+    // value is a bound parameter.
+    await this.repository.query(
+      `INSERT INTO webhook_deliveries (${columns.map((c) => `"${c}"`).join(', ')})
+       VALUES (${placeholders.join(', ')})
+       ON CONFLICT ("provider", "connectionId", "eventId")
+       DO UPDATE SET ${setAssignments.join(', ')}`,
+      params
+    );
 
     const saved = await this.repository.findOne({
       where: {

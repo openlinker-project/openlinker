@@ -73,10 +73,13 @@
  * @module libs/integrations/erli/src/infrastructure/adapters
  * @implements {OrderSourcePort}
  * @implements {OrderStatusWriteback}
+ * @implements {SourceOptionsReader}
  */
 import type {
   DispatchCarrierHint,
   IncomingOrder,
+  MappingOption,
+  OrderDispatchWindow,
   OrderFeedEventType,
   OrderFeedInput,
   OrderFeedItem,
@@ -85,6 +88,7 @@ import type {
   OrderSourcePort,
   OrderStatusWriteback,
   OrderWritebackResult,
+  SourceOptionsReader,
 } from '@openlinker/core/orders';
 import type { IInventoryQueryService } from '@openlinker/core/inventory';
 import type {
@@ -93,7 +97,10 @@ import type {
   OfferStockRestoreTarget,
 } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
-import { ERLI_PRODUCT_ID_PATTERN } from '../../erli.constants';
+import { addWorkingDays } from '@openlinker/shared/date';
+import type { ErliDispatchTime } from '../../domain/types/erli-connection.types';
+import type { ErliProductResource } from './erli-product.types';
+import { ERLI_PRODUCT_ID_PATTERN, erliProductPath } from '../../erli.constants';
 import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
 import { ErliOrderDispatchRejectedException } from '../../domain/exceptions/erli-order-dispatch-rejected.exception';
 import {
@@ -116,6 +123,12 @@ import {
   type ErliInboxMarkReadRequest,
   type ErliInboxMessage,
 } from './erli-inbox.types';
+import {
+  ERLI_DELIVERY_METHODS_DICT_PATH,
+  ERLI_PRICE_LISTS_DETAILS_PATH,
+  type ErliDeliveryMethodDictEntry,
+  type ErliPriceListDetails,
+} from './erli-delivery.types';
 
 /** The two order-relevant inbox event literals (#992 / Q-INBOX-3). */
 const ERLI_ORDER_EVENT_TYPES: ReadonlySet<string> = new Set([
@@ -130,7 +143,17 @@ const ERLI_ORDER_STATUSES: ReadonlySet<ErliOrderStatus> = new Set<ErliOrderStatu
   'returned',
 ]);
 
-export class ErliOrderSourceAdapter implements OrderSourcePort, OrderStatusWriteback {
+/** Operator-facing labels for the Erli order-status enum (SourceOptionsReader). */
+const ERLI_ORDER_STATUS_LABELS: ReadonlyArray<{ value: ErliOrderStatus; label: string }> = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'purchased', label: 'Purchased' },
+  { value: 'cancelled', label: 'Cancelled' },
+  { value: 'returned', label: 'Returned' },
+];
+
+export class ErliOrderSourceAdapter
+  implements OrderSourcePort, OrderStatusWriteback, SourceOptionsReader
+{
   private readonly logger = new Logger(ErliOrderSourceAdapter.name);
 
   /**
@@ -147,6 +170,14 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderStatusWrite
     private readonly httpClient: IErliHttpClient,
     private readonly offerManager?: OfferManagerPort & OfferStockRestorer,
     private readonly inventoryQuery?: IInventoryQueryService,
+    /**
+     * Shop-wide default dispatch (handling) time from the connection config
+     * (#1776). Used by `deriveDispatchWindow` as the per-line fallback when a
+     * per-offer `dispatchTime` isn't readable off `GET /products/{externalId}`.
+     * Optional — absent (and no per-offer time) leaves the derived ship-by blank
+     * (no fabrication).
+     */
+    private readonly defaultDispatchTime?: ErliDispatchTime,
   ) {}
 
   /**
@@ -274,7 +305,198 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderStatusWrite
     }
 
     const order = assertErliOrder(response.data);
-    return mapErliOrderToIncomingOrder(order);
+    const incoming = mapErliOrderToIncomingOrder(order);
+    // Ship-by (#1776) is derived HERE, post-mapping, because resolving the
+    // authoritative per-offer handling time needs per-offer product GETs (I/O) —
+    // the mapper stays pure. Absent inputs leave the window unmapped (no
+    // fabrication); the derived window is marked `estimated: true`.
+    const dispatchTime = await this.deriveDispatchWindow(order);
+    return dispatchTime !== undefined ? { ...incoming, dispatchTime } : incoming;
+  }
+
+  /**
+   * Derive the neutral, ESTIMATED ship-by window (#1776) for an Erli order.
+   *
+   * Per line, the handling time is the per-offer `dispatchTime` read back from
+   * `GET /products/{externalId}` when present, else the connection-wide
+   * `defaultDispatchTime` (robust whether or not Erli echoes the per-offer field
+   * — absent everywhere ⇒ behaviour == the connection-default derivation, no
+   * regression). Each line's deadline is `purchasedAt + handlingTime`; the window
+   * takes the MAX (latest) deadline across lines - OL models a single order-level
+   * ship-by for one shipment, so the deadline is when EVERY line must have shipped
+   * (mirrors Allegro's single order-level `delivery.time.dispatch`). Taking MIN
+   * would flag the order overdue before its slowest line's real obligation.
+   *
+   * Fail-safe / never-fabricate: returns `undefined` (ship-by stays blank) when
+   * `purchasedAt` is missing/unparseable, or when ANY line has no resolvable
+   * handling time (no per-offer value AND no connection default). A per-offer GET
+   * failure degrades that line to the connection default rather than failing
+   * ingestion.
+   *
+   * Handling-time drift (#1776): the window is recomputed from the offer's
+   * CURRENT handling time on every `getOrder`, not snapshotted at purchase time
+   * (matches the "re-derive on every persist" convention elsewhere in core). So
+   * editing a listing's handling time after an order is in flight retroactively
+   * shifts that order's `dispatchByAt` on the next reconciliation pull, with no
+   * operator signal that it moved - a known limitation for the pending rider/CTA
+   * follow-up in this epic, not a regression.
+   */
+  private async deriveDispatchWindow(order: ErliOrder): Promise<OrderDispatchWindow | undefined> {
+    const purchasedAt = order.purchasedAt;
+    if (!purchasedAt) {
+      return undefined;
+    }
+    const from = new Date(purchasedAt);
+    if (Number.isNaN(from.getTime())) {
+      return undefined;
+    }
+    if (order.items.length === 0) {
+      return undefined;
+    }
+
+    // Resolve the per-offer handling times concurrently, deduped by offer id so
+    // split lines sharing an offer id issue a single GET. Only the distinct-id
+    // network calls are parallelised; the deadline fold below stays sequential
+    // (pure, order-independent).
+    const distinctOfferIds = [...new Set(order.items.map((item) => item.externalId))];
+    const handlingCache = new Map<string, ErliDispatchTime | undefined>();
+    await Promise.all(
+      distinctOfferIds.map(async (offerId) => {
+        handlingCache.set(offerId, await this.fetchOfferDispatchTime(offerId));
+      }),
+    );
+
+    let maxDeadline: Date | undefined;
+    for (const item of order.items) {
+      const handling = handlingCache.get(item.externalId) ?? this.defaultDispatchTime;
+      if (!handling) {
+        // Guard: a line with no resolvable handling time ⇒ never fabricate.
+        return undefined;
+      }
+
+      const deadline = computeErliDispatchDeadline(from, handling);
+      if (maxDeadline === undefined || deadline.getTime() > maxDeadline.getTime()) {
+        maxDeadline = deadline;
+      }
+    }
+
+    if (maxDeadline === undefined) {
+      return undefined;
+    }
+    return { from: from.toISOString(), to: maxDeadline.toISOString(), estimated: true };
+  }
+
+  /**
+   * Read a single offer's per-offer `dispatchTime` off `GET /products/{externalId}`
+   * (#1776). Only OL-managed ids (matching {@link ERLI_PRODUCT_ID_PATTERN}) are
+   * fetched — a non-matching id (e.g. a pre-existing Erli listing) returns
+   * `undefined` so the caller falls back to the connection default. A GET failure
+   * is warn-logged (no PII / id) and degrades to `undefined` (connection default)
+   * rather than failing ingestion.
+   */
+  private async fetchOfferDispatchTime(offerId: string): Promise<ErliDispatchTime | undefined> {
+    if (!ERLI_PRODUCT_ID_PATTERN.test(offerId)) {
+      return undefined;
+    }
+    try {
+      const res = await this.httpClient.get<ErliProductResource>(erliProductPath(offerId));
+      return res.data?.dispatchTime;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to read Erli per-offer dispatch time for ship-by estimate — ` +
+          `falling back to connection default (connection: ${this.connectionId}): ${(error as Error).message}`,
+      );
+      return undefined;
+    }
+  }
+
+  // ── SourceOptionsReader (#1738) ──────────────────────────────────────────
+  // Populates the source-side dropdowns of the connection-mappings page
+  // (`MappingOptionsController` narrows via `isSourceOptionsReader`). Mirrors
+  // the Allegro shape: statuses + payment methods are static documented
+  // vocabularies; delivery methods are the only live lookup.
+
+  /** Static list from the documented Erli order-status enum (`erli-order.types.ts`). */
+  listOrderStatuses(): Promise<MappingOption[]> {
+    return Promise.resolve(ERLI_ORDER_STATUS_LABELS.map(({ value, label }) => ({ value, label })));
+  }
+
+  /**
+   * Erli exposes no payment-method vocabulary — payment is derivable only from
+   * the `delivery.cod` boolean on orders (see `derivePaymentStatus` in the
+   * mapper). The two derivable values are surfaced so operators can still map
+   * COD vs online if a destination needs it.
+   */
+  listPaymentMethods(): Promise<MappingOption[]> {
+    return Promise.resolve([
+      { value: 'online', label: 'Online payment' },
+      { value: 'cod', label: 'Cash on delivery' },
+    ]);
+  }
+
+  /**
+   * Live lookup: the shop's ACTIVE delivery methods — the intersection of the
+   * seller's price lists (`GET /delivery/priceListsDetails`, the methods orders
+   * can actually arrive with) and the platform dictionary
+   * (`GET /dictionaries/deliveryMethods`, the labels). Returned `value`s are the
+   * same tokens Erli stamps on orders as `delivery.typeId`, i.e. the routing-rule
+   * lookup keys. A method missing from the dictionary keeps its raw id as the
+   * label (best-effort). Deduped by value; price-list order preserved.
+   */
+  async listDeliveryMethods(): Promise<MappingOption[]> {
+    const [priceLists, dictionary] = await Promise.all([
+      this.fetchPriceListDetails(),
+      this.fetchDeliveryMethodDictionary(),
+    ]);
+
+    const labelById = new Map(dictionary.map((entry) => [entry.id, entry.name]));
+
+    const options: MappingOption[] = [];
+    const seen = new Set<string>();
+    for (const priceList of priceLists) {
+      for (const price of priceList.prices ?? []) {
+        const methodId = price.deliveryMethod?.id;
+        if (!methodId || seen.has(methodId)) {
+          continue;
+        }
+        seen.add(methodId);
+        options.push({ value: methodId, label: labelById.get(methodId) ?? methodId });
+      }
+    }
+
+    if (options.length === 0) {
+      this.logger.warn(
+        `Erli returned no active delivery methods for connection ${this.connectionId} — ` +
+          `listDeliveryMethods is empty. Operator likely needs to configure a price list first.`,
+      );
+    }
+    return options;
+  }
+
+  /** `GET /delivery/priceListsDetails` with an array-shape guard (no PII bodies logged). */
+  private async fetchPriceListDetails(): Promise<ErliPriceListDetails[]> {
+    const response = await this.httpClient.get<unknown>(ERLI_PRICE_LISTS_DETAILS_PATH);
+    if (!Array.isArray(response.data)) {
+      throw new ErliApiException(
+        'Erli price-lists-details response is not an array',
+        response.status,
+      );
+    }
+    return response.data as ErliPriceListDetails[];
+  }
+
+  /** `GET /dictionaries/deliveryMethods` with an array-shape guard; drops malformed entries. */
+  private async fetchDeliveryMethodDictionary(): Promise<ErliDeliveryMethodDictEntry[]> {
+    const response = await this.httpClient.get<unknown>(ERLI_DELIVERY_METHODS_DICT_PATH);
+    if (!Array.isArray(response.data)) {
+      throw new ErliApiException(
+        'Erli delivery-methods dictionary response is not an array',
+        response.status,
+      );
+    }
+    return (response.data as ErliDeliveryMethodDictEntry[]).filter(
+      (entry) => typeof entry?.id === 'string' && typeof entry?.name === 'string',
+    );
   }
 
   /**
@@ -585,6 +807,35 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderStatusWrite
 /** Map the known Erli inbox event literals onto the neutral `OrderFeedEventType`. */
 function mapErliInboxEventType(type: string): OrderFeedEventType {
   return type === ERLI_INBOX_ORDER_CREATED ? 'created' : 'updated';
+}
+
+/**
+ * Pure ship-by deadline (#1776): `from + handlingTime`.
+ *
+ * Unit semantics:
+ *  - `day` (Erli's default unit): add `period` Polish WORKING days — weekends
+ *    AND PL public holidays skipped, day boundaries anchored at Europe/Warsaw
+ *    (see `@openlinker/shared/date`).
+ *  - `hour`: add `period` calendar hours.
+ *  - `month`: add `period` calendar months.
+ */
+function computeErliDispatchDeadline(from: Date, handling: ErliDispatchTime): Date {
+  const { period, unit } = handling;
+  switch (unit ?? 'day') {
+    case 'hour': {
+      const to = new Date(from);
+      to.setUTCHours(to.getUTCHours() + period);
+      return to;
+    }
+    case 'month': {
+      const to = new Date(from);
+      to.setUTCMonth(to.getUTCMonth() + period);
+      return to;
+    }
+    case 'day':
+    default:
+      return addWorkingDays(from, period);
+  }
 }
 
 /**

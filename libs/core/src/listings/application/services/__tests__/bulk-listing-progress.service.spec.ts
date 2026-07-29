@@ -43,6 +43,7 @@ describe('BulkListingProgressService', () => {
       findById: jest.fn(),
       incrementCounters: jest.fn(),
       updateStatus: jest.fn(),
+      updateTotalCount: jest.fn(),
     };
     advancements = {
       markAdvancedIfNotExists: jest.fn(),

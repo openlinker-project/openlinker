@@ -45,7 +45,8 @@ export class OrderRecordService implements IOrderRecordService {
   async persistOrder(
     order: Order,
     sourceConnectionId: string,
-    sourceEventId: string | null = null
+    sourceEventId: string | null = null,
+    sourceExternalUrl: string | null = null
   ): Promise<OrderRecord> {
     const piiConfig = getPiiConfig();
     const now = new Date();
@@ -110,6 +111,10 @@ export class OrderRecordService implements IOrderRecordService {
       // always resolves to the omp_fulfilled default).
       ...(order.shipping !== undefined && { shipping: order.shipping }),
       ...(order.pickupPoint !== undefined && { pickupPoint: order.pickupPoint }),
+      // Source-platform deep link (#1713) — present-only. Built by the source
+      // adapter (it owns the URL scheme + base URL); the FE renders the
+      // "Open order" link off this key. Absent when the source can't build one.
+      ...(sourceExternalUrl !== null && { sourceExternalUrl }),
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString(),
     };
@@ -185,6 +190,10 @@ export class OrderRecordService implements IOrderRecordService {
       // the present-only + non-PII rationale. Same fields, same placement.
       ...(incoming.shipping !== undefined && { shipping: incoming.shipping }),
       ...(incoming.pickupPoint !== undefined && { pickupPoint: incoming.pickupPoint }),
+      // Source-platform deep link (#1713) — see persistOrder. Written here too so
+      // records still awaiting item mapping carry the link before the ready-path
+      // snapshot overwrites this one.
+      ...(incoming.externalUrl !== undefined && { sourceExternalUrl: incoming.externalUrl }),
     };
 
     const orderRecord = new OrderRecord(
@@ -210,6 +219,18 @@ export class OrderRecordService implements IOrderRecordService {
    * column and SLA surfaces degrade gracefully. Re-run on every persist (both
    * the `awaiting_mapping` and `ready` paths) so a re-pulled order with a
    * changed window updates the column.
+   *
+   * Ship-by is populated only for sources whose adapter maps a dispatch window
+   * onto the incoming order (#1776): Allegro maps the per-order
+   * `delivery.time.dispatch` (marketplace-authoritative); Erli DERIVES one in
+   * `ErliOrderSourceAdapter.getOrder` from `purchasedAt` + the per-offer handling
+   * time (read back from `GET /products/{externalId}`, falling back to the
+   * connection's `defaultDispatchTime`), taking the soonest deadline across lines
+   * — Polish working-day math (weekends + PL public holidays, Europe/Warsaw) — and
+   * flags the window `estimated: true`. WooCommerce carries no per-order dispatch
+   * deadline and OL owns no WC handling time, so its `dispatchTime` is absent and
+   * ship-by stays `null` by design. The source of truth is the source adapter;
+   * this method never fabricates a window.
    */
   private deriveDispatchByAt(window: OrderDispatchWindow | undefined): Date | null {
     const to = window?.to;

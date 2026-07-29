@@ -14,7 +14,6 @@
  */
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
 import { useCustomersQuery } from '../../features/customers/hooks/use-customers-query';
-import { useInventoryQuery } from '../../features/inventory/hooks/use-inventory-query';
 import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
 import { useOrdersQuery } from '../../features/orders/hooks/use-orders-query';
 import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-query';
@@ -23,7 +22,6 @@ import { useWebhookDeliveriesQuery } from '../../features/webhook-deliveries/hoo
 export interface NavCounts {
   connections: number | null;
   customers: number | null;
-  inventory: number | null;
   jobsFailed: number | null;
   listings: number | null;
   orders: number | null;
@@ -35,7 +33,6 @@ const PROBE = { limit: 1 } as const;
 export function useNavCounts(): NavCounts {
   const connections = useConnectionsQuery();
   const orders = useOrdersQuery(undefined, PROBE);
-  const inventory = useInventoryQuery(undefined, PROBE);
   const customers = useCustomersQuery(undefined, PROBE);
   const listings = useListingsQuery(undefined, PROBE);
   const jobsFailed = useSyncJobsQuery({ status: 'dead' }, PROBE);
@@ -44,7 +41,6 @@ export function useNavCounts(): NavCounts {
   return {
     connections: connections.data?.length ?? null,
     orders: orders.data?.total ?? null,
-    inventory: inventory.data?.total ?? null,
     customers: customers.data?.total ?? null,
     listings: listings.data?.total ?? null,
     jobsFailed: jobsFailed.data?.total ?? null,

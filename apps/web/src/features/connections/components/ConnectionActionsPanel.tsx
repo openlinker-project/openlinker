@@ -9,7 +9,10 @@ import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { Alert } from '../../../shared/ui/alert';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { usePermission } from '../../../shared/auth/use-permission';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { useDemoMode } from '../../system';
 
 interface ConnectionActionsPanelProps {
   connection: Connection;
@@ -24,8 +27,9 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
   const plugin = usePlatform(connection.platformType);
   const PluginActions = plugin?.ConnectionActions;
 
-  const canWrite = usePermission('connections:write');
-  const canSync = usePermission('sync:write');
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('connections:write', demoMode);
+  const sync = useWriteAccess('sync:write', demoMode);
 
   const isDisabled = connection.status === 'disabled';
 
@@ -69,7 +73,7 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
       ) : null}
 
       <div className="action-list">
-        {canWrite ? (
+        {write.visible ? (
           <div className="action-list__item">
             <div>
               <strong>Test connection</strong>
@@ -78,17 +82,19 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
                 stored credentials.
               </p>
             </div>
-            <Button
-              tone="secondary"
-              disabled={testConnection.isPending}
-              onClick={() => void handleTest()}
-            >
-              {testConnection.isPending ? 'Testing...' : 'Test connection'}
-            </Button>
+            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <Button
+                tone="secondary"
+                disabled={testConnection.isPending || write.demoReadOnly}
+                onClick={() => void handleTest()}
+              >
+                {testConnection.isPending ? 'Testing...' : 'Test connection'}
+              </Button>
+            </ReadOnlyLock>
           </div>
         ) : null}
 
-        {canWrite ? (
+        {write.visible ? (
           <div className="action-list__item">
             <div>
               <strong>Edit connection</strong>
@@ -100,9 +106,11 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
           </div>
         ) : null}
 
-        {canWrite && PluginActions ? <PluginActions connection={connection} /> : null}
+        {write.visible && PluginActions ? (
+          <PluginActions connection={connection} readOnly={write.demoReadOnly} />
+        ) : null}
 
-        {canSync && !isDisabled ? (
+        {sync.visible && !isDisabled ? (
           <div className="action-list__item">
             <div>
               <strong>Trigger sync</strong>
@@ -120,19 +128,21 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
           </div>
         ) : null}
 
-        {canWrite && !isDisabled ? (
+        {write.visible && !isDisabled ? (
           <div className="action-list__item">
             <div>
               <strong>Disable connection</strong>
               <p className="muted-text">Stop all sync activity for this connection. This can be reversed by re-enabling.</p>
             </div>
-            <Button
-              tone="danger"
-              onClick={() => setIsDisableDialogOpen(true)}
-              disabled={disableConnection.isPending}
-            >
-              {disableConnection.isPending ? 'Disabling...' : 'Disable'}
-            </Button>
+            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <Button
+                tone="danger"
+                onClick={() => setIsDisableDialogOpen(true)}
+                disabled={disableConnection.isPending || write.demoReadOnly}
+              >
+                {disableConnection.isPending ? 'Disabling...' : 'Disable'}
+              </Button>
+            </ReadOnlyLock>
           </div>
         ) : null}
       </div>
@@ -141,6 +151,7 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
         connection={connection}
         open={isTriggerDialogOpen}
         onOpenChange={setIsTriggerDialogOpen}
+        submitDisabled={sync.demoReadOnly}
       />
 
       <ConfirmDialog

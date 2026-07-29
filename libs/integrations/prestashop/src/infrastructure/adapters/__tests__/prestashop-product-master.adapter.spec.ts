@@ -19,6 +19,7 @@ import {
   PrestashopResourceNotFoundException,
   PrestashopNotSupportedException,
 } from '@openlinker/integrations-prestashop';
+import { MasterProductNotFoundError } from '@openlinker/core/products';
 import type {
   PrestashopProduct,
   PrestashopCombination,
@@ -73,19 +74,17 @@ describe('PrestashopProductMasterAdapter', () => {
       expect(result.sku).toBe('TEST-001');
     });
 
-    it('should throw PrestashopResourceNotFoundException when no external ID mapping exists', async () => {
+    it('should throw MasterProductNotFoundError when no external ID mapping exists (#1599)', async () => {
       const internalId = 'internal-product-123';
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([]);
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- test mock: narrowing dynamic spy / fixture / response shape
-      await expect(adapter.getProduct(internalId)).rejects.toThrow(
-        PrestashopResourceNotFoundException
-      );
+      await expect(adapter.getProduct(internalId)).rejects.toThrow(MasterProductNotFoundError);
     });
 
-    it('should throw PrestashopResourceNotFoundException when external ID not found for this connection', async () => {
+    it('should throw MasterProductNotFoundError when external ID not found for this connection (#1599)', async () => {
       const internalId = 'internal-product-123';
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
@@ -98,9 +97,7 @@ describe('PrestashopProductMasterAdapter', () => {
       ]);
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- test mock: narrowing dynamic spy / fixture / response shape
-      await expect(adapter.getProduct(internalId)).rejects.toThrow(
-        PrestashopResourceNotFoundException
-      );
+      await expect(adapter.getProduct(internalId)).rejects.toThrow(MasterProductNotFoundError);
     });
 
     it('should use connection langId from config', async () => {

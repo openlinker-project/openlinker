@@ -2,11 +2,35 @@
  * InPost Inbound Webhook Decoder Adapter (#768, ADR-021)
  *
  * Authenticates + decodes InPost ShipX `Shipment.Tracking` webhooks at the host
- * ingress, keyed by `provider = 'inpost'`. The verify half uses InPost's HMAC
- * scheme (base64 HMAC-SHA256 over `{x-inpost-timestamp}.{rawBody}`, header
- * `x-inpost-signature`) — the shared secret OL generates and hands InPost,
- * resolved by the host via `WebhookSecretProviderPort`. The extract half is a
- * pure transform into the host's neutral envelope.
+ * ingress, keyed by `provider = 'inpost'`. The verify half implements InPost's
+ * HMAC scheme (base64 HMAC-SHA256, header `x-inpost-signature`) using the shared
+ * secret OL generates and hands InPost, resolved by the host via
+ * `WebhookSecretProviderPort`. The extract half is a pure transform into the
+ * host's neutral envelope.
+ *
+ * Signature scheme (#1556) — per InPost's "Webhook Signature Verification" docs
+ * (https://developers.inpost-group.com/webhook-signature-verification):
+ *
+ *   "The calculated signature will be transformed from byte[] to Base64 and then
+ *    placed in the x-inpost-signature header."
+ *   "Payload to sign can be created in two ways which also can be configurable
+ *    per client: concatenated request timestamp header (x-inpost-timestamp) and
+ *    event payload ("." - dot sign will be a separator)."
+ *
+ * The signed content is therefore NOT one fixed form: InPost's integration team
+ * configures it per client (their Example 1 = body only, Example 2 =
+ * `{x-inpost-timestamp}.{body}`), and OL neither controls nor is told the
+ * choice. So we accept EITHER, and are correct under both configurations rather
+ * than betting on one and rejecting 100% of deliveries if the bet is wrong.
+ *
+ * Trying both is not a downgrade: forging a body-only signature still requires
+ * the secret, so the fallback only succeeds when InPost genuinely signed
+ * body-only. Replaying a captured `{ts}.{body}` delivery under a different
+ * timestamp matches neither candidate. The one asymmetry is inherent to InPost's
+ * body-only variant, not introduced here — it leaves the timestamp unsigned, so
+ * a replay could slip the host's window; the durable `(provider, connectionId,
+ * eventId)` dedup gate (#711) collapses it, and under ADR-021 the worst case is
+ * a redundant idempotent re-read, never wrong state.
  *
  * Trigger model (ADR-021): the webhook is a low-latency nudge, never the source
  * of truth. We read ONLY the shipment identifier from the body — never InPost's
@@ -36,7 +60,17 @@ import type {
 const SIGNATURE_HEADER = 'x-inpost-signature';
 const TIMESTAMP_HEADER = 'x-inpost-timestamp';
 const TOPIC_HEADER = 'x-inpost-topic';
+const EVENT_ID_HEADER = 'x-inpost-event-id';
 const TRACKING_TOPIC = 'Shipment.Tracking';
+
+/**
+ * ShipX renders `event_ts` as `"2020-03-20 15:08:42 +0100"` — a space-separated,
+ * non-ISO-8601 form (docs: "[1.23.0] Webhooks"). The neutral envelope's
+ * `occurredAt` is contractually an ISO-8601 string, so that form is normalized
+ * rather than passed through verbatim (#1556). Anything already ISO-8601 (the
+ * `x-inpost-timestamp` header, and InPost's newer payloads) skips this path.
+ */
+const SHIPX_EVENT_TS_PATTERN = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}(?:\.\d+)?) ([+-]\d{2}):?(\d{2})$/;
 
 /**
  * ShipX `event` values that signify a shipment status change worth refreshing.
@@ -69,22 +103,34 @@ export class InpostInboundWebhookDecoderAdapter implements InboundWebhookDecoder
     secret: string;
   }): WebhookVerifyResult {
     const signature = this.header(input.headers, SIGNATURE_HEADER);
+    if (!signature) {
+      return { ok: false };
+    }
     const timestamp = this.header(input.headers, TIMESTAMP_HEADER);
-    if (!signature || !timestamp) {
+
+    // Candidate signed contents, in InPost's documented order. Without the
+    // timestamp header only the body-only form is expressible — that delivery is
+    // still authentic under body-only signing, so it must not be rejected out of
+    // hand (rejecting it was the second silent-death mode behind #1556).
+    const candidates: Buffer[] = timestamp
+      ? [Buffer.concat([Buffer.from(timestamp), Buffer.from('.'), input.rawBody]), input.rawBody]
+      : [input.rawBody];
+
+    // reduce(), not some()/early-return: every candidate is compared so the work
+    // done does not vary with which variant matched.
+    const matched = candidates.reduce(
+      (acc, candidate) => this.signatureMatches(candidate, input.secret, signature) || acc,
+      false,
+    );
+    if (!matched) {
       return { ok: false };
     }
 
-    const signedPayload = Buffer.concat([
-      Buffer.from(timestamp),
-      Buffer.from('.'),
-      input.rawBody,
-    ]);
-    const expected = createHmac('sha256', input.secret).update(signedPayload).digest('base64');
-
-    const provided = Buffer.from(signature);
-    const expectedBuf = Buffer.from(expected);
-    if (provided.length !== expectedBuf.length || !timingSafeEqual(provided, expectedBuf)) {
-      return { ok: false };
+    if (!timestamp) {
+      // No signed timestamp to replay-check against. The host skips its
+      // replay window when `timestampMs` is absent; the durable eventId dedup
+      // gate stays the backstop (same posture as the WooCommerce decoder).
+      return { ok: true };
     }
 
     // InPost stamps an ISO-8601 timestamp (e.g. "2025-01-08T14:03:55.387Z"); the
@@ -127,14 +173,15 @@ export class InpostInboundWebhookDecoderAdapter implements InboundWebhookDecoder
       return { action: 'reject', reason: 'no shipment identifier in payload' };
     }
 
-    // Prefer the signed `x-inpost-timestamp` header; fall back to the body's
-    // `event_ts` (present in the ShipX payload). Reject rather than fabricate a
-    // timestamp, keeping this a pure transform.
-    const occurredAt =
+    // Prefer the signed `x-inpost-timestamp` header (already ISO-8601); fall
+    // back to the body's `event_ts`, normalized from ShipX's non-ISO form.
+    // Reject rather than fabricate a timestamp, keeping this a pure transform.
+    const rawOccurredAt =
       this.header(headers, TIMESTAMP_HEADER) ?? this.firstString(record, [['event_ts']]);
-    if (!occurredAt) {
+    if (!rawOccurredAt) {
       return { action: 'reject', reason: 'missing event timestamp' };
     }
+    const occurredAt = this.toIsoTimestamp(rawOccurredAt);
     return {
       action: 'route',
       envelope: {
@@ -142,7 +189,7 @@ export class InpostInboundWebhookDecoderAdapter implements InboundWebhookDecoder
         // hash of the shipment id + event timestamp so retries collapse and
         // distinct events don't. Best-effort (the idempotent re-read is the
         // correctness guarantee), so the eventId need only suppress obvious dupes.
-        eventId: this.deriveEventId(record, shipmentId, occurredAt),
+        eventId: this.deriveEventId(record, headers, shipmentId, occurredAt),
         eventType: 'tracking',
         occurredAt,
         objectType: 'shipment',
@@ -151,11 +198,46 @@ export class InpostInboundWebhookDecoderAdapter implements InboundWebhookDecoder
     };
   }
 
+  /**
+   * Timing-safe base64 HMAC-SHA256 comparison of one candidate signed content
+   * against the provided `x-inpost-signature` value.
+   */
+  private signatureMatches(signedContent: Buffer, secret: string, signature: string): boolean {
+    const expected = createHmac('sha256', secret).update(signedContent).digest('base64');
+    const provided = Buffer.from(signature);
+    const expectedBuf = Buffer.from(expected);
+    // Length must match before timingSafeEqual, which throws on unequal lengths.
+    return provided.length === expectedBuf.length && timingSafeEqual(provided, expectedBuf);
+  }
+
+  /**
+   * Normalize a ShipX `event_ts` (`"2020-03-20 15:08:42 +0100"`) into ISO-8601,
+   * preserving the instant and its UTC offset. Values that don't match that
+   * exact documented form — including anything already ISO-8601 — pass through
+   * untouched, so this never mangles a shape we haven't seen.
+   */
+  private toIsoTimestamp(value: string): string {
+    const match = SHIPX_EVENT_TS_PATTERN.exec(value);
+    if (!match) {
+      return value;
+    }
+    const [, date, time, offsetHours, offsetMinutes] = match;
+    const candidate = `${date}T${time}${offsetHours}:${offsetMinutes}`;
+    return Number.isNaN(Date.parse(candidate)) ? value : candidate;
+  }
+
   private deriveEventId(
     record: Record<string, unknown>,
+    headers: Record<string, string>,
     shipmentId: string,
     occurredAt: string | undefined,
   ): string {
+    // InPost's own event id, documented as the "Unique id of the event" — the
+    // authoritative dedup basis, so it outranks body fields and the hash (#1556).
+    const headerEventId = this.header(headers, EVENT_ID_HEADER);
+    if (headerEventId) {
+      return headerEventId;
+    }
     const explicit = this.firstString(record, [['event_id'], ['eventId'], ['id']]);
     if (explicit) {
       return explicit;

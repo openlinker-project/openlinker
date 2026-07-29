@@ -16,6 +16,7 @@ function buildRepoMock(): jest.Mocked<OfferMappingRepositoryPort> {
     findById: jest.fn(),
     findMany: jest.fn(),
     countByConnectionAndVariants: jest.fn(),
+    countListedVariantsByProducts: jest.fn(),
   };
 }
 
@@ -80,6 +81,51 @@ describe('OfferMappingsService', () => {
         'ol_variant_b',
       ]);
       expect(result).toBe(counts);
+    });
+  });
+
+  describe('countListedVariantsByProducts (#1720)', () => {
+    it('should return [] without hitting the repository when productIds is empty', async () => {
+      const repo = buildRepoMock();
+      const service = new OfferMappingsService(repo);
+
+      const result = await service.countListedVariantsByProducts([]);
+
+      expect(result).toEqual([]);
+      expect(repo.countListedVariantsByProducts).not.toHaveBeenCalled();
+    });
+
+    it('should forward productIds to the repository and return its rows verbatim', async () => {
+      const repo = buildRepoMock();
+      const rows = [
+        {
+          productId: 'ol_product_1',
+          connectionId: 'conn-1',
+          platformType: 'allegro',
+          listedVariants: 2,
+        },
+      ];
+      repo.countListedVariantsByProducts.mockResolvedValue(rows);
+      const service = new OfferMappingsService(repo);
+
+      const result = await service.countListedVariantsByProducts(['ol_product_1', 'ol_product_2']);
+
+      expect(repo.countListedVariantsByProducts).toHaveBeenCalledWith([
+        'ol_product_1',
+        'ol_product_2',
+      ]);
+      expect(result).toBe(rows);
+    });
+
+    it('should reject input exceeding the 200-id cap without hitting the repository', async () => {
+      const repo = buildRepoMock();
+      const service = new OfferMappingsService(repo);
+      const oversize = Array.from({ length: 201 }, (_, i) => `ol_product_${String(i)}`);
+
+      await expect(service.countListedVariantsByProducts(oversize)).rejects.toThrow(
+        /at most 200 productIds/
+      );
+      expect(repo.countListedVariantsByProducts).not.toHaveBeenCalled();
     });
   });
 });

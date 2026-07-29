@@ -36,7 +36,15 @@ import { createHealthApi, type HealthApi } from '../../features/health/api/healt
 import { createInventoryApi, type InventoryApi } from '../../features/inventory/api/inventory.api';
 import { createInvoicingApi, type InvoicingApi } from '../../features/invoicing/api/invoicing.api';
 import { createListingsApi, type ListingsApi } from '../../features/listings/api/listings.api';
+import {
+  createMailerSettingsApi,
+  type MailerSettingsApi,
+} from '../../features/mailer-settings/api/mailer-settings.api';
 import { createOrdersApi, type OrdersApi } from '../../features/orders/api/orders.api';
+import {
+  createPosthogSettingsApi,
+  type PosthogSettingsApi,
+} from '../../features/posthog-settings/api/posthog-settings.api';
 import { createProductsApi, type ProductsApi } from '../../features/products/api/products.api';
 import { createShipmentsApi, type ShipmentsApi } from '../../features/shipments/api/shipments.api';
 import {
@@ -102,7 +110,9 @@ export interface CoreApiClient {
   inventory: InventoryApi;
   invoicing: InvoicingApi;
   listings: ListingsApi;
+  mailerSettings: MailerSettingsApi;
   orders: OrdersApi;
+  posthogSettings: PosthogSettingsApi;
   products: ProductsApi;
   promptTemplates: PromptTemplatesApi;
   mappings: MappingsApi;
@@ -253,8 +263,10 @@ export function createApiClient({
     inventory: createInventoryApi(request),
     invoicing: createInvoicingApi(request, requestBlob),
     listings: createListingsApi(request),
+    mailerSettings: createMailerSettingsApi(request),
     mappings: createMappingsApi(request),
     orders: createOrdersApi(request),
+    posthogSettings: createPosthogSettingsApi(request),
     products: createProductsApi(request),
     promptTemplates: createPromptTemplatesApi(request),
     request,

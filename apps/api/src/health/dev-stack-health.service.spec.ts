@@ -13,6 +13,7 @@ import type { ConfigService } from '@nestjs/config';
 import type { RedisClientType } from 'redis';
 import { of, throwError } from 'rxjs';
 import { DevStackHealthService } from './dev-stack-health.service';
+import type { IConnectionInfraHealthService } from './connection-infra-health.service.interface';
 
 describe('DevStackHealthService', () => {
   let service: DevStackHealthService;
@@ -20,6 +21,7 @@ describe('DevStackHealthService', () => {
   let redisClient: jest.Mocked<Pick<RedisClientType, 'ping' | 'xAdd' | 'get'>>;
   let httpService: jest.Mocked<Pick<HttpService, 'get'>>;
   let configService: jest.Mocked<Pick<ConfigService, 'get'>>;
+  let connectionInfraHealthService: jest.Mocked<IConnectionInfraHealthService>;
 
   beforeEach(() => {
     dataSource = { query: jest.fn().mockResolvedValue([{ '?column?': 1 }]) };
@@ -30,12 +32,14 @@ describe('DevStackHealthService', () => {
     };
     httpService = { get: jest.fn().mockReturnValue(of({ status: 200 })) };
     configService = { get: jest.fn().mockReturnValue('http://localhost:8080') };
+    connectionInfraHealthService = { checkInfraConnections: jest.fn().mockResolvedValue([]) };
 
     service = new DevStackHealthService(
       dataSource as unknown as DataSource,
       redisClient as unknown as RedisClientType,
       httpService as unknown as HttpService,
-      configService as unknown as ConfigService
+      configService as unknown as ConfigService,
+      connectionInfraHealthService
     );
   });
 
@@ -98,6 +102,57 @@ describe('DevStackHealthService', () => {
 
       expect(result.services.worker).toBeDefined();
       expect(result.services.worker.status).toBe('ok');
+    });
+
+    it('should include infra-bearing connections in dev stack health', async () => {
+      connectionInfraHealthService.checkInfraConnections.mockResolvedValueOnce([
+        {
+          connectionId: 'conn-1',
+          name: 'My WooCommerce Shop',
+          platformType: 'woocommerce',
+          status: 'ok',
+        },
+      ]);
+
+      const result = await service.checkDevStackHealth();
+
+      expect(result.connections).toEqual([
+        {
+          connectionId: 'conn-1',
+          name: 'My WooCommerce Shop',
+          platformType: 'woocommerce',
+          status: 'ok',
+        },
+      ]);
+      expect(result.status).toBe('ok');
+    });
+
+    it('should report degraded when an infra-bearing connection is unhealthy but internals are ok', async () => {
+      connectionInfraHealthService.checkInfraConnections.mockResolvedValueOnce([
+        {
+          connectionId: 'conn-1',
+          name: 'My WooCommerce Shop',
+          platformType: 'woocommerce',
+          status: 'error',
+          message: 'Unauthorized',
+        },
+      ]);
+
+      const result = await service.checkDevStackHealth();
+
+      expect(result.status).toBe('degraded');
+      expect(result.connections[0].status).toBe('error');
+    });
+
+    it('should report empty connections and not fail when the infra rollup throws', async () => {
+      connectionInfraHealthService.checkInfraConnections.mockRejectedValueOnce(
+        new Error('registry unavailable')
+      );
+
+      const result = await service.checkDevStackHealth();
+
+      expect(result.connections).toEqual([]);
+      expect(result.status).toBe('ok');
     });
 
     it('should report degraded when worker is stale but internals are ok', async () => {

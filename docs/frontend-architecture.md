@@ -403,6 +403,96 @@ Naming conventions:
 - route modules: `*.route.tsx`
 - tests: `*.test.tsx`
 
+### Unified publish flow (#1828)
+
+Publishing a product to a channel is a **single operator intent** with one entry
+point. The Listings page exposes one **"Publish products"** action (the former
+separate "Create offer" + "Publish to shop" CTAs are folded together); the
+Products page per-row **"+ Publish"** CTA and bulk **"Publish products / Publish
+to {name}"** CTA share the same flow.
+
+- **Eligibility is capability-driven, never `platformType`.** `selectPublishDestinations`
+  (`features/listings/lib/publish-destinations.ts`, re-exported from the
+  `features/listings` barrel) classifies every active connection as a
+  `'marketplace'` (advertises the `OfferCreator` sub-capability, via
+  `supportedCapabilities`) or a `'shop'` (has **enabled** `ProductPublisher`,
+  via `enabledCapabilities`). It returns `null` for connections that are
+  neither.
+- **The destination rail groups by kind** (Marketplaces / Online shops) with a
+  capability-driven hint (`PUBLISH_DESTINATION_KIND_HINT`), single-select. A sole
+  eligible destination auto-resolves. Both pickers render the shared
+  `PublishDestinationRail` (`features/listings/components`), which owns the
+  WAI-ARIA radiogroup keyboard contract - a single tab stop via roving
+  `tabindex` plus Arrow / Home / End to move-and-select (mirroring the
+  `SegmentedControl` primitive) - so the markup and its a11y live in one place.
+- **Continue dispatches to one route for both kinds (#1829).** Marketplace AND
+  shop both navigate to the bulk-create wizard route
+  (`/listings/bulk-create/wizard?productIds=…&variantIds=…&connectionId=…`,
+  destination-agnostic). Product + variant context is carried through the URL
+  identically - a whole-product pick contributes no `variantIds` (the wizard
+  seeds all variants), a variant-subset pick contributes its explicit ids.
+
+**Capability-branched bulk wizard (#1829).** `BulkWizard`
+(`features/listings/components/bulk/bulk-wizard.tsx`) resolves the destination's
+kind from the selected connection via `publishDestinationKind` (capability, never
+`platformType`) and branches its step model + submit:
+
+| Destination | Capability | Steps | Config section | Submit |
+|---|---|---|---|---|
+| Marketplace | `OfferCreator` | Config → Resolve → Review → Confirm | per-platform `bulkOfferConfigSection` (Allegro/Erli) | `useBulkSubmitMutation` → `POST /listings/bulk-create` |
+| Online shop | `ProductPublisher` | Config → Review | shared visibility + pricing/stock policy (no category/EAN resolve) | `useBulkShopPublishMutation` → `POST /listings/bulk-shop-publish` |
+
+  `BulkConfigStep` reports the live-selected connection up via `onConnectionChange`
+  so the stepper branches before Proceed; it skips the per-platform section (and
+  its Proceed gate) for shops. `BulkShopReviewStep` reviews the included variants,
+  computes each one's stock (master availability + the batch stock policy) and
+  price (variant master price + the batch pricing policy), and submits one item
+  per included variant; on success it swaps to `ShopPublishTracker`.
+- **`ShopPublishLauncher` disposition.** The launcher is no longer wired to any
+  publish CTA - the unified picker + wizard cover the create path end-to-end. It
+  and the WooCommerce single-publish wizard are retained (unreferenced by the
+  pages).
+
+**Two-axis edit modal: destination kind × variant shape (#1830).** `BulkEditModal`
+(`features/listings/components/bulk/bulk-edit-modal.tsx`) is one component that
+serves both destination kinds via a `destinationKind: 'marketplace' | 'shop'`
+prop, resolved by the caller from `publishDestinationKind(connection)` (capability,
+never `platformType`) - never inferred inside the modal itself. Both branches
+share the same shell: the two-pane layout (rail = Base + per-variant scopes with
+inherit/override semantics) for a multi-variant product, a flat form with no rail
+for a simple/single-variant product, and the discard-guard dialog wrapper.
+
+- **Marketplace branch** (`BulkEditModalForm`, unchanged since #1741): category
+  tree + parameter schema, EAN self-link, product-card link, grouping-determining
+  params locked to base, per-plugin platform sections.
+- **Shop branch** (`BulkShopEditModalForm`, #1830): category placement lives in
+  the top crumb bar (mounts `ShopCategoryPickerModal`, gated on the connection's
+  `ShopCategoryBrowser` sub-capability) rather than a mid-form field; structured
+  attributes are collected via `ShopAttributePicker` (gated on `ShopAttributeReader`);
+  content (title/description/images), visibility, and price/stock round out the
+  base scope. No category-parameter schema, no EAN self-link - a shop product has
+  neither. The variant scope keeps the marketplace precedent of no standalone
+  "distinguishing" field (the scope heading already names the variant) and makes
+  every override-eligible base field (description, price) overridable per variant;
+  parent-only fields (title, category, images, attributes) stay base-only, mirroring
+  which fields are genuinely shared across a shop's simple-product siblings.
+  Per-product content/category/parameter overrides are carried on
+  `BulkOfferOverrides` (`destinationCategoryIds` addition, #1830) and threaded by
+  `buildBulkShopPublishItems` (`bulk-shop-review-step.tsx`) onto each item's
+  `content` / `destinationCategoryIds` / `parameters` - the FE consumer of the
+  #1831 per-item transport. Two adds of the same global-attribute id from
+  `ShopAttributePicker` (e.g. Color=Red then Color=Blue) are merged by
+  `mergeShopParameter` (union term values/ids, last-wins on `section`) rather
+  than appended as duplicate `parameters` entries, so WooCommerce never receives
+  two `attributes[]` rows for one attribute id. The AI-description toggle for
+  shops is a separate follow-up (#1840) - the shop editor's `SuggestionDialog`
+  wiring exists but no shop-specific toggle is added here.
+### Mapping configuration pairing (#1784)
+
+The order Mapping Configuration page (`connection-mappings-page.tsx`) configures a **source -> destination connection pair**, not a single connection. The pair is **config-stamped**, mirroring the backend `MappingOptionsController.resolvePartnerConnectionId`: a marketplace connection carries a single `config.masterCatalogConnectionId` pointing at its master shop. `useMappingPairing(connectionId)` resolves this into one of `ready | pick-source | no-source | unsupported | loading | error` and the page renders the pairing route strip (`MappingPairingBar`) plus the resolved-label copy from it. Because a marketplace has exactly one master, opening from a source is always unambiguous; the only genuine choice is opening from a shop with several paired marketplaces, which surfaces a source picker and **navigates** to the chosen marketplace's own mappings page (URL state, keeping mapping data keyed to the marketplace connection).
+
+Which platform pairs may be mapped is a **front-end-only allowlist** (`features/mappings/supported-source-platforms.ts`, `SUPPORTED_SOURCE_PLATFORMS = ['allegro', 'erli']`). This is deliberate: the mapping API stays open on capability so an operator can add mappings for an unlisted pair via the API in an emergency (as done for presta -> erli). Do not promote it to a server-side guard without an explicit decision.
+
 ### UI Library Policy
 
 No **styled** external UI library (no shadcn/ui, MUI, Mantine, Chakra, Ant Design). Visual opinions are ours — every pixel is vanilla CSS against the tokens in `apps/web/src/index.css`.
@@ -442,7 +532,7 @@ These boundaries are enforced by ESLint `no-restricted-imports` rules in `.eslin
 
 > **Note:** Features may import `useApiClient` from `app/api/` — this is the designed dependency-injection boundary for API access. A future refactor may move the hook to `shared/`, but the current crossing is intentional and not restricted by lint.
 >
-> **Note (#608):** Features may also import `useOfferCreationWizard` from `app/plugin-bindings/` — same DI-boundary precedent. Features must NOT import `plugins/` directly; per-platform extension points go through the `app/`-tier hook that closes over the registry. The folder is named `plugin-bindings` (not `plugins`) so the `**/plugins/**` lint deny-glob can stay broad without carve-out exceptions.
+> **Note (#608):** Features may also import an `app/plugin-bindings/` hook (today `useShopPublishWizard`) - same DI-boundary precedent. Features must NOT import `plugins/` directly; per-platform extension points go through the `app/`-tier hook that closes over the registry. The folder is named `plugin-bindings` (not `plugins`) so the `**/plugins/**` lint deny-glob can stay broad without carve-out exceptions.
 
 > **Exemption — `shared/plugins/` (#578/#579):** The FE plugin contract in `shared/plugins/plugin.types.ts` is a feature-aware surface by design — plugins receive `Connection` and `UseFormReturn<EditConnectionFormValues>` shapes from the connections feature. To keep the contract fully typed without hoisting feature-private types into `shared/`, the ESLint rule allows `shared/plugins/**` to type-import `Connection` and `EditConnectionFormValues` (and nothing else) from `features/connections/`. Hoisting the types into a `shared/types/` boundary is the cleaner long-term move; it's deferred until a second consumer needs them.
 
@@ -485,7 +575,6 @@ Every slot is optional.
 | `routes` | `RouteObject[]` | `root.route.tsx` | React Router route objects appended to the root route's children. |
 | `navItems` | `NavContribution[]` | `nav-registry.ts` | Sidebar nav items merged into existing nav groups by label. |
 | `apiNamespaces` | `(request) => Partial<PluginApiNamespaces>` | `createApiClient` | Factory that produces typed API client namespaces. Plugins extend `PluginApiNamespaces` via TS declaration merging. |
-| `offerCreationWizard` | `OfferCreationWizardContribution` | `useOfferCreationWizard` | Per-platform offer-creation wizard registered against the `OfferCreationLauncher` dispatch site (#608). |
 
 ### `PlatformContribution` slot reference
 

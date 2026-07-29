@@ -21,6 +21,10 @@ import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { Textarea } from '../../../shared/ui/textarea';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { useDemoMode } from '../../system';
 import {
   usePlatform,
   readConfigString,
@@ -284,6 +288,8 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   const updateConnection = useUpdateConnectionMutation();
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('connections:write', demoMode);
   const [showRawJson, setShowRawJson] = useState(false);
   const plugin = usePlatform(connection.platformType);
   // #1330 — the platform's non-render structured-config half: Zod schema
@@ -682,9 +688,11 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       ) : null}
 
       <div className="form-actions">
-        <Button type="submit" disabled={updateConnection.isPending}>
-          {updateConnection.isPending ? 'Saving...' : 'Save changes'}
-        </Button>
+        <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <Button type="submit" disabled={updateConnection.isPending || write.demoReadOnly}>
+            {updateConnection.isPending ? 'Saving...' : 'Save changes'}
+          </Button>
+        </ReadOnlyLock>
         <Button tone="secondary" onClick={() => void navigate(`/connections/${connection.id}`)}>
           Cancel
         </Button>

@@ -1,12 +1,16 @@
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi } from 'vitest';
+import type * as ReactRouterDom from 'react-router-dom';
 import { renderWithProviders, createMockApiClient, createAuthenticatedSessionAdapter } from '../../test/test-utils';
 import { ListingsListPage } from './listings-list-page';
-import type {
-  CreateOfferRequest,
-  PaginatedOfferMappings,
-} from '../../features/listings/api/listings.types';
+import type { PaginatedOfferMappings } from '../../features/listings/api/listings.types';
+
+const navigateMock = vi.fn();
+vi.mock('react-router-dom', async (): Promise<typeof ReactRouterDom> => {
+  const actual = await vi.importActual<typeof ReactRouterDom>('react-router-dom');
+  return { ...actual, useNavigate: (): typeof navigateMock => navigateMock };
+});
 
 const sampleMappings: PaginatedOfferMappings = {
   items: [
@@ -40,6 +44,7 @@ const sampleMappings: PaginatedOfferMappings = {
 
 describe('ListingsListPage', () => {
   afterEach(cleanup);
+  afterEach(() => navigateMock.mockClear());
   it('should show loading state initially', () => {
     const mockApi = createMockApiClient({
       listings: {
@@ -115,156 +120,22 @@ describe('ListingsListPage', () => {
     expect(await screen.findByRole('link', { name: 'Manage connections' })).toBeInTheDocument();
   });
 
-  it('should render the Create offer CTA enabled with no pre-filter', async () => {
+  it('renders a single "Publish products" entry (no separate shop CTA) with no pre-filter', async () => {
     const mockApi = createMockApiClient({
       listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
     });
 
     renderWithProviders(<ListingsListPage />, { apiClient: mockApi, sessionAdapter: createAuthenticatedSessionAdapter() });
 
-    const cta = await screen.findByRole('button', { name: /create offer/i });
+    const cta = await screen.findByRole('button', { name: /publish products/i });
     expect(cta).toBeInTheDocument();
     expect(cta).not.toBeDisabled();
-  });
-
-  it('should render OfferCreationTracker when both URL params are present', async () => {
-    const mockApi = createMockApiClient({
-      listings: {
-        list: vi.fn().mockResolvedValue(sampleMappings),
-        getOfferCreationStatus: vi.fn().mockResolvedValue({
-          id: 'rec-1',
-          connectionId: 'conn_allegro_1',
-          internalVariantId: 'ol_variant_abc',
-          externalOfferId: null,
-          status: 'pending',
-          errors: null,
-          publishImmediately: false,
-          createdAt: '2026-04-22T10:00:00Z',
-          updatedAt: '2026-04-22T10:00:00Z',
-        }),
-      },
-    });
-
-    renderWithProviders(<ListingsListPage />, {
-      apiClient: mockApi,
-      route: '/listings?offerCreationRecordId=rec-1&trackedConnectionId=conn_allegro_1',
-    });
-
-    expect(await screen.findByText(/offer creation/i)).toBeInTheDocument();
-    expect(await screen.findByText('Pending')).toBeInTheDocument();
-  });
-
-  it('should reopen the wizard pre-filled from the failed record when Retry is clicked', async () => {
-    const user = userEvent.setup();
-    const sampleRequest: CreateOfferRequest = {
-      internalVariantId: 'ol_variant_abc',
-      stock: 7,
-      publishImmediately: false,
-      price: { amount: 120.5, currency: 'PLN' },
-      overrides: {
-        title: 'Prior Title',
-        categoryId: '98765',
-        description: null,
-        platformParams: { deliveryPolicyId: 'del-1' },
-      },
-    };
-    const mockApi = createMockApiClient({
-      listings: {
-        list: vi.fn().mockResolvedValue(sampleMappings),
-        getOfferCreationStatus: vi.fn().mockResolvedValue({
-          id: 'rec-1',
-          connectionId: 'conn_allegro_1',
-          internalVariantId: 'ol_variant_abc',
-          externalOfferId: null,
-          status: 'failed',
-          errors: [{ code: 'X', message: 'boom' }],
-          publishImmediately: false,
-          createdAt: '2026-04-22T10:00:00Z',
-          updatedAt: '2026-04-22T10:00:00Z',
-          request: sampleRequest,
-        }),
-        getSellerPolicies: vi.fn().mockResolvedValue({
-          deliveryPolicies: [{ id: 'del-1', name: 'Free shipping' }],
-          returnPolicies: [],
-          warranties: [],
-          impliedWarranties: [],
-        }),
-      },
-      connections: {
-        list: vi.fn().mockResolvedValue([
-          {
-            id: 'conn_allegro_1',
-            name: 'Allegro sandbox',
-            platformType: 'allegro',
-            status: 'active',
-            config: {},
-            credentialsBacked: true,
-            adapterKey: 'allegro.publicapi.v1',
-            enabledCapabilities: ['OfferManager'],
-            supportedCapabilities: ['OfferManager', 'OfferCreator'],
-            createdAt: '2026-01-01T00:00:00Z',
-            updatedAt: '2026-01-01T00:00:00Z',
-          },
-        ]),
-      },
-    });
-
-    renderWithProviders(<ListingsListPage />, {
-      apiClient: mockApi,
-      route: '/listings?offerCreationRecordId=rec-1&trackedConnectionId=conn_allegro_1',
-    });
-
-    const retry = await screen.findByRole('button', { name: /retry/i });
-    await user.click(retry);
-
-    // Wizard opens on Step 2 with values drawn from the failed record.
-    const title = await screen.findByLabelText<HTMLInputElement>(/^title$/i);
-    await waitFor(() => expect(title.value).toBe('Prior Title'));
-    // CategoryPicker pre-fill fallback: renders the raw id + a Change button
-    // rather than a text input with a value.
-    expect(screen.getByText('Current category ID')).toBeInTheDocument();
-    expect(screen.getByText('98765')).toBeInTheDocument();
-    expect(screen.getByLabelText<HTMLInputElement>(/^price$/i).value).toBe('120.50');
-    expect(screen.getByLabelText<HTMLInputElement>(/^stock$/i).value).toBe('7');
-
-    // The tracker URL params are dropped once Retry is pressed.
-    expect(screen.queryByText(/offer creation/i)).not.toBeInTheDocument();
-  });
-
-  it('should not render OfferCreationTracker when only one URL param is present', async () => {
-    const getOfferCreationStatus = vi.fn();
-    const mockApi = createMockApiClient({
-      listings: {
-        list: vi.fn().mockResolvedValue(sampleMappings),
-        getOfferCreationStatus,
-      },
-    });
-
-    renderWithProviders(<ListingsListPage />, {
-      apiClient: mockApi,
-      route: '/listings?offerCreationRecordId=rec-1',
-    });
-
-    // Wait for table to render so the page has mounted fully
-    await screen.findByText('allegro-offer-999');
-    expect(screen.queryByText(/offer creation/i)).not.toBeInTheDocument();
-    expect(getOfferCreationStatus).not.toHaveBeenCalled();
-  });
-
-  it('hides the "Publish to shop" CTA when no ProductPublisher connection exists', async () => {
-    // Default connections mock returns a single PrestaShop connection with
-    // no ProductPublisher capability — the CTA must stay hidden.
-    const mockApi = createMockApiClient({
-      listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
-    });
-
-    renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
-
-    await screen.findByText('allegro-offer-999');
+    // The old duplicate CTAs are folded into the single unified entry (#1828).
+    expect(screen.queryByRole('button', { name: /create offer/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /publish to shop/i })).not.toBeInTheDocument();
   });
 
-  it('shows the "Publish to shop" CTA when a ProductPublisher connection exists', async () => {
+  it('keeps the single unified entry even when a ProductPublisher (shop) connection exists', async () => {
     const mockApi = createMockApiClient({
       listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
       connections: {
@@ -288,6 +159,78 @@ describe('ListingsListPage', () => {
 
     renderWithProviders(<ListingsListPage />, { apiClient: mockApi, sessionAdapter: createAuthenticatedSessionAdapter() });
 
-    expect(await screen.findByRole('button', { name: /publish to shop/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /publish products/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /publish to shop/i })).not.toBeInTheDocument();
+  });
+
+  describe('demo read-only viewer (#1663)', () => {
+    const viewerSession = {
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        id: 'u2',
+        username: 'viewer',
+        email: null,
+        role: 'viewer',
+        permissions: ['listings:read'],
+      }),
+    };
+
+    function demoApiClient(): ReturnType<typeof createMockApiClient> {
+      return createMockApiClient({
+        listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
+        connections: {
+          list: vi.fn().mockResolvedValue([
+            {
+              id: 'conn_woo_1',
+              name: 'Main WooCommerce store',
+              platformType: 'woocommerce',
+              status: 'active',
+              config: {},
+              credentialsBacked: true,
+              adapterKey: 'woocommerce.restapi.v3',
+              enabledCapabilities: ['ProductPublisher'],
+              supportedCapabilities: ['ProductPublisher'],
+              createdAt: '2026-01-01T00:00:00Z',
+              updatedAt: '2026-01-01T00:00:00Z',
+            },
+          ]),
+        },
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      });
+    }
+
+    it('shows the unified "Publish products" entry enabled instead of hiding it', async () => {
+      renderWithProviders(<ListingsListPage />, { apiClient: demoApiClient(), ...viewerSession });
+
+      const publish = await screen.findByRole('button', { name: /publish products/i });
+      expect(publish).not.toBeDisabled();
+    });
+
+    it('keeps the existing hide-when-missing behaviour for an unauthorized non-demo viewer', async () => {
+      const mockApi = createMockApiClient({
+        listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
+        connections: {
+          list: vi.fn().mockResolvedValue([
+            {
+              id: 'conn_woo_1',
+              name: 'Main WooCommerce store',
+              platformType: 'woocommerce',
+              status: 'active',
+              config: {},
+              credentialsBacked: true,
+              adapterKey: 'woocommerce.restapi.v3',
+              enabledCapabilities: ['ProductPublisher'],
+              supportedCapabilities: ['ProductPublisher'],
+              createdAt: '2026-01-01T00:00:00Z',
+              updatedAt: '2026-01-01T00:00:00Z',
+            },
+          ]),
+        },
+      });
+
+      renderWithProviders(<ListingsListPage />, { apiClient: mockApi, ...viewerSession });
+
+      await screen.findByText('allegro-offer-999');
+      expect(screen.queryByRole('button', { name: /publish products/i })).not.toBeInTheDocument();
+    });
   });
 });

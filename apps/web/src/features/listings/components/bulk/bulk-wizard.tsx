@@ -1,43 +1,63 @@
 /**
- * Bulk listing wizard (#740 / #792 PR 3)
+ * Bulk listing wizard (#740 / #792 / #1741 per-variant)
  *
- * Multi-step controller: Config → Resolve → Review (with Edit modal) →
- * Confirm → submit. Owns the rows[] state + batch config + per-row overrides.
- * The Resolve step pulls each product's master price/stock and computes the
- * per-row blocker set from the batch-wide pricing/stock policies (#792); the
- * Review step renders the computed values and gates submit on `blockers`.
+ * Multi-step controller: Config -> Resolve -> Review (with two-pane Edit modal)
+ * -> Confirm -> submit. Owns the rows[] state + batch config + per-variant
+ * overrides. Each selected product fans out client-side into one
+ * `BulkVariantRow` per real variant (#1741); the Resolve step resolves each
+ * sibling's category/card/master values and computes a per-variant blocker set,
+ * and the Review step gates submit on the included, ready siblings. On submit
+ * the wizard emits `perVariantOverrides` (keyed by variant id) + the
+ * `excludedVariantIds` the operator switched off; the BE stays the single
+ * fan-out source.
  *
  * @module apps/web/src/features/listings/components/bulk
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, PageLayout, SetupStepper } from '../../../../shared/ui';
+import { Alert, Button, PageLayout, SetupStepper } from '../../../../shared/ui';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import { usePlatforms, type OfferRowValidationInput } from '../../../../shared/plugins';
-import { usePermission } from '../../../../shared/auth/use-permission';
+import { useWriteAccess } from '../../../../shared/auth/use-permission';
+import { useDemoMode } from '../../../system';
 import { useConnectionsQuery } from '../../../connections';
 import { useBulkSubmitMutation } from '../../hooks/use-bulk-submit-mutation';
+import { useBulkShopPublishMutation } from '../../hooks/use-bulk-shop-publish-mutation';
 import { useBulkRequiredProductParams } from '../../hooks/use-bulk-required-product-params';
+import { usePublishedVariantsQuery } from '../../hooks/use-published-variants-query';
+import { publishDestinationKind } from '../../lib/publish-destinations';
+import { DuplicateGuardModal } from '../duplicate-guard-modal';
 import type {
   BulkOfferCreateRequest,
   BulkPerProductOverride,
 } from '../../api/bulk-listings.types';
+import type { BulkShopPublishItemRequest } from '../../api/listings.types';
 import type { Product, ProductVariant } from '../../../products';
 import { BulkConfigStep } from './bulk-config-step';
 import { BulkResolveStep, type BulkResolveOutcome } from './bulk-resolve-step';
 import { BulkReviewStep } from './bulk-review-step';
+import {
+  BulkShopReviewStep,
+  type ShopPublishVisibility,
+} from './bulk-shop-review-step';
+import { ShopPublishTracker } from '../shop-publish-tracker';
 import { BulkConfirmModal } from './bulk-confirm-modal';
 import {
   computeResolvedPrice,
   computeResolvedStock,
-  recomputeRowBlockers,
-  selectBulkProductCardId,
+  effectivePricingPolicy,
+  effectiveStockPolicy,
+  effectiveVariantEan,
+  recomputeVariantBlockers,
 } from './bulk-policy';
 import type {
   BulkRowBlocker,
+  BulkVariantRow,
   BulkWizardConfig,
   BulkWizardRow,
   BulkWizardStep,
+  PricingPolicy,
+  StockPolicy,
 } from './bulk-wizard.types';
 
 interface BulkWizardProps {
@@ -47,6 +67,16 @@ interface BulkWizardProps {
   resolveConnectionName: (connectionId: string) => string;
   /** Connection preselected from the entry-point picker / URL (#1096). */
   preselectedConnectionId?: string;
+  /**
+   * Variant ids pre-checked from the `/listings` picker (#1754). When a product
+   * has ANY of its variants in this set, ALL its variants are still seeded (so
+   * the product stays a multi-variant, expandable row and siblings can be
+   * re-included in Review) but only the set members start `included`; the rest
+   * seed excluded. A product with none of its variants in the set (whole-product
+   * pick, or an empty/absent set) seeds every variant included - byte-identical
+   * to the `/products` entry point.
+   */
+  preSelectedVariantIds?: ReadonlySet<string>;
 }
 
 const WIZARD_STEPS: { id: BulkWizardStep; label: string }[] = [
@@ -56,58 +86,101 @@ const WIZARD_STEPS: { id: BulkWizardStep; label: string }[] = [
   { id: 'confirm', label: 'Confirm' },
 ];
 
+// Shops (#1829) skip the marketplace Resolve step (no category/EAN matching)
+// and publish straight from Review: Config -> Review.
+const SHOP_WIZARD_STEPS: { id: BulkWizardStep; label: string }[] = [
+  { id: 'config', label: 'Config' },
+  { id: 'review', label: 'Review' },
+];
+
 /** Stable empty list so a param-schema opt-out platform keeps a constant deps identity. */
 const EMPTY_CATEGORY_IDS: readonly string[] = [];
+
+/** Stable empty set so a render without published-variant data keeps a constant ref. */
+const EMPTY_ALREADY_LISTED: ReadonlySet<string> = new Set<string>();
 
 export function BulkWizard({
   products,
   resolveConnectionName,
   preselectedConnectionId,
+  preSelectedVariantIds,
 }: BulkWizardProps): ReactElement {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const mutation = useBulkSubmitMutation();
+  const shopMutation = useBulkShopPublishMutation();
   const platforms = usePlatforms();
   const connectionsQuery = useConnectionsQuery();
 
-  // Mint a stable idempotency key once per wizard mount. Retries from the
-  // confirm step submit reuse it; remount mints a fresh one.
   const idempotencyKeyRef = useRef<string>(crypto.randomUUID());
 
-  const canGenerateDescription = usePermission('listings:write');
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('listings:write', demoMode);
+  const canGenerateDescription = write.canWrite;
   const [step, setStep] = useState<BulkWizardStep>('config');
   const [config, setConfig] = useState<BulkWizardConfig | null>(null);
-  const [rows, setRows] = useState<BulkWizardRow[]>(() => seedRows(products));
+  const [rows, setRows] = useState<BulkWizardRow[]>(() => seedRows(products, preSelectedVariantIds));
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Live-selected connection id (before config is committed) so the stepper +
+  // flow can branch by destination capability from the start (#1829). Seeded
+  // from the picker/URL preselect; updated by the Config step's selector.
+  const [liveConnectionId, setLiveConnectionId] = useState<string>(
+    preselectedConnectionId ?? '',
+  );
+  // Set once a shop batch submits, to swap the body for the publish tracker.
+  const [shopBatchId, setShopBatchId] = useState<string | null>(null);
 
-  // Sync row state when products list changes (rare — would only happen if the
-  // page upstream refetches). Compare against the product-id signature, not
-  // object identity, so a passive cache refresh producing structurally-equal
-  // products doesn't clobber row state.
-  const productsSignature = products.map((p) => p.id).join(',');
+  // Capability-driven destination kind - never a platformType literal (#1829).
+  // Resolves from the committed config once known, else the live selection.
+  const activeConnectionId = config?.connectionId ?? liveConnectionId;
+  const activeConnection = useMemo(
+    () => (connectionsQuery.data ?? []).find((c) => c.id === activeConnectionId) ?? null,
+    [connectionsQuery.data, activeConnectionId],
+  );
+  const isShop = activeConnection ? publishDestinationKind(activeConnection) === 'shop' : false;
+  const wizardSteps = isShop ? SHOP_WIZARD_STEPS : WIZARD_STEPS;
+
+  // #1837 duplicate guard: soft-warn when included variants are already
+  // published on the destination (a duplicate offer on a marketplace, an
+  // upsert on a shop). Never blocks - surfaced as a chip + a confirm before the
+  // publish action commits.
+  const [dupGuardOpen, setDupGuardOpen] = useState(false);
+  const pendingShopPublishRef = useRef<{
+    items: BulkShopPublishItemRequest[];
+    status: ShopPublishVisibility;
+  } | null>(null);
+
+  // Sync row state when the products list changes (dedup by product id so a
+  // product surfaced twice yields one row / one fan-out, mirroring the BE seen
+  // dedup, plan §8). Compare against the id signature so a passive cache refresh
+  // doesn't clobber row state.
+  const dedupedProducts = useMemo(() => dedupById(products), [products]);
+  const productsSignature = dedupedProducts.map((p) => p.id).join(',');
   useEffect(() => {
     setRows((prev) => {
       const byId = new Map(prev.map((r) => [r.productId, r]));
-      return products.map((p) => byId.get(p.id) ?? seedRow(p));
+      return dedupedProducts.map((p) => byId.get(p.id) ?? seedRow(p, preSelectedVariantIds));
     });
-  }, [productsSignature, products]);
+  }, [productsSignature, dedupedProducts, preSelectedVariantIds]);
 
-  // Distinct categories of rows that will submit WITHOUT a card link (#810).
-  // Only these can hit the missing-product-parameters 422 — card-linked rows
-  // inherit the params. Feeds the schema fan-out below.
+  // Distinct categories of INCLUDED variants that submit WITHOUT a card link
+  // (#810 / #1741). Only these can hit the missing-product-parameters 422.
   const noCardCategoryIds = useMemo(() => {
     const set = new Set<string>();
     for (const row of rows) {
-      if (!row.primaryVariant) continue;
-      if (selectBulkProductCardId(row) !== undefined) continue;
-      const categoryId = row.override.overrides?.categoryId ?? row.resolvedCategoryId;
-      if (categoryId) set.add(categoryId);
+      for (const variant of row.variants) {
+        if (!variant.included) continue;
+        const hasCard =
+          variant.resolvedProductCardId !== null ||
+          Boolean(variant.override.overrides?.productCardId);
+        if (hasCard) continue;
+        const categoryId = variant.override.overrides?.categoryId ?? variant.resolvedCategoryId;
+        if (categoryId) set.add(categoryId);
+      }
     }
     return Array.from(set);
   }, [rows]);
 
-  // Resolve the batch connection's platform (single connection per batch) so we
-  // can render platform-declared blocker chips and run its row validator (#1096).
   const batchConnection = useMemo(
     () => (connectionsQuery.data ?? []).find((c) => c.id === config?.connectionId) ?? null,
     [connectionsQuery.data, config?.connectionId],
@@ -117,11 +190,6 @@ export function BulkWizard({
     [platforms, batchConnection],
   );
 
-  // Only fetch the per-category required-product-param schema (an Allegro #810
-  // concern) when the resolved platform's validator actually reads it (#1096).
-  // Erli's validator ignores `needsProductParameters`, so it opts out and the
-  // host issues zero category-param queries for an Erli batch. The gate is a
-  // declared flag, not a `platformType` check — the host stays neutral.
   const categoryIdsForParamSchema = batchPlatform?.offerValidation?.needsCategoryParameterSchema
     ? noCardCategoryIds
     : EMPTY_CATEGORY_IDS;
@@ -135,18 +203,6 @@ export function BulkWizard({
   >(() => batchPlatform?.offerValidation?.validateRow, [batchPlatform]);
   const platformBlockerChips = batchPlatform?.offerValidation?.blockers ?? [];
 
-  // Category-resolution provenance from declared capabilities (never platformType):
-  // a destination that can't pre-flight EAN-match `borrows` its taxonomy and
-  // resolves the category server-side at submit (#1096 / ADR-025 §3), so a
-  // pre-flight non-match must not block it; one without a browsable category tree
-  // needs manual Allegro-id entry in the edit modal rather than the tree picker.
-  //
-  // `EanCategoryMatcher` and `CategoryBrowser` are `OfferManager` sub-capabilities
-  // advertised on the connection payload's `supportedCapabilities` (Allegro's
-  // manifest declares them, Erli does not — #1367). Keep them in the manifest; the
-  // response `supportedCapabilities` mirrors the live manifest, so dropping either
-  // silently regresses Allegro to the borrows-taxonomy branch (no parameter step,
-  // required "Stan" unsettable → PARAMETER_REQUIRED at submit).
   const destinationResolvesCategoryAtSubmit = batchConnection
     ? !batchConnection.supportedCapabilities.includes('EanCategoryMatcher')
     : false;
@@ -156,73 +212,127 @@ export function BulkWizard({
       ? (batchPlatform?.bulkCategoryBrowsingEnabled?.(batchConnection) ?? false)
       : false);
 
-  // Reconcile the `needs-product-parameters` blocker whenever a category's
-  // schema resolves (it loads after the operator picks the category, so it
-  // can't be decided at resolve time). Gated to the Review step: only there do
-  // rows carry resolved master data, so recomputing earlier would clobber the
-  // seed blockers with values derived from un-resolved (null) master data.
-  // `recomputeRowBlockers` is idempotent and the identity guard prevents a
-  // re-render loop. (#810)
+  // Reconcile per-variant `needs-product-parameters` (and any policy-derived)
+  // blockers whenever a category's schema resolves. Gated to Review so only
+  // rows with resolved master data recompute.
   useEffect(() => {
-    if (!config || step !== 'review') return;
+    // Marketplace-only: shops carry no category/param blockers (#1829).
+    if (!config || step !== 'review' || isShop) return;
     setRows((prev) => {
       let changed = false;
       const next = prev.map((row) => {
-        if (!row.primaryVariant) return row;
-        const blockers = recomputeRowBlockers(
-          row,
-          config,
-          requiredByCategory,
-          platformValidate,
-          destinationResolvesCategoryAtSubmit,
-        );
-        if (sameBlockers(blockers, row.blockers)) return row;
+        if (row.variants.length === 0) return row;
+        const isMulti = row.variants.length > 1;
+        let rowChanged = false;
+        const variants = row.variants.map((variant) => {
+          const blockers = recomputeVariantBlockers(
+            row,
+            variant,
+            config,
+            requiredByCategory,
+            platformValidate,
+            destinationResolvesCategoryAtSubmit,
+            isMulti,
+          );
+          if (sameBlockers(blockers, variant.blockers)) return variant;
+          rowChanged = true;
+          return { ...variant, blockers };
+        });
+        if (!rowChanged) return row;
         changed = true;
-        return { ...row, blockers };
+        return { ...row, variants };
       });
       return changed ? next : prev;
     });
-  }, [config, step, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit]);
+  }, [config, step, isShop, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit]);
 
-  const handleConfigProceed = useCallback((next: BulkWizardConfig) => {
-    setConfig(next);
-    setStep('resolve');
-  }, []);
+  const handleConfigProceed = useCallback(
+    (next: BulkWizardConfig) => {
+      setConfig(next);
+      // Shops skip Resolve (no category/EAN matching) and go straight to
+      // Review; marketplaces resolve categories first (#1829). Derived from
+      // the committed connection so a switch in Config is honoured.
+      const nextConnection = (connectionsQuery.data ?? []).find(
+        (c) => c.id === next.connectionId,
+      );
+      const nextIsShop =
+        nextConnection !== undefined && publishDestinationKind(nextConnection) === 'shop';
+      setStep(nextIsShop ? 'review' : 'resolve');
+    },
+    [connectionsQuery.data],
+  );
 
   const handleResolveComplete = useCallback((outcomes: BulkResolveOutcome[]) => {
     setRows((prev) => mergeResolveOutcomes(prev, outcomes));
     setStep('review');
   }, []);
 
-  const handleUpdateRow = useCallback(
+  // Toggle one variant's inclusion (single source of truth). Blockers recompute
+  // so an excluded blocked variant doesn't keep gating and an included one does.
+  const setVariantIncluded = useCallback(
+    (productId: string, variantId: string, included: boolean) => {
+      if (!config) return;
+      setRows((prev) => reblockRows(prev, config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, (row) =>
+        row.productId !== productId
+          ? row
+          : {
+              ...row,
+              variants: row.variants.map((v) =>
+                v.variantId === variantId ? { ...v, included } : v,
+              ),
+            },
+      ));
+    },
+    [config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit],
+  );
+
+  // Tri-state parent: clicking includes/excludes ALL variants of the product.
+  const setProductIncluded = useCallback(
+    (productId: string, included: boolean) => {
+      if (!config) return;
+      setRows((prev) => reblockRows(prev, config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, (row) =>
+        row.productId !== productId
+          ? row
+          : { ...row, variants: row.variants.map((v) => ({ ...v, included })) },
+      ));
+    },
+    [config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit],
+  );
+
+  // Commit the whole-product editor session: base override + per-variant
+  // overrides + inclusion, then recompute every sibling's blockers.
+  const handleSaveEditor = useCallback(
     (
-      variantId: string,
-      override: BulkPerProductOverride,
+      productId: string,
+      baseOverride: BulkPerProductOverride,
+      perVariantOverrides: Record<string, BulkPerProductOverride>,
+      includedByVariantId: Record<string, boolean>,
       editFormValues: Record<string, unknown>,
     ) => {
       if (!config) return;
-      setRows((prev) =>
-        prev.map((row) => {
-          if (row.primaryVariant?.id !== variantId) return row;
-          // `resolvedCategoryId` is the EAN-matched category and stays put — it's
-          // the reference `selectBulkProductCardId` compares the submit category
-          // against to decide whether the matched card still applies (#810). The
-          // operator's pick lives in `override.categoryId`; overwriting the
-          // resolved value here would defeat that guard and thread a stale card
-          // under a switched category.
-          const updated: BulkWizardRow = { ...row, override, editFormValues };
-          return {
-            ...updated,
-            blockers: recomputeRowBlockers(
-              updated,
-              config,
-              requiredByCategory,
-              platformValidate,
-              destinationResolvesCategoryAtSubmit,
-            ),
-          };
-        }),
-      );
+      setRows((prev) => reblockRows(prev, config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, (row) => {
+        if (row.productId !== productId) return row;
+        // A simple product has no per-variant scope: its offer-level fields
+        // (barcode, price, ...) live on the base override. Fold that base into
+        // the lone variant's override so `effectiveVariantEan` sees the entered
+        // EAN and the `no-ean` blocker clears on Save (#1741).
+        const isSimpleProduct = row.variants.length === 1;
+        return {
+          ...row,
+          override: baseOverride,
+          editFormValues,
+          variants: row.variants.map((v) => {
+            const nextOverride =
+              perVariantOverrides[v.variantId] ?? (isSimpleProduct ? baseOverride : v.override);
+            return {
+              ...v,
+              override: nextOverride,
+              included: includedByVariantId[v.variantId] ?? v.included,
+              ean: effectiveVariantEan({ ...v, override: nextOverride }),
+            };
+          }),
+        };
+      }));
     },
     [config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit],
   );
@@ -231,78 +341,95 @@ export function BulkWizard({
     async (publishImmediately: boolean) => {
       if (!config) return;
 
-      // Submittable = has a variant, no blockers, AND a concrete computed
-      // price + stock. The price/stock guard is belt-and-suspenders: a
-      // blocker-free row always resolves both, but filtering on them here
-      // means a future logic gap excludes the row rather than silently
-      // publishing the nominal `sharedConfig` fallback. Variant IDs (NOT
-      // product IDs) go in `productIds` — the BE field name is misleading;
-      // see `bulk-listings.types.ts` file header.
-      const submittable = rows
-        .filter((r) => r.primaryVariant !== null && r.blockers.length === 0)
-        .map((row) => ({
-          row,
-          variantId: row.primaryVariant!.id,
-          price: computeResolvedPrice(config.pricingPolicy, row.masterPrice, row.override),
-          stock: computeResolvedStock(config.stockPolicy, row.masterStock, row.override),
-        }))
-        .filter(({ price, stock }) => price.value !== null && stock.value !== null);
+      // Fresh idempotency key per confirm-click (#1741 review). A retry after a
+      // partial/failed submit must be a distinct request, otherwise the batch
+      // dedup gate would return the earlier partial batch instead of re-running.
+      // The confirm button is disabled while a submit is in flight, so this can
+      // never split a single deliberate click into two batches.
+      idempotencyKeyRef.current = crypto.randomUUID();
 
-      if (submittable.length === 0) {
+      // productIds = one primary/seed variant id per product that has >=1
+      // included, ready sibling. The BE fans each out; per-variant data + the
+      // exclusions drive the exact set (#1741).
+      const productIds: string[] = [];
+      const perProductOverrides: Record<string, BulkPerProductOverride> = {};
+      const perVariantOverrides: Record<string, BulkPerProductOverride> = {};
+      const excludedVariantIds: string[] = [];
+
+      for (const row of rows) {
+        if (row.variants.length === 0) continue;
+        const includedReady = row.variants.filter(
+          (v) => v.included && v.blockers.length === 0,
+        );
+        // The product's shared-base policy (if diverged) wins over the batch.
+        const rowPricingPolicy = effectivePricingPolicy(row.override, config.pricingPolicy);
+        const rowStockPolicy = effectiveStockPolicy(row.override, config.stockPolicy);
+        for (const v of row.variants) {
+          if (!v.included) {
+            excludedVariantIds.push(v.variantId);
+            continue;
+          }
+          if (v.blockers.length > 0) continue;
+          perVariantOverrides[v.variantId] = buildVariantOverride(v, config, rowPricingPolicy, rowStockPolicy);
+        }
+        if (includedReady.length === 0) continue;
+        const primaryId = (row.primaryVariant ?? row.variants[0].variant).id;
+        productIds.push(primaryId);
+
+        // #1741 review #1: for a multi-variant product, pin the shared category
+        // at the family tier so every sibling groups under the SAME category.
+        // Allegro only groups same-category siblings; without this pin each
+        // sibling would resolve its category independently by its own barcode
+        // and two divergent resolutions would split the very listing this flow
+        // unifies. Operator-pinned base category wins, else the resolved primary
+        // category. Single-variant products list standalone, so no pin.
+        const isMulti = row.variants.length > 1;
+        const familyCategoryId =
+          row.override.overrides?.categoryId ?? row.resolvedCategoryId ?? undefined;
+        const familyOverride: BulkPerProductOverride =
+          isMulti && familyCategoryId
+            ? {
+                ...row.override,
+                overrides: { ...(row.override.overrides ?? {}), categoryId: familyCategoryId },
+              }
+            : row.override;
+        if (
+          familyOverride.overrides ||
+          familyOverride.price ||
+          familyOverride.publishImmediately !== undefined
+        ) {
+          perProductOverrides[primaryId] = familyOverride;
+        }
+      }
+
+      if (productIds.length === 0) {
         showToast({
           tone: 'error',
-          description: 'No rows are ready to submit. Resolve the flagged rows first.',
+          description: 'No variants are ready to submit. Resolve the flagged variants first.',
         });
         return;
       }
 
-      const variantIds = submittable.map((s) => s.variantId);
-      const perProductOverrides: Record<string, BulkPerProductOverride> = {};
-      for (const { row, variantId, price, stock } of submittable) {
-        // Each row carries its own computed price + stock (the policy resolves
-        // a distinct value per product). A per-row override price keeps its own
-        // currency; policy-derived prices use the batch-wide currency (D7).
-        perProductOverrides[variantId] = {
-          ...row.override,
-          stock: stock.value ?? undefined,
-          price:
-            row.override.price ??
-            (price.value !== null
-              ? { amount: price.value, currency: config.currency }
-              : undefined),
-          overrides: {
-            ...(row.override.overrides ?? {}),
-            categoryId:
-              row.override.overrides?.categoryId ?? row.resolvedCategoryId ?? undefined,
-            // #808 — link the EAN-matched product card so Allegro inherits its
-            // required product parameters (Brand, Type, EAN, …). See
-            // `selectBulkProductCardId` for the keep/drop rule.
-            productCardId: selectBulkProductCardId(row),
-          },
-        };
-      }
-
       const request: BulkOfferCreateRequest = {
         connectionId: config.connectionId,
-        productIds: variantIds,
+        productIds,
         sharedConfig: {
-          // Per-row stock is always supplied via perProductOverrides above; this
-          // is a required nominal fallback the worker should never reach.
+          // Nominal batch-wide floor only. Every emitted offer carries its own
+          // resolved stock: multi-variant siblings use master inventory (BE,
+          // #823/#824) and single-variant offers carry a per-variant `stock`
+          // override, so this value is never the effective stock today. Kept as
+          // a safe non-zero default so a future passthrough path can't publish 0
+          // (#1741 review suggestion).
           stock: 1,
           publishImmediately,
-          // Belt-and-suspenders: re-derive at submit time so a stale `true`
-          // in `config` (e.g. a preset draft) can't leak into the request
-          // for a session that lacks `listings:write` — permission-gated,
-          // not demo-mode-gated, since the bulk-create endpoint is
-          // `@Roles('admin', 'operator')` in every environment (#1379 re-scope).
           generateDescription: canGenerateDescription ? config.generateDescription : false,
           overrides: {
-            // Generic per-platform knobs (Allegro deliveryPolicyId, Erli
-            // dispatchTime, …) — the config section populated these (#1096).
             platformParams: config.platformParams,
           },
         },
         perProductOverrides,
+        perVariantOverrides,
+        excludedVariantIds,
       };
 
       try {
@@ -310,105 +437,255 @@ export function BulkWizard({
           idempotencyKey: idempotencyKeyRef.current,
           request,
         });
+        const offerCount = Object.keys(perVariantOverrides).length;
         showToast({
           tone: 'success',
           title: 'Batch submitted',
-          description: `${variantIds.length.toLocaleString()} offers queued for creation.`,
+          description: `${offerCount.toLocaleString()} offers queued for creation.`,
         });
         void navigate(`/listings/bulk-batches/${result.batchId}`);
       } catch {
-        // Surfaced via mutation.error in the modal — toast is redundant.
+        // Surfaced via mutation.error in the modal.
       }
     },
     [config, rows, mutation, navigate, showToast, canGenerateDescription],
   );
 
-  const noVariants = rows.filter((r) => r.primaryVariant === null).length;
-  const readyCount = rows.filter(
-    (r) => r.primaryVariant !== null && r.blockers.length === 0,
-  ).length;
+  // Shop branch submit (#1829): POST /listings/bulk-shop-publish, one item per
+  // included variant. On success the body swaps to the publish tracker.
+  const handleShopPublish = useCallback(
+    async (items: BulkShopPublishItemRequest[], status: ShopPublishVisibility) => {
+      if (!config || items.length === 0) return;
+      try {
+        const result = await shopMutation.mutateAsync({
+          request: {
+            connectionId: config.connectionId,
+            items,
+            status,
+            // #1840 - same Config-step toggle the marketplace branch reads
+            // (canGenerateDescription gates on write access, mirroring the
+            // marketplace request below).
+            ...(canGenerateDescription && config.generateDescription
+              ? { generateDescription: true }
+              : {}),
+          },
+        });
+        showToast({
+          tone: 'success',
+          title: 'Bulk publish started',
+          description: `${items.length.toLocaleString()} product ${items.length === 1 ? 'listing' : 'listings'} queued.`,
+        });
+        setShopBatchId(result.batchId);
+      } catch {
+        // Surfaced via shopMutation.error in the review step.
+      }
+    },
+    [config, shopMutation, showToast, canGenerateDescription],
+  );
 
+  const counts = useMemo(() => countBatch(rows), [rows]);
   const marketplaceName = batchPlatform?.displayName ?? 'marketplace';
+
+  // Every seeded variant id, checked against the destination in one call.
+  const allSeededVariantIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const row of rows) {
+      for (const variant of row.variants) ids.push(variant.variantId);
+    }
+    return ids;
+  }, [rows]);
+
+  const publishedVariantsQuery = usePublishedVariantsQuery(
+    activeConnectionId || null,
+    allSeededVariantIds,
+  );
+  const alreadyListedSet = publishedVariantsQuery.data ?? EMPTY_ALREADY_LISTED;
+
+  // Included variants that are already published there - drives the guard gate.
+  const duplicateIncludedCount = useMemo(() => {
+    if (alreadyListedSet.size === 0) return 0;
+    let n = 0;
+    for (const row of rows) {
+      for (const variant of row.variants) {
+        if (variant.included && alreadyListedSet.has(variant.variantId)) n += 1;
+      }
+    }
+    return n;
+  }, [rows, alreadyListedSet]);
+
+  const dupGuardKind = isShop ? 'shop' : 'marketplace';
+  const dupGuardDestinationName = activeConnection?.name ?? marketplaceName;
+
+  // Marketplace publish gate: a duplicate opens the soft confirm first, which on
+  // confirm hands off to the existing submit-confirm modal.
+  const handleApproveAll = useCallback(() => {
+    if (duplicateIncludedCount > 0) {
+      setDupGuardOpen(true);
+      return;
+    }
+    setConfirmOpen(true);
+  }, [duplicateIncludedCount]);
+
+  // Shop publish gate: stash the built items, soft-confirm on a duplicate, else
+  // publish straight away.
+  const handleShopPublishRequested = useCallback(
+    (items: BulkShopPublishItemRequest[], status: ShopPublishVisibility) => {
+      if (duplicateIncludedCount > 0) {
+        pendingShopPublishRef.current = { items, status };
+        setDupGuardOpen(true);
+        return;
+      }
+      void handleShopPublish(items, status);
+    },
+    [duplicateIncludedCount, handleShopPublish],
+  );
+
+  const handleDupGuardConfirm = useCallback(() => {
+    setDupGuardOpen(false);
+    if (isShop) {
+      const pending = pendingShopPublishRef.current;
+      pendingShopPublishRef.current = null;
+      if (pending) void handleShopPublish(pending.items, pending.status);
+    } else {
+      setConfirmOpen(true);
+    }
+  }, [isShop, handleShopPublish]);
+
+  const currentStepIndex = Math.max(
+    0,
+    wizardSteps.findIndex((s) => s.id === step),
+  );
+  const stepperCurrent = shopBatchId !== null ? wizardSteps.length : currentStepIndex;
 
   return (
     <PageLayout
       eyebrow="Operations · Listings"
-      title="Bulk marketplace offer creation"
-      description={`Creating offers for ${rows.length} ${rows.length === 1 ? 'product' : 'products'}.`}
+      title={isShop ? 'Bulk shop product publishing' : 'Bulk marketplace offer creation'}
+      description={
+        isShop
+          ? `Publishing ${rows.length} ${rows.length === 1 ? 'product' : 'products'} · ${counts.totalVariants} variants to a shop.`
+          : `Creating offers for ${rows.length} ${rows.length === 1 ? 'product' : 'products'} · ${counts.totalVariants} variants.`
+      }
     >
       <div className="bulk-wizard">
         <div className="bulk-wizard__stepper">
           <SetupStepper
-            steps={WIZARD_STEPS.map((s) => s.label)}
-            currentStep={stepOrder(step)}
-            completedSteps={new Set(Array.from({ length: stepOrder(step) }, (_, i) => i))}
+            steps={wizardSteps.map((s) => s.label)}
+            currentStep={stepperCurrent}
+            completedSteps={new Set(Array.from({ length: stepperCurrent }, (_, i) => i))}
           />
         </div>
 
-        {noVariants > 0 ? (
+        {counts.noVariants > 0 ? (
           <Alert tone="warning">
-            {noVariants} of {rows.length} products have no variants and cannot be listed.
+            {counts.noVariants} of {rows.length} products have no variants and cannot be listed.
             They'll be skipped on submit.
           </Alert>
         ) : null}
 
-        <div className={step === 'resolve' ? '' : 'bulk-wizard__body'}>
-          {step === 'config' && (
-            <BulkConfigStep
-              initial={config ?? {}}
-              preselectedConnectionId={preselectedConnectionId}
-              onProceed={handleConfigProceed}
-              onCancel={() => { void navigate(-1); }}
-            />
-          )}
-          {step === 'resolve' && config && (
-            <BulkResolveStep
-              rows={rows}
-              connectionId={config.connectionId}
-              pricingPolicy={config.pricingPolicy}
-              stockPolicy={config.stockPolicy}
-              currency={config.currency}
-              platformValidate={platformValidate}
-              destinationResolvesCategoryAtSubmit={destinationResolvesCategoryAtSubmit}
-              onComplete={handleResolveComplete}
-            />
-          )}
-          {step === 'review' && config && (
-            <BulkReviewStep
-              rows={rows}
-              connection={batchConnection}
-              pricingPolicy={config.pricingPolicy}
-              stockPolicy={config.stockPolicy}
-              currency={config.currency}
-              publishImmediately={config.publishImmediately}
-              paramsResolving={paramsResolving}
-              platformBlockerChips={platformBlockerChips}
-              canBrowseCategories={destinationBrowsesCategories}
-              batchDeliveryPriceList={
-                typeof config.platformParams.deliveryPriceList === 'string'
-                  ? config.platformParams.deliveryPriceList
-                  : ''
-              }
-              onUpdateRow={handleUpdateRow}
-              onApproveAll={() => { setConfirmOpen(true); }}
-              onBack={() => { setStep('config'); }}
-            />
-          )}
-        </div>
+        {shopBatchId !== null && config ? (
+          <div className="bulk-wizard__body">
+            <ShopPublishTracker connectionId={config.connectionId} batchId={shopBatchId} />
+            <div className="bulk-wizard__footer">
+              <div className="bulk-wizard__footer-spacer" />
+              <Button tone="primary" onClick={() => { void navigate('/listings'); }}>
+                Done
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className={step === 'resolve' ? '' : 'bulk-wizard__body'}>
+            {step === 'config' && (
+              <BulkConfigStep
+                initial={config ?? {}}
+                preselectedConnectionId={preselectedConnectionId}
+                onConnectionChange={setLiveConnectionId}
+                onProceed={handleConfigProceed}
+                onCancel={() => { void navigate(-1); }}
+              />
+            )}
+            {step === 'resolve' && config && !isShop && (
+              <BulkResolveStep
+                rows={rows}
+                connectionId={config.connectionId}
+                pricingPolicy={config.pricingPolicy}
+                stockPolicy={config.stockPolicy}
+                currency={config.currency}
+                platformValidate={platformValidate}
+                destinationResolvesCategoryAtSubmit={destinationResolvesCategoryAtSubmit}
+                onComplete={handleResolveComplete}
+              />
+            )}
+            {step === 'review' && config && isShop && (
+              <BulkShopReviewStep
+                rows={rows}
+                connection={activeConnection}
+                config={config}
+                demoReadOnly={write.demoReadOnly}
+                isSubmitting={shopMutation.isPending}
+                errorMessage={shopMutation.error ? shopMutation.error.message : null}
+                alreadyListedVariantIds={alreadyListedSet}
+                destinationName={dupGuardDestinationName}
+                onSetVariantIncluded={setVariantIncluded}
+                onSaveEditor={handleSaveEditor}
+                onBack={() => { setStep('config'); }}
+                onPublish={handleShopPublishRequested}
+              />
+            )}
+            {step === 'review' && config && !isShop && (
+              <BulkReviewStep
+                rows={rows}
+                connection={batchConnection}
+                config={config}
+                paramsResolving={paramsResolving}
+                platformBlockerChips={platformBlockerChips}
+                canBrowseCategories={destinationBrowsesCategories}
+                batchDeliveryPriceList={
+                  typeof config.platformParams.deliveryPriceList === 'string'
+                    ? config.platformParams.deliveryPriceList
+                    : ''
+                }
+                demoReadOnly={write.demoReadOnly}
+                alreadyListedVariantIds={alreadyListedSet}
+                destinationName={dupGuardDestinationName}
+                onSetVariantIncluded={setVariantIncluded}
+                onSetProductIncluded={setProductIncluded}
+                onSaveEditor={handleSaveEditor}
+                onApproveAll={handleApproveAll}
+                onBack={() => { setStep('config'); }}
+              />
+            )}
+          </div>
+        )}
 
-        {config ? (
+        {config && !isShop ? (
           <BulkConfirmModal
             open={confirmOpen}
             onOpenChange={setConfirmOpen}
-            rowCount={readyCount}
+            offerCount={counts.includedReady}
+            productCount={counts.productsWithIncluded}
+            excludedCount={counts.excluded}
+            mixedPublishWarning={counts.mixedPublish}
             connectionName={resolveConnectionName(config.connectionId)}
             marketplaceName={marketplaceName}
             initialPublishImmediately={config.publishImmediately}
             isSubmitting={mutation.isPending}
+            demoReadOnly={write.demoReadOnly}
             errorMessage={mutation.error ? mutation.error.message : null}
             onConfirm={(publishImmediately) => {
               void handleSubmit(publishImmediately);
             }}
+          />
+        ) : null}
+
+        {config ? (
+          <DuplicateGuardModal
+            open={dupGuardOpen}
+            onOpenChange={setDupGuardOpen}
+            kind={dupGuardKind}
+            destinationName={dupGuardDestinationName}
+            duplicateCount={duplicateIncludedCount}
+            onConfirm={handleDupGuardConfirm}
           />
         ) : null}
       </div>
@@ -416,18 +693,146 @@ export function BulkWizard({
   );
 }
 
-function stepOrder(step: BulkWizardStep): number {
-  return WIZARD_STEPS.findIndex((s) => s.id === step);
-}
-
-/** Order-sensitive blocker-list equality (`computeBlockers` emits a stable order). */
+/** Order-sensitive blocker-list equality. */
 function sameBlockers(a: readonly BulkRowBlocker[], b: readonly BulkRowBlocker[]): boolean {
   return a.length === b.length && a.every((blocker, i) => blocker === b[i]);
 }
 
+function dedupById(products: Product[]): Product[] {
+  const seen = new Set<string>();
+  const out: Product[] = [];
+  for (const p of products) {
+    if (seen.has(p.id)) continue;
+    seen.add(p.id);
+    out.push(p);
+  }
+  return out;
+}
+
 /**
- * Merge resolve-step outcomes into the wizard's rows by `productId`. Exported
- * for unit testing; the wizard calls it from `handleResolveComplete`.
+ * Apply a row transform then recompute every touched product's per-variant
+ * blockers so inclusion/override edits keep the readiness gate honest.
+ */
+function reblockRows(
+  rows: BulkWizardRow[],
+  config: BulkWizardConfig,
+  requiredByCategory: Map<string, readonly string[]>,
+  platformValidate: ((input: OfferRowValidationInput) => string[]) | undefined,
+  destinationResolvesCategoryAtSubmit: boolean,
+  transform: (row: BulkWizardRow) => BulkWizardRow,
+): BulkWizardRow[] {
+  return rows.map((row) => {
+    const next = transform(row);
+    if (next === row) return row;
+    const isMulti = next.variants.length > 1;
+    return {
+      ...next,
+      variants: next.variants.map((variant) => ({
+        ...variant,
+        blockers: recomputeVariantBlockers(
+          next,
+          variant,
+          config,
+          requiredByCategory,
+          platformValidate,
+          destinationResolvesCategoryAtSubmit,
+          isMulti,
+        ),
+      })),
+    };
+  });
+}
+
+/**
+ * Assemble a variant's wire override from its edit override + policy-resolved
+ * price/stock. `pricingPolicy` / `stockPolicy` are the ROW-effective policies
+ * (the product's shared-base override wins over the batch default, #1741).
+ */
+function buildVariantOverride(
+  variant: BulkVariantRow,
+  config: BulkWizardConfig,
+  pricingPolicy: PricingPolicy,
+  stockPolicy: StockPolicy,
+): BulkPerProductOverride {
+  const price = computeResolvedPrice(pricingPolicy, variant.masterPrice, variant.override);
+  const stock = computeResolvedStock(stockPolicy, variant.masterStock, variant.override);
+  return {
+    ...variant.override,
+    stock: stock.value ?? undefined,
+    price:
+      variant.override.price ??
+      (price.value !== null ? { amount: price.value, currency: config.currency } : undefined),
+    overrides: {
+      ...(variant.override.overrides ?? {}),
+      // categoryId is grouping-determining + product-level; the BE strips it
+      // from the per-variant map. Keep the resolved card so a self-linking
+      // sibling still points at its own catalog product (#824).
+      productCardId:
+        variant.override.overrides?.productCardId ?? variant.resolvedProductCardId ?? undefined,
+      ...(effectiveVariantEan(variant) ? { ean: effectiveVariantEan(variant)! } : {}),
+    },
+  };
+}
+
+interface BatchCounts {
+  totalVariants: number;
+  includedReady: number;
+  includedNeedsAttention: number;
+  excluded: number;
+  noVariants: number;
+  productsWithIncluded: number;
+  mixedPublish: boolean;
+}
+
+function countBatch(rows: BulkWizardRow[]): BatchCounts {
+  let totalVariants = 0;
+  let includedReady = 0;
+  let includedNeedsAttention = 0;
+  let excluded = 0;
+  let noVariants = 0;
+  let productsWithIncluded = 0;
+  let mixedPublish = false;
+
+  for (const row of rows) {
+    if (row.variants.length === 0) {
+      noVariants += 1;
+      continue;
+    }
+    let hasIncluded = false;
+    let sawPublish = false;
+    let sawDraft = false;
+    for (const v of row.variants) {
+      totalVariants += 1;
+      if (!v.included) {
+        excluded += 1;
+        continue;
+      }
+      hasIncluded = true;
+      if (v.blockers.length === 0) includedReady += 1;
+      else includedNeedsAttention += 1;
+      const publish = v.override.publishImmediately;
+      if (publish === false) sawDraft = true;
+      else sawPublish = true;
+    }
+    if (hasIncluded) productsWithIncluded += 1;
+    if (sawPublish && sawDraft) mixedPublish = true;
+  }
+
+  return {
+    totalVariants,
+    includedReady,
+    includedNeedsAttention,
+    excluded,
+    noVariants,
+    productsWithIncluded,
+    mixedPublish,
+  };
+}
+
+/**
+ * Merge resolve-step outcomes into the wizard's rows by product id, then by
+ * variant id, preserving each variant's operator `override` + `editFormValues`
+ * (re-resolve must not discard edits, plan §8).
  */
 export function mergeResolveOutcomes(
   rows: BulkWizardRow[],
@@ -437,30 +842,91 @@ export function mergeResolveOutcomes(
   return rows.map((row) => {
     const o = byId.get(row.productId);
     if (!o) return row;
+    const outcomeByVariant = new Map(o.variants.map((v) => [v.variantId, v]));
+    const primaryOutcome = row.primaryVariant
+      ? outcomeByVariant.get(row.primaryVariant.id)
+      : undefined;
     return {
       ...row,
-      blockers: o.blockers,
-      resolvedCategoryId: o.resolvedCategoryId,
-      resolvedProductCardId: o.resolvedProductCardId,
-      resolutionMethod: o.resolutionMethod,
-      masterPrice: o.masterPrice,
-      masterStock: o.masterStock,
-      masterCurrency: o.masterCurrency,
-      categoryCandidates: o.categoryCandidates,
+      blockers: primaryOutcome?.blockers ?? row.blockers,
+      resolvedCategoryId: primaryOutcome?.resolvedCategoryId ?? row.resolvedCategoryId,
+      masterPrice: primaryOutcome?.masterPrice ?? row.masterPrice,
+      masterStock: primaryOutcome?.masterStock ?? row.masterStock,
+      masterCurrency: primaryOutcome?.masterCurrency ?? row.masterCurrency,
+      variants: row.variants.map((variant) => {
+        const vo = outcomeByVariant.get(variant.variantId);
+        if (!vo) return variant;
+        return {
+          ...variant,
+          blockers: vo.blockers,
+          resolvedCategoryId: vo.resolvedCategoryId,
+          resolvedProductCardId: vo.resolvedProductCardId,
+          resolutionMethod: vo.resolutionMethod,
+          masterStock: vo.masterStock,
+          masterPrice: vo.masterPrice,
+          masterCurrency: vo.masterCurrency,
+          categoryCandidates: vo.categoryCandidates,
+          ean: vo.ean,
+        };
+      }),
     };
   });
 }
 
-function seedRows(products: Product[]): BulkWizardRow[] {
-  return products.map(seedRow);
+export function seedRows(
+  products: Product[],
+  preSelectedVariantIds?: ReadonlySet<string>,
+): BulkWizardRow[] {
+  return dedupById(products).map((product) => seedRow(product, preSelectedVariantIds));
 }
 
-function seedRow(product: Product): BulkWizardRow {
-  const primaryVariant: ProductVariant | null = product.variants?.[0] ?? null;
+function seedVariantRow(
+  variant: ProductVariant,
+  product: Product,
+  included: boolean,
+): BulkVariantRow {
+  const barcode = variant.ean ?? variant.gtin ?? null;
+  return {
+    variantId: variant.id,
+    variant,
+    ean: barcode && barcode.trim() !== '' ? barcode.trim() : null,
+    distinguishingAttributes: variant.attributes,
+    masterStock: null,
+    masterPrice: variant.price,
+    masterCurrency: product.currency ?? null,
+    included,
+    blockers: [],
+    resolvedCategoryId: null,
+    resolvedProductCardId: null,
+    resolutionMethod: null,
+    categoryCandidates: [],
+    override: {},
+  };
+}
+
+function seedRow(product: Product, preSelectedVariantIds?: ReadonlySet<string>): BulkWizardRow {
+  const variants = product.variants ?? [];
+  // A product is "variant-scoped" only when the picker checked SOME of its
+  // variants (#1754). Whole-product picks (and the /products entry point) leave
+  // the set empty for this product, so every variant seeds included.
+  // Capture the set only when the product is variant-scoped (else null for a
+  // whole-product pick), so the closure narrows without a non-null assertion.
+  const scopedIds =
+    preSelectedVariantIds !== undefined &&
+    preSelectedVariantIds.size > 0 &&
+    variants.some((v) => preSelectedVariantIds.has(v.id))
+      ? preSelectedVariantIds
+      : null;
+  const isIncluded = (v: ProductVariant): boolean => scopedIds === null || scopedIds.has(v.id);
+  // The primary is a representative for row-level resolve mapping - prefer the
+  // first INCLUDED variant so a variant-scoped product represents a checked one.
+  const primaryVariant: ProductVariant | null =
+    variants.find(isIncluded) ?? variants[0] ?? null;
   return {
     productId: product.id,
     product,
     primaryVariant,
+    variants: variants.map((v) => seedVariantRow(v, product, isIncluded(v))),
     blockers: primaryVariant ? [] : ['no-variant'],
     resolvedCategoryId: null,
     resolvedProductCardId: null,

@@ -13,9 +13,9 @@ import { InventoryItem } from '../../../domain/entities/inventory-item.entity';
 import type { InventoryRepositoryPort } from '../../../domain/ports/inventory-repository.port';
 import type { IProductsService, Product } from '@openlinker/core/products';
 
-// Only the two products-service methods the SUT actually calls — keeps the
+// Only the products-service method the SUT actually calls — keeps the
 // mock surface tight per #718 review.
-type ProductsServiceMock = Pick<IProductsService, 'getProduct' | 'getProductsByIds'>;
+type ProductsServiceMock = Pick<IProductsService, 'getProductsByIds'>;
 
 describe('InventoryQueryService', () => {
   let service: InventoryQueryService;
@@ -73,14 +73,13 @@ describe('InventoryQueryService', () => {
     inventoryRepository = {
       findByProductAndVariant: jest.fn(),
       upsert: jest.fn(),
-      findById: jest.fn(),
       findMany: jest.fn(),
       findAvailabilityByVariantIds: jest.fn(),
+      findStockAggregatesByProductIds: jest.fn(),
       markStaleExceptVariants: jest.fn(),
     };
 
     productsService = {
-      getProduct: jest.fn(),
       getProductsByIds: jest.fn(),
     };
 
@@ -169,44 +168,6 @@ describe('InventoryQueryService', () => {
     });
   });
 
-  describe('getInventoryItem', () => {
-    it('composes product details when both item and product exist', async () => {
-      inventoryRepository.findById.mockResolvedValue(itemA);
-      productsService.getProduct.mockResolvedValue(product1);
-
-      const result = await service.getInventoryItem('inv-a');
-
-      expect(result).not.toBeNull();
-      expect(result!.item).toBe(itemA);
-      expect(result!.product).toEqual({
-        name: 'Product One',
-        sku: 'SKU-1',
-        coverImageUrl: 'https://shop.test/img/1/cover.jpg',
-      });
-      expect(productsService.getProduct).toHaveBeenCalledWith('prod-1');
-    });
-
-    it('returns null when the inventory item does not exist and skips the product lookup', async () => {
-      inventoryRepository.findById.mockResolvedValue(null);
-
-      const result = await service.getInventoryItem('missing');
-
-      expect(result).toBeNull();
-      expect(productsService.getProduct).not.toHaveBeenCalled();
-    });
-
-    it('returns a view with product: null when the item exists but the product lookup returns null', async () => {
-      inventoryRepository.findById.mockResolvedValue(itemA);
-      productsService.getProduct.mockResolvedValue(null);
-
-      const result = await service.getInventoryItem('inv-a');
-
-      expect(result).not.toBeNull();
-      expect(result!.item).toBe(itemA);
-      expect(result!.product).toBeNull();
-    });
-  });
-
   describe('getAvailabilityByVariantIds (#792)', () => {
     it('returns an empty array on empty input without hitting the repository', async () => {
       const result = await service.getAvailabilityByVariantIds([]);
@@ -255,6 +216,46 @@ describe('InventoryQueryService', () => {
 
       expect(result.map((r) => r.productVariantId)).toEqual(['var-a', 'var-m', 'var-z']);
       expect(result[1]).toEqual({ productVariantId: 'var-m', totalAvailable: 0, locationCount: 0 });
+    });
+  });
+
+  describe('getProductStockAggregates (#1720)', () => {
+    it('returns an empty array on empty input without hitting the repository', async () => {
+      const result = await service.getProductStockAggregates([]);
+
+      expect(result).toEqual([]);
+      expect(inventoryRepository.findStockAggregatesByProductIds).not.toHaveBeenCalled();
+    });
+
+    it('delegates to the repository and returns its rows verbatim (no zero-fill)', async () => {
+      const rows = [
+        {
+          productId: 'prod-1',
+          totalAvailable: 12,
+          totalReserved: 3,
+          stockUpdatedAt: new Date('2026-04-01T00:00:00Z'),
+        },
+      ];
+      inventoryRepository.findStockAggregatesByProductIds.mockResolvedValue(rows);
+
+      const result = await service.getProductStockAggregates(['prod-1', 'prod-without-stock']);
+
+      expect(inventoryRepository.findStockAggregatesByProductIds).toHaveBeenCalledWith([
+        'prod-1',
+        'prod-without-stock',
+      ]);
+      // Products absent from the repo result stay absent - the caller decides
+      // whether to zero-fill for display.
+      expect(result).toBe(rows);
+    });
+
+    it('rejects input exceeding the 200-id cap without hitting the repository', async () => {
+      const oversize = Array.from({ length: 201 }, (_, i) => `prod-${String(i)}`);
+
+      await expect(service.getProductStockAggregates(oversize)).rejects.toThrow(
+        /at most 200 productIds/
+      );
+      expect(inventoryRepository.findStockAggregatesByProductIds).not.toHaveBeenCalled();
     });
   });
 });

@@ -1,5 +1,6 @@
 import { createBrowserRouter, type RouteObject } from 'react-router-dom';
 
+import { confirmEmailRoute } from './routes/confirm-email.route';
 import { forgotPasswordRoute } from './routes/forgot-password.route';
 import { loginRoute } from './routes/login.route';
 import { registerRoute } from './routes/register.route';
@@ -12,6 +13,12 @@ import { rootRoute } from './routes/root.route';
  * NOT a runtime API for other modules to consume. The runtime composition
  * is the `appRouter` below.
  */
-export const guestRoutes: RouteObject[] = [loginRoute, registerRoute, forgotPasswordRoute, resetPasswordRoute];
+export const guestRoutes: RouteObject[] = [
+  loginRoute,
+  registerRoute,
+  forgotPasswordRoute,
+  resetPasswordRoute,
+  confirmEmailRoute,
+];
 
 export const appRouter = createBrowserRouter([...guestRoutes, rootRoute]);

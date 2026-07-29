@@ -12,6 +12,9 @@ export const listingsQueryKeys = {
   marketplaceOffer: (mappingId: string) => ['listings', 'marketplaceOffer', mappingId] as const,
   offerCreationStatus: (connectionId: string, offerCreationRecordId: string) =>
     ['listings', 'offerCreationStatus', connectionId, offerCreationRecordId] as const,
+  /** #1760 — live publication status of a product's offers (per snapshot). */
+  offerPublicationStatus: (productId: string, connectionId?: string) =>
+    ['listings', 'offerPublicationStatus', productId, connectionId ?? ''] as const,
   sellerPolicies: (connectionId: string) => ['listings', 'sellerPolicies', connectionId] as const,
   responsibleProducers: (connectionId: string) =>
     ['listings', 'responsibleProducers', connectionId] as const,
@@ -28,6 +31,9 @@ export const listingsQueryKeys = {
       connectionId,
       categoryId,
     ] as const,
+  // #1752 — category breadcrumb resolution for the listing-detail drawer.
+  categoryPath: (connectionId: string, categoryId: string) =>
+    ['listings', 'categoryPath', connectionId, categoryId] as const,
   catalogProductMatch: (connectionId: string, barcode: string, categoryId: string) =>
     ['listings', 'catalogProductMatch', connectionId, barcode, categoryId] as const,
   catalogProduct: (connectionId: string, productId: string) =>
@@ -49,4 +55,20 @@ export const listingsQueryKeys = {
     ['listings', 'shopPublishStatus', connectionId, recordId] as const,
   /** #1044 — bulk shop-publish batch progress polling. */
   bulkShopPublishBatch: (batchId: string) => ['listings', 'bulkShopPublishBatch', batchId] as const,
+  /** #1834 — shop destination category tree, one parent level at a time. */
+  shopCategories: (connectionId: string, parentId?: string) =>
+    ['listings', 'shopCategories', connectionId, parentId ?? ''] as const,
+  /** #1835 — shop destination global attributes. */
+  shopAttributes: (connectionId: string) =>
+    ['listings', 'shopAttributes', connectionId] as const,
+  /** #1835 — predefined terms of one global attribute. */
+  shopAttributeTerms: (connectionId: string, attributeId: string) =>
+    ['listings', 'shopAttributeTerms', connectionId, attributeId] as const,
+  /**
+   * #1837 — destination-aware duplicate guard. Keyed on the connection + the
+   * sorted variant-id set so a different destination or selection never shares
+   * a cache entry.
+   */
+  publishedVariants: (connectionId: string, variantIds: readonly string[]) =>
+    ['listings', 'publishedVariants', connectionId, [...variantIds].sort()] as const,
 };

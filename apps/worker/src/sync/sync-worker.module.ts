@@ -29,6 +29,7 @@ import { MarketplaceOfferCreateHandler } from './handlers/marketplace-offer-crea
 import { MarketplaceOfferPollCreationStatusHandler } from './handlers/marketplace-offer-poll-creation-status.handler';
 import { MarketplaceOffersSyncHandler } from './handlers/marketplace-offers-sync.handler';
 import { MarketplaceOfferStatusSyncHandler } from './handlers/marketplace-offer-status-sync.handler';
+import { MarketplaceOfferRefreshSnapshotHandler } from './handlers/marketplace-offer-refresh-snapshot.handler';
 import { MarketplaceOfferStockRestoreHandler } from './handlers/marketplace-offer-stock-restore.handler';
 import { MarketplaceShipmentStatusSyncHandler } from './handlers/marketplace-shipment-status-sync.handler';
 import { MarketplaceShipmentSyncByExternalIdHandler } from './handlers/marketplace-shipment-sync-by-external-id.handler';
@@ -40,8 +41,11 @@ import { MasterInventorySyncAllHandler } from './handlers/master-inventory-sync-
 import { MasterProductSyncAllHandler } from './handlers/master-product-sync-all.handler';
 import { PickupPointRefreshHandler } from './handlers/pickup-point-refresh.handler';
 import { ShopProductPublishHandler } from './handlers/shop-product-publish.handler';
+import { ShopProductStatusSyncHandler } from './handlers/shop-product-status-sync.handler';
 import { InvoicingIssueHandler } from './handlers/invoicing-issue.handler';
 import { RegulatoryStatusReconcileHandler } from './handlers/regulatory-status-reconcile.handler';
+import { OfflineResubmitHandler } from './handlers/offline-resubmit.handler';
+import { PendingRecoveryHandler } from './handlers/pending-recovery.handler';
 import { PaymentStatusRefreshHandler } from './handlers/payment-status-refresh.handler';
 import { HandlerRegistrationService } from './handlers/handler-registration.service';
 
@@ -71,6 +75,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceOfferPollCreationStatusHandler,
     MarketplaceOffersSyncHandler,
     MarketplaceOfferStatusSyncHandler,
+    MarketplaceOfferRefreshSnapshotHandler,
     MarketplaceOfferStockRestoreHandler,
     MarketplaceShipmentStatusSyncHandler,
     MarketplaceShipmentSyncByExternalIdHandler,
@@ -82,8 +87,11 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MasterProductSyncAllHandler,
     PickupPointRefreshHandler,
     ShopProductPublishHandler,
+    ShopProductStatusSyncHandler,
     InvoicingIssueHandler,
     RegulatoryStatusReconcileHandler,
+    OfflineResubmitHandler,
+    PendingRecoveryHandler,
     PaymentStatusRefreshHandler,
     HandlerRegistrationService,
   ],

@@ -91,4 +91,16 @@ describe('ErliConnectionActions', () => {
 
     resolve({ webhooksConfigured: true, testPingTriggered: true });
   });
+
+  it('renders the Configure webhooks button disabled when readOnly is set (demo viewer, #1615)', () => {
+    renderWithProviders(<ErliConnectionActions connection={withCallbackUrl} readOnly />);
+
+    expect(screen.getByRole('button', { name: 'Configure webhooks' })).toBeDisabled();
+  });
+
+  it('keeps the button enabled when readOnly is not set', () => {
+    renderWithProviders(<ErliConnectionActions connection={withCallbackUrl} />);
+
+    expect(screen.getByRole('button', { name: 'Configure webhooks' })).not.toBeDisabled();
+  });
 });

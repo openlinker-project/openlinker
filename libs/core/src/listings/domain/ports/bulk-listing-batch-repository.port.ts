@@ -72,4 +72,20 @@ export interface BulkListingBatchRepositoryPort {
    * missing.
    */
   updateStatus(id: string, status: BulkBatchStatus): Promise<BulkListingBatch>;
+
+  /**
+   * Reconcile the batch's `totalCount` to a new value (#1741).
+   *
+   * Used only by the partial-submit atomicity path: when a mid-fan-out enqueue
+   * fails after N jobs already reached the stream, `totalCount` is reconciled
+   * down to N so the #737 counter gate
+   * (`succeededCount + failedCount === totalCount`) can still terminate the
+   * batch instead of it lingering forever waiting on un-enqueued children.
+   *
+   * The port does not validate the value against the current counters -
+   * reconciliation is an orchestration decision owned by the submit service.
+   *
+   * Throws `BulkListingBatchNotFoundException` if the row is missing.
+   */
+  updateTotalCount(id: string, totalCount: number): Promise<BulkListingBatch>;
 }

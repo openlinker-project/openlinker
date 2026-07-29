@@ -33,6 +33,7 @@ const makeRepo = (): jest.Mocked<UserRepositoryPort> => ({
   deleteById: jest.fn(),
   deactivateAdminAtomically: jest.fn(),
   updateAdminRoleAtomically: jest.fn(),
+  updateAnalyticsConsent: jest.fn(),
   deleteAdminAtomically: jest.fn(),
   findStaleViewerAccounts: jest.fn(),
 });
@@ -80,6 +81,21 @@ describe('DemoAccountCleanupService', () => {
     const cutoff = repo.findStaleViewerAccounts.mock.calls[0][0];
     expect(cutoff.toISOString()).toBe('2026-01-01T00:00:00.000Z');
     jest.useRealTimers();
+  });
+
+  it('should sweep both active and pending_confirmation statuses', async () => {
+    const repo = makeRepo();
+    repo.findStaleViewerAccounts.mockResolvedValue([]);
+    const service = new DemoAccountCleanupService(
+      repo,
+      makeDemoService(true),
+      makeConfig({ OL_DEMO_ACCOUNT_RETENTION_HOURS: '24' }),
+    );
+
+    await service.cleanup();
+
+    const statuses = repo.findStaleViewerAccounts.mock.calls[0][1];
+    expect(statuses).toEqual(expect.arrayContaining(['active', 'pending_confirmation']));
   });
 
   it('should not delete anything when no accounts are stale', async () => {

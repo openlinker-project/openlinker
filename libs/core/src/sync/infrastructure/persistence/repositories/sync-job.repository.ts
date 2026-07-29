@@ -287,6 +287,29 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
     return this.toDomain(updated);
   }
 
+  async requeueDeadByIdempotencyKey(idempotencyKey: string): Promise<boolean> {
+    // Single guarded UPDATE (#1585 S3): the status='dead' predicate lives IN the
+    // write, so two overlapping recovery runs cannot both observe `dead` and both
+    // requeue - Postgres serialises the row write and exactly one gets affected>0.
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(SyncJobOrmEntity)
+      .set({
+        status: 'queued',
+        attempts: 0,
+        nextRunAt: new Date(),
+        lockedAt: null,
+        lockedBy: null,
+      })
+      .where('idempotencyKey = :idempotencyKey AND status = :status', {
+        idempotencyKey,
+        status: 'dead',
+      })
+      .execute();
+
+    return (result.affected ?? 0) > 0;
+  }
+
   async findRecentByConnectionId(connectionId: string, limit: number): Promise<SyncJob[]> {
     const entities = await this.repository.find({
       where: { connectionId },

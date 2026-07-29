@@ -43,9 +43,10 @@ PrestaShop ships with demo products out of the box (seeded via
 
 - [x] In OpenLinker, go to **Products** (left nav)
 - [x] Confirm the PrestaShop products are visible/synced. If the list is empty, trigger a manual
-      sync — check the connection's **Actions** tab for a "Sync now" / "Sync products" action, or
-      wait for the scheduled `master.product.syncAll` job (runs every 20 min per the worker's
-      registered scheduler tasks)
+      sync: open the connection's **Actions** tab, click **"Trigger sync…"**, keep the default job
+      type `master.product.syncAll`, and submit. (Alternatively, wait for the scheduled
+      `master.product.syncAll` job, which runs every 20 min per the worker's registered scheduler
+      tasks.)
 
 ![OpenLinker Products list — 6 products synced from PrestaShop](screenshots/prestashop/06-openlinker-products-list.png)
 

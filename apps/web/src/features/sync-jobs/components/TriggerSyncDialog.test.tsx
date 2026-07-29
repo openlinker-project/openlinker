@@ -30,10 +30,20 @@ beforeAll(() => {
 
 afterEach(cleanup);
 
-function renderDialog(open = true, onOpenChange = vi.fn(), apiOverrides = {}) {
+function renderDialog(
+  open = true,
+  onOpenChange = vi.fn(),
+  apiOverrides = {},
+  submitDisabled = false,
+) {
   const mockApi = createMockApiClient(apiOverrides);
   renderWithProviders(
-    <TriggerSyncDialog connection={sampleConnection} open={open} onOpenChange={onOpenChange} />,
+    <TriggerSyncDialog
+      connection={sampleConnection}
+      open={open}
+      onOpenChange={onOpenChange}
+      submitDisabled={submitDisabled}
+    />,
     { apiClient: mockApi },
   );
   return { mockApi, onOpenChange };
@@ -494,6 +504,25 @@ describe('TriggerSyncDialog', () => {
       const firstSuffix = firstKey.split(':').at(-1);
       const secondSuffix = secondKey.split(':').at(-1);
       expect(firstSuffix).toBe(secondSuffix);
+    });
+  });
+
+  describe('submitDisabled (demo read-only viewer, #1615)', () => {
+    it('renders the job type and payload inputs editable while disabling only the Trigger submit', () => {
+      renderDialog(true, vi.fn(), {}, true);
+
+      const select = screen.getByRole('combobox', { name: /job type/i });
+      expect(select).not.toBeDisabled();
+      fireEvent.change(select, { target: { value: 'master.product.syncByExternalId' } });
+      expect(select).toHaveValue('master.product.syncByExternalId');
+
+      expect(screen.getByRole('button', { name: /trigger/i })).toBeDisabled();
+    });
+
+    it('keeps the Trigger submit enabled when submitDisabled is not set', () => {
+      renderDialog();
+
+      expect(screen.getByRole('button', { name: /trigger/i })).not.toBeDisabled();
     });
   });
 });

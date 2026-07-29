@@ -366,11 +366,11 @@ function renderRange(parameter: CategoryParameter, field: ControllerField): Reac
   );
 }
 
-function toComboboxOption(entry: CategoryParameterDictionaryEntry): ComboboxOption {
+export function toComboboxOption(entry: CategoryParameterDictionaryEntry): ComboboxOption {
   return { id: entry.id, label: entry.value, hint: entry.id };
 }
 
-function toComboboxValue(
+export function toComboboxValue(
   parameter: CategoryParameter,
   raw: FormParameterValue,
 ): ComboboxValue | null {
@@ -390,7 +390,7 @@ function toComboboxValue(
   return { kind: 'dictionary', ids: [raw] };
 }
 
-function fromComboboxValue(
+export function fromComboboxValue(
   parameter: CategoryParameter,
   value: ComboboxValue | null,
 ): FormParameterValue {

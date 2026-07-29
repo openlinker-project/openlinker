@@ -45,8 +45,10 @@ export type { IAttributeProjectionService } from './application/interfaces/attri
 export type {
   AttributeProjectionInput,
   AttributeProjectionResult,
+  AttributeProjectionMetadata,
   ResolvedParameter,
 } from './application/types/attribute-projection.types';
+export { buildProjectionMetadata } from './application/services/build-projection-metadata';
 export type { IOfferLinkingService } from './application/interfaces/offer-linking.service.interface';
 export type {
   OfferLinkMethod,
@@ -61,10 +63,14 @@ export type {
 } from './application/services/offer-mapping-sync.service.interface';
 export type { IOfferMappingsService } from './application/services/offer-mappings.service.interface';
 export type { OfferMappingRepositoryPort } from './domain/ports/offer-mapping-repository.port';
+export type { ShopProductMappingRepositoryPort } from './domain/ports/shop-product-mapping-repository.port';
+export type { IPublishedVariantsService } from './application/services/published-variants.service.interface';
+export type { IShopProductMappingsService } from './application/services/shop-product-mappings.service.interface';
 export type {
   OfferMappingFilters,
   OfferMappingPagination,
   PaginatedOfferMappings,
+  ProductListingsCoverage,
 } from './domain/types/offer-mapping.types';
 export type {
   OfferDescriptionSectionItem,
@@ -99,6 +105,11 @@ export type {
 export type { BulkListingBatchRepositoryPort } from './domain/ports/bulk-listing-batch-repository.port';
 export { BulkListingBatchNotFoundException } from './domain/exceptions/bulk-listing-batch-not-found.exception';
 export { EmptyBulkSubmissionException } from './domain/exceptions/empty-bulk-submission.exception';
+export { InvalidEanException } from './domain/exceptions/invalid-ean.exception';
+export { DuplicateBatchEanException } from './domain/exceptions/duplicate-batch-ean.exception';
+export { CurrencyMismatchException } from './domain/exceptions/currency-mismatch.exception';
+export { InvalidOverrideKeyException } from './domain/exceptions/invalid-override-key.exception';
+export { ExpandedOfferCeilingExceededException } from './domain/exceptions/expanded-offer-ceiling-exceeded.exception';
 export { BulkBatchAdvancement } from './domain/entities/bulk-batch-advancement.entity';
 export type { BulkBatchAdvancementRepositoryPort } from './domain/ports/bulk-batch-advancement-repository.port';
 export { BulkChildOutcomeValues } from './domain/types/bulk-child-outcome.types';
@@ -158,7 +169,7 @@ export type {
   UpdateOfferQuantitiesBatchFailure,
 } from './domain/types/offer-quantity-update.types';
 export type { UpdateOfferFieldsCommand } from './domain/types/offer-fields-update.types';
-export type { OfferCategory } from './domain/types/category.types';
+export type { OfferCategory, CategoryPathSegment } from './domain/types/category.types';
 export { CreateOfferResultStatusValues, OfferConditionValues } from './domain/types/offer-create.types';
 export type {
   CreateOfferCommand,
@@ -194,6 +205,8 @@ export { isOfferStockRestorer } from './domain/ports/capabilities/offer-stock-re
 export type { OfferStockRestoreTarget } from './domain/types/offer-stock-restore.types';
 export type { CategoryBrowser } from './domain/ports/capabilities/category-browser.capability';
 export { isCategoryBrowser } from './domain/ports/capabilities/category-browser.capability';
+export type { CategoryPathReader } from './domain/ports/capabilities/category-path-reader.capability';
+export { isCategoryPathReader } from './domain/ports/capabilities/category-path-reader.capability';
 export type { CategoryBarcodeMatcher } from './domain/ports/capabilities/category-barcode-matcher.capability';
 export { isCategoryBarcodeMatcher } from './domain/ports/capabilities/category-barcode-matcher.capability';
 export type { EanCategoryMatcher } from './domain/ports/capabilities/ean-category-matcher.capability';
@@ -263,6 +276,7 @@ export type {
   IOfferStatusSyncService,
   OfferStatusSyncOptions,
 } from './application/services/offer-status-sync.service.interface';
+export type { IOfferStatusReadService } from './application/services/offer-status-read.service.interface';
 export type { IOfferStockRestoreService } from './application/interfaces/offer-stock-restore.service.interface';
 export { OfferPollNotSupportedException } from './domain/exceptions/offer-poll-not-supported.exception';
 export { OfferNotFoundOnMarketplaceException } from './domain/exceptions/offer-not-found-on-marketplace.exception';
@@ -299,16 +313,35 @@ export { ResponsibleProducerKindValues } from './domain/types/responsible-produc
 export type { ShopProductManagerPort } from './domain/ports/shop-product-manager.port';
 export type { CategoryProvisioner } from './domain/ports/capabilities/category-provisioner.capability';
 export { isCategoryProvisioner } from './domain/ports/capabilities/category-provisioner.capability';
+// Shop-side category browse (#1834): read the destination's existing category
+// tree so an operator can pick a placement. Advertised-without-dispatch;
+// narrowed from the `ProductPublisher` adapter via `isShopCategoryBrowser`.
+export type { ShopCategory } from './domain/types/shop-category.types';
+export type { ShopCategoryBrowser } from './domain/ports/capabilities/shop-category-browser.capability';
+export { isShopCategoryBrowser } from './domain/ports/capabilities/shop-category-browser.capability';
+export type { IShopCategoryBrowseService } from './application/interfaces/shop-category-browse.service.interface';
+// Shop-side global attribute read (#1835): read the destination's store-wide
+// global attributes + terms so an operator can pick a structured attribute
+// (linked on publish), with free-text custom attributes as the fallback.
+// Advertised-without-dispatch; narrowed from the `ProductPublisher` adapter via
+// `isShopAttributeReader`.
+export type { ShopAttribute, ShopAttributeTerm } from './domain/types/shop-attribute.types';
+export type { ShopAttributeReader } from './domain/ports/capabilities/shop-attribute-reader.capability';
+export { isShopAttributeReader } from './domain/ports/capabilities/shop-attribute-reader.capability';
+export type { IShopAttributeReadService } from './application/interfaces/shop-attribute-read.service.interface';
 // Taxonomy-borrowing sub-capability (#1045): a `borrows` destination (ERLI)
 // names the owner taxonomy whose category/parameter ids it reuses verbatim.
 export type { TaxonomyBorrower } from './domain/ports/capabilities/taxonomy-borrower.capability';
 export { isTaxonomyBorrower } from './domain/ports/capabilities/taxonomy-borrower.capability';
-export { PublishProductStatusValues } from './domain/types/product-publish.types';
+export { PublishProductStatusValues, PublishTaxStatusValues } from './domain/types/product-publish.types';
 export type {
   PublishProductStatus,
+  PublishTaxStatus,
   PublishProductContent,
+  PublishProductCommerce,
   PublishProductCommand,
   PublishProductResult,
+  PublishProductVariantGroup,
 } from './domain/types/product-publish.types';
 export type {
   ProvisionCategoryPathNode,
@@ -316,6 +349,22 @@ export type {
   ProvisionCategoryResult,
 } from './domain/types/category-provision.types';
 export { ProductPublishRejectedException } from './domain/exceptions/product-publish-rejected.exception';
+export { ProductPublishTargetNotFoundException } from './domain/exceptions/product-publish-target-not-found.exception';
+
+// Required-to-sell preflight (#1842) — pure, side-effect-free "would publish
+// but not be sellable" checker + shared shape (cross-cutting seam for a
+// future marketplace-side check).
+export { checkRequiredToSell } from './application/services/check-required-to-sell';
+export {
+  RequiredToSellSeverityValues,
+  RequiredToSellIssueCodeValues,
+} from './domain/types/required-to-sell.types';
+export type {
+  RequiredToSellSeverity,
+  RequiredToSellIssueCode,
+  RequiredToSellIssue,
+  RequiredToSellCheckInput,
+} from './domain/types/required-to-sell.types';
 
 // Shop publish execution (#1042, #1072) — pure contracts only (the two service
 // classes live on `@openlinker/core/listings/services`, never here).
@@ -328,6 +377,7 @@ export type {
   ListingCreationStatus,
   ListingCreationError,
   CreateListingCreationRecordInput,
+  ShopPublishRequestSnapshot,
 } from './domain/types/listing-creation-record.types';
 export type { ListingCreationRecordRepositoryPort } from './domain/ports/listing-creation-record-repository.port';
 export { ListingCreationInvariantException } from './domain/exceptions/listing-creation-invariant.exception';
@@ -356,6 +406,36 @@ export type {
   BulkShopPublishItem,
   BulkShopPublishBatchSummary,
 } from './application/types/bulk-shop-publish-submit.types';
+// Shop publish retry (#1845)
+export type { IBulkShopPublishRetryService } from './application/interfaces/bulk-shop-publish-retry.service.interface';
+export type { BulkShopPublishRetryResult } from './application/types/bulk-shop-publish-retry.types';
+export { ShopProductMappingConflictException } from './domain/exceptions/shop-product-mapping-conflict.exception';
+// Shop product status reconcile (#1845)
+export {
+  ShopPublicationStatusValues,
+  SHOP_PUBLICATION_STATUS,
+} from './domain/types/shop-product-status.types';
+export type {
+  ShopPublicationStatus,
+  ShopProductStatusReadResult,
+  ShopProductStatusSnapshotProps,
+  ShopProductStatusSnapshotDetails,
+  UpsertShopProductStatusSnapshotCommand,
+  ShopStatusSyncResult,
+} from './domain/types/shop-product-status.types';
+export { ShopProductStatusSnapshot } from './domain/entities/shop-product-status-snapshot.entity';
+export type {
+  ShopProductStatusSnapshotRepositoryPort,
+  ShopProductStatusUpsertResult,
+} from './domain/ports/shop-product-status-snapshot-repository.port';
+export {
+  isShopProductStatusReader,
+} from './domain/ports/capabilities/shop-product-status-reader.capability';
+export type { ShopProductStatusReader } from './domain/ports/capabilities/shop-product-status-reader.capability';
+export type {
+  IShopStatusSyncService,
+  ShopStatusSyncOptions,
+} from './application/services/shop-status-sync.service.interface';
 
 // Tokens
 export * from './listings.tokens';

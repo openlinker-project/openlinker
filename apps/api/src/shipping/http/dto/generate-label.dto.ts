@@ -12,10 +12,12 @@
  */
 import { Type } from 'class-transformer';
 import {
+  IsDefined,
   IsEmail,
   IsEnum,
   IsInt,
   IsNotEmpty,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -206,11 +208,20 @@ export class GenerateLabelDto {
   paczkomatId?: string;
 
   @ApiProperty({ type: ShipmentRecipientDto })
+  // `@ValidateNested()` does not reject an absent value; `@IsDefined()` +
+  // `@IsObject()` make the required field a clean 400 on omission instead of a
+  // downstream TypeError in the adapter (#1518).
+  @IsDefined()
+  @IsObject()
   @ValidateNested()
   @Type(() => ShipmentRecipientDto)
   recipient!: ShipmentRecipientDto;
 
   @ApiProperty({ type: ShipmentParcelDto })
+  // See `recipient` above — a required nested object needs @IsDefined()/@IsObject()
+  // for `@ValidateNested()` to fail on an omitted `parcel` (#1518).
+  @IsDefined()
+  @IsObject()
   @ValidateNested()
   @Type(() => ShipmentParcelDto)
   parcel!: ShipmentParcelDto;

@@ -45,7 +45,7 @@ jobs:
           known_hosts: 'just-a-placeholder-so-we-dont-get-errors'
 
       - name: Adding Known Hosts
-        run: ssh-keyscan -p ${{ secrets.SSH_PORT }} -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+        run: ssh-keyscan -p ${{ secrets.SSH_PORT }} -H ${{ secrets.SSH_HOSTNAME }} >> ~/.ssh/known_hosts
 
       - name: Copy images to server
         run: rsync -avz -e "ssh -p ${{ secrets.SSH_PORT }}" ./openlinker-{migrate,api,web,worker}.tar ${{ secrets.SSH_HOST }}:${{ secrets.DESTINATION_PATH_IMAGES }}/

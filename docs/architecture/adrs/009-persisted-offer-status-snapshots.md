@@ -35,9 +35,19 @@ Persist offer publication status in a new, listings-owned `offer_status_snapshot
 **Migration path (if applicable):**
 - Additive: `CreateOfferStatusSnapshots` migration adds the table + indexes; no backfill (natural sync churn populates it). No existing behaviour changes.
 
+## Amendment (#1760, 2026-07-22): snapshot becomes the operator-facing live status + post-terminal reconcile
+
+The snapshot table shipped write-only — populated by the hourly `marketplace.offer.statusSync` but read by nothing. #1760 closes that, and formalises the snapshot's role as the **authoritative operator-facing live publication status**, distinct from the creation record:
+
+- **Read surface**: `OfferStatusReadService` + `OfferStatusSnapshotRepositoryPort.findByVariantIds` expose snapshots per product's variants through an authenticated `GET /listings/products/:productId/offer-status`. The FE renders them on the products drawer.
+- **Post-terminal reconcile**: when the creation poller (#447) terminalises a record to `draft` or `failed(POLL_TIMEOUT)` — the case where Allegro's validator outran the ~9-min poll budget and later activates the offer — it schedules a bounded, delayed `marketplace.offer.refreshSnapshot` job (~2/8/20 min). The handler calls `OfferStatusSyncService.refreshOne`, which upserts the snapshot, and self-reschedules while the offer is still in-flight. This keeps the two tables disjoint (the creation record is **never** mutated post-terminal — the snapshot is the moving part), preserving the no-race property above while catching late activations well before the hourly backstop.
+- A manual `POST .../offers/:externalOfferId/refresh-status` force-reads one offer's live status on operator demand.
+
+This does not change the storage decision or the disjoint-tables invariant; it adds the missing read half and a targeted freshness path on top of the same table.
+
 ## References
 
-- Related PRs: #816
-- Related issues: #816, #447, #464, #391, #400
+- Related PRs: #816, #1760
+- Related issues: #816, #447, #464, #391, #400, #1520, #1760
 - Related ADRs: [ADR-007](./007-syncjob-status-vs-outcome-split.md)
 - Primary doc section: [docs/architecture-overview.md](../../architecture-overview.md) § Listings (Offers)

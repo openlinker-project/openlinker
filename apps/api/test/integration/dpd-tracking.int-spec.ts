@@ -126,6 +126,7 @@ describe('DPD Tracking Integration (#965)', () => {
     const adapter = await resolveAdapter(connectionId);
     await expect(adapter.getTracking({ providerShipmentId: 'WB-NONE' })).resolves.toEqual({
       status: 'generated',
+      carrier: 'dpd',
     });
   });
 });

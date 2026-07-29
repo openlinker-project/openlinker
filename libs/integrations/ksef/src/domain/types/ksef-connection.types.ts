@@ -111,6 +111,13 @@ export interface KsefPaymentConfig {
  */
 export interface KsefInvoiceDefaultsConfig {
   lineUnit?: string;
+  /**
+   * IANA timezone (#7) the invoice numbering date variables + period-reset
+   * bucket resolve in - the seller's local zone. Absent/empty falls back to
+   * `Europe/Warsaw` at adapter construction. Keeping it under invoice defaults
+   * (not a credential, not seller identity) mirrors `lineUnit`.
+   */
+  numberingTimeZone?: string;
 }
 
 /** Non-secret config persisted on the connection row. */

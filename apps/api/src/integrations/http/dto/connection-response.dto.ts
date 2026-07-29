@@ -72,17 +72,23 @@ export class ConnectionResponseDto {
   static fromDomain(
     connection: Connection,
     supportedCapabilities: string[],
-    role?: UserRole
+    role?: UserRole,
+    isDemoModeEnabled = false
   ): ConnectionResponseDto {
     const dto = new ConnectionResponseDto();
     dto.id = connection.id;
     dto.platformType = connection.platformType;
     dto.name = connection.name;
     dto.status = connection.status;
-    // Deny-by-default: config is only projected for admin callers.
-    // Non-admins receive {} so no raw platform config, OAuth client IDs, or
-    // shop URLs are ever included in a non-admin response (#1124).
-    dto.config = role === 'admin' ? connection.config : {};
+    // Deny-by-default: config is projected for admin callers, and for the
+    // read-only 'viewer' role specifically while the deployment is in demo
+    // mode — the demo viewer is meant to see real (but non-editable) config
+    // per #1616. Every other non-admin case (in particular a production
+    // 'operator', with or without demo mode) still gets {} so raw platform
+    // config, OAuth client IDs, or shop URLs are never included in a
+    // real non-admin response (#1124's protection is unchanged).
+    const canViewConfig = role === 'admin' || (isDemoModeEnabled && role === 'viewer');
+    dto.config = canViewConfig ? connection.config : {};
     dto.credentialsBacked = connection.credentialsRef.startsWith('db:');
     dto.adapterKey = connection.adapterKey;
     dto.enabledCapabilities = connection.enabledCapabilities;

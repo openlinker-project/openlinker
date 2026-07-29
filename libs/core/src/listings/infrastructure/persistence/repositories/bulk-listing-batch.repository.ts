@@ -73,6 +73,16 @@ export class BulkListingBatchRepository implements BulkListingBatchRepositoryPor
     return this.toDomain(saved);
   }
 
+  async updateTotalCount(id: string, totalCount: number): Promise<BulkListingBatch> {
+    const entity = await this.repository.findOne({ where: { id } });
+    if (!entity) {
+      throw new BulkListingBatchNotFoundException(id);
+    }
+    entity.totalCount = totalCount;
+    const saved = await this.repository.save(entity);
+    return this.toDomain(saved);
+  }
+
   private buildOrmEntity(input: CreateBulkListingBatchInput): BulkListingBatchOrmEntity {
     const entity = new BulkListingBatchOrmEntity();
     entity.connectionId = input.connectionId;

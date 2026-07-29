@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DataTable } from './data-table';
+import { mockMobileViewport } from '../../test/viewport';
 
 interface TestRow {
   createdAt: string;
@@ -19,22 +20,6 @@ function renderWithRouter(ui: React.ReactElement): ReturnType<typeof render> {
   return render(<MemoryRouter>{ui}</MemoryRouter>);
 }
 
-function mockMobileViewport(): { restore: () => void } {
-  const spy = vi.spyOn(window, 'matchMedia').mockImplementation(
-    (query) =>
-      ({
-        matches: query.includes('max-width'),
-        media: query,
-        onchange: null,
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        addListener: () => {},
-        removeListener: () => {},
-        dispatchEvent: () => false,
-      }) as MediaQueryList,
-  );
-  return { restore: () => spy.mockRestore() };
-}
 
 describe('DataTable', () => {
   afterEach(cleanup);
@@ -433,6 +418,37 @@ describe('DataTable', () => {
     expect(screen.getByText('No rows')).toBeInTheDocument();
   });
 
+  it('disables virtualization and warns when expandable and virtualize are both set (#1634)', async () => {
+    const user = userEvent.setup();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { container } = renderWithRouter(
+        <DataTable<TestRow>
+          columns={[{ id: 'name', header: 'Name', cell: (row): string => row.name }]}
+          rowKey={(row): string => row.id}
+          rows={ROWS}
+          virtualize
+          expandable={{
+            renderDetail: (row) => <p>Detail for {row.name}</p>,
+          }}
+        />,
+      );
+
+      // Virtualization is a no-op while expandable is set — every row renders.
+      expect(container.querySelector('.data-table__virtual-scroller')).toBeNull();
+      expect(container.querySelectorAll('tbody tr').length).toBe(ROWS.length);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[DataTable]'));
+
+      // The expand toggle still works correctly (renders detail content), it's
+      // just not virtualized.
+      const toggle = screen.getAllByRole('button', { name: /Expand row details/ })[0];
+      await user.click(toggle);
+      expect(screen.getByText('Detail for Bravo')).toBeInTheDocument();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it('does not wrap the table in a scroll container when virtualize is false', () => {
     const { container } = renderWithRouter(
       <DataTable<TestRow>
@@ -461,6 +477,77 @@ describe('DataTable', () => {
     expect(dataTableContainer).toHaveAttribute('aria-label', 'Invoices (scrollable)');
   });
 
+  it('expands and collapses a row detail panel when the row is clicked (#1620)', async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        columns={[{ id: 'name', header: 'Name', cell: (row): string => row.name }]}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+        expandable={{
+          renderDetail: (row) => <p>Detail for {row.name}</p>,
+        }}
+      />,
+    );
+
+    expect(container.querySelector('.data-table__detail-row')).toBeNull();
+
+    const firstRow = screen.getAllByRole('row').filter((row) => row.querySelector('td'))[0];
+    await user.click(firstRow);
+
+    expect(screen.getByText('Detail for Bravo')).toBeInTheDocument();
+    expect(firstRow).toHaveClass('data-table__row--expanded');
+
+    await user.click(firstRow);
+    expect(screen.queryByText('Detail for Bravo')).toBeNull();
+  });
+
+  it('toggles the row detail via the toggle button without double-toggling from row bubbling (#1620)', async () => {
+    const user = userEvent.setup();
+    renderWithRouter(
+      <DataTable<TestRow>
+        columns={[{ id: 'name', header: 'Name', cell: (row): string => row.name }]}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+        expandable={{
+          renderDetail: (row) => <p>Detail for {row.name}</p>,
+        }}
+      />,
+    );
+
+    const toggle = screen.getAllByRole('button', { name: /Expand row details/ })[0];
+    await user.click(toggle);
+    expect(screen.getByText('Detail for Bravo')).toBeInTheDocument();
+  });
+
+  it('does not expand the row when a checkbox inside the row is clicked (#1620)', async () => {
+    const onToggle = vi.fn();
+    const user = userEvent.setup();
+    renderWithRouter(
+      <DataTable<TestRow>
+        columns={[
+          {
+            id: 'select',
+            header: 'Select',
+            cell: () => <input type="checkbox" aria-label="select-row" onChange={onToggle} />,
+          },
+          { id: 'name', header: 'Name', cell: (row): string => row.name },
+        ]}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+        expandable={{
+          renderDetail: (row) => <p>Detail for {row.name}</p>,
+        }}
+      />,
+    );
+
+    const checkbox = screen.getAllByRole('checkbox', { name: 'select-row' })[0];
+    await user.click(checkbox);
+
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/Detail for/)).toBeNull();
+  });
+
   it('does not mark the container as a scrollable region when rendering mobile cards', () => {
     const { restore } = mockMobileViewport();
     try {
@@ -479,5 +566,121 @@ describe('DataTable', () => {
     } finally {
       restore();
     }
+  });
+
+  // ── Frozen leading columns (#1755) ──────────────────────────────────────
+  const FREEZE_COLUMNS = [
+    { id: 'name', header: 'Name', cell: (row: TestRow): string => row.name },
+    { id: 'created', header: 'Created', cell: (row: TestRow): string => row.createdAt },
+    { id: 'id', header: 'Ident', cell: (row: TestRow): string => row.id },
+  ];
+
+  it('applies the sticky-col class to the first N columns and marks the last frozen one (#1755)', () => {
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        columns={FREEZE_COLUMNS}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+        stickyLeftColumns={2}
+      />,
+    );
+
+    const headerCells = Array.from(container.querySelectorAll('thead th'));
+    // First two columns are frozen; the third is not.
+    expect(headerCells[0]).toHaveClass('data-table__sticky-col');
+    expect(headerCells[1]).toHaveClass('data-table__sticky-col', 'data-table__sticky-col--last');
+    expect(headerCells[2]).not.toHaveClass('data-table__sticky-col');
+
+    // Same freeze pattern on the body cells of the first row.
+    const firstBodyRow = container.querySelector('tbody tr');
+    const bodyCells = Array.from(firstBodyRow?.querySelectorAll('td') ?? []);
+    expect(bodyCells[0]).toHaveClass('data-table__sticky-col');
+    expect(bodyCells[1]).toHaveClass('data-table__sticky-col', 'data-table__sticky-col--last');
+    expect(bodyCells[2]).not.toHaveClass('data-table__sticky-col');
+  });
+
+  it('freezes the expander cell alongside the data columns when expandable (#1755)', () => {
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        columns={FREEZE_COLUMNS}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+        stickyLeftColumns={1}
+        expandable={{ renderDetail: (row): string => `detail ${row.id}` }}
+      />,
+    );
+
+    const headerCells = Array.from(container.querySelectorAll('thead th'));
+    // The leading expander cell freezes as part of the identity cluster, and the
+    // single frozen data column after it is the boundary.
+    expect(headerCells[0]).toHaveClass('data-table__expand-cell', 'data-table__sticky-col');
+    expect(headerCells[1]).toHaveClass('data-table__sticky-col', 'data-table__sticky-col--last');
+    expect(headerCells[2]).not.toHaveClass('data-table__sticky-col');
+  });
+
+  it('does not apply any sticky-col class when stickyLeftColumns is 0 (default) (#1755)', () => {
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        columns={FREEZE_COLUMNS}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+      />,
+    );
+
+    expect(container.querySelector('.data-table__sticky-col')).toBeNull();
+  });
+
+  it('marks the table as sticky-scrolled once the container is scrolled horizontally (#1755)', () => {
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        columns={FREEZE_COLUMNS}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+        stickyLeftColumns={2}
+      />,
+    );
+
+    const scrollContainer = container.querySelector('.data-table__container') as HTMLElement;
+    const table = container.querySelector('.data-table') as HTMLElement;
+    expect(table).not.toHaveClass('data-table--sticky-scrolled');
+
+    Object.defineProperty(scrollContainer, 'scrollLeft', { configurable: true, value: 120 });
+    fireEvent.scroll(scrollContainer);
+    expect(table).toHaveClass('data-table--sticky-scrolled');
+  });
+
+  // ── Pinned footer rail (#1755) ──────────────────────────────────────────
+  it('wraps the table and renders the footer rail when a footer is provided (#1755)', () => {
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        columns={FREEZE_COLUMNS}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+        footer={<div data-testid="bulk-bar">Bulk actions</div>}
+      />,
+    );
+
+    const wrap = container.querySelector('.data-table__wrap');
+    expect(wrap).not.toBeNull();
+    const rail = wrap?.querySelector('.data-table__footer-rail');
+    expect(rail).not.toBeNull();
+    // The footer content renders inside the rail, and the scroll region is a
+    // sibling of the rail inside the wrap (so page content after DataTable is
+    // never covered).
+    expect(within(rail as HTMLElement).getByTestId('bulk-bar')).toBeInTheDocument();
+    expect(wrap?.querySelector('.data-table__container')).not.toBeNull();
+  });
+
+  it('does not wrap the table when no footer is provided (#1755)', () => {
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        columns={FREEZE_COLUMNS}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+      />,
+    );
+
+    expect(container.querySelector('.data-table__wrap')).toBeNull();
+    expect(container.querySelector('.data-table__footer-rail')).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
-import { RouterProvider, createMemoryRouter } from 'react-router-dom';
+import { RouterProvider, createMemoryRouter, useLocation } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { AuthenticatedAppLayout } from './authenticated-app-layout';
 import { ApiClientProvider } from '../api/api-client-provider';
@@ -10,10 +10,7 @@ import { ThemeProvider } from '../../shared/theme/theme-provider';
 import { LocaleProvider } from '../../shared/i18n';
 import { ToastProvider } from '../../shared/ui/toast-provider';
 import { createNoopSessionAdapter } from '../../shared/auth/noop-session-adapter';
-import {
-  createAuthenticatedSessionAdapter,
-  createMockApiClient,
-} from '../../test/test-utils';
+import { createAuthenticatedSessionAdapter, createMockApiClient } from '../../test/test-utils';
 import type { RouteCrumbHandle } from '../nav-registry.types';
 
 function TestChild(): React.ReactElement {
@@ -24,11 +21,19 @@ function LoginSentinel(): React.ReactElement {
   return <div>Login page</div>;
 }
 
+function SearchEchoLoginSentinel(): React.ReactElement {
+  const location = useLocation();
+  return <div>Login page search: {location.search}</div>;
+}
+
 const indexCrumb: RouteCrumbHandle = {
   crumb: { group: 'Operations', title: 'Dashboard' },
 };
 
-function renderLayout(sessionAdapter?: SessionAdapter): void {
+function renderLayout(
+  sessionAdapter?: SessionAdapter,
+  options?: { initialEntry?: string; loginElement?: React.ReactElement }
+): void {
   const adapter = sessionAdapter ?? createNoopSessionAdapter();
   const router = createMemoryRouter(
     [
@@ -37,9 +42,9 @@ function renderLayout(sessionAdapter?: SessionAdapter): void {
         element: <AuthenticatedAppLayout />,
         children: [{ index: true, handle: indexCrumb, element: <TestChild /> }],
       },
-      { path: '/login', element: <LoginSentinel /> },
+      { path: '/login', element: options?.loginElement ?? <LoginSentinel /> },
     ],
-    { initialEntries: ['/'] },
+    { initialEntries: [options?.initialEntry ?? '/'] }
   );
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
@@ -56,7 +61,7 @@ function renderLayout(sessionAdapter?: SessionAdapter): void {
           </ToastProvider>
         </SessionProvider>
       </LocaleProvider>
-    </ThemeProvider>,
+    </ThemeProvider>
   );
 }
 
@@ -71,5 +76,18 @@ describe('AuthenticatedAppLayout', () => {
     renderLayout(createAuthenticatedSessionAdapter());
 
     expect(await screen.findByText('Authenticated content')).toBeInTheDocument();
+  });
+
+  it('should preserve the query string when redirecting an anonymous session to /login', async () => {
+    renderLayout(undefined, {
+      initialEntry: '/?utm_source=email&utm_campaign=demo_invite_2026_07',
+      loginElement: <SearchEchoLoginSentinel />,
+    });
+
+    expect(
+      await screen.findByText(
+        'Login page search: ?utm_source=email&utm_campaign=demo_invite_2026_07'
+      )
+    ).toBeInTheDocument();
   });
 });

@@ -47,14 +47,66 @@ export interface Product {
    * per-source-category mapping (#1522). Null/absent until a sync populates it.
    */
   categories?: string[] | null;
+  /**
+   * Source-platform product-level attributes (#1752), e.g. Brand / Material.
+   * Distinct from variant-distinguishing attributes (which show per-variant in
+   * the stock drawer). Absent/empty until a sync populates them.
+   */
+  features?: { name: string; value: string }[];
   createdAt: string;
   updatedAt: string;
   variants?: ProductVariant[];
   externalIds?: ExternalIdMapping[];
+  /**
+   * List-enrichment fields (#1720, cockpit list path only). Aggregated
+   * master stock across the product's inventory rows plus per-connection
+   * listings coverage; absent on payloads that predate the cockpit BE.
+   */
+  totalAvailable?: number;
+  totalReserved?: number;
+  stockUpdatedAt?: string | null;
+  variantCount?: number;
+  listingsCoverage?: ProductListingsCoverage[];
 }
+
+/** Per-connection listed-variant count for the cockpit Listings column (#1720). */
+export interface ProductListingsCoverage {
+  connectionId: string;
+  platformType: string;
+  listedVariants: number;
+}
+
+/** Qualitative stock filter values accepted by the products list (#1720). */
+export const ProductStockFilterValues = ['out', 'low', 'oversold'] as const;
+export type ProductStockFilter = (typeof ProductStockFilterValues)[number];
 
 export interface ProductFilters {
   search?: string;
+  /** Aggregate stock bucket: out (= 0), low (0 < total <= threshold), oversold (< 0). */
+  stock?: ProductStockFilter;
+  /** Products with >= 1 variant unlisted on at least one of these connections. */
+  unlistedOn?: string[];
+  /** Source filter: product has a Product identifier mapping for this connection. */
+  connectionId?: string;
+}
+
+/** Server-side sort axes for the products list (#1720). */
+export const ProductListSortFieldValues = [
+  'name',
+  'sku',
+  'price',
+  'createdAt',
+  'updatedAt',
+  'stock',
+] as const;
+export type ProductListSortField = (typeof ProductListSortFieldValues)[number];
+
+export const ProductListSortDirValues = ['asc', 'desc'] as const;
+export type ProductListSortDir = (typeof ProductListSortDirValues)[number];
+
+export interface ProductListSort {
+  field: ProductListSortField;
+  dir: ProductListSortDir;
 }
 
 export interface ProductPagination {

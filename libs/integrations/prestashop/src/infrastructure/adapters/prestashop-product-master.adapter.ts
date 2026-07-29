@@ -17,7 +17,7 @@ import type {
   ProductVariantCreate,
   Category,
 } from '@openlinker/core/products';
-import { normalizeBarcode, normalizeToEan13 } from '@openlinker/core/products';
+import { normalizeBarcode, normalizeToEan13, MasterProductNotFoundError } from '@openlinker/core/products';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
@@ -68,51 +68,61 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
   async getProduct(productId: string): Promise<Product> {
     this.logger.debug(`Getting product: ${productId} (connection: ${this.connection.id})`);
 
-    // Resolve internal ID → external ID
-    const externalIds = await this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Product, productId);
-    const prestashopId = externalIds.find(
-      (e: { connectionId: string }) => e.connectionId === this.connection.id
-    );
-
-    if (!prestashopId) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
-      const error = new PrestashopResourceNotFoundException(
-        `Product not found: ${productId} (no external ID mapping for connection ${this.connection.id})`,
-        CORE_ENTITY_TYPE.Product,
-        productId,
-        this.connection.id
+    try {
+      // Resolve internal ID → external ID
+      const externalIds = await this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Product, productId);
+      const prestashopId = externalIds.find(
+        (e: { connectionId: string }) => e.connectionId === this.connection.id
       );
+
+      if (!prestashopId) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
+        const error = new PrestashopResourceNotFoundException(
+          `Product not found: ${productId} (no external ID mapping for connection ${this.connection.id})`,
+          CORE_ENTITY_TYPE.Product,
+          productId,
+          this.connection.id
+        );
+        throw error;
+      }
+
+      // Fetch from PrestaShop
+      const prestashopProduct = await this.httpClient.getResource<PrestashopProduct>(
+        'products',
+        prestashopId.externalId
+      );
+
+      // Map to OpenLinker schema
+      const langIdValue: number = this.resolveLangId();
+
+      const mapped = this.productMapper.mapProduct(prestashopProduct, langIdValue);
+
+      // #1096 F2/F3 — enrich with shop-native features and a full category path so
+      // a borrows destination (Erli) can emit `source:"shop"` taxonomy. Both are
+      // best-effort: a resolver failure leaves the field empty/unset and never
+      // breaks product sync.
+      const features = await this.resolveFeatures(prestashopProduct, langIdValue);
+      const categoryBreadcrumb = await this.resolveCategoryBreadcrumb(
+        prestashopProduct,
+        langIdValue
+      );
+
+      // Return with internal ID
+      return {
+        ...mapped,
+        id: productId,
+        ...(features.length > 0 ? { features } : {}),
+        ...(categoryBreadcrumb.length > 0 ? { categoryBreadcrumb } : {}),
+      };
+    } catch (error) {
+      // Translate the platform not-found (missing mapping OR a 404 from the
+      // webservice, i.e. deleted at the master) into the neutral core error so
+      // core services can distinguish deletion from a transient failure (#1599).
+      if (error instanceof PrestashopResourceNotFoundException) {
+        throw new MasterProductNotFoundError(productId, this.connection.id, error);
+      }
       throw error;
     }
-
-    // Fetch from PrestaShop
-    const prestashopProduct = await this.httpClient.getResource<PrestashopProduct>(
-      'products',
-      prestashopId.externalId
-    );
-
-    // Map to OpenLinker schema
-    const langIdValue: number = this.resolveLangId();
-
-    const mapped = this.productMapper.mapProduct(prestashopProduct, langIdValue);
-
-    // #1096 F2/F3 — enrich with shop-native features and a full category path so
-    // a borrows destination (Erli) can emit `source:"shop"` taxonomy. Both are
-    // best-effort: a resolver failure leaves the field empty/unset and never
-    // breaks product sync.
-    const features = await this.resolveFeatures(prestashopProduct, langIdValue);
-    const categoryBreadcrumb = await this.resolveCategoryBreadcrumb(
-      prestashopProduct,
-      langIdValue
-    );
-
-    // Return with internal ID
-    return {
-      ...mapped,
-      id: productId,
-      ...(features.length > 0 ? { features } : {}),
-      ...(categoryBreadcrumb.length > 0 ? { categoryBreadcrumb } : {}),
-    };
   }
 
   /**

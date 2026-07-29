@@ -62,3 +62,21 @@ describe('GenerateLabelDto — insuredValue validation (#1542)', () => {
     expect(errors).toContain('isNotEmpty');
   });
 });
+
+describe('GenerateLabelDto — required parcel / recipient (#1518)', () => {
+  it('should reject a payload that omits parcel', async () => {
+    const noParcel = basePayload();
+    delete noParcel.parcel;
+    expect(await errorsFor(noParcel)).toContain('isDefined');
+  });
+
+  it('should reject a payload that omits recipient', async () => {
+    const noRecipient = basePayload();
+    delete noRecipient.recipient;
+    expect(await errorsFor(noRecipient)).toContain('isDefined');
+  });
+
+  it('should accept a payload that supplies both parcel and recipient', async () => {
+    expect(await errorsFor(basePayload())).toHaveLength(0);
+  });
+});

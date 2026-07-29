@@ -78,9 +78,19 @@ export class BulkShopPublishController {
           internalVariantId: item.internalVariantId,
           stock: item.stock,
           ...(item.price !== undefined && { price: item.price }),
+          ...(item.content !== undefined && { content: item.content }),
+          ...(item.destinationCategoryIds !== undefined && {
+            destinationCategoryIds: item.destinationCategoryIds,
+          }),
+          ...(item.parameters !== undefined && { parameters: item.parameters }),
         })),
         status: dto.status,
         ...(dto.content !== undefined && { content: dto.content }),
+        ...(dto.commerce !== undefined && { commerce: dto.commerce }),
+        ...(dto.generateDescription !== undefined && {
+          generateDescription: dto.generateDescription,
+        }),
+        ...(dto.descriptionTone !== undefined && { descriptionTone: dto.descriptionTone }),
       });
       return { batchId, items };
     } catch (error) {

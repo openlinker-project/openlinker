@@ -7,9 +7,22 @@ import { InpostInboundWebhookDecoderAdapter } from '../inpost-inbound-webhook-de
 const SECRET = 'fdXbfU27DBNG6LuoHu@ThKl3';
 const TIMESTAMP = '2025-01-08T14:03:55.387Z';
 
-function sign(rawBody: Buffer, timestamp: string, secret: string): string {
+/**
+ * InPost's Example 2 — the signed content is `{x-inpost-timestamp}.{body}`.
+ * Base64 per the docs' Java sample (`Base64.getEncoder().encodeToString(...)`).
+ */
+function signTimestampAndBody(rawBody: Buffer, timestamp: string, secret: string): string {
   const signed = Buffer.concat([Buffer.from(timestamp), Buffer.from('.'), rawBody]);
   return createHmac('sha256', secret).update(signed).digest('base64');
+}
+
+/**
+ * InPost's Example 1 — the signed content is the raw body alone. Which of the
+ * two variants a client receives is "configurable per client" (#1556), so the
+ * decoder must authenticate both.
+ */
+function signBodyOnly(rawBody: Buffer, secret: string): string {
+  return createHmac('sha256', secret).update(rawBody).digest('base64');
 }
 
 describe('InpostInboundWebhookDecoderAdapter', () => {
@@ -26,7 +39,7 @@ describe('InpostInboundWebhookDecoderAdapter', () => {
         rawBody,
         secret: SECRET,
         headers: {
-          'x-inpost-signature': sign(rawBody, TIMESTAMP, SECRET),
+          'x-inpost-signature': signTimestampAndBody(rawBody, TIMESTAMP, SECRET),
           'x-inpost-timestamp': TIMESTAMP,
         },
       });
@@ -40,16 +53,80 @@ describe('InpostInboundWebhookDecoderAdapter', () => {
         rawBody,
         secret: SECRET,
         headers: {
-          'x-inpost-signature': sign(Buffer.from('different'), TIMESTAMP, SECRET),
+          'x-inpost-signature': signTimestampAndBody(Buffer.from('different'), TIMESTAMP, SECRET),
           'x-inpost-timestamp': TIMESTAMP,
         },
       });
       expect(result.ok).toBe(false);
     });
 
-    it('should reject when signature or timestamp header is missing', () => {
+    it('should reject when the signature header is missing', () => {
       const rawBody = Buffer.from('{}');
       expect(decoder.verify({ rawBody, secret: SECRET, headers: {} }).ok).toBe(false);
+    });
+
+    // #1556: the signed content is "configurable per client" — InPost's Example 1
+    // (body only) is as valid as Example 2, and OL is not told which is in use.
+    it('should accept a body-only signature when the timestamp header is present', () => {
+      const rawBody = Buffer.from(JSON.stringify({ tracking_number: '6200000000001' }));
+      const result = decoder.verify({
+        rawBody,
+        secret: SECRET,
+        headers: {
+          'x-inpost-signature': signBodyOnly(rawBody, SECRET),
+          'x-inpost-timestamp': TIMESTAMP,
+        },
+      });
+      expect(result.ok).toBe(true);
+      expect(result.timestampMs).toBe(Date.parse(TIMESTAMP));
+    });
+
+    it('should accept a body-only signature when no timestamp header is sent', () => {
+      const rawBody = Buffer.from(JSON.stringify({ tracking_number: '6200000000001' }));
+      const result = decoder.verify({
+        rawBody,
+        secret: SECRET,
+        headers: { 'x-inpost-signature': signBodyOnly(rawBody, SECRET) },
+      });
+      expect(result.ok).toBe(true);
+      // No signed timestamp to replay-check — the host skips its replay window
+      // when the field is absent, leaving the durable dedup gate as backstop.
+      expect(result.timestampMs).toBeUndefined();
+    });
+
+    it('should reject a signature made with the wrong secret under either variant', () => {
+      const rawBody = Buffer.from(JSON.stringify({ tracking_number: '6200000000001' }));
+      const headers = { 'x-inpost-timestamp': TIMESTAMP };
+      expect(
+        decoder.verify({
+          rawBody,
+          secret: SECRET,
+          headers: { ...headers, 'x-inpost-signature': signBodyOnly(rawBody, 'wrong-secret') },
+        }).ok,
+      ).toBe(false);
+      expect(
+        decoder.verify({
+          rawBody,
+          secret: SECRET,
+          headers: {
+            ...headers,
+            'x-inpost-signature': signTimestampAndBody(rawBody, TIMESTAMP, 'wrong-secret'),
+          },
+        }).ok,
+      ).toBe(false);
+    });
+
+    it('should reject a timestamp-and-body signature replayed under a different timestamp', () => {
+      const rawBody = Buffer.from(JSON.stringify({ tracking_number: '6200000000001' }));
+      const result = decoder.verify({
+        rawBody,
+        secret: SECRET,
+        headers: {
+          'x-inpost-signature': signTimestampAndBody(rawBody, TIMESTAMP, SECRET),
+          'x-inpost-timestamp': '2025-01-08T15:03:55.387Z',
+        },
+      });
+      expect(result.ok).toBe(false);
     });
   });
 
@@ -154,8 +231,45 @@ describe('InpostInboundWebhookDecoderAdapter', () => {
         expect(result.envelope.externalId).toBe('49');
         expect(result.envelope.objectType).toBe('shipment');
         expect(result.envelope.eventType).toBe('tracking');
-        // Falls back to the body `event_ts` when no header timestamp is present.
-        expect(result.envelope.occurredAt).toBe('2020-03-20 15:08:42 +0100');
+        // Falls back to the body `event_ts` when no header timestamp is present,
+        // normalized from ShipX's non-ISO form to the envelope's ISO-8601
+        // contract, preserving the instant and offset (#1556).
+        expect(result.envelope.occurredAt).toBe('2020-03-20T15:08:42+01:00');
+        expect(Date.parse(result.envelope.occurredAt)).toBe(
+          Date.parse('2020-03-20 15:08:42 +0100'),
+        );
+      }
+    });
+
+    it('should normalize a fractional-second event_ts and pass an ISO value through untouched', () => {
+      const fractional = decoder.extractEnvelope(
+        realStatusWebhook({ event_ts: '2020-03-20 15:08:42.123 +0100' }),
+        {},
+      );
+      expect(fractional.action).toBe('route');
+      if (fractional.action === 'route') {
+        expect(fractional.envelope.occurredAt).toBe('2020-03-20T15:08:42.123+01:00');
+      }
+
+      // Already-ISO payloads (InPost's newer shape) must not be rewritten.
+      const iso = decoder.extractEnvelope(
+        realStatusWebhook({ event_ts: '2025-01-08T14:02:55.374675Z' }),
+        {},
+      );
+      expect(iso.action).toBe('route');
+      if (iso.action === 'route') {
+        expect(iso.envelope.occurredAt).toBe('2025-01-08T14:02:55.374675Z');
+      }
+    });
+
+    it('should prefer the x-inpost-event-id header as the dedup key', () => {
+      const result = decoder.extractEnvelope(realStatusWebhook({ event_id: 'body-event-id' }), {
+        'x-inpost-event-id': 'header-event-id',
+      });
+      expect(result.action).toBe('route');
+      if (result.action === 'route') {
+        // InPost's own "Unique id of the event" outranks body fields and the hash.
+        expect(result.envelope.eventId).toBe('header-event-id');
       }
     });
 

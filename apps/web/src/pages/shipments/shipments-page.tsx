@@ -56,6 +56,34 @@ function inclusiveEndOfDay(dateOnly: string): string {
   return dateOnly.includes('T') ? dateOnly : `${dateOnly}T23:59:59.999Z`;
 }
 
+/**
+ * Status cell (#1800). The status badge, plus — for a `failed` shipment that
+ * persisted a rejection — a compact one-line `errorMessage` (full text on
+ * hover) and the `failedAt` time, so an operator scanning the list sees which
+ * shipments failed and why without opening each order. Non-failed rows render
+ * the badge alone.
+ */
+function ShipmentStatusCell({ shipment }: { shipment: Shipment }): ReactElement {
+  const showError = shipment.status === 'failed' && Boolean(shipment.errorMessage);
+  return (
+    <div className="shipment-status-cell">
+      <ShipmentStatusBadge status={shipment.status} />
+      {showError ? (
+        <span className="shipment-status-cell__error">
+          <span className="shipment-status-cell__error-message" title={shipment.errorMessage ?? undefined}>
+            {shipment.errorMessage}
+          </span>
+          {shipment.failedAt ? (
+            <span className="shipment-status-cell__error-time">
+              <TimeDisplay iso={shipment.failedAt} />
+            </span>
+          ) : null}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export function ShipmentsPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const { sort, setSort } = useTableSort([{ id: 'createdAt', desc: true }]);
@@ -187,7 +215,7 @@ export function ShipmentsPage(): ReactElement {
     {
       id: 'status',
       header: 'Status',
-      cell: (s) => <ShipmentStatusBadge status={s.status} />,
+      cell: (s) => <ShipmentStatusCell shipment={s} />,
       accessor: (s) => s.status,
       sortable: true,
     },
@@ -397,7 +425,7 @@ export function ShipmentsPage(): ReactElement {
                 ) : (
                   <EntityLabel id={s.orderId} to={`/orders/${s.orderId}`} showId />
                 ),
-              meta: (s) => <ShipmentStatusBadge status={s.status} />,
+              meta: (s) => <ShipmentStatusCell shipment={s} />,
             }}
           />
 

@@ -310,7 +310,14 @@ export class KsefHttpClient implements IKsefHttpClient {
       return { data, status: response.status, headers: responseHeaders };
     } catch (error: unknown) {
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new KsefNetworkException(`KSeF request timed out after ${REQUEST_TIMEOUT_MS}ms`, url.toString());
+        // Receipt-ambiguous (#1585 F5): the request was fully sent before we
+        // aborted, so KSeF MAY have received it. Flagged so the offline-issuance
+        // path does not auto-resubmit it (double-issue risk).
+        throw new KsefNetworkException(
+          `KSeF request timed out after ${REQUEST_TIMEOUT_MS}ms`,
+          url.toString(),
+          { receiptAmbiguous: true },
+        );
       }
       if (
         error instanceof KsefApiException ||

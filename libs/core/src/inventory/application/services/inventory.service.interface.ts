@@ -8,6 +8,7 @@
  * @see {@link InventoryService} for the implementation
  */
 import type { InventoryItem } from '../../domain/entities/inventory-item.entity';
+import type { PruneStaleVariantsResult } from '../../domain/types/inventory.types';
 
 /**
  * Inventory Service Interface
@@ -56,10 +57,12 @@ export interface IInventoryService {
    *
    * @param productId internal OpenLinker product ID
    * @param currentVariantIds variant keys still present at the master (may include `null`)
-   * @returns number of rows newly marked stale
+   * @returns rows newly marked stale (`markedCount`) + the distinct non-null
+   *   variant ids flagged (`variantIds`), so the caller can emit a
+   *   master-deletion event (#1599)
    */
   pruneStaleVariants(
     productId: string,
     currentVariantIds: readonly (string | null)[]
-  ): Promise<number>;
+  ): Promise<PruneStaleVariantsResult>;
 }

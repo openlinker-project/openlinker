@@ -3,8 +3,9 @@
  *
  * HTTP REST API endpoints for authentication. Provides login, current-user,
  * refresh, logout, and password reset endpoints. Login, refresh, logout,
- * and password-reset endpoints are public; /auth/me requires a valid JWT
- * bearer token (enforced by global guard).
+ * and password-reset endpoints are public; /auth/me and the self-service
+ * /auth/me/analytics-consent preference update require a valid JWT bearer
+ * token (enforced by global guard).
  *
  * The refresh / logout endpoints are public from the JWT auth standpoint
  * (no bearer required) but gated by CsrfGuard so cookie credentials
@@ -23,6 +24,7 @@ import {
   HttpException,
   HttpStatus,
   Inject,
+  Patch,
   Post,
   Req,
   Res,
@@ -31,7 +33,12 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Request, Response } from 'express';
+import { Logger } from '@openlinker/shared/logging';
+import type { User } from '@openlinker/core/users';
 import {
+  EmailConfirmationRateLimitedException,
+  EmailNotConfirmedException,
+  InvalidEmailConfirmationTokenException,
   InvalidPasswordResetTokenException,
   RegistrationDisabledException,
   RegistrationRateLimitedException,
@@ -50,6 +57,9 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { OkResponseDto } from './dto/ok-response.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ConfirmEmailDto } from './dto/confirm-email.dto';
+import { ResendConfirmationDto } from './dto/resend-confirmation.dto';
+import { UpdateAnalyticsConsentDto } from './dto/update-analytics-consent.dto';
 import { AuthenticatedUser } from './auth.types';
 import {
   IPasswordResetService,
@@ -57,6 +67,10 @@ import {
 } from './password-reset.service.interface';
 import { IRegistrationService } from './registration.service.interface';
 import { REGISTRATION_SERVICE_TOKEN } from './registration.service.interface';
+import {
+  EMAIL_CONFIRMATION_SERVICE_TOKEN,
+  IEmailConfirmationService,
+} from './email-confirmation.service.interface';
 import { IRefreshTokenService } from './refresh-token.service.interface';
 import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
 import type { RotatedRefreshToken } from './refresh-token.types';
@@ -75,6 +89,8 @@ function readCookie(req: Request, name: string): string | null {
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(
     @Inject(AUTH_SERVICE_TOKEN)
     private readonly authService: IAuthService,
@@ -84,6 +100,8 @@ export class AuthController {
     private readonly refreshTokenService: IRefreshTokenService,
     @Inject(REGISTRATION_SERVICE_TOKEN)
     private readonly registrationService: IRegistrationService,
+    @Inject(EMAIL_CONFIRMATION_SERVICE_TOKEN)
+    private readonly emailConfirmationService: IEmailConfirmationService,
   ) {}
 
   @Public()
@@ -95,11 +113,20 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Login successful', type: LoginResponseDto })
   @ApiResponse({ status: 400, description: 'Validation error (missing or invalid fields)' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
+  @ApiResponse({ status: 403, description: 'Account is awaiting email confirmation' })
   async login(
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponseDto> {
-    const user = await this.authService.validateUser(dto.username, dto.password);
+    let user: User | null;
+    try {
+      user = await this.authService.validateUser(dto.username, dto.password);
+    } catch (error) {
+      if (error instanceof EmailNotConfirmedException) {
+        throw new ForbiddenException(error.message);
+      }
+      throw error;
+    }
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -122,7 +149,13 @@ export class AuthController {
   @ApiResponse({ status: 429, description: 'Too many registration attempts from this IP' })
   async register(@Body() dto: RegisterDto, @Req() req: Request): Promise<OkResponseDto> {
     try {
-      await this.registrationService.register(dto.username, dto.email, dto.password, req.ip);
+      await this.registrationService.register(
+        dto.username,
+        dto.email,
+        dto.password,
+        req.ip,
+        dto.analyticsConsent,
+      );
     } catch (error) {
       if (error instanceof RegistrationDisabledException) {
         throw new ForbiddenException(error.message);
@@ -131,6 +164,63 @@ export class AuthController {
         throw new ConflictException(error.message);
       }
       if (error instanceof RegistrationRateLimitedException) {
+        throw new HttpException(error.message, HttpStatus.TOO_MANY_REQUESTS);
+      }
+      throw error;
+    }
+    return { ok: true };
+  }
+
+  @Public()
+  @Post('confirm-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Consume a single-use email confirmation token and activate the account.',
+  })
+  @ApiResponse({ status: 200, description: 'Account confirmed and activated', type: OkResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid, expired, or already-used token' })
+  async confirmEmail(@Body() dto: ConfirmEmailDto): Promise<OkResponseDto> {
+    try {
+      await this.emailConfirmationService.confirmEmail(dto.token);
+    } catch (error) {
+      // EmailConfirmationService.confirmEmail already catches
+      // UserNotPendingConfirmationException / UserNotFoundException
+      // internally and remaps them to InvalidEmailConfirmationTokenException
+      // before they ever reach this controller (see its own catch block),
+      // so this only ever needs to handle the one exception type.
+      if (error instanceof InvalidEmailConfirmationTokenException) {
+        // Never surface `error.message` on this public, unauthenticated
+        // endpoint. Log the specific reason server-side and return one
+        // generic, non-identifying message.
+        this.logger.warn(`Email confirmation failed: ${(error as Error).message}`);
+        throw new BadRequestException('This confirmation link is invalid or has expired.');
+      }
+      throw error;
+    }
+    return { ok: true };
+  }
+
+  @Public()
+  @Post('resend-confirmation')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Resend the email confirmation link for a pending account. Always returns 200 to prevent user enumeration.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Request accepted (regardless of account existence or status)',
+    type: OkResponseDto,
+  })
+  @ApiResponse({ status: 429, description: 'Too many resend requests from this IP' })
+  async resendConfirmation(
+    @Body() dto: ResendConfirmationDto,
+    @Req() req: Request,
+  ): Promise<OkResponseDto> {
+    try {
+      await this.emailConfirmationService.resendConfirmation(dto.email, req.ip);
+    } catch (error) {
+      if (error instanceof EmailConfirmationRateLimitedException) {
         throw new HttpException(error.message, HttpStatus.TOO_MANY_REQUESTS);
       }
       throw error;
@@ -212,6 +302,24 @@ export class AuthController {
   async getMe(@CurrentUser() user: AuthenticatedUser): Promise<UserResponseDto> {
     const fullUser = await this.authService.getMe(user.id);
     return UserResponseDto.fromDomain(fullUser);
+  }
+
+  // Deliberately carries no @Roles: this is a self-service preference on the
+  // caller's OWN account, so every authenticated role — viewer included, which
+  // is what a demo signup gets — must be able to change it (#1882).
+  @Patch('me/analytics-consent')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Update the current user's demo analytics consent" })
+  @ApiResponse({ status: 200, description: 'Updated current user', type: UserResponseDto })
+  @ApiResponse({ status: 400, description: 'Validation error (analyticsConsent is not a boolean)' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async updateAnalyticsConsent(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateAnalyticsConsentDto,
+  ): Promise<UserResponseDto> {
+    const updated = await this.authService.updateAnalyticsConsent(user.id, dto.analyticsConsent);
+    return UserResponseDto.fromDomain(updated);
   }
 
   @Public()

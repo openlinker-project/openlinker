@@ -135,3 +135,17 @@ export const ERLI_DEFAULT_BASE_URL = 'https://erli.pl/svc/shop-api';
  * — the single source of truth for the sandbox host, no longer duplicated on the FE.
  */
 export const ERLI_SANDBOX_BASE_URL = 'https://sandbox.erli.dev/svc/shop-api';
+
+/**
+ * Production buyer-facing web host (origin only, NO `/svc/shop-api` prefix).
+ * Used to build public offer URLs (`{host}/produkt/{slug},{marketplaceId}`),
+ * which live on the storefront origin, not the API base.
+ */
+export const ERLI_DEFAULT_WEB_BASE_URL = 'https://erli.pl';
+
+/**
+ * Sandbox buyer-facing web host (origin only). Counterpart to
+ * {@link ERLI_DEFAULT_WEB_BASE_URL}; resolved by the adapter factory when
+ * `connection.config.environment === 'sandbox'`.
+ */
+export const ERLI_SANDBOX_WEB_BASE_URL = 'https://sandbox.erli.dev';

@@ -10,6 +10,7 @@
 import type {
   OfferMappingPagination,
   PaginatedOfferMappings,
+  ProductListingsCoverage,
 } from '../../domain/types/offer-mapping.types';
 
 export interface IOfferMappingsService {
@@ -33,4 +34,15 @@ export interface IOfferMappingsService {
     connectionId: string,
     variantIds: ReadonlyArray<string>
   ): Promise<Map<string, number>>;
+
+  /**
+   * Count DISTINCT listed variants per (product, connection) for the given
+   * product IDs (#1720 - products catalog cockpit coverage pills). Pairs
+   * with zero listed variants are omitted; the caller decides how to render
+   * absent products. Empty input returns [] without hitting the database;
+   * input is capped at 200 IDs per call.
+   */
+  countListedVariantsByProducts(
+    productIds: readonly string[]
+  ): Promise<readonly ProductListingsCoverage[]>;
 }

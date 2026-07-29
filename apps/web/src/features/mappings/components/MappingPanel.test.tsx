@@ -9,7 +9,8 @@
  *
  * @module apps/web/src/features/mappings/components
  */
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MappingPanel, type MappingRow } from './MappingPanel';
 import type { MappingOption } from '../api/mappings.types';
@@ -23,6 +24,8 @@ const baseProps = {
   saveError: null,
   optionsLoading: false,
   optionsError: null,
+  // Suffix is caller-provided (#1784); pass the resolved-source form the page uses.
+  dynamicOptionSuffix: ' - exact Allegro cost',
 };
 
 const ALLEGRO_PACZKOMAT: MappingOption = {
@@ -99,7 +102,11 @@ describe('MappingPanel', () => {
       expect(screen.queryByText('5…')).toBeNull();
     });
 
-    it('renders dropdown options as plain "Label (truncatedValue)" text', () => {
+    it('renders the add-row source combobox options with the label + a muted id hint', async () => {
+      // The add-row chooser is now the searchable combobox (#1784 I8): the human
+      // label is the primary text and the raw id lives in the option hint, out
+      // of the visible label.
+      const user = userEvent.setup();
       render(
         <MappingPanel
           {...baseProps}
@@ -110,17 +117,22 @@ describe('MappingPanel', () => {
         />,
       );
 
-      const select = screen.getByRole('combobox', { name: /select allegro delivery method/i });
-      const options = within(select).getAllByRole('option');
-      // First option is the placeholder ("— Allegro delivery method —"), then the two methods.
-      expect(options[1]).toHaveTextContent('Allegro Paczkomaty InPost (1fa56f79…)');
-      expect(options[2]).toHaveTextContent('Allegro Kurier24 InPost (7c2b3d4e…)');
+      await user.click(
+        screen.getByRole('combobox', { name: /select allegro delivery method/i }),
+      );
+
+      expect(screen.getByText('Allegro Paczkomaty InPost')).toBeInTheDocument();
+      expect(screen.getByText('Allegro Kurier24 InPost')).toBeInTheDocument();
+      // Ids show as truncated mono hints, not inside the label text.
+      expect(screen.getByText('1fa56f79…')).toBeInTheDocument();
+      expect(screen.getByText('7c2b3d4e…')).toBeInTheDocument();
     });
 
-    it("decorates dynamic-kind options with the runtime-behaviour suffix in the dropdown (#517)", () => {
+    it("decorates dynamic-kind options with the runtime-behaviour suffix in the combobox (#517)", async () => {
       // The OL Dynamic carrier (kind: 'dynamic') means PS reads buyer-paid
-      // shipping from the sidecar at order-total time (#516). Native
-      // <option> is text-only, so the cue is encoded as a label suffix.
+      // shipping from the sidecar at order-total time (#516). The cue is
+      // appended to the searchable label so it survives free-text search.
+      const user = userEvent.setup();
       const PS_OL_DYNAMIC: MappingOption = {
         value: '99',
         label: 'OpenLinker Dynamic',
@@ -136,12 +148,12 @@ describe('MappingPanel', () => {
         />,
       );
 
-      const targetSelect = screen.getByRole('combobox', { name: /select prestashop carrier/i });
-      const options = within(targetSelect).getAllByRole('option');
-      // Static option: bare label + (id) — no behaviour suffix.
-      expect(options[1]).toHaveTextContent('InPost Paczkomat (5)');
-      // Dynamic option: same shape + " — exact Allegro cost" suffix.
-      expect(options[2]).toHaveTextContent('OpenLinker Dynamic (99) — exact Allegro cost');
+      await user.click(screen.getByRole('combobox', { name: /select prestashop carrier/i }));
+
+      // Static option: bare label, no behaviour suffix.
+      expect(screen.getByText('InPost Paczkomat')).toBeInTheDocument();
+      // Dynamic option: label carries the " - exact Allegro cost" suffix.
+      expect(screen.getByText('OpenLinker Dynamic - exact Allegro cost')).toBeInTheDocument();
     });
 
     it('decorates dynamic-kind options in the saved-row table cell (#517)', () => {
@@ -166,7 +178,7 @@ describe('MappingPanel', () => {
       // <option> renders flat text. Scope the assertion to the styled
       // span by class so we only catch the cell instance.
       const styledSuffixes = screen
-        .getAllByText(/— exact Allegro cost/)
+        .getAllByText(/- exact Allegro cost/)
         .filter((el) => el.classList.contains('mapping-option__dynamic-suffix'));
       expect(styledSuffixes).toHaveLength(1);
     });
@@ -251,11 +263,12 @@ describe('MappingPanel', () => {
   });
 
   describe('add-row flow', () => {
-    it('filters already-mapped sources out of the add-row dropdown', () => {
+    it('filters already-mapped sources out of the add-row combobox', async () => {
       // Primary dedup affordance: an already-mapped source can't be re-picked
       // because it's removed from `availableSourceOptions`. Defensive
       // `setAddError` branch in `handleAddRow` only fires for programmatic
       // bypasses, which the UI can't trigger.
+      const user = userEvent.setup();
       render(
         <MappingPanel
           {...baseProps}
@@ -266,11 +279,11 @@ describe('MappingPanel', () => {
         />,
       );
 
-      const select = screen.getByRole('combobox', { name: /select allegro delivery method/i });
-      const optionTexts = within(select)
-        .getAllByRole('option')
-        .map((o) => o.textContent ?? '');
-      // Mapped Paczkomat is gone from the add-row dropdown; only Kurier remains.
+      await user.click(
+        screen.getByRole('combobox', { name: /select allegro delivery method/i }),
+      );
+      const optionTexts = screen.getAllByRole('option').map((o) => o.textContent ?? '');
+      // Mapped Paczkomat is gone from the add-row combobox; only Kurier remains.
       expect(optionTexts.some((t) => t.includes('Paczkomaty'))).toBe(false);
       expect(optionTexts.some((t) => t.includes('Kurier24'))).toBe(true);
     });
@@ -298,6 +311,78 @@ describe('MappingPanel', () => {
 
       expect(onSave).toHaveBeenCalledTimes(1);
       expect(onSave).toHaveBeenCalledWith([]);
+    });
+  });
+
+  describe('deep-link pre-focus (#1794)', () => {
+    it('pre-selects an unmapped, known focusSourceValue and shows the hint', () => {
+      render(
+        <MappingPanel
+          {...baseProps}
+          sourceOptions={[ALLEGRO_PACZKOMAT, ALLEGRO_KURIER]}
+          targetOptions={[PS_INPOST]}
+          savedRows={[]}
+          onSave={vi.fn()}
+          focusSourceValue={ALLEGRO_PACZKOMAT.value}
+          focusSourceName="Allegro Paczkomaty InPost"
+        />,
+      );
+
+      expect(
+        screen.getByText((_, element) => element?.textContent === 'Map Allegro Paczkomaty InPost to a prestashop carrier below.'),
+      ).toBeInTheDocument();
+      // The add-row source picker is now the searchable Combobox (#1784 I8),
+      // not a native <select> — assert the pre-selected label in its trigger
+      // text instead of a form-element `.value`.
+      const select = screen.getByRole('combobox', { name: /select allegro delivery method/i });
+      expect(select).toHaveTextContent('Allegro Paczkomaty InPost');
+
+      // savedRows is empty here — the pre-existing "no mappings configured
+      // yet" empty state and the deep-link focus hint are both role="status"
+      // and would otherwise announce together. Only the focus hint may render.
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+      expect(screen.queryByText(/No mappings configured yet/)).not.toBeInTheDocument();
+    });
+
+    it('does not pre-select or show the hint when focusSourceValue is already mapped', () => {
+      render(
+        <MappingPanel
+          {...baseProps}
+          sourceOptions={[ALLEGRO_PACZKOMAT]}
+          targetOptions={[PS_INPOST]}
+          savedRows={[{ sourceValue: ALLEGRO_PACZKOMAT.value, targetValue: PS_INPOST.value }]}
+          onSave={vi.fn()}
+          focusSourceValue={ALLEGRO_PACZKOMAT.value}
+          focusSourceName="Allegro Paczkomaty InPost"
+        />,
+      );
+
+      // Scoped to the deep-link hint specifically — with the sole source value
+      // already mapped, the panel also renders its own "All source values
+      // mapped." status (#1784 I8), a second unrelated role="status".
+      expect(screen.queryByText(/Allegro Paczkomaty InPost to a/i)).not.toBeInTheDocument();
+      const select = screen.getByRole('combobox', { name: /select allegro delivery method/i });
+      expect(select).toHaveTextContent('Select Allegro delivery method');
+    });
+
+    it('does not pre-select or show the hint when focusSourceValue is absent from sourceOptions', () => {
+      render(
+        <MappingPanel
+          {...baseProps}
+          sourceOptions={[ALLEGRO_KURIER]}
+          targetOptions={[PS_INPOST]}
+          savedRows={[]}
+          onSave={vi.fn()}
+          focusSourceValue="unknown-method-id"
+          focusSourceName="Unknown method"
+        />,
+      );
+
+      // Scoped to the deep-link hint specifically — the panel's pre-existing
+      // "no mappings configured yet" empty state also renders role="status".
+      expect(screen.queryByText(/Unknown method/)).not.toBeInTheDocument();
+      const select = screen.getByRole('combobox', { name: /select allegro delivery method/i });
+      expect(select).toHaveTextContent('Select Allegro delivery method');
     });
   });
 });

@@ -20,8 +20,12 @@ import type {
   WebhookDeliveryRepositoryPort,
   WebhookDelivery,
   WebhookDeliveryUpsertInput,
+  WebhookAuthRejectionRepositoryPort,
 } from '@openlinker/core/webhooks';
-import { WEBHOOK_DELIVERY_REPOSITORY_TOKEN } from '@openlinker/core/webhooks';
+import {
+  WEBHOOK_DELIVERY_REPOSITORY_TOKEN,
+  WEBHOOK_AUTH_REJECTION_REPOSITORY_TOKEN,
+} from '@openlinker/core/webhooks';
 import { WebhookService } from './webhook.service';
 import { WebhookAuthService } from './webhook-auth.service';
 import { WebhookDedupService } from './webhook-dedup.service';
@@ -81,6 +85,7 @@ describe('WebhookService (ADR-021 decoder dispatch + #711 dedup/recovery)', () =
   >;
   let eventPublisher: jest.Mocked<Pick<WebhookEventPublisher, 'publishInboundWebhook'>>;
   let deliveryRepository: jest.Mocked<WebhookDeliveryRepositoryPort>;
+  let authRejectionRepository: jest.Mocked<WebhookAuthRejectionRepositoryPort>;
 
   const provider = 'prestashop';
   const connectionId = '123e4567-e89b-12d3-a456-426614174000';
@@ -119,6 +124,10 @@ describe('WebhookService (ADR-021 decoder dispatch + #711 dedup/recovery)', () =
       findById: jest.fn(),
       findMany: jest.fn(),
     };
+    authRejectionRepository = {
+      recordRejection: jest.fn().mockResolvedValue(undefined),
+      find: jest.fn().mockResolvedValue(null),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -129,6 +138,7 @@ describe('WebhookService (ADR-021 decoder dispatch + #711 dedup/recovery)', () =
         { provide: WebhookDedupService, useValue: dedupService },
         { provide: WebhookEventPublisher, useValue: eventPublisher },
         { provide: WEBHOOK_DELIVERY_REPOSITORY_TOKEN, useValue: deliveryRepository },
+        { provide: WEBHOOK_AUTH_REJECTION_REPOSITORY_TOKEN, useValue: authRejectionRepository },
       ],
     }).compile();
     service = module.get(WebhookService);
@@ -247,6 +257,43 @@ describe('WebhookService (ADR-021 decoder dispatch + #711 dedup/recovery)', () =
 
       expect(decoder.extractEnvelope).not.toHaveBeenCalled();
       expect(deliveryRepository.insertIfNew).not.toHaveBeenCalled();
+    });
+
+    it('records a durable auth-rejection signal when the signature fails (#1814)', async () => {
+      decoder.verify.mockReturnValue({ ok: false });
+
+      await expect(
+        service.processWebhook(provider, connectionId, rawBody, headers),
+      ).rejects.toThrow(WebhookAuthenticationException);
+
+      expect(authRejectionRepository.recordRejection).toHaveBeenCalledWith({
+        provider,
+        connectionId,
+        reason: 'invalid_signature',
+      });
+      // The signal is separate from webhook_deliveries (ADR-005) — no row written.
+      expect(deliveryRepository.insertIfNew).not.toHaveBeenCalled();
+    });
+
+    it('still returns 401 when recording the auth-rejection fails (non-fatal, #1814)', async () => {
+      decoder.verify.mockReturnValue({ ok: false });
+      authRejectionRepository.recordRejection.mockRejectedValueOnce(new Error('db down'));
+
+      await expect(
+        service.processWebhook(provider, connectionId, rawBody, headers),
+      ).rejects.toThrow(WebhookAuthenticationException);
+    });
+
+    it('does not record an auth-rejection when the timestamp is stale (replay, not a secret failure)', async () => {
+      authService.validateTimestampMs.mockImplementation(() => {
+        throw new WebhookReplayException('stale', '0', 120_000);
+      });
+
+      await expect(
+        service.processWebhook(provider, connectionId, rawBody, headers),
+      ).rejects.toThrow(WebhookReplayException);
+
+      expect(authRejectionRepository.recordRejection).not.toHaveBeenCalled();
     });
 
     it('does not insert a row when the timestamp is outside the replay window', async () => {

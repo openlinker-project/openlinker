@@ -1,11 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SystemConfig } from '../../system';
-import { disableDemoAnalytics, initDemoIntegrations } from './init-demo-integrations';
+import {
+  disableDemoAnalytics,
+  enableDemoAnalytics,
+  initDemoIntegrations,
+} from './init-demo-integrations';
 
 const posthogInit = vi.fn();
 const posthogOptOut = vi.fn();
+const posthogOptIn = vi.fn();
 vi.mock('posthog-js', () => ({
-  default: { init: posthogInit, opt_out_capturing: posthogOptOut },
+  default: {
+    init: posthogInit,
+    opt_out_capturing: posthogOptOut,
+    opt_in_capturing: posthogOptIn,
+  },
 }));
 
 const getDemoAnalyticsConsent = vi.fn();
@@ -15,7 +24,14 @@ vi.mock('./demo-analytics-consent', () => ({
 
 const configuredPosthog: SystemConfig = {
   demoMode: true,
-  demoIntegrations: { posthog: { key: 'phc_abc', host: 'https://eu.posthog.com' } },
+  demoIntegrations: {
+    posthog: {
+      key: 'phc_abc',
+      host: 'https://eu.posthog.com',
+      autocapture: true,
+      sessionRecording: true,
+    },
+  },
 };
 
 describe('initDemoIntegrations', () => {
@@ -53,19 +69,50 @@ describe('initDemoIntegrations', () => {
     expect(posthogInit).not.toHaveBeenCalled();
   });
 
-  it('should init with masking options when all gates pass', async () => {
+  it('should init with password-only masking and the resolved autocapture/sessionRecording when all gates pass', async () => {
     getDemoAnalyticsConsent.mockReturnValue('accepted');
     await initDemoIntegrations(configuredPosthog);
     expect(posthogInit).toHaveBeenCalledWith('phc_abc', {
       api_host: 'https://eu.posthog.com',
       person_profiles: 'identified_only',
-      autocapture: false,
+      autocapture: true,
       capture_pageview: true,
       session_recording: {
-        maskAllInputs: true,
-        maskTextSelector: '*',
+        maskAllInputs: false,
+        maskInputOptions: { password: true },
       },
     });
+  });
+
+  it('should not mask rendered page text or non-password inputs (#1877)', async () => {
+    getDemoAnalyticsConsent.mockReturnValue('accepted');
+    await initDemoIntegrations(configuredPosthog);
+    const [, options] = posthogInit.mock.calls[0] as [string, Record<string, unknown>];
+    const sessionRecording = options.session_recording as Record<string, unknown>;
+    // A regression here means replays go back to being unwatchable.
+    expect(sessionRecording).not.toHaveProperty('maskTextSelector');
+    expect(sessionRecording.maskAllInputs).toBe(false);
+    // ...but the one guarantee that remains must hold.
+    expect(sessionRecording.maskInputOptions).toEqual({ password: true });
+  });
+
+  it('should omit session_recording entirely when the resolved config disables it', async () => {
+    getDemoAnalyticsConsent.mockReturnValue('accepted');
+    await initDemoIntegrations({
+      demoMode: true,
+      demoIntegrations: {
+        posthog: {
+          key: 'phc_abc',
+          host: 'https://eu.posthog.com',
+          autocapture: false,
+          sessionRecording: false,
+        },
+      },
+    });
+    expect(posthogInit).toHaveBeenCalledWith(
+      'phc_abc',
+      expect.objectContaining({ autocapture: false, session_recording: undefined }),
+    );
   });
 });
 
@@ -83,5 +130,30 @@ describe('disableDemoAnalytics', () => {
     disableDemoAnalytics();
 
     expect(posthogOptOut).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('enableDemoAnalytics (#1882)', () => {
+  beforeEach(() => {
+    posthogInit.mockClear();
+    posthogOptIn.mockClear();
+    getDemoAnalyticsConsent.mockReset();
+  });
+
+  it('should opt the visitor back in without a reload after PostHog was initialized', async () => {
+    getDemoAnalyticsConsent.mockReturnValue('accepted');
+    await initDemoIntegrations(configuredPosthog);
+
+    enableDemoAnalytics();
+
+    expect(posthogOptIn).toHaveBeenCalledTimes(1);
+  });
+
+  it('should be a no-op when PostHog was never initialized', async () => {
+    vi.resetModules();
+    const fresh = await import('./init-demo-integrations');
+
+    expect(() => fresh.enableDemoAnalytics()).not.toThrow();
+    expect(posthogOptIn).not.toHaveBeenCalled();
   });
 });

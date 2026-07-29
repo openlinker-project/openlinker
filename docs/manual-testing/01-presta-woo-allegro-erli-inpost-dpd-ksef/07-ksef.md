@@ -47,11 +47,10 @@ permission). No screenshot needed (throwaway test-env token).
 
 ![Invoice detail right after issuing — ISSUED / KSeF: SUBMITTED, KSeF number field still showing the internal OL id, UPO "Available once cleared"](screenshots/ksef/03b-invoice-issued-submitted.png)
 
-- [ ] Wait for clearance and confirm the status flips to accepted, with a real KSeF number + UPO
+- [x] Wait for clearance and confirm the status flips to accepted, with a real KSeF number + UPO
 
-```
-[initially appeared stuck at KSeF: SUBMITTED — see Finding below]
-```
+_(initially appeared stuck at KSeF: SUBMITTED — reconcile-cadence env gotcha, resolved by a manual
+job trigger; see Finding below)_
 
 > **Finding (env gotcha, not a bug):** the clearance status stayed at `KSeF: SUBMITTED` well
 > after KSeF itself had actually cleared the document (confirmed independently — the operator had

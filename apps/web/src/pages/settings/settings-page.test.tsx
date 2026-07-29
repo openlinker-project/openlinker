@@ -1,6 +1,10 @@
-import { cleanup, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
-import { createAuthenticatedSessionAdapter, renderWithProviders } from '../../test/test-utils';
+import { cleanup, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  createAuthenticatedSessionAdapter,
+  createMockApiClient,
+  renderWithProviders,
+} from '../../test/test-utils';
 import { SettingsPage } from './settings-page';
 
 describe('SettingsPage', () => {
@@ -55,5 +59,87 @@ describe('SettingsPage', () => {
     expect(headingNames).toContain('Notifications');
     expect(headingNames).toContain('Organization');
     expect(headingNames).toContain('Preferences');
+  });
+
+  it('shows the Mailer tile for an admin session', async () => {
+    renderWithProviders(<SettingsPage />, {
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Mailer' })).toBeInTheDocument();
+    expect(screen.getByText('Mailer', { selector: '.toolbar-chip' })).toBeInTheDocument();
+  });
+
+  it('never renders the Mailer tile for a non-admin session', async () => {
+    renderWithProviders(<SettingsPage />, {
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        id: 'user_2',
+        username: 'viewer',
+        email: 'viewer@example.com',
+        role: 'viewer',
+        permissions: [],
+        analyticsConsent: true,
+      }),
+    });
+
+    // Wait for the authenticated Account tile to confirm session resolution,
+    // then assert the Mailer tile is fully absent — not disabled, not present.
+    expect(await screen.findByText('viewer@example.com')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Mailer' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Mailer', { selector: '.toolbar-chip' })).not.toBeInTheDocument();
+  });
+
+  it('shows the PostHog tile for an admin session', async () => {
+    renderWithProviders(<SettingsPage />, {
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    expect(await screen.findByRole('heading', { name: 'PostHog' })).toBeInTheDocument();
+    expect(screen.getByText('PostHog', { selector: '.toolbar-chip' })).toBeInTheDocument();
+  });
+
+  it('never renders the PostHog tile for a non-admin session', async () => {
+    renderWithProviders(<SettingsPage />, {
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        id: 'user_2',
+        username: 'viewer',
+        email: 'viewer@example.com',
+        role: 'viewer',
+        permissions: [],
+        analyticsConsent: true,
+      }),
+    });
+
+    expect(await screen.findByText('viewer@example.com')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'PostHog' })).not.toBeInTheDocument();
+    expect(screen.queryByText('PostHog', { selector: '.toolbar-chip' })).not.toBeInTheDocument();
+  });
+
+  it('shows the analytics consent tile in demo mode (#1882)', async () => {
+    renderWithProviders(<SettingsPage />, {
+      apiClient: createMockApiClient({
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      }),
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Analytics' })).toBeInTheDocument();
+    expect(screen.getByText('Privacy', { selector: '.toolbar-chip' })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox')).toBeInTheDocument();
+  });
+
+  it('never renders the analytics consent tile outside demo mode', async () => {
+    const apiClient = createMockApiClient({
+      system: { getConfig: vi.fn().mockResolvedValue({ demoMode: false }) },
+    });
+
+    renderWithProviders(<SettingsPage />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await waitFor(() => expect(apiClient.system.getConfig).toHaveBeenCalled());
+    expect(screen.queryByRole('heading', { name: 'Analytics' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Privacy', { selector: '.toolbar-chip' })).not.toBeInTheDocument();
   });
 });

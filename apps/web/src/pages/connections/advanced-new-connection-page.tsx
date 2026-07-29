@@ -34,7 +34,7 @@ export function AdvancedNewConnectionPage(): ReactElement {
           <p className="advanced-banner__title">Escape hatch — prefer the guided flow</p>
           <p>
             This form exposes raw adapter keys, credential references, and config JSON. Use the{' '}
-            <Link to="/connections/new">guided PrestaShop or Allegro wizard</Link> unless you need
+            <Link to="/connections/new">guided setup flow</Link> unless you need
             direct control to debug an integration or bootstrap a platform without a dedicated
             flow.
           </p>

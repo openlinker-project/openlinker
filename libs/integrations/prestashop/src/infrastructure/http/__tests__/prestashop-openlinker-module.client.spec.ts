@@ -30,6 +30,7 @@ describe('PrestashopOpenLinkerModuleClient', () => {
   beforeEach(() => {
     secretProvider = {
       getSecret: jest.fn().mockResolvedValue(secret),
+      has: jest.fn().mockResolvedValue(true),
       invalidate: jest.fn(),
     };
     client = new PrestashopOpenLinkerModuleClient(connectionId, baseUrl, secretProvider);

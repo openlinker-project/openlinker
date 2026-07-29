@@ -174,6 +174,15 @@ export interface OrderShipping {
 export interface OrderDispatchWindow {
   from?: string;
   to?: string;
+  /**
+   * True when the deadline is an OL-side ESTIMATE rather than a
+   * marketplace-authoritative commitment (#1776). Erli derives its window from
+   * per-offer (falling back to connection-default) handling time and marks it
+   * `estimated: true`; Allegro carries the platform-authoritative
+   * `delivery.time.dispatch` and leaves this absent. Rides the JSONB snapshot
+   * verbatim; the API surfaces it as the derived `dispatchByEstimated` flag.
+   */
+  estimated?: boolean;
 }
 
 /**

@@ -28,46 +28,27 @@ describe('DemoBanner', () => {
     expect(ref.current).toBeInstanceOf(HTMLDivElement);
   });
 
-  it('should not render the consent CTA when consentPending is false', () => {
-    render(<DemoBanner consentPending={false} />);
+  it('should never render an accept/decline consent prompt (#1743)', () => {
+    render(<DemoBanner analyticsActive />);
     expect(screen.queryByText(/accept analytics/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /decline/i })).not.toBeInTheDocument();
   });
 
-  it('should render the consent CTA when consentPending is true', () => {
-    render(<DemoBanner consentPending />);
-    expect(screen.getByText(/accept analytics/i)).toBeInTheDocument();
-    expect(screen.getByText(/decline/i)).toBeInTheDocument();
-  });
-
-  it('should call onConsentChange with "accepted" when Accept is clicked', async () => {
-    const onConsentChange = vi.fn();
-    render(<DemoBanner consentPending onConsentChange={onConsentChange} />);
-    await userEvent.click(screen.getByRole('button', { name: /accept analytics/i }));
-    expect(onConsentChange).toHaveBeenCalledWith('accepted');
-  });
-
-  it('should call onConsentChange with "declined" when Decline is clicked', async () => {
-    const onConsentChange = vi.fn();
-    render(<DemoBanner consentPending onConsentChange={onConsentChange} />);
-    await userEvent.click(screen.getByRole('button', { name: /decline/i }));
-    expect(onConsentChange).toHaveBeenCalledWith('declined');
-  });
-
-  it('should not render the revoke affordance when consentAccepted is false', () => {
-    render(<DemoBanner consentAccepted={false} />);
+  it('should not render the analytics status when analyticsActive is false', () => {
+    render(<DemoBanner analyticsActive={false} />);
     expect(screen.queryByText(/analytics on/i)).not.toBeInTheDocument();
   });
 
-  it('should render the revoke affordance when consentAccepted is true', () => {
-    render(<DemoBanner consentAccepted />);
+  it('should render the analytics status with a Disable affordance when analyticsActive is true', () => {
+    render(<DemoBanner analyticsActive />);
     expect(screen.getByText(/analytics on/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /disable/i })).toBeInTheDocument();
   });
 
-  it('should call onConsentChange with "declined" when Disable is clicked', async () => {
-    const onConsentChange = vi.fn();
-    render(<DemoBanner consentAccepted onConsentChange={onConsentChange} />);
+  it('should call onDisableAnalytics when Disable is clicked', async () => {
+    const onDisableAnalytics = vi.fn();
+    render(<DemoBanner analyticsActive onDisableAnalytics={onDisableAnalytics} />);
     await userEvent.click(screen.getByRole('button', { name: /disable/i }));
-    expect(onConsentChange).toHaveBeenCalledWith('declined');
+    expect(onDisableAnalytics).toHaveBeenCalledTimes(1);
   });
 });

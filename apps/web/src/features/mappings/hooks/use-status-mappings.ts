@@ -17,9 +17,13 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 import { mappingsQueryKeys } from '../api/mappings.query-keys';
 import type { StatusMapping, UpsertStatusMappingsPayload } from '../api/mappings.types';
 
-export function useStatusMappingsQuery(connectionId: string): UseQueryResult<StatusMapping[]> {
+export function useStatusMappingsQuery(
+  connectionId: string,
+  options?: { enabled?: boolean },
+): UseQueryResult<StatusMapping[]> {
   const apiClient = useApiClient();
   return useQuery({
+    enabled: connectionId.length > 0 && (options?.enabled ?? true),
     queryKey: mappingsQueryKeys.status(connectionId),
     queryFn: () => apiClient.mappings.getStatusMappings(connectionId),
   });

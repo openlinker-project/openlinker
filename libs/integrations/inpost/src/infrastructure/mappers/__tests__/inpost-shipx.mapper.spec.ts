@@ -156,6 +156,38 @@ describe('inpost-shipx.mapper', () => {
       }
     });
 
+    it('should throw a typed rejection (preflight.missing-parcel) when the command omits parcel (#1518)', () => {
+      const noParcel: Partial<GenerateLabelCommand> = { ...paczkomatCmd };
+      delete noParcel.parcel;
+      const call = (): unknown =>
+        buildCreateShipmentRequest(noParcel as unknown as GenerateLabelCommand, config);
+      expect(call).toThrow(ShippingProviderRejectionException);
+      try {
+        call();
+      } catch (error) {
+        expect(error).toMatchObject({
+          providerName: 'inpost',
+          providerCode: 'preflight.missing-parcel',
+        });
+      }
+    });
+
+    it('should throw a typed rejection (preflight.missing-recipient) when the command omits recipient (#1518)', () => {
+      const noRecipient: Partial<GenerateLabelCommand> = { ...paczkomatCmd };
+      delete noRecipient.recipient;
+      const call = (): unknown =>
+        buildCreateShipmentRequest(noRecipient as unknown as GenerateLabelCommand, config);
+      expect(call).toThrow(ShippingProviderRejectionException);
+      try {
+        call();
+      } catch (error) {
+        expect(error).toMatchObject({
+          providerName: 'inpost',
+          providerCode: 'preflight.missing-recipient',
+        });
+      }
+    });
+
     it('should map cod onto the ShipX request (decimal string → number) for a courier shipment (#1541)', () => {
       const request = buildCreateShipmentRequest(
         { ...courierCmd, cod: { amount: '39.99', currency: 'PLN' } },
@@ -169,23 +201,15 @@ describe('inpost-shipx.mapper', () => {
       expect(buildCreateShipmentRequest(paczkomatCmd, config).cod).toBeUndefined();
     });
 
-    it('should throw a typed rejection (preflight.cod-locker-unsupported) when COD is requested for a paczkomat shipment (#1541)', () => {
-      const call = (): unknown =>
-        buildCreateShipmentRequest(
-          { ...paczkomatCmd, cod: { amount: '39.99', currency: 'PLN' } },
-          config,
-        );
-      expect(call).toThrow(ShippingProviderRejectionException);
-      try {
-        call();
-      } catch (error) {
-        // Rejection is a limitation of this v1 adapter (locker COD not modelled
-        // yet, see #1554), not of InPost/ShipX being COD-incapable on lockers.
-        expect(error).toMatchObject({
-          providerName: 'inpost',
-          providerCode: 'preflight.cod-locker-unsupported',
-        });
-      }
+    it('should map cod onto the ShipX request as an add-on on the standard locker service for a paczkomat shipment (#1554)', () => {
+      const request = buildCreateShipmentRequest(
+        { ...paczkomatCmd, cod: { amount: '39.99', currency: 'PLN' } },
+        config,
+      );
+      // Model A (#1554): COD is a `cod` add-on on `inpost_locker_standard`, the
+      // same shape as the courier path — not a distinct COD-capable service.
+      expect(request.service).toBe('inpost_locker_standard');
+      expect(request.cod).toEqual({ amount: 39.99, currency: 'PLN' });
     });
 
     it.each(['abc', '0', '-5'])(
@@ -233,7 +257,7 @@ describe('inpost-shipx.mapper', () => {
       expect(request.insurance).toEqual({ amount: 150, currency: 'PLN' });
     });
 
-    it('should map insuredValue onto the ShipX request for a paczkomat shipment (insurance IS supported on lockers, unlike COD) (#1542)', () => {
+    it('should map insuredValue onto the ShipX request for a paczkomat shipment (#1542)', () => {
       const request = buildCreateShipmentRequest(
         { ...paczkomatCmd, insuredValue: { amount: '150.00', currency: 'PLN' } },
         config,

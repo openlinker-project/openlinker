@@ -34,6 +34,7 @@ function makeMocks() {
     deleteById: jest.fn(),
     deactivateAdminAtomically: jest.fn(),
     updateAdminRoleAtomically: jest.fn(),
+    updateAnalyticsConsent: jest.fn(),
     deleteAdminAtomically: jest.fn(),
     findStaleViewerAccounts: jest.fn(),
   };
@@ -84,6 +85,26 @@ describe('PasswordResetService', () => {
       const rawToken = notifier.notifyResetRequested.mock.calls[0][1];
       // Notifier receives the raw token; storage keeps only its sha256 hash
       expect(saved.tokenHash).toBe(createHash('sha256').update(rawToken).digest('hex'));
+    });
+
+    it('resolves a mixed-case email lookup and notifies the matched user (#1625)', async () => {
+      // Mirrors what the real UserRepository.findByEmail does — it
+      // normalizes the lookup internally, so a caller passing a mixed-case
+      // email still resolves the existing lowercase-stored user.
+      const { userRepo, tokenRepo, notifier } = makeMocks();
+      const user = makeUser();
+      userRepo.findByEmail.mockResolvedValue(user);
+      tokenRepo.save.mockImplementation((t) =>
+        Promise.resolve(
+          new PasswordResetToken('t-1', t.userId, t.tokenHash, t.expiresAt, null, new Date())
+        )
+      );
+      const service = new PasswordResetService(userRepo, tokenRepo, notifier, makeConfig(60));
+
+      await service.requestReset('Admin@Example.COM');
+
+      expect(userRepo.findByEmail).toHaveBeenCalledWith('Admin@Example.COM');
+      expect(notifier.notifyResetRequested).toHaveBeenCalledWith(user, expect.any(String));
     });
   });
 

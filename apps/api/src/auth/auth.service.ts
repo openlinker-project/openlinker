@@ -11,7 +11,11 @@ import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import type { User } from '@openlinker/core/users';
-import { UserRepositoryPort, USER_REPOSITORY_TOKEN } from '@openlinker/core/users';
+import {
+  EmailNotConfirmedException,
+  UserRepositoryPort,
+  USER_REPOSITORY_TOKEN,
+} from '@openlinker/core/users';
 import { LoginResponseDto } from './dto/login-response.dto';
 import type { IAuthService } from './auth.service.interface';
 
@@ -28,8 +32,16 @@ export class AuthService implements IAuthService {
   private static readonly DUMMY_HASH =
     '$2b$10$AAAAAAAAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 
-  async validateUser(username: string, password: string): Promise<User | null> {
-    const user = await this.userRepository.findByUsername(username);
+  async validateUser(identifier: string, password: string): Promise<User | null> {
+    // Accept either a username or an email as the identifier. The presence of
+    // '@' disambiguates the two: usernames are forbidden from containing '@'
+    // (enforced by RegisterDto), so an identifier with '@' is an email and one
+    // without is a username. Branching this way makes the username<->email
+    // collision impossible rather than merely unlikely, and collapses lookup to
+    // a single query on every path.
+    const user = identifier.includes('@')
+      ? await this.userRepository.findByEmail(identifier)
+      : await this.userRepository.findByUsername(identifier);
     if (!user) {
       await bcrypt.compare(password, AuthService.DUMMY_HASH);
       return null;
@@ -38,8 +50,14 @@ export class AuthService implements IAuthService {
     if (!isMatch) {
       return null;
     }
-    // Non-active users (pending/deactivated) get the same 401 as wrong password
-    // to avoid account-status enumeration via the login endpoint.
+    // The password matched, so the caller already knows this account exists —
+    // telling them to check their inbox doesn't create a new enumeration
+    // oracle. Give a clear, specific error for this one status.
+    if (user.status === 'pending_confirmation') {
+      throw new EmailNotConfirmedException();
+    }
+    // Other non-active users (pending admin approval/deactivated) get the
+    // same 401 as wrong password to avoid account-status enumeration.
     if (user.status !== 'active') {
       return null;
     }
@@ -59,5 +77,13 @@ export class AuthService implements IAuthService {
       throw new UnauthorizedException('User no longer exists');
     }
     return user;
+  }
+
+  async updateAnalyticsConsent(userId: string, analyticsConsent: boolean): Promise<User> {
+    // getMe first so a deleted-but-still-bearing-a-valid-JWT caller gets a 401
+    // instead of a silent no-op UPDATE reported back as success.
+    await this.getMe(userId);
+    await this.userRepository.updateAnalyticsConsent(userId, analyticsConsent);
+    return this.getMe(userId);
   }
 }

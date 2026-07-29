@@ -10,7 +10,13 @@
  * @module apps/api/src/orders/http/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
-import { RegulatoryStatus, RegulatoryStatusValues } from '@openlinker/core/invoicing';
+import {
+  DocumentTypeValues,
+  InvoiceStatus,
+  InvoiceStatusValues,
+  RegulatoryStatus,
+  RegulatoryStatusValues,
+} from '@openlinker/core/invoicing';
 
 export class OrderInvoiceProjectionDto {
   @ApiProperty({
@@ -18,6 +24,20 @@ export class OrderInvoiceProjectionDto {
       'Internal invoice record id the UPO download endpoint (GET /invoices/:invoiceId/upo) keys on.',
   })
   invoiceId!: string;
+
+  @ApiProperty({
+    enum: DocumentTypeValues,
+    description:
+      'Neutral document type (open-world). Correction documents (`corrected` / `credit-note`) are distinguished from a plain `invoice` so the FE can label them.',
+  })
+  documentType!: string;
+
+  @ApiProperty({
+    enum: InvoiceStatusValues,
+    description:
+      'Issue lifecycle status of the invoice document (pending → issuing → issued | failed).',
+  })
+  status!: InvoiceStatus;
 
   @ApiProperty({
     enum: RegulatoryStatusValues,

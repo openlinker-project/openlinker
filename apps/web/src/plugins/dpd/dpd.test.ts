@@ -28,9 +28,8 @@ describe('dpdPlugin', () => {
       const paths = (dpdPlugin.build?.routes ?? []).map((route) => route.path);
       expect(paths).toContain('connections/new/dpd');
     });
-    it('does NOT contribute API namespaces or an offer-creation wizard (carrier-only)', () => {
+    it('does NOT contribute API namespaces (carrier-only)', () => {
       expect(dpdPlugin.build?.apiNamespaces).toBeUndefined();
-      expect(dpdPlugin.build?.offerCreationWizard).toBeUndefined();
     });
   });
 

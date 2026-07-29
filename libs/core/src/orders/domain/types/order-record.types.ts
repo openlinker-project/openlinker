@@ -160,8 +160,9 @@ export interface OrderRecordFilters {
  * Sort fields for order-record list queries (#927, extended #944).
  *
  * - `createdAt` / `dispatchBy` — top-level timestamp columns.
- * - `customer` / `items` / `status` / `total` — derived from `orderSnapshot`
- *   JSONB (and the health `CASE` for `status`); back the sortable table columns.
+ * - `customer` / `items` / `status` / `total` / `payment` — derived from
+ *   `orderSnapshot` JSONB (and the health `CASE` for `status`); back the
+ *   sortable table columns.
  */
 export const OrderRecordSortValues = [
   'createdAt',
@@ -171,6 +172,7 @@ export const OrderRecordSortValues = [
   'status',
   'total',
   'fulfillment',
+  'payment',
 ] as const;
 export type OrderRecordSort = (typeof OrderRecordSortValues)[number];
 

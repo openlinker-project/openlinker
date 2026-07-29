@@ -33,6 +33,10 @@ import {
   createAuthenticatedSessionAdapter,
   createMockApiClient,
 } from '../test/test-utils';
+import {
+  setDemoAnalyticsConsent,
+  DEMO_ANALYTICS_CONSENT_STORAGE_KEY,
+} from '../features/demo';
 
 interface RenderShellOptions {
   apiClient?: ApiClient;
@@ -116,7 +120,10 @@ function getDrawer(): HTMLDialogElement {
 }
 
 describe('AppShell', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    window.localStorage.clear();
+  });
 
   it('renders the three live nav groups plus a disabled Planned footer', () => {
     renderShell({ pathname: '/' });
@@ -154,6 +161,7 @@ describe('AppShell', () => {
       email: 'viewer@example.com',
       role: 'viewer',
       permissions: [],
+      analyticsConsent: true,
     });
     renderShell({ pathname: '/', sessionAdapter: viewerAdapter });
     // Wait for the viewer username to land in the DOM — a reliable signal
@@ -173,6 +181,7 @@ describe('AppShell', () => {
       email: 'viewer@example.com',
       role: 'viewer',
       permissions: [],
+      analyticsConsent: true,
     });
     const demoApiClient = createMockApiClient({
       system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
@@ -219,6 +228,7 @@ describe('AppShell', () => {
       email: 'viewer@example.com',
       role: 'viewer',
       permissions: [],
+      analyticsConsent: true,
     });
     const demoApiClient = createMockApiClient({
       system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
@@ -240,6 +250,69 @@ describe('AppShell', () => {
     const primary = screen.getByRole('navigation', { name: 'Primary' });
     await within(primary).findByText('Prompt templates');
     expect(screen.queryByRole('note', { name: 'Demo mode notice' })).toBeNull();
+  });
+
+  it('drops the banner "Analytics on" state when consent is withdrawn elsewhere (#1882)', async () => {
+    const viewerAdapter = createAuthenticatedSessionAdapter({
+      id: 'u2',
+      username: 'viewer',
+      email: 'viewer@example.com',
+      role: 'viewer',
+      permissions: [],
+      analyticsConsent: true,
+    });
+    const demoApiClient = createMockApiClient({
+      system: {
+        getConfig: vi.fn().mockResolvedValue({
+          demoMode: true,
+          demoIntegrations: { posthog: { key: 'phc_abc', host: 'https://eu.posthog.com' } },
+        }),
+      },
+    });
+    renderShell({ pathname: '/', apiClient: demoApiClient, sessionAdapter: viewerAdapter });
+
+    // Seeded from the account: consent granted → banner reports analytics on.
+    expect(await screen.findByText('Analytics on.')).toBeInTheDocument();
+
+    // The /settings toggle writes localStorage in this same tab; without the
+    // subscription the banner would keep claiming "on" until a reload.
+    act(() => {
+      setDemoAnalyticsConsent('declined');
+    });
+
+    await waitFor(() => expect(screen.queryByText('Analytics on.')).not.toBeInTheDocument());
+  });
+
+  it('picks up a consent change made in another tab (#1882)', async () => {
+    const viewerAdapter = createAuthenticatedSessionAdapter({
+      id: 'u2',
+      username: 'viewer',
+      email: 'viewer@example.com',
+      role: 'viewer',
+      permissions: [],
+      analyticsConsent: false,
+    });
+    const demoApiClient = createMockApiClient({
+      system: {
+        getConfig: vi.fn().mockResolvedValue({
+          demoMode: true,
+          demoIntegrations: { posthog: { key: 'phc_abc', host: 'https://eu.posthog.com' } },
+        }),
+      },
+    });
+    renderShell({ pathname: '/', apiClient: demoApiClient, sessionAdapter: viewerAdapter });
+
+    expect(await screen.findByRole('note', { name: 'Demo mode notice' })).toBeInTheDocument();
+    expect(screen.queryByText('Analytics on.')).not.toBeInTheDocument();
+
+    act(() => {
+      window.localStorage.setItem(DEMO_ANALYTICS_CONSENT_STORAGE_KEY, 'accepted');
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: DEMO_ANALYTICS_CONSENT_STORAGE_KEY }),
+      );
+    });
+
+    expect(await screen.findByText('Analytics on.')).toBeInTheDocument();
   });
 
   it('uses "Connections" as the nav label (not "Integrations")', () => {

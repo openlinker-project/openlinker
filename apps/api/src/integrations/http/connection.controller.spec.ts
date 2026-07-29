@@ -18,15 +18,24 @@ import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 import {
   INTEGRATIONS_SERVICE_TOKEN,
   WEBHOOK_SECRET_SERVICE_TOKEN,
+  CallerSuppliedWebhookSecretNotSupportedException,
 } from '@openlinker/core/integrations';
+import { WEBHOOK_STATUS_SERVICE_TOKEN } from '../application/interfaces/webhook-status.service.interface';
 import type { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import type { AuthenticatedUser } from '../../auth/auth.types';
+import {
+  DEMO_MODE_SERVICE_TOKEN,
+  type IDemoModeService,
+} from '../../auth/demo-mode.service.interface';
 
 describe('ConnectionController', () => {
   let controller: ConnectionController;
   let service: jest.Mocked<ConnectionService>;
   let syncJobRepository: jest.Mocked<SyncJobRepositoryPort>;
+  let demoModeService: jest.Mocked<IDemoModeService>;
+  let webhookSecretService: { rotate: jest.Mock; set: jest.Mock };
+  let webhookStatusService: { getStatus: jest.Mock };
 
   const mockConnection = new Connection(
     'connection-123',
@@ -88,6 +97,7 @@ describe('ConnectionController', () => {
       markDead: jest.fn(),
       requeueStuckJobs: jest.fn(),
       requeueDeadJob: jest.fn(),
+      requeueDeadByIdempotencyKey: jest.fn(),
       findRecentByConnectionId: jest.fn(),
       findGroupedByStatus: jest.fn(),
       requeueDeadJobsInGroup: jest.fn(),
@@ -116,7 +126,26 @@ describe('ConnectionController', () => {
         },
         {
           provide: WEBHOOK_SECRET_SERVICE_TOKEN,
-          useValue: { rotate: jest.fn().mockResolvedValue({ secret: 'deadbeef' }) },
+          useValue: {
+            rotate: jest.fn().mockResolvedValue({ secret: 'deadbeef' }),
+            set: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: WEBHOOK_STATUS_SERVICE_TOKEN,
+          useValue: {
+            getStatus: jest.fn().mockResolvedValue({
+              activation: 'verified',
+              signature: 'configured',
+              lastDeliveryAt: '2026-07-22T09:14:02.000Z',
+              lastDeliveryEvent: 'send_to_ksef_success',
+              lastDeliveryResult: 'published',
+            }),
+          },
+        },
+        {
+          provide: DEMO_MODE_SERVICE_TOKEN,
+          useValue: { isDemoModeEnabled: jest.fn().mockReturnValue(false) },
         },
       ],
     }).compile();
@@ -124,6 +153,46 @@ describe('ConnectionController', () => {
     controller = module.get<ConnectionController>(ConnectionController);
     service = module.get(ConnectionService);
     syncJobRepository = module.get(SYNC_JOB_REPOSITORY_TOKEN);
+    demoModeService = module.get(DEMO_MODE_SERVICE_TOKEN);
+    webhookSecretService = module.get(WEBHOOK_SECRET_SERVICE_TOKEN);
+    webhookStatusService = module.get(WEBHOOK_STATUS_SERVICE_TOKEN);
+  });
+
+  describe('setWebhookSecret', () => {
+    it('resolves the connection and forwards the pasted secret to the service', async () => {
+      service.get.mockResolvedValue(mockConnection);
+
+      await controller.setWebhookSecret('connection-123', { secret: 'pasted-secret' }, mockAdminUser);
+
+      expect(webhookSecretService.set).toHaveBeenCalledWith(
+        'prestashop',
+        'connection-123',
+        'pasted-secret',
+        'user-1'
+      );
+    });
+
+    it('maps CallerSuppliedWebhookSecretNotSupportedException to BadRequestException (#1770 review)', async () => {
+      service.get.mockResolvedValue(mockConnection);
+      webhookSecretService.set.mockRejectedValue(
+        new CallerSuppliedWebhookSecretNotSupportedException('prestashop')
+      );
+
+      await expect(
+        controller.setWebhookSecret('connection-123', { secret: 'pasted-secret' }, mockAdminUser)
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('getWebhookStatus', () => {
+    it('returns the derived webhook status', async () => {
+      const result = await controller.getWebhookStatus('connection-123');
+
+      expect(webhookStatusService.getStatus).toHaveBeenCalledWith('connection-123');
+      expect(result.activation).toBe('verified');
+      expect(result.signature).toBe('configured');
+      expect(result.lastDeliveryEvent).toBe('send_to_ksef_success');
+    });
   });
 
   describe('create', () => {
@@ -177,6 +246,45 @@ describe('ConnectionController', () => {
       expect(result).toBeInstanceOf(ConnectionResponseDto);
       expect(result.id).toBe('connection-123');
       expect(service.get).toHaveBeenCalledWith('connection-123');
+    });
+
+    it('should return real config for a viewer when demo mode is enabled (#1616)', async () => {
+      demoModeService.isDemoModeEnabled.mockReturnValue(true);
+      service.get.mockResolvedValue(mockConnection);
+
+      const result = await controller.get('connection-123', {
+        id: 'user-2',
+        username: 'demo-viewer',
+        role: 'viewer',
+      });
+
+      expect(result.config).toEqual({ baseUrl: 'https://example.com' });
+    });
+
+    it('should keep config blanked for a production viewer when demo mode is disabled (#1124)', async () => {
+      demoModeService.isDemoModeEnabled.mockReturnValue(false);
+      service.get.mockResolvedValue(mockConnection);
+
+      const result = await controller.get('connection-123', {
+        id: 'user-2',
+        username: 'viewer',
+        role: 'viewer',
+      });
+
+      expect(result.config).toEqual({});
+    });
+
+    it('should keep config blanked for an operator even when demo mode is enabled (#1124)', async () => {
+      demoModeService.isDemoModeEnabled.mockReturnValue(true);
+      service.get.mockResolvedValue(mockConnection);
+
+      const result = await controller.get('connection-123', {
+        id: 'user-2',
+        username: 'operator',
+        role: 'operator',
+      });
+
+      expect(result.config).toEqual({});
     });
   });
 

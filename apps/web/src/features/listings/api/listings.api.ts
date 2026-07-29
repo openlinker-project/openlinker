@@ -10,6 +10,7 @@ import type {
   CatalogProduct,
   CatalogProductMatchResult,
   CategoryParametersListResponse,
+  CategoryPathResponse,
   CreateOfferRequest,
   CreateOfferResponse,
   FindProductsByBarcodeRequest,
@@ -17,6 +18,8 @@ import type {
   ListingsPagination,
   MarketplaceOfferResponse,
   OfferCreationStatusResponse,
+  OfferPublicationStatusResponse,
+  RefreshOfferPublicationStatusResponse,
   OfferMapping,
   PaginatedOfferMappings,
   ResolveCategoriesBatchRequest,
@@ -26,12 +29,17 @@ import type {
   SellerPoliciesResponse,
   ResponsibleProducersResponse,
   DeliveryPriceListsResponse,
+  ShopCategory,
+  ShopAttribute,
+  ShopAttributeTerm,
   ShopPublishRequest,
   ShopPublishResponse,
   ShopPublishStatusResponse,
   BulkShopPublishRequest,
   BulkShopPublishResponse,
   BulkShopPublishBatchResponse,
+  PublishedVariantsRequest,
+  PublishedVariantsResponse,
   UpdateOfferFieldsPayload,
   UpdateOfferFieldsResult,
 } from './listings.types';
@@ -78,6 +86,23 @@ export interface ListingsApi {
     offerCreationRecordId: string,
   ) => Promise<OfferCreationStatusResponse>;
   /**
+   * Live marketplace publication status of a product's offers (#1760), read
+   * from persisted snapshots. Optionally scoped to a single connection.
+   */
+  getProductOfferStatus: (
+    productId: string,
+    connectionId?: string,
+  ) => Promise<OfferPublicationStatusResponse[]>;
+  /**
+   * Force-refresh one offer's live publication status now (#1760); upserts the
+   * snapshot and returns the observed status.
+   */
+  refreshOfferPublicationStatus: (
+    connectionId: string,
+    externalOfferId: string,
+    internalVariantId: string,
+  ) => Promise<RefreshOfferPublicationStatusResponse>;
+  /**
    * Publish a single OL variant onto a `ProductPublisher` shop connection
    * (#1044). Returns the enqueued `jobId` and pre-created
    * `listingCreationRecordId` for immediate status polling. Forwards
@@ -92,11 +117,36 @@ export interface ListingsApi {
     connectionId: string,
     recordId: string,
   ) => Promise<ShopPublishStatusResponse>;
+  /**
+   * Browse a shop connection's existing category tree (#1834), one parent level
+   * at a time (omit `parentId` for root). Backed by the shop `ShopCategoryBrowser`
+   * capability; 422 if the connection's adapter does not implement it.
+   */
+  browseShopCategories: (
+    connectionId: string,
+    parentId?: string,
+  ) => Promise<ShopCategory[]>;
+  /**
+   * List a shop connection's store-wide global product attributes (#1835).
+   * Backed by the shop `ShopAttributeReader` capability; 422 if the connection's
+   * adapter does not implement it.
+   */
+  listShopAttributes: (connectionId: string) => Promise<ShopAttribute[]>;
+  /** List the predefined terms of one global attribute (#1835). */
+  listShopAttributeTerms: (
+    connectionId: string,
+    attributeId: string,
+  ) => Promise<ShopAttributeTerm[]>;
   /** Submit a bulk shop-publish batch (#1044). Returns the persisted
    *  `batchId` and per-variant job + record ids. */
   shopPublishBulk: (body: BulkShopPublishRequest) => Promise<BulkShopPublishResponse>;
   /** Read a bulk shop-publish batch + its per-record summary. Used for polling. */
   getBulkShopPublishBatch: (batchId: string) => Promise<BulkShopPublishBatchResponse>;
+  /** Destination-aware duplicate guard (#1837) - which variants already have a
+   *  listing (offer or shop-product) on the connection. */
+  checkPublishedVariants: (
+    body: PublishedVariantsRequest,
+  ) => Promise<PublishedVariantsResponse>;
   getSellerPolicies: (connectionId: string) => Promise<SellerPoliciesResponse>;
   getResponsibleProducers: (connectionId: string) => Promise<ResponsibleProducersResponse>;
   getDeliveryPriceLists: (connectionId: string) => Promise<DeliveryPriceListsResponse>;
@@ -104,6 +154,16 @@ export interface ListingsApi {
     connectionId: string,
     categoryId: string,
   ) => Promise<CategoryParametersListResponse>;
+  /**
+   * Resolves a marketplace category id to its breadcrumb path (#1752), root ->
+   * leaf. Returns 404 if the category is unknown; 422 if the connection's
+   * adapter does not implement `CategoryPathReader`. Callers fall back to the
+   * raw id on either.
+   */
+  getCategoryPath: (
+    connectionId: string,
+    categoryId: string,
+  ) => Promise<CategoryPathResponse>;
   findProductsByBarcode: (
     connectionId: string,
     request: FindProductsByBarcodeRequest,
@@ -199,6 +259,29 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
         `/listings/connections/${connectionId}/offers/creation/${offerCreationRecordId}`,
       );
     },
+    getProductOfferStatus(
+      productId,
+      connectionId,
+    ): Promise<OfferPublicationStatusResponse[]> {
+      const query = connectionId ? `?connectionId=${encodeURIComponent(connectionId)}` : '';
+      return request<OfferPublicationStatusResponse[]>(
+        `/listings/products/${encodeURIComponent(productId)}/offer-status${query}`,
+      );
+    },
+    refreshOfferPublicationStatus(
+      connectionId,
+      externalOfferId,
+      internalVariantId,
+    ): Promise<RefreshOfferPublicationStatusResponse> {
+      return request<RefreshOfferPublicationStatusResponse>(
+        `/listings/connections/${connectionId}/offers/${encodeURIComponent(externalOfferId)}/refresh-status`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ internalVariantId }),
+        },
+      );
+    },
     shopPublish(connectionId, body, options): Promise<ShopPublishResponse> {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (options?.idempotencyKey) {
@@ -215,6 +298,24 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
         `/listings/connections/${connectionId}/shop-publish/${encodeURIComponent(recordId)}`,
       );
     },
+    browseShopCategories(connectionId, parentId): Promise<ShopCategory[]> {
+      const qs = parentId ? `?parentId=${encodeURIComponent(parentId)}` : '';
+      return request<ShopCategory[]>(
+        `/listings/connections/${connectionId}/shop-publish/categories${qs}`,
+      );
+    },
+    listShopAttributes(connectionId): Promise<ShopAttribute[]> {
+      return request<ShopAttribute[]>(
+        `/listings/connections/${connectionId}/shop-publish/attributes`,
+      );
+    },
+    listShopAttributeTerms(connectionId, attributeId): Promise<ShopAttributeTerm[]> {
+      return request<ShopAttributeTerm[]>(
+        `/listings/connections/${connectionId}/shop-publish/attributes/${encodeURIComponent(
+          attributeId,
+        )}/terms`,
+      );
+    },
     shopPublishBulk(body): Promise<BulkShopPublishResponse> {
       return request<BulkShopPublishResponse>('/listings/bulk-shop-publish', {
         method: 'POST',
@@ -226,6 +327,13 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
       return request<BulkShopPublishBatchResponse>(
         `/listings/bulk-shop-publish/${encodeURIComponent(batchId)}`,
       );
+    },
+    checkPublishedVariants(body): Promise<PublishedVariantsResponse> {
+      return request<PublishedVariantsResponse>('/listings/published-variants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
     },
     getSellerPolicies(connectionId): Promise<SellerPoliciesResponse> {
       return request<SellerPoliciesResponse>(
@@ -245,6 +353,11 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
     getCategoryParameters(connectionId, categoryId): Promise<CategoryParametersListResponse> {
       return request<CategoryParametersListResponse>(
         `/listings/connections/${connectionId}/categories/${categoryId}/parameters`,
+      );
+    },
+    getCategoryPath(connectionId, categoryId): Promise<CategoryPathResponse> {
+      return request<CategoryPathResponse>(
+        `/listings/connections/${connectionId}/categories/${categoryId}/path`,
       );
     },
     findProductsByBarcode(connectionId, body): Promise<CatalogProductMatchResult> {

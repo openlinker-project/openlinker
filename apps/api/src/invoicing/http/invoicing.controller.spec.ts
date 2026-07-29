@@ -50,7 +50,9 @@ import type { IIntegrationsService } from '@openlinker/core/integrations';
 import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import type { Connection, ConnectionPort } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
+import 'reflect-metadata';
 import type { AuthenticatedUser } from '../../auth/auth.types';
+import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 import { InvoicingController } from './invoicing.controller';
 
 const NOW = new Date('2026-06-23T10:00:00.000Z');
@@ -1752,6 +1754,16 @@ describe('InvoicingController', () => {
       expect(markPaid).toHaveBeenCalled();
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('correction document'));
       warnSpy.mockRestore();
+    });
+  });
+
+  describe('issueInvoice permission gate (#1613)', () => {
+    it('carries @Roles(admin) so RolesGuard returns 403 for a non-admin caller', () => {
+      const roles = Reflect.getMetadata(
+        ROLES_KEY,
+        InvoicingController.prototype.issueInvoice,
+      ) as string[] | undefined;
+      expect(roles).toEqual(['admin']);
     });
   });
 });

@@ -11,7 +11,14 @@ import { Injectable, Inject } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
-import { IProductsService, PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
+import {
+  IProductsService,
+  PRODUCTS_SERVICE_TOKEN,
+  MASTER_DELETION_EVENT_STREAM,
+  MASTER_DELETION_EVENT_SCHEMA_VERSION,
+  MASTER_VARIANT_STALE_EVENT,
+} from '@openlinker/core/products';
+import { EventPublisherPort, EVENT_PUBLISHER_TOKEN } from '@openlinker/core/events';
 import { INVENTORY_SERVICE_TOKEN } from '../../inventory.tokens';
 import { IInventoryService } from './inventory.service.interface';
 import type {
@@ -37,7 +44,9 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     @Inject(INVENTORY_SERVICE_TOKEN)
     private readonly inventoryService: IInventoryService,
     @Inject(PRODUCTS_SERVICE_TOKEN)
-    private readonly productsService: IProductsService
+    private readonly productsService: IProductsService,
+    @Inject(EVENT_PUBLISHER_TOKEN)
+    private readonly eventPublisher: EventPublisherPort
   ) {}
 
   async syncFromMasterByExternalId(
@@ -75,13 +84,32 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     // Soft-mark any previously-known variant absent from this master response as
     // stale (#1478). Runs unconditionally — an empty response marks every row for
     // the product stale (product fully removed at the master).
-    const markedStale = await this.inventoryService.pruneStaleVariants(
+    const pruneResult = await this.inventoryService.pruneStaleVariants(
       internalProductId,
       currentVariantIds
     );
 
+    // Emit the master-deletion signal from the inventory prune path too (#1599).
+    // Disjoint from the product-sync emission — a full deletion produces one from
+    // each sync path; consumers dedupe by (productId, variantIds) as needed.
+    if (pruneResult.variantIds.length > 0) {
+      const now = new Date().toISOString();
+      await this.eventPublisher.publish(MASTER_DELETION_EVENT_STREAM, {
+        eventId: randomUUID(),
+        eventType: MASTER_VARIANT_STALE_EVENT,
+        payloadJson: JSON.stringify({
+          connectionId,
+          internalProductId,
+          variantIds: pruneResult.variantIds,
+        }),
+        metadataJson: JSON.stringify({ schemaVersion: MASTER_DELETION_EVENT_SCHEMA_VERSION }),
+        occurredAt: now,
+        publishedAt: now,
+      });
+    }
+
     this.logger.debug(
-      `Master inventory sync complete (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, itemsWritten=${inventories.length}, markedStale=${markedStale}, available=${availableQuantity}, reserved=${reservedQuantity})`
+      `Master inventory sync complete (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, itemsWritten=${inventories.length}, markedStale=${pruneResult.markedCount}, available=${availableQuantity}, reserved=${reservedQuantity})`
     );
 
     return {

@@ -2,6 +2,7 @@ import { cleanup, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
+import { ApiError } from '../../../shared/api/api-error';
 import { RegisterForm } from './register-form';
 
 describe('RegisterForm', () => {
@@ -72,12 +73,29 @@ describe('RegisterForm', () => {
     expect(await screen.findByText('Username already taken')).toBeInTheDocument();
   });
 
+  it('should show a dedicated message when registration fails with a 409 (#1625)', async () => {
+    const mockApi = createMockApiClient({
+      auth: {
+        register: vi.fn().mockRejectedValue(new ApiError('Email already registered', 409, null)),
+      },
+    });
+    renderWithProviders(<RegisterForm />, { apiClient: mockApi });
+
+    await userEvent.type(screen.getByLabelText(/username/i), 'alice');
+    await userEvent.type(screen.getByLabelText(/email/i), 'alice@test.com');
+    await userEvent.type(screen.getByLabelText('Password'), 'password123');
+    await userEvent.type(screen.getByLabelText('Confirm password'), 'password123');
+    await userEvent.click(screen.getByRole('button', { name: /request access/i }));
+
+    expect(await screen.findByText('This email is already registered.')).toBeInTheDocument();
+  });
+
   describe('demo mode', () => {
     it('should show the demo bar when demoMode is true', () => {
       renderWithProviders(<RegisterForm demoMode />);
 
       expect(screen.getByText(/OpenLinker Demo/i)).toBeInTheDocument();
-      expect(screen.getByText(/active immediately/i)).toBeInTheDocument();
+      expect(screen.getByText(/confirm and activate your account/i)).toBeInTheDocument();
     });
 
     it('should show the demo callout when demoMode is true', () => {
@@ -99,6 +117,55 @@ describe('RegisterForm', () => {
       expect(screen.getByRole('button', { name: /request access/i })).toBeInTheDocument();
     });
 
+    it('should render an unchecked analytics consent checkbox in demo mode (#1743)', () => {
+      renderWithProviders(<RegisterForm demoMode />);
+
+      const checkbox = screen.getByRole('checkbox', { name: /share anonymous usage analytics/i });
+      expect(checkbox).toBeInTheDocument();
+      expect(checkbox).not.toBeChecked();
+    });
+
+    it('should not render the analytics consent checkbox outside demo mode', () => {
+      renderWithProviders(<RegisterForm />);
+
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    });
+
+    it('should submit analyticsConsent=false when the checkbox is left unchecked', async () => {
+      const registerFn = vi.fn().mockResolvedValue({ ok: true });
+      const mockApi = createMockApiClient({ auth: { register: registerFn } });
+      renderWithProviders(<RegisterForm demoMode />, { apiClient: mockApi });
+
+      await userEvent.type(screen.getByLabelText(/username/i), 'demo_user');
+      await userEvent.type(screen.getByLabelText(/email/i), 'demo@test.com');
+      await userEvent.type(screen.getByLabelText('Password'), 'password123');
+      await userEvent.type(screen.getByLabelText('Confirm password'), 'password123');
+      await userEvent.click(screen.getByRole('button', { name: /start exploring/i }));
+
+      await screen.findByText(/check your email to confirm your account/i);
+      expect(registerFn).toHaveBeenCalledWith(
+        expect.objectContaining({ username: 'demo_user', analyticsConsent: false })
+      );
+    });
+
+    it('should submit analyticsConsent=true after the user checks it', async () => {
+      const registerFn = vi.fn().mockResolvedValue({ ok: true });
+      const mockApi = createMockApiClient({ auth: { register: registerFn } });
+      renderWithProviders(<RegisterForm demoMode />, { apiClient: mockApi });
+
+      await userEvent.type(screen.getByLabelText(/username/i), 'demo_user');
+      await userEvent.type(screen.getByLabelText(/email/i), 'demo@test.com');
+      await userEvent.type(screen.getByLabelText('Password'), 'password123');
+      await userEvent.type(screen.getByLabelText('Confirm password'), 'password123');
+      await userEvent.click(
+        screen.getByRole('checkbox', { name: /share anonymous usage analytics/i })
+      );
+      await userEvent.click(screen.getByRole('button', { name: /start exploring/i }));
+
+      await screen.findByText(/check your email to confirm your account/i);
+      expect(registerFn).toHaveBeenCalledWith(expect.objectContaining({ analyticsConsent: true }));
+    });
+
     it('should show demo success copy after registration in demo mode', async () => {
       const mockApi = createMockApiClient({
         auth: { register: vi.fn().mockResolvedValue({ ok: true }) },
@@ -111,7 +178,23 @@ describe('RegisterForm', () => {
       await userEvent.type(screen.getByLabelText('Confirm password'), 'password123');
       await userEvent.click(screen.getByRole('button', { name: /start exploring/i }));
 
-      expect(await screen.findByText(/demo account is ready/i)).toBeInTheDocument();
+      expect(
+        await screen.findByText(/check your email to confirm your account/i)
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('tracking footnote', () => {
+    it('should show the footnote when showTrackingFootnote is true', () => {
+      renderWithProviders(<RegisterForm showTrackingFootnote />);
+
+      expect(screen.getByText(/logged for analytics/i)).toBeInTheDocument();
+    });
+
+    it('should not show the footnote when showTrackingFootnote is false', () => {
+      renderWithProviders(<RegisterForm showTrackingFootnote={false} />);
+
+      expect(screen.queryByText(/logged for analytics/i)).not.toBeInTheDocument();
     });
   });
 });

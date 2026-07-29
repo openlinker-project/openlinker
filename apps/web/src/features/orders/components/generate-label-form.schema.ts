@@ -9,16 +9,17 @@
  */
 import { z } from 'zod';
 
+import { COD_CURRENCY_VALUES, type CodCurrency } from '../../../shared/shipping/cod-currencies';
+
 /**
- * COD currencies the carrier accepts. **FE mirror** of the BE
- * `DpdCodCurrencyValues` (`libs/integrations/dpd-polska/.../dpd-rest.types.ts`).
- * DPD is the only COD-capable carrier today, so this carrier-neutral form
- * carries DPD's set; if a second COD carrier with a different set ships, source
- * this per-platform instead of widening here. Keep in sync with the BE — same
- * FE↔BE value-drift discipline as `SHIPPING_METHOD_VALUES` (#966).
+ * COD currency vocabulary — the source of truth now lives in
+ * `shared/shipping/cod-currencies` (#1569), which also carries the per-carrier
+ * scoping. Re-exported here so colocated importers keep resolving it from the
+ * form schema; `generateLabelSchema` validates against the full union (the
+ * per-carrier narrowing is a UI concern, and the adapter preflight is the
+ * server-side backstop).
  */
-export const COD_CURRENCY_VALUES = ['PLN', 'EUR', 'RON', 'CZK'] as const;
-export type CodCurrency = (typeof COD_CURRENCY_VALUES)[number];
+export { COD_CURRENCY_VALUES, type CodCurrency };
 
 /**
  * Currencies accepted for declared-value insurance (#1542). InPost ShipX

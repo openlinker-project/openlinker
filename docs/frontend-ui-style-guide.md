@@ -451,6 +451,7 @@ Required implementation rules:
 - style modifiers after their base rules and keep state classes explicit, for example `status-pill--error` or `context-chip--info`
 - responsive overrides must match the layout model being changed; use grid overrides for grid layouts and flex overrides for flex layouts
 - add or extend shared primitives before introducing page-specific one-off styling
+- narrow-viewport table-to-cards (#1784): where a dense mapping/config table must stay usable on small screens, opt the table into `.data-table--stackable` and add a `data-label` to each `<td>`. At `<= 640px` a scoped block collapses each row into a card (source cell as the heading; remaining cells stack under their `data-label`). Prefer this over a "desktop-only" banner — the mapping page dropped `DesktopOnlyBanner` for it. The rule is scoped to the modifier so the app-wide `DataTable` is untouched.
 
 Recommended CSS structure for `apps/web/src/index.css`:
 
@@ -506,7 +507,7 @@ FE-002 expanded the primitive layer in `apps/web/src/shared/ui`. Every primitive
 
 ### Tables
 
-- `DataTable` — wraps `@tanstack/react-table` for sort/filter/column state. Dense rows (36 px default), row-click navigation, integrated empty state, status badge cells. Pairs with `@tanstack/react-virtual` when row count ≥ 500.
+- `DataTable` — wraps `@tanstack/react-table` for sort/filter/column state. Dense rows (36 px default), row-click navigation, integrated empty state, status badge cells. Pairs with `@tanstack/react-virtual` when row count ≥ 500. `hideBelow` (per-column, breakpoint-gated hiding) and `expandable` (a per-row accordion detail panel, opened via a leading toggle, `#1620`) are two independent, composable strategies for keeping a wide table usable at narrower widths — `hideBelow` drops non-essential columns outright below a breakpoint, `expandable` keeps every column queryable but moves non-essential fields into a click-to-open detail row instead of hiding them. A table can use either, both, or neither; the orders list (`#1620`) uses `expandable` with no `hideBelow` columns, relying on the table's own horizontal scroll at tablet width for anything that doesn't fit. `expandable` is not currently supported together with `virtualize` on the same table — see the `DataTableExpandable` JSDoc in `data-table.tsx`.
 
 ### Status & data surfaces
 
@@ -619,6 +620,8 @@ Defaults (FE-002):
 
 Never introduce a row height that isn't on this list without updating the guide first. Variability across surfaces is the primary way a cockpit feels amateur.
 
+**Selection-list rows are governed separately.** Multi-select picker rows inside a modal (e.g. the offer-creation product picker, `.offer-product-picker__prow-main` / `.offer-product-picker__vrow`, #1754/#1779) are *not* `DataTable` rows and are intentionally taller than 36 px: the whole-product checkbox carries a ≥ 44 px tap target (touch parity with the full-width variant-row hit area) and each row pairs a thumbnail with two text lines. They inherit the density posture but pick their own height from content + the tap-target floor rather than the table default; don't force them onto the `36 px` row.
+
 ## Responsive
 
 Desktop (≥ 1024 px) is the design anchor. **Mobile (≤ 767 px) and tablet (768–1023 px) are first-class** — operators should be able to triage failures from a phone off-hours and from an iPad on the shop floor.
@@ -637,7 +640,7 @@ Parity matrix — what changes across sizes:
 |---|---|---|---|
 | Nav | drawer · hamburger trigger in topbar | drawer *or* persistent rail | persistent 240 px sidebar |
 | Topbar | logo + hamburger + search icon + user | full minus workspace crumb | full |
-| Tables | **card view** (one card per row, key columns stacked) | table with column hiding | full table |
+| Tables | **card view** (one card per row, key columns stacked) | full table, scrolled horizontally within its container as needed | full table |
 | Detail pages | single-column stack | 1-col or 60/40 split | 65/35 grid |
 | KPI strip | 1 × 4 vertical | 2 × 2 grid | 1 × 4 horizontal |
 | `MetricCard` | full width | 2-col grid | 4-col grid |
@@ -645,6 +648,8 @@ Parity matrix — what changes across sizes:
 | Raw payload panel | collapsed by default | as desktop | as desktop |
 | Complex editors | **read-only + "open on desktop to edit" hint** | full interactive | full interactive |
 | Wizards | one step per screen, stepper collapsed | full | full |
+
+**Documented departure — the offer-creation product picker modal (#1754/#1779)** folds into a two-step wizard (step 1 = product list, step 2 = selection review + connection + Continue) at **both** mobile *and* tablet width (≤ 1023 px), rather than staying "full interactive" at tablet as the *Complex editors* / *Wizards* rows above would suggest. This is deliberate: the modal's side-by-side list + review rail needs two comfortable columns, which only desktop (≥ 1024 px) affords; on an iPad the two-step flow is more usable than two cramped columns. Unlike the "complex editors" rule, the picker stays **fully interactive** at every width (it is a selection surface, not a data editor), so it never shows an "open on desktop" hint.
 
 Rules:
 
@@ -768,6 +773,26 @@ Used for:
 - category mappings
 - field mappings
 - shipping mappings
+
+### Two-Axis Bulk Editor (#1741 / #1830)
+
+The bulk publish edit modal (`BulkEditModal`) is organized along two independent
+axes rather than one flow per destination:
+
+- **Variant shape** - a multi-variant product renders the two-pane layout (left
+  rail of scopes: Shared base + one per variant, right pane = the active scope's
+  form, inherit/override provenance badges); a simple/single-variant product
+  collapses to a flat form with no rail.
+- **Destination kind** - a marketplace destination (`OfferCreator`) shows the
+  offer field set (category tree + parameter schema, EAN self-link); a shop
+  destination (`ProductPublisher`, #1830) shows the shop field set (category in
+  the top crumb bar, structured attributes, content, visibility, price/stock).
+
+Both axes reuse the same shell chrome (rail, accordion heads, provenance badges,
+discard-guard dialog) - only the field set inside a scope changes with the
+destination kind. A destination's sub-capabilities (`ShopCategoryBrowser`,
+`ShopAttributeReader`, `CategoryBrowser`, …) gate which sections render; never
+branch on `platformType`.
 
 ## Accessibility
 

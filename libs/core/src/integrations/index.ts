@@ -87,6 +87,14 @@ export { InvalidConnectionConfigException } from './domain/exceptions/invalid-co
 export { InvalidCredentialsShapeException } from './domain/exceptions/invalid-credentials-shape.exception';
 export { ConnectionCredentialsRewriteException } from './domain/exceptions/connection-credentials-rewrite.exception';
 export { OAuthCodeExchangeException } from './domain/exceptions/oauth-code-exchange.exception';
+export { CallerSuppliedWebhookSecretNotSupportedException } from './domain/exceptions/caller-supplied-webhook-secret-not-supported.exception';
+
+// Value constants
+export {
+  CALLER_SUPPLIED_WEBHOOK_SECRET_PLATFORMS,
+  acceptsCallerSuppliedWebhookSecret,
+} from './domain/types/webhook-secret.types';
+export type { CallerSuppliedWebhookSecretPlatform } from './domain/types/webhook-secret.types';
 export {
   flattenValidationErrors,
   ValidationErrorLike,

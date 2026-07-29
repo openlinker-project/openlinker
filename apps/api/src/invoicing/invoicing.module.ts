@@ -21,6 +21,7 @@ import { OrdersModule } from '@openlinker/core/orders';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { IntegrationsModule } from '../integrations/integrations.module';
 import { InvoicingController } from './http/invoicing.controller';
+import { NumberingSeriesController } from './http/numbering-series.controller';
 
 @Module({
   // IdentifierMappingModule supplies CONNECTION_PORT_TOKEN so the controller can
@@ -32,6 +33,6 @@ import { InvoicingController } from './http/invoicing.controller';
     IntegrationsModule,
     IdentifierMappingModule,
   ],
-  controllers: [InvoicingController],
+  controllers: [InvoicingController, NumberingSeriesController],
 })
 export class InvoicingApiModule {}

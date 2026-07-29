@@ -68,4 +68,53 @@ describe('ConnectionsListPage', () => {
     expect(screen.getByRole('combobox', { name: 'Filter by platform' })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Filter by status' })).toBeInTheDocument();
   });
+
+  describe('demo read-only viewer (#1667)', () => {
+    const viewerSession = createAuthenticatedSessionAdapter({
+      id: 'u2',
+      username: 'viewer',
+      email: null,
+      role: 'viewer',
+      permissions: ['connections:read'],
+    });
+
+    function demoApiClient(
+      overrides: Parameters<typeof createMockApiClient>[0] = {},
+    ): ReturnType<typeof createMockApiClient> {
+      return createMockApiClient({
+        ...overrides,
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      });
+    }
+
+    it('renders "New connection" visible and enabled for a demo viewer', async () => {
+      renderWithProviders(<ConnectionsListPage />, {
+        apiClient: demoApiClient({ connections: { list: vi.fn().mockResolvedValue([sampleConnection]) } }),
+        sessionAdapter: viewerSession,
+      });
+
+      const cta = await screen.findByRole('link', { name: 'New connection' });
+      expect(cta).toHaveAttribute('href', '/connections/new');
+    });
+
+    it('renders "Add the first connection" visible and enabled for a demo viewer on the empty state', async () => {
+      renderWithProviders(<ConnectionsListPage />, {
+        apiClient: demoApiClient({ connections: { list: vi.fn().mockResolvedValue([]) } }),
+        sessionAdapter: viewerSession,
+      });
+
+      const cta = await screen.findByRole('link', { name: 'Add the first connection' });
+      expect(cta).toHaveAttribute('href', '/connections/new');
+    });
+
+    it('hides "New connection" for a genuinely unauthorized non-demo viewer', async () => {
+      renderWithProviders(<ConnectionsListPage />, {
+        apiClient: createMockApiClient({ connections: { list: vi.fn().mockResolvedValue([sampleConnection]) } }),
+        sessionAdapter: viewerSession,
+      });
+
+      await screen.findByText(sampleConnection.name);
+      expect(screen.queryByRole('link', { name: 'New connection' })).not.toBeInTheDocument();
+    });
+  });
 });

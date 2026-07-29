@@ -122,19 +122,28 @@ export function buildCreateShipmentRequest(
 ): ShipXCreateShipmentRequest {
   const sender = toSenderPeer(config.senderAddress);
 
+  // Defense-in-depth: `parcel` and `recipient` are required on the typed
+  // GenerateLabelCommand, but nothing guarantees their presence at runtime (an
+  // API client can omit them). Guard here — the single entry point for both the
+  // locker and courier builders — so a missing field is a neutral preflight
+  // rejection (clean 4xx) rather than an unhandled TypeError deeper in the
+  // builders / toReceiverPeer (#1518).
+  if (!cmd.parcel) {
+    throw new ShippingProviderRejectionException(
+      'inpost',
+      'preflight.missing-parcel',
+      'parcel is required to generate a label',
+    );
+  }
+  if (!cmd.recipient) {
+    throw new ShippingProviderRejectionException(
+      'inpost',
+      'preflight.missing-recipient',
+      'recipient is required to generate a label',
+    );
+  }
+
   if (cmd.shippingMethod === 'paczkomat') {
-    if (cmd.cod) {
-      // InPost lockers DO support COD via a ShipX COD-capable locker service;
-      // the limitation is that this v1 simplified adapter does not model locker
-      // COD yet (not modelled yet by this adapter; see follow-up #1554). Fail
-      // fast rather than issue a prepaid label while the operator believes COD
-      // was applied (#1541).
-      throw new ShippingProviderRejectionException(
-        'inpost',
-        'preflight.cod-locker-unsupported',
-        'COD on InPost lockers (paczkomat) is not yet supported by this integration (see #1554); use the kurier method for a cash-on-delivery parcel',
-      );
-    }
     return buildLockerRequest(cmd, sender);
   }
   if (cmd.shippingMethod === 'kurier') {
@@ -313,8 +322,12 @@ function buildLockerRequest(cmd: GenerateLabelCommand, sender: ShipXPeer): ShipX
     // courier pickup-order flow (#1427).
     custom_attributes: { sending_method: 'parcel_locker', target_point: cmd.paczkomatId },
   };
-  // Insurance is supported on locker shipments (unlike COD, which this v1
-  // adapter refuses for lockers — see buildCreateShipmentRequest).
+  // InPost lockers support cash-on-delivery ("paczkomat za pobraniem"), modelled
+  // the same way as the courier path (#1541): a `cod` add-on on the standard
+  // locker service, not a distinct COD-capable service (#1554).
+  if (cmd.cod) {
+    request.cod = toShipXCod(cmd.cod);
+  }
   if (cmd.insuredValue) {
     request.insurance = toShipXInsurance(cmd.insuredValue);
   }

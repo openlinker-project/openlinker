@@ -26,17 +26,26 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import { Logger } from '@openlinker/shared/logging';
-import { CONNECTION_PORT_TOKEN, ConnectionPort } from '@openlinker/core/identifier-mapping';
+import {
+  CONNECTION_PORT_TOKEN,
+  ConnectionPort,
+  applyPricingRule,
+  applyStockSafetyBuffer,
+  isPresentButInvalidStockSafetyBuffer,
+  readPricingRule,
+  readStockSafetyBuffer,
+} from '@openlinker/core/identifier-mapping';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type {
   OfferParameter,
   ProvisionCategoryCommand,
   PublishProductCommand,
   PublishProductContent,
+  PublishProductVariantGroup,
   ShopProductManagerPort,
 } from '@openlinker/core/listings';
 import { isCategoryProvisioner } from '@openlinker/core/listings';
-import type { Category, ProductMasterPort } from '@openlinker/core/products';
+import type { Category, ProductMasterPort, ProductVariant } from '@openlinker/core/products';
 import { IProductsService, PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
 
 import { MasterCatalogConnectionNotConfiguredException } from '../../domain/exceptions/master-catalog-connection-not-configured.exception';
@@ -46,6 +55,11 @@ import { ATTRIBUTE_PROJECTION_SERVICE_TOKEN } from '../../listings.tokens';
 import { IAttributeProjectionService } from '../interfaces/attribute-projection.service.interface';
 import type { IProductPublishBuilderService } from '../interfaces/product-publish-builder.service.interface';
 import type { BuildPublishProductCommandInput } from '../types/product-publish-builder.types';
+import type { AttributeProjectionMetadata } from '../types/attribute-projection.types';
+import type { RequiredToSellIssue } from '../../domain/types/required-to-sell.types';
+import { buildProjectionMetadata } from './build-projection-metadata';
+import { checkRequiredToSell } from './check-required-to-sell';
+import { flattenAttributes } from './variant-attributes.util';
 
 @Injectable()
 export class ProductPublishBuilderService implements IProductPublishBuilderService {
@@ -90,20 +104,42 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
     );
     const product = await productMaster.getProduct(variant.productId);
 
-    const price = this.resolvePrice(input, product, issues);
+    const price = this.resolvePrice(input, product, connection.config, issues);
     if (issues.length > 0) {
       throw new ProductPublishBuilderValidationException(issues);
     }
 
-    const destinationCategoryIds = await this.provisionCategory(input.connectionId, productMaster, variant.productId);
-    const parameters = await this.projectParameters(
-      input,
-      masterConnectionId,
-      destinationCategoryIds[0] ?? null,
-      variant.attributes ?? {}
-    );
+    // Per-item overrides (#1831) WIN over server-derived defaults. A supplied
+    // (defined) array — even empty — is an explicit operator choice: it skips
+    // server-side provisioning / projection. Omitted (undefined) ⇒ derive as today.
+    const destinationCategoryIds =
+      input.destinationCategoryIds !== undefined
+        ? input.destinationCategoryIds
+        : await this.provisionCategory(input.connectionId, productMaster, variant.productId);
+    const parameters =
+      input.parameters !== undefined
+        ? input.parameters
+        : await this.projectParameters(
+            input,
+            masterConnectionId,
+            destinationCategoryIds[0] ?? null,
+            variant.attributes ?? {},
+            buildProjectionMetadata(product, variant, variant.gtin ?? variant.ean ?? null)
+          );
 
     const content = this.buildContent(input.content, product);
+
+    // Master-derived barcode/weight: prefer the variant's own value, fall back
+    // to the product's. Empty/absent ⇒ omitted (never sent as blank/zero).
+    const barcode = variant.gtin ?? variant.ean ?? undefined;
+    const weight = variant.weight ?? product.weight;
+
+    // #1836 — a multi-variant product (>1 sibling) publishes as one grouped
+    // shop record (WooCommerce variable product + variations). Mirrors the
+    // marketplace #1065 populate decision (sibling count only; the read
+    // happens once per publish regardless of fan-out width).
+    const siblings = await this.productsService.getVariantsByProductId(variant.productId);
+    const variantGroup = this.resolveVariantGroup(variant, siblings);
 
     const command: PublishProductCommand = {
       internalVariantId: input.internalVariantId,
@@ -111,22 +147,79 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
       destinationCategoryIds,
       // `price` is guaranteed defined here — `issues` would have caught it above.
       price: price as { amount: number; currency: string },
-      stock: input.stock,
+      // #1844 — hold back the destination's per-connection stock safety buffer so
+      // a fast-moving item keeps a cushion and can't oversell between syncs.
+      // Default reserve 0 => master stock passes through unchanged.
+      stock: applyStockSafetyBuffer(input.stock, this.resolveStockReserve(input.connectionId, connection.config)),
       status: input.status,
       // Thread the variant SKU so shop products publish with a reference the
       // shop can key on (reconciliation, inventory-by-SKU). Omitted when the
       // variant has no SKU, matching the spread-omit convention below.
       ...(variant.sku ? { sku: variant.sku } : {}),
+      ...(barcode ? { barcode } : {}),
+      ...(weight != null ? { weight } : {}),
       ...(content ? { content } : {}),
+      ...(input.commerce ? { commerce: input.commerce } : {}),
       ...(parameters.length > 0 ? { parameters } : {}),
       ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
     };
 
+    // #1836 — only set when populated, keeping the command shape tidy for
+    // single-variant / simple products (mirrors the #1065 marketplace posture).
+    if (variantGroup) {
+      command.variantGroup = variantGroup;
+    }
+
+    // #1842 — required-to-sell preflight: a publish that succeeds on the
+    // destination but isn't actually buyable there (missing weight/dimensions
+    // for weight-based shipping, zero stock). Pure, no extra I/O — reads only
+    // fields already resolved onto `command`. `block`-severity issues gate the
+    // publish exactly like the price/parameter gates above; today every rule is
+    // `warn` (soft-block, operator-overridable at Review — see the FE Review
+    // step), so this only logs. The check is exported standalone so a future
+    // preflight surface (FE dry-run, HTTP endpoint) can call it without
+    // resolving a full command first.
+    this.gateOnRequiredToSell(command);
+
     this.logger.debug(
-      `Built PublishProductCommand for variant=${input.internalVariantId} connection=${input.connectionId} categories=${destinationCategoryIds.length} params=${parameters.length} status=${input.status}`
+      `Built PublishProductCommand for variant=${input.internalVariantId} connection=${input.connectionId} categories=${destinationCategoryIds.length} params=${parameters.length} status=${input.status} grouped=${variantGroup != null}`
     );
 
     return command;
+  }
+
+  /**
+   * Pure helper (#1836): build the shop-neutral grouping hint for a sibling of
+   * a multi-variant product. Returns `undefined` for single-variant / simple
+   * products (`siblings.length <= 1`) so they publish standalone, preserving
+   * the exact pre-#1836 simple-product path. `groupAttributeValues` unions
+   * every sibling's own distinguishing values per attribute name so the
+   * destination's parent record can declare the full option set regardless of
+   * which sibling happens to publish first.
+   */
+  private resolveVariantGroup(
+    variant: ProductVariant,
+    siblings: ProductVariant[]
+  ): PublishProductVariantGroup | undefined {
+    if (siblings.length <= 1) {
+      return undefined;
+    }
+    const groupAttributeValues: Record<string, string[]> = {};
+    for (const sibling of siblings) {
+      for (const { name, value } of flattenAttributes(sibling.attributes)) {
+        const existing = groupAttributeValues[name];
+        if (existing) {
+          if (!existing.includes(value)) existing.push(value);
+        } else {
+          groupAttributeValues[name] = [value];
+        }
+      }
+    }
+    return {
+      groupId: variant.productId,
+      attributes: flattenAttributes(variant.attributes),
+      groupAttributeValues,
+    };
   }
 
   /**
@@ -194,7 +287,8 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
     input: BuildPublishProductCommandInput,
     sourceConnectionId: string,
     destinationCategoryId: string | null,
-    attributes: Record<string, string>
+    attributes: Record<string, string>,
+    metadata: AttributeProjectionMetadata
   ): Promise<OfferParameter[]> {
     if (!destinationCategoryId) {
       return [];
@@ -204,6 +298,8 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
       destinationConnectionId: input.connectionId,
       destinationCategoryId,
       attributes,
+      // #1841 — product-derived metadata for operator place-value / scope rules.
+      metadata,
       // Shop connections expose the schema reader under `ProductPublisher`, not
       // the marketplace `OfferManager` (which they don't support — resolving it
       // would throw `CapabilityNotSupportedException`).
@@ -246,14 +342,30 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
     if (title != null) content.title = title;
     if (description != null) content.description = description;
     if (imageUrls != null) content.imageUrls = imageUrls;
+    // Operator-only, no master fallback: the master product carries no
+    // short-description / tags fields. Threaded here so the builder-owned
+    // content object actually reaches the adapter (both single + bulk flow
+    // through this method).
+    if (overrides?.shortDescription != null) content.shortDescription = overrides.shortDescription;
+    if (overrides?.tags != null) content.tags = overrides.tags;
     if (overrides?.seo != null) content.seo = overrides.seo;
 
     return Object.keys(content).length > 0 ? content : undefined;
   }
 
+  /**
+   * Resolve `command.price`. An explicit `input.price` always wins (per-item
+   * operator/UI-resolved price) and is used verbatim — no rule applies to it.
+   * Otherwise falls back to the master catalog price, run through the
+   * connection's pricing-resolution rule (#1843, `pricing-rule.types.ts`) —
+   * markup/margin formula + rounding. A connection with no configured rule is
+   * untouched (`applyPricingRule` returns the master price unchanged),
+   * preserving the pre-#1843 passthrough.
+   */
   private resolvePrice(
     input: BuildPublishProductCommandInput,
     product: { price: number | null; currency: string | null },
+    connectionConfig: Parameters<typeof readPricingRule>[0],
     issues: ProductPublishBuilderValidationIssue[]
   ): { amount: number; currency: string } | null {
     if (input.price) {
@@ -287,7 +399,44 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
       });
       return null;
     }
-    return { amount, currency };
+    const resolvedAmount = applyPricingRule(amount, readPricingRule(connectionConfig));
+    if (resolvedAmount <= 0) {
+      issues.push({
+        field: 'price.amount',
+        code: 'NON_POSITIVE',
+        message: `Resolved price (${resolvedAmount}) from the connection's pricing rule is not a positive value; provide input.price explicitly or adjust the pricing rule`,
+      });
+      return null;
+    }
+    return { amount: resolvedAmount, currency };
+  }
+
+  /**
+   * #1842 — run the required-to-sell preflight over the assembled command and
+   * apply its verdict: `block`-severity issues gate the publish (raised the
+   * same way as the price/parameter gates above); `warn`-severity issues are
+   * logged only — they're the operator-overridable signals the Review step
+   * surfaces before submit, so by the time a command reaches the builder the
+   * operator has already had the chance to confirm through.
+   */
+  private gateOnRequiredToSell(command: PublishProductCommand): void {
+    const issues: RequiredToSellIssue[] = checkRequiredToSell({
+      stock: command.stock,
+      weight: command.weight,
+      dimensions: command.commerce?.dimensions,
+    });
+    if (issues.length === 0) return;
+
+    const blocking = issues.filter((issue) => issue.severity === 'block');
+    if (blocking.length > 0) {
+      throw new ProductPublishBuilderValidationException(
+        blocking.map((issue) => ({ field: issue.field, code: issue.code, message: issue.message }))
+      );
+    }
+
+    this.logger.warn(
+      `Required-to-sell preflight found ${issues.length} issue(s) for variant=${command.internalVariantId} connection=${command.connectionId}: ${issues.map((issue) => issue.code).join(', ')}`
+    );
   }
 
   private readMasterCatalogConnectionId(
@@ -296,5 +445,25 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
     if (!config) return null;
     const value = config['masterCatalogConnectionId'];
     return typeof value === 'string' && value.length > 0 ? value : null;
+  }
+
+  /**
+   * #1844 — resolve the per-connection stock reserve, warning when a present
+   * `config.stockSafetyBuffer` coerced to 0. A mistyped buffer (e.g. `"5"` or a
+   * negative number) silently drops the oversell protection the operator thinks
+   * they configured, so surface it rather than fail silently.
+   */
+  private resolveStockReserve(
+    connectionId: string,
+    config: Parameters<typeof readStockSafetyBuffer>[0]
+  ): number {
+    if (isPresentButInvalidStockSafetyBuffer(config)) {
+      this.logger.warn(
+        `Connection ${connectionId} has a stockSafetyBuffer that is present but invalid ` +
+          `(non-numeric, negative, zero, or non-finite) — it coerces to 0, so no stock ` +
+          `reserve is applied. Set a positive integer to enable oversell protection.`
+      );
+    }
+    return readStockSafetyBuffer(config);
   }
 }

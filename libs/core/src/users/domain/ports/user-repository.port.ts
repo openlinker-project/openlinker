@@ -15,21 +15,34 @@ export interface UserRepositoryPort {
   findByEmail(email: string): Promise<User | null>;
   findById(id: string): Promise<User | null>;
   findAll(opts?: { status?: UserStatus; page?: number; pageSize?: number }): Promise<{ users: User[]; total: number }>;
-  save(user: Pick<User, 'username' | 'email' | 'passwordHash' | 'role' | 'status'>): Promise<User>;
+  save(
+    user: Pick<User, 'username' | 'email' | 'passwordHash' | 'role' | 'status'> &
+      // Optional so non-registration callers (e.g. bootstrap admin) don't have
+      // to set it; the repository defaults it to false (opt-in) when omitted.
+      Partial<Pick<User, 'analyticsConsent'>>
+  ): Promise<User>;
   updatePasswordHash(userId: string, passwordHash: string): Promise<void>;
   updateStatus(userId: string, status: UserStatus): Promise<void>;
   updateRole(userId: string, role: UserRole): Promise<void>;
+  /**
+   * Self-service update of the account's demo-analytics opt-in (#1882).
+   * Separate from `save` because it is the one user-owned field a viewer may
+   * change on their own account after registration.
+   */
+  updateAnalyticsConsent(userId: string, analyticsConsent: boolean): Promise<void>;
   approveUser(userId: string, role: UserRole): Promise<void>;
   deleteById(userId: string): Promise<void>;
 
   /**
-   * Active viewer-role accounts created before `olderThan` — the
-   * self-registration shape (#1469's demo-account cleanup). Scoped to
+   * Viewer-role accounts in one of `statuses`, created before `olderThan` —
+   * the self-registration shape (#1469's demo-account cleanup, widened by
+   * #1624 to also sweep never-confirmed `pending_confirmation` signups so
+   * they don't accumulate forever on a public demo deployment). Scoped to
    * `role: 'viewer'` because `RegistrationService.register` always creates
    * viewer accounts; an operator-created persistent viewer account is
    * indistinguishable from a demo one by this query (documented limitation).
    */
-  findStaleViewerAccounts(olderThan: Date): Promise<User[]>;
+  findStaleViewerAccounts(olderThan: Date, statuses: UserStatus[]): Promise<User[]>;
 
   /**
    * Atomically deactivates an admin only when 2+ active admins exist.

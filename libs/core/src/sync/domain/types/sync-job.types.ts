@@ -23,6 +23,7 @@ export const JobTypeValues = [
   'marketplace.offer.create',
   'marketplace.offer.pollCreationStatus',
   'marketplace.offer.statusSync',
+  'marketplace.offer.refreshSnapshot',
   'marketplace.offer.stockRestore',
   'marketplace.shipment.statusSync',
   'marketplace.shipment.syncByExternalId',
@@ -36,6 +37,8 @@ export const JobTypeValues = [
 
   // Shop (cross-platform listing, ADR-024; executed by worker)
   'shop.product.publish',
+  // Steady-state shop product-status reconcile (#1845).
+  'shop.product.statusSync',
 
   // Shipping (core-owned; capability-scoped, executed by worker)
   'shipping.pickupPoint.refreshFrequent',
@@ -45,6 +48,10 @@ export const JobTypeValues = [
   'invoicing.regulatoryStatus.reconcile',
   // By-id payment-status refresh triggered by a provider payment webhook (#1354).
   'invoicing.paymentStatus.refreshByExternalId',
+  // Degraded-mode offline-submission resubmission sweep (#1702).
+  'invoicing.offlineSubmission.resubmit',
+  // Crash-recovery sweep for invoices stuck mid-issuance (#1703).
+  'invoicing.pendingRecovery.sweep',
 
   // Internal orchestration (core-owned policies; executed by worker)
   'inventory.propagateToMarketplaces',

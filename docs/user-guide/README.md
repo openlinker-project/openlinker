@@ -19,16 +19,19 @@ The guide is organized around the left-navigation groups in the admin UI:
 3. **[Catalog & Inventory](./03-catalog-and-inventory.md)**
    Products list and detail, inventory per-variant stock, sync state chips, and how to tell when a sync has stalled.
 
-4. **[Listings & Offers](./04-listings.md)**
+4. **[Invoices](./04-invoices.md)**
+   Issuing invoices per order, the Invoices list and detail pages, regulatory (KSeF) clearance status, and fiscal-safety retry rules.
+
+5. **[Listings & Offers](./05-listings.md)**
    Listings list, offer status chips, and the offer-creation wizard end-to-end: category, parameters, GPSR, seller policies, AI description, submit.
 
-5. **[Orders](./05-orders.md)**
+6. **[Orders](./06-orders.md)**
    Orders list, order detail, status timeline, line items, and the shipment panel.
 
-6. **[Diagnostics](./06-diagnostics.md)**
+7. **[Diagnostics](./07-diagnostics.md)**
    Jobs & Logs, Webhooks, and Cursors — how to inspect and unblock a stalled sync.
 
-7. **[Settings & Admin](./07-settings-and-admin.md)**
+8. **[Settings & Admin](./08-settings-and-admin.md)**
    General settings, AI provider configuration, prompt templates, and the Adapters registry.
 
 ---
@@ -45,4 +48,4 @@ The guide is organized around the left-navigation groups in the admin UI:
 
 All screenshots in this guide were captured at **1440×900, dark theme**. The UI also ships a light theme (toggle in the top bar). If your app looks different, you may be on a different version — the recapture comments above each image note what should be visible.
 
-Planned nav items (**Automations**, **Invoices**) are visible in the sidebar in a muted style but are not yet functional. They are not covered by this guide.
+**Invoices** is a fully functional nav item covered in section 4 above. The **Automations** nav item is still a planned future feature — it's visible in the sidebar in a muted style but is not yet functional and is not covered by this guide.

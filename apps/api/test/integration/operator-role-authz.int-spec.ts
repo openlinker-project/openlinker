@@ -145,6 +145,20 @@ describe('Operator Role Authorization', () => {
         .set('Authorization', `Bearer ${operatorToken}`)
         .expect(200);
     });
+
+    it('GET /connections/:id/diagnostics → 200 (opened to operator/viewer by #1645)', async () => {
+      const { http, adminToken, operatorToken } = await seeds();
+      const dto = createPrestashopConnectionDto();
+      const { body: conn } = await http
+        .post('/v1/connections')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send(dto)
+        .expect(201);
+      await http
+        .get(`/v1/connections/${conn.id as string}/diagnostics`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200);
+    });
   });
 
   // ─── administrative writes — operator gets 403 ──────────────────────────────
@@ -219,20 +233,6 @@ describe('Operator Role Authorization', () => {
         .post('/v1/sync/jobs/retry-grouped')
         .set('Authorization', `Bearer ${operatorToken}`)
         .send({ connectionId: '00000000-0000-4000-8000-000000000001', jobType: 'marketplace.orders.poll' })
-        .expect(403);
-    });
-
-    it('GET /connections/:id/diagnostics → 403 (admin-only GET)', async () => {
-      const { http, adminToken, operatorToken } = await seeds();
-      const dto = createPrestashopConnectionDto();
-      const { body: conn } = await http
-        .post('/v1/connections')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send(dto)
-        .expect(201);
-      await http
-        .get(`/v1/connections/${conn.id as string}/diagnostics`)
-        .set('Authorization', `Bearer ${operatorToken}`)
         .expect(403);
     });
 

@@ -21,6 +21,8 @@ import { ApiError } from '../../../shared/api/api-error';
 import { Button } from '../../../shared/ui/button';
 import { extractPlatformErrors } from '../lib/extract-platform-errors';
 import { usePlatforms } from '../../../shared/plugins';
+import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { useDemoMode } from '../../system';
 import { useContentQuery } from '../hooks/use-content-query';
 import {
   useDiscardContentDraftMutation,
@@ -65,6 +67,15 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
   const discardMutation = useDiscardContentDraftMutation();
   const publishMutation = usePublishContentMutation();
   const platformPlugins = usePlatforms();
+  const demoMode = useDemoMode();
+  // #1873: viewer-role sessions can read content state (backend GET is open
+  // to every role) but must not be able to save/discard/publish drafts — the
+  // panel renders read-only with an explanatory reason rather than firing a
+  // save/publish request that the backend would 403 anyway.
+  const write = useWriteAccess('content:write', demoMode);
+  const writeLockedReason = write.canWrite
+    ? null
+    : 'You have read-only access to content. Saving, discarding, and publishing require operator or admin permissions.';
 
   // #478: depend on the destructured stable `mutateAsync` methods, not the
   // wrapping mutation objects — `useMutation` returns a fresh wrapper each
@@ -225,6 +236,7 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
             hasConflict={master.hasConflict}
             updatedAt={master.updatedAt}
             updatedBy={master.updatedBy}
+            disabledReason={writeLockedReason}
             isDesktop={isDesktop}
             busy={busy}
             error={mutationError}
@@ -260,7 +272,7 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
           const disabledReason =
             channel.connectionStatus !== 'active'
               ? `Connection is ${channel.connectionStatus}. Re-activate to enable editing.`
-              : null;
+              : writeLockedReason;
           return (
             <TabsContent key={channel.connectionId} value={channel.connectionId}>
               <ContentPanel

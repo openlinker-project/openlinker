@@ -100,7 +100,7 @@ The connection detail page has four tabs:
 
 ### Category Mappings
 
-The PrestaShop connection detail also exposes a **Category Mappings** page, accessible from the connection's action bar. This is where you map your PrestaShop product categories to Allegro's category tree — a prerequisite for creating Allegro offers. See [Listings & Offers](./04-listings.md#category-mappings) for details.
+The PrestaShop connection detail also exposes a **Category Mappings** page, accessible from the connection's action bar. This is where you map your PrestaShop product categories to Allegro's category tree — a prerequisite for creating Allegro offers. See [Listings & Offers](./05-listings.md#category-mappings) for details.
 
 ---
 
@@ -141,6 +141,35 @@ The **Connection OK** toast and the displayed response time confirm the Allegro 
 ## Multiple connections
 
 You can add multiple connections of the same platform type — for example, two PrestaShop stores and three Allegro accounts. Each connection has its own credentials, config, and set of scheduled sync jobs. The Dashboard and Jobs & Logs views aggregate across all connections.
+
+---
+
+## All available adapters
+
+Every adapter registered in this OpenLinker instance — and the exact capabilities it implements — is listed read-only on the **Adapters** page (**Platform** → **Adapters**, `/adapters`). The platform picker's card list in **Add connection** reflects the same registry.
+
+<!-- screenshot: Adapter catalog page — Adapter/Platform/Capabilities/Version columns for every registered adapter -->
+![Adapter catalog](./images/02-adapters.png)
+
+Beyond the PrestaShop/Allegro worked example above:
+
+| Platform | Adapter key | Capabilities | Notes |
+|---|---|---|---|
+| **PrestaShop** | `prestashop.webservice.v1` | ProductMaster, InventoryMaster, OrderSource, OrderProcessorManager, ProductPublisher, CategoryProvisioner | Worked example above |
+| **Allegro** | `allegro.publicapi.v1` | OrderSource, OfferManager, ShippingProviderManager, CategoryBrowser, EanCategoryMatcher, OfferCreator, OfferEventReader | Worked example above |
+| **WooCommerce** | `woocommerce.restapi.v3` | ProductMaster, InventoryMaster, OrderProcessorManager, OrderSource, ProductPublisher, CategoryProvisioner, OfferManager | See the **[WooCommerce Setup Guide](../../libs/integrations/woocommerce/docs/setup-guide.md)** |
+| **Erli** | `erli.shopapi.v1` | OfferManager, OrderSource, OfferCreator | Reconciliation-first marketplace adapter; reuses an existing PrestaShop → Allegro category/attribute mapping rather than requiring a separate one (borrowed-taxonomy model). Static API-key auth — no OAuth step. |
+| **InPost** | `inpost.shipx.v1` | ShippingProviderManager | Generates shipment labels and paczkomat (parcel-locker) tracking, surfaced in the order's [Shipment panel](./06-orders.md#shipment-panel) |
+| **DPD Polska** | `dpd.polska.rest.v1` | ShippingProviderManager | Same shipment-panel integration point as InPost |
+| **KSeF** | `ksef.publicapi.v2` | Invoicing | Polish national e-invoicing; see [Invoices](./04-invoices.md) |
+| **Subiekt** (nexo, Sfera bridge) | `subiekt.invoicing.v1` | Invoicing | Alternative invoicing provider; see [Invoices](./04-invoices.md) |
+| **inFakt** | `infakt.accounting.v1` | Invoicing | Alternative invoicing provider; see [Invoices](./04-invoices.md) |
+
+### Invoicing providers
+
+To issue invoices for orders, add a connection to any one of the **Invoicing**-role adapters above (KSeF, Subiekt, or inFakt) the same way you'd add a shop or marketplace connection: **New connection** → pick the provider → fill in its credentials form → **Test connection**. KSeF in particular requires a Polish NIP and a KSeF authorization token generated from the taxpayer's own KSeF portal — see the [KSeF setup guide](../../libs/integrations/ksef/docs/setup-guide.md) for the full flow and current limitations.
+
+Once the connection is `active` and has `Invoicing` in its enabled capabilities, the **Invoice** panel appears on every order's detail page. See [Invoices](./04-invoices.md) for the full walkthrough.
 
 ---
 

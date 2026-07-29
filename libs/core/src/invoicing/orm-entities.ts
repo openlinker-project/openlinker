@@ -9,3 +9,6 @@
  * @module libs/core/src/invoicing/orm-entities
  */
 export { InvoiceRecordOrmEntity } from './infrastructure/persistence/entities/invoice-record.orm-entity';
+export { InvoiceNumberingSeriesOrmEntity } from './infrastructure/persistence/entities/invoice-numbering-series.orm-entity';
+export { InvoiceNumberingRouteOrmEntity } from './infrastructure/persistence/entities/invoice-numbering-route.orm-entity';
+export { InvoiceNumberGapNoteOrmEntity } from './infrastructure/persistence/entities/invoice-number-gap-note.orm-entity';

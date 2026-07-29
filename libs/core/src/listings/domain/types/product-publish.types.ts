@@ -21,6 +21,7 @@
  */
 
 import type { OfferParameter } from './offer-parameter.types';
+import type { OfferVariantAttribute } from './offer-create.types';
 
 /**
  * Publication state of a shop product. Distinct from record existence and from
@@ -32,6 +33,14 @@ import type { OfferParameter } from './offer-parameter.types';
  */
 export const PublishProductStatusValues = ['draft', 'published'] as const;
 export type PublishProductStatus = (typeof PublishProductStatusValues)[number];
+
+/**
+ * Neutral tax-treatment values for a shop product. Mirrors the common shop
+ * vocabulary (taxable / shipping-only / not-taxed); adapters map it to their
+ * platform field (WooCommerce `tax_status`).
+ */
+export const PublishTaxStatusValues = ['taxable', 'shipping', 'none'] as const;
+export type PublishTaxStatus = (typeof PublishTaxStatusValues)[number];
 
 /**
  * Owned-record content fields. Extracted as a named type (not inline on the
@@ -47,6 +56,10 @@ export interface PublishProductContent {
   title?: string;
   /** Product description (HTML or rich text). `null`/`undefined` → no override. */
   description?: string | null;
+  /** Short/excerpt description. `null`/`undefined` → no override. */
+  shortDescription?: string | null;
+  /** Marketing tags for the storefront product. `null`/`undefined` → no override. */
+  tags?: string[] | null;
   /** Image URLs in display order. `null`/`undefined` → no override. */
   imageUrls?: string[] | null;
   /** SEO metadata for the storefront product page. */
@@ -55,6 +68,73 @@ export interface PublishProductContent {
     description?: string | null;
     slug?: string;
   };
+}
+
+/**
+ * Operator-supplied commerce/physical product fields beyond the core
+ * name/price/stock. Shop-neutral: WooCommerce, Shopify, … adapters map the keys
+ * they support and ignore the rest. Every field is optional; an absent field is
+ * left unset on the shop (never sent as empty/zero).
+ */
+export interface PublishProductCommerce {
+  /**
+   * Discounted sale price. Currency should match the shop/connection locale
+   * (shops typically apply the store currency, so adapters may use only the
+   * amount). Absent ⇒ no sale price is set.
+   */
+  salePrice?: { amount: number; currency: string };
+  /** ISO 8601 datetime the sale price becomes active. Absent ⇒ immediate/unset. */
+  saleStartsAt?: string;
+  /** ISO 8601 datetime the sale price expires. Absent ⇒ open-ended/unset. */
+  saleEndsAt?: string;
+  /** Physical dimensions. Each axis optional; an absent axis is left unset. */
+  dimensions?: { length?: number; width?: number; height?: number };
+  /** Tax class slug (shop-defined, e.g. WooCommerce "reduced-rate"). Absent ⇒ shop default. */
+  taxClass?: string;
+  /** Whether/how the product is taxed. Absent ⇒ shop default. */
+  taxStatus?: PublishTaxStatus;
+}
+
+/**
+ * Cross-shop variant-grouping hint (#1836), the shop-publish sibling of
+ * `OfferVariantGroup` (#1065). Present only when this variant is one sibling of
+ * a multi-variant product that should publish as ONE grouped shop record
+ * (WooCommerce variable product + variations; Shopify product + variants) —
+ * absent means standalone (single-variant / simple products keep the exact
+ * pre-#1836 simple-product path).
+ *
+ * Distinct from `OfferVariantGroup` (not reused) because a shop grouping needs
+ * two things a marketplace offer grouping does not: the full union of
+ * distinguishing attribute values across every sibling (a shop parent record
+ * must declare its variation axes up front — WC "variation-flagged" attribute
+ * options, Shopify product `options`), and the already-resolved parent
+ * shop-native id so the adapter can upsert the parent instead of guessing.
+ */
+export interface PublishProductVariantGroup {
+  /**
+   * Opaque, stable grouping token shared by every sibling of the same product
+   * (today the parent OL product id). Adapters treat it as an opaque key, same
+   * contract as `OfferVariantGroup.groupId` — never parsed or path-routed.
+   */
+  groupId: string;
+  /** This variant's own distinguishing attribute values, flattened from `ProductVariant.attributes`. */
+  attributes: OfferVariantAttribute[];
+  /**
+   * Union of every sibling's distinguishing attribute values, keyed by
+   * attribute name (e.g. `{ Color: ['Red', 'Blue'], Size: ['S', 'M'] }`) — the
+   * full option set the destination's parent record must declare so any
+   * sibling variation can select from it. Assembled once by the builder from
+   * `getVariantsByProductId`, so every sibling's publish carries the same set
+   * regardless of publish order.
+   */
+  groupAttributeValues: Record<string, string[]>;
+  /**
+   * The parent's shop-native product id when it has already been published on
+   * this connection (resolved by the execution service via the `ShopProduct`
+   * mapping keyed on `groupId`). `null`/absent ⇒ the parent does not exist yet;
+   * the adapter creates it as part of this call.
+   */
+  externalParentProductId?: string | null;
 }
 
 /**
@@ -91,6 +171,23 @@ export interface PublishProductCommand {
   /** Owned-record content fields (title, description, images, SEO). */
   content?: PublishProductContent;
   /**
+   * Product barcode (GTIN/EAN). Master-derived by the builder from the variant
+   * (`ProductVariant.gtin` ?? `ProductVariant.ean`). Absent ⇒ the variant has no
+   * barcode and the field is left unset on the shop.
+   */
+  barcode?: string;
+  /**
+   * Physical weight in the shop's configured weight unit. Master-derived by the
+   * builder (`ProductVariant.weight` ?? `Product.weight`). Absent ⇒ left unset.
+   */
+  weight?: number;
+  /**
+   * Operator-supplied commerce/physical fields (sale price + schedule,
+   * dimensions, tax class/status). Shop-neutral; adapters map the keys they
+   * support. Absent ⇒ no operator overrides for these fields.
+   */
+  commerce?: PublishProductCommerce;
+  /**
    * Neutral, section-tagged projected/operator category parameters (#1072,
    * ADR-024 §Flow). Produced by core (attribute projection on the ADR-023
    * open-provenance pass-through); shaped to the shop's wire form **only** in
@@ -104,9 +201,21 @@ export interface PublishProductCommand {
   /**
    * Shop-native product id when this is an upsert (already published). Absent /
    * `null` → create a new product and map it. Resolved by the #1042 execution
-   * service via `IdentifierMapping`.
+   * service via `IdentifierMapping`. For a **grouped** publish (`variantGroup`
+   * present), this is the variant's own variation id (or absent to create a
+   * new variation under the parent) — the parent id lives on
+   * `variantGroup.externalParentProductId`.
    */
   externalProductId?: string | null;
+  /**
+   * Platform-neutral variant-grouping hint (#1836), populated by
+   * `ProductPublishBuilderService` for a sibling of a multi-variant product.
+   * Adapters that support native variable-product grouping (WooCommerce)
+   * publish one shared parent record + one child variation per sibling;
+   * adapters without that concept ignore it and publish standalone. Absent ⇒
+   * single-variant / simple products, unchanged simple-product path.
+   */
+  variantGroup?: PublishProductVariantGroup;
   /** Optional idempotency key for deduplication at the adapter / job layer. */
   idempotencyKey?: string;
   /**
@@ -127,10 +236,23 @@ export interface PublishProductCommand {
  * created/updated.
  */
 export interface PublishProductResult {
-  /** Shop-native id of the created/updated product. */
+  /**
+   * Shop-native id of the created/updated product. For a grouped publish
+   * (`command.variantGroup` present) this is the variant's own variation id,
+   * NOT the parent id — the parent id is reported separately on
+   * `externalParentProductId`.
+   */
   externalProductId: string;
   /** Observed publication state immediately after the publish call. */
   status: PublishProductStatus;
   /** Non-fatal warnings (e.g. an optional attribute the shop dropped). Omitted when empty. */
   warnings?: string[];
+  /**
+   * The resolved (created-or-reused) parent product id, present only when
+   * `command.variantGroup` was set (#1836). The execution service persists the
+   * `ShopProduct` mapping keyed on `variantGroup.groupId` from this value when
+   * no such mapping existed yet — same idempotent-write posture as the
+   * variant's own `externalProductId`.
+   */
+  externalParentProductId?: string;
 }

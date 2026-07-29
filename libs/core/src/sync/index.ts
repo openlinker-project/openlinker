@@ -72,6 +72,7 @@ export {
   MarketplaceOfferCreatePayloadV2,
   MarketplaceOfferPollCreationStatusPayloadV1,
   MarketplaceOfferStatusSyncPayloadV1,
+  MarketplaceOfferRefreshSnapshotPayloadV1,
   MarketplaceOfferStockRestorePayloadV1,
   MarketplaceShipmentStatusSyncPayloadV1,
   MarketplaceShipmentSyncByExternalIdPayloadV1,
@@ -79,6 +80,10 @@ export {
   OfferDescriptionTone,
 } from './domain/types/marketplace-job-payloads.types';
 export { OfferDescriptionToneValues } from './domain/types/marketplace-job-payloads.types';
+export {
+  OFFER_REFRESH_SNAPSHOT_DELAYS_SECONDS,
+  OFFER_REFRESH_SNAPSHOT_MAX_ATTEMPTS,
+} from './domain/types/marketplace-job-payloads.types';
 export {
   MasterProductSyncByExternalIdPayloadV1,
   MasterInventorySyncByExternalIdPayloadV1,
@@ -89,12 +94,15 @@ export {
   ShopProductPublishPayloadV1,
   ShopProductPublishPayloadV2,
   ShopProductPublishPayload,
+  ShopProductStatusSyncPayloadV1,
 } from './domain/types/shop-job-payloads.types';
 export type {
   InvoicingIssuePayloadV1,
   InvoicingIssueBuyerV1,
 } from './domain/types/invoicing-job-payloads.types';
 export type { RegulatoryStatusReconcilePayloadV1 } from './domain/types/invoicing-job-payloads.types';
+export type { OfflineResubmitPayloadV1 } from './domain/types/invoicing-job-payloads.types';
+export type { PendingRecoverySweepPayloadV1 } from './domain/types/invoicing-job-payloads.types';
 export type { PaymentStatusRefreshByExternalIdPayloadV1 } from './domain/types/invoicing-job-payloads.types';
 
 // Exceptions

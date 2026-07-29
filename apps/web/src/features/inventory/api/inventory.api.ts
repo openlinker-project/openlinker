@@ -2,7 +2,7 @@
  * Inventory API Client
  *
  * Thin API module for the inventory feature. Provides typed methods for
- * listing inventory items and fetching individual item details.
+ * listing inventory items and batch availability lookups.
  *
  * @module apps/web/src/features/inventory/api
  */
@@ -10,13 +10,11 @@ import type {
   InventoryFilters,
   InventoryPagination,
   PaginatedInventory,
-  InventoryItem,
   InventoryAvailabilityResponse,
 } from './inventory.types';
 
 export interface InventoryApi {
   list: (filters?: InventoryFilters, pagination?: InventoryPagination) => Promise<PaginatedInventory>;
-  getById: (id: string) => Promise<InventoryItem>;
   /**
    * Batch lookup of per-variant availability (#792 PR 2). Caller is
    * responsible for deduping (the hook does this) and chunking when the
@@ -44,9 +42,6 @@ export function createInventoryApi(request: ApiRequest): InventoryApi {
   return {
     list(filters, pagination): Promise<PaginatedInventory> {
       return request<PaginatedInventory>(`/inventory${buildQuery(filters, pagination)}`);
-    },
-    getById(id): Promise<InventoryItem> {
-      return request<InventoryItem>(`/inventory/${id}`);
     },
     availability(productVariantIds): Promise<InventoryAvailabilityResponse> {
       const params = new URLSearchParams({ productVariantIds: productVariantIds.join(',') });

@@ -114,7 +114,10 @@ describe('Inventory stale-prune (#1478)', () => {
     ]);
 
     const marked = await inventoryService.pruneStaleVariants(productId, [variantKeep]);
-    expect(marked).toBe(1);
+    expect(marked.markedCount).toBe(1);
+    // The `UPDATE … RETURNING "productVariantId"` extraction surfaces the exact
+    // flagged variant id (real-Postgres coverage for the RETURNING path, #1599).
+    expect(marked.variantIds).toEqual([variantGone]);
 
     const inventoryRepo = dataSource.getRepository(InventoryItemOrmEntity);
     const kept = await inventoryRepo.findOneBy({ productId, productVariantId: variantKeep });
@@ -191,7 +194,7 @@ describe('Inventory stale-prune (#1478)', () => {
     ]);
 
     const marked = await inventoryService.pruneStaleVariants(productId, [variantKeep]);
-    expect(marked).toBe(1);
+    expect(marked.markedCount).toBe(1);
 
     const inventoryRepo = dataSource.getRepository(InventoryItemOrmEntity);
     const baseRow = await inventoryRepo.findOneBy({ productId, productVariantId: IsNull() });
@@ -211,7 +214,7 @@ describe('Inventory stale-prune (#1478)', () => {
     ]);
 
     const marked = await inventoryService.pruneStaleVariants(productId, [null]);
-    expect(marked).toBe(1);
+    expect(marked.markedCount).toBe(1);
 
     const inventoryRepo = dataSource.getRepository(InventoryItemOrmEntity);
     const baseRow = await inventoryRepo.findOneBy({ productId, productVariantId: IsNull() });

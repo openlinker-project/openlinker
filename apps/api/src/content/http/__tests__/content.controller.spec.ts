@@ -2,13 +2,17 @@
  * ContentController unit tests (#486)
  *
  * Focused on `mapExceptions` — particularly the new `AllegroApiException`
- * branch that surfaces structured 422 errors to the FE.
+ * branch that surfaces structured 422 errors to the FE. Also covers the
+ * per-handler @Roles split (#1873): `getState` is readable by every role,
+ * mutating handlers stay restricted to admin/operator.
  *
  * @module apps/api/src/content/http/__tests__
  */
+import 'reflect-metadata';
 import { BadGatewayException, UnprocessableEntityException } from '@nestjs/common';
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
+import type { UserRole } from '@openlinker/core/users';
 import {
   CONTENT_DRAFT_SERVICE_TOKEN,
   CONTENT_STATE_READER_SERVICE_TOKEN,
@@ -19,6 +23,7 @@ import {
 } from '@openlinker/core/content';
 import { AllegroApiException } from '@openlinker/integrations-allegro';
 
+import { ROLES_KEY } from '../../../auth/decorators/roles.decorator';
 import { ContentController } from '../content.controller';
 
 describe('ContentController', () => {
@@ -164,6 +169,30 @@ describe('ContentController', () => {
       await expect(
         controller.publish('product-1', { connectionId: 'conn-1', fieldKey: 'description' })
       ).rejects.toBe(original);
+    });
+  });
+
+  describe('@Roles guard split (#1873)', () => {
+    function rolesFor(methodName: keyof ContentController): UserRole[] | undefined {
+      const proto = ContentController.prototype as unknown as Record<string, unknown>;
+      return Reflect.getMetadata(ROLES_KEY, proto[methodName] as object) as UserRole[] | undefined;
+    }
+
+    it('allows every authenticated role to read content state', () => {
+      expect(rolesFor('getState')).toEqual(['admin', 'operator', 'viewer']);
+    });
+
+    it.each(['saveDraft', 'discardDraft', 'publish'] as const)(
+      'restricts %s to admin/operator (viewer excluded)',
+      (methodName) => {
+        const roles = rolesFor(methodName);
+        expect(roles).toEqual(['admin', 'operator']);
+        expect(roles).not.toContain('viewer');
+      }
+    );
+
+    it('restricts suggest to admin only — ai:suggest stays admin-only in every environment', () => {
+      expect(rolesFor('suggest')).toEqual(['admin']);
     });
   });
 });

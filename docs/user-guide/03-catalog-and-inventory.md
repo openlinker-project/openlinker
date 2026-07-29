@@ -57,7 +57,7 @@ The product detail has two tabs:
   - **RESERVED** — units reserved by pending orders
   - **LOCATION** — warehouse or stock location (`default` if not configured)
 
-**Content tab** — shows the product's content fields (e.g. description) that OpenLinker manages for cross-channel publishing. See **[Listings & Offers](./04-listings.md)** for how content fields are used when creating marketplace offers.
+**Content tab** — shows the product's content fields (e.g. description) that OpenLinker manages for cross-channel publishing. See **[Listings & Offers](./05-listings.md)** for how content fields are used when creating marketplace offers.
 
 OpenLinker does not provide an edit UI for product data — changes to names, descriptions, or pricing are made in your master shop and picked up on the next catalog sync (every 20 minutes by default, or immediately after clicking **Trigger sync** on the connection detail page).
 
@@ -130,6 +130,10 @@ If a sync fails (network error, API key expired, etc.), check the corresponding 
 
 ## What's next
 
-With the catalog synced, you can create marketplace offers:
+With the catalog synced, orders that arrive can be invoiced automatically:
 
-→ **[Listings & Offers](./04-listings.md)** — create Allegro offers from your synced catalog
+→ **[Invoices](./04-invoices.md)** — issuing invoices per order and regulatory (KSeF) clearance status
+
+Or skip ahead to create marketplace offers:
+
+→ **[Listings & Offers](./05-listings.md)** — create Allegro offers from your synced catalog

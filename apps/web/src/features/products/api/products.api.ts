@@ -8,6 +8,7 @@
  */
 import type {
   ProductFilters,
+  ProductListSort,
   ProductPagination,
   PaginatedProducts,
   Product,
@@ -15,7 +16,11 @@ import type {
 } from './products.types';
 
 export interface ProductsApi {
-  list: (filters?: ProductFilters, pagination?: ProductPagination) => Promise<PaginatedProducts>;
+  list: (
+    filters?: ProductFilters,
+    pagination?: ProductPagination,
+    sort?: ProductListSort,
+  ) => Promise<PaginatedProducts>;
   getById: (id: string) => Promise<Product>;
   /**
    * Lightweight projection of a single variant — id, parent product id, SKU,
@@ -29,9 +34,22 @@ interface ApiRequest {
   <T>(path: string, init?: RequestInit): Promise<T>;
 }
 
-function buildQuery(filters?: ProductFilters, pagination?: ProductPagination): string {
+function buildQuery(
+  filters?: ProductFilters,
+  pagination?: ProductPagination,
+  sort?: ProductListSort,
+): string {
   const params = new URLSearchParams();
   if (filters?.search) params.set('search', filters.search);
+  if (filters?.stock) params.set('stock', filters.stock);
+  if (filters?.unlistedOn && filters.unlistedOn.length > 0) {
+    params.set('unlistedOn', filters.unlistedOn.join(','));
+  }
+  if (filters?.connectionId) params.set('connectionId', filters.connectionId);
+  if (sort) {
+    params.set('sort', sort.field);
+    params.set('dir', sort.dir);
+  }
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
   if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
   const qs = params.toString();
@@ -40,8 +58,8 @@ function buildQuery(filters?: ProductFilters, pagination?: ProductPagination): s
 
 export function createProductsApi(request: ApiRequest): ProductsApi {
   return {
-    list(filters, pagination): Promise<PaginatedProducts> {
-      return request<PaginatedProducts>(`/products${buildQuery(filters, pagination)}`);
+    list(filters, pagination, sort): Promise<PaginatedProducts> {
+      return request<PaginatedProducts>(`/products${buildQuery(filters, pagination, sort)}`);
     },
     getById(id): Promise<Product> {
       return request<Product>(`/products/${id}`);

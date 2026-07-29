@@ -10,18 +10,11 @@ import { Input } from '../../shared/ui/input';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
-import { OfferCreationLauncher } from '../../features/listings/components/OfferCreationLauncher';
-import { OfferCreationTracker } from '../../features/listings/components/OfferCreationTracker';
-import {
-  ShopPublishLauncher,
-  selectShopPublishConnections,
-} from '../../features/listings/components/ShopPublishLauncher';
-import { useConnectionsQuery } from '../../features/connections';
-import { usePermission } from '../../shared/auth/use-permission';
+import { OfferProductPickerModal } from '../../features/listings/components/offer-product-picker-modal';
+import { useWriteAccess } from '../../shared/auth/use-permission';
+import { useDemoMode } from '../../features/system';
 import type {
-  CreateOfferRequest,
   ListingsFilters,
-  OfferCreationStatusResponse,
   OfferMapping,
 } from '../../features/listings/api/listings.types';
 
@@ -145,60 +138,13 @@ export function ListingsListPage(): ReactElement {
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
 
-  const trackedRecordId = searchParams.get('offerCreationRecordId') ?? '';
-  const trackedConnectionId = searchParams.get('trackedConnectionId') ?? '';
-  const hasTracker = Boolean(trackedRecordId && trackedConnectionId);
-
-  const connectionsQuery = useConnectionsQuery();
-  const shopPublishConnections = selectShopPublishConnections(connectionsQuery.data ?? []);
-  const canPublishToShop = shopPublishConnections.length > 0;
-  const canWrite = usePermission('listings:write');
+  const demoMode = useDemoMode();
+  // The unified "Publish products" entry opens a picker first — visible
+  // (enabled) for a demo viewer per the useWriteAccess + ReadOnlyLock pattern
+  // (#1615/#1613); the downstream wizard gates its own final submit (#1663).
+  const write = useWriteAccess('listings:write', demoMode);
 
   const [isWizardOpen, setIsWizardOpen] = useState(false);
-  const [isShopPublishOpen, setIsShopPublishOpen] = useState(false);
-  // Retry-path hints passed to the wizard when the operator clicks Retry
-  // on a failed OfferCreationTracker. These mirror the record's snapshot
-  // so the wizard can pre-fill on open and land directly on Step 2.
-  const [retryInitialValues, setRetryInitialValues] = useState<CreateOfferRequest | undefined>(
-    undefined,
-  );
-  const [retryDefaultConnectionId, setRetryDefaultConnectionId] = useState<string | undefined>(
-    undefined,
-  );
-
-  function dismissTracker(): void {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.delete('offerCreationRecordId');
-      next.delete('trackedConnectionId');
-      return next;
-    });
-  }
-
-  function handleOfferSubmitted(offerCreationRecordId: string, connectionId: string): void {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.set('offerCreationRecordId', offerCreationRecordId);
-      next.set('trackedConnectionId', connectionId);
-      return next;
-    });
-  }
-
-  function handleRetry(record: OfferCreationStatusResponse): void {
-    if (!record.request) return;
-    setRetryInitialValues(record.request);
-    setRetryDefaultConnectionId(record.connectionId);
-    setIsWizardOpen(true);
-    // Drop the old tracker from the URL — the new submit will re-install
-    // a fresh tracker for the new OfferCreationRecord via onSubmitted.
-    dismissTracker();
-  }
-
-  function closeWizard(): void {
-    setIsWizardOpen(false);
-    setRetryInitialValues(undefined);
-    setRetryDefaultConnectionId(undefined);
-  }
 
   return (
     <PageLayout
@@ -206,27 +152,11 @@ export function ListingsListPage(): ReactElement {
       title="Listings"
       description="Offer mapping workbench — browse offer-to-variant identifier mappings across platforms."
       actions={
-        canWrite ? (
-          <>
-            <Button onClick={() => setIsWizardOpen(true)}>Create offer</Button>
-            {canPublishToShop ? (
-              <Button tone="secondary" onClick={() => setIsShopPublishOpen(true)}>
-                Publish to shop
-              </Button>
-            ) : null}
-          </>
+        write.visible ? (
+          <Button onClick={() => setIsWizardOpen(true)}>Publish products</Button>
         ) : null
       }
     >
-      {hasTracker ? (
-        <OfferCreationTracker
-          connectionId={trackedConnectionId}
-          offerCreationRecordId={trackedRecordId}
-          onDismiss={dismissTracker}
-          onRetry={handleRetry}
-        />
-      ) : null}
-
       <div className="toolbar toolbar--compact">
         <Input
           aria-label="Search by external ID"
@@ -332,15 +262,10 @@ export function ListingsListPage(): ReactElement {
         </>
       )}
 
-      <OfferCreationLauncher
+      <OfferProductPickerModal
         isOpen={isWizardOpen}
-        onClose={closeWizard}
-        defaultConnectionId={retryDefaultConnectionId ?? (debouncedConnectionId || undefined)}
-        initialValues={retryInitialValues}
-        onSubmitted={handleOfferSubmitted}
+        onClose={() => setIsWizardOpen(false)}
       />
-
-      <ShopPublishLauncher open={isShopPublishOpen} onOpenChange={setIsShopPublishOpen} />
     </PageLayout>
   );
 }
