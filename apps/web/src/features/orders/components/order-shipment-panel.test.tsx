@@ -302,7 +302,10 @@ describe('OrderShipmentPanel — empty state', () => {
       },
     });
 
-    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, { apiClient });
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     const button = await screen.findByRole('button', { name: /Generate label/i });
     fireEvent.click(button);
@@ -560,7 +563,10 @@ describe('OrderShipmentPanel — action button matrix (§3.4)', () => {
       },
     });
 
-    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, { apiClient });
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     const generate = await screen.findByRole('button', {
       name: /Generate label|Generate shipping label/i,
