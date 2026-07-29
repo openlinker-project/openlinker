@@ -19,6 +19,7 @@ import {
   MASTER_PRODUCT_STALE_EVENT,
   MASTER_VARIANT_STALE_EVENT,
   MasterProductNotFoundError,
+  type MasterDeletionEventPayload,
 } from '@openlinker/core/products';
 import { EventPublisherPort, EVENT_PUBLISHER_TOKEN } from '@openlinker/core/events';
 import { INVENTORY_SERVICE_TOKEN } from '../../inventory.tokens';
@@ -101,7 +102,11 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     // removal (some variants gone, the product itself still resolves) or an
     // adapter returning an empty list without throwing (e.g. a variable product
     // with zero variations) — runs unconditionally, so an empty response still
-    // marks every currently-known row stale (#1478).
+    // marks every currently-known row stale (#1478). Unlike the products-context
+    // MasterProductSyncService, which skips its equivalent prune on a
+    // successful-but-empty pull to avoid staling everything on a flaky response,
+    // this side prunes unconditionally on purpose - the two are intentionally
+    // asymmetric here, not drifted.
     const pruneResult = await this.inventoryService.pruneStaleVariants(
       internalProductId,
       currentVariantIds
@@ -110,7 +115,10 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     // Emit the master-deletion signal from the inventory prune path too (#1599).
     // Disjoint from the product-sync emission — a full deletion produces one from
     // each sync path; consumers dedupe by (productId, variantIds) as needed.
-    if (pruneResult.variantIds.length > 0) {
+    // Gated on markedCount, not variantIds.length - a product-level (NULL
+    // variant) row contributes to markedCount but not variantIds, and gating on
+    // variantIds alone would silently drop the event for such a row (#1688).
+    if (pruneResult.markedCount > 0) {
       await this.publishDeletionEvent(MASTER_VARIANT_STALE_EVENT, {
         connectionId,
         internalProductId,
@@ -144,7 +152,9 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     internalProductId: string
   ): Promise<MasterInventorySyncResult> {
     const pruneResult = await this.inventoryService.pruneStaleVariants(internalProductId, []);
-    if (pruneResult.variantIds.length > 0) {
+    // Gated on markedCount, not variantIds.length - see the identical note on
+    // the sibling emission above (#1688).
+    if (pruneResult.markedCount > 0) {
       await this.publishDeletionEvent(MASTER_PRODUCT_STALE_EVENT, {
         connectionId,
         internalProductId,
@@ -165,7 +175,7 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
 
   private async publishDeletionEvent(
     eventType: typeof MASTER_VARIANT_STALE_EVENT | typeof MASTER_PRODUCT_STALE_EVENT,
-    payload: { connectionId: string; internalProductId: string; variantIds: string[] }
+    payload: MasterDeletionEventPayload
   ): Promise<void> {
     const now = new Date().toISOString();
     await this.eventPublisher.publish(MASTER_DELETION_EVENT_STREAM, {

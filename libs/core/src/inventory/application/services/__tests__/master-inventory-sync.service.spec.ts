@@ -378,6 +378,29 @@ describe('MasterInventorySyncService', () => {
       expect(eventPublisher.publish).not.toHaveBeenCalled();
     });
 
+    it('still publishes master.product.stale when the deletion marks a product-level (NULL-variant) row stale, even though variantIds stays empty (#1688)', async () => {
+      inventoryAdapter.listInventory.mockRejectedValueOnce(
+        new MasterProductNotFoundError(internalProductId, connectionId)
+      );
+      // Product-level rows contribute to markedCount but not variantIds (see
+      // PruneStaleVariantsResult's doc comment) - the emission gate must key
+      // off markedCount, or this case silently drops the event.
+      (inventoryService.pruneStaleVariants as jest.Mock).mockResolvedValueOnce({
+        markedCount: 1,
+        variantIds: [],
+      });
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(eventPublisher.publish).toHaveBeenCalledWith(
+        'events.master.deletion',
+        expect.objectContaining({
+          eventType: 'master.product.stale',
+          payloadJson: JSON.stringify({ connectionId, internalProductId, variantIds: [] }),
+        })
+      );
+    });
+
     it('rethrows a transient (non-not-found) adapter error unchanged', async () => {
       const boom = new Error('ECONNRESET');
       inventoryAdapter.listInventory.mockRejectedValueOnce(boom);
@@ -468,6 +491,24 @@ describe('MasterInventorySyncService', () => {
             internalProductId,
             variantIds: ['ol_variant_gone'],
           }),
+        })
+      );
+    });
+
+    it('still publishes master.variant.stale when the prune marks a product-level (NULL-variant) row stale, even though variantIds stays empty (#1688)', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([]);
+      (inventoryService.pruneStaleVariants as jest.Mock).mockResolvedValueOnce({
+        markedCount: 1,
+        variantIds: [],
+      });
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(eventPublisher.publish).toHaveBeenCalledWith(
+        'events.master.deletion',
+        expect.objectContaining({
+          eventType: 'master.variant.stale',
+          payloadJson: JSON.stringify({ connectionId, internalProductId, variantIds: [] }),
         })
       );
     });

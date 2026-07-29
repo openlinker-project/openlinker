@@ -46,88 +46,97 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
       `Getting inventory for product: ${productId} (connection: ${this.connection.id})`
     );
 
-    // Resolve internal ID → external ID
-    const externalIds = await this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Product, productId);
-    const prestashopProductId = externalIds.find(
-      (e: { connectionId: string }) => e.connectionId === this.connection.id
-    );
-
-    if (!prestashopProductId) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
-      const error = new PrestashopResourceNotFoundException(
-        `Product not found: ${productId} (no external ID mapping for connection ${this.connection.id})`,
-        CORE_ENTITY_TYPE.Product,
-        productId,
-        this.connection.id
+    try {
+      // Resolve internal ID → external ID
+      const externalIds = await this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Product, productId);
+      const prestashopProductId = externalIds.find(
+        (e: { connectionId: string }) => e.connectionId === this.connection.id
       );
-      throw error;
-    }
 
-    // Simple products (no combinations) are stored with a synthetic externalId
-    // of the form `product:<id>` by the product adapter. Strip the prefix so
-    // the stock_availables filter receives the plain numeric PrestaShop product ID.
-    const rawExternalId = prestashopProductId.externalId;
-    const psProductId = rawExternalId.startsWith('product:')
-      ? rawExternalId.slice('product:'.length)
-      : rawExternalId;
-
-    // The identifier mapping stores combination IDs under entityType='Product', so
-    // psProductId is either a plain product ID (simple products) or a combination ID.
-    // Try product-level stock first (id_product_attribute=0); if empty, the external ID
-    // is a combination ID and its stock record is keyed by id_product_attribute instead.
-    let stockRecords = await this.httpClient.listResources<PrestashopStockAvailable>(
-      'stock_availables',
-      {
-        custom: {
-          id_product: psProductId,
-          id_product_attribute: 0,
-        },
+      if (!prestashopProductId) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
+        const error = new PrestashopResourceNotFoundException(
+          `Product not found: ${productId} (no external ID mapping for connection ${this.connection.id})`,
+          CORE_ENTITY_TYPE.Product,
+          productId,
+          this.connection.id
+        );
+        throw error;
       }
-    );
 
-    if (stockRecords.length === 0) {
-      stockRecords = await this.httpClient.listResources<PrestashopStockAvailable>(
+      // Simple products (no combinations) are stored with a synthetic externalId
+      // of the form `product:<id>` by the product adapter. Strip the prefix so
+      // the stock_availables filter receives the plain numeric PrestaShop product ID.
+      const rawExternalId = prestashopProductId.externalId;
+      const psProductId = rawExternalId.startsWith('product:')
+        ? rawExternalId.slice('product:'.length)
+        : rawExternalId;
+
+      // The identifier mapping stores combination IDs under entityType='Product', so
+      // psProductId is either a plain product ID (simple products) or a combination ID.
+      // Try product-level stock first (id_product_attribute=0); if empty, the external ID
+      // is a combination ID and its stock record is keyed by id_product_attribute instead.
+      let stockRecords = await this.httpClient.listResources<PrestashopStockAvailable>(
         'stock_availables',
         {
           custom: {
-            id_product_attribute: psProductId,
+            id_product: psProductId,
+            id_product_attribute: 0,
           },
         }
       );
-    }
 
-    if (stockRecords.length === 0) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
-      const error = new PrestashopResourceNotFoundException(
-        `Inventory not found for product: ${productId}`,
+      if (stockRecords.length === 0) {
+        stockRecords = await this.httpClient.listResources<PrestashopStockAvailable>(
+          'stock_availables',
+          {
+            custom: {
+              id_product_attribute: psProductId,
+            },
+          }
+        );
+      }
+
+      if (stockRecords.length === 0) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
+        const error = new PrestashopResourceNotFoundException(
+          `Inventory not found for product: ${productId}`,
+          CORE_ENTITY_TYPE.Inventory,
+          productId,
+          this.connection.id
+        );
+        throw error;
+      }
+
+      // Use first stock record (should be only one for product/combination stock)
+      const stockRecord = stockRecords[0];
+
+      // Map to OpenLinker schema
+      const mapped = this.inventoryMapper.mapInventory(stockRecord, productId);
+
+      // Get or create internal ID for inventory
+      const internalId = await this.identifierMapping.getOrCreateInternalId(
         CORE_ENTITY_TYPE.Inventory,
-        productId,
-        this.connection.id
+        String(stockRecord.id),
+        this.connection.id,
+        {
+          parentEntityType: CORE_ENTITY_TYPE.Product,
+          parentInternalId: productId,
+        }
       );
+
+      return {
+        ...mapped,
+        id: internalId,
+      };
+    } catch (error) {
+      // Same translation as listInventory - kept in sync so the port's two
+      // read methods agree on what a not-found means to a caller (#1688).
+      if (error instanceof PrestashopResourceNotFoundException) {
+        throw new MasterProductNotFoundError(productId, this.connection.id, error);
+      }
       throw error;
     }
-
-    // Use first stock record (should be only one for product/combination stock)
-    const stockRecord = stockRecords[0];
-
-    // Map to OpenLinker schema
-    const mapped = this.inventoryMapper.mapInventory(stockRecord, productId);
-
-    // Get or create internal ID for inventory
-    const internalId = await this.identifierMapping.getOrCreateInternalId(
-      CORE_ENTITY_TYPE.Inventory,
-      String(stockRecord.id),
-      this.connection.id,
-      {
-        parentEntityType: CORE_ENTITY_TYPE.Product,
-        parentInternalId: productId,
-      }
-    );
-
-    return {
-      ...mapped,
-      id: internalId,
-    };
   }
 
   async listInventory(productId: string): Promise<Inventory[]> {
