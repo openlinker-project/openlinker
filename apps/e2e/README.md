@@ -116,7 +116,7 @@ dashboard checkpoints).
 | `shipping` | Unattended InPost: courier + paczkomat labels, COD, insurance, protocol, cancellation, tracking, ShipX webhook (#1572). | Yes (real ShipX calls) | No |
 | `invoicing` | inFakt run, payment marking, bulk issue/resend/e-mail, KOR corrections, FA(3) parity + preview, Transfer bank accounts (#1573). | Yes (issues/corrects invoices, synthesizes orders) | No |
 | `lifecycle` | Order-lifecycle idempotency, cross-channel stock propagation + oversell safety, stale-variant pruning (#1574). | Yes (real PS stock; pruning is destructive, opt-in) | No |
-| `access-control` | Demo mode, registration, RBAC, and UI-reflection checks. | Provisions fresh viewers (idempotent) | No |
+| `access-control` | Demo mode, registration, RBAC, and UI-reflection checks. | Provisions a viewer (idempotent) | No |
 
 > ⚠️ **Every project except `smoke`/`setup` mutates the stack** (publishes
 > products, creates offers, generates labels, issues invoices, rotates webhook
@@ -145,7 +145,28 @@ annotated list.
 | `shipping` | `E2E_ORDER_ID` (or a golden-path `ready` order); `E2E_TEST_INPOST_WEBHOOK=true` (opt-in inbound ShipX webhook); `E2E_PACZKOMAT_ID`; skips without an InPost connection |
 | `invoicing` | `OL_PS_WEBSERVICE_KEY` (order synthesis); skips without an invoicing (inFakt) connection |
 | `lifecycle` | `OL_PS_WEBSERVICE_KEY` (stock/pruning); **`E2E_ALLOW_DESTRUCTIVE_PRUNE=true`** (opt-in irreversible pruning spec) |
-| `access-control` | `E2E_TEST_RATE_LIMIT=true` (opt-in destructive register-429 assertion, demo mode only) |
+| `access-control` | `E2E_VIEWER_USER`/`E2E_VIEWER_PASS` (pre-seeded active viewer — see below); `E2E_TEST_RATE_LIMIT=true` (opt-in destructive register-429 assertion, demo mode only) |
+
+#### Providing a viewer for `access-control`
+
+Three of the access-control cases need a **non-admin session**. They used to get
+one by registering a throwaway account and logging straight in, which worked
+because a demo-mode signup was created active.
+
+Since #1624 that is no longer true: a demo-mode registration lands in
+`pending_confirmation` and `POST /auth/login` answers **403** ("Please confirm
+your email address…") until the emailed single-use link is followed. An API-only
+test client cannot follow it, and there is no admin endpoint that activates such
+an account — `UserManagementService.approveUser` accepts only `pending`. So on a
+demo stack the suite cannot mint its own viewer any more.
+
+Point `E2E_VIEWER_USER` / `E2E_VIEWER_PASS` at an existing **active** viewer and
+those cases run against it; leave them unset and they `test.skip` with the
+reason. Registration-based provisioning is still used (and still correct) in
+non-demo mode, where the account is created `pending` and an admin approves it.
+
+The `registration` spec needs no viewer — it asserts the `pending_confirmation`
+contract itself, including the 403.
 
 The full S0-S9 flow — segments, automated-vs-manual split, expected-value
 sources, how to run headed, and how to extend — is documented in

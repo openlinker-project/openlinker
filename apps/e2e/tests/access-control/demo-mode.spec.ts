@@ -38,8 +38,9 @@ test.describe('access-control: demo mode', () => {
       const page = await context.newPage();
       // First navigation of this context against a possibly-cold web container:
       // wait for the SPA to be interactive before asserting (issue #1513).
-      await gotoWhenAppMounted(page, '/login');
-      await expect(page.getByRole('heading', { name: 'Sign in to your account' })).toBeVisible();
+      const heading = page.getByRole('heading', { name: 'Sign in to your account' });
+      await gotoWhenAppMounted(page, '/login', { readyLocator: heading });
+      await expect(heading).toBeVisible();
 
       // Resilient to copy tweaks (the trailing arrow, casing, whitespace) by
       // OR-ing the accessible name against the stable /register anchor.
@@ -66,7 +67,12 @@ test.describe('access-control: demo mode', () => {
     test.skip(!config.demoMode, 'demo mode is off — the demo banner is not rendered');
 
     const viewer = await provisionViewer(env, api);
-    test.skip(!viewer, 'registration disabled or rate-limited — cannot provision a viewer');
+    test.skip(
+      !viewer,
+      'no viewer available — registration disabled/rate-limited, or the demo signup is ' +
+        'awaiting email confirmation (#1624). Set E2E_VIEWER_USER/E2E_VIEWER_PASS to a ' +
+        'pre-seeded active viewer to run this case.',
+    );
     testInfo.annotations.push({
       type: 'access-control',
       description: `provisioned viewer ${viewer!.creds.username}`,
@@ -77,8 +83,8 @@ test.describe('access-control: demo mode', () => {
       await seedBrowserSession(context, env, viewer!.creds);
       const page = await context.newPage();
       // First navigation of this context against a possibly-cold web container.
-      await gotoWhenAppMounted(page, '/');
       const banner = page.getByRole('note', { name: 'Demo mode notice' });
+      await gotoWhenAppMounted(page, '/', { readyLocator: banner });
       await expect(banner).toBeVisible();
       await expect(banner).toContainText(/write actions are\s+disabled/i);
     } finally {

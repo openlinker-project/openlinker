@@ -2,10 +2,10 @@
  * Access control: registration
  *
  * Self-service registration is gated by `OL_REGISTRATION_ENABLED`. When enabled,
- * a new account is role `viewer`; its status depends on the mode — `active` in
- * demo (immediate login), `pending` in normal (login 401 until an admin
- * approves). Duplicate username/email → 409. A demo-only per-IP rate limit
- * returns 429.
+ * a new account is role `viewer`; its status depends on the mode —
+ * `pending_confirmation` in demo (login 403 until the emailed confirmation link
+ * is followed, #1624), `pending` in normal (login 401 until an admin approves).
+ * Duplicate username/email → 409. A demo-only per-IP rate limit returns 429.
  *
  * Self-configuring: the spec probes the registration state at runtime and
  * asserts whichever behaviour the stack exhibits. The destructive 429 path is
@@ -65,9 +65,18 @@ test.describe('access-control: registration', () => {
     // Immediate login reflects the account status for the mode.
     const client = new ApiClient({ baseUrl: env.apiUrl });
     if (config.demoMode) {
-      // Demo: created ACTIVE — login succeeds immediately.
-      await client.login(creds.username, creds.password);
-      expect(client.isAuthenticated).toBe(true);
+      // Demo (#1624): created `pending_confirmation` — login is refused with a
+      // specific 403 until the emailed single-use link is followed. Distinct
+      // from the normal-mode 401 on purpose: the password already matched, so
+      // naming the reason leaks no account-existence oracle.
+      const unconfirmedErr = await client
+        .login(creds.username, creds.password)
+        .then(() => null)
+        .catch((e: unknown) => e);
+      expect(unconfirmedErr).toBeInstanceOf(ApiError);
+      expect((unconfirmedErr as ApiError).status).toBe(403);
+      expect((unconfirmedErr as ApiError).message).toMatch(/confirm your email/i);
+      expect(client.isAuthenticated).toBe(false);
     } else {
       // Normal: created PENDING — login is rejected with 401 until approved.
       const pendingErr = await client

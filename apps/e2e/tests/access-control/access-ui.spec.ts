@@ -37,7 +37,12 @@ test.describe('access-control: UI reflection', () => {
   }, testInfo) => {
     const config = await api.system.config();
     const viewer = await provisionViewer(env, api);
-    test.skip(!viewer, 'registration disabled or rate-limited — cannot provision a viewer');
+    test.skip(
+      !viewer,
+      'no viewer available — registration disabled/rate-limited, or the demo signup is ' +
+        'awaiting email confirmation (#1624). Set E2E_VIEWER_USER/E2E_VIEWER_PASS to a ' +
+        'pre-seeded active viewer to run this case.',
+    );
     testInfo.annotations.push({
       type: 'access-control',
       description: `viewer ${viewer!.creds.username}, demoMode=${config.demoMode}`,

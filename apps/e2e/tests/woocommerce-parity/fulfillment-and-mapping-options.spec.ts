@@ -1,6 +1,6 @@
 /**
  * WooCommerce parity — scenario 6 (FulfillmentStatusReader half) and
- * scenario 7 (DestinationOptionsReader — documented product gap)
+ * scenario 7 (DestinationOptionsReader via pairing-based resolution)
  *
  * Scenario 6 in the issue asks for both directions of the WC order-lifecycle
  * capability pair:
@@ -16,25 +16,25 @@
  *     status back into a projected OL `Shipment` row, which IS reachable and
  *     assertable through the existing sync-job + Shipment API surface.
  *
- * Scenario 7 (DestinationOptionsReader in the mapping UI) is a DOCUMENTED
- * PRODUCT GAP, not a stub of convenience: `MappingOptionsController
- * .resolvePartnerConnectionId` (apps/api/src/mappings/http/mapping-options
- * .controller.ts) hardcodes the mappings page to the Allegro<->PrestaShop
- * pair — any other `platformType` (including `woocommerce`) throws a 400
- * ("unsupported platform ... today the mappings page is Allegro->PrestaShop
- * only"). The WooCommerce adapter DOES implement `DestinationOptionsReader`
- * (`listCarriers` / `listOrderStatuses` / `listPaymentMethods`), but the HTTP
- * surface that would expose it to the mapping UI does not yet route
- * WooCommerce connections there. This test asserts the CURRENT (gap) behaviour
- * so the gap is visible in CI rather than silently absent, and is expected to
- * start failing (in a good way) once the controller grows WooCommerce
- * support — at which point this test should be rewritten to assert success.
+ * Scenario 7 (DestinationOptionsReader in the mapping UI) USED to be a
+ * documented product gap: `MappingOptionsController.resolvePartnerConnectionId`
+ * hardcoded the mappings page to the Allegro<->PrestaShop pair and answered 400
+ * for every other `platformType`, WooCommerce included. #1738 replaced that
+ * platform switch with pairing-first, capability-checked resolution keyed on
+ * `config.masterCatalogConnectionId`, so the gap is closed and this test now
+ * asserts the SUCCESS behaviour it was written to graduate into.
+ *
+ * Note what "destination" means on this route: for a WooCommerce connection
+ * used as an order SOURCE, the destination options are the PAIRED MASTER's
+ * (PrestaShop) — that is the platform an ingested WC order is created on, and
+ * therefore the vocabulary the operator maps WC statuses ONTO. Asserting the
+ * paired master's list rather than WooCommerce's own is the point, not a
+ * defect.
  *
  * @module tests/woocommerce-parity
  */
 import { test, expect } from '../../src/fixtures/test';
 import { PlatformType } from '../../src/world/world';
-import type { ApiError } from '../../src/api/api-error';
 
 test.describe('WooCommerce fulfillment status read-back', () => {
   test('marketplace.fulfillment.statusSync projects a Shipment row from WC order status', async ({
@@ -72,26 +72,34 @@ test.describe('WooCommerce fulfillment status read-back', () => {
   });
 });
 
-test.describe('WooCommerce mapping UI option lists (documented gap, #1571 scenario 7)', () => {
-  test('destination option endpoints reject a WooCommerce connection today (Allegro/PrestaShop-only route)', async ({
+test.describe('WooCommerce mapping UI option lists (#1571 scenario 7, #1738)', () => {
+  test("a WooCommerce connection resolves its paired master's destination option list", async ({
     api,
     world,
   }) => {
     const wc = world.connectionFor(PlatformType.woocommerce);
     test.skip(!wc, 'no WooCommerce connection on the stack');
-
-    let caught: ApiError | undefined;
-    try {
-      await api.mappingOptions.getDestinationOrderStatuses(wc!.id);
-    } catch (error) {
-      caught = error as ApiError;
-    }
-    expect(
-      caught,
-      'expected the request to fail — WooCommerce is not yet routed by MappingOptionsController',
-    ).toBeTruthy();
-    expect(caught?.status, `expected HTTP 400, got ${caught?.status}: ${JSON.stringify(caught?.body)}`).toBe(
-      400,
+    // Resolution is pairing-keyed: without `masterCatalogConnectionId` there is
+    // no destination to read options from and the route legitimately 400s.
+    const pairedMasterId = wc!.config?.['masterCatalogConnectionId'];
+    test.skip(
+      !pairedMasterId,
+      'WooCommerce connection has no masterCatalogConnectionId — nothing to pair with',
     );
+
+    const statuses = (await api.mappingOptions.getDestinationOrderStatuses(wc!.id)) as Array<{
+      value?: unknown;
+      label?: unknown;
+    }>;
+    expect(Array.isArray(statuses)).toBe(true);
+    expect(
+      statuses.length,
+      'the paired master advertises at least one destination order status',
+    ).toBeGreaterThan(0);
+    // `{ value, label }` is the contract the mapping UI's selects bind to.
+    for (const option of statuses) {
+      expect(typeof option.value).toBe('string');
+      expect(typeof option.label).toBe('string');
+    }
   });
 });

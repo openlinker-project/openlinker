@@ -8,9 +8,18 @@
  *
  * The suite is *self-configuring*: `provisionViewer` returns `null` (rather than
  * throwing) when the stack can't hand out a viewer right now — registration
- * disabled (403) or the demo per-IP rate limit hit (429) — so callers
- * `test.skip` the viewer-dependent cases instead of hard-failing on stack
- * configuration (issue #1481).
+ * disabled (403), the demo per-IP rate limit hit (429), or the account left
+ * awaiting email confirmation (403, see below) — so callers `test.skip` the
+ * viewer-dependent cases instead of hard-failing on stack configuration
+ * (issue #1481).
+ *
+ * Email confirmation (#1624): a demo-mode registration now lands in
+ * `pending_confirmation` and login is refused until the emailed single-use link
+ * is followed. No admin endpoint can activate such an account (`approveUser`
+ * accepts only `pending`), and the token exists solely in the e-mail — so an
+ * API-only client cannot self-serve a viewer on a demo stack any more. Set
+ * `E2E_VIEWER_USER` / `E2E_VIEWER_PASS` to a pre-seeded active viewer to keep
+ * those cases running; otherwise they skip with an explicit annotation.
  *
  * @module support
  */
@@ -54,11 +63,16 @@ export async function readSystemConfig(env: E2eEnv): Promise<SystemConfig> {
 }
 
 /**
- * Provision a throwaway `viewer` through the real registration flow.
+ * Provision a `viewer` for the suite.
  *
- * - Registers a unique account. On 403 (registration disabled) or 429 (demo
- *   per-IP rate limit) returns `null` so the caller can skip gracefully.
- * - Demo mode: the account is created ACTIVE — log straight in.
+ * - `E2E_VIEWER_USER`/`E2E_VIEWER_PASS` set: sign in as that pre-seeded account
+ *   (the only path that works on a demo stack since #1624 — see the module
+ *   header). Returns `null` if those credentials don't authenticate.
+ * - Otherwise registers a unique account. On 403 (registration disabled) or 429
+ *   (demo per-IP rate limit) returns `null` so the caller can skip gracefully.
+ * - Demo mode: the account is created `pending_confirmation`; login is refused
+ *   with 403 until the emailed link is followed, which this client cannot do —
+ *   returns `null`.
  * - Normal mode: the account is PENDING — an admin approves it as `viewer`
  *   (already-active accounts skip approval) before logging in.
  */
@@ -66,6 +80,22 @@ export async function provisionViewer(
   env: E2eEnv,
   adminClient: ApiClient,
 ): Promise<ProvisionedViewer | null> {
+  if (env.viewerUser && env.viewerPass) {
+    const seeded = new ApiClient({ baseUrl: env.apiUrl });
+    try {
+      await seeded.login(env.viewerUser, env.viewerPass);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        return null;
+      }
+      throw error;
+    }
+    return {
+      client: seeded,
+      creds: { username: env.viewerUser, email: '', password: env.viewerPass },
+    };
+  }
+
   const creds = uniqueCreds();
 
   try {
@@ -81,7 +111,17 @@ export async function provisionViewer(
   const client = new ApiClient({ baseUrl: env.apiUrl });
 
   if (config.demoMode) {
-    await client.login(creds.username, creds.password);
+    // #1624: demo signups land in `pending_confirmation`. Login answers 403
+    // until the emailed link is followed — unreachable from an API client, and
+    // no admin endpoint activates that status. Skip rather than fail.
+    try {
+      await client.login(creds.username, creds.password);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 403) {
+        return null;
+      }
+      throw error;
+    }
     return { client, creds };
   }
 

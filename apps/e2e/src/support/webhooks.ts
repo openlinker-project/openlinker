@@ -14,7 +14,7 @@
  *
  * @module support
  */
-import { createHmac, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomUUID } from 'node:crypto';
 
 const SIGNATURE_HEADER = 'X-OpenLinker-Signature';
 const TIMESTAMP_HEADER = 'X-OpenLinker-Timestamp';
@@ -127,6 +127,89 @@ export interface SignedInpostWebhook {
   envelope: InpostTrackingWebhookEnvelope;
   rawBody: string;
   headers: Record<string, string>;
+}
+
+// ── WooCommerce (platform-native scheme, #1563) ────────────────────────────
+//
+// WooCommerce signs its own deliveries with
+// `x-wc-webhook-signature: base64(HMAC_SHA256(secret, rawBody))` over the RAW
+// BODY ONLY — no signed timestamp — and classifies the event with
+// `x-wc-webhook-topic`. The body is a WC REST order resource, not an OL
+// envelope: the decoder reads `id` (order id), `status` + `date_modified_gmt`
+// (dedup-key basis) and derives the eventId itself as
+// `woocommerce-<sha256(id:status:topic:timestamp)[0..32]>`.
+//
+// Until #1563 the host fell back to the generic OL-HMAC decoder for every
+// provider, so this suite signed WC deliveries OL-style. `WooCommerceInbound
+// WebhookDecoderAdapter` now owns the WC path, so an OL-HMAC-signed delivery
+// correctly 401s — the suite must speak the platform's own scheme.
+
+const WC_SIGNATURE_HEADER = 'x-wc-webhook-signature';
+const WC_TOPIC_HEADER = 'x-wc-webhook-topic';
+
+/** The WC REST order fields the decoder actually reads off a delivery body. */
+export interface WooCommerceOrderWebhookBody {
+  id: number;
+  status: string;
+  date_modified_gmt: string;
+  [key: string]: unknown;
+}
+
+export interface SignedWooCommerceWebhook {
+  body: WooCommerceOrderWebhookBody;
+  rawBody: string;
+  headers: Record<string, string>;
+  topic: string;
+  /** The eventId the decoder will derive — the row this delivery lands on. */
+  eventId: string;
+}
+
+/**
+ * Build a WooCommerce-native order delivery body. `id` defaults to a
+ * time-derived synthetic order id: the spec asserts verify → record → enqueue,
+ * not that the downstream order-sync job resolves a real WC order (the same
+ * synthetic-id stance the PrestaShop spec takes).
+ */
+export function buildWooCommerceOrderWebhookBody(
+  options: { id?: number; status?: string; dateModifiedGmt?: string } = {},
+): WooCommerceOrderWebhookBody {
+  return {
+    id: options.id ?? Date.now() % 2_000_000_000,
+    status: options.status ?? 'processing',
+    // Distinct per build so two deliveries in one run hash to distinct
+    // eventIds; a replay of the SAME body re-hashes identically and is deduped.
+    date_modified_gmt: options.dateModifiedGmt ?? new Date().toISOString(),
+  };
+}
+
+/**
+ * Sign a WooCommerce order body the way the store itself would, and
+ * pre-compute the eventId the decoder derives from it.
+ *
+ * Mirrors `WooCommerceInboundWebhookDecoderAdapter.deriveEventId` — kept in
+ * lockstep deliberately: the spec needs to know which delivery row to poll for
+ * before it fires the request, and WooCommerce (unlike the OL envelope) does
+ * not let the caller choose an event id.
+ */
+export function signWooCommerceWebhook(
+  secret: string,
+  body: WooCommerceOrderWebhookBody,
+  topic = 'order.updated',
+): SignedWooCommerceWebhook {
+  const rawBody = JSON.stringify(body);
+  const signature = createHmac('sha256', secret).update(rawBody).digest('base64');
+  const basis = `${body.id}:${body.status}:${topic}:${body.date_modified_gmt}`;
+  const eventId = `woocommerce-${createHash('sha256').update(basis).digest('hex').slice(0, 32)}`;
+  return {
+    body,
+    rawBody,
+    topic,
+    eventId,
+    headers: {
+      [WC_SIGNATURE_HEADER]: signature,
+      [WC_TOPIC_HEADER]: topic,
+    },
+  };
 }
 
 // ── Infakt (distinct, third-party-native scheme, #1281/ADR-021) ────────────

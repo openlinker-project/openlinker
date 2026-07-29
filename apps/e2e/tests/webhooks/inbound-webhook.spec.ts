@@ -122,9 +122,15 @@ test.describe('inbound webhook: signed PrestaShop delivery', () => {
     expect(enqueuedRow.downstreamJobId).toBeTruthy();
     expect(enqueuedRow.downstreamJobType).toBe('marketplace.order.sync');
 
-    // The enqueued job is visible on the sync-jobs API by its id.
-    const job = await api.syncJobs.getById(enqueuedRow.downstreamJobId!);
-    expect(job.jobType).toBe('marketplace.order.sync');
+    // `downstreamJobId` is the QUEUE-assigned id — a Redis stream message id
+    // (`<ms>-<seq>`), or the idempotency key when the enqueue was deduped — NOT
+    // a `sync_jobs` UUID (see `EnqueueJobResult` in
+    // `libs/core/src/sync/domain/types/sync-job.types.ts`). That row only comes
+    // into existence when the runner picks the message up, so there is nothing
+    // to GET by this id; `downstreamJobType` above is the assertable signal.
+    expect(enqueuedRow.downstreamJobId).not.toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
 
     // 4. Replaying the byte-identical request is deduped (Postgres gate #711):
     //    still 202 (idempotent ack), and NO second delivery row is created.

@@ -23,6 +23,20 @@ export interface E2eEnv {
   /** Admin operator password. */
   adminPass: string;
   /**
+   * Optional PRE-SEEDED, already-active `viewer` account for the access-control
+   * suite. Since #1624 a demo-mode self-registration lands in
+   * `pending_confirmation` and cannot log in until the emailed confirmation
+   * link is followed — which an API-only test client can never do. When these
+   * are set, `provisionViewer` signs in as this existing account instead of
+   * registering a throwaway one, keeping the viewer-dependent RBAC / UI /
+   * demo-banner assertions live on a demo stack. Unset ⇒ the suite falls back
+   * to registration (still the right path in non-demo mode) and skips the
+   * viewer cases when the account cannot be activated.
+   */
+  viewerUser: string | null;
+  /** Password for `viewerUser`. Both must be set for the seeded path to engage. */
+  viewerPass: string | null;
+  /**
    * Optional pinned order id for post-purchase segments (follow-up). Also the
    * shipping suite's order source (`apps/e2e/tests/shipping/**`) — when unset,
    * shipping specs fall back to the latest `ready` order on the stack (e.g.
@@ -201,6 +215,8 @@ export function resolveEnv(): E2eEnv {
     apiUrl: stripTrailingSlash(process.env.OL_API_URL?.trim() || DEFAULTS.apiUrl),
     adminUser: process.env.OL_ADMIN_USER?.trim() || DEFAULTS.adminUser,
     adminPass: process.env.OL_ADMIN_PASS?.trim() || DEFAULTS.adminPass,
+    viewerUser: optional(process.env.E2E_VIEWER_USER),
+    viewerPass: optional(process.env.E2E_VIEWER_PASS),
     orderId: orderId && orderId.length > 0 ? orderId : null,
     productSku: optional(process.env.E2E_PRODUCT_SKU),
     sourcePlatform: process.env.E2E_SOURCE_PLATFORM?.trim() || 'allegro',
