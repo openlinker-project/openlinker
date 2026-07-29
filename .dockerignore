@@ -16,6 +16,14 @@
 .env.*
 !.env.example
 
+# Local, non-committed working-tree artifact directories (#1411) — not in
+# .gitignore either (only .claude/worktrees/ is), so a `COPY . .` build run
+# from a contributor's own checkout (rather than a fresh clone/CI) would
+# otherwise sweep these in, including any secrets they happen to contain
+# (e.g. local-e2e-runs/creds.env).
+.worktrees/
+local-e2e-runs/
+
 *.log
 npm-debug.log*
 

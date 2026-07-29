@@ -41,9 +41,10 @@ tier — API + Worker + admin UI.
 - **~4 GB free disk** for the built images and a few minutes for the first build
   (the whole monorepo is compiled inside the image; the build is from your local
   checkout, not a pre-built registry image).
-- **Free host ports:** `8090` (UI), `3000` (API), `8080` (PrestaShop), `8081`
-  (phpMyAdmin), `8082` (WooCommerce), `5432` (Postgres), `6379` (Redis), `3306`
-  (MySQL), `3307` (WooCommerce MySQL).
+- **Free host ports:** `8090` (UI), `3000` (API), `8080` (PrestaShop), `8082`
+  (WooCommerce), `5432` (Postgres), `6379` (Redis), `3306` (MySQL), `3307`
+  (WooCommerce MySQL). `8081` (phpMyAdmin) is only needed if you opt into the
+  `devtools` profile — see below.
 
 > ⚠️ **Shared volumes with the dev stack.** The demo shares the same Compose
 > project (`openlinker`) and data volumes as `pnpm dev:stack:up`. On a machine
@@ -202,12 +203,13 @@ download); give them a few minutes on the first run.
 | OpenLinker API | http://localhost:3000 | — (JWT via the UI) |
 | PrestaShop storefront | http://localhost:8080 | — |
 | PrestaShop admin | http://localhost:8080/**admin-dev** | `demo@prestashop.com` / `prestashop_demo` |
-| phpMyAdmin | http://localhost:8081 | `root` / `root` |
 | WooCommerce storefront | http://localhost:8082 | — |
 | WooCommerce admin (`wp-admin`) | http://localhost:8082/wp-admin | `admin` / `admin123` |
 
 > The PrestaShop admin folder is `admin-dev` (the post-install step renames the
 > randomized install folder), **not** `/admin`.
+
+phpMyAdmin (PrestaShop MySQL browser) is a devtools-only auxiliary service, not part of the default boot — start it separately with `pnpm demo:devtools:up`, then reach it at http://localhost:8081 (`root` / `root`).
 
 ---
 

@@ -132,7 +132,7 @@ To reset PrestaShop to a fresh installation with demo data:
 docker compose down
 
 # Remove volumes (⚠️ This deletes all data)
-docker volume rm openlinker_prestashop_data openlinker_mysql_data
+docker volume rm openlinker-prestashop-data openlinker-mysql-data
 
 # Start services again
 pnpm dev:stack:up
@@ -360,7 +360,7 @@ To reset to fresh demo data:
 docker compose down
 
 # Remove PrestaShop and MySQL volumes
-docker volume rm openlinker_prestashop_data openlinker_mysql_data
+docker volume rm openlinker-prestashop-data openlinker-mysql-data
 
 # Start services (PrestaShop will reinstall with demo data)
 pnpm dev:stack:up

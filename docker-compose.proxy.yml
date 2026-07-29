@@ -29,7 +29,7 @@
 
 services:
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2.11-alpine
     container_name: openlinker-caddy
     environment:
       WEB_DOMAIN: '${WEB_DOMAIN:?set WEB_DOMAIN in .env (see .env.example) - the public hostname for the admin UI}'
@@ -46,8 +46,8 @@ services:
       # CADDYFILE_PATH lets local verification swap in Caddyfile.local
       # (tls internal, no real DNS/domain needed) without editing this file.
       - '${CADDYFILE_PATH:-./docker/caddy/Caddyfile}:/etc/caddy/Caddyfile:ro'
-      - caddy_data:/data
-      - caddy_config:/config
+      - caddy-data:/data
+      - caddy-config:/config
     depends_on:
       - web
       - api
@@ -103,5 +103,5 @@ services:
         }
 
 volumes:
-  caddy_data:
-  caddy_config:
+  caddy-data:
+  caddy-config:
