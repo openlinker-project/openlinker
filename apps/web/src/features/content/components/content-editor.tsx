@@ -21,6 +21,7 @@ import { ApiError } from '../../../shared/api/api-error';
 import { Button } from '../../../shared/ui/button';
 import { extractPlatformErrors } from '../lib/extract-platform-errors';
 import { usePlatforms } from '../../../shared/plugins';
+import { captureDemoEvent } from '../../demo';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { useDemoMode } from '../../system';
 import { useContentQuery } from '../hooks/use-content-query';
@@ -258,6 +259,7 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
               void handleDiscard({ kind: 'master' });
             }}
             onPublish={() => {
+              captureDemoEvent('demo_content_publish_attempted', { channel: 'master' });
               setPendingPublish({ kind: 'master' });
             }}
           />
@@ -320,6 +322,7 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
                   void handleDiscard(target);
                 }}
                 onPublish={() => {
+                  captureDemoEvent('demo_content_publish_attempted', { channel: promptChannel });
                   setPendingPublish(target);
                 }}
               />

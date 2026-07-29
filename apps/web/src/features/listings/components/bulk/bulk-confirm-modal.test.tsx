@@ -5,9 +5,18 @@
  * and the per-variant / per-product count copy + mixed-publish warning (#1741).
  */
 import { screen, fireEvent, cleanup } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '../../../../test/test-utils';
 import { BulkConfirmModal } from './bulk-confirm-modal';
+
+const captureDemoEvent = vi.fn();
+vi.mock('../../../demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
+
+beforeEach(() => {
+  captureDemoEvent.mockClear();
+});
 
 function renderModal(props: Partial<Parameters<typeof BulkConfirmModal>[0]> = {}): {
   onConfirm: ReturnType<typeof vi.fn>;
@@ -45,6 +54,19 @@ describe('BulkConfirmModal', () => {
 
     fireEvent.click(submit);
     expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('captures demo_offer_create_attempted(mode=bulk) when a demo read-only viewer clicks the locked submit (#1788)', () => {
+    renderModal({ demoReadOnly: true, marketplaceName: 'Allegro' });
+
+    const lockWrapper = document.querySelector('.read-only-lock');
+    expect(lockWrapper).not.toBeNull();
+    fireEvent.click(lockWrapper as Element);
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_offer_create_attempted', {
+      platform: 'Allegro',
+      mode: 'bulk',
+    });
   });
 
   it('enables the Create offers submit when not read-only', () => {

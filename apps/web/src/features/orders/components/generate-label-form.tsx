@@ -27,6 +27,7 @@ import { useForm, type SubmitHandler } from 'react-hook-form';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { useConnectionsQuery } from '../../connections';
+import { captureDemoEvent } from '../../demo';
 import { usePlatform } from '../../../shared/plugins';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -79,6 +80,15 @@ import {
 interface GenerateLabelFormProps {
   /** The full order record — supplies recipient pre-fill + routing keys. */
   order: OrderRecord;
+  /**
+   * Paczkomat/pickup-point id from a prior failed shipment (#1826 deep-link
+   * retry) — the only field a failed `Shipment` persists that's worth
+   * forwarding on retry. Takes precedence over the snapshot's buyer-selected
+   * pickup point when supplied. Parcel dimensions/weight are never persisted
+   * on `Shipment`, so they're never pre-filled — the operator retypes them
+   * on every attempt, same as a fresh generate-label call.
+   */
+  initialPaczkomatId?: string;
   /** Called after a successful submission so the parent can collapse the
    * inline expansion. */
   onSuccess: () => void;
@@ -117,6 +127,7 @@ function isWithinPickupPointRetryWindow(createdAtIso: string): boolean {
 
 export function GenerateLabelForm({
   order,
+  initialPaczkomatId,
   onSuccess,
   onCancel,
 }: GenerateLabelFormProps): ReactElement {
@@ -198,9 +209,14 @@ export function GenerateLabelForm({
       width: '',
       height: '',
       weightGrams: '',
-      // Allegro flow: paczkomatId is pre-filled buyer-selected; InPost flow:
-      // operator types (picker deferred per plan).
-      paczkomatId: snapshot.pickupPoint?.id ?? '',
+      // Allegro flow: paczkomatId is pre-filled buyer-selected AND rendered
+      // read-only (`paczkomatIsBuyerSelected` below) — it must never show
+      // anything but the buyer's actual current selection, so
+      // `snapshot.pickupPoint?.id` wins here. InPost flow: no buyer-selected
+      // point exists, so a #1826 retry deep-link's `initialPaczkomatId` (the
+      // failed shipment's own persisted, operator-typed locker id) pre-fills
+      // the editable field instead of leaving the operator to retype it.
+      paczkomatId: snapshot.pickupPoint?.id ?? initialPaczkomatId ?? '',
       // Locker size — required by the BE for paczkomat shipments (#764).
       lockerTemplate: 'medium',
       // COD (#1435) — payment-status-driven. The amount is sourced from the
@@ -342,6 +358,11 @@ export function GenerateLabelForm({
   }, [mutation.isPending]);
 
   const onSubmit: SubmitHandler<GenerateLabelFormSubmission> = async (values) => {
+    // No ReadOnlyLock exists in this chain (#1788) — fire directly on a real
+    // submit attempt, not via a locked-wrapper click.
+    captureDemoEvent('demo_label_generate_attempted', {
+      carrier: routedCarrierPlatform ?? 'unknown',
+    });
     // COD payload by state (#1435). Prepaid / blocked orders never send COD; a
     // marketplace-sourced amount is sent verbatim; otherwise the operator-typed
     // amount is honoured (COD-unsourced marketplace order, or an unreported-

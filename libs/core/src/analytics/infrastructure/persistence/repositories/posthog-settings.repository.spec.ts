@@ -25,6 +25,8 @@ describe('PosthogSettingsRepository', () => {
     customHost: null,
     autocapture: true,
     sessionRecording: true,
+    productEventsEnabled: false,
+    enabledEventGroups: [],
     updatedAt: new Date('2026-05-01T00:00:00Z'),
     updatedBy: 'admin',
     ...overrides,
@@ -58,6 +60,8 @@ describe('PosthogSettingsRepository', () => {
         customHost: null,
         autocapture: true,
         sessionRecording: true,
+        productEventsEnabled: false,
+        enabledEventGroups: [],
         updatedBy: 'admin',
       });
       expect(ormRepo.findOne).toHaveBeenCalledWith({ where: { id: 'singleton' } });
@@ -75,7 +79,15 @@ describe('PosthogSettingsRepository', () => {
       ormRepo.findOneOrFail.mockResolvedValue(ormRow({ enabled: false }));
 
       const result = await subject.upsertSettings(
-        { enabled: false, region: 'eu', customHost: null, autocapture: false, sessionRecording: false },
+        {
+          enabled: false,
+          region: 'eu',
+          customHost: null,
+          autocapture: false,
+          sessionRecording: false,
+          productEventsEnabled: false,
+          enabledEventGroups: [],
+        },
         'admin'
       );
 
@@ -87,6 +99,8 @@ describe('PosthogSettingsRepository', () => {
           customHost: null,
           autocapture: false,
           sessionRecording: false,
+          productEventsEnabled: false,
+          enabledEventGroups: [],
           updatedBy: 'admin',
           updatedAt: expect.any(Date),
         },
@@ -101,14 +115,30 @@ describe('PosthogSettingsRepository', () => {
       const firstUpdatedAt = new Date('2026-05-01T00:00:00Z');
       ormRepo.findOneOrFail.mockResolvedValueOnce(ormRow({ updatedAt: firstUpdatedAt }));
       const first = await subject.upsertSettings(
-        { enabled: true, region: 'us', customHost: null, autocapture: true, sessionRecording: true },
+        {
+          enabled: true,
+          region: 'us',
+          customHost: null,
+          autocapture: true,
+          sessionRecording: true,
+          productEventsEnabled: false,
+          enabledEventGroups: [],
+        },
         'admin'
       );
 
       const secondUpdatedAt = new Date('2026-05-02T00:00:00Z');
       ormRepo.findOneOrFail.mockResolvedValueOnce(ormRow({ updatedAt: secondUpdatedAt }));
       const second = await subject.upsertSettings(
-        { enabled: true, region: 'us', customHost: null, autocapture: true, sessionRecording: true },
+        {
+          enabled: true,
+          region: 'us',
+          customHost: null,
+          autocapture: true,
+          sessionRecording: true,
+          productEventsEnabled: false,
+          enabledEventGroups: [],
+        },
         'admin'
       );
 

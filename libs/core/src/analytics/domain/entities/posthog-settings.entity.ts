@@ -21,6 +21,8 @@ export class PosthogSettings {
     public readonly customHost: string | null,
     public readonly autocapture: boolean,
     public readonly sessionRecording: boolean,
+    public readonly productEventsEnabled: boolean,
+    public readonly enabledEventGroups: string[],
     public readonly updatedAt: Date,
     public readonly updatedBy: string | null
   ) {}

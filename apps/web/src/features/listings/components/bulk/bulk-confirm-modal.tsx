@@ -12,6 +12,7 @@ import { Alert, Button } from '../../../../shared/ui';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../../shared/config/demo-mode';
+import { captureDemoEvent } from '../../../demo';
 import {
   Dialog,
   DialogContent,
@@ -144,7 +145,16 @@ export function BulkConfirmModal({
           >
             Cancel
           </Button>
-          <ReadOnlyLock active={demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <ReadOnlyLock
+            active={demoReadOnly}
+            message={DEMO_READ_ONLY_ACTION_MESSAGE}
+            onLockedClick={() =>
+              captureDemoEvent('demo_offer_create_attempted', {
+                platform: marketplaceName,
+                mode: 'bulk',
+              })
+            }
+          >
             <Button
               tone="primary"
               onClick={() => { onConfirm(publish); }}

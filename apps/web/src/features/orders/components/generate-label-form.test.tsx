@@ -7,7 +7,7 @@
  * focused on the first input and the submit is enabled.
  */
 import { cleanup, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 
 import {
   renderWithProviders,
@@ -17,6 +17,15 @@ import {
 import { ApiError } from '../../../shared/api/api-error';
 import { GenerateLabelForm } from './generate-label-form';
 import type { OrderRecord } from '../api/orders.types';
+
+const captureDemoEvent = vi.fn();
+vi.mock('../../demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
+
+beforeEach(() => {
+  captureDemoEvent.mockClear();
+});
 
 afterEach(cleanup);
 
@@ -504,6 +513,28 @@ describe('GenerateLabelForm — happy path', () => {
     vi.restoreAllMocks();
   });
 
+  it('captures demo_label_generate_attempted with the routed carrier on submit (#1788)', async () => {
+    const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
+    const apiClient = createMockApiClient({ shipments: { generateLabel } });
+
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    await waitFor(() => expect(generateLabel).toHaveBeenCalled());
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_label_generate_attempted', {
+      carrier: 'unknown',
+    });
+  });
+
   it('should NOT auto-download when generation resolves omp_fulfilled (no label)', async () => {
     const downloadLabel = vi.fn();
     const apiClient = createMockApiClient({
@@ -532,6 +563,56 @@ describe('GenerateLabelForm — happy path', () => {
 });
 
 // ── #839 AC-3 — pickup-point retry hint ─────────────────────────────────
+
+describe('GenerateLabelForm — initialPaczkomatId precedence (#1826)', () => {
+  it('shows the buyer-selected pickup point, not a stale initialPaczkomatId, when the snapshot has one (read-only field must stay truthful)', async () => {
+    // `makeOrder()`'s default snapshot carries `pickupPoint: { id: 'POZ08A' }`
+    // — the buyer's real, current selection. `initialPaczkomatId` here stands
+    // in for a *different*, already-failed shipment's locker id (e.g. the
+    // operator's earlier attempt used the wrong code). The read-only field is
+    // labelled "Buyer-selected" — it must never show anything else.
+    renderWithProviders(
+      <GenerateLabelForm
+        order={makeOrder()}
+        initialPaczkomatId="POZ99Z"
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    const field = await screen.findByLabelText('Paczkomat');
+    expect(field).toHaveValue('POZ08A');
+    expect(field).toHaveAttribute('readonly');
+    expect(screen.queryByDisplayValue('POZ99Z')).toBeNull();
+  });
+
+  it('pre-fills the editable InPost field with initialPaczkomatId when the snapshot has no buyer-selected pickup point', async () => {
+    const baseSnapshot = makeOrder().orderSnapshot as Record<string, unknown>;
+    const snapshotWithoutPickupPoint = { ...baseSnapshot };
+    delete snapshotWithoutPickupPoint.pickupPoint;
+    const order = makeOrder({
+      orderSnapshot: {
+        ...snapshotWithoutPickupPoint,
+        // Locker-classified method (matches the `LOCKER_METHOD_RE` regex) so
+        // the paczkomat field still renders even with no `pickupPoint`.
+        shipping: { methodId: 'inpost-paczkomat', methodName: 'InPost Paczkomat' },
+      },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm
+        order={order}
+        initialPaczkomatId="POZ99Z"
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    const field = await screen.findByLabelText('Paczkomat');
+    expect(field).toHaveValue('POZ99Z');
+    expect(field).not.toHaveAttribute('readonly');
+  });
+});
 
 describe('GenerateLabelForm — AC-3 pickup-point retry hint (#839)', () => {
   // A genuine unresolved-locker order: a locker delivery method, but the

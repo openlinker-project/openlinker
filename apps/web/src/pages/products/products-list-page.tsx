@@ -18,7 +18,15 @@
  *
  * @module apps/web/src/pages/products
  */
-import { useCallback, useMemo, useState, type ReactElement, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -64,6 +72,7 @@ import {
 import { ListingsCoveragePills } from './listings-coverage-pills';
 import { ProductRowDetail } from './product-row-detail';
 import { OfferProductPickerModal } from '../../features/listings/components/offer-product-picker-modal';
+import { bucketCount, captureDemoEvent } from '../../features/demo';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -291,6 +300,18 @@ export function ProductsListPage(): ReactElement {
   const query = useProductsQuery(filters, pagination, sort);
   const items = query.data?.items ?? [];
 
+  // Fire once per successful list load, not on every filter/page refetch —
+  // demo-mode analytics only (#1788), no-op elsewhere.
+  const hasFiredViewedRef = useRef(false);
+  useEffect(() => {
+    if (query.data && !hasFiredViewedRef.current) {
+      hasFiredViewedRef.current = true;
+      captureDemoEvent('demo_products_viewed', {
+        resultCountBucket: bucketCount(query.data.total),
+      });
+    }
+  }, [query.data]);
+
   // KPI tile counts — four cheap limit:1 probes with distinct query keys
   // (nav-counts precedent). The gaps probe is disabled with zero OfferCreator
   // connections (its filter would be meaningless).
@@ -506,6 +527,7 @@ export function ProductsListPage(): ReactElement {
   // Capability-aware bulk launch: 1 destination → dispatch straight;
   // 2+ → grouped destination picker. (0 hides the action.)
   const handleCreateOffers = useCallback(() => {
+    captureDemoEvent('demo_offer_create_launched', { source: 'bulk_bar' });
     if (publishDestinations.length === 1) {
       dispatchPublish(Array.from(selectedIds), publishDestinations[0]!.connection.id);
     } else if (publishDestinations.length > 1) {
@@ -517,6 +539,7 @@ export function ProductsListPage(): ReactElement {
   // Per-row "+ Create offers" CTA — same launch, single product preselected.
   const handleCreateOffersForProduct = useCallback(
     (productId: string) => {
+      captureDemoEvent('demo_offer_create_launched', { source: 'row' });
       if (publishDestinations.length === 1) {
         dispatchPublish([productId], publishDestinations[0]!.connection.id);
       } else if (publishDestinations.length > 1) {
@@ -1196,7 +1219,12 @@ export function ProductsListPage(): ReactElement {
                       type="button"
                       className="products-card-disclosure"
                       aria-expanded={expanded}
-                      onClick={() => { toggleCardExpanded(product.id); }}
+                      onClick={() => {
+                        toggleCardExpanded(product.id);
+                        if (!expanded) {
+                          captureDemoEvent('demo_product_row_expanded', {});
+                        }
+                      }}
                     >
                       <span className="products-card-disclosure__chev" aria-hidden="true">
                         {expanded ? '▾' : '▸'}

@@ -90,6 +90,11 @@ const harness = createIntegrationTestHarness({
     // refresh_tokens has FKs into users (#710). Truncate before users
     // so the FK CASCADE doesn't fight the explicit order.
     'refresh_tokens',
+    // mcp_tokens FKs into users (#1486). Like connection_carrier_mappings and
+    // fulfillment_routing_rules, that FK lives in the migration rather than the
+    // ORM decorators, so the synchronize-built test schema has nothing to
+    // cascade from `users` — truncate it explicitly or tokens leak between cases.
+    'mcp_tokens',
     'product_variants',
     'products',
     // shipments (#763 / #835) — order- + connection-scoped; truncate before

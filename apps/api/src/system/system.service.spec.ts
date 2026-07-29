@@ -34,6 +34,8 @@ describe('SystemService', () => {
         host: 'https://eu.i.posthog.com',
         autocapture: false,
         sessionRecording: true,
+        productEventsEnabled: false,
+        enabledEventGroups: [],
       }).getConfig(),
     ).resolves.toEqual({ demoMode: false });
   });
@@ -48,6 +50,8 @@ describe('SystemService', () => {
       host: 'https://eu.i.posthog.com',
       autocapture: false,
       sessionRecording: true,
+      productEventsEnabled: false,
+      enabledEventGroups: [],
     };
     await expect(makeService(true, resolvedConfig).getConfig()).resolves.toEqual({
       demoMode: true,
@@ -61,6 +65,8 @@ describe('SystemService', () => {
       host: 'https://us.i.posthog.com',
       autocapture: true,
       sessionRecording: false,
+      productEventsEnabled: false,
+      enabledEventGroups: [],
     };
     await expect(makeService(true, resolvedConfig).getConfig()).resolves.toEqual({
       demoMode: true,

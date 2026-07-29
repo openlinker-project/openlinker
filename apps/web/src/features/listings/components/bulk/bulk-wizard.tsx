@@ -21,6 +21,7 @@ import { usePlatforms, type OfferRowValidationInput } from '../../../../shared/p
 import { useWriteAccess } from '../../../../shared/auth/use-permission';
 import { useDemoMode } from '../../../system';
 import { useConnectionsQuery } from '../../../connections';
+import { captureDemoEvent } from '../../../demo';
 import { useBulkSubmitMutation } from '../../hooks/use-bulk-submit-mutation';
 import { useBulkShopPublishMutation } from '../../hooks/use-bulk-shop-publish-mutation';
 import { useBulkRequiredProductParams } from '../../hooks/use-bulk-required-product-params';
@@ -255,6 +256,10 @@ export function BulkWizard({
       const nextConnection = (connectionsQuery.data ?? []).find(
         (c) => c.id === next.connectionId,
       );
+      captureDemoEvent('demo_offer_wizard_step_advanced', {
+        platform: nextConnection?.platformType ?? 'unknown',
+        step: 'config',
+      });
       const nextIsShop =
         nextConnection !== undefined && publishDestinationKind(nextConnection) === 'shop';
       setStep(nextIsShop ? 'review' : 'resolve');
@@ -262,10 +267,16 @@ export function BulkWizard({
     [connectionsQuery.data],
   );
 
-  const handleResolveComplete = useCallback((outcomes: BulkResolveOutcome[]) => {
-    setRows((prev) => mergeResolveOutcomes(prev, outcomes));
-    setStep('review');
-  }, []);
+  const handleResolveComplete = useCallback(
+    (outcomes: BulkResolveOutcome[]) => {
+      captureDemoEvent('demo_offer_wizard_review_reached', {
+        platform: batchConnection?.platformType ?? 'unknown',
+      });
+      setRows((prev) => mergeResolveOutcomes(prev, outcomes));
+      setStep('review');
+    },
+    [batchConnection],
+  );
 
   // Toggle one variant's inclusion (single source of truth). Blockers recompute
   // so an excluded blocked variant doesn't keep gating and an included one does.

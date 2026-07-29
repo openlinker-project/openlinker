@@ -29,9 +29,45 @@ import type {
   WebhookDeliveryStatus,
 } from '../../../domain/types/webhook-delivery.types';
 import {
+  WEBHOOK_DELIVERY_STATUS_RANK,
   WebhookDedupResultValues,
   WebhookDeliveryStatusValues,
 } from '../../../domain/types/webhook-delivery.types';
+
+/**
+ * Statuses are interpolated into the conflict guard below rather than bound as
+ * parameters (the guard shape is fixed, the ladder is not caller-supplied), so
+ * pin them to a quote-free shape at module load. Values in the statement itself
+ * remain bound parameters.
+ */
+const SAFE_STATUS_LITERAL = /^[a-z_]+$/;
+for (const status of WebhookDeliveryStatusValues) {
+  if (!SAFE_STATUS_LITERAL.test(status)) {
+    throw new Error(`Unsafe webhook delivery status literal for SQL interpolation: ${status}`);
+  }
+}
+
+/** `CASE <expr> WHEN 'received' THEN 0 … ELSE -1 END` over the rank ladder. */
+function rankExpression(statusExpression: string): string {
+  const whens = WebhookDeliveryStatusValues.map(
+    (status) => `WHEN '${status}' THEN ${WEBHOOK_DELIVERY_STATUS_RANK[status]}`
+  ).join(' ');
+  // ELSE -1: an unrecognised value already in the column ranks below every
+  // known status, so a row can never wedge itself out of being advanced; an
+  // unrecognised incoming value loses to any known current value.
+  return `CASE ${statusExpression} ${whens} ELSE -1 END`;
+}
+
+/**
+ * Non-regressing assignment for `status`. The ingress API writes `published`
+ * *after* publishing to the stream, while the consumer that reads that stream
+ * writes `job_enqueued` / `deadlettered` - routinely first. Plain
+ * `EXCLUDED."status"` therefore let the API's later write roll the lifecycle
+ * back (#1916). `>=` keeps a same-status rewrite effective.
+ */
+const STATUS_GUARD_ASSIGNMENT = `"status" = CASE WHEN ${rankExpression(
+  'EXCLUDED."status"'
+)} >= ${rankExpression('webhook_deliveries."status"')} THEN EXCLUDED."status" ELSE webhook_deliveries."status" END`;
 
 @Injectable()
 export class WebhookDeliveryRepository implements WebhookDeliveryRepositoryPort {
@@ -76,8 +112,12 @@ export class WebhookDeliveryRepository implements WebhookDeliveryRepositoryPort 
 
     // On conflict, refresh only the caller-supplied overlay columns (plus the
     // update timestamp), matching the previous `.orUpdate(updateKeys, ...)`.
+    // `status` is the one column two writers race for, so it takes the
+    // rank-guarded assignment; the rest stay last-write-wins.
     const setAssignments = [
-      ...Object.keys(overlay).map((col) => `"${col}" = EXCLUDED."${col}"`),
+      ...Object.keys(overlay).map((col) =>
+        col === 'status' ? STATUS_GUARD_ASSIGNMENT : `"${col}" = EXCLUDED."${col}"`
+      ),
       `"updatedAt" = now()`,
     ];
 

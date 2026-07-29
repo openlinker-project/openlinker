@@ -6,12 +6,26 @@
  * shipping connection's platformType.
  */
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, it, expect, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import {
+  renderWithProviders,
+  createMockApiClient,
+  createAuthenticatedSessionAdapter,
+} from '../../../test/test-utils';
+import type { SessionUser } from '../../../shared/auth/session.types';
 import { OrderShipmentPanel } from './order-shipment-panel';
 import type { Connection } from '../../connections';
 import type { Shipment } from '../../shipments';
 import type { OrderRecord } from '../api/orders.types';
+
+const captureDemoEvent = vi.fn();
+vi.mock('../../demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
+
+beforeEach(() => {
+  captureDemoEvent.mockClear();
+});
 
 afterEach(cleanup);
 
@@ -65,6 +79,8 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     status: 'dispatched',
     providerShipmentId: 'prov-1',
     paczkomatId: 'POZ08A',
+    sourceDeliveryMethodId: null,
+    deliveryIntent: null,
     trackingNumber: '6800000001',
     carrier: 'inpost',
     labelPdfRef: null,
@@ -148,10 +164,37 @@ describe('OrderShipmentPanel — empty state', () => {
       },
     });
 
-    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, { apiClient });
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     expect(await screen.findByText('No shipment yet')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Generate label/i })).toBeInTheDocument();
+  });
+
+  it('should hide the empty-state Generate label CTA when the session lacks shipments:write (#1905)', async () => {
+    const viewer: SessionUser = {
+      id: 'user_viewer',
+      username: 'viewer',
+      email: 'viewer@example.com',
+      role: 'viewer',
+      permissions: ['shipments:read'],
+    };
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(viewer),
+    });
+
+    expect(await screen.findByText('No shipment yet')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Generate label/i })).not.toBeInTheDocument();
   });
 
   it('should suppress the Generate-label CTA and explain shop fulfilment for an omp_fulfilled order (#1799)', async () => {
@@ -170,7 +213,10 @@ describe('OrderShipmentPanel — empty state', () => {
       },
     });
 
-    renderWithProviders(<OrderShipmentPanel order={order} />, { apiClient });
+    renderWithProviders(<OrderShipmentPanel order={order} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     expect(await screen.findByText(/ships this order with its own carrier/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Generate label/i })).not.toBeInTheDocument();
@@ -193,7 +239,10 @@ describe('OrderShipmentPanel — empty state', () => {
       deliveryRider: { rider: 'disabled', candidateCarrier: { platformType: 'inpost', displayName: 'InPost' } },
     });
 
-    renderWithProviders(<OrderShipmentPanel order={order} />, { apiClient });
+    renderWithProviders(<OrderShipmentPanel order={order} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     expect(await screen.findByText(/that connection is disabled/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Generate label/i })).not.toBeInTheDocument();
@@ -208,7 +257,10 @@ describe('OrderShipmentPanel — empty state', () => {
     });
     const order = makeOrder({ fulfillmentState: 'dispatched' });
 
-    renderWithProviders(<OrderShipmentPanel order={order} />, { apiClient });
+    renderWithProviders(<OrderShipmentPanel order={order} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     expect(await screen.findByText('Dispatched outside OpenLinker')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Generate label/i })).not.toBeInTheDocument();
@@ -240,6 +292,27 @@ describe('OrderShipmentPanel — empty state', () => {
     // visible without hovering the disabled Generate-label button.
     expect(await screen.findByText('InPost')).toBeInTheDocument();
     expect(screen.getByText(/that connection is disabled/i)).toBeInTheDocument();
+  });
+
+  it('captures demo_label_form_opened with entry=empty_state when the empty-state CTA is clicked (#1788)', async () => {
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const button = await screen.findByRole('button', { name: /Generate label/i });
+    fireEvent.click(button);
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_label_form_opened', {
+      entry: 'empty_state',
+    });
   });
 });
 
@@ -364,19 +437,31 @@ describe('OrderShipmentPanel — action button matrix (§3.4)', () => {
     // `draft` → generate-as-retry per the spec ("enabled (retry)").
     // `download` column assumes a non-null labelPdfRef (set below) so it
     // isolates the lifecycle-state gate; the ref-absent case is covered separately.
-    ['draft', { generate: true, cancel: false, notify: false, download: false }],
-    ['generated', { generate: false, cancel: true, notify: true, download: true }],
-    ['dispatched', { generate: false, cancel: false, notify: false, download: true }],
-    ['in-transit', { generate: false, cancel: false, notify: false, download: true }],
-    ['delivered', { generate: true, cancel: false, notify: false, download: true }],
-    ['failed', { generate: true, cancel: false, notify: false, download: false }],
-    ['cancelled', { generate: true, cancel: false, notify: false, download: false }],
-  ] as const)('should compute enablement for status %s', async (status, expected) => {
+    // `providerShipmentId` is pinned per row because Generate now also depends
+    // on it (#1905 — see `canRegenerateLabel`), not on status alone.
+    ['draft', null, { generate: true, cancel: false, notify: false, download: false }],
+    ['generated', 'prov-1', { generate: false, cancel: true, notify: true, download: true }],
+    ['dispatched', 'prov-1', { generate: false, cancel: false, notify: false, download: true }],
+    ['in-transit', 'prov-1', { generate: false, cancel: false, notify: false, download: true }],
+    // `delivered` no longer offers Generate: the parcel arrived, so there is
+    // nothing left to dispatch (#1905).
+    ['delivered', 'prov-1', { generate: false, cancel: false, notify: false, download: true }],
+    // A pre-waybill create failure is the retry case Generate exists for.
+    ['failed', null, { generate: true, cancel: false, notify: false, download: false }],
+    // A POST-waybill `failed` row (returned_to_sender & friends) must NOT:
+    // regenerating buys a second carrier label for an uncancelled shipment.
+    ['failed', 'prov-1', { generate: false, cancel: false, notify: false, download: false }],
+    // Cancelled voided its waybill with the carrier, so regenerate is the
+    // supported recovery path even post-waybill.
+    ['cancelled', 'prov-1', { generate: true, cancel: false, notify: false, download: false }],
+  ] as const)(
+    'should compute enablement for status %s with providerShipmentId %s',
+    async (status, providerShipmentId, expected) => {
     const apiClient = createMockApiClient({
       connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
       shipments: {
         list: vi.fn().mockResolvedValue({
-          items: [makeShipment({ status, labelPdfRef: 'shipx:label:1' })],
+          items: [makeShipment({ status, providerShipmentId, labelPdfRef: 'shipx:label:1' })],
           total: 1,
           limit: 20,
           offset: 0,
@@ -384,14 +469,19 @@ describe('OrderShipmentPanel — action button matrix (§3.4)', () => {
       },
     });
 
-    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, { apiClient });
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     // Wait for the populated state — the Cancel button only appears once
     // both connections + shipments queries have settled (heading is shared
     // with the skeleton state, so it's not a reliable settle-signal).
     await screen.findByRole('button', { name: /^Cancel$/i });
 
-    const generate = screen.getByRole('button', { name: /Generate label|Generate shipping label/i });
+    // Looked up by visible label, not accessible name: a disabled Generate
+    // button's `aria-label` is now the block reason (#1905), which varies.
+    const generate = screen.getByText('Generate label', { selector: 'button' });
     const cancel = screen.getByRole('button', { name: /^Cancel$/i });
     const notify = screen.getByRole('button', { name: /Mark dispatched/i });
     const download = screen.getByRole('button', { name: /Download label|Download shipping label/i });
@@ -400,6 +490,92 @@ describe('OrderShipmentPanel — action button matrix (§3.4)', () => {
     expect((cancel as HTMLButtonElement).disabled).toBe(!expected.cancel);
     expect((notify as HTMLButtonElement).disabled).toBe(!expected.notify);
     expect((download as HTMLButtonElement).disabled).toBe(!expected.download);
+    },
+  );
+
+  it('should explain a post-waybill refusal on the disabled Generate button, in title as well as aria-label (#1905)', async () => {
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({
+          items: [makeShipment({ status: 'failed', providerShipmentId: 'prov-1' })],
+          total: 1,
+          limit: 20,
+          offset: 0,
+        }),
+      },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const generate = await screen.findByRole('button', { name: /already holds a carrier waybill/i });
+    expect(generate).toBeDisabled();
+    // A sighted mouse user gets the reason from `title`, not only from AT.
+    expect(generate).toHaveAttribute('title', expect.stringMatching(/already holds a carrier waybill/i));
+  });
+
+  it('should disable every write action for a session without shipments:write (#1905)', async () => {
+    const viewer: SessionUser = {
+      id: 'user_viewer',
+      username: 'viewer',
+      email: 'viewer@example.com',
+      role: 'viewer',
+      permissions: ['shipments:read'],
+    };
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({
+          items: [makeShipment({ status: 'generated', labelPdfRef: 'shipx:label:1' })],
+          total: 1,
+          limit: 20,
+          offset: 0,
+        }),
+      },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(viewer),
+    });
+
+    await screen.findByRole('button', { name: /^Cancel$/i });
+    expect(screen.getByRole('button', { name: /^Cancel$/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Mark dispatched/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /shipments:write permission/i })).toBeDisabled();
+    // Read-only actions stay available — `generated` + a labelPdfRef.
+    expect(screen.getByRole('button', { name: /Download shipping label/i })).toBeEnabled();
+  });
+
+  it('captures demo_label_form_opened with entry=active_shipment_row when the row Generate button is clicked (#1788)', async () => {
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({
+          items: [makeShipment({ status: 'draft', labelPdfRef: 'shipx:label:1' })],
+          total: 1,
+          limit: 20,
+          offset: 0,
+        }),
+      },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const generate = await screen.findByRole('button', {
+      name: /Generate label|Generate shipping label/i,
+    });
+    fireEvent.click(generate);
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_label_form_opened', {
+      entry: 'active_shipment_row',
+    });
   });
 
   it('should disable Download label when the shipment has no labelPdfRef even if dispatched', async () => {
@@ -516,13 +692,49 @@ describe('OrderShipmentPanel — persisted rejection (#1800)', () => {
       },
     });
 
-    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, { apiClient });
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     expect(
       await screen.findByText(/sender postal code is not serviceable/i),
     ).toBeInTheDocument();
     // failedAt renders as a relative/absolute time — the "Failed" label anchors it.
     expect(screen.getByText(/^Failed/)).toBeInTheDocument();
+  });
+
+  it('should redact the raw errorMessage for a viewer session (#1826) — the order-detail panel is one click away from the /shipments row this fix also applies to', async () => {
+    const viewer: SessionUser = {
+      id: 'user_viewer',
+      username: 'viewer',
+      email: 'viewer@example.com',
+      role: 'viewer',
+      permissions: ['shipments:read'],
+    };
+    const shipment = makeShipment({
+      status: 'failed',
+      errorMessage: 'DPD rejected the shipment: sender postal code is not serviceable.',
+      failedAt: '2026-05-28T12:30:00.000Z',
+      trackingNumber: null,
+      carrier: 'dpd',
+    });
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(viewer),
+    });
+
+    expect(await screen.findByText('Details hidden for this role.')).toBeInTheDocument();
+    expect(
+      screen.queryByText(/sender postal code is not serviceable/i),
+    ).not.toBeInTheDocument();
   });
 
   it('should not render a persisted-error Alert for a non-failed shipment carrying a stale errorMessage', async () => {
@@ -547,5 +759,284 @@ describe('OrderShipmentPanel — persisted rejection (#1800)', () => {
     await screen.findByText('Shipment');
     expect(screen.queryByText('previous transient error')).toBeNull();
     expect(container.querySelector('.order-shipment-panel__error')).toBeNull();
+  });
+});
+
+describe('OrderShipmentPanel — deep-link auto-open (#1826)', () => {
+  /**
+   * A pre-waybill failed shipment — the only shape the retry deep-link may
+   * auto-open (#1905). `providerShipmentId: null` is load-bearing, not
+   * incidental: a post-waybill `failed` row is explicitly refused.
+   */
+  function makeRetryTarget(overrides: Partial<Shipment> = {}): Shipment {
+    return makeShipment({
+      id: 'ol_shipment_failed',
+      status: 'failed',
+      providerShipmentId: null,
+      errorMessage: 'sender postcode invalid',
+      failedAt: '2026-05-28T12:30:00.000Z',
+      paczkomatId: 'POZ08A',
+      trackingNumber: null,
+      ...overrides,
+    });
+  }
+
+  it('should auto-expand the form when autoOpenForShipmentId matches a retry-eligible shipment', async () => {
+    const shipment = makeRetryTarget();
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(
+      <OrderShipmentPanel order={makeOrder()} autoOpenForShipmentId="ol_shipment_failed" />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    // The form opens automatically (no click needed) once the matching
+    // shipment resolves, and the locker id is pre-filled from that shipment.
+    const paczkomatInput = await screen.findByDisplayValue('POZ08A');
+    expect(paczkomatInput).toBeInTheDocument();
+  });
+
+  it('should not auto-open when the target failed shipment still holds a carrier waybill (#1905)', async () => {
+    // The `failed` bucket folds in POST-delivery ShipX outcomes
+    // (returned_to_sender, pickup_time_expired, …) that keep a live waybill.
+    // Regenerating those mints and charges a SECOND label.
+    const shipment = makeRetryTarget({ providerShipmentId: 'shipx-1' });
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(
+      <OrderShipmentPanel order={makeOrder()} autoOpenForShipmentId="ol_shipment_failed" />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    await screen.findByText(/sender postcode invalid/i);
+    expect(screen.queryByDisplayValue('POZ08A')).toBeNull();
+    // …and the operator is told why, not left with a silent no-op. (The
+    // disabled button carries the same sentence as an `aria-label` / `title`,
+    // neither of which is text content, so this match is unambiguous.)
+    expect(await screen.findByText(/already holds a carrier waybill/i)).toBeInTheDocument();
+  });
+
+  it('should not auto-open for a session without shipments:write (#1905)', async () => {
+    const viewer: SessionUser = {
+      id: 'user_viewer',
+      username: 'viewer',
+      email: 'viewer@example.com',
+      role: 'viewer',
+      permissions: ['shipments:read'],
+    };
+    const shipment = makeRetryTarget();
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(
+      <OrderShipmentPanel order={makeOrder()} autoOpenForShipmentId="ol_shipment_failed" />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter(viewer) },
+    );
+
+    await screen.findByText('Shipment');
+    expect(screen.queryByText('Recipient')).toBeNull();
+    expect(screen.queryByDisplayValue('POZ08A')).toBeNull();
+  });
+
+  it('should explain the no-op when autoOpenForShipmentId matches no shipment on this order (stale/foreign link)', async () => {
+    const shipment = makeShipment({ id: 'ol_shipment_1', status: 'generated' });
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(
+      <OrderShipmentPanel order={makeOrder()} autoOpenForShipmentId="ol_shipment_does_not_exist" />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    expect(
+      await screen.findByText('That shipment is no longer on this order.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Recipient')).toBeNull();
+  });
+
+  it('should not pre-fill the pickup-point id when the failed attempt used a different connection (#1905)', async () => {
+    // A DPD parcel-shop code is meaningless to InPost (and vice versa), so a
+    // routing-rule change since the failed attempt must not pre-fill a
+    // plausible-looking wrong-network point id.
+    const shipment = makeRetryTarget({
+      connectionId: 'conn-dpd',
+      paczkomatId: 'PL11033',
+    });
+    const order = makeOrder({
+      // No snapshot pickupPoint, but a locker-named method, so the paczkomat
+      // field still renders and is operator-editable (not buyer-selected).
+      orderSnapshot: {
+        ...(makeOrder().orderSnapshot as Record<string, unknown>),
+        pickupPoint: undefined,
+        shipping: { methodId: 'inpost-locker', methodName: 'InPost Paczkomat' },
+      },
+    });
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(
+      <OrderShipmentPanel order={order} autoOpenForShipmentId="ol_shipment_failed" />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    // The form still opens (the retry itself is eligible) — only the pre-fill
+    // is withheld.
+    await screen.findByText('Recipient');
+    expect(screen.queryByDisplayValue('PL11033')).toBeNull();
+  });
+
+  it('should pre-fill the pickup-point id when the failed attempt used the connection routing resolves to now (#1905)', async () => {
+    const shipment = makeRetryTarget({
+      connectionId: 'conn-inpost',
+      paczkomatId: 'POZ99Z',
+    });
+    const order = makeOrder({
+      orderSnapshot: {
+        ...(makeOrder().orderSnapshot as Record<string, unknown>),
+        pickupPoint: undefined,
+        shipping: { methodId: 'inpost-locker', methodName: 'InPost Paczkomat' },
+      },
+    });
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(
+      <OrderShipmentPanel order={order} autoOpenForShipmentId="ol_shipment_failed" />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    expect(await screen.findByDisplayValue('POZ99Z')).toBeInTheDocument();
+  });
+
+  it('should not auto-open on a payment-blocked order (#928) — explains the block instead', async () => {
+    const shipment = makeRetryTarget();
+    const order = makeOrder({
+      orderSnapshot: {
+        ...(makeOrder().orderSnapshot as Record<string, unknown>),
+        paymentStatus: 'awaiting',
+      },
+    });
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(
+      <OrderShipmentPanel order={order} autoOpenForShipmentId="ol_shipment_failed" />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    await screen.findByText(/sender postcode invalid/i);
+    expect(screen.queryByDisplayValue('POZ08A')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Cannot regenerate yet - awaiting payment.' }),
+    ).toBeInTheDocument();
+    // The reason is on the page as text too, not only on the greyed button.
+    expect(screen.getByText('Cannot regenerate yet - awaiting payment.')).toBeInTheDocument();
+  });
+
+  it('should not auto-open when the order has no live OL carrier route (#1799) — explains the block instead', async () => {
+    const shipment = makeRetryTarget();
+    const order = makeOrder({
+      deliveryResolution: {
+        source: 'rule',
+        processorKind: 'ol_managed_carrier',
+        processorConnectionId: 'conn-inpost',
+        processorAvailable: false,
+      },
+    });
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(
+      <OrderShipmentPanel order={order} autoOpenForShipmentId="ol_shipment_failed" />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    await screen.findByText(/sender postcode invalid/i);
+    expect(screen.queryByDisplayValue('POZ08A')).toBeNull();
+    expect(
+      screen.getByRole('button', {
+        name: "Routed carrier isn't available to dispatch - resolve delivery routing first.",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('does not re-open the form after the operator dismisses it via Cancel', async () => {
+    // Regression guard for the id-vs-object-identity latch: before the fix,
+    // the auto-open effect's dependency was the *object* returned by
+    // `.find()`, not its id. A query refetch (e.g. `useGenerateLabelMutation`
+    // invalidating the shipments domain, or a window-refocus refetch) resolves
+    // a brand-new object literal carrying the same shipment id, which
+    // recomputes the `useMemo` and re-fires the effect — silently re-opening
+    // a form the operator just dismissed. The `useRef` latch below is keyed
+    // on `retryTargetShipment.id`, so it stays closed regardless of how many
+    // times an equivalent-but-referentially-new shipment object arrives.
+    const shipment = makeRetryTarget();
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(
+      <OrderShipmentPanel order={makeOrder()} autoOpenForShipmentId="ol_shipment_failed" />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    const paczkomatInput = await screen.findByDisplayValue('POZ08A');
+    // Two "Cancel" buttons are on screen — `ShipmentActionButtons`'s (disabled,
+    // cancels the shipment itself) and `GenerateLabelForm`'s own (enabled,
+    // dismisses the inline form). Scope to the enabled one.
+    const formCancelButton = screen
+      .getAllByRole('button', { name: 'Cancel' })
+      .find((button) => !button.hasAttribute('disabled'));
+    expect(formCancelButton).toBeDefined();
+    fireEvent.click(formCancelButton as HTMLElement);
+
+    await waitFor(() => {
+      expect(screen.queryByDisplayValue('POZ08A')).toBeNull();
+    });
+    // Settle any pending microtasks/effects, then confirm it stays closed.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByDisplayValue('POZ08A')).toBeNull();
+    expect(paczkomatInput).not.toBeInTheDocument();
+    // …and dismissing it does NOT leave the deep-link explanation behind: the
+    // link wasn't refused, the operator changed their mind (#1905).
+    expect(screen.queryByText(/Cannot regenerate yet/i)).toBeNull();
+    expect(screen.queryByText('That shipment is no longer on this order.')).toBeNull();
   });
 });

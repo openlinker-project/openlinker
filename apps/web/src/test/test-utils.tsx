@@ -10,7 +10,7 @@ import type { Connection } from '../features/connections/api/connections.types';
 import { createNoopSessionAdapter } from '../shared/auth/noop-session-adapter';
 import type { SessionAdapter } from '../shared/auth/session-adapter';
 import { SessionProvider } from '../shared/auth/session-provider';
-import type { Session, SessionUser } from '../shared/auth/session.types';
+import { PermissionValues, type Session, type SessionUser } from '../shared/auth/session.types';
 import { ToastProvider } from '../shared/ui/toast-provider';
 import { TooltipProvider } from '../shared/ui/tooltip';
 import { LocaleProvider } from '../shared/i18n';
@@ -379,6 +379,12 @@ export function createMockApiClient(
       clearCredentials: vi.fn().mockResolvedValue(undefined),
       ...overrides.mailerSettings,
     } as ApiClient['mailerSettings'],
+    mcpTokens: {
+      list: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockResolvedValue(undefined),
+      revoke: vi.fn().mockResolvedValue(undefined),
+      ...overrides.mcpTokens,
+    } as ApiClient['mcpTokens'],
     posthogSettings: {
       get: vi.fn().mockResolvedValue({
         enabled: false,
@@ -386,6 +392,8 @@ export function createMockApiClient(
         customHost: null,
         autocapture: false,
         sessionRecording: false,
+        productEventsEnabled: false,
+        enabledEventGroups: [],
         apiKeyConfigured: false,
         wouldOverrideEnv: false,
         overriddenEnvVars: [],
@@ -543,24 +551,22 @@ export function createMockApiClient(
   return { ...core, ...pluginNamespaces } as ApiClient;
 }
 
+/**
+ * Default authenticated test session — an `admin`, which the backend's
+ * `ROLE_PERMISSIONS` grants **every** permission (`admin: PermissionValues`).
+ * Derived from `PermissionValues` rather than hand-listed (#1826): the
+ * previous hand-maintained array had silently drifted, omitting
+ * `customers:read` / `shipments:read` / `shipments:write` even though a real
+ * admin session carries them — so any test asserting an affordance gated on a
+ * missing permission was passing for the wrong reason. Deriving it means a
+ * newly-added permission can't drift out of this fixture again.
+ */
 const DEFAULT_TEST_USER: SessionUser = {
   id: 'user_1',
   username: 'admin',
   email: 'admin@example.com',
   role: 'admin',
-  permissions: [
-    'connections:read', 'connections:write',
-    'sync:read', 'sync:write',
-    'integrations:read', 'integrations:write',
-    'adapters:read',
-    'orders:read', 'orders:write',
-    'products:read', 'products:write',
-    'inventory:read', 'inventory:write',
-    'listings:read', 'listings:write',
-    'ai:suggest',
-    'content:write',
-    'invoices:read', 'invoices:write',
-  ],
+  permissions: [...PermissionValues],
   analyticsConsent: true,
 };
 

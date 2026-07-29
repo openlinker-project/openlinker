@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useLocation } from 'react-router-dom';
 import { CreateConnectionForm } from './create-connection-form';
 import {
@@ -11,12 +11,21 @@ import {
   renderWithProviders,
 } from '../../../test/test-utils';
 
+const captureDemoEvent = vi.fn();
+vi.mock('../../demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
+
 function LocationProbe(): ReactElement {
   const location = useLocation();
   return <div data-testid="location-pathname">{location.pathname}</div>;
 }
 
 describe('CreateConnectionForm', () => {
+  beforeEach(() => {
+    captureDemoEvent.mockClear();
+  });
+
   it('shows validation feedback for invalid JSON configuration', async () => {
     const view = renderWithProviders(<CreateConnectionForm />);
 
@@ -152,6 +161,15 @@ describe('CreateConnectionForm', () => {
       await waitFor(() => {
         const submit = within(view.container).getByRole('button', { name: 'Create connection' });
         expect(submit).toBeDisabled();
+      });
+
+      fireEvent.change(within(view.container).getAllByLabelText('Platform type')[0], {
+        target: { value: 'prestashop' },
+      });
+      fireEvent.click(view.container.querySelector('.read-only-lock') as Element);
+
+      expect(captureDemoEvent).toHaveBeenCalledWith('demo_connection_create_attempted', {
+        platform: 'prestashop',
       });
     });
 
