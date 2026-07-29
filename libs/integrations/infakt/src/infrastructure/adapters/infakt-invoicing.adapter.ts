@@ -73,6 +73,28 @@ const SUPPORTED_DOCUMENT_TYPES: readonly DocumentType[] = [
 ];
 
 /**
+ * Page size requested for the NIP client lookup (#1926).
+ *
+ * `q[nip_eq]` is an exact match, so one page is always enough for a legitimate
+ * result; the explicit limit only bounds the payload if the filter ever silently
+ * stops filtering (inFakt's failure mode for an unrecognised key — see
+ * `findClientByNip`), which the client-side re-match then rejects anyway.
+ */
+const CLIENT_LOOKUP_PAGE_SIZE = 25;
+
+/**
+ * Reduce a tax id to bare digits for comparison and for the `q[nip_eq]` filter.
+ *
+ * inFakt matches the NIP as an exact string, so a prefixed `PL1234563218` or a
+ * separator-formatted `123-456-32-18` both return zero rows against a stored
+ * `1234563218` (verified live, #1926). Normalising both sides makes the lookup
+ * independent of however the buyer's tax id was formatted upstream.
+ */
+function normalizeNip(taxId: string): string {
+  return taxId.replace(/\D/g, '');
+}
+
+/**
  * Maps Infakt ksef_data.status → neutral RegulatoryStatus.
  *
  * `success` is the TERMINAL accepted state — it must map to `accepted`, not
@@ -317,7 +339,7 @@ export class InfaktInvoicingAdapter
    */
   async listBankAccounts(): Promise<InvoicingBankAccount[]> {
     const response = await this.getListResponse<InfaktBankAccount>('bank_accounts.json');
-    return response.items.map((account) => ({
+    return response.entities.map((account) => ({
       id: String(account.id),
       accountNumber: account.account_number,
       bankName: account.bank_name,
@@ -345,8 +367,13 @@ export class InfaktInvoicingAdapter
 
   async upsertCustomer(cmd: UpsertCustomerCommand): Promise<UpsertCustomerResult> {
     const { buyer } = cmd;
-    // Infakt uses NIP (pl-nip scheme) for B2B client dedup
-    const nip = buyer.taxId?.scheme === 'pl-nip' ? buyer.taxId.value : null;
+    // Infakt uses NIP (pl-nip scheme) for B2B client dedup. Stored in the
+    // normalised bare-digit form the `q[nip_eq]` lookup filters on (#1926) —
+    // persisting a prefixed or separator-formatted NIP would make the client
+    // unfindable by its own lookup on the next invoice, re-creating the
+    // duplicate-per-issuance defect for that buyer.
+    const rawNip = buyer.taxId?.scheme === 'pl-nip' ? buyer.taxId.value : null;
+    const nip = rawNip === null ? null : normalizeNip(rawNip) || null;
 
     // Search for existing client by NIP first
     if (nip) {
@@ -871,34 +898,84 @@ export class InfaktInvoicingAdapter
     return Number(result.providerCustomerId);
   }
 
+  /**
+   * Resolve an existing inFakt client by NIP (#1926).
+   *
+   * Two inFakt behaviours dictate the shape of this method:
+   *
+   * 1. **The filter must be Ransack-keyed.** A bare `?nip=` is silently
+   *    IGNORED — inFakt answers `200` with the seller's whole unfiltered first
+   *    page — and so is any unrecognised `q[...]` key. Only `q[nip_eq]` filters,
+   *    and it is an exact string match, so the NIP is normalised to bare digits
+   *    first (`PL123…` and `123-456-32-18` both return nothing otherwise).
+   * 2. **Therefore the filter is never identity proof.** Because a filter that
+   *    stops working degrades into "full page, HTTP 200", every returned client's
+   *    NIP is re-matched here. Without that, `entities[0]` would adopt an
+   *    arbitrary client, and since the invoice payload references the buyer only
+   *    by `client_id` (no inline buyer block), a wrong adoption would issue — and
+   *    e-mail — a KSeF-cleared document naming the wrong company.
+   *
+   * Several clients may legitimately carry the same NIP (inFakt does not dedupe
+   * server-side, and the #1373/#1374 regression minted one duplicate per
+   * issuance for three weeks). An exact-NIP match cannot be a different legal
+   * entity, so the oldest (lowest-id) match is adopted deterministically and the
+   * duplicates are logged, rather than declining to match — which would keep
+   * minting new duplicates for exactly the buyers already worst affected.
+   *
+   * No `try/catch`: inFakt answers `200` for "no match", so a negative result
+   * already falls out of the re-match finding nothing. A transport or 5xx
+   * failure must surface as a retryable failed issuance instead of being
+   * reported as "not found" and silently turned into another duplicate client.
+   */
   private async findClientByNip(nip: string): Promise<InfaktClient | null> {
-    try {
-      const list = await this.getListResponse<InfaktClient>('clients.json', { nip });
-      return list.items[0] ?? null;
-    } catch {
+    const normalized = normalizeNip(nip);
+    if (normalized.length === 0) {
       return null;
     }
+
+    const list = await this.getListResponse<InfaktClient>('clients.json', {
+      'q[nip_eq]': normalized,
+      limit: String(CLIENT_LOOKUP_PAGE_SIZE),
+    });
+
+    const matches = list.entities
+      .filter((client) => normalizeNip(client.nip ?? '') === normalized)
+      .sort((a, b) => a.id - b.id);
+
+    if (matches.length > 1) {
+      this.logger.warn(
+        `Infakt holds ${matches.length} clients for NIP ${normalized} (ids: ${matches
+          .map((client) => client.id)
+          .join(', ')}); reusing the oldest`,
+      );
+    }
+
+    return matches[0] ?? null;
   }
 
   /**
-   * Thin regression guard against a repeat of the #1373/#1374 envelope-shape
-   * drift: `listBankAccounts`/`findClientByNip` both previously read
-   * `response.entities` against a list endpoint that actually returns
-   * `{ items, pagination }`, so a missing `items` array surfaced as an
-   * `undefined.map()` `TypeError` — indistinguishable, once the controller
-   * masks it into a generic 502, from an unreachable provider. Failing loudly
-   * here with a named, path-specific `InfaktApiError` means a FUTURE wire-shape
-   * drift logs a clear cause (`toProviderBadGateway` logs the thrown error's
-   * message) instead of a bare "Cannot read properties of undefined".
+   * Loud guard against list-envelope drift (#1373/#1374/#1926).
+   *
+   * Every inFakt v3 list resource answers `{ metainfo, entities }`; #1374 wrongly
+   * retargeted both readers at `{ items, pagination }` — a shape no inFakt
+   * version, header, or content-negotiation path emits — which made
+   * `listBankAccounts` a permanent 502 and turned `findClientByNip` into an
+   * always-create branch. The guard itself was the right instinct (a bare
+   * `undefined.map()` `TypeError` is indistinguishable, once the controller masks
+   * it into a generic 502, from an unreachable provider), so it stays, pointed at
+   * the real key: a genuine future drift throws a named, path-specific
+   * `InfaktApiError` whose message `toProviderBadGateway` logs. Deliberately NOT
+   * tolerant of both shapes — accepting the fabricated one would enshrine it and
+   * hide the next real drift.
    */
   private async getListResponse<T>(
     path: string,
     query?: Record<string, string>,
   ): Promise<InfaktListResponse<T>> {
     const response = await this.http.get<InfaktListResponse<T>>(path, query);
-    if (!response || !Array.isArray(response.items)) {
+    if (!response || !Array.isArray(response.entities)) {
       throw new InfaktApiError(
-        `Infakt ${path} returned an unexpected envelope shape (expected { items: [...] })`,
+        `Infakt ${path} returned an unexpected envelope shape (expected { entities: [...] })`,
         502,
         response,
       );

@@ -111,15 +111,26 @@ export interface InfaktClient {
   country: string | null;
 }
 
-/** Paginated list response shape (v3 API — verified live 2026-07-07). */
+/**
+ * Paginated list response shape (v3 API).
+ *
+ * Every v3 list resource answers with this envelope — verified live 2026-07-29
+ * (#1926) across `clients`, `invoices`, `bank_accounts`, `products`,
+ * `corrective_invoices` and `vat_rates`, and invariant under `limit`/`offset`,
+ * `page`/`per_page`, versioned `Accept` headers and a `fields=` subset. It
+ * matches the ~200 examples in the vendor collection behind `docs.infakt.pl`;
+ * see the captures under `infrastructure/adapters/__fixtures__/`.
+ *
+ * `next`/`previous` are absolute page URLs inFakt emits regardless of whether
+ * such a page actually holds rows, so neither is a reliable has-more signal.
+ */
 export interface InfaktListResponse<T> {
-  items: T[];
-  pagination: {
-    current_page: number;
-    items_on_page: number;
-    limit: number;
-    total_items: number;
-    total_pages: number;
+  entities: T[];
+  metainfo: {
+    count: number;
+    total_count: number;
+    next: string | null;
+    previous: string | null;
   };
 }
 
