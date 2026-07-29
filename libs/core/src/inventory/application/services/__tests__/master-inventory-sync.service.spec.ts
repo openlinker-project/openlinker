@@ -9,7 +9,9 @@
  *
  * Logger is left as-is (class-constructed in the service); the neutral
  * `@openlinker/shared/logging` console default handles output during tests.
- * Same precedent as `inventory-sync.service.spec.ts`.
+ * Same precedent as `inventory-sync.service.spec.ts` — the only log assertions
+ * are on the empty-response full-stale warn, where observability IS the
+ * behaviour under test (spied via `Logger.prototype`, same as that file).
  *
  * @module libs/core/src/inventory/application/services/__tests__
  */
@@ -26,6 +28,7 @@ import { InventoryItemEntity as InventoryItem } from '@openlinker/core/inventory
 import type { IProductsService, ProductVariant } from '@openlinker/core/products';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
 import type { EventPublisherPort } from '@openlinker/core/events';
+import { Logger } from '@openlinker/shared/logging';
 
 describe('MasterInventorySyncService', () => {
   let service: MasterInventorySyncService;
@@ -523,6 +526,70 @@ describe('MasterInventorySyncService', () => {
       await service.syncFromMasterByExternalId(connectionId, externalId);
 
       expect(eventPublisher.publish).not.toHaveBeenCalled();
+    });
+
+    // The unconditional prune is intentionally asymmetric with the products
+    // context (which skips its prune on a successful-but-empty pull). That
+    // asymmetry must not be SILENT: an empty master response that stales every
+    // known row still reports masterDeleted=false / outcome='ok', so the warn is
+    // the only operator-visible trace of a full stale.
+    it('warns when an empty master response stales rows while reporting masterDeleted=false', async () => {
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      inventoryAdapter.listInventory.mockResolvedValue([]);
+      (inventoryService.pruneStaleVariants as jest.Mock).mockResolvedValueOnce({
+        markedCount: 3,
+        variantIds: ['ol_variant_a'],
+      });
+
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(result.masterDeleted).toBe(false);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('master_inventory_empty_response_full_stale')
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('does not warn about a full stale when the master returned rows', async () => {
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      inventoryAdapter.listInventory.mockResolvedValue([
+        {
+          id: 'inv-1',
+          productId: internalProductId,
+          variantId: 'ol_variant_a',
+          quantity: 4,
+          reserved: 0,
+          available: 4,
+          updatedAt: new Date('2026-05-01T10:00:00Z'),
+        } as unknown as InventoryPortInterface,
+      ]);
+      (inventoryService.pruneStaleVariants as jest.Mock).mockResolvedValueOnce({
+        markedCount: 1,
+        variantIds: ['ol_variant_gone'],
+      });
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining('master_inventory_empty_response_full_stale')
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('does not warn when an empty master response stales nothing', async () => {
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      inventoryAdapter.listInventory.mockResolvedValue([]);
+      (inventoryService.pruneStaleVariants as jest.Mock).mockResolvedValueOnce({
+        markedCount: 0,
+        variantIds: [],
+      });
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining('master_inventory_empty_response_full_stale')
+      );
+      warnSpy.mockRestore();
     });
   });
 

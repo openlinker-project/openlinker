@@ -106,11 +106,26 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     // MasterProductSyncService, which skips its equivalent prune on a
     // successful-but-empty pull to avoid staling everything on a flaky response,
     // this side prunes unconditionally on purpose - the two are intentionally
-    // asymmetric here, not drifted.
+    // asymmetric here, not drifted. The asymmetry is made observable below: an
+    // empty response that stales rows is warn-logged, so a silent full-stale
+    // can't happen without an operator-visible signal.
     const pruneResult = await this.inventoryService.pruneStaleVariants(
       internalProductId,
       currentVariantIds
     );
+
+    // A successful-but-empty master response that stales every currently-known
+    // row is the one case where this side's unconditional prune diverges from
+    // the products context (which skips its prune instead). It is reported as
+    // masterDeleted=false / outcome='ok' - correct, since the product itself
+    // still resolves at the master - so without this warn the full-stale would
+    // leave no trace anywhere. Reachable e.g. for a WooCommerce variable
+    // product whose variations list comes back empty without a 404.
+    if (inventories.length === 0 && pruneResult.markedCount > 0) {
+      this.logger.warn(
+        `master_inventory_empty_response_full_stale connection=${connectionId} externalId=${externalId} internalProductId=${internalProductId} markedStale=${pruneResult.markedCount} — master returned no inventory rows while the product still resolves; every known row was marked stale`
+      );
+    }
 
     // Emit the master-deletion signal from the inventory prune path too (#1599).
     // Disjoint from the product-sync emission — a full deletion produces one from

@@ -180,10 +180,15 @@ describe('WooCommerceInventoryMasterAdapter', () => {
       expect(row.quantity).toBe(5);
     });
 
-    it('should throw MasterProductNotFoundError when product has no mapping (#1688)', async () => {
-      await expect(adapter.listInventory('ol-unmapped')).rejects.toBeInstanceOf(
-        MasterProductNotFoundError,
-      );
+    it('should NOT classify a missing mapping as a master deletion (#1688)', async () => {
+      // A mapping gap is not deletion-shaped: the product was never mapped for
+      // this connection. Treating it as "deleted" would stale a live product's
+      // inventory and terminalise the job (no retry), so the mapping resolve
+      // happens outside listInventory's not-found translation.
+      const rejection = adapter.listInventory('ol-unmapped');
+      await expect(rejection).rejects.toBeInstanceOf(WooCommerceResourceNotFoundException);
+      await expect(rejection).rejects.not.toBeInstanceOf(MasterProductNotFoundError);
+      expect(httpClient.get).not.toHaveBeenCalled();
     });
 
     it('should translate a WooCommerceHttpResponseException(404) on the product GET to MasterProductNotFoundError (#1688)', async () => {
