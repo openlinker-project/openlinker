@@ -49,13 +49,11 @@ test.describe('WooCommerce as master catalogue', () => {
 
     await jobs.triggerAndWait(
       { connectionId: wcMaster!.id, jobType: 'master.product.syncAll' },
-      { timeoutMs: 120_000 },
     );
     if (hasInventoryMaster) {
       await jobs.triggerAndWait(
         { connectionId: wcMaster!.id, jobType: 'master.inventory.syncAll' },
-        { timeoutMs: 120_000 },
-      );
+        );
     }
 
     // Find at least one product OL mapped to this WooCommerce connection —

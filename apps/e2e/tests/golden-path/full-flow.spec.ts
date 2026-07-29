@@ -819,7 +819,6 @@ test.describe('golden path — full flow (S0-S9)', () => {
     // on ambient scheduling, then wait for the delta.
     await jobs.triggerAndWait(
       { connectionId: prestashop!.id, jobType: 'master.inventory.syncAll' },
-      { timeoutMs: 120_000 },
     );
     // The master delta is the SUM of every marketplace sale (one PS order each).
     await waitForStockDelta(api, state.olBaseline!, {
@@ -1020,7 +1019,6 @@ test.describe('golden path — full flow (S0-S9)', () => {
           inventoryUpdatedAt: new Date().toISOString(),
         },
       },
-      { timeoutMs: 120_000 },
     );
 
     const expectedChannelQty = new Map<string, number>();

@@ -57,6 +57,17 @@ export interface TriggerAndWaitOptions extends WaitForJobOptions {
   expectSuccess?: boolean;
 }
 
+/**
+ * Default budget for a job to reach a terminal status.
+ *
+ * Dominated by QUEUE latency, not execution: a job waits behind everything the
+ * stack's own schedulers already queued, and 163 s from enqueue to terminal was
+ * measured on the shared demo stack while the queue drained. A budget below
+ * that fails tests whose job is merely waiting its turn, so it is deliberately
+ * well above the observed worst case.
+ */
+const DEFAULT_JOB_WAIT_MS = 300_000;
+
 export class SyncJobs {
   constructor(private readonly api: ApiClient) {}
 
@@ -92,7 +103,7 @@ export class SyncJobs {
       () => this.api.syncJobs.getById(jobId),
       (job) => TERMINAL_STATUSES.has(job.status),
       {
-        timeoutMs: options.timeoutMs ?? 60_000,
+        timeoutMs: options.timeoutMs ?? DEFAULT_JOB_WAIT_MS,
         intervalMs: options.intervalMs ?? 1_500,
         message: `sync job ${jobId} to reach a terminal status`,
       },
@@ -119,7 +130,7 @@ export class SyncJobs {
       },
       (j) => j !== undefined && TERMINAL_STATUSES.has(j.status),
       {
-        timeoutMs: options.timeoutMs ?? 60_000,
+        timeoutMs: options.timeoutMs ?? DEFAULT_JOB_WAIT_MS,
         intervalMs: options.intervalMs ?? 1_500,
         message: `sync job ${input.jobType} (${input.idempotencyKey}) to reach a terminal status`,
       },

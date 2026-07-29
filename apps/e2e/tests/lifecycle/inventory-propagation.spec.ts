@@ -213,9 +213,9 @@ async function syncMasterStock(
     // 120s (not 60s): the single-threaded worker can have a couple of
     // long-running jobs (e.g. a KSeF reconcile) ahead of this one, leaving the
     // queued inventory sync waiting a while before it's picked up. The job
-    // itself completes quickly once started — this budget matches the other
-    // job-waits across the suite.
-    { timeoutMs: 120_000 },
+    // itself completes quickly once started, so the shared default budget
+    // (`DEFAULT_JOB_WAIT_MS`, sized to the stack's observed queue latency)
+    // applies rather than a local, smaller one.
   );
 }
 
@@ -237,7 +237,6 @@ async function propagateAndAssertChannels(
       jobType: 'inventory.propagateToMarketplaces',
       payload: { productId, variantId, inventoryUpdatedAt: new Date().toISOString() },
     },
-    { timeoutMs: 120_000 },
   );
 
   for (const target of targets) {

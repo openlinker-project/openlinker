@@ -36,7 +36,6 @@ test.describe('operator setup (S1-S4)', () => {
     // Trigger the master product sync explicitly and wait for the worker.
     const job = await jobs.triggerAndWait(
       { connectionId: prestashop!.id, jobType: 'master.product.syncAll' },
-      { timeoutMs: 120_000 },
     );
     expect(job.status).toBe('succeeded');
 

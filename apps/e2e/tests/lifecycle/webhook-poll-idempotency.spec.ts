@@ -109,7 +109,7 @@ test.describe('lifecycle: webhook + poll convergence (idempotency, #1574 / close
     //    completion without disturbing the webhook's already-recorded delivery.
     await jobs.triggerAndWait(
       { connectionId, jobType: 'marketplace.orders.poll' },
-      { timeoutMs: 120_000, expectSuccess: false },
+      { expectSuccess: false },
     );
 
     const afterPoll = await api.webhooks.listDeliveries({
