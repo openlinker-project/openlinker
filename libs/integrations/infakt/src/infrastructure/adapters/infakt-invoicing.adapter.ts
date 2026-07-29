@@ -260,6 +260,25 @@ function isCorrectionRecord(documentType: string): boolean {
 const CORRECTION_ASYNC_POLL_INTERVAL_MS = 2000;
 const CORRECTION_ASYNC_POLL_TIMEOUT_MS = 30000;
 
+/**
+ * Maps an async task's TERMINAL `processing_code` onto the HTTP-shaped status
+ * `InfaktApiError` derives `failureMode` from.
+ *
+ * A 4xx terminal code means the provider deterministically refused to create
+ * the document — verified live (2026-07-29): an invalid payload resolves to
+ * `{processing_code: 422, processing_description: "Nie udało się stworzyć
+ * faktury"}` with no `invoice_uuid`. That is the `'rejected'` (safe to
+ * re-attempt) class, so it must be propagated verbatim; collapsing it to 502
+ * would make `failureMode: 'in-doubt'` and park the record for manual
+ * reconciliation even though nothing was created.
+ *
+ * Anything else (an unknown or 5xx-shaped code) stays 502 → `'in-doubt'`: a
+ * document MAY exist, so core must not auto-re-attempt.
+ */
+function terminalFailureStatus(processingCode: number): number {
+  return processingCode >= 400 && processingCode < 500 ? processingCode : 502;
+}
+
 export class InfaktInvoicingAdapter
   implements
     InvoicingPort,
@@ -597,6 +616,28 @@ export class InfaktInvoicingAdapter
       { invoice_type: 'vat' },
     );
 
+    // A line number outside 1..original.services.length matches no original
+    // row below, so every group would emit an IDENTICAL before/after pair —
+    // Infakt happily accepts that and mints a real, fiscally meaningless
+    // 0.00 PLN corrective document, which then goes to KSeF (reproduced live
+    // 2026-07-29: an `originalLineNumber: 99` typo produced `3/KOR/07/2026`
+    // with `gross_price: 0`). Reject BEFORE the POST. Status 422 (a 4xx →
+    // `failureMode: 'rejected'`) is deliberate: nothing crossed the provider
+    // boundary, so the operator can safely re-submit with a valid line.
+    const lineCount = original.services.length;
+    const outOfRange = lines
+      .map((l) => l.originalLineNumber)
+      .filter((n) => !Number.isInteger(n) || n < 1 || n > lineCount);
+    if (outOfRange.length > 0) {
+      throw new InfaktApiError(
+        `Correction references line number(s) ${outOfRange.join(', ')} that do not exist on invoice ` +
+          `${original.number ?? originalProviderInvoiceId} (it has ${lineCount} line(s)) — refusing to ` +
+          `issue a correction that would change nothing`,
+        422,
+        { correctedInvoiceUuid: original.uuid, lineCount, outOfRange },
+      );
+    }
+
     // Build correction services: original row (correction: false) + corrected
     // row (correction: true), paired per `group`.
     //
@@ -606,12 +647,11 @@ export class InfaktInvoicingAdapter
     // path, which turned out to 500 on EVERY payload regardless of shape (the
     // root #1763 bug — see the async-endpoint fix above). That means the prior
     // "verified live" claim behind the string format was never actually
-    // confirmed against a working endpoint. Now on the correct
-    // `async/corrective_invoices.json` path, using the SAME plain-integer-
-    // groszy / numeric-quantity format as `async/invoices.json` (see
-    // toGroszy/fromGroszy) as the consistent default — not independently
-    // live-verified for this specific field either, but no longer resting on
-    // a demonstrably-invalid prior test.
+    // confirmed against a working endpoint. On the correct
+    // `async/corrective_invoices.json` path the format is the SAME plain-
+    // integer-groszy / numeric-quantity shape as `async/invoices.json` (see
+    // toGroszy/fromGroszy), live-verified 2026-07-29 — see
+    // `InfaktCorrectiveInvoiceServiceRequest` for the round-tripped sample.
     const correctionServices: InfaktCorrectiveInvoiceServiceRequest[] =
       original.services.flatMap((svc, idx) => {
         const corrLine = lines.find((l) => l.originalLineNumber === idx + 1);
@@ -976,15 +1016,17 @@ export class InfaktInvoicingAdapter
       );
     }
 
-    // Belt-and-suspenders (#1337 precedent): the only confirmed-live success
-    // shape is `invoice_kind: 'corrective_invoice'` + a populated
-    // `invoice_uuid`. Anything else — a processing_code outside 100
-    // (processing) that still lacks these fields — fails loudly rather than
-    // persisting a record with no real document behind it.
+    // Belt-and-suspenders (#1337 precedent): `invoice_uuid` is the ONLY field
+    // that discriminates success — `invoice_kind: 'corrective_invoice'` is
+    // echoed on the accepted (`processing_code: 100`) AND the failure
+    // (`processing_code: 422`) envelope alike (verified live 2026-07-29), so
+    // it identifies the REQUESTED kind, not the outcome. It is still asserted
+    // so a task envelope for some other resource can never be hydrated as a
+    // correction.
     if (!last.invoice_uuid || last.invoice_kind !== 'corrective_invoice') {
       throw new InfaktApiError(
         `Infakt async correction task ${taskRef} did not resolve to a corrective_invoice (processing_code ${last.processing_code}): ${last.processing_description}`,
-        502,
+        terminalFailureStatus(last.processing_code),
         last,
       );
     }

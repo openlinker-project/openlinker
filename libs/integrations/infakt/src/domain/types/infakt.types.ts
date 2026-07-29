@@ -133,8 +133,12 @@ export interface InfaktListResponse<T> {
  * an earlier decimal "amount currency" STRING assumption (e.g. `"811.37 PLN"`)
  * that was only ever tested against the bare `corrective_invoices.json` path,
  * which turned out to 500 on every payload regardless of shape (the root
- * #1763 bug). Not independently live-verified for this specific field on the
- * corrected `async/` path.
+ * #1763 bug).
+ *
+ * Live-verified on the `async/` path (2026-07-29): a `-100.00 PLN` correction
+ * of a `499.99` gross line round-tripped as `before {quantity: 1,
+ * unit_net_price: 40650}` / `after {quantity: 1, unit_net_price: 32520}`, and
+ * the `before` row matched the original invoice's stored line to the groszy.
  */
 export interface InfaktCorrectiveInvoiceServiceRequest {
   name: string;
