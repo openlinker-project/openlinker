@@ -38,7 +38,7 @@ import type { World } from '../../src/world/world';
 import type { Connection, OrderRecord } from '../../src/api/api.types';
 import { buildWooCommerceClient } from '../../src/support/woocommerce-client';
 import { externalIdFor } from '../../src/support/external-ids';
-import { snapshotOrderIds, waitForOrder } from '../../src/support/orders';
+import { waitForOrderByExternalId } from '../../src/support/orders';
 import type { WooCommerceAddressInput } from '../../src/api/woocommerce-rest';
 import type { SyncJobs } from '../../src/support/jobs';
 import type { WooCommerceRestClient } from '../../src/api/woocommerce-rest';
@@ -101,15 +101,18 @@ test.describe('WooCommerce as order destination', () => {
     const quantity = 1;
 
     const email = `e2e-${randomUUID().slice(0, 8)}@example-e2e.invalid`;
-    const snapshot = await snapshotOrderIds(api, wcSource.id);
-    await wc.createOrder({
+    const sourceOrder = await wc.createOrder({
       status: 'processing',
       billing: { ...ADDRESS_A, email },
       lineItems: [{ productId: wcProductId, quantity }],
     });
 
     await jobs.trigger({ connectionId: wcSource.id, jobType: 'marketplace.orders.poll' }).catch(() => undefined);
-    const order = await waitForOrder(api, { sourceConnectionId: wcSource.id, snapshot, timeoutMs: 120_000 });
+    const order = await waitForOrderByExternalId(api, {
+      sourceConnectionId: wcSource.id,
+      externalOrderId: String(sourceOrder.id),
+      timeoutMs: 120_000,
+    });
 
     const synced = await pollWcDestinationSync(api, world, order.internalOrderId, { timeoutMs: 120_000 });
     expect(synced.status, 'destination sync status').toBe('synced');
@@ -365,10 +368,17 @@ async function createAndSyncWcOrder(
   wcSourceConnectionId: string,
   input: { billing: WooCommerceAddressInput; lineItems: Array<{ productId: number; variationId?: number; quantity: number }> },
 ): Promise<{ externalOrderId: string | null }> {
-  const snapshot = await snapshotOrderIds(api, wcSourceConnectionId);
-  await wc.createOrder({ status: 'processing', billing: input.billing, lineItems: input.lineItems });
+  const sourceOrder = await wc.createOrder({
+    status: 'processing',
+    billing: input.billing,
+    lineItems: input.lineItems,
+  });
   await jobs.trigger({ connectionId: wcSourceConnectionId, jobType: 'marketplace.orders.poll' }).catch(() => undefined);
-  const order = await waitForOrder(api, { sourceConnectionId: wcSourceConnectionId, snapshot, timeoutMs: 120_000 });
+  const order = await waitForOrderByExternalId(api, {
+    sourceConnectionId: wcSourceConnectionId,
+    externalOrderId: String(sourceOrder.id),
+    timeoutMs: 120_000,
+  });
   const synced = await pollWcDestinationSync(api, world, order.internalOrderId, { timeoutMs: 120_000 });
   if (!synced.externalOrderId) {
     // Without this the null flows into `GET /orders/null`, and a topology gap

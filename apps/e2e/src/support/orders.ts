@@ -82,3 +82,56 @@ export async function waitForOrder(
   );
   return found as OrderRecord;
 }
+
+/** Does this OL order record originate from the given source-native order id? */
+function matchesExternalOrderId(order: OrderRecord, externalOrderId: string): boolean {
+  // Both in-tree order sources shape the feed cursor as `{externalId}:...`
+  // (WooCommerce `100:processing:<iso>`, PrestaShop `41:<date_upd>:created`).
+  if (order.sourceEventId?.startsWith(`${externalOrderId}:`)) return true;
+  const orderNumber = order.orderSnapshot['orderNumber'];
+  return (
+    (typeof orderNumber === 'string' || typeof orderNumber === 'number') &&
+    String(orderNumber) === externalOrderId
+  );
+}
+
+/**
+ * Poll until the OL order ingested from ONE SPECIFIC source-native order id
+ * appears.
+ *
+ * Prefer this over `waitForOrder` whenever the caller created the source order
+ * itself. "The next new order" is only unambiguous when nothing else can
+ * produce one, and that assumption breaks hardest on a single-store topology:
+ * the destination orders OL writes back land in the very same shop, get
+ * re-ingested through the source connection, and are indistinguishable from a
+ * genuine buyer order — so a scenario asserting on "its" order can silently
+ * read OL's own output instead.
+ */
+export async function waitForOrderByExternalId(
+  api: ApiClient,
+  options: {
+    externalOrderId: string;
+    sourceConnectionId?: string;
+    timeoutMs?: number;
+    intervalMs?: number;
+  },
+): Promise<OrderRecord> {
+  const found = await pollUntil<OrderRecord | undefined>(
+    async () => {
+      const page = await api.orders.list({
+        sourceConnectionId: options.sourceConnectionId,
+        limit: 100,
+      });
+      return page.items.find(
+        (o) => o.recordStatus === 'ready' && matchesExternalOrderId(o, options.externalOrderId),
+      );
+    },
+    (order) => order !== undefined,
+    {
+      timeoutMs: options.timeoutMs ?? 120_000,
+      intervalMs: options.intervalMs ?? 3_000,
+      message: `the OL order ingested from source order ${options.externalOrderId}`,
+    },
+  );
+  return found as OrderRecord;
+}
