@@ -602,6 +602,7 @@ export function ConnectionMappingsPage(): ReactElement {
         <TabsContent value="status">
           <MappingPanel
             title="Order Status Mappings"
+            mappingKind="status"
             description={`Map ${sourceLabel} order statuses to the corresponding ${destinationLabel} order status IDs.`}
             sourceLabel={`${sourceLabel} status`}
             targetLabel={`${destinationLabel} status`}
@@ -631,6 +632,7 @@ export function ConnectionMappingsPage(): ReactElement {
           ) : null}
           <MappingPanel
             title="Carrier Mappings"
+            mappingKind="carriers"
             description={`Map ${sourceLabel} delivery method IDs to the corresponding ${destinationLabel} carrier IDs.`}
             sourceLabel={`${sourceLabel} delivery method`}
             targetLabel={`${destinationLabel} carrier`}
@@ -655,6 +657,7 @@ export function ConnectionMappingsPage(): ReactElement {
         <TabsContent value="payments">
           <MappingPanel
             title="Payment Mappings"
+            mappingKind="payments"
             description={`Map ${sourceLabel} payment provider names to the corresponding ${destinationLabel} payment module names.`}
             sourceLabel={`${sourceLabel} payment provider`}
             targetLabel={`${destinationLabel} payment module`}
@@ -677,6 +680,7 @@ export function ConnectionMappingsPage(): ReactElement {
           <TabsContent value="order-states">
             <MappingPanel
               title="Order-State Mappings"
+              mappingKind="order-state"
               description={`Override which ${destinationLabel} order state each OpenLinker status transitions to. Customised shops (renamed or added states) map here; unmapped statuses use the default-install state.`}
               sourceLabel="OpenLinker status"
               targetLabel={`${destinationLabel} order state`}

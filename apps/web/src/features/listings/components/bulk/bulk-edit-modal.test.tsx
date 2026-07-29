@@ -19,7 +19,7 @@ import type { EanMatchCandidate } from '../../api/listings.types';
 import type { Product, ProductVariant } from '../../../products';
 import type { Connection } from '../../../connections';
 
-vi.mock('../CategoryPicker', () => ({
+vi.mock('../category-picker', () => ({
   CategoryPicker: ({ value }: { value: string | null }) => (
     <div data-testid="category-picker">{value ?? 'none'}</div>
   ),

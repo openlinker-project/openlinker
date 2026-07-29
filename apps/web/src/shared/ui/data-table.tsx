@@ -202,6 +202,10 @@ export function DataTable<Row>({
   const wrapRef = useRef<HTMLDivElement>(null);
   const railRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Base for the per-row expandable-detail panel ids, so the desktop toggle can
+  // point `aria-controls` at the panel it opens (the mobile card path already
+  // did). Suffixed per row below — one base id is unique per DataTable instance.
+  const detailIdBase = useId();
   const defs = useMemo(() => buildColumnDefs(columns), [columns]);
   const columnById = useMemo(() => {
     const map = new Map<string, DataTableColumn<Row>>();
@@ -443,6 +447,7 @@ export function DataTable<Row>({
     const expanded = expandable ? expandedKeys.has(key) : false;
     // Auto-link the first cell only in pure-navigation mode (no expand toggle).
     const linkifyFirstCell = Boolean(href) && !expandable;
+    const detailId = `${detailIdBase}-${String(key)}`;
     const rowClasses = [
       'data-table__row',
       expandable ? 'data-table__row--expandable' : href ? 'data-table__row--linked' : '',
@@ -469,6 +474,7 @@ export function DataTable<Row>({
               type="button"
               className="data-table__expand-toggle"
               aria-expanded={expanded}
+              aria-controls={detailId}
               aria-label={
                 expandable.toggleLabel?.(row, expanded) ??
                 (expanded ? 'Collapse row details' : 'Expand row details')
@@ -520,7 +526,9 @@ export function DataTable<Row>({
         {expanded ? (
           <tr className="data-table__detail-row">
             <td className="data-table__detail-cell" colSpan={columnCount}>
-              <div className="data-table__detail">{expandable.renderDetail(row)}</div>
+              <div id={detailId} className="data-table__detail">
+                {expandable.renderDetail(row)}
+              </div>
             </td>
           </tr>
         ) : null}

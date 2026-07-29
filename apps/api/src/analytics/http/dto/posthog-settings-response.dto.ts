@@ -31,6 +31,18 @@ export class PosthogSettingsResponseDto {
   @ApiProperty()
   sessionRecording!: boolean;
 
+  @ApiProperty({
+    description:
+      'Master toggle for demo-mode product events (#1787), independent of autocapture.',
+  })
+  productEventsEnabled!: boolean;
+
+  @ApiProperty({
+    type: [String],
+    description: 'Enabled demo-event group names, derived client-side from the events catalog.',
+  })
+  enabledEventGroups!: string[];
+
   @ApiProperty({ description: 'True when an API key is currently resolvable (DB or env).' })
   apiKeyConfigured!: boolean;
 
@@ -64,6 +76,8 @@ export class PosthogSettingsResponseDto {
     dto.customHost = view.customHost;
     dto.autocapture = view.autocapture;
     dto.sessionRecording = view.sessionRecording;
+    dto.productEventsEnabled = view.productEventsEnabled;
+    dto.enabledEventGroups = view.enabledEventGroups;
     dto.apiKeyConfigured = view.apiKeyConfigured;
     dto.wouldOverrideEnv = view.wouldOverrideEnv;
     dto.overriddenEnvVars = view.overriddenEnvVars;

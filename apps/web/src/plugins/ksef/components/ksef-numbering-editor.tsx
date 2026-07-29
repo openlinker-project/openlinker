@@ -35,6 +35,7 @@ import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useMediaQuery } from '../../../shared/ui/use-media-query';
 import { KsefNumberingPreview } from './ksef-numbering-preview';
+import { captureDemoEvent } from '../../../features/demo';
 import {
   DOCUMENT_TYPE_LABELS,
   FISCAL_YEAR_START_MONTHS,
@@ -123,6 +124,7 @@ export function KsefNumberingEditor({
   }, [values.pattern]);
 
   function insertVariable(variable: string): void {
+    captureDemoEvent('demo_ksef_numbering_variable_inserted', { variable });
     const input = patternInputRef.current;
     const current = form.getValues('pattern');
     if (!input) {
@@ -350,7 +352,13 @@ export function KsefNumberingEditor({
           <Button type="button" tone="secondary" onClick={onCancel} disabled={isPending}>
             Cancel
           </Button>
-          <ReadOnlyLock active={readOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <ReadOnlyLock
+            active={readOnly}
+            message={DEMO_READ_ONLY_ACTION_MESSAGE}
+            onLockedClick={() =>
+              captureDemoEvent('demo_ksef_series_save_attempted', { mode: isEdit ? 'edit' : 'create' })
+            }
+          >
             <Button type="submit" tone="primary" disabled={isPending || readOnly}>
               {isPending ? 'Saving…' : 'Save series'}
             </Button>

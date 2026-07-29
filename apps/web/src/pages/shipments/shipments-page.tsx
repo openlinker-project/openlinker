@@ -1,4 +1,21 @@
-import type { ReactElement } from 'react';
+/**
+ * Shipments Page
+ *
+ * Cross-order shipment rollup: filters, cause-first triage strips, and a
+ * per-row accordion carrying the recovery actions (#727 / #839 / #1826).
+ *
+ * Permission note (#1826, deliberate): both flags here come from
+ * `usePermission`, NOT `useWriteAccess` (#1615), so this flow's write
+ * affordances are absent — not disabled-with-tooltip — for a public-demo
+ * read-only viewer. §7 of
+ * `docs/plans/implementation-plan-shipments-inline-retry.md` chose that
+ * deliberately, because the carrier `errorMessage` these affordances sit
+ * beside is itself role-redacted server-side. Do not "fix" this by swapping in
+ * `useWriteAccess` without revisiting that decision.
+ *
+ * @module apps/web/src/pages/shipments
+ */
+import { useMemo, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -10,12 +27,23 @@ import { Select } from '../../shared/ui/select';
 import { Input } from '../../shared/ui/input';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { EntityLabel } from '../../shared/ui/entity-label';
+import { usePermission } from '../../shared/auth/use-permission';
 import { ShipmentStatusBadge } from '../../features/shipments/components/shipment-status-badge';
 import { ProcessorBadge } from '../../features/shipments/components/processor-badge';
+import { ShipmentTriageStrip } from '../../features/shipments/components/shipment-triage-strip';
+import { ShipmentRowDetail } from '../../features/shipments/components/shipment-row-detail';
+import { groupFailedShipmentsByCause } from '../../features/shipments/lib/group-failed-shipments-by-cause';
 import { useShipmentsQuery } from '../../features/shipments/hooks/use-shipments-query';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
 import { CustomerEntityLabel } from '../../features/customers/components/CustomerEntityLabel';
-import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
+import { ConnectionDot } from '../../features/orders';
+// Pure view-model helpers + the wire-mirrored redaction constant live in the
+// owning feature (they're unit-tested there); the page only composes them.
+import {
+  REDACTED_ERROR_MESSAGE,
+  ShipmentSeverityLabel,
+  truncateOrderId,
+} from '../../features/shipments';
 import type { Shipment, ShipmentFilters, ShipmentStatus, ShippingMethod } from '../../features/shipments/api/shipments.types';
 import {
   SHIPMENT_STATUS_VALUES,
@@ -57,21 +85,40 @@ function inclusiveEndOfDay(dateOnly: string): string {
 }
 
 /**
+ * Cap on rendered triage strips (#1905). Each strip is a `role="status"` live
+ * region; one per qualifying group on a 20-row page could push the table below
+ * the fold and announce a wall of text. The remainder collapses to a one-line
+ * count.
+ */
+const MAX_TRIAGE_STRIPS = 2;
+
+/**
  * Status cell (#1800). The status badge, plus — for a `failed` shipment that
  * persisted a rejection — a compact one-line `errorMessage` (full text on
  * hover) and the `failedAt` time, so an operator scanning the list sees which
  * shipments failed and why without opening each order. Non-failed rows render
  * the badge alone.
+ *
+ * Viewer-role redaction (#1826): the raw carrier `errorMessage` may embed
+ * address fragments (a rejected postcode/street), so a `viewer` session sees
+ * a generic placeholder instead — same copy as `<ShipmentRowDetail>`'s
+ * redacted state, both title and text, so there's no unredacted tooltip leak.
+ * This is UI-decluttering on top of a REAL server-side redaction
+ * (`ShipmentResponseDto.fromDomain`'s `canWrite` param, gated on the
+ * requester's `shipments:write` permission) — the API itself never returns
+ * the raw message to a viewer session, so this isn't the only enforcement
+ * boundary.
  */
-function ShipmentStatusCell({ shipment }: { shipment: Shipment }): ReactElement {
+function ShipmentStatusCell({ shipment, canWrite }: { shipment: Shipment; canWrite: boolean }): ReactElement {
   const showError = shipment.status === 'failed' && Boolean(shipment.errorMessage);
+  const errorText = canWrite ? shipment.errorMessage : REDACTED_ERROR_MESSAGE;
   return (
     <div className="shipment-status-cell">
       <ShipmentStatusBadge status={shipment.status} />
       {showError ? (
         <span className="shipment-status-cell__error">
-          <span className="shipment-status-cell__error-message" title={shipment.errorMessage ?? undefined}>
-            {shipment.errorMessage}
+          <span className="shipment-status-cell__error-message" title={canWrite ? (shipment.errorMessage ?? undefined) : undefined}>
+            {errorText}
           </span>
           {shipment.failedAt ? (
             <span className="shipment-status-cell__error-time">
@@ -87,6 +134,16 @@ function ShipmentStatusCell({ shipment }: { shipment: Shipment }): ReactElement 
 export function ShipmentsPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const { sort, setSort } = useTableSort([{ id: 'createdAt', desc: true }]);
+  // Gates the triage strip, the recovery actions in the row accordion, and the
+  // raw errorMessage text in the status cell (#1826) — a `viewer` session sees
+  // a generic redaction instead of the carrier's raw (possibly address-bearing)
+  // rejection message.
+  const canWrite = usePermission('shipments:write');
+  // Distinct from `canWrite` on purpose: the triage strip's "Review connection
+  // settings" CTA edits a CONNECTION, so it follows `connections:write`. An
+  // operator who may retry shipments is not automatically allowed to reconfigure
+  // the carrier account.
+  const canReviewConnection = usePermission('connections:write');
 
   const status = (searchParams.get('status') as ShipmentStatus | null) ?? undefined;
   const shippingMethod = (searchParams.get('shippingMethod') as ShippingMethod | null) ?? undefined;
@@ -119,6 +176,10 @@ export function ShipmentsPage(): ReactElement {
   const query = useShipmentsQuery(filters, pagination);
   const connectionsQuery = useConnectionsQuery();
   const connections = connectionsQuery.data ?? [];
+  const failedCauseGroups = useMemo(
+    () => groupFailedShipmentsByCause(query.data?.items ?? []),
+    [query.data],
+  );
 
   // Capability-conditional rendering (#727 AC): hide shipping-method-specific
   // columns when no connection declares the shipping capability.
@@ -215,9 +276,39 @@ export function ShipmentsPage(): ReactElement {
     {
       id: 'status',
       header: 'Status',
-      cell: (s) => <ShipmentStatusCell shipment={s} />,
+      cell: (s) => <ShipmentStatusCell shipment={s} canWrite={canWrite} />,
       accessor: (s) => s.status,
       sortable: true,
+    },
+    {
+      id: 'orderId',
+      header: 'Order',
+      // Position 2 so the frozen pane is Status + row IDENTITY (#1905),
+      // matching `/orders` (select + order). Frozen on Status alone, a
+      // horizontally-scrolled row read "failed - sender postcode invalid" with
+      // no way to tell which order it belonged to.
+      //
+      // `name={s.orderId}` (#1826 fix): without a `name`, EntityLabel renders
+      // an unlinked "Unknown" + a shortened, non-clickable id chip — there was
+      // no way to navigate to the order from this column. Passing the id as
+      // its own name makes the id itself the clickable link; `showId={false}`
+      // drops the now-redundant duplicate id chip.
+      cell: (s) => (
+        <EntityLabel
+          id={s.orderId}
+          name={truncateOrderId(s.orderId)}
+          to={`/orders/${s.orderId}`}
+          showId={false}
+        />
+      ),
+    },
+    {
+      id: 'action',
+      header: 'Action',
+      // Plain text, not sortable — it's a derived hint riding alongside the
+      // real control (the row's `expandable` toggle), not a second
+      // interactive column.
+      cell: (s) => <ShipmentSeverityLabel shipment={s} canWrite={canWrite} />,
     },
     {
       id: 'processor',
@@ -242,11 +333,6 @@ export function ShipmentsPage(): ReactElement {
       sortable: true,
     },
     {
-      id: 'orderId',
-      header: 'Order',
-      cell: (s) => <EntityLabel id={s.orderId} to={`/orders/${s.orderId}`} showId />,
-    },
-    {
       id: 'customerId',
       header: 'Customer',
       cell: (s) =>
@@ -259,9 +345,39 @@ export function ShipmentsPage(): ReactElement {
     },
     ...methodColumns,
     {
+      // Rendered via `ConnectionDot` instead of `ConnectionEntityLabel` (#1826).
+      // For a carrier-dispatched shipment `connectionId` is the shipping-provider
+      // connection; for an `omp`/branch-1 row it's the destination SHOP
+      // connection instead (there is no OL dispatch, so no separate carrier
+      // connection exists — `createBranchOneShipment` stamps the shop's own id
+      // there). `variant` follows the same split so the dot's generic-glyph
+      // fallback reads "S"/shop-toned instead of "?"/carrier-toned for an
+      // unresolved omp connection.
+      //
+      // Header stays "Connection" (#1905): a brief rename to "Provider" broke
+      // the vocabulary six other tables use for this same column — and this
+      // page's own filter still says "All connections", so an operator hunting
+      // for a "Provider" filter would never find it.
       id: 'connectionId',
       header: 'Connection',
-      cell: (s) => <ConnectionEntityLabel connectionId={s.connectionId} linkToDetail={false} showId={false} />,
+      cell: (s): ReactElement => {
+        const connection = connections.find((c) => c.id === s.connectionId);
+        return (
+          <span className="shipments-page__provider">
+            {/* `aria-hidden` — the adjacent visible name span already carries
+                the accessible name; `ConnectionDot` would otherwise announce
+                it a second time via its own `sr-only` span + `title`. */}
+            <span aria-hidden="true">
+              <ConnectionDot
+                name={connection?.name ?? null}
+                platformType={connection?.platformType}
+                variant={s.shippingMethod === 'omp' ? 'shop' : 'carrier'}
+              />
+            </span>
+            <span>{connection?.name ?? 'Unknown'}</span>
+          </span>
+        );
+      },
       hideBelow: 1024,
     },
     {
@@ -409,23 +525,84 @@ export function ShipmentsPage(): ReactElement {
         />
       ) : (
         <>
+          {/* Cause-first triage (#1826): admin/operator only — the strip's
+              recovery jump is a write action and its cause text is the same
+              sensitive carrier content redacted in the status cell / row
+              accordion for viewer, so it's hidden entirely rather than shown
+              redacted. Grouped over the current page only (no cross-page
+              aggregation). */}
+          {canWrite ? (
+            <>
+              {failedCauseGroups.slice(0, MAX_TRIAGE_STRIPS).map((group) => (
+                <ShipmentTriageStrip
+                  key={`${group.connectionId}::${group.cause}`}
+                  group={group}
+                  connectionName={
+                    connections.find((c) => c.id === group.connectionId)?.name ?? null
+                  }
+                  canReviewConnection={canReviewConnection}
+                />
+              ))}
+              {failedCauseGroups.length > MAX_TRIAGE_STRIPS ? (
+                <p className="text-muted shipments-page__triage-overflow">
+                  +{failedCauseGroups.length - MAX_TRIAGE_STRIPS} more group
+                  {failedCauseGroups.length - MAX_TRIAGE_STRIPS === 1 ? '' : 's'} with a shared
+                  carrier message.
+                </p>
+              ) : null}
+            </>
+          ) : null}
+
           <DataTable
             caption="Shipments"
             columns={columns}
             rows={query.data?.items ?? []}
             rowKey={(s) => s.id}
-            rowHref={(s) => `/orders/${s.orderId}`}
             sort={sort}
             onSortChange={setSort}
+            // Frozen anchor = Status + Order (#1905) — mirrors /orders, which
+            // freezes select + order, i.e. the row's identity. The auto
+            // expander column is frozen alongside them.
+            stickyLeftColumns={2}
+            expandable={{
+              renderDetail: (s) => (
+                <ShipmentRowDetail
+                  shipment={s}
+                  canWrite={canWrite}
+                  canReviewConnection={canReviewConnection}
+                />
+              ),
+              toggleLabel: (s, expanded) =>
+                expanded ? `Collapse details for shipment ${s.id}` : `Expand details for shipment ${s.id}`,
+            }}
             cardView={{
-              title: (s) => s.status,
+              // Order link restored (#1826) — dropping `rowHref` in favour of
+              // the expandable toggle removed the mobile card's only path to
+              // the order (it previously fell back to the order EntityLabel
+              // only when `customerId` was absent). Now unconditional, same
+              // as the desktop Order column.
+              title: (s) => (
+                <EntityLabel
+                  id={s.orderId}
+                  name={truncateOrderId(s.orderId)}
+                  to={`/orders/${s.orderId}`}
+                  showId={false}
+                />
+              ),
               subtitle: (s) =>
-                s.customerId ? (
-                  <CustomerEntityLabel customerId={s.customerId} showId={false} />
-                ) : (
-                  <EntityLabel id={s.orderId} to={`/orders/${s.orderId}`} showId />
-                ),
-              meta: (s) => <ShipmentStatusCell shipment={s} />,
+                s.customerId ? <CustomerEntityLabel customerId={s.customerId} showId={false} /> : null,
+              meta: (s) => <ShipmentStatusCell shipment={s} canWrite={canWrite} />,
+              // Severity label in `summary` (#1826 AC) — mirrors the desktop
+              // Action column, shown before the collapsible full detail.
+              summary: (s) => <ShipmentSeverityLabel shipment={s} canWrite={canWrite} />,
+              collapsibleDetail: true,
+              detail: (s) => (
+                <ShipmentRowDetail
+                  shipment={s}
+                  canWrite={canWrite}
+                  canReviewConnection={canReviewConnection}
+                />
+              ),
             }}
           />
 

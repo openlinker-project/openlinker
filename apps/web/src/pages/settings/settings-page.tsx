@@ -5,6 +5,7 @@ import { AnalyticsConsentTile } from '../../features/demo';
 import { useDemoMode } from '../../features/system';
 import { MailerSettingsTile } from '../../features/mailer-settings/components/mailer-settings-tile';
 import { PosthogSettingsTile } from '../../features/posthog-settings/components/posthog-settings-tile';
+import { McpTokensTile } from '../../features/mcp-tokens/components/mcp-tokens-tile';
 import { PageLayout } from '../../shared/ui/page-layout';
 
 export function SettingsPage(): ReactElement {
@@ -24,6 +25,7 @@ export function SettingsPage(): ReactElement {
           {demoMode ? <span className="toolbar-chip">Privacy</span> : null}
           {isAdmin ? <span className="toolbar-chip">Mailer</span> : null}
           {isAdmin ? <span className="toolbar-chip">PostHog</span> : null}
+          {isAdmin ? <span className="toolbar-chip">MCP tokens</span> : null}
           <span className="toolbar-chip">Upcoming</span>
         </div>
       }
@@ -96,6 +98,9 @@ export function SettingsPage(): ReactElement {
 
         {/* ── PostHog analytics (admin-only) ──────────────────────── */}
         {isAdmin ? <PosthogSettingsTile /> : null}
+
+        {/* ── MCP tokens (admin-only) ──────────────────────────────── */}
+        {isAdmin ? <McpTokensTile /> : null}
 
         {/* ── Notifications (planned) ───────────────────────────────── */}
         <article className="panel panel--dense">

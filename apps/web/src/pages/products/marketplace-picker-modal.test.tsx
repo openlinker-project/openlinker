@@ -8,6 +8,11 @@ import { MarketplacePickerModal } from './marketplace-picker-modal';
 import type { Connection } from '../../features/connections';
 import type { PublishDestination, PublishDestinationKind } from '../../features/listings';
 
+const captureDemoEvent = vi.fn();
+vi.mock('../../features/demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
+
 function conn(id: string, platformType: string, name: string): Connection {
   return {
     id,
@@ -34,7 +39,10 @@ function dest(
 }
 
 describe('MarketplacePickerModal', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    captureDemoEvent.mockClear();
+  });
 
   it('lists each destination and continues with the chosen one', () => {
     const onContinue = vi.fn();
@@ -63,6 +71,25 @@ describe('MarketplacePickerModal', () => {
     fireEvent.click(continueBtn);
 
     expect(onContinue).toHaveBeenCalledWith('c2');
+  });
+
+  it('captures demo_offer_marketplace_picked with the chosen platform on Continue (#1788)', () => {
+    renderWithProviders(
+      <MarketplacePickerModal
+        open
+        onOpenChange={vi.fn()}
+        productCount={1}
+        destinations={[dest('c1', 'allegro', 'My Allegro', 'marketplace')]}
+        onContinue={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('radio', { name: /My Allegro/ }));
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_offer_marketplace_picked', {
+      platform: 'allegro',
+    });
   });
 
   it('groups marketplaces and online shops with capability-driven hints', () => {
