@@ -61,20 +61,52 @@ Commits.
    (`OL_DEMO_MODE` off) and **demo** (`OL_DEMO_MODE=true` + seed).
 
 > **CD trigger:** a tag pushed by the default `GITHUB_TOKEN` will not trigger a
-> *separate* workflow, which is why `cd.yml` did not fire on the first releases.
-> release-please therefore authenticates with a PAT (`secrets.GH_TOKEN`, scoped to
-> `contents: write` + `pull-requests: write`) so its tag push re-triggers
-> `on: push: tags` (#1891). Three consequences worth knowing:
+> *separate* workflow, which is why `cd.yml` did not fire automatically on the first
+> releases (those deploys had to be rescued by re-pushing the tag by hand).
+> release-please therefore authenticates with a PAT so its tag push re-triggers
+> `on: push: tags` (#1891). See § Release token below for the secret, and the
+> consequences worth knowing:
 >
 > - The Release PR is now opened by the PAT owner's account, so **CI runs on it**
->   (a bot-opened PR produced no checks at all). The flip side: the PAT owner
->   cannot approve their own Release PR, so someone else has to review it.
-> - If the PAT expires or is revoked, release-please **fails outright** rather than
->   falling back to `GITHUB_TOKEN` - rotate it deliberately, and prefer a GitHub App
->   token if the long-lived-PAT exposure becomes a concern.
-> - `cd.yml` also carries `workflow_dispatch` for manually re-running a deploy. The
->   `demo` environment's deployment branch policy restricts that to `main` and `v*`
->   tags, so a dispatch from an arbitrary branch is rejected at the environment gate.
+>   (a bot-opened PR produced no checks at all, so release PRs were merging
+>   unverified and needed a ruleset bypass). This is the biggest win of the change.
+>   The flip side: the PAT owner cannot approve their own Release PR, so someone
+>   else has to review it.
+> - With **no** PAT configured the workflow degrades instead of breaking: the
+>   `token:` input falls back to `github.token`, so the Release PR and tag are still
+>   created and the run logs a `::warning::` - only the CD re-trigger is lost.
+>   An **expired or revoked** PAT is different: the secret is still non-empty, so
+>   there is nothing to fall back to and release-please fails with an auth error.
+>   Rotate deliberately.
+> - `cd.yml` also carries `workflow_dispatch` for manually re-running a deploy. Two
+>   guards keep that off arbitrary refs: the `demo` environment's deployment-branch
+>   policy (allowed refs: `main` and `v*` tags) rejects the run at the environment
+>   gate, and `cd.yml`'s own `Guard deploy ref` step re-checks it in-workflow in case
+>   that repo setting is ever relaxed. Note both restrict the *ref*, not the *actor*:
+>   the environment has no required reviewers, so anyone with write access can
+>   re-deploy `main` or a `v*` tag by hand. That is a deliberate choice for a demo
+>   target - add environment required-reviewers if it should be gated.
+
+### Release token
+
+`release-please.yml` reads, in order: `secrets.RELEASE_PLEASE_TOKEN` →
+`secrets.GH_TOKEN` → `github.token`.
+
+- **`RELEASE_PLEASE_TOKEN` is the preferred name** - it states its blast radius,
+  whereas `GH_TOKEN` is the conventional env name for the `gh` CLI and invites reuse
+  in unrelated workflows. `GH_TOKEN` stays supported so the existing repo secret
+  keeps working; new setups (and the next rotation) should use the specific name.
+- Use a **fine-grained** PAT scoped to this repository with **Contents: write** +
+  **Pull requests: write**. A *classic* PAT cannot be narrowed like that (`repo` is
+  all-or-nothing and reaches every repo the owner can touch), so a classic token
+  would be a standing org-wide credential exercised on every push to `main`.
+- Better still: mint a short-lived token per run with
+  [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token)
+  from a GitHub App installed on this repo, which removes the long-lived credential
+  entirely. The rotation cost is the same either way, so prefer this at the next
+  rotation rather than after the exposure becomes a concern.
+- Whoever provisions the token **owns its rotation** - record the owner and expiry
+  wherever the team tracks secrets, because a lapsed PAT fails the release line.
 
 ## Cutting the first tag (`v0.1.0` baseline)
 

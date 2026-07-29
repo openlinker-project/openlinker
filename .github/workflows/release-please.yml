@@ -13,11 +13,14 @@ on:
     branches: [main]
 
 # release-please needs to open/update the Release PR and, on merge, push the tag +
-# GitHub Release. It authenticates with a PAT (`secrets.GH_TOKEN`, see the `token:`
-# input below) rather than the default GITHUB_TOKEN, because a tag pushed by
-# GITHUB_TOKEN cannot re-trigger a separate workflow - which is what kept `cd.yml`
-# from firing on release (#1891, RELEASING.md § CD trigger). The permissions below
-# still scope the default token available to the rest of the job.
+# GitHub Release. It authenticates with a PAT (see the `token:` input below) rather
+# than the default GITHUB_TOKEN, because a tag pushed by GITHUB_TOKEN cannot
+# re-trigger a separate workflow - which is what kept `cd.yml` from firing on
+# release (#1891, RELEASING.md § CD trigger).
+#
+# The permissions below are still load-bearing: when no release PAT is configured
+# the `token:` input falls back to the default GITHUB_TOKEN, and that degraded path
+# needs exactly these two scopes to open the Release PR and push the tag.
 permissions:
   contents: write
   pull-requests: write
@@ -35,6 +38,19 @@ jobs:
     # slot or the repo's toolchain (no pnpm install, no build).
     runs-on: ubuntu-latest
     steps:
+      # Self-diagnosing signal for the degraded path below. Without a release PAT
+      # the run still succeeds, so the only symptom would be `cd.yml` silently not
+      # firing on the next release - which is the exact bug #1891 fixed. Warn rather
+      # than fail: losing the CD re-trigger is recoverable (cd.yml carries
+      # workflow_dispatch), breaking the release line is not.
+      - name: Check release token
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GH_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_TOKEN" ]; then
+            echo "::warning::No release PAT configured (RELEASE_PLEASE_TOKEN or GH_TOKEN) - falling back to GITHUB_TOKEN. The Release PR and tag are still created, but the tag push will NOT re-trigger cd.yml (#1891); start the deploy manually via cd.yml 'Run workflow'. See RELEASING.md (Release token)."
+          fi
+
       # Pinned by commit SHA (not the mutable v4 tag) because this workflow holds
       # contents+pull-requests write — supply-chain hygiene for third-party actions.
       - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
@@ -42,7 +58,12 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-          token: ${{ secrets.GH_TOKEN }}
+          # `RELEASE_PLEASE_TOKEN` is the preferred name (it states its blast radius);
+          # `GH_TOKEN` is accepted for the already-provisioned secret. An unset secret
+          # interpolates to the empty string, which would *override* the action's own
+          # default rather than fall back to it - hence the explicit `github.token`
+          # tail, so a missing PAT degrades instead of taking the release line down.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GH_TOKEN || github.token }}
 
       # openlinker.io/changelog renders this repo's GitHub Releases at build time.
       # A tag push never triggers workflows in *another* repository (regardless of
