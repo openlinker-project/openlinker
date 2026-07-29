@@ -59,7 +59,7 @@ test.describe('operator setup (S1-S4)', () => {
     }
   });
 
-  test('S2 — publish a product to WooCommerce via the publish dialog', async ({
+  test('S2 — publish a product to WooCommerce via the unified publish flow', async ({
     api,
     world,
     pages,
@@ -71,19 +71,21 @@ test.describe('operator setup (S1-S4)', () => {
     const beforeCount = (await api.listings.list({ connectionId: woocommerce.id, limit: 1 }))
       .total;
 
+    // #1754/#1829: /listings has a single "Publish products" CTA that opens the
+    // unified picker; a shop destination continues into the SAME bulk wizard as
+    // the marketplace path (Config -> Review -> publish).
     await pages.listingsList.goto();
-    const dialog = await pages.listingsList.openPublishToShop();
-    await dialog.chooseConnection(woocommerce.name);
+    const picker = await pages.listingsList.openPublishProducts();
 
     // Select the first product's variant (row-scoped) and drive the wizard to publish.
     const firstProduct = (await api.products.list({ limit: 1 })).items[0];
     expect(firstProduct, 'a product must exist to publish (run S1 first)').toBeTruthy();
-    await dialog.selectFirstVariantOf(firstProduct.name);
-    await dialog.continueWithSelectionButton.click();
-    if (await dialog.reviewButton.count()) {
-      await dialog.reviewButton.click();
-    }
-    await dialog.confirmPublishButton.click();
+    await picker.selectFirstVariantOf(firstProduct.name);
+    await picker.chooseDestination(woocommerce.name);
+    await picker.continueToWizard();
+
+    await pages.bulkOfferWizard.expectOnConfigStep();
+    await pages.bulkOfferWizard.publishToShop({ visibility: 'published' });
 
     // OL records the publish as a new listing/mapping for the shop connection —
     // the count must strictly grow past the pre-publish baseline.
@@ -144,7 +146,7 @@ async function runBulkOfferSegment(ctx: {
   const wizard = await pages.productsList.startBulkOfferCreation(connectionName);
   await wizard.selectConnectionIfPresent(connectionName);
 
-  // Config ("Proceed →") → auto-advancing Resolve → Review ("Approve all (N)"),
+  // Config ("Proceed →") → auto-advancing Resolve → Review ("Create offers (N)"),
   // failing fast if any review row needs attention.
   await wizard.advanceToConfirmModal();
   const progress = await wizard.confirmCreation();

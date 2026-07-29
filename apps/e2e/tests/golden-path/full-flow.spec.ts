@@ -482,7 +482,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
     const erli = world.connectionFor(PlatformType.erli);
     test.skip(!erli, 'no Erli connection on this stack');
 
-    await createBulkOffers({ api, world, pages, poll, connectionId: erli!.id, connectionName: erli!.name, platform: PlatformType.erli, categoryPath: env.freshAllegroCategoryPath });
+    await createBulkOffers({ api, world, pages, poll, connectionId: erli!.id, connectionName: erli!.name, platform: PlatformType.erli, categoryId: env.freshAllegroCategoryId });
     const mapping = await resolvePrimaryMapping(api, poll, erli!.id);
 
     // Mapping-level assertions: the offer was created and mapped to the primary
@@ -1563,6 +1563,15 @@ async function resolvePrimaryMapping(
   return mapping;
 }
 
+/**
+ * Publish the driver product to a shop destination.
+ *
+ * Since #1754/#1829 the shop path is no longer a bespoke dialog: `/listings`
+ * has ONE "Publish products" CTA that opens the unified product picker, and
+ * Continue routes a `ProductPublisher` destination into the SAME bulk wizard
+ * the marketplace path uses — Config → Review → publish, ending on the in-page
+ * `ShopPublishTracker` rather than a batch-progress route.
+ */
 async function publishToShop(
   pages: PageObjects,
   api: ApiClient,
@@ -1570,16 +1579,15 @@ async function publishToShop(
   productName: string,
 ): Promise<void> {
   await pages.listingsList.goto();
-  const dialog = await pages.listingsList.openPublishToShop();
-  await dialog.chooseConnection(connectionName);
+  const picker = await pages.listingsList.openPublishProducts();
   // Row-scoped selection (search → named product row → expand → variant
   // checkbox) — immune to the debounced-search race.
-  await dialog.selectFirstVariantOf(productName);
-  await dialog.continueWithSelectionButton.click();
-  if (await dialog.reviewButton.count()) {
-    await dialog.reviewButton.click();
-  }
-  await dialog.confirmPublishButton.click();
+  await picker.selectFirstVariantOf(productName);
+  await picker.chooseDestination(connectionName);
+  await picker.continueToWizard();
+
+  await pages.bulkOfferWizard.expectOnConfigStep();
+  await pages.bulkOfferWizard.publishToShop({ visibility: 'published' });
   // Sanity: the product exists in OL (defensive — S0 guarantees it).
   expect((await api.products.list({ limit: 1 })).items.length).toBeGreaterThan(0);
 }
@@ -1593,9 +1601,14 @@ async function createBulkOffers(ctx: {
   connectionId: string;
   connectionName: string;
   platform: KnownPlatformType;
-  categoryPath?: string[];
+  /**
+   * Explicit destination category id for a BORROWS-taxonomy marketplace (Erli).
+   * Its editor ships no category browser — only an "Allegro category ID" text
+   * field — so a breadcrumb cannot be walked there (#1045/#1096).
+   */
+  categoryId?: string;
 }): Promise<string | null> {
-  const { api, pages, poll, connectionId, connectionName, platform, categoryPath } = ctx;
+  const { api, pages, poll, connectionId, connectionName, platform, categoryId } = ctx;
   const primaryId = state.primaryVariant!.id;
 
   // Create-if-missing, else reuse (approved design #1): reuse when the driver
@@ -1615,7 +1628,7 @@ async function createBulkOffers(ctx: {
   await pages.productsList.selectProduct(state.product!.name);
   const wizard = await pages.productsList.startBulkOfferCreation(connectionName);
   await wizard.selectConnectionIfPresent(connectionName);
-  // Config ("Proceed →") → auto-advancing Resolve → Review ("Approve all (N)"),
+  // Config ("Proceed →") → auto-advancing Resolve → Review ("Create offers (N)"),
   // failing fast when any review row needs attention.
   await wizard.advanceToConfirmModal({
     requiresDeliveryPolicy: platform === PlatformType.allegro,
@@ -1627,11 +1640,11 @@ async function createBulkOffers(ctx: {
     // parameter — Allegro's validator rejects a placeholder GTIN (#1481).
     gtin: state.primaryVariant!.ean ?? state.primaryVariant!.gtin ?? undefined,
     // A borrows-taxonomy destination (Erli) resolves no category in the wizard
-    // preview, so its edit modal shows the browsable tree with nothing selected.
-    // Drive it to the SAME leaf the Allegro row mapped to (golden-path parity)
-    // so the picked category + its parameter schema match. Allegro prefills its
-    // category, so the path is ignored there.
-    categoryPath: platform === PlatformType.erli ? categoryPath : undefined,
+    // preview, and its edit modal exposes a plain "Allegro category ID" field
+    // instead of a tree. Stamp the SAME leaf id the Allegro row maps to
+    // (golden-path parity) so the parameter schema matches. Allegro prefills
+    // its own category, so the id is ignored there.
+    categoryId: platform === PlatformType.erli ? categoryId : undefined,
   });
   const progress = await wizard.confirmCreation();
   expect(progress.batchId).toBeTruthy();

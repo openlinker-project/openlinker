@@ -14,7 +14,7 @@ import { ProductsListPage } from './products.page';
 import { ProductDetailPage } from './product-detail.page';
 import { ListingsListPage } from './listings.page';
 import { ListingDetailPage } from './listing-detail.page';
-import { PublishToShopDialog } from './publish-dialog.page';
+import { OfferProductPickerModal } from './offer-product-picker.page';
 import { BulkOfferWizard } from './bulk-offer-wizard.page';
 import { BulkBatchProgressPage } from './bulk-batch-progress.page';
 import { TriggerSyncDialog } from './trigger-sync-dialog.page';
@@ -30,7 +30,7 @@ export interface PageObjects {
   productDetail: ProductDetailPage;
   listingsList: ListingsListPage;
   listingDetail: ListingDetailPage;
-  publishToShop: PublishToShopDialog;
+  offerProductPicker: OfferProductPickerModal;
   bulkOfferWizard: BulkOfferWizard;
   bulkBatchProgress: BulkBatchProgressPage;
   triggerSync: TriggerSyncDialog;
@@ -49,7 +49,7 @@ export function createPageObjects(page: Page): PageObjects {
     productDetail: new ProductDetailPage(page),
     listingsList: new ListingsListPage(page),
     listingDetail: new ListingDetailPage(page),
-    publishToShop: new PublishToShopDialog(page),
+    offerProductPicker: new OfferProductPickerModal(page),
     bulkOfferWizard: new BulkOfferWizard(page),
     bulkBatchProgress: new BulkBatchProgressPage(page),
     triggerSync: new TriggerSyncDialog(page),
@@ -66,7 +66,7 @@ export * from './products.page';
 export * from './product-detail.page';
 export * from './listings.page';
 export * from './listing-detail.page';
-export * from './publish-dialog.page';
+export * from './offer-product-picker.page';
 export * from './bulk-offer-wizard.page';
 export * from './bulk-batch-progress.page';
 export * from './trigger-sync-dialog.page';
