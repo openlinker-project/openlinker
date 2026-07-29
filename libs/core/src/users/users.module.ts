@@ -17,11 +17,16 @@ import { RefreshTokenOrmEntity } from './infrastructure/persistence/entities/ref
 import { RefreshTokenRepository } from './infrastructure/persistence/repositories/refresh-token.repository';
 import { EmailConfirmationTokenOrmEntity } from './infrastructure/persistence/entities/email-confirmation-token.orm-entity';
 import { EmailConfirmationTokenRepository } from './infrastructure/persistence/repositories/email-confirmation-token.repository';
+import { McpTokenOrmEntity } from './infrastructure/persistence/entities/mcp-token.orm-entity';
+import { McpTokenRepository } from './infrastructure/persistence/repositories/mcp-token.repository';
+import { McpTokenService } from './application/services/mcp-token.service';
 import {
   USER_REPOSITORY_TOKEN,
   PASSWORD_RESET_TOKEN_REPOSITORY_TOKEN,
   REFRESH_TOKEN_REPOSITORY_TOKEN,
   EMAIL_CONFIRMATION_TOKEN_REPOSITORY_TOKEN,
+  MCP_TOKEN_REPOSITORY_TOKEN,
+  MCP_TOKEN_SERVICE_TOKEN,
 } from './users.tokens';
 
 @Module({
@@ -31,6 +36,7 @@ import {
       PasswordResetTokenOrmEntity,
       RefreshTokenOrmEntity,
       EmailConfirmationTokenOrmEntity,
+      McpTokenOrmEntity,
     ]),
   ],
   providers: [
@@ -45,12 +51,18 @@ import {
       provide: EMAIL_CONFIRMATION_TOKEN_REPOSITORY_TOKEN,
       useExisting: EmailConfirmationTokenRepository,
     },
+    McpTokenRepository,
+    { provide: MCP_TOKEN_REPOSITORY_TOKEN, useExisting: McpTokenRepository },
+    McpTokenService,
+    { provide: MCP_TOKEN_SERVICE_TOKEN, useExisting: McpTokenService },
   ],
   exports: [
     USER_REPOSITORY_TOKEN,
     PASSWORD_RESET_TOKEN_REPOSITORY_TOKEN,
     REFRESH_TOKEN_REPOSITORY_TOKEN,
     EMAIL_CONFIRMATION_TOKEN_REPOSITORY_TOKEN,
+    MCP_TOKEN_REPOSITORY_TOKEN,
+    MCP_TOKEN_SERVICE_TOKEN,
   ],
 })
 export class UsersModule {}

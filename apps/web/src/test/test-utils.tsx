@@ -379,6 +379,12 @@ export function createMockApiClient(
       clearCredentials: vi.fn().mockResolvedValue(undefined),
       ...overrides.mailerSettings,
     } as ApiClient['mailerSettings'],
+    mcpTokens: {
+      list: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockResolvedValue(undefined),
+      revoke: vi.fn().mockResolvedValue(undefined),
+      ...overrides.mcpTokens,
+    } as ApiClient['mcpTokens'],
     posthogSettings: {
       get: vi.fn().mockResolvedValue({
         enabled: false,

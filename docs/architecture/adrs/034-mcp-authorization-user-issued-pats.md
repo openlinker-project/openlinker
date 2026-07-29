@@ -45,9 +45,37 @@ OL's MCP auth layer is an **OAuth 2.1 Resource Server that validates OpenLinker-
 
 ## Open questions
 
-- **Client compatibility (validate before Phase 0 code).** Do OL's target MCP clients (Claude Desktop, Claude.ai web, ChatGPT, Cursor…) accept a manual `Authorization` header for a *remote* Streamable-HTTP server? Confirmed at the server/vendor/framework level (GitHub/Atlassian/Sentry/FastMCP), **not** exhaustively per GUI client. A ~1-hour stub test against the actual target client settles it; a client that refuses manual headers forces the OAuth upgrade sooner.
-- **Token format:** opaque random string (hash-compared, GitHub-style — trivial revocation, one DB hit per call) vs signed JWT (self-validating claims incl. audience, no DB hit, but harder to revoke). Opaque is the leaning default (revocation matters more than a DB hit for a single-tenant admin surface); decide in Phase 0.
-- **Token store:** extend the existing `refresh_tokens` hashing precedent, or a dedicated `mcp_tokens` table? (Distinct audience + scopes argue for a dedicated store.)
+- **Client compatibility — STILL OPEN, now testable.** Do OL's target MCP clients (Claude Desktop, Claude.ai web, ChatGPT, Cursor…) accept a manual `Authorization` header for a *remote* Streamable-HTTP server? Confirmed at the server/vendor/framework level (GitHub/Atlassian/Sentry/FastMCP), **not** exhaustively per GUI client. Phase 0 (#1486) deliberately shipped a minimal authenticated `/mcp` endpoint so this is answerable against a **real OL deployment** rather than a stub — mint a token, paste it into the client, call `whoami`. Re-pointed at #1487 as its prerequisite. If a target client refuses manual headers, the verifier and token store survive; only the *issuance* half is superseded by an AS.
+- ~~**Token format:**~~ **RESOLVED in Phase 0 (#1486) — opaque.** An `olmcp_`-prefixed 256-bit CSPRNG draw,
+  SHA-256-hashed at rest, mirroring the `refresh_tokens` precedent. Revocation is immediate and total; the
+  per-call cost is one indexed unique-hash lookup. A JWT would have needed a revocation list — i.e. the DB hit it
+  was meant to avoid — plus key management. The `olmcp_` prefix makes the credential greppable by secret scanners
+  and unmistakable in a client config file.
+- ~~**Token store:**~~ **RESOLVED in Phase 0 (#1486) — a dedicated `mcp_tokens` table.** `refresh_tokens` is
+  session-rotation-shaped (rotation chain, no scopes, no label, no resource binding); it is a *pattern* to copy,
+  not a table to extend. `mcp_tokens` mirrors its column conventions and its `user_id` FK with `ON DELETE CASCADE`.
+
+### Resolved during Phase 0 implementation
+
+- **The SDK ships the Resource-Server seam this ADR describes.** MCP TypeScript SDK v2 exports
+  `OAuthTokenVerifier { verifyAccessToken(token): Promise<AuthInfo> }` — in its own words *"intentionally narrower
+  than a full OAuth Authorization Server provider; it only covers the verification step a Resource Server needs."*
+  OL implements that interface (`OlMcpTokenVerifier`) rather than hand-rolling a bearer guard, so
+  `requireBearerAuth` owns the 401/403 split, the `WWW-Authenticate` challenge, the OAuth error body, and scope
+  enforcement. **This makes the "OAuth is additive behind the same seam" claim literal**: the deferred AS upgrade
+  swaps the verifier implementation and nothing else moves.
+- **Audience binding is RFC 8707 `resource`, not a bespoke field.** `AuthInfo.resource` plus the exported
+  `checkResourceAllowed` helper are the SDK's own concepts; OL stores a `resource` column per token and validates
+  it, which is what makes "OL only ever accepts its own tokens" a *checked* property.
+- **Expiry is mandatory, by hard constraint.** The SDK's bearer verification rejects any `AuthInfo` whose
+  `expiresAt` is unset, so a "never expires" token could never authenticate. `mcp_tokens.expires_at` is NOT NULL
+  (default 90 days, max 365) — this is no longer a policy preference.
+- **New residual risk — `AuthInfo` carries the raw bearer token** in its `token` field, and is surfaced to every
+  tool handler as `ctx.authInfo`. It must never be logged or serialized wholesale; consumers log a redacted
+  projection drawn from `AuthInfo.extra`. This is a standing invariant for the whole MCP tree and is inherited by
+  #1487's audit log.
+- **SDK v2 packaging.** v2 shipped 2026-07-27 as a **scoped package family** (`@modelcontextprotocol/server` /
+  `/express` / `/node` @ `2.0.0`) — *not* as `@modelcontextprotocol/sdk@2`, which remains the v1 line.
 
 ## References
 

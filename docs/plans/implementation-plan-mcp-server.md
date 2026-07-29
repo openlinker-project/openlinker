@@ -14,7 +14,7 @@
 
 **Context**: MCP is a governed open standard with an open early-mover window for multichannel orchestrators (see ADR-033 § Context). OL's architecture fits unusually cleanly: every adapter call already funnels through one gated seam (`IIntegrationsService.getCapabilityAdapter`), and spec-native secret handling (URL-mode elicitation) maps onto OL's existing OAuth flow.
 
-**Classification**: **Interface** (new MCP adapter over existing application services), with a net-new auth slice (Phase 0) and small Frontend slices (Phase 0 token-management settings UI + Phase 3 key-entry page). No domain/core contract changes.
+**Classification**: **Interface** (new MCP adapter over existing application services), with a net-new auth slice (Phase 0) and small Frontend slices (Phase 0 token-management settings UI + Phase 3 key-entry page). No CORE ↔ Integration contract changes (ADR-033). **Corrected in #1486:** Phase 0 *does* add an additive CORE slice — the MCP-token store and `IMcpTokenService` live in `libs/core/src/users/`, because a service outside a context may not inject its `*RepositoryPort` and no `IUsersService` exists to cross through. Additive only (no export removed or retyped), but the earlier blanket "no domain/core contract changes" was inaccurate.
 
 ---
 
@@ -33,7 +33,7 @@
 ### Constraints
 - **SDK timing**: implement on the **stable MCP TypeScript SDK v2 (~28 Jul 2026)**; the ~28 Jul 2026 revision carries breaking changes. Author now, code after.
 - **Phase 0 gates Phases 1–3** — no domain/config tool ships before the client↔server auth layer.
-- New dependency: `@modelcontextprotocol/sdk` (MCP protocol server + RS bearer primitives) — none present today. **No `node-oidc-provider`** in v1 (no AS — ADR-034); it becomes a dependency only if/when the deferred OAuth upgrade ships. Node ≥18 / NestJS 10.3 / TS 5.4 / Express — compatible.
+- New dependency (**corrected in #1486**): SDK v2 shipped 2026-07-27 as a **scoped package family** — `@modelcontextprotocol/server` + `/express` + `/node`, all `^2.0.0`. It is **not** `@modelcontextprotocol/sdk@2`; that package name remains the **v1** line (`latest: 1.30.0`). Checking the v1 name for a `2.x` tag falsely reports "v2 not released". **No `node-oidc-provider`** in v1 (no AS — ADR-034); it becomes a dependency only if/when the deferred OAuth upgrade ships. Node ≥18 / NestJS 10.3 / TS 5.4 / Express — compatible.
 
 ---
 

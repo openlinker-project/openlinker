@@ -102,3 +102,35 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 **Rule**: When a wire payload shape (credentials, connection config) is consumed by more than one layer, add at least one test that drives the real FE-produced payload through the BE validator and adapter factory together (or assert all layers against a single shared fixture) — do not rely on per-layer specs that each construct their own payload.
 **Applies to**: connection credentials/config shape validators (`plugin.register` validators), adapter factories in `libs/integrations/**`, FE connection-wizard schemas in `apps/web/src/features/connections/`.
 **Source**: #1318 / PR #1319.
+
+## `@modelcontextprotocol/sdk` is the **v1** line — SDK v2 ships as a scoped package family
+
+**Context**: Checking whether the MCP TypeScript SDK v2 had shipped, as #1486's acceptance criteria required.
+**Problem**: `npm view @modelcontextprotocol/sdk` reports `latest: 1.30.0` with no `2.x` version and no v2 prerelease, which reads as "v2 has not been released". It has — v2 shipped 2026-07-27 as a **scoped package family** under new names (`@modelcontextprotocol/core`, `/server`, `/client`, `/express`, `/node`, `/hono`, `/fastify`, `/server-legacy`, `/codemod`, all `2.0.0`). The old package name was left on the v1 line. Concluding "not released" from the v1 name would have wrongly parked the whole issue.
+**Rule**: When a dependency's major version appears missing, check the **GitHub releases page and the org's other package names**, not just `npm view <old-name>`. A monorepo SDK that splits packages at a major bump will leave the original name frozen on the previous line.
+**Applies to**: any `@modelcontextprotocol/*` dependency decision; dependency-availability checks generally.
+**Source**: #1486.
+
+## Verify a new SDK's API against its installed `.d.ts`, never a fetched doc summary
+
+**Context**: Planning the MCP transport wiring against a two-day-old SDK.
+**Problem**: A web-fetched summary of the SDK docs produced `createExpressHandler(server)` — a function that **does not exist** in `@modelcontextprotocol/express@2.0.0`. A plan and a set of design decisions were built on it before the package was installed and its `index.d.cts` read. The real surface is `createMcpExpressApp` / `requireBearerAuth` / `toNodeHandler`. The SDK's own prose also referred to `ctx.http.authInfo` while its types declare `McpRequestContext.authInfo` — so even first-party documentation disagreed with the shipped types.
+**Rule**: For any newly-adopted or recently-majored dependency, `npm install` it into a scratch directory and read the shipped `.d.ts`/`.d.cts` **before** committing to an API in a plan or a diff. Treat doc prose (including the vendor's own) as a hint, and the type declarations as the contract.
+**Applies to**: adopting or major-upgrading any external SDK; `libs/integrations/**`, `apps/api/src/mcp/`.
+**Source**: #1486.
+
+## A service in `apps/**` may not inject a core `*RepositoryPort` — put the service in the owning context instead
+
+**Context**: Placing the MCP-token mint/verify service, following the `RefreshTokenService` precedent (`apps/api/src/auth/` over a `libs/core/src/users/` repository port).
+**Problem**: That precedent passes `check-cross-context-imports` **only because it is grandfathered** in the script's `ALLOW_LIST` (tracked tech debt, #718/#722). Copying it for greenfield code fails `pnpm lint` on the first commit, and "fixing" it by adding new ALLOW_LIST entries grows a list that exists to shrink.
+**Rule**: Cross-context callers go through an `I*Service` + Symbol token, never a `*RepositoryPort`. If a new service needs a core context's repository, put the **service** in that context (`libs/core/src/<ctx>/application/services/`) and export its interface. Bonus: `check-service-interfaces` only scans `libs/core`, so the `I*Service` rule becomes machine-enforced rather than merely conventional.
+**Applies to**: any new service in `apps/{api,worker}` that needs core persistence; `scripts/check-cross-context-imports.mjs`.
+**Source**: #1486 (`/pre-implement` gate caught it pre-code).
+
+## Integration-test schema is built by `synchronize`, not migrations — migration-only FKs don't exist there
+
+**Context**: Asserting that deleting a user cascade-deletes their MCP tokens.
+**Problem**: The assertion failed: the row survived. The FK is declared in the migration (`REFERENCES users(id) ON DELETE CASCADE`) but the ORM entity carries only a plain `user_id` column, and `apps/api/test/integration/setup.ts` builds its schema with `synchronize` — so migration-only constraints are absent from the test database. `setup.ts` already documents this for `connection_carrier_mappings` and `fulfillment_routing_rules`.
+**Rule**: Don't assert migration-only DDL (FKs, cascades, check constraints) in an int-spec — it can't be there. Assert the **behaviour** the constraint backs instead (e.g. an orphaned credential still fails authentication), and add the table to `setup.ts`'s truncate list explicitly, since there is no FK for `users` to cascade from and rows will otherwise leak between cases.
+**Applies to**: `apps/api/test/integration/**`, any table whose FKs live only in a migration.
+**Source**: #1486.

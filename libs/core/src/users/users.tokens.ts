@@ -14,3 +14,5 @@ export const REFRESH_TOKEN_REPOSITORY_TOKEN = Symbol('RefreshTokenRepositoryPort
 export const EMAIL_CONFIRMATION_TOKEN_REPOSITORY_TOKEN = Symbol(
   'EmailConfirmationTokenRepositoryPort'
 );
+export const MCP_TOKEN_REPOSITORY_TOKEN = Symbol('McpTokenRepositoryPort');
+export const MCP_TOKEN_SERVICE_TOKEN = Symbol('IMcpTokenService');
