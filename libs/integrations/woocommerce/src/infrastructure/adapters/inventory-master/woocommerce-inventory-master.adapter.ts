@@ -140,10 +140,10 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
           'Specify adjustment.variantId to target a specific variation.',
         );
       }
-      return this.adjustVariationInventory(adjustment, wcId, adjustment.variantId);
+      return await this.adjustVariationInventory(adjustment, wcId, adjustment.variantId);
     }
 
-    return this.adjustSimpleInventory(adjustment, wcId, product);
+    return await this.adjustSimpleInventory(adjustment, wcId, product);
   }
 
   reserveInventory(_productId: string, _quantity: number, _orderId: string): Promise<void> {
