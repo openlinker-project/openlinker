@@ -445,14 +445,20 @@ describe('PrestashopInventoryMasterAdapter', () => {
       mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
         { connectionId: connection.id, externalId: '42', entityType: 'Product' },
       ]);
+      const platformError = new PrestashopResourceNotFoundException('gone', 'Inventory', '42');
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
-      mockHttpClient.listResources = jest
-        .fn()
-        .mockRejectedValue(
-          new PrestashopResourceNotFoundException('gone', 'Inventory', '42')
-        );
+      mockHttpClient.listResources = jest.fn().mockRejectedValue(platformError);
 
-      await expect(adapter.listInventory('internal-product-123')).rejects.toThrow(
+      // The neutral error carries the internal product id, the connection it was
+      // raised for, and the platform error as its cause — a consumer can trace
+      // back to the originating platform failure without a platform import.
+      await expect(adapter.listInventory('internal-product-123')).rejects.toMatchObject({
+        name: 'MasterProductNotFoundError',
+        productId: 'internal-product-123',
+        connectionId: connection.id,
+        cause: platformError,
+      });
+      await expect(adapter.listInventory('internal-product-123')).rejects.toBeInstanceOf(
         MasterProductNotFoundError
       );
     });
