@@ -4,15 +4,19 @@
  * Covers the rival-claimant resolution behind the master-sync prune guard
  * (#1904): the reporting connection is always excluded, duplicate mappings for
  * one connection collapse, a single-claimant id short-circuits before the
- * capability lookup, and a claimant without the capability enabled is not a
- * rival.
+ * capability lookup, a claimant without the capability enabled is not a rival,
+ * and a failed capability listing fails safe (every other claimant reported, so
+ * the caller withholds) instead of throwing.
  *
  * @module libs/core/src/integrations/application/services
  */
 import { EntityClaimService } from './entity-claim.service';
 import type { IIntegrationsService } from '../interfaces/integrations.service.interface';
-import type { ExternalIdMapping, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import type { Connection } from '@openlinker/core/identifier-mapping';
+import type {
+  Connection,
+  ExternalIdMapping,
+  IdentifierMappingPort,
+} from '@openlinker/core/identifier-mapping';
 import type { AdapterMetadata } from '../../domain/types/adapter.types';
 
 const entityType = 'Product';
@@ -101,6 +105,17 @@ describe('EntityClaimService', () => {
     integrationsService.listCapabilityAdapters.mockResolvedValue([capabilityEntry(reporting)]);
 
     await expect(service.findRivalClaimants(query)).resolves.toEqual([]);
+  });
+
+  it('reports every other claimant as a rival when the capability listing throws, so the caller withholds', async () => {
+    identifierMapping.getExternalIds.mockResolvedValue([mapping(reporting), mapping(rival, '2')]);
+    // listCapabilityAdapters aborts the whole listing on ANY connection's
+    // configuration error, including one unrelated to this entity.
+    integrationsService.listCapabilityAdapters.mockRejectedValue(
+      new Error('Adapter configuration error for connection connection-unrelated')
+    );
+
+    await expect(service.findRivalClaimants(query)).resolves.toEqual([rival]);
   });
 
   it('collapses duplicate mappings so one rival connection is reported once', async () => {

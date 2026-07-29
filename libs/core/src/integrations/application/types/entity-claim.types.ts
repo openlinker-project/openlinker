@@ -18,6 +18,13 @@ export interface EntityClaimQuery {
    * `'ProductMaster'` / `'InventoryMaster'`. Narrows the result to connections
    * that could actually be writing this entity, so an unrelated mapping never
    * counts as a rival.
+   *
+   * Open string set: well-known values come from `CoreCapabilityValues` /
+   * `CoreCapability`, and plugin adapters can register additional names (#576).
+   * Bare `string` rather than `CoreCapability | string` per the convention on
+   * `CoreCapability` itself - at an extension boundary the type reflects what the
+   * runtime accepts and the well-known set is documented here (a union with
+   * `string` would widen to `string` anyway, adding no completions).
    */
   capability: string;
   /** The reporting connection - always excluded from the result. */

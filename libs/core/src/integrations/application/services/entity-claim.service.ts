@@ -54,11 +54,26 @@ export class EntityClaimService implements IEntityClaimService {
     // (#1206). Narrows to connections that both support AND have enabled the
     // capability, so a mapping written by some other flow is not mistaken for a
     // rival writer.
-    const capable = await this.integrationsService.listCapabilityAdapters<unknown>({
-      capability: query.capability,
-      lazy: true,
-    });
-    const capableConnectionIds = new Set(capable.map((entry) => entry.connectionId));
+    //
+    // The listing aborts on ANY connection's configuration error, including one
+    // unrelated to this entity. Letting that propagate would turn a third party's
+    // bad config into a thrown caller (a retryable failure) on a path whose whole
+    // purpose is to be conservative, so a failure is treated as "capabilities
+    // unknown" and every other claimant is reported as a rival - the callers then
+    // withhold, which is the same safe outcome as a real hit.
+    let capableConnectionIds: Set<string>;
+    try {
+      const capable = await this.integrationsService.listCapabilityAdapters<unknown>({
+        capability: query.capability,
+        lazy: true,
+      });
+      capableConnectionIds = new Set(capable.map((entry) => entry.connectionId));
+    } catch (error) {
+      this.logger.warn(
+        `entity_claim_capability_listing_failed entityType=${query.entityType} internalId=${query.internalId} capability=${query.capability} reporting=${query.excludeConnectionId} candidates=${candidates.join(',')} - reporting every other claimant as a rival so the caller withholds: ${(error as Error).message}`
+      );
+      return candidates;
+    }
 
     const rivals = candidates.filter((connectionId) => capableConnectionIds.has(connectionId));
     if (rivals.length > 0) {

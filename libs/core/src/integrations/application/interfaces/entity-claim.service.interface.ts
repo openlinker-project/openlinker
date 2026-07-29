@@ -24,6 +24,11 @@ export interface IEntityClaimService {
    * entity, so it does not hold back a caller's destructive path. Re-enabling it
    * makes it a rival again on the next lookup.
    *
+   * Never throws for a capability-resolution failure: if the set of capable
+   * connections cannot be established, every other claimant is reported as a
+   * rival (fail-safe - the caller withholds, rather than a third connection's
+   * misconfiguration failing the caller's whole run).
+   *
    * @returns Rival connection ids, empty when the reporting connection is the
    *          only capable claimant (the normal case).
    */

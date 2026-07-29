@@ -71,7 +71,11 @@ Resolution:
    so the hot sync path costs one indexed read and never touches the connection
    list).
 3. Otherwise intersect the remaining candidates with
-   `listCapabilityAdapters({ capability, lazy: true })` connection ids.
+   `listCapabilityAdapters({ capability, lazy: true })` connection ids. That
+   listing aborts on ANY connection's configuration error, so a failure is
+   treated as "capabilities unknown" and every candidate is returned as a rival
+   (fail-safe: the caller withholds, rather than an unrelated connection's bad
+   config throwing the caller's whole run).
 
 Both master sync services call it immediately before every prune. On a non-empty
 result they **skip the prune** (never stale a live sibling's rows), log an error
