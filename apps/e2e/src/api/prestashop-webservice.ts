@@ -5,11 +5,13 @@
  * amount parity directly against the master shop (product name, SKU, EAN, price,
  * stock, order amounts) rather than trusting OL's projection alone.
  *
- * Mostly read-only. `createProduct` / `setStock` (E3) are the sole WRITE paths:
- * they provision a fresh master product so a run exercises the create-paths
- * everywhere (opt-in via `E2E_FRESH_PRODUCT`). The write half is a SIMPLE-product
- * scaffold (one variant, parent-level EAN) and needs live verification — see the
- * TODO on `createProduct` and docs/manual-testing/e2e-golden-path.md § Fresh product.
+ * Mostly read-only. `createProduct` / `createCombination` / `setStock` (E3) are the
+ * WRITE paths: they provision a fresh master product so a run exercises the
+ * create-paths everywhere (opt-in via `E2E_FRESH_PRODUCT`). `createProduct` covers
+ * both shapes — a SIMPLE product (one synthetic variant, parent-level EAN) and a
+ * MULTI-VARIANT one (`combinations`: per-combination reference / EAN-13 / stock),
+ * the latter because the offer-creation segments need a product whose variants are
+ * not yet all listed. See docs/manual-testing/e2e-golden-path.md § Fresh product.
  *
  * Auth is HTTP Basic with the webservice key as the username and an empty
  * password (`base64(key:)`). The key is a secret — it is NEVER returned by the
@@ -71,28 +73,100 @@ export interface PrestashopWebserviceOptions {
   requestTimeoutMs?: number;
 }
 
-/** Input for `createProduct` — a SIMPLE (single-variant) master product. */
+/** Input for `createProduct` — a SIMPLE product, or MULTI-VARIANT via `combinations`. */
 export interface CreateProductInput {
   /** Product display name (localized under `languageId`). */
   name: string;
   /** Unique `reference` (== SKU) — use a per-run suffix for a fresh product. */
   reference: string;
-  /** Parent-level EAN-13 (simple product; combinations are a TODO). */
+  /** Parent-level EAN-13. For a product WITH combinations each variant carries its own. */
   ean13: string;
   /** Net price, as a decimal string (PS applies the product's tax rules). */
   price: string;
-  /** Starting stock quantity for the product's single stock_available row. */
+  /**
+   * Starting stock quantity for the product's single `stock_available` row.
+   * Ignored when `combinations` is supplied — PrestaShop then derives the
+   * `id_product_attribute=0` row as the sum of the per-combination rows, so
+   * writing it directly would fight the platform's own aggregation.
+   */
   quantity: number;
   /** Default category id (`id_category_default`). Defaults to `2` (Home). */
   idCategoryDefault?: string;
   /** Language id for localized fields. Defaults to `1`. */
   languageId?: string;
+  /**
+   * Combinations (variants) to create after the product itself. Supplying two or
+   * more makes this a real MULTI-VARIANT master product: OL's PrestaShop adapter
+   * enumerates `/api/combinations` and emits one `ProductVariant` per row (falling
+   * back to a single synthetic variant only when the product has none), so this is
+   * the only way a provisioned product imports with >1 variant.
+   */
+  combinations?: CreateCombinationInput[];
+}
+
+/**
+ * Input for one combination of `createProduct` (`id_product` is supplied by the
+ * caller of `createCombination`, or by `createProduct` itself).
+ */
+export interface CreateCombinationInput {
+  /** Combination-level `reference` (== the variant's SKU). Must be unique per run. */
+  reference: string;
+  /** Combination-level EAN-13 — the barcode OL maps onto this variant. */
+  ean13: string;
+  /** Starting stock for this combination's own `stock_available` row. */
+  quantity: number;
+  /**
+   * `product_option_value` ids that distinguish this combination (resolve/create
+   * them via `ensureAttributeValues`). PrestaShop rejects a combination with no
+   * option value, and OL reads them to build the variant's `attributes`.
+   */
+  optionValueIds: string[];
+  /** Price IMPACT (delta on the parent's price), decimal string. Defaults to `0`. */
+  priceImpact?: string;
+  /**
+   * Whether this is the product's default combination. Exactly one combination per
+   * product may carry it (`default_on` is under a unique index with `id_product`),
+   * so `createProduct` sets it on the first entry only.
+   */
+  isDefault?: boolean;
+}
+
+/** The identifiers of a freshly-created combination. */
+export interface CreatedCombinationRef {
+  id: string;
+  reference: string;
+  ean13: string;
 }
 
 /** The identifiers of a freshly-created product. */
 export interface CreatedProductRef {
   id: string;
   reference: string;
+  /** One entry per created combination; empty for a simple product. */
+  combinations: CreatedCombinationRef[];
+}
+
+/** Input for `createAttributeGroup` — a PrestaShop `product_option`. */
+export interface CreateAttributeGroupInput {
+  /** Group name (localized), e.g. `Size`. Also used as `public_name` when omitted. */
+  name: string;
+  publicName?: string;
+  /** PrestaShop front-office widget: `select` | `radio` | `color`. Defaults to `select`. */
+  groupType?: string;
+}
+
+/** Input for `createAttributeValue` — a PrestaShop `product_option_value`. */
+export interface CreateAttributeValueInput {
+  idAttributeGroup: string;
+  /** Value name (localized), e.g. `M`. */
+  name: string;
+}
+
+/** Resolved attribute axis: the group and one option-value id per requested name. */
+export interface EnsuredAttributeValues {
+  groupId: string;
+  /** Option-value ids, positionally aligned with the requested names. */
+  valueIds: string[];
 }
 
 /** Input for `createCategory` — a leaf category under an existing parent. */
@@ -364,15 +438,14 @@ export class PrestashopWebserviceClient {
   }
 
   /**
-   * Create a fresh SIMPLE master product (E3) and set its starting stock.
+   * Create a fresh master product (E3) and set its starting stock — SIMPLE by
+   * default, MULTI-VARIANT when `input.combinations` is supplied.
    *
-   * Returns the created product's id + reference (== SKU) so the caller can pin
-   * the run to it after `master.product.syncAll` imports it into OL.
+   * Returns the created product's id + reference (== SKU), plus one ref per
+   * created combination, so the caller can pin the run to it after
+   * `master.product.syncAll` imports it into OL.
    *
    * TODO (needs live verification + follow-up work):
-   *   - MULTI-VARIANT: this creates a single-variant (simple) product with a
-   *     parent-level EAN. Real multi-variant coverage needs `combinations` +
-   *     per-combination `ean13` + per-combination `stock_availables`. Deferred.
    *   - TAX: `price` is the net price; the product inherits whatever tax rule the
    *     store assigns by default. A run that asserts a specific gross may need an
    *     explicit `id_tax_rules_group`.
@@ -417,8 +490,171 @@ export class PrestashopWebserviceClient {
         `PrestaShop createProduct returned no id: ${JSON.stringify(body).slice(0, 200)}`,
       );
     }
-    await this.setStock(id, input.quantity);
-    return { id, reference: input.reference };
+
+    const requestedCombinations = input.combinations ?? [];
+    if (requestedCombinations.length === 0) {
+      await this.setStock(id, input.quantity);
+      return { id, reference: input.reference, combinations: [] };
+    }
+
+    const combinations: CreatedCombinationRef[] = [];
+    for (const [index, combination] of requestedCombinations.entries()) {
+      const created = await this.createCombination(id, {
+        ...combination,
+        // Exactly one default per product (unique index on `id_product,default_on`).
+        isDefault: combination.isDefault ?? index === 0,
+      });
+      await this.setCombinationStock(id, created.id, combination.quantity);
+      combinations.push(created);
+    }
+    return { id, reference: input.reference, combinations };
+  }
+
+  /**
+   * Resolve (reuse-or-create) an attribute axis: one `product_option` group plus
+   * one `product_option_value` per requested value name.
+   *
+   * Attribute groups and values are STORE-GLOBAL in PrestaShop, so a fresh
+   * product must not mint its own copies every run — that would litter the shop
+   * with a duplicate `Size` group per run and make the back office unusable.
+   * Both levels are looked up by exact (localized) name first and created only
+   * when genuinely absent; a stock PrestaShop install already ships `Size` with
+   * `S`/`M`/`L`/`XL`, so the common path performs no writes at all.
+   */
+  async ensureAttributeValues(
+    groupName: string,
+    valueNames: string[],
+  ): Promise<EnsuredAttributeValues> {
+    const groupId =
+      (await this.getAttributeGroupIdByName(groupName)) ??
+      (await this.createAttributeGroup({ name: groupName })).id;
+    const valueIds: string[] = [];
+    for (const name of valueNames) {
+      const valueId =
+        (await this.getAttributeValueIdByName(groupId, name)) ??
+        (await this.createAttributeValue({ idAttributeGroup: groupId, name })).id;
+      valueIds.push(valueId);
+    }
+    return { groupId, valueIds };
+  }
+
+  /** Look up an attribute group (`product_option`) id by exact localized name. */
+  async getAttributeGroupIdByName(name: string): Promise<string | null> {
+    const body = await this.get(
+      `/api/product_options?filter[name]=${encodeURIComponent(name)}&display=[id,name]`,
+    );
+    const groups = asArray(pick(body, 'product_options'));
+    if (groups.length === 0) return null;
+    return asStringOrNull(pick(asRecord(groups[0]), 'id'));
+  }
+
+  /** Create an attribute group (`product_option`). */
+  async createAttributeGroup(input: CreateAttributeGroupInput): Promise<{ id: string }> {
+    const languageId = '1';
+    const xml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<prestashop>',
+      '  <product_option>',
+      `    <group_type>${escapeXml(input.groupType ?? 'select')}</group_type>`,
+      '    <is_color_group>0</is_color_group>',
+      `    <name><language id="${escapeXml(languageId)}">${escapeXml(input.name)}</language></name>`,
+      `    <public_name><language id="${escapeXml(languageId)}">${escapeXml(input.publicName ?? input.name)}</language></public_name>`,
+      '  </product_option>',
+      '</prestashop>',
+    ].join('\n');
+    const body = await this.send('POST', '/api/product_options', xml);
+    const group = asRecord(pick(body, 'product_option'));
+    const id = asStringOrNull(pick(group, 'id'));
+    if (!id) {
+      throw new Error(
+        `PrestaShop createAttributeGroup returned no id: ${JSON.stringify(body).slice(0, 200)}`,
+      );
+    }
+    return { id };
+  }
+
+  /** Look up an option value id by exact localized name WITHIN one attribute group. */
+  async getAttributeValueIdByName(groupId: string, name: string): Promise<string | null> {
+    const body = await this.get(
+      `/api/product_option_values?filter[id_attribute_group]=${encodeURIComponent(groupId)}` +
+        `&filter[name]=${encodeURIComponent(name)}&display=[id,name]`,
+    );
+    const values = asArray(pick(body, 'product_option_values'));
+    if (values.length === 0) return null;
+    return asStringOrNull(pick(asRecord(values[0]), 'id'));
+  }
+
+  /** Create an option value (`product_option_value`) inside an attribute group. */
+  async createAttributeValue(input: CreateAttributeValueInput): Promise<{ id: string }> {
+    const languageId = '1';
+    const xml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<prestashop>',
+      '  <product_option_value>',
+      `    <id_attribute_group>${escapeXml(input.idAttributeGroup)}</id_attribute_group>`,
+      `    <name><language id="${escapeXml(languageId)}">${escapeXml(input.name)}</language></name>`,
+      '  </product_option_value>',
+      '</prestashop>',
+    ].join('\n');
+    const body = await this.send('POST', '/api/product_option_values', xml);
+    const value = asRecord(pick(body, 'product_option_value'));
+    const id = asStringOrNull(pick(value, 'id'));
+    if (!id) {
+      throw new Error(
+        `PrestaShop createAttributeValue returned no id: ${JSON.stringify(body).slice(0, 200)}`,
+      );
+    }
+    return { id };
+  }
+
+  /**
+   * Create one combination (variant) of an existing product.
+   *
+   * `minimal_quantity` is REQUIRED by the webservice schema, and `default_on` is
+   * emitted only for the default combination — the column sits under a unique
+   * index with `id_product`, so a second row carrying `0` (rather than SQL NULL)
+   * would collide.
+   */
+  async createCombination(
+    productId: string,
+    input: CreateCombinationInput,
+  ): Promise<CreatedCombinationRef> {
+    const optionValues = input.optionValueIds
+      .map(
+        (valueId) =>
+          `        <product_option_value><id>${escapeXml(valueId)}</id></product_option_value>`,
+      )
+      .join('\n');
+    const xml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<prestashop>',
+      '  <combination>',
+      `    <id_product>${escapeXml(productId)}</id_product>`,
+      `    <reference>${escapeXml(input.reference)}</reference>`,
+      `    <ean13>${escapeXml(input.ean13)}</ean13>`,
+      `    <price>${escapeXml(input.priceImpact ?? '0')}</price>`,
+      '    <minimal_quantity>1</minimal_quantity>',
+      input.isDefault ? '    <default_on>1</default_on>' : '',
+      '    <associations>',
+      '      <product_option_values>',
+      optionValues,
+      '      </product_option_values>',
+      '    </associations>',
+      '  </combination>',
+      '</prestashop>',
+    ]
+      .filter((line) => line.length > 0)
+      .join('\n');
+
+    const body = await this.send('POST', '/api/combinations', xml);
+    const combination = asRecord(pick(body, 'combination'));
+    const id = asStringOrNull(pick(combination, 'id'));
+    if (!id) {
+      throw new Error(
+        `PrestaShop createCombination returned no id: ${JSON.stringify(body).slice(0, 200)}`,
+      );
+    }
+    return { id, reference: input.reference, ean13: input.ean13 };
   }
 
   /**
@@ -669,22 +905,55 @@ export class PrestashopWebserviceClient {
   }
 
   /**
-   * Set the quantity on a simple product's auto-created `stock_available` row
-   * (the `id_product_attribute=0` aggregate). PrestaShop creates the row on
-   * product-create; this reads it back and PUTs the new quantity.
+   * Set the quantity on the product-level `stock_available` row (the
+   * `id_product_attribute=0` row — a simple product's only row, and the
+   * PS-maintained aggregate on a product with combinations). PrestaShop creates
+   * the row on product-create; this reads it back and PUTs the new quantity.
+   * Per-combination stock goes through `setCombinationStock`.
    */
   async setStock(productId: string, quantity: number): Promise<void> {
+    await this.writeStockRow(productId, '0', quantity);
+  }
+
+  /**
+   * Set the quantity on ONE combination's `stock_available` row. PrestaShop
+   * auto-creates a row per combination on combination-create, so this reads that
+   * row back and PUTs the new quantity — the per-variant counterpart to
+   * `setStock`, and what makes a provisioned multi-variant product carry
+   * DISTINCT per-variant stock (which OL's inventory master then imports
+   * one-row-per-variant, #823).
+   */
+  async setCombinationStock(
+    productId: string,
+    combinationId: string,
+    quantity: number,
+  ): Promise<void> {
+    await this.writeStockRow(productId, combinationId, quantity);
+  }
+
+  /**
+   * Locate the `stock_available` row for a product + combination pair
+   * (`'0'` = the simple-product / aggregate row) and PUT its quantity.
+   */
+  private async writeStockRow(
+    productId: string,
+    idProductAttribute: string,
+    quantity: number,
+  ): Promise<void> {
     const listing = await this.get(
       `/api/stock_availables?filter[id_product]=${productId}&display=full`,
     );
     const rows = asArray(pick(listing, 'stock_availables')).map(asRecord);
-    const row =
-      rows.find((r) => (asStringOrNull(pick(r, 'id_product_attribute')) ?? '0') === '0') ?? rows[0];
+    const row = rows.find(
+      (r) => (asStringOrNull(pick(r, 'id_product_attribute')) ?? '0') === idProductAttribute,
+    );
     const stockId = row ? asStringOrNull(pick(row, 'id')) : null;
     if (!row || !stockId) {
-      throw new Error(`PrestaShop setStock: no stock_available row for product ${productId}`);
+      throw new Error(
+        `PrestaShop setStock: no stock_available row for product ${productId} ` +
+          `(id_product_attribute=${idProductAttribute})`,
+      );
     }
-    const idProductAttribute = asStringOrNull(pick(row, 'id_product_attribute')) ?? '0';
     const idShop = asStringOrNull(pick(row, 'id_shop')) ?? '1';
     const xml = [
       '<?xml version="1.0" encoding="UTF-8"?>',

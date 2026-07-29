@@ -106,10 +106,14 @@ test.describe('golden path — full flow (S0-S9)', () => {
     // The real PS category the fresh product lands in — resolved at provision
     // time so S0 can map exactly that category (not the Home default) to Allegro.
     let freshCategoryPsId: string | undefined;
+    // Per-combination barcodes of the fresh product, asserted against OL's import
+    // below so a silent fall-back to a single synthetic variant can't pass S0.
+    let freshVariantEans: string[] = [];
     if (env.freshProduct) {
       const provisioned = await provisionFreshProduct(world);
       pinnedSku = provisioned.sku;
       freshCategoryPsId = provisioned.prestashopCategoryId;
+      freshVariantEans = provisioned.variantEans;
     }
 
     const job = await jobs.triggerAndWait(
@@ -144,6 +148,18 @@ test.describe('golden path — full flow (S0-S9)', () => {
     const variants = await world.variantsOf(product.id);
     const primary = variants.find((v) => v.ean ?? v.gtin);
     expect(primary, 'a primary variant with an EAN is required').toBeTruthy();
+
+    // E3: the provisioned product is multi-variant, so OL must have imported one
+    // variant per PrestaShop combination with that combination's own barcode.
+    // Asserting the EAN SET (not just the count) catches the failure mode where
+    // the adapter falls back to a single synthetic, parent-EAN variant.
+    if (freshVariantEans.length > 0) {
+      const importedEans = variants.map((v) => v.ean ?? v.gtin).filter((e): e is string => !!e);
+      expect(
+        importedEans.sort(),
+        'OL imported one variant per fresh PrestaShop combination, each with its own EAN',
+      ).toEqual([...freshVariantEans].sort());
+    }
 
     state.product = product;
     state.primaryVariant = primary;
@@ -1391,10 +1407,27 @@ async function pickDriverProduct(ctx: {
 const FRESH_PRODUCT_CATEGORY_NAME = 'E2E Golden Path Category';
 
 /**
- * Provision a BRAND-NEW simple PrestaShop product (E3) and return its unique
- * reference (== SKU) plus the id of the real source category it lands in, so S0
- * can pin the run to it and map that category to Allegro. Requires the PS
- * webservice key.
+ * The attribute axis a fresh multi-variant product varies along. `Size` with
+ * `S`/`M`/`L`/… already exists on a stock PrestaShop install, so the reuse-first
+ * lookup in `ensureAttributeValues` normally performs no writes and the shop
+ * never accumulates one throwaway attribute group per run.
+ */
+const FRESH_PRODUCT_ATTRIBUTE_GROUP = 'Size';
+const FRESH_PRODUCT_ATTRIBUTE_VALUES = ['S', 'M', 'L', 'XL'] as const;
+
+/**
+ * Provision a BRAND-NEW PrestaShop product (E3) and return its unique reference
+ * (== SKU) plus the id of the real source category it lands in, so S0 can pin the
+ * run to it and map that category to Allegro. Requires the PS webservice key.
+ *
+ * MULTI-VARIANT by default (`variantCount` combinations, each with its own SKU,
+ * EAN-13 and stock). A long-lived sandbox eventually has every variant of every
+ * seed product already listed, and the bulk-offer submit correctly rejects a
+ * submit whose variants are all listed (#1741 duplicate guard) — so reusing
+ * catalogue fixtures makes S3/S4 "work once, then stop working". A fresh
+ * multi-variant product per run removes that class of flakiness at the source.
+ * `variantCount: 1` provisions a SIMPLE product instead (no combinations, a
+ * parent-level EAN — the pre-#1741 behaviour, kept reachable).
  *
  * The product is created in a REAL (non-Home) category with an explicit category
  * ASSOCIATION — not just `id_category_default`. OL's `getProductCategories`
@@ -1403,13 +1436,19 @@ const FRESH_PRODUCT_CATEGORY_NAME = 'E2E Golden Path Category';
  * category and S3's Allegro bulk-wizard category picker comes up empty. The
  * category is created once and reused across runs (looked up by name first).
  *
- * Creates a SIMPLE (single-variant) product. Multi-variant fresh provisioning
- * (combinations + per-combination EAN/stock) and tax-group control are documented
- * TODOs — see `PrestashopWebserviceClient.createProduct` and the golden-path docs.
+ * Tax-group control remains a documented TODO — see
+ * `PrestashopWebserviceClient.createProduct` and the golden-path docs.
  */
 async function provisionFreshProduct(
   world: World,
-): Promise<{ sku: string; prestashopCategoryId: string }> {
+  options: { variantCount?: number } = {},
+): Promise<{ sku: string; prestashopCategoryId: string; variantEans: string[] }> {
+  const variantCount = options.variantCount ?? 2;
+  if (variantCount < 1 || variantCount > FRESH_PRODUCT_ATTRIBUTE_VALUES.length) {
+    throw new Error(
+      `provisionFreshProduct: variantCount must be 1..${FRESH_PRODUCT_ATTRIBUTE_VALUES.length}, got ${variantCount}`,
+    );
+  }
   const ps = buildPrestashopClient(world);
   if (!ps) {
     throw new Error(
@@ -1421,6 +1460,15 @@ async function provisionFreshProduct(
     (await ps.createCategory({ name: FRESH_PRODUCT_CATEGORY_NAME })).id;
   const suffix = Date.now().toString();
   const reference = `E2E-${suffix}`;
+
+  // A multi-variant product needs the distinguishing option values resolved
+  // BEFORE the combinations that reference them.
+  const valueNames = FRESH_PRODUCT_ATTRIBUTE_VALUES.slice(0, variantCount);
+  const attributes =
+    variantCount > 1
+      ? await ps.ensureAttributeValues(FRESH_PRODUCT_ATTRIBUTE_GROUP, [...valueNames])
+      : null;
+
   const created = await ps.createProduct({
     name: `E2E Golden Path ${suffix}`,
     reference,
@@ -1433,6 +1481,18 @@ async function provisionFreshProduct(
     price: '19.99',
     quantity: 25,
     idCategoryDefault: prestashopCategoryId,
+    ...(attributes
+      ? {
+          combinations: attributes.valueIds.map((valueId, index) => ({
+            reference: `${reference}-${valueNames[index]}`,
+            ean13: freshVariantEan(suffix, index),
+            // Distinct per variant, so the per-variant master-inventory read
+            // (#823) is provably per-variant and not a copied parent total.
+            quantity: 20 + index * 5,
+            optionValueIds: [valueId],
+          })),
+        }
+      : {}),
   });
   // Attach several DISTINCT photos: Allegro rejects a photo-less offer ("Wymagane
   // jest co najmniej 1 zdjęcie"). Images are synthesized offline (no network) and
@@ -1440,7 +1500,24 @@ async function provisionFreshProduct(
   for (const image of buildFreshProductImages()) {
     await ps.addProductImage(created.id, image);
   }
-  return { sku: created.reference, prestashopCategoryId };
+  return {
+    sku: created.reference,
+    prestashopCategoryId,
+    variantEans: created.combinations.map((c) => c.ean13),
+  };
+}
+
+/**
+ * Per-variant EAN-13 under the GS1 `590` (Poland) prefix.
+ *
+ * `computeEan13` truncates its seed to 12 data digits, so a naive
+ * `590{Date.now()}{index}` seed would drop the trailing digits — including the
+ * per-variant discriminator — and hand every sibling combination the SAME
+ * barcode. The seed is therefore assembled to exactly 12 digits: prefix (3) +
+ * the run suffix's low 7 digits + a 2-digit variant index.
+ */
+function freshVariantEan(suffix: string, index: number): string {
+  return computeEan13(`590${suffix.slice(-7)}${String(index).padStart(2, '0')}`);
 }
 
 /** Build a valid EAN-13 (12 data digits + check digit) from a numeric seed. */
