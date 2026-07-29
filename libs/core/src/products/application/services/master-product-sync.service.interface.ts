@@ -17,6 +17,15 @@ export interface MasterProductSyncResult {
    * `outcome: 'business_failure'` (ADR-007) instead of a retryable throw.
    */
   masterDeleted: boolean;
+  /**
+   * True when the staleness prune was SKIPPED because another connection with
+   * `ProductMaster` enabled also claims this internal product id (#1904).
+   * Pruning is keyed on the internal product id alone - with two capable
+   * claimants it cannot be attributed, so it is withheld rather than staling
+   * rows a sibling connection still considers live. Upserts still ran; no
+   * `master.*.stale` event was emitted.
+   */
+  pruneSkipped: boolean;
 }
 
 export interface IMasterProductSyncService {
