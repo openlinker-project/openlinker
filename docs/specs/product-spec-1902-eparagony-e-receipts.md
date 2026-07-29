@@ -1,6 +1,6 @@
 # Product Spec — #1902 Polish e-receipt (e-paragon) support via eparagony.pl
 
-**Status:** phase A complete (Gate A: maintainer confirmed build intent 2026-07-28); phase B complete; phase C in progress — pending Gate C
+**Status:** phase A complete; phase B complete; phase C complete (Gate C = A+E, 2026-07-29); phase D complete; Gate D = YES (build); phase E complete — ready for implementation
 **Parent issue:** [#1902](https://github.com/openlinker-project/openlinker/issues/1902)
 **Started:** 2026-07-28
 **Last updated:** 2026-07-28
@@ -200,21 +200,117 @@ Second leak: export/audit is irreducibly country-shaped (DSFinV-K for DE, DEP7 f
 
 ## 5. Product specification
 
-> Phase D — not started.
+> **Phase D complete.** Chosen shape: **A + E** — build the eparagony.pl connector, on integrator commercial terms, as **adapter #1 behind a general fiscalisation capability** whose decomposition is taken from the fiskaltrust/efsta published contract rather than inferred from Poland.
+
+Persona shorthand below: **"the seller"** = register-obliged PL online seller (§4-excluded category), per §2.
+
+### User stories & acceptance criteria
+
+**US-1 — Receipt without re-keying.**
+*As the seller, I want an order in OpenLinker to produce a fiscal e-receipt automatically, so that I stop re-entering order lines into my printer software.*
+- Given a connected fiscalisation provider and an order that requires a receipt, the receipt is issued without the operator opening another system.
+- The operator can tell, from the order, that a receipt was requested — including while it is still in flight.
+- If the order does not require a receipt, nothing is issued and nothing is shown.
+
+**US-2 — See the receipt against the order.**
+*As the seller, I want the receipt's status and a link to it on the OL order, so that I can answer a customer question without leaving OpenLinker.*
+- The order shows a clear issued / pending / failed state.
+- Where the provider returns a receipt link or identifier, the operator can open or copy it from the order.
+- This is explicit parity with what eparagony.pl's BaseLinker connector already gives its users; a push-only result does not satisfy this story.
+
+**US-3 — Failures are visible and safe to retry.**
+*As the seller, I want a failed receipt to be obvious and safely retryable, so that I never register the same sale twice.*
+- A failure is surfaced on the order with an actionable reason, not silently swallowed.
+- Retrying never produces a second fiscal registration of the same sale. **A double-fiscalisation is a legal event for the seller, not a data-quality issue** — this AC is the highest-severity one in this spec.
+- An unresolved failure never blocks the rest of order processing.
+
+**US-4 — Connect once, in configuration.**
+*As the seller (non-technical, printer configured by a `serwisant`), I want to connect our fiscalisation account to OpenLinker as a setup step, so that enabling this is configuration and not a project.*
+- The account is connected from the connection UI, in line with every other OL integration.
+- The operator is told plainly what they must have in place first (fiscal printer online, vendor printer-control software running, `serwisant` configuration done).
+- A misconfigured or unreachable setup is diagnosable from OL — the operator can tell *which* precondition is missing.
+
+**US-5 — A second provider is an adapter, not a fork.**
+*As a maintainer or OSS adopter, I want a second fiscalisation provider to be addable as an adapter, so that OpenLinker is not welded to one Polish vendor or to Poland.*
+- Adding a provider does not require changing order handling or any core domain code.
+- No vendor name and no country assumption (notably "there is a fiscal printer") appears in the shared contract.
+- The contract accommodates the four observed trust-anchor classes without naming them: certified device, security module, certified software + hash chain, remote authority endpoint.
+
+### Effort
+
+**~M.** Roughly comparable to a shipping-carrier adapter, plus the capability seam. Excludes the two blocking prerequisites (§8 R1, R3), which are days of investigation and conversation rather than engineering. Day-level breakdown belongs in Tier 2.
+
+---
 
 ## 6. Out of scope
 
-> Phase D — not started.
+1. **Issuing fiscal receipts ourselves.** Legally reserved to a certified mechanism. OL orchestrates and surfaces; it never issues.
+2. **Fiscal-device provisioning, configuration or servicing.** The `serwisant` owns this, and so does the vendor's printer-control software. OL does not install, configure or diagnose hardware.
+3. **A second adapter (efsta or otherwise) in v1.** The capability exists so this is cheap later; building two adapters at once would prove the abstraction against a provider we have no commercial relationship with. **efsta covering PL + 16 jurisdictions is the obvious adapter #2** and is recorded as such.
+4. **Journal / audit export.** Country-format-specific (DSFinV-K, DEP7, SAF-T). Deliberately a separate sub-capability nobody is asking for yet.
+5. **Corrections, voids and returns as fiscal operations.** Real and eventually necessary, but each regime constrains them differently and no evidence says our users need them at v1. **Known gap, not an oversight.**
+6. **Non-PL regimes.** The port is shaped so they fit; none is implemented.
+7. **Deciding per-order whether a receipt is legally required.** OL surfaces and orchestrates; the seller (and their accountant) own the fiscal determination. OL must not imply it knows a seller's obligation — see R5.
+
+---
 
 ## 7. Definition of done
 
-> Phase D — not started.
+Qualitative, per Stage 1 calibration — no adoption percentages we cannot measure.
+
+- At least one real §4-category seller runs it in production for ≥30 days without falling back to their previous receipt path.
+- No incident in which OpenLinker caused a **double fiscal registration**. This is the one that would matter to a seller's tax position, so it is a hard bar rather than a target.
+- Adding a second provider looks credibly like writing an adapter — assessed by a maintainer reading the code, not asserted here.
+- The operator can answer "was a receipt issued for this order?" from the OL order alone, without opening the vendor panel.
+- No support question of the form "why did OL tell me a receipt was issued when it wasn't".
+
+---
 
 ## 8. Risks
 
-> Phase D — not started.
+Top product-direction risks only. Engineering risks belong in Tier 2 plans.
 
-## 9. Decision log
+**R1 — Per-country certification liability is unverified. *Potentially invalidating.***
+We do not know from any regulator's text whether an orchestrator behind a certified provider needs its own homologation. Evidence is circumstantial: fiskaltrust and efsta hold the certifications and expose plain APIs to arbitrary integrators (Microsoft Dynamics, Erply integrate without being homologated). The second research pass flagged this as *"the weakest and most consequential item in the report"*. **Must be closed before code ships**, not before code starts.
+
+**R2 — No user-pull evidence at all.**
+Zero inbound requests; no interviews with §4-category sellers; the re-keying cost was never quantified. The build rests on a maintainer strategic call, not demand. If v1 goes unused, this is the reason, and it was known in advance.
+
+**R3 — Integrator classification may be declined.**
+If eparagony.pl treats OL as a Custom-API customer instead, our users pay 79–189 zł/mo rather than 19–69 — permanently, per seller. This is decided in a conversation, not by code, and the default path lands in the expensive class.
+
+**R4 — Counterparty standing never checked.**
+Platforma Detalistów sp. z o.o. has had no KRS or financial review across two research passes. We would be taking a product dependency on an unexamined company.
+
+**R5 — Over-claiming compliance.**
+The persona is legally defined and most PL e-commerce is *exempt* (courier COD preserves the exemption — see §2). If OL's UI implies a seller needs receipts, or that using this makes them compliant, we mislead them about their own tax position. Copy must describe what OL did, never what the law requires of them.
+
+*Deliberately excluded as Tier 2 concerns:* retry/idempotency mechanics, offline-mode tolerances, provider API drift, printer connectivity failure modes.
+
+## 9. Implementation breakdown (Phase E)
+
+| # | Issue | Effort | Notes |
+|---|---|---|---|
+| [#1906](https://github.com/openlinker-project/openlinker/issues/1906) | Close certification-liability + counterparty questions | S | **BLOCKING** — spike. R1 is potentially invalidating; must close before code ships |
+| [#1907](https://github.com/openlinker-project/openlinker/issues/1907) | Secure integrator-class listing + API/sandbox access | S | **BLOCKING** — non-engineering. Worth 60–120 zł/mo per seller |
+| [#1908](https://github.com/openlinker-project/openlinker/issues/1908) | Fiscalisation capability + eparagony adapter (register) | M | Core. `/plan` first — new capability port |
+| [#1909](https://github.com/openlinker-project/openlinker/issues/1909) | Receipt status + link on the order | S | The parity bar; push-only fails US-2 |
+| [#1910](https://github.com/openlinker-project/openlinker/issues/1910) | Device/peripheral sub-capability | M | Required for PL. `/plan` first |
+| [#1911](https://github.com/openlinker-project/openlinker/issues/1911) | Connection setup + preconditions UI | S | |
+
+Sequencing: #1906 and #1907 run in parallel with #1908's design. **#1908 must not ship before #1906 closes.** #1909/#1910/#1911 follow #1908.
+
+## 9a. Research provenance
+
+Two deep-research passes back this spec. Both had material errors worth knowing about before trusting any single finding:
+
+- **Pass 1 (2026-07-28)** — PL legal + vendor baseline. Produced a **false negative**: adversarially "refuted" that eparagony.pl integrates IdoSell/AtomStore; the live integrations page lists both. Also under-counted their integrations (~60, not "20+").
+- **Phase A correction (2026-07-28)** — targeted legal research overturned this spec's own Phase A draft *and* the Gate A briefing on COD. See decision log.
+- **Pass 2 (2026-07-29)** — international fiscalisation. Answered the abstraction question well; **left the regime inventory essentially unanswered** (only IT and CZ verified) and left R1 on circumstantial evidence only.
+
+**Standing lesson:** primary sources settled every question that mattered here — the Dz.U. PDF, the KIS interpretacja, the live vendor pages, the fiskaltrust repo. Verify against those before acting on a synthesised finding.
+
+## 10. Decision log
 
 | Date | Decision | Rationale |
 |---|---|---|
