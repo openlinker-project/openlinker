@@ -276,10 +276,18 @@ test.describe('golden path — full flow (S0-S9)', () => {
   test('S2 — WooCommerce publish + REST parity', async ({ api, world, pages, poll, env }) => {
     const testInfo = test.info();
     requireProduct();
-    const shop = world.connectionsWithCapability('ProductPublisher')[0] ?? world.connectionFor(PlatformType.woocommerce);
+    // Scoped to WooCommerce, not "the first ProductPublisher".
+    // `connectionsWithCapability` unions ENABLED and SUPPORTED capabilities, and
+    // PrestaShop's adapter supports ProductPublisher too — so on this stack the
+    // unscoped lookup returned "PrestaShop (master)" (created first), which the
+    // publish rail correctly does not offer as a destination. The step then died
+    // before the purchase pause on a locator that could never resolve.
+    const shop =
+      world.connectionWithCapability('ProductPublisher', PlatformType.woocommerce) ??
+      world.connectionFor(PlatformType.woocommerce);
     test.skip(!shop, 'no WooCommerce/ProductPublisher connection on this stack');
 
-    await publishToShop(pages, api, shop.name, state.product!.name);
+    await publishToShop(pages, api, shop!.name, state.product!.name);
 
     // WooCommerce is a ProductPublisher, not an OfferManager — publishing
     // creates a PRODUCT on the shop (async, via the shop.product.publish
