@@ -36,6 +36,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     cancelledAt: null,
     failedAt: '2026-07-24T09:12:00.000Z',
     errorMessage: 'sender postcode "22-213" invalid',
+    providerCode: null,
     createdAt: '2026-07-24T09:11:00.000Z',
     updatedAt: '2026-07-24T09:12:00.000Z',
     ...overrides,
@@ -46,6 +47,7 @@ function makeGroup(overrides: Partial<FailedShipmentCauseGroup> = {}): FailedShi
   return {
     connectionId: 'conn-dpd',
     cause: 'sender postcode invalid',
+    providerCode: null,
     shipments: [makeShipment({ id: 'ol_shipment_1' }), makeShipment({ id: 'ol_shipment_2' })],
     ...overrides,
   };
@@ -122,6 +124,28 @@ describe('ShipmentTriageStrip', () => {
       />,
     );
     expect(screen.getByText('Recipient address unreachable')).toBeInTheDocument();
+  });
+
+  it('should render the shared providerCode + retryability label when the group is code-keyed (#1918)', () => {
+    renderWithProviders(
+      <ShipmentTriageStrip
+        group={makeGroup({
+          cause: 'api.http-503',
+          providerCode: 'api.http-503',
+          shipments: [
+            makeShipment({ id: 'ol_shipment_1', providerCode: 'api.http-503' }),
+            makeShipment({ id: 'ol_shipment_2', providerCode: 'api.http-503' }),
+          ],
+        })}
+        connectionName="DPD Warehouse A"
+        canReviewConnection
+      />,
+    );
+    expect(
+      screen.getByText('2 failed shipments on DPD Warehouse A report the same rejection code'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('api.http-503')).toBeInTheDocument();
+    expect(screen.getByText(/Transient - safe to just retry/)).toBeInTheDocument();
   });
 
   it('should link the connection-settings CTA to the group connection when the operator holds connections:write', () => {

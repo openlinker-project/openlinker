@@ -353,11 +353,16 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
         `generateLabel failed for shipment ${shipment.id} (order ${input.orderId}): ${message}${rejectionDetail}`,
       );
       // Persist the visible failure (surfaces in /shipments + enables retry),
-      // then propagate the domain error so the caller can render it.
+      // then propagate the domain error so the caller can render it. The
+      // structured `providerCode` (#1918) is persisted alongside the
+      // free-text message so triage grouping can key on it instead of
+      // fuzzy-matching prose.
       await this.shipments.update(shipment.id, {
         status: SHIPMENT_STATUS.Failed,
         failedAt: new Date(),
         errorMessage: message,
+        providerCode:
+          error instanceof ShippingProviderRejectionException ? error.providerCode : null,
       });
       // Reflect the failed shipment in the order rollup (#1108) before surfacing.
       await this.fulfillmentProjection.recompute(input.orderId);

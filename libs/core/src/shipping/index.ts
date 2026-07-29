@@ -69,6 +69,9 @@ export type { TrackingSnapshot, KnownCarrier } from './domain/types/tracking-sna
 export { KnownCarrierValues } from './domain/types/tracking-snapshot.types';
 export type { KnownProviderRejectionCode } from './domain/types/shipping-provider-rejection.types';
 export { KnownProviderRejectionCodeValues } from './domain/types/shipping-provider-rejection.types';
+export type { RetryabilityClass } from './domain/types/shipping-provider-rejection.types';
+export { RETRYABILITY_CLASS_VALUES } from './domain/types/shipping-provider-rejection.types';
+export { deriveRetryabilityClass } from './domain/provider-code-retryability';
 
 export type {
   CreateShipmentInput,

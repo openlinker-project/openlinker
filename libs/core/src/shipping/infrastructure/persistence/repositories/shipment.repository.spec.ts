@@ -42,6 +42,7 @@ describe('ShipmentRepository', () => {
     cancelledAt: null,
     failedAt: null,
     errorMessage: null,
+    providerCode: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -378,6 +379,7 @@ describe('ShipmentRepository', () => {
         cancelledAt: null,
         failedAt: null,
         errorMessage: null,
+        providerCode: 'preflight.missing-parcel-template',
         status: 'delivered',
       });
       ormRepository.findOne.mockResolvedValue(fullyPopulated);
@@ -402,6 +404,7 @@ describe('ShipmentRepository', () => {
         cancelledAt: fullyPopulated.cancelledAt,
         failedAt: fullyPopulated.failedAt,
         errorMessage: fullyPopulated.errorMessage,
+        providerCode: fullyPopulated.providerCode,
         createdAt: fullyPopulated.createdAt,
         updatedAt: fullyPopulated.updatedAt,
       });

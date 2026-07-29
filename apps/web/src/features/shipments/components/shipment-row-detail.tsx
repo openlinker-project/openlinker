@@ -59,6 +59,7 @@ import {
   type Shipment,
 } from '../api/shipments.types';
 import { buildCarrierTrackingUrl, getCarrierDisplayName } from '../lib/carrier-tracking-url';
+import { deriveRetryabilityClass, RETRYABILITY_LABEL } from '../lib/shipment-retryability';
 import { useCancelShipmentMutation } from '../hooks/use-cancel-shipment-mutation';
 import { useLabelDownload } from '../hooks/use-label-download';
 import { useNotifyDispatchedMutation } from '../hooks/use-notify-dispatched-mutation';
@@ -195,6 +196,19 @@ export function ShipmentRowDetail({
               <span className="shipment-detail-grid__label">Failed</span>
               <p className="shipment-detail-grid__value">
                 <TimeDisplay iso={shipment.failedAt} />
+              </p>
+            </div>
+          ) : null}
+          {/* Structured rejection code (#1918) — unlike `errorMessage`, never
+              redacted for a viewer (short discriminator, not carrier prose),
+              so this is the one cause-related field a viewer always sees. */}
+          {shipment.providerCode ? (
+            <div className="shipment-detail-grid__field">
+              <span className="shipment-detail-grid__label">Rejection code</span>
+              <p className="shipment-detail-grid__value mono-text">
+                {shipment.providerCode}
+                {' - '}
+                {RETRYABILITY_LABEL[deriveRetryabilityClass(shipment.providerCode)]}
               </p>
             </div>
           ) : null}
