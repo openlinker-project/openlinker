@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from '../../shared/ui/dialog';
 import { PublishDestinationRail, type PublishDestination } from '../../features/listings';
+import { captureDemoEvent } from '../../features/demo';
 
 interface MarketplacePickerModalProps {
   open: boolean;
@@ -70,7 +71,14 @@ export function MarketplacePickerModal({
               type="button"
               tone="primary"
               disabled={!picked}
-              onClick={() => picked && onContinue(picked)}
+              onClick={() => {
+                if (!picked) return;
+                const platform =
+                  destinations.find((d) => d.connection.id === picked)?.connection.platformType ??
+                  picked;
+                captureDemoEvent('demo_offer_marketplace_picked', { platform });
+                onContinue(picked);
+              }}
             >
               Continue →
             </Button>

@@ -27,6 +27,19 @@ export interface PosthogSettingsInput {
   customHost: string | null;
   autocapture: boolean;
   sessionRecording: boolean;
+  /**
+   * Master toggle for demo-mode product events (#1787), independent of
+   * `autocapture` — an operator can run session recording without product
+   * events, or vice versa.
+   */
+  productEventsEnabled: boolean;
+  /**
+   * Enabled `DemoEventGroup` values (opaque strings here — the closed enum
+   * lives in the `apps/web` demo-events catalog, which core cannot import).
+   * An event whose group is absent from this list is a no-op regardless of
+   * `productEventsEnabled`.
+   */
+  enabledEventGroups: string[];
 }
 
 /**
@@ -55,4 +68,6 @@ export interface ResolvedPosthogConfig {
   host: string;
   autocapture: boolean;
   sessionRecording: boolean;
+  productEventsEnabled: boolean;
+  enabledEventGroups: string[];
 }

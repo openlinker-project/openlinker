@@ -120,6 +120,23 @@ in the demo banner.
 | `OL_POSTHOG_KEY` | PostHog project API key (publishable, write-only ingestion key — never a personal/private key). Unset by default. |
 | `OL_POSTHOG_HOST` | PostHog ingestion host. Defaults to `https://eu.posthog.com` when `OL_POSTHOG_KEY` is set. |
 
+#### Product events need one manual step
+
+The two variables above enable **session recording only**. Named product
+events (`demo_offer_create_attempted`, `demo_orders_viewed`, …) are a separate,
+**DB-only** setting with no env var — an env-configured demo emits none of them
+until an admin turns them on. After the stack is up:
+
+1. Sign in as an admin and go to `/settings` → **PostHog**.
+2. Enable the **Product events** master toggle.
+3. Tick the event **groups** you want (they are derived from the event catalog,
+   so the list is always current).
+
+Both the master toggle and an event's own group must be on before that event
+fires. Until then the instrumentation is inert — the demo works normally, it
+just reports nothing. See [`docs/analytics-events.md`](./analytics-events.md)
+for the catalog and the group model.
+
 **Only run session recording against synthetic seed data. This is a hard
 requirement, not a precaution.** Recording masks **passwords only** (#1877)
 — every other input value and all rendered page text is captured verbatim,

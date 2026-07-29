@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SystemConfig } from '../../system';
 import {
+  captureDemoEvent, 
   disableDemoAnalytics,
   enableDemoAnalytics,
   initDemoIntegrations,
@@ -8,11 +9,12 @@ import {
 
 const posthogInit = vi.fn();
 const posthogOptOut = vi.fn();
+const posthogCapture = vi.fn();
 const posthogOptIn = vi.fn();
 vi.mock('posthog-js', () => ({
   default: {
     init: posthogInit,
-    opt_out_capturing: posthogOptOut,
+    opt_out_capturing: posthogOptOut, capture: posthogCapture,
     opt_in_capturing: posthogOptIn,
   },
 }));
@@ -30,14 +32,87 @@ const configuredPosthog: SystemConfig = {
       host: 'https://eu.posthog.com',
       autocapture: true,
       sessionRecording: true,
+      productEventsEnabled: true,
+      enabledEventGroups: ['conversion-intent'],
     },
   },
 };
+
+describe('captureDemoEvent', () => {
+  beforeEach(() => {
+    posthogInit.mockClear();
+    posthogOptOut.mockClear();
+    posthogCapture.mockClear();
+    getDemoAnalyticsConsent.mockReset();
+  });
+
+  it('should not call posthog.capture when PostHog was never initialized', () => {
+    captureDemoEvent('demo_viewer_locked_action_clicked', { actionName: 'a', surface: 'b' });
+
+    expect(posthogCapture).not.toHaveBeenCalled();
+  });
+
+  it('should not call posthog.capture when initialization was gated out (consent declined)', async () => {
+    getDemoAnalyticsConsent.mockReturnValue('declined');
+    await initDemoIntegrations(configuredPosthog);
+
+    captureDemoEvent('demo_viewer_locked_action_clicked', { actionName: 'a', surface: 'b' });
+
+    expect(posthogCapture).not.toHaveBeenCalled();
+  });
+
+  it('should call posthog.capture with the event name and props once PostHog is initialized', async () => {
+    getDemoAnalyticsConsent.mockReturnValue('accepted');
+    await initDemoIntegrations(configuredPosthog);
+
+    captureDemoEvent('demo_viewer_locked_action_clicked', { actionName: 'a', surface: 'b' });
+
+    expect(posthogCapture).toHaveBeenCalledWith('demo_viewer_locked_action_clicked', {
+      actionName: 'a',
+      surface: 'b',
+    });
+  });
+
+  it('should not call posthog.capture when productEventsEnabled is false', async () => {
+    getDemoAnalyticsConsent.mockReturnValue('accepted');
+    await initDemoIntegrations({
+      ...configuredPosthog,
+      demoIntegrations: {
+        posthog: {
+          ...configuredPosthog.demoIntegrations!.posthog!,
+          productEventsEnabled: false,
+        },
+      },
+    });
+
+    captureDemoEvent('demo_viewer_locked_action_clicked', { actionName: 'a', surface: 'b' });
+
+    expect(posthogCapture).not.toHaveBeenCalled();
+  });
+
+  it("should not call posthog.capture when the event's group is not in enabledEventGroups", async () => {
+    getDemoAnalyticsConsent.mockReturnValue('accepted');
+    await initDemoIntegrations({
+      ...configuredPosthog,
+      demoIntegrations: {
+        posthog: {
+          ...configuredPosthog.demoIntegrations!.posthog!,
+          enabledEventGroups: ['some-other-group'],
+        },
+      },
+    });
+
+    captureDemoEvent('demo_viewer_locked_action_clicked', { actionName: 'a', surface: 'b' });
+
+    expect(posthogCapture).not.toHaveBeenCalled();
+  });
+});
 
 describe('initDemoIntegrations', () => {
   beforeEach(() => {
     posthogInit.mockClear();
     posthogOptOut.mockClear();
+    posthogCapture.mockClear();
     getDemoAnalyticsConsent.mockReset();
   });
 
@@ -106,6 +181,8 @@ describe('initDemoIntegrations', () => {
           host: 'https://eu.posthog.com',
           autocapture: false,
           sessionRecording: false,
+          productEventsEnabled: false,
+          enabledEventGroups: [],
         },
       },
     });
@@ -120,6 +197,7 @@ describe('disableDemoAnalytics', () => {
   beforeEach(() => {
     posthogInit.mockClear();
     posthogOptOut.mockClear();
+    posthogCapture.mockClear();
     getDemoAnalyticsConsent.mockReset();
   });
 
@@ -155,5 +233,59 @@ describe('enableDemoAnalytics (#1882)', () => {
 
     expect(() => fresh.enableDemoAnalytics()).not.toThrow();
     expect(posthogOptIn).not.toHaveBeenCalled();
+  });
+});
+
+describe('captureDemoEvent buffering before init resolves (#1790)', () => {
+  beforeEach(() => {
+    posthogInit.mockClear();
+    posthogOptOut.mockClear();
+    posthogCapture.mockClear();
+    getDemoAnalyticsConsent.mockReset();
+  });
+
+  it('replays a captureDemoEvent call issued before initDemoIntegrations resolves, once init succeeds', async () => {
+    vi.resetModules();
+    const mod = await import('./init-demo-integrations');
+    getDemoAnalyticsConsent.mockReturnValue('accepted');
+
+    const configWithBaseline: SystemConfig = {
+      ...configuredPosthog,
+      demoIntegrations: {
+        posthog: {
+          ...configuredPosthog.demoIntegrations!.posthog!,
+          enabledEventGroups: ['baseline'],
+        },
+      },
+    };
+
+    // `initDemoIntegrations` runs synchronously up to its first `await` (the
+    // dynamic `posthog-js` import), so `posthogInstance` is still null here —
+    // this call must be buffered, not dropped.
+    const initPromise = mod.initDemoIntegrations(configWithBaseline);
+    mod.captureDemoEvent('demo_login_succeeded', { role: 'admin' });
+    await initPromise;
+
+    expect(posthogCapture).toHaveBeenCalledWith('demo_login_succeeded', { role: 'admin' });
+  });
+
+  it('never replays a buffered event once init has settled to a non-demo outcome, even across a later successful init', async () => {
+    vi.resetModules();
+    const mod = await import('./init-demo-integrations');
+    getDemoAnalyticsConsent.mockReturnValue('accepted');
+
+    // Resolves via the early-return (not demo mode) path, flipping the
+    // one-shot `initSettled` flag.
+    await mod.initDemoIntegrations({ demoMode: false });
+    mod.captureDemoEvent('demo_login_succeeded', { role: 'admin' });
+
+    // A later, separate successful init in the same session must not replay
+    // an event that arrived after the session's outcome was already settled.
+    await mod.initDemoIntegrations(configuredPosthog);
+
+    expect(posthogCapture).not.toHaveBeenCalledWith(
+      'demo_login_succeeded',
+      expect.anything(),
+    );
   });
 });

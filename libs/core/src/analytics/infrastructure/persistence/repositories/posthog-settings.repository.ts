@@ -53,6 +53,8 @@ export class PosthogSettingsRepository implements PosthogSettingsRepositoryPort 
         customHost: input.customHost,
         autocapture: input.autocapture,
         sessionRecording: input.sessionRecording,
+        productEventsEnabled: input.productEventsEnabled,
+        enabledEventGroups: input.enabledEventGroups,
         updatedBy,
         // TypeORM's upsert() only includes explicitly-passed columns in the
         // ON CONFLICT DO UPDATE SET clause — @UpdateDateColumn()'s auto-touch
@@ -83,6 +85,8 @@ export class PosthogSettingsRepository implements PosthogSettingsRepositoryPort 
       entity.customHost,
       entity.autocapture,
       entity.sessionRecording,
+      entity.productEventsEnabled,
+      entity.enabledEventGroups,
       entity.updatedAt,
       entity.updatedBy
     );

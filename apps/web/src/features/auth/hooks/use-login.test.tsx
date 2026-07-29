@@ -1,17 +1,23 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { PropsWithChildren, ReactElement } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiClientProvider } from '../../../app/api/api-client-provider';
 import { createMockApiClient } from '../../../test/test-utils';
 import { SessionProvider } from '../../../shared/auth/session-provider';
 import type { SessionAdapter } from '../../../shared/auth/session-adapter';
 import { ANONYMOUS_SESSION } from '../../../shared/auth/session.types';
+import type { Session } from '../../../shared/auth/session.types';
 import { useLogin } from './use-login';
 
-function createTestAdapter(): SessionAdapter {
+const captureDemoEvent = vi.fn();
+vi.mock('../../demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
+
+function createTestAdapter(session: Session = ANONYMOUS_SESSION): SessionAdapter {
   return {
-    getSession: vi.fn().mockResolvedValue(ANONYMOUS_SESSION),
+    getSession: vi.fn().mockResolvedValue(session),
     getAccessToken: vi.fn().mockResolvedValue(null),
     persistSession: vi.fn().mockResolvedValue(undefined),
     clearSession: vi.fn().mockResolvedValue(undefined),
@@ -38,6 +44,10 @@ function createWrapper(
 }
 
 describe('useLogin', () => {
+  beforeEach(() => {
+    captureDemoEvent.mockClear();
+  });
+
   it('should call auth API login and persist session on success', async () => {
     const apiClient = createMockApiClient();
     const adapter = createTestAdapter();
@@ -68,6 +78,28 @@ describe('useLogin', () => {
     await waitFor(() => {
       expect(adapter.getSession).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it('should fire demo_login_succeeded with the freshly-persisted session role (#1790)', async () => {
+    const apiClient = createMockApiClient();
+    const adapter = createTestAdapter({
+      status: 'authenticated',
+      accessToken: 'mock-jwt-token',
+      user: {
+        id: 'user_1',
+        username: 'admin',
+        email: 'admin@example.com',
+        role: 'admin',
+        permissions: [],
+      },
+    });
+    const { result } = renderHook(() => useLogin(), {
+      wrapper: createWrapper(apiClient, adapter),
+    });
+
+    await result.current.mutateAsync({ username: 'admin', password: 'secret' });
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_login_succeeded', { role: 'admin' });
   });
 
   it('should surface error on login failure', async () => {

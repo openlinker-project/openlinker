@@ -12,6 +12,7 @@ import { PageLayout } from '../../shared/ui/page-layout';
 import { Select } from '../../shared/ui/select';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
+import { captureDemoEvent } from '../../features/demo';
 
 const CONNECTION_STATUSES = ['active', 'disabled', 'error', 'needs_reauth'] as const;
 
@@ -88,6 +89,7 @@ export function ConnectionsListPage(): ReactElement {
   const query = useConnectionsQuery(filters);
 
   function handleFilterChange(key: string, value: string): void {
+    captureDemoEvent('demo_connections_filtered', { filter: key, value });
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       if (value) {
