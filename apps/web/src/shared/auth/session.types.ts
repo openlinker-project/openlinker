@@ -23,6 +23,7 @@ export const PermissionValues = [
   'users:write',
   'customers:read',
   'shipments:read',
+  'shipments:write',
   'invoices:read',
   'invoices:write',
   'webhooks:read',

@@ -1,8 +1,15 @@
 import { cleanup, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../test/test-utils';
 import { AdaptersCatalogPage } from './adapters-catalog-page';
 import type { AdapterSummary } from '../../features/adapters/api/adapters.types';
+import type * as DemoModule from '../../features/demo';
+
+const captureDemoEvent = vi.fn();
+vi.mock('../../features/demo', async (importOriginal): Promise<typeof DemoModule> => {
+  const actual = await importOriginal<typeof DemoModule>();
+  return { ...actual, captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args) };
+});
 
 const sampleAdapter: AdapterSummary = {
   adapterKey: 'prestashop.webservice.v1',
@@ -13,7 +20,24 @@ const sampleAdapter: AdapterSummary = {
 };
 
 describe('AdaptersCatalogPage', () => {
+  beforeEach(() => {
+    captureDemoEvent.mockClear();
+  });
   afterEach(cleanup);
+
+  it('captures demo_adapters_catalog_viewed once with a count bucket on load (#1789)', async () => {
+    const apiClient = createMockApiClient({
+      adapters: { list: vi.fn().mockResolvedValue([sampleAdapter]) },
+    });
+    renderWithProviders(<AdaptersCatalogPage />, { apiClient });
+
+    await screen.findByText('PrestaShop WebService v1');
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_adapters_catalog_viewed', {
+      adapterCountBucket: '1-10',
+    });
+    expect(captureDemoEvent).toHaveBeenCalledTimes(1);
+  });
 
   it('renders the page heading', () => {
     renderWithProviders(<AdaptersCatalogPage />);

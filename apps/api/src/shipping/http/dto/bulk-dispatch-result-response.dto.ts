@@ -24,7 +24,10 @@ export class PerOrderDispatchResultDto {
   @ApiProperty({ description: 'Internal order id (ol_order_*) this result is for' })
   orderId!: string;
 
-  @ApiPropertyOptional({ type: ShipmentResponseDto, description: 'Present only when kind=dispatched' })
+  @ApiPropertyOptional({
+    type: ShipmentResponseDto,
+    description: 'Present only when kind=dispatched',
+  })
   shipment?: ShipmentResponseDto;
 
   @ApiPropertyOptional({ description: 'Present only when kind=failed — the rejection message' })
@@ -35,7 +38,10 @@ export class PerOrderDispatchResultDto {
     dto.kind = result.kind;
     dto.orderId = result.orderId;
     if (result.kind === 'dispatched') {
-      dto.shipment = ShipmentResponseDto.fromDomain(result.shipment);
+      // `canWrite: true` — POST /shipments/bulk/generate-labels is
+      // `@Roles('admin', 'operator')`-gated, so the caller already holds
+      // `shipments:write` and there is nothing to redact (#1826).
+      dto.shipment = ShipmentResponseDto.fromDomain(result.shipment, null, true);
     } else if (result.kind === 'failed') {
       dto.error = result.error;
     }

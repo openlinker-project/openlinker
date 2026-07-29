@@ -446,6 +446,16 @@ const ALLOW_LIST = new Map([
     new Set(['OfferStatusSnapshotRepositoryPort']),
   ],
 
+  // apps → webhooks.WebhookDeliveryRepositoryPort (#1916) - the status
+  // non-regression guard is a SQL CASE inside the upsert's ON CONFLICT clause,
+  // so the int-spec drives the repository directly to force both writer
+  // orderings; no service seam can order the ingress and consumer writes.
+  // Same sanctioned round-trip pattern as #816 / #991 above.
+  [
+    'apps/api/test/integration/webhook-delivery-status-monotonic.int-spec.ts',
+    new Set(['WebhookDeliveryRepositoryPort']),
+  ],
+
   // apps → listings.{OfferMappingRepositoryPort, OfferCreationRecordRepositoryPort} +
   //        products.ProductVariantRepositoryPort — rewire via IListingsService + IProductsService
   [

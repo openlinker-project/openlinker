@@ -1,10 +1,17 @@
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Route, Routes } from 'react-router-dom';
+import type { ReactElement } from 'react';
+import { Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createMockApiClient, renderWithProviders, sampleConnection } from '../../test/test-utils';
+import {
+  createAuthenticatedSessionAdapter,
+  createMockApiClient,
+  renderWithProviders,
+  sampleConnection,
+} from '../../test/test-utils';
 import { OrderDetailPage } from './order-detail-page';
 import type { OrderRecord } from '../../features/orders/api/orders.types';
+import type { Connection } from '../../features/connections';
 
 const sampleOrder: OrderRecord = {
   internalOrderId: 'ol_order_abc123',
@@ -222,6 +229,8 @@ describe('OrderDetailPage', () => {
                 status: 'dispatched',
                 providerShipmentId: 'prov-1',
                 paczkomatId: 'POZ08A',
+                sourceDeliveryMethodId: null,
+                deliveryIntent: null,
                 trackingNumber: 'TRACK-1',
                 carrier: 'inpost',
                 labelPdfRef: null,
@@ -359,6 +368,181 @@ describe('OrderDetailPage', () => {
       // promise settles. Looking up by name covers the new accessible label.
       const retryingButton = await screen.findByRole('button', { name: 'Retrying…' });
       expect(retryingButton).toBeDisabled();
+    });
+  });
+
+  describe('shipment deep-link (#1826)', () => {
+    const shippingConnection: Connection = {
+      ...sampleConnection,
+      id: 'conn-shipping',
+      supportedCapabilities: ['ShippingProviderManager'],
+      enabledCapabilities: ['ShippingProviderManager'],
+    };
+
+    // A live OL-managed-carrier route + a paczkomat-shaped snapshot (mirrors
+    // order-shipment-panel.test.tsx's makeOrder()) so GenerateLabelForm
+    // resolves shippingMethod === 'paczkomat' and renders the paczkomatId
+    // field rather than gating on "no routing resolved" / courier-only fields.
+    const orderWithPaczkomatRoute: OrderRecord = {
+      ...sampleOrder,
+      orderSnapshot: {
+        id: '1234',
+        orderNumber: 'A-1234',
+        customerEmail: 'buyer@example.com',
+        shippingAddress: {
+          firstName: 'Anna',
+          lastName: 'Kowalska',
+          address1: 'Krakowska 12',
+          city: 'Poznań',
+          postalCode: '60-001',
+          country: 'PL',
+          phone: '+48500600700',
+        },
+        shipping: { methodId: 'allegro-courier', methodName: 'Kurier Allegro' },
+        pickupPoint: { id: 'POZ08A', name: 'Paczkomat POZ08A' },
+      },
+      deliveryResolution: {
+        source: 'rule',
+        processorKind: 'ol_managed_carrier',
+        processorConnectionId: shippingConnection.id,
+        processorAvailable: true,
+      },
+    };
+
+    /** Echoes the live URL so the param-stripping assertion can read it. */
+    function LocationProbe(): ReactElement {
+      const location = useLocation();
+      return <span data-testid="location">{`${location.pathname}${location.search}`}</span>;
+    }
+
+    function renderWithRoute(apiClient: ReturnType<typeof createMockApiClient>, route: string): void {
+      renderWithProviders(
+        <Routes>
+          <Route
+            path="/orders/:internalOrderId"
+            element={
+              <>
+                <OrderDetailPage />
+                <LocationProbe />
+              </>
+            }
+          />
+        </Routes>,
+        // The deep-link auto-open is gated on `shipments:write` (#1905), so an
+        // anonymous render would never open the form.
+        { apiClient, route, sessionAdapter: createAuthenticatedSessionAdapter() },
+      );
+    }
+
+    it('reads ?retryShipmentId= and auto-opens the form with the shipment pre-filled', async () => {
+      const api = createMockApiClient({
+        orders: { getById: vi.fn().mockResolvedValue(orderWithPaczkomatRoute) },
+        connections: { list: vi.fn().mockResolvedValue([shippingConnection]) },
+        shipments: {
+          list: vi.fn().mockResolvedValue({
+            items: [
+              {
+                id: 'ol_shipment_failed',
+                orderId: orderWithPaczkomatRoute.internalOrderId,
+                customerId: null,
+                connectionId: shippingConnection.id,
+                shippingMethod: 'paczkomat',
+                status: 'failed',
+                providerShipmentId: null,
+                paczkomatId: 'POZ08A',
+                sourceDeliveryMethodId: null,
+                deliveryIntent: null,
+                trackingNumber: null,
+                carrier: null,
+                labelPdfRef: null,
+                dispatchedAt: null,
+                deliveredAt: null,
+                cancelledAt: null,
+                failedAt: '2026-05-01T10:00:00.000Z',
+                errorMessage: 'sender postcode invalid',
+                createdAt: '2026-05-01T09:00:00.000Z',
+                updatedAt: '2026-05-01T10:00:00.000Z',
+              },
+            ],
+            total: 1,
+            limit: 20,
+            offset: 0,
+          }),
+        },
+      });
+
+      renderWithRoute(api, '/orders/ol_order_abc123?retryShipmentId=ol_shipment_failed');
+
+      expect(await screen.findByDisplayValue('POZ08A')).toBeInTheDocument();
+    });
+
+    it('leaves the form collapsed when no retryShipmentId param is present', async () => {
+      const api = createMockApiClient({
+        orders: { getById: vi.fn().mockResolvedValue(orderWithPaczkomatRoute) },
+        connections: { list: vi.fn().mockResolvedValue([shippingConnection]) },
+        shipments: {
+          list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+        },
+      });
+
+      renderWithRoute(api, '/orders/ol_order_abc123');
+
+      await screen.findByText('No shipment yet');
+      expect(screen.queryByText('Recipient')).toBeNull();
+    });
+
+    it('should strip retryShipmentId from the URL after consuming it while preserving from (#1905)', async () => {
+      // A one-shot navigation token, not durable URL state: leaving it on the
+      // address bar means a bookmark / refresh / back-navigation re-lands on a
+      // live, submittable mutation surface.
+      const api = createMockApiClient({
+        orders: { getById: vi.fn().mockResolvedValue(orderWithPaczkomatRoute) },
+        connections: { list: vi.fn().mockResolvedValue([shippingConnection]) },
+        shipments: {
+          list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+        },
+      });
+
+      renderWithRoute(
+        api,
+        '/orders/ol_order_abc123?retryShipmentId=ol_shipment_failed&from=shipments',
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('location').textContent).toBe(
+          '/orders/ol_order_abc123?from=shipments',
+        );
+      });
+    });
+
+    it('should point the back link at /shipments when arriving with from=shipments (#1905)', async () => {
+      const api = createMockApiClient({
+        orders: { getById: vi.fn().mockResolvedValue(orderWithPaczkomatRoute) },
+        connections: { list: vi.fn().mockResolvedValue([shippingConnection]) },
+        shipments: {
+          list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+        },
+      });
+
+      renderWithRoute(api, '/orders/ol_order_abc123?from=shipments');
+
+      const back = await screen.findByRole('link', { name: 'Shipments' });
+      expect(back).toHaveAttribute('href', '/shipments');
+    });
+
+    it('should keep the default /orders back link when arriving without from', async () => {
+      const api = createMockApiClient({
+        orders: { getById: vi.fn().mockResolvedValue(orderWithPaczkomatRoute) },
+        connections: { list: vi.fn().mockResolvedValue([shippingConnection]) },
+        shipments: {
+          list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+        },
+      });
+
+      renderWithRoute(api, '/orders/ol_order_abc123');
+
+      const back = await screen.findByRole('link', { name: 'Orders' });
+      expect(back).toHaveAttribute('href', '/orders');
     });
   });
 });

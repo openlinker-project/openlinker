@@ -18,6 +18,27 @@ export const WebhookDeliveryStatusValues = [
 ] as const;
 export type WebhookDeliveryStatus = (typeof WebhookDeliveryStatusValues)[number];
 
+/**
+ * Lifecycle precedence of a delivery status.
+ *
+ * The ingress API and the stream consumer stamp the same row without any
+ * ordering guarantee between them (#1916), so persistence resolves a conflict
+ * by rank instead of by arrival: `received` -> `published` -> `job_enqueued`,
+ * with the attention-worthy terminal states sharing the top rank so a later
+ * `published` can never clear a dead-letter.
+ *
+ * Consumed by `WebhookDeliveryRepository.upsert` to build its conflict guard -
+ * the ladder lives here so it cannot drift from the status union it ranks.
+ */
+export const WEBHOOK_DELIVERY_STATUS_RANK: Record<WebhookDeliveryStatus, number> = {
+  received: 0,
+  published: 1,
+  job_enqueued: 2,
+  rejected: 3,
+  failed: 3,
+  deadlettered: 3,
+};
+
 export const WebhookDedupResultValues = ['new', 'duplicate'] as const;
 export type WebhookDedupResult = (typeof WebhookDedupResultValues)[number];
 

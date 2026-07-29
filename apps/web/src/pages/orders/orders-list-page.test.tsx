@@ -10,7 +10,7 @@
  */
 import { cleanup, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient, createAuthenticatedSessionAdapter } from '../../test/test-utils';
 import { OrdersListPage } from './orders-list-page';
 import type {
@@ -19,6 +19,11 @@ import type {
   OrderHealthSummary,
 } from '../../features/orders/api/orders.types';
 import type { Connection } from '../../features/connections';
+
+const captureDemoEvent = vi.fn();
+vi.mock('../../features/demo', () => ({
+  captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
 
 const sampleConnection: Connection = {
   id: 'conn_allegro_1',
@@ -114,7 +119,70 @@ function mockMobileViewport(): { restore: () => void } {
 }
 
 describe('OrdersListPage', () => {
+  beforeEach(() => {
+    captureDemoEvent.mockClear();
+  });
   afterEach(cleanup);
+
+  it('captures demo_orders_viewed once when the list loads (#1788)', async () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_orders_viewed', {});
+    expect(captureDemoEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it('captures demo_order_opened when a row link is clicked (#1788)', async () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    const link = await screen.findByRole('link', { name: 'ALG-882414' });
+    fireEvent.click(link);
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_order_opened', {});
+  });
+
+  it('captures demo_orders_filtered with filter=sla_breaching when the overdue chip is clicked (#1788)', async () => {
+    const user = userEvent.setup();
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    await user.click(screen.getByRole('button', { name: 'Ship-by ≤ 24h / overdue' }));
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_orders_filtered', {
+      filter: 'sla_breaching',
+      value: 'true',
+    });
+  });
+
+  it('captures demo_orders_filtered with filter=health when a health segment is clicked (#1788)', async () => {
+    const user = userEvent.setup();
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('All orders');
+    await user.click(screen.getByText('All orders'));
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_orders_filtered', {
+      filter: 'health',
+      value: 'all',
+    });
+  });
 
   it('should show loading state initially', () => {
     const mockApi = createMockApiClient({
