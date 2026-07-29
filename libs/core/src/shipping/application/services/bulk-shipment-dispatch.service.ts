@@ -61,10 +61,11 @@ export class BulkShipmentDispatchService implements IBulkShipmentDispatchService
   async dispatchBulk(input: BulkShipmentDispatchInput): Promise<BulkShipmentDispatchResult> {
     const results: PerOrderDispatchResult[] = [];
 
-    // Sequential, NOT Promise.all: the per-order idempotency check
-    // (findActiveByOrderId) is best-effort, not concurrency-safe, and the N≤25
-    // cap keeps sequential wall-clock acceptable (ADR-019). Distinct orders also
-    // avoid any shared-row contention by construction.
+    // Sequential, NOT Promise.all. Since #1917 the per-order lock makes
+    // concurrent dispatch safe, so this is no longer load-bearing for
+    // correctness — but a batch is N DISTINCT orders (each its own lock), so
+    // parallelism would buy nothing here except N simultaneous carrier calls.
+    // The N≤25 cap keeps sequential wall-clock acceptable (ADR-019).
     for (const item of input.items) {
       try {
         const result = await this.dispatch.dispatch({

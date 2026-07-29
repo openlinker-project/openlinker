@@ -101,6 +101,9 @@ export type { LabelDocumentReader } from './domain/ports/capabilities/label-docu
 export { isLabelDocumentReader } from './domain/ports/capabilities/label-document-reader.capability';
 export type { DispatchProtocolReader } from './domain/ports/capabilities/dispatch-protocol-reader.capability';
 export { isDispatchProtocolReader } from './domain/ports/capabilities/dispatch-protocol-reader.capability';
+export type { ShipmentReferenceReconciler } from './domain/ports/capabilities/shipment-reference-reconciler.capability';
+export { isShipmentReferenceReconciler } from './domain/ports/capabilities/shipment-reference-reconciler.capability';
+export type { ReconciledShipment } from './domain/types/reconciled-shipment.types';
 export type { LabelDocument } from './domain/types/label-document.types';
 
 // `FulfillmentStatusReader` (#834) lives in `@openlinker/core/orders`
@@ -122,6 +125,7 @@ export { LabelDocumentNotSupportedException } from './domain/exceptions/label-do
 export { LabelNotAvailableException } from './domain/exceptions/label-not-available.exception';
 export { DispatchProtocolNotSupportedException } from './domain/exceptions/dispatch-protocol-not-supported.exception';
 export { InvalidProtocolBatchException } from './domain/exceptions/invalid-protocol-batch.exception';
+export { ShipmentDispatchContendedException } from './domain/exceptions/shipment-dispatch-contended.exception';
 
 // Application — dispatch seam (#835). Interface + types only; the service
 // class is injected via SHIPMENT_DISPATCH_SERVICE_TOKEN (exported above via

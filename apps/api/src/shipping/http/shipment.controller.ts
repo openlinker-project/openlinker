@@ -66,6 +66,7 @@ import {
   ShippingProviderRejectionException,
   UndispatchableResolutionException,
   OrderNotDispatchablePaymentStatusException,
+  ShipmentDispatchContendedException,
 } from '@openlinker/core/shipping';
 import { type IOrderRecordService, ORDER_RECORD_SERVICE_TOKEN } from '@openlinker/core/orders';
 import { ROLE_PERMISSIONS } from '@openlinker/core/users';
@@ -234,6 +235,11 @@ export class ShipmentController {
     description: 'Order not dispatchable (routing unresolvable, or payment status blocks dispatch)',
   })
   @ApiResponse({ status: 502, description: 'Shipping provider rejected label generation' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'A concurrent dispatch for this order is in progress; no label was created by this attempt',
+  })
   async generateLabel(@Body() dto: GenerateLabelDto): Promise<DispatchResultResponseDto> {
     const input: ShipmentDispatchInput = {
       sourceConnectionId: dto.sourceConnectionId,
@@ -460,6 +466,14 @@ export class ShipmentController {
       return new NotFoundException(error.message);
     }
     if (error instanceof ShipmentNotCancellableException) {
+      return new ConflictException(error.message);
+    }
+    if (error instanceof ShipmentDispatchContendedException) {
+      // A concurrent dispatch holds the per-order lock and has not persisted a
+      // shipment yet (#1917). Retryable, and crucially "nothing was charged" —
+      // this attempt never reached the carrier. 409 rather than the
+      // unclassified 500 path so the operator is told that, instead of being
+      // left to guess whether a label was bought.
       return new ConflictException(error.message);
     }
     if (error instanceof InvalidProtocolBatchException) {

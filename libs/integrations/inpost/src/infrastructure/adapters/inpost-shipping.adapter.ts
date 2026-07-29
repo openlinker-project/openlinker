@@ -21,6 +21,8 @@ import {
   type PickupPointFinder,
   type LabelDocumentReader,
   type DispatchProtocolReader,
+  type ShipmentReferenceReconciler,
+  type ReconciledShipment,
   type GenerateLabelCommand,
   type GenerateLabelResult,
   type LabelDocument,
@@ -30,7 +32,11 @@ import {
   type FindPickupPointsQuery,
 } from '@openlinker/core/shipping';
 import type { InpostConnectionConfig } from '../../domain/types/inpost-config.types';
-import type { ShipXPointsResponse, ShipXShipment } from '../../domain/types/inpost-shipx.types';
+import type {
+  ShipXPointsResponse,
+  ShipXShipment,
+  ShipXShipmentsResponse,
+} from '../../domain/types/inpost-shipx.types';
 import type { IInpostHttpClient } from '../http/inpost-http-client.interface';
 import {
   buildCreateShipmentRequest,
@@ -50,7 +56,8 @@ export class InpostShippingAdapter
     ShipmentCanceller,
     PickupPointFinder,
     LabelDocumentReader,
-    DispatchProtocolReader
+    DispatchProtocolReader,
+    ShipmentReferenceReconciler
 {
   private readonly logger = new Logger(InpostShippingAdapter.name);
 
@@ -158,6 +165,52 @@ export class InpostShippingAdapter
       query: buildProtocolQuery(input.providerShipmentIds),
     });
     return { contentType: contentType || 'application/pdf', body };
+  }
+
+  /**
+   * Find a shipment ShipX already holds under an OL-stamped reference (#1917).
+   *
+   * `reference` is free text on ShipX — it does NOT deduplicate at creation —
+   * but the organization shipment collection can be filtered by it, which is
+   * enough to recover a label whose create-response was lost.
+   *
+   * Two deliberate strictnesses, both about never adopting the wrong shipment:
+   *
+   * 1. **Client-side equality re-check.** If ShipX ignores an unsupported
+   *    filter it answers with an unfiltered page rather than an error, so the
+   *    filter alone cannot be trusted. Only an exact `reference` match counts,
+   *    and a shipment that does not echo `reference` at all is not a match.
+   * 2. **Multi-match adopts nothing.** Rows created before the #1917 dispatch
+   *    lock can carry two ShipX shipments under one reference (the loser of the
+   *    old race reset the winner's row and re-sent the same id). Picking either
+   *    would mis-link a paid label, so return null and let the caller decide.
+   */
+  async findShipmentByReference(input: { reference: string }): Promise<ReconciledShipment | null> {
+    const response = await this.http.request<ShipXShipmentsResponse>({
+      method: 'GET',
+      path: `/v1/organizations/${this.config.organizationId}/shipments`,
+      query: { reference: input.reference, per_page: 10 },
+    });
+
+    const matches = (response.items ?? []).filter((item) => item.reference === input.reference);
+
+    if (matches.length === 0) {
+      return null;
+    }
+
+    if (matches.length > 1) {
+      this.logger.warn(
+        `ShipX holds ${matches.length} shipments under reference ${input.reference} ` +
+          `(${matches.map((m) => m.id).join(', ')}); refusing to adopt an ambiguous match`,
+      );
+      return null;
+    }
+
+    const [match] = matches;
+    return {
+      providerShipmentId: String(match.id),
+      trackingNumber: match.tracking_number ?? null,
+    };
   }
 }
 

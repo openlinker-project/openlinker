@@ -37,6 +37,7 @@ import {
   PAYMENT_STATUS,
   ORDER_RECORD_SERVICE_TOKEN,
 } from '@openlinker/core/orders';
+import { type SyncLockPort, SYNC_LOCK_TOKEN } from '@openlinker/core/sync';
 
 import type { IShipmentDispatchService } from '../interfaces/shipment-dispatch.service.interface';
 import { IOrderFulfillmentProjectionService } from '../interfaces/order-fulfillment-projection.service.interface';
@@ -52,8 +53,11 @@ import {
 import { UndispatchableResolutionException } from '../../domain/exceptions/undispatchable-resolution.exception';
 import { OrderNotDispatchablePaymentStatusException } from '../../domain/exceptions/order-not-dispatchable-payment-status.exception';
 import { ShippingProviderRejectionException } from '../../domain/exceptions/shipping-provider-rejection.exception';
+import { ShipmentDispatchContendedException } from '../../domain/exceptions/shipment-dispatch-contended.exception';
 import { ShipmentRepositoryPort } from '../../domain/ports/shipment-repository.port';
 import type { ShippingProviderManagerPort } from '../../domain/ports/shipping-provider-manager.port';
+import { isShipmentReferenceReconciler } from '../../domain/ports/capabilities/shipment-reference-reconciler.capability';
+import { shipmentDispatchLockKey, SHIPMENT_DISPATCH_LOCK_TTL_MS } from './shipment-dispatch-lock';
 import { SHIPMENT_STATUS } from '../../domain/types/shipment-status.types';
 import { DISPATCH_BLOCKING_PAYMENT_STATUSES } from '../types/dispatch-payment-policy.types';
 import {
@@ -82,9 +86,70 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
     private readonly orders: IOrderRecordService,
     @Inject(ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN)
     private readonly fulfillmentProjection: IOrderFulfillmentProjectionService,
+    @Inject(SYNC_LOCK_TOKEN)
+    private readonly dispatchLock: SyncLockPort,
   ) {}
 
+  /**
+   * Serialize dispatch per order (#1917), then run the dispatch itself.
+   *
+   * The lock closes the race the in-code note at `dispatchViaShippingProvider`
+   * deferred to "the live call-site": `findActiveByOrderId` is a plain read, so
+   * two concurrent dispatches can both pass it, and the loser then RESETS the
+   * winner's just-created draft row (the partial-unique index forbids inserting
+   * a second waybill-less row, so it reuses instead). Both then call
+   * `generateLabel` with the same shipment id and the carrier mints two paid
+   * labels under one reference.
+   *
+   * Contended behaviour mirrors `OrderSyncService.createOrderIdempotently`:
+   * - **Lock held by a peer:** re-read the active shipment. If the peer already
+   *   persisted one, return it - the caller pressed the button twice and gets
+   *   the same answer either way. Otherwise the peer is mid-`generateLabel`
+   *   with nothing to return yet, so raise the retryable contended exception
+   *   rather than proceeding into the race we just prevented.
+   * - **Lock acquired:** run the real dispatch; release in `finally`.
+   *
+   * The whole method is wrapped, including the branch-1 (`omp_fulfilled`) path
+   * that generates no label. Two Redis round-trips on a no-op branch is the
+   * price of one entry point with one invariant.
+   */
   async dispatch(input: ShipmentDispatchInput): Promise<ShipmentDispatchResult> {
+    const lockKey = shipmentDispatchLockKey(input.orderId);
+    const token = await this.dispatchLock.acquire(lockKey, SHIPMENT_DISPATCH_LOCK_TTL_MS);
+
+    if (!token) {
+      const active = await this.shipments.findActiveByOrderId(input.orderId);
+      if (active) {
+        this.logger.log(
+          `Dispatch for order ${input.orderId} is contended; returning the shipment ` +
+            `the concurrent dispatch already persisted (${active.id})`,
+        );
+        return { kind: 'dispatched', shipment: active };
+      }
+      this.logger.warn(
+        `Dispatch for order ${input.orderId} is contended and no shipment is persisted yet; ` +
+          `refusing to race a concurrent label request`,
+      );
+      throw new ShipmentDispatchContendedException(input.orderId);
+    }
+
+    try {
+      return await this.dispatchLocked(input);
+    } finally {
+      // Best-effort release — never let a release failure mask the dispatch
+      // result (a label may already have been paid for at this point).
+      try {
+        await this.dispatchLock.release(lockKey, token);
+      } catch (releaseError) {
+        this.logger.warn(
+          `Failed to release shipment-dispatch lock ${lockKey}: ` +
+            `${releaseError instanceof Error ? releaseError.message : String(releaseError)}`,
+        );
+      }
+    }
+  }
+
+  private async dispatchLocked(input: ShipmentDispatchInput): Promise<ShipmentDispatchResult> {
     const resolution = await this.routing.resolve({
       sourceConnectionId: input.sourceConnectionId,
       sourceDeliveryMethodId: input.sourceDeliveryMethodId,
@@ -226,14 +291,12 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
       );
     }
 
-    // Idempotency (best-effort): don't issue a second label/fee while a
-    // non-terminal shipment for this order is in flight. The cancel + re-issue
-    // flow flips the prior row to `cancelled` first, so a genuine re-dispatch is
-    // still allowed. NOTE: this find→create is NOT atomic — two concurrent
-    // dispatches for the same order can both pass it and double-create (the
-    // schema allows N shipments/order by design, so there is no DB guard). The
-    // live call-site (#769/#771) must serialise dispatch per order
-    // (debounce / job-level dedup).
+    // Idempotency: don't issue a second label/fee while a non-terminal shipment
+    // for this order is in flight. The cancel + re-issue flow flips the prior
+    // row to `cancelled` first, so a genuine re-dispatch is still allowed.
+    // This find→create is still not atomic on its own, but `dispatch()` now
+    // holds a per-order lock around the whole path (#1917), so the concurrent
+    // window it used to leave open is closed by construction.
     const active = await this.shipments.findActiveByOrderId(input.orderId);
     if (active) {
       return active;
@@ -303,11 +366,21 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
           sourceDeliveryMethodId: input.sourceDeliveryMethodId ?? undefined,
         });
 
-    // NOTE: if generateLabel commits provider-side but its response fails, the
-    // shipment is marked `failed` (catch below) and a later re-dispatch starts a
-    // fresh attempt — which could double-create at the provider. The command
-    // carries `shipmentId`; adapters (#812/#833) should use it as a
-    // provider-side idempotency key to close that at-least-once hazard.
+    // Lost-response recovery (#1917). A prior attempt may have committed at the
+    // carrier and had its response lost (timeout / socket reset / 5xx after
+    // commit) — the catch below persists `failed` with `providerShipmentId`
+    // still NULL, so OL holds no id for a label that exists and was paid for.
+    // Before creating anything, ask the carrier whether it already holds a
+    // shipment under this reference and adopt it if so. Retry path only: on a
+    // first dispatch the reference has never been sent, so the lookup is
+    // guaranteed-empty and would only add latency.
+    if (priorBranchOne) {
+      const adopted = await this.adoptExistingCarrierShipment(shipment.id, adapter, input.orderId);
+      if (adopted) {
+        return adopted;
+      }
+    }
+
     try {
       const result = await adapter.generateLabel({
         shipmentId: shipment.id,
@@ -363,5 +436,62 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
       await this.fulfillmentProjection.recompute(input.orderId);
       throw error;
     }
+  }
+
+  /**
+   * Adopt a carrier shipment that already exists under this shipment's
+   * reference, instead of creating a second one (#1917).
+   *
+   * Returns the healed `Shipment` when a single unambiguous match was adopted,
+   * or `null` to tell the caller to proceed with a normal `generateLabel`.
+   *
+   * Deliberately NON-FATAL: an adapter that cannot answer, a carrier that 404s
+   * an endpoint, an auth blip — none of these should block a dispatch the
+   * operator explicitly asked for. Every failure degrades to the pre-#1917
+   * create path, which is exactly today's behaviour, so this can only improve
+   * on the status quo and never regress it.
+   */
+  private async adoptExistingCarrierShipment(
+    shipmentId: string,
+    adapter: ShippingProviderManagerPort,
+    orderId: string,
+  ): Promise<Shipment | null> {
+    if (!isShipmentReferenceReconciler(adapter)) {
+      return null;
+    }
+
+    let existing: Awaited<ReturnType<typeof adapter.findShipmentByReference>>;
+    try {
+      existing = await adapter.findShipmentByReference({ reference: shipmentId });
+    } catch (error) {
+      this.logger.warn(
+        `Reference lookup failed for shipment ${shipmentId} (order ${orderId}); ` +
+          `proceeding with a fresh label request: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
+
+    if (!existing) {
+      return null;
+    }
+
+    this.logger.log(
+      `Adopting carrier shipment ${existing.providerShipmentId} for ${shipmentId} ` +
+        `(order ${orderId}): a prior attempt committed at the carrier but lost its response, ` +
+        `so no second label is created`,
+    );
+
+    // `labelPdfRef` stays null — adoption recovers identity and trackability,
+    // not the document. The operator re-fetches it through the existing
+    // LabelDocumentReader path, which is keyed on `providerShipmentId` and
+    // works as soon as that id is known.
+    const adopted = await this.shipments.update(shipmentId, {
+      status: SHIPMENT_STATUS.Generated,
+      providerShipmentId: existing.providerShipmentId,
+      trackingNumber: existing.trackingNumber ?? undefined,
+    });
+    await this.fulfillmentProjection.recompute(orderId);
+    return adopted;
   }
 }

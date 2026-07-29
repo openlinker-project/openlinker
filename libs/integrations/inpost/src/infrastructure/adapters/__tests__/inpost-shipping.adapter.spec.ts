@@ -325,4 +325,94 @@ describe('InpostShippingAdapter', () => {
       expect(requestBinary).not.toHaveBeenCalled();
     });
   });
+
+  describe('findShipmentByReference (#1917)', () => {
+    it('should query the org shipment collection filtered by reference', async () => {
+      const { adapter, request } = makeAdapter();
+      request.mockResolvedValueOnce({ items: [] });
+
+      await adapter.findShipmentByReference({ reference: 'ol_shipment_abc' });
+
+      expect(request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: 'GET',
+          path: '/v1/organizations/org-123/shipments',
+          query: expect.objectContaining({ reference: 'ol_shipment_abc' }),
+        }),
+      );
+    });
+
+    it('should map a single exact match', async () => {
+      const { adapter, request } = makeAdapter();
+      request.mockResolvedValueOnce({
+        items: [
+          { id: 998877, status: 'confirmed', tracking_number: '6200001', reference: 'ol_shipment_abc' },
+        ],
+      });
+
+      await expect(adapter.findShipmentByReference({ reference: 'ol_shipment_abc' })).resolves.toEqual(
+        { providerShipmentId: '998877', trackingNumber: '6200001' },
+      );
+    });
+
+    it('should normalise a missing tracking number to null', async () => {
+      const { adapter, request } = makeAdapter();
+      request.mockResolvedValueOnce({
+        items: [{ id: 5, status: 'created', tracking_number: null, reference: 'ol_shipment_abc' }],
+      });
+
+      await expect(adapter.findShipmentByReference({ reference: 'ol_shipment_abc' })).resolves.toEqual(
+        { providerShipmentId: '5', trackingNumber: null },
+      );
+    });
+
+    it('should return null when nothing matches', async () => {
+      const { adapter, request } = makeAdapter();
+      request.mockResolvedValueOnce({ items: [] });
+
+      await expect(
+        adapter.findShipmentByReference({ reference: 'ol_shipment_abc' }),
+      ).resolves.toBeNull();
+    });
+
+    it('should tolerate a response with no items array', async () => {
+      const { adapter, request } = makeAdapter();
+      request.mockResolvedValueOnce({});
+
+      await expect(
+        adapter.findShipmentByReference({ reference: 'ol_shipment_abc' }),
+      ).resolves.toBeNull();
+    });
+
+    it('should ignore items whose reference does not match exactly', async () => {
+      const { adapter, request } = makeAdapter();
+      // ShipX silently ignoring an unsupported filter would answer with an
+      // unfiltered page; the client-side check must not adopt a stranger.
+      request.mockResolvedValueOnce({
+        items: [
+          { id: 1, status: 'created', tracking_number: null, reference: 'ol_shipment_other' },
+          { id: 2, status: 'created', tracking_number: null, reference: undefined },
+        ],
+      });
+
+      await expect(
+        adapter.findShipmentByReference({ reference: 'ol_shipment_abc' }),
+      ).resolves.toBeNull();
+    });
+
+    it('should refuse to adopt when more than one shipment shares the reference', async () => {
+      const { adapter, request } = makeAdapter();
+      // The pre-#1917 race could leave two paid labels under one reference.
+      request.mockResolvedValueOnce({
+        items: [
+          { id: 11, status: 'created', tracking_number: 'A', reference: 'ol_shipment_abc' },
+          { id: 22, status: 'created', tracking_number: 'B', reference: 'ol_shipment_abc' },
+        ],
+      });
+
+      await expect(
+        adapter.findShipmentByReference({ reference: 'ol_shipment_abc' }),
+      ).resolves.toBeNull();
+    });
+  });
 });

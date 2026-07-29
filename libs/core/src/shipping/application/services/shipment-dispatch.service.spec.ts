@@ -16,6 +16,7 @@ import {
   type IFulfillmentRoutingService,
 } from '@openlinker/core/mappings';
 import { type IOrderRecordService, OrderRecord, type PaymentStatus } from '@openlinker/core/orders';
+import type { SyncLockPort } from '@openlinker/core/sync';
 import { ShipmentDispatchService } from './shipment-dispatch.service';
 import type { ShipmentDispatchInput } from '../types/shipment-dispatch.types';
 import { Shipment } from '../../domain/entities/shipment.entity';
@@ -24,6 +25,7 @@ import type { ShippingProviderManagerPort } from '../../domain/ports/shipping-pr
 import { UndispatchableResolutionException } from '../../domain/exceptions/undispatchable-resolution.exception';
 import { OrderNotDispatchablePaymentStatusException } from '../../domain/exceptions/order-not-dispatchable-payment-status.exception';
 import { ShippingProviderRejectionException } from '../../domain/exceptions/shipping-provider-rejection.exception';
+import { ShipmentDispatchContendedException } from '../../domain/exceptions/shipment-dispatch-contended.exception';
 import { Logger } from '@openlinker/shared/logging';
 
 /**
@@ -118,6 +120,7 @@ describe('ShipmentDispatchService', () => {
   let integrations: jest.Mocked<IIntegrationsService>;
   let adapter: jest.Mocked<ShippingProviderManagerPort>;
   let orders: jest.Mocked<IOrderRecordService>;
+  let dispatchLock: jest.Mocked<SyncLockPort>;
   let service: ShipmentDispatchService;
 
   beforeEach(() => {
@@ -159,12 +162,19 @@ describe('ShipmentDispatchService', () => {
       updateFulfillmentState: jest.fn(),
     };
     const fulfillmentProjection = { recompute: jest.fn() };
+    // Uncontended by default (#1917): every pre-existing test asserts the
+    // dispatch path itself, so the lock must not change their behaviour.
+    dispatchLock = {
+      acquire: jest.fn().mockResolvedValue('lock-token'),
+      release: jest.fn().mockResolvedValue(true),
+    };
     service = new ShipmentDispatchService(
       repository,
       routing,
       integrations,
       orders,
       fulfillmentProjection,
+      dispatchLock,
     );
   });
 
@@ -648,6 +658,244 @@ describe('ShipmentDispatchService', () => {
         UndispatchableResolutionException,
       );
       expect(repository.create).not.toHaveBeenCalled();
+    });
+  });
+  // ── #1917 per-order dispatch serialization ─────────────────────────────────
+
+  describe('per-order dispatch lock (#1917)', () => {
+    /** Arrange the ol_managed_carrier happy path so a dispatch reaches the carrier. */
+    function arrangeCarrierPath(): void {
+      routing.resolve.mockResolvedValue(
+        resolution({
+          processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier,
+          processorConnectionId: INPOST,
+        }),
+      );
+      repository.findActiveByOrderId.mockResolvedValue(null);
+      repository.findBranchOneByOrderAndConnection.mockResolvedValue(null);
+      repository.create.mockResolvedValue(makeShipment());
+      repository.update.mockResolvedValue(makeShipment({ status: 'generated' }));
+      adapter.generateLabel.mockResolvedValue({
+        providerShipmentId: 'shipx-1',
+        trackingNumber: '620000000000000000000001',
+        labelPdfRef: 'ref-1',
+      });
+    }
+
+    it('should acquire the lock keyed on the order before dispatching', async () => {
+      arrangeCarrierPath();
+
+      await service.dispatch(makeInput());
+
+      expect(dispatchLock.acquire).toHaveBeenCalledWith(
+        'shipment:dispatch:ol_order_1',
+        expect.any(Number),
+      );
+    });
+
+    it('should release the lock after a successful dispatch', async () => {
+      arrangeCarrierPath();
+
+      await service.dispatch(makeInput());
+
+      expect(dispatchLock.release).toHaveBeenCalledWith('shipment:dispatch:ol_order_1', 'lock-token');
+    });
+
+    it('should release the lock when the dispatch throws', async () => {
+      arrangeCarrierPath();
+      adapter.generateLabel.mockRejectedValue(new Error('carrier down'));
+
+      await expect(service.dispatch(makeInput())).rejects.toThrow('carrier down');
+
+      expect(dispatchLock.release).toHaveBeenCalledWith('shipment:dispatch:ol_order_1', 'lock-token');
+    });
+
+    it('should not let a release failure mask the dispatch result', async () => {
+      arrangeCarrierPath();
+      dispatchLock.release.mockRejectedValue(new Error('redis gone'));
+
+      // A label may already be paid for at this point — surfacing the release
+      // error instead of the result would lose it.
+      await expect(service.dispatch(makeInput())).resolves.toEqual({
+        kind: 'dispatched',
+        shipment: expect.objectContaining({ status: 'generated' }),
+      });
+    });
+
+    it('should return the concurrent dispatch\'s shipment when contended and one exists', async () => {
+      const winner = makeShipment({ id: 'ol_shipment_winner', status: 'generated' });
+      dispatchLock.acquire.mockResolvedValue(null);
+      repository.findActiveByOrderId.mockResolvedValue(winner);
+
+      await expect(service.dispatch(makeInput())).resolves.toEqual({
+        kind: 'dispatched',
+        shipment: winner,
+      });
+      // The whole point: the loser must not reach the carrier.
+      expect(adapter.generateLabel).not.toHaveBeenCalled();
+      expect(repository.create).not.toHaveBeenCalled();
+      expect(repository.update).not.toHaveBeenCalled();
+    });
+
+    it('should throw contended when the lock is held and no shipment exists yet', async () => {
+      dispatchLock.acquire.mockResolvedValue(null);
+      repository.findActiveByOrderId.mockResolvedValue(null);
+
+      await expect(service.dispatch(makeInput())).rejects.toBeInstanceOf(
+        ShipmentDispatchContendedException,
+      );
+      expect(adapter.generateLabel).not.toHaveBeenCalled();
+      expect(repository.create).not.toHaveBeenCalled();
+    });
+
+    it('should not release a lock it never acquired', async () => {
+      dispatchLock.acquire.mockResolvedValue(null);
+      repository.findActiveByOrderId.mockResolvedValue(null);
+
+      await expect(service.dispatch(makeInput())).rejects.toBeInstanceOf(
+        ShipmentDispatchContendedException,
+      );
+      expect(dispatchLock.release).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── #1917 lost-carrier-response adoption ───────────────────────────────────
+
+  describe('reference reconciliation on retry (#1917)', () => {
+    /**
+     * Arrange a RETRY: a prior attempt left a terminal branch-one row with no
+     * provider id — the shape a lost `generateLabel` response leaves behind.
+     */
+    function arrangeRetry(): Shipment {
+      const priorRow = makeShipment({
+        id: 'ol_shipment_c7b2',
+        status: 'failed',
+        errorMessage: 'socket hang up',
+      });
+      routing.resolve.mockResolvedValue(
+        resolution({
+          processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier,
+          processorConnectionId: INPOST,
+        }),
+      );
+      repository.findActiveByOrderId.mockResolvedValue(null); // `failed` is terminal
+      repository.findBranchOneByOrderAndConnection.mockResolvedValue(priorRow);
+      repository.update.mockImplementation((id, patch) =>
+        Promise.resolve(makeShipment({ id, ...patch })),
+      );
+      return priorRow;
+    }
+
+    it('should adopt the carrier shipment instead of creating a second one', async () => {
+      arrangeRetry();
+      const reconciling = {
+        ...adapter,
+        findShipmentByReference: jest.fn().mockResolvedValue({
+          providerShipmentId: 'shipx-first',
+          trackingNumber: '620000000000000000000088',
+        }),
+      };
+      integrations.getCapabilityAdapter.mockResolvedValue(reconciling);
+
+      const result = await service.dispatch(makeInput());
+
+      expect(reconciling.findShipmentByReference).toHaveBeenCalledWith({
+        reference: 'ol_shipment_c7b2',
+      });
+      // No second paid label.
+      expect(reconciling.generateLabel).not.toHaveBeenCalled();
+      expect(repository.update).toHaveBeenLastCalledWith('ol_shipment_c7b2', {
+        status: 'generated',
+        providerShipmentId: 'shipx-first',
+        trackingNumber: '620000000000000000000088',
+      });
+      expect(result).toEqual({
+        kind: 'dispatched',
+        shipment: expect.objectContaining({ providerShipmentId: 'shipx-first' }),
+      });
+    });
+
+    it('should generate a label when the carrier holds nothing under the reference', async () => {
+      arrangeRetry();
+      const reconciling = {
+        ...adapter,
+        findShipmentByReference: jest.fn().mockResolvedValue(null),
+      };
+      reconciling.generateLabel.mockResolvedValue({
+        providerShipmentId: 'shipx-2',
+        trackingNumber: null,
+        labelPdfRef: 'ref-2',
+      });
+      integrations.getCapabilityAdapter.mockResolvedValue(reconciling);
+
+      await service.dispatch(makeInput());
+
+      expect(reconciling.generateLabel).toHaveBeenCalled();
+    });
+
+    it('should fall through to generateLabel when the lookup throws', async () => {
+      arrangeRetry();
+      const reconciling = {
+        ...adapter,
+        findShipmentByReference: jest.fn().mockRejectedValue(new Error('404 not found')),
+      };
+      reconciling.generateLabel.mockResolvedValue({
+        providerShipmentId: 'shipx-3',
+        trackingNumber: null,
+        labelPdfRef: 'ref-3',
+      });
+      integrations.getCapabilityAdapter.mockResolvedValue(reconciling);
+
+      // Non-fatal by design: a reconciler that cannot answer must never block a
+      // dispatch the operator explicitly asked for.
+      await expect(service.dispatch(makeInput())).resolves.toEqual({
+        kind: 'dispatched',
+        shipment: expect.anything(),
+      });
+      expect(reconciling.generateLabel).toHaveBeenCalled();
+    });
+
+    it('should not look up when the adapter does not implement the capability', async () => {
+      arrangeRetry();
+      adapter.generateLabel.mockResolvedValue({
+        providerShipmentId: 'shipx-4',
+        trackingNumber: null,
+        labelPdfRef: 'ref-4',
+      });
+
+      await service.dispatch(makeInput());
+
+      // DPD-shaped adapter: unchanged, pre-#1917 behaviour.
+      expect(adapter.generateLabel).toHaveBeenCalled();
+    });
+
+    it('should not look up on a first dispatch', async () => {
+      routing.resolve.mockResolvedValue(
+        resolution({
+          processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier,
+          processorConnectionId: INPOST,
+        }),
+      );
+      repository.findActiveByOrderId.mockResolvedValue(null);
+      repository.findBranchOneByOrderAndConnection.mockResolvedValue(null); // no prior attempt
+      repository.create.mockResolvedValue(makeShipment());
+      repository.update.mockResolvedValue(makeShipment({ status: 'generated' }));
+      const reconciling = {
+        ...adapter,
+        findShipmentByReference: jest.fn(),
+      };
+      reconciling.generateLabel.mockResolvedValue({
+        providerShipmentId: 'shipx-5',
+        trackingNumber: null,
+        labelPdfRef: 'ref-5',
+      });
+      integrations.getCapabilityAdapter.mockResolvedValue(reconciling);
+
+      await service.dispatch(makeInput());
+
+      // The reference has never been sent to the carrier, so the lookup is
+      // guaranteed-empty and would only add latency.
+      expect(reconciling.findShipmentByReference).not.toHaveBeenCalled();
     });
   });
 });
