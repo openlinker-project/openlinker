@@ -32,36 +32,76 @@ describe('createIntegrationTestHarness', () => {
 });
 
 describe('truncateTables', () => {
-  it('should issue TRUNCATE statements for caller-supplied tables in order, with no hardcoded names', async () => {
-    // Regression guard: when the harness reset path runs, it must truncate
-    // exactly what the caller asked for — not the 12 API-specific tables that
-    // were hardcoded in apps/api before this refactor.
+  /**
+   * Fake DataSource that records every statement and answers the dirty-table
+   * probe with `dirty` - the tables it should report as holding a row.
+   */
+  function makeFake(dirty: ReadonlyArray<string>): {
+    fake: { query: (sql: string) => Promise<unknown> };
+    queries: string[];
+  } {
     const queries: string[] = [];
-    const fakeDataSource = {
-      query: (sql: string): Promise<void> => {
+    const fake = {
+      query: (sql: string): Promise<unknown> => {
         queries.push(sql);
-        return Promise.resolve();
+        return Promise.resolve(
+          sql.startsWith('SELECT') ? dirty.map((table_name) => ({ table_name })) : [],
+        );
       },
     };
+    return { fake, queries };
+  }
 
-    await truncateTables(fakeDataSource, ['plugin_table_alpha', 'plugin_table_beta']);
+  it('should truncate only the tables the probe reports as non-empty (#1920)', async () => {
+    // TRUNCATE costs ~10 ms per table even when it is empty, so the reset path
+    // must not clear tables the test never touched.
+    const { fake, queries } = makeFake(['plugin_table_beta']);
 
-    expect(queries).toEqual([
-      'TRUNCATE TABLE "plugin_table_alpha" CASCADE',
-      'TRUNCATE TABLE "plugin_table_beta" CASCADE',
-    ]);
+    await truncateTables(fake, ['plugin_table_alpha', 'plugin_table_beta']);
+
+    expect(queries).toHaveLength(2);
+    expect(queries[1]).toBe('TRUNCATE TABLE "plugin_table_beta" CASCADE');
+    expect(queries[1]).not.toContain('plugin_table_alpha');
+  });
+
+  it('should probe exactly the caller-supplied tables, with no hardcoded names', async () => {
+    // Regression guard: when the harness reset path runs, it must consider
+    // exactly what the caller asked for - not the 12 API-specific tables that
+    // were hardcoded in apps/api before this refactor.
+    const { fake, queries } = makeFake([]);
+
+    await truncateTables(fake, ['plugin_table_alpha', 'plugin_table_beta']);
+
+    expect(queries[0]).toBe(
+      'SELECT \'plugin_table_alpha\' AS table_name WHERE EXISTS (SELECT 1 FROM "plugin_table_alpha")' +
+        ' UNION ALL ' +
+        'SELECT \'plugin_table_beta\' AS table_name WHERE EXISTS (SELECT 1 FROM "plugin_table_beta")',
+    );
+  });
+
+  it('should issue no TRUNCATE at all when every table is already empty', async () => {
+    const { fake, queries } = makeFake([]);
+
+    await truncateTables(fake, ['plugin_table_alpha', 'plugin_table_beta']);
+
+    expect(queries).toHaveLength(1);
+    expect(queries.some((sql) => sql.includes('TRUNCATE'))).toBe(false);
+  });
+
+  it('should truncate every table in one statement when all of them are dirty', async () => {
+    const { fake, queries } = makeFake(['plugin_table_alpha', 'plugin_table_beta']);
+
+    await truncateTables(fake, ['plugin_table_alpha', 'plugin_table_beta']);
+
+    expect(queries[1]).toBe(
+      'TRUNCATE TABLE "plugin_table_alpha", "plugin_table_beta" CASCADE',
+    );
   });
 
   it('should issue zero queries when the table list is empty', async () => {
-    const queries: string[] = [];
-    const fakeDataSource = {
-      query: (sql: string): Promise<void> => {
-        queries.push(sql);
-        return Promise.resolve();
-      },
-    };
+    const { fake, queries } = makeFake([]);
 
-    await truncateTables(fakeDataSource, []);
+    await truncateTables(fake, []);
 
     expect(queries).toEqual([]);
   });

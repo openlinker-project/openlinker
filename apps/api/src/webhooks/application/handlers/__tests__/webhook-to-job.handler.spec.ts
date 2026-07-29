@@ -207,11 +207,88 @@ describe('WebhookToJobHandler (dispatcher)', () => {
 
   describe('onModuleDestroy', () => {
     it('should quit the redis client', async () => {
+      await handler.onModuleDestroy();
+
+      expect(redis.quit).toHaveBeenCalledTimes(1);
+    });
+
+    // #1920: the old implementation slept a flat 2 s on every shutdown, which
+    // cost ~2 s per int-spec teardown (77 of them) for nothing when no message
+    // was in flight. Shutdown must now be immediate in that case.
+    it('should not wait when no message is in flight', async () => {
       jest.useFakeTimers();
       try {
-        const p = handler.onModuleDestroy();
+        const settled = jest.fn();
+        const destroyed = handler.onModuleDestroy().then(settled);
+
+        // No timer advance at all - only microtasks.
+        await Promise.resolve();
+        await destroyed;
+
+        expect(settled).toHaveBeenCalled();
+        expect(jest.getTimerCount()).toBe(0);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('should wait for the message being processed before quitting', async () => {
+      let releaseMessage: (() => void) | undefined;
+      const inFlight = new Promise<void>((resolve) => {
+        releaseMessage = resolve;
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access -- test: seed the private in-flight handle
+      (handler as any).inFlightMessage = inFlight;
+
+      let done = false;
+      const destroyed = handler.onModuleDestroy().then(() => {
+        done = true;
+      });
+
+      await Promise.resolve();
+      expect(done).toBe(false);
+      expect(redis.quit).not.toHaveBeenCalled();
+
+      releaseMessage?.();
+      await destroyed;
+
+      expect(done).toBe(true);
+      expect(redis.quit).toHaveBeenCalledTimes(1);
+    });
+
+    it('should still shut down cleanly when the in-flight message fails', async () => {
+      // The flat sleep this replaced could never reject; shutdown must not
+      // start throwing just because the message being processed failed (the
+      // consume loop owns that error and rethrows it for redelivery).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access -- test: seed the private in-flight handle
+      (handler as any).inFlightMessage = Promise.reject(new Error('redis down'));
+
+      await expect(handler.onModuleDestroy()).resolves.toBeUndefined();
+      expect(redis.quit).toHaveBeenCalledTimes(1);
+    });
+
+    it('should give up on a stuck message after the bounded drain timeout', async () => {
+      // A message that never settles must not block shutdown forever - the
+      // wait is bounded, exactly as the old flat sleep bounded it.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access -- test: seed the private in-flight handle
+      (handler as any).inFlightMessage = new Promise<void>(() => {
+        /* never settles */
+      });
+
+      jest.useFakeTimers();
+      try {
+        let done = false;
+        const destroyed = handler.onModuleDestroy().then(() => {
+          done = true;
+        });
+
+        await Promise.resolve();
+        expect(done).toBe(false);
+
         await jest.advanceTimersByTimeAsync(2000);
-        await p;
+        await destroyed;
+
+        expect(done).toBe(true);
         expect(redis.quit).toHaveBeenCalledTimes(1);
       } finally {
         jest.useRealTimers();

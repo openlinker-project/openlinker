@@ -191,9 +191,18 @@ async setup(): Promise<void> {
 
 ### Testcontainers Lifecycle
 
-1. **Before Tests**: Containers start, database is initialized, migrations run
+1. **Before Tests**: Containers start and the schema is created by TypeORM
+   `synchronize` (`libs/shared/src/database/database.module.ts` enables it for
+   every non-production `NODE_ENV`). **No migration runs in this path** - the
+   integration suite therefore does not prove that the migrations reproduce the
+   entity schema; `migration:show` and `scripts/check-migration-timestamps.mjs`
+   are what guard that.
 2. **During Tests**: Each test uses the same containers (shared harness)
-3. **Between Tests**: Database is reset (truncated), Redis is flushed
+3. **Between Tests**: Redis is flushed and every configured table **that holds
+   a row** is truncated. The reset probes for non-empty tables first, because
+   `TRUNCATE` costs ~10 ms per table even when it is empty and a typical test
+   dirties two or three (#1920) - so adding a table to `tablesToTruncate` is
+   cheap, but it must still be listed there to be cleaned.
 4. **After Tests**: Containers are stopped and removed
 
 ### Benefits
