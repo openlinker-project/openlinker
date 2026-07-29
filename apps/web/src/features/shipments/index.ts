@@ -29,6 +29,7 @@ export {
   SHIPMENT_STATUS_VALUES,
   DELIVERY_INTENT_LABEL,
   BULK_DISPATCH_MAX_ITEMS,
+  REDACTED_ERROR_MESSAGE,
 } from './api/shipments.types';
 export {
   PROCESSOR_FILTER_VALUES,
@@ -58,4 +59,9 @@ export {
   CAN_CANCEL,
   CAN_NOTIFY_DISPATCHED,
   CAN_DOWNLOAD_LABEL,
+  isPreWaybill,
+  canRegenerateLabel,
 } from './lib/shipment-action-eligibility';
+export { deriveSeverityLabel, truncateOrderId } from './lib/shipment-severity';
+export type { ShipmentSeverity } from './lib/shipment-severity';
+export { ShipmentSeverityLabel } from './components/shipment-severity-label';

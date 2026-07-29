@@ -16,14 +16,20 @@ export class DispatchResultResponseDto {
   @ApiProperty({ enum: ['dispatched', 'omp_fulfilled'] })
   kind!: 'dispatched' | 'omp_fulfilled';
 
-  @ApiPropertyOptional({ type: ShipmentResponseDto, description: 'Present only when kind=dispatched' })
+  @ApiPropertyOptional({
+    type: ShipmentResponseDto,
+    description: 'Present only when kind=dispatched',
+  })
   shipment?: ShipmentResponseDto;
 
   static fromResult(result: ShipmentDispatchResult): DispatchResultResponseDto {
     const dto = new DispatchResultResponseDto();
     dto.kind = result.kind;
     if (result.kind === 'dispatched') {
-      dto.shipment = ShipmentResponseDto.fromDomain(result.shipment);
+      // `canWrite: true` — POST /shipments/generate-label is `@Roles('admin',
+      // 'operator')`-gated, so a caller who reached this projection already
+      // holds `shipments:write` and there is nothing to redact (#1826).
+      dto.shipment = ShipmentResponseDto.fromDomain(result.shipment, null, true);
     }
     return dto;
   }

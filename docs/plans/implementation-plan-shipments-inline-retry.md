@@ -315,7 +315,7 @@
 - [x] Follows hexagonal architecture
 - [x] Respects CORE vs Integration boundaries
 - [x] Uses existing patterns (no unnecessary abstractions) — reuses all 4 existing mutations, `ShipmentActionButtons`'s gating sets, `ConnectionDot`, `CopyableId`, `usePermission`
-- [x] Idempotency considered — no new mutations introduced; existing ones already idempotent per their own specs
+- [x] Idempotency considered — see the accurate position below (this PR introduces no new mutation, but it does raise the exposure of a pre-existing gap)
 - [x] Event-driven patterns — n/a (pure FE read/write over existing REST endpoints)
 - [x] Rate limits & retries — n/a
 - [x] Error handling comprehensive — existing mutation error handling reused unchanged
@@ -324,6 +324,36 @@
 - [x] File structure matches standards
 - [x] Plan is execution-ready
 - [x] Plan is saved as markdown file
+
+### Idempotency - the accurate position
+
+An earlier revision of this checklist claimed the existing mutations "are
+already idempotent per their own specs". That is not accurate, so it is
+restated here precisely:
+
+- **Dispatch has no per-order lock, no idempotency key and no optimistic
+  version.** `ShipmentDispatchService.dispatchViaShippingProvider` guards a
+  re-dispatch with a `findActiveByOrderId` → return-existing check, but that
+  find-then-create is not atomic and there is no DB constraint behind it (the
+  schema allows N shipments per order by design). Its own comment says so and
+  states that the live call-site must serialise dispatch per order; nothing in
+  the HTTP path does.
+- **Sequential retries are safe.** A second `POST /shipments/generate-label`
+  that lands after the first has committed finds the active shipment and returns
+  it without minting a second label.
+- **Genuinely concurrent retries are not.** Two dispatches for the same order
+  that interleave before either row is written can both pass the check and both
+  create a label (and its carrier fee).
+- **What this PR changes about that.** It adds no mutation, but the
+  `?retryShipmentId=` deep link is bookmarkable and shareable and auto-opens a
+  pre-filled, submittable form. That makes a double-submit (two tabs, a shared
+  link opened twice, an impatient second click) materially more likely than
+  before, so it raises the exposure of the pre-existing gap without being its
+  cause.
+- **Follow-up.** Serialising dispatch per order (a `SyncLockPort`-style lock at
+  the dispatch seam, or a provider-side idempotency key keyed on
+  `shipment.id`, which the command already carries) is tracked separately and
+  deliberately out of scope here.
 
 ---
 

@@ -7,6 +7,12 @@
  * uses inline expansion (signalled to the parent via `onGenerateLabelClick`),
  * NOT a Dialog — it's a forward CTA, not a destructive confirmation.
  *
+ * Generate/Regenerate eligibility is NOT computed here: it comes from the
+ * shared `canRegenerateLabel` (`features/shipments/lib`), the same predicate
+ * the `/shipments` row accordion renders its Regenerate link from, so the two
+ * surfaces can never disagree about whether a retry is offered (#1826/#1905).
+ * This file owns only the operator-facing *reason* it is unavailable.
+ *
  * @module apps/web/src/features/orders/components
  */
 import { useState, type ReactElement } from 'react';
@@ -15,12 +21,12 @@ import {
   useNotifyDispatchedMutation,
   useLabelDownload,
   getCarrierDisplayName,
+  canRegenerateLabel,
   CAN_GENERATE,
   CAN_CANCEL,
   CAN_NOTIFY_DISPATCHED,
   CAN_DOWNLOAD_LABEL,
   type Shipment,
-  type ShipmentStatus,
 } from '../../shipments';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
@@ -30,6 +36,14 @@ import type { PaymentStatus } from '../api/order-snapshot.schema';
 interface ShipmentActionButtonsProps {
   /** Current active shipment row; `null` when the order has no shipment yet. */
   shipment: Shipment | null;
+  /**
+   * `usePermission('shipments:write')` (#1905). Every write-shaped action
+   * (Generate / Cancel / Mark dispatched) renders disabled without it, so this
+   * row and the `/shipments` accordion agree about who may act; `Download
+   * label` is read-only and stays available. The POST is server-gated anyway —
+   * this is consistency, not the authorization boundary.
+   */
+  canWrite: boolean;
   /**
    * Source-reported payment status (#928). Blocks Generate-label when the order
    * isn't dispatchable yet (awaiting/refunded). Absent ⇒ payment unknown
@@ -60,8 +74,64 @@ interface ShipmentActionButtonsProps {
  */
 export const PAYMENT_BLOCKS_DISPATCH: ReadonlySet<PaymentStatus> = new Set(['awaiting', 'refunded']);
 
+/** Why "Generate label" is unavailable right now. */
+export type GenerateLabelBlock = 'permission' | 'state' | 'post-waybill' | 'route' | 'payment';
+
+/**
+ * Operator-facing sentence per block reason (#1905).
+ *
+ * Doubles as the disabled button's `aria-label` + `title` AND as the text of
+ * the order-detail panel's deep-link explanation Alert, so an ineligible
+ * `?retryShipmentId=` landing tells the operator the same thing the greyed
+ * button does instead of silently doing nothing.
+ */
+export const GENERATE_LABEL_BLOCK_REASON: Record<GenerateLabelBlock, string> = {
+  permission: 'Generating a label needs the shipments:write permission.',
+  state: 'Generate label is not available in this shipment state.',
+  'post-waybill':
+    'That shipment already holds a carrier waybill - regenerating would buy a second label. Cancel it with the carrier first.',
+  route: "Routed carrier isn't available to dispatch - resolve delivery routing first.",
+  payment: 'Cannot regenerate yet - awaiting payment.',
+};
+
+export interface GenerateLabelBlockInput {
+  /** `null` ⇒ no shipment row yet (the first-label case). */
+  shipment: Shipment | null;
+  canWrite: boolean;
+  paymentBlocksDispatch: boolean;
+  routeUnavailable: boolean;
+}
+
+/**
+ * Single decision point for the Generate-label gate: `null` ⇒ allowed.
+ *
+ * Shared with `OrderShipmentPanel`'s deep-link auto-open so the form can never
+ * open behind a button that refuses the same action (#1826/#1905).
+ */
+export function resolveGenerateLabelBlock({
+  shipment,
+  canWrite,
+  paymentBlocksDispatch,
+  routeUnavailable,
+}: GenerateLabelBlockInput): GenerateLabelBlock | null {
+  if (!canWrite) return 'permission';
+  if (shipment !== null && !canRegenerateLabel(shipment, canWrite)) {
+    // The shared predicate returns one boolean for two distinct situations.
+    // Split them apart for the message: a generate-able status that was still
+    // refused can only have been refused for holding a live waybill, and that
+    // one IS recoverable (cancel, then regenerate) — worth saying out loud.
+    return CAN_GENERATE.has(shipment.status) ? 'post-waybill' : 'state';
+  }
+  // A shipment already past the regenerate-able states reports its state
+  // first; the route / payment reason is irrelevant once a label exists.
+  if (routeUnavailable) return 'route';
+  if (paymentBlocksDispatch) return 'payment';
+  return null;
+}
+
 export function ShipmentActionButtons({
   shipment,
+  canWrite,
   paymentStatus,
   onGenerateLabelClick,
   routeUnavailable = false,
@@ -89,14 +159,18 @@ export function ShipmentActionButtons({
     );
   }
 
-  // Treat "no shipment row" as a synthetic 'none' status for the matrix.
-  const status: ShipmentStatus | 'none' = shipment?.status ?? 'none';
   // #928 — payment gate (block-list): only awaiting/refunded block dispatch.
   const paymentBlocksDispatch =
     paymentStatus !== undefined && PAYMENT_BLOCKS_DISPATCH.has(paymentStatus);
-  const canGenerate = CAN_GENERATE.has(status) && !paymentBlocksDispatch && !routeUnavailable;
-  const canCancel = shipment !== null && CAN_CANCEL.has(shipment.status);
-  const canNotify = shipment !== null && CAN_NOTIFY_DISPATCHED.has(shipment.status);
+  const generateBlock = resolveGenerateLabelBlock({
+    shipment,
+    canWrite,
+    paymentBlocksDispatch,
+    routeUnavailable,
+  });
+  const canGenerate = generateBlock === null;
+  const canCancel = canWrite && shipment !== null && CAN_CANCEL.has(shipment.status);
+  const canNotify = canWrite && shipment !== null && CAN_NOTIFY_DISPATCHED.has(shipment.status);
   // Label download needs both a retrievable lifecycle state AND a persisted
   // label ref (the "a label was generated" marker).
   const canDownloadLabel =
@@ -124,19 +198,13 @@ export function ShipmentActionButtons({
           onClick={onGenerateLabelClick}
           disabled={!canGenerate}
           aria-label={
-            canGenerate
+            generateBlock === null
               ? 'Generate shipping label'
-              : // A shipment already past the regenerate-able states (e.g. label
-                // generated / dispatched) reports its state first - the route
-                // reason is irrelevant once a label exists.
-                !CAN_GENERATE.has(status)
-                ? 'Generate label not available in this state'
-                : routeUnavailable
-                  ? "Routed carrier isn't available to dispatch - resolve delivery routing first."
-                  : paymentBlocksDispatch
-                    ? "Awaiting payment — can't dispatch yet"
-                    : 'Generate label not available in this state'
+              : GENERATE_LABEL_BLOCK_REASON[generateBlock]
           }
+          // `title` as well as `aria-label` (#1905): a sighted mouse user
+          // otherwise sees a greyed button with no reason anywhere on screen.
+          title={generateBlock === null ? undefined : GENERATE_LABEL_BLOCK_REASON[generateBlock]}
         >
           Generate label
         </Button>

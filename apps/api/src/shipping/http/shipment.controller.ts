@@ -81,7 +81,7 @@ import { GenerateProtocolDto } from './dto/generate-protocol.dto';
 import { ListShipmentsQueryDto } from './dto/list-shipments-query.dto';
 import { NotifyDispatchedResponseDto } from './dto/notify-dispatched-response.dto';
 import { PaginatedShipmentsResponseDto } from './dto/paginated-shipments-response.dto';
-import { ShipmentResponseDto } from './dto/shipment-response.dto';
+import { REDACTED_ERROR_MESSAGE, ShipmentResponseDto } from './dto/shipment-response.dto';
 
 @ApiBearerAuth()
 @ApiTags('shipments')
@@ -199,7 +199,11 @@ export class ShipmentController {
     description: 'No label generated yet, or provider cannot return label documents',
   })
   @ApiResponse({ status: 502, description: 'Shipping provider rejected the label fetch' })
-  async downloadLabel(@Param('id') id: string, @Res() res: Response): Promise<void> {
+  async downloadLabel(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res() res: Response,
+  ): Promise<void> {
     // `@Res()` disables Nest's global serializer for this handler — intended,
     // since the response is binary, not JSON. The service call runs FIRST so a
     // thrown domain exception still routes through Nest's exception layer
@@ -211,7 +215,10 @@ export class ShipmentController {
       res.setHeader('Content-Disposition', `attachment; filename="ol-shipment-${id}.${ext}"`);
       res.send(Buffer.from(body));
     } catch (error) {
-      throw this.toHttpException(error);
+      // This route carries no `@Roles` (a viewer may download a label), so the
+      // failure body is the one command-style error surface a viewer reaches —
+      // gate its carrier text on the same predicate as the persisted field.
+      throw this.toHttpException(error, this.hasShipmentsWrite(user));
     }
   }
 
@@ -250,7 +257,9 @@ export class ShipmentController {
       const result = await this.dispatch.dispatch(input);
       return DispatchResultResponseDto.fromResult(result);
     } catch (error) {
-      throw this.toHttpException(error);
+      // Route is `@Roles('admin', 'operator')`-gated, so the caller holds
+      // `shipments:write` — nothing to redact.
+      throw this.toHttpException(error, true);
     }
   }
 
@@ -315,7 +324,8 @@ export class ShipmentController {
       res.setHeader('Content-Disposition', `attachment; filename="ol-handover-protocol.${ext}"`);
       res.send(Buffer.from(body));
     } catch (error) {
-      throw this.toHttpException(error);
+      // `@Roles('admin', 'operator')`-gated — the caller holds `shipments:write`.
+      throw this.toHttpException(error, true);
     }
   }
 
@@ -330,9 +340,10 @@ export class ShipmentController {
   async cancel(@Param('id') id: string): Promise<ShipmentResponseDto> {
     try {
       const shipment = await this.cancellation.cancel(id);
-      return ShipmentResponseDto.fromDomain(shipment);
+      // `@Roles('admin', 'operator')`-gated — the caller holds `shipments:write`.
+      return ShipmentResponseDto.fromDomain(shipment, null, true);
     } catch (error) {
-      throw this.toHttpException(error);
+      throw this.toHttpException(error, true);
     }
   }
 
@@ -364,12 +375,27 @@ export class ShipmentController {
   /**
    * Server-side redaction gate (#1826) — mirrors the FE's `usePermission
    * ('shipments:write')` check so a `viewer` session can't bypass the raw
-   * `errorMessage` redaction by reading this endpoint's JSON directly. The
+   * carrier-message redaction by reading this endpoint's JSON directly. The
    * FE gate stays too (it also drives write-affordance visibility, not just
    * this one field), but this is the actual enforcement boundary.
+   *
+   * SCOPE: `shipments:write` is today a DISPLAY predicate only — it gates
+   * carrier-text disclosure on the read paths and the FE's write affordances.
+   * It authorizes no mutation: every shipping mutation is gated by
+   * `@Roles('admin', 'operator')` and there is no permission-based guard in the
+   * codebase. The two therefore MUST stay in lockstep — granting
+   * `shipments:write` to a third role in `ROLE_PERMISSIONS` would show that
+   * role the Regenerate/Cancel buttons and then 403 the click. A spec in
+   * `shipment.controller.spec.ts` asserts the role sets are identical so the
+   * drift fails a test rather than shipping.
    */
-  private hasShipmentsWrite(user: AuthenticatedUser): boolean {
-    return ROLE_PERMISSIONS[user.role].includes('shipments:write');
+  private hasShipmentsWrite(user: AuthenticatedUser | undefined): boolean {
+    // `user.role` is only *declared* `UserRole` — at runtime it arrives verbatim
+    // off the JWT (`JwtStrategy.validate`) with no `UserRoleValues` membership
+    // check, so an unrecognised role would index to `undefined` and throw.
+    // Fail closed (redact), mirroring `UserResponseDto.fromDomain`'s `?? []`.
+    const permissions = user ? ROLE_PERMISSIONS[user.role] : undefined;
+    return permissions?.includes('shipments:write') ?? false;
   }
 
   /**
@@ -422,8 +448,14 @@ export class ShipmentController {
    * count drop to ~0 until the adapters catch up. The trade-off is honest:
    * 500 is correct for "we don't know what this is", and the structured log
    * carries the message + stack so triage is unaffected.
+   *
+   * @param canWrite Whether the requester holds `shipments:write`. Required (no
+   *   default) for the same reason as on `ShipmentResponseDto.fromDomain`: the
+   *   carrier-rejection 502 body carries the same address-bearing provider text
+   *   the persisted `errorMessage` redacts, so a fail-open default would leak it
+   *   through the only command-style error surface a viewer can reach.
    */
-  private toHttpException(error: unknown): Error {
+  private toHttpException(error: unknown, canWrite: boolean): Error {
     if (error instanceof ShipmentNotFoundException) {
       return new NotFoundException(error.message);
     }
@@ -457,11 +489,13 @@ export class ShipmentController {
       // Surface the carrier's structured rejection so the client sees WHICH
       // field the provider rejected, not just a generic message (#1428). The
       // provider-details payload is field-error metadata by convention — never
-      // credentials. `providerCode` gives callers a stable discriminator.
+      // credentials, but it CAN echo the rejected address fragment, which is
+      // exactly what `errorMessage` withholds from a viewer (#1826). Keep
+      // `providerCode` either way: it is a stable, non-PII support reference.
       return new BadGatewayException({
-        message: error.message,
+        message: canWrite ? error.message : REDACTED_ERROR_MESSAGE,
         providerCode: error.providerCode,
-        details: error.providerDetails,
+        details: canWrite ? error.providerDetails : undefined,
       });
     }
     if (error instanceof Error) {

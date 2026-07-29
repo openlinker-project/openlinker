@@ -1,8 +1,14 @@
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Route, Routes } from 'react-router-dom';
+import type { ReactElement } from 'react';
+import { Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createMockApiClient, renderWithProviders, sampleConnection } from '../../test/test-utils';
+import {
+  createAuthenticatedSessionAdapter,
+  createMockApiClient,
+  renderWithProviders,
+  sampleConnection,
+} from '../../test/test-utils';
 import { OrderDetailPage } from './order-detail-page';
 import type { OrderRecord } from '../../features/orders/api/orders.types';
 import type { Connection } from '../../features/connections';
@@ -403,12 +409,28 @@ describe('OrderDetailPage', () => {
       },
     };
 
+    /** Echoes the live URL so the param-stripping assertion can read it. */
+    function LocationProbe(): ReactElement {
+      const location = useLocation();
+      return <span data-testid="location">{`${location.pathname}${location.search}`}</span>;
+    }
+
     function renderWithRoute(apiClient: ReturnType<typeof createMockApiClient>, route: string): void {
       renderWithProviders(
         <Routes>
-          <Route path="/orders/:internalOrderId" element={<OrderDetailPage />} />
+          <Route
+            path="/orders/:internalOrderId"
+            element={
+              <>
+                <OrderDetailPage />
+                <LocationProbe />
+              </>
+            }
+          />
         </Routes>,
-        { apiClient, route },
+        // The deep-link auto-open is gated on `shipments:write` (#1905), so an
+        // anonymous render would never open the form.
+        { apiClient, route, sessionAdapter: createAuthenticatedSessionAdapter() },
       );
     }
 
@@ -467,6 +489,60 @@ describe('OrderDetailPage', () => {
 
       await screen.findByText('No shipment yet');
       expect(screen.queryByText('Recipient')).toBeNull();
+    });
+
+    it('should strip retryShipmentId from the URL after consuming it while preserving from (#1905)', async () => {
+      // A one-shot navigation token, not durable URL state: leaving it on the
+      // address bar means a bookmark / refresh / back-navigation re-lands on a
+      // live, submittable mutation surface.
+      const api = createMockApiClient({
+        orders: { getById: vi.fn().mockResolvedValue(orderWithPaczkomatRoute) },
+        connections: { list: vi.fn().mockResolvedValue([shippingConnection]) },
+        shipments: {
+          list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+        },
+      });
+
+      renderWithRoute(
+        api,
+        '/orders/ol_order_abc123?retryShipmentId=ol_shipment_failed&from=shipments',
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('location').textContent).toBe(
+          '/orders/ol_order_abc123?from=shipments',
+        );
+      });
+    });
+
+    it('should point the back link at /shipments when arriving with from=shipments (#1905)', async () => {
+      const api = createMockApiClient({
+        orders: { getById: vi.fn().mockResolvedValue(orderWithPaczkomatRoute) },
+        connections: { list: vi.fn().mockResolvedValue([shippingConnection]) },
+        shipments: {
+          list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+        },
+      });
+
+      renderWithRoute(api, '/orders/ol_order_abc123?from=shipments');
+
+      const back = await screen.findByRole('link', { name: 'Shipments' });
+      expect(back).toHaveAttribute('href', '/shipments');
+    });
+
+    it('should keep the default /orders back link when arriving without from', async () => {
+      const api = createMockApiClient({
+        orders: { getById: vi.fn().mockResolvedValue(orderWithPaczkomatRoute) },
+        connections: { list: vi.fn().mockResolvedValue([shippingConnection]) },
+        shipments: {
+          list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+        },
+      });
+
+      renderWithRoute(api, '/orders/ol_order_abc123');
+
+      const back = await screen.findByRole('link', { name: 'Orders' });
+      expect(back).toHaveAttribute('href', '/orders');
     });
   });
 });

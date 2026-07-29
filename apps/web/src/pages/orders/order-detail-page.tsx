@@ -10,7 +10,7 @@
  *
  * @module apps/web/src/pages/orders
  */
-import { useCallback, useEffect, type ReactElement } from 'react';
+import { useCallback, useEffect, useRef, type ReactElement } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Alert } from '../../shared/ui/alert';
@@ -72,12 +72,29 @@ export function OrderDetailPage(): ReactElement {
   const { showToast } = useToast();
   const location = useLocation();
   // Deep-link recovery target from a `/shipments` row's Regenerate/Generate
-  // action (#1826): `/orders/:orderId?retryShipmentId={id}` — a query param
-  // (not router `state`) so the link is shareable/bookmarkable and survives
-  // a hard refresh. Left on the URL after use (not stripped) for the same
-  // reason. Independent of the existing `#shipment` hash-scroll (#1713).
-  const [searchParams] = useSearchParams();
-  const retryShipmentId = searchParams.get('retryShipmentId') ?? undefined;
+  // action (#1826): `/orders/:orderId?retryShipmentId={id}&from=shipments` —
+  // a query param (not router `state`) so the link survives a hard refresh.
+  // Independent of the existing `#shipment` hash-scroll (#1713).
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Captured once per mount, then stripped from the URL below (#1905). It is a
+  // one-shot navigation token, not durable URL state: leaving it on the address
+  // bar means a bookmark, refresh or back-navigation re-lands on a live,
+  // submittable mutation surface. The panel's own once-per-id `useRef` latch
+  // already makes the auto-open fire at most once per mount, so nothing
+  // downstream needs to re-read it.
+  const retryShipmentIdRef = useRef<string | undefined>(
+    searchParams.get('retryShipmentId') ?? undefined,
+  );
+  const retryShipmentId = retryShipmentIdRef.current;
+  // `from` is deliberately NOT stripped — it only steers the back link, and
+  // must survive so returning to `/shipments` still works after a refresh.
+  const cameFromShipments = searchParams.get('from') === 'shipments';
+  useEffect(() => {
+    if (!searchParams.has('retryShipmentId')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('retryShipmentId');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   // Scroll to the section a deep-link CTA targets (#1713): the orders-list
   // "Generate label" / "Issue invoice" actions land here on `#shipment` /
@@ -275,7 +292,17 @@ export function OrderDetailPage(): ReactElement {
   ];
 
   return (
-    <PageLayout backTo={{ to: '/orders', label: 'Orders' }} eyebrow="Orders" title="Order detail">
+    <PageLayout
+      // Close the loop back to wherever the operator came from (#1905): a
+      // `/shipments` triage jump otherwise had only browser-back to return.
+      backTo={
+        cameFromShipments
+          ? { to: '/shipments', label: 'Shipments' }
+          : { to: '/orders', label: 'Orders' }
+      }
+      eyebrow="Orders"
+      title="Order detail"
+    >
       <OrderDetailHeader order={order} snapshot={snapshot} />
 
       <OrderHealthSummary

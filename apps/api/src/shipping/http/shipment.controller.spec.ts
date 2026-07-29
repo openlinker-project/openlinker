@@ -38,6 +38,8 @@ import {
 } from '@openlinker/core/shipping';
 
 import type { IOrderRecordService, OrderRecord } from '@openlinker/core/orders';
+import { ROLE_PERMISSIONS, UserRoleValues } from '@openlinker/core/users';
+import type { UserRole } from '@openlinker/core/users';
 import type { Response } from 'express';
 
 import { ShipmentController, extensionForContentType } from './shipment.controller';
@@ -49,6 +51,13 @@ import type { AuthenticatedUser } from '../../auth/auth.types';
 
 const ADMIN_USER: AuthenticatedUser = { id: 'user_1', username: 'admin', role: 'admin' };
 const VIEWER_USER: AuthenticatedUser = { id: 'user_2', username: 'viewer', role: 'viewer' };
+// A role that passed JWT signature verification but is not in `UserRoleValues`
+// (the payload is trusted verbatim — no membership check at the strategy).
+const UNKNOWN_ROLE_USER: AuthenticatedUser = {
+  id: 'user_3',
+  username: 'legacy',
+  role: 'auditor' as unknown as UserRole,
+};
 
 function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
   return new Shipment(
@@ -296,6 +305,72 @@ describe('ShipmentController', () => {
 
       const adminResult = await controller.getById('ol_shipment_1', ADMIN_USER);
       expect(adminResult.errorMessage).toBe('DPD rejected: sender postcode invalid');
+    });
+
+    it('should redact (not throw) when the session carries a role absent from ROLE_PERMISSIONS', async () => {
+      query.list.mockResolvedValue({
+        items: [makeShipment({ status: 'failed', errorMessage: 'DPD rejected: postcode' })],
+        total: 1,
+      });
+
+      const result = await controller.list({}, UNKNOWN_ROLE_USER);
+
+      expect(result.items[0].errorMessage).toBe(REDACTED_ERROR_MESSAGE);
+    });
+
+    it('should redact (not throw) when no authenticated user is attached to the request', async () => {
+      query.getById.mockResolvedValue(
+        makeShipment({ status: 'failed', errorMessage: 'DPD rejected: postcode' }),
+      );
+
+      const result = await controller.getById(
+        'ol_shipment_1',
+        undefined as unknown as AuthenticatedUser,
+      );
+
+      expect(result.errorMessage).toBe(REDACTED_ERROR_MESSAGE);
+    });
+
+    it('should surface the raw errorMessage on the generate-label command response', async () => {
+      dispatch.dispatch.mockResolvedValue({
+        kind: 'dispatched',
+        shipment: makeShipment({ status: 'failed', errorMessage: 'DPD rejected: postcode' }),
+      });
+
+      const result = await controller.generateLabel(makeGenerateLabelDto());
+
+      expect(result.shipment?.errorMessage).toBe('DPD rejected: postcode');
+    });
+
+    it('should surface the raw errorMessage on the bulk generate-labels command response', async () => {
+      bulkDispatch.dispatchBulk.mockResolvedValue({
+        results: [
+          {
+            kind: 'dispatched',
+            orderId: 'ol_order_1',
+            shipment: makeShipment({ status: 'failed', errorMessage: 'DPD rejected: postcode' }),
+          },
+        ],
+      });
+
+      const result = await controller.bulkGenerateLabels({
+        sourceConnectionId: 'a1b2c3d4-0000-4000-8000-000000000002',
+        items: [],
+      } as unknown as BulkGenerateLabelsDto);
+
+      expect(result.results[0].shipment?.errorMessage).toBe('DPD rejected: postcode');
+    });
+
+    it('should keep the shipments:write role set in lockstep with the mutating routes @Roles list', () => {
+      // `shipments:write` is a display predicate only (no permission guard
+      // exists), so granting it to a third role would show that role the
+      // Regenerate/Cancel affordances and then 403 the click. If this fails,
+      // either add a permission-based guard or revert the grant.
+      const rolesWithShipmentsWrite = UserRoleValues.filter((role) =>
+        ROLE_PERMISSIONS[role].includes('shipments:write'),
+      );
+
+      expect(rolesWithShipmentsWrite).toEqual(['admin', 'operator']);
     });
   });
 
@@ -632,7 +707,7 @@ describe('ShipmentController', () => {
       labelService.fetchLabel.mockResolvedValue(doc);
       const { res, setHeader, send } = makeRes();
 
-      await controller.downloadLabel('ol_shipment_1', res);
+      await controller.downloadLabel('ol_shipment_1', ADMIN_USER, res);
 
       expect(labelService.fetchLabel).toHaveBeenCalledWith('ol_shipment_1');
       expect(setHeader).toHaveBeenCalledWith('Content-Type', 'application/pdf');
@@ -650,7 +725,7 @@ describe('ShipmentController', () => {
       });
       const { res, setHeader } = makeRes();
 
-      await controller.downloadLabel('ol_shipment_1', res);
+      await controller.downloadLabel('ol_shipment_1', ADMIN_USER, res);
 
       expect(setHeader).toHaveBeenCalledWith(
         'Content-Disposition',
@@ -662,7 +737,7 @@ describe('ShipmentController', () => {
       labelService.fetchLabel.mockRejectedValue(new ShipmentNotFoundException('missing'));
       const { res } = makeRes();
 
-      await expect(controller.downloadLabel('missing', res)).rejects.toBeInstanceOf(
+      await expect(controller.downloadLabel('missing', ADMIN_USER, res)).rejects.toBeInstanceOf(
         NotFoundException,
       );
     });
@@ -671,9 +746,9 @@ describe('ShipmentController', () => {
       labelService.fetchLabel.mockRejectedValue(new LabelNotAvailableException('ol_shipment_1'));
       const { res } = makeRes();
 
-      await expect(controller.downloadLabel('ol_shipment_1', res)).rejects.toBeInstanceOf(
-        UnprocessableEntityException,
-      );
+      await expect(
+        controller.downloadLabel('ol_shipment_1', ADMIN_USER, res),
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
 
     it('should map LabelDocumentNotSupportedException to 422', async () => {
@@ -682,9 +757,9 @@ describe('ShipmentController', () => {
       );
       const { res } = makeRes();
 
-      await expect(controller.downloadLabel('ol_shipment_1', res)).rejects.toBeInstanceOf(
-        UnprocessableEntityException,
-      );
+      await expect(
+        controller.downloadLabel('ol_shipment_1', ADMIN_USER, res),
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
 
     it('should map ShippingProviderRejectionException to 502', async () => {
@@ -693,9 +768,59 @@ describe('ShipmentController', () => {
       );
       const { res } = makeRes();
 
-      await expect(controller.downloadLabel('ol_shipment_1', res)).rejects.toBeInstanceOf(
-        BadGatewayException,
+      await expect(
+        controller.downloadLabel('ol_shipment_1', ADMIN_USER, res),
+      ).rejects.toBeInstanceOf(BadGatewayException);
+    });
+
+    // The route carries no `@Roles` (viewers keep "Download label"), so its 502
+    // body is the one command-style error surface a viewer can reach (#1826).
+    it('should carry the raw carrier rejection in the 502 body for an operator session', async () => {
+      labelService.fetchLabel.mockRejectedValue(
+        new ShippingProviderRejectionException(
+          'dpd',
+          'sender_postcode',
+          'postcode 22-213 invalid',
+          {
+            fieldErrors: { sender: ['postcode 22-213 invalid'] },
+          },
+        ),
       );
+      const { res } = makeRes();
+
+      const err = await controller
+        .downloadLabel('ol_shipment_1', { ...ADMIN_USER, role: 'operator' }, res)
+        .catch((e: unknown) => e);
+
+      expect((err as BadGatewayException).getResponse()).toEqual({
+        message: 'postcode 22-213 invalid',
+        providerCode: 'sender_postcode',
+        details: { fieldErrors: { sender: ['postcode 22-213 invalid'] } },
+      });
+    });
+
+    it('should redact the 502 message and details (keeping providerCode) for a viewer session', async () => {
+      labelService.fetchLabel.mockRejectedValue(
+        new ShippingProviderRejectionException(
+          'dpd',
+          'sender_postcode',
+          'postcode 22-213 invalid',
+          {
+            fieldErrors: { sender: ['postcode 22-213 invalid'] },
+          },
+        ),
+      );
+      const { res } = makeRes();
+
+      const err = await controller
+        .downloadLabel('ol_shipment_1', VIEWER_USER, res)
+        .catch((e: unknown) => e);
+
+      expect((err as BadGatewayException).getResponse()).toEqual({
+        message: REDACTED_ERROR_MESSAGE,
+        providerCode: 'sender_postcode',
+        details: undefined,
+      });
     });
   });
 

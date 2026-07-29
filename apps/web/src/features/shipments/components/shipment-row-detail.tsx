@@ -26,6 +26,15 @@
  * (`ShipmentResponseDto.fromDomain`), so this branch only ever sees the
  * server's placeholder for a viewer anyway.
  *
+ * Permission note (#1826, deliberate): `canWrite` comes from
+ * `usePermission('shipments:write')`, NOT `useWriteAccess` (#1615), so write
+ * affordances are absent — not disabled-with-tooltip — for a public-demo
+ * read-only viewer. The plan (§7 of
+ * `docs/plans/implementation-plan-shipments-inline-retry.md`) chose that
+ * deliberately, because the carrier `errorMessage` these affordances sit
+ * beside is itself role-redacted server-side. Do not "fix" this by swapping in
+ * `useWriteAccess` without revisiting that decision.
+ *
  * @module apps/web/src/features/shipments/components
  */
 import { useState, type ReactElement } from 'react';
@@ -34,15 +43,21 @@ import { Link } from 'react-router-dom';
 import {
   CAN_CANCEL,
   CAN_DOWNLOAD_LABEL,
-  CAN_GENERATE,
   CAN_NOTIFY_DISPATCHED,
+  canRegenerateLabel,
+  isPreWaybill,
 } from '../lib/shipment-action-eligibility';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { CopyableId } from '../../../shared/ui/copyable-id';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { DELIVERY_INTENT_LABEL, type Shipment } from '../api/shipments.types';
+import {
+  DELIVERY_INTENT_LABEL,
+  REDACTED_ERROR_MESSAGE,
+  SHIPPING_METHOD_LABEL,
+  type Shipment,
+} from '../api/shipments.types';
 import { buildCarrierTrackingUrl, getCarrierDisplayName } from '../lib/carrier-tracking-url';
 import { useCancelShipmentMutation } from '../hooks/use-cancel-shipment-mutation';
 import { useLabelDownload } from '../hooks/use-label-download';
@@ -52,13 +67,35 @@ interface ShipmentRowDetailProps {
   shipment: Shipment;
   /** `usePermission('shipments:write')` — gates write actions + raw error text. */
   canWrite: boolean;
+  /**
+   * `usePermission('connections:write')` — gates the connection-settings jump
+   * only. Editing a connection is a different permission from dispatching a
+   * shipment, and `ShipmentTriageStrip` already separates the two; binding this
+   * link to `canWrite` here would have handed the same CTA to a
+   * `shipments:write`-only operator in the accordion while withholding it in
+   * the strip.
+   */
+  canReviewConnection: boolean;
 }
 
+/**
+ * Deep link into the order's shipment form.
+ *
+ * `#shipment` matches the anchor the order-detail page already scroll-and-
+ * focuses (the same target `/orders` list rows link to); without it the
+ * operator lands at the top of a long order page with the form out of sight.
+ * `from=shipments` tells that page where the jump came from so it can offer
+ * the way back.
+ */
 function retryHref(shipment: Shipment): string {
-  return `/orders/${shipment.orderId}?retryShipmentId=${shipment.id}`;
+  return `/orders/${shipment.orderId}?retryShipmentId=${shipment.id}&from=shipments#shipment`;
 }
 
-export function ShipmentRowDetail({ shipment, canWrite }: ShipmentRowDetailProps): ReactElement {
+export function ShipmentRowDetail({
+  shipment,
+  canWrite,
+  canReviewConnection,
+}: ShipmentRowDetailProps): ReactElement {
   const cancelMutation = useCancelShipmentMutation();
   const notifyMutation = useNotifyDispatchedMutation();
   const labelDownload = useLabelDownload();
@@ -90,26 +127,41 @@ export function ShipmentRowDetail({ shipment, canWrite }: ShipmentRowDetailProps
     );
   }
 
-  const canGenerate = CAN_GENERATE.has(shipment.status);
+  const canGenerate = canRegenerateLabel(shipment, canWrite);
   const canCancel = CAN_CANCEL.has(shipment.status);
   const canNotify = CAN_NOTIFY_DISPATCHED.has(shipment.status);
   const canDownloadLabel =
     shipment.labelPdfRef !== null && CAN_DOWNLOAD_LABEL.has(shipment.status);
   const trackingUrl = buildCarrierTrackingUrl(shipment);
   const isFailed = shipment.status === 'failed';
+  // A `failed` row that still holds a waybill is a post-delivery outcome
+  // (returned to sender, refused, undelivered, pickup expired…) rather than a
+  // rejected dispatch. Regenerating there would buy a SECOND carrier label
+  // while the first stays live, so the CTA is replaced by an explanation.
+  const isPostWaybillFailure = isFailed && !isPreWaybill(shipment);
+  const liveWaybill = shipment.trackingNumber ?? shipment.providerShipmentId;
   const carrierName = getCarrierDisplayName(shipment.carrier) ?? 'the carrier';
-  // Fallback for a common transitional state (#1826) — e.g. `dispatched` /
-  // `in-transit` before the carrier status-sync poll has backfilled `carrier`
-  // (no tracking link yet) — where none of the failure block, action row, or
-  // tracking link has anything to render. Without this, the `expandable`
-  // toggle promises content on every row and opens onto an empty box.
+  // Drives the "why is there nothing to do here" line below — true for a
+  // common transitional state (`dispatched` / `in-transit` before the carrier
+  // status-sync poll has backfilled `carrier`, so no tracking link yet) as
+  // well as for a viewer who simply holds no write permission.
   const hasAnyAction =
-    (canGenerate && canWrite) ||
+    canGenerate ||
     (canNotify && canWrite) ||
     canDownloadLabel ||
     trackingUrl !== null ||
     (canCancel && canWrite);
-  const hasAnyContent = isFailed || hasAnyAction;
+  // Provider / Method / Tracking / Paczkomat are hidden from the table below
+  // 1024px (Paczkomat, Provider) and 768px (Tracking), so on a narrow window
+  // the accordion is the ONLY place they can be read. The `omp` branch above
+  // already surfaces its tracking number this way; this is the same treatment
+  // for a carrier-dispatched row.
+  const facts: ReadonlyArray<{ label: string; value: string; mono: boolean }> = [
+    { label: 'Provider', value: shipment.carrier ? carrierName : null, mono: false },
+    { label: 'Method', value: SHIPPING_METHOD_LABEL[shipment.shippingMethod], mono: false },
+    { label: 'Tracking', value: shipment.trackingNumber, mono: true },
+    { label: 'Paczkomat', value: shipment.paczkomatId, mono: true },
+  ].filter((fact): fact is { label: string; value: string; mono: boolean } => fact.value !== null);
 
   const handleDownloadLabel = (): void => {
     void labelDownload.download(shipment.id).then((ok) => {
@@ -125,12 +177,17 @@ export function ShipmentRowDetail({ shipment, canWrite }: ShipmentRowDetailProps
         <dl className="shipment-detail-grid">
           <div className="shipment-detail-grid__field shipment-detail-grid__field--wide">
             <span className="shipment-detail-grid__label">
-              {canWrite ? 'Carrier rejection' : 'Shipment failed'}
+              {canWrite && shipment.errorMessage ? 'Carrier rejection' : 'Shipment failed'}
             </span>
             <p className="shipment-detail-grid__value">
-              {canWrite
-                ? shipment.errorMessage
-                : 'Details hidden for this role.'}
+              {/* A status-sync-derived failure (returned to sender, refused,
+                  undelivered, pickup expired…) persists no `errorMessage`, so
+                  without this fallback the operator saw a "Carrier rejection"
+                  label above an empty paragraph. */}
+              {!canWrite
+                ? REDACTED_ERROR_MESSAGE
+                : shipment.errorMessage ??
+                  'The carrier reported this parcel as undelivered or returned - check the tracker.'}
             </p>
           </div>
           {shipment.failedAt ? (
@@ -155,15 +212,49 @@ export function ShipmentRowDetail({ shipment, canWrite }: ShipmentRowDetailProps
             </div>
           ) : null}
         </dl>
-      ) : !hasAnyContent ? (
+      ) : facts.length > 0 ? (
+        <dl className="shipment-detail-grid">
+          {facts.map((fact) => (
+            <div className="shipment-detail-grid__field" key={fact.label}>
+              <span className="shipment-detail-grid__label">{fact.label}</span>
+              <p className={`shipment-detail-grid__value${fact.mono ? ' mono-text' : ''}`}>
+                {fact.value}
+              </p>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+
+      {!isFailed && !hasAnyAction ? (
+        // Two genuinely different reasons for an actionless row — conflating
+        // them told a viewer to wait for a status sync that was never the
+        // problem.
         <p className="text-muted">
-          No actions available for this shipment yet — check back once the carrier status sync
-          catches up.
+          {canWrite
+            ? 'No actions available for this shipment yet — check back once the carrier status sync catches up.'
+            : 'You do not have permission to act on this shipment.'}
+        </p>
+      ) : null}
+
+      {isPostWaybillFailure ? (
+        // Rendered for viewers too: this is the one failed-row shape that
+        // offers neither an action nor a rejection message, so without this a
+        // viewer would see only the redaction placeholder and no reason why
+        // nothing is actionable. The remediation half is write-gated - no
+        // "Cancel" button exists on a failed row (`CAN_CANCEL` covers
+        // `generated` only), so the copy points at the carrier-side void rather
+        // than promising an in-app control that isn't here.
+        <p className="text-muted">
+          {`This parcel already has a live waybill${liveWaybill ? ` (${liveWaybill})` : ''}, so it cannot be re-dispatched from here${
+            canWrite
+              ? ` - regenerating would purchase a second label. Void the existing waybill with ${carrierName} first, then generate a new one.`
+              : '.'
+          }`}
         </p>
       ) : null}
 
       <div className="shipment-row-detail__actions">
-        {isFailed && canWrite ? (
+        {isFailed && canReviewConnection ? (
           // Cause-neutral copy (#1826) — the raw carrier message could be
           // anything the carrier rejects on, not necessarily a sender-address
           // problem (see `ShipmentTriageStrip`'s header comment for the same
@@ -176,7 +267,7 @@ export function ShipmentRowDetail({ shipment, canWrite }: ShipmentRowDetailProps
             Review connection settings
           </Link>
         ) : null}
-        {canGenerate && canWrite ? (
+        {canGenerate ? (
           <Link to={retryHref(shipment)} className="button button--primary button--sm">
             {isFailed ? 'Regenerate label' : 'Generate label'}
           </Link>

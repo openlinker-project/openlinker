@@ -401,6 +401,9 @@ describe('ShipmentsPage — row accordion + Order/Provider columns (#1826)', () 
     const failed = makeShipment({
       id: 'ol_shipment_failed',
       status: 'failed',
+      // Pre-waybill: a `failed` row that still holds a carrier waybill is
+      // deliberately NOT offered a Regenerate link (#1905).
+      providerShipmentId: null,
       errorMessage: 'DPD rejected: sender postal code not serviceable',
       failedAt: '2026-05-20T12:00:00.000Z',
       trackingNumber: null,
@@ -457,7 +460,7 @@ describe('ShipmentsPage — row accordion + Order/Provider columns (#1826)', () 
     expect(orderLink).toHaveAttribute('href', '/orders/ol_order_1');
   });
 
-  it('should render the Provider column (renamed from Connection) with the connection name', async () => {
+  it('should keep the column header "Connection" while rendering it as a ConnectionDot (#1905)', async () => {
     const mockApi = createMockApiClient({
       shipments: { list: vi.fn().mockResolvedValue(page([makeShipment({ connectionId: 'conn_inpost' })])) },
       connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
@@ -466,8 +469,11 @@ describe('ShipmentsPage — row accordion + Order/Provider columns (#1826)', () 
     renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
 
     const table = await screen.findByRole('table');
-    expect(within(table).getByText('Provider')).toBeInTheDocument();
-    expect(within(table).queryByText('Connection')).not.toBeInTheDocument();
+    // "Connection" is the vocabulary six other tables use for this column, and
+    // this page's own filter still says "All connections" — a brief rename to
+    // "Provider" left the operator hunting for a filter that doesn't exist.
+    expect(within(table).getByText('Connection')).toBeInTheDocument();
+    expect(within(table).queryByText('Provider')).not.toBeInTheDocument();
     // Scoped to the visible provider cell — `ConnectionDot` also carries a
     // duplicate `sr-only` "InPost" for its accessible name, and "InPost" is
     // separately an `<option>` in the toolbar's connection filter.
@@ -481,7 +487,11 @@ describe('ShipmentsPage — row accordion + Order/Provider columns (#1826)', () 
       shipments: {
         list: vi.fn().mockResolvedValue(
           page([
-            makeShipment({ id: 'ol_shipment_failed', status: 'failed' }),
+            makeShipment({
+              id: 'ol_shipment_failed',
+              status: 'failed',
+              errorMessage: 'carrier rejected the sender postcode',
+            }),
             makeShipment({ id: 'ol_shipment_draft', status: 'draft' }),
             makeShipment({ id: 'ol_shipment_generated', status: 'generated' }),
             makeShipment({ id: 'ol_shipment_delivered', status: 'delivered' }),
@@ -491,7 +501,10 @@ describe('ShipmentsPage — row accordion + Order/Provider columns (#1826)', () 
       connections: { list: vi.fn().mockResolvedValue([]) },
     });
 
-    renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+    renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     const table = await screen.findByRole('table');
     expect(within(table).getByText('Action')).toBeInTheDocument();
@@ -517,14 +530,54 @@ describe('ShipmentsPage — row accordion + Order/Provider columns (#1826)', () 
       connections: { list: vi.fn().mockResolvedValue([]) },
     });
 
-    renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+    renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     const table = await screen.findByRole('table');
     expect(within(table).getByText('View')).toBeInTheDocument();
     expect(within(table).queryByText('Finish')).not.toBeInTheDocument();
   });
 
-  it('should freeze the Status column via stickyLeftColumns', async () => {
+  it('should collapse every severity label to "View" for a session without shipments:write', async () => {
+    const viewer: SessionUser = {
+      id: 'user_viewer',
+      username: 'viewer',
+      email: 'viewer@example.com',
+      role: 'viewer',
+      permissions: ['shipments:read'],
+    };
+    const mockApi = createMockApiClient({
+      shipments: {
+        list: vi.fn().mockResolvedValue(
+          page([
+            makeShipment({
+              id: 'ol_shipment_failed',
+              status: 'failed',
+              errorMessage: 'carrier rejected the sender postcode',
+            }),
+            makeShipment({ id: 'ol_shipment_draft', status: 'draft' }),
+          ]),
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(viewer),
+    });
+
+    const table = await screen.findByRole('table');
+    // Telling a viewer to "Fix" something they hold no permission to touch is
+    // a dead end — the accordion offers them no write affordance either.
+    expect(within(table).getAllByText('View').length).toBe(2);
+    expect(within(table).queryByText('Fix')).not.toBeInTheDocument();
+    expect(within(table).queryByText('Finish')).not.toBeInTheDocument();
+  });
+
+  it('should freeze Status + Order (the row identity) via stickyLeftColumns', async () => {
     const mockApi = createMockApiClient({
       shipments: { list: vi.fn().mockResolvedValue(page([makeShipment()])) },
       connections: { list: vi.fn().mockResolvedValue([]) },
@@ -533,8 +586,17 @@ describe('ShipmentsPage — row accordion + Order/Provider columns (#1826)', () 
     renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
 
     const table = await screen.findByRole('table');
-    // `DataTable` marks a frozen column's header/cell with `data-table__sticky-col`.
-    expect(table.querySelector('.data-table__sticky-col')).not.toBeNull();
+    // `DataTable` marks a frozen column's header/cell with `data-table__sticky-col`
+    // and freezes the auto expander cell alongside them — so the header row
+    // carries three: expander + Status + Order. Freezing Status alone left a
+    // horizontally-scrolled row showing a failure with no way to tell which
+    // order it belonged to (#1905).
+    const frozenHeaders = table.querySelectorAll('thead .data-table__sticky-col');
+    expect(frozenHeaders.length).toBe(3);
+    // The Order header is the outermost frozen data column.
+    const headers = Array.from(table.querySelectorAll('thead th')).map((th) => th.textContent);
+    expect(headers[1]).toContain('Status');
+    expect(headers[2]).toContain('Order');
   });
 });
 
@@ -564,7 +626,59 @@ describe('ShipmentsPage — cause-first triage strip (#1826)', () => {
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
 
-    expect(await screen.findByText(/failed shipments on this connection share one cause/i)).toBeInTheDocument();
+    expect(await screen.findByText(/report the same carrier message/i)).toBeInTheDocument();
+  });
+
+  it('should resolve the connection name into the strip instead of leaving a bare id', async () => {
+    const shared = 'DPD rejected: sender postcode 00-000 not serviceable';
+    const mockApi = createMockApiClient({
+      shipments: {
+        list: vi.fn().mockResolvedValue(
+          page([
+            makeShipment({ id: 'ol_shipment_a', status: 'failed', connectionId: 'conn_inpost', errorMessage: shared }),
+            makeShipment({
+              id: 'ol_shipment_b',
+              status: 'failed',
+              connectionId: 'conn_inpost',
+              errorMessage: 'DPD rejected: sender postcode 11-111 not serviceable',
+            }),
+          ]),
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const strip = await screen.findByText(/report the same carrier message/i);
+    expect(strip.textContent).toContain('InPost');
+  });
+
+  it('should cap the rendered strips at two and collapse the rest into a count', async () => {
+    // One live region per group on a 20-row page pushes the table below the
+    // fold and announces a wall of text (#1905). Three distinct causes here.
+    const failures = ['alpha rejection', 'beta rejection', 'gamma rejection'].flatMap((cause, i) => [
+      makeShipment({ id: `ol_shipment_${i}_a`, status: 'failed', errorMessage: cause }),
+      makeShipment({ id: `ol_shipment_${i}_b`, status: 'failed', errorMessage: `${cause} 42` }),
+    ]);
+    const mockApi = createMockApiClient({
+      shipments: { list: vi.fn().mockResolvedValue(page(failures)) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await screen.findByRole('table');
+    expect(screen.getAllByText(/report the same carrier message/i).length).toBe(2);
+    expect(
+      screen.getByText(/\+1 more group with a shared carrier message\./i),
+    ).toBeInTheDocument();
   });
 
   it('should not show the triage strip when only 1 shipment has a given cause', async () => {
@@ -583,7 +697,7 @@ describe('ShipmentsPage — cause-first triage strip (#1826)', () => {
     });
 
     await screen.findByRole('table');
-    expect(screen.queryByText(/failed shipments on this connection share one cause/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/report the same carrier message/i)).not.toBeInTheDocument();
   });
 
   it('should hide the triage strip entirely for a viewer session even with a shared cause', async () => {
@@ -617,7 +731,7 @@ describe('ShipmentsPage — cause-first triage strip (#1826)', () => {
     });
 
     await screen.findByRole('table');
-    expect(screen.queryByText(/failed shipments on this connection share one cause/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/report the same carrier message/i)).not.toBeInTheDocument();
   });
 });
 
@@ -838,12 +952,22 @@ describe('ShipmentsPage — mobile card parity (#1826)', () => {
     try {
       const mockApi = createMockApiClient({
         shipments: {
-          list: vi.fn().mockResolvedValue(page([makeShipment({ status: 'failed' })])),
+          list: vi.fn().mockResolvedValue(
+            page([
+              makeShipment({
+                status: 'failed',
+                errorMessage: 'carrier rejected the sender postcode',
+              }),
+            ]),
+          ),
         },
         connections: { list: vi.fn().mockResolvedValue([]) },
       });
 
-      const { container } = renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+      const { container } = renderWithProviders(<ShipmentsPage />, {
+        apiClient: mockApi,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
 
       const card = await waitFor(() => {
         const el = container.querySelector('.data-table__card');
@@ -921,7 +1045,7 @@ describe('ShipmentsPage — mobile card parity (#1826)', () => {
       });
 
       expect(
-        await screen.findByText(/failed shipments on this connection share one cause/i),
+        await screen.findByText(/report the same carrier message/i),
       ).toBeInTheDocument();
     } finally {
       viewport.restore();

@@ -47,6 +47,11 @@ export const PermissionValues = [
   'users:write',
   'customers:read',
   'shipments:read',
+  // DISPLAY-ONLY (#1826): gates carrier-message disclosure on the shipments
+  // read paths plus the FE's write affordances. It authorizes no mutation — the
+  // shipping mutations are `@Roles('admin', 'operator')`-gated and no
+  // permission-based guard exists. Keep the roles holding this permission
+  // identical to those `@Roles` lists (asserted in `shipment.controller.spec.ts`).
   'shipments:write',
   'invoices:read',
   'invoices:write',

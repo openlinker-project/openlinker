@@ -102,3 +102,19 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 **Rule**: When a wire payload shape (credentials, connection config) is consumed by more than one layer, add at least one test that drives the real FE-produced payload through the BE validator and adapter factory together (or assert all layers against a single shared fixture) — do not rely on per-layer specs that each construct their own payload.
 **Applies to**: connection credentials/config shape validators (`plugin.register` validators), adapter factories in `libs/integrations/**`, FE connection-wizard schemas in `apps/web/src/features/connections/`.
 **Source**: #1318 / PR #1319.
+
+## Default a response DTO's redaction flag to REDACTED, never to "show it"
+
+**Context**: `ShipmentResponseDto.fromDomain(shipment, customerId, canWrite)` gates the raw carrier `errorMessage` (which can embed a rejected address fragment) on the requester holding `shipments:write` (#1826).
+**Problem**: `canWrite` was declared `canWrite = true` so the command endpoints could omit it. That makes the *failure mode of forgetting the argument* a silent data disclosure: a new read endpoint that doesn't thread `@CurrentUser()` through compiles clean and serves the unredacted field to every role. The same trap applies to the error path - the carrier-rejection 502 body carried the same provider text with no gate at all, so a route without `@Roles` (label download, deliberately open to viewers) leaked what the persisted field withheld.
+**Rule**: Make a security-relevant redaction parameter **required and un-defaulted** so a new call site cannot compile without deciding, and pass it explicitly (`true` with a one-line "this route is `@Roles`-gated" comment) at the sites that don't need redaction. If a default is unavoidable, default to redacted. Then sweep every *other* surface that carries the same text - error bodies included - not just the persisted field.
+**Applies to**: `apps/api/src/shipping/http/dto/shipment-response.dto.ts`, `apps/api/src/shipping/http/shipment.controller.ts` (`toHttpException`); any response DTO with a role-gated field.
+**Source**: #1826 review round (PR #1905).
+
+## A hand-copied FE/BE literal union needs a `check:invariants` guard, not a "keep in sync" comment
+
+**Context**: `PermissionValues` exists twice - authoritative in `libs/core/src/users/domain/types/role.types.ts`, hand-mirrored in `apps/web/src/shared/auth/session.types.ts` (the browser bundle can't import `@openlinker/core`).
+**Problem**: The mirror carried only a prose "keep the two in sync" comment. Drift is silent in both directions: a permission added only to core never reaches `usePermission`, and one added only to the FE type-checks against a `permissions[]` array the API will never populate. A prior analysis had already recorded the risk and nothing enforced it.
+**Rule**: When a union of string literals must be duplicated across the FE/BE boundary, add a textual-parse invariant script (`scripts/check-*-mirror.mjs`, no TS import, `--self-check` for the pure differ) and chain it into `check:invariants` - the same shape as `check-service-interfaces.mjs`. A comment is not enforcement.
+**Applies to**: `scripts/check-permission-mirror.mjs`; any future FE/BE mirrored `as const` vocabulary.
+**Source**: #1826 review round (PR #1905).

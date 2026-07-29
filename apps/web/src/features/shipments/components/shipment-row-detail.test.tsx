@@ -8,7 +8,7 @@ import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
-import type { Shipment } from '../api/shipments.types';
+import { REDACTED_ERROR_MESSAGE, type Shipment } from '../api/shipments.types';
 import { ShipmentRowDetail } from './shipment-row-detail';
 
 afterEach(cleanup);
@@ -43,7 +43,10 @@ const apiClient = createMockApiClient();
 
 describe('ShipmentRowDetail — failed', () => {
   it('admin/operator: shows the raw errorMessage + failedAt + Review connection settings + Regenerate', () => {
-    renderWithProviders(<ShipmentRowDetail shipment={makeShipment()} canWrite />, { apiClient });
+    renderWithProviders(
+      <ShipmentRowDetail shipment={makeShipment()} canWrite canReviewConnection />,
+      { apiClient },
+    );
     expect(screen.getByText('NOT_PROCESSED — sender postcode "22-213" invalid')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Review connection settings' })).toHaveAttribute(
       'href',
@@ -51,30 +54,141 @@ describe('ShipmentRowDetail — failed', () => {
     );
     expect(screen.getByRole('link', { name: 'Regenerate label' })).toHaveAttribute(
       'href',
-      '/orders/ol_order_1?retryShipmentId=ol_shipment_1',
+      '/orders/ol_order_1?retryShipmentId=ol_shipment_1&from=shipments#shipment',
     );
   });
 
   it('viewer: redacts the raw message and renders no action', () => {
-    renderWithProviders(<ShipmentRowDetail shipment={makeShipment()} canWrite={false} />, {
-      apiClient,
-    });
+    renderWithProviders(
+      <ShipmentRowDetail shipment={makeShipment()} canWrite={false} canReviewConnection={false} />,
+      { apiClient },
+    );
     expect(screen.queryByText('NOT_PROCESSED — sender postcode "22-213" invalid')).not.toBeInTheDocument();
-    expect(screen.getByText('Details hidden for this role.')).toBeInTheDocument();
+    expect(screen.getByText(REDACTED_ERROR_MESSAGE)).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Review connection settings' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Regenerate label' })).not.toBeInTheDocument();
+  });
+});
+
+describe('ShipmentRowDetail — failed, post-waybill (#1905)', () => {
+  it('should replace Regenerate with a void-first explanation when a failed shipment still holds a waybill', () => {
+    renderWithProviders(
+      <ShipmentRowDetail
+        shipment={makeShipment({
+          status: 'failed',
+          providerShipmentId: '680000000012345',
+          carrier: 'inpost',
+          errorMessage: null,
+        })}
+        canWrite
+        canReviewConnection
+      />,
+      { apiClient },
+    );
+    expect(screen.queryByRole('link', { name: /Regenerate label/ })).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'This parcel already has a live waybill (680000000012345), so it cannot be re-dispatched from here - regenerating would purchase a second label. Void the existing waybill with InPost first, then generate a new one.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('should name the tracking number as the live waybill when one is present, and fall back to "the carrier" for an unresolved carrier', () => {
+    renderWithProviders(
+      <ShipmentRowDetail
+        shipment={makeShipment({
+          status: 'failed',
+          providerShipmentId: '680000000012345',
+          trackingNumber: '6800000001',
+          carrier: null,
+          errorMessage: null,
+        })}
+        canWrite
+        canReviewConnection
+      />,
+      { apiClient },
+    );
+    expect(
+      screen.getByText(
+        'This parcel already has a live waybill (6800000001), so it cannot be re-dispatched from here - regenerating would purchase a second label. Void the existing waybill with the carrier first, then generate a new one.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('should explain the live waybill to a viewer without the write-only remediation instruction', () => {
+    renderWithProviders(
+      <ShipmentRowDetail
+        shipment={makeShipment({
+          status: 'failed',
+          providerShipmentId: '680000000012345',
+          carrier: 'inpost',
+          errorMessage: null,
+        })}
+        canWrite={false}
+        canReviewConnection={false}
+      />,
+      { apiClient },
+    );
+    // A viewer gets the reason (this row is inert) but not the operator
+    // instruction to void the waybill, which they hold no permission to do.
+    expect(
+      screen.getByText(
+        'This parcel already has a live waybill (680000000012345), so it cannot be re-dispatched from here.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Void the existing waybill/)).not.toBeInTheDocument();
+  });
+
+  it('should still offer Regenerate for a pre-waybill failure, deep-linking to the order shipment anchor', () => {
+    renderWithProviders(
+      <ShipmentRowDetail
+        shipment={makeShipment({ providerShipmentId: null })}
+        canWrite
+        canReviewConnection
+      />,
+      { apiClient },
+    );
+    expect(screen.getByRole('link', { name: 'Regenerate label' })).toHaveAttribute(
+      'href',
+      '/orders/ol_order_1?retryShipmentId=ol_shipment_1&from=shipments#shipment',
+    );
+    expect(screen.queryByText(/already has a live waybill/)).not.toBeInTheDocument();
+  });
+
+  it('should render the undelivered/returned fallback copy when a failed shipment persisted no errorMessage', () => {
+    renderWithProviders(
+      <ShipmentRowDetail
+        shipment={makeShipment({ errorMessage: null })}
+        canWrite
+        canReviewConnection
+      />,
+      { apiClient },
+    );
+    // The heading drops "Carrier rejection" too - there is no rejection text
+    // to head, so claiming one above an empty paragraph was the bug.
+    expect(screen.getByText('Shipment failed')).toBeInTheDocument();
+    expect(screen.queryByText('Carrier rejection')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The carrier reported this parcel as undelivered or returned - check the tracker.',
+      ),
+    ).toBeInTheDocument();
   });
 });
 
 describe('ShipmentRowDetail — draft / cancelled', () => {
   it('draft: renders Generate label (not Regenerate) deep-linking to the same order', () => {
     renderWithProviders(
-      <ShipmentRowDetail shipment={makeShipment({ status: 'draft', errorMessage: null, failedAt: null })} canWrite />,
+      <ShipmentRowDetail
+        shipment={makeShipment({ status: 'draft', errorMessage: null, failedAt: null })}
+        canWrite
+        canReviewConnection
+      />,
       { apiClient },
     );
     expect(screen.getByRole('link', { name: 'Generate label' })).toHaveAttribute(
       'href',
-      '/orders/ol_order_1?retryShipmentId=ol_shipment_1',
+      '/orders/ol_order_1?retryShipmentId=ol_shipment_1&from=shipments#shipment',
     );
   });
 
@@ -83,6 +197,7 @@ describe('ShipmentRowDetail — draft / cancelled', () => {
       <ShipmentRowDetail
         shipment={makeShipment({ status: 'cancelled', errorMessage: null, failedAt: null })}
         canWrite
+        canReviewConnection
       />,
       { apiClient },
     );
@@ -102,23 +217,34 @@ describe('ShipmentRowDetail — generated', () => {
   }
 
   it('admin/operator: shows Mark dispatched, Download label, and Cancel', () => {
-    renderWithProviders(<ShipmentRowDetail shipment={generatedShipment()} canWrite />, { apiClient });
+    renderWithProviders(
+      <ShipmentRowDetail shipment={generatedShipment()} canWrite canReviewConnection />,
+      { apiClient },
+    );
     expect(screen.getByRole('button', { name: 'Mark dispatched' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download label' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
   });
 
   it('viewer: Download label stays visible (read-only), Mark dispatched / Cancel are hidden', () => {
-    renderWithProviders(<ShipmentRowDetail shipment={generatedShipment()} canWrite={false} />, {
-      apiClient,
-    });
+    renderWithProviders(
+      <ShipmentRowDetail
+        shipment={generatedShipment()}
+        canWrite={false}
+        canReviewConnection={false}
+      />,
+      { apiClient },
+    );
     expect(screen.getByRole('button', { name: 'Download label' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Mark dispatched' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
   });
 
   it('does not render Generate label for a generated shipment (not in CAN_GENERATE)', () => {
-    renderWithProviders(<ShipmentRowDetail shipment={generatedShipment()} canWrite />, { apiClient });
+    renderWithProviders(
+      <ShipmentRowDetail shipment={generatedShipment()} canWrite canReviewConnection />,
+      { apiClient },
+    );
     expect(screen.queryByRole('link', { name: /Generate label/ })).not.toBeInTheDocument();
   });
 
@@ -129,9 +255,10 @@ describe('ShipmentRowDetail — generated', () => {
 
   it('Cancel opens a destructive confirm dialog and fires the cancel mutation only on confirm', async () => {
     const cancel = vi.fn().mockResolvedValue(generatedShipment({ status: 'cancelled' }));
-    renderWithProviders(<ShipmentRowDetail shipment={generatedShipment()} canWrite />, {
-      apiClient: createMockApiClient({ shipments: { cancel } }),
-    });
+    renderWithProviders(
+      <ShipmentRowDetail shipment={generatedShipment()} canWrite canReviewConnection />,
+      { apiClient: createMockApiClient({ shipments: { cancel } }) },
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
@@ -145,9 +272,10 @@ describe('ShipmentRowDetail — generated', () => {
 
   it('Cancel dismissed via Keep does not fire the mutation', async () => {
     const cancel = vi.fn();
-    renderWithProviders(<ShipmentRowDetail shipment={generatedShipment()} canWrite />, {
-      apiClient: createMockApiClient({ shipments: { cancel } }),
-    });
+    renderWithProviders(
+      <ShipmentRowDetail shipment={generatedShipment()} canWrite canReviewConnection />,
+      { apiClient: createMockApiClient({ shipments: { cancel } }) },
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     await screen.findByText('Cancel this shipment?');
@@ -166,9 +294,10 @@ describe('ShipmentRowDetail — generated', () => {
       source: 'ok',
       destinations: [],
     });
-    renderWithProviders(<ShipmentRowDetail shipment={generatedShipment()} canWrite />, {
-      apiClient: createMockApiClient({ shipments: { notifyDispatched } }),
-    });
+    renderWithProviders(
+      <ShipmentRowDetail shipment={generatedShipment()} canWrite canReviewConnection />,
+      { apiClient: createMockApiClient({ shipments: { notifyDispatched } }) },
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Mark dispatched' }));
 
@@ -195,6 +324,7 @@ describe('ShipmentRowDetail — delivered/dispatched with tracking', () => {
           trackingNumber: '6800000001',
         })}
         canWrite
+        canReviewConnection
       />,
       { apiClient },
     );
@@ -208,10 +338,84 @@ describe('ShipmentRowDetail — delivered/dispatched with tracking', () => {
       <ShipmentRowDetail
         shipment={makeShipment({ status: 'delivered', errorMessage: null, failedAt: null })}
         canWrite
+        canReviewConnection
       />,
       { apiClient },
     );
     expect(screen.queryByRole('link', { name: 'Track parcel' })).not.toBeInTheDocument();
+  });
+});
+
+describe('ShipmentRowDetail — non-failed facts grid (#1905)', () => {
+  it('should surface the tracking number, provider and method the responsive table rules hide', () => {
+    // Provider + Paczkomat drop out of the table below 1024px and Tracking
+    // below 768px, so on a narrow window the accordion is the only place they
+    // can be read.
+    renderWithProviders(
+      <ShipmentRowDetail
+        shipment={makeShipment({
+          status: 'generated',
+          shippingMethod: 'paczkomat',
+          errorMessage: null,
+          failedAt: null,
+          labelPdfRef: 'shipx:label:1',
+          carrier: 'inpost',
+          trackingNumber: '6800000001',
+          paczkomatId: 'KRA010',
+        })}
+        canWrite
+        canReviewConnection
+      />,
+      { apiClient },
+    );
+    expect(screen.getByText('Provider')).toBeInTheDocument();
+    expect(screen.getByText('InPost')).toBeInTheDocument();
+    expect(screen.getByText('Method')).toBeInTheDocument();
+    expect(
+      screen.getByText('Paczkomat', { selector: '.shipment-detail-grid__value' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Tracking')).toBeInTheDocument();
+    expect(screen.getByText('6800000001')).toBeInTheDocument();
+    expect(screen.getByText('KRA010')).toBeInTheDocument();
+  });
+
+  it('should omit the fields that are null rather than render them empty', () => {
+    renderWithProviders(
+      <ShipmentRowDetail
+        shipment={makeShipment({
+          status: 'generated',
+          errorMessage: null,
+          failedAt: null,
+          labelPdfRef: 'shipx:label:1',
+          carrier: null,
+          trackingNumber: null,
+          paczkomatId: null,
+        })}
+        canWrite
+        canReviewConnection
+      />,
+      { apiClient },
+    );
+    // Method is the only always-present fact.
+    expect(screen.getByText('Method')).toBeInTheDocument();
+    expect(screen.getByText('Kurier')).toBeInTheDocument();
+    expect(screen.queryByText('Provider')).not.toBeInTheDocument();
+    expect(screen.queryByText('Tracking')).not.toBeInTheDocument();
+    expect(screen.queryByText('Paczkomat')).not.toBeInTheDocument();
+  });
+
+  it('should not render the facts grid on a failed row - the failure block owns that slot', () => {
+    renderWithProviders(
+      <ShipmentRowDetail
+        shipment={makeShipment({ carrier: 'dpd', trackingNumber: '1234567890' })}
+        canWrite
+        canReviewConnection
+      />,
+      { apiClient },
+    );
+    expect(screen.getByText('Carrier rejection')).toBeInTheDocument();
+    expect(screen.queryByText('Provider')).not.toBeInTheDocument();
+    expect(screen.queryByText('Method')).not.toBeInTheDocument();
   });
 });
 
@@ -227,6 +431,7 @@ describe('ShipmentRowDetail — omp/branch-1', () => {
           trackingNumber: 'DE-OMP-88213',
         })}
         canWrite
+        canReviewConnection
       />,
       { apiClient },
     );
@@ -249,6 +454,7 @@ describe('ShipmentRowDetail — omp/branch-1', () => {
           trackingNumber: null,
         })}
         canWrite
+        canReviewConnection
       />,
       { apiClient },
     );
@@ -274,6 +480,7 @@ describe('ShipmentRowDetail — empty-content fallback (#1826)', () => {
           trackingNumber: null,
         })}
         canWrite
+        canReviewConnection
       />,
       { apiClient },
     );
@@ -284,6 +491,26 @@ describe('ShipmentRowDetail — empty-content fallback (#1826)', () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('should tell a viewer it is a permission problem, not a pending status sync (#1905)', () => {
+    // Same actionless row for two entirely different reasons; conflating them
+    // told a viewer to wait for a sync that was never the blocker.
+    for (const status of ['draft', 'cancelled'] as const) {
+      cleanup();
+      renderWithProviders(
+        <ShipmentRowDetail
+          shipment={makeShipment({ status, errorMessage: null, failedAt: null })}
+          canWrite={false}
+          canReviewConnection={false}
+        />,
+        { apiClient },
+      );
+      expect(
+        screen.getByText('You do not have permission to act on this shipment.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/carrier status sync catches up/)).not.toBeInTheDocument();
+    }
   });
 
   it('does not render the fallback once a tracking link becomes resolvable', () => {
@@ -298,6 +525,7 @@ describe('ShipmentRowDetail — empty-content fallback (#1826)', () => {
           trackingNumber: '6800000001',
         })}
         canWrite
+        canReviewConnection
       />,
       { apiClient },
     );

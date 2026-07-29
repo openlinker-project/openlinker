@@ -7,6 +7,15 @@
  * declares `ShippingProviderManager`); copy-flavor (paczkomat caption) keyed
  * on the shipping (processor) connection's `platformType` per plan §3.5.
  *
+ * Permission note (#1826, deliberate): `canWrite` comes from
+ * `usePermission('shipments:write')`, NOT `useWriteAccess` (#1615), so a
+ * public-demo read-only viewer sees this flow's write affordances absent /
+ * inert rather than disabled-with-tooltip. §7 of
+ * `docs/plans/implementation-plan-shipments-inline-retry.md` chose that
+ * deliberately — the carrier `errorMessage` these affordances sit beside is
+ * itself role-redacted server-side. Do not swap in `useWriteAccess` without
+ * revisiting that decision.
+ *
  * @module apps/web/src/features/orders/components
  */
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
@@ -16,9 +25,9 @@ import { captureDemoEvent } from '../../demo';
 import {
   getCarrierDisplayName,
   pickActiveShipment,
+  REDACTED_ERROR_MESSAGE,
   ShipmentStatusBadge,
   useOrderShipmentsQuery,
-  CAN_GENERATE,
   type Shipment,
 } from '../../shipments';
 import { usePermission } from '../../../shared/auth/use-permission';
@@ -36,7 +45,12 @@ import { hasLiveOlCarrierRoute } from '../lib/delivery-outcome';
 import { SHOP_FULFILLED_NO_DUP_LABEL } from '../lib/delivery-copy';
 import { DeliveryRiderAction } from './delivery-rider-action';
 import { GenerateLabelForm } from './generate-label-form';
-import { ShipmentActionButtons, PAYMENT_BLOCKS_DISPATCH } from './shipment-action-buttons';
+import {
+  ShipmentActionButtons,
+  GENERATE_LABEL_BLOCK_REASON,
+  PAYMENT_BLOCKS_DISPATCH,
+  resolveGenerateLabelBlock,
+} from './shipment-action-buttons';
 import { ShipmentLifecycleRail } from './shipment-lifecycle-rail';
 import { ShipmentTrackingLink } from './shipment-tracking-link';
 
@@ -81,11 +95,13 @@ interface OrderShipmentPanelProps {
   order: OrderRecord;
   /**
    * Deep-link recovery target (#1826): when set, matches one of this order's
-   * shipments, AND that shipment is currently retry-eligible (see the
-   * auto-open effect's gate), auto-expands `<GenerateLabelForm>` and offers
-   * that shipment's `paczkomatId` as the locker pre-fill — the only field
-   * from a failed shipment that's actually persisted (parcel dimensions and
-   * weight never are, so they stay operator-typed same as any fresh attempt).
+   * shipments, AND that shipment is currently retry-eligible (permission +
+   * status + pre-waybill + payment + live route — see `retryBlock` below),
+   * auto-expands `<GenerateLabelForm>` and offers that shipment's
+   * `paczkomatId` as the locker pre-fill — the only field from a failed
+   * shipment that's actually persisted (parcel dimensions and weight never
+   * are, so they stay operator-typed same as any fresh attempt). When the
+   * target is present but refused, an inline Alert says why instead.
    * The form itself decides whether that pre-fill wins: a buyer-selected
    * pickup point in the order snapshot always takes precedence, since that
    * field renders read-only and must stay truthful. Sourced from the
@@ -133,7 +149,24 @@ export function OrderShipmentPanel({
     [autoOpenForShipmentId, shipmentsQuery.data],
   );
 
-  // Deep-link auto-open (#1826).
+  // Deep-link eligibility (#1826/#1905) — resolved through the SAME
+  // `resolveGenerateLabelBlock` that drives `<ShipmentActionButtons>`' own
+  // Generate button below, so the auto-open can never open a live, submittable
+  // form behind a button that refuses the identical action. That predicate
+  // wraps the shared `canRegenerateLabel` (permission + status + the
+  // post-waybill guard: a `failed` row holding a live carrier waybill must NOT
+  // regenerate, or the operator buys a second label for an uncancelled
+  // shipment) and adds the payment + live-route gates.
+  const retryBlock = retryTargetShipment
+    ? resolveGenerateLabelBlock({
+        shipment: retryTargetShipment,
+        canWrite,
+        paymentBlocksDispatch,
+        routeUnavailable: !olCarrierRoute,
+      })
+    : null;
+
+  // Deep-link auto-open.
   //
   // Latched by shipment *id*, not object identity: `retryTargetShipment` is
   // recomputed from `shipmentsQuery.data` on every refetch, so a successful
@@ -142,23 +175,51 @@ export function OrderShipmentPanel({
   // would otherwise hand the effect a *new* object carrying the *same* id and
   // re-open the form. The ref makes the auto-open fire once per target id,
   // ever, for the life of this mount.
-  //
-  // Gated on the same eligibility `<ShipmentActionButtons>` enforces below
-  // (`CAN_GENERATE` + the payment gate + the live-route gate) — without this,
-  // a `/shipments` retry link for a payment-blocked or route-unavailable
-  // order would open a live, submittable form behind the very button that's
-  // supposed to be the single source of truth for whether retrying is
-  // allowed right now.
   const autoOpenedForShipmentId = useRef<string | null>(null);
   useEffect(() => {
     if (!retryTargetShipment) return;
     if (autoOpenedForShipmentId.current === retryTargetShipment.id) return;
-    const eligible =
-      CAN_GENERATE.has(retryTargetShipment.status) && !paymentBlocksDispatch && olCarrierRoute;
-    if (!eligible) return;
+    if (retryBlock !== null) return;
     autoOpenedForShipmentId.current = retryTargetShipment.id;
     setFormOpen(true);
-  }, [retryTargetShipment, paymentBlocksDispatch, olCarrierRoute]);
+  }, [retryTargetShipment, retryBlock]);
+
+  // Locker/parcel-shop pre-fill from the failed attempt (#1905) — only when
+  // that attempt was booked against the connection routing resolves to NOW.
+  // A point id is carrier-network-specific (a DPD parcel-shop code like
+  // PL11033 is meaningless to InPost and vice versa), so after a routing-rule
+  // change a plausible-looking pre-fill would either be rejected by the
+  // carrier or, worse, ship to a wrong-network point. When they diverge we
+  // pre-fill nothing and let the operator type the right code.
+  const retryPointPrefill =
+    retryTargetShipment !== null &&
+    retryTargetShipment.connectionId === order.deliveryResolution?.processorConnectionId
+      ? (retryTargetShipment.paczkomatId ?? undefined)
+      : undefined;
+
+  // Why an ineligible / unresolvable deep-link did nothing (#1905). Without
+  // this the operator clicks Regenerate on `/shipments`, the order page loads,
+  // and nothing at all happens — so they click it again. `ShipmentRowDetail`
+  // renders that link from status + permission alone (it has no payment or
+  // routing data), so landing here and being refused is a normal outcome, not
+  // an edge case. Suppressed once the form is open (nothing was refused),
+  // while the shipments query is still resolving the target id, and once the
+  // auto-open has already fired for this id — otherwise a successful generate
+  // (which flips the row out of the regenerate-able states) or an explicit
+  // Cancel would leave a "not available in this state" note behind it.
+  const alreadyAutoOpened =
+    retryTargetShipment !== null && autoOpenedForShipmentId.current === retryTargetShipment.id;
+  const deepLinkNotice =
+    autoOpenForShipmentId === undefined ||
+    formOpen ||
+    shipmentsQuery.isLoading ||
+    alreadyAutoOpened
+      ? null
+      : retryTargetShipment === null
+        ? 'That shipment is no longer on this order.'
+        : retryBlock !== null
+          ? GENERATE_LABEL_BLOCK_REASON[retryBlock]
+          : null;
 
   const rider = order.deliveryRider;
   const takeover = isTakeoverRider(rider);
@@ -298,19 +359,30 @@ export function OrderShipmentPanel({
         <EmptyState
           title="No shipment yet"
           message="Generate a label to dispatch this order."
+          // Same permission gate the action row and `/shipments`' Regenerate
+          // link apply (#1905) — a viewer saw a live CTA here before.
           action={
-            <Button
-              tone="primary"
-              onClick={() => {
-                captureDemoEvent('demo_label_form_opened', { entry: 'empty_state' });
-                setFormOpen(true);
-              }}
-            >
-              Generate label
-            </Button>
+            canWrite ? (
+              <Button
+                tone="primary"
+                onClick={() => {
+                  captureDemoEvent('demo_label_form_opened', { entry: 'empty_state' });
+                  setFormOpen(true);
+                }}
+              >
+                Generate label
+              </Button>
+            ) : undefined
           }
         />
       )}
+
+      {/* Deep-link that resolved to nothing actionable (#1905). */}
+      {deepLinkNotice ? (
+        <Alert tone="info" className="order-shipment-panel__deep-link-note">
+          {deepLinkNotice}
+        </Alert>
+      ) : null}
 
       {/* When a shipment already exists but routing has no live OL carrier route
           (#1799), surface the reason inline so it's visible without hovering the
@@ -328,6 +400,7 @@ export function OrderShipmentPanel({
       {activeShipment ? (
         <ShipmentActionButtons
           shipment={activeShipment}
+          canWrite={canWrite}
           paymentStatus={paymentStatus}
           onGenerateLabelClick={() => {
             captureDemoEvent('demo_label_form_opened', { entry: 'active_shipment_row' });
@@ -341,7 +414,7 @@ export function OrderShipmentPanel({
       {formOpen ? (
         <GenerateLabelForm
           order={order}
-          initialPaczkomatId={retryTargetShipment?.paczkomatId ?? undefined}
+          initialPaczkomatId={retryPointPrefill}
           onSuccess={() => setFormOpen(false)}
           onCancel={() => setFormOpen(false)}
         />
@@ -385,7 +458,7 @@ function OrderShipmentPanelBody({
       {shipment.status === 'failed' && shipment.errorMessage ? (
         <Alert tone="error" className="order-shipment-panel__error">
           <p className="order-shipment-panel__error-message">
-            {canWrite ? shipment.errorMessage : 'Details hidden for this role.'}
+            {canWrite ? shipment.errorMessage : REDACTED_ERROR_MESSAGE}
           </p>
           {shipment.failedAt ? (
             <p className="order-shipment-panel__error-meta">

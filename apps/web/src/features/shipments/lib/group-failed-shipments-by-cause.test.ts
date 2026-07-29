@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import type { Shipment } from '../api/shipments.types';
+import { REDACTED_ERROR_MESSAGE, type Shipment } from '../api/shipments.types';
 import { groupFailedShipmentsByCause, normaliseErrorMessage } from './group-failed-shipments-by-cause';
 
 function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
@@ -162,6 +162,47 @@ describe('groupFailedShipmentsByCause', () => {
     for (const group of groups) {
       expect(group.shipments.every((s) => s.connectionId === group.connectionId)).toBe(true);
     }
+  });
+
+  it('should not group two numeric-only messages on the same connection (#1905 fix) - both normalise to an empty key, which asserts nothing', () => {
+    const shipments = [
+      makeShipment({ id: 'ol_shipment_1', errorMessage: '500' }),
+      makeShipment({ id: 'ol_shipment_2', errorMessage: '404' }),
+    ];
+    expect(groupFailedShipmentsByCause(shipments)).toEqual([]);
+  });
+
+  it('should not group two identical numeric-only messages either - a degenerate key stays degenerate', () => {
+    const shipments = [
+      makeShipment({ id: 'ol_shipment_1', errorMessage: '500' }),
+      makeShipment({ id: 'ol_shipment_2', errorMessage: '500' }),
+    ];
+    expect(groupFailedShipmentsByCause(shipments)).toEqual([]);
+  });
+
+  it('should not group two different non-Latin-script messages (#1905 fix) - normalisation strips every non-[a-z] character, so both collapse to an empty key', () => {
+    const shipments = [
+      makeShipment({ id: 'ol_shipment_1', errorMessage: 'Неверный индекс отправителя' }),
+      makeShipment({ id: 'ol_shipment_2', errorMessage: 'Получатель отказался' }),
+    ];
+    expect(groupFailedShipmentsByCause(shipments)).toEqual([]);
+  });
+
+  it('should not group a normalised key shorter than three letters - two letters cannot carry a diagnosable cause', () => {
+    const shipments = [
+      makeShipment({ id: 'ol_shipment_1', errorMessage: 'E1 42' }),
+      makeShipment({ id: 'ol_shipment_2', errorMessage: 'E1 77' }),
+    ];
+    expect(groupFailedShipmentsByCause(shipments)).toEqual([]);
+  });
+
+  it('should not group rows carrying the role-redaction placeholder (#1905 fix) - a viewer sees the same string on every failure, which is not a shared cause', () => {
+    const shipments = [
+      makeShipment({ id: 'ol_shipment_1', errorMessage: REDACTED_ERROR_MESSAGE }),
+      makeShipment({ id: 'ol_shipment_2', errorMessage: REDACTED_ERROR_MESSAGE }),
+      makeShipment({ id: 'ol_shipment_3', errorMessage: REDACTED_ERROR_MESSAGE }),
+    ];
+    expect(groupFailedShipmentsByCause(shipments)).toEqual([]);
   });
 
   it('does NOT form a group across two connections that would total 2+ only when combined', () => {

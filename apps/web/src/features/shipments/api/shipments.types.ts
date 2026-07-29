@@ -85,6 +85,17 @@ export const SHIPPING_METHOD_LABEL: Record<ShippingMethod, string> = {
   omp: 'OMP-fulfilled',
 };
 
+/**
+ * Mirrors the API's REDACTED_ERROR_MESSAGE (apps/api/src/shipping/http/dto/shipment-response.dto.ts).
+ *
+ * The API substitutes this exact string for `errorMessage` when the requesting
+ * session lacks `shipments:write` (#1826), so it is a real wire value the FE
+ * receives — not FE-side decoration. Every FE surface that renders or groups
+ * `errorMessage` compares against this constant instead of re-typing the
+ * literal, so a wording change on the backend surfaces as one edit here.
+ */
+export const REDACTED_ERROR_MESSAGE = 'Details hidden for this role.';
+
 export interface Shipment {
   id: string;
   orderId: string;

@@ -19,7 +19,13 @@
  * @module apps/api/src/shipping/http/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
-import { ShipmentStatusValues, ShippingMethodValues, DeliveryIntentValues, ShipmentStatus, ShippingMethod } from '@openlinker/core/shipping';
+import {
+  ShipmentStatusValues,
+  ShippingMethodValues,
+  DeliveryIntentValues,
+  ShipmentStatus,
+  ShippingMethod,
+} from '@openlinker/core/shipping';
 import type { Shipment, DeliveryIntent } from '@openlinker/core/shipping';
 
 /** Mirrors the FE's redaction placeholder (`shipments-page.tsx`,
@@ -107,15 +113,14 @@ export class ShipmentResponseDto {
   /**
    * @param canWrite Whether the requester holds `shipments:write` (resolved
    *   by the controller from `@CurrentUser()`'s role via `ROLE_PERMISSIONS`).
-   *   Defaults to `true` for the command endpoints (generate-label / cancel /
-   *   notify-dispatched), which are already `@Roles('admin', 'operator')`-
-   *   gated at the route level — a caller who reached those handlers always
-   *   holds the permission, so there's nothing to redact.
+   *   Deliberately REQUIRED and un-defaulted: a default would make "forgot to
+   *   thread the requester through a new read endpoint" a silent disclosure
+   *   instead of a compile error.
    */
   static fromDomain(
     shipment: Shipment,
-    customerId: string | null = null,
-    canWrite = true,
+    customerId: string | null,
+    canWrite: boolean,
   ): ShipmentResponseDto {
     const dto = new ShipmentResponseDto();
     dto.id = shipment.id;
