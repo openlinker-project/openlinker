@@ -92,6 +92,10 @@
 1. **Non-fatal**: any reconcile failure (404, auth, unexpected shape) is caught, logged at `warn`, and falls through to today's behaviour. Worst case the feature is an inert extra GET - it cannot regress the current path.
 2. **Client-side equality check**: the adapter only returns a match when the returned item's own `reference` is **exactly equal** to the requested one. So even if the server ignores the filter and returns an unfiltered page, we never adopt the wrong shipment.
 
+Those two guards make an unsupported filter *safe* but also *invisible*: only the first page is read, so for an organization with more shipments than one page an unfiltered response would never contain the match and the lookup would degrade into a permanent silent no-op. Third guard, therefore:
+
+3. **Full-page-no-match `warn`**: when the response holds a full page and none of its items carry the reference, the adapter logs at `warn` that the filter is likely unsupported. That converts the silent no-op into an operator-visible signal, so the pending live verification is self-diagnosing.
+
 Live verification against the InPost sandbox is called out in the PR as a follow-up.
 
 ### Internal Patterns
@@ -106,7 +110,7 @@ Live verification against the InPost sandbox is called out in the PR as a follow
 ### Assumptions
 - Redis is available wherever dispatch runs - already true (`RedisSyncLockService` backs `SyncLockPort`; the shipping context already uses Redis for pickup-point caches).
 - The lock is single-shot with no heartbeat, exactly like `ORDER_CREATE_LOCK_TTL_MS`: it serialises only up to the TTL. Beyond the TTL, correctness falls back to the reconciler. Same trade-off `order-create-lock.ts` already documents and accepts.
-- A contended dispatch should behave like a sequential repeat call where possible (return the in-flight shipment) rather than erroring, because that is what the operator means by pressing the button twice.
+- A contended dispatch should behave like a sequential repeat call where possible (return the peer's shipment) rather than erroring, because that is what the operator means by pressing the button twice. It may only do so once the peer has **finished**: the peer persists its draft row before calling `generateLabel`, so for the whole carrier round-trip a row exists for a label that does not, and handing that draft back as `dispatched` would advertise an undownloadable waybill. `providerShipmentId` is the completion marker.
 - `generateLabel` round-trips are seconds, not minutes. Default lock TTL 120 s (same default as order-create), clamped to [10 s, 600 s].
 
 ### Open Questions
@@ -131,7 +135,7 @@ Live verification against the InPost sandbox is called out in the PR as a follow
    - **File**: `libs/core/src/shipping/application/services/shipment-dispatch.service.ts`
    - **Action**: inject `SyncLockPort` via `SYNC_LOCK_TOKEN`. Rename the existing body to a private `dispatchLocked(input)` and make `dispatch()` the lock wrapper:
      - `acquire(shipmentDispatchLockKey(input.orderId), SHIPMENT_DISPATCH_LOCK_TTL_MS)`.
-     - On **failure to acquire**: re-read `findActiveByOrderId(orderId)`; if present return `{ kind: 'dispatched', shipment }`; else throw `ShipmentDispatchContendedException`.
+     - On **failure to acquire**: re-read `findActiveByOrderId(orderId)`; if it carries a `providerShipmentId` (the peer finished) return `{ kind: 'dispatched', shipment }`; otherwise - no row, or a still-unlabelled draft - throw `ShipmentDispatchContendedException`. The re-read is connection-agnostic, matching the per-order lock grain, so the answer can be a shipment on a different carrier connection than the caller asked for.
      - On **acquire**: run the existing body in `try`, release in `finally` inside its own try/catch that only logs.
    - **Note**: the lock wraps the whole method, including the omp-fulfilled branch. Two Redis round-trips on a no-op branch is a deliberate simplicity trade (one entry point, one invariant).
 
@@ -159,6 +163,7 @@ Live verification against the InPost sandbox is called out in the PR as a follow
    - **Action**: when `priorBranchOne` exists (i.e. this is a retry of a previously-failed attempt) **and** the adapter narrows to `ShipmentReferenceReconciler`, call `findShipmentByReference({ reference: priorBranchOne.id })` before `generateLabel`. On a hit: `update()` the row to `generated` with the discovered `providerShipmentId` / `trackingNumber`, recompute the fulfillment projection, and return - no second carrier create. On a miss or any thrown error: log at `warn` and continue into the normal create path.
    - **Why the retry path only**: on a first dispatch the reference has never been sent to the carrier, so the lookup is guaranteed-empty and would just add latency.
    - **Multi-match refuses to adopt.** Rows created before this fix can legitimately carry two carrier shipments under one reference (the row-reset mechanism in §1). On more than one match the adapter returns `null` and logs at `warn`; picking arbitrarily would mis-link a paid label.
+   - **Changed parameters refuse to adopt.** The retry resets the prior row with *this* attempt's `shippingMethod` / `paczkomatId` / `deliveryIntent` / `sourceDeliveryMethodId`, so the persisted values are compared against the prior ones **before** the reset. When they diverge the operator is deliberately asking for something else (another locker, another intent), a fresh label is the correct answer, and adopting the old one would make the row lie about what was paid for - so the lookup is skipped and the divergence logged at `warn` (the orphan is then a separate reconciliation problem). Nullable columns added after the first shipping release compare only when the prior value is non-null: NULL means "not recorded", not "different".
 
 8. **InPost implementation**
    - **Files**: `inpost-shipping.adapter.ts` (add to `implements`, add method), `inpost-shipx.types.ts` (list-response envelope + `reference` on the shipment resource), `inpost-shipx.mapper.ts` (query builder + result mapper with the exact-equality check), `testing/fake-inpost-shipping.adapter.ts` (+ a `seedShipmentByReference` helper).
@@ -186,13 +191,14 @@ Live verification against the InPost sandbox is called out in the PR as a follow
 | Test | File | Asserts |
 |---|---|---|
 | Lock helper | `shipment-dispatch-lock.spec.ts` (new) | key shape; TTL default / clamp / non-numeric env |
-| Contended path | `shipment-dispatch.service.spec.ts` | acquire-fail + active shipment -> returns it, no `generateLabel`; acquire-fail + none -> throws contended |
+| Contended path | `shipment-dispatch.service.spec.ts` | acquire-fail + labelled peer shipment -> returns it, no `generateLabel`; acquire-fail + unlabelled peer draft -> throws contended; acquire-fail + none -> throws contended |
 | Release discipline | same | released on success **and** on throw; a release failure doesn't mask the result |
 | Reconciler adoption | same | retry + capable adapter + hit -> row updated to `generated` with the discovered id, `generateLabel` NOT called |
 | Reconciler degradation | same | incapable adapter, or reconcile throws -> falls through to `generateLabel` exactly as today |
+| Parameter divergence | same | a retry that changes method/locker/intent skips the lookup, warns, and generates a fresh label; a prior row with NULL nullable columns still adopts |
 | Guard | `shipment-reference-reconciler.capability.spec.ts` (new) | true only when the method is present |
-| InPost adapter | `inpost-shipping.adapter.spec.ts` | issues the org-scoped GET; returns null when no item's `reference` matches exactly |
-| Concurrency | `apps/api/test/integration/shipment-dispatch-concurrency.int-spec.ts` (new) | two `dispatch()` calls started before either resolves -> exactly one `generateLabel`, one non-cancelled shipment |
+| InPost adapter | `inpost-shipping.adapter.spec.ts` | issues the org-scoped GET; returns null when no item's `reference` matches exactly; warns on a full page with no match and stays quiet on a partial one |
+| Concurrency | `apps/api/test/integration/shipment-dispatch-concurrency.int-spec.ts` (new) | a dispatch suspended mid-`generateLabel` while a second races it -> exactly one `generateLabel`, one shipment row, and the racer deterministically contended |
 
 Plus the issue's acceptance criteria verbatim, and the standard gate: `pnpm lint`, `pnpm type-check`, `pnpm test`, and the shipping integration suites.
 

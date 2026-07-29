@@ -59,6 +59,8 @@ import type { ShippingProviderManagerPort } from '../../domain/ports/shipping-pr
 import { isShipmentReferenceReconciler } from '../../domain/ports/capabilities/shipment-reference-reconciler.capability';
 import { shipmentDispatchLockKey, SHIPMENT_DISPATCH_LOCK_TTL_MS } from './shipment-dispatch-lock';
 import { SHIPMENT_STATUS } from '../../domain/types/shipment-status.types';
+import type { ShippingMethod } from '../../domain/types/shipping-method.types';
+import type { DeliveryIntent } from '../../domain/types/delivery-intent.types';
 import { DISPATCH_BLOCKING_PAYMENT_STATUSES } from '../types/dispatch-payment-policy.types';
 import {
   ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN,
@@ -103,8 +105,8 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
    *
    * Contended behaviour mirrors `OrderSyncService.createOrderIdempotently`:
    * - **Lock held by a peer:** re-read the active shipment. If the peer already
-   *   persisted one, return it - the caller pressed the button twice and gets
-   *   the same answer either way. Otherwise the peer is mid-`generateLabel`
+   *   FINISHED, return its shipment - the caller pressed the button twice and
+   *   gets the same answer either way. Otherwise the peer is mid-`generateLabel`
    *   with nothing to return yet, so raise the retryable contended exception
    *   rather than proceeding into the race we just prevented.
    * - **Lock acquired:** run the real dispatch; release in `finally`.
@@ -118,17 +120,33 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
     const token = await this.dispatchLock.acquire(lockKey, SHIPMENT_DISPATCH_LOCK_TTL_MS);
 
     if (!token) {
+      // "Did the peer FINISH", not "does a row exist". The peer persists its
+      // draft row BEFORE calling `generateLabel`, so for the whole multi-second
+      // carrier round-trip a row exists for a label that does not. Handing that
+      // draft back as `dispatched` would advertise a waybill the operator cannot
+      // download; the retryable contended exception tells the truth instead.
+      // `providerShipmentId` is the completion marker - it is written in the
+      // same update that flips the row to `generated`, and a branch-1/omp
+      // projection row never carries one, so such a row is never mistaken for a
+      // finished label either.
+      //
+      // The re-read is connection-agnostic - as is the idempotency check in
+      // `dispatchViaShippingProvider`, and as is the deliberate per-ORDER lock
+      // key - so the caller can get back a shipment dispatched on a DIFFERENT
+      // carrier connection than the one it asked for. Intended: at this grain
+      // the answer is "this order is already shipping", not "your carrier is".
       const active = await this.shipments.findActiveByOrderId(input.orderId);
-      if (active) {
+      if (active?.providerShipmentId) {
         this.logger.log(
           `Dispatch for order ${input.orderId} is contended; returning the shipment ` +
-            `the concurrent dispatch already persisted (${active.id})`,
+            `the concurrent dispatch already generated (${active.id} on connection ` +
+            `${active.connectionId})`,
         );
         return { kind: 'dispatched', shipment: active };
       }
       this.logger.warn(
-        `Dispatch for order ${input.orderId} is contended and no shipment is persisted yet; ` +
-          `refusing to race a concurrent label request`,
+        `Dispatch for order ${input.orderId} is contended and no labelled shipment is ` +
+          `persisted yet; refusing to race a concurrent label request`,
       );
       throw new ShipmentDispatchContendedException(input.orderId);
     }
@@ -347,6 +365,21 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
       input.orderId,
       processorConnectionId,
     );
+
+    // How this attempt's label-shaping parameters compare with the ones the
+    // PRIOR attempt was made under. Captured here because the reset below
+    // overwrites them with this attempt's values, after which the row can no
+    // longer tell you what the lost label was minted for.
+    const divergedParameters = priorBranchOne
+      ? this.describeParameterDivergence(
+          priorBranchOne,
+          shippingMethod,
+          intent,
+          input.paczkomatId ?? null,
+          input.sourceDeliveryMethodId ?? null,
+        )
+      : [];
+
     const shipment = priorBranchOne
       ? await this.shipments.update(priorBranchOne.id, {
           status: SHIPMENT_STATUS.Draft,
@@ -374,10 +407,26 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
     // shipment under this reference and adopt it if so. Retry path only: on a
     // first dispatch the reference has never been sent, so the lookup is
     // guaranteed-empty and would only add latency.
+    //
+    // Skipped when this retry asks for DIFFERENT label parameters than the lost
+    // attempt used: the operator deliberately wants something else (another
+    // locker, another delivery intent), so a fresh label is the correct answer
+    // and adopting the old one would make the row lie about what was paid for.
+    // The orphan is then a separate reconciliation problem, logged loudly.
     if (priorBranchOne) {
-      const adopted = await this.adoptExistingCarrierShipment(shipment.id, adapter, input.orderId);
-      if (adopted) {
-        return adopted;
+      if (divergedParameters.length > 0) {
+        this.logger.warn(
+          `Skipping the carrier reference lookup for shipment ${shipment.id} ` +
+            `(order ${input.orderId}): this retry changed ${divergedParameters.join('; ')}, so a ` +
+            `label already minted under the previous parameters must not be adopted. If the ` +
+            `prior attempt did commit at the carrier it is now an orphan needing manual ` +
+            `cancellation.`,
+        );
+      } else {
+        const adopted = await this.adoptExistingCarrierShipment(shipment.id, adapter, input.orderId);
+        if (adopted) {
+          return adopted;
+        }
       }
     }
 
@@ -439,6 +488,52 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
   }
 
   /**
+   * Describe how a retry's label-shaping parameters differ from the ones the
+   * prior (possibly carrier-committed) attempt on the same row was made under.
+   * Returns `[]` when they agree, so adoption is safe.
+   *
+   * Only the parameters the row PERSISTS can be compared - the recipient,
+   * parcel dimensions, COD and insured value are not on the row, so parameter
+   * identity is established best-effort. That is the right side to err on: a
+   * false "diverged" only costs the recovery (falling back to today's create
+   * path), while a false "identical" would mis-describe a paid label.
+   *
+   * `deliveryIntent` and `sourceDeliveryMethodId` are nullable columns added
+   * after the first shipping release, so a NULL on the prior row means "not
+   * recorded", not "different", and is not treated as divergence. Nothing
+   * material is lost: an intent change resolves into a different
+   * `shippingMethod`, which is compared strictly.
+   */
+  private describeParameterDivergence(
+    prior: Shipment,
+    shippingMethod: ShippingMethod,
+    intent: DeliveryIntent,
+    paczkomatId: string | null,
+    sourceDeliveryMethodId: string | null,
+  ): string[] {
+    const diverged: string[] = [];
+    if (prior.shippingMethod !== shippingMethod) {
+      diverged.push(`shippingMethod '${prior.shippingMethod}' -> '${shippingMethod}'`);
+    }
+    if (prior.paczkomatId !== paczkomatId) {
+      diverged.push(`paczkomatId '${prior.paczkomatId ?? 'null'}' -> '${paczkomatId ?? 'null'}'`);
+    }
+    if (prior.deliveryIntent !== null && prior.deliveryIntent !== intent) {
+      diverged.push(`deliveryIntent '${prior.deliveryIntent}' -> '${intent}'`);
+    }
+    if (
+      prior.sourceDeliveryMethodId !== null &&
+      prior.sourceDeliveryMethodId !== sourceDeliveryMethodId
+    ) {
+      diverged.push(
+        `sourceDeliveryMethodId '${prior.sourceDeliveryMethodId}' -> ` +
+          `'${sourceDeliveryMethodId ?? 'null'}'`,
+      );
+    }
+    return diverged;
+  }
+
+  /**
    * Adopt a carrier shipment that already exists under this shipment's
    * reference, instead of creating a second one (#1917).
    *
@@ -486,6 +581,12 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
     // not the document. The operator re-fetches it through the existing
     // LabelDocumentReader path, which is keyed on `providerShipmentId` and
     // works as soon as that id is known.
+    //
+    // The carrier fee is likewise not recovered — but nothing under-reports
+    // today, because `Shipment` carries no cost column at all (a generated row
+    // records no fee either). If one is ever added, the adopted row must read it
+    // back from the carrier here; the neutral `ReconciledShipment` shape would
+    // need to carry it.
     const adopted = await this.shipments.update(shipmentId, {
       status: SHIPMENT_STATUS.Generated,
       providerShipmentId: existing.providerShipmentId,

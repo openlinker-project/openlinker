@@ -722,8 +722,12 @@ describe('ShipmentDispatchService', () => {
       });
     });
 
-    it('should return the concurrent dispatch\'s shipment when contended and one exists', async () => {
-      const winner = makeShipment({ id: 'ol_shipment_winner', status: 'generated' });
+    it('should return the concurrent dispatch\'s shipment when contended and the peer finished', async () => {
+      const winner = makeShipment({
+        id: 'ol_shipment_winner',
+        status: 'generated',
+        providerShipmentId: 'shipx-winner',
+      });
       dispatchLock.acquire.mockResolvedValue(null);
       repository.findActiveByOrderId.mockResolvedValue(winner);
 
@@ -732,6 +736,24 @@ describe('ShipmentDispatchService', () => {
         shipment: winner,
       });
       // The whole point: the loser must not reach the carrier.
+      expect(adapter.generateLabel).not.toHaveBeenCalled();
+      expect(repository.create).not.toHaveBeenCalled();
+      expect(repository.update).not.toHaveBeenCalled();
+    });
+
+    it('should throw contended when the peer has only persisted a draft with no provider id', async () => {
+      // The peer persists its draft row BEFORE calling generateLabel, so a row
+      // existing is not a label existing. Reporting that draft as `dispatched`
+      // would advertise a waybill the operator cannot download; the retryable
+      // contended exception is the honest answer.
+      dispatchLock.acquire.mockResolvedValue(null);
+      repository.findActiveByOrderId.mockResolvedValue(
+        makeShipment({ id: 'ol_shipment_inflight', status: 'draft', providerShipmentId: null }),
+      );
+
+      await expect(service.dispatch(makeInput())).rejects.toBeInstanceOf(
+        ShipmentDispatchContendedException,
+      );
       expect(adapter.generateLabel).not.toHaveBeenCalled();
       expect(repository.create).not.toHaveBeenCalled();
       expect(repository.update).not.toHaveBeenCalled();
@@ -766,11 +788,17 @@ describe('ShipmentDispatchService', () => {
      * Arrange a RETRY: a prior attempt left a terminal branch-one row with no
      * provider id — the shape a lost `generateLabel` response leaves behind.
      */
-    function arrangeRetry(): Shipment {
+    function arrangeRetry(priorOverrides: Partial<Shipment> = {}): Shipment {
       const priorRow = makeShipment({
         id: 'ol_shipment_c7b2',
         status: 'failed',
         errorMessage: 'socket hang up',
+        // The prior attempt used exactly the parameters `makeInput()` sends, so
+        // adoption is describing the same label the operator is asking for.
+        shippingMethod: 'kurier',
+        deliveryIntent: 'address',
+        sourceDeliveryMethodId: 'allegro-courier',
+        ...priorOverrides,
       });
       routing.resolve.mockResolvedValue(
         resolution({
@@ -896,6 +924,56 @@ describe('ShipmentDispatchService', () => {
       // The reference has never been sent to the carrier, so the lookup is
       // guaranteed-empty and would only add latency.
       expect(reconciling.findShipmentByReference).not.toHaveBeenCalled();
+    });
+
+    it('should not adopt when the retry changes the label parameters', async () => {
+      // The operator deliberately switched from a courier delivery to a locker.
+      // A label minted under the previous parameters is NOT what they asked for,
+      // and adopting it would leave the row describing a paczkomat shipment that
+      // was actually paid for as a courier one.
+      arrangeRetry();
+      const reconciling = {
+        ...adapter,
+        findShipmentByReference: jest.fn(),
+      };
+      reconciling.generateLabel.mockResolvedValue({
+        providerShipmentId: 'shipx-6',
+        trackingNumber: null,
+        labelPdfRef: 'ref-6',
+      });
+      integrations.getCapabilityAdapter.mockResolvedValue(reconciling);
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      await service.dispatch(makeInput({ deliveryIntent: 'pickup_point', paczkomatId: 'POZ08A' }));
+
+      expect(reconciling.findShipmentByReference).not.toHaveBeenCalled();
+      expect(reconciling.generateLabel).toHaveBeenCalled();
+      // Silent divergence would be undebuggable from the row alone.
+      const logged = warn.mock.calls.map((call) => String(call[0])).join('\n');
+      expect(logged).toContain('shippingMethod');
+      expect(logged).toContain('paczkomatId');
+      expect(logged).toContain('deliveryIntent');
+      warn.mockRestore();
+    });
+
+    it('should still adopt when the prior row predates the nullable parameter columns', async () => {
+      // A NULL `deliveryIntent` / `sourceDeliveryMethodId` on the prior row means
+      // "not recorded" (columns added after the first shipping release), not
+      // "different" — the material change would show up in `shippingMethod`.
+      arrangeRetry({ deliveryIntent: null, sourceDeliveryMethodId: null });
+      const reconciling = {
+        ...adapter,
+        findShipmentByReference: jest.fn().mockResolvedValue({
+          providerShipmentId: 'shipx-legacy',
+          trackingNumber: null,
+        }),
+      };
+      integrations.getCapabilityAdapter.mockResolvedValue(reconciling);
+
+      await service.dispatch(makeInput());
+
+      expect(reconciling.findShipmentByReference).toHaveBeenCalled();
+      expect(reconciling.generateLabel).not.toHaveBeenCalled();
     });
   });
 });

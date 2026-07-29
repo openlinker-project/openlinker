@@ -138,8 +138,10 @@ describe('Shipment Dispatch Concurrency Integration (#1917)', () => {
     const first = dispatchService().dispatch(input);
     await hold.started;
 
-    // B runs while A is mid-carrier-call. It must not reach the carrier: it
-    // either returns A's draft row or reports the order as contended.
+    // B runs while A is mid-carrier-call, so its outcome is DETERMINISTIC: A
+    // holds the lock, and A's persisted row is still a waybill-less draft, so B
+    // has no finished shipment to hand back and must report the order as
+    // contended rather than advertise a label that does not exist yet.
     const secondOutcome = await dispatchService()
       .dispatch(input)
       .then(
@@ -154,12 +156,10 @@ describe('Shipment Dispatch Concurrency Integration (#1917)', () => {
     // The load-bearing assertion: one carrier call, so one paid label.
     expect(stub.generateLabelCallCount()).toBe(1);
 
-    if (secondOutcome.ok) {
-      // A had already persisted its draft row, so B was handed the same one.
-      expect(secondOutcome.result).toMatchObject({ kind: 'dispatched' });
-    } else {
-      expect(secondOutcome.error).toBeInstanceOf(ShipmentDispatchContendedException);
-    }
+    expect(secondOutcome.ok).toBe(false);
+    expect(secondOutcome.ok ? null : secondOutcome.error).toBeInstanceOf(
+      ShipmentDispatchContendedException,
+    );
 
     const rows = await shipmentRows(orderId);
     expect(rows).toHaveLength(1);

@@ -27,6 +27,12 @@
  *
  * Operator-tunable via `OL_SHIPMENT_DISPATCH_LOCK_TTL_MS` (clamped to
  * [10s, 600s]), mirroring `ORDER_CREATE_LOCK_TTL_MS`.
+ *
+ * Resolved ONCE at module load, so it is fixed for the process lifetime and
+ * cannot be varied per-test by mutating `process.env` after import (a spec that
+ * needs a different value re-imports the module in isolation). That is the
+ * `ORDER_CREATE_LOCK_TTL_MS` precedent, kept deliberately for consistency —
+ * stated here so it is a known property rather than a surprise.
  */
 const DEFAULT_SHIPMENT_DISPATCH_LOCK_TTL_MS = 120_000;
 const MIN_SHIPMENT_DISPATCH_LOCK_TTL_MS = 10_000;

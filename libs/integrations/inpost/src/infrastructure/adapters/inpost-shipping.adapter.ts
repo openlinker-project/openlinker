@@ -50,6 +50,15 @@ import {
 
 const SUPPORTED_METHODS: readonly ShippingMethod[] = ['paczkomat', 'kurier'];
 
+/**
+ * Page size for the reference lookup (#1917). Small on purpose: a reference is
+ * expected to match at most one shipment (two only for pre-#1917 rows), so a
+ * bigger page would just pay for data the filter should have excluded. It
+ * doubles as the "did ShipX ignore the filter" probe — a response holding this
+ * many items with none matching is almost certainly an unfiltered page.
+ */
+const REFERENCE_LOOKUP_PAGE_SIZE = 10;
+
 export class InpostShippingAdapter
   implements
     ShippingProviderManagerPort,
@@ -184,17 +193,36 @@ export class InpostShippingAdapter
    *    lock can carry two ShipX shipments under one reference (the loser of the
    *    old race reset the winner's row and re-sent the same id). Picking either
    *    would mis-link a paid label, so return null and let the caller decide.
+   *
+   * Only the FIRST page is read, which makes the two strictnesses above
+   * asymmetric in one way worth naming: if ShipX ignores the `reference` filter
+   * it answers with an unfiltered first page, and for an organization with more
+   * shipments than one page the real match is almost never on it - so the
+   * lookup would degrade into a permanent silent no-op. Safe (it still never
+   * adopts a stranger) but dead. Hence the `warn` below when a FULL page comes
+   * back with nothing matching: that is the signature of an unsupported filter,
+   * and it makes the pending live-sandbox verification of the exact ShipX query
+   * spelling self-diagnosing instead of invisible (#1917).
    */
   async findShipmentByReference(input: { reference: string }): Promise<ReconciledShipment | null> {
     const response = await this.http.request<ShipXShipmentsResponse>({
       method: 'GET',
       path: `/v1/organizations/${this.config.organizationId}/shipments`,
-      query: { reference: input.reference, per_page: 10 },
+      query: { reference: input.reference, per_page: REFERENCE_LOOKUP_PAGE_SIZE },
     });
 
-    const matches = (response.items ?? []).filter((item) => item.reference === input.reference);
+    const items = response.items ?? [];
+    const matches = items.filter((item) => item.reference === input.reference);
 
     if (matches.length === 0) {
+      if (items.length >= REFERENCE_LOOKUP_PAGE_SIZE) {
+        this.logger.warn(
+          `ShipX returned a full page of ${items.length} shipments for reference ` +
+            `${input.reference} and none of them carries it: the 'reference' query filter is ` +
+            `likely unsupported, which would make this an unfiltered page and the lookup ` +
+            `unable to ever adopt an orphaned label (#1917)`,
+        );
+      }
       return null;
     }
 
