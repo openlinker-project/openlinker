@@ -11,10 +11,11 @@
  * behind the registry's per-call rate-limit + audit wrapper.
  *
  * `createMcpHandler` builds a FRESH server per HTTP request, so the tool list
- * is recomputed from live capability state on every `tools/list`. It therefore
- * cannot go stale, which is why `notifications/tools/list_changed` is neither
- * advertised nor sent — there is no long-lived session to push over, and no
- * staleness to correct. See ADR-033.
+ * is recomputed from live capability state on every `tools/list` — the SERVER is
+ * always fresh. `notifications/tools/list_changed` is neither advertised nor
+ * sent because stateless serving leaves no long-lived session to push over. The
+ * accepted cost is that a CLIENT's cached list can still go stale until it
+ * reconnects — see ADR-033 § Phase 1 amendments.
  *
  * NOTE (verified against the shipped `.d.cts`): the principal arrives as
  * `McpRequestContext.authInfo` — NOT `ctx.http.authInfo`, which appears in

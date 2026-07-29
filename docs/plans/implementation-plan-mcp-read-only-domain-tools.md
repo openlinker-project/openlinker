@@ -20,7 +20,7 @@ Verified on `main` (`46fea4af`) — this plan builds on it and changes none of i
 | `OlMcpTokenVerifier implements OAuthTokenVerifier` + `requireBearerAuth` on `/mcp` | Auth is done. Tools need no auth code of their own |
 | Principal arrives as **`ctx.authInfo`** (NOT `ctx.http.authInfo`) with OL identity in `AuthInfo.extra` | Tools read `extra` via the existing `isMcpAuthInfoExtra` guard |
 | 🔴 `AuthInfo` carries the **raw bearer token** | The audit log MUST log the redacted `extra` projection, never `AuthInfo` |
-| `createMcpHandler(factory)` builds a **fresh `McpServer` per request** (stateless) | `tools/list` is naturally per-principal and never stale — see §3.1 |
+| `createMcpHandler(factory)` builds a **fresh `McpServer` per request** (stateless) | `tools/list` is per-principal and the *server* is always fresh — see §3.1 for the client-cache caveat |
 | `mcp-server.factory.ts` with one `whoami` tool | Phase 1 replaces the hard-coded tool with a registry-driven registration |
 | Transport fails **closed** when `req.auth` is absent | Tools can assume a principal is present; still narrow defensively |
 
@@ -50,7 +50,7 @@ Verified on `main` (`46fea4af`) — this plan builds on it and changes none of i
 - **A Phase-1-local PII policy** — *resolved, not deferred*: reads come from OL's own store, which already applies the operator's `OL_STORE_PII` decision. See §3.4.
 - **New capability ports** — Phase 1 introduces no port and calls no adapter on the read path. See §3.3.
 - **Live platform round-trips on the read path** — deliberately excluded; §3.3.
-- **`notifications/tools/list_changed`** — see §3.1; the issue's AC is not implementable under the stateless model and is unnecessary.
+- **`notifications/tools/list_changed`** — see §3.1; not implementable under the stateless model. The cost (a connected client's cached list going stale) is accepted, not absent.
 
 ---
 
@@ -58,13 +58,13 @@ Verified on `main` (`46fea4af`) — this plan builds on it and changes none of i
 
 ### 3.1 🔴 `tools/list_changed` — the issue's AC does not survive contact with Phase 0
 
-The issue asks that "adding/removing a connection republishes via `notifications/tools/list_changed`". **That is not implementable as written, and it is also unnecessary.**
+The issue asks that "adding/removing a connection republishes via `notifications/tools/list_changed`". **That is not implementable under the transport ADR-033 chose** — and the cost of dropping it is real, so it is accepted rather than dismissed.
 
 `createMcpHandler` constructs a **fresh `McpServer` per HTTP request** (Phase 0, endorsed by ADR-033 for multi-replica safety — no sessions, no sticky routing). `sendToolListChanged()` exists on the server, but a push notification needs a long-lived session to push *over*; there is none. The SDK confirms the client half only activates when the server advertises `tools.listChanged: true`.
 
-The stateless model makes the notification moot: **`tools/list` is recomputed from live capability state on every call**, so it can never be stale. A client that lists tools always sees the current set.
+**`tools/list` is recomputed from live capability state on every call**, so the *server* is always fresh. That does NOT make the notification pointless, though — a **client's cached** list can still go stale, which is exactly what the notification is for. See ADR-033 § Phase 1 amendments for the corrected reasoning and the accepted cost.
 
-**Decision**: do not advertise `tools.listChanged`, do not call `sendToolListChanged()`. Record the reasoning in the ADR + the issue. The alternative — moving to sessionful serving — would reverse ADR-033 and Phase 0 for a notification whose only purpose is correcting staleness that cannot occur.
+**Decision**: do not advertise `tools.listChanged`, do not call `sendToolListChanged()`. Record the reasoning in the ADR + the issue. The alternative — moving to sessionful serving — would reverse ADR-033 and Phase 0's multi-replica-safety property to gain one convenience on a surface whose demand is unproven. The cost (a connected client not seeing a newly enabled tool until it reconnects) is accepted, not absent.
 
 ### 3.2 Tool registry — capability-declared, never a static catalog
 
@@ -101,7 +101,7 @@ The issue names capabilities (`ProductMaster` / `InventoryMaster` / `OrderSource
 
 Why the port path was wrong on all four counts:
 
-1. **It defeats `OL_STORE_PII`.** `IOrderRecordService.persistOrder` nulls buyer PII at ingestion when the operator disables PII storage. `OrderSourcePort.getOrder` re-fetches raw PII from the marketplace regardless — so "honour `OL_STORE_PII` as a floor" is not implementable on that path. Reading `OrderRecord` inherits the operator's existing decision for free.
+1. **It turns `OL_STORE_PII` compliance into a duplicated policy with an unsafe default.** `OL_STORE_PII` governs *persistence*, so a port-path tool that projected PII away would not literally violate it — the precise costs are that (a) "honour `OL_STORE_PII` as a floor" is **incoherent** there (no stored floor to honour; you would reimplement `persistOrder`'s nulling rule, leaving one privacy policy in two places), and (b) the **default** forwards to an LLM vendor exactly what the operator opted out of storing. Reading `OrderRecord` inherits the decision for free instead.
 2. **It spends the operator's marketplace API quota on the agent's behalf.** One tool call = one live Allegro/PrestaShop request. The §3.6 limiter caps *OL* calls; it cannot cap downstream cost, which is the scarcer resource.
 3. **It breaks identifier consistency.** `OrderSourcePort` is documented as an *ingestion* port — "identifier mapping happens in core services" — so it returns external-id-keyed data, which the agent cannot join against internal-id-keyed product reads.
 4. **It bypasses the variant-keyed availability model.** `InventoryMasterPort.getAvailableQuantity` is product-level; `IInventoryQueryService.getAvailabilityByVariantIds` is the variant-keyed read the rest of OL uses per ADR-010 / #822 / #823.

@@ -574,8 +574,10 @@ always-registered discovery entry points (`whoami`, `list_connections`) plus fou
   output reaches an external LLM provider, so `list_connections` never emits `credentialsRef`/`config` and
   `get_order` never emits buyer name/email/address even when the snapshot stores them.
 
-`notifications/tools/list_changed` is deliberately **not** implemented — stateless per-request serving means
-`tools/list` is recomputed every call and cannot go stale, and there is no session to push a notification over.
+`notifications/tools/list_changed` is deliberately **not** implemented: stateless per-request serving leaves no
+session to push over. Note the accepted cost — the *server* is always fresh, but a **client's cached tool list**
+can go stale, so an agent already connected when a connection is enabled won't see the new tool until it
+reconnects. See [ADR-033 § Phase 1 amendments](./architecture/adrs/033-openlinker-as-mcp-server.md).
 
 ---
 

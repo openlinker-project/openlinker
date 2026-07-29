@@ -14,9 +14,11 @@ export interface IMcpToolRegistryService {
    * Register every tool available to this request onto a fresh `McpServer`.
    *
    * Called once per HTTP request (the SDK builds a new server each time), so
-   * `tools/list` is recomputed from live capability state on every call and
-   * can never be stale — which is why the MCP `notifications/tools/list_changed`
-   * mechanism is neither advertised nor needed here.
+   * `tools/list` is recomputed from live capability state on every call — the
+   * SERVER is always fresh. OL does not advertise or send
+   * `notifications/tools/list_changed` because stateless serving leaves no
+   * session to push over; the accepted cost is that a CLIENT's cached list can
+   * still go stale until it reconnects (ADR-033 § Phase 1 amendments).
    *
    * `ctx` is the REQUEST-scoped context, and it is the only place the
    * OpenLinker principal is available: the context handed to a tool callback at
