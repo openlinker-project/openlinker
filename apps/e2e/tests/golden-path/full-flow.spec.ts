@@ -110,7 +110,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
     // below so a silent fall-back to a single synthetic variant can't pass S0.
     let freshVariantEans: string[] = [];
     if (env.freshProduct) {
-      const provisioned = await provisionFreshProduct(world);
+      const provisioned = await provisionFreshProduct(world, { variantCount: env.freshVariantCount });
       pinnedSku = provisioned.sku;
       freshCategoryPsId = provisioned.prestashopCategoryId;
       freshVariantEans = provisioned.variantEans;

@@ -72,6 +72,24 @@ export interface E2eEnv {
    */
   freshProduct: boolean;
   /**
+   * How many variants a fresh product is provisioned with. Defaults to **1**.
+   *
+   * Multi-variant is what S3/S4 conceptually want, but a fresh product's
+   * barcodes are SYNTHETIC and Allegro's catalogue has no card for a code it
+   * does not know. Verified 2026-07-30: it then MINTS one card, binds it to the
+   * first sibling's barcode, and rejects every other sibling with
+   * `ProductConstraintViolationException.DataIntegrity` — "Prawidłowa wartość
+   * parametru dla produktu to: <first sibling's EAN>". One sibling lists, the
+   * rest cannot, so the attended purchase (and S5-S9 behind it) is only reliably
+   * reachable with a single variant.
+   *
+   * Multi-variant listing itself is NOT the blocker — proven the same night by
+   * giving one product three DISTINCT barcodes that each already owned a
+   * catalogue card: all three siblings listed, each against its own card. Raise
+   * this to 2..4 only with barcodes that resolve to distinct existing cards.
+   */
+  freshVariantCount: number;
+  /**
    * PrestaShop category id a fresh product lands in (S0 scripts a PS→Allegro
    * mapping for it so S3 can resolve the category). Defaults to `2` (Home) —
    * the category `PrestashopWebserviceClient.createProduct` assigns by default.
@@ -243,6 +261,7 @@ export function resolveEnv(): E2eEnv {
       .map((s) => s.trim())
       .filter((s) => s.length > 0),
     freshProduct: process.env.E2E_FRESH_PRODUCT?.trim() === 'true',
+    freshVariantCount: Number.parseInt(process.env.E2E_FRESH_VARIANT_COUNT?.trim() || '1', 10),
     freshCategoryPsId: process.env.E2E_FRESH_CATEGORY_PS?.trim() || '2',
     freshAllegroCategoryId: process.env.E2E_FRESH_ALLEGRO_CATEGORY_ID?.trim() || '261481',
     freshAllegroCategoryPath: (
