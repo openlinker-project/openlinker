@@ -49,6 +49,7 @@ import { OlMcpTokenVerifier } from './auth/ol-mcp-token.verifier';
 import { McpTokensController } from './http/mcp-tokens.controller';
 import { McpTransportController } from './transport/mcp-transport.controller';
 import { McpAuditLogger } from './tools/audit/mcp-audit.logger';
+import { MCP_AUDIT_LOGGER_TOKEN } from './tools/audit/mcp-audit.logger.interface';
 import { McpRateLimiter } from './tools/ratelimit/mcp-rate-limiter';
 import { MCP_RATE_LIMITER_TOKEN } from './tools/ratelimit/mcp-rate-limiter.interface';
 import { McpToolRegistryService } from './tools/tool-registry.service';
@@ -68,6 +69,7 @@ import { mcpToolDefinitionsProvider } from './tools/mcp-tool-definitions.provide
   providers: [
     OlMcpTokenVerifier,
     McpAuditLogger,
+    { provide: MCP_AUDIT_LOGGER_TOKEN, useExisting: McpAuditLogger },
     McpRateLimiter,
     { provide: MCP_RATE_LIMITER_TOKEN, useExisting: McpRateLimiter },
     mcpToolDefinitionsProvider,

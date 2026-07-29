@@ -33,6 +33,17 @@ function fakeRedis(): RedisClientType & { sets: Map<string, Map<string, number>>
       setFor(key).set(entry.value, entry.score);
       return Promise.resolve(1);
     },
+    // Rank = position in (score, member) order — Redis breaks equal scores
+    // lexicographically by member, which the limiter relies on for
+    // deterministic tie-breaking between simultaneous callers.
+    zRank: (key: string, member: string) => {
+      const ordered = [...setFor(key).entries()].sort(
+        ([memberA, scoreA], [memberB, scoreB]) =>
+          scoreA - scoreB || memberA.localeCompare(memberB)
+      );
+      const index = ordered.findIndex(([candidate]) => candidate === member);
+      return Promise.resolve(index === -1 ? null : index);
+    },
     zRem: (key: string, member: string) => {
       setFor(key).delete(member);
       return Promise.resolve(1);
@@ -135,6 +146,64 @@ describe('McpRateLimiter', () => {
     await limiter.acquire('tok-1');
 
     expect((await limiter.acquire('tok-2')).allowed).toBe(true);
+  });
+
+  describe('under concurrency', () => {
+    // These are the cases a sequential test cannot catch. The original
+    // check-then-act implementation passed every sequential assertion above
+    // while admitting far more than the cap under a simultaneous burst —
+    // exactly the scenario a concurrency cap exists for.
+
+    it('should admit no more than the concurrency limit when calls race', async () => {
+      process.env = { ...OLD_ENV, OL_MCP_CONCURRENCY_LIMIT: '3' };
+      const limiter = new McpRateLimiter(fakeRedis());
+
+      const leases = await Promise.all(
+        Array.from({ length: 20 }, () => limiter.acquire('tok-1'))
+      );
+
+      expect(leases.filter((lease) => lease.allowed)).toHaveLength(3);
+    });
+
+    it('should admit no more than the rate limit when calls race', async () => {
+      process.env = { ...OLD_ENV, OL_MCP_RATE_LIMIT: '5', OL_MCP_CONCURRENCY_LIMIT: '100' };
+      const limiter = new McpRateLimiter(fakeRedis());
+
+      const leases = await Promise.all(
+        Array.from({ length: 20 }, () => limiter.acquire('tok-1'))
+      );
+
+      expect(leases.filter((lease) => lease.allowed)).toHaveLength(5);
+    });
+
+    it('should not consume rate budget for a call rejected on concurrency', async () => {
+      // A call rolled back on the concurrency check must return its rate-window
+      // entry too, or a burst would lock the token out for a whole window
+      // despite almost none of those calls having run.
+      process.env = { ...OLD_ENV, OL_MCP_RATE_LIMIT: '10', OL_MCP_CONCURRENCY_LIMIT: '2' };
+      const redis = fakeRedis();
+      const limiter = new McpRateLimiter(redis);
+
+      const leases = await Promise.all(
+        Array.from({ length: 8 }, () => limiter.acquire('tok-1'))
+      );
+      expect(leases.filter((lease) => lease.allowed)).toHaveLength(2);
+
+      // Only the 2 admitted calls should be holding rate-window entries.
+      expect(redis.sets.get('mcp:ratelimit:tok-1')?.size ?? 0).toBe(2);
+    });
+
+    it('should free slots for a later wave once the first wave releases', async () => {
+      process.env = { ...OLD_ENV, OL_MCP_CONCURRENCY_LIMIT: '3' };
+      const limiter = new McpRateLimiter(fakeRedis());
+
+      const first = await Promise.all(Array.from({ length: 3 }, () => limiter.acquire('tok-1')));
+      await Promise.all(first.map((lease) => lease.release()));
+
+      const second = await Promise.all(Array.from({ length: 3 }, () => limiter.acquire('tok-1')));
+
+      expect(second.filter((lease) => lease.allowed)).toHaveLength(3);
+    });
   });
 
   it('should fail OPEN when Redis is unavailable', async () => {

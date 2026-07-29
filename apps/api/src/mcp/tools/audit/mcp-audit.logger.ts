@@ -13,28 +13,17 @@
  * Invoked exclusively from `ToolRegistryService`'s per-call wrapper, so no
  * tool can forget to emit one.
  *
+ * @implements {IMcpAuditLogger}
+ *
  * @module apps/api/src/mcp/tools/audit
  */
 import { Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 
-import type { RedactedMcpPrincipal } from '../../auth/mcp-principal.types';
-import type { McpToolOutcome } from '../tool-definition.types';
-
-export interface McpToolCallAudit {
-  readonly tool: string;
-  readonly outcome: McpToolOutcome;
-  readonly durationMs: number;
-  /** Present only for tools that accept a connection argument. */
-  readonly connectionId?: string;
-  /** `null` when the call somehow arrived with no recognisable principal. */
-  readonly principal: RedactedMcpPrincipal | null;
-  /** Error message for `outcome: 'error'`, limit reason for `'rate-limited'`. */
-  readonly detail?: string;
-}
+import type { IMcpAuditLogger, McpToolCallAudit } from './mcp-audit.logger.interface';
 
 @Injectable()
-export class McpAuditLogger {
+export class McpAuditLogger implements IMcpAuditLogger {
   private readonly logger = new Logger('McpToolCall');
 
   record(audit: McpToolCallAudit): void {

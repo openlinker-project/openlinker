@@ -25,6 +25,14 @@ import type { StandardSchemaWithJSON } from '@modelcontextprotocol/server';
  * members of `CoreCapabilityValues` — this is deliberately a closed set, not
  * the open string set the registry accepts, because Phase 1 ships a fixed
  * tool catalogue.
+ *
+ * NOTE both `as const` arrays in this file are currently consumed only for the
+ * union types derived from them; nothing reads the runtime arrays yet. They are
+ * kept in the shape `engineering-standards.md § Union Types` mandates (which
+ * explicitly rejects a bare inline union precisely because it leaves no runtime
+ * array to validate against) so that the first consumer needing validation —
+ * e.g. a DTO for an operator-facing tool-audit filter — has one to bind to
+ * without a refactor.
  */
 export const McpToolCapabilityValues = ['ProductMaster', 'InventoryMaster', 'OrderSource'] as const;
 

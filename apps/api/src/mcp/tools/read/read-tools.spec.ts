@@ -107,12 +107,22 @@ describe('search_catalog tool', () => {
     expect(calls[0][1]).toEqual({ limit: 20, offset: 0 });
   });
 
-  it('should reject a limit above the cap instead of honouring it', async () => {
+  it('should declare the page-size cap on its schema, where the SDK enforces it', () => {
+    // The cap must live on the SCHEMA, not in the handler: the SDK validates
+    // `inputSchema` before invoking a tool, so that is the real enforcement
+    // point and the only one an agent sees a protocol error from. Asserting
+    // via `handler({ limit: 5000 })` would instead exercise the handler's
+    // narrowing `parse` — passing even if the cap were dropped from the schema.
     const { service } = serviceReturning([]);
+    const schema = createSearchCatalogTool(service).inputSchema;
 
-    await expect(
-      createSearchCatalogTool(service).handler({ limit: 5_000 }, {} as never)
-    ).rejects.toThrow();
+    const overCap = (schema as unknown as { safeParse: (v: unknown) => { success: boolean } })
+      .safeParse({ limit: 5_000 });
+    const atCap = (schema as unknown as { safeParse: (v: unknown) => { success: boolean } })
+      .safeParse({ limit: 100 });
+
+    expect(overCap.success).toBe(false);
+    expect(atCap.success).toBe(true);
   });
 
   it('should project products rather than returning full entities', async () => {

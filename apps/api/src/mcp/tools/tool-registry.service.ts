@@ -42,7 +42,10 @@ import {
 import { Logger } from '@openlinker/shared/logging';
 
 import { redactPrincipal } from '../auth/mcp-principal.types';
-import { McpAuditLogger } from './audit/mcp-audit.logger';
+import {
+  MCP_AUDIT_LOGGER_TOKEN,
+  type IMcpAuditLogger,
+} from './audit/mcp-audit.logger.interface';
 import {
   MCP_RATE_LIMITER_TOKEN,
   type IMcpRateLimiter,
@@ -60,7 +63,8 @@ export class McpToolRegistryService implements IMcpToolRegistryService {
     private readonly integrationsService: IIntegrationsService,
     @Inject(MCP_RATE_LIMITER_TOKEN)
     private readonly rateLimiter: IMcpRateLimiter,
-    private readonly auditLogger: McpAuditLogger,
+    @Inject(MCP_AUDIT_LOGGER_TOKEN)
+    private readonly auditLogger: IMcpAuditLogger,
     @Inject(MCP_TOOL_DEFINITIONS_TOKEN)
     private readonly definitions: readonly McpToolDefinition[]
   ) {}

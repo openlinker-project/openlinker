@@ -54,15 +54,26 @@ export function createGetAvailabilityTool(
       "Read stock levels from OpenLinker's inventory for a set of products (totals) or variants (per-variant). Supply exactly one of productIds or variantIds — ids come from search_catalog / get_product. Stock reflects the last completed inventory sync, not a live marketplace read.",
     inputSchema,
     handler: async (args: Record<string, unknown>): Promise<CallToolResult> => {
+      // NARROWING, not validation: the SDK already validated `args` against
+      // this schema before invoking the handler, so this call cannot
+      // realistically fail. It exists to turn `Record<string, unknown>` into
+      // typed fields — never rely on it as the enforcement point for a
+      // constraint (a caller-visible cap belongs on the schema itself).
       const { productIds, variantIds } = inputSchema.parse(args);
 
       const products = productIds !== undefined && productIds.length > 0 ? productIds : null;
       const variants = variantIds !== undefined && variantIds.length > 0 ? variantIds : null;
 
-      // Exactly one — neither is ambiguous, both is contradictory.
-      if ((products === null) === (variants === null)) {
+      // Tell the agent WHICH mistake it made — it has to decide what to send
+      // next, and "supply exactly one" doesn't say which way it got that wrong.
+      if (products !== null && variants !== null) {
         return toolFailure(
-          'Supply exactly one of productIds or variantIds (non-empty). Use productIds for product-level totals, variantIds for per-variant availability.'
+          'Supply productIds OR variantIds, not both: they return different shapes (product-level totals vs per-variant availability). Pick the one matching the ids you hold.'
+        );
+      }
+      if (products === null && variants === null) {
+        return toolFailure(
+          'Supply a non-empty productIds (for product-level totals) or variantIds (for per-variant availability). Ids come from search_catalog / get_product.'
         );
       }
 

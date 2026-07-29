@@ -8,6 +8,7 @@
 import { Logger } from '@openlinker/shared/logging';
 
 import { McpAuditLogger } from './mcp-audit.logger';
+import type { IMcpAuditLogger } from './mcp-audit.logger.interface';
 import type { RedactedMcpPrincipal } from '../../auth/mcp-principal.types';
 
 const principal: RedactedMcpPrincipal = {
@@ -17,7 +18,7 @@ const principal: RedactedMcpPrincipal = {
   scopes: ['mcp:read'],
 };
 
-function captureLogger(): { logger: McpAuditLogger; lines: Array<[string, string]> } {
+function captureLogger(): { logger: IMcpAuditLogger; lines: Array<[string, string]> } {
   const lines: Array<[string, string]> = [];
   const logger = new McpAuditLogger();
   for (const level of ['log', 'warn', 'error'] as const) {

@@ -29,6 +29,11 @@ export function createGetProductTool(productsService: IProductsService): McpTool
       "Read one product from OpenLinker's catalog by its internal id, including its variants (id, sku, barcode, price). Use search_catalog to find a product id first.",
     inputSchema,
     handler: async (args: Record<string, unknown>): Promise<CallToolResult> => {
+      // NARROWING, not validation: the SDK already validated `args` against
+      // this schema before invoking the handler, so this call cannot
+      // realistically fail. It exists to turn `Record<string, unknown>` into
+      // typed fields — never rely on it as the enforcement point for a
+      // constraint (a caller-visible cap belongs on the schema itself).
       const { productId } = inputSchema.parse(args);
 
       const product = await productsService.getProduct(productId);

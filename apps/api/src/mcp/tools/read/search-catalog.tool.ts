@@ -48,6 +48,11 @@ export function createSearchCatalogTool(productsService: IProductsService): McpT
       "Search OpenLinker's product catalog by name or SKU. Returns internal product ids usable with get_product and get_availability. `connectionId` filters by which connection a product ORIGINATED from (its identifier mapping), not by where it is currently listed. An empty result means no product matched — the catalog is populated by sync, so a recently added connection may not have products yet.",
     inputSchema,
     handler: async (args: Record<string, unknown>): Promise<CallToolResult> => {
+      // NARROWING, not validation: the SDK already validated `args` against
+      // this schema before invoking the handler, so this call cannot
+      // realistically fail. It exists to turn `Record<string, unknown>` into
+      // typed fields — never rely on it as the enforcement point for a
+      // constraint (a caller-visible cap belongs on the schema itself).
       const { query, connectionId, limit, offset } = inputSchema.parse(args);
 
       const page = await productsService.listProducts(

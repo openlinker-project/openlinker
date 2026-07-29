@@ -47,6 +47,11 @@ export function createGetOrderTool(orderRecordService: IOrderRecordService): Mcp
       "Read one order from OpenLinker's order store by its internal id: status, sync state, fulfillment/payment state, dispatch deadline, totals, and line items. Buyer personal data (name, email, address) is deliberately NOT returned. Reflects the last completed order sync, not a live marketplace read.",
     inputSchema,
     handler: async (args: Record<string, unknown>): Promise<CallToolResult> => {
+      // NARROWING, not validation: the SDK already validated `args` against
+      // this schema before invoking the handler, so this call cannot
+      // realistically fail. It exists to turn `Record<string, unknown>` into
+      // typed fields — never rely on it as the enforcement point for a
+      // constraint (a caller-visible cap belongs on the schema itself).
       const { orderId } = inputSchema.parse(args);
 
       const record = await orderRecordService.getOrderRecord(orderId);
