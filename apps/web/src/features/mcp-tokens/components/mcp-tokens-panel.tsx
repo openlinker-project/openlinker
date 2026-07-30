@@ -18,6 +18,7 @@ import { useState, type ReactElement } from 'react';
 import { Alert } from '../../../shared/ui/alert';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { MCP_TOOL_AVAILABILITY_NOTE } from '../lib/tool-staleness-copy';
 import { useMcpTokensQuery } from '../hooks/use-mcp-tokens-query';
 import { useCreateMcpTokenMutation } from '../hooks/use-create-mcp-token-mutation';
 import { useRevokeMcpTokenMutation } from '../hooks/use-revoke-mcp-token-mutation';
@@ -40,11 +41,7 @@ export function McpTokensPanel(): ReactElement {
 
   return (
     <div className="mcp-tokens-panel">
-      <Alert tone="info">
-        Which tools a client sees depends on which connections are enabled and what they support.
-        Clients cache that list — after enabling or disabling a connection, reconnect the client for
-        the change to appear.
-      </Alert>
+      <Alert tone="info">{MCP_TOOL_AVAILABILITY_NOTE}</Alert>
 
       <article className="panel panel--dense">
         <div className="panel__header">
