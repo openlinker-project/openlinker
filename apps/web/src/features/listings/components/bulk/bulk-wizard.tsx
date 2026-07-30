@@ -204,14 +204,24 @@ export function BulkWizard({
   >(() => batchPlatform?.offerValidation?.validateRow, [batchPlatform]);
   const platformBlockerChips = batchPlatform?.offerValidation?.blockers ?? [];
 
-  const destinationResolvesCategoryAtSubmit = batchConnection
-    ? !batchConnection.supportedCapabilities.includes('EanCategoryMatcher')
-    : false;
   const destinationBrowsesCategories =
     (batchConnection?.supportedCapabilities.includes('CategoryBrowser') ?? false) ||
     (batchConnection
       ? (batchPlatform?.bulkCategoryBrowsingEnabled?.(batchConnection) ?? false)
       : false);
+
+  // Mirrors the builder's `requiresResolvedCategory = isCategoryBrowser ||
+  // isEanCategoryMatcher` (#1934/F10). This used to test only the second half,
+  // off the STATIC manifest, so a destination that browses categories per
+  // connection (Erli with Allegro category access) read as "resolves it at
+  // submit": every category blocker was suppressed, the row went green, and
+  // then every child died on `overrides.categoryId / REQUIRED`. The browse
+  // predicate below already knows the per-connection truth - it just was not
+  // consulted here.
+  const destinationResolvesCategoryAtSubmit = batchConnection
+    ? !destinationBrowsesCategories &&
+      !batchConnection.supportedCapabilities.includes('EanCategoryMatcher')
+    : false;
 
   // Reconcile per-variant `needs-product-parameters` (and any policy-derived)
   // blockers whenever a category's schema resolves. Gated to Review so only

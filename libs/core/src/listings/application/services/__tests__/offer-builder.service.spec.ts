@@ -804,6 +804,62 @@ describe('OfferBuilderService', () => {
       ]);
     });
 
+    // #1934/F1 - "Stan" is required + offer-section in effectively every Allegro
+    // category, and the adapter synthesises it from `command.condition` (which
+    // this builder always sets). The gate ran first and rejected the offer for
+    // "missing" a parameter the pipeline guarantees, so an operator who never
+    // hand-mapped a parameter the wizard never showed them lost the whole batch.
+    it('does NOT gate an offer-section param the destination adapter supplies itself', async () => {
+      integrationsService.getCapabilityAdapter.mockResolvedValue({
+        ...(productMaster as unknown as OfferManagerPort),
+        getAdapterSuppliedParameterIds: () => ['cond-1'],
+      } as unknown as OfferManagerPort);
+      attributeProjection.project.mockResolvedValue({
+        parameters: [],
+        unmappedSourceKeys: [],
+        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }],
+      });
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(result.internalVariantId).toBe(VARIANT_ID);
+    });
+
+    it('still gates an offer-section param the adapter does NOT supply', async () => {
+      integrationsService.getCapabilityAdapter.mockResolvedValue({
+        ...(productMaster as unknown as OfferManagerPort),
+        getAdapterSuppliedParameterIds: () => ['cond-1'],
+      } as unknown as OfferManagerPort);
+      attributeProjection.project.mockResolvedValue({
+        parameters: [],
+        unmappedSourceKeys: [],
+        unresolvedRequired: [
+          { id: 'cond-1', name: 'Stan', section: 'offer' },
+          { id: 'qty-1', name: 'Liczba sztuk w ofercie', section: 'offer' },
+        ],
+      });
+
+      const error = await service
+        .buildCreateOfferCommand({
+          internalVariantId: VARIANT_ID,
+          connectionId: MARKETPLACE_CONN_ID,
+          stock: 1,
+        })
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(OfferBuilderValidationException);
+      expect((error as OfferBuilderValidationException).issues).toEqual([
+        expect.objectContaining({
+          field: 'parameters.Liczba sztuk w ofercie',
+          code: 'PARAMETER_REQUIRED',
+        }),
+      ]);
+    });
+
     it('does NOT gate PRODUCT-section required params (deferred to adapter / card inheritance)', async () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [],

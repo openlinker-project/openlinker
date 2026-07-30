@@ -254,6 +254,8 @@ export {
 export { CategoryNotFoundException } from './domain/exceptions/category-not-found.exception';
 export type { OfferCreator } from './domain/ports/capabilities/offer-creator.capability';
 export { isOfferCreator } from './domain/ports/capabilities/offer-creator.capability';
+export type { AdapterSuppliedParametersReader } from './domain/ports/capabilities/adapter-supplied-parameters-reader.capability';
+export { isAdapterSuppliedParametersReader } from './domain/ports/capabilities/adapter-supplied-parameters-reader.capability';
 export type { OfferStatusReader } from './domain/ports/capabilities/offer-status-reader.capability';
 export { isOfferStatusReader } from './domain/ports/capabilities/offer-status-reader.capability';
 export type {
