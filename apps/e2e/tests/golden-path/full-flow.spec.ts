@@ -524,7 +524,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
     const erli = world.connectionFor(PlatformType.erli);
     test.skip(!erli, 'no Erli connection on this stack');
 
-    await createBulkOffers({ api, world, pages, poll, connectionId: erli!.id, connectionName: erli!.name, platform: PlatformType.erli, categoryId: env.freshAllegroCategoryId });
+    await createBulkOffers({ api, world, pages, poll, connectionId: erli!.id, connectionName: erli!.name, platform: PlatformType.erli, erliCategoryPath: env.freshAllegroCategoryPath });
     const mapping = await resolvePrimaryMapping(api, poll, erli!.id);
 
     // Mapping-level assertions: the offer was created and mapped to the primary
@@ -1707,9 +1707,10 @@ async function createBulkOffers(ctx: {
    * Its editor ships no category browser — only an "Allegro category ID" text
    * field — so a breadcrumb cannot be walked there (#1045/#1096).
    */
-  categoryId?: string;
+  /** Breadcrumb to the Allegro leaf an Erli row is filed under. */
+  erliCategoryPath?: string[];
 }): Promise<string | null> {
-  const { api, pages, poll, connectionId, connectionName, platform, categoryId } = ctx;
+  const { api, pages, poll, connectionId, connectionName, platform, erliCategoryPath } = ctx;
   const primaryId = state.primaryVariant!.id;
 
   // Create-if-missing, else reuse (approved design #1): reuse when the driver
@@ -1744,12 +1745,15 @@ async function createBulkOffers(ctx: {
     // Stamp the driver variant's REAL barcode into the category's GTIN/EAN
     // parameter — Allegro's validator rejects a placeholder GTIN (#1481).
     gtin: state.primaryVariant!.ean ?? state.primaryVariant!.gtin ?? undefined,
-    // A borrows-taxonomy destination (Erli) resolves no category in the wizard
-    // preview, and its edit modal exposes a plain "Allegro category ID" field
-    // instead of a tree. Stamp the SAME leaf id the Allegro row maps to
-    // (golden-path parity) so the parameter schema matches. Allegro prefills
-    // its own category, so the id is ignored there.
-    categoryId: platform === PlatformType.erli ? categoryId : undefined,
+    // Erli's editor opens the category BROWSER, not the plain "Allegro category
+    // ID" field this used to assume — that field only appears for a destination
+    // with no category browser at all, and Erli ships one. A `categoryId` is
+    // therefore ignored here, the picker falls back to "first reachable leaf",
+    // and the arbitrary leaf it lands on may never resolve a parameter schema
+    // ("the bulk edit modal never surfaced a category parameter schema"). Drive
+    // the breadcrumb to the SAME leaf the Allegro row maps to instead, which is
+    // what golden-path parity means in the first place.
+    categoryPath: platform === PlatformType.erli ? erliCategoryPath : undefined,
   });
   const progress = await wizard.confirmCreation();
   expect(progress.batchId).toBeTruthy();
