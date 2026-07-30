@@ -1,8 +1,10 @@
 /**
- * Bulk Offer Create DTO validation tests (#1741) - focused on the nested
- * `@ValidateRecordValues` map-value validation for `perVariantOverrides` /
- * `perProductOverrides` (class-validator does not recurse into `Record<>`
- * values on its own) and the categoryId-omitted `OverridesNoCategoryDto`.
+ * Bulk Offer Create DTO validation tests (#1741, #1924) - focused on the
+ * nested `@ValidateRecordValues` map-value validation for
+ * `perVariantOverrides` / `perProductOverrides` (class-validator does not
+ * recurse into `Record<>` values on its own), and on `categoryId` being
+ * accepted at both tiers (#1924 — enforcement of whether it survives to the
+ * built offer moved to `BulkListingSubmitService`, destination-aware).
  */
 import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
@@ -119,5 +121,42 @@ describe('BulkOfferCreateRequestDto map-value validation (#1741)', () => {
       })
     );
     expect(errs).toContain('validateRecordValues');
+  });
+
+  it('accepts a family-tier (perProductOverrides) categoryId (#1924 Part 1 - the previously-blocking bug)', async () => {
+    const errs = await constraintKeysFor(
+      baseRequest({
+        perProductOverrides: {
+          ol_variant_a: { overrides: { categoryId: '89508' } },
+        },
+      })
+    );
+    expect(errs).toEqual([]);
+  });
+
+  it('accepts a variant-tier (perVariantOverrides) categoryId at the DTO layer (#1924 Part 2 - enforcement moved to the service)', async () => {
+    const errs = await constraintKeysFor(
+      baseRequest({
+        perVariantOverrides: {
+          ol_variant_a: { overrides: { categoryId: '89509' } },
+        },
+      })
+    );
+    expect(errs).toEqual([]);
+  });
+
+  it('rejects a mixed batch shape (one family override + one variant override, both non-empty) with only field-level errors, not a 400 on categoryId presence', async () => {
+    const errs = await constraintKeysFor(
+      baseRequest({
+        productIds: ['ol_variant_a', 'ol_variant_b'],
+        perProductOverrides: {
+          ol_variant_a: { overrides: { categoryId: '89508', title: 'Family title' } },
+        },
+        perVariantOverrides: {
+          ol_variant_b: { overrides: { categoryId: '89510' } },
+        },
+      })
+    );
+    expect(errs).toEqual([]);
   });
 });

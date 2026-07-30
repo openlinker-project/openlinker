@@ -10,6 +10,14 @@
  * wizard's review-table edit modal (#740) can emit one row at a time and
  * the validator rejects malformed overrides at the boundary.
  *
+ * `categoryId` is accepted at BOTH the family (`perProductOverrides`) and
+ * variant (`perVariantOverrides`) tiers (#1924) — the same `CreateOfferOverridesDto`
+ * shape backs both maps. Whether a per-variant `categoryId` actually survives
+ * to the built offer is a destination-shape question the HTTP boundary has no
+ * visibility into (it doesn't know the resolved connection's adapter); that
+ * enforcement lives in `BulkListingSubmitService.stripVariantCategoryId`,
+ * conditional on the destination's declared `variantGrouping` model.
+ *
  * @module apps/api/src/listings/http/dto
  */
 import {
@@ -28,7 +36,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 import {
   CreateOfferOverridesDto,
@@ -82,23 +90,16 @@ export class BulkSharedConfigDto {
 }
 
 /**
- * Category-omitted offer-overrides shape (#1741). `categoryId` is
- * grouping-determining and product-level (base-only via `sharedConfig`), so it
- * is not overridable per-product / per-variant - `OmitType` drops it while
- * carrying every other nested validation rule (title MaxLength, imageUrls
- * IsUrl, price positivity, ean digit-shape, platformParams size cap, parameters
- * bounds).
+ * Per-product / per-variant override value (#1741, #1924). Same shape as the
+ * batch shared config's overrides, `categoryId` included at both tiers — a
+ * per-variant `categoryId` is only meaningful for a destination whose
+ * declared `variantGrouping` model permits it, which is a service-layer
+ * concern (`stripVariantCategoryId`), not something this HTTP-boundary shape
+ * can decide (it validates shape, not cross-field business rules against a
+ * resolved connection). Used as the nested value type validated by
+ * `@ValidateRecordValues` on BOTH override maps below.
  */
-export class OverridesNoCategoryDto extends OmitType(CreateOfferOverridesDto, [
-  'categoryId',
-] as const) {}
-
-/**
- * Per-product / per-variant override value (#1741). Same shape as the batch
- * shared config's overrides minus `categoryId`. Used as the nested value type
- * validated by `@ValidateRecordValues` on BOTH override maps below.
- */
-export class PerVariantOverrideDto {
+export class PerOverrideDto {
   @ApiPropertyOptional({ minimum: 0 })
   @IsOptional()
   @IsInt()
@@ -116,11 +117,11 @@ export class PerVariantOverrideDto {
   @Type(() => CreateOfferPriceDto)
   price?: CreateOfferPriceDto;
 
-  @ApiPropertyOptional({ type: OverridesNoCategoryDto })
+  @ApiPropertyOptional({ type: CreateOfferOverridesDto })
   @IsOptional()
   @ValidateNested()
-  @Type(() => OverridesNoCategoryDto)
-  overrides?: OverridesNoCategoryDto;
+  @Type(() => CreateOfferOverridesDto)
+  overrides?: CreateOfferOverridesDto;
 }
 
 export class BulkOfferCreateRequestDto {
@@ -151,36 +152,37 @@ export class BulkOfferCreateRequestDto {
 
   /**
    * Per-product (family) overrides keyed by `productIds[i]`. Each value is the
-   * narrow `PerVariantOverrideDto` shape; class-validator does not recurse into
-   * `Record<>` values, so `@ValidateRecordValues` validates each one (title
-   * MaxLength, imageUrls IsUrl, price positivity, ean digit-shape, …). Key-shape
+   * `PerOverrideDto` shape; class-validator does not recurse into `Record<>`
+   * values, so `@ValidateRecordValues` validates each one (title MaxLength,
+   * imageUrls IsUrl, price positivity, ean digit-shape, …). Key-shape
    * (`ol_variant_{hex}`), currency divergence, and effective-identifier
    * enforcement are applied in `BulkListingSubmitService` at submit (#1741).
    */
   @ApiPropertyOptional({
     description:
       'Optional per-product overrides keyed by productId. Unknown keys are ignored.',
-    additionalProperties: { $ref: '#/components/schemas/PerVariantOverrideDto' },
+    additionalProperties: { $ref: '#/components/schemas/PerOverrideDto' },
   })
   @IsOptional()
   @IsObject()
-  @ValidateRecordValues(() => PerVariantOverrideDto)
-  perProductOverrides?: Record<string, PerVariantOverrideDto>;
+  @ValidateRecordValues(() => PerOverrideDto)
+  perProductOverrides?: Record<string, PerOverrideDto>;
 
   /**
-   * Per-variant overrides keyed by the actual variant id (#1741). Same narrow
-   * `PerVariantOverrideDto` shape; wins over `perProductOverrides` per field in
-   * the service. Value-level validation via `@ValidateRecordValues`; key-shape /
-   * currency / GS1 / uniqueness enforcement is in `BulkListingSubmitService`.
+   * Per-variant overrides keyed by the actual variant id (#1741). Same
+   * `PerOverrideDto` shape; wins over `perProductOverrides` per field in the
+   * service. Value-level validation via `@ValidateRecordValues`; key-shape /
+   * currency / GS1 / uniqueness enforcement, and destination-aware
+   * `categoryId` enforcement, are in `BulkListingSubmitService`.
    */
   @ApiPropertyOptional({
     description: 'Optional per-variant overrides keyed by variant id. Unknown keys ignored.',
-    additionalProperties: { $ref: '#/components/schemas/PerVariantOverrideDto' },
+    additionalProperties: { $ref: '#/components/schemas/PerOverrideDto' },
   })
   @IsOptional()
   @IsObject()
-  @ValidateRecordValues(() => PerVariantOverrideDto)
-  perVariantOverrides?: Record<string, PerVariantOverrideDto>;
+  @ValidateRecordValues(() => PerOverrideDto)
+  perVariantOverrides?: Record<string, PerOverrideDto>;
 
   /**
    * Variant ids to exclude from the fan-out (#1741). Capped generously above

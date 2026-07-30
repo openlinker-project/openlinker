@@ -30,12 +30,14 @@ const supportedCapabilities = ['ProductMaster', 'InventoryMaster'];
 describe('ConnectionResponseDto.fromDomain', () => {
   describe('config redaction', () => {
     it('should return full config for admin role', () => {
-      const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities, 'admin');
+      const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities,
+        'parent-child', 'admin');
       expect(dto.config).toEqual({ baseUrl: 'https://shop.example.com', apiKey: 'secret-key-123' });
     });
 
     it('should return empty config for viewer role outside demo mode', () => {
-      const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities, 'viewer');
+      const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities,
+        'parent-child', 'viewer');
       expect(dto.config).toEqual({});
     });
 
@@ -43,6 +45,7 @@ describe('ConnectionResponseDto.fromDomain', () => {
       const dto = ConnectionResponseDto.fromDomain(
         baseConnection,
         supportedCapabilities,
+        'parent-child',
         'viewer',
         false
       );
@@ -53,6 +56,7 @@ describe('ConnectionResponseDto.fromDomain', () => {
       const dto = ConnectionResponseDto.fromDomain(
         baseConnection,
         supportedCapabilities,
+        'parent-child',
         'viewer',
         true
       );
@@ -66,6 +70,7 @@ describe('ConnectionResponseDto.fromDomain', () => {
       const dto = ConnectionResponseDto.fromDomain(
         baseConnection,
         supportedCapabilities,
+        'parent-child',
         'operator',
         true
       );
@@ -76,6 +81,7 @@ describe('ConnectionResponseDto.fromDomain', () => {
       const dto = ConnectionResponseDto.fromDomain(
         baseConnection,
         supportedCapabilities,
+        'parent-child',
         'admin',
         false
       );
@@ -86,12 +92,14 @@ describe('ConnectionResponseDto.fromDomain', () => {
     });
 
     it('should return empty config when role is undefined (no secret reaches unauthenticated callers)', () => {
-      const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities, undefined);
+      const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities,
+        'parent-child', undefined);
       expect(dto.config).toEqual({});
     });
 
     it('should return {} not null or undefined for non-admin — preserves FE Record<string,unknown> contract', () => {
-      const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities, 'viewer');
+      const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities,
+        'parent-child', 'viewer');
       expect(dto.config).not.toBeNull();
       expect(dto.config).not.toBeUndefined();
       expect(typeof dto.config).toBe('object');
@@ -107,7 +115,8 @@ describe('ConnectionResponseDto.fromDomain', () => {
           oauthClientId: 'client-id',
         },
       };
-      const dto = ConnectionResponseDto.fromDomain(connection, supportedCapabilities, 'viewer');
+      const dto = ConnectionResponseDto.fromDomain(connection, supportedCapabilities,
+        'parent-child', 'viewer');
       expect(Object.keys(dto.config)).toHaveLength(0);
     });
   });
@@ -115,7 +124,8 @@ describe('ConnectionResponseDto.fromDomain', () => {
   describe('non-sensitive fields', () => {
     it('should always project id, platformType, name, status regardless of role', () => {
       for (const role of ['admin', 'viewer', undefined] as const) {
-        const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities, role);
+        const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities,
+        'parent-child', role);
         expect(dto.id).toBe('conn-uuid-001');
         expect(dto.platformType).toBe('prestashop');
         expect(dto.name).toBe('Test Store');
@@ -125,18 +135,31 @@ describe('ConnectionResponseDto.fromDomain', () => {
 
     it('should always project supportedCapabilities regardless of role', () => {
       for (const role of ['admin', 'viewer', undefined] as const) {
-        const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities, role);
+        const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities,
+        'parent-child', role);
         expect(dto.supportedCapabilities).toEqual(['ProductMaster', 'InventoryMaster']);
       }
     });
 
     it('should derive credentialsBacked from credentialsRef prefix', () => {
-      const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities, 'viewer');
+      const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities,
+        'parent-child', 'viewer');
       expect(dto.credentialsBacked).toBe(true);
 
       const envBacked: Connection = { ...baseConnection, credentialsRef: 'env:PRESTASHOP_KEY' };
-      const dto2 = ConnectionResponseDto.fromDomain(envBacked, supportedCapabilities, 'viewer');
+      const dto2 = ConnectionResponseDto.fromDomain(envBacked, supportedCapabilities,
+        'parent-child', 'viewer');
       expect(dto2.credentialsBacked).toBe(false);
+    });
+
+    it('should project the resolved variantGrouping regardless of role (#1924)', () => {
+      const dto = ConnectionResponseDto.fromDomain(
+        baseConnection,
+        supportedCapabilities,
+        'catalog-implicit',
+        'viewer'
+      );
+      expect(dto.variantGrouping).toBe('catalog-implicit');
     });
   });
 });

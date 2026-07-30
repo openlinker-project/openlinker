@@ -88,6 +88,10 @@ export const woocommerceAdapterManifest: AdapterMetadata = {
   displayName: 'WooCommerce REST API v3',
   version: '1.0.0',
   isDefault: true,
+  // A WC product variation has no `categories` field in the REST API (#1924)
+  // - category is structurally parent-only, not a policy choice. Also the
+  // locked default any undeclared adapter resolves to.
+  variantGrouping: 'parent-child',
 };
 
 /** Short brand label for domain-exception prefixes (manifest.displayName is too long). */
