@@ -13849,16 +13849,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   line-height: 1;
 }
 
-/* Analytics-consent CTA (#1301) — appended to the demo banner only when a
-   demo-only integration (e.g. PostHog) is configured and unconsented. */
-.demo-banner__consent {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
 /* Login / register page: info bar at top of the form-card. */
 .guest-form__demo-bar {
   display: flex;
@@ -13961,6 +13951,132 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   line-height: 1.5;
   color: var(--text-muted);
   text-align: center;
+}
+
+/* ── Consent disclosure + consent page (#1938) ──
+   The registration consent control moves behind a quiet disclosure: consent is
+   required, so the form no longer asks the visitor to decide anything, and the
+   detail is one click away for whoever wants it. The visible fine print under
+   the submit button is what keeps the consent informed. */
+
+.guest-form__disclosure {
+  margin: 0 0 var(--space-3);
+}
+
+.guest-form__disclosure > summary,
+.demo-consent__disclosure > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  list-style: none;
+  cursor: pointer;
+  padding: 2px 0;
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.guest-form__disclosure > summary::-webkit-details-marker,
+.demo-consent__disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.guest-form__disclosure > summary::before,
+.demo-consent__disclosure > summary::before {
+  content: '▸';
+  font-size: 9px;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.guest-form__disclosure[open] > summary::before,
+.demo-consent__disclosure[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.guest-form__disclosure > summary:focus-visible,
+.demo-consent__disclosure > summary:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.guest-form__disclosure-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.guest-form__disclosure-list,
+.demo-consent__bullets {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding-left: var(--space-4);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.guest-form__consent--invalid {
+  border-color: var(--status-error-border);
+  background: var(--status-error-soft);
+}
+
+.guest-form__consent-error {
+  color: var(--status-error-strong);
+  font-size: 11.5px;
+}
+
+.guest-form__consent-fineprint {
+  margin: var(--space-2) 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.demo-consent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.demo-consent__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+
+.demo-consent__copy {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.demo-consent__disclosure-body {
+  margin-top: var(--space-2);
+}
+
+.demo-consent__actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.demo-consent__actions > .button {
+  flex: 1 1 auto;
+}
+
+.demo-consent__fineprint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 /* ── Product detail (#1304) ── */

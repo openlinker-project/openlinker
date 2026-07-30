@@ -1,12 +1,19 @@
 /**
  * Analytics Consent Integration Test
  *
- * Vertical slice for the self-service consent toggle (#1882):
+ * Vertical slice for the consent endpoint (#1882):
  * PATCH /auth/me/analytics-consent → users.analytics_consent → GET /auth/me.
  *
  * The role dimension is the point of this suite: a demo signup is a `viewer`,
  * and viewers are denied every other write in the API. This endpoint must be
  * the documented exception, so a viewer path is asserted explicitly.
+ *
+ * Since #1938 the endpoint's caller is the `/consent` page rather than a
+ * Settings toggle, and it is exempt from the global AnalyticsConsentGuard —
+ * gating the route that grants consent would make a missing consent
+ * unresolvable. The harness runs with demo mode off, so that guard is inert
+ * here; its own behaviour is covered by
+ * `src/auth/guards/analytics-consent.guard.spec.ts`.
  *
  * @module apps/api/test/integration
  */
@@ -59,6 +66,8 @@ describe('Analytics Consent Integration (#1882)', () => {
     expect(await readConsent(dataSource, 'demo_viewer')).toBe(true);
   });
 
+  // No UI offers this since #1938, but the endpoint stays symmetric: it is the
+  // only tool available for servicing a withdrawal request.
   it('should let a viewer withdraw consent again', async () => {
     const http = harness.getHttp();
     const dataSource = harness.getDataSource();

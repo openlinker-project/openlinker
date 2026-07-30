@@ -2,12 +2,14 @@
  * Add User analyticsConsent Migration
  *
  * Adds `analytics_consent` (boolean) to `users` (#1743). Captures, at
- * registration time, the account's opt-in for demo-only usage analytics
- * (PostHog session recording) — replacing the old post-login banner prompt.
- * Defaults `false` (opt-in): analytics is a true affirmative opt-in per
- * GDPR/ePrivacy (CJEU Planet49, C-673/17), so the registration checkbox
- * ships unchecked and every pre-existing row backfills to "not consented" —
- * no account has analytics enabled without an active choice.
+ * registration time, the account's consent to demo session recording
+ * (PostHog) — replacing the old post-login banner prompt.
+ *
+ * Defaults `false`, so every pre-existing row backfills to "not consented":
+ * no account has recording enabled without an active choice. #1938 later made
+ * that consent a condition of using the demo (required to register; an older
+ * account without it is sent to `/consent` to agree or sign out) — deliberately
+ * NOT a data backfill, so the flag still only ever flips on a real choice.
  *
  * Column name is snake_case (`analytics_consent`) to match the users table's
  * existing explicit-name columns (`password_hash`, `created_at`); the ORM

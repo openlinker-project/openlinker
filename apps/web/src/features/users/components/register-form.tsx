@@ -14,7 +14,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Link } from 'react-router-dom';
 import { useRegisterMutation } from '../hooks/use-register-mutation';
-import { registerFormSchema, type RegisterFormValues } from './register-form.schema';
+import {
+  ANALYTICS_CONSENT_REQUIRED_MESSAGE,
+  registerFormSchema,
+  type RegisterFormValues,
+} from './register-form.schema';
 import { ApiError } from '../../../shared/api/api-error';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -41,15 +45,26 @@ export function RegisterForm({
       email: '',
       password: '',
       confirmPassword: '',
-      // Opt-in (#1743): unchecked by default so consent is an affirmative
-      // action (GDPR/ePrivacy — a pre-ticked box is not valid consent).
-      analyticsConsent: false,
+      // Ticked by default (#1938): on the demo, session recording is the only
+      // allowed state of this form. The disclosure below keeps it out of the
+      // foreground without hiding it — the fine print under the submit button
+      // states it plainly, so consent stays informed.
+      analyticsConsent: true,
     },
     resolver: zodResolver(registerFormSchema),
   });
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : []
+  const analyticsConsent = form.watch('analyticsConsent');
+  // Derived from the live value rather than from `formState.errors`, which
+  // (with the default `onSubmit` mode) would only populate after a rejected
+  // submit. The schema carries the same rule as the authoritative gate.
+  const consentError =
+    demoMode && analyticsConsent !== true ? ANALYTICS_CONSENT_REQUIRED_MESSAGE : undefined;
+
+  // The consent error renders inside its own box, so it is filtered out here —
+  // otherwise the same sentence appears twice on the card (#1938).
+  const validationMessages = Object.entries(form.formState.errors).flatMap(([field, error]) =>
+    field !== 'analyticsConsent' && error?.message ? [String(error.message)] : []
   );
 
   if (submitted) {
@@ -153,26 +168,64 @@ export function RegisterForm({
       </FormField>
 
       {demoMode ? (
-        <label className="guest-form__consent">
-          <input type="checkbox" {...form.register('analyticsConsent')} />
-          <span className="guest-form__consent-text">
-            <strong>Share anonymous usage analytics</strong>
-            {/* Keep in step with the masking config in
-                features/demo/lib/init-demo-integrations.ts — #1878 narrowed it
-                to passwords only, so the old "all inputs masked" wording was a
-                false claim on the signup path (#1882). */}
-            <span className="guest-form__consent-hint">
-              Optional. Helps us improve OpenLinker. Includes session recording — passwords are
-              never recorded, but other text you type and view may be. Off unless you tick this; you
-              can change it anytime on Settings.
-            </span>
-          </span>
-        </label>
+        /* Held open while consent is off, so the error inside can never be
+           collapsed out of sight (#1938). */
+        <details className="guest-form__disclosure" open={analyticsConsent !== true || undefined}>
+          <summary>Privacy and session recording</summary>
+          <div className="guest-form__disclosure-body">
+            <label
+              className={[
+                'guest-form__consent',
+                consentError ? 'guest-form__consent--invalid' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+            >
+              <input
+                type="checkbox"
+                aria-invalid={consentError ? true : undefined}
+                {...form.register('analyticsConsent')}
+              />
+              <span className="guest-form__consent-text">
+                <strong>Record my demo session</strong>
+                {/* Keep in step with the masking config in
+                    features/demo/lib/init-demo-integrations.ts — #1878 narrowed
+                    it to passwords only, so any "all inputs masked" wording
+                    would be a false claim on the signup path (#1882). */}
+                <span className="guest-form__consent-hint">
+                  We watch how the demo gets used to see where the product gets confusing. That is
+                  the whole reason it is free.
+                </span>
+                {consentError ? (
+                  <span className="guest-form__consent-error" role="alert">
+                    {consentError}
+                  </span>
+                ) : null}
+              </span>
+            </label>
+            <ul className="guest-form__disclosure-list">
+              <li>Pages you open and buttons you click</li>
+              <li>Text you type, except passwords</li>
+              <li>Your browser, screen size, and rough location from your IP</li>
+              <li>Nothing real. Every store, order, and invoice in the demo is made up.</li>
+            </ul>
+          </div>
+        </details>
       ) : null}
 
-      <Button type="submit" tone="primary" disabled={register.isPending}>
+      <Button
+        type="submit"
+        tone="primary"
+        disabled={register.isPending || (demoMode && analyticsConsent !== true)}
+      >
         {register.isPending ? 'Submitting…' : demoMode ? 'Start exploring →' : 'Request access'}
       </Button>
+
+      {demoMode ? (
+        <p className="guest-form__consent-fineprint">
+          Demo accounts have session recording on. Passwords are never recorded.
+        </p>
+      ) : null}
 
       <p className="guest-form__footer-link">
         Already have an account? <Link to="/login">Sign in</Link>

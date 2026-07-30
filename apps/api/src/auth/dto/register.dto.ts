@@ -5,12 +5,11 @@
  *
  * @module apps/api/src/auth/dto
  */
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsEmail,
   IsNotEmpty,
-  IsOptional,
   IsString,
   Matches,
   MaxLength,
@@ -38,12 +37,13 @@ export class RegisterDto {
   @MaxLength(72)
   password!: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     description:
-      'Opt-in for demo-only usage analytics. Omitted ⇒ treated as no consent (opt-in default).',
-    default: false,
+      'Consent to demo session recording. Required on a demo-mode instance (#1938) — a ' +
+      'registration carrying `false` is rejected there. Ignored outside demo mode, where the ' +
+      'demo analytics path never runs.',
+    example: true,
   })
   @IsBoolean()
-  @IsOptional()
-  analyticsConsent?: boolean;
+  analyticsConsent!: boolean;
 }

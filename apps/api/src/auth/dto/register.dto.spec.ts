@@ -22,6 +22,9 @@ const validPayload = {
   username: 'alice',
   email: 'alice@example.com',
   password: 'correct-horse-battery',
+  // Required since #1938 — a demo registration must carry consent, and the
+  // service rejects anything but `true` on a demo instance.
+  analyticsConsent: true,
 };
 
 describe('RegisterDto', () => {
@@ -29,6 +32,16 @@ describe('RegisterDto', () => {
     const errors = await validate(buildDto(validPayload));
 
     expect(errors).toHaveLength(0);
+  });
+
+  it('should reject a missing analyticsConsent (#1938)', async () => {
+    const withoutConsent = { ...validPayload };
+    delete (withoutConsent as Partial<typeof validPayload>).analyticsConsent;
+    const errors = await validate(buildDto(withoutConsent));
+
+    expect(errors.find((e) => e.property === 'analyticsConsent')?.constraints).toHaveProperty(
+      'isBoolean',
+    );
   });
 
   it('should reject a username containing "@"', async () => {

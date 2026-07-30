@@ -8,9 +8,12 @@ an event is added, renamed, or removed.
 **Status**: framework (#1786) + e-commerce reel batch (#1788) + connections/category-mapping/KSeF-numbering batch (#1789) landed.
 
 Events only fire on a demo-mode build (`OL_DEMO_MODE=true`) with PostHog
-configured (env vars or the `/settings` panel) **and** the visitor has
-accepted the analytics-consent banner. On a normal self-hosted install, none
-of this code path runs.
+configured (env vars or the `/settings` panel) **and** the signed-in account
+has consented to session recording. Since #1938 that consent is a condition of
+using the demo (required at registration, collected on `/consent` for older
+accounts) and it lives on `users.analytics_consent` — the browser no longer
+carries a consent flag of its own. On a normal self-hosted install, none of
+this code path runs.
 
 ## Enabling event groups (#1787)
 

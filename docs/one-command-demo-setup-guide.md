@@ -128,8 +128,10 @@ only activates on an instance where the operator has both set
 install or a local `pnpm demo:up` run never contacts PostHog. When both are
 set, `GET /system/config` surfaces a `demoIntegrations.posthog` block that the
 frontend uses to load `posthog-js` (dynamically, so it never ships in the
-default bundle) — and only after the visitor accepts the consent prompt shown
-in the demo banner.
+default bundle) — and only for an account that has consented to session
+recording. On a demo instance that consent is a **condition of use** (#1938):
+it is required to register, and an existing account without it is redirected to
+`/consent` (agree, or sign out) and refused by the API until it agrees.
 
 | Variable | Purpose |
 |---|---|
@@ -170,8 +172,12 @@ PrestaShop / Allegro / Erli / WooCommerce store with real customer data.
 If you need recordings against a realistic dataset, seed it synthetically
 rather than relaxing this rule.
 
-A visitor who accepted the consent prompt can revoke it at any time from
-the demo banner ("Disable" next to "Analytics on").
+There is no in-product opt-out (#1938): the Settings tile and the banner's
+"Disable" affordance were removed when consent became a condition of use.
+Servicing a withdrawal request means calling
+`PATCH /auth/me/analytics-consent` with `false` for that account and deleting
+the recording in PostHog — the account cleanup below removes the OL account,
+not the recordings.
 
 See ADR-032 (`docs/architecture/adrs/032-demo-only-vendor-neutral-analytics-config-seam.md`, merging via #1410) for the design rationale.
 

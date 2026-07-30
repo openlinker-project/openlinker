@@ -4,7 +4,13 @@
  * Gated loader for demo-only third-party integrations (today: PostHog
  * session recording). `posthog-js` is dynamically imported so it is never
  * fetched on a normal (non-demo) install — the three synchronous guards
- * (demo mode, config presence, visitor consent) all run before the import.
+ * (demo mode, config presence, account consent) all run before the import.
+ *
+ * Consent is passed in by the caller from the session (#1938), not read from
+ * localStorage: the account is the only source of truth, and a demo account
+ * without consent never reaches the shell that calls this (it is redirected to
+ * `/consent`). There is likewise no opt-out affordance any more — the previous
+ * `disableDemoAnalytics` / `enableDemoAnalytics` pair went with it.
  *
  * `autocapture` and whether session recording is enabled at all (#1685) are
  * now read from the resolved config rather than hardcoded — an admin
@@ -25,7 +31,6 @@
  */
 import type { PostHog } from 'posthog-js';
 import type { SystemConfig } from '../../system';
-import { getDemoAnalyticsConsent } from './demo-analytics-consent';
 import { DemoEventCatalog, type DemoEventName, type DemoEventProps } from './demo-events';
 
 let posthogInstance: PostHog | null = null;
@@ -47,14 +52,20 @@ let pendingEvents: Array<{ event: DemoEventName; props: unknown }> = [];
  */
 let initSettled = false;
 
-export async function initDemoIntegrations(config: SystemConfig | undefined): Promise<void> {
+export async function initDemoIntegrations(
+  config: SystemConfig | undefined,
+  hasConsent: boolean,
+): Promise<void> {
   try {
     const posthogConfig = config?.demoMode ? config.demoIntegrations?.posthog : undefined;
     if (!posthogConfig?.key) {
       return;
     }
 
-    if (getDemoAnalyticsConsent() !== 'accepted') {
+    // Consent comes from the account via the session (#1938) — the caller reads
+    // it there. Nothing is asked of localStorage, and there is no pre-login
+    // state to reconcile: without a session the app shell never mounts.
+    if (!hasConsent) {
       return;
     }
 
@@ -88,19 +99,10 @@ export async function initDemoIntegrations(config: SystemConfig | undefined): Pr
 }
 
 /**
- * Opts the current visitor out of PostHog capture without a page reload, so
- * the in-banner "disable" affordance takes effect immediately. A no-op when
- * PostHog was never initialized (consent was never accepted this session).
- */
-export function disableDemoAnalytics(): void {
-  posthogInstance?.opt_out_capturing();
-}
-
-/**
  * Emits a named demo business event to PostHog. A no-op whenever PostHog was
  * never initialized this session (not demo mode, no key, or consent not
- * accepted) — mirrors `disableDemoAnalytics`'s gate on the same module-local
- * `posthogInstance` — and also a no-op when the operator has turned off
+ * given) — the gate is the module-local `posthogInstance` — and also a no-op
+ * when the operator has turned off
  * product events entirely, or turned off this specific event's group, via
  * the `/settings` Product-events panel (#1787).
  */
@@ -124,10 +126,3 @@ export function captureDemoEvent<E extends DemoEventName>(
   posthogInstance.capture(event, props);
 }
 
-/**
- * Opts the current visitor back in to PostHog capture without a page reload.
- * A no-op when PostHog was never initialized.
- */
-export function enableDemoAnalytics(): void {
-  posthogInstance?.opt_in_capturing();
-}
