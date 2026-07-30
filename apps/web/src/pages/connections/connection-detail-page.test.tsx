@@ -392,4 +392,57 @@ describe('ConnectionDetailPage', () => {
       expect(screen.queryByText('Re-authentication required')).toBeNull();
     });
   });
+
+  describe('SyncPausedBanner (#1940)', () => {
+    it('explains the pause and offers a recovery control when status is disabled', async () => {
+      const connection = makeAllegro({ status: 'disabled' });
+      const apiClient = apiClientForBanner(connection, []);
+
+      renderWithProviders(
+        <Routes>
+          <Route path="/connections/:connectionId" element={<ConnectionDetailPage />} />
+        </Routes>,
+        {
+          apiClient,
+          route: `/connections/${connection.id}`,
+          sessionAdapter: createAuthenticatedSessionAdapter(),
+        },
+      );
+      await screen.findByRole('heading', { name: 'Overview' });
+
+      expect(await screen.findByText('Syncing is paused')).toBeInTheDocument();
+      expect(
+        await screen.findByRole('button', { name: 'Enable connection' }),
+      ).toBeInTheDocument();
+    });
+
+    it('omits the recovery control for a viewer without connections:write', async () => {
+      const connection = makeAllegro({ status: 'disabled' });
+      const apiClient = apiClientForBanner(connection, []);
+
+      renderWithProviders(
+        <Routes>
+          <Route path="/connections/:connectionId" element={<ConnectionDetailPage />} />
+        </Routes>,
+        {
+          apiClient,
+          route: `/connections/${connection.id}`,
+          sessionAdapter: viewerSessionAdapter,
+        },
+      );
+      await screen.findByRole('heading', { name: 'Overview' });
+
+      // The explanation is still worth showing; only the write control is gated.
+      expect(await screen.findByText('Syncing is paused')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Enable connection' })).toBeNull();
+    });
+
+    it('does NOT show the sync-paused banner when the connection is active', async () => {
+      const connection = makeAllegro({ status: 'active' });
+      const apiClient = apiClientForBanner(connection, []);
+      await renderDetailPage(connection, apiClient);
+
+      expect(screen.queryByText('Syncing is paused')).toBeNull();
+    });
+  });
 });
