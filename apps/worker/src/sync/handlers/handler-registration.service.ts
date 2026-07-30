@@ -20,6 +20,8 @@ import { MarketplaceOffersSyncHandler } from './marketplace-offers-sync.handler'
 import { MarketplaceOfferStatusSyncHandler } from './marketplace-offer-status-sync.handler';
 import { MarketplaceOfferRefreshSnapshotHandler } from './marketplace-offer-refresh-snapshot.handler';
 import { MarketplaceOfferStockRestoreHandler } from './marketplace-offer-stock-restore.handler';
+import { MarketplaceOfferPauseStaleHandler } from './marketplace-offer-pause-stale.handler';
+import { MarketplaceOfferPauseStaleSweepHandler } from './marketplace-offer-pause-stale-sweep.handler';
 import { MarketplaceShipmentStatusSyncHandler } from './marketplace-shipment-status-sync.handler';
 import { MarketplaceShipmentSyncByExternalIdHandler } from './marketplace-shipment-sync-by-external-id.handler';
 import { MarketplaceFulfillmentStatusSyncHandler } from './marketplace-fulfillment-status-sync.handler';
@@ -52,6 +54,8 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceOfferStatusSyncHandler: MarketplaceOfferStatusSyncHandler,
     private readonly marketplaceOfferRefreshSnapshotHandler: MarketplaceOfferRefreshSnapshotHandler,
     private readonly marketplaceOfferStockRestoreHandler: MarketplaceOfferStockRestoreHandler,
+    private readonly marketplaceOfferPauseStaleHandler: MarketplaceOfferPauseStaleHandler,
+    private readonly marketplaceOfferPauseStaleSweepHandler: MarketplaceOfferPauseStaleSweepHandler,
     private readonly marketplaceShipmentStatusSyncHandler: MarketplaceShipmentStatusSyncHandler,
     private readonly marketplaceShipmentSyncByExternalIdHandler: MarketplaceShipmentSyncByExternalIdHandler,
     private readonly marketplaceFulfillmentStatusSyncHandler: MarketplaceFulfillmentStatusSyncHandler,
@@ -99,6 +103,14 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'marketplace.offer.stockRestore',
       this.marketplaceOfferStockRestoreHandler
+    );
+    this.handlerRegistry.register(
+      'marketplace.offer.pauseStale',
+      this.marketplaceOfferPauseStaleHandler
+    );
+    this.handlerRegistry.register(
+      'marketplace.offer.pauseStaleSweep',
+      this.marketplaceOfferPauseStaleSweepHandler
     );
     this.handlerRegistry.register(
       'marketplace.shipment.statusSync',

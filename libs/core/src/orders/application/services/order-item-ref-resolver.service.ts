@@ -14,11 +14,12 @@ import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-or
 import { StaleOrderItemError } from '../../domain/exceptions/stale-order-item.error';
 import type { IOrderItemRefResolverService } from '../interfaces/order-item-ref-resolver.service.interface';
 import type {
+  ItemResolutionFailureKind,
   ItemResolutionResult,
   ResolvedOrderItemProduct,
 } from './order-item-ref-resolver.types';
 
-export type { ItemResolutionResult, ResolvedOrderItemProduct };
+export type { ItemResolutionFailureKind, ItemResolutionResult, ResolvedOrderItemProduct };
 
 @Injectable()
 export class OrderItemRefResolverService implements IOrderItemRefResolverService {
@@ -37,11 +38,11 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
       const result = await this.resolve(connectionId, productRef);
       return { resolved: true, ...result };
     } catch (error) {
-      if (
-        error instanceof MissingOrderItemMappingError ||
-        error instanceof StaleOrderItemError
-      ) {
-        return { resolved: false, productRef, reason: error.message };
+      if (error instanceof StaleOrderItemError) {
+        return { resolved: false, productRef, reason: error.message, kind: 'source_deleted' };
+      }
+      if (error instanceof MissingOrderItemMappingError) {
+        return { resolved: false, productRef, reason: error.message, kind: 'missing_mapping' };
       }
       throw error;
     }

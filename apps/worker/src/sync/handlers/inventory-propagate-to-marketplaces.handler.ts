@@ -25,6 +25,7 @@ import {
 } from '@openlinker/core/identifier-mapping';
 import { IInventoryService, INVENTORY_SERVICE_TOKEN } from '@openlinker/core/inventory';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import { IProductsService, PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
 
 type SyncJob = SyncJobEntity;
 import { Logger } from '@openlinker/shared/logging';
@@ -62,7 +63,9 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
     @Inject(JOB_ENQUEUE_TOKEN)
     private readonly jobEnqueue: JobEnqueuePort,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
-    private readonly integrationsService: IIntegrationsService
+    private readonly integrationsService: IIntegrationsService,
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly productsService: IProductsService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -95,13 +98,30 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
         `Current inventory for product ${payload.productId}: ${availableQuantity} available`
       );
 
+      // Stale-variant guard (#1689): a variant just zeroed by the stale-offer-
+      // pause flow must not be re-raised by a concurrent inventory propagate
+      // racing it. Checked only when the payload carries a variantId — a
+      // product-level propagate (no variantId) has no single variant to check.
+      // The hourly reconcile sweep is the backstop if an in-flight propagate
+      // job was already enqueued before the stale-mark landed.
+      let variantIsStale = false;
+      if (payload.variantId) {
+        const variant = await this.productsService.getVariant(payload.variantId);
+        variantIsStale = variant?.isStale === true;
+      }
+
       // Step 3: Find all marketplace offers mapped to this internal product
       // (Offer mappings are stored in identifier_mappings as entityType='Offer')
       const mappingTargetId = payload.variantId || payload.productId;
-      const offerMappings = await this.identifierMapping.getExternalIds(
-        CORE_ENTITY_TYPE.Offer,
-        mappingTargetId
-      );
+      const offerMappings = variantIsStale
+        ? []
+        : await this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Offer, mappingTargetId);
+
+      if (variantIsStale) {
+        this.logger.warn(
+          `Skipping offer quantity propagation for stale variant ${payload.variantId} (product ${payload.productId}) — deleted at the master (#1689)`
+        );
+      }
 
       const writeEventToken = payload.inventoryUpdatedAt || 'legacy';
 

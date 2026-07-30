@@ -33,7 +33,7 @@ const COLUMNS: DataTableColumn<SyncJob>[] = [
   {
     id: 'status',
     header: 'Status',
-    cell: (job) => <SyncJobStatusBadge status={job.status} outcome={job.outcome} />,
+    cell: (job) => <SyncJobStatusBadge status={job.status} outcome={job.outcome} outcomeReason={job.outcomeReason} />,
     accessor: (job) => job.status,
     sortable: true,
   },
@@ -254,7 +254,7 @@ export function SyncJobsPage(): ReactElement {
                   showId={false}
                 />
               ),
-              meta: (job) => <SyncJobStatusBadge status={job.status} outcome={job.outcome} />,
+              meta: (job) => <SyncJobStatusBadge status={job.status} outcome={job.outcome} outcomeReason={job.outcomeReason} />,
             }}
           />
 

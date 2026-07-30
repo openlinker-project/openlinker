@@ -45,7 +45,10 @@ export const SYNC_ATTEMPTS_PER_DESTINATION_CAP = 20;
 
 // Mirrors the backend `OrderRecordStatusValues` in `@openlinker/core/orders`.
 // Hand-written transport type per FE-001 contract strategy — keep in sync with backend.
-export const OrderRecordStatusValues = ['ready', 'awaiting_mapping'] as const;
+// `source_deleted` (#1689): the mapped variant was deleted at its master
+// (#1599) — a permanently unresolvable item ref, distinct from the
+// self-healing `awaiting_mapping` gap.
+export const OrderRecordStatusValues = ['ready', 'awaiting_mapping', 'source_deleted'] as const;
 export type OrderRecordStatusValue = (typeof OrderRecordStatusValues)[number];
 
 // Per-order fulfillment rollup (#1108). Hand-mirrored from
@@ -173,6 +176,12 @@ export interface OrderRecord {
   sourceDeliveryMethodId?: string | null;
   /** Source delivery-method label (#1791). */
   sourceDeliveryMethodName?: string | null;
+  /**
+   * Operator-facing reason item resolution failed at ingestion (#1689), set
+   * alongside `recordStatus = 'awaiting_mapping' | 'source_deleted'`. `null`
+   * for a `'ready'` record. Optional for graceful degradation on older payloads.
+   */
+  mappingFailureReason?: string | null;
 }
 
 // Result ordering for the orders list (#927, extended #944). Mirrors
@@ -201,6 +210,7 @@ export type OrderSortDirection = (typeof OrderSortDirectionValues)[number];
 // segment counts sum to the total. Canonical precedence (highest wins) lives in
 // `deriveOrderHealth` (lib/order-health.ts), the single FE source of truth.
 export const OrderHealthValues = [
+  'source_deleted',
   'awaiting_mapping',
   'needs_attention',
   'synced',
@@ -214,6 +224,7 @@ export type OrderHealthValue = (typeof OrderHealthValues)[number];
  */
 export interface OrderHealthSummary {
   total: number;
+  sourceDeleted: number;
   awaitingMapping: number;
   needsAttention: number;
   synced: number;

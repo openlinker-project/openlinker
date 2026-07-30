@@ -45,4 +45,10 @@ required env vars either exit early with a message or produce error/404 shots.
 | `infakt-connection.mjs` | inFakt connection setup | `INFAKT_BASE_URL`, `INFAKT_SANDBOX_API_KEY`, `INFAKT_CONN_NAME` |
 | `demo-consent.mjs` | Demo session-recording notice, `/consent` gate, no-opt-out checks (#1938) | `WEB_BASE`, `SHOT_DIR` — **no API needed**, every `/v1/**` call is stubbed |
 | `infakt-invoice.mjs` | inFakt invoice + clearance | `INFAKT_CONNECTION_ID`, `ORDER_ID`, `CLEARANCE_POLL_MS` |
+| `connection-enable.mjs` | Connection disable → enable round trip (#1940) | `CONNECTION_ID`, `WEB_BASE`, `OUT_DIR`, `HEADED` |
 | `annotate.mjs` | Shared image-annotation helper | (imported by other scripts) |
+
+`connection-enable.mjs` is the one script here that asserts as it goes: every step
+waits for the control it expects and throws if the state is wrong, so a green run
+is evidence the flow works, not just that screenshots exist. It leaves the
+connection `active`, the state it found it in.

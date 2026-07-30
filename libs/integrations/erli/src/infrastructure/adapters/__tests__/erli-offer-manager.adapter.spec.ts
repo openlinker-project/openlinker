@@ -216,37 +216,57 @@ describe('ErliOfferManagerAdapter', () => {
       expect(body.dispatchTime).toEqual({ period: 5, unit: 'hour' });
     });
 
+    // Incomplete offer data fails closed as the NEUTRAL create-rejection, not as
+    // a bare `ErliConfigException` (#1934/F6). Core classifies only
+    // `OfferCreateRejectedException`; anything else is rethrown, leaving the
+    // record `pending` and its batch permanently `running`. The rejection also
+    // has to carry the reason, since that message is all the operator ever sees.
     it('should fail closed when no per-offer nor connection-default dispatch time is present', async () => {
       const noDefault = new ErliOfferManagerAdapter('conn-1', ERLI_ADAPTER_KEY, httpClient);
-      await expect(noDefault.createOffer(createCmd())).rejects.toBeInstanceOf(ErliConfigException);
+      await expect(noDefault.createOffer(createCmd())).rejects.toBeInstanceOf(
+        OfferCreateRejectedException,
+      );
       expect(httpClient.post).not.toHaveBeenCalled();
     });
 
     it('should fail closed (no HTTP call) when the title (name) is absent or blank', async () => {
       await expect(
         adapter.createOffer(createCmd({ overrides: { title: undefined } })),
-      ).rejects.toBeInstanceOf(ErliConfigException);
+      ).rejects.toBeInstanceOf(OfferCreateRejectedException);
       await expect(
         adapter.createOffer(createCmd({ overrides: { title: '   ' } })),
-      ).rejects.toBeInstanceOf(ErliConfigException);
+      ).rejects.toBeInstanceOf(OfferCreateRejectedException);
       expect(httpClient.post).not.toHaveBeenCalled();
     });
 
     it('should fail closed (no HTTP call) when no valid public image survives sanitisation', async () => {
       await expect(
         adapter.createOffer(createCmd({ overrides: { imageUrls: [] } })),
-      ).rejects.toBeInstanceOf(ErliConfigException);
+      ).rejects.toBeInstanceOf(OfferCreateRejectedException);
       // An only-unsafe set sanitises to empty → same fail-closed path.
       await expect(
         adapter.createOffer(createCmd({ overrides: { imageUrls: ['http://x/insecure.jpg'] } })),
-      ).rejects.toBeInstanceOf(ErliConfigException);
+      ).rejects.toBeInstanceOf(OfferCreateRejectedException);
       expect(httpClient.post).not.toHaveBeenCalled();
+    });
+
+    it('should carry a readable reason + terminal code on a fail-closed create', async () => {
+      await expect(
+        adapter.createOffer(createCmd({ overrides: { imageUrls: [] } })),
+      ).rejects.toMatchObject({
+        errors: [
+          expect.objectContaining({
+            code: 'ERLI_OFFER_DATA_INCOMPLETE',
+            message: expect.stringContaining('image'),
+          }),
+        ],
+      });
     });
 
     it('should fail closed (no HTTP call) on a non-finite price amount', async () => {
       await expect(
         adapter.createOffer(createCmd({ price: { amount: Number.NaN, currency: 'PLN' } })),
-      ).rejects.toBeInstanceOf(ErliConfigException);
+      ).rejects.toBeInstanceOf(OfferCreateRejectedException);
       expect(httpClient.post).not.toHaveBeenCalled();
     });
 

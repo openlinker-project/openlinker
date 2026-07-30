@@ -18,6 +18,7 @@ import { InventoryModule } from '@openlinker/core/inventory';
 import { SyncModule } from '@openlinker/core/sync';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { SyncWorkerModule } from './sync/sync-worker.module';
+import { EventsConsumerModule } from './events/events-consumer.module';
 import { WorkerHeartbeatService } from './health/worker-heartbeat.service';
 
 @Module({
@@ -36,6 +37,7 @@ import { WorkerHeartbeatService } from './health/worker-heartbeat.service';
     InventoryModule,
     SyncModule,
     SyncWorkerModule,
+    EventsConsumerModule,
   ],
   providers: [WorkerHeartbeatService],
 })

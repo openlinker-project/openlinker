@@ -15,9 +15,11 @@
  * Delivery is **at-most-once**: the event is published *after* the stale-mark
  * commits, so a publish failure loses the event and the next sync will NOT
  * re-emit it (the rows are already stale, so the prune returns no new ids). The
- * authoritative state is the persisted `isStale` flag, not the event; a future
- * consumer that needs guaranteed delivery should reconcile against the flag (or
- * this should move to a transactional outbox). Matches the existing
+ * authoritative state is the persisted `isStale` flag, not the event — the
+ * event is *also* a trigger for the stale-offer-pause consumer (#1689), and
+ * `product_variants.isStale` remains authoritative: a reconcile sweep (§6
+ * Phase 2 of the #1689 implementation plan) is what makes delivery losses
+ * survivable, not a transactional outbox. Matches the existing
  * fire-after-commit publisher precedent (e.g. `SyncJobBulkRetryService`).
  *
  * @module libs/core/src/products/domain/types
@@ -33,11 +35,16 @@ export const MASTER_VARIANT_STALE_EVENT = 'master.variant.stale';
 export const MASTER_PRODUCT_STALE_EVENT = 'master.product.stale';
 
 /** Schema version stamped into the event envelope metadata. */
-export const MASTER_DELETION_EVENT_SCHEMA_VERSION = '1';
+export const MASTER_DELETION_EVENT_SCHEMA_VERSION = '2';
 
 /**
  * Payload carried by both master-deletion events. `variantIds` are the internal
  * OpenLinker variant ids newly marked stale.
+ *
+ * `correlationId` ties one sync run's log lines, event, and (downstream) the
+ * stale-offer-pause job together. `externalId` is the master-native product id
+ * (e.g. the PrestaShop/WooCommerce product id), included for operator-facing
+ * correlation against the source system.
  *
  * `variantIds` can be empty even when the event represents a real deletion: a
  * product-level row (`productVariantId = NULL`, e.g. an ambiguous multi/zero-
@@ -50,4 +57,6 @@ export interface MasterDeletionEventPayload {
   connectionId: string;
   internalProductId: string;
   variantIds: string[];
+  correlationId: string;
+  externalId: string;
 }

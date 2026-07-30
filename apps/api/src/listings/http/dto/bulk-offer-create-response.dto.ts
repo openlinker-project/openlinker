@@ -25,6 +25,12 @@ export class BulkOfferCreateResponseDto {
     type: [String],
   })
   jobIds!: string[];
+
+  @ApiProperty({
+    description:
+      'Count of expanded jobs dropped because the variant already carries an active offer mapping on the destination connection (#1933). Zero when nothing was skipped.',
+  })
+  skippedAlreadyListedCount!: number;
 }
 
 export class BulkBatchRecordSummaryDto {

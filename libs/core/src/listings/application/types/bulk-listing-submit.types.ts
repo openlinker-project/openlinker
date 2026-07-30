@@ -155,6 +155,14 @@ export interface BulkListingSubmitResult {
    * (#824).
    */
   jobIds: string[];
+  /**
+   * Count of expanded jobs dropped by `filterAlreadyListed` because the
+   * variant already carries an active offer mapping on the destination
+   * connection (#1933). Zero when nothing was skipped. Lets the caller
+   * report the actually-submitted count instead of the pre-filter selection
+   * count.
+   */
+  skippedAlreadyListedCount: number;
 }
 
 /**

@@ -320,6 +320,7 @@ export class OrdersController {
       syncStatus: order.syncStatus.map((s) => this.toSyncStatusDto(s)),
       syncAttempts: order.syncAttempts.map((a) => this.toSyncAttemptDto(a)),
       recordStatus: order.recordStatus,
+      mappingFailureReason: order.mappingFailureReason,
       createdAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
       updatedAt: order.updatedAt instanceof Date ? order.updatedAt.toISOString() : order.updatedAt,
       dispatchByAt: order.dispatchByAt ? order.dispatchByAt.toISOString() : null,
