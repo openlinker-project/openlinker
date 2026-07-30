@@ -107,10 +107,11 @@ A "catalogue-only Allegro *connection*" was considered and is not viable: the Al
 **Blocking prerequisite — [ADR-031](./031-erli-allegro-category-catalog-via-client-credentials.md) must be amended first:**
 
 - ADR-031's Decision **names `CategoriesCacheService.getAllegroCategories` as the read path** for Erli's category browsing. Deleting that service is therefore not a local cleanup — it changes a mechanism another ADR depends on, and doing it silently would break Erli's browsing.
-- The catalogue variant requires relocating `AllegroCategoryCatalogClient` out of `libs/integrations/erli/src/infrastructure/http/`. ADR-031 deliberately placed it there and had Erli avoid importing the Allegro plugin, on plugin-independence grounds. Neither destination is free: moving it to the Allegro plugin leaves Erli unable to import it; moving it to core puts platform-specific OAuth in the layer that must not know platforms.
-- ADR-031's status is **Proposed**, so it can be amended rather than superseded. The mechanism survives; what changes is where it lives — from per-Erli-connection credentials to one taxonomy source.
+- The catalogue variant relocates `AllegroCategoryCatalogClient` out of `libs/integrations/erli/src/infrastructure/http/`, where ADR-031 deliberately placed it to keep Erli from importing the Allegro plugin. This looks like a dilemma and is not: under this ADR an Erli connection stops fetching a taxonomy altogether — the owner-keyed sync job populates the projection and Erli reads it — so Erli needs nothing from the client and **plugin independence is strengthened**. The duplicated OAuth/fetch logic ADR-031 lists under Cons also stops being duplicated.
+- It does, however, revive an alternative ADR-031 **explicitly rejected**: a single installation-wide Allegro app credential. That rejection was scoped "for v1" and left open as a future evolution, and the reason to revisit is structural rather than deployment-driven — a tree is one object, so per-connection credentials mean N syncs and N copies of it. ADR-031's objections (per-app rate limits concentrate; rotation gains a single owner) stand and are accepted as costs.
+- ADR-031's status is **Proposed** and it already carries two in-body corrections, so it is amended in place following its own convention rather than superseded. **The amendment is written** — see ADR-031 § "Third amendment".
 
-**This ADR should not be accepted before that amendment is agreed**, since two of its decisions (owner-keyed projection, catalogue-only source) depend on it.
+**The two must be accepted together**, since two of this ADR's decisions (owner-keyed projection, catalogue-only source) depend on the amendment, and the amendment has no purpose without them. Both remain `Proposed`; reviewing either alone will read as under-justified.
 
 ## References
 
