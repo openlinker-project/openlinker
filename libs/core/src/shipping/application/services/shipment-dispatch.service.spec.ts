@@ -99,6 +99,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.sourceDeliveryMethodId ?? null,
     overrides.carrier ?? null,
     overrides.deliveryIntent ?? null,
+    overrides.providerCode ?? null,
   );
 }
 
@@ -549,7 +550,11 @@ describe('ShipmentDispatchService', () => {
 
       expect(repository.update).toHaveBeenCalledWith(
         draft.id,
-        expect.objectContaining({ status: 'failed', errorMessage: 'paczkomat unavailable' }),
+        expect.objectContaining({
+          status: 'failed',
+          errorMessage: 'paczkomat unavailable',
+          providerCode: null,
+        }),
       );
     });
 
@@ -573,6 +578,30 @@ describe('ShipmentDispatchService', () => {
       expect(logged).toContain('code=target_point');
       expect(logged).toContain('does_not_exist');
       warn.mockRestore();
+    });
+
+    it('should persist the structured providerCode on a ShippingProviderRejectionException (#1918)', async () => {
+      routing.resolve.mockResolvedValue(resolution());
+      repository.findActiveByOrderId.mockResolvedValue(null);
+      const draft = makeShipment({ status: 'draft' });
+      repository.create.mockResolvedValue(draft);
+      repository.update.mockResolvedValue(makeShipment({ status: 'failed' }));
+      const rejection = new ShippingProviderRejectionException(
+        'inpost',
+        'preflight.missing-parcel-template',
+        'validation errors',
+      );
+      adapter.generateLabel.mockRejectedValue(rejection);
+
+      await expect(service.dispatch(makeInput())).rejects.toBe(rejection);
+
+      expect(repository.update).toHaveBeenCalledWith(
+        draft.id,
+        expect.objectContaining({
+          status: 'failed',
+          providerCode: 'preflight.missing-parcel-template',
+        }),
+      );
     });
   });
 

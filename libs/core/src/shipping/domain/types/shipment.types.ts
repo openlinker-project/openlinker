@@ -96,4 +96,11 @@ export interface UpdateShipmentInput {
   cancelledAt?: Date;
   failedAt?: Date | null;
   errorMessage?: string | null;
+  /**
+   * Structured rejection-code discriminator (#1918) — the
+   * `ShippingProviderRejectionException.providerCode` that produced this
+   * `errorMessage`. Pass explicit `null` to clear a previously-recorded code
+   * (mirrors the `errorMessage`/`failedAt` reset-on-retry convention above).
+   */
+  providerCode?: string | null;
 }

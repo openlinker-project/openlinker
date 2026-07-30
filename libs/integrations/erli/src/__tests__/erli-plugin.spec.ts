@@ -127,6 +127,10 @@ describe('erliAdapterManifest', () => {
     expect(erliAdapterManifest.isDefault).toBe(true);
   });
 
+  it('should declare explicit-group variant grouping so a per-variant category is treated as ordinary metadata, not a split (#1924)', () => {
+    expect(erliAdapterManifest.variantGrouping).toBe('explicit-group');
+  });
+
   it('should carry a display name and version', () => {
     expect(erliAdapterManifest.displayName).toBe('Erli Shop API v1');
     expect(erliAdapterManifest.version).toBe('1.0.0');

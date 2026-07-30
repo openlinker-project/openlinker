@@ -75,6 +75,12 @@ export const erliAdapterManifest: AdapterMetadata = {
   displayName: 'Erli Shop API v1',
   version: '1.0.0',
   isDefault: true,
+  // Grouping is carried by an explicit group id (`externalVariantGroup`),
+  // independent of category (#1924) — a per-variant category is ordinary
+  // metadata here, no split. Declared for discovery; not yet interactively
+  // available (Erli borrows Allegro's taxonomy and ships no CategoryBrowser,
+  // so even the base-scope picker is read-only today, #1045 follow-up).
+  variantGrouping: 'explicit-group',
 };
 
 /**

@@ -105,6 +105,9 @@ export const allegroAdapterManifest: AdapterMetadata = {
   displayName: 'Allegro Public API v1',
   version: '1.0.0',
   isDefault: true,
+  // Siblings group by sharing a catalog product keyed by category (#1924) —
+  // giving one variant its own category splits it out of the grouped listing.
+  variantGrouping: 'catalog-implicit',
 };
 
 /**

@@ -522,4 +522,57 @@ describe('recomputeVariantBlockers', () => {
     expect(blockers).not.toContain('no-ean');
     expect(blockers).toHaveLength(0);
   });
+
+  it('validates a variant with its own category (#1924) against THAT category required params, not the family resolved one', () => {
+    // Family/resolved category ('cat-1') requires 'brand'; the variant's own
+    // override category ('cat-tester') requires 'material' instead. A variant
+    // given its own category via the per-variant bar (#1924) must be checked
+    // against its own schema, not the family's.
+    const requiredByCategory = new Map<string, readonly string[]>([
+      ['cat-1', ['brand']],
+      ['cat-tester', ['material']],
+    ]);
+    const withOwnCategory = makeVariant('ol_variant_1', {
+      resolvedCategoryId: 'cat-1',
+      resolvedProductCardId: null,
+      override: { overrides: { categoryId: 'cat-tester' } },
+    });
+    const row = makeWizardRow([withOwnCategory]);
+
+    const blockers = recomputeVariantBlockers(
+      row,
+      withOwnCategory,
+      CONFIG,
+      requiredByCategory,
+      allegroValidate,
+    );
+
+    expect(blockers).toContain(NEEDS_PARAMS);
+  });
+
+  it('does not block on the family category requirement once satisfied by the variant own category override', () => {
+    // 'cat-1' requires 'brand' (unsatisfied), but this variant overrides to
+    // 'cat-tester', which has no required params at all - it must not inherit
+    // the family category's blocker.
+    const requiredByCategory = new Map<string, readonly string[]>([
+      ['cat-1', ['brand']],
+      ['cat-tester', []],
+    ]);
+    const withOwnCategory = makeVariant('ol_variant_1', {
+      resolvedCategoryId: 'cat-1',
+      resolvedProductCardId: null,
+      override: { overrides: { categoryId: 'cat-tester' } },
+    });
+    const row = makeWizardRow([withOwnCategory]);
+
+    const blockers = recomputeVariantBlockers(
+      row,
+      withOwnCategory,
+      CONFIG,
+      requiredByCategory,
+      allegroValidate,
+    );
+
+    expect(blockers).not.toContain(NEEDS_PARAMS);
+  });
 });

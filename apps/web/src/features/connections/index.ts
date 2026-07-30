@@ -27,8 +27,14 @@ export type {
   UpdateConnectionInput,
   PlatformType,
   CoreCapability,
+  VariantGroupingModel,
 } from './api/connections.types';
-export { CORE_PLATFORM_TYPES, CORE_CAPABILITY_VALUES } from './api/connections.types';
+export {
+  CORE_PLATFORM_TYPES,
+  CORE_CAPABILITY_VALUES,
+  VARIANT_GROUPING_MODEL_VALUES,
+  resolveVariantGroupingModel,
+} from './api/connections.types';
 
 export { useConnectionsQuery } from './hooks/use-connections-query';
 export { useConnectionQuery } from './hooks/use-connection-query';

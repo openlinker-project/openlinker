@@ -75,5 +75,12 @@ export class Shipment {
     // dispatch seam. Appended last for the same anti-collision rationale —
     // do not splice into the middle.
     public readonly deliveryIntent: DeliveryIntent | null,
+    // Structured rejection-code discriminator (#1918) from the same
+    // `ShippingProviderRejectionException` that produced `errorMessage` —
+    // e.g. `preflight.missing-parcel-template`, `api.http-503`, or a
+    // carrier-surfaced code. `null` when the failure carried no exception
+    // (a plain `Error`) or the shipment never failed. Required (no default)
+    // for the same anti-collision reason as `deliveryIntent`/`carrier` above.
+    public readonly providerCode: string | null,
   ) {}
 }
