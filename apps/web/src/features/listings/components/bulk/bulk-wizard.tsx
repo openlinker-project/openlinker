@@ -781,7 +781,16 @@ function reblockRows(
  * after the wizard has already shown the row as ready.
  */
 function toWireOverride(override: BulkPerProductOverride): BulkPerProductOverride {
-  const { pricingPolicy: _pricingPolicy, stockPolicy: _stockPolicy, ...wire } = override;
+  // Built by allow-list rather than by omission, so a future FE-only field
+  // added to `BulkPerProductOverride` cannot silently reach the wire and
+  // reintroduce this class of whole-request rejection.
+  const wire: BulkPerProductOverride = {};
+  if (override.stock !== undefined) wire.stock = override.stock;
+  if (override.publishImmediately !== undefined) {
+    wire.publishImmediately = override.publishImmediately;
+  }
+  if (override.price !== undefined) wire.price = override.price;
+  if (override.overrides !== undefined) wire.overrides = override.overrides;
   return wire;
 }
 

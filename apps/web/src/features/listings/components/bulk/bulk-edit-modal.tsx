@@ -1402,12 +1402,23 @@ function BaseScopeForm({
               <FormField
                 name="bulk-edit-stock-policy"
                 label="Stock policy"
-                description="Per-product override of the batch stock policy."
+                description={
+                  // #1934/F9 - for a multi-variant product the backend takes
+                  // each sibling's own master availability and DISCARDS any
+                  // submitted per-variant stock, so offering `cap` / `flat`
+                  // here promised a quantity that was silently replaced (and,
+                  // at 0, quietly downgraded the offer to a draft). Say so
+                  // rather than let the operator set a value that never lands.
+                  row.variants.length > 1
+                    ? 'Each variant lists its own master stock. A fixed or capped quantity cannot be applied per variant.'
+                    : 'Per-product override of the batch stock policy.'
+                }
               >
                 <select
                   className="bulk-editor__input"
                   aria-label="Stock policy"
                   value={stockPolicy.mode}
+                  disabled={row.variants.length > 1}
                   onChange={(e) => onStockPolicyChange(nextStockPolicy(e.target.value as StockPolicyMode, stockPolicy))}
                 >
                   <option value="use-master">Use master stock</option>
