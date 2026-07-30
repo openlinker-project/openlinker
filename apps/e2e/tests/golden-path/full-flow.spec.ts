@@ -236,11 +236,19 @@ test.describe('golden path — full flow (S0-S9)', () => {
     // zero-fills an unknown variant with `{totalAvailable: 0, locationCount: 0}` and
     // `captureStock` pre-seeds its map with 0 on top of that, so the old loop passed
     // with `inventory_items` empty - exactly the state the comment claimed to rule
-    // out. `locationCount` is the field that separates a real row from the zero-fill,
-    // and it is only readable off the raw response, not the snapshot map.
+    // out.
+    //
+    // `locationCount` is NOT the discriminator it appears to be: the repository
+    // derives it as `COUNT(DISTINCT inv.locationId)` (`inventory.repository.ts:109`)
+    // and the PrestaShop master writes rows with a NULL `locationId`, so a real
+    // freshly-synced row reports `{totalAvailable: 25, locationCount: 0}` - this
+    // assertion failed on exactly that, live, on 2026-07-30. Nothing this endpoint
+    // returns separates "no row" from "a real row holding zero", so the falsifiable
+    // check is a POSITIVE quantity: a variant whose inventory never synced reads 0,
+    // and a driver product at zero stock cannot be bought by the segments below.
     const baselineRows = await api.inventory.availability(state.variantIds);
     expect(
-      baselineRows.filter((row) => row.locationCount > 0).map((row) => row.productVariantId).sort(),
+      baselineRows.filter((row) => row.totalAvailable > 0).map((row) => row.productVariantId).sort(),
       'every variant carries a real (non-zero-filled) master availability row',
     ).toEqual([...state.variantIds].sort());
   });

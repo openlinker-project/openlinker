@@ -72,11 +72,20 @@ test.describe('operator setup (S1-S4)', () => {
     // `length === variants.length` plus `totalAvailable >= 0` could not fail:
     // `getAvailabilityByVariantIds` zero-fills unknown ids and preserves input
     // order, so both held with `inventory_items` empty - the exact condition the
-    // old comment claimed to rule out. `locationCount` is what distinguishes a
-    // real row from the zero-fill.
+    // old comment claimed to rule out.
+    //
+    // `locationCount` looks like the discriminator and is NOT one: the
+    // repository derives it as `COUNT(DISTINCT inv.locationId)`
+    // (`inventory.repository.ts:109`), and the PrestaShop master writes its rows
+    // with a NULL `locationId`, so a genuinely-synced row reports
+    // `{totalAvailable: 25, locationCount: 0}` - verified live 2026-07-30.
+    // Nothing on this endpoint separates "no row" from "a real row holding
+    // zero", so the falsifiable check is a POSITIVE quantity: a variant that
+    // never synced reads 0, and a driver product with no stock could not be
+    // sold by the segments that follow anyway.
     const availability = await poll.until(
       () => api.inventory.availability(variants.map((v) => v.id)),
-      (rows) => rows.every((row) => row.locationCount > 0),
+      (rows) => rows.every((row) => row.totalAvailable > 0),
       {
         message: `a real (non-zero-filled) master availability row for every variant of ${product.id}`,
         timeoutMs: 60_000,
