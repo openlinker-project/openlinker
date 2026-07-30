@@ -102,3 +102,57 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 **Rule**: When a wire payload shape (credentials, connection config) is consumed by more than one layer, add at least one test that drives the real FE-produced payload through the BE validator and adapter factory together (or assert all layers against a single shared fixture) — do not rely on per-layer specs that each construct their own payload.
 **Applies to**: connection credentials/config shape validators (`plugin.register` validators), adapter factories in `libs/integrations/**`, FE connection-wizard schemas in `apps/web/src/features/connections/`.
 **Source**: #1318 / PR #1319.
+
+## `@modelcontextprotocol/sdk` is the **v1** line — SDK v2 ships as a scoped package family
+
+**Context**: Checking whether the MCP TypeScript SDK v2 had shipped, as #1486's acceptance criteria required.
+**Problem**: `npm view @modelcontextprotocol/sdk` reports `latest: 1.30.0` with no `2.x` version and no v2 prerelease, which reads as "v2 has not been released". It has — v2 shipped 2026-07-27 as a **scoped package family** under new names (`@modelcontextprotocol/core`, `/server`, `/client`, `/express`, `/node`, `/hono`, `/fastify`, `/server-legacy`, `/codemod`, all `2.0.0`). The old package name was left on the v1 line. Concluding "not released" from the v1 name would have wrongly parked the whole issue.
+**Rule**: When a dependency's major version appears missing, check the **GitHub releases page and the org's other package names**, not just `npm view <old-name>`. A monorepo SDK that splits packages at a major bump will leave the original name frozen on the previous line.
+**Applies to**: any `@modelcontextprotocol/*` dependency decision; dependency-availability checks generally.
+**Source**: #1486.
+
+## Verify a new SDK's API against its installed `.d.ts`, never a fetched doc summary
+
+**Context**: Planning the MCP transport wiring against a two-day-old SDK.
+**Problem**: A web-fetched summary of the SDK docs produced `createExpressHandler(server)` — a function that **does not exist** in `@modelcontextprotocol/express@2.0.0`. A plan and a set of design decisions were built on it before the package was installed and its `index.d.cts` read. The real surface is `createMcpExpressApp` / `requireBearerAuth` / `toNodeHandler`. The SDK's own prose also referred to `ctx.http.authInfo` while its types declare `McpRequestContext.authInfo` — so even first-party documentation disagreed with the shipped types.
+**Rule**: For any newly-adopted or recently-majored dependency, `npm install` it into a scratch directory and read the shipped `.d.ts`/`.d.cts` **before** committing to an API in a plan or a diff. Treat doc prose (including the vendor's own) as a hint, and the type declarations as the contract.
+**Applies to**: adopting or major-upgrading any external SDK; `libs/integrations/**`, `apps/api/src/mcp/`.
+**Source**: #1486.
+
+## A service in `apps/**` may not inject a core `*RepositoryPort` — put the service in the owning context instead
+
+**Context**: Placing the MCP-token mint/verify service, following the `RefreshTokenService` precedent (`apps/api/src/auth/` over a `libs/core/src/users/` repository port).
+**Problem**: That precedent passes `check-cross-context-imports` **only because it is grandfathered** in the script's `ALLOW_LIST` (tracked tech debt, #718/#722). Copying it for greenfield code fails `pnpm lint` on the first commit, and "fixing" it by adding new ALLOW_LIST entries grows a list that exists to shrink.
+**Rule**: Cross-context callers go through an `I*Service` + Symbol token, never a `*RepositoryPort`. If a new service needs a core context's repository, put the **service** in that context (`libs/core/src/<ctx>/application/services/`) and export its interface. Bonus: `check-service-interfaces` only scans `libs/core`, so the `I*Service` rule becomes machine-enforced rather than merely conventional.
+**Applies to**: any new service in `apps/{api,worker}` that needs core persistence; `scripts/check-cross-context-imports.mjs`.
+**Source**: #1486 (`/pre-implement` gate caught it pre-code).
+
+## Integration-test schema is built by `synchronize`, not migrations — migration-only FKs don't exist there
+
+**Context**: Asserting that deleting a user cascade-deletes their MCP tokens.
+**Problem**: The assertion failed: the row survived. The FK is declared in the migration (`REFERENCES users(id) ON DELETE CASCADE`) but the ORM entity carries only a plain `user_id` column, and `apps/api/test/integration/setup.ts` builds its schema with `synchronize` — so migration-only constraints are absent from the test database. `setup.ts` already documents this for `connection_carrier_mappings` and `fulfillment_routing_rules`.
+**Rule**: Don't assert migration-only DDL (FKs, cascades, check constraints) in an int-spec — it can't be there. Assert the **behaviour** the constraint backs instead (e.g. an orphaned credential still fails authentication), and add the table to `setup.ts`'s truncate list explicitly, since there is no FK for `users` to cascade from and rows will otherwise leak between cases.
+**Applies to**: `apps/api/test/integration/**`, any table whose FKs live only in a migration.
+**Source**: #1486.
+## Default a response DTO's redaction flag to REDACTED, never to "show it"
+
+**Context**: `ShipmentResponseDto.fromDomain(shipment, customerId, canWrite)` gates the raw carrier `errorMessage` (which can embed a rejected address fragment) on the requester holding `shipments:write` (#1826).
+**Problem**: `canWrite` was declared `canWrite = true` so the command endpoints could omit it. That makes the *failure mode of forgetting the argument* a silent data disclosure: a new read endpoint that doesn't thread `@CurrentUser()` through compiles clean and serves the unredacted field to every role. The same trap applies to the error path - the carrier-rejection 502 body carried the same provider text with no gate at all, so a route without `@Roles` (label download, deliberately open to viewers) leaked what the persisted field withheld.
+**Rule**: Make a security-relevant redaction parameter **required and un-defaulted** so a new call site cannot compile without deciding, and pass it explicitly (`true` with a one-line "this route is `@Roles`-gated" comment) at the sites that don't need redaction. If a default is unavoidable, default to redacted. Then sweep every *other* surface that carries the same text - error bodies included - not just the persisted field.
+**Applies to**: `apps/api/src/shipping/http/dto/shipment-response.dto.ts`, `apps/api/src/shipping/http/shipment.controller.ts` (`toHttpException`); any response DTO with a role-gated field.
+**Source**: #1826 review round (PR #1905).
+
+## A hand-copied FE/BE literal union needs a `check:invariants` guard, not a "keep in sync" comment
+
+**Context**: `PermissionValues` exists twice - authoritative in `libs/core/src/users/domain/types/role.types.ts`, hand-mirrored in `apps/web/src/shared/auth/session.types.ts` (the browser bundle can't import `@openlinker/core`).
+**Problem**: The mirror carried only a prose "keep the two in sync" comment. Drift is silent in both directions: a permission added only to core never reaches `usePermission`, and one added only to the FE type-checks against a `permissions[]` array the API will never populate. A prior analysis had already recorded the risk and nothing enforced it.
+**Rule**: When a union of string literals must be duplicated across the FE/BE boundary, add a textual-parse invariant script (`scripts/check-*-mirror.mjs`, no TS import, `--self-check` for the pure differ) and chain it into `check:invariants` - the same shape as `check-service-interfaces.mjs`. A comment is not enforcement.
+**Applies to**: `scripts/check-permission-mirror.mjs`; any future FE/BE mirrored `as const` vocabulary.
+**Source**: #1826 review round (PR #1905).
+## An upsert overlay must not assign a lifecycle-state column unconditionally when two decoupled writers share the row
+
+**Context**: `webhook_deliveries` is stamped by the ingress API (`received`, then `published` after the stream publish) and, independently, by the stream consumer that reads that publish (`job_enqueued` / `deadlettered`). Both go through the same `INSERT ... ON CONFLICT DO UPDATE`, whose set-list is built from the caller-supplied overlay columns.
+**Problem**: `"status" = EXCLUDED."status"` makes the *last* write win, and the consumer routinely wins the stream read before the API's follow-up write lands. So `published` overwrote `job_enqueued`, producing rows that claim `published` while carrying a `downstreamJobId` - and a `main` pipeline that went red on the #1511 drain assertion whenever the coin landed that way. Note the shape of the trap: the write that got lost was *not* the racy-looking one, and both callers were individually correct.
+**Rule**: When a column encodes lifecycle progression and more than one process upserts the row, resolve the conflict by an explicit precedence ladder in SQL (`CASE WHEN rank(EXCLUDED) >= rank(current) THEN EXCLUDED ELSE current END`) rather than by arrival order, and keep the rank map beside the status union so the two cannot drift. Do not "fix" it by reordering the callers - they are deliberately decoupled, and neither can reason about the other's timing. Prove it with an integration test: the guard lives in SQL, so a mocked repository cannot exercise it.
+**Applies to**: repository upserts over a status/lifecycle column with more than one writer - today `webhook_deliveries` (`libs/core/src/webhooks/infrastructure/persistence/repositories/webhook-delivery.repository.ts`); the same shape would apply to any future `*_snapshots` or delivery-audit table written from both an ingress and a consumer path.
+**Source**: #1916 (CI run 30435342214).

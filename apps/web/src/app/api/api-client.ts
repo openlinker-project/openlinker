@@ -40,6 +40,7 @@ import {
   createMailerSettingsApi,
   type MailerSettingsApi,
 } from '../../features/mailer-settings/api/mailer-settings.api';
+import { createMcpTokensApi, type McpTokensApi } from '../../features/mcp-tokens';
 import { createOrdersApi, type OrdersApi } from '../../features/orders/api/orders.api';
 import {
   createPosthogSettingsApi,
@@ -111,6 +112,7 @@ export interface CoreApiClient {
   invoicing: InvoicingApi;
   listings: ListingsApi;
   mailerSettings: MailerSettingsApi;
+  mcpTokens: McpTokensApi;
   orders: OrdersApi;
   posthogSettings: PosthogSettingsApi;
   products: ProductsApi;
@@ -264,6 +266,7 @@ export function createApiClient({
     invoicing: createInvoicingApi(request, requestBlob),
     listings: createListingsApi(request),
     mailerSettings: createMailerSettingsApi(request),
+    mcpTokens: createMcpTokensApi(request),
     mappings: createMappingsApi(request),
     orders: createOrdersApi(request),
     posthogSettings: createPosthogSettingsApi(request),

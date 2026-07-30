@@ -45,6 +45,13 @@ export const MASTER_DELETION_EVENT_SCHEMA_VERSION = '2';
  * stale-offer-pause job together. `externalId` is the master-native product id
  * (e.g. the PrestaShop/WooCommerce product id), included for operator-facing
  * correlation against the source system.
+ *
+ * `variantIds` can be empty even when the event represents a real deletion: a
+ * product-level row (`productVariantId = NULL`, e.g. an ambiguous multi/zero-
+ * variant product) contributes to the prune's row count but carries no variant
+ * id to report (#1688). A consumer that needs to react to "this product's
+ * inventory just went stale" should key off `internalProductId`, not assume
+ * `variantIds` is non-empty.
  */
 export interface MasterDeletionEventPayload {
   connectionId: string;

@@ -16,10 +16,13 @@ import type { PaymentStatus } from '../api/order-snapshot.schema';
 
 function renderGate(paymentStatus?: PaymentStatus): void {
   // No shipment row → synthetic 'none' status, which CAN_GENERATE allows, so the
-  // only thing that can disable Generate here is the payment gate.
+  // only thing that can disable Generate here is the payment gate. `canWrite`
+  // is held true throughout (#1905) — the permission gate is a separate axis
+  // covered in order-shipment-panel.test.tsx.
   renderWithProviders(
     <ShipmentActionButtons
       shipment={null}
+      canWrite
       paymentStatus={paymentStatus}
       onGenerateLabelClick={vi.fn()}
     />,
@@ -27,7 +30,7 @@ function renderGate(paymentStatus?: PaymentStatus): void {
 }
 
 // When payment blocks, the Generate button's accessible name switches to the
-// awaiting caption; otherwise it's the normal generate label.
+// block reason; otherwise it's the normal generate label.
 const blockedButton = (): HTMLElement => screen.getByRole('button', { name: /awaiting payment/i });
 const generateButton = (): HTMLElement =>
   screen.getByRole('button', { name: /generate shipping label/i });
@@ -57,5 +60,19 @@ describe('ShipmentActionButtons payment gate (#928)', () => {
     // PrestaShop / legacy orders carry no payment status — must not block.
     renderGate(undefined);
     expect(generateButton()).toBeEnabled();
+  });
+
+  it('should disable Generate and name the permission when canWrite is false (#1905)', () => {
+    renderWithProviders(
+      <ShipmentActionButtons
+        shipment={null}
+        canWrite={false}
+        paymentStatus="paid"
+        onGenerateLabelClick={vi.fn()}
+      />,
+    );
+    const button = screen.getByRole('button', { name: /shipments:write permission/i });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('title', expect.stringMatching(/shipments:write permission/i));
   });
 });

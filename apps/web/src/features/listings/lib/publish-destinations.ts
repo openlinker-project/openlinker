@@ -87,3 +87,24 @@ export function selectPublishDestinations(
       return a.connection.name.localeCompare(b.connection.name);
     });
 }
+
+/**
+ * Resolve which destination is the active pick: auto-resolves when exactly
+ * one destination is eligible, otherwise falls back to the operator's own
+ * pick (or `null`/`null` when nothing is eligible or nothing picked yet).
+ */
+export function resolvePublishDestination(
+  destinations: readonly PublishDestination[],
+  pickedConnectionId: string,
+): { resolvedConnectionId: string | null; resolvedKind: PublishDestinationKind | null } {
+  const resolvedConnectionId =
+    destinations.length === 1 ? destinations[0].connection.id : pickedConnectionId || null;
+  const resolvedDestination =
+    resolvedConnectionId !== null
+      ? destinations.find((d) => d.connection.id === resolvedConnectionId) ?? null
+      : null;
+  return {
+    resolvedConnectionId,
+    resolvedKind: resolvedDestination?.kind ?? null,
+  };
+}

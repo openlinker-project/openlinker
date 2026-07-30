@@ -7,9 +7,15 @@
  * "Out of scope today" note), so this is the seam other features and plugins
  * bind against.
  *
- * Today's only cross-feature consumer is `use-notify-dispatched-mutation`
- * (#769), which needs `ordersQueryKeys.all` to invalidate the orders domain on
- * dispatch-notify success.
+ * Cross-feature consumers today: `use-notify-dispatched-mutation` (#769),
+ * which needs `ordersQueryKeys.all` to invalidate the orders domain on
+ * dispatch-notify success; and the `shipments` feature's `/shipments` page
+ * (#1826), which needs `ConnectionDot` for its Provider column. The
+ * per-status shipment-action-eligibility `Set`s live on the `shipments`
+ * barrel instead (they're keyed on `ShipmentStatus`, which `shipments` owns)
+ * — both this feature's `ShipmentActionButtons` and the `/shipments`
+ * accordion import them from there, so neither barrel depends on the other
+ * for that policy.
  */
 export { ordersQueryKeys } from './api/orders.query-keys';
 export type {
@@ -18,3 +24,4 @@ export type {
   OrderPagination,
   PaginatedOrders,
 } from './api/orders.types';
+export { ConnectionDot } from './components/connection-dot';

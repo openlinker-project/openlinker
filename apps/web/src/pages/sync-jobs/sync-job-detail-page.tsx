@@ -14,7 +14,7 @@ import { useRetrySyncJobMutation } from '../../features/sync-jobs/hooks/use-retr
 import type { SyncJob } from '../../features/sync-jobs/api/sync-jobs.types';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
-import { OfferCreationTracker } from '../../features/listings/components/OfferCreationTracker';
+import { OfferCreationTracker } from '../../features/listings/components/offer-creation-tracker';
 import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';

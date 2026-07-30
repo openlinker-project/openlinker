@@ -20,6 +20,8 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     status: 'generated',
     providerShipmentId: 'PROV-1',
     paczkomatId: null,
+    sourceDeliveryMethodId: null,
+    deliveryIntent: null,
     trackingNumber: null,
     carrier: null,
     labelPdfRef: null,

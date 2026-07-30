@@ -20,6 +20,7 @@ import type {
 } from '@openlinker/core/inventory';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import { MasterProductNotFoundError } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
@@ -63,19 +64,59 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
   async listInventory(productId: string): Promise<Inventory[]> {
     this.logger.debug(`Listing inventory for product: ${productId} (connection: ${this.connection.id})`);
 
+    // Resolved OUTSIDE the translating try on purpose: a missing mapping is a
+    // mapping gap, not a master-side deletion, so it must not reach the
+    // not-found translation below (see resolveWcProductId).
     const wcId = await this.resolveWcProductId(productId);
-    const product = await this.httpClient.get<WooCommerceProduct>(`/wp-json/wc/v3/products/${wcId}`);
 
-    if (product.type === 'variable') {
-      return this.listVariableInventory(productId, wcId, product);
+    try {
+      let product: WooCommerceProduct;
+      try {
+        product = await this.httpClient.get<WooCommerceProduct>(`/wp-json/wc/v3/products/${wcId}`);
+      } catch (err) {
+        if (err instanceof WooCommerceHttpResponseException && err.statusCode === 404) {
+          throw new WooCommerceResourceNotFoundException(
+            `WooCommerce product ${wcId} not found (deleted?)`,
+            'Product',
+            productId,
+            this.connection.id,
+          );
+        }
+        throw err;
+      }
+
+      // Must be awaited, not just returned - a bare `return this.listVariableInventory(...)`
+      // hands the promise straight to the caller without the surrounding try
+      // ever observing its rejection, so the outer catch below would never
+      // fire for an error raised inside it (#1688).
+      if (product.type === 'variable') {
+        return await this.listVariableInventory(productId, wcId, product);
+      }
+      return await this.listSimpleInventory(productId, wcId, product);
+    } catch (error) {
+      // Translate a platform-reported product absence (a 404 on the product GET
+      // or on the variations page) into the neutral core error so core services
+      // can distinguish deletion from a transient failure (#1688, mirrors the
+      // product-master adapter's #1599 translation). Scoped to the platform
+      // calls only — a missing mapping (resolved above) and a corrupted mapping
+      // (WooCommerceInvalidIdentifierException) are deliberately excluded.
+      if (error instanceof WooCommerceResourceNotFoundException) {
+        throw new MasterProductNotFoundError(productId, this.connection.id, error);
+      }
+      throw error;
     }
-    return this.listSimpleInventory(productId, wcId, product);
   }
 
   async getInventory(productId: string, _locationId?: string): Promise<Inventory> {
     this.logger.debug(`Getting inventory for product: ${productId} (connection: ${this.connection.id})`);
     // locationId is always undefined for WC (single-location at v1)
     const rows = await this.listInventory(productId);
+    // Deliberately NOT a MasterProductNotFoundError: an empty row set means the
+    // product resolved at the master but has no stock-bearing entry (a variable
+    // product with zero variations), which is not a deletion. Both read methods
+    // agree on the same contract — only a platform-reported *product* absence
+    // becomes the neutral deletion error; anything inferred stays a platform
+    // exception (mirrors the PrestaShop adapter's zero-stock-rows probe).
     if (rows.length === 0) {
       throw new WooCommerceResourceNotFoundException(
         `No inventory found for product ${productId} on connection ${this.connection.id}`,
@@ -110,10 +151,10 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
           'Specify adjustment.variantId to target a specific variation.',
         );
       }
-      return this.adjustVariationInventory(adjustment, wcId, adjustment.variantId);
+      return await this.adjustVariationInventory(adjustment, wcId, adjustment.variantId);
     }
 
-    return this.adjustSimpleInventory(adjustment, wcId, product);
+    return await this.adjustSimpleInventory(adjustment, wcId, product);
   }
 
   reserveInventory(_productId: string, _quantity: number, _orderId: string): Promise<void> {
@@ -159,6 +200,21 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
     return parseStockQuantity(stockQuantity);
   }
 
+  /**
+   * Neither failure mode here is a master-side deletion, and both are kept out
+   * of listInventory's not-found translation (which is scoped to the platform
+   * calls only):
+   *
+   * - No mapping for this connection: a mapping gap — the product was never
+   *   mapped here (or was mapped under a different connection). Classifying it
+   *   as "deleted" would stale a still-live product's inventory and terminalise
+   *   the job as `business_failure` (no retry), so it stays a retryable,
+   *   diagnosable platform exception and is logged with the discriminator.
+   * - An externalId that fails to parse as a positive integer: a corrupted
+   *   mapping, i.e. a data-integrity bug, left as
+   *   WooCommerceInvalidIdentifierException rather than folded into
+   *   WooCommerceResourceNotFoundException.
+   */
   private async resolveWcProductId(productId: string): Promise<number> {
     const externalIds = await this.identifierMapping.getExternalIds(
       CORE_ENTITY_TYPE.Product,
@@ -166,6 +222,9 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
     );
     const mapping = externalIds.find((e) => e.connectionId === this.connection.id);
     if (!mapping) {
+      this.logger.warn(
+        `master_inventory_mapping_gap product=${productId} connection=${this.connection.id} — no external ID mapping; NOT classified as a master deletion`,
+      );
       throw new WooCommerceResourceNotFoundException(
         `Product ${productId} is not mapped for connection ${this.connection.id}`,
         'Product',
@@ -173,19 +232,7 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
         this.connection.id,
       );
     }
-    try {
-      return toPositiveInt(mapping.externalId, 'product id');
-    } catch (err) {
-      if (err instanceof WooCommerceInvalidIdentifierException) {
-        throw new WooCommerceResourceNotFoundException(
-          `Product mapping for ${productId} has invalid externalId "${mapping.externalId}" (not a positive integer)`,
-          'Product',
-          productId,
-          this.connection.id,
-        );
-      }
-      throw err;
-    }
+    return toPositiveInt(mapping.externalId, 'product id');
   }
 
   private async listSimpleInventory(
@@ -219,11 +266,28 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
     wcId: number,
     _product: WooCommerceProduct,
   ): Promise<Inventory[]> {
-    const variations = await fetchAllPages<WooCommerceProductVariation>(
-      `/wp-json/wc/v3/products/${wcId}/variations`,
-      this.httpClient,
-      this.logger,
-    );
+    let variations: WooCommerceProductVariation[];
+    try {
+      variations = await fetchAllPages<WooCommerceProductVariation>(
+        `/wp-json/wc/v3/products/${wcId}/variations`,
+        this.httpClient,
+        this.logger,
+      );
+    } catch (err) {
+      // Mirrors the initial product GET's translation (top of listInventory) -
+      // the product can be deleted in the window between that GET and this
+      // fetch, and without this the race stays an untranslated, retryable
+      // error instead of the neutral deletion signal (#1688).
+      if (err instanceof WooCommerceHttpResponseException && err.statusCode === 404) {
+        throw new WooCommerceResourceNotFoundException(
+          `WooCommerce product ${wcId} variations not found (deleted?)`,
+          'Product',
+          productId,
+          this.connection.id,
+        );
+      }
+      throw err;
+    }
 
     if (variations.length === 0) return [];
 

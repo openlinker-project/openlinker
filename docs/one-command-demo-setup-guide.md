@@ -41,15 +41,31 @@ tier — API + Worker + admin UI.
 - **~4 GB free disk** for the built images and a few minutes for the first build
   (the whole monorepo is compiled inside the image; the build is from your local
   checkout, not a pre-built registry image).
-- **Free host ports:** `8090` (UI), `3000` (API), `8080` (PrestaShop), `8081`
-  (phpMyAdmin), `8082` (WooCommerce), `5432` (Postgres), `6379` (Redis), `3306`
-  (MySQL), `3307` (WooCommerce MySQL).
+- **Free host ports:** `8090` (UI), `3000` (API), `8080` (PrestaShop), `8082`
+  (WooCommerce), `5432` (Postgres), `6379` (Redis), `3306` (MySQL), `3307`
+  (WooCommerce MySQL). `8081` (phpMyAdmin) is only needed if you opt into the
+  `devtools` profile — see below.
 
 > ⚠️ **Shared volumes with the dev stack.** The demo shares the same Compose
 > project (`openlinker`) and data volumes as `pnpm dev:stack:up`. On a machine
 > that already runs the local dev stack, the demo **reuses and can clobber that
 > data** — the two flows are *not* isolated. Stop (and, if needed, wipe) one
 > before running the other: `pnpm dev:stack:down` or `pnpm demo:down -v`.
+
+> ⚠️ **Upgrading from a pre-#1411 stack (one-time).** Named volumes were renamed
+> `_data` → `-data` and PostgreSQL moved 16 → 17, so your first `pnpm demo:up`
+> after pulling boots with an **empty database and no warning** — the old data
+> lives on in orphaned `openlinker_*_data` volumes. Confirm you don't need it,
+> then reclaim the disk:
+>
+> ```bash
+> docker volume rm \
+>   openlinker_postgres_data openlinker_redis_data openlinker_mysql_data \
+>   openlinker_prestashop_data openlinker_woocommerce_mysql_data \
+>   openlinker_woocommerce_data openlinker_caddy_data openlinker_caddy_config
+> ```
+>
+> Full note: [`README.md` § Runtime requirements](../README.md#runtime-requirements).
 
 ---
 
@@ -120,6 +136,23 @@ in the demo banner.
 | `OL_POSTHOG_KEY` | PostHog project API key (publishable, write-only ingestion key — never a personal/private key). Unset by default. |
 | `OL_POSTHOG_HOST` | PostHog ingestion host. Defaults to `https://eu.posthog.com` when `OL_POSTHOG_KEY` is set. |
 
+#### Product events need one manual step
+
+The two variables above enable **session recording only**. Named product
+events (`demo_offer_create_attempted`, `demo_orders_viewed`, …) are a separate,
+**DB-only** setting with no env var — an env-configured demo emits none of them
+until an admin turns them on. After the stack is up:
+
+1. Sign in as an admin and go to `/settings` → **PostHog**.
+2. Enable the **Product events** master toggle.
+3. Tick the event **groups** you want (they are derived from the event catalog,
+   so the list is always current).
+
+Both the master toggle and an event's own group must be on before that event
+fires. Until then the instrumentation is inert — the demo works normally, it
+just reports nothing. See [`docs/analytics-events.md`](./analytics-events.md)
+for the catalog and the group model.
+
 **Only run session recording against synthetic seed data. This is a hard
 requirement, not a precaution.** Recording masks **passwords only** (#1877)
 — every other input value and all rendered page text is captured verbatim,
@@ -156,7 +189,7 @@ pnpm demo:down      # stop the stack (add -v to also wipe the data volumes)
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build \
-  postgres redis mysql phpmyadmin woocommerce-mysql woocommerce prestashop migrate api worker web
+  postgres redis mysql woocommerce-mysql woocommerce prestashop migrate api worker web
 ```
 
 Boot order is enforced by `depends_on` (not the CLI service list):
@@ -185,12 +218,13 @@ download); give them a few minutes on the first run.
 | OpenLinker API | http://localhost:3000 | — (JWT via the UI) |
 | PrestaShop storefront | http://localhost:8080 | — |
 | PrestaShop admin | http://localhost:8080/**admin-dev** | `demo@prestashop.com` / `prestashop_demo` |
-| phpMyAdmin | http://localhost:8081 | `root` / `root` |
 | WooCommerce storefront | http://localhost:8082 | — |
 | WooCommerce admin (`wp-admin`) | http://localhost:8082/wp-admin | `admin` / `admin123` |
 
 > The PrestaShop admin folder is `admin-dev` (the post-install step renames the
 > randomized install folder), **not** `/admin`.
+
+phpMyAdmin (PrestaShop MySQL browser) is a devtools-only auxiliary service, not part of the default boot — start it separately with `pnpm demo:devtools:up`, then reach it at http://localhost:8081 (`root` / `root`).
 
 ---
 

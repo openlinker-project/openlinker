@@ -9,6 +9,7 @@ import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
+import { MarketingTrackingFootnote } from '../../demo';
 
 const DEFAULT_VALUES: LoginFormValues = {
   username: '',
@@ -17,9 +18,13 @@ const DEFAULT_VALUES: LoginFormValues = {
 
 interface LoginFormProps {
   demoMode?: boolean;
+  showTrackingFootnote?: boolean;
 }
 
-export function LoginForm({ demoMode = false }: LoginFormProps): ReactElement {
+export function LoginForm({
+  demoMode = false,
+  showTrackingFootnote = false,
+}: LoginFormProps): ReactElement {
   const login = useLogin();
   const form = useForm<LoginFormValues>({
     defaultValues: DEFAULT_VALUES,
@@ -27,7 +32,7 @@ export function LoginForm({ demoMode = false }: LoginFormProps): ReactElement {
   });
 
   const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : [],
+    error?.message ? [String(error.message)] : []
   );
 
   const onSubmit = form.handleSubmit(async (values) => {
@@ -96,6 +101,8 @@ export function LoginForm({ demoMode = false }: LoginFormProps): ReactElement {
           </Link>
         </>
       ) : null}
+
+      {showTrackingFootnote ? <MarketingTrackingFootnote /> : null}
     </form>
   );
 }

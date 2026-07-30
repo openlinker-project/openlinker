@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react';
+import { useEffect, useRef, type ReactElement } from 'react';
 import { useAdaptersQuery } from '../../features/adapters/hooks/use-adapters-query';
 import type { AdapterSummary } from '../../features/adapters/api/adapters.types';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -6,6 +6,7 @@ import { ErrorState, LoadingState, EmptyState } from '../../shared/ui/feedback-s
 import { StatusBadge } from '../../shared/ui/status-badge';
 import { Button } from '../../shared/ui/button';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { bucketCount, captureDemoEvent } from '../../features/demo';
 
 const COLUMNS: DataTableColumn<AdapterSummary>[] = [
   {
@@ -54,6 +55,18 @@ const COLUMNS: DataTableColumn<AdapterSummary>[] = [
 
 export function AdaptersCatalogPage(): ReactElement {
   const query = useAdaptersQuery();
+
+  // Fire once per successful load, not on every refetch — demo-mode
+  // analytics only (#1789), no-op elsewhere.
+  const hasFiredViewedRef = useRef(false);
+  useEffect(() => {
+    if (query.data && !hasFiredViewedRef.current) {
+      hasFiredViewedRef.current = true;
+      captureDemoEvent('demo_adapters_catalog_viewed', {
+        adapterCountBucket: bucketCount(query.data.length),
+      });
+    }
+  }, [query.data]);
 
   return (
     <PageLayout

@@ -72,4 +72,42 @@ describe('EntityLabel', () => {
 
     expect(writeText).toHaveBeenCalledWith('ol_connection_abc123def456');
   });
+
+  it('fires onNavigate when the name link is clicked', () => {
+    const onNavigate = vi.fn();
+    renderWithRouter(
+      <EntityLabel
+        id="ol_order_abc"
+        name="Order #1"
+        to="/orders/ol_order_abc"
+        onNavigate={onNavigate}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('link', { name: 'Order #1' }));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fire onNavigate when the copy button is clicked', () => {
+    const onNavigate = vi.fn();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    renderWithRouter(
+      <EntityLabel
+        id="ol_order_abc"
+        name="Order #1"
+        to="/orders/ol_order_abc"
+        onNavigate={onNavigate}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Copy ol_order/ }));
+
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
 });
