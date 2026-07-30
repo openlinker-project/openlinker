@@ -1874,15 +1874,25 @@ function VariantScopeForm({
       ? baseCategoryPathNames.join(' › ')
       : baseValues.categoryId || 'Not set on base';
 
-  // The own-category schema is resolved by the parent (#1946) - it also needs it
-  // at save time for siblings whose panel is not the open scope, so fetching it
-  // here as well would be a second source of truth for the same values.
+  // The own-category schema is read from BOTH here and the parent (#1946): the
+  // parent needs it at save time for every sibling, including one whose panel is
+  // not the open scope, while this panel needs it to render. Both go through the
+  // same `listingsQueryKeys.categoryParameters` cache entry, so this is one
+  // network request with two readers, not two sources of truth - and keeping the
+  // read here means the fields still render if the parent's fan-out has not
+  // resolved this category yet.
+  const ownCategoryParametersQuery = useCategoryParametersQuery(
+    connectionId,
+    hasOwnCategory ? (edit.categoryId as string) : '',
+  );
   const effectiveCategoryParameters = useMemo(
     () =>
       hasOwnCategory
-        ? (ownCategoryParameters ?? []).filter((p) => !isEanParameterName(p.name))
+        ? (ownCategoryParameters ?? ownCategoryParametersQuery.data ?? []).filter(
+            (p) => !isEanParameterName(p.name),
+          )
         : categoryParameters,
-    [hasOwnCategory, ownCategoryParameters, categoryParameters],
+    [hasOwnCategory, ownCategoryParameters, ownCategoryParametersQuery.data, categoryParameters],
   );
 
   // Category parameters mirror the base scope: filter through parameter-level
