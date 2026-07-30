@@ -7,6 +7,8 @@
  * - Fetching inventory from external platforms
  * - Transforming external inventory data to OpenLinker unified schema
  * - Replacing external IDs with internal OpenLinker IDs using IdentifierMappingService
+ * - Translating a master-side deletion into `MasterProductNotFoundError`
+ *   (see the error contract on `getInventory` / `listInventory` below)
  *
  * @module libs/core/src/inventory/domain/ports
  */
@@ -31,6 +33,28 @@ export interface Inventory {
  * Inventory Master Port
  *
  * Single source of truth for inventory/stock levels.
+ *
+ * ## Error contract for the two read methods (#1688)
+ *
+ * An implementer MUST translate a **master-side deletion** — the platform
+ * itself reporting the product absent (a 404 / empty resource fetch on the
+ * *product*) — into the neutral `MasterProductNotFoundError` from
+ * `@openlinker/core/products`. `MasterInventorySyncService` treats that error as
+ * "deleted at the master": it stales every one of the product's inventory rows,
+ * emits `master.product.stale`, and the worker handler terminalises the job as
+ * `outcome: 'business_failure'` (ADR-007) so a permanent condition is not
+ * retried.
+ *
+ * Because those consequences are permanent, an implementer MUST NOT use it for
+ * anything weaker than a platform-reported product absence. In particular these
+ * stay platform-native (retryable, diagnosable) errors:
+ * - no identifier mapping for the connection (a mapping gap)
+ * - a corrupted mapping (e.g. a non-numeric external id)
+ * - an inferred absence, such as "the product resolves but carries no stock
+ *   rows" — probe the product resource before concluding deletion
+ *
+ * Any other failure (network, auth, 5xx) must propagate unchanged so the job
+ * stays retryable.
  */
 export interface InventoryMasterPort {
   /**
@@ -42,6 +66,8 @@ export interface InventoryMasterPort {
    * @param productId - Internal OpenLinker product ID
    * @param locationId - Optional location ID (for multi-location inventory)
    * @returns Inventory with internal IDs
+   * @throws MasterProductNotFoundError if the product is absent at the master
+   *   (see the error contract on this interface)
    */
   getInventory(productId: string, locationId?: string): Promise<Inventory>;
 
@@ -57,6 +83,8 @@ export interface InventoryMasterPort {
    *
    * @param productId - Internal OpenLinker product ID
    * @returns One Inventory per variant, each with internal IDs
+   * @throws MasterProductNotFoundError if the product is absent at the master
+   *   (see the error contract on this interface)
    */
   listInventory(productId: string): Promise<Inventory[]>;
 
