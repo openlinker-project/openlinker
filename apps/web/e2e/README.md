@@ -2,9 +2,14 @@
 
 These `.mjs` files are **not automated tests**. They are manual, Playwright-driven
 screenshot-capture scripts used to produce the images embedded in the integration
-docs (`libs/integrations/<pkg>/docs/`). They contain no assertions and are **not
-wired to any test runner** — `pnpm test` does not run them, and CI does not
-execute them.
+docs (`libs/integrations/<pkg>/docs/`) and in PR descriptions. Most contain no
+assertions, and none is **wired to any test runner** — `pnpm test` does not run
+them, and CI does not execute them.
+
+`demo-consent.mjs` is the exception on both counts: it stubs the API instead of
+talking to one, which makes it deterministic enough to assert as well as capture
+(it exits non-zero on a regression). Run it against any SPA server, with no
+backend at all.
 
 Run one directly with Node against a locally running OpenLinker web app + API:
 
@@ -38,5 +43,6 @@ required env vars either exit early with a message or produce error/404 shots.
 | `subiekt-proofs.mjs` | Subiekt idempotency / auto-issue proofs | `ORDER_AUTO_ID`, `ORDER_B2B_ID` |
 | `ksef-payment-config.mjs` | KSeF payment-config form | `KSEF_CONN_ID`, `WEB_USER`, `WEB_PASSWORD` |
 | `infakt-connection.mjs` | inFakt connection setup | `INFAKT_BASE_URL`, `INFAKT_SANDBOX_API_KEY`, `INFAKT_CONN_NAME` |
+| `demo-consent.mjs` | Demo session-recording notice, `/consent` gate, no-opt-out checks (#1938) | `WEB_BASE`, `SHOT_DIR` — **no API needed**, every `/v1/**` call is stubbed |
 | `infakt-invoice.mjs` | inFakt invoice + clearance | `INFAKT_CONNECTION_ID`, `ORDER_ID`, `CLEARANCE_POLL_MS` |
 | `annotate.mjs` | Shared image-annotation helper | (imported by other scripts) |

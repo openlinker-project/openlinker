@@ -153,4 +153,19 @@ describe('AuthenticatedAppLayout', () => {
 
     expect(await screen.findByText('Authenticated content')).toBeInTheDocument();
   });
+
+  it('should not render app routes while the demo-mode config is still loading (#1938)', async () => {
+    // Found by the Playwright run on this branch: with `demoMode` defaulting to
+    // false on first paint, a consent-less demo account rendered the app for a
+    // frame (and fired the reads the API was about to 403) before the redirect.
+    const neverResolves = new Promise(() => {});
+    renderLayout(createAuthenticatedSessionAdapter(demoViewer(false)), {
+      apiClient: createMockApiClient({
+        system: { getConfig: vi.fn().mockReturnValue(neverResolves) },
+      } as Partial<ApiClient>),
+    });
+
+    expect(await screen.findByText('Loading application shell')).toBeInTheDocument();
+    expect(screen.queryByText('Authenticated content')).not.toBeInTheDocument();
+  });
 });

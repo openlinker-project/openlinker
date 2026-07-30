@@ -9,13 +9,16 @@ import { useSystemConfigQuery } from '../../features/system';
 export function AuthenticatedAppLayout(): ReactElement {
   const { isReady, session } = useSession();
   const location = useLocation();
-  // Demo mode decides whether the consent gate below applies at all. Until the
-  // config resolves this reads false and the shell renders as before; a
-  // consent-less demo account is then caught by the API's 403, which routes it
-  // to the same page (see `app/providers/app-providers.tsx`).
-  const demoMode = useSystemConfigQuery().data?.demoMode ?? false;
+  // Demo mode decides whether the consent gate below applies at all, so the
+  // shell waits for this query to settle rather than reading a default of
+  // `false` on first paint (#1938). Without the wait, a consent-less demo
+  // account renders the app for a frame and fires the reads the API is about to
+  // 403 — the gate has to be decided before any route mounts, not after.
+  const systemConfigQuery = useSystemConfigQuery();
+  const demoMode = systemConfigQuery.data?.demoMode ?? false;
+  const isAuthenticated = isReady && session.status === 'authenticated';
 
-  if (!isReady) {
+  if (!isReady || (isAuthenticated && systemConfigQuery.isPending)) {
     return (
       <AppShell>
         <PageLayout
