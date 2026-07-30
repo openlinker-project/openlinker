@@ -14,7 +14,9 @@
 }
 
 {$WEB_DOMAIN} {
-	reverse_proxy web:80
+	# 8080, not 80: the `web` image's nginx runs as a non-root user (#1411)
+	# and cannot bind the privileged port 80.
+	reverse_proxy web:8080
 }
 
 {$API_DOMAIN} {
