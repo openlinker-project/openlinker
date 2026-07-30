@@ -171,4 +171,41 @@ describe('ConnectionCapabilitiesPanel', () => {
     expect(screen.getByText(/1 of 2 enabled/)).toBeInTheDocument();
     expect(screen.queryByText(/no capabilities available to toggle/)).not.toBeInTheDocument();
   });
+
+  describe('MCP tool-staleness hint (#1949)', () => {
+    it('should show the reconnect hint when the connection supports an MCP-backing capability', () => {
+      const connection: Connection = {
+        ...sampleConnection,
+        supportedCapabilities: ['ProductMaster', 'OfferManager'],
+        enabledCapabilities: ['ProductMaster'],
+      };
+      renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
+
+      expect(screen.getByText(/MCP tools follow these capabilities/)).toBeInTheDocument();
+    });
+
+    it('should hide the reconnect hint when no supported capability backs an MCP tool', () => {
+      const connection: Connection = {
+        ...sampleConnection,
+        supportedCapabilities: ['OfferManager', 'CategoryProvisioner'],
+        enabledCapabilities: ['OfferManager'],
+      };
+      renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
+
+      expect(screen.queryByText(/MCP tools follow these capabilities/)).not.toBeInTheDocument();
+    });
+
+    // The gate is keyed on SUPPORTED, not ENABLED: the hint must survive the
+    // toggle that causes the staleness, or it disappears exactly when it matters.
+    it('should keep the hint visible when the MCP-backing capability is supported but disabled', () => {
+      const connection: Connection = {
+        ...sampleConnection,
+        supportedCapabilities: ['ProductMaster', 'OfferManager'],
+        enabledCapabilities: ['OfferManager'],
+      };
+      renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
+
+      expect(screen.getByText(/MCP tools follow these capabilities/)).toBeInTheDocument();
+    });
+  });
 });
