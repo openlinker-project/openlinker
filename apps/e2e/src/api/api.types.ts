@@ -466,12 +466,22 @@ export interface RawResponse {
 
 export type SyncJobStatus = 'queued' | 'running' | 'succeeded' | 'dead';
 
+/**
+ * Stable machine-readable code further classifying `outcome` (#1689). Set only
+ * on the succeeded + `business_failure` path, so an operator can tell a
+ * deletion-caused failure from any other business rejection. Mirror of
+ * `JobOutcomeReasonValues` in libs/core/src/sync/domain/types/sync-job.types.ts.
+ */
+export type JobOutcomeReason = 'master_deleted';
+
 export interface SyncJob {
   id: string;
   jobType: string;
   connectionId: string;
   status: SyncJobStatus;
   outcome: 'ok' | 'business_failure' | null;
+  /** Absent on a stack predating #1689 — treat `undefined` as "not reported". */
+  outcomeReason?: JobOutcomeReason | null;
   attempts: number;
   maxAttempts: number;
   lastError: string | null;

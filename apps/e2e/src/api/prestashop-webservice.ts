@@ -264,6 +264,39 @@ export class PrestashopWebserviceClient {
   }
 
   /**
+   * Delete a whole product (DESTRUCTIVE, irreversible via this client). Used by
+   * the stale-offer-pause lifecycle spec (#1689) to make a master product 404 on
+   * the next read, which is what drives `MasterProductNotFoundError` ->
+   * `masterDeleted` -> `outcomeReason: 'master_deleted'`.
+   *
+   * Deleting a combination only stales ONE variant; only a full product deletion
+   * produces the product-level signal. That spec therefore creates its own
+   * throwaway product first and deletes THAT — never a catalogue product — so
+   * this method needs no destructive opt-in the way `deleteCombination` does.
+   */
+  async deleteProduct(productId: string): Promise<void> {
+    const url = `${this.baseUrl}/api/products/${productId}?output_format=JSON`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'DELETE',
+        headers: { Authorization: this.authHeader, Accept: 'application/json' },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!response.ok) {
+      const raw = await response.text();
+      throw new Error(
+        `PrestaShop webservice DELETE /api/products/${productId} → HTTP ${response.status}: ${raw.slice(0, 300)}`,
+      );
+    }
+  }
+
+  /**
    * Sum available quantity across a product's `stock_availables` rows.
    *
    * For a product with combinations PrestaShop keeps one row per combination

@@ -26,6 +26,9 @@ export const JobType = {
   marketplaceOffersSync: 'marketplace.offers.sync',
   marketplaceOrdersPoll: 'marketplace.orders.poll',
   inventoryPropagateToMarketplaces: 'inventory.propagateToMarketplaces',
+  marketplaceOfferQuantityUpdate: 'marketplace.offerQuantity.update',
+  marketplaceOfferPauseStale: 'marketplace.offer.pauseStale',
+  marketplaceOfferPauseStaleSweep: 'marketplace.offer.pauseStaleSweep',
   invoicingIssue: 'invoicing.issue',
   invoicingRegulatoryStatusReconcile: 'invoicing.regulatoryStatus.reconcile',
   marketplaceShipmentStatusSync: 'marketplace.shipment.statusSync',
@@ -38,6 +41,16 @@ export const JobType = {
  * trigger drives the same paged poll as the scheduled cron.
  */
 const INPOST_SHIPMENT_STATUS_CURSOR_KEY = 'inpost.shipmentStatus.scanOffset';
+
+/**
+ * Connection id the `marketplace.offer.pauseStale` job is enqueued under (#1689,
+ * mirror of `SYSTEM_CONNECTION_ID` in
+ * apps/worker/src/events/master-deletion-to-job.handler.ts). The deletion event
+ * fans out across every mapped destination, so the job belongs to no single
+ * connection — a spec polling for it must filter on THIS id, not on the master
+ * or marketplace connection.
+ */
+export const SYSTEM_CONNECTION_ID = '00000000-0000-0000-0000-000000000000';
 
 export type JobTypeValue = (typeof JobType)[keyof typeof JobType];
 
@@ -197,6 +210,107 @@ export class SyncJobs {
   /** Refresh OL master inventory from a shop's stock. */
   syncAllInventory(connectionId: string): Promise<string> {
     return this.trigger({ connectionId, jobType: JobType.masterInventorySyncAll });
+  }
+
+  /**
+   * Drive the reconcile half of the stale-offer pause (#1689): page this
+   * connection's stale-mapped variants and re-assert a quantity-0 update for
+   * each one still stale. Scheduled hourly per `OfferManager` connection; an
+   * explicit trigger here exercises the same handler as the cron, which is what
+   * makes the guarantee testable without waiting an hour.
+   *
+   * Idempotent by construction (it reads the persisted `isStale` flag rather
+   * than a one-shot event), so it is safe to trigger repeatedly.
+   */
+  pauseStaleSweep(
+    connectionId: string,
+    options: TriggerAndWaitOptions & { limit?: number } = {},
+  ): Promise<SyncJob> {
+    const { limit, ...triggerOptions } = options;
+    return this.triggerAndWait(
+      {
+        connectionId,
+        jobType: JobType.marketplaceOfferPauseStaleSweep,
+        payload: { schemaVersion: 1, limit: limit ?? 50 },
+      },
+      triggerOptions,
+    );
+  }
+
+  /**
+   * Wait for the per-mapping quantity writes a stale-offer pause fans out
+   * (`StaleOfferPauseService` enqueues one `marketplace.offerQuantity.update` per
+   * offer mapping, as an ABSOLUTE quantity-0 set).
+   *
+   * This is the deterministic, OL-side observation of the pause. Reading the
+   * quantity back from the marketplace is a WEAKER signal: on Allegro the write
+   * is an async `offer-quantity-change-command`, and a sandbox can leave that
+   * command `pending` indefinitely — so a spec that only asserts the remote read
+   * would fail for reasons outside OL's control.
+   *
+   * Returns every matching job once at least `minCount` of them are terminal.
+   */
+  async waitForOfferQuantityUpdates(
+    connectionId: string,
+    since: Date,
+    minCount: number,
+    options: WaitForJobOptions = {},
+  ): Promise<SyncJob[]> {
+    const jobs = await pollUntil<SyncJob[]>(
+      async () => {
+        const page = await this.api.syncJobs.list({
+          connectionId,
+          jobType: JobType.marketplaceOfferQuantityUpdate,
+          limit: 50,
+        });
+        return page.items.filter((j) => new Date(j.createdAt).getTime() >= since.getTime());
+      },
+      (found) =>
+        found.length >= minCount && found.every((j) => TERMINAL_STATUSES.has(j.status)),
+      {
+        timeoutMs: options.timeoutMs ?? 180_000,
+        intervalMs: options.intervalMs ?? 2_000,
+        message: `${minCount} terminal ${JobType.marketplaceOfferQuantityUpdate} job(s) on connection ${connectionId} fanned out by the stale-offer pause`,
+      },
+    );
+    return jobs;
+  }
+
+  /**
+   * Wait for a `marketplace.offer.pauseStale` job that OL enqueued ITSELF, in
+   * reaction to a master-deletion event — the thing #1689 adds. Matched by
+   * "newer than `since`" rather than by idempotency key, because the key is
+   * minted server-side from the event id (`stale-pause:{productId}:{eventId}`),
+   * which the client never sees.
+   *
+   * Returns the newest such job once terminal. Fails the poll (rather than
+   * returning undefined) if none appears, so a spec asserting the automatic
+   * trigger can't silently pass on a stack where the consumer never ran.
+   */
+  async waitForAutoEnqueuedPauseStale(
+    since: Date,
+    options: WaitForJobOptions = {},
+  ): Promise<SyncJob> {
+    const job = await pollUntil<SyncJob | undefined>(
+      async () => {
+        const page = await this.api.syncJobs.list({
+          connectionId: SYSTEM_CONNECTION_ID,
+          jobType: JobType.marketplaceOfferPauseStale,
+          limit: 50,
+        });
+        return page.items
+          .filter((j) => new Date(j.createdAt).getTime() >= since.getTime())
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+      },
+      (j) => j !== undefined && TERMINAL_STATUSES.has(j.status),
+      {
+        timeoutMs: options.timeoutMs ?? 120_000,
+        intervalMs: options.intervalMs ?? 2_000,
+        message:
+          'an auto-enqueued marketplace.offer.pauseStale job (from the master-deletion event) to reach a terminal status',
+      },
+    );
+    return job!;
   }
 
   /**
