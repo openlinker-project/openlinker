@@ -205,13 +205,149 @@ describe('WebhookToJobHandler (dispatcher)', () => {
     expect(redis.xAck).not.toHaveBeenCalled();
   });
 
+  describe('consumeLoop', () => {
+    /**
+     * Drive the private loop with `isRunning`/`abortController` seeded the way
+     * `startConsumptionLoop` seeds them, but awaited — the production call is
+     * fire-and-forget, which a test cannot join.
+     */
+    const runLoop = async (): Promise<void> => {
+      /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call -- test: drive the private consume loop */
+      (handler as any).abortController = new AbortController();
+      (handler as any).isRunning = true;
+      await (handler as any).consumeLoop();
+      /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call -- test: end of the private-member access block */
+    };
+
+    const batch = (...ids: string[]): unknown => [
+      { name: STREAM, messages: ids.map((id) => ({ id, message: fields() })) },
+    ];
+
+    it('should stop starting new messages when shutdown is signalled mid-batch (#1923 review)', async () => {
+      // XREADGROUP COUNT 10 hands back a whole batch; the shutdown drain only
+      // covers the one already running, so messages 2..N must not be started
+      // against a quitting Redis client.
+      const processed: string[] = [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access -- test: stub private processMessage
+      (handler as any).processMessage = (id: string): Promise<void> => {
+        processed.push(id);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call -- test: signal shutdown mid-batch
+        (handler as any).abortController?.abort();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access -- test: signal shutdown mid-batch
+        (handler as any).isRunning = false;
+        return Promise.resolve();
+      };
+      redis.xReadGroup.mockResolvedValue(batch('msg-1', 'msg-2', 'msg-3'));
+
+      await runLoop();
+
+      expect(processed).toEqual(['msg-1']);
+      expect(redis.xReadGroup).toHaveBeenCalledTimes(1);
+    });
+
+    it('should process every message of a batch while still running', async () => {
+      const processed: string[] = [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access -- test: stub private processMessage
+      (handler as any).processMessage = (id: string): Promise<void> => {
+        processed.push(id);
+        if (processed.length === 3) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access -- test: end the otherwise-infinite loop
+          (handler as any).isRunning = false;
+        }
+        return Promise.resolve();
+      };
+      redis.xReadGroup.mockResolvedValue(batch('msg-1', 'msg-2', 'msg-3'));
+
+      await runLoop();
+
+      expect(processed).toEqual(['msg-1', 'msg-2', 'msg-3']);
+    });
+  });
+
   describe('onModuleDestroy', () => {
     it('should quit the redis client', async () => {
+      await handler.onModuleDestroy();
+
+      expect(redis.quit).toHaveBeenCalledTimes(1);
+    });
+
+    // #1920: the old implementation slept a flat 2 s on every shutdown, which
+    // cost ~2 s per int-spec teardown (77 of them) for nothing when no message
+    // was in flight. Shutdown must now be immediate in that case.
+    it('should not wait when no message is in flight', async () => {
       jest.useFakeTimers();
       try {
-        const p = handler.onModuleDestroy();
+        const settled = jest.fn();
+        const destroyed = handler.onModuleDestroy().then(settled);
+
+        // No timer advance at all - only microtasks.
+        await Promise.resolve();
+        await destroyed;
+
+        expect(settled).toHaveBeenCalled();
+        expect(jest.getTimerCount()).toBe(0);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('should wait for the message being processed before quitting', async () => {
+      let releaseMessage: (() => void) | undefined;
+      const inFlight = new Promise<void>((resolve) => {
+        releaseMessage = resolve;
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access -- test: seed the private in-flight handle
+      (handler as any).inFlightMessage = inFlight;
+
+      let done = false;
+      const destroyed = handler.onModuleDestroy().then(() => {
+        done = true;
+      });
+
+      await Promise.resolve();
+      expect(done).toBe(false);
+      expect(redis.quit).not.toHaveBeenCalled();
+
+      releaseMessage?.();
+      await destroyed;
+
+      expect(done).toBe(true);
+      expect(redis.quit).toHaveBeenCalledTimes(1);
+    });
+
+    it('should still shut down cleanly when the in-flight message fails', async () => {
+      // The flat sleep this replaced could never reject; shutdown must not
+      // start throwing just because the message being processed failed (the
+      // consume loop owns that error and rethrows it for redelivery).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access -- test: seed the private in-flight handle
+      (handler as any).inFlightMessage = Promise.reject(new Error('redis down'));
+
+      await expect(handler.onModuleDestroy()).resolves.toBeUndefined();
+      expect(redis.quit).toHaveBeenCalledTimes(1);
+    });
+
+    it('should give up on a stuck message after the bounded drain timeout', async () => {
+      // A message that never settles must not block shutdown forever - the
+      // wait is bounded, exactly as the old flat sleep bounded it.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access -- test: seed the private in-flight handle
+      (handler as any).inFlightMessage = new Promise<void>(() => {
+        /* never settles */
+      });
+
+      jest.useFakeTimers();
+      try {
+        let done = false;
+        const destroyed = handler.onModuleDestroy().then(() => {
+          done = true;
+        });
+
+        await Promise.resolve();
+        expect(done).toBe(false);
+
         await jest.advanceTimersByTimeAsync(2000);
-        await p;
+        await destroyed;
+
+        expect(done).toBe(true);
         expect(redis.quit).toHaveBeenCalledTimes(1);
       } finally {
         jest.useRealTimers();

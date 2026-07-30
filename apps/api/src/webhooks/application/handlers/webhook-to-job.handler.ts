@@ -44,8 +44,16 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
   private readonly BLOCK_MS = 5000; // 5 seconds
   private readonly COUNT = 10; // Read up to 10 messages at a time
 
+  private readonly IN_FLIGHT_DRAIN_TIMEOUT_MS = 2000;
+
   private abortController: AbortController | null = null;
   private isRunning = false;
+  /**
+   * The `processMessage` call currently in progress, if any. Shutdown awaits
+   * this instead of sleeping blindly, so the common case (nothing in flight)
+   * costs nothing (#1920).
+   */
+  private inFlightMessage: Promise<void> | null = null;
 
   constructor(
     @Inject(REDIS_CLIENT_BLOCKING_TOKEN)
@@ -137,7 +145,19 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
   /**
    * Stop consumption loop
    *
-   * Signals the consumption loop to stop and waits for it to finish.
+   * Signals the consumption loop to stop, then waits for the message being
+   * processed right now (if any) to finish, bounded by
+   * {@link IN_FLIGHT_DRAIN_TIMEOUT_MS}.
+   *
+   * This deliberately does NOT await the consume loop itself: the loop can be
+   * parked in `XREADGROUP ... BLOCK ${BLOCK_MS}`, so awaiting it would stall
+   * shutdown for up to that long. The unit that must not be cut mid-way is a
+   * `processMessage` call (it enqueues the downstream job, records the delivery
+   * and only then ACKs), which is what `inFlightMessage` tracks.
+   *
+   * The previous implementation slept a flat 2 s here, which over-waited on
+   * every shutdown (measured: 2 s x 77 int-spec teardowns) while giving no
+   * stronger guarantee - a slow message was cut off at 2 s regardless (#1920).
    */
   private async stopConsumptionLoop(): Promise<void> {
     this.logger.log('Stopping webhook-to-job handler...');
@@ -147,8 +167,24 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
       this.abortController.abort();
     }
 
-    // Wait a bit for in-flight messages to complete
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const inFlight = this.inFlightMessage;
+    if (inFlight) {
+      let timer: NodeJS.Timeout | undefined;
+      const bound = new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, this.IN_FLIGHT_DRAIN_TIMEOUT_MS);
+      });
+      try {
+        // A message that fails mid-shutdown must not turn `app.close()` into a
+        // rejection: the consume loop already handles (and rethrows) its own
+        // errors for redelivery, and the flat sleep this replaced could never
+        // throw. We only care that the attempt is over, not that it succeeded.
+        await Promise.race([inFlight.catch(() => undefined), bound]);
+      } finally {
+        if (timer) {
+          clearTimeout(timer);
+        }
+      }
+    }
 
     this.logger.log('Webhook-to-job handler stopped');
   }
@@ -191,7 +227,22 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
           }
 
           for (const message of streamMessage.messages) {
-            await this.processMessage(message.id, message.message);
+            // `COUNT ${this.COUNT}` can hand back a whole batch, but the drain
+            // in `stopConsumptionLoop` only covers the message already running
+            // - starting messages 2..N after shutdown was signalled would run
+            // them against a quitting Redis client (PR #1923 review).
+            if (!this.isRunning || this.abortController?.signal.aborted) {
+              break;
+            }
+
+            // Tracked so shutdown can await the in-flight message rather than
+            // sleeping a fixed grace period (#1920).
+            this.inFlightMessage = this.processMessage(message.id, message.message);
+            try {
+              await this.inFlightMessage;
+            } finally {
+              this.inFlightMessage = null;
+            }
           }
         }
       } catch (error) {

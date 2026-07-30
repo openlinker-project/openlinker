@@ -20,7 +20,7 @@
  */
 import { execFileSync } from 'child_process';
 import { randomBytes } from 'crypto';
-import { mkdtempSync, rmSync } from 'fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { createConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
@@ -130,6 +130,14 @@ const DEFAULT_EXEC_TIMEOUT_MS = 120_000;
  * OL-module opt-in flag; new knobs land here without a signature break.
  */
 export interface StartPrestashopContainerOptions {
+  /**
+   * Internal hook (#1920): receives the ids of what was just started so the
+   * shared-lifetime path below can hand them to `globalTeardown`, which lives
+   * in a different Jest realm and therefore cannot hold the `cleanup` closure.
+   * Not for use by specs - call `startSharedPrestashopContainer` instead.
+   */
+  onStarted?: (started: SharedPrestashopContainers) => void;
+
   /**
    * When true, install the real OpenLinker PrestaShop module into the
    * container between `waitForPrestashopInstall` and `applyPrestashopFixture`.
@@ -266,6 +274,13 @@ export async function startPrestashopContainer(
       // must go through a root container rather than a plain rmSync (#1321).
       removePsDataDir(psDataDir);
     };
+
+    options.onStarted?.({
+      prestashopId: startedPrestashop.getId(),
+      mysqlId: startedMysql.getId(),
+      networkId: startedNetwork.getId(),
+      psDataDir,
+    });
 
     return {
       baseUrl,
@@ -967,4 +982,185 @@ async function runExecOrThrow(
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);
   }
+}
+
+/**
+ * Ids of one started PrestaShop trio, serialisable so `globalTeardown` can
+ * stop containers it never started (#1920).
+ */
+export interface SharedPrestashopContainers {
+  prestashopId: string;
+  mysqlId: string;
+  networkId: string;
+  psDataDir: string;
+}
+
+interface SharedPrestashopRecord {
+  handle: Omit<PrestashopTestContainer, 'cleanup'>;
+  containers: SharedPrestashopContainers;
+}
+
+/**
+ * The handoff is a FILE, not an env var. Jest hands every test file a fresh
+ * `process` object with a COPY of `process.env`, so a value written by one
+ * int-spec is invisible to the next one - measured, not assumed (same pid,
+ * `cached=no`). That is also why `startContainers`' `CONTAINERS_PRIMED_ENV_VAR`
+ * works for Postgres/Redis: `globalSetup` sets it in the parent, before the
+ * worker is handed its copy. A lazily-booted container cannot use that route.
+ */
+
+/**
+ * Where the worker realm leaves the ids for `globalTeardown` to pick up.
+ *
+ * On CI the key carries the run ATTEMPT as well as the run id: `GITHUB_RUN_ID`
+ * is stable across "Re-run jobs", and the orphan sweep deliberately skips its
+ * own run id (`.github/workflows/ci.yml`), so a re-run keyed on the id alone
+ * would adopt the SIGKILLed attempt's half-mutated PrestaShop DB (PR #1923
+ * review).
+ *
+ * Locally the key is the parent pid, which only lines the two realms up
+ * because both integration jest configs pin `maxWorkers: 1` - Jest then runs
+ * the tests in-band, so the test realm and `globalTeardown` share the same
+ * pid/ppid (verified). Raising `maxWorkers` would fork child processes with a
+ * different ppid, diverging the key and leaking the container.
+ */
+function sharedRecordFile(): string {
+  const scope = process.env.GITHUB_RUN_ID
+    ? `${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT ?? '1'}`
+    : `local-${process.ppid}`;
+  return join(tmpdir(), `ol-shared-ps-${scope}.json`);
+}
+
+/**
+ * The recorded shared container, but only if Docker still reports it running.
+ * A crashed run can leave the record behind pointing at containers that are
+ * gone; reusing those would fail every spec with a connection error instead of
+ * transparently booting a new one.
+ */
+function readLiveSharedRecord(): SharedPrestashopRecord | undefined {
+  const file = sharedRecordFile();
+  if (!existsSync(file)) {
+    return undefined;
+  }
+  let record: SharedPrestashopRecord;
+  try {
+    record = JSON.parse(readFileSync(file, 'utf-8')) as SharedPrestashopRecord;
+  } catch {
+    rmSync(file, { force: true });
+    return undefined;
+  }
+  try {
+    const state = execFileSync(
+      'docker',
+      ['inspect', '-f', '{{.State.Running}}', record.containers.prestashopId],
+      // `stdio` silences the `No such object` Docker prints on a stale record
+      // before the fallback below handles it; `timeout` keeps an unresponsive
+      // daemon from hanging the first PS spec's beforeAll (PR #1923 review).
+      { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 30_000 }
+    ).trim();
+    if (state !== 'true') {
+      rmSync(file, { force: true });
+      return undefined;
+    }
+  } catch {
+    rmSync(file, { force: true });
+    return undefined;
+  }
+  return record;
+}
+
+/**
+ * A PrestaShop container shared by every spec that asks for one, booted on
+ * first use and stopped once in `globalTeardown`.
+ *
+ * A PS boot is 77.7 s locally (45.6 s of it PrestaShop installing itself into
+ * MySQL, 23.0 s the OL module install + Symfony cache warmup), and four specs
+ * were each paying it - 308 s, 60% of the api integration step (#1920). The
+ * specs that share it assert against ids they create themselves, so
+ * accumulated orders/carts from a previous file are inert; nothing here
+ * truncates PS between specs.
+ *
+ * Always boots WITH the OL module: the module-installed carrier satisfies the
+ * no-module specs' assertions too, while the reverse is not true. A spec whose
+ * subject IS the from-scratch install (webhook provisioning) must keep calling
+ * `startPrestashopContainer` for its own fresh container.
+ *
+ * The returned `cleanup` is a no-op - the container outlives the caller.
+ */
+export async function startSharedPrestashopContainer(): Promise<PrestashopTestContainer> {
+  const existing = readLiveSharedRecord();
+  if (existing) {
+    return { ...existing.handle, cleanup: () => Promise.resolve() };
+  }
+
+  let containers: SharedPrestashopContainers | undefined;
+  const started = await startPrestashopContainer({
+    // The module-installed container satisfies the assertions of the specs that
+    // don't need the module (the reverse does not hold), so the shared one is
+    // always installed - except under the same escape hatch the individual
+    // specs read, where "no module anywhere" has to mean exactly that
+    // (PR #1923 review). The value is constant for a whole run and the record
+    // file is per-run, so a module-less record can never be picked up by a
+    // module-needing spec.
+    installOlModule: process.env.OL_SKIP_PS_MODULE_INSTALL !== 'true',
+    onStarted: (ids) => {
+      containers = ids;
+    },
+  });
+
+  const { cleanup: _ownedByGlobalTeardown, ...handle } = started;
+  if (!containers) {
+    // Cannot hand ids to globalTeardown -> would leak on the persistent CI
+    // runner (the #1285 failure mode). Fail loudly instead.
+    await started.cleanup();
+    throw new Error('startSharedPrestashopContainer: container ids were not reported');
+  }
+
+  const record: SharedPrestashopRecord = { handle, containers };
+  writeFileSync(sharedRecordFile(), JSON.stringify(record), 'utf-8');
+
+  return { ...handle, cleanup: () => Promise.resolve() };
+}
+
+/**
+ * Stop the shared container, if one was booted. Called from `globalTeardown`,
+ * which runs in the main realm and so must work from the ids on disk rather
+ * than from the `cleanup` closure the worker realm held.
+ */
+export function stopSharedPrestashopContainer(): void {
+  const file = sharedRecordFile();
+  if (!existsSync(file)) {
+    return;
+  }
+
+  let record: SharedPrestashopRecord | undefined;
+  try {
+    record = JSON.parse(readFileSync(file, 'utf-8')) as SharedPrestashopRecord;
+  } catch {
+    // Unreadable record - drop the file so it cannot mislead the next run.
+    rmSync(file, { force: true });
+    return;
+  }
+
+  const { prestashopId, mysqlId, networkId, psDataDir } = record.containers;
+  for (const id of [prestashopId, mysqlId]) {
+    if (!id) continue;
+    try {
+      execFileSync('docker', ['rm', '-f', id], { stdio: 'ignore' });
+    } catch {
+      // Best-effort: already gone, or Docker unreachable. The CI orphan sweep
+      // (#1285) reaps anything left behind by run id.
+    }
+  }
+  if (networkId) {
+    try {
+      execFileSync('docker', ['network', 'rm', networkId], { stdio: 'ignore' });
+    } catch {
+      // Same rationale as above.
+    }
+  }
+  if (psDataDir) {
+    removePsDataDir(psDataDir);
+  }
+  rmSync(file, { force: true });
 }
