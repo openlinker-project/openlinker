@@ -672,7 +672,12 @@ function BulkEditModalForm({
     // category's schema has arrived. Saving earlier would emit base-category ids
     // for it and silently drop everything the operator typed (#1946), so block
     // and open that sibling's scope instead - its fields are still loading there.
-    if (isMultiVariant) {
+    //
+    // Only when parameters are actually in play (`categoryParameters` non-empty).
+    // With no schema at all there is nothing to serialize for any scope, and an
+    // operator who picks a variant category must still be able to save the
+    // override immediately, before its schema resolves (#1924).
+    if (isMultiVariant && categoryParameters.length > 0) {
       const unresolved = row.variants.find(
         (v) => variantParamSchema(variantEdits[v.variantId]) === null,
       );
