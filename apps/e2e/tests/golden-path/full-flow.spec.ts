@@ -1696,7 +1696,10 @@ async function provisionFreshProduct(
   world: World,
   options: { variantCount?: number } = {},
 ): Promise<{ sku: string; prestashopCategoryId: string; variantEans: string[] }> {
-  const variantCount = options.variantCount ?? 2;
+  // Matches `env.freshVariantCount`'s default deliberately: a caller that omits
+  // the option must not silently get a product Allegro can only half-list (see
+  // the synthetic-barcode / catalogue-card note on `freshVariantCount`).
+  const variantCount = options.variantCount ?? 1;
   if (variantCount < 1 || variantCount > FRESH_PRODUCT_ATTRIBUTE_VALUES.length) {
     throw new Error(
       `provisionFreshProduct: variantCount must be 1..${FRESH_PRODUCT_ATTRIBUTE_VALUES.length}, got ${variantCount}`,

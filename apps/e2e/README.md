@@ -33,6 +33,7 @@ apps/e2e/
     support/              # poller (pollUntil), jobs (trigger helpers), selectors, stock/orders/shipments/parity helpers, manual-checkpoint
   tests/
     auth.setup.ts         # global-setup auth project → writes .auth/admin.json
+    connection-topology.setup.ts  # same `setup` project: preflight that fails a self-contradictory stack
     smoke/                # health + login + connections list (proves the substrate)
     golden-path/          # operator-setup.spec (S1-S4, unattended) + full-flow.spec (S0-S9, attended)
     webhooks/             # real signed inbound-webhook receiver path (#1512)
@@ -62,6 +63,44 @@ apps/e2e/
    cp apps/e2e/.env.example apps/e2e/.env
    ```
    Every value has a localhost default, so an unmodified demo stack needs no `.env`.
+4. **Connections configured coherently** - enforced automatically by the `setup`
+   project, see below. Fix a reported problem before you spend a session on it.
+
+### Connection-topology preflight
+
+`tests/connection-topology.setup.ts` runs inside the `setup` project, so **every**
+browser project depends on it. It reads the active connections once and **hard-fails
+the whole run** on one condition:
+
+> A connection declares `config.masterCatalogConnectionId` (its catalogue comes
+> from somewhere else) **and** also enables `ProductMaster` and/or
+> `InventoryMaster`.
+
+That combination is legal in the product, which is exactly why it is checked here
+instead of at runtime. A live run found `WooCommerce (shop)` configured that way:
+publishing a product to that shop let the shop's own master sync re-import the
+copy as a **second** OpenLinker product. The damage was not test-shaped -
+
+- a real marketplace order could not be created on the shop (`No WC product
+  mapping for OL product …`), because the offer was built from one OL product
+  while the shop copy was filed under the other; and
+- the bulk product picker matched two rows for one SKU and stalled.
+
+Fix: remove `ProductMaster` / `InventoryMaster` from the connection that borrows
+its catalogue.
+
+Two softer conditions are **annotated as `topology` notes, not enforced**:
+
+- more than one connection enables `ProductMaster` - legal, but a spec that
+  resolves "the master catalogue" by capability may pick either;
+- two connections share one store with both order ingestion (`OrderSource`) and
+  order creation (`OrderProcessorManager`) enabled - every order OpenLinker
+  writes there reappears in the source feed and is ingested again. Legitimate
+  when there is only one test store; match ingested orders by their source id,
+  never by "the newest order".
+
+The preflight also fails when **no** active connection enables `ProductMaster` -
+nothing can seed the catalogue.
 
 ---
 
@@ -107,7 +146,7 @@ dashboard checkpoints).
 
 | Project | What it does | Mutates? | Attended? |
 |---|---|---|---|
-| `setup` | Logs in via the `/login` UI once, writes `.auth/admin.json`. | No | No |
+| `setup` | Logs in via the `/login` UI once, writes `.auth/admin.json`; also runs the connection-topology preflight (see above). | No | No |
 | `smoke` | Health + node login + world + connections page render. | **No — safe on a shared stack** | No |
 | `golden-path` | Operator setup S1-S4 (product sync, WooCommerce publish, Allegro + Erli bulk offers). | **Yes** | No |
 | `full-flow` | S0-S9 full golden path across all 6 systems, field/amount parity. | **Yes — heavily** | **Yes** |
@@ -127,6 +166,35 @@ dashboard checkpoints).
 > guarded on `E2E_ATTENDED=1`) and is excluded from the default `test:e2e`. The
 > `smoke` project is read-only and safe to run anytime.
 
+### Run-ordering hazard: the webhook suites break PrestaShop order creation
+
+**One shared secret signs both directions** of the PrestaShop integration: inbound
+webhooks *from* the shop, and OpenLinker's outbound call *to* the OL module (the
+`importorder` front controller that actually creates the order).
+
+`tests/webhooks/inbound-webhook.spec.ts` and
+`tests/lifecycle/webhook-poll-idempotency.spec.ts` both call
+`POST /v1/connections/:id/webhooks/secret/rotate` in their setup, on purpose: a
+rotation is how they prove an old signature stops working. But the rotation
+updates **OpenLinker only** - nothing pushes the new secret to PrestaShop. From
+that point on, every order creation against PrestaShop fails with
+`HTTP 401 (reason: invalid-signature)`.
+
+So: after running `--project=webhooks` or `--project=lifecycle`, **reinstall the
+webhooks before any run that creates a PrestaShop order** (the attended
+`full-flow`, `invoicing`, anything reaching S7):
+
+```
+POST /v1/connections/:id/webhooks/install
+```
+
+That endpoint rotates **and** pushes, which is what restores both directions.
+The connection page's webhook install action does the same thing.
+
+`tests/woocommerce-parity/webhooks.spec.ts` rotates the **WooCommerce**
+connection's secret in the same way; that suite also exercises the install
+action, so it pushes the secret it leaves behind.
+
 ### Project → required env
 
 Every value has a localhost default (`src/config/env.ts`), so `setup`/`smoke`
@@ -139,13 +207,47 @@ annotated list.
 |---|---|
 | `setup`, `smoke` | none (localhost defaults) |
 | `golden-path` | `OL_PS_WEBSERVICE_KEY` (PS field parity); `E2E_FRESH_PRODUCT` + `E2E_FRESH_*` (opt-in fresh product) |
-| `full-flow` | **`E2E_ATTENDED=1`** (gate); `OL_PS_WEBSERVICE_KEY`, `OL_WC_CONSUMER_KEY`/`OL_WC_CONSUMER_SECRET` (field parity); `E2E_SOURCE_PLATFORM` / `E2E_PURCHASE_PLATFORMS`, `E2E_PACZKOMAT_ID`, `E2E_RESUME_DIR`, `E2E_PRODUCT_SKU`, `E2E_FRESH_*`; `E2E_RESUME_FROM_ORDER` (run S5 onward against an existing order — see below) |
+| `full-flow` | **`E2E_ATTENDED=1`** (gate); `OL_PS_WEBSERVICE_KEY`, `OL_WC_CONSUMER_KEY`/`OL_WC_CONSUMER_SECRET` (field parity); `E2E_SOURCE_PLATFORM`, `E2E_PACZKOMAT_ID`, `E2E_RESUME_DIR`, `E2E_PRODUCT_SKU`, `E2E_FRESH_*`; and the three knobs that decide how long the run takes and whether it can finish - `E2E_PURCHASE_PLATFORMS`, `E2E_FRESH_VARIANT_COUNT`, `E2E_RESUME_FROM_ORDER` (all three below) |
 | `webhooks` | none (rotates the PS connection's secret itself); skips without a PrestaShop connection |
 | `woocommerce-parity` | `OL_WC_CONSUMER_KEY`, `OL_WC_CONSUMER_SECRET` (WC REST seeding); skips without a WooCommerce connection |
 | `shipping` | `E2E_ORDER_ID` (or a golden-path `ready` order); `E2E_TEST_INPOST_WEBHOOK=true` (opt-in inbound ShipX webhook); `E2E_PACZKOMAT_ID`; skips without an InPost connection |
 | `invoicing` | `OL_PS_WEBSERVICE_KEY` (order synthesis); skips without an invoicing (inFakt) connection |
 | `lifecycle` | `OL_PS_WEBSERVICE_KEY` (stock/pruning); **`E2E_ALLOW_DESTRUCTIVE_PRUNE=true`** (opt-in irreversible pruning spec) |
 | `access-control` | `E2E_VIEWER_USER`/`E2E_VIEWER_PASS` (pre-seeded active viewer — see below); `E2E_TEST_RATE_LIMIT=true` (opt-in destructive register-429 assertion, demo mode only) |
+
+#### Choosing where the operator buys (`E2E_PURCHASE_PLATFORMS`)
+
+Comma-separated list of marketplace platform types the attended run stops for
+(`allegro`, `erli`, or both). Each entry gets **its own purchase stop** with its
+own up-to-2h budget, and S5-S9 then track one order per platform. Unset, it
+defaults to the single `E2E_SOURCE_PLATFORM` (itself defaulting to `allegro`).
+
+Use it to **drop a purchase platform that is unavailable**. A platform can go
+down in ways nothing on the OpenLinker side can detect: in one session the Erli
+sandbox shop had been disabled by Erli itself (`Status sklepu: Wyłączony przez
+system`), which is invisible until you try to buy - the purchase stop then sits
+for its full 2-hour budget and fails the run. Offer *creation* still worked
+throughout. Setting `E2E_PURCHASE_PLATFORMS=allegro` skips that stop.
+
+Note the asymmetry: **S4 still creates Erli offers regardless**, because it keys
+off "is there an Erli connection", not off this variable. Dropping a platform
+here drops its *purchase*, not its offer-creation coverage.
+
+#### Fresh-product variant count (`E2E_FRESH_VARIANT_COUNT`)
+
+How many variants `E2E_FRESH_PRODUCT=true` provisions. **Defaults to `1`, and 1
+is the value that reliably completes an attended run.** A fresh product's
+barcodes are synthetic, and Allegro's sandbox catalogue has no card for a code it
+has never seen: it mints one, binds it to the *first* sibling's barcode, and
+rejects every other sibling with `ProductConstraintViolationException.DataIntegrity`.
+One sibling lists, the rest cannot, so the purchase and everything behind it
+become unreachable.
+
+Raise it to 2-4 only with barcodes that already resolve to **distinct existing
+catalogue cards** in this sandbox. See
+[`docs/manual-testing/e2e-golden-path.md`](../../docs/manual-testing/e2e-golden-path.md)
+§ Fresh product per run for the full reasoning and the counter-experiment that
+shows multi-variant listing itself is not the blocker.
 
 #### Resuming `full-flow` from an existing order
 
