@@ -12,7 +12,7 @@ import { DuplicateGuardModal } from './duplicate-guard-modal';
 afterEach(cleanup);
 
 describe('DuplicateGuardModal', () => {
-  it('renders marketplace copy and the "creates duplicate" primary action', () => {
+  it('renders marketplace copy and the "skip, don\'t duplicate" primary action', () => {
     renderWithProviders(
       <DuplicateGuardModal
         open
@@ -25,9 +25,9 @@ describe('DuplicateGuardModal', () => {
     );
 
     expect(screen.getByText(/2 variants already on Allegro/)).toBeInTheDocument();
-    expect(screen.getByText(/creates a duplicate offer/)).toBeInTheDocument();
+    expect(screen.getByText(/skipped, not duplicated/)).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Publish anyway (creates duplicate)' }),
+      screen.getByRole('button', { name: 'Publish remaining variants' }),
     ).toBeInTheDocument();
   });
 
@@ -61,7 +61,7 @@ describe('DuplicateGuardModal', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Publish anyway/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Publish remaining variants/ }));
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 });

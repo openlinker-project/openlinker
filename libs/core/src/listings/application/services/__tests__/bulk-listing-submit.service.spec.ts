@@ -21,6 +21,7 @@ import type { IInventoryQueryService } from '@openlinker/core/inventory';
 import type { OfferCreationRecord } from '../../../domain/entities/offer-creation-record.entity';
 import { BulkListingBatch } from '../../../domain/entities/bulk-listing-batch.entity';
 import { EmptyBulkSubmissionException } from '../../../domain/exceptions/empty-bulk-submission.exception';
+import { AllVariantsAlreadyListedException } from '../../../domain/exceptions/all-variants-already-listed.exception';
 import { InvalidEanException } from '../../../domain/exceptions/invalid-ean.exception';
 import { DuplicateBatchEanException } from '../../../domain/exceptions/duplicate-batch-ean.exception';
 import { CurrencyMismatchException } from '../../../domain/exceptions/currency-mismatch.exception';
@@ -198,6 +199,7 @@ describe('BulkListingSubmitService', () => {
       expect(result).toEqual({
         batchId: 'batch-1',
         jobIds: ['job-v-a', 'job-v-b', 'job-v-c'],
+        skippedAlreadyListedCount: 0,
       });
       expect(bulkBatchRepo.updateStatus).toHaveBeenCalledWith('batch-1', 'running');
     });
@@ -1169,7 +1171,7 @@ describe('BulkListingSubmitService', () => {
       ]);
     });
 
-    it('skips a variant that already has an active offer mapping on the connection', async () => {
+    it('skips a variant that already has an active offer mapping on the connection and reports the skipped count (#1933)', async () => {
       products.getVariant.mockResolvedValue(variant({ id: 'v-a', productId: 'P', ean: '111' }));
       products.getVariantsByProductId.mockResolvedValue([
         variant({ id: 'v-a', productId: 'P', ean: '111' }),
@@ -1181,7 +1183,7 @@ describe('BulkListingSubmitService', () => {
       // v-a already listed → skipped; only v-b enqueues.
       offerMappings.countByConnectionAndVariants.mockResolvedValue(new Map([['v-a', 1]]));
 
-      await service.submit({
+      const result = await service.submit({
         connectionId,
         initiatedBy,
         productIds: ['v-a'],
@@ -1192,16 +1194,43 @@ describe('BulkListingSubmitService', () => {
         'v-b',
       ]);
       expect(bulkBatchRepo.create).toHaveBeenCalledWith(expect.objectContaining({ totalCount: 1 }));
+      // #1933: the caller (and, up the stack, the FE toast) must be able to
+      // tell "1 requested, 1 delivered" apart from "2 requested, 1 delivered".
+      expect(result.skippedAlreadyListedCount).toBe(1);
     });
 
-    it('throws EmptyBulkSubmissionException when every variant is already listed', async () => {
+    it('throws AllVariantsAlreadyListedException (not EmptyBulkSubmissionException) when every variant is already listed (#1933)', async () => {
       offerMappings.countByConnectionAndVariants.mockResolvedValue(new Map([['v-a', 2]]));
 
+      const submitPromise = service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['v-a'],
+        sharedConfig: { stock: 1, publishImmediately: false },
+      });
+
+      // A real selection that's entirely a duplicate of what's already listed
+      // is NOT the same failure as an empty/unresolvable submission (#1933) —
+      // reusing EmptyBulkSubmissionException here is exactly the bug: it tells
+      // the operator "you selected nothing" right after they confirmed the
+      // #1837 duplicate-guard modal on a real selection.
+      await expect(submitPromise).rejects.toBeInstanceOf(AllVariantsAlreadyListedException);
+      await expect(submitPromise).rejects.not.toBeInstanceOf(EmptyBulkSubmissionException);
+      await expect(submitPromise).rejects.toMatchObject({ skippedCount: 1 });
+
+      expect(bulkBatchRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('still throws EmptyBulkSubmissionException when expansion itself yields no jobs (nothing already-listed involved)', async () => {
+      // Every submitted id is excluded before the already-listed filter ever
+      // runs → expandedJobs.length === 0 → the ORIGINAL empty-submission
+      // contract must be preserved (#1933 must not widen this path).
       await expect(
         service.submit({
           connectionId,
           initiatedBy,
-          productIds: ['v-a'],
+          productIds: ['ol_variant_abc123'],
+          excludedVariantIds: ['ol_variant_abc123'],
           sharedConfig: { stock: 1, publishImmediately: false },
         })
       ).rejects.toBeInstanceOf(EmptyBulkSubmissionException);

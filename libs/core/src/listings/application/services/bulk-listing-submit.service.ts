@@ -65,6 +65,7 @@ import {
 } from '@openlinker/core/inventory';
 
 import { EmptyBulkSubmissionException } from '../../domain/exceptions/empty-bulk-submission.exception';
+import { AllVariantsAlreadyListedException } from '../../domain/exceptions/all-variants-already-listed.exception';
 import { InvalidEanException } from '../../domain/exceptions/invalid-ean.exception';
 import { DuplicateBatchEanException } from '../../domain/exceptions/duplicate-batch-ean.exception';
 import { CurrencyMismatchException } from '../../domain/exceptions/currency-mismatch.exception';
@@ -194,11 +195,21 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     // `external.id`) and fragment the grouped listing. The FE `alreadyListed`
     // hint is advisory only; this is the authoritative backend guard.
     const jobs = await this.filterAlreadyListed(input.connectionId, expandedJobs);
+    const skippedAlreadyListedCount = expandedJobs.length - jobs.length;
 
-    // Post-exclusion empty guard (#1741): every submitted variant excluded /
-    // unresolvable / already-listed ⇒ no jobs ⇒ never persist a `totalCount:0`
-    // zombie batch that the #737 counter gate can never terminate.
+    // Post-exclusion empty guard (#1741). Two distinct causes, #1933: if the
+    // expansion itself produced no jobs (every submitted id was excluded /
+    // unresolvable), the submission was genuinely empty. If expansion DID
+    // produce jobs but every one was then dropped as already-listed, that is
+    // NOT an empty submission — the operator selected real variants that are
+    // all duplicates of what's already published — and must be reported as
+    // such rather than reusing the generic "requires at least one productId"
+    // message, which the #1837 duplicate-guard confirm flow renders after an
+    // explicit "Publish anyway (creates duplicate)" click.
     if (jobs.length === 0) {
+      if (expandedJobs.length > 0) {
+        throw new AllVariantsAlreadyListedException(skippedAlreadyListedCount);
+      }
       throw new EmptyBulkSubmissionException();
     }
     // Identifier enforcement (#1741): GS1 check-digit on every included job's
@@ -303,7 +314,7 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     //    `incrementCounters`.
     await this.bulkBatchRepository.updateStatus(batch.id, BULK_BATCH_STATUS.Running);
 
-    return { batchId: batch.id, jobIds };
+    return { batchId: batch.id, jobIds, skippedAlreadyListedCount };
   }
 
   async getBatch(batchId: string): Promise<BulkBatchSummary | null> {

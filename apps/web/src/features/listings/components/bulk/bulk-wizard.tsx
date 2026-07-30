@@ -457,11 +457,16 @@ export function BulkWizard({
           idempotencyKey: idempotencyKeyRef.current,
           request,
         });
-        const offerCount = Object.keys(perVariantOverrides).length;
+        const selectedCount = Object.keys(perVariantOverrides).length;
+        const skipped = result.skippedAlreadyListedCount;
+        const queuedCount = selectedCount - skipped;
         showToast({
           tone: 'success',
           title: 'Batch submitted',
-          description: `${offerCount.toLocaleString()} offers queued for creation.`,
+          description:
+            skipped > 0
+              ? `${queuedCount.toLocaleString()} offers queued for creation (${skipped.toLocaleString()} already listed, skipped).`
+              : `${queuedCount.toLocaleString()} offers queued for creation.`,
         });
         void navigate(`/listings/bulk-batches/${result.batchId}`);
       } catch {
