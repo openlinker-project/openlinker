@@ -38,7 +38,19 @@ import { test, expect } from '../../src/fixtures/test';
 import { PlatformType } from '../../src/world/world';
 import { synthesizeOrder, buildPrestashopWebserviceClient } from '../../src/support/order-synthesis';
 
-const BUYER_TAX_ID = { scheme: 'pl-nip', value: '1234567890' };
+/**
+ * A CHECKSUM-VALID synthetic Polish NIP. Do not "simplify" it back to a
+ * sequential `1234567890`, which fails the NIP check-digit rule, so KSeF
+ * rejects the FA(3) with the `status 450` schema/validation class this repo has
+ * already been bitten by.
+ *
+ * Check digit = (sum of the first 9 digits weighted by [6,5,7,2,3,4,5,6,7]) mod 11:
+ *   1*6 + 2*5 + 3*7 + 4*2 + 5*3 + 6*4 + 3*5 + 2*6 + 1*7
+ *   = 6 + 10 + 21 + 8 + 15 + 24 + 15 + 12 + 7 = 118;  118 mod 11 = 8.
+ * (A remainder of 10 would make the prefix unusable; 8 is a real digit, so
+ * `123456321` + `8` is well-formed.)
+ */
+const BUYER_TAX_ID = { scheme: 'pl-nip', value: '1234563218' };
 
 test.describe('invoicing: correction (KOR) and correction-of-correction', () => {
   test('a correction-of-correction diffs against the first correction\'s own snapshot', async ({

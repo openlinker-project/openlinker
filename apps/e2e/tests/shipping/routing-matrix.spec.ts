@@ -23,6 +23,8 @@ import { PlatformType } from '../../src/world/world';
 import {
   buildPickupRecipient,
   ensureCarrierRouting,
+  releaseDispatchedShipments,
+  shippingOrderShortageReason,
   resolveDispatchedShipment,
   resolveOrderDeliveryMethodId,
   resolveShippingTestOrder,
@@ -35,6 +37,53 @@ const DPD_PLATFORM_TYPE = 'dpd';
 const COURIER_DELIVERY_METHOD_ID = 'e2e-courier-matrix';
 
 test.describe('shipping — routing matrix', () => {
+  /**
+   * Source connections this run wrote a synthetic `COURIER_DELIVERY_METHOD_ID`
+   * rule onto. Unlike the pickup-point half - which routes the order's OWN
+   * delivery method and is therefore a rule the operator wants anyway - this one
+   * is a fabricated method that exists purely for the matrix contrast, so
+   * leaving it behind permanently widens the operator's routing table with a
+   * rule no real order can ever match.
+   */
+  const syntheticRuleConnectionIds = new Set<string>();
+
+  // Recycle the fixture pool. Every dispatch leaves a non-terminal shipment on
+  // its order, and `resolveShippingTestOrder` refuses an order that already has
+  // one - so without this the suite eats its own pool and every shipping spec
+  // eventually `test.skip`s green with zero coverage. Best-effort and silent on
+  // an already-confirmed shipment; `afterAll`, so a failing test still recycles.
+  test.afterAll(async ({ api }) => {
+    await releaseDispatchedShipments(api);
+    for (const connectionId of syntheticRuleConnectionIds) {
+      // `PUT /connections/:id/routing-rules` is a FULL REPLACE, so the removal
+      // is "read the current table, write it back minus our synthetic row".
+      // Deliberately NOT `.catch(() => [])` on the read (cf. `ensureCarrierRouting`):
+      // a swallowed read here would write an empty array and delete the
+      // operator's whole routing matrix. A failed read leaves the synthetic rule
+      // in place, which is strictly the lesser harm - so the whole repair is
+      // wrapped, never rethrown, and the residue is reported instead.
+      try {
+        const rules = await api.routingRules.list(connectionId);
+        await api.routingRules.replace(
+          connectionId,
+          rules
+            .filter((r) => r.sourceDeliveryMethodId !== COURIER_DELIVERY_METHOD_ID)
+            .map((r) => ({
+              sourceDeliveryMethodId: r.sourceDeliveryMethodId,
+              processorKind: r.processorKind,
+              processorConnectionId: r.processorConnectionId,
+            })),
+        );
+      } catch {
+        console.warn(
+          `[e2e] left a synthetic routing rule "${COURIER_DELIVERY_METHOD_ID}" on connection ` +
+            `${connectionId}; remove it from the connection's routing table by hand.`,
+        );
+      }
+    }
+    syntheticRuleConnectionIds.clear();
+  });
+
   test('routes a pickup-point delivery method to InPost and dispatches', async ({
     api,
     world,
@@ -47,7 +96,7 @@ test.describe('shipping — routing matrix', () => {
     const order = await resolveShippingTestOrder(api, env);
     test.skip(
       !order,
-      'no ready order available (set E2E_ORDER_ID or run the golden path first)',
+      shippingOrderShortageReason(),
     );
 
     const deliveryMethodId = resolveOrderDeliveryMethodId(order!);
@@ -91,6 +140,8 @@ test.describe('shipping — routing matrix', () => {
       world.connectionFor(PlatformType.erli);
     test.skip(!source, 'no source (marketplace/shop) connection to attach the routing rule to');
 
+    // Register BEFORE the write, so a failure mid-write still gets swept.
+    syntheticRuleConnectionIds.add(source!.id);
     await ensureCarrierRouting(api, source!.id, COURIER_DELIVERY_METHOD_ID, dpd!.id);
 
     const rules = await api.routingRules.list(source!.id);

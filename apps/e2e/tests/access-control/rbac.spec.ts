@@ -15,9 +15,16 @@
 import { test, expect } from '../../src/fixtures/test';
 import { ApiClient } from '../../src/api/api-client';
 import { ApiError } from '../../src/api/api-error';
-import { provisionViewer } from '../../src/support/access-control';
+import { provisionViewer, sweepProvisionedAccounts } from '../../src/support/access-control';
 
 test.describe('access-control: RBAC', () => {
+  // `provisionViewer` mints a real account per call. Delete it on the way out
+  // (in `afterAll`, so a failing test still cleans up) rather than leaving a
+  // predictably-named viewer behind on every run.
+  test.afterAll(async ({ api }) => {
+    await sweepProvisionedAccounts(api);
+  });
+
   test('unauthenticated request to a protected endpoint returns 401', async ({ env }) => {
     // A client that never calls login() sends no auth header and does NOT
     // auto-relogin on 401 (no captured credentials).

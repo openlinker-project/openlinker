@@ -14,7 +14,6 @@
  */
 import { expect } from '@playwright/test';
 import type {
-  CategoryParameter,
   IssuedDocumentContent,
   MarketplaceOffer,
   MarketplaceOfferParameter,
@@ -151,33 +150,6 @@ export function offerToParityView(offer: MarketplaceOffer): ProductParityView {
   };
 }
 
-export interface ExpectedCategoryParameter {
-  name: string;
-  section: 'offer' | 'product';
-}
-
-/**
- * Assert the category parameter directory exposes every expected parameter, with
- * the right section (offer vs product). This is the OL-exposed slice of offer
- * parameter parity — the per-offer *filled* values are confirmed visually via a
- * manual checkpoint (see the golden-path doc's honest-limits section).
- */
-export function assertOfferParameterParity(
-  label: string,
-  expected: readonly ExpectedCategoryParameter[],
-  actual: readonly CategoryParameter[],
-): void {
-  for (const want of expected) {
-    const match = actual.find(
-      (p) => norm(p.name) === norm(want.name) && p.section === want.section,
-    );
-    expect(
-      match,
-      `${label}: expected ${want.section}-section parameter "${want.name}" in category directory`,
-    ).toBeTruthy();
-  }
-}
-
 /** Order-insensitive multiset equality on normalised string values. */
 function sameValues(a: readonly string[], b: readonly string[]): boolean {
   if (a.length !== b.length) return false;
@@ -289,14 +261,27 @@ export function assertInvoiceAmounts(
       actual.lines.length,
       `invoice line count (>= ${expected.lines.length} expected order lines)`,
     ).toBeGreaterThanOrEqual(expected.lines.length);
+    // Matched lines are CONSUMED from a working copy, so one actual line can
+    // satisfy at most one expected line.
+    //
+    // Without that, matching was a plain `find` over the full list and two
+    // expected lines with the same gross both resolved to the SAME actual line.
+    // Concretely: order lines `[19.90, 19.90]` against invoice lines
+    // `[19.90, 5.00 shipping]` passed the `2 >= 2` count check, then matched
+    // both expectations onto the single `19.90` - green, with one order line
+    // silently dropped from the document. Splicing turns that into the
+    // "expected line ... present" failure it always should have been.
+    const unmatched = [...actual.lines];
     expected.lines.forEach((line, i) => {
       const wantGross = toMinorUnits(line.gross, currency);
-      const got = actual.lines.find((l) => toMinorUnits(l.gross, currency) === wantGross);
+      const index = unmatched.findIndex((l) => toMinorUnits(l.gross, currency) === wantGross);
       expect(
-        got,
-        `invoice line for expected gross ${line.gross} ${currency} (order line ${i + 1}) present`,
-      ).toBeTruthy();
-      if (!got) return;
+        index >= 0,
+        `invoice line for expected gross ${line.gross} ${currency} (order line ${i + 1}) present ` +
+          'and not already claimed by an earlier expected line',
+      ).toBe(true);
+      if (index < 0) return;
+      const [got] = unmatched.splice(index, 1);
       if (line.net !== undefined) {
         assertMoneyEqual(line.net, got.net, currency, `invoice line ${i + 1} net`);
       }

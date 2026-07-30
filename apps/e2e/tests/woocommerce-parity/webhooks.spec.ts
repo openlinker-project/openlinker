@@ -36,14 +36,34 @@ import {
   buildWooCommerceOrderWebhookBody,
   signWooCommerceWebhook,
 } from '../../src/support/webhooks';
+import { restoreWebhookSecret } from '../../src/support/webhook-secret';
 
 const PROVIDER = PlatformType.woocommerce;
 
 test.describe('WooCommerce inbound webhooks', () => {
   let connection: Connection | undefined;
+  /**
+   * Whether any case in this file has rotated the shared secret, so teardown
+   * knows whether the stack owes a repair. Set by `rotateSecret`, never reset -
+   * one rotation anywhere in the file leaves the store out of sync.
+   */
+  let rotated = false;
 
   test.beforeAll(({ world }) => {
     connection = world.connectionFor(PROVIDER);
+  });
+
+  /**
+   * Re-provision the store on the way out. A bare rotate changes only OL's
+   * stored secret; the WooCommerce webhook records keep the pre-run one, so
+   * every genuine store delivery 401s (and per #1814 the connection reads
+   * `auth-failing`) until both sides are handed the same secret again - which
+   * is exactly what `install` does. Teardown rather than end-of-test, because a
+   * case that fails after rotating is the one that leaves the damage.
+   */
+  test.afterAll(async ({ api }) => {
+    if (!connection || !rotated) return;
+    await restoreWebhookSecret(api, PROVIDER, connection.id);
   });
 
   /**
@@ -62,7 +82,9 @@ test.describe('WooCommerce inbound webhooks', () => {
    */
   async function rotateSecret(api: ApiClient): Promise<string | null> {
     try {
-      return (await api.connections.rotateWebhookSecret(connection!.id)).secret;
+      const secret = (await api.connections.rotateWebhookSecret(connection!.id)).secret;
+      rotated = true;
+      return secret;
     } catch {
       return null;
     }
@@ -161,8 +183,14 @@ test.describe('WooCommerce inbound webhooks', () => {
       description: `secret-rotation invalidation against connection ${connectionId}`,
     });
 
-    const rotated = await api.connections.rotateWebhookSecret(connectionId);
-    expect(rotated.secret).not.toBe(staleSecret);
+    // Rotate a second time to make `staleSecret` genuinely stale. Goes through
+    // the helper so the teardown repair flag is set for this rotation too.
+    // Assert it actually produced a secret first: the helper answers `null` on
+    // failure, and `expect(null).not.toBe(staleSecret)` would pass while the
+    // secret was never rotated, leaving the rest of the test asserting nothing.
+    const currentSecret = await rotateSecret(api);
+    expect(currentSecret, 'the second rotation returned a secret').not.toBeNull();
+    expect(currentSecret).not.toBe(staleSecret);
 
     const since = new Date(Date.now() - 5_000).toISOString();
     const signedWithStaleSecret = signWooCommerceWebhook(

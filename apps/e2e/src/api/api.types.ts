@@ -413,6 +413,16 @@ export type ShipmentStatus =
   | 'failed'
   | 'cancelled';
 
+/**
+ * Mirrors `ShipmentResponseDto`. Note the WRITE-ONLY fields: `GenerateLabelInput`
+ * accepts `cod` and `insuredValue`, but the read model exposes neither, so no
+ * spec can assert that a COD amount or a declared value actually reached the
+ * carrier - a success-path assertion on a COD/insured dispatch would pass
+ * identically with those arguments deleted. The real coverage for those flows is
+ * the REJECTION path (a malformed amount 400s, an unsupported carrier 502s).
+ * Closing the gap needs the fields on the API response DTO, which is outside
+ * this package.
+ */
 export interface Shipment {
   id: string;
   orderId: string;
@@ -486,7 +496,9 @@ export interface SyncJobListQuery {
   connectionId?: string;
   jobType?: string;
   status?: SyncJobStatus;
+  /** Server maximum is 100 (`ListSyncJobsQueryDto.limit` is `@Max(100)`). */
   limit?: number;
+  offset?: number;
 }
 
 export interface SyncJobListResponse {

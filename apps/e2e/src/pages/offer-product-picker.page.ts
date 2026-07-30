@@ -48,39 +48,69 @@ export class OfferProductPickerModal {
     return this.dialog.getByLabel('Search products');
   }
 
-  /** A product row in the left list (`offer-product-picker-row.tsx:94`). */
+  /**
+   * A product row (`offer-product-picker-row.tsx:94`) whose OWN name or SKU
+   * EXACTLY equals `productText`.
+   *
+   * Matched via a descendant exact-text locator — the name's `<b>` (`:121`) or
+   * the SKU's `<small>` (`:122`) — NOT `hasText`'s substring match against the
+   * row's whole flattened text, mirroring `products.page.ts:36-53`. That comment
+   * documents why, and it applies verbatim here: this stack routinely carries
+   * same-named products from different masters, so a substring match on
+   * "Adidas Runner" also matches a "Adidas Runner Kids" row (and a SKU
+   * `OL-ADIDAS-IA4845` is a substring of `OL-ADIDAS-IA4845-S`). Resolving the
+   * wrong row here publishes the wrong product's variant, and the failure only
+   * surfaces a minute later as a poll timing out on a variant nothing submitted.
+   */
   productRow(productText: string): Locator {
     return this.dialog
       .locator('li.offer-product-picker__prow')
-      .filter({ hasText: productText });
+      .filter({ has: this.page.getByText(productText, { exact: true }) });
+  }
+
+  /**
+   * Search for a product and resolve its row, requiring the match to be UNIQUE.
+   *
+   * Exact text removes the substring hazard but not duplicate names across
+   * masters, so ambiguity is reported here rather than silently resolved by a
+   * `.first()`. The caller's fix is to pass the SKU, which the picker's search
+   * accepts alongside name and EAN (`offer-product-picker-modal.tsx:438`).
+   */
+  private async resolveProductRow(productText: string): Promise<Locator> {
+    await this.searchField.fill(productText);
+    const rows = this.productRow(productText);
+    await expect(
+      rows,
+      `exactly one picker row should carry "${productText}" as its exact product name or SKU ` +
+        '(0 = the search returned no such row; 2+ = several products share it, so pass the ' +
+        'SKU instead of the name)',
+    ).toHaveCount(1, { timeout: 15_000 });
+    return rows;
   }
 
   /**
    * Search for a product and tick its whole-product checkbox.
    *
-   * The row checkbox's accessible name is `Select {product.name}`
-   * (`offer-product-picker-row.tsx:105`), so the check is scoped to the named
-   * product rather than "the first checkbox" of a possibly-unfiltered,
-   * debounce-lagging list.
+   * The checkbox is scoped structurally, to the main row's own
+   * `label.offer-product-picker__prow-check` (`offer-product-picker-row.tsx:99-111`),
+   * rather than by its `Select {product.name}` accessible name — `productText`
+   * may legitimately be a SKU, and the variant sub-rows carry their own
+   * checkboxes.
    */
-  async selectWholeProduct(productName: string): Promise<void> {
-    await this.searchField.fill(productName);
-    const row = this.productRow(productName).first();
-    await row.waitFor({ state: 'visible', timeout: 15_000 });
-    await row.getByRole('checkbox', { name: `Select ${productName}` }).check();
+  async selectWholeProduct(productText: string): Promise<void> {
+    const row = await this.resolveProductRow(productText);
+    await row.locator('label.offer-product-picker__prow-check').getByRole('checkbox').check();
   }
 
   /**
    * Search for a product, expand it, and tick its first variant.
    *
    * Variants lazy-load on expand (`offer-product-picker-row.tsx:51`), so the
-   * expand toggle (`aria-label="Expand {name}"`, `:117`) must fire before the
-   * per-variant checkboxes in `.offer-product-picker__vrows` (`:140`) exist.
+   * expand toggle (`:112-118`) must fire before the per-variant checkboxes in
+   * `.offer-product-picker__vrows` (`:140`) exist.
    */
-  async selectFirstVariantOf(productName: string): Promise<void> {
-    await this.searchField.fill(productName);
-    const row = this.productRow(productName).first();
-    await row.waitFor({ state: 'visible', timeout: 15_000 });
+  async selectFirstVariantOf(productText: string): Promise<void> {
+    const row = await this.resolveProductRow(productText);
 
     const toggle = row.locator('button.offer-product-picker__prow-toggle');
     if ((await toggle.getAttribute('aria-expanded')) !== 'true') {

@@ -19,14 +19,26 @@
 import { test, expect } from '../../src/fixtures/test';
 import {
   SYNTHETIC_COURIER_PARCEL,
+  assertTrackingBackfill,
   buildCourierRecipient,
   isCourierUnprovisionedError,
+  releaseDispatchedShipments,
+  shippingOrderShortageReason,
   resolveDispatchedShipment,
   setUpShippingTestOrder,
   waitForTrackingBackfill,
 } from '../../src/support/shipments';
 
 test.describe('shipping — tracking-number backfill (courier)', () => {
+  // Recycle the fixture pool. Every dispatch leaves a non-terminal shipment on
+  // its order, and `resolveShippingTestOrder` refuses an order that already has
+  // one - so without this the suite eats its own pool and every shipping spec
+  // eventually `test.skip`s green with zero coverage. Best-effort and silent on
+  // an already-confirmed shipment; `afterAll`, so a failing test still recycles.
+  test.afterAll(async ({ api }) => {
+    await releaseDispatchedShipments(api);
+  });
+
   test('backfills the InPost tracking number for a courier shipment', async ({
     api,
     world,
@@ -34,7 +46,7 @@ test.describe('shipping — tracking-number backfill (courier)', () => {
     jobs,
   }, testInfo) => {
     const setup = await setUpShippingTestOrder(api, world, env);
-    test.skip(!setup, 'no InPost connection, or no ready order available (set E2E_ORDER_ID or run the golden path first)');
+    test.skip(!setup, `no InPost connection, or ${shippingOrderShortageReason()}`);
     const { order, deliveryMethodId, inpostConnectionId } = setup!;
 
     let dispatch;
@@ -66,18 +78,16 @@ test.describe('shipping — tracking-number backfill (courier)', () => {
       { shipmentId: shipment.id, inpostConnectionId },
       { timeoutMs: 120_000, intervalMs: 5_000 },
     );
-    if (backfill.timedOut) {
-      testInfo.annotations.push({
-        type: 'tracking',
-        description:
-          'tracking number not backfilled within timeout for the courier shipment — the ShipX sandbox ' +
-          'mints it only after the shipment is confirmed and marketplace.shipment.statusSync runs (#1521)',
-      });
-      return;
+    // `assertTrackingBackfill` owns the classification, so this spec and
+    // golden-path S6 cannot drift apart on what counts as a defect: it THROWS
+    // when the carrier has already moved the parcel (ShipX minted a tracking
+    // number and OL dropped it), and only returns an annotation for the
+    // documented not-yet-confirmed sandbox state. The previous shape annotated
+    // and `return`ed on EVERY timeout, so a total #1426 regression reported
+    // green from a test named "backfills the InPost tracking number".
+    const unverified = assertTrackingBackfill(backfill, 'courier shipment');
+    if (unverified) {
+      testInfo.annotations.push({ type: 'tracking', description: unverified });
     }
-    expect(
-      backfill.trackingNumber,
-      'OL backfilled the InPost tracking number for the courier shipment',
-    ).toBeTruthy();
   });
 });

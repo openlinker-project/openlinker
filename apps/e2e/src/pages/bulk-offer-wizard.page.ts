@@ -688,11 +688,18 @@ export class BulkOfferWizard {
    *    leaving the category unset.
    */
   private async ensureCategoryResolved(dialog: Locator): Promise<boolean> {
-    const paramsSignal = dialog
+    // Anything that means "the category-parameters query is no longer pending":
+    // the rendered fieldset (`category-parameters-step.tsx:144`), the in-flight
+    // "Loading…" line, the resolved-but-empty line, OR the query-error Alert
+    // (`bulk-edit-modal.tsx:1653-1668`). The error state is in the union ONLY so
+    // the wait short-circuits instead of burning its full timeout — every caller
+    // immediately rejects it via `assertCategoryParametersLoaded`, because a
+    // failed query is NOT a resolved schema.
+    const paramsSettled = dialog
       .locator('fieldset.category-parameters-step__group')
       .or(dialog.getByText('Loading category parameters'))
       .or(dialog.getByText('No category parameters required'))
-      .or(dialog.getByText('Could not load category parameters'));
+      .or(this.categoryParametersError(dialog));
 
     const changeCategoryButton = dialog.getByRole('button', { name: 'Change category' });
     if ((await changeCategoryButton.count()) === 0) {
@@ -711,7 +718,9 @@ export class BulkOfferWizard {
           'the borrowed-taxonomy editor should expose an "Allegro category ID" field',
         ).toHaveCount(1, { timeout: 10_000 });
         await field.fill(this.categoryId);
-        if (await this.isVisibleWithin(paramsSignal, 20_000)) return true;
+        const settled = await this.isVisibleWithin(paramsSettled, 20_000);
+        await this.assertCategoryParametersLoaded(dialog);
+        if (settled) return true;
         throw new Error(
           `Filling the Allegro category ID "${this.categoryId}" never surfaced a parameter ` +
             'schema — the category-parameters query for that id did not resolve.',
@@ -735,11 +744,47 @@ export class BulkOfferWizard {
       picked = true;
     }
 
-    if (await this.isVisibleWithin(paramsSignal, 20_000)) return picked;
+    const settled = await this.isVisibleWithin(paramsSettled, 20_000);
+    await this.assertCategoryParametersLoaded(dialog);
+    if (settled) return picked;
 
     throw new Error(
       'The bulk edit modal never surfaced a category parameter schema. The category is either ' +
         'still unset or its category-parameters query never resolved.',
+    );
+  }
+
+  /**
+   * The edit modal's category-parameters FAILURE state (`bulk-edit-modal.tsx:1657-1661`).
+   * Its own copy — "You can still save - the worker may reject if required params
+   * are missing" — is why it must never be read as a resolved schema.
+   */
+  private categoryParametersError(dialog: Locator): Locator {
+    return dialog.getByText('Could not load category parameters');
+  }
+
+  /**
+   * Reject the edit modal's category-parameters error state.
+   *
+   * `BaseParameterSection` has four states (`bulk-edit-modal.tsx:1653-1668`) and
+   * only three of them mean the schema resolved. Treating the fourth — the
+   * `parametersQuery.error` Alert — as "resolved" is a silent failure with a very
+   * long fuse: `fillRequiredCategoryParameters` then finds no required fieldset,
+   * the wizard submits `parameters: []`, and the run dies ~120 s later as an
+   * opaque marketplace PARAMETER_REQUIRED rejection with nothing pointing back at
+   * the FE query that 500'd. Same class as the `needsAttentionCount` fix above.
+   *
+   * A `count()` rather than a visibility wait: every call site has already waited
+   * out the pending state, so the Alert is either mounted at this instant or the
+   * query succeeded.
+   */
+  private async assertCategoryParametersLoaded(dialog: Locator): Promise<void> {
+    if ((await this.categoryParametersError(dialog).count()) === 0) return;
+    throw new Error(
+      'The bulk edit modal reported "Could not load category parameters" — its ' +
+        'category-parameters query failed, so no required parameter can be read or filled. ' +
+        'The modal lets an operator save anyway, but the submit would be rejected ' +
+        'marketplace-side with PARAMETER_REQUIRED.',
     );
   }
 
@@ -873,6 +918,11 @@ export class BulkOfferWizard {
     await expect(async () => {
       expect(await dialog.getByText('Loading category parameters').count()).toBe(0);
     }).toPass({ timeout: 20_000 });
+    // The query can also settle into its ERROR state — including on a re-fetch
+    // after the category changed inside this same modal, which is past every
+    // check `ensureCategoryResolved` made. "No required params" and "the schema
+    // never loaded" look identical from here, so reject the latter explicitly.
+    await this.assertCategoryParametersLoaded(dialog);
 
     const requiredFieldset = dialog.locator(
       'fieldset.category-parameters-step__group:not(.category-parameters-step__group--optional)',
@@ -977,11 +1027,10 @@ export class BulkOfferWizard {
    * options". Probe a broad alphabet (digits first — numeric dictionaries are
    * common) and stop at the first probe that reveals a real dictionary option.
    * Falls back to committing a custom value for a `customValuesEnabled` field
-   * whose dictionary matched nothing. An empty trigger shows its "Pick …"
-   * placeholder; a filled one shows the chosen label.
+   * whose dictionary matched nothing.
    */
   private async fillComboboxIfEmpty(trigger: Locator): Promise<boolean> {
-    if (!/^pick\b/i.test((await trigger.innerText()).trim())) return false; // already has a value.
+    if (!(await this.isComboboxEmpty(trigger))) return false;
 
     await trigger.click();
     // The popover is portaled to the document body — scope to the page, not the dialog.
@@ -1026,6 +1075,62 @@ export class BulkOfferWizard {
       'A required Combobox parameter exposed no selectable options after probing digits + ' +
         'letters and a custom value — cannot auto-fill it.',
     );
+  }
+
+  /**
+   * Decide whether a required Combobox parameter still has NO value.
+   *
+   * Two of the trigger's three bodies are structurally decisive
+   * (`combobox.tsx:272-292`): a multi-select with picks renders
+   * `span.combobox__chips`, and a committed custom value renders
+   * `span.combobox__custom-value`. Neither can exist while the field is empty.
+   *
+   * The third, `span.combobox__summary`, is ambiguous by construction — it holds
+   * the PLACEHOLDER when `value` is null and the chosen option's LABEL otherwise
+   * (`formatTriggerSummary`, `:445-456`). There is no `data-empty` / distinguishing
+   * class, so the copy is the only discriminator available. Rather than sniff for
+   * a hardcoded word, derive the exact placeholder the FE must render: the same
+   * call site passes `ariaLabel={parameter.name}` and
+   * `placeholder={`Pick ${parameter.name.toLowerCase()}`}`
+   * (`category-parameters-step.tsx:277-279`), so an empty trigger reads exactly
+   * "Pick {aria-label lowercased}"; a control mounted with no placeholder falls
+   * back to the shared default "Select…" (`combobox.tsx:449`, `:455`).
+   *
+   * A label that still LOOKS like placeholder copy but doesn't match either form
+   * throws instead of being read as a value. That is the whole point: rename the
+   * placeholder to "Select {name}" and the old prefix test classified every
+   * required dictionary as already-filled, left the row READY, and submitted empty
+   * parameters — failing remotely as a marketplace rejection instead of here.
+   */
+  private async isComboboxEmpty(trigger: Locator): Promise<boolean> {
+    if (
+      (await trigger.locator('span.combobox__chips, span.combobox__custom-value').count()) > 0
+    ) {
+      return false;
+    }
+
+    const summary = trigger.locator('span.combobox__summary');
+    const name = ((await trigger.getAttribute('aria-label')) ?? '').trim();
+    if ((await summary.count()) === 0) {
+      throw new Error(
+        `Required Combobox parameter "${name || '(unlabelled)'}" renders none of the three ` +
+          'known trigger bodies (chips / custom value / summary) — cannot tell whether it ' +
+          'already has a value.',
+      );
+    }
+
+    const label = (await summary.innerText()).trim();
+    if (name && label.toLowerCase() === `pick ${name.toLowerCase()}`) return true;
+    if (/^select[.…]{0,3}$/i.test(label)) return true;
+    if (/^(pick|select|choose)\b/i.test(label)) {
+      throw new Error(
+        `Required Combobox parameter "${name || '(unlabelled)'}" shows "${label}", which reads ` +
+          `like placeholder copy but is neither "Pick ${name.toLowerCase()}" nor "Select…" — ` +
+          'the FE placeholder was probably renamed. Refusing to guess: treating it as filled ' +
+          'would submit the offer with this required parameter empty.',
+      );
+    }
+    return false;
   }
 
   /** True if the locator's first match becomes visible within `timeoutMs`. */

@@ -1,33 +1,36 @@
 /**
  * Bulk batch progress page object
  *
- * Covers `/listings/bulk-batches/:batchId`. Two distinct status vocabularies
- * live on this page and must not be conflated:
+ * Covers `/listings/bulk-batches/:batchId`. Reached from
+ * `BulkOfferWizardPage.confirmCreation()`, whose two callers
+ * (`full-flow.spec.ts`, `operator-setup.spec.ts`) read `batchId` and then assert
+ * against the API rather than the DOM - OL's own offer mappings are the
+ * authoritative signal, and the batch id is all they need from this page.
+ *
+ * Deliberately minimal for that reason. Row-level readers (`recordsTable`,
+ * `liveRows`, `countRowsWithStatus`) existed here with ZERO callers, so they
+ * were pure `apps/web`-coupled selector surface rotting against FE churn, and
+ * were removed. If a row assertion is ever needed, re-add it knowing the trap
+ * they encoded: two DISTINCT status vocabularies live on this page and must not
+ * be conflated.
  *
  *   - PER-RECORD (one row per variant) in the "Bulk batch records" DataTable
- *     (`bulk-batch-progress-table.tsx:169`): `pending | running | draft |
- *     succeeded | already existed | failed` (`:353-368`). There is NO
- *     "completed" row status.
- *   - BATCH-level, rendered once in the page header
- *     (`bulk-batch-progress-page.tsx:225-235`): `pending | running | completed |
+ *     (`bulk-batch-progress-table.tsx`): `pending | running | draft | succeeded |
+ *     already existed | failed`. There is NO "completed" row status - the FE's
+ *     `LIVE_STATUSES` maps `active -> succeeded`, `reused -> already existed`,
+ *     `draft -> draft` through `RecordStatusBadge`.
+ *   - BATCH-level, rendered ONCE in the page header
+ *     (`bulk-batch-progress-page.tsx`): `pending | running | completed |
  *     partially failed | failed`.
  *
- * Every row query is scoped to the records table so the per-product rollup list
- * above it (`bulk-batch-progress-table.tsx:153`, `<ul>` — not rows) and the
- * batch badge can't leak into a count.
+ * So a `/completed/i` row predicate matches zero rows on a fully successful
+ * batch, and any row query must be scoped to the records table so the
+ * per-product rollup `<ul>` above it and the batch badge cannot leak into a
+ * count.
  *
  * @module pages
  */
-import { type Locator, type Page } from '@playwright/test';
-
-/**
- * Record statuses that mean "the offer reached the marketplace" — the row-level
- * counterpart to the batch-level "completed" badge. Mirrors the FE's
- * `LIVE_STATUSES` (`bulk-batch-progress-table.tsx:41`) mapped through
- * `RecordStatusBadge` (`:353-368`): `active → succeeded`, `reused → already
- * existed`, `draft → draft`.
- */
-const LIVE_ROW_STATUSES = ['succeeded', 'already existed', 'draft'] as const;
+import { type Page } from '@playwright/test';
 
 export class BulkBatchProgressPage {
   constructor(private readonly page: Page) {}
@@ -39,31 +42,5 @@ export class BulkBatchProgressPage {
       throw new Error(`Not on a bulk batch progress page: ${this.page.url()}`);
     }
     return match[1];
-  }
-
-  /** The per-variant records table (`bulk-batch-progress-table.tsx:169`). */
-  get recordsTable(): Locator {
-    return this.page.getByRole('table', { name: 'Bulk batch records' });
-  }
-
-  /**
-   * Rows whose status badge means the offer went live on the marketplace.
-   *
-   * NOT `/completed/i` — no record row ever renders that word; only the
-   * batch-level badge does, so the old predicate matched zero rows on a fully
-   * successful batch.
-   */
-  liveRows(): Locator {
-    return this.recordsTable
-      .getByRole('row')
-      .filter({ hasText: new RegExp(`\\b(?:${LIVE_ROW_STATUSES.join('|')})\\b`, 'i') });
-  }
-
-  /** Count of record rows whose status text matches `statusText` (case-insensitive). */
-  async countRowsWithStatus(statusText: string): Promise<number> {
-    return this.recordsTable
-      .getByRole('row')
-      .filter({ hasText: new RegExp(statusText, 'i') })
-      .count();
   }
 }

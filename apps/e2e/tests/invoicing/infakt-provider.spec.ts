@@ -5,9 +5,17 @@
  * invoice on the inFakt connection for a REST-synthesized order (no
  * marketplace purchase — `synthesizeOrder` creates the order directly against
  * PrestaShop's webservice, which is a real `OrderSourcePort`), reconciles
- * clearance to `accepted`, and asserts the invoice carries the order's
- * shipping line + matching totals (#1567, reusing `assertInvoiceAmounts` the
- * same way the golden path's S8 does for KSeF).
+ * clearance to `accepted`, and asserts matching per-line and total amounts
+ * (reusing `assertInvoiceAmounts` the same way the golden path's S8 does for
+ * KSeF).
+ *
+ * The SHIPPING LINE (#1567) is NOT covered here, despite what an earlier
+ * version of this doc and the test's name claimed. A synthesized order always
+ * reaches OL with `totals.shipping === 0` (PrestaShop's raw webservice zeroes
+ * `total_shipping*`, #503/#898 - verified live), so the shipping-line branch is
+ * DEAD on this path and the test passed while asserting nothing about it. Real
+ * coverage needs an order created through `validateOrder` (the OL module's
+ * `importorder` endpoint), i.e. the attended full-flow's marketplace purchase.
  *
  * Self-configuring: skips with a clear reason when the stack has no inFakt
  * connection or no PrestaShop webservice key (order synthesis requires it).
@@ -34,7 +42,7 @@ interface OrderSnapshotShape {
 }
 
 test.describe('invoicing: inFakt provider run', () => {
-  test('issues via inFakt, reconciles to accepted, and carries the shipping line', async ({
+  test('issues via inFakt, reconciles to accepted, and matches the order amounts', async ({
     api,
     world,
     jobs,
@@ -83,15 +91,17 @@ test.describe('invoicing: inFakt provider run', () => {
     // Shipping line (#1567): when the INGESTED order carries shipping, the
     // mapper's `toShippingLine` must append a line whose gross matches it.
     //
-    // Conditional by necessity, not by preference: PrestaShop's raw webservice
-    // `POST /api/orders` resets `total_shipping` to 0 no matter what the
-    // request or its cart carries (#503/#898 — see `SynthesizeOrderOptions
-    // .shippingTaxIncl`), so a synthesized order reaches OL with zero shipping
-    // and there is nothing for the mapper to render. Asserting a positive
-    // amount here would be asserting against the source platform, not against
-    // OL. Covering the non-zero branch needs an order created through
-    // `validateOrder` (the OL module's `importorder` endpoint) — the attended
-    // full-flow's real marketplace purchase, not this unattended path.
+    // FIXME(#1567 coverage): on THIS path the `> 0` branch is unreachable, so
+    // nothing below is real coverage. PrestaShop's raw webservice
+    // `POST /api/orders` resets `total_shipping` to 0 no matter what the request
+    // or its cart carries (#503/#898 — see `SynthesizeOrderOptions
+    // .shippingTaxIncl`), verified live, so a synthesized order ALWAYS reaches
+    // OL with zero shipping and there is nothing for the mapper to render.
+    // Asserting a positive amount here would be asserting against the source
+    // platform, not against OL. The branch is kept (rather than deleted) so it
+    // starts working the moment order synthesis moves to `validateOrder` via the
+    // OL module's `importorder` endpoint; until then the real coverage lives in
+    // the attended full-flow's marketplace purchase.
     const shippingMinor = toMinorUnits(snapshot.totals.shipping ?? 0, currency);
     if (shippingMinor > 0) {
       const shippingLine = content.lines.find(
@@ -102,7 +112,9 @@ test.describe('invoicing: inFakt provider run', () => {
       testInfo.annotations.push({
         type: 'invoicing',
         description:
-          'shipping line not asserted — PrestaShop zeroed the synthesized order shipping (#503/#898)',
+          'shipping line NOT asserted (expected on this path, not an anomaly) - PrestaShop zeroes ' +
+          'a raw-webservice order\'s shipping (#503/#898), so #1567 has no coverage here; see the ' +
+          'attended full-flow for the real thing',
       });
     }
 

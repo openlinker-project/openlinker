@@ -28,6 +28,15 @@
  *   - `fatal` — hard-fail immediately (e.g. the purchase pause — nothing
  *     downstream can run without it).
  *
+ * `observational` keeps the serial run moving, but it must not let the RUN
+ * report green: start an attended run, walk away, and every checkpoint waits out
+ * its timeout, records a FAIL annotation, and the segments that depended on it
+ * pass anyway. Every failed (or unanswered) checkpoint is therefore also
+ * appended to a module-scoped ledger - `manualCheckpointFailures()` - that the
+ * last test in the attended describe gates on. Module state is safe here for the
+ * same reason it is in `shipments.ts`: the attended project runs `workers: 1`,
+ * one Node process, serial.
+ *
  * @module support
  */
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
@@ -67,6 +76,36 @@ const POLL_INTERVAL_MS = 500;
 export interface ManualCheckpointResult {
   passed: boolean;
   note: string | null;
+  /**
+   * True when the wait expired with NO operator answer. Distinct from a
+   * deliberate FAIL verdict: an unanswered checkpoint means nobody looked, so
+   * the surface it guards is unverified rather than verified-and-wrong. Both
+   * block the run at the terminal gate; only the reason differs.
+   */
+  timedOut: boolean;
+}
+
+/** One failed or unanswered checkpoint, for the run's terminal gate. */
+export interface RecordedCheckpointFailure {
+  dashboard: string;
+  note: string | null;
+  timedOut: boolean;
+}
+
+const recordedFailures: RecordedCheckpointFailure[] = [];
+
+/**
+ * Every checkpoint in this worker process that the operator FAILED or never
+ * answered. The attended spec's last test asserts this is empty - without it an
+ * `observational` checkpoint leaves nothing that can turn the run red.
+ */
+export function manualCheckpointFailures(): readonly RecordedCheckpointFailure[] {
+  return recordedFailures;
+}
+
+/** Reset the ledger (for a spec that drives checkpoints across describes). */
+export function clearManualCheckpointFailures(): void {
+  recordedFailures.length = 0;
 }
 
 /**
@@ -90,15 +129,26 @@ export async function manualCheckpoint(
 
   const verdict = await waitForResume(resumeFile, failFile, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
 
-  const description = `${options.dashboard}: ${verdict.passed ? 'PASS' : 'FAIL'}${
-    verdict.note ? ` — ${verdict.note}` : ''
-  }`;
+  const outcome = verdict.passed ? 'PASS' : verdict.timedOut ? 'UNANSWERED' : 'FAIL';
+  const description = `${options.dashboard}: ${outcome}${verdict.note ? ` - ${verdict.note}` : ''}`;
   testInfo.annotations.push({
-    type: verdict.passed ? 'manual-checkpoint-pass' : 'manual-checkpoint-fail',
+    type: verdict.passed
+      ? 'manual-checkpoint-pass'
+      : verdict.timedOut
+        ? 'manual-checkpoint-unanswered'
+        : 'manual-checkpoint-fail',
     description,
   });
 
   if (!verdict.passed) {
+    // Recorded BEFORE the severity switch: a `fatal` checkpoint throws below, so
+    // pushing afterwards would drop the one verdict that matters most from the
+    // terminal gate's ledger.
+    recordedFailures.push({
+      dashboard: options.dashboard,
+      note: verdict.note,
+      timedOut: verdict.timedOut,
+    });
     const severity: ManualCheckpointSeverity = options.severity ?? 'observational';
     if (severity === 'fatal') {
       expect(verdict.passed, description).toBe(true);
@@ -106,11 +156,11 @@ export async function manualCheckpoint(
       // Recorded on the test result (fails at the end), but the flow continues.
       expect.soft(verdict.passed, `Manual checkpoint failed — ${description}`).toBe(true);
     }
-    // 'observational' → the annotation above is the only record; the run
-    // continues and downstream serial segments still execute.
+    // 'observational' → this segment stays green so downstream serial segments
+    // still execute; the ledger above is what turns the RUN red at the gate.
   }
 
-  return { passed: verdict.passed, note: verdict.note };
+  return { passed: verdict.passed, note: verdict.note, timedOut: verdict.timedOut };
 }
 
 function printBanner(
@@ -168,17 +218,23 @@ async function waitForResume(
     if (existsSync(failFile)) {
       const note = readNote(failFile);
       rmSync(failFile, { force: true });
-      return { passed: false, note: note ?? 'fail sentinel' };
+      return { passed: false, note: note ?? 'fail sentinel', timedOut: false };
     }
     if (existsSync(resumeFile)) {
       const note = readNote(resumeFile);
       rmSync(resumeFile, { force: true });
       const failed = note !== null && /^fail/i.test(note);
-      return { passed: !failed, note };
+      return { passed: !failed, note, timedOut: false };
     }
     await delay(POLL_INTERVAL_MS);
   }
-  return { passed: false, note: `timed out after ${timeoutMs}ms` };
+  // Flagged, not just noted: "nobody answered" and "the operator looked and said
+  // no" are different findings, and only the flag survives into the ledger.
+  return {
+    passed: false,
+    note: `no operator answer within ${timeoutMs}ms - this surface was NOT looked at`,
+    timedOut: true,
+  };
 }
 
 function readNote(file: string): string | null {

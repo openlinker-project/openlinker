@@ -30,7 +30,7 @@ apps/e2e/
     world/                # buildWorld(api): connections indexed by platformType + capability + master product/variant helpers
     fixtures/             # the extended Playwright `test` exposing { page, api, world, jobs, poll, pages }
     pages/                # page objects (kebab-case files, PascalCase exports)
-    support/              # poller (pollUntil), jobs (trigger helpers), selectors, stock/orders/shipments/parity helpers, manual-checkpoint
+    support/              # poller (pollUntil), jobs (trigger helpers), stock/orders/shipments/parity/webhook helpers, manual-checkpoint
   tests/
     auth.setup.ts         # global-setup auth project → writes .auth/admin.json
     connection-topology.setup.ts  # same `setup` project: preflight that fails a self-contradictory stack
@@ -116,9 +116,19 @@ so the suite is never swept into the root `pnpm -r test` unit gate.
 > `test:e2e:full-flow` (which sets `E2E_ATTENDED=1`; `full-flow` also self-skips
 > without that flag, belt-and-suspenders).
 
+> ⚠️ **UNATTENDED IS NOT THE SAME AS SAFE.** `test:e2e` issues real fiscal
+> documents, dispatches real ShipX shipments, seeds WooCommerce-native orders,
+> mutates PrestaShop stock, rotates webhook secrets on up to four connections
+> and creates real user accounts. The mutating `golden-path` project runs by
+> default with no `E2E_ATTENDED`-style gate, even though
+> `operator-setup.spec.ts` itself warns it must never run unattended against a
+> shared stack. Point it only at a stack you control. The suite restores what it
+> can (webhook secrets, stock, bank-account defaults, shipments, accounts) and
+> warns to stdout with a `MANUAL FOLLOW-UP:` prefix for anything it cannot.
+
 ```bash
 # From the repo root:
-pnpm --filter @openlinker/e2e test:e2e                       # all UNATTENDED projects (safe default)
+pnpm --filter @openlinker/e2e test:e2e                       # all UNATTENDED projects (see the warning above: unattended != safe)
 pnpm --filter @openlinker/e2e test:e2e:unattended            # same as above, explicit
 pnpm --filter @openlinker/e2e test:e2e:full-flow             # ATTENDED S0-S9 (headed; E2E_ATTENDED=1)
 pnpm --filter @openlinker/e2e test:e2e -- --project=smoke    # smoke only (read-only)
@@ -155,7 +165,7 @@ dashboard checkpoints).
 | `shipping` | Unattended InPost: courier + paczkomat labels, COD, insurance, protocol, cancellation, tracking, ShipX webhook (#1572). | Yes (real ShipX calls) | No |
 | `invoicing` | inFakt run, payment marking, bulk issue/resend/e-mail, KOR corrections, FA(3) parity + preview, Transfer bank accounts (#1573). | Yes (issues/corrects invoices, synthesizes orders) | No |
 | `lifecycle` | Order-lifecycle idempotency, cross-channel stock propagation + oversell safety, stale-variant pruning (#1574). | Yes (real PS stock; pruning is destructive, opt-in) | No |
-| `access-control` | Demo mode, registration, RBAC, and UI-reflection checks. | Provisions a viewer (idempotent) | No |
+| `access-control` | Demo mode, registration, RBAC, and UI-reflection checks. | Yes - registers real accounts (deleted on teardown) | No |
 
 > ⚠️ **Every project except `smoke`/`setup` mutates the stack** (publishes
 > products, creates offers, generates labels, issues invoices, rotates webhook
@@ -194,6 +204,40 @@ The connection page's webhook install action does the same thing.
 `tests/woocommerce-parity/webhooks.spec.ts` rotates the **WooCommerce**
 connection's secret in the same way; that suite also exercises the install
 action, so it pushes the secret it leaves behind.
+
+### What a run leaves behind
+
+A run is not a read. This is the complete ledger of per-run residue, split by
+whether the suite puts it back. Anything in the second table means the stack is
+measurably different after the run than before it - and, for the shared-stack
+cases, that the NEXT run proves less than this one did.
+
+**Restored automatically** (all in `test.afterAll`, so a failing test still
+cleans up; all best-effort, and every failure warns to stdout with a
+`MANUAL FOLLOW-UP:` prefix rather than throwing):
+
+| Residue | Restore | Owner |
+|---|---|---|
+| Rotated webhook secrets (PrestaShop, WooCommerce) | `POST /connections/:id/webhooks/install` re-provisions BOTH sides with a fresh secret | `src/support/webhook-secret.ts` |
+| InPost shipments (each one occupies its order and blocks the next run's dispatch) | best-effort `POST /shipments/:id/cancel` | `releaseDispatchedShipments`, `src/support/shipments.ts` |
+| PrestaShop stock + the OL availability and channel quantities driven to 0 | stock write-back **plus** a re-run of the master sync and the cross-channel fan-out | `tests/lifecycle/inventory-propagation.spec.ts` |
+| The inFakt default bank account (every later Transfer invoice is stamped with it) | re-`setDefault` the previous default | `tests/invoicing/transfer-bank-accounts.spec.ts` |
+| Registered `e2e-viewer-*` / `e2e-register-*` accounts | `DELETE /users/:id` | `sweepProvisionedAccounts`, `src/support/access-control.ts` |
+| The synthetic `e2e-courier-matrix` routing rule | rewrite the routing table without it | `tests/shipping/routing-matrix.spec.ts` |
+| The spec-owned WooCommerce order-destination connection | set `status: 'disabled'` (never deleted - its mappings are reused next run) | `tests/woocommerce-parity/order-destination.spec.ts` |
+
+**NOT restored** - irreversible, or unreachable through any API the suite has:
+
+| Residue | Why it stays |
+|---|---|
+| Rotated **InPost** and **inFakt** webhook secrets | OL registers a `WebhookProvisioningPort` only for PrestaShop, WooCommerce and Erli, so `install` answers 400. The provider still holds the pre-run secret and will 401 every genuine delivery until an operator re-enters it by hand. This is why `E2E_TEST_INPOST_WEBHOOK` is opt-in. |
+| Marketplace offers on the Allegro and Erli sandboxes | No delete path. They also **consume eligibility**: `operator-setup.spec.ts` S2/S3/S4 need a product with an unlisted variant, so after enough runs those segments skip permanently. Add catalogue products (or use `E2E_FRESH_PRODUCT=true`) to replenish. |
+| `ShopProduct` mappings from WooCommerce publishes | Same shape as above. |
+| WooCommerce-native orders (up to 5 per run) and their customers | Created directly on the shop via REST; the suite has no delete. |
+| PrestaShop customers, addresses and synthesized orders (~6 per run) | Created via the webservice; not deleted. |
+| Issued fiscal documents (~8) and KSeF corrections (2) | Irreversible by definition, and they consume the provider's numbering series. |
+| A fresh PrestaShop product + images, under `E2E_FRESH_PRODUCT=true` | Deliberate - the attended flow needs a never-before-seen product. |
+| Variants deleted by `stale-variant-pruning.spec.ts` | Irreversible, which is why it is gated behind `E2E_ALLOW_DESTRUCTIVE_PRUNE=true`. |
 
 ### Project → required env
 
@@ -320,10 +364,11 @@ revoked the moment a second browser context (or a retry) presented it. So the
 auto `browserAuth` fixture establishes a **fresh session per test context** by
 logging in through `context.request` (which shares the browser cookie jar) before
 the page navigates. This sidesteps rotation while still honouring the
-storageState seed, and keeps the `golden-path` project safe to run serially with
-`retries: 1`. (`workers: 1` is set for the same serialization reason; a
+storageState seed. (`workers: 1` is set for the same serialization reason; a
 per-worker parallel auth fixture is the documented next step if parallelism is
-needed.)
+needed.) Note the retry policy is per project and `golden-path` is **`retries:
+0`**, not 1 - like every other mutating project, since a retry would re-publish
+and re-create offers. Only `setup`, `smoke` and `access-control` retry once.
 
 ---
 
@@ -359,10 +404,22 @@ cross-checked) with a bounded timeout and a clear message.
      );
    });
    ```
-4. Prefer role/label/text locators via existing page objects
-   (`pages.*`); the app has **no `data-testid`s**, so specs never use raw
-   selectors. If a new surface is needed, add a page object under `src/pages/`
-   (kebab-case file, PascalCase export) and register it in `src/pages/index.ts`.
+4. Prefer role/label/text locators via existing page objects (`pages.*`). The
+   app ships **no `data-testid`s**, so role/label/text is the only stable
+   vocabulary available - but "never use raw selectors" is NOT true of this
+   package today and the README used to claim it was. There are ~44 raw CSS/ID
+   locators in `src/pages/**`, roughly half of them coupled to `apps/web` BEM
+   class names (`.bulk-review__prow`, `button.bulk-review__cta--top`,
+   `.bulk-editor__foot`, `.state-card--loading`, `.order-invoice-panel--loading`,
+   `fieldset.category-parameters-step__group`, `.combobox__search`,
+   `.ksef-fa3-view__table`, `.attn > .n`, …). That coupling is this package's
+   **largest ongoing maintenance risk**: a purely cosmetic FE class rename
+   silently breaks a spec, which is exactly the drift two commits on this branch
+   already had to repair. Adding stable `data-testid` hooks to those surfaces is
+   tracked in **#1802**; until it lands, treat every new raw selector as debt and
+   add it to that issue. If a new surface is needed, add a page object under
+   `src/pages/` (kebab-case file, PascalCase export) and register it in
+   `src/pages/index.ts`.
 5. If the flow mutates the stack, place it under `tests/golden-path/` (or a new
    mutating area) — not `tests/smoke/`.
 
@@ -373,7 +430,7 @@ cross-checked) with a bounded timeout and a clear message.
 | `page` | test | Playwright page (already authenticated). |
 | `api` | worker | Authenticated node API client. |
 | `world` | worker | Stack topology (`connectionFor`, `requireConnection`, product/variant helpers). |
-| `jobs` | worker | Sync-job trigger helpers (`trigger`, `triggerAndWait`, `waitForJob`). |
+| `jobs` | worker | Sync-job trigger helpers (`trigger`, `triggerAndWait`, `waitForJobByKey`). |
 | `poll` | test | `poll.until(probe, predicate, options)` — deterministic bounded polling. |
 | `pages` | test | Page-object registry bound to `page`. |
 

@@ -17,11 +17,20 @@
  * @module tests/access-control
  */
 import { test, expect } from '../../src/fixtures/test';
-import { provisionViewer, seedBrowserSession } from '../../src/support/access-control';
+import {
+  provisionViewer,
+  seedBrowserSession,
+  sweepProvisionedAccounts,
+} from '../../src/support/access-control';
 
 const ADMIN_NAV_LOCK_TITLE = 'Requires an administrator role.';
 
 test.describe('access-control: UI reflection', () => {
+  // `provisionViewer` mints a real account per call - delete it on the way out.
+  test.afterAll(async ({ api }) => {
+    await sweepProvisionedAccounts(api);
+  });
+
   test('admin sees the Administration and AI nav groups', async ({ page }) => {
     await page.goto('/');
     const nav = page.getByRole('navigation', { name: 'Primary', exact: true });
@@ -50,6 +59,16 @@ test.describe('access-control: UI reflection', () => {
 
     const context = await browser.newContext({ baseURL: env.webUrl });
     try {
+      // A fresh context has been OBSERVED (mechanism unexplained - see the long
+      // note in `demo-mode.spec.ts`) to already carry the admin context's
+      // `ol_refresh`/`ol_csrf` cookies. This site is only ACCIDENTALLY safe
+      // today because `seedBrowserSession` overwrites the jar right after; on a
+      // stack with `OL_COOKIE_DOMAIN` set the viewer's Domain cookie does NOT
+      // replace a leaked host-only copy of the same name, so the browser sends
+      // both and the admin session can win - the RFC 6265 duplicate-cookie
+      // hazard `auth.cookies.ts` documents from #748. That would silently turn
+      // this whole viewer case into a second admin run.
+      await context.clearCookies();
       await seedBrowserSession(context, env, viewer!.creds);
       const page = await context.newPage();
       await page.goto('/');

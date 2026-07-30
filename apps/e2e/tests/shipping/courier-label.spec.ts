@@ -21,11 +21,22 @@ import {
   SYNTHETIC_COURIER_PARCEL,
   buildCourierRecipient,
   isCourierUnprovisionedError,
+  releaseDispatchedShipments,
+  shippingOrderShortageReason,
   resolveDispatchedShipment,
   setUpShippingTestOrder,
 } from '../../src/support/shipments';
 
 test.describe('shipping — InPost courier label', () => {
+  // Recycle the fixture pool. Every dispatch leaves a non-terminal shipment on
+  // its order, and `resolveShippingTestOrder` refuses an order that already has
+  // one - so without this the suite eats its own pool and every shipping spec
+  // eventually `test.skip`s green with zero coverage. Best-effort and silent on
+  // an already-confirmed shipment; `afterAll`, so a failing test still recycles.
+  test.afterAll(async ({ api }) => {
+    await releaseDispatchedShipments(api);
+  });
+
   test('generates a courier (address-delivery) label and a retrievable PDF', async ({
     api,
     world,
@@ -33,7 +44,7 @@ test.describe('shipping — InPost courier label', () => {
     poll,
   }) => {
     const setup = await setUpShippingTestOrder(api, world, env);
-    test.skip(!setup, 'no InPost connection, or no ready order available (set E2E_ORDER_ID or run the golden path first)');
+    test.skip(!setup, `no InPost connection, or ${shippingOrderShortageReason()}`);
     const { order, deliveryMethodId, inpostConnectionId } = setup!;
 
     let dispatch;

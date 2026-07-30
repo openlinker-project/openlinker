@@ -39,6 +39,7 @@ import { test, expect } from '../../src/fixtures/test';
 import { PlatformType } from '../../src/world/world';
 import type { Connection } from '../../src/api/api.types';
 import { buildOrderWebhookEnvelope, signWebhook } from '../../src/support/webhooks';
+import { restoreWebhookSecret } from '../../src/support/webhook-secret';
 
 const PROVIDER = PlatformType.prestashop;
 
@@ -56,6 +57,16 @@ test.describe('lifecycle: webhook + poll convergence (idempotency, #1574 / close
     } catch (error) {
       setupError = error instanceof Error ? error.message : String(error);
     }
+  });
+
+  // Rotation is one-directional (OL only), so the PrestaShop module keeps
+  // signing with the pre-run secret and every genuine delivery 401s until both
+  // sides are re-provisioned. `afterAll` rather than an end-of-test call: the
+  // run that fails mid-way has still rotated, and is the one that most needs
+  // the repair.
+  test.afterAll(async ({ api }) => {
+    if (!connection || secret === null) return;
+    await restoreWebhookSecret(api, PROVIDER, connection.id);
   });
 
   test('a webhook-created delivery stays singular across an interleaved reconciliation poll', async ({

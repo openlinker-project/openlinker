@@ -46,8 +46,9 @@ import { WooCommerceRestClient } from '../../src/api/woocommerce-rest';
 import { captureStock, assertStockDelta, waitForStockDelta, type StockSnapshot } from '../../src/support/stock';
 import { snapshotOrderIds, waitForOrder, type OrderIdSnapshot } from '../../src/support/orders';
 import { narrowOrderSnapshot } from '../../src/support/order-snapshot';
-import { manualCheckpoint } from '../../src/support/manual-checkpoint';
-import { waitForTrackingBackfill } from '../../src/support/shipments';
+import { manualCheckpoint, manualCheckpointFailures } from '../../src/support/manual-checkpoint';
+import { assertTrackingBackfill, waitForTrackingBackfill } from '../../src/support/shipments';
+import { PollTimeoutError, pollFailureCause } from '../../src/support/poller';
 import {
   assertMarketplaceParameterRoundTrip,
   assertMoneyEqual,
@@ -229,39 +230,49 @@ test.describe('golden path — full flow (S0-S9)', () => {
 
     state.olBaseline = await captureStock(api, state.variantIds);
 
-    // Every variant has a master-sourced availability row.
-    for (const id of state.variantIds) {
-      expect(state.olBaseline.get(id), `baseline availability for ${id}`).toBeGreaterThanOrEqual(0);
-    }
+    // Every variant has a REAL master-sourced availability row.
+    //
+    // `>= 0` on the captured snapshot was unfalsifiable: `getAvailabilityByVariantIds`
+    // zero-fills an unknown variant with `{totalAvailable: 0, locationCount: 0}` and
+    // `captureStock` pre-seeds its map with 0 on top of that, so the old loop passed
+    // with `inventory_items` empty - exactly the state the comment claimed to rule
+    // out. `locationCount` is the field that separates a real row from the zero-fill,
+    // and it is only readable off the raw response, not the snapshot map.
+    const baselineRows = await api.inventory.availability(state.variantIds);
+    expect(
+      baselineRows.filter((row) => row.locationCount > 0).map((row) => row.productVariantId).sort(),
+      'every variant carries a real (non-zero-filled) master availability row',
+    ).toEqual([...state.variantIds].sort());
   });
 
   test('S1 — PrestaShop parity: OL product matches master (webservice)', async ({ api, world, env }) => {
     skipWhenResuming(env);
-    const testInfo = test.info();
     requireProduct();
     const prestashop = world.requireConnection(PlatformType.prestashop);
     const primary = state.primaryVariant!;
     const olProduct = await api.products.getById(state.product!.id);
 
+    // SKIP, never degrade. Without the webservice key this segment used to fall
+    // back to `expect(olProduct.name).toBeTruthy()` and return GREEN - a
+    // "PrestaShop parity" result in the HTML report that never compared a single
+    // value against PrestaShop, and that silently dropped the EAN-set, price and
+    // master-stock assertions below with it. Every other missing precondition in
+    // this suite skips; this one has no reason to be different.
     const ps = buildPrestashopClient(world);
-    if (!ps) {
-      testInfo.annotations.push({
-        type: 'skip-note',
-        description: 'PS webservice key not set (OL_PS_WEBSERVICE_KEY) — OL-only assertion',
-      });
-      expect(olProduct.name, 'OL product has a name').toBeTruthy();
-      return;
-    }
+    test.skip(
+      !ps,
+      'OL_PS_WEBSERVICE_KEY / OL_PS_ADMIN_URL not set - cannot assert OL<->PrestaShop parity',
+    );
 
     const externalProductId = externalIdFor(olProduct.externalIds, prestashop.id);
     test.skip(!externalProductId, 'no PrestaShop external id mapped for the product');
-    const psProduct = await ps.getProduct(externalProductId!);
+    const psProduct = await ps!.getProduct(externalProductId!);
 
     // PrestaShop stores barcodes on COMBINATIONS for multi-variant products —
     // the parent's `ean13` is empty there. Variant-level EAN parity compares
     // the OL variant EAN set against the PS combination EAN set; a simple
     // product falls back to the parent-level field.
-    const psCombEans = await ps.getCombinationEans(externalProductId!);
+    const psCombEans = await ps!.getCombinationEans(externalProductId!);
     const olVariants = await world.variantsOf(state.product!.id);
     if (psCombEans.length > 0) {
       const olEans = olVariants
@@ -287,19 +298,24 @@ test.describe('golden path — full flow (S0-S9)', () => {
       price: olProduct.price ?? undefined,
       currency: olProduct.currency ?? 'PLN',
     };
-    // EAN + price are load-bearing — fail loudly if the master read is missing
-    // them rather than silently skipping the comparison. For the multi-variant
-    // case the EAN slot is satisfied by the set assertion above (the primary
-    // variant's EAN stands in on both sides so the required-field gate holds).
+    // Price is load-bearing - fail loudly if the master read is missing it
+    // rather than silently skipping the comparison.
+    //
+    // `'ean'` is required ONLY on the simple-product branch. On the
+    // multi-variant branch both sides of the `ean` slot are literally the same
+    // expression (`primary.ean ?? primary.gtin`), so requiring it asserted the
+    // primary variant's EAN against itself - a self-comparison reported as
+    // cross-system parity. The real EAN coverage there is the set assertion
+    // above, against the PS combination EANs.
     assertProductFieldParity({
       label: 'OL↔PS product',
       expected,
       actual,
-      required: ['ean', 'price'],
+      required: psCombEans.length > 0 ? ['price'] : ['ean', 'price'],
     });
 
     // Master stock: OL master availability totals the PS stock_availables.
-    const psStock = await ps.getStockForProduct(externalProductId!);
+    const psStock = await ps!.getStockForProduct(externalProductId!);
     const olTotal = [...state.olBaseline!.values()].reduce((a, b) => a + b, 0);
     expect(olTotal, `OL master total (${olTotal}) matches PS stock (${psStock})`).toBe(psStock);
   });
@@ -326,94 +342,102 @@ test.describe('golden path — full flow (S0-S9)', () => {
     // worker job), NOT an `/listings` offer mapping (which stays empty for a
     // shop connection). The real end-to-end signal is the product landing on
     // WooCommerce, read back over its REST API by name.
-    const wc = buildWooClient(world);
-    if (wc) {
-      // Prefer SKU lookup (the shop publisher now carries the variant SKU, #1485),
-      // falling back to exact-name for products published before that landed.
-      // Both lookups are exact-match only — no exact match keeps the poll going
-      // and times out loudly rather than latching an arbitrary search hit.
-      const wcSku = state.primaryVariant?.sku ?? undefined;
-      const wcProduct = await poll.until(
-        async () =>
-          (wcSku ? await wc.getProductBySku(wcSku) : null) ??
-          (await wc.getProductByName(state.product!.name)),
-        (p) => p !== null,
-        {
-          message: `the published product "${state.product!.name}" to appear on WooCommerce`,
-          timeoutMs: 120_000,
-        },
-      );
-      state.wcProductId = wcProduct!.id;
-      state.channelBaseline.set('woocommerce', wcProduct!.stockQuantity ?? 0);
-      // Name + price are asserted for parity. The publisher now carries the SKU
-      // (#1485); category mapping is still a known WooCommerce-publish gap ("not
-      // implemented in MVP") — recorded below rather than failed, so the report
-      // stays honest.
-      // A MULTI-variant product publishes as a WooCommerce `variable` parent
-      // plus one variation per sibling (#1836), and a variable parent carries no
-      // price of its own — the price lives on each variation. Comparing the
-      // parent's price would therefore assert null against the master price for
-      // every multi-variant product. Read the price off the variation matching
-      // the primary variant instead, and keep the parent comparison for the
-      // simple-product shape.
-      //
-      // Poll for the price rather than reading it once: WooCommerce returns the
-      // product as soon as it exists, but its computed `price` field lags the
-      // create by a moment and comes back empty (which the view maps to null).
-      // A single read therefore raced the publish and failed on a price that
-      // was populated seconds later.
-      const wcPrice = await poll.until(
-        async () => {
-          if (wcProduct!.type !== 'variable') {
-            return (await wc.getProduct(String(wcProduct!.id))).price ?? undefined;
-          }
-          const variations = await wc.getProductVariations(wcProduct!.id);
-          expect(
-            variations.length,
-            'a variable WooCommerce parent exposes one variation per OL sibling',
-          ).toBeGreaterThan(0);
-          const match =
-            (wcSku ? variations.find((v) => v.sku === wcSku) : undefined) ?? variations[0];
-          return match?.price ?? undefined;
-        },
-        (price) => price !== undefined && price !== '',
-        {
-          message: `the published product "${state.product!.name}" to carry a price on WooCommerce`,
-          timeoutMs: 60_000,
-        },
-      );
-      assertProductFieldParity({
-        label: 'OL↔WC product',
-        expected: { name: state.product!.name, price: state.product!.price ?? undefined },
-        actual: { name: wcProduct!.name, price: wcPrice },
-      });
-      if (!wcProduct!.sku) {
-        testInfo.annotations.push({
-          type: 'wc-publish-gap',
-          description:
-            'WooCommerce product published without a SKU — the publisher is expected to carry the ' +
-            'variant SKU (#1485); a missing SKU here means the API predates #1485, so SKU-level ' +
-            'parity + stock reconciliation by SKU are not possible on this stack',
-        });
-      }
-      if (wcProduct!.categories.every((c) => c.name.toLowerCase() === 'uncategorized')) {
-        testInfo.annotations.push({
-          type: 'wc-publish-gap',
-          description: 'WooCommerce product published uncategorised (category mapping not implemented in MVP)',
-        });
-      }
-    } else {
-      // No WC creds on this stack — the WC-REST proof (the real end-to-end
-      // signal) can't run. There is no list endpoint for shop-publish records
-      // to poll by variant, so this degrades to an annotated OL-only check.
-      // Provide OL_WC_CONSUMER_KEY/SECRET for full publish verification.
+    // SKIP, never degrade. The old `else` branch annotated and asserted
+    // `products.list().items.length > 0` - "OL has at least one product", which
+    // S0 already proved and which is true of any stack - so a run with no WC
+    // credentials reported a green "WooCommerce publish + REST parity" segment
+    // that had verified nothing on WooCommerce. There is no OL-side list
+    // endpoint for shop-publish records to fall back on, so the honest outcome
+    // is a skip. (The wp-admin storage-state step at the end of this test is
+    // skipped with it; nothing else in the suite consumes `.auth/woocommerce.json`.)
+    const wcClient = buildWooClient(world);
+    test.skip(
+      !wcClient,
+      'OL_WC_CONSUMER_KEY / OL_WC_CONSUMER_SECRET not set - the publish landed OL-side but ' +
+        'cannot be verified on WooCommerce, and OL exposes no shop-publish read to assert instead',
+    );
+    // Non-null past the skip above: `test.skip` throws, which TypeScript's
+    // control-flow analysis cannot see.
+    const wc = wcClient!;
+
+    // Prefer SKU lookup (the shop publisher now carries the variant SKU, #1485),
+    // falling back to exact-name for products published before that landed.
+    // Both lookups are exact-match only — no exact match keeps the poll going
+    // and times out loudly rather than latching an arbitrary search hit.
+    const wcSku = state.primaryVariant?.sku ?? undefined;
+    const wcProduct = await poll.until(
+      async () =>
+        (wcSku ? await wc.getProductBySku(wcSku) : null) ??
+        (await wc.getProductByName(state.product!.name)),
+      (p) => p !== null,
+      {
+        message: `the published product "${state.product!.name}" to appear on WooCommerce`,
+        timeoutMs: 120_000,
+      },
+    );
+    state.wcProductId = wcProduct!.id;
+    state.channelBaseline.set('woocommerce', wcProduct!.stockQuantity ?? 0);
+    // Name + price are asserted for parity. The publisher now carries the SKU
+    // (#1485); category mapping is still a known WooCommerce-publish gap ("not
+    // implemented in MVP") — recorded below rather than failed, so the report
+    // stays honest.
+    // A MULTI-variant product publishes as a WooCommerce `variable` parent
+    // plus one variation per sibling (#1836), and a variable parent carries no
+    // price of its own — the price lives on each variation. Comparing the
+    // parent's price would therefore assert null against the master price for
+    // every multi-variant product. Read the price off the variation matching
+    // the primary variant instead, and keep the parent comparison for the
+    // simple-product shape.
+    //
+    // Poll for the price rather than reading it once: WooCommerce returns the
+    // product as soon as it exists, but its computed `price` field lags the
+    // create by a moment and comes back empty (which the view maps to null).
+    // A single read therefore raced the publish and failed on a price that
+    // was populated seconds later.
+    const wcPrice = await poll.until(
+      async () => {
+        if (wcProduct!.type !== 'variable') {
+          return (await wc.getProduct(String(wcProduct!.id))).price ?? undefined;
+        }
+        const variations = await wc.getProductVariations(wcProduct!.id);
+        expect(
+          variations.length,
+          'a variable WooCommerce parent exposes one variation per OL sibling',
+        ).toBeGreaterThan(0);
+        const match =
+          (wcSku ? variations.find((v) => v.sku === wcSku) : undefined) ?? variations[0];
+        return match?.price ?? undefined;
+      },
+      (price) => price !== undefined && price !== '',
+      {
+        message: `the published product "${state.product!.name}" to carry a price on WooCommerce`,
+        timeoutMs: 60_000,
+      },
+    );
+    assertProductFieldParity({
+      label: 'OL↔WC product',
+      expected: { name: state.product!.name, price: state.product!.price ?? undefined },
+      actual: { name: wcProduct!.name, price: wcPrice },
+      // `required: ['price']` - `assertProductFieldParity` skips any field the
+      // EXPECTED side does not carry, so a null `state.product.price` silently
+      // reduced this parity check to a currency-string comparison. S1 already
+      // declares its own `required`; these three call sites did not.
+      required: ['price'],
+    });
+    if (!wcProduct!.sku) {
       testInfo.annotations.push({
-        type: 'skip-note',
+        type: 'wc-publish-gap',
         description:
-          'WC consumer key/secret not set — WooCommerce publish landed only OL-side; ' +
-          'set OL_WC_CONSUMER_KEY/SECRET to verify the product on WooCommerce',
+          'WooCommerce product published without a SKU — the publisher is expected to carry the ' +
+          'variant SKU (#1485); a missing SKU here means the API predates #1485, so SKU-level ' +
+          'parity + stock reconciliation by SKU are not possible on this stack',
       });
-      expect((await api.products.list({ limit: 1 })).items.length).toBeGreaterThan(0);
+    }
+    if (wcProduct!.categories.every((c) => c.name.toLowerCase() === 'uncategorized')) {
+      testInfo.annotations.push({
+        type: 'wc-publish-gap',
+        description: 'WooCommerce product published uncategorised (category mapping not implemented in MVP)',
+      });
     }
 
     // Light visual confirmation in wp-admin (own login + storageState).
@@ -438,6 +462,11 @@ test.describe('golden path — full flow (S0-S9)', () => {
       label: 'OL↔Allegro offer',
       expected: { price: state.product!.price ?? undefined, currency: state.product!.currency ?? 'PLN' },
       actual: offerToParityView(offer),
+      // `required: ['price']` - `assertProductFieldParity` skips any field the
+      // EXPECTED side does not carry, so a null `state.product.price` silently
+      // reduced this parity check to a currency-string comparison. S1 already
+      // declares its own `required`; these three call sites did not.
+      required: ['price'],
     });
 
     // Value-level parameter parity (#8): the persisted creation-request snapshot
@@ -587,6 +616,11 @@ test.describe('golden path — full flow (S0-S9)', () => {
         label: 'OL↔Erli offer',
         expected: { price: state.product!.price ?? undefined, currency: state.product!.currency ?? 'PLN' },
         actual: offerToParityView(offer),
+      // `required: ['price']` - `assertProductFieldParity` skips any field the
+      // EXPECTED side does not carry, so a null `state.product.price` silently
+      // reduced this parity check to a currency-string comparison. S1 already
+      // declares its own `required`; these three call sites did not.
+        required: ['price'],
       });
     } else {
       testInfo.annotations.push({
@@ -701,20 +735,21 @@ test.describe('golden path — full flow (S0-S9)', () => {
       }
       state.orders.set(source.platformType, order);
 
-      // Amount parity: order line price/qty/line-total + totals + shipping.
+      // Amount parity: order line price/qty + totals + shipping.
       const snapshot = readOrderSnapshot(order);
       const currency = snapshot.totals.currency;
-      const soldLine = snapshot.items.find((i) => i.variantId === state.primaryVariant!.id) ?? snapshot.items[0];
-      expect(soldLine, `order has a line item (${source.platformType})`).toBeTruthy();
+      const soldLine = requireDriverLine(snapshot, source.platformType);
       expect(soldLine.quantity, `sold quantity (${source.platformType})`).toBe(SOLD_QTY);
 
-      const lineTotal = toMinorUnits(soldLine.price, currency) * soldLine.quantity;
+      // The per-line `lineTotal === price * qty` check that used to live here was
+      // an identity between two spellings of the same expression - no order field
+      // was read on the right-hand side, so a source adapter emitting a
+      // mis-multiplied or double-discounted line total passed it. The subtotal
+      // fold below is the real check: it derives the subtotal from the lines and
+      // compares it against the total the ORDER reports.
       const computedSubtotal = snapshot.items.reduce(
         (sum, i) => sum + toMinorUnits(i.price, currency) * i.quantity,
         0,
-      );
-      expect(lineTotal, `line total = price * qty (${source.platformType})`).toBe(
-        toMinorUnits(soldLine.price, currency) * SOLD_QTY,
       );
 
       // Total identity is tax-treatment-aware: with `inclusive` line prices the
@@ -803,7 +838,13 @@ test.describe('golden path — full flow (S0-S9)', () => {
       // Ensure a routing rule maps the source delivery method to OL-managed InPost.
       const snapshot = readOrderSnapshot(order);
       const deliveryMethodId = snapshot.shipping?.methodId ?? 'default';
-      const existing = await api.routingRules.list(source!.id).catch(() => []);
+      // Deliberately unguarded: the PUT below is a full replace and this read
+      // supplies the rules it preserves, so swallowing a transient failure into
+      // `[]` would silently delete the operator's whole routing matrix for this
+      // source connection - with no visible symptom, since a rule-less order
+      // just routes to the `omp_fulfilled` default. Same reasoning as
+      // `ensureCarrierRouting` in `src/support/shipments.ts`.
+      const existing = await api.routingRules.list(source!.id);
       if (!existing.some((r) => r.sourceDeliveryMethodId === deliveryMethodId)) {
         await api.routingRules.replace(source!.id, [
           ...existing.map((r) => ({
@@ -871,28 +912,22 @@ test.describe('golden path — full flow (S0-S9)', () => {
       // `marketplace.shipment.statusSync` poll (#838) has run — it is NOT present
       // right after label creation. Drive that poll and wait, with a bounded
       // budget, for OL to backfill `Shipment.trackingNumber` (the #1426 path).
-      // A non-null result is ASSERTED; only a genuine sandbox timing timeout
-      // falls back to an annotation so an attended run is not failed by a
-      // sandbox-side delay (see docs/manual-testing/e2e-golden-path.md).
+      //
+      // The classification lives in `assertTrackingBackfill` (shared with
+      // tests/shipping/tracking-backfill.spec.ts): a timeout while the carrier
+      // has ALREADY moved the parcel is a backfill regression and throws; only
+      // the documented not-yet-confirmed sandbox state degrades to an
+      // annotation, so an attended run is not failed by a sandbox-side delay
+      // (see docs/manual-testing/e2e-golden-path.md).
       const backfill = await waitForTrackingBackfill(
         api,
         jobs,
         { shipmentId: shipment!.id, inpostConnectionId: inpost!.id },
         { timeoutMs: 120_000, intervalMs: 5_000 },
       );
-      if (backfill.timedOut) {
-        testInfo.annotations.push({
-          type: 'tracking',
-          description:
-            `${platform}: tracking number not backfilled within timeout — the ShipX ` +
-            `sandbox mints it only after the shipment is confirmed and ` +
-            `marketplace.shipment.statusSync runs (#1521)`,
-        });
-      } else {
-        expect(
-          backfill.trackingNumber,
-          `${platform}: OL backfilled the InPost tracking number after statusSync`,
-        ).toBeTruthy();
+      const unverifiedTracking = assertTrackingBackfill(backfill, platform);
+      if (unverifiedTracking) {
+        testInfo.annotations.push({ type: 'tracking', description: unverifiedTracking });
       }
 
       // Writeback to the marketplace is best-effort in code (annotated) and
@@ -1020,12 +1055,24 @@ test.describe('golden path — full flow (S0-S9)', () => {
         // Line items: the sold line exists with matching quantity and the
         // buyer-paid unit price.
         expect(psOrder.rows.length, `PS order carries line rows (${platform})`).toBeGreaterThan(0);
-        const soldLine =
-          snapshot.items.find((i) => i.variantId === state.primaryVariant!.id) ?? snapshot.items[0];
+        const soldLine = requireDriverLine(snapshot, platform);
         const soldEan = state.primaryVariant!.ean ?? state.primaryVariant!.gtin;
-        const psRow =
-          (soldEan ? psOrder.rows.find((r) => r.productEan13 === soldEan) : undefined) ??
-          psOrder.rows[0];
+        // Fall back to `rows[0]` ONLY when no PS row carries a barcode at all
+        // (an older order, or a product whose combinations predate EAN entry).
+        // Falling back while other rows DO carry barcodes would compare the
+        // driver line against an unrelated product's row and still pass.
+        const matchedRow = soldEan
+          ? psOrder.rows.find((r) => r.productEan13 === soldEan)
+          : undefined;
+        const anyRowCarriesEan = psOrder.rows.some((r) => !!r.productEan13);
+        if (soldEan && anyRowCarriesEan) {
+          expect(
+            matchedRow,
+            `PS order carries a row for the driver EAN ${soldEan} (${platform}) - ` +
+              `rows present: ${JSON.stringify(psOrder.rows.map((r) => r.productEan13))}`,
+          ).toBeTruthy();
+        }
+        const psRow = matchedRow ?? psOrder.rows[0];
         expect(psRow.productQuantity, `PS line quantity (${platform})`).toBe(soldLine.quantity);
         if (psRow.unitPriceTaxIncl !== null) {
           assertMoneyEqual(
@@ -1406,37 +1453,63 @@ test.describe('golden path — full flow (S0-S9)', () => {
       severity: 'observational',
       timeoutMs: 30 * 60_000,
     });
-    if (!verdict.passed) return;
+    if (!verdict.passed) {
+      // Nothing was cancelled on the marketplace, so there is no ingestion or
+      // stock restore to observe - but say so on the report. A bare `return`
+      // left every assertion below unrun with no trace, and the checkpoint's
+      // `observational` severity meant the segment reported green. (The verdict
+      // itself is now on the terminal gate's ledger, which fails the run.)
+      testInfo.annotations.push({
+        type: 'cancellation-unverified',
+        description:
+          `${platform}: the cancellation checkpoint was ${verdict.timedOut ? 'never answered' : 'FAILED'}` +
+          ` - cancelled-order ingestion and OfferStockRestorer stock restore both went UNVERIFIED`,
+      });
+      return;
+    }
 
     // Nudge ingestion (webhook + poll both converge here per #1512/#1574),
     // then wait for the order's snapshot status to flip to 'cancelled'.
+    //
+    // The poll IS the assertion: it throws `PollTimeoutError` if the status
+    // never flips. Re-asserting its own predicate on the returned value
+    // afterwards (which this used to do) can never fail by construction.
     if (source) {
       await jobs.trigger({ connectionId: source.id, jobType: 'marketplace.orders.poll' }).catch(() => undefined);
     }
-    const cancelled = await poll.until(
+    await poll.until(
       () => api.orders.getById(order.internalOrderId),
       (o) => narrowOrderSnapshot<{ status?: string }>(o).status === 'cancelled',
       { message: `${platform} order to be ingested as cancelled`, timeoutMs: 180_000, intervalMs: 5_000 },
-    );
-    expect(narrowOrderSnapshot<{ status?: string }>(cancelled).status, `${platform} order status`).toBe(
-      'cancelled',
     );
 
     // Offer-stock restore (`OfferStockRestorer`, #1146): the channel quantity
     // should recover by SOLD_QTY. Degrades to an annotation when the channel
     // has no live OfferReader (Erli) or no restore capability.
     if (mapping && preCancel) {
+      const restoreTarget = preCancel.availableQuantity + SOLD_QTY;
       try {
+        // Poll for `>=` then assert EXACT, the pattern S5/S9 use: an overshoot
+        // past the restored value is a real error and must be reported with the
+        // observed quantity, not folded into the `>=` predicate that let it in.
         const restored = await poll.until(
           () => api.listings.getOffer(mapping.id),
-          (o) => o.availableQuantity >= preCancel.availableQuantity + SOLD_QTY,
+          (o) => o.availableQuantity >= restoreTarget,
           { message: `${platform} offer quantity to be restored after cancellation`, timeoutMs: 120_000 },
         );
         expect(
           restored.availableQuantity,
-          `${platform} offer quantity restored after cancellation`,
-        ).toBeGreaterThanOrEqual(preCancel.availableQuantity + SOLD_QTY);
-      } catch {
+          `${platform} offer quantity restored after cancellation (expected the pre-cancel ` +
+            `${preCancel.availableQuantity} + ${SOLD_QTY})`,
+        ).toBe(restoreTarget);
+      } catch (error) {
+        // Only a genuine non-convergence degrades. A bare `catch` also
+        // swallowed the exact-value mismatch above and every transport error
+        // the probe raised, so the one reachable failure in this segment could
+        // not turn it red.
+        if (!(error instanceof PollTimeoutError)) throw error;
+        const cause = pollFailureCause(error);
+        if (cause instanceof ApiError && cause.status >= 500) throw error;
         testInfo.annotations.push({
           type: 'stock-restore-degrade',
           description: `${platform}: offer quantity did not visibly restore within the timeout — verify manually (OfferStockRestorer may not be implemented for this adapter, or restore timing exceeded the budget)`,
@@ -1448,6 +1521,26 @@ test.describe('golden path — full flow (S0-S9)', () => {
         description: `${platform}: no live OfferReader — stock-restore verified via the checkpoint only`,
       });
     }
+  });
+
+  /**
+   * Terminal gate for the attended half of the run.
+   *
+   * Every external-dashboard checkpoint is `observational` on purpose: this
+   * describe is `serial`, so a checkpoint that failed its own test would skip
+   * every downstream segment. The cost of that choice is that nothing else can
+   * turn the run red - start the run, walk away, and each checkpoint waits out
+   * its 30 minutes, records a FAIL, and S3/S4/S6/S8/S10 all report green while
+   * nobody looked at Allegro, Erli, InPost or KSeF. This test is the missing
+   * consequence, and it is LAST so it costs no downstream coverage.
+   */
+  test('every manual checkpoint was confirmed by the operator', () => {
+    const failures = manualCheckpointFailures();
+    expect(
+      failures.map((f) => `${f.dashboard}: ${f.timedOut ? 'UNANSWERED' : 'FAILED'}${f.note ? ` - ${f.note}` : ''}`),
+      `${failures.length} manual checkpoint(s) were failed or never answered - the surfaces they ` +
+        'guard are unverified, so this attended run is not a pass',
+    ).toEqual([]);
   });
 });
 
@@ -1790,7 +1883,7 @@ async function provisionFreshProduct(
     // (`020–029`, `200–299`, reserved for in-store use), which Allegro's offer
     // validator rejects as an invalid GTIN, stranding S3. Still synthetic (not a
     // registered product), but structurally a valid public GTIN. (#1481)
-    ean13: computeEan13(`590${suffix}`),
+    ean13: freshParentEan(suffix),
     price: '19.99',
     quantity: 25,
     idCategoryDefault: prestashopCategoryId,
@@ -1831,6 +1924,20 @@ async function provisionFreshProduct(
  */
 function freshVariantEan(suffix: string, index: number): string {
   return computeEan13(`590${suffix.slice(-7)}${String(index).padStart(2, '0')}`);
+}
+
+/**
+ * Parent-level EAN-13 under the same GS1 `590` (Poland) prefix, assembled to
+ * exactly 12 digits for the same reason `freshVariantEan` is. The naive
+ * `590${Date.now()}` seed was truncated by `computeEan13` to `590` + the
+ * timestamp's leading 9 digits, i.e. a 10-SECOND resolution: two
+ * `E2E_FRESH_PRODUCT` runs inside one bucket minted distinct SKUs carrying an
+ * IDENTICAL parent EAN, and offer barcode linking links only on a UNIQUE match,
+ * so it would quietly decline to link rather than fail. Slot `99` is reserved
+ * for the parent so it can never collide with a sibling's `00`..`nn` index.
+ */
+function freshParentEan(suffix: string): string {
+  return computeEan13(`590${suffix.slice(-7)}99`);
 }
 
 /** Build a valid EAN-13 (12 data digits + check digit) from a numeric seed. */
@@ -1877,6 +1984,62 @@ interface OrderSnapshotShape {
    * was handed is the Paczkomat purchase S6 expects.
    */
   pickupPoint?: { id?: string; name?: string };
+}
+
+/**
+ * The order line for THIS run's driver variant - never "whatever line came
+ * first".
+ *
+ * `waitForOrder` returns the next new `ready` order on the source connection,
+ * which is only unambiguous while nothing else can produce one. During a
+ * multi-hour attended purchase pause that assumption is thin: a second tester's
+ * order, or an OL destination write-back re-ingested through the same
+ * connection, lands in the same window. The old `?? snapshot.items[0]` fallback
+ * absorbed that silently - `quantity === 1` happens to hold, the total identity
+ * is self-consistent for ANY order, and S5 through S9 then ran labels,
+ * PrestaShop parity and the KSeF invoice against a stranger's product, green
+ * throughout.
+ *
+ * Matching is by variant id, then SKU / EAN, then - only when no line carries a
+ * variant identity at all - the driver PRODUCT id, because not every source
+ * adapter stamps `variantId` or a SKU onto an ingested line. Nothing matches ⇒
+ * this is not our order, and that must be loud.
+ */
+function requireDriverLine(snapshot: OrderSnapshotShape, platform: string): OrderLine {
+  const primary = state.primaryVariant!;
+  const barcode = primary.ean ?? primary.gtin;
+  const describeLines = (): string =>
+    JSON.stringify(
+      snapshot.items.map((i) => ({
+        productId: i.productId,
+        variantId: i.variantId,
+        sku: i.sku,
+        name: i.name,
+      })),
+    );
+
+  const byVariant = snapshot.items.find(
+    (item) =>
+      item.variantId === primary.id ||
+      (!!primary.sku && item.sku === primary.sku) ||
+      (!!barcode && item.sku === barcode),
+  );
+  if (byVariant) return byVariant;
+
+  // Product-level fallback: still ties the order to the driver, which is the
+  // whole point - but only when it is unambiguous. Two sibling lines with no
+  // variant identity cannot be told apart, and guessing is how the old
+  // `?? items[0]` produced parity results for the wrong line.
+  const byProduct = snapshot.items.filter((item) => item.productId === state.product!.id);
+  expect(
+    byProduct.length,
+    `the ${platform} order contains exactly one line for the driver product ${state.product!.id} ` +
+      `(no line identified variant id ${primary.id} / sku ${primary.sku ?? '(none)'} / ean ` +
+      `${barcode ?? '(none)'}). Lines present: ${describeLines()}. Zero means this run picked up ` +
+      "somebody else's order - during the multi-hour purchase pause another tester's order, or an " +
+      'OL write-back re-ingested through the same connection, lands in the same window.',
+  ).toBe(1);
+  return byProduct[0];
 }
 
 function readOrderSnapshot(order: OrderRecord): OrderSnapshotShape {

@@ -16,6 +16,18 @@
  * carrier; the adapter's own preflight guards the ShipX-accepted currency set
  * (502 `ShippingProviderRejectionException` on an unsupported currency).
  *
+ * READ-SIDE GAP - what the SUCCESS cases can and cannot prove. `ShipmentResponseDto`
+ * (`apps/api/src/shipping/http/dto/shipment-response.dto.ts`) exposes no `cod`
+ * field, and nothing else OL serves reads the COD amount back, so the two
+ * success tests below would pass verbatim with their `cod:` argument DELETED.
+ * What they do prove is real but narrower than the titles suggest: that a
+ * COD-carrying dispatch is ACCEPTED end-to-end (OL DTO -> mapper -> ShipX)
+ * rather than rejected, on both delivery intents. Confirming the amount
+ * actually reached the carrier needs either `cod` on the read DTO or a ShipX
+ * shipment read, neither of which exists here. The 400/502 cases are
+ * unaffected - a rejection status is fully observable, so they are the real
+ * COD coverage in this file.
+ *
  * @module tests/shipping
  */
 import { test, expect } from '../../src/fixtures/test';
@@ -25,14 +37,25 @@ import {
   buildCourierRecipient,
   buildPickupRecipient,
   isCourierUnprovisionedError,
+  releaseDispatchedShipments,
+  shippingOrderShortageReason,
   resolveDispatchedShipment,
   setUpShippingTestOrder,
 } from '../../src/support/shipments';
 
 test.describe('shipping — InPost COD (pobranie)', () => {
+  // Recycle the fixture pool. Every dispatch leaves a non-terminal shipment on
+  // its order, and `resolveShippingTestOrder` refuses an order that already has
+  // one - so without this the suite eats its own pool and every shipping spec
+  // eventually `test.skip`s green with zero coverage. Best-effort and silent on
+  // an already-confirmed shipment; `afterAll`, so a failing test still recycles.
+  test.afterAll(async ({ api }) => {
+    await releaseDispatchedShipments(api);
+  });
+
   test('generates a courier label with a valid COD amount', async ({ api, world, env }) => {
     const setup = await setUpShippingTestOrder(api, world, env);
-    test.skip(!setup, 'no InPost connection, or no ready order available (set E2E_ORDER_ID or run the golden path first)');
+    test.skip(!setup, `no InPost connection, or ${shippingOrderShortageReason()}`);
     const { order, deliveryMethodId } = setup!;
 
     let dispatch;
@@ -60,7 +83,7 @@ test.describe('shipping — InPost COD (pobranie)', () => {
 
   test('generates a paczkomat label with a valid COD amount (#1554)', async ({ api, world, env }) => {
     const setup = await setUpShippingTestOrder(api, world, env);
-    test.skip(!setup, 'no InPost connection, or no ready order available (set E2E_ORDER_ID or run the golden path first)');
+    test.skip(!setup, `no InPost connection, or ${shippingOrderShortageReason()}`);
     test.skip(!env.paczkomatId, 'no locker id configured (set E2E_PACZKOMAT_ID)');
     const { order, deliveryMethodId } = setup!;
 
@@ -81,7 +104,7 @@ test.describe('shipping — InPost COD (pobranie)', () => {
 
   test('rejects a malformed COD amount at the API boundary (400)', async ({ api, world, env }) => {
     const setup = await setUpShippingTestOrder(api, world, env);
-    test.skip(!setup, 'no InPost connection, or no ready order available (set E2E_ORDER_ID or run the golden path first)');
+    test.skip(!setup, `no InPost connection, or ${shippingOrderShortageReason()}`);
     const { order, deliveryMethodId } = setup!;
 
     let caught: ApiError | undefined;
@@ -104,7 +127,7 @@ test.describe('shipping — InPost COD (pobranie)', () => {
 
   test('rejects an unsupported COD currency (502, carrier preflight)', async ({ api, world, env }) => {
     const setup = await setUpShippingTestOrder(api, world, env);
-    test.skip(!setup, 'no InPost connection, or no ready order available (set E2E_ORDER_ID or run the golden path first)');
+    test.skip(!setup, `no InPost connection, or ${shippingOrderShortageReason()}`);
     const { order, deliveryMethodId } = setup!;
 
     let caught: ApiError | undefined;

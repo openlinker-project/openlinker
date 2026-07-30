@@ -8,7 +8,6 @@
  * @module pages
  */
 import { expect, type Locator, type Page } from '@playwright/test';
-import { TriggerSyncDialog } from './trigger-sync-dialog.page';
 
 export class ConnectionsListPage {
   constructor(private readonly page: Page) {}
@@ -50,15 +49,7 @@ export class ConnectionDetailPage {
     await this.page.goto(`/connections/${connectionId}?tab=${tab}`);
   }
 
-  get triggerSyncButton(): Locator {
-    return this.page.getByRole('button', { name: 'Trigger sync…' });
-  }
-
-  /** Open the trigger-sync dialog and return its page object. */
-  async openTriggerSync(): Promise<TriggerSyncDialog> {
-    await this.triggerSyncButton.click();
-    const dialog = new TriggerSyncDialog(this.page);
-    await dialog.expectVisible();
-    return dialog;
-  }
+  // No trigger-sync accessors: every suite enqueues jobs through the API
+  // (`src/support/jobs.ts`), so the dialog page object was deleted rather than
+  // left to drift against `apps/web`. Re-add it with its first UI caller.
 }

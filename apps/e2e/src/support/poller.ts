@@ -74,6 +74,23 @@ export async function pollUntil<T>(
   );
 }
 
+/**
+ * Unwrap what a failed poll was REALLY caused by.
+ *
+ * `pollUntil` swallows every probe error and reports a `PollTimeoutError`, so a
+ * caller writing `catch (e) { if (e instanceof ApiError && e.status === 422) … }`
+ * around a poll has written a branch that can never be taken - the 422 is inside
+ * `PollTimeoutError.lastError`, not the thrown error. Callers that classify a
+ * failure (a known capability gap to annotate vs. a real defect to rethrow) must
+ * classify THIS value, not the caught one.
+ */
+export function pollFailureCause(error: unknown): unknown {
+  if (error instanceof PollTimeoutError) {
+    return error.lastError ?? error;
+  }
+  return error;
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

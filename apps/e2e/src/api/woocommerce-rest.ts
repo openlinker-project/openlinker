@@ -98,6 +98,17 @@ export interface WooCommerceOrderView {
   currency: string | null;
   customerId: number | null;
   billingEmail: string | null;
+  /**
+   * The order's own INLINE billing address, normalised to one comparable
+   * string. WooCommerce copies the address onto the order at creation rather
+   * than referencing the customer record, which is what makes it the readable
+   * proof that customer/address reuse did not cross-contaminate a later order
+   * with an earlier one's address (`order-destination.spec.ts`). Compared
+   * between orders, never against a literal - OL and WC may each normalise
+   * casing/whitespace, and the claim under test is relative ("the third order's
+   * address differs from the first two"), not an exact-format one.
+   */
+  billingAddressKey: string;
   lineItems: WooCommerceOrderLineView[];
 }
 
@@ -227,6 +238,9 @@ export class WooCommerceRestClient {
       currency: asStringOrNull(pick(record, 'currency')),
       customerId: asNumberOrNull(pick(record, 'customer_id')),
       billingEmail: asStringOrNull(pick(billing, 'email')),
+      billingAddressKey: ['address_1', 'address_2', 'city', 'postcode', 'country']
+        .map((field) => (asStringOrNull(pick(billing, field)) ?? '').trim().toLowerCase())
+        .join('|'),
       lineItems: asArray(pick(record, 'line_items')).map((row) => {
         const line = asRecord(row);
         return {

@@ -17,9 +17,21 @@
 import { test, expect } from '../../src/fixtures/test';
 import { ApiClient } from '../../src/api/api-client';
 import { ApiError } from '../../src/api/api-error';
-import { uniqueCreds } from '../../src/support/access-control';
+import {
+  findUserByUsername,
+  sweepProvisionedAccounts,
+  uniqueCreds,
+} from '../../src/support/access-control';
 
 test.describe('access-control: registration', () => {
+  // Every account this file registers - 1-2 on the happy path, up to 15 more
+  // when `E2E_TEST_RATE_LIMIT` is on, doubled again by `retries: 1`. Deleting
+  // them here (not at the end of a test body) means a spec that fails after
+  // registering still cleans up, which is the run whose residue matters most.
+  test.afterAll(async ({ api }) => {
+    await sweepProvisionedAccounts(api);
+  });
+
   test('registration is disabled (403) or drives the viewer lifecycle', async ({
     api,
     env,
@@ -86,9 +98,12 @@ test.describe('access-control: registration', () => {
       expect(pendingErr).toBeInstanceOf(ApiError);
       expect((pendingErr as ApiError).status).toBe(401);
 
-      const list = await api.users.list({ status: 'pending', pageSize: 100 });
-      const user = list.users.find((u) => u.username === creds.username);
-      expect(user, 'registered pending user should appear in the admin list').toBeDefined();
+      // PAGED, not a single first-100 read: the pending queue is exactly where
+      // this suite's own un-swept registrations used to pile up, so the flat
+      // read eventually stopped seeing the account it had just created and this
+      // spec failed on its own residue rather than on a real defect.
+      const user = await findUserByUsername(api, creds.username, 'pending');
+      expect(user, 'registered pending user should appear in the admin list').toBeTruthy();
 
       await api.users.approve(user!.id, { role: 'viewer' });
       await client.login(creds.username, creds.password);

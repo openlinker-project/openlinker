@@ -37,7 +37,18 @@ import { test, expect } from '../../src/fixtures/test';
 import { PlatformType } from '../../src/world/world';
 
 test.describe('WooCommerce fulfillment status read-back', () => {
-  test('marketplace.fulfillment.statusSync projects a Shipment row from WC order status', async ({
+  // NOT "projects a Shipment row": the projection is conditional and this spec
+  // cannot create the condition. `FulfillmentStatusReader` projects a branch-1
+  // row only once WC reports a FULFILLED status; the orders this suite creates
+  // are `processing`, which the reader correctly reads as "not yet fulfilled,
+  // skip", so no row exists and the `if (shipment)` block asserts nothing. The
+  // assertion the old title promised needs the destination WC order driven to
+  // `completed` first (`WooCommerceRestClient.updateOrderStatus`) - a further
+  // real-shop mutation this spec deliberately does not make. What IS asserted
+  // unconditionally: the sync job runs to `succeeded` against a live WC
+  // destination, and any row it does project is attributable to that connection
+  // and order.
+  test('marketplace.fulfillment.statusSync runs against a WC destination (Shipment row asserted only when WC reports one)', async ({
     api,
     world,
     jobs,
@@ -56,12 +67,28 @@ test.describe('WooCommerce fulfillment status read-back', () => {
     // happened. Scanning orders first and deriving the connection from an
     // actual `synced` entry is correct regardless of connection topology or
     // creation order.
+    //
+    // `status === 'active'` is load-bearing, not defensive.
+    // `connectionsWithCapability` does NOT filter by status (see `world.ts`),
+    // and `order-destination.spec.ts` deliberately DISABLES its spec-owned
+    // destination connection on the way out. Playwright orders files
+    // alphabetically, so `fulfillment-…` runs BEFORE `order-destination…`: from
+    // run 2 onward this spec would resolve the previous run's synced order onto
+    // a now-disabled connection, and `syncFulfillmentStatus` would then die
+    // inside the adapter with a `ConnectionDisabledException` reported as a job
+    // failure. Skipping is the honest outcome - there is genuinely no live WC
+    // destination to read fulfillment status from.
     const wcConnectionIds = new Set(
       world.connectionsWithCapability('OrderProcessorManager')
-        .filter((c) => c.platformType === 'woocommerce')
+        .filter((c) => c.platformType === 'woocommerce' && c.status === 'active')
         .map((c) => c.id),
     );
-    test.skip(wcConnectionIds.size === 0, 'no WooCommerce connection configured as OrderProcessorManager on this stack');
+    test.skip(
+      wcConnectionIds.size === 0,
+      'no ACTIVE WooCommerce connection configured as OrderProcessorManager on this stack ' +
+        "(order-destination.spec.ts owns one but disables it on teardown, and runs AFTER this " +
+        'file alphabetically - enable it by hand to exercise this case)',
+    );
 
     const orders = await api.orders.list({ limit: 50 });
     let wcDestinationId: string | undefined;

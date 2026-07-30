@@ -295,13 +295,15 @@ The point of this flow is the **reusable helpers** — new scenarios compose the
   `snapshotOrderIds(...)` — poll for a new `ready` order. `src/support/orders.ts`.
 - `captureStock(api, variantIds)` / `assertStockDelta(...)` /
   `waitForStockDelta(...)` — qty-safe stock snapshots + deltas. `src/support/stock.ts`.
-- `assertProductFieldParity(...)`, `assertOfferParameterParity(...)`,
+- `assertProductFieldParity(...)`, `assertMarketplaceParameterRoundTrip(...)`,
   `assertInvoiceAmounts(...)`, `assertMoneyEqual(...)`, `toMinorUnits(...)` —
   money-safe, currency-aware, field-by-field. `src/support/parity.ts`.
 - `PrestashopWebserviceClient` / `WooCommerceRestClient` — thin direct-read API
   clients. `src/api/`.
-- `PrestashopAdminPage` / `WooCommerceAdminPage` — admin login + per-origin
-  storageState. `src/pages/`.
+- `WooCommerceAdminPage` — admin login + per-origin storageState. `src/pages/`.
+  There is no PrestaShop equivalent: the PS back-office page object was deleted
+  as unused (a page object nobody calls is selector drift waiting to happen);
+  PrestaShop is verified through `PrestashopWebserviceClient` instead.
 
 Add a new segment by triggering work explicitly (a sync job via
 `src/support/jobs.ts`, or a UI wizard) then `poll.until(...)` OL state — never a

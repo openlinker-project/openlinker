@@ -39,6 +39,7 @@ import type { Connection, OrderRecord } from '../../src/api/api.types';
 import { buildWooCommerceClient } from '../../src/support/woocommerce-client';
 import { externalIdFor } from '../../src/support/external-ids';
 import { waitForOrderByExternalId } from '../../src/support/orders';
+import { toMinorUnits } from '../../src/support/parity';
 import type { WooCommerceAddressInput } from '../../src/api/woocommerce-rest';
 import type { SyncJobs } from '../../src/support/jobs';
 import type { WooCommerceRestClient } from '../../src/api/woocommerce-rest';
@@ -123,6 +124,33 @@ test.describe('WooCommerce as order destination', () => {
     const line = destinationOrder.lineItems.find((l) => l.productId === wcProductId);
     expect(line, `destination WC order line references product ${wcProductId}`).toBeTruthy();
     expect(line!.quantity, 'destination WC order line quantity matches source').toBe(quantity);
+
+    // PRICE - the half this test's name promised and never read. #895 / ADR-014:
+    // destination lines MUST be priced at the buyer-paid SOURCE price, never
+    // recomputed from the destination shop's own catalogue. Without this
+    // comparison a destination order created at 0.00, or re-priced from the
+    // shop's list price, passed a test titled "with correct lines, price and
+    // status". Both sides read the same WC field on the same store, so the
+    // comparison is apples-to-apples; minor units so no float drift can fail it.
+    const sourceLine = sourceOrder.lineItems.find((l) => l.productId === wcProductId);
+    expect(sourceLine, `source WC order line references product ${wcProductId}`).toBeTruthy();
+    const currency = destinationOrder.currency ?? sourceOrder.currency ?? 'PLN';
+    expect(sourceLine!.total, 'source WC order line carries a total to compare against').toBeTruthy();
+    expect(line!.total, 'destination WC order line carries a total').toBeTruthy();
+    expect(
+      toMinorUnits(line!.total!, currency),
+      `destination line is priced at the buyer-paid source price (#895/ADR-014): source ` +
+        `${sourceLine!.total} ${currency}, destination ${line!.total} ${currency}`,
+    ).toBe(toMinorUnits(sourceLine!.total!, currency));
+
+    // STATUS: `toBeTruthy()` was unfalsifiable - a WC order always has one. What
+    // is falsifiable is that the order landed in a LIVE state: a destination
+    // order created straight into `cancelled`/`failed`/`trash` is a real defect
+    // that the old check waved through.
+    expect(
+      destinationOrder.status,
+      `destination WC order landed in a live state, not ${destinationOrder.status}`,
+    ).not.toMatch(/^(?:cancelled|failed|trash|refunded)$/);
     expect(destinationOrder.status, 'destination WC order status is set').toBeTruthy();
   });
 
@@ -168,12 +196,30 @@ test.describe('WooCommerce as order destination', () => {
       first.customerId,
     );
 
-    // Each synced order carries ITS OWN inline address — proving reuse tracking
-    // never cross-contaminates a later order's address with an earlier one.
-    // (The internal destination_address_mappings row proving a *distinct*
-    // address hash was recorded for the third order is not observable through
-    // the public API surface — out of scope for black-box E2E.)
-    expect(third.lineItems.length, 'third order has line items').toBeGreaterThan(0);
+    // Each synced order carries ITS OWN inline address - the claim this comment
+    // has always made and `expect(third.lineItems.length).toBeGreaterThan(0)`
+    // never checked. WooCommerce copies the address onto the order rather than
+    // referencing the customer record, so the destination orders' own billing
+    // addresses ARE the observable proof that reuse tracking did not
+    // cross-contaminate: the third order was placed with a DIFFERENT address and
+    // must not have inherited the first two's.
+    //
+    // Compared between orders, never against the `ADDRESS_A`/`ADDRESS_B`
+    // literals: OL and WC each normalise the address on the way through, so an
+    // exact-format assertion would be brittle without testing anything extra.
+    // The differential is the whole claim.
+    expect(
+      second.billingAddressKey,
+      'the second order (same buyer, SAME address) carries the same inline address as the first',
+    ).toBe(first.billingAddressKey);
+    expect(
+      third.billingAddressKey,
+      "the third order (same buyer, CHANGED address) carries its OWN inline address - inheriting " +
+        'the first order\'s would mean address reuse cross-contaminated it',
+    ).not.toBe(first.billingAddressKey);
+    // Non-empty, so the differential above cannot be satisfied by two blanks.
+    expect(first.billingAddressKey.replace(/\|/g, ''), 'the first order has a non-empty inline address').not.toBe('');
+    expect(third.billingAddressKey.replace(/\|/g, ''), 'the third order has a non-empty inline address').not.toBe('');
   });
 
   test('an order line for a specific variation hits the correct WC product variation, not the parent', async ({
@@ -380,14 +426,27 @@ async function createAndSyncWcOrder(
     retriggerPoll: () => jobs.trigger({ connectionId: wcSourceConnectionId, jobType: 'marketplace.orders.poll' }),
   });
   const synced = await pollWcDestinationSync(api, world, order.internalOrderId, { timeoutMs: 120_000 });
+  if (synced.status === 'failed') {
+    // A `failed` destination sync is a DESTINATION-ADAPTER failure, not a
+    // missing precondition: every caller has already skipped up front unless the
+    // ordered product is mapped on BOTH connections, which is the topology gap
+    // this path used to blame. Because `pollWcDestinationSync` returns on
+    // `failed` and the caller only read `externalOrderId`, a genuine
+    // `WooCommerceOrderProcessorAdapter.createOrder` regression reported as a
+    // `test.skip` with a plausible-sounding reason - green, forever.
+    throw new Error(
+      `order ${order.internalOrderId} FAILED to sync to the WooCommerce destination - the ordered ` +
+        'product is mapped on both connections (asserted by the caller), so this is a ' +
+        'destination-adapter failure, not a missing precondition',
+    );
+  }
   if (!synced.externalOrderId) {
-    // Without this the null flows into `GET /orders/null`, and a topology gap
-    // (an order line whose product has no mapping on the DESTINATION
-    // connection — the processor rejects the whole order) reads as a bogus
-    // WooCommerce 404 instead of a stated precondition.
+    // A `synced` entry with no external id: nothing to read back on the shop.
+    // Without this the null flows into `GET /orders/null` and surfaces as a
+    // bogus WooCommerce 404 instead of a stated precondition.
     test.skip(
       true,
-      `order ${order.internalOrderId} did not reach a WooCommerce destination (status=${synced.status}) — the line's product likely has no mapping on the destination connection`,
+      `order ${order.internalOrderId} reached status=${synced.status} on a WooCommerce destination but carries no external order id`,
     );
   }
   return { externalOrderId: synced.externalOrderId };

@@ -16,7 +16,8 @@
  * which is the resend endpoint's real, deterministic, always-true contract.
  *
  * E-mail send (`InvoiceEmailSender`, #1353) is exercised for real against the
- * inFakt sandbox.
+ * inFakt sandbox, but only as far as PROVIDER ACCEPTANCE reaches - see the note
+ * on that test.
  *
  * @module tests/invoicing
  */
@@ -97,7 +98,13 @@ test.describe('invoicing: bulk issue, resend, e-mail', () => {
     expect((error as ApiError).status).toBe(409);
   });
 
-  test('e-mails an issued inFakt invoice to the buyer', async ({ api, world, jobs, poll }, testInfo) => {
+  // NOT "…to the buyer": nothing here can observe a mailbox. `sendByEmail`
+  // reports only that the provider accepted the request, inFakt never echoes
+  // the recipient back (`recipient` is always null on this adapter), and the
+  // synthesized buyer address is on the non-resolvable `@e2e.openlinker.test`
+  // domain. Provider acceptance is the whole of what is assertable, so the
+  // title says exactly that.
+  test('triggers an inFakt e-mail send for an issued invoice (provider-accepted)', async ({ api, world, jobs, poll }, testInfo) => {
     const infakt = world.connectionFor(PlatformType.infakt);
     test.skip(!infakt, 'no inFakt connection on this stack');
     test.skip(
@@ -114,7 +121,15 @@ test.describe('invoicing: bulk issue, resend, e-mail', () => {
     );
 
     const result = await api.invoices.sendEmail(issued.id);
-    expect(typeof result.delivered).toBe('boolean');
+    // `delivered` is typed `boolean`, so `expect(typeof …).toBe('boolean')` was
+    // satisfied by the type system alone - an adapter answering `false` for
+    // every invoice passed a test titled "e-mails an issued inFakt invoice".
+    // `true` is the real contract: `SendInvoiceByEmailResult.delivered` means
+    // "the provider ACCEPTED the delivery request", and
+    // `InfaktInvoicingAdapter.sendByEmail` only returns it after
+    // `deliver_via_email.json` answered 2xx (a provider rejection propagates and
+    // the controller maps it to a 502, so this line would never be reached).
+    expect(result.delivered, 'inFakt accepted the e-mail delivery request').toBe(true);
     testInfo.annotations.push({
       type: 'invoicing',
       description: `send-email for invoice ${issued.id}: delivered=${result.delivered}, recipient=${result.recipient ?? '(unknown)'}`,

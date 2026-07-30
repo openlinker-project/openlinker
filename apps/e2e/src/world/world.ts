@@ -27,11 +27,20 @@ export type KnownPlatformType = (typeof PlatformType)[keyof typeof PlatformType]
 export interface World {
   /** Every connection on the stack, in list order. */
   readonly connections: readonly Connection[];
-  /** First active connection for a platform type, or undefined. */
+  /**
+   * First ACTIVE connection for a platform type, or undefined.
+   *
+   * Deliberately does not fall back to a disabled/error/needs_reauth
+   * connection. Nearly every spec pairs this with
+   * `test.skip(!connection, 'no X connection on this stack')`, and a fallback
+   * would let a DISABLED connection satisfy that guard - the spec then runs and
+   * dies inside an adapter call with an obscure platform error instead of
+   * skipping. Use `connectionsFor` when a spec genuinely wants inactive ones.
+   */
   connectionFor(platformType: string): Connection | undefined;
   /** First active connection for a platform type, throwing if absent. */
   requireConnection(platformType: string): Connection;
-  /** All connections for a platform type. */
+  /** All connections for a platform type, active or not. */
   connectionsFor(platformType: string): Connection[];
   /**
    * Connections that declare a capability in `enabledCapabilities` OR
@@ -41,8 +50,9 @@ export interface World {
    */
   connectionsWithCapability(capability: string): Connection[];
   /**
-   * First active connection carrying `capability` (optionally narrowed to
-   * `platformType`), or undefined. Unlike `connectionFor` (platformType-only),
+   * First ACTIVE connection carrying `capability` (optionally narrowed to
+   * `platformType`), or undefined - same no-inactive-fallback rule, and for the
+   * same reason, as `connectionFor`. Unlike `connectionFor` (platformType-only),
    * this resolves a connection BY WHAT IT DOES rather than by assuming a
    * particular platform plays a role (#1571) — e.g. picking "the" master
    * catalogue connection without hardcoding PrestaShop. When two connections
@@ -92,14 +102,21 @@ export async function buildWorld(api: ApiClient): Promise<World> {
     connections.filter((c) => c.platformType === platformType);
 
   const connectionFor = (platformType: string): Connection | undefined =>
-    connectionsFor(platformType).find(isActive) ?? connectionsFor(platformType)[0];
+    connectionsFor(platformType).find(isActive);
 
   const requireConnection = (platformType: string): Connection => {
     const connection = connectionFor(platformType);
     if (!connection) {
+      // Name the inactive ones explicitly: "no active X connection" on a stack
+      // that visibly HAS an X connection is otherwise a confusing message.
+      const inactive = connectionsFor(platformType).map((c) => `${c.name}=${c.status}`);
       const available = [...new Set(connections.map((c) => c.platformType))].join(', ');
       throw new Error(
-        `No connection found for platformType "${platformType}". Available: ${available || '(none)'}`,
+        `No ACTIVE connection found for platformType "${platformType}". ` +
+          (inactive.length > 0
+            ? `Present but not active: ${inactive.join(', ')}. `
+            : '') +
+          `Platform types available: ${available || '(none)'}`,
       );
     }
     return connection;
@@ -166,14 +183,14 @@ export async function buildWorld(api: ApiClient): Promise<World> {
     const candidates = connectionsWithCapability(capability).filter(
       (c) => !platformType || c.platformType === platformType,
     );
-    return candidates.find(isActive) ?? candidates[0];
+    return candidates.find(isActive);
   };
 
   const requireConnectionWithCapability = (capability: string, platformType?: string): Connection => {
     const connection = connectionWithCapability(capability, platformType);
     if (!connection) {
       const scope = platformType ? ` on platformType "${platformType}"` : '';
-      throw new Error(`No connection found with capability "${capability}"${scope}.`);
+      throw new Error(`No ACTIVE connection found with capability "${capability}"${scope}.`);
     }
     return connection;
   };

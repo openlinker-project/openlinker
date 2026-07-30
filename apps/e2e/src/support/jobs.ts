@@ -3,9 +3,9 @@
  *
  * Thin, typed wrappers over `POST /sync/jobs` for the checkpoints the golden
  * path drives explicitly (product sync, offer sync, order poll, inventory
- * propagation, invoice reconcile). `waitForJob` polls a job to a terminal state
- * so a checkpoint can be gated on the worker actually having run, rather than on
- * a fixed sleep.
+ * propagation, invoice reconcile). `waitForJobByKey` polls a job to a terminal
+ * state so a checkpoint can be gated on the worker actually having run, rather
+ * than on a fixed sleep.
  *
  * @module support
  */
@@ -31,13 +31,6 @@ export const JobType = {
   marketplaceShipmentStatusSync: 'marketplace.shipment.statusSync',
   marketplaceFulfillmentStatusSync: 'marketplace.fulfillment.statusSync',
 } as const;
-
-/**
- * Rolling scan-offset cursor key the InPost shipment status-sync task uses
- * (mirror of `inpost-scheduler-tasks.ts`). Reused here so an explicit E2E
- * trigger drives the same paged poll as the scheduled cron.
- */
-const INPOST_SHIPMENT_STATUS_CURSOR_KEY = 'inpost.shipmentStatus.scanOffset';
 
 export type JobTypeValue = (typeof JobType)[keyof typeof JobType];
 
@@ -68,6 +61,20 @@ export interface TriggerAndWaitOptions extends WaitForJobOptions {
  */
 const DEFAULT_JOB_WAIT_MS = 300_000;
 
+/**
+ * Page size for the idempotency-key scan. 100 is the server maximum
+ * (`ListSyncJobsQueryDto.limit` is `@Max(100)`), so this is the fewest possible
+ * round-trips per poll tick.
+ */
+const JOB_SCAN_PAGE_SIZE = 100;
+
+/**
+ * Hard bound on how deep one scan pages before giving up for this tick. Without
+ * it a connection with a large job backlog would turn every 1.5 s poll tick into
+ * an unbounded fan of requests against the API under test.
+ */
+const JOB_SCAN_MAX_ROWS = 1_000;
+
 export class SyncJobs {
   constructor(private readonly api: ApiClient) {}
 
@@ -97,17 +104,38 @@ export class SyncJobs {
     return idempotencyKey;
   }
 
-  /** Poll a job by its `sync_jobs` row UUID until it reaches a terminal status. */
-  async waitForJob(jobId: string, options: WaitForJobOptions = {}): Promise<SyncJob> {
-    return pollUntil(
-      () => this.api.syncJobs.getById(jobId),
-      (job) => TERMINAL_STATUSES.has(job.status),
-      {
-        timeoutMs: options.timeoutMs ?? DEFAULT_JOB_WAIT_MS,
-        intervalMs: options.intervalMs ?? 1_500,
-        message: `sync job ${jobId} to reach a terminal status`,
-      },
-    );
+  /**
+   * Locate the row carrying `idempotencyKey`, or undefined while it does not
+   * exist yet.
+   *
+   * The listing exposes no server-side `idempotencyKey` filter
+   * (`ListSyncJobsQueryDto` accepts only status/connectionId/jobType/outcome),
+   * so the key is matched client-side, and a single fixed window is not enough.
+   * Rows come back newest-first (`sync-job.repository.ts`), and a fan-out
+   * jobType can enqueue hundreds of siblings during the up-to-300 s wait, which
+   * would push the target row out of the window mid-wait: the caller would then
+   * time out with a message blaming the JOB when the failure was really the
+   * LOOKUP. Paging removes that failure mode.
+   */
+  private async findJobByKey(input: {
+    connectionId: string;
+    jobType: string;
+    idempotencyKey: string;
+  }): Promise<SyncJob | undefined> {
+    for (let offset = 0; offset < JOB_SCAN_MAX_ROWS; offset += JOB_SCAN_PAGE_SIZE) {
+      const page = await this.api.syncJobs.list({
+        connectionId: input.connectionId,
+        jobType: input.jobType,
+        limit: JOB_SCAN_PAGE_SIZE,
+        offset,
+      });
+      const match = page.items.find((j) => j.idempotencyKey === input.idempotencyKey);
+      if (match) return match;
+      if (page.items.length < JOB_SCAN_PAGE_SIZE || offset + JOB_SCAN_PAGE_SIZE >= page.total) {
+        return undefined;
+      }
+    }
+    return undefined;
   }
 
   /**
@@ -120,14 +148,7 @@ export class SyncJobs {
     options: WaitForJobOptions = {},
   ): Promise<SyncJob> {
     const job = await pollUntil<SyncJob | undefined>(
-      async () => {
-        const page = await this.api.syncJobs.list({
-          connectionId: input.connectionId,
-          jobType: input.jobType,
-          limit: 50,
-        });
-        return page.items.find((j) => j.idempotencyKey === input.idempotencyKey);
-      },
+      () => this.findJobByKey(input),
       (j) => j !== undefined && TERMINAL_STATUSES.has(j.status),
       {
         timeoutMs: options.timeoutMs ?? DEFAULT_JOB_WAIT_MS,
@@ -252,22 +273,29 @@ export class SyncJobs {
    *
    * `expectSuccess` defaults to false: the poll is best-effort backfill and a
    * business failure on one page should not abort the caller's tracking wait.
+   *
+   * `cursorKey` is E2E-owned and connection-scoped, mirroring
+   * `syncFulfillmentStatus`. Passing the production key
+   * (`inpost.shipmentStatus.scanOffset`, from `inpost-scheduler-tasks.ts`) would
+   * make every explicit test trigger ADVANCE the scheduled cron's rolling
+   * offset, so the 30-min cron would skip whatever pages this run consumed.
    */
   syncShipmentStatus(
     connectionId: string,
-    options: TriggerAndWaitOptions = {},
+    options: TriggerAndWaitOptions & { cursorKey?: string; limit?: number } = {},
   ): Promise<SyncJob> {
+    const { cursorKey, limit, ...triggerOptions } = options;
     return this.triggerAndWait(
       {
         connectionId,
         jobType: JobType.marketplaceShipmentStatusSync,
         payload: {
           schemaVersion: 1,
-          limit: 50,
-          cursorKey: INPOST_SHIPMENT_STATUS_CURSOR_KEY,
+          limit: limit ?? 50,
+          cursorKey: cursorKey ?? `e2e.${connectionId}.shipmentStatus.scanOffset`,
         },
       },
-      { expectSuccess: false, ...options },
+      { expectSuccess: false, ...triggerOptions },
     );
   }
 }

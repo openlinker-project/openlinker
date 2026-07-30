@@ -23,9 +23,11 @@
 import { test, expect } from '../../src/fixtures/test';
 import { PlatformType } from '../../src/world/world';
 import { ApiError } from '../../src/api/api-error';
-import type { Connection, Product, ProductVariant } from '../../src/api/api.types';
+import type { Connection, MarketplaceOffer, Product, ProductVariant } from '../../src/api/api.types';
+import type { ApiClient } from '../../src/api/api-client';
 import { PrestashopWebserviceClient } from '../../src/api/prestashop-webservice';
 import { waitForAvailabilityValue } from '../../src/support/stock';
+import { PollTimeoutError, pollFailureCause } from '../../src/support/poller';
 
 test.describe('lifecycle: stale-variant pruning (#1495 / #1574)', () => {
   test('deleting a variant at the master prunes OL availability + mapped channel quantity to 0', async ({
@@ -132,6 +134,22 @@ test.describe('lifecycle: stale-variant pruning (#1495 / #1574)', () => {
     );
 
     for (const { platformType, mappingId } of channelMappings) {
+      // Capability pre-check BEFORE the poll, the pattern every other spec in
+      // this suite uses (`readLiveOfferOrNull` in inventory-propagation.spec.ts).
+      // The `catch (error) { if (error instanceof ApiError && error.status === 422) }`
+      // this replaces was a dead branch: `pollUntil` swallows every probe error
+      // and throws `PollTimeoutError`, so a channel with no `OfferReader` (Erli)
+      // 422'd on all 120 s of probes and then rethrew a timeout - blaming
+      // propagation for a known capability gap, AFTER the irreversible
+      // combination delete above had already happened.
+      const live = await readLiveOfferOrNull(api, mappingId);
+      if (live === null) {
+        testInfo.annotations.push({
+          type: 'prune-channel-degrade',
+          description: `${platformType}: no OfferReader - verify quantity 0 manually`,
+        });
+        continue;
+      }
       try {
         const settled = await poll.until(
           () => api.listings.getOffer(mappingId),
@@ -140,10 +158,13 @@ test.describe('lifecycle: stale-variant pruning (#1495 / #1574)', () => {
         );
         expect(settled.availableQuantity, `${platformType} offer quantity after pruning`).toBe(0);
       } catch (error) {
-        if (error instanceof ApiError && error.status === 422) {
+        // Belt and braces for a capability that starts 422ing mid-poll: classify
+        // the poll's UNDERLYING cause, never the `PollTimeoutError` wrapper.
+        const cause = pollFailureCause(error);
+        if (error instanceof PollTimeoutError && cause instanceof ApiError && cause.status === 422) {
           testInfo.annotations.push({
             type: 'prune-channel-degrade',
-            description: `${platformType}: no OfferReader — verify quantity 0 manually`,
+            description: `${platformType}: OfferReader stopped answering mid-poll (422) - verify quantity 0 manually`,
           });
           continue;
         }
@@ -154,6 +175,20 @@ test.describe('lifecycle: stale-variant pruning (#1495 / #1574)', () => {
 });
 
 // ── local helpers ───────────────────────────────────────────────────────────
+
+/**
+ * Live-offer read guarded by capability: `GET /listings/:id/offer` 422s when the
+ * connection's adapter ships no `OfferReader` (Erli today). Mirrors the helper
+ * of the same name in inventory-propagation.spec.ts / full-flow.spec.ts.
+ */
+async function readLiveOfferOrNull(api: ApiClient, mappingId: string): Promise<MarketplaceOffer | null> {
+  try {
+    return await api.listings.getOffer(mappingId);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 422) return null;
+    throw error;
+  }
+}
 
 function externalIdFor(externalIds: Product['externalIds'], connectionId: string): string | undefined {
   return externalIds?.find((e) => e.connectionId === connectionId)?.externalId;

@@ -2,13 +2,12 @@
  * Orders list + detail page objects
  *
  * `OrdersListPage` covers `/orders` (KPI strip + DataTable); `OrderDetailPage`
- * covers `/orders/:internalOrderId` and the composed shipment/invoice panels.
+ * covers `/orders/:internalOrderId` and the composed invoice panel.
  * Primarily consumed by the follow-up post-purchase segments (S5-S9).
  *
  * @module pages
  */
 import { expect, type Locator, type Page } from '@playwright/test';
-import { ShipmentPanel } from './shipment-panel.page';
 import { InvoicePanel } from './invoice-panel.page';
 
 export class OrdersListPage {
@@ -43,10 +42,9 @@ export class OrderDetailPage {
     await expect(this.page.getByRole('heading', { name: 'Order detail' })).toBeVisible();
   }
 
-  get shipment(): ShipmentPanel {
-    return new ShipmentPanel(this.page);
-  }
-
+  // No `shipment` accessor: the shipping suite drives dispatch through the API
+  // (`src/support/shipments.ts`), never through the order-detail panel, so the
+  // panel page object was deleted rather than left to drift against `apps/web`.
   get invoice(): InvoicePanel {
     return new InvoicePanel(this.page);
   }

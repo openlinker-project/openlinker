@@ -19,6 +19,34 @@ import { PlatformType } from '../../src/world/world';
 import { ApiError } from '../../src/api/api-error';
 
 test.describe('invoicing: Transfer payments + bank accounts', () => {
+  /**
+   * The account that was the provider default BEFORE this run flipped it.
+   *
+   * Flipping is not a read: per `BankAccountDefaultSetter`, the default account
+   * is what EVERY subsequent Transfer invoice on that connection gets stamped
+   * with - so a run that flips and walks away silently re-banks the operator's
+   * future invoices. Captured here and restored in `afterAll` (not at the end of
+   * the test body: a mid-test failure has already flipped it).
+   */
+  let restore: { connectionId: string; accountId: string } | null = null;
+
+  test.afterAll(async ({ api }) => {
+    if (!restore) return;
+    try {
+      await api.bankAccounts.setDefault(restore.connectionId, restore.accountId);
+    } catch (error) {
+      // Never rethrow from teardown - a restore failure must not mask the run's
+      // real result - but never stay silent either: the stack is left banking
+      // Transfer invoices to an account the operator did not choose.
+      console.warn(
+        `[e2e] MANUAL FOLLOW-UP: could not restore the inFakt default bank account to ` +
+          `${restore.accountId} on connection ${restore.connectionId} (${String(error)}). Every ` +
+          'Transfer invoice on that connection will be stamped with the account this run picked ' +
+          'until it is set back by hand.',
+      );
+    }
+  });
+
   test('lists the connection\'s bank accounts and sets a default that persists', async ({
     api,
     world,
@@ -29,9 +57,27 @@ test.describe('invoicing: Transfer payments + bank accounts', () => {
     test.skip(!infakt, 'no inFakt connection on this stack');
 
     const accounts = await api.bankAccounts.list(infakt!.id);
-    test.skip(accounts.length === 0, 'inFakt reports no bank accounts on this sandbox account');
+    // TWO accounts, not one. With a single account `accounts.find(a => !a.isDefault)
+    // ?? accounts[0]` picks the account that is ALREADY the default, so
+    // `setDefault` is a no-op, the `isDefault === true` assertion below passes on
+    // the pre-existing flag, and the "at most one default" loop has zero
+    // iterations - an adapter whose `setDefault` does nothing at all passes the
+    // whole test. Only a real FLIP (a non-default account becoming the default,
+    // and the previous one losing the flag) is falsifiable.
+    test.skip(
+      accounts.length < 2,
+      `inFakt reports ${accounts.length} bank account(s) on this sandbox; the flip assertion ` +
+        'needs at least 2 (with one, setDefault is a no-op that passes vacuously)',
+    );
 
-    const target = accounts.find((a) => !a.isDefault) ?? accounts[0];
+    const previousDefault = accounts.find((a) => a.isDefault);
+    const target = accounts.find((a) => !a.isDefault)!;
+    // Record the restore target BEFORE mutating. When no account was flagged
+    // default, re-flagging on the way out is impossible (the capability has no
+    // "clear default"), so leave `restore` null and say so in the annotation.
+    if (previousDefault) {
+      restore = { connectionId: infakt!.id, accountId: previousDefault.id };
+    }
     await api.bankAccounts.setDefault(infakt!.id, target.id);
 
     const refreshed = await api.bankAccounts.list(infakt!.id);
@@ -47,7 +93,12 @@ test.describe('invoicing: Transfer payments + bank accounts', () => {
 
     testInfo.annotations.push({
       type: 'invoicing',
-      description: `set ${target.bankName} — ${target.accountNumber} as the inFakt default bank account`,
+      description:
+        `set ${target.bankName} - ${target.accountNumber} as the inFakt default bank account` +
+        (restore
+          ? ' (restored to the previous default on teardown)'
+          : ' - NO previous default existed, so this flip is NOT reverted: every Transfer invoice ' +
+            'on this connection is now stamped with it'),
     });
 
     // Light existence check: the connection's config surface (where the

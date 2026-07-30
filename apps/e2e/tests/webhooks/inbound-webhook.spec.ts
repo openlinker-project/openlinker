@@ -28,6 +28,7 @@ import { test, expect } from '../../src/fixtures/test';
 import { PlatformType } from '../../src/world/world';
 import type { Connection } from '../../src/api/api.types';
 import { buildOrderWebhookEnvelope, signWebhook } from '../../src/support/webhooks';
+import { restoreWebhookSecret } from '../../src/support/webhook-secret';
 
 const PROVIDER = PlatformType.prestashop;
 
@@ -45,6 +46,16 @@ test.describe('inbound webhook: signed PrestaShop delivery', () => {
     } catch (error) {
       setupError = error instanceof Error ? error.message : String(error);
     }
+  });
+
+  // Rotation pushes nothing to PrestaShop, so the OL module keeps signing with
+  // the pre-run secret and every genuine delivery 401s from here on. Repair the
+  // divergence by re-provisioning both sides. This lives in `afterAll` (not at
+  // the end of the test body) on purpose: a spec that fails mid-way has already
+  // rotated, and that is exactly the run whose damage must not be left behind.
+  test.afterAll(async ({ api }) => {
+    if (!connection || secret === null) return;
+    await restoreWebhookSecret(api, PROVIDER, connection.id);
   });
 
   test('verifies, records, enqueues, and dedupes a signed inbound webhook', async ({

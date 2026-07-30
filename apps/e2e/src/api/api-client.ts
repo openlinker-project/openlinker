@@ -404,6 +404,17 @@ export class ApiClient {
         method: 'POST',
         body: JSON.stringify(roleBody),
       }),
+    /**
+     * Permanently delete a user (`DELETE /users/:id`, admin only, 204).
+     *
+     * Wired for the account sweep in `support/access-control.ts`: without it
+     * every run left its `e2e-viewer-*` / `e2e-register-*` accounts behind on a
+     * shared - possibly internet-reachable - demo stack, at least one of them an
+     * ACTIVE `viewer`. Works on any non-admin account directly (no deactivate
+     * step); 403 guards only self-deletion and the last admin.
+     */
+    delete: (userId: string): Promise<void> =>
+      this.request<void>(`/users/${userId}`, { method: 'DELETE' }),
   };
 
   // ── AI provider settings (admin only) ─────────────────────────────────────
@@ -692,6 +703,7 @@ export class ApiClient {
       if (query.jobType) params.set('jobType', query.jobType);
       if (query.status) params.set('status', query.status);
       if (query.limit !== undefined) params.set('limit', String(query.limit));
+      if (query.offset !== undefined) params.set('offset', String(query.offset));
       const qs = params.toString();
       return this.request<SyncJobListResponse>(`/sync/jobs${qs ? `?${qs}` : ''}`);
     },
@@ -719,10 +731,16 @@ export class ApiClient {
   mappingOptions = {
     /**
      * Destination-platform order-status vocabulary for the connection-mappings
-     * UI. `MappingOptionsController` resolves the destination side by pairing
-     * platformType — today only Allegro<->PrestaShop; other platforms (incl.
-     * `woocommerce`) 400. Used by the WooCommerce-parity suite to assert that
-     * documented gap explicitly rather than silently skip it (#1571 scenario 7).
+     * UI.
+     *
+     * `MappingOptionsController` USED to hardcode the Allegro<->PrestaShop pair
+     * and answer 400 for every other `platformType`, WooCommerce included.
+     * #1738 replaced that platform switch with pairing-first, capability-checked
+     * resolution keyed on `config.masterCatalogConnectionId`, so a WooCommerce
+     * connection now resolves its PAIRED MASTER's option list. The
+     * WooCommerce-parity suite asserts that SUCCESS path
+     * (`fulfillment-and-mapping-options.spec.ts`), not the closed gap - this
+     * comment still described the gap after the spec was rewritten.
      */
     getDestinationOrderStatuses: (connectionId: string): Promise<unknown[]> =>
       this.request<unknown[]>(`/connections/${connectionId}/mappings/options/destination/order-statuses`),

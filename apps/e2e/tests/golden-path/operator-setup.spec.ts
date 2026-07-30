@@ -19,7 +19,10 @@
  * @module tests/golden-path
  */
 import { test, expect } from '../../src/fixtures/test';
-import { PlatformType } from '../../src/world/world';
+import { PlatformType, type World } from '../../src/world/world';
+import type { ApiClient } from '../../src/api/api-client';
+import type { Product, ProductVariant } from '../../src/api/api.types';
+import { PrestashopWebserviceClient } from '../../src/api/prestashop-webservice';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -29,7 +32,7 @@ test.describe('operator setup (S1-S4)', () => {
     world,
     jobs,
     poll,
-  }) => {
+  }, testInfo) => {
     const prestashop = world.connectionFor(PlatformType.prestashop);
     test.skip(!prestashop, 'no PrestaShop connection on this stack');
 
@@ -46,16 +49,57 @@ test.describe('operator setup (S1-S4)', () => {
       { message: 'PrestaShop products to appear in OL', timeoutMs: 60_000 },
     );
 
-    const product = products.items[0];
+    // Pick a PRESTASHOP-mastered product: `products.items[0]` could be mastered
+    // by any connection on the stack, and "master stock" is a claim about the
+    // PrestaShop master specifically.
+    const target = await findPrestashopMasteredProduct(api, world, prestashop!.id, products.items);
+    test.skip(!target, 'no product in the first page carries a PrestaShop external id');
+    const { product, psExternalId } = target!;
     const variants = await world.variantsOf(product.id);
-    expect(variants.length).toBeGreaterThan(0);
+    expect(variants.length, `product ${product.id} has variants`).toBeGreaterThan(0);
 
-    // Stock is master-sourced: every variant has an availability row (>= 0).
-    const availability = await api.inventory.availability(variants.map((v) => v.id));
-    expect(availability.length).toBe(variants.length);
-    for (const entry of availability) {
-      expect(entry.totalAvailable).toBeGreaterThanOrEqual(0);
+    // `master.product.syncAll` imports the CATALOGUE; inventory rows come from a
+    // separate master-inventory sync. Drive the targeted one so the stock claim
+    // in this test's name is about work this test actually caused.
+    await jobs.triggerAndWait({
+      connectionId: prestashop!.id,
+      jobType: 'master.inventory.syncByExternalId',
+      payload: { externalId: psExternalId, objectType: 'Product' },
+    });
+
+    // Stock is master-sourced: every variant has a REAL availability row.
+    //
+    // `length === variants.length` plus `totalAvailable >= 0` could not fail:
+    // `getAvailabilityByVariantIds` zero-fills unknown ids and preserves input
+    // order, so both held with `inventory_items` empty - the exact condition the
+    // old comment claimed to rule out. `locationCount` is what distinguishes a
+    // real row from the zero-fill.
+    const availability = await poll.until(
+      () => api.inventory.availability(variants.map((v) => v.id)),
+      (rows) => rows.every((row) => row.locationCount > 0),
+      {
+        message: `a real (non-zero-filled) master availability row for every variant of ${product.id}`,
+        timeoutMs: 60_000,
+      },
+    );
+
+    // Cross-system check, the one that makes this a MASTER-stock test rather
+    // than an OL-self-consistency test: OL's total equals PrestaShop's own.
+    // Annotated rather than skipped when the webservice key is absent - unlike
+    // full-flow's S1 the assertions above still carry real weight without it.
+    const ps = buildPrestashopClient(world);
+    if (!ps) {
+      testInfo.annotations.push({
+        type: 'skip-note',
+        description:
+          'OL_PS_WEBSERVICE_KEY / OL_PS_ADMIN_URL not set - OL master availability was NOT compared ' +
+          'against PrestaShop stock_availables; only the OL-side rows were verified',
+      });
+      return;
     }
+    const psStock = await ps.getStockForProduct(psExternalId);
+    const olTotal = availability.reduce((sum, row) => sum + row.totalAvailable, 0);
+    expect(olTotal, `OL master total (${olTotal}) matches PS stock (${psStock})`).toBe(psStock);
   });
 
   test('S2 — publish a product to WooCommerce via the unified publish flow', async ({
@@ -83,12 +127,28 @@ test.describe('operator setup (S1-S4)', () => {
     await pages.listingsList.goto();
     const picker = await pages.listingsList.openPublishProducts();
 
-    // Select the first product's variant (row-scoped) and drive the wizard to publish.
-    const firstProduct = (await api.products.list({ limit: 1 })).items[0];
-    expect(firstProduct, 'a product must exist to publish (run S1 first)').toBeTruthy();
-    const variants = await world.variantsOf(firstProduct.id);
-    const targetVariantId = variants[0]?.id;
-    expect(targetVariantId, 'the target product must have at least one variant').toBeTruthy();
+    // Pick a product whose FIRST variant is not already published on this
+    // connection.
+    //
+    // `publishedVariants` (#1837's duplicate guard) reports a variant listed on
+    // the connection by ANY run, so with no baseline the poll below was already
+    // true on its first probe from run 2 onward: break shop publish server-side
+    // entirely and this test still passed on every run but the first. The picker
+    // selects the product row's FIRST variant, so eligibility has to be judged
+    // on that same variant - same accept-filter discipline the bulk-offer
+    // segments below use.
+    const target = await findUnpublishedFirstVariant(api, world, woocommerce!.id);
+    test.skip(
+      !target,
+      `every candidate product's first variant is already published on ${woocommerce!.name} - ` +
+        'no unpublished target left, so a publish here could not be distinguished from a prior ' +
+        'run. This is ELIGIBILITY EXHAUSTION, not a stack-configuration problem: a shop publish ' +
+        'is irreversible from here (the suite cannot un-publish), so each run permanently ' +
+        'consumes one candidate out of the first 25 products. Add catalogue products, or run ' +
+        'with E2E_FRESH_PRODUCT=true, to replenish the pool.',
+    );
+    const { product: firstProduct, variant } = target!;
+    const targetVariantId = variant.id;
     await picker.selectFirstVariantOf(firstProduct.name);
     await picker.chooseDestination(woocommerce!.name);
     await picker.continueToWizard();
@@ -153,6 +213,62 @@ test.describe('operator setup (S1-S4)', () => {
   });
 });
 
+/** The first listed product that carries a PrestaShop external id, with that id. */
+async function findPrestashopMasteredProduct(
+  api: ApiClient,
+  world: World,
+  prestashopConnectionId: string,
+  candidates: readonly Product[],
+): Promise<{ product: Product; psExternalId: string } | null> {
+  for (const summary of candidates) {
+    // The list endpoint omits externalIds - the detail read resolves them.
+    const detail = await api.products.getById(summary.id);
+    const psExternalId = detail.externalIds?.find(
+      (e) => e.connectionId === prestashopConnectionId,
+    )?.externalId;
+    if (!psExternalId) continue;
+    const variants = await world.variantsOf(detail.id);
+    if (variants.length === 0) continue;
+    return { product: detail, psExternalId };
+  }
+  return null;
+}
+
+/**
+ * The first product whose FIRST variant is NOT yet published on `connectionId`.
+ *
+ * "First variant" is not incidental: the picker's `selectFirstVariantOf` is
+ * row-scoped, so any other variant's publication state says nothing about what
+ * this run is about to publish.
+ */
+async function findUnpublishedFirstVariant(
+  api: ApiClient,
+  world: World,
+  connectionId: string,
+): Promise<{ product: Product; variant: ProductVariant } | null> {
+  const page = await api.products.list({ limit: 25 });
+  for (const summary of page.items) {
+    const variants = await world.variantsOf(summary.id);
+    const first = variants[0];
+    if (!first) continue;
+    const published = await api.listings.publishedVariants(connectionId, [first.id]);
+    if (!published.includes(first.id)) {
+      return { product: summary, variant: first };
+    }
+  }
+  return null;
+}
+
+function buildPrestashopClient(world: World): PrestashopWebserviceClient | null {
+  const connection = world.connectionFor(PlatformType.prestashop);
+  const key = process.env.OL_PS_WEBSERVICE_KEY?.trim();
+  const baseUrl =
+    process.env.OL_PS_ADMIN_URL?.trim() ||
+    (typeof connection?.config?.['baseUrl'] === 'string' ? connection.config['baseUrl'] : '');
+  if (!connection || !key || !baseUrl) return null;
+  return new PrestashopWebserviceClient({ baseUrl, apiKey: key });
+}
+
 /**
  * Shared bulk-offer flow for S3/S4: pick a multi-variant product on the Products
  * page, drive the bulk wizard to submission, then poll OL listings for the
@@ -192,7 +308,12 @@ async function runBulkOfferSegment(ctx: {
   });
   test.skip(
     !product,
-    `no multi-variant product with an unlisted variant on ${connectionName} — every candidate is already published there`,
+    `no multi-variant product with an unlisted variant on ${connectionName} - every candidate in ` +
+      'the scanned catalogue page is already listed there. ELIGIBILITY EXHAUSTION, not a ' +
+      'stack-configuration problem: offers on the marketplace sandboxes cannot be deleted from ' +
+      'here, so every run permanently consumes one candidate and this segment eventually skips ' +
+      'forever. Add multi-variant, EAN-complete catalogue products (or run with ' +
+      'E2E_FRESH_PRODUCT=true) to replenish the pool.',
   );
 
   const before = (await api.listings.list({ connectionId, limit: 1 })).total;

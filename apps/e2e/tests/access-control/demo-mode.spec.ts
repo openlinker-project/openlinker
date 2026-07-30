@@ -18,10 +18,19 @@
  * @module tests/access-control
  */
 import { test, expect } from '../../src/fixtures/test';
-import { provisionViewer, seedBrowserSession } from '../../src/support/access-control';
+import {
+  provisionViewer,
+  seedBrowserSession,
+  sweepProvisionedAccounts,
+} from '../../src/support/access-control';
 import { gotoWhenAppMounted } from '../../src/support/navigation';
 
 test.describe('access-control: demo mode', () => {
+  // `provisionViewer` mints a real account per call - delete it on the way out.
+  test.afterAll(async ({ api }) => {
+    await sweepProvisionedAccounts(api);
+  });
+
   test('GET /system/config exposes a boolean demoMode flag', async ({ api }) => {
     const config = await api.system.config();
     expect(typeof config.demoMode).toBe('boolean');
@@ -35,15 +44,24 @@ test.describe('access-control: demo mode', () => {
     // guest form instead of redirecting an authenticated session to the shell.
     const context = await browser.newContext({ baseURL: env.webUrl });
     try {
-      // `browser.newContext()` is documented as storage-isolated from every
-      // other context, but on this stack it is observed to hand back a context
-      // that already carries the OTHER (admin) context's `ol_refresh`/`ol_csrf`
-      // cookies before any navigation happens — reproduced 5/5 with a debug
-      // probe dumping `context.cookies()` immediately after creation, with
+      // OBSERVED, MECHANISM UNEXPLAINED. `browser.newContext()` is documented as
+      // storage-isolated from every other context, yet on this stack it was
+      // reproduced 5/5 handing back a context already carrying the OTHER (admin)
+      // context's `ol_refresh`/`ol_csrf` cookies before any navigation, with
       // GuestLayout then redirecting the "guest" page straight to the
-      // authenticated shell (`session.status === 'authenticated'`). Whatever the
-      // exact CDP/Chromium mechanism, clearing cookies makes the context match
-      // what this test actually needs — genuinely logged out — regardless of it.
+      // authenticated shell (`session.status === 'authenticated'`).
+      //
+      // An earlier version of this comment blamed Playwright's
+      // `_defaultContextOptions` leaking the storageState seed onto the browser
+      // type. That is NOT the mechanism: in the pinned Playwright (1.61.1)
+      // `_combinedContextOptions` is passed only to the `context` fixture's
+      // `_contextFactory`, and `_defaultContextOptions` does not exist on the
+      // browser type at all. Do not build on the old explanation - the root
+      // cause is still open (the `gotoWhenAppMounted` hardening landed in the
+      // same commit and is a plausible confound).
+      //
+      // `clearCookies()` is a correct fix for the SYMPTOM regardless of cause:
+      // it makes the context match what this test needs - genuinely logged out.
       await context.clearCookies();
       const page = await context.newPage();
       // First navigation of this context against a possibly-cold web container:
@@ -90,6 +108,15 @@ test.describe('access-control: demo mode', () => {
 
     const context = await browser.newContext({ baseURL: env.webUrl });
     try {
+      // Same unexplained cross-context cookie carry-over as the guest case
+      // above. This site is only ACCIDENTALLY safe: `seedBrowserSession`
+      // immediately overwrites the jar with the viewer's session. On a stack
+      // with `OL_COOKIE_DOMAIN` set, the login response sets a Domain cookie
+      // that does NOT replace a leaked host-only copy of the same name, and the
+      // browser then sends both - the RFC 6265 duplicate-cookie hazard
+      // `auth.cookies.ts` documents from #748, with the admin's session
+      // potentially winning. Clear first so the seed is the only session here.
+      await context.clearCookies();
       await seedBrowserSession(context, env, viewer!.creds);
       const page = await context.newPage();
       // First navigation of this context against a possibly-cold web container.
