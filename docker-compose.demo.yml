@@ -135,7 +135,10 @@ services:
       # Loopback-bound by default (#1400): the demo ships default admin/admin
       # credentials with no redaction, so a multi-homed/LAN host must not
       # expose it beyond localhost.
-      - '${OL_BIND_ADDRESS:-127.0.0.1}:${WEB_HOST_PORT:-8090}:80'
+      # Container-side target is 8080, not 80: the `web` image runs nginx as
+      # a non-root user (#1411, apps/web/Dockerfile), which cannot bind the
+      # privileged port 80. The host-side port (WEB_HOST_PORT) is unaffected.
+      - '${OL_BIND_ADDRESS:-127.0.0.1}:${WEB_HOST_PORT:-8090}:8080'
     depends_on:
       - api
 

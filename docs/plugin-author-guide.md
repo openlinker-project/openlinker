@@ -45,8 +45,9 @@ Each numbered item is one section below.
 
 ## Prerequisites
 
-- Node.js 18+ (LTS), pnpm 10+, Docker (for the dev stack and
-  integration tests).
+- Node.js 22+ (LTS), pnpm 10+, Docker (for the dev stack and
+  integration tests). Authoritative version table:
+  [`README.md` § Runtime requirements](../README.md#runtime-requirements).
 - Familiarity with
   [`docs/architecture-overview.md`](./architecture-overview.md) —
   especially the *Hexagonal Architecture* and *Capability

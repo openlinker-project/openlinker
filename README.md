@@ -258,7 +258,8 @@ Database migrations run automatically (one-shot `migrate` container) before the 
 | OpenLinker API | http://localhost:3000 | — |
 | PrestaShop storefront | http://localhost:8080 | — |
 | PrestaShop admin | http://localhost:8080/admin-dev | `demo@prestashop.com` / `prestashop_demo` |
-| phpMyAdmin (PrestaShop MySQL) | http://localhost:8081 | `root` / `root` |
+
+phpMyAdmin (PrestaShop MySQL browser, http://localhost:8081, `root` / `root`) is a devtools-only auxiliary service — it's gated behind a Compose `devtools` profile rather than always-on. Opt in with `pnpm dev:stack:devtools:up` (plain dev stack) or `pnpm demo:devtools:up` (demo overlay).
 
 PrestaShop auto-installs with a seeded catalog and the OpenLinker module pre-mounted. The PrestaShop ↔ OpenLinker **connection itself is configured manually** in the admin UI (`Connections → New`) — see the [Operator Guide](./docs/user-guide/README.md).
 
@@ -295,11 +296,44 @@ Then follow [`docs/getting-started.md`](./docs/getting-started.md) — a walkthr
 
 ### Prerequisites
 
-- Node.js 18+ (LTS), pnpm 10+
+- Node.js 22+ (LTS), pnpm 10+
 - Docker + Docker Compose (dev stack + integration tests)
 - An [Allegro sandbox account](https://apps.developer.allegro.pl.allegrosandbox.pl/) if you want to exercise the marketplace path
 
+### Runtime requirements
+
+The exact versions the Docker images and Compose files are built/tested against:
+
+| Component | Version |
+|---|---|
+| Node.js | 22 (pinned `node:22.23.1-alpine3.24` in `Dockerfile` / `apps/web/Dockerfile`) |
+| pnpm | 10 (pinned `pnpm@10.33.4`, matching `package.json`'s `packageManager` field) |
+| Docker Compose | ≥ 2.24 (required by the demo overlay's `!reset`/`!override` merge keys) |
+| PostgreSQL | 17 (`postgres:17-alpine`) |
+| Redis | 8.4 (`redis:8.4-alpine`) |
+| MySQL | 8.4.7 (`mysql:8.4.7-oraclelinux9`) |
+
 The dev stack starts PostgreSQL, Redis, MySQL, PrestaShop, and WooCommerce in containers — you do not need any of those installed locally.
+
+> ⚠️ **Upgrading an existing checkout (one-time, #1411).**
+>
+> Two changes combine into a **one-time data reset** of your local dev/demo stack:
+>
+> 1. **Every named volume was renamed** `_data` → `-data` (e.g. `postgres_data` → `postgres-data`). Docker qualifies volumes as `<project>_<name>`, so your existing `openlinker_postgres_data` is *orphaned* and Compose creates an empty `openlinker-postgres-data`.
+> 2. **PostgreSQL moved 16 → 17.** PG17 refuses to start against a PG16 data directory (`database files are incompatible with server`), so preserving the old volume by hand would not work either.
+>
+> The next `pnpm dev:stack:up` / `pnpm demo:up` therefore starts with an **empty database, silently** — your configured connections, encrypted credentials, seeded PrestaShop catalog, and WooCommerce setup are still on disk in the orphaned volumes, just invisible. Re-seed from scratch and reclaim the disk:
+>
+> ```bash
+> docker compose down
+> docker volume rm \
+>   openlinker_postgres_data openlinker_redis_data openlinker_mysql_data \
+>   openlinker_prestashop_data openlinker_woocommerce_mysql_data \
+>   openlinker_woocommerce_data openlinker_caddy_data openlinker_caddy_config
+> pnpm dev:stack:up   # re-seeds from scratch
+> ```
+>
+> Adjust the `openlinker_` prefix if you set `COMPOSE_PROJECT_NAME`. This affects local dev/demo data only — there is no production deployment to migrate.
 
 **WooCommerce** is available at **http://localhost:8082** (PrestaShop uses 8080). Run `pnpm dev:stack:wc-credentials` after startup to retrieve the auto-generated consumer key and secret. See the [WooCommerce Setup Guide](./libs/integrations/woocommerce/docs/setup-guide.md) for full configuration steps.
 
