@@ -5,7 +5,9 @@
  * variant-prune after a successful pull (emitting `master.variant.stale`), the
  * 404 branch (neutral `MasterProductNotFoundError` → mark all variants stale,
  * emit `master.product.stale`, `masterDeleted: true`, no upsert), and that a
- * transient failure rethrows unchanged.
+ * transient failure rethrows unchanged. Also covers the connection-ownership
+ * guard added in #1904: both prune paths are withheld when a second
+ * ProductMaster connection claims the same internal product id.
  *
  * @module libs/core/src/products/application/services/__tests__
  */
@@ -17,7 +19,7 @@ import {
   MASTER_VARIANT_STALE_EVENT,
 } from '../../../domain/types/master-deletion-events.types';
 import type { IProductsService } from '../products.service.interface';
-import type { IIntegrationsService } from '@openlinker/core/integrations';
+import type { IEntityClaimService, IIntegrationsService } from '@openlinker/core/integrations';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import type { EventPublisherPort } from '@openlinker/core/events';
 import type { Product } from '../../../domain/entities/product.entity';
@@ -43,6 +45,7 @@ describe('MasterProductSyncService', () => {
     Pick<IProductsService, 'upsertProduct' | 'upsertVariants' | 'markVariantsStaleExcept'>
   >;
   let eventPublisher: jest.Mocked<EventPublisherPort>;
+  let entityClaims: jest.Mocked<IEntityClaimService>;
   let adapter: jest.Mocked<Pick<ProductMasterPort, 'getProduct' | 'getProductVariants'>>;
   let service: MasterProductSyncService;
 
@@ -70,11 +73,18 @@ describe('MasterProductSyncService', () => {
       publish: jest.fn().mockResolvedValue('msg-1'),
     } as unknown as jest.Mocked<EventPublisherPort>;
 
+    // Default: this connection is the only ProductMaster claiming the internal
+    // product id, so the ownership guard (#1904) never blocks the prune.
+    entityClaims = {
+      findRivalClaimants: jest.fn().mockResolvedValue([]),
+    } as unknown as jest.Mocked<IEntityClaimService>;
+
     service = new MasterProductSyncService(
       integrationsService,
       identifierMapping,
       productsService as unknown as IProductsService,
-      eventPublisher
+      eventPublisher,
+      entityClaims
     );
   });
 
@@ -90,7 +100,12 @@ describe('MasterProductSyncService', () => {
       MASTER_DELETION_EVENT_STREAM,
       expect.objectContaining({ eventType: MASTER_VARIANT_STALE_EVENT })
     );
-    expect(result).toEqual({ internalProductId, variantsUpserted: 1, masterDeleted: false });
+    expect(result).toEqual({
+      internalProductId,
+      variantsUpserted: 1,
+      masterDeleted: false,
+      pruneSkipped: false,
+    });
   });
 
   it('does not emit when nothing was newly marked stale', async () => {
@@ -110,7 +125,12 @@ describe('MasterProductSyncService', () => {
     // empty 200 — so an empty variant list must NOT prune (would stale everything).
     expect(productsService.markVariantsStaleExcept).not.toHaveBeenCalled();
     expect(eventPublisher.publish).not.toHaveBeenCalled();
-    expect(result).toEqual({ internalProductId, variantsUpserted: 0, masterDeleted: false });
+    expect(result).toEqual({
+      internalProductId,
+      variantsUpserted: 0,
+      masterDeleted: false,
+      pruneSkipped: false,
+    });
   });
 
   it('marks all variants stale, emits master.product.stale and reports masterDeleted on a 404', async () => {
@@ -129,7 +149,12 @@ describe('MasterProductSyncService', () => {
       MASTER_DELETION_EVENT_STREAM,
       expect.objectContaining({ eventType: MASTER_PRODUCT_STALE_EVENT })
     );
-    expect(result).toEqual({ internalProductId, variantsUpserted: 0, masterDeleted: true });
+    expect(result).toEqual({
+      internalProductId,
+      variantsUpserted: 0,
+      masterDeleted: true,
+      pruneSkipped: false,
+    });
   });
 
   it('rethrows a transient (non-not-found) adapter error unchanged', async () => {
@@ -140,5 +165,61 @@ describe('MasterProductSyncService', () => {
     ).rejects.toThrow('ECONNRESET');
     expect(productsService.markVariantsStaleExcept).not.toHaveBeenCalled();
     expect(eventPublisher.publish).not.toHaveBeenCalled();
+  });
+
+  // Connection-ownership guard (#1904): the prune keys on internalProductId
+  // alone, so it is withheld whenever a SECOND connection with ProductMaster
+  // enabled also claims that id - otherwise one master's 404 (or a response
+  // missing the sibling's variants) would stale variants the sibling still
+  // considers live.
+  describe('rival-master ownership guard (#1904)', () => {
+    const rival = 'connection-rival';
+
+    it('queries the claim service scoped to the product id, the ProductMaster capability and this connection', async () => {
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(entityClaims.findRivalClaimants).toHaveBeenCalledWith({
+        entityType: 'Product',
+        internalId: internalProductId,
+        capability: 'ProductMaster',
+        excludeConnectionId: connectionId,
+      });
+    });
+
+    it('skips the post-pull prune, emits no event and reports pruneSkipped when a rival ProductMaster claims the same product id', async () => {
+      entityClaims.findRivalClaimants.mockResolvedValue([rival]);
+
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      // Upserts still run - only the destructive sweep is withheld.
+      expect(productsService.upsertProduct).toHaveBeenCalledTimes(1);
+      expect(productsService.upsertVariants).toHaveBeenCalledTimes(1);
+      expect(productsService.markVariantsStaleExcept).not.toHaveBeenCalled();
+      expect(eventPublisher.publish).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        internalProductId,
+        variantsUpserted: 1,
+        masterDeleted: false,
+        pruneSkipped: true,
+      });
+    });
+
+    it('skips the deletion prune, emits no event and still reports masterDeleted when a rival ProductMaster claims the same product id', async () => {
+      adapter.getProduct.mockRejectedValueOnce(
+        new MasterProductNotFoundError(internalProductId, connectionId)
+      );
+      entityClaims.findRivalClaimants.mockResolvedValue([rival]);
+
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(productsService.markVariantsStaleExcept).not.toHaveBeenCalled();
+      expect(eventPublisher.publish).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        internalProductId,
+        variantsUpserted: 0,
+        masterDeleted: true,
+        pruneSkipped: true,
+      });
+    });
   });
 });

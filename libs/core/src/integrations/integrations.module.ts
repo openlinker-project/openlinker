@@ -27,6 +27,7 @@ import { ConnectionCredentialsRewriterRegistryService } from './infrastructure/a
 import { OAuthCompletionRegistryService } from './infrastructure/adapters/oauth-completion-registry.service';
 import { CredentialsWebhookSecretAdapter } from './infrastructure/adapters/credentials-webhook-secret.adapter';
 import { WebhookSecretService } from './application/services/webhook-secret.service';
+import { EntityClaimService } from './application/services/entity-claim.service';
 import { CryptoService } from '@openlinker/shared';
 import { IntegrationCredentialOrmEntity } from './infrastructure/persistence/entities/integration-credential.orm-entity';
 import { IntegrationCredentialRepository } from './infrastructure/persistence/repositories/integration-credential.repository';
@@ -48,6 +49,7 @@ import {
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN,
   INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN,
+  ENTITY_CLAIM_SERVICE_TOKEN,
 } from './integrations.tokens';
 
 // Re-export tokens for convenience
@@ -69,6 +71,7 @@ export {
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN,
   INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN,
+  ENTITY_CLAIM_SERVICE_TOKEN,
 } from './integrations.tokens';
 
 @Module({
@@ -96,6 +99,7 @@ export {
     CryptoService,
     IntegrationCredentialRepository,
     CredentialsService,
+    EntityClaimService,
     {
       provide: ADAPTER_REGISTRY_TOKEN,
       useExisting: AdapterRegistryService,
@@ -164,6 +168,10 @@ export {
       provide: CREDENTIALS_SERVICE_TOKEN,
       useExisting: CredentialsService,
     },
+    {
+      provide: ENTITY_CLAIM_SERVICE_TOKEN,
+      useExisting: EntityClaimService,
+    },
   ],
   exports: [
     ADAPTER_REGISTRY_TOKEN,
@@ -183,6 +191,7 @@ export {
     WEBHOOK_SECRET_SERVICE_TOKEN,
     INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
     CREDENTIALS_SERVICE_TOKEN,
+    ENTITY_CLAIM_SERVICE_TOKEN,
     IntegrationsService,
     CredentialsResolverService,
     AdapterFactoryResolverService,
