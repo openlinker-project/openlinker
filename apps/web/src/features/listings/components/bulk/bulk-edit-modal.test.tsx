@@ -33,6 +33,15 @@ vi.mock('../../hooks/use-category-parameters-query', () => ({
     error: null,
   }),
 }));
+// Mutable so a test can drive the schema of a category ONE sibling overrode
+// (#1946). Keyed by category id, mirroring the hook's own shape.
+let mockVariantSchemas = new Map<string, unknown[]>();
+vi.mock('../../hooks/use-category-parameter-schemas', () => ({
+  useCategoryParameterSchemas: () => ({
+    schemasByCategory: mockVariantSchemas,
+    isResolving: false,
+  }),
+}));
 vi.mock('../../../content', () => ({ SuggestionDialog: () => null }));
 // Stub only the heavy base-scope step; keep the real value<->combobox helpers
 // the per-variant dictionary override reuses.
@@ -186,9 +195,120 @@ function makeMultiRow(): BulkWizardRow {
   };
 }
 
+// A multi-variant product whose second sibling overrode its category (#1930):
+// base sits in `cat_men`, `var_m` in `cat_women`.
+function makeMultiRowWithVariantCategory(): BulkWizardRow {
+  const row = makeMultiRow();
+  return {
+    ...row,
+    override: { overrides: { categoryId: 'cat_men' } },
+    variants: row.variants.map((v) =>
+      v.variantId === 'var_m'
+        ? { ...v, override: { overrides: { categoryId: 'cat_women' } } }
+        : v,
+    ),
+  };
+}
+
+/** The EAN/GTIN slot of a category - the parameter `injectEanParameter` fills. */
+function eanSlot(id: string): Record<string, unknown> {
+  return { id, name: 'EAN (GTIN)', type: 'string', required: false, section: 'product' };
+}
+
+function savedVariantParams(
+  onSave: ReturnType<typeof vi.fn>,
+  variantId: string,
+): Array<{ id: string; values?: string[] }> {
+  const perVariant = onSave.mock.calls[0][2] as Record<
+    string,
+    { overrides?: { parameters?: Array<{ id: string; values?: string[] }> } }
+  >;
+  return perVariant[variantId]?.overrides?.parameters ?? [];
+}
+
 describe('BulkEditModal', () => {
   beforeEach(() => {
     mockCategoryParameters = [];
+    mockVariantSchemas = new Map();
+  });
+
+  // #1946: the sibling's fields are rendered from its OWN category's schema, so
+  // the save has to serialize against that same schema. Serializing against the
+  // base schema silently dropped every value keyed by the overridden category's
+  // parameter ids, and never filled that category's GTIN slot.
+  it('serializes a sibling with an overridden category against that category schema (#1946)', async () => {
+    const onSave = vi.fn();
+    mockCategoryParameters = [eanSlot('ean_men')];
+    mockVariantSchemas = new Map([['cat_women', [eanSlot('ean_women')]]]);
+
+    renderWithProviders(
+      <BulkEditModal
+        open
+        onOpenChange={() => undefined}
+        row={makeMultiRowWithVariantCategory()}
+        connection={connection}
+        canBrowseCategories={true}
+        currency="PLN"
+        defaults={DEFAULTS}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+    await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+
+    // The overridden sibling carries ITS category's GTIN slot, not the base's.
+    expect(savedVariantParams(onSave, 'var_m').map((p) => p.id)).toEqual(['ean_women']);
+    expect(savedVariantParams(onSave, 'var_m')[0]?.values).toEqual(['5900531001130']);
+  });
+
+  it('keeps serializing a sibling without an overridden category against the base schema (#1946)', async () => {
+    const onSave = vi.fn();
+    mockCategoryParameters = [eanSlot('ean_men')];
+    mockVariantSchemas = new Map([['cat_women', [eanSlot('ean_women')]]]);
+
+    renderWithProviders(
+      <BulkEditModal
+        open
+        onOpenChange={() => undefined}
+        row={makeMultiRowWithVariantCategory()}
+        connection={connection}
+        canBrowseCategories={true}
+        currency="PLN"
+        defaults={DEFAULTS}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+    await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+
+    expect(savedVariantParams(onSave, 'var_s').map((p) => p.id)).toEqual(['ean_men']);
+  });
+
+  it('blocks the save while an overridden category schema has not resolved (#1946)', async () => {
+    const onSave = vi.fn();
+    mockCategoryParameters = [eanSlot('ean_men')];
+    // `cat_women` absent ⇒ still loading. Emitting now would write base ids.
+    mockVariantSchemas = new Map();
+
+    renderWithProviders(
+      <BulkEditModal
+        open
+        onOpenChange={() => undefined}
+        row={makeMultiRowWithVariantCategory()}
+        connection={connection}
+        canBrowseCategories={true}
+        currency="PLN"
+        defaults={DEFAULTS}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+    await new Promise((resolve) => { setTimeout(resolve, 50); });
+
+    expect(onSave).not.toHaveBeenCalled();
   });
 
   it('renders a suggested-category chip per multi-match candidate, falling back to the id', () => {

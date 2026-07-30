@@ -87,6 +87,7 @@ import { BulkImageLightbox } from './bulk-image-lightbox';
 import { blockerLabel, isVariantScopeFixable } from './bulk-blockers';
 import { ErliDeliveryPriceListOverrideField } from '../erli/erli-delivery-price-list-override-field';
 import { useCategoryParametersQuery } from '../../hooks/use-category-parameters-query';
+import { useCategoryParameterSchemas } from '../../hooks/use-category-parameter-schemas';
 import { useCategoryPathQuery } from '../../../mappings';
 import {
   MissingCategoryParameterSectionError,
@@ -569,6 +570,54 @@ function BulkEditModalForm({
     [categoryParameters],
   );
 
+  // Schemas of the categories individual siblings overrode (#1930). Resolved
+  // HERE rather than in `VariantScopeForm` because the panel mounts only for the
+  // open accordion scope, while `handleSaveAll` must serialize EVERY sibling -
+  // including one whose category came from a persisted override and whose panel
+  // was never opened (#1946).
+  const variantCategoryIds = useMemo(
+    () =>
+      row.variants
+        .map((v) => variantEdits[v.variantId]?.categoryId)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0),
+    [row.variants, variantEdits],
+  );
+  // `isResolving` is deliberately not consumed: `variantParamSchema` returning
+  // `null` is the per-sibling loading signal, which is finer-grained than one
+  // batch-wide flag (a sibling whose schema is ready must not be held back).
+  const { schemasByCategory } = useCategoryParameterSchemas(
+    canBrowseCategories ? connectionId : undefined,
+    variantCategoryIds,
+  );
+  /**
+   * The schema a sibling's parameters must be serialized against: its own
+   * category's when it overrode the category, else the shared base's. Returns
+   * `null` while an overridden category's schema is still loading - the caller
+   * must skip emission rather than fall back to the base schema, whose ids do
+   * not exist in the overridden category (that silent drop is #1946).
+   */
+  const variantParamSchema = useCallback(
+    (edit: VariantEdit): CategoryParameter[] | null => {
+      if (edit.categoryId === undefined || edit.categoryId === '') return categoryParameters;
+      return schemasByCategory.get(edit.categoryId) ?? null;
+    },
+    [categoryParameters, schemasByCategory],
+  );
+  /**
+   * The overridden category's schema for one sibling, or `undefined` when it has
+   * no own category (the panel then falls back to the base set). Fed to
+   * `VariantScopeForm` so the fields it renders and the array `handleSaveAll`
+   * serializes come from the SAME source and cannot drift (#1946).
+   */
+  const ownVariantSchema = useCallback(
+    (variantId: string): CategoryParameter[] | undefined => {
+      const ownCategoryId = variantEdits[variantId]?.categoryId;
+      if (ownCategoryId === undefined || ownCategoryId === '') return undefined;
+      return schemasByCategory.get(ownCategoryId);
+    },
+    [variantEdits, schemasByCategory],
+  );
+
   // ── Dirty tracking (vs the on-open snapshot) ──
   const snapshotRef = useRef<string | null>(null);
   const liveState = JSON.stringify({
@@ -618,6 +667,21 @@ function BulkEditModalForm({
       setScope(isMultiVariant ? 'base' : 'simple');
       return;
     }
+
+    // A sibling that overrode its category can only be serialized once THAT
+    // category's schema has arrived. Saving earlier would emit base-category ids
+    // for it and silently drop everything the operator typed (#1946), so block
+    // and open that sibling's scope instead - its fields are still loading there.
+    if (isMultiVariant) {
+      const unresolved = row.variants.find(
+        (v) => variantParamSchema(variantEdits[v.variantId]) === null,
+      );
+      if (unresolved !== undefined) {
+        setScope(unresolved.variantId);
+        return;
+      }
+    }
+
     const values = baseForm.getValues();
 
     let baseParameters: OfferParameter[] = [];
@@ -691,15 +755,20 @@ function BulkEditModalForm({
         if (edit.productCardId !== undefined) overrides.productCardId = edit.productCardId;
 
         // Emit the effective parameters array whole (base ∪ per-variant param
-        // overrides) so the BE whole-array-replaces (plan §7).
-        if (categoryParameters.length > 0) {
+        // overrides) so the BE whole-array-replaces (plan §7). The schema is the
+        // sibling's OWN category's when it overrode the category (#1930) - the
+        // same one that rendered its fields. Serializing an overridden-category
+        // sibling against the base schema drops every value it typed, because
+        // the serializer looks each parameter up by the schema's own ids (#1946).
+        const paramSchema = variantParamSchema(edit);
+        if (paramSchema !== null && paramSchema.length > 0) {
           const effective: CategoryParameterFormValues = { ...baseParamValues, ...edit.params };
           try {
-            let params = categoryParametersToOfferParameters(effective, categoryParameters);
+            let params = categoryParametersToOfferParameters(effective, paramSchema);
             // Fill the (hidden) EAN/GTIN slot from this sibling's dedicated EAN
             // field (its single source, pre-filled from master) so the wire GTIN
             // and the catalog self-link key can never diverge (#1741).
-            params = injectEanParameter(params, categoryParameters, eanTrimmed);
+            params = injectEanParameter(params, paramSchema, eanTrimmed);
             if (params.length > 0) overrides.parameters = params;
           } catch {
             // Stale schema for this variant - skip its param emission; base
@@ -984,6 +1053,7 @@ function BulkEditModalForm({
                       connection={connection}
                       baseCategoryPathNames={displayPathNames}
                       categoryParameters={renderableCategoryParameters}
+                      ownCategoryParameters={ownVariantSchema(v.variantId)}
                       duplicateEan={dupEanIds.has(v.variantId)}
                       onPatch={(patch) => patchVariant(v.variantId, patch)}
                       onParamChange={(paramId, value) => setVariantParam(v.variantId, paramId, value)}
@@ -1703,6 +1773,13 @@ interface VariantScopeFormProps {
   /** Resolved breadcrumb for the shared base's category, already computed once by the parent (#1924) - shown instead of the raw id. Null when unresolved (falls back to the id). */
   baseCategoryPathNames: string[] | null;
   categoryParameters: CategoryParameter[];
+  /**
+   * Schema of the category THIS sibling overrode (#1930), resolved by the parent
+   * so the rendered fields and the serialized array share one source (#1946).
+   * `undefined` when the sibling has no own category (the base set applies) or
+   * while its schema is still loading.
+   */
+  ownCategoryParameters: CategoryParameter[] | undefined;
   duplicateEan: boolean;
   /** Opens the shared zoom lightbox for an image url (always allowed, #1741). */
   onZoom: (src: string) => void;
@@ -1723,6 +1800,7 @@ function VariantScopeForm({
   connection,
   baseCategoryPathNames,
   categoryParameters,
+  ownCategoryParameters,
   duplicateEan,
   onZoom,
   onPatch,
@@ -1791,16 +1869,15 @@ function VariantScopeForm({
       ? baseCategoryPathNames.join(' › ')
       : baseValues.categoryId || 'Not set on base';
 
-  const ownCategoryParametersQuery = useCategoryParametersQuery(
-    connectionId,
-    hasOwnCategory ? (edit.categoryId as string) : '',
-  );
+  // The own-category schema is resolved by the parent (#1946) - it also needs it
+  // at save time for siblings whose panel is not the open scope, so fetching it
+  // here as well would be a second source of truth for the same values.
   const effectiveCategoryParameters = useMemo(
     () =>
       hasOwnCategory
-        ? (ownCategoryParametersQuery.data ?? []).filter((p) => !isEanParameterName(p.name))
+        ? (ownCategoryParameters ?? []).filter((p) => !isEanParameterName(p.name))
         : categoryParameters,
-    [hasOwnCategory, ownCategoryParametersQuery.data, categoryParameters],
+    [hasOwnCategory, ownCategoryParameters, categoryParameters],
   );
 
   // Category parameters mirror the base scope: filter through parameter-level
