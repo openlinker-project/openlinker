@@ -12,9 +12,10 @@ import { createMockIdentifierMapping } from '../../../__tests__/mocks/mock-ident
 import { createTestConnection } from '../../../__tests__/fixtures/connection.fixture';
 import { PrestashopInventoryMapper } from '../../mappers/prestashop-inventory.mapper';
 import {
-  PrestashopResourceNotFoundException,
   PrestashopNotSupportedException,
+  PrestashopResourceNotFoundException,
 } from '@openlinker/integrations-prestashop';
+import { MasterProductNotFoundError } from '@openlinker/core/products';
 import type { PrestashopStockAvailable } from '../../mappers/prestashop.mapper.interface';
 import type { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
@@ -134,15 +135,19 @@ describe('PrestashopInventoryMasterAdapter', () => {
       expect(result.quantity).toBe(75);
     });
 
-    it('should throw PrestashopResourceNotFoundException when product not found', async () => {
+    it('should NOT classify a missing external mapping as a master deletion (#1688)', async () => {
       const productId = 'internal-product-123';
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([]);
 
-      await expect(adapter.getInventory(productId)).rejects.toThrow(
-        PrestashopResourceNotFoundException
-      );
+      const rejection = adapter.getInventory(productId);
+      await expect(rejection).rejects.toBeInstanceOf(PrestashopResourceNotFoundException);
+      // A mapping gap is retryable/diagnosable, not "deleted at the master" -
+      // classifying it as a deletion would stale a live product's inventory.
+      await expect(rejection).rejects.not.toBeInstanceOf(MasterProductNotFoundError);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
+      expect(mockHttpClient.listResources).not.toHaveBeenCalled();
     });
 
     it('should fetch inventory for combination product via id_product_attribute fallback', async () => {
@@ -194,7 +199,7 @@ describe('PrestashopInventoryMasterAdapter', () => {
       expect(result.quantity).toBe(30);
     });
 
-    it('should throw PrestashopResourceNotFoundException when both product-level and combination-level queries return empty', async () => {
+    it('should throw MasterProductNotFoundError when no stock rows exist and the product itself is gone (#1688)', async () => {
       const productId = 'internal-product-789';
       const externalId = '99';
 
@@ -209,15 +214,21 @@ describe('PrestashopInventoryMasterAdapter', () => {
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+      // The product probe is the real deletion signal: it 404s.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.getResource = jest
+        .fn()
+        .mockRejectedValue(new PrestashopResourceNotFoundException('gone', 'Product', externalId));
 
-      await expect(adapter.getInventory(productId)).rejects.toThrow(
-        PrestashopResourceNotFoundException
-      );
+      await expect(adapter.getInventory(productId)).rejects.toThrow(MasterProductNotFoundError);
+      // Both the product-level and combination-level queries must be attempted
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       expect(mockHttpClient.listResources).toHaveBeenCalledTimes(2);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
+      expect(mockHttpClient.getResource).toHaveBeenCalledWith('products', externalId);
     });
 
-    it('should throw PrestashopResourceNotFoundException when no stock record found', async () => {
+    it('should NOT classify zero stock rows as a master deletion when the product still resolves (#1688)', async () => {
       const productId = 'internal-product-123';
       const externalProductId = '42';
 
@@ -232,13 +243,13 @@ describe('PrestashopInventoryMasterAdapter', () => {
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+      // Product probe resolves — zero stock rows is a data gap, not a deletion.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.getResource = jest.fn().mockResolvedValue({ id: externalProductId });
 
-      await expect(adapter.getInventory(productId)).rejects.toThrow(
-        PrestashopResourceNotFoundException
-      );
-      // Both the product-level and combination-level queries must be attempted
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
-      expect(mockHttpClient.listResources).toHaveBeenCalledTimes(2);
+      const rejection = adapter.getInventory(productId);
+      await expect(rejection).rejects.toBeInstanceOf(PrestashopResourceNotFoundException);
+      await expect(rejection).rejects.not.toBeInstanceOf(MasterProductNotFoundError);
     });
 
     it('should create internal ID for inventory with parent context', async () => {
@@ -388,25 +399,67 @@ describe('PrestashopInventoryMasterAdapter', () => {
       );
     });
 
-    it('throws PrestashopResourceNotFoundException when the product has no external mapping', async () => {
+    it('does NOT classify a missing external mapping as a master deletion (#1688)', async () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([]);
 
-      await expect(adapter.listInventory('internal-product-x')).rejects.toThrow(
-        PrestashopResourceNotFoundException
-      );
+      const rejection = adapter.listInventory('internal-product-x');
+      await expect(rejection).rejects.toBeInstanceOf(PrestashopResourceNotFoundException);
+      await expect(rejection).rejects.not.toBeInstanceOf(MasterProductNotFoundError);
     });
 
-    it('throws PrestashopResourceNotFoundException when no stock rows exist', async () => {
+    it('throws MasterProductNotFoundError when no stock rows exist and the product is gone (#1688)', async () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
         { connectionId: connection.id, externalId: '42', entityType: 'Product' },
       ]);
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.getResource = jest
+        .fn()
+        .mockRejectedValue(new PrestashopResourceNotFoundException('gone', 'Product', '42'));
 
       await expect(adapter.listInventory('internal-product-123')).rejects.toThrow(
-        PrestashopResourceNotFoundException
+        MasterProductNotFoundError
+      );
+    });
+
+    it('does NOT classify zero stock rows as a master deletion when the product still resolves (#1688)', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
+        { connectionId: connection.id, externalId: '42', entityType: 'Product' },
+      ]);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.getResource = jest.fn().mockResolvedValue({ id: '42' });
+
+      const rejection = adapter.listInventory('internal-product-123');
+      await expect(rejection).rejects.toBeInstanceOf(PrestashopResourceNotFoundException);
+      await expect(rejection).rejects.not.toBeInstanceOf(MasterProductNotFoundError);
+    });
+
+    it('translates a platform not-found raised by the stock_availables read to MasterProductNotFoundError (#1688)', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
+        { connectionId: connection.id, externalId: '42', entityType: 'Product' },
+      ]);
+      const platformError = new PrestashopResourceNotFoundException('gone', 'Inventory', '42');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.listResources = jest.fn().mockRejectedValue(platformError);
+
+      // The neutral error carries the internal product id, the connection it was
+      // raised for, and the platform error as its cause — a consumer can trace
+      // back to the originating platform failure without a platform import.
+      await expect(adapter.listInventory('internal-product-123')).rejects.toMatchObject({
+        name: 'MasterProductNotFoundError',
+        productId: 'internal-product-123',
+        connectionId: connection.id,
+        cause: platformError,
+      });
+      await expect(adapter.listInventory('internal-product-123')).rejects.toBeInstanceOf(
+        MasterProductNotFoundError
       );
     });
   });

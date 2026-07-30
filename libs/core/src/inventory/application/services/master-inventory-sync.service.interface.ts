@@ -15,6 +15,14 @@ export interface MasterInventorySyncResult {
   availableQuantity: number;
   /** Total reserved quantity summed across all written rows. */
   reservedQuantity: number;
+  /**
+   * True when the product's inventory was found deleted at the master
+   * (neutral `MasterProductNotFoundError`) — all its rows were marked stale
+   * and no canonical write ran (#1688). The worker handler maps this to a
+   * terminal `outcome: 'business_failure'` (ADR-007) instead of a retryable
+   * throw.
+   */
+  masterDeleted: boolean;
 }
 
 export interface IMasterInventorySyncService {

@@ -12,6 +12,9 @@
 import { WooCommerceInventoryMasterAdapter } from '../woocommerce-inventory-master.adapter';
 import { WooCommerceResourceNotFoundException } from '../../../../domain/exceptions/woocommerce-resource-not-found.exception';
 import { WooCommerceNotSupportedException } from '../../../../domain/exceptions/woocommerce-not-supported.exception';
+import { WooCommerceInvalidIdentifierException } from '../../../../domain/exceptions/woocommerce-invalid-identifier.exception';
+import { WooCommerceHttpResponseException } from '../../../http/woocommerce-http-response.exception';
+import { MasterProductNotFoundError } from '@openlinker/core/products';
 import type { IWooCommerceHttpClient } from '../../../http/woocommerce-http-client.interface';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
@@ -177,9 +180,50 @@ describe('WooCommerceInventoryMasterAdapter', () => {
       expect(row.quantity).toBe(5);
     });
 
-    it('should throw WooCommerceResourceNotFoundException when product has no mapping', async () => {
-      await expect(adapter.listInventory('ol-unmapped')).rejects.toBeInstanceOf(
-        WooCommerceResourceNotFoundException,
+    it('should NOT classify a missing mapping as a master deletion (#1688)', async () => {
+      // A mapping gap is not deletion-shaped: the product was never mapped for
+      // this connection. Treating it as "deleted" would stale a live product's
+      // inventory and terminalise the job (no retry), so the mapping resolve
+      // happens outside listInventory's not-found translation.
+      const rejection = adapter.listInventory('ol-unmapped');
+      await expect(rejection).rejects.toBeInstanceOf(WooCommerceResourceNotFoundException);
+      await expect(rejection).rejects.not.toBeInstanceOf(MasterProductNotFoundError);
+      expect(httpClient.get).not.toHaveBeenCalled();
+    });
+
+    it('should translate a WooCommerceHttpResponseException(404) on the product GET to MasterProductNotFoundError (#1688)', async () => {
+      seedProductMapping(identifierMapping, 'ol-product-deleted', 404);
+      httpClient.get.mockRejectedValue(new WooCommerceHttpResponseException(404, 'Not found'));
+
+      await expect(adapter.listInventory('ol-product-deleted')).rejects.toBeInstanceOf(
+        MasterProductNotFoundError,
+      );
+    });
+
+    it('should NOT translate an invalid (non-numeric) externalId mapping to MasterProductNotFoundError (#1688)', async () => {
+      // A corrupted mapping is a data-integrity bug, not a deletion - it must
+      // stay distinguishable from a genuine 404 so a mapping bug can't get
+      // silently treated as "product deleted" (marks stale, stops retrying).
+      identifierMapping.seed({
+        entityType: CORE_ENTITY_TYPE.Product,
+        externalId: 'not-a-number',
+        connectionId: CONNECTION_ID,
+        internalId: 'ol-product-corrupt',
+      });
+
+      const rejection = adapter.listInventory('ol-product-corrupt');
+      await expect(rejection).rejects.toBeInstanceOf(WooCommerceInvalidIdentifierException);
+      await expect(rejection).rejects.not.toBeInstanceOf(MasterProductNotFoundError);
+    });
+
+    it('should translate a 404 on the variations page fetch to MasterProductNotFoundError (#1688)', async () => {
+      seedProductMapping(identifierMapping, 'ol-product-race', 77);
+      httpClient.get
+        .mockResolvedValueOnce(makeVariableProduct([10, 11])) // product GET succeeds
+        .mockRejectedValueOnce(new WooCommerceHttpResponseException(404, 'Not found')); // deleted before variations fetch
+
+      await expect(adapter.listInventory('ol-product-race')).rejects.toBeInstanceOf(
+        MasterProductNotFoundError,
       );
     });
   });
