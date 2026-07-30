@@ -23,8 +23,10 @@
  * @module tests/golden-path
  */
 import { resolve } from 'node:path';
+import type { TestInfo } from '@playwright/test';
 import { test, expect } from '../../src/fixtures/test';
 import { PlatformType, type KnownPlatformType, type World } from '../../src/world/world';
+import type { E2eEnv } from '../../src/config/env';
 import type { ApiClient } from '../../src/api/api-client';
 import { ApiError } from '../../src/api/api-error';
 import type { PageObjects } from '../../src/pages';
@@ -94,7 +96,19 @@ test.describe('golden path — full flow (S0-S9)', () => {
   // Set E2E_ATTENDED=1 to run this heavily-mutating, human-driven flow.
   test.skip(!process.env.E2E_ATTENDED, 'attended flow — set E2E_ATTENDED=1 to run');
 
+  // Resume mode (`E2E_RESUME_FROM_ORDER`): seed everything S5 onward reads from
+  // an order that already exists, so a run that only needs the post-purchase
+  // half doesn't pay again for a fresh product, a fresh offer, the ~40-minute
+  // wait for it to leave `szkic`, and a second human purchase. A worker hook
+  // rather than a lazy seed inside S5, so a bad order id fails the whole group
+  // up front instead of surfacing as a confusing mid-flow assertion.
+  test.beforeAll(async ({ api, world, env }) => {
+    if (!env.resumeFromOrder) return;
+    await seedStateFromExistingOrder(api, world, env.resumeFromOrder);
+  });
+
   test('S0 — baseline: sync master catalogue and snapshot stock', async ({ api, world, jobs, poll, env }) => {
+    skipWhenResuming(env);
     const prestashop = world.connectionFor(PlatformType.prestashop);
     test.skip(!prestashop, 'no PrestaShop connection on this stack');
 
@@ -221,7 +235,8 @@ test.describe('golden path — full flow (S0-S9)', () => {
     }
   });
 
-  test('S1 — PrestaShop parity: OL product matches master (webservice)', async ({ api, world }) => {
+  test('S1 — PrestaShop parity: OL product matches master (webservice)', async ({ api, world, env }) => {
+    skipWhenResuming(env);
     const testInfo = test.info();
     requireProduct();
     const prestashop = world.requireConnection(PlatformType.prestashop);
@@ -290,6 +305,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
   });
 
   test('S2 — WooCommerce publish + REST parity', async ({ api, world, pages, poll, env }) => {
+    skipWhenResuming(env);
     const testInfo = test.info();
     requireProduct();
     // Scoped to WooCommerce, not "the first ProductPublisher".
@@ -405,7 +421,8 @@ test.describe('golden path — full flow (S0-S9)', () => {
     await pages.woocommerceAdmin.saveStorageState(resolve('.auth/woocommerce.json'));
   });
 
-  test('S3 — Allegro offers: create + field/amount parity via OL read', async ({ api, world, pages, poll }) => {
+  test('S3 — Allegro offers: create + field/amount parity via OL read', async ({ api, world, pages, poll, env }) => {
+    skipWhenResuming(env);
     const testInfo = test.info();
     requireProduct();
     const allegro = world.connectionFor(PlatformType.allegro);
@@ -534,6 +551,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
   });
 
   test('S4 — Erli offers: create + mapping-level assertions (no OfferReader)', async ({ api, world, pages, poll, env }) => {
+    skipWhenResuming(env);
     const testInfo = test.info();
     requireProduct();
     const erli = world.connectionFor(PlatformType.erli);
@@ -586,6 +604,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
   });
 
   test('PAUSE — operator buys the named offer (one stop per purchase platform)', async ({ api, world, env }) => {
+    skipWhenResuming(env);
     const testInfo = test.info();
     requireProduct();
     const sources = resolvePurchaseSources(world, env.purchasePlatforms);
@@ -645,16 +664,31 @@ test.describe('golden path — full flow (S0-S9)', () => {
   test('S5 — orders ready in OL + channel stock down', async ({ api, world, jobs, poll, env }) => {
     const testInfo = test.info();
     requireProduct();
-    const sources = resolvePurchaseSources(world, env.purchasePlatforms);
+    // A resumed run is scoped to the ONE order it was handed, so the purchase
+    // sources are whatever that order actually came from — NOT the configured
+    // `E2E_PURCHASE_PLATFORMS` list, which describes a purchase this run never
+    // made and would strand the loop waiting on a second, non-existent order.
+    const sources = env.resumeFromOrder
+      ? resolveResumedSources(world)
+      : resolvePurchaseSources(world, env.purchasePlatforms);
     expect(sources.length, 'a marketplace source connection is required').toBeGreaterThan(0);
 
     for (const source of sources) {
-      // Nudge ingestion, then wait for a new ready order (webhook or poll heals it).
-      await jobs.trigger({ connectionId: source.id, jobType: 'marketplace.orders.poll' }).catch(() => undefined);
-      const order = await waitForOrder(api, {
-        sourceConnectionId: source.id,
-        snapshot: state.orderSnapshotByConnection.get(source.id),
-      });
+      let order: OrderRecord;
+      if (env.resumeFromOrder) {
+        // The order exists by definition here, so there is no arrival to
+        // detect: re-read and VERIFY the one this run was handed rather than
+        // burning `waitForOrder`'s 15-minute budget on an event already fired.
+        order = await api.orders.getById(state.orders.get(source.platformType)!.internalOrderId);
+        assertResumedOrderUsable(order, source, env, testInfo);
+      } else {
+        // Nudge ingestion, then wait for a new ready order (webhook or poll heals it).
+        await jobs.trigger({ connectionId: source.id, jobType: 'marketplace.orders.poll' }).catch(() => undefined);
+        order = await waitForOrder(api, {
+          sourceConnectionId: source.id,
+          snapshot: state.orderSnapshotByConnection.get(source.id),
+        });
+      }
       state.orders.set(source.platformType, order);
 
       // Amount parity: order line price/qty/line-total + totals + shipping.
@@ -730,6 +764,17 @@ test.describe('golden path — full flow (S0-S9)', () => {
               'marketplace sale before S9',
           });
         }
+      } else if (env.resumeFromOrder) {
+        // Only annotate on the resume path: a full run legitimately reaches
+        // here with no baseline too (Erli ships no OfferReader, so S4 captures
+        // none), and adding an annotation there would change its report.
+        testInfo.annotations.push({
+          type: 'resume-degrade',
+          description:
+            `${sourceKey}: channel stock delta NOT CHECKED — the offer quantity BEFORE the sale ` +
+            'is a pre-purchase reading a resumed run cannot observe, and the marketplace has ' +
+            'already decremented it, so no honest delta is derivable after the fact',
+        });
       }
     }
   });
@@ -853,6 +898,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
   });
 
   test('S7 — orders created in PrestaShop + master stock down', async ({ api, world, jobs, poll }) => {
+    const testInfo = test.info();
     requireOrder();
     const prestashop = world.connectionFor(PlatformType.prestashop);
     test.skip(!prestashop, 'no PrestaShop destination connection');
@@ -878,10 +924,26 @@ test.describe('golden path — full flow (S0-S9)', () => {
       { connectionId: prestashop!.id, jobType: 'master.inventory.syncAll' },
     );
     // The master delta is the SUM of every marketplace sale (one PS order each).
-    await waitForStockDelta(api, state.olBaseline!, {
-      variantId: state.primaryVariant!.id,
-      soldQty: SOLD_QTY * state.orders.size,
-    });
+    // A resumed run has no pre-purchase baseline to subtract from (see
+    // `E2E_RESUME_FROM_ORDER`), and the only value it could invent — the
+    // post-sale reading plus the sold quantity — would make this assertion
+    // compare a number against itself. Record what went unchecked instead.
+    if (state.olBaseline) {
+      await waitForStockDelta(api, state.olBaseline, {
+        variantId: state.primaryVariant!.id,
+        soldQty: SOLD_QTY * state.orders.size,
+      });
+    } else {
+      const observed = await captureStock(api, [state.primaryVariant!.id]);
+      testInfo.annotations.push({
+        type: 'resume-degrade',
+        description:
+          'OL master stock delta NOT CHECKED — the pre-purchase master availability is ' +
+          'unobservable in a resumed run; the PrestaShop order parity below still runs ' +
+          `(observed availability for ${state.primaryVariant!.id}: ` +
+          `${observed.get(state.primaryVariant!.id) ?? '(none)'})`,
+      });
+    }
 
     // PrestaShop order parity (webservice), when the key is available: totals,
     // shipping, and the sold line (qty + buyer-paid unit price, ADR-014).
@@ -1043,13 +1105,26 @@ test.describe('golden path — full flow (S0-S9)', () => {
     });
   });
 
-  test('S9 — final reconciliation: stock, cross-channel propagation, statuses', async ({ api, world, jobs, poll }) => {
+  test('S9 — final reconciliation: stock, cross-channel propagation, statuses', async ({ api, world, jobs, poll, env }) => {
     const testInfo = test.info();
     requireOrder();
     const totalSold = SOLD_QTY * state.orders.size;
-    // OL master stock delta holds — the SUM of every marketplace sale.
+    // OL master stock delta holds — the SUM of every marketplace sale. Absent
+    // on the resume path for the same reason as S7: there is no pre-purchase
+    // baseline to subtract from, and inventing one from the post-sale reading
+    // would assert a number against itself.
     const current = await captureStock(api, state.variantIds);
-    assertStockDelta(state.olBaseline!, current, { variantId: state.primaryVariant!.id, soldQty: totalSold });
+    if (state.olBaseline) {
+      assertStockDelta(state.olBaseline, current, { variantId: state.primaryVariant!.id, soldQty: totalSold });
+    } else {
+      testInfo.annotations.push({
+        type: 'resume-degrade',
+        description:
+          'OL master stock delta NOT CHECKED — no pre-purchase baseline exists in a resumed ' +
+          `run (observed availability for ${state.primaryVariant!.id}: ` +
+          `${current.get(state.primaryVariant!.id) ?? '(none)'})`,
+      });
+    }
 
     // Every order is ready and synced to at least one destination.
     for (const [platform, tracked] of state.orders) {
@@ -1151,6 +1226,14 @@ test.describe('golden path — full flow (S0-S9)', () => {
               `expected ${wcExpected}) - WC quantity write-back (#1498) is default-OFF and ` +
               'mutually exclusive with InventoryMaster, so it is not active on this master-catalogue ' +
               'WC connection; not a failure (write-back delta is a Phase-2 follow-up)',
+      });
+    } else if (env.resumeFromOrder) {
+      testInfo.annotations.push({
+        type: 'resume-degrade',
+        description:
+          'WooCommerce post-sale stock NOT CHECKED — S2 (which publishes the product, records ' +
+          'its WC id and reads the pre-sale quantity) does not run in a resumed run, so there ' +
+          'is neither a WC product handle nor a baseline to compare against',
       });
     }
   });
@@ -1324,6 +1407,143 @@ function requireOrder(): void {
     state.orders.size,
     'the manual purchase + S5 must have produced at least one order',
   ).toBeGreaterThan(0);
+}
+
+/**
+ * Skip a PRE-purchase segment when the run resumes from an existing order. The
+ * reason names the mode AND the order id, so a resumed report can never be
+ * mistaken for a full run that happened to pass every segment.
+ */
+function skipWhenResuming(env: E2eEnv): void {
+  test.skip(
+    env.resumeFromOrder !== null,
+    `resume mode (E2E_RESUME_FROM_ORDER=${env.resumeFromOrder ?? ''}) — pre-purchase segment ` +
+      'skipped; S5 onward run against that already-existing order',
+  );
+}
+
+/**
+ * Seed the flow state from an order that already exists (`E2E_RESUME_FROM_ORDER`).
+ *
+ * Everything is derived from the order itself — its source connection, its sold
+ * line, and that line's product/variants — so a resumed run is anchored to what
+ * was ACTUALLY bought, not to a re-run of S0's driver-product heuristic (which
+ * on a mutated stack can legitimately pick a different product).
+ *
+ * The two stock baselines are deliberately NOT seeded. They are pre-purchase
+ * readings and the purchase has already happened; see the guarded call sites in
+ * S5/S7/S9, which annotate what they could not check rather than assert a
+ * reconstructed value against itself.
+ */
+async function seedStateFromExistingOrder(
+  api: ApiClient,
+  world: World,
+  orderId: string,
+): Promise<void> {
+  const order = await api.orders.getById(orderId).catch((error: unknown) => {
+    throw new Error(
+      `E2E_RESUME_FROM_ORDER=${orderId} could not be read from this stack: ` +
+        `${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
+  const source = world.connections.find((c) => c.id === order.sourceConnectionId);
+  if (!source) {
+    throw new Error(
+      `E2E_RESUME_FROM_ORDER=${orderId} was ingested from connection ${order.sourceConnectionId}, ` +
+        'which does not exist on this stack — resume against the stack that ingested the order',
+    );
+  }
+
+  const snapshot = readOrderSnapshot(order);
+  // Prefer the variant-bearing line: it is the one every later segment keys on
+  // (S5's line parity, S7's PrestaShop row match by EAN, S9's propagation
+  // payload), and a resumed run has no other way to learn the driver variant.
+  const soldLine = snapshot.items.find((item) => !!item.variantId) ?? snapshot.items[0];
+  if (!soldLine) {
+    throw new Error(
+      `Resumed order ${orderId} carries no line items — there is nothing for S5-S9 to assert on`,
+    );
+  }
+  const product = await api.products.getById(soldLine.productId);
+  const variants = await world.variantsOf(product.id);
+  const primaryVariant =
+    variants.find((v) => v.id === soldLine.variantId) ??
+    (soldLine.sku ? variants.find((v) => v.sku === soldLine.sku) : undefined) ??
+    variants.find((v) => v.ean ?? v.gtin);
+  if (!primaryVariant) {
+    throw new Error(
+      `Resumed order ${orderId}: could not resolve the sold variant on product ${product.id} ` +
+        `(line variantId=${soldLine.variantId ?? '(none)'}, sku=${soldLine.sku ?? '(none)'})`,
+    );
+  }
+
+  state.orders.set(source.platformType, order);
+  state.product = product;
+  state.primaryVariant = primaryVariant;
+  state.variantIds = variants.map((v) => v.id);
+}
+
+/**
+ * The source connections a resumed run covers — exactly the ones the seeded
+ * orders came from. `resolvePurchaseSources` cannot stand in here: it reads
+ * `E2E_PURCHASE_PLATFORMS`, which describes purchases this run never made.
+ */
+function resolveResumedSources(world: World): Connection[] {
+  const sources: Connection[] = [];
+  for (const order of state.orders.values()) {
+    // By id, not by platformType: a stack can carry two connections of the same
+    // platform, and `connectionFor` would return whichever is active first —
+    // which is not necessarily the one that ingested this order.
+    const connection = world.connections.find((c) => c.id === order.sourceConnectionId);
+    if (connection) sources.push(connection);
+  }
+  return sources;
+}
+
+/**
+ * Verify the order a resumed run was handed actually carries what S5-S9 read
+ * out of it. A normal run gets this evidence for free — it watched the order
+ * arrive — so these assertions are the resume path's stand-in for that arrival.
+ */
+function assertResumedOrderUsable(
+  order: OrderRecord,
+  source: Connection,
+  env: E2eEnv,
+  testInfo: TestInfo,
+): void {
+  const platform = source.platformType;
+  expect(order.recordStatus, `resumed ${platform} order is ready`).toBe('ready');
+  expect(order.sourceConnectionId, `resumed ${platform} order's source connection`).toBe(source.id);
+
+  const snapshot = readOrderSnapshot(order);
+  expect(snapshot.items.length, `resumed ${platform} order carries line items`).toBeGreaterThan(0);
+  expect(snapshot.totals.currency, `resumed ${platform} order totals carry a currency`).toBeTruthy();
+  expect(snapshot.totals.total, `resumed ${platform} order carries a paid total`).toBeTruthy();
+  // S6 builds the label recipient out of the buyer fields; without one, the
+  // dispatch call fails deep inside the carrier mapper rather than here (#1518).
+  expect(
+    order.customerId ?? snapshot.customerEmail,
+    `resumed ${platform} order identifies a buyer`,
+  ).toBeTruthy();
+
+  // S6 dispatches with `pickup_point` intent, so the order must name a locker —
+  // unless the operator supplied the documented override (Allegro-sandbox
+  // lockers routinely don't exist in the InPost sandbox).
+  const pickupPointId = snapshot.pickupPoint?.id;
+  if (!pickupPointId) {
+    expect(
+      env.paczkomatId,
+      `resumed ${platform} order carries a pickup point, or E2E_PACZKOMAT_ID supplies one for S6`,
+    ).toBeTruthy();
+  }
+  testInfo.annotations.push({
+    type: 'resume',
+    description:
+      `${platform}: resumed from order ${order.internalOrderId} — product "${state.product?.name ?? '(unknown)'}", ` +
+      `variant ${state.primaryVariant?.sku ?? state.primaryVariant?.id ?? '(unknown)'}, ` +
+      `${snapshot.items.length} line(s), total ${String(snapshot.totals.total)} ${snapshot.totals.currency}, ` +
+      `pickup point ${pickupPointId ?? `(none on the order; using E2E_PACZKOMAT_ID=${env.paczkomatId ?? ''})`}`,
+  });
 }
 
 /**
@@ -1589,6 +1809,12 @@ interface OrderSnapshotShape {
   shipping?: { methodId: string; methodName?: string };
   shippingAddress?: { firstName?: string; lastName?: string; phone?: string };
   customerEmail?: string;
+  /**
+   * Locker reference (#952) — present on an order shipped to a pickup point.
+   * Read only by the resume path, which has no other evidence that the order it
+   * was handed is the Paczkomat purchase S6 expects.
+   */
+  pickupPoint?: { id?: string; name?: string };
 }
 
 function readOrderSnapshot(order: OrderRecord): OrderSnapshotShape {
@@ -1601,6 +1827,7 @@ function readOrderSnapshot(order: OrderRecord): OrderSnapshotShape {
     shipping: snapshot.shipping,
     shippingAddress: snapshot.shippingAddress,
     customerEmail: snapshot.customerEmail,
+    pickupPoint: snapshot.pickupPoint,
   };
 }
 

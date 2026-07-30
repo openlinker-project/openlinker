@@ -139,13 +139,41 @@ annotated list.
 |---|---|
 | `setup`, `smoke` | none (localhost defaults) |
 | `golden-path` | `OL_PS_WEBSERVICE_KEY` (PS field parity); `E2E_FRESH_PRODUCT` + `E2E_FRESH_*` (opt-in fresh product) |
-| `full-flow` | **`E2E_ATTENDED=1`** (gate); `OL_PS_WEBSERVICE_KEY`, `OL_WC_CONSUMER_KEY`/`OL_WC_CONSUMER_SECRET` (field parity); `E2E_SOURCE_PLATFORM` / `E2E_PURCHASE_PLATFORMS`, `E2E_PACZKOMAT_ID`, `E2E_RESUME_DIR`, `E2E_PRODUCT_SKU`, `E2E_FRESH_*` |
+| `full-flow` | **`E2E_ATTENDED=1`** (gate); `OL_PS_WEBSERVICE_KEY`, `OL_WC_CONSUMER_KEY`/`OL_WC_CONSUMER_SECRET` (field parity); `E2E_SOURCE_PLATFORM` / `E2E_PURCHASE_PLATFORMS`, `E2E_PACZKOMAT_ID`, `E2E_RESUME_DIR`, `E2E_PRODUCT_SKU`, `E2E_FRESH_*`; `E2E_RESUME_FROM_ORDER` (run S5 onward against an existing order — see below) |
 | `webhooks` | none (rotates the PS connection's secret itself); skips without a PrestaShop connection |
 | `woocommerce-parity` | `OL_WC_CONSUMER_KEY`, `OL_WC_CONSUMER_SECRET` (WC REST seeding); skips without a WooCommerce connection |
 | `shipping` | `E2E_ORDER_ID` (or a golden-path `ready` order); `E2E_TEST_INPOST_WEBHOOK=true` (opt-in inbound ShipX webhook); `E2E_PACZKOMAT_ID`; skips without an InPost connection |
 | `invoicing` | `OL_PS_WEBSERVICE_KEY` (order synthesis); skips without an invoicing (inFakt) connection |
 | `lifecycle` | `OL_PS_WEBSERVICE_KEY` (stock/pruning); **`E2E_ALLOW_DESTRUCTIVE_PRUNE=true`** (opt-in irreversible pruning spec) |
 | `access-control` | `E2E_VIEWER_USER`/`E2E_VIEWER_PASS` (pre-seeded active viewer — see below); `E2E_TEST_RATE_LIMIT=true` (opt-in destructive register-429 assertion, demo mode only) |
+
+#### Resuming `full-flow` from an existing order
+
+`full-flow` is `mode: 'serial'` and every post-purchase segment reads state that
+S0-S4 build up, so a failure anywhere before S5 destroys the rest of the run —
+and getting back to S5 costs a fresh product, a fresh Allegro offer, ~40 minutes
+waiting for that offer to leave `szkic`, and another human purchase.
+
+Set `E2E_RESUME_FROM_ORDER` to an OpenLinker internal order id (`ol_order_…`)
+that a previous session already produced, and:
+
+- S0-S4 and the purchase PAUSE **skip**, each with a reason naming the mode and
+  the order id;
+- the driver product, its variants and the ingested order are **seeded from that
+  order** (its source connection, its sold line, that line's product);
+- S5 **verifies** the order it was handed (ready, lines, amounts, buyer, pickup
+  point) instead of waiting for an arrival that already happened;
+- S6 onward run unchanged.
+
+Leave it unset and the flow behaves exactly as before.
+
+**A resumed run is not equivalent to a full one.** Both stock baselines (OL
+master availability, per-channel offer quantity) are pre-purchase readings that
+cannot be recovered after the sale, and reconstructing one from the post-sale
+value would make the delta assertion compare a number against itself. So the
+master-stock delta (S7/S9) and the channel/WooCommerce stock checks (S5/S9) are
+skipped and annotated `resume-degrade` in the HTML report with exactly what went
+unchecked. Read those annotations before signing a resumed run off.
 
 #### Providing a viewer for `access-control`
 

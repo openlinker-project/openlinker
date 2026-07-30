@@ -45,6 +45,33 @@ export interface E2eEnv {
    */
   orderId: string | null;
   /**
+   * Resume the ATTENDED full flow's post-purchase half (S5 onward) against an
+   * order that ALREADY exists, given by its OpenLinker internal id
+   * (`ol_order_…`). Unset (the default) leaves the flow byte-identical to a
+   * normal run — this is a strictly additive path.
+   *
+   * Why it exists: `full-flow.spec.ts` runs `mode: 'serial'` and every segment
+   * after the purchase reads state that S0-S4 build up, so ANY failure before
+   * S5 destroys the whole rest of the run. Re-reaching S5 then costs a fresh
+   * product, a fresh Allegro offer, roughly 40 minutes waiting for that offer
+   * to leave `szkic`, and another human purchase — a price repeatedly paid for
+   * failures (stale assertions in S2/S4) that had nothing to do with the
+   * post-purchase chain being verified. Point this at an order a previous
+   * session already produced and S0-S4 + the purchase PAUSE skip with an
+   * explicit reason; the driver product, its variants and the ingested order
+   * are seeded from that order instead.
+   *
+   * What a resumed run CANNOT check: both stock baselines (OL master
+   * availability, per-channel offer quantity) are PRE-purchase readings, and
+   * the purchase has already happened. Reconstructing one from the post-sale
+   * value would make the delta assertion compare a number against itself, so
+   * instead the master-stock delta (S7/S9) and the channel/WooCommerce stock
+   * checks (S5/S9) are SKIPPED and annotated `resume-degrade` with what went
+   * unchecked. Read those annotations before treating a resumed run as
+   * equivalent to a full one.
+   */
+  resumeFromOrder: string | null;
+  /**
    * Pin the driver product by SKU (S0 escape hatch). When set, S0 selects this
    * exact product instead of the multi-variant/active-offer heuristic — the
    * deterministic override when the heuristic picks a non-purchasable product.
@@ -254,6 +281,7 @@ export function resolveEnv(): E2eEnv {
     viewerUser: optional(process.env.E2E_VIEWER_USER),
     viewerPass: optional(process.env.E2E_VIEWER_PASS),
     orderId: orderId && orderId.length > 0 ? orderId : null,
+    resumeFromOrder: optional(process.env.E2E_RESUME_FROM_ORDER),
     productSku: optional(process.env.E2E_PRODUCT_SKU),
     sourcePlatform: process.env.E2E_SOURCE_PLATFORM?.trim() || 'allegro',
     purchasePlatforms: (process.env.E2E_PURCHASE_PLATFORMS?.trim() || (process.env.E2E_SOURCE_PLATFORM?.trim() || 'allegro'))
