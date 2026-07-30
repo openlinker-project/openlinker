@@ -550,9 +550,37 @@ scopes, and an RFC 8707 `resource` binding; they live in `mcp_tokens` in the **u
 service outside that context may not inject a `*RepositoryPort` — `apps/api/src/mcp/` crosses the boundary
 through `IMcpTokenService` (`MCP_TOKEN_SERVICE_TOKEN`) instead. A token resolves to its owning OL user and
 **inherits that user's RBAC role**, so it can never exceed its owner. The principal reaches tool handlers as
-`ctx.authInfo`; note that `AuthInfo` carries the **raw bearer token**, so it must never be logged or serialized
-wholesale — consumers log a redacted projection from `AuthInfo.extra`. Adding an OAuth AS later swaps the
-verifier implementation and nothing else.
+`ctx.authInfo` on the **request-scoped** `McpRequestContext` (the context the SDK hands a tool callback at
+dispatch time does NOT carry it, so the registry threads the request-scoped value into each handler — #1487);
+note that `AuthInfo` carries the **raw bearer token**, so it must never be logged or serialized
+wholesale — consumers log a redacted projection from `AuthInfo.extra` via `redactPrincipal`. Adding an OAuth AS
+later swaps the verifier implementation and nothing else.
+
+**Read-only domain tools are shipped (Phase 1, #1487).** Six tools live at `apps/api/src/mcp/tools/`: two
+always-registered discovery entry points (`whoami`, `list_connections`) plus four capability-gated domain reads
+(`search_catalog` / `get_product` on `ProductMaster`, `get_availability` on `InventoryMaster`, `get_order` on
+`OrderSource`). Two design points shape everything downstream:
+
+- **Capability-*gated* but OL-store-*backed*.** `McpToolRegistryService` registers a tool iff
+  `listCapabilityAdapters({ capability, lazy: true })` finds a supporting-and-enabled connection, but the tools
+  read OL's own store through `IProductsService` / `IInventoryQueryService` / `IOrderRecordService` — never the
+  capability port's adapter. Going through the port would make each tool call a live marketplace request
+  (spending the operator's API quota on an agent's behalf), return external-id-keyed data that can't join the
+  internal-id-keyed product reads, and — decisively — re-fetch buyer PII regardless of `OL_STORE_PII`. The
+  consequence is that the gate and the data are **independent facts**: a passing gate does not imply data exists.
+  Each tool's description says so, because an agent cannot otherwise read an empty result. See
+  [ADR-033 § Phase 1 amendments](./architecture/adrs/033-openlinker-as-mcp-server.md).
+- **One choke point.** Rate limiting (per-token ZSET rolling window + in-flight cap, fail-open on Redis outage),
+  audit logging, and error mapping are applied by a single wrapper inside `McpToolRegistryService` — never by a
+  tool. A `*.tool.ts` file contains only its read and its projection, so a concern like releasing an in-flight
+  slot on the throw path cannot be forgotten per tool. Every result is an explicit-allowlist projection: tool
+  output reaches an external LLM provider, so `list_connections` never emits `credentialsRef`/`config` and
+  `get_order` never emits buyer name/email/address even when the snapshot stores them.
+
+`notifications/tools/list_changed` is deliberately **not** implemented: stateless per-request serving leaves no
+session to push over. Note the accepted cost — the *server* is always fresh, but a **client's cached tool list**
+can go stale, so an agent already connected when a connection is enabled won't see the new tool until it
+reconnects. See [ADR-033 § Phase 1 amendments](./architecture/adrs/033-openlinker-as-mcp-server.md).
 
 ---
 

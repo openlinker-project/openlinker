@@ -104,6 +104,13 @@ export class ShipmentResponseDto {
   @ApiProperty({ nullable: true, description: 'Last provider/dispatch failure message' })
   errorMessage!: string | null;
 
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Structured rejection-code discriminator (#1918) from the same provider rejection that produced `errorMessage` — e.g. `preflight.missing-parcel-template`, `api.http-503`, or a carrier-surfaced code. Unlike `errorMessage`, this is NOT redacted for the `viewer` role: it is a short discriminator, not carrier prose that could embed address fragments.',
+  })
+  providerCode!: string | null;
+
   @ApiProperty({ type: String, format: 'date-time' })
   createdAt!: string;
 
@@ -142,6 +149,7 @@ export class ShipmentResponseDto {
     dto.failedAt = shipment.failedAt?.toISOString() ?? null;
     dto.errorMessage =
       canWrite || shipment.errorMessage === null ? shipment.errorMessage : REDACTED_ERROR_MESSAGE;
+    dto.providerCode = shipment.providerCode;
     dto.createdAt = shipment.createdAt.toISOString();
     dto.updatedAt = shipment.updatedAt.toISOString();
     return dto;

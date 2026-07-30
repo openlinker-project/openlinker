@@ -35,6 +35,10 @@ import { APP_INFO_SERVICE_TOKEN } from '../../app-info/app-info.module';
 import { MCP_TRANSPORT_PATH } from '../mcp-resource';
 import { IAppInfoService } from '../../app-info/app-info.service.interface';
 import { Public } from '../../auth/decorators/public.decorator';
+import {
+  MCP_TOOL_REGISTRY_SERVICE_TOKEN,
+  type IMcpToolRegistryService,
+} from '../tools/tool-registry.service.interface';
 import { createMcpServerFactory } from './mcp-server.factory';
 
 @Public()
@@ -46,16 +50,22 @@ export class McpTransportController {
 
   constructor(
     @Inject(APP_INFO_SERVICE_TOKEN)
-    appInfo: IAppInfoService
+    appInfo: IAppInfoService,
+    @Inject(MCP_TOOL_REGISTRY_SERVICE_TOKEN)
+    registry: IMcpToolRegistryService
   ) {
     // Stateless: createMcpHandler builds a fresh server per request, so
     // there are no sessions and no sticky-routing requirement across
-    // replicas.
-    const mcpHandler = createMcpHandler(createMcpServerFactory(appInfo.getProductVersion()), {
-      onerror: (error: Error) => {
-        this.logger.error(`MCP handler error: ${error.message}`, error.stack);
-      },
-    });
+    // replicas. The registry re-resolves the capability-gated tool list on
+    // each of those builds.
+    const mcpHandler = createMcpHandler(
+      createMcpServerFactory(appInfo.getProductVersion(), registry),
+      {
+        onerror: (error: Error) => {
+          this.logger.error(`MCP handler error: ${error.message}`, error.stack);
+        },
+      }
+    );
 
     this.handler = toNodeHandler(mcpHandler, {
       onerror: (error: Error) => {

@@ -38,6 +38,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     cancelledAt: null,
     failedAt: '2026-07-24T09:12:00.000Z',
     errorMessage: 'NOT_PROCESSED — sender postcode "22-213" invalid',
+    providerCode: null,
     createdAt: '2026-07-24T09:11:00.000Z',
     updatedAt: '2026-07-24T09:12:00.000Z',
     ...overrides,

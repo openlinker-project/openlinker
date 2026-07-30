@@ -9,6 +9,7 @@
  */
 import type { Request, Response } from 'express';
 import type { IAppInfoService } from '../../app-info/app-info.service.interface';
+import type { IMcpToolRegistryService } from '../tools/tool-registry.service.interface';
 import { McpTransportController } from './mcp-transport.controller';
 
 function buildResponse(): Response & { statusCode?: number; body?: unknown } {
@@ -29,9 +30,16 @@ function buildResponse(): Response & { statusCode?: number; body?: unknown } {
 
 describe('McpTransportController', () => {
   const appInfo = { getProductVersion: () => '1.2.3' } as unknown as IAppInfoService;
+  // The guard short-circuits before the handler runs, so the registry is
+  // never consulted in these cases — a stub that would throw if it were.
+  const registry: IMcpToolRegistryService = {
+    registerTools: () => {
+      throw new Error('registerTools must not run for an unauthenticated request');
+    },
+  };
 
   it('should refuse a request that arrives without a principal', async () => {
-    const controller = new McpTransportController(appInfo);
+    const controller = new McpTransportController(appInfo, registry);
     const res = buildResponse();
 
     await controller.handle({ body: {} } as unknown as Request, res);
@@ -43,7 +51,7 @@ describe('McpTransportController', () => {
   });
 
   it('should not leak the presented token in the refusal body', async () => {
-    const controller = new McpTransportController(appInfo);
+    const controller = new McpTransportController(appInfo, registry);
     const res = buildResponse();
 
     await controller.handle(

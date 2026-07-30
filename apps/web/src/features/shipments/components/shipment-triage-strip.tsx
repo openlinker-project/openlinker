@@ -1,23 +1,23 @@
 /**
- * Shipment Triage Strip (#1826)
+ * Shipment Triage Strip (#1826, re-keyed #1918)
  *
  * Descriptive banner shown above the `/shipments` table when ≥2 failed
  * shipments on the loaded page, on the SAME connection, report the same
- * normalised `errorMessage` (see `group-failed-shipments-by-cause.ts` —
- * grouping is keyed on `(connectionId, cause)`, not cause alone, so this
- * component can trust `group.connectionId` as the one connection every member
- * shipment shares).
+ * `providerCode` — or, absent one, the same normalised `errorMessage` (see
+ * `group-failed-shipments-by-cause.ts` — grouping is keyed on
+ * `(connectionId, cause)`, not cause alone, so this component can trust
+ * `group.connectionId` as the one connection every member shipment shares).
  *
- * The copy states an OBSERVATION, never a causal claim. It deliberately does
- * not say the failures "share one cause", nor that regenerating "will just
- * re-fail": the grouping is a free-text match on a message the backend admits
- * is often a generic validation error (see the helper's header comment), so
- * the members may well be a bad postcode, a missing parcel template and an
- * over-limit COD sitting under one string. And for an exhausted-retry 429/5xx
- * the "don't regenerate" advice is exactly inverted — regenerating is the fix.
- * Naming a specific remedy here would be actively wrong advice most of the
- * time; the raw cause text is rendered inline instead so the operator can
- * judge for themselves.
+ * When `group.providerCode` is present the grouping is an HONEST shared-cause
+ * claim, and `deriveRetryabilityClass` lets the copy give concrete guidance
+ * (e.g. "safe to just retry" for a `'transient'` code). Absent a code, the
+ * copy stays an OBSERVATION, never a causal claim — the grouping is a
+ * free-text match on a message the backend admits is often a generic
+ * validation error, so the members may well be a bad postcode, a missing
+ * parcel template and an over-limit COD sitting under one string; naming a
+ * specific remedy there would be actively wrong advice most of the time, so
+ * the raw cause text is rendered inline instead so the operator can judge for
+ * themselves.
  *
  * Scope is honest about being page-local: the caller passes only the rows
  * currently loaded (one page), so the count is a page count, not a global one.
@@ -42,6 +42,7 @@ import { Link } from 'react-router-dom';
 
 import { Alert } from '../../../shared/ui/alert';
 import type { FailedShipmentCauseGroup } from '../lib/group-failed-shipments-by-cause';
+import { deriveRetryabilityClass, RETRYABILITY_LABEL } from '../lib/shipment-retryability';
 
 export interface ShipmentTriageStripProps {
   group: FailedShipmentCauseGroup;
@@ -62,6 +63,11 @@ export function ShipmentTriageStrip({
   // message to an operator.
   const sampleReason = group.shipments[0].errorMessage;
   const connectionLabel = connectionName ?? 'this connection';
+  // Only meaningful when the group is providerCode-keyed (an honest
+  // shared-cause claim) — absent a code the group is a lossy text match and
+  // no retryability guidance should be implied.
+  const retryabilityClass =
+    group.providerCode !== null ? deriveRetryabilityClass(group.providerCode) : null;
 
   return (
     <Alert
@@ -86,10 +92,16 @@ export function ShipmentTriageStrip({
       }
     >
       <strong>
-        {count} failed shipment{count === 1 ? '' : 's'} on {connectionLabel} report the same
-        carrier message
+        {count} failed shipment{count === 1 ? '' : 's'} on {connectionLabel} report the same{' '}
+        {group.providerCode !== null ? 'rejection code' : 'carrier message'}
       </strong>
-      {sampleReason ? (
+      {group.providerCode !== null ? (
+        <>
+          {' '}
+          - <span className="mono-text">{group.providerCode}</span>
+          {retryabilityClass ? <> ({RETRYABILITY_LABEL[retryabilityClass]})</> : null}
+        </>
+      ) : sampleReason ? (
         <>
           {' '}
           - <span className="mono-text">{sampleReason}</span>
