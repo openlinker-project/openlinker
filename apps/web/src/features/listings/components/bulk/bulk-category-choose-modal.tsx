@@ -6,15 +6,19 @@
  * the approved mockup: a search input, a clickable breadcrumb, and a list of
  * child categories with Browse (drill-in) / Select (pick) affordances.
  *
- * The category lives in the BASE scope only (grouping-determining, base-only -
- * a per-variant category would split Allegro's catalog-product family), so this
- * modal only fires `onSelect(categoryId, pathNames)`. `pathNames` is the full
- * breadcrumb (ancestors + leaf) captured at selection time, used to render the
- * chip breadcrumb without a second round-trip.
+ * The category lives in the BASE scope by default (grouping-determining,
+ * shared across variants) - and, for a `'catalog-implicit'` destination
+ * (Allegro), can also be given per-variant via the variant scope's 3-state
+ * ladder (#1924), where picking one splits that variant out of the grouped
+ * listing. Either mount fires `onSelect(categoryId, pathNames)`. `pathNames`
+ * is the full breadcrumb (ancestors + leaf) captured at selection time, used
+ * to render the chip breadcrumb without a second round-trip.
  *
- * Only mounted for a browsable destination (`canBrowseCategories === true`).
- * The borrowed-taxonomy path (Erli) keeps its inline "Allegro category ID" text
- * input in the base form instead.
+ * Only mounted for a browsable destination (`canBrowseCategories === true` at
+ * the base scope; `variantGrouping === 'catalog-implicit'` at the variant
+ * scope). The borrowed-taxonomy path (Erli) keeps its inline "Allegro
+ * category ID" text input in the base form instead, and has no variant-scope
+ * picker yet (#1045 follow-up).
  *
  * @module apps/web/src/features/listings/components/bulk
  */
@@ -37,6 +41,14 @@ interface BulkCategoryChooseModalProps {
   selectedId: string | null;
   /** Fires with the leaf id + the full breadcrumb path names (ancestors + leaf). */
   onSelect: (categoryId: string, pathNames: string[]) => void;
+  /**
+   * Which scope this picker is choosing a category for (#1924). `'base'`
+   * (default) is the shared-base pick that seeds every variant; `'variant'`
+   * is a single variant overriding its own category, which splits it out of
+   * the grouped listing rather than applying to every sibling — the footer
+   * copy reflects the actual consequence for each.
+   */
+  scope?: 'base' | 'variant';
 }
 
 export function BulkCategoryChooseModal({
@@ -46,6 +58,7 @@ export function BulkCategoryChooseModal({
   productName,
   selectedId,
   onSelect,
+  scope = 'base',
 }: BulkCategoryChooseModalProps): ReactElement {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -60,6 +73,7 @@ export function BulkCategoryChooseModal({
             selectedId={selectedId}
             onSelect={onSelect}
             onClose={() => onOpenChange(false)}
+            scope={scope}
           />
         ) : null}
       </DialogContent>
@@ -73,12 +87,14 @@ function BulkCategoryChooseBody({
   selectedId,
   onSelect,
   onClose,
+  scope,
 }: {
   connectionId: string;
   productName: string;
   selectedId: string | null;
   onSelect: (categoryId: string, pathNames: string[]) => void;
   onClose: () => void;
+  scope: 'base' | 'variant';
 }): ReactElement {
   const [breadcrumb, setBreadcrumb] = useState<Crumb[]>([]);
   const [search, setSearch] = useState('');
@@ -230,7 +246,11 @@ function BulkCategoryChooseBody({
       </div>
 
       <div className="bulk-editor__catpick-foot">
-        <span className="grow">Applies to all variants - Allegro groups siblings under one category.</span>
+        <span className="grow">
+          {scope === 'variant'
+            ? 'Applies to this variant only - it leaves the grouped listing.'
+            : 'Applies to all variants - Allegro groups siblings under one category.'}
+        </span>
         <Button tone="ghost" type="button" onClick={onClose}>
           Cancel
         </Button>

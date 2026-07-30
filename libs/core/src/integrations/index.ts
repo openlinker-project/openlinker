@@ -53,6 +53,9 @@ export {
   CoreCapability,
   CoreCapabilityValues,
   AdapterMetadata,
+  VariantGroupingModel,
+  VariantGroupingModelValues,
+  resolveVariantGroupingModel,
 } from './domain/types/adapter.types';
 export { ConnectionTestResult } from './domain/types/connection-test.types';
 export { EntityClaimQuery } from './application/types/entity-claim.types';

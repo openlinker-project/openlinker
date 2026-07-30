@@ -55,7 +55,12 @@ import type {
 } from '@openlinker/core/identifier-mapping';
 import { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
-import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import {
+  IIntegrationsService,
+  INTEGRATIONS_SERVICE_TOKEN,
+  resolveVariantGroupingModel,
+} from '@openlinker/core/integrations';
+import type { VariantGroupingModel } from '@openlinker/core/integrations';
 import {
   DEMO_MODE_SERVICE_TOKEN,
   type IDemoModeService,
@@ -86,17 +91,20 @@ export class ConnectionController {
     user?: AuthenticatedUser
   ): Promise<ConnectionResponseDto> {
     let supported: string[] = [];
+    let variantGrouping: VariantGroupingModel = resolveVariantGroupingModel(undefined);
     try {
       const metadata = await this.integrationsService.resolveAdapterMetadata({
         platformType: connection.platformType,
         adapterKey: connection.adapterKey,
       });
       supported = metadata.supportedCapabilities;
+      variantGrouping = resolveVariantGroupingModel(metadata);
     } catch (error) {
       // Unknown adapter (e.g., legacy row with unmapped platformType). Leave
-      // supportedCapabilities empty; the FE will render an "adapter not
-      // recognized" notice. We still want this to be observable in the API
-      // logs so operators can spot and fix the offending row.
+      // supportedCapabilities empty (and variantGrouping at its locked
+      // default); the FE will render an "adapter not recognized" notice. We
+      // still want this to be observable in the API logs so operators can
+      // spot and fix the offending row.
       this.logger.warn(
         `Could not resolve adapter metadata for connection ${connection.id} (platformType=${connection.platformType}, adapterKey=${connection.adapterKey ?? '<derived>'}): ${(error as Error).message}`
       );
@@ -105,6 +113,7 @@ export class ConnectionController {
     return ConnectionResponseDto.fromDomain(
       connection,
       supported,
+      variantGrouping,
       user?.role,
       this.demoModeService.isDemoModeEnabled()
     );

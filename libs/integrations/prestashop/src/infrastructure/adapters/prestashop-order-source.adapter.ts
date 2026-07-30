@@ -21,7 +21,10 @@ import type {
   OrderPickupPoint,
 } from '@openlinker/core/orders';
 import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
-import type { PrestashopAddress } from '../provisioners/prestashop-provisioner.types';
+import type {
+  PrestashopAddress,
+  PrestashopCustomer,
+} from '../provisioners/prestashop-provisioner.types';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
@@ -171,6 +174,13 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     const orderRows = await this.fetchOrderRows(externalOrderId);
     const mapped = this.orderMapper.mapOrder(prestashopOrder, orderRows);
     const config = this.connection.config as unknown as PrestashopConnectionConfig;
+
+    // Started before the pickup-point / address awaits so the extra customer
+    // read overlaps them rather than lengthening the hydration chain (#1928).
+    // `hydrateCustomerEmail` never rejects, so the pending promise is safe to
+    // hold across the awaits below.
+    const customerEmailPromise = this.hydrateCustomerEmail(prestashopOrder.id_customer);
+
     const pickupPoint = await this.resolvePickupPoint(prestashopOrder, config);
 
     // The order JSON carries only address IDs, so the mapper cannot populate
@@ -231,6 +241,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       status: mapped.status,
       customerExternalId:
         prestashopOrder.id_customer !== undefined ? String(prestashopOrder.id_customer) : undefined,
+      customerEmail: await customerEmailPromise,
       items,
       totals: mapped.totals,
       shippingAddress,
@@ -336,6 +347,39 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     } catch (error) {
       this.logger.warn(
         `Failed to hydrate address ${String(addressId)}: ${(error as Error).message}`
+      );
+      return undefined;
+    }
+  }
+
+  /**
+   * Fetch the buyer's e-mail from the PrestaShop `customers` resource (#1928).
+   *
+   * The `orders` resource carries only `id_customer`, so the e-mail needs its
+   * own read — the same reason the outbound provisioner queries `customers`
+   * separately. Without it `IncomingOrder.customerEmail` stays undefined for
+   * every PrestaShop-sourced order, which both empties the order snapshot's
+   * label recipient and makes `OrderIngestionService.resolveCustomerId` skip
+   * customer-identity resolution entirely (no `customer_projections` row).
+   *
+   * Best-effort, mirroring `hydrateAddress`: a revoked `customers` WS
+   * permission, a purged customer, or a transport error warns and yields
+   * undefined rather than failing ingestion of an otherwise-valid order.
+   */
+  private async hydrateCustomerEmail(
+    customerId: string | number | undefined
+  ): Promise<string | undefined> {
+    if (!customerId) return undefined;
+    try {
+      const customer = await this.httpClient.getResource<PrestashopCustomer>(
+        'customers',
+        String(customerId)
+      );
+      const email = customer.email?.trim();
+      return email ? email : undefined;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to hydrate customer e-mail for customer ${String(customerId)}: ${(error as Error).message}`
       );
       return undefined;
     }

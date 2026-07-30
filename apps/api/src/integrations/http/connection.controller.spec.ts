@@ -36,6 +36,7 @@ describe('ConnectionController', () => {
   let demoModeService: jest.Mocked<IDemoModeService>;
   let webhookSecretService: { rotate: jest.Mock; set: jest.Mock };
   let webhookStatusService: { getStatus: jest.Mock };
+  let integrationsService: { resolveAdapterMetadata: jest.Mock };
 
   const mockConnection = new Connection(
     'connection-123',
@@ -156,6 +157,7 @@ describe('ConnectionController', () => {
     demoModeService = module.get(DEMO_MODE_SERVICE_TOKEN);
     webhookSecretService = module.get(WEBHOOK_SECRET_SERVICE_TOKEN);
     webhookStatusService = module.get(WEBHOOK_STATUS_SERVICE_TOKEN);
+    integrationsService = module.get(INTEGRATIONS_SERVICE_TOKEN);
   });
 
   describe('setWebhookSecret', () => {
@@ -285,6 +287,31 @@ describe('ConnectionController', () => {
       });
 
       expect(result.config).toEqual({});
+    });
+
+    it('should project the resolved adapter variantGrouping (#1924)', async () => {
+      integrationsService.resolveAdapterMetadata.mockResolvedValueOnce({
+        adapterKey: 'allegro.publicapi.v1',
+        platformType: 'allegro',
+        supportedCapabilities: ['OfferManager'],
+        variantGrouping: 'catalog-implicit',
+      });
+      service.get.mockResolvedValue(mockConnection);
+
+      const result = await controller.get('connection-123', mockAdminUser);
+
+      expect(result.variantGrouping).toBe('catalog-implicit');
+    });
+
+    it('should default variantGrouping to the locked parent-child shape when adapter metadata cannot be resolved', async () => {
+      integrationsService.resolveAdapterMetadata.mockRejectedValueOnce(
+        new Error('unknown adapter')
+      );
+      service.get.mockResolvedValue(mockConnection);
+
+      const result = await controller.get('connection-123', mockAdminUser);
+
+      expect(result.variantGrouping).toBe('parent-child');
     });
   });
 

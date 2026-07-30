@@ -465,13 +465,20 @@ describe('PrestashopOrderSourceAdapter', () => {
         inpostConnection
       );
       const orderWithoutAddress: PrestashopOrder = { ...baseOrder, id_address_delivery: undefined };
-      mockHttpClient.getResource = jest.fn().mockResolvedValueOnce(orderWithoutAddress);
+      mockHttpClient.getResource = jest.fn().mockImplementation((resource: string) => {
+        if (resource === 'orders') return Promise.resolve(orderWithoutAddress);
+        return Promise.resolve({});
+      });
       mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(baseOrderRows);
 
       const incoming = await inpostAdapter.getOrder({ externalOrderId: '42' });
 
       expect(incoming.pickupPoint).toBeUndefined();
-      expect(mockHttpClient.getResource).toHaveBeenCalledTimes(1);
+      // No address/country round-trips; the only other read is the buyer
+      // e-mail hydration (#1928), which is keyed on id_customer, not address.
+      expect(mockHttpClient.getResource).toHaveBeenCalledTimes(2);
+      expect(mockHttpClient.getResource).toHaveBeenCalledWith('orders', '42');
+      expect(mockHttpClient.getResource).toHaveBeenCalledWith('customers', '7');
     });
   });
 
@@ -572,15 +579,21 @@ describe('PrestashopOrderSourceAdapter', () => {
       const orderNoAddr: PrestashopOrder = { ...orderWithAddresses };
       delete orderNoAddr.id_address_invoice;
       delete orderNoAddr.id_address_delivery;
-      mockHttpClient.getResource = jest.fn().mockResolvedValueOnce(orderNoAddr);
+      mockHttpClient.getResource = jest.fn().mockImplementation((resource: string) => {
+        if (resource === 'orders') return Promise.resolve(orderNoAddr);
+        return Promise.resolve({});
+      });
       mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
 
       const incoming = await adapter.getOrder({ externalOrderId: '42' });
 
       expect(incoming.billingAddress).toBeUndefined();
       expect(incoming.shippingAddress).toBeUndefined();
-      // Only the order itself is fetched — no address/country round-trips.
-      expect(mockHttpClient.getResource).toHaveBeenCalledTimes(1);
+      // No address/country round-trips — the order plus the buyer e-mail read
+      // (#1928) are the only calls.
+      expect(mockHttpClient.getResource).toHaveBeenCalledTimes(2);
+      expect(mockHttpClient.getResource).toHaveBeenCalledWith('orders', '42');
+      expect(mockHttpClient.getResource).toHaveBeenCalledWith('customers', '7');
     });
 
     it('should fall back to billing address for shipping when delivery hydration fails', async () => {
@@ -600,6 +613,104 @@ describe('PrestashopOrderSourceAdapter', () => {
 
       expect(incoming.shippingAddress).toEqual(incoming.billingAddress);
       expect(incoming.billingAddress?.address1).toBe('Bill St 1');
+    });
+  });
+
+  describe('getOrder — buyer e-mail hydration (#1928)', () => {
+    const baseOrder: PrestashopOrder = {
+      id: '42',
+      reference: 'ORDER-042',
+      id_customer: '7',
+      current_state: '2',
+      total_paid: '99.99',
+      date_add: '2024-01-01 10:00:00',
+      date_upd: '2024-01-01 12:00:00',
+    };
+
+    /**
+     * `customer` as an Error rejects the `customers` read; as a record it
+     * resolves. Keyed by resource so the assertion never depends on call order.
+     */
+    const keyedGetResource = (
+      customer: Record<string, unknown> | Error,
+      order: PrestashopOrder = baseOrder
+    ): void => {
+      mockHttpClient.getResource = jest.fn().mockImplementation((resource: string, id: string) => {
+        if (resource === 'orders') return Promise.resolve(order);
+        if (resource === 'customers') {
+          return customer instanceof Error
+            ? Promise.reject(customer)
+            : Promise.resolve({ id, ...customer });
+        }
+        return Promise.resolve({});
+      });
+      mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+    };
+
+    it('should populate customerEmail from the customers resource', async () => {
+      keyedGetResource({ email: 'buyer@example.com' });
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.customerEmail).toBe('buyer@example.com');
+      expect(mockHttpClient.getResource).toHaveBeenCalledWith('customers', '7');
+    });
+
+    it('should leave customerEmail undefined and still return the order when the customers read fails', async () => {
+      keyedGetResource(new PrestashopApiException('Forbidden', 403));
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      // Best-effort, mirroring hydrateAddress: a revoked `customers` WS
+      // permission must not fail ingestion of an otherwise-valid order.
+      expect(incoming.customerEmail).toBeUndefined();
+      expect(incoming.externalOrderId).toBe('42');
+      expect(incoming.customerExternalId).toBe('7');
+    });
+
+    it('should leave customerEmail undefined when the customer record carries no email', async () => {
+      keyedGetResource({});
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.customerEmail).toBeUndefined();
+    });
+
+    it('should treat a blank email as absent rather than emitting an empty string', async () => {
+      keyedGetResource({ email: '   ' });
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.customerEmail).toBeUndefined();
+    });
+
+    it('should trim surrounding whitespace off the email', async () => {
+      keyedGetResource({ email: '  buyer@example.com  ' });
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.customerEmail).toBe('buyer@example.com');
+    });
+
+    it('should skip the customers read entirely when the order carries no id_customer', async () => {
+      const orderNoCustomer: PrestashopOrder = { ...baseOrder, id_customer: undefined };
+      keyedGetResource({ email: 'buyer@example.com' }, orderNoCustomer);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.customerEmail).toBeUndefined();
+      expect(incoming.customerExternalId).toBeUndefined();
+      expect(mockHttpClient.getResource).not.toHaveBeenCalledWith('customers', expect.anything());
+    });
+
+    it('should accept a numeric id_customer', async () => {
+      const numericOrder: PrestashopOrder = { ...baseOrder, id_customer: 7 };
+      keyedGetResource({ email: 'buyer@example.com' }, numericOrder);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.customerEmail).toBe('buyer@example.com');
+      expect(mockHttpClient.getResource).toHaveBeenCalledWith('customers', '7');
     });
   });
 });
