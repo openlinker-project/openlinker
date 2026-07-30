@@ -24,6 +24,14 @@ import type {
 
 const OFFER_ENTITY_TYPE: CoreEntityType = CORE_ENTITY_TYPE.Offer;
 
+/**
+ * The one publication status that means the offer is genuinely over and the
+ * variant may be listed again (#1934/F2). Every other status - including
+ * `inactive` / `inactivating` - describes an offer that still exists on the
+ * marketplace and could be reactivated, so re-listing it would duplicate.
+ */
+const ENDED_PUBLICATION_STATUS = 'ended';
+
 @Injectable()
 export class OfferMappingRepository implements OfferMappingRepositoryPort {
   constructor(
@@ -98,13 +106,36 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
     const result = new Map<string, number>();
     if (internalIds.length === 0) return result;
 
+    // An ENDED offer must not count as "already listed" (#1934/F2).
+    //
+    // This count is what `filterAlreadyListed` uses to silently drop a variant
+    // from a bulk submit, and what the FE reads for its "already on
+    // {destination}" chip. With no status predicate, a variant whose only offer
+    // has ended on the marketplace was un-relistable through the wizard
+    // FOREVER: the mapping row survives the offer, so the drop fired on every
+    // retry and, when it was the only variant, the operator got a 400 reading
+    // "requires at least one productId".
+    //
+    // A missing snapshot is treated as still-listed (the conservative default -
+    // absence of a status read is not evidence the offer ended). `inactive` and
+    // `inactivating` likewise still count: those offers exist and can be
+    // reactivated, so re-listing them WOULD duplicate.
     const rows = await this.repository
       .createQueryBuilder('mapping')
       .select('mapping.internalId', 'internalId')
       .addSelect('COUNT(*)', 'count')
+      .leftJoin(
+        'offer_status_snapshots',
+        'snapshot',
+        'snapshot."externalOfferId" = mapping."externalId" ' +
+          'AND snapshot."connectionId" = mapping."connectionId"'
+      )
       .where('mapping.entityType = :entityType', { entityType: OFFER_ENTITY_TYPE })
       .andWhere('mapping.connectionId = :connectionId', { connectionId })
       .andWhere('mapping.internalId IN (:...internalIds)', { internalIds })
+      .andWhere('(snapshot."publicationStatus" IS NULL OR snapshot."publicationStatus" != :ended)', {
+        ended: ENDED_PUBLICATION_STATUS,
+      })
       .groupBy('mapping.internalId')
       .getRawMany<{ internalId: string; count: string }>();
 
