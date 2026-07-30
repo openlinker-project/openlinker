@@ -216,21 +216,24 @@ describe('InfaktInvoicingAdapter', () => {
 
     // #1926: the OUTGOING query is the half no previous spec asserted, which is
     // why a bare `?nip=` — silently ignored by inFakt, answered with the whole
-    // unfiltered first page — shipped undetected. Only `q[nip_eq]` filters.
-    it('should look the client up with the Ransack q[nip_eq] filter, not a bare nip param', async () => {
+    // unfiltered first page — shipped undetected. `q[clean_nip_eq]` is the key
+    // that both filters AND matches a NIP inFakt stored with separators or a
+    // country prefix; plain `q[nip_eq]` misses those and mints a duplicate.
+    it('should look the client up with the Ransack q[clean_nip_eq] filter, not a bare nip param', async () => {
       http.seed<InfaktListResponse<InfaktClient>>('GET', 'clients.json', listResponse([]));
       http.seed('POST', 'clients.json', { ...CLIENTS_CAPTURE.entities[1], id: 7 });
 
       await adapter.upsertCustomer({ connectionId: 'conn-1', buyer: buyer({ nip: '1234563218' }) });
 
       const lookup = http.calls.find((c) => c.method === 'GET' && c.path === 'clients.json');
-      expect(lookup?.query).toEqual({ 'q[nip_eq]': '1234563218', limit: '25' });
+      expect(lookup?.query).toEqual({ 'q[clean_nip_eq]': '1234563218', limit: '25' });
       expect(lookup?.query).not.toHaveProperty('nip');
+      expect(lookup?.query).not.toHaveProperty('q[nip_eq]');
     });
 
-    // `q[nip_eq]` is an exact string match, so `PL…` / separators must be
-    // stripped on BOTH the lookup and the create (verified live, #1926) —
-    // otherwise the client is created under a form its own lookup can't find.
+    // The NIP is normalised on BOTH the lookup and the create (verified live,
+    // #1926): the filter tolerates either form, but the stored value is what a
+    // human reads on the invoice and what the client-side re-match compares.
     it('should normalise a prefixed or separator-formatted NIP for both the lookup and the create', async () => {
       http.seed<InfaktListResponse<InfaktClient>>('GET', 'clients.json', listResponse([]));
       http.seed('POST', 'clients.json', { ...CLIENTS_CAPTURE.entities[1], id: 8 });
@@ -241,7 +244,7 @@ describe('InfaktInvoicingAdapter', () => {
       });
 
       const lookup = http.calls.find((c) => c.method === 'GET' && c.path === 'clients.json');
-      expect(lookup?.query).toMatchObject({ 'q[nip_eq]': '1234563218' });
+      expect(lookup?.query).toMatchObject({ 'q[clean_nip_eq]': '1234563218' });
       const createCall = http.calls.find((c) => c.method === 'POST' && c.path === 'clients.json');
       expect(createCall?.body).toMatchObject({
         client: expect.objectContaining({ nip: '1234563218' }),

@@ -75,20 +75,24 @@ const SUPPORTED_DOCUMENT_TYPES: readonly DocumentType[] = [
 /**
  * Page size requested for the NIP client lookup (#1926).
  *
- * `q[nip_eq]` is an exact match, so one page is always enough for a legitimate
- * result; the explicit limit only bounds the payload if the filter ever silently
- * stops filtering (inFakt's failure mode for an unrecognised key — see
- * `findClientByNip`), which the client-side re-match then rejects anyway.
+ * `q[clean_nip_eq]` is an equality match, so one page is always enough for a
+ * legitimate result; the explicit limit only bounds the payload if the filter
+ * ever silently stops filtering (inFakt's failure mode for an unrecognised key —
+ * see `findClientByNip`). In that degraded case the client-side re-match may not
+ * find a client that sits beyond this page, which costs one duplicate rather
+ * than a wrong link — the safe direction, since unfiltered paging has no stable
+ * sort either (the same id can repeat across pages, verified live).
  */
 const CLIENT_LOOKUP_PAGE_SIZE = 25;
 
 /**
- * Reduce a tax id to bare digits for comparison and for the `q[nip_eq]` filter.
+ * Reduce a tax id to bare digits for comparison and for the NIP lookup filter.
  *
- * inFakt matches the NIP as an exact string, so a prefixed `PL1234563218` or a
- * separator-formatted `123-456-32-18` both return zero rows against a stored
- * `1234563218` (verified live, #1926). Normalising both sides makes the lookup
- * independent of however the buyer's tax id was formatted upstream.
+ * `q[clean_nip_eq]` normalises both sides itself, but sending the bare-digit
+ * form keeps the request independent of however the buyer's tax id was
+ * formatted upstream, and the same helper backs the client-side re-match, which
+ * compares a stored `525-224-84-98` against a requested `PL5252248498`
+ * (verified live, #1926).
  */
 function normalizeNip(taxId: string): string {
   return taxId.replace(/\D/g, '');
@@ -367,11 +371,11 @@ export class InfaktInvoicingAdapter
 
   async upsertCustomer(cmd: UpsertCustomerCommand): Promise<UpsertCustomerResult> {
     const { buyer } = cmd;
-    // Infakt uses NIP (pl-nip scheme) for B2B client dedup. Stored in the
-    // normalised bare-digit form the `q[nip_eq]` lookup filters on (#1926) —
-    // persisting a prefixed or separator-formatted NIP would make the client
-    // unfindable by its own lookup on the next invoice, re-creating the
-    // duplicate-per-issuance defect for that buyer.
+    // Infakt uses NIP (pl-nip scheme) for B2B client dedup. Persisted in the
+    // normalised bare-digit form (#1926): inFakt stores whatever it is given, so
+    // writing a prefixed or separator-formatted NIP would leave the seller's own
+    // records carrying three spellings of one tax id, and would depend on the
+    // filter's normalisation to stay findable at all.
     const rawNip = buyer.taxId?.scheme === 'pl-nip' ? buyer.taxId.value : null;
     const nip = rawNip === null ? null : normalizeNip(rawNip) || null;
 
@@ -905,9 +909,15 @@ export class InfaktInvoicingAdapter
    *
    * 1. **The filter must be Ransack-keyed.** A bare `?nip=` is silently
    *    IGNORED — inFakt answers `200` with the seller's whole unfiltered first
-   *    page — and so is any unrecognised `q[...]` key. Only `q[nip_eq]` filters,
-   *    and it is an exact string match, so the NIP is normalised to bare digits
-   *    first (`PL123…` and `123-456-32-18` both return nothing otherwise).
+   *    page — and so is any unrecognised `q[...]` key. `q[clean_nip_eq]` is the
+   *    key used here: it compares with separators and any country prefix
+   *    stripped on BOTH sides, which matters because inFakt stores whatever NIP
+   *    form it was given (it only validates the checksum). A client entered as
+   *    `525-224-84-98` in the inFakt UI, or created by OL before #1926 from an
+   *    unnormalised `buyer.taxId`, is therefore unreachable via the stricter
+   *    `q[nip_eq]` on bare digits — and one missed match is one duplicate
+   *    client. The NIP is still normalised before it is sent, so the request is
+   *    independent of however the tax id was formatted upstream.
    * 2. **Therefore the filter is never identity proof.** Because a filter that
    *    stops working degrades into "full page, HTTP 200", every returned client's
    *    NIP is re-matched here. Without that, `entities[0]` would adopt an
@@ -934,7 +944,7 @@ export class InfaktInvoicingAdapter
     }
 
     const list = await this.getListResponse<InfaktClient>('clients.json', {
-      'q[nip_eq]': normalized,
+      'q[clean_nip_eq]': normalized,
       limit: String(CLIENT_LOOKUP_PAGE_SIZE),
     });
 

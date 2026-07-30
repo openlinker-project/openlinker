@@ -8,7 +8,12 @@ NIP-keyed client lookup an identity resolution rather than a "first row of an un
 **Layer**: Integration - Infrastructure (adapter) + Domain (types) in `libs/integrations/infakt`.
 
 **Non-goals** (explicitly out of scope, listed on the issue):
-- Any frontend change. The FE consumes the neutral `InvoicingBankAccount` DTO over HTTP.
+- Any frontend *behaviour* change. The FE consumes the neutral `InvoicingBankAccount` DTO over HTTP and
+  needed no change to start listing accounts again. The one FE edit here is copy-only: the two payment
+  method descriptions next to the repaired picker said `"Transfer" 422s on inFakt`, leaking a raw HTTP
+  status code into operator-facing text (the same thing `content-editor.test.tsx` already asserts must
+  never reach the UI). The remaining dev-speak in the plugin surfaces (`endpoint`, `UPO/FA3`,
+  `capability-gated`) is a separate pass.
 - Any core / `libs/core/src/invoicing` change, DB migration, or backfill.
 - The sibling defects the audit surfaced (PrestaShop `filter[filter[…]]`, InPost `items?`), a shared
   outbound response-shape validation helper, a `docs/lessons.md` entry, and provider-side cleanup of
@@ -29,9 +34,21 @@ Live-verified 2026-07-29 against `https://api.sandbox-infakt.pl/api/v3`:
 | `q[nip_eq]=PL1234563218` / `123-456-32-18` | 0 results - exact string match, so the NIP must be normalised |
 | two `POST /clients.json` with the same NIP | `201` both times - inFakt does **not** dedupe server-side |
 
-Two consequences shape the plan: the envelope must be `entities`, and because inFakt answers 200 with a
-full page for *any* unrecognised filter key, a client-side re-match is the only durable guard - the
-filter alone can silently stop working at any time.
+Re-probed 2026-07-30 during review, which changed the chosen filter key:
+
+| Probe | Result |
+|---|---|
+| `POST /clients.json` with `nip: "525-224-84-98"` / `"PL5252248506"` | `201`, stored **verbatim** - inFakt validates the checksum only, it does not normalise |
+| `q[nip_eq]=5252248498` against a client stored as `525-224-84-98` | 0 results - the strict key cannot see a formatted NIP |
+| `q[clean_nip_eq]=<nip>` | matches bare, separator-formatted and `PL`-prefixed stored values, and normalises the **query** side too (`PL5252248498` finds `525-224-84-98`) |
+| `q[clean_nip_eq]=0000000000` | 0 results - genuinely filtering, not silently ignored like an unknown key |
+| unfiltered `clients.json?limit=10&offset=0..50` | the same ids recur across pages - unfiltered paging has no stable sort |
+
+Three consequences shape the plan: the envelope must be `entities`; the filter must be
+`q[clean_nip_eq]`, because a client entered through the inFakt UI (or created by OL before this fix)
+carries whatever NIP spelling it was given and `nip_eq` would miss it - one missed match is one duplicate
+client; and because inFakt answers 200 with a full page for *any* unrecognised filter key, a client-side
+re-match is still the only durable guard - the filter alone can silently stop working at any time.
 
 ## 3. Design
 
@@ -42,7 +59,7 @@ filter alone can silently stop working at any time.
    retargets it at `entities`. The guard is *not* widened to accept both shapes: no inFakt version,
    header, or content-negotiation path emits `{ items, pagination }`, so tolerating it would enshrine a
    fabricated shape and hide real future drift.
-3. **`findClientByNip`** sends `q[nip_eq]=<digits-only NIP>` plus an explicit `limit`, then re-matches
+3. **`findClientByNip`** sends `q[clean_nip_eq]=<digits-only NIP>` plus an explicit `limit`, then re-matches
    every returned client's NIP client-side and only adopts an exact match. Deviation from the issue's
    original AC: when several clients genuinely carry the requested NIP, the adapter adopts the
    **lowest-id (oldest)** match and logs a warning, rather than treating a multi-match as no-match.
@@ -66,11 +83,12 @@ filter alone can silently stop working at any time.
 | # | File | Change | Acceptance |
 |---|---|---|---|
 | 1 | `src/domain/types/infakt.types.ts` | replace `InfaktListResponse<T>` with the `entities`/`metainfo` shape | `type-check` passes; no `pagination` reference remains in the package |
-| 2 | `src/infrastructure/adapters/infakt-invoicing.adapter.ts` | `listBankAccounts` reads `entities`; `getListResponse` guards `entities`; `findClientByNip` gains `q[nip_eq]` + `limit` + client-side re-match + no `catch`; new module-scope `normalizeNip` | `listBankAccounts` maps the fixture; guard throws on an unrecognised envelope |
+| 2 | `src/infrastructure/adapters/infakt-invoicing.adapter.ts` | `listBankAccounts` reads `entities`; `getListResponse` guards `entities`; `findClientByNip` gains `q[clean_nip_eq]` + `limit` + client-side re-match + no `catch`; new module-scope `normalizeNip` | `listBankAccounts` maps the fixture; guard throws on an unrecognised envelope |
 | 3 | `src/infrastructure/adapters/__fixtures__/{clients,bank-accounts}-list-response.json` + `README.md` | committed captures with provenance | files exist, are valid JSON, and carry `metainfo` + `entities` |
 | 4 | `__tests__/infakt-invoicing.adapter.spec.ts` | re-seed the 9 list fixtures from the captures; repair the inverted #1373/#1374 guard test; add an outgoing-query assertion and a mismatched-NIP spec | package suite green |
 | 5 | `__tests__/infakt-connection-tester.adapter.spec.ts` | update the cosmetic `'{"items":[]}'` body | package suite green |
 | 6 | `scripts/poc-sandbox-test.ts` | run the step-1 `upsertCustomer` twice with the same NIP and assert one `providerCustomerId` | the live smoke can now fail on this defect class |
+| 7 | `apps/web/.../infakt-structured-section.tsx`, `apps/web/.../infakt-setup-form.tsx` | copy-only: drop `"Transfer" 422s on inFakt` from the two payment-method descriptions rendered beside the repaired picker | no raw HTTP status code in operator-facing inFakt copy; no test asserts these strings |
 
 ## 5. Validation
 
