@@ -135,8 +135,14 @@ export function BulkConfigStep({
     (/^-?\d+(\.\d+)?$/.test(values.markupPercent.trim()) &&
       Number(values.markupPercent) >= -100 &&
       Number(values.markupPercent) <= 500);
+  // The `> 0` floor mirrors `CreateOfferPriceDto.amount` (`@IsPositive()`),
+  // which is validated per override-map value - a single `0` rejects the whole
+  // batch with an opaque `price: invalid value` (#1934/F3). The `cap` and
+  // `flat` stock predicates below already carry the same shape of floor.
   const flatPriceValid =
-    values.pricingMode !== 'flat' || /^\d+([.,]\d{1,2})?$/.test(values.flatPriceAmount.trim());
+    values.pricingMode !== 'flat' ||
+    (/^\d+([.,]\d{1,2})?$/.test(values.flatPriceAmount.trim()) &&
+      Number(values.flatPriceAmount.trim().replace(',', '.')) > 0);
   const capValid =
     values.stockMode !== 'cap' ||
     (/^\d+$/.test(values.capValue.trim()) && Number(values.capValue) >= 1);

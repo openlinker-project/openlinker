@@ -90,8 +90,13 @@ export interface BulkPerProductOverride {
    * editor's shared-base scope when the operator diverges from the batch policy;
    * the wizard resolves it into concrete per-variant price/stock before submit
    * (it wins over `config.pricingPolicy` / `config.stockPolicy`). Absent ⇒ the
-   * product inherits the batch policy. FE-only resolution input - the BE receives
-   * the already-resolved amounts and ignores these fields.
+   * product inherits the batch policy.
+   *
+   * FE-only resolution input. The API's per-override DTO does NOT model these
+   * fields and validates each map value with `forbidNonWhitelisted`, so they
+   * must be stripped before submit (`toWireOverride` in `bulk-wizard.tsx`) -
+   * leaving one on rejects the whole request (#1934/F15). They are not
+   * "ignored" server-side; they are fatal.
    */
   pricingPolicy?: PricingPolicy;
   stockPolicy?: StockPolicy;

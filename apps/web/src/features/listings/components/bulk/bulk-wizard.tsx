@@ -380,7 +380,16 @@ export function BulkWizard({
             excludedVariantIds.push(v.variantId);
             continue;
           }
-          if (v.blockers.length > 0) continue;
+          if (v.blockers.length > 0) {
+            // A blocked-but-included sibling must be EXCLUDED, not merely
+            // skipped (#1934/F13). Skipping alone leaves it in neither map, and
+            // the backend then re-expands it as a sibling with no per-variant
+            // override at all - so it reaches the builder with no price and
+            // fails the very gate the wizard blocked it for. `canApprove` is a
+            // `disabled` attribute, not a guard, so this is the only real fence.
+            excludedVariantIds.push(v.variantId);
+            continue;
+          }
           perVariantOverrides[v.variantId] = buildVariantOverride(v, config, rowPricingPolicy, rowStockPolicy);
         }
         if (includedReady.length === 0) continue;
@@ -409,7 +418,7 @@ export function BulkWizard({
           familyOverride.price ||
           familyOverride.publishImmediately !== undefined
         ) {
-          perProductOverrides[primaryId] = familyOverride;
+          perProductOverrides[primaryId] = toWireOverride(familyOverride);
         }
       }
 
@@ -759,6 +768,23 @@ function reblockRows(
  * price/stock. `pricingPolicy` / `stockPolicy` are the ROW-effective policies
  * (the product's shared-base override wins over the batch default, #1741).
  */
+/**
+ * Drop the FE-only resolution inputs before an override goes on the wire
+ * (#1934/F15).
+ *
+ * `pricingPolicy` / `stockPolicy` exist so the editor can express "this product
+ * diverges from the batch policy"; the wizard resolves them into concrete
+ * price/stock here. The API's per-override DTO declares only
+ * `stock` / `publishImmediately` / `price` / `overrides` and validates each map
+ * value with `forbidNonWhitelisted`, so leaving either field on the payload
+ * rejects the WHOLE request with `property pricingPolicy should not exist` -
+ * after the wizard has already shown the row as ready.
+ */
+function toWireOverride(override: BulkPerProductOverride): BulkPerProductOverride {
+  const { pricingPolicy: _pricingPolicy, stockPolicy: _stockPolicy, ...wire } = override;
+  return wire;
+}
+
 function buildVariantOverride(
   variant: BulkVariantRow,
   config: BulkWizardConfig,
@@ -767,7 +793,7 @@ function buildVariantOverride(
 ): BulkPerProductOverride {
   const price = computeResolvedPrice(pricingPolicy, variant.masterPrice, variant.override);
   const stock = computeResolvedStock(stockPolicy, variant.masterStock, variant.override);
-  return {
+  return toWireOverride({
     ...variant.override,
     stock: stock.value ?? undefined,
     price:
@@ -782,7 +808,7 @@ function buildVariantOverride(
         variant.override.overrides?.productCardId ?? variant.resolvedProductCardId ?? undefined,
       ...(effectiveVariantEan(variant) ? { ean: effectiveVariantEan(variant)! } : {}),
     },
-  };
+  });
 }
 
 interface BatchCounts {

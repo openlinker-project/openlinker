@@ -24,6 +24,7 @@ import {
   computeResolvedPrice,
   computeResolvedStock,
   distinguishingLabel,
+  duplicateEanVariantIds,
   effectivePricingPolicy,
   effectiveStockPolicy,
 } from './bulk-policy';
@@ -135,8 +136,20 @@ export function BulkReviewStep({
   const [pendingScroll, setPendingScroll] = useState<string | null>(null);
 
   const counts = useMemo(() => countBatch(rows), [rows]);
+
+  // Batch-wide effective-EAN collision (#1934/F7). `enforceIdentifierRules`
+  // server-side throws `DuplicateBatchEanException` -> 400 for the WHOLE
+  // request, so this has to gate submit, not merely warn: the operator would
+  // otherwise get a rejection naming two variant ids nothing ever flagged.
+  // Until now the helper only ever ran on a single row inside the editor,
+  // so a cross-product collision was structurally invisible.
+  const duplicateEanIds = useMemo(() => duplicateEanVariantIds(rows), [rows]);
+
   const canApprove =
-    counts.includedReady > 0 && counts.includedNeedsAttention === 0 && !paramsResolving;
+    counts.includedReady > 0 &&
+    counts.includedNeedsAttention === 0 &&
+    duplicateEanIds.size === 0 &&
+    !paramsResolving;
 
   const filteredRows = useMemo(() => {
     const needle = filter.trim().toLowerCase();
@@ -292,10 +305,23 @@ export function BulkReviewStep({
       </div>
 
       <div
-        className={counts.includedNeedsAttention === 0 ? 'bulk-review__banner bulk-review__banner--ok' : 'bulk-review__banner'}
+        className={
+          counts.includedNeedsAttention === 0 && duplicateEanIds.size === 0
+            ? 'bulk-review__banner bulk-review__banner--ok'
+            : 'bulk-review__banner'
+        }
         role="status"
       >
-        {counts.includedNeedsAttention === 0 ? (
+        {duplicateEanIds.size > 0 ? (
+          <>
+            <b>
+              {duplicateEanIds.size} included variants share a barcode with another variant in
+              this batch.
+            </b>{' '}
+            The marketplace treats them as one product identity and the submit is rejected
+            whole - give each one its own EAN, or switch the duplicates off.
+          </>
+        ) : counts.includedNeedsAttention === 0 ? (
           <>
             <b>All included variants are ready.</b> {counts.includedReady} offers will be created;
             the marketplace groups each product's variants into one listing.

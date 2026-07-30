@@ -50,13 +50,33 @@ beforeAll(() => {
   }
 });
 
+/**
+ * Build a DISTINCT, checksum-valid EAN-13 per variant id.
+ *
+ * Every variant used to share one hardcoded barcode, which the backend would
+ * reject outright (`enforceIdentifierRules` throws `DuplicateBatchEanException`
+ * when one identifier covers more than one included variant), and which the
+ * batch-wide duplicate gate now blocks client-side too (#1934/F7). Deriving a
+ * unique code per id keeps the fixture representative of a submittable batch.
+ */
+function eanFor(id: string): string {
+  let seed = 0;
+  for (const ch of id) seed = (seed * 31 + ch.charCodeAt(0)) % 1_000_000;
+  const body = `590${String(seed).padStart(9, '0')}`;
+  let sum = 0;
+  for (let i = body.length - 1, pos = 0; i >= 0; i--, pos++) {
+    sum += Number(body[i]) * (pos % 2 === 0 ? 3 : 1);
+  }
+  return `${body}${(10 - (sum % 10)) % 10}`;
+}
+
 function variantRow(id: string, blockers: BulkRowBlocker[] = [], over: Partial<BulkVariantRow> = {}): BulkVariantRow {
   const variant = {
     id,
     productId: 'prod_1',
     sku: id,
     attributes: { Rozmiar: id },
-    ean: '5901234123457',
+    ean: eanFor(id),
     gtin: null,
     price: 39,
   } as unknown as ProductVariant;
