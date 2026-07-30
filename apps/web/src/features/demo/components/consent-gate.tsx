@@ -1,14 +1,18 @@
 /**
  * Consent Gate
  *
- * Body of the `/consent` page (#1938): the one place an existing demo account
- * can agree to session recording, or leave. Deliberately a page rather than a
- * modal — a modal can be removed from the DOM and clicked past, and the API
- * would then answer 403 to everything the account tried.
+ * Body of the `/consent` page (#1938): where an account created before session
+ * recording became a condition of the demo accepts that condition, or leaves.
+ * Deliberately a page rather than a modal — a modal can be removed from the DOM
+ * and clicked past, and the API would then answer 403 to everything the account
+ * tried.
  *
- * Two outcomes only. "Agree and continue" persists consent, re-mints the access
- * token so the new claim reaches `AnalyticsConsentGuard`, and returns to the
- * path the visitor was originally heading for. "Sign out" clears the session.
+ * The copy states a condition rather than asking for consent, matching the
+ * registration notice: recording is how the free demo pays for itself, and
+ * declining means not using the demo. "Continue" records the acceptance,
+ * re-mints the access token so the flag reaches `AnalyticsConsentGuard`, and
+ * returns to the path the visitor was originally heading for. "Sign out" clears
+ * the session.
  *
  * @module features/demo/components
  */
@@ -39,7 +43,7 @@ export function ConsentGate(): ReactElement {
   const mutation = useUpdateAnalyticsConsentMutation();
   const nextPath = resolveNextPath(searchParams.get('next'));
 
-  const handleAgree = async (): Promise<void> => {
+  const handleAccept = async (): Promise<void> => {
     try {
       await mutation.mutateAsync({ analyticsConsent: true });
       void navigate(nextPath, { replace: true });
@@ -55,15 +59,15 @@ export function ConsentGate(): ReactElement {
 
   return (
     <div className="demo-consent">
-      <h1 className="demo-consent__title">We record demo sessions now</h1>
+      <h1 className="demo-consent__title">Demo sessions are recorded</h1>
       <p className="demo-consent__copy">
-        Session recording became part of the demo since your last visit. We watch how the demo gets
-        used to see where the product gets confusing. Passwords are never recorded, and the demo only
-        holds made-up data.
+        Recording became part of the demo since your last visit. It is how we see where the product
+        gets confusing, and it is a condition of using the demo — continuing accepts it. Passwords
+        are never recorded, and the demo only holds made-up data.
       </p>
 
       {mutation.error ? (
-        <Alert tone="error" title="Could not save your choice">
+        <Alert tone="error" title="Could not save that">
           {mutation.error.message}
         </Alert>
       ) : null}
@@ -79,12 +83,12 @@ export function ConsentGate(): ReactElement {
         <Button tone="ghost" onClick={() => void handleSignOut()} disabled={mutation.isPending}>
           Sign out
         </Button>
-        <Button tone="primary" onClick={() => void handleAgree()} disabled={mutation.isPending}>
-          {mutation.isPending ? 'Saving…' : 'Agree and continue'}
+        <Button tone="primary" onClick={() => void handleAccept()} disabled={mutation.isPending}>
+          {mutation.isPending ? 'Saving…' : 'Continue'}
         </Button>
       </div>
 
-      <p className="demo-consent__fineprint">Nothing is recorded until you agree.</p>
+      <p className="demo-consent__fineprint">Recording starts when you continue.</p>
     </div>
   );
 }

@@ -36,12 +36,20 @@ describe('resolveNextPath', () => {
 describe('ConsentGate', () => {
   afterEach(cleanup);
 
-  it('should offer exactly two ways forward: agree, or sign out', () => {
+  it('should offer exactly two ways forward: continue, or sign out', () => {
     renderGate('');
 
-    expect(screen.getByRole('button', { name: /agree and continue/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^continue$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /sign out/i })).toBeInTheDocument();
     expect(screen.getAllByRole('button')).toHaveLength(2);
+  });
+
+  it('should state the condition rather than ask for consent (#1938)', () => {
+    renderGate('');
+
+    expect(screen.getByText(/demo sessions are recorded/i)).toBeInTheDocument();
+    expect(screen.getByText(/condition of using the demo/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /agree/i })).not.toBeInTheDocument();
   });
 
   it('should disclose what is recorded behind a collapsed summary', async () => {
@@ -52,12 +60,12 @@ describe('ConsentGate', () => {
     expect(screen.getByText(/text you type, except passwords/i)).toBeInTheDocument();
   });
 
-  it('should persist consent and return to the originally requested path', async () => {
+  it('should record the acceptance and return to the originally requested path', async () => {
     const updateAnalyticsConsent = vi.fn().mockResolvedValue({ analyticsConsent: true });
     const apiClient = createMockApiClient({ auth: { updateAnalyticsConsent } });
 
     renderGate('?next=%2Forders', apiClient);
-    await userEvent.click(screen.getByRole('button', { name: /agree and continue/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
     await waitFor(() => expect(screen.getByText('Orders page')).toBeInTheDocument());
     expect(updateAnalyticsConsent).toHaveBeenCalledWith({ analyticsConsent: true });
@@ -69,7 +77,7 @@ describe('ConsentGate', () => {
     });
 
     renderGate('?next=%2Forders', apiClient);
-    await userEvent.click(screen.getByRole('button', { name: /agree and continue/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
     expect(await screen.findByText(/network down/i)).toBeInTheDocument();
     expect(screen.queryByText('Orders page')).not.toBeInTheDocument();

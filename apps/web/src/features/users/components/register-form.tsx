@@ -14,18 +14,14 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Link } from 'react-router-dom';
 import { useRegisterMutation } from '../hooks/use-register-mutation';
-import {
-  ANALYTICS_CONSENT_REQUIRED_MESSAGE,
-  registerFormSchema,
-  type RegisterFormValues,
-} from './register-form.schema';
+import { registerFormSchema, type RegisterFormValues } from './register-form.schema';
 import { ApiError } from '../../../shared/api/api-error';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
-import { MarketingTrackingFootnote } from '../../demo';
+import { MarketingTrackingFootnote, SessionRecordingBullets } from '../../demo';
 
 interface RegisterFormProps {
   demoMode?: boolean;
@@ -45,26 +41,12 @@ export function RegisterForm({
       email: '',
       password: '',
       confirmPassword: '',
-      // Ticked by default (#1938): on the demo, session recording is the only
-      // allowed state of this form. The disclosure below keeps it out of the
-      // foreground without hiding it — the fine print under the submit button
-      // states it plainly, so consent stays informed.
-      analyticsConsent: true,
     },
     resolver: zodResolver(registerFormSchema),
   });
 
-  const analyticsConsent = form.watch('analyticsConsent');
-  // Derived from the live value rather than from `formState.errors`, which
-  // (with the default `onSubmit` mode) would only populate after a rejected
-  // submit. The schema carries the same rule as the authoritative gate.
-  const consentError =
-    demoMode && analyticsConsent !== true ? ANALYTICS_CONSENT_REQUIRED_MESSAGE : undefined;
-
-  // The consent error renders inside its own box, so it is filtered out here —
-  // otherwise the same sentence appears twice on the card (#1938).
-  const validationMessages = Object.entries(form.formState.errors).flatMap(([field, error]) =>
-    field !== 'analyticsConsent' && error?.message ? [String(error.message)] : []
+  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
+    error?.message ? [String(error.message)] : []
   );
 
   if (submitted) {
@@ -88,9 +70,13 @@ export function RegisterForm({
     );
   }
 
-  const onSubmit = form.handleSubmit(async ({ username, email, password, analyticsConsent }) => {
+  const onSubmit = form.handleSubmit(async ({ username, email, password }) => {
     try {
-      await register.mutateAsync({ username, email, password, analyticsConsent });
+      // Session recording is a condition of the demo, not a choice on this form
+      // (#1938): creating the account is the acceptance, and the notice under
+      // the submit button is where it is disclosed. Outside demo mode nothing
+      // records, so nothing is accepted.
+      await register.mutateAsync({ username, email, password, analyticsConsent: demoMode });
       setSubmitted(true);
     } catch {
       return;
@@ -167,64 +153,23 @@ export function RegisterForm({
         />
       </FormField>
 
-      {demoMode ? (
-        /* Held open while consent is off, so the error inside can never be
-           collapsed out of sight (#1938). */
-        <details className="guest-form__disclosure" open={analyticsConsent !== true || undefined}>
-          <summary>Privacy and session recording</summary>
-          <div className="guest-form__disclosure-body">
-            <label
-              className={[
-                'guest-form__consent',
-                consentError ? 'guest-form__consent--invalid' : '',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-            >
-              <input
-                type="checkbox"
-                aria-invalid={consentError ? true : undefined}
-                {...form.register('analyticsConsent')}
-              />
-              <span className="guest-form__consent-text">
-                <strong>Record my demo session</strong>
-                {/* Keep in step with the masking config in
-                    features/demo/lib/init-demo-integrations.ts — #1878 narrowed
-                    it to passwords only, so any "all inputs masked" wording
-                    would be a false claim on the signup path (#1882). */}
-                <span className="guest-form__consent-hint">
-                  We watch how the demo gets used to see where the product gets confusing. That is
-                  the whole reason it is free.
-                </span>
-                {consentError ? (
-                  <span className="guest-form__consent-error" role="alert">
-                    {consentError}
-                  </span>
-                ) : null}
-              </span>
-            </label>
-            <ul className="guest-form__disclosure-list">
-              <li>Pages you open and buttons you click</li>
-              <li>Text you type, except passwords</li>
-              <li>Your browser, screen size, and rough location from your IP</li>
-              <li>Nothing real. Every store, order, and invoice in the demo is made up.</li>
-            </ul>
-          </div>
-        </details>
-      ) : null}
-
-      <Button
-        type="submit"
-        tone="primary"
-        disabled={register.isPending || (demoMode && analyticsConsent !== true)}
-      >
+      <Button type="submit" tone="primary" disabled={register.isPending}>
         {register.isPending ? 'Submitting…' : demoMode ? 'Start exploring →' : 'Request access'}
       </Button>
 
       {demoMode ? (
-        <p className="guest-form__consent-fineprint">
-          Demo accounts have session recording on. Passwords are never recorded.
-        </p>
+        <div className="guest-form__recording-notice">
+          <p>
+            Demo sessions are recorded. By creating an account you accept this. Passwords are never
+            recorded.
+          </p>
+          <details className="guest-form__disclosure">
+            <summary>What we record</summary>
+            <div className="guest-form__disclosure-body">
+              <SessionRecordingBullets />
+            </div>
+          </details>
+        </div>
       ) : null}
 
       <p className="guest-form__footer-link">

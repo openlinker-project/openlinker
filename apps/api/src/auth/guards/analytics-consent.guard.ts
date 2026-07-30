@@ -1,9 +1,9 @@
 /**
  * Analytics Consent Guard
  *
- * On a demo-mode instance, consent to session recording is a condition of
- * using the demo (#1938) — so it is enforced here, once, for every route,
- * rather than in each controller. Registered as the third APP_GUARD in
+ * On a demo-mode instance, session recording is a condition of using the demo
+ * (#1938) — so acceptance of it is enforced here, once, for every route, rather
+ * than in each controller. Registered as the third APP_GUARD in
  * AuthModule (runs after JwtAuthGuard and RolesGuard, so `req.user` is already
  * resolved).
  *
@@ -12,16 +12,16 @@
  * the read-only demo banner uses (#1468).
  *
  * Two routes carry `@SkipAnalyticsConsent()` — `GET /auth/me` (the frontend
- * reads consent from it) and `PATCH /auth/me/analytics-consent` (it grants
- * consent). `POST /auth/refresh`, `POST /auth/logout`, and `GET /system/config`
+ * reads the flag from it) and `PATCH /auth/me/analytics-consent` (it records the
+ * acceptance). `POST /auth/refresh`, `POST /auth/logout`, and `GET /system/config`
  * need no decorator: they are `@Public()`, so no session principal is attached
  * and the `!user` branch below lets them through.
  *
- * The consent flag rides on the JWT payload rather than being read from the
+ * The acceptance flag rides on the JWT payload rather than being read from the
  * database per request — `JwtStrategy` is deliberately stateless. A token
  * minted before the claim existed (or before consent was given) reads as no
- * consent, which fails closed; the frontend's consent page re-mints the token
- * after writing, so the stale state resolves in one round-trip.
+ * acceptance, which fails closed; the frontend's `/consent` page re-mints the
+ * token after writing, so the stale state resolves in one round-trip.
  *
  * @module apps/api/src/auth/guards
  */
@@ -76,7 +76,7 @@ export class AnalyticsConsentGuard implements CanActivate {
 
     throw new ForbiddenException({
       code: ANALYTICS_CONSENT_REQUIRED_CODE,
-      message: 'Agree to session recording to use the demo.',
+      message: 'Demo accounts must accept session recording.',
     });
   }
 }

@@ -2,14 +2,32 @@
  * Add User analyticsConsent Migration
  *
  * Adds `analytics_consent` (boolean) to `users` (#1743). Captures, at
- * registration time, the account's consent to demo session recording
- * (PostHog) — replacing the old post-login banner prompt.
+ * registration time, whether demo session recording (PostHog) applies to the
+ * account — replacing the old post-login banner prompt.
  *
- * Defaults `false`, so every pre-existing row backfills to "not consented":
- * no account has recording enabled without an active choice. #1938 later made
- * that consent a condition of using the demo (required to register; an older
- * account without it is sent to `/consent` to agree or sign out) — deliberately
- * NOT a data backfill, so the flag still only ever flips on a real choice.
+ * WHAT THE COLUMN MEANS CHANGED IN #1938 — read this before reasoning about it.
+ *
+ * As shipped in #1743 it recorded **consent**: analytics was optional, and the
+ * legal basis was consent under GDPR Art. 6(1)(a), which is why the box shipped
+ * unchecked (a pre-ticked box is not valid consent — CJEU Planet49, C-673/17)
+ * and why Settings offered a withdrawal toggle (Art. 7(3)).
+ *
+ * #1938 made recording a **condition of using the free demo** instead, and the
+ * column now records **acceptance of that condition**, not consent: the
+ * registration form discloses recording and creating the account accepts it,
+ * `/consent` collects the same acceptance from accounts created earlier, and the
+ * demo is refused without it. Planet49's pre-ticked-box holding is therefore no
+ * longer the operative test — there is no consent construct left to weaken, and
+ * correspondingly no in-product withdrawal (declining means not using the demo,
+ * which carries no detriment: the demo is free, optional, and runs only on
+ * synthetic data). The alternative — keeping the consent basis, an unticked box,
+ * and a withdrawal path — was considered and rejected in review on #1945,
+ * because a consent that cannot be declined without losing access is not freely
+ * given, and dressing the condition as a choice is what created the exposure.
+ *
+ * Two things deliberately did NOT change: the default stays `false`, so every
+ * pre-existing row reads as "not accepted", and #1938 ships **no data
+ * backfill** — the flag still only ever flips when someone actually accepts.
  *
  * Column name is snake_case (`analytics_consent`) to match the users table's
  * existing explicit-name columns (`password_hash`, `created_at`); the ORM

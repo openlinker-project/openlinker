@@ -9,11 +9,12 @@ an event is added, renamed, or removed.
 
 Events only fire on a demo-mode build (`OL_DEMO_MODE=true`) with PostHog
 configured (env vars or the `/settings` panel) **and** the signed-in account
-has consented to session recording. Since #1938 that consent is a condition of
-using the demo (required at registration, collected on `/consent` for older
-accounts) and it lives on `users.analytics_consent` — the browser no longer
-carries a consent flag of its own. On a normal self-hosted install, none of
-this code path runs.
+has accepted session recording. Since #1938 recording is a **condition of using
+the demo** rather than an optional consent: the registration form discloses it
+and creating the account accepts it, `/consent` collects the same acceptance from
+accounts created earlier, and the API refuses a demo `viewer` without it. The
+flag lives on `users.analytics_consent`; the browser no longer carries one of its
+own. On a normal self-hosted install, none of this code path runs.
 
 ## Enabling event groups (#1787)
 

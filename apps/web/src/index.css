@@ -13908,38 +13908,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   color: var(--status-info-fg);
 }
 
-/* ── Registration analytics consent (#1743) ── */
-
-.guest-form__consent {
-  display: flex;
-  gap: var(--space-2);
-  align-items: flex-start;
-  margin: 0 0 var(--space-3);
-  padding: var(--space-3);
-  background: var(--bg-surface-muted);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-}
-
-.guest-form__consent input[type='checkbox'] {
-  margin-top: 2px;
-  flex: none;
-  accent-color: var(--accent-primary);
-}
-
-.guest-form__consent-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 12px;
-  color: var(--text-primary);
-}
-
-.guest-form__consent-hint {
-  color: var(--text-secondary);
-}
-
 /* ── Marketing-tracking disclosure footnote (#1892) ──
    Deliberately the least visually prominent thing on the card: no box, no
    icon, no eyebrow label — a single line of fine print reading as boilerplate
@@ -13953,11 +13921,11 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   text-align: center;
 }
 
-/* ── Consent disclosure + consent page (#1938) ──
-   The registration consent control moves behind a quiet disclosure: consent is
-   required, so the form no longer asks the visitor to decide anything, and the
-   detail is one click away for whoever wants it. The visible fine print under
-   the submit button is what keeps the consent informed. */
+/* ── Recording notice + consent page (#1938) ──
+   Session recording is a condition of the demo, not a choice on the form, so
+   registration carries a plain notice under the submit button plus a quiet
+   "what we record" disclosure — no checkbox, no validation state. The same
+   disclosure treatment is reused on the /consent page. */
 
 .guest-form__disclosure {
   margin: 0 0 var(--space-3);
@@ -14006,7 +13974,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   margin-top: var(--space-2);
 }
 
-.guest-form__disclosure-list,
 .demo-consent__bullets {
   display: flex;
   flex-direction: column;
@@ -14017,22 +13984,18 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   color: var(--text-secondary);
 }
 
-.guest-form__consent--invalid {
-  border-color: var(--status-error-border);
-  background: var(--status-error-soft);
-}
-
-.guest-form__consent-error {
-  color: var(--status-error-strong);
-  font-size: 11.5px;
-}
-
-.guest-form__consent-fineprint {
+.guest-form__recording-notice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
   margin: var(--space-2) 0 0;
   font-size: 11px;
   line-height: 1.5;
   color: var(--text-muted);
-  text-align: center;
+}
+
+.guest-form__recording-notice p {
+  margin: 0;
 }
 
 .demo-consent {

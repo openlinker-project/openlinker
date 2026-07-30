@@ -128,10 +128,13 @@ only activates on an instance where the operator has both set
 install or a local `pnpm demo:up` run never contacts PostHog. When both are
 set, `GET /system/config` surfaces a `demoIntegrations.posthog` block that the
 frontend uses to load `posthog-js` (dynamically, so it never ships in the
-default bundle) — and only for an account that has consented to session
-recording. On a demo instance that consent is a **condition of use** (#1938):
-it is required to register, and an existing account without it is redirected to
-`/consent` (agree, or sign out) and refused by the API until it agrees.
+default bundle) — and only for an account that has accepted session recording.
+On a demo instance recording is a **condition of use, not an optional consent**
+(#1938): the registration form discloses it and creating the account accepts it,
+an account created before the rule is redirected to `/consent` (continue, or sign
+out), and the API refuses every other route for a demo `viewer` until it does.
+Declining means not using the demo — which carries no cost, since the demo is
+free and holds only synthetic data.
 
 | Variable | Purpose |
 |---|---|
@@ -173,7 +176,8 @@ If you need recordings against a realistic dataset, seed it synthetically
 rather than relaxing this rule.
 
 There is no in-product opt-out (#1938): the Settings tile and the banner's
-"Disable" affordance were removed when consent became a condition of use.
+"Disable" affordance were removed when recording became a condition of use, and
+the acceptance is not a consent that Art. 7(3) withdrawal attaches to.
 Servicing a withdrawal request means calling
 `PATCH /auth/me/analytics-consent` with `false` for that account and deleting
 the recording in PostHog — the account cleanup below removes the OL account,

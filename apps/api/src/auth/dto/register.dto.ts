@@ -39,9 +39,10 @@ export class RegisterDto {
 
   @ApiProperty({
     description:
-      'Consent to demo session recording. Required on a demo-mode instance (#1938) — a ' +
-      'registration carrying `false` is rejected there. Ignored outside demo mode, where the ' +
-      'demo analytics path never runs.',
+      "Acceptance of the demo's session-recording condition (#1938). Must be `true` on a " +
+      'demo-mode instance — recording is a condition of using the demo, disclosed at ' +
+      'registration, so a registration carrying `false` is rejected there. Outside demo mode ' +
+      'nothing records and the flag is stored as given.',
     example: true,
   })
   @IsBoolean()

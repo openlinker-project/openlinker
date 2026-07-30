@@ -65,9 +65,9 @@ export class RegistrationService implements IRegistrationService {
     }
 
     const demoMode = this.demoModeService.isDemoModeEnabled();
-    // Consent is a condition of holding a demo account (#1938). The browser
-    // enforces it too, but that check is trivially bypassable — a direct POST
-    // must not be able to create an unrecorded demo account.
+    // Session recording is a condition of holding a demo account (#1938), and
+    // the registration form discloses it rather than asking. A direct POST must
+    // not be able to create an unrecorded demo account.
     if (demoMode && analyticsConsent !== true) {
       throw new AnalyticsConsentRequiredException();
     }

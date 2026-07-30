@@ -6,13 +6,42 @@
 
 ---
 
+## 0. Decision: this is a condition, not a consent (settled in review on #1945)
+
+The first implementation kept the consent vocabulary and made the checkbox
+required and pre-ticked. Review flagged the contradiction: the code said
+"condition" while the UI said "consent", and the migration comment had dropped
+the CJEU Planet49 citation that previously justified an unticked box rather than
+re-arguing it.
+
+**Settled position: session recording is a condition of using the free demo, and
+`users.analytics_consent` records acceptance of that condition.** The
+registration form discloses it in a line of body copy under the submit button
+(plus a "What we record" disclosure) and creating the account accepts it; there
+is no checkbox, no validation error, and no "Agree" button anywhere. `/consent`
+collects the same acceptance from accounts created before the rule, with
+**Continue** / **Sign out**.
+
+Why not keep the consent basis: a consent that cannot be declined without losing
+access is not freely given, and Art. 7(3) then obliges a withdrawal path as easy
+as giving — which the removal of the Settings tile deleted. Dropping the consent
+framing removes that obligation by not invoking the basis that creates it, and it
+is honest about what the demo actually offers. Declining carries no detriment:
+the demo is free, optional, and runs only on synthetic data (a requirement made
+load-bearing when masking was narrowed to passwords in #1877/#1878 — the two
+changes now depend on each other).
+
+The rejected alternative was: unticked box + a visible "withdraw and delete my
+demo account" affordance in Settings. It is legally the more conservative shape,
+but it reintroduces exactly the friction that left the demo unrecorded.
+
 ## 1. Goal
 
-On a demo-mode instance, an account may only use the demo if it has consented to
-session recording. Consent stops being an optional, ignorable checkbox and becomes
-a condition of entry, enforced server-side. Both product affordances for switching
-analytics off are removed, and `localStorage` stops being a second source of truth
-for consent.
+On a demo-mode instance, an account may only use the demo if it has accepted
+session recording. Recording stops being an optional, ignorable checkbox and
+becomes a condition of entry, enforced server-side. Both product affordances for
+switching analytics off are removed, and `localStorage` stops being a second
+source of truth for the flag.
 
 **Layers touched**: Interface (FE routes/forms, API guard + DTO) and Application
 (`RegistrationService`). No CORE change, no schema change (`users.analytics_consent`
@@ -20,10 +49,11 @@ already exists from #1743, migration `1827000000000`).
 
 ### Non-goals
 
-- No self-service withdrawal path (none exists in the product after this change —
-  follow-up needs a contact address to publish).
-- No SQL backfill of existing accounts: the `/consent` page collects real consent.
-- No change to `captureMarketingLanding` (consent-independent by design).
+- No self-service withdrawal affordance: the acceptance is not a consent that
+  Art. 7(3) attaches to (see § 0). Servicing an erasure request stays a manual
+  runbook over the existing `PATCH` endpoint plus deleting the PostHog recording.
+- No SQL backfill of existing accounts: `/consent` collects a real acceptance.
+- No change to `captureMarketingLanding` (independent of this flag by design).
 - No PostHog-side retention change. Nothing deletes recordings today; no copy may
   claim otherwise.
 
@@ -79,13 +109,14 @@ would have nothing further to assert.
 
 ### Frontend
 
-10. **`register-form.schema.ts`** — `z.literal(true)` with the operator-facing message.
-11. **`register-form.tsx`** — consent moves into a collapsed `<details>`; ticked by
-    default; error rendered inside the consent box only (filtered out of
-    `FormErrorSummary`); submit disabled while unticked; disclosure held open while
-    unticked; fine-print line under the button.
+10. **`register-form.schema.ts`** — the field leaves the form schema entirely: it is
+    not a choice the visitor makes here.
+11. **`register-form.tsx`** — a recording notice under the submit button (body copy +
+    a quiet "What we record" disclosure); the submit handler sends
+    `analyticsConsent: demoMode`. No checkbox, no consent validation, no
+    error state to duplicate.
 12. **`apps/web/src/features/demo/components/consent-gate.tsx`** (new) — the page body
-    (copy, disclosure, Agree / Sign out actions). Lives in `features/demo` because it is
+    (copy, disclosure, Continue / Sign out actions). Lives in `features/demo` because it is
     demo-only and needs the demo copy; exported from the feature barrel.
 13. **`apps/web/src/app/layouts/consent-layout.tsx`** (new) — guest-shaped chrome for an
     *authenticated* session: redirects anonymous → `/login`, and already-consented →
