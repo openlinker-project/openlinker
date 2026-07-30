@@ -340,17 +340,32 @@ test.describe('golden path — full flow (S0-S9)', () => {
       // every multi-variant product. Read the price off the variation matching
       // the primary variant instead, and keep the parent comparison for the
       // simple-product shape.
-      let wcPrice = wcProduct!.price ?? undefined;
-      if (wcProduct!.type === 'variable') {
-        const variations = await wc.getProductVariations(wcProduct!.id);
-        const match =
-          (wcSku ? variations.find((v) => v.sku === wcSku) : undefined) ?? variations[0];
-        wcPrice = match?.price ?? undefined;
-        expect(
-          variations.length,
-          'a variable WooCommerce parent exposes one variation per OL sibling',
-        ).toBeGreaterThan(0);
-      }
+      //
+      // Poll for the price rather than reading it once: WooCommerce returns the
+      // product as soon as it exists, but its computed `price` field lags the
+      // create by a moment and comes back empty (which the view maps to null).
+      // A single read therefore raced the publish and failed on a price that
+      // was populated seconds later.
+      const wcPrice = await poll.until(
+        async () => {
+          if (wcProduct!.type !== 'variable') {
+            return (await wc.getProduct(String(wcProduct!.id))).price ?? undefined;
+          }
+          const variations = await wc.getProductVariations(wcProduct!.id);
+          expect(
+            variations.length,
+            'a variable WooCommerce parent exposes one variation per OL sibling',
+          ).toBeGreaterThan(0);
+          const match =
+            (wcSku ? variations.find((v) => v.sku === wcSku) : undefined) ?? variations[0];
+          return match?.price ?? undefined;
+        },
+        (price) => price !== undefined && price !== '',
+        {
+          message: `the published product "${state.product!.name}" to carry a price on WooCommerce`,
+          timeoutMs: 60_000,
+        },
+      );
       assertProductFieldParity({
         label: 'OL↔WC product',
         expected: { name: state.product!.name, price: state.product!.price ?? undefined },
