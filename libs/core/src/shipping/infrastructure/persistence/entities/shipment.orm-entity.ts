@@ -107,6 +107,11 @@ export class ShipmentOrmEntity {
   @Column({ type: 'text', nullable: true })
   errorMessage!: string | null;
 
+  // Structured rejection-code discriminator (#1918) — see the domain entity
+  // for the full rationale.
+  @Column({ type: 'text', nullable: true })
+  providerCode!: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

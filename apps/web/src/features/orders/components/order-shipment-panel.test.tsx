@@ -89,6 +89,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     cancelledAt: null,
     failedAt: null,
     errorMessage: null,
+    providerCode: null,
     createdAt: '2026-05-28T10:00:00.000Z',
     updatedAt: '2026-05-28T11:00:00.000Z',
     ...overrides,

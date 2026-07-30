@@ -48,6 +48,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.sourceDeliveryMethodId ?? 'allegro-method',
     overrides.carrier ?? null,
     overrides.deliveryIntent ?? null,
+    overrides.providerCode ?? null,
   );
 }
 

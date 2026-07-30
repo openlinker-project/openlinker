@@ -33,6 +33,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     cancelledAt: null,
     failedAt: '2026-07-24T09:12:00.000Z',
     errorMessage: 'NOT_PROCESSED — sender postcode "22-213" invalid',
+    providerCode: null,
     createdAt: '2026-07-24T09:11:00.000Z',
     updatedAt: '2026-07-24T09:12:00.000Z',
     ...overrides,
@@ -67,6 +68,32 @@ describe('ShipmentRowDetail — failed', () => {
     expect(screen.getByText(REDACTED_ERROR_MESSAGE)).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Review connection settings' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Regenerate label' })).not.toBeInTheDocument();
+  });
+
+  it('shows providerCode + retryability for BOTH admin and viewer sessions (#1918 — not redacted)', () => {
+    const shipment = makeShipment({ providerCode: 'preflight.missing-parcel-template' });
+
+    const { unmount } = renderWithProviders(
+      <ShipmentRowDetail shipment={shipment} canWrite canReviewConnection />,
+      { apiClient },
+    );
+    expect(screen.getByText(/preflight\.missing-parcel-template/)).toBeInTheDocument();
+    expect(screen.getByText(/Needs a fix before retrying/)).toBeInTheDocument();
+    unmount();
+
+    renderWithProviders(
+      <ShipmentRowDetail shipment={shipment} canWrite={false} canReviewConnection={false} />,
+      { apiClient },
+    );
+    expect(screen.getByText(/preflight\.missing-parcel-template/)).toBeInTheDocument();
+  });
+
+  it('omits the Rejection code field when providerCode is null', () => {
+    renderWithProviders(
+      <ShipmentRowDetail shipment={makeShipment({ providerCode: null })} canWrite canReviewConnection />,
+      { apiClient },
+    );
+    expect(screen.queryByText('Rejection code')).not.toBeInTheDocument();
   });
 });
 
