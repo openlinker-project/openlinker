@@ -55,6 +55,16 @@ export class MasterProductSyncHandler implements SyncJobHandler {
         payload.externalId
       );
 
+      // The staleness prune was withheld because a second ProductMaster
+      // connection claims the same internal product id (#1904). Not a business
+      // failure on its own - the upserts (or the deletion signal below) still
+      // stand; it needs operator attention, so it is logged with job context.
+      if (result.pruneSkipped) {
+        this.logger.warn(
+          `Master product sync: staleness prune skipped - internal product id claimed by more than one ProductMaster connection (job ${job.id}, connection: ${job.connectionId}, externalId: ${String(payload.externalId)}, internalProductId: ${result.internalProductId})`
+        );
+      }
+
       // A product deleted at the master is a terminal business outcome, not a
       // transient failure — return business_failure so the runner does NOT retry
       // a permanent condition (#1599, ADR-007). The variants were marked stale.

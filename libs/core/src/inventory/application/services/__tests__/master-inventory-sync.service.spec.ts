@@ -5,7 +5,9 @@
  * map-to-domain → upsert-canonical pipeline (one canonical row per variant,
  * #823), the available-quantity fallback derivation, inventory-item ID
  * preservation across upserts, the summed result shape, and failure-mode
- * propagation from each external collaborator.
+ * propagation from each external collaborator, and the connection-ownership
+ * guard (#1904) that withholds both prune paths when a second
+ * InventoryMaster connection claims the same internal product id.
  *
  * Logger is left as-is (class-constructed in the service); the neutral
  * `@openlinker/shared/logging` console default handles output during tests.
@@ -17,7 +19,7 @@
  */
 
 import { MasterInventorySyncService } from '../master-inventory-sync.service';
-import type { IIntegrationsService } from '@openlinker/core/integrations';
+import type { IEntityClaimService, IIntegrationsService } from '@openlinker/core/integrations';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import type { IInventoryService } from '../inventory.service.interface';
 import type {
@@ -38,6 +40,7 @@ describe('MasterInventorySyncService', () => {
   let inventoryAdapter: jest.Mocked<InventoryMasterPort>;
   let productsService: jest.Mocked<Pick<IProductsService, 'getVariantsByProductId'>>;
   let eventPublisher: jest.Mocked<EventPublisherPort>;
+  let entityClaims: jest.Mocked<IEntityClaimService>;
 
   const connectionId = 'connection-123';
   const externalId = 'ext-product-9';
@@ -86,12 +89,19 @@ describe('MasterInventorySyncService', () => {
       publish: jest.fn().mockResolvedValue('msg-1'),
     } as unknown as jest.Mocked<EventPublisherPort>;
 
+    // Default: this connection is the only InventoryMaster claiming the internal
+    // product id, so the ownership guard (#1904) never blocks the prune.
+    entityClaims = {
+      findRivalClaimants: jest.fn().mockResolvedValue([]),
+    } as unknown as jest.Mocked<IEntityClaimService>;
+
     service = new MasterInventorySyncService(
       integrationsService,
       identifierMapping,
       inventoryService,
       productsService as unknown as IProductsService,
-      eventPublisher
+      eventPublisher,
+      entityClaims
     );
   });
 
@@ -137,6 +147,7 @@ describe('MasterInventorySyncService', () => {
         availableQuantity: 9,
         reservedQuantity: 3,
         masterDeleted: false,
+        pruneSkipped: false,
       });
     });
 
@@ -179,6 +190,7 @@ describe('MasterInventorySyncService', () => {
         availableQuantity: 14,
         reservedQuantity: 1,
         masterDeleted: false,
+        pruneSkipped: false,
       });
       // Adapter supplies the per-combination variantIds — no products-service fallback.
       expect(productsService.getVariantsByProductId).not.toHaveBeenCalled();
@@ -349,21 +361,22 @@ describe('MasterInventorySyncService', () => {
       expect(inventoryService.setInventory).not.toHaveBeenCalled();
       expect(eventPublisher.publish).toHaveBeenCalledWith(
         'events.master.deletion',
-        expect.objectContaining({
-          eventType: 'master.product.stale',
-          payloadJson: JSON.stringify({
-            connectionId,
-            internalProductId,
-            variantIds: ['ol_variant_1', 'ol_variant_2'],
-          }),
-        })
+        expect.objectContaining({ eventType: 'master.product.stale' })
       );
+      const [, envelope] = eventPublisher.publish.mock.calls[0];
+      expect(JSON.parse(envelope.payloadJson)).toMatchObject({
+        connectionId,
+        internalProductId,
+        variantIds: ['ol_variant_1', 'ol_variant_2'],
+        externalId,
+      });
       expect(result).toEqual({
         internalProductId,
         itemsWritten: 0,
         availableQuantity: 0,
         reservedQuantity: 0,
         masterDeleted: true,
+        pruneSkipped: false,
       });
     });
 
@@ -397,11 +410,15 @@ describe('MasterInventorySyncService', () => {
 
       expect(eventPublisher.publish).toHaveBeenCalledWith(
         'events.master.deletion',
-        expect.objectContaining({
-          eventType: 'master.product.stale',
-          payloadJson: JSON.stringify({ connectionId, internalProductId, variantIds: [] }),
-        })
+        expect.objectContaining({ eventType: 'master.product.stale' })
       );
+      const [, envelope] = eventPublisher.publish.mock.calls[0];
+      expect(JSON.parse(envelope.payloadJson)).toMatchObject({
+        connectionId,
+        internalProductId,
+        variantIds: [],
+        externalId,
+      });
     });
 
     it('rethrows a transient (non-not-found) adapter error unchanged', async () => {
@@ -541,29 +558,11 @@ describe('MasterInventorySyncService', () => {
       expect(payload).toMatchObject({
         connectionId,
         internalProductId,
-        variantIds: ['ol_variant_gone'],
+        variantIds: [],
         externalId,
       });
       expect(typeof payload.correlationId).toBe('string');
       expect(payload.correlationId.length).toBeGreaterThan(0);
-    });
-
-    it('still publishes master.variant.stale when the prune marks a product-level (NULL-variant) row stale, even though variantIds stays empty (#1688)', async () => {
-      inventoryAdapter.listInventory.mockResolvedValue([]);
-      (inventoryService.pruneStaleVariants as jest.Mock).mockResolvedValueOnce({
-        markedCount: 1,
-        variantIds: [],
-      });
-
-      await service.syncFromMasterByExternalId(connectionId, externalId);
-
-      expect(eventPublisher.publish).toHaveBeenCalledWith(
-        'events.master.deletion',
-        expect.objectContaining({
-          eventType: 'master.variant.stale',
-          payloadJson: JSON.stringify({ connectionId, internalProductId, variantIds: [] }),
-        })
-      );
     });
 
     it('does not publish when the prune flags no variant rows', async () => {
@@ -642,7 +641,12 @@ describe('MasterInventorySyncService', () => {
       warnSpy.mockRestore();
     });
 
-    it('publishes master.product.stale for a product-level-row-only prune (markedCount > 0, no distinct variantIds — previously silent)', async () => {
+    // A product-level-row-only prune (markedCount > 0, no distinct variantIds)
+    // emits the VARIANT-level event, not `master.product.stale`: the product
+    // still resolves at the master here, so an empty inventory response must not
+    // be reported as a deletion (#1903). The product-level event is reserved for
+    // the confirmed not-found path — see the `master deletion (#1688)` block.
+    it('publishes master.variant.stale for a product-level-row-only prune (markedCount > 0, no distinct variantIds — previously silent)', async () => {
       inventoryAdapter.listInventory.mockResolvedValue([]);
       (inventoryService.pruneStaleVariants as jest.Mock).mockResolvedValueOnce({
         markedCount: 1,
@@ -653,7 +657,7 @@ describe('MasterInventorySyncService', () => {
 
       expect(eventPublisher.publish).toHaveBeenCalledWith(
         'events.master.deletion',
-        expect.objectContaining({ eventType: 'master.product.stale' })
+        expect.objectContaining({ eventType: 'master.variant.stale' })
       );
     });
   });
@@ -725,6 +729,77 @@ describe('MasterInventorySyncService', () => {
       expect(inventoryService.setInventory).toHaveBeenCalledWith(
         expect.objectContaining({ productVariantId: 'ol_variant_adapter' })
       );
+    });
+  });
+
+  // Connection-ownership guard (#1904): the prune keys on internalProductId
+  // alone, so it is withheld whenever a SECOND connection with InventoryMaster
+  // enabled also claims that id - otherwise one master's not-found (or partial
+  // response) would stale rows the sibling still considers live.
+  describe('rival-master ownership guard (#1904)', () => {
+    const rival = 'connection-rival';
+
+    it('queries the claim service scoped to the product id, the InventoryMaster capability and this connection', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(entityClaims.findRivalClaimants).toHaveBeenCalledWith({
+        entityType: 'Product',
+        internalId: internalProductId,
+        capability: 'InventoryMaster',
+        excludeConnectionId: connectionId,
+      });
+    });
+
+    it('skips the partial prune, emits no event and reports pruneSkipped when a rival InventoryMaster claims the same product id', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([
+        {
+          id: 'inv-a',
+          productId: internalProductId,
+          variantId: 'ol_variant_a',
+          quantity: 4,
+          reserved: 0,
+          available: 4,
+          updatedAt: new Date('2026-05-01T10:00:00Z'),
+        },
+      ]);
+      entityClaims.findRivalClaimants.mockResolvedValue([rival]);
+
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      // Canonical writes still run - only the destructive sweep is withheld.
+      expect(inventoryService.setInventory).toHaveBeenCalledTimes(1);
+      expect(inventoryService.pruneStaleVariants).not.toHaveBeenCalled();
+      expect(eventPublisher.publish).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        internalProductId,
+        itemsWritten: 1,
+        availableQuantity: 4,
+        reservedQuantity: 0,
+        masterDeleted: false,
+        pruneSkipped: true,
+      });
+    });
+
+    it('skips the deletion prune, emits no event and still reports masterDeleted when a rival InventoryMaster claims the same product id', async () => {
+      inventoryAdapter.listInventory.mockRejectedValueOnce(
+        new MasterProductNotFoundError(internalProductId, connectionId)
+      );
+      entityClaims.findRivalClaimants.mockResolvedValue([rival]);
+
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.pruneStaleVariants).not.toHaveBeenCalled();
+      expect(eventPublisher.publish).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        internalProductId,
+        itemsWritten: 0,
+        availableQuantity: 0,
+        reservedQuantity: 0,
+        masterDeleted: true,
+        pruneSkipped: true,
+      });
     });
   });
 });

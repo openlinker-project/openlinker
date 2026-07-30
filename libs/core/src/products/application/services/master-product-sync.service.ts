@@ -9,7 +9,12 @@
 
 import { randomUUID } from 'node:crypto';
 import { Injectable, Inject } from '@nestjs/common';
-import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import {
+  IIntegrationsService,
+  INTEGRATIONS_SERVICE_TOKEN,
+  IEntityClaimService,
+  ENTITY_CLAIM_SERVICE_TOKEN,
+} from '@openlinker/core/integrations';
 import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { EventPublisherPort, EVENT_PUBLISHER_TOKEN } from '@openlinker/core/events';
 import { PRODUCTS_SERVICE_TOKEN } from '../../products.tokens';
@@ -44,7 +49,9 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly productsService: IProductsService,
     @Inject(EVENT_PUBLISHER_TOKEN)
-    private readonly eventPublisher: EventPublisherPort
+    private readonly eventPublisher: EventPublisherPort,
+    @Inject(ENTITY_CLAIM_SERVICE_TOKEN)
+    private readonly entityClaims: IEntityClaimService
   ) {}
 
   async syncFromMasterByExternalId(
@@ -104,22 +111,33 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     // authoritative signal — so here we only prune when the master actually
     // enumerated variants, and skip (with a warning) on an empty response.
     let markedStale: string[] = [];
+    let pruneSkipped = false;
     if (variants.length > 0) {
-      markedStale = await this.productsService.markVariantsStaleExcept(
-        internalProductId,
-        variants.map((v) => v.id)
+      // The prune is connection-blind (it keys on internalProductId alone), so
+      // it is only safe while this connection is the sole ProductMaster claiming
+      // that id (#1904).
+      pruneSkipped = await this.isPruneBlockedByRivalMaster(
+        connectionId,
+        externalId,
+        internalProductId
       );
-      if (markedStale.length > 0) {
-        this.logger.warn(
-          `Master product sync marked variants stale (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, correlationId: ${correlationId}, markedStale=${markedStale.length})`
-        );
-        await this.publishDeletionEvent(false, {
-          connectionId,
+      if (!pruneSkipped) {
+        markedStale = await this.productsService.markVariantsStaleExcept(
           internalProductId,
-          variantIds: markedStale,
-          externalId,
-          correlationId,
-        });
+          variants.map((v) => v.id)
+        );
+        if (markedStale.length > 0) {
+          this.logger.warn(
+            `Master product sync marked variants stale (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, correlationId: ${correlationId}, markedStale=${markedStale.length})`
+          );
+          await this.publishDeletionEvent(false, {
+            connectionId,
+            internalProductId,
+            variantIds: markedStale,
+            externalId,
+            correlationId,
+          });
+        }
       }
     } else {
       this.logger.warn(
@@ -128,13 +146,14 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     }
 
     this.logger.debug(
-      `Master product sync complete (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, correlationId: ${correlationId}, variants: ${variants.length}, markedStale=${markedStale.length})`
+      `Master product sync complete (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, correlationId: ${correlationId}, variants: ${variants.length}, markedStale=${markedStale.length}, pruneSkipped=${pruneSkipped})`
     );
 
     return {
       internalProductId,
       variantsUpserted: variants.length,
       masterDeleted: false,
+      pruneSkipped,
     };
   }
 
@@ -149,6 +168,17 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     internalProductId: string,
     correlationId: string
   ): Promise<MasterProductSyncResult> {
+    // Same guard as the partial-prune path: a 404 from ONE master must not stale
+    // rows a sibling ProductMaster still considers live (#1904).
+    if (await this.isPruneBlockedByRivalMaster(connectionId, externalId, internalProductId)) {
+      return {
+        internalProductId,
+        variantsUpserted: 0,
+        masterDeleted: true,
+        pruneSkipped: true,
+      };
+    }
+
     const markedStale = await this.productsService.markVariantsStaleExcept(internalProductId, []);
     if (markedStale.length > 0) {
       await this.publishDeletionEvent(true, {
@@ -166,7 +196,40 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       internalProductId,
       variantsUpserted: 0,
       masterDeleted: true,
+      pruneSkipped: false,
     };
+  }
+
+  /**
+   * Connection-ownership guard for the staleness prune (#1904).
+   *
+   * `product_variants` carries no connection provenance, so a prune keyed on the
+   * internal product id sweeps every variant of that id regardless of which
+   * connection wrote it. That is safe only while ONE connection with
+   * `ProductMaster` enabled claims the id - the normal case, since
+   * `getOrCreateInternalId` namespaces per `(entityType, externalId,
+   * connectionId)`. If a second capable claimant exists, the prune cannot be
+   * attributed, so it is withheld (never staling a sibling's live rows) and the
+   * condition is logged for operator intervention.
+   */
+  private async isPruneBlockedByRivalMaster(
+    connectionId: string,
+    externalId: string,
+    internalProductId: string
+  ): Promise<boolean> {
+    const rivals = await this.entityClaims.findRivalClaimants({
+      entityType: CORE_ENTITY_TYPE.Product,
+      internalId: internalProductId,
+      capability: 'ProductMaster',
+      excludeConnectionId: connectionId,
+    });
+    if (rivals.length === 0) {
+      return false;
+    }
+    this.logger.error(
+      `products_prune_skipped_rival_master_connections - internal product id is claimed by more than one ProductMaster connection, so the staleness prune cannot be attributed and was withheld (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, rivals=${rivals.join(',')})`
+    );
+    return true;
   }
 
   /**

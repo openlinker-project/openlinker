@@ -23,6 +23,14 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## A destructive sweep keyed on an internal id alone needs an explicit sole-claimant check, because internal ids are only per-connection by convention
+
+**Context**: The master-sync staleness prunes (`MasterProductSyncService.markVariantsStaleExcept`, `MasterInventorySyncService.pruneStaleVariants`) mark every row of an internal product id stale, keyed on that id and nothing else.
+**Problem**: `getOrCreateInternalId` namespaces per `(entityType, externalId, connectionId)`, so two connections *normally* never converge on one internal id - which made the missing connection scoping look safe and go unnoticed through two features (#1599 products, #1688 inventory). Nothing in the schema or the code enforces it: `product_variants` / `inventory_items` carry no provenance column, so a single converged mapping turns one connection's 404 into a sweep over a sibling connection's live rows, silently and unattributably.
+**Rule**: When a sweep/delete/prune keys on an internal id that is only *conventionally* single-owner, add an explicit sole-claimant check at the call site and **withhold the destructive half** when it fails (log loudly, report it on the result) - do not rely on the id-generation convention alone. Reuse `IEntityClaimService.findRivalClaimants` (`@openlinker/core/integrations`): it reads the claimants via `getExternalIds` and narrows them to connections that actually have the writing capability enabled, short-circuiting before the connection listing in the common single-claimant case.
+**Applies to**: any connection-blind sweep over `identifier_mappings`-derived internal ids - today `libs/core/src/products/application/services/master-product-sync.service.ts`, `libs/core/src/inventory/application/services/master-inventory-sync.service.ts`.
+**Source**: #1904 (found reviewing PR #1903 / #1688); guard shipped with `EntityClaimService`.
+
 ## Re-prefix every generated migration timestamp to the synthetic sequence before committing
 
 **Context**: `migration:generate` names files with a real `Date.now()` millisecond prefix; the repo's migrations use synthetic sequential prefixes (`17XX000000000` + small offsets).
