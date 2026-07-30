@@ -196,5 +196,19 @@ export default defineConfig({
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
+    {
+      // Preflight-divergence characterization suite. Each spec pins one place
+      // where the bulk offer wizard reports a row as ready and the backend then
+      // rejects it. These are CHARACTERIZATION tests: they pass while the
+      // divergence exists and fail once it is closed, so a red run here is the
+      // signal that a finding was wrong or has been fixed - not a regression.
+      // `retries: 0`: several specs submit real batches, and a silent retry
+      // would double-submit against the shared stack.
+      name: 'preflight-divergence',
+      testMatch: /preflight-divergence\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
   ],
 });
