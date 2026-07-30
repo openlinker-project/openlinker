@@ -52,7 +52,12 @@ import type {
   SourceAttribute,
   SourceCategoryRef,
 } from '@openlinker/core/listings';
-import { isCategoryBrowser, isEanCategoryMatcher, isTaxonomyBorrower } from '@openlinker/core/listings';
+import {
+  isAdapterSuppliedParametersReader,
+  isCategoryBrowser,
+  isEanCategoryMatcher,
+  isTaxonomyBorrower,
+} from '@openlinker/core/listings';
 import type { TaxonomyOwner } from '@openlinker/core/listings';
 import type { ProductMasterPort, ProductVariant } from '@openlinker/core/products';
 import {
@@ -178,7 +183,8 @@ export class OfferBuilderService implements IOfferBuilderService {
           categoryId,
           variant.attributes ?? {},
           borrowedTaxonomy,
-          buildProjectionMetadata(product, variant, effectiveBarcode)
+          buildProjectionMetadata(product, variant, effectiveBarcode),
+          destination
         )
       : [];
 
@@ -339,7 +345,8 @@ export class OfferBuilderService implements IOfferBuilderService {
     destinationCategoryId: string,
     attributes: Record<string, string>,
     borrowedTaxonomy: TaxonomyOwner | undefined,
-    metadata: AttributeProjectionMetadata
+    metadata: AttributeProjectionMetadata,
+    destination: OfferManagerPort
   ): Promise<OfferParameter[]> {
     const projection = await this.attributeProjection.project({
       sourceConnectionId,
@@ -361,8 +368,26 @@ export class OfferBuilderService implements IOfferBuilderService {
     const operatorOfferIds = new Set(
       operatorParameters.filter((p) => p.section === 'offer').map((p) => p.id)
     );
+
+    // #1934/F1 — a required offer-section param the ADAPTER derives from a
+    // neutral command field is not missing, so it must not block. Allegro's
+    // "Stan" (11323) is synthesised from `command.condition`, which this
+    // builder always sets (defaulting to 'new') a few lines below — yet the
+    // gate ran first, saw it unresolved, and rejected every offer whose
+    // operator had never hand-mapped a parameter the wizard never showed them.
+    // The adapter declares these because the neutral → wire mapping is its own;
+    // core does not know which platform id means "condition".
+    const adapterSuppliedIds = isAdapterSuppliedParametersReader(destination)
+      ? new Set(
+          destination.getAdapterSuppliedParameterIds({ condition: input.condition ?? 'new' })
+        )
+      : new Set<string>();
+
     const blockingRequired = projection.unresolvedRequired.filter(
-      (param) => param.section === 'offer' && !operatorOfferIds.has(param.id)
+      (param) =>
+        param.section === 'offer' &&
+        !operatorOfferIds.has(param.id) &&
+        !adapterSuppliedIds.has(param.id)
     );
     if (blockingRequired.length > 0) {
       throw new OfferBuilderValidationException(
