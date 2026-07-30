@@ -1,26 +1,21 @@
 /**
  * Group Failed Shipments By Cause
  *
- * Triage grouping for the `/shipments` list (#1826). Fuzzy-groups `failed`
- * shipments whose normalised `errorMessage` matches, so an operator sees a
- * repeated carrier message as one item instead of N unrelated-looking rows.
+ * Triage grouping for the `/shipments` list (#1826). Groups `failed`
+ * shipments on the SAME connection so an operator sees a repeated failure as
+ * one item instead of N unrelated-looking rows.
  *
- * What a group is NOT: proof of a shared root cause. It is a same-message
- * observation, and the strip's copy is worded accordingly. Two limits force
- * that modesty:
- *
- * 1. `ShippingProviderRejectionException` carries a structured
- *    `providerCode`/`providerName` discriminator, but only the free-text
- *    `message` is persisted onto `Shipment.errorMessage` — `providerCode` and
- *    `fieldErrors` are logged and dropped. `ShipmentDispatchService`'s own
- *    comment notes the surviving message "is often a generic 'validation
- *    error' that hides which field the provider rejected (#1428)", so a bad
- *    postcode, a missing parcel template and an over-limit COD can all arrive
- *    as the same string.
- * 2. The normalisation below is lossy by design (see `MIN_CAUSE_KEY_LENGTH`).
- *
- * This normalised-text match is a known-inferior stand-in for a real
- * `providerCode` column, not a robust cause classifier.
+ * Grouping key (#1918): `providerCode` when present — the structured
+ * `ShippingProviderRejectionException.providerCode` discriminator persisted
+ * onto `Shipment.providerCode` — falling back to the pre-#1918
+ * normalised-`errorMessage` fuzzy match only for rows with no `providerCode`
+ * (pre-migration rows, or a plain `Error` with no exception code). A
+ * `providerCode` match is an HONEST shared-cause claim; the fallback text
+ * match is NOT — a bad postcode, a missing parcel template and an
+ * over-limit COD could previously all normalise to the same generic
+ * "validation error" string (#1428), which is exactly why this column
+ * exists. See `deriveRetryabilityClass` (`./shipment-retryability.ts`) for
+ * turning a `providerCode` group into a retryability signal.
  *
  * @module apps/web/src/features/shipments/lib
  */
@@ -65,7 +60,13 @@ export interface FailedShipmentCauseGroup {
   /** The connection every member shipment shares — see `groupKey` below for
    *  why this is part of the group identity, not just a display field. */
   connectionId: string;
+  /** Internal grouping key — either the shared `providerCode` or the
+   *  normalised-text fallback. Not meant for direct display (the strip
+   *  renders a member's raw `errorMessage` as the human-readable sample). */
   cause: string;
+  /** The `providerCode` every member shares, or `null` when this group was
+   *  formed by the normalised-text fallback (no member carried a code). */
+  providerCode: string | null;
   shipments: Shipment[];
 }
 
@@ -95,14 +96,17 @@ export function groupFailedShipmentsByCause(
     // "shared cause". The strip is admin/operator-only today, so this is a
     // belt-and-braces guard against a future caller passing viewer rows in.
     if (shipment.errorMessage === REDACTED_ERROR_MESSAGE) continue;
-    const cause = normaliseErrorMessage(shipment.errorMessage);
-    if (cause.length < MIN_CAUSE_KEY_LENGTH) continue;
+    const providerCode = shipment.providerCode;
+    const cause = providerCode ?? normaliseErrorMessage(shipment.errorMessage);
+    // The length guard only applies to the lossy text fallback — a
+    // `providerCode` is an exact structured value, never too short to trust.
+    if (providerCode === null && cause.length < MIN_CAUSE_KEY_LENGTH) continue;
     const key = groupKey(shipment.connectionId, cause);
     const group = byKey.get(key);
     if (group) {
       group.shipments.push(shipment);
     } else {
-      byKey.set(key, { connectionId: shipment.connectionId, cause, shipments: [shipment] });
+      byKey.set(key, { connectionId: shipment.connectionId, cause, providerCode, shipments: [shipment] });
     }
   }
   return Array.from(byKey.values()).filter((group) => group.shipments.length >= 2);

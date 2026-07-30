@@ -138,6 +138,7 @@ The system is organized into the following core bounded contexts:
 - **Capability**: Uses `ProductMasterPort` abstraction
 - **Barcode Storage**: EAN/GTIN are stored on `ProductVariant` (not `Product`), as variants are the canonical offer-link targets.
 - **Simple Products**: Products without combinations produce a deterministic synthetic variant to ensure a stable mapping target.
+- **Connection-ownership guard on the staleness prune (#1904)**: neither `product_variants` nor `inventory_items` carries connection provenance, so the master-sync staleness sweeps (`MasterProductSyncService`'s `markVariantsStaleExcept`, `MasterInventorySyncService`'s `pruneStaleVariants`) key on the internal product id alone - correct only while ONE connection with the relevant master capability claims that id, which is what `getOrCreateInternalId`'s per-`(entityType, externalId, connectionId)` namespacing normally guarantees. Before every prune (both the partial post-pull sweep and the full-deletion sweep) each service asks the neutral `IEntityClaimService.findRivalClaimants` (`@openlinker/core/integrations`) whether another connection claims the same internal id *and* has `ProductMaster` / `InventoryMaster` enabled; on a hit the prune is **withheld** (never staling a sibling's live rows), no `master.*.stale` event is emitted, an error is logged, and the sync result reports `pruneSkipped: true` (the worker handler logs it with job context; `outcome` is unaffected). The claim lookup is one indexed `getExternalIds` read that short-circuits before the capability listing in the single-claimant case, and resolves capable connections via `listCapabilityAdapters({ lazy: true })` so no adapter is constructed. Deliberately a detect-and-withhold guard rather than a `connectionId` provenance column: the collision is unreachable through any supported workflow (it needs direct `identifier_mappings` manipulation), so the conservative runtime check beats a schema change plus backfill semantics.
 
 ### 3. Inventory
 - **Responsibility**: Inventory synchronization, stock level management
@@ -146,7 +147,9 @@ The system is organized into the following core bounded contexts:
 - **Capability**: Uses `InventoryMasterPort` abstraction
 - **Variant-keyed master inventory (#822, [ADR-010](./architecture/adrs/010-variant-keyed-master-inventory.md))**: `MasterInventorySyncService` keys each `inventory_items` row to the product's canonical **variant** (a simple product's deterministic synthetic variant), not the bare product — so the variant-keyed availability read (`getAvailabilityByVariantIds`, used by the bulk offer wizard) finds stock. Resolution precedence: adapter-supplied `Inventory.variantId` → the product's lone variant when it has exactly one → else product-level (`productVariantId = NULL`).
 - **Per-combination master stock (#823)**: the master sync iterates `InventoryMasterPort.listInventory(productId)` — one `Inventory` per variant — and writes one variant-keyed row each. The PrestaShop adapter enumerates `stock_availables` for the product and emits one entry per combination (resolving each combination id to its `ProductVariant`), or the synthetic variant for a simple product, so multi-variant products now carry correct per-variant stock. Marketplace-agnostic: any inventory master expresses per-variant stock the same way. The Allegro destination half (one auto-grouped offer per variant) remains **#824**.
+- **Master-side deletion (#1688)**: a product deleted at the inventory master surfaces as the neutral `MasterProductNotFoundError` (from `@openlinker/core/products`) at the `InventoryMasterPort` boundary — each adapter translates its own platform not-found there, so no platform exception type reaches core (the inventory-context counterpart of the products-side #1599 path). `MasterInventorySyncService` catches it, marks every one of the product's `inventory_items` rows stale via an empty keep-set, emits `master.product.stale`, and reports `masterDeleted: true`; `MasterInventorySyncHandler` maps that to a terminal `outcome: 'business_failure'` ([ADR-007](./architecture/adrs/007-syncjob-status-vs-outcome-split.md)) so the runner does not retry a permanent condition. The neutral error is reserved for a **platform-reported product absence** — a mapping gap, a corrupted mapping, or a merely *inferred* absence (e.g. "the product resolves but carries no stock rows", which the PrestaShop adapter disambiguates with a product probe) stay platform-native and therefore retryable. A partial removal (some variants gone, product still resolves) instead flows through the normal sync's unconditional variant prune, which emits `master.variant.stale`; an empty-but-successful master response that stales every known row is warn-logged, since it reports `masterDeleted: false` / `outcome: 'ok'`.
 - **Per-connection stock safety buffer (#1844)**: an operator-configurable **reserve** held back per destination connection so a fast-moving item cannot oversell between syncs. The published quantity is `max(0, masterStock - reserve)`. The reserve lives on `Connection.config.stockSafetyBuffer` (JSONB — no schema/migration change) and defaults to `0`, which preserves the pre-#1844 pass-through behaviour (master is authoritative, including 0). Two pure, marketplace-neutral helpers own the policy (`readStockSafetyBuffer` / `applyStockSafetyBuffer` in `@openlinker/core/identifier-mapping`, mirroring the `parseTriggerModel` config-coercion precedent). It is applied at **both** stock write sites and applied once per flow: the publish/create builders (`OfferBuilderService`, `ProductPublishBuilderService`) stamp the buffered `command.stock`, and the inventory write-back choke point (`InventorySyncService.updateOfferQuantities`, reached by both the offer and shop-product propagation fan-outs) buffers every written-back quantity. The buffer is orthogonal to the FE bulk stock policy (`use-master` / cap / flat, #726); it is the destination-side floor applied after the operator's chosen source quantity.
+- **Connection-ownership guard on the inventory staleness prune (#1904)**: `MasterInventorySyncService` withholds both its post-pull prune and its full-deletion prune when a second connection with `InventoryMaster` enabled claims the same internal product id - see the identical guard described under *Products* above (one shared `IEntityClaimService` seam, one capability value per context).
 
 ### 4. Orders
 - **Responsibility**: Order ingestion, synchronization, and lifecycle management
@@ -291,7 +294,7 @@ The system is organized into the following core bounded contexts:
   - `InvoiceEmailSender` (#1353) — trigger the provider to render and email the already-issued invoice to the buyer.
   - `CorrectionIssuer` (#1229) — issue a correction (`IssueCorrectionCommand`) of an already-issued document. `IssueCorrectionCommand.originalDocument` is an OPTIONAL, caller-assembled reconstruction (buyer/currency/lines/clearance linkage) for adapters that cannot correct via a per-line delta and must resubmit a complete document (KSeF's FA(3) KOR, #1288); adapters that only need deltas (Subiekt) ignore the field. **Issuance-time line snapshot (#1297)**: `InvoiceRecord` persists a neutral `issuedLineSnapshot` (`{ buyer, currency, lines }`) whenever a document is issued (from the issue command) or corrected (the correction's own post-correction lines) — captured in the core `InvoiceService`, so no adapter change. The HTTP controller assembles `originalDocument` from that snapshot on the document being corrected, so the `originalLineNumber`-indexed deltas diff against the lines *as issued* (and, for a correction-of-correction, against the prior correction's own lines) even if the order changed since. Only records issued before the snapshot column existed fall back to rebuilding from the order's *current* state (the pre-#1297 path, with its `buyerTaxId: null` + line-fidelity caveats).
 - **KSeF** (Polish national e-invoicing), `@openlinker/integrations-ksef`, adapterKey `ksef.publicapi.v2`, registry capability `Invoicing`. `KsefInvoicingAdapter` implements `InvoicingPort`, `RegulatoryTransmitter`, and `CorrectionIssuer` (#1288): FA(3) `VAT` + `KOR` documents are issued and cleared through the async submit→poll→UPO model (`issueInvoice`), and `issueCorrection` is a pure delegation into the same KOR path (KSeF has no delta-only correction primitive — every correction resubmits a complete FA(3) document). See the [KSeF setup guide](../libs/integrations/ksef/docs/setup-guide.md) for the full flow, current limitations, and compliance caveats.
-- **Infakt** (Polish accounting SaaS), `@openlinker/integrations-infakt`, adapterKey `infakt.accounting.v1`, registry capability `Invoicing` (#1281). Infakt submits to KSeF on the seller's behalf rather than OL building FA(3) XML itself, so `InfaktInvoicingAdapter` implements `RegulatoryStatusReader` (poll the KSeF-relay clearance status Infakt reports) rather than `RegulatoryTransmitter`. It also implements `CorrectionIssuer`, `RegulatoryDocumentReader`, `RegulatoryResubmitter` (re-trigger transmission of an already-issued document — the operator "resend" action for a `rejected` clearance), `BankAccountsReader` / `BankAccountDefaultSetter`, plus the accounting-specific `PaymentStatusReader` / `PaymentMarker` and `InvoiceEmailSender` sub-capabilities.
+- **Infakt** (Polish accounting SaaS), `@openlinker/integrations-infakt`, adapterKey `infakt.accounting.v1`, registry capability `Invoicing` (#1281). Infakt submits to KSeF on the seller's behalf rather than OL building FA(3) XML itself, so `InfaktInvoicingAdapter` implements `RegulatoryStatusReader` (poll the KSeF-relay clearance status Infakt reports) rather than `RegulatoryTransmitter`. It also implements `CorrectionIssuer`, `RegulatoryDocumentReader`, `RegulatoryResubmitter` (re-trigger transmission of an already-issued document — the operator "resend" action for a `rejected` clearance), `BankAccountsReader` / `BankAccountDefaultSetter`, plus the accounting-specific `PaymentStatusReader` / `PaymentMarker` and `InvoiceEmailSender` sub-capabilities. **Document creation is asynchronous on inFakt's side**: `issueInvoice`, `issueCorrection` and `markPaid` go through inFakt's `async/*.json` task endpoints, which return a task reference (`processing_code: 100`) rather than the document — so those adapter methods POST the task and then block on a bounded status poll (`async/{resource}/status/{ref}.json`) until it resolves, before hydrating the created document. That is why an inFakt adapter method can block for seconds; a poll timeout surfaces as `failureMode: 'in-doubt'` (the provider may still finish creating the document) rather than as a rejection (#1763).
 - **Subiekt nexo** (via Sfera bridge), `@openlinker/integrations-subiekt` — the first `InvoicingPort` adapter (#753), implementing `RegulatoryStatusReader`, `CorrectionIssuer`, `BankAccountsReader`, and `BankAccountDefaultSetter`.
 
 ---
@@ -547,9 +550,37 @@ scopes, and an RFC 8707 `resource` binding; they live in `mcp_tokens` in the **u
 service outside that context may not inject a `*RepositoryPort` — `apps/api/src/mcp/` crosses the boundary
 through `IMcpTokenService` (`MCP_TOKEN_SERVICE_TOKEN`) instead. A token resolves to its owning OL user and
 **inherits that user's RBAC role**, so it can never exceed its owner. The principal reaches tool handlers as
-`ctx.authInfo`; note that `AuthInfo` carries the **raw bearer token**, so it must never be logged or serialized
-wholesale — consumers log a redacted projection from `AuthInfo.extra`. Adding an OAuth AS later swaps the
-verifier implementation and nothing else.
+`ctx.authInfo` on the **request-scoped** `McpRequestContext` (the context the SDK hands a tool callback at
+dispatch time does NOT carry it, so the registry threads the request-scoped value into each handler — #1487);
+note that `AuthInfo` carries the **raw bearer token**, so it must never be logged or serialized
+wholesale — consumers log a redacted projection from `AuthInfo.extra` via `redactPrincipal`. Adding an OAuth AS
+later swaps the verifier implementation and nothing else.
+
+**Read-only domain tools are shipped (Phase 1, #1487).** Six tools live at `apps/api/src/mcp/tools/`: two
+always-registered discovery entry points (`whoami`, `list_connections`) plus four capability-gated domain reads
+(`search_catalog` / `get_product` on `ProductMaster`, `get_availability` on `InventoryMaster`, `get_order` on
+`OrderSource`). Two design points shape everything downstream:
+
+- **Capability-*gated* but OL-store-*backed*.** `McpToolRegistryService` registers a tool iff
+  `listCapabilityAdapters({ capability, lazy: true })` finds a supporting-and-enabled connection, but the tools
+  read OL's own store through `IProductsService` / `IInventoryQueryService` / `IOrderRecordService` — never the
+  capability port's adapter. Going through the port would make each tool call a live marketplace request
+  (spending the operator's API quota on an agent's behalf), return external-id-keyed data that can't join the
+  internal-id-keyed product reads, and — decisively — re-fetch buyer PII regardless of `OL_STORE_PII`. The
+  consequence is that the gate and the data are **independent facts**: a passing gate does not imply data exists.
+  Each tool's description says so, because an agent cannot otherwise read an empty result. See
+  [ADR-033 § Phase 1 amendments](./architecture/adrs/033-openlinker-as-mcp-server.md).
+- **One choke point.** Rate limiting (per-token ZSET rolling window + in-flight cap, fail-open on Redis outage),
+  audit logging, and error mapping are applied by a single wrapper inside `McpToolRegistryService` — never by a
+  tool. A `*.tool.ts` file contains only its read and its projection, so a concern like releasing an in-flight
+  slot on the throw path cannot be forgotten per tool. Every result is an explicit-allowlist projection: tool
+  output reaches an external LLM provider, so `list_connections` never emits `credentialsRef`/`config` and
+  `get_order` never emits buyer name/email/address even when the snapshot stores them.
+
+`notifications/tools/list_changed` is deliberately **not** implemented: stateless per-request serving leaves no
+session to push over. Note the accepted cost — the *server* is always fresh, but a **client's cached tool list**
+can go stale, so an agent already connected when a connection is enabled won't see the new tool until it
+reconnects. See [ADR-033 § Phase 1 amendments](./architecture/adrs/033-openlinker-as-mcp-server.md).
 
 ---
 
@@ -1225,6 +1256,9 @@ graph LR
   integrations --> identifier-mapping
   shipping --> integrations
   shipping --> mappings
+  shipping --> orders
+  shipping --> identifier-mapping
+  shipping --> sync
   mailer --> integrations
 ```
 

@@ -50,10 +50,32 @@ export class MasterInventorySyncHandler implements SyncJobHandler {
     );
 
     try {
-      await this.masterInventorySync.syncFromMasterByExternalId(
+      const result = await this.masterInventorySync.syncFromMasterByExternalId(
         job.connectionId,
         payload.externalId
       );
+
+      // The staleness prune was withheld because a second InventoryMaster
+      // connection claims the same internal product id (#1904). Not a business
+      // failure on its own - the canonical writes (or the deletion signal below)
+      // still stand; it needs operator attention, so it is logged with job
+      // context.
+      if (result.pruneSkipped) {
+        this.logger.warn(
+          `Master inventory sync: staleness prune skipped - internal product id claimed by more than one InventoryMaster connection (job ${job.id}, connection: ${job.connectionId}, externalId: ${String(payload.externalId)}, internalProductId: ${result.internalProductId})`
+        );
+      }
+
+      // A product deleted at the master is a terminal business outcome, not a
+      // transient failure — return business_failure so the runner does NOT retry
+      // a permanent condition (#1688, mirrors MasterProductSyncHandler / #1599,
+      // ADR-007). The inventory rows were marked stale.
+      if (result.masterDeleted) {
+        this.logger.warn(
+          `Master inventory sync: product deleted at master (job ${job.id}, connection: ${job.connectionId}, externalId: ${String(payload.externalId)})`
+        );
+        return { outcome: 'business_failure' };
+      }
 
       return { outcome: 'ok' };
     } catch (error) {

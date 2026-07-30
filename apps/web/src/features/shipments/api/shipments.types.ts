@@ -115,6 +115,14 @@ export interface Shipment {
   deliveryIntent: DeliveryIntent | null;
   trackingNumber: string | null;
   /**
+   * Structured rejection-code discriminator (#1918) from the same provider
+   * rejection that produced `errorMessage` — e.g.
+   * `preflight.missing-parcel-template`, `api.http-503`, or a carrier-
+   * surfaced code. Unlike `errorMessage`, never redacted for `viewer` (short
+   * discriminator, not carrier prose).
+   */
+  providerCode: string | null;
+  /**
    * Actual carrier-of-record (#769) — distinct from the dispatcher
    * (`connectionId.platformType`). Lowercase-kebab canonical form (see
    * `KNOWN_CARRIER_VALUES`). Drives the public-tracker URL composition in

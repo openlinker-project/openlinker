@@ -88,7 +88,7 @@
 - **Q3 — Library + transport (RESOLVED).** Use the official `@modelcontextprotocol/sdk` directly behind a thin `@Public()`/`VERSION_NEUTRAL` transport controller over **Streamable HTTP** (OL is a hosted server, not a stdio subprocess). No community NestJS-MCP wrapper: it adds a second dependency tracking a churning protocol with no lifecycle guarantee, and its value is static `@Tool()` decorators — which fight our dynamic, capability-driven registration (Q4/§6). Revisit only if a *governed* wrapper emerges.
 - **Q4 — Do the FE slices warrant separate FE issues? (RESOLVED — fold both.)** Two small FE surfaces exist: the **Phase 0** admin MCP-token-management settings page (generate / one-time-reveal / list / revoke) and the **Phase 3** branded key-entry page + "connected via agent" affordance. Both are BE-dominant slices tightly coupled to their phase's API. *Decision:* fold each into its own phase's child issue with an explicit FE checklist (per `docs/frontend-architecture.md`), rather than spinning separate FE issues — so #1486 carries the token-UI checklist and #1489 the key-entry-page checklist.
 - **Q5 — Per-token connection scoping for writes (Phase 3).** Before write/config tools ship, should an agent token be restrictable to a subset of connections (net-new, since OL has none today)? *Default:* yes — introduce an additive per-token connection allow-list as a Phase 3 write prerequisite (the higher-blast-radius surface); reads (P1) and mapping suggestions (P2) run at the user's existing global scope.
-- **Q6 — PII in order-read tools (deferred).** `OrderSource` reads carry buyer PII, which the agent's LLM provider would receive as a de-facto sub-processor. Consciously **deferred for now** — not designed into Phase 1. Flag to revisit before order-read tools ship (options if/when: default PII-minimized reads + explicit opt-in tool; honor `OL_STORE_PII` as a floor).
+- **Q6 — PII in order-read tools. ✅ RESOLVED (#1487).** The question dissolved rather than being answered: `get_order` reads the persisted `OrderRecord`, whose snapshot **already** honours the operator's `OL_STORE_PII` setting, so no Phase-1-local policy was needed. The tool additionally applies an explicit-allowlist projection that omits buyer name / email / address even when PII storage IS enabled, since order *status* — the question an agent actually asks — does not require buyer identity. Note the originally-proposed option "honor `OL_STORE_PII` as a floor" was **not implementable** on the `OrderSourcePort` path, because that port re-fetches raw PII from the platform regardless of the setting; discovering that is what forced the data-source correction above.
 - **Q7 — MCP client accepts a manual bearer header? (validate before Phase 0 code — the one thing that could kill the PAT model).** The PAT approach requires the target MCP client to accept a static `Authorization` header for a *remote* Streamable-HTTP server. Confirmed at the server/vendor/framework level (GitHub/Atlassian/Sentry/FastMCP), **not** exhaustively per GUI client. *Default:* run a ~1-hour stub-server header check against the actual target (Claude Desktop, etc.) before committing Phase 0. A client that refuses manual headers pulls the deferred OAuth AS forward.
 
 ### Assumptions
@@ -125,7 +125,26 @@
 
 **Dependencies**: none (net-new). **Gates**: Phases 1–3.
 
-### Phase 1 — Read-only domain tools (low-regret spike)
+### Phase 1 — Read-only domain tools (low-regret spike) ✅ SHIPPED (#1487)
+
+> **Shipped 2026-07-29.** Two corrections were made during implementation and are
+> authoritative over the step list below — see
+> [ADR-033 § Phase 1 amendments](../architecture/adrs/033-openlinker-as-mcp-server.md)
+> and `docs/plans/implementation-plan-mcp-read-only-domain-tools.md`:
+>
+> 1. **Tools read OL's own store**, not the capability port's adapter (step 2 said
+>    `getCapabilityAdapter`). Capability-*gating* is unchanged; the *data source* moved to
+>    `IProductsService` / `IInventoryQueryService` / `IOrderRecordService`. Going through the port
+>    would spend the operator's marketplace quota per tool call, return external-id-keyed data,
+>    and bypass `OL_STORE_PII`.
+> 2. **`notifications/tools/list_changed` was NOT implemented** (step 1's last clause). It is not
+>    implementable under the stateless per-request server this ADR chose — there is no session to
+>    push over — and it is unnecessary, because `tools/list` is recomputed every call.
+>
+> Also delivered beyond the step list: a single per-call wrapper in the registry owning the
+> limiter + audit + error mapping (so no tool can forget them), and explicit-allowlist projections
+> on every result.
+
 **Goal**: Highest-utility, lowest-blast-radius tools: catalog search + `getProduct` (`ProductMaster`), availability reads (`InventoryMaster`), order-status reads (`OrderSource`).
 
 **Steps**:
@@ -166,7 +185,7 @@
 - Each new migration must follow the **synthetic sequential timestamp** convention (`migrations.md § Timestamp uniqueness invariant`) — re-prefix the `migration:generate` output to the next free synthetic timestamp, don't ship a raw `Date.now()` prefix (the ordering guard fails `pnpm lint` otherwise). Author it in the Phase 0 child issue (#1486).
 
 ### File-naming note (for the child issues)
-- The MCP tool files (`tools/**/*.tool.ts`) introduce a `.tool.ts` suffix not yet in `engineering-standards.md § Files and Folders` — decide/register the convention in the Phase 1 issue (#1487) before code.
+- ~~The MCP tool files (`tools/**/*.tool.ts`) introduce a `.tool.ts` suffix not yet in `engineering-standards.md`~~ — **done (#1487)**: registered under `engineering-standards.md § MCP-protocol routes`, together with the rules that a tool file carries only its read + projection, always projects, and only accepts arguments its read honours.
 - The Phase 0 MCP-token service + `tool-registry.service.ts` (Phase 1) follow the service-interface rule (an `implements` clause on an `I*Service` or a `*Port`). The `check-service-interfaces` invariant only scans `libs/core/src`, so `apps/api` won't fail the build, but the standard still applies.
 
 ### Events / Error Handling

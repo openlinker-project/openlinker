@@ -28,7 +28,7 @@ name: ${COMPOSE_PROJECT_NAME:-openlinker}
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-postgres
     environment:
       POSTGRES_USER: postgres
@@ -40,7 +40,7 @@ services:
     ports:
       - '${OL_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_HOST_PORT:-5432}:5432'
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 10s
@@ -48,12 +48,16 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    # 8.4 is the version the container standard pins; the `-alpine` variant is
+    # ours, to stay consistent with every other slim base in this file
+    # (postgres:17-alpine, caddy:2.11-alpine, node:…-alpine3.24) and keep the
+    # one-command demo pull small. The standard names the version, not the base.
+    image: redis:8.4-alpine
     container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-redis
     ports:
       - '${OL_BIND_ADDRESS:-127.0.0.1}:${REDIS_HOST_PORT:-6379}:6379'
     volumes:
-      - redis_data:/data
+      - redis-data:/data
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
@@ -61,7 +65,7 @@ services:
       retries: 5
 
   mysql:
-    image: mysql:8.4.7
+    image: mysql:8.4.7-oraclelinux9
     container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-mysql
     environment:
       # Overridable in .env (#1403) — both default to today's literal values.
@@ -74,7 +78,7 @@ services:
     ports:
       - '${OL_BIND_ADDRESS:-127.0.0.1}:${MYSQL_HOST_PORT:-3306}:3306'
     volumes:
-      - mysql_data:/var/lib/mysql
+      - mysql-data:/var/lib/mysql
     healthcheck:
       test:
         [
@@ -96,9 +100,15 @@ services:
       start_period: 180s
 
   phpmyadmin:
-    image: phpmyadmin/phpmyadmin:latest
+    image: phpmyadmin/phpmyadmin:5.2.3
     platform: linux/amd64
     container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-phpmyadmin
+    # Devtools-only service (#1411) — not part of the always-on stack, matches
+    # the standard's guidance for DB-browser tools. Opt in with:
+    #   docker compose --profile devtools up -d phpmyadmin
+    # `pnpm dev:stack:up` never requests it by name, so a plain dev/demo boot
+    # is unaffected; see README.md for the opt-in command.
+    profiles: ['devtools']
     environment:
       PMA_HOST: mysql
       PMA_PORT: 3306
@@ -119,7 +129,7 @@ services:
       retries: 5
 
   woocommerce-mysql:
-    image: mysql:8.4.7
+    image: mysql:8.4.7-oraclelinux9
     container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-woocommerce-mysql
     environment:
       # Overridable in .env (#1403), separate from the PrestaShop MySQL
@@ -133,7 +143,7 @@ services:
     ports:
       - '${OL_BIND_ADDRESS:-127.0.0.1}:${WOOCOMMERCE_MYSQL_HOST_PORT:-3307}:3306'
     volumes:
-      - woocommerce_mysql_data:/var/lib/mysql
+      - woocommerce-mysql-data:/var/lib/mysql
     healthcheck:
       # -p<password>: no space between flag and password.
       test:
@@ -165,9 +175,11 @@ services:
       WORDPRESS_DATABASE_USER: woocommerce
       # Must match woocommerce-mysql's MYSQL_PASSWORD above (#1403).
       WORDPRESS_DATABASE_PASSWORD: '${WOOCOMMERCE_MYSQL_PASSWORD:-woocommerce}'
-      WORDPRESS_USERNAME: admin
-      WORDPRESS_PASSWORD: admin123
-      WORDPRESS_EMAIL: admin@openlinker.local
+      # Overridable in .env (#1411, mirroring the #1403 pattern) — the
+      # defaults reproduce today's exact literal values.
+      WORDPRESS_USERNAME: '${WOOCOMMERCE_ADMIN_USERNAME:-admin}'
+      WORDPRESS_PASSWORD: '${WOOCOMMERCE_ADMIN_PASSWORD:-admin123}'
+      WORDPRESS_EMAIL: '${WOOCOMMERCE_ADMIN_EMAIL:-admin@openlinker.local}'
       WORDPRESS_SITE_TITLE: OpenLinker WC Dev
       # Pinned by URL: latest WooCommerce (>=10.8) requires WP 6.9, but the
       # bitnamilegacy image is frozen at 6.7.1 — an unpinned 'woocommerce' slug
@@ -177,7 +189,7 @@ services:
       # 8082: avoids collision with PrestaShop on 8080
       - '${OL_BIND_ADDRESS:-127.0.0.1}:${WOOCOMMERCE_HOST_PORT:-8082}:8080'
     volumes:
-      - woocommerce_data:/bitnami/wordpress
+      - woocommerce-data:/bitnami/wordpress
       - ./docker/woocommerce:/docker-entrypoint-initdb.d:ro
     healthcheck:
       # /wp-json/wc/v3/ = WC namespace index, returns 200 without auth once WC is active.
@@ -222,14 +234,16 @@ services:
       DB_USER: prestashop
       DB_PASSWD: '${PRESTASHOP_MYSQL_PASSWORD:-prestashop}'
       DB_PREFIX: ps_
-      ADMIN_MAIL: demo@prestashop.com
+      # Overridable in .env (#1411, mirroring ADMIN_PASSWD below) — default
+      # reproduces today's exact literal value.
+      ADMIN_MAIL: '${ADMIN_MAIL:-demo@prestashop.com}'
       # The seeded PrestaShop admin login password (#1403) — override before
       # exposing this beyond localhost, same as OL_BOOTSTRAP_ADMIN_PASSWORD.
       ADMIN_PASSWD: '${ADMIN_PASSWD:-prestashop_demo}'
     ports:
       - '${OL_BIND_ADDRESS:-127.0.0.1}:${PRESTASHOP_HOST_PORT:-8080}:80'
     volumes:
-      - prestashop_data:/var/www/html
+      - prestashop-data:/var/www/html
       # Bind-mount module source for fast dev iteration
       - ./apps/prestashop-module/openlinker:/var/www/html/modules/openlinker
       # Post-install scripts: rename randomized admin folder, seed currency + products
@@ -299,10 +313,10 @@ services:
       - ./libs:/app/libs
 
 volumes:
-  postgres_data:
-  redis_data:
-  mysql_data:
-  prestashop_data:
-  woocommerce_mysql_data:
-  woocommerce_data:
+  postgres-data:
+  redis-data:
+  mysql-data:
+  prestashop-data:
+  woocommerce-mysql-data:
+  woocommerce-data:
 

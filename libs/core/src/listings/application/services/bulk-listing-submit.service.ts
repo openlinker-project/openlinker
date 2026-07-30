@@ -51,7 +51,9 @@ import type {
 import {
   IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
+  resolveVariantGroupingModel,
 } from '@openlinker/core/integrations';
+import type { VariantGroupingModel } from '@openlinker/core/integrations';
 import {
   IProductsService,
   PRODUCTS_SERVICE_TOKEN,
@@ -166,6 +168,14 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     // strategy leaking into the platform-agnostic submit service.
     const dropBarcodelessSiblings = isCatalogProductReader(adapter);
 
+    // Variant-grouping model (#1924): declared on the manifest, read directly
+    // off the metadata `getAdapter` already resolves — not a capability, so
+    // never dispatched through `getCapabilityAdapter`. Drives whether a
+    // per-variant categoryId survives to the built offer (buildEnqueueInput →
+    // stripVariantCategoryId below).
+    const { metadata } = await this.integrationsService.getAdapter(input.connectionId);
+    const variantGroupingModel = resolveVariantGroupingModel(metadata);
+
     // 2. Expand submitted primary-variant ids into the per-offer job list.
     //    A multi-variant product fans out into one job per sibling variant
     //    (#824); single-variant products and unknown ids pass through
@@ -234,7 +244,13 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     const enqueuedRecordIds = new Set<string>();
     try {
       for (const job of jobs) {
-        const enqueueInput = this.buildEnqueueInput(input, batch.id, job, masterStock);
+        const enqueueInput = this.buildEnqueueInput(
+          input,
+          batch.id,
+          job,
+          masterStock,
+          variantGroupingModel
+        );
         const { jobId, offerCreationRecord } =
           await this.offerCreationEnqueue.enqueueCreation(enqueueInput);
         jobIds.push(jobId);
@@ -495,11 +511,11 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
    *   `sharedConfig.price.currency` throws `CurrencyMismatchException`
    *   (currency is batch-wide).
    *
-   * A per-variant `categoryId` (grouping-determining and product-level) is not
-   * mutated away here — the DTO already omits it via `OmitType`, and
-   * `buildEnqueueInput` strips it non-destructively from the variant tier before
-   * merging, so this validator leaves its input untouched (#1741 review — no
-   * input mutation).
+   * A per-variant `categoryId` is not mutated away here — the DTO accepts it at
+   * both tiers (#1924), and `buildEnqueueInput` conditionally strips it
+   * non-destructively from the variant tier before merging (destination-aware,
+   * via `stripVariantCategoryId`), so this validator leaves its input untouched
+   * (#1741 review — no input mutation).
    *
    * Iterates with `Object.keys` (own enumerable keys only) so a JSON
    * `__proto__` own-property key is enumerated + rejected and the prototype
@@ -625,7 +641,8 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     input: BulkListingSubmitInput,
     bulkBatchId: string,
     job: ExpandedVariantJob,
-    masterStock: Map<string, number>
+    masterStock: Map<string, number>,
+    variantGroupingModel: VariantGroupingModel
   ): EnqueueOfferCreationInput {
     // 3-way precedence (#1741): base sharedConfig → family (perProductOverrides
     // by selectedId) → variant (perVariantOverrides by variantId); the variant
@@ -656,13 +673,19 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     const publishEffective = stock > 0 ? publishImmediately : false;
     // Layer overrides base → family → variant; `platformParams` deep-merged
     // across all three so shared keys (e.g. `deliveryPolicyId`, #808) survive.
-    // `categoryId` is stripped from the variant tier here (non-destructively) so
-    // a per-variant category can never override the shared/family category and
-    // split the listing — the family tier keeps it (product-level, shared).
+    // `categoryId` is stripped from the variant tier here (non-destructively)
+    // only when the destination's declared `variantGrouping` model requires it
+    // (#1924) - a `'parent-child'` shop (or any undeclared/unresolved adapter,
+    // via the locked default) cannot carry a per-variant category at all, so
+    // it is silently dropped rather than rejected upstream. `'catalog-implicit'`
+    // (Allegro) and `'explicit-group'` (Erli) both let the variant tier's
+    // categoryId through — Allegro's consequence (splitting the grouped
+    // listing) is a downstream FE/operator concern, not something this service
+    // polices.
     let overrides = this.mergeOverrides(
       input.sharedConfig.overrides,
       familyOverride?.overrides,
-      stripVariantCategoryId(variantOverride?.overrides)
+      stripVariantCategoryId(variantOverride?.overrides, variantGroupingModel)
     );
     // Strip the wizard-resolved card for expanded siblings so each self-links
     // by its own barcode - UNLESS the operator explicitly picked a per-variant
@@ -726,14 +749,21 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
 }
 
 /**
- * Return a copy of the variant-tier overrides with any `categoryId` removed
- * (#1741). Non-destructive — the caller's input object is never mutated. Returns
- * `undefined` unchanged so `mergeOverrides` keeps omitting an absent tier.
+ * Return a copy of the variant-tier overrides with any `categoryId` removed,
+ * conditional on the destination's declared variant-grouping model (#1741,
+ * #1924). Only `'parent-child'` (a variation has no `categories` field at
+ * all - WooCommerce, and the locked default for any undeclared adapter)
+ * strips it; `'catalog-implicit'` (Allegro) and `'explicit-group'` (Erli)
+ * both let a per-variant categoryId through. Non-destructive — the caller's
+ * input object is never mutated. Returns `undefined` unchanged so
+ * `mergeOverrides` keeps omitting an absent tier.
  */
 function stripVariantCategoryId(
-  overrides: CreateOfferOverrides | undefined
+  overrides: CreateOfferOverrides | undefined,
+  variantGroupingModel: VariantGroupingModel
 ): CreateOfferOverrides | undefined {
   if (!overrides || overrides.categoryId === undefined) return overrides;
+  if (variantGroupingModel !== 'parent-child') return overrides;
   const rest: CreateOfferOverrides = { ...overrides };
   delete rest.categoryId;
   return rest;

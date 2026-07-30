@@ -46,6 +46,10 @@ describe('allegroAdapterManifest', () => {
       expect.arrayContaining(['OfferCreator', 'OfferEventReader']),
     );
   });
+
+  it('declares catalog-implicit variant grouping so a per-variant category override is treated as consequential (#1924)', () => {
+    expect(allegroAdapterManifest.variantGrouping).toBe('catalog-implicit');
+  });
 });
 
 describe('createAllegroPlugin → register(host)', () => {

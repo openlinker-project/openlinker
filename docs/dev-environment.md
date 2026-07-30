@@ -31,7 +31,7 @@ This guide explains how to set up and use the local development environment for 
 | PostgreSQL | `localhost:5432` | Main database for OpenLinker |
 | Redis | `localhost:6379` | Event bus and caching |
 | MySQL | `localhost:3306` | Database for PrestaShop |
-| phpMyAdmin | `http://localhost:8081` | Web-based MySQL administration tool |
+| phpMyAdmin | `http://localhost:8081` | Web-based MySQL administration tool (opt-in, `devtools` profile) |
 | PrestaShop | `http://localhost:8080` | PrestaShop e-commerce store |
 | WooCommerce MySQL | `localhost:3307` | Dedicated MySQL for WooCommerce (separate from PrestaShop) |
 | WooCommerce | `http://localhost:8082` | WooCommerce store (HPOS enabled) |
@@ -81,6 +81,8 @@ This guide explains how to set up and use the local development environment for 
 - **Password**: `prestashop`
 
 ### phpMyAdmin
+- **Start it first**: `pnpm dev:stack:devtools:up` (it is gated behind the
+  `devtools` Compose profile, so `pnpm dev:stack:up` does not start it)
 - **URL**: `http://localhost:8081`
 - **Server**: `mysql` (or use `localhost:3306` from host)
 - **Username**: `root` (or `prestashop`)
@@ -92,12 +94,17 @@ This guide explains how to set up and use the local development environment for 
 ### Start Services
 
 ```bash
-# Start all services (PostgreSQL, Redis, MySQL, phpMyAdmin, PrestaShop)
+# Start all services (PostgreSQL, Redis, MySQL, PrestaShop)
 pnpm dev:stack:up
 
 # Or using docker compose directly
-docker compose up -d postgres redis mysql phpmyadmin prestashop
+docker compose up -d postgres redis mysql prestashop
 ```
+
+phpMyAdmin is **not** part of the default stack — it sits behind the `devtools`
+Compose profile. Opt in with `pnpm dev:stack:devtools:up`. Do not add
+`phpmyadmin` to the plain `docker compose up` list above: naming a profiled
+service on the CLI auto-activates its profile, which defeats the gating.
 
 ### Stop Services
 
@@ -123,6 +130,27 @@ docker compose logs -f postgres
 docker compose logs -f redis
 ```
 
+### Upgrading from a pre-#1411 checkout (one-time data reset)
+
+Named volumes were renamed `_data` → `-data`, and PostgreSQL moved 16 → 17 (PG17
+cannot start against a PG16 data directory). Your first `pnpm dev:stack:up` after
+pulling therefore comes up with an **empty database and no warning** — the old data
+is still on disk in now-orphaned `openlinker_*_data` volumes. Re-seed and reclaim
+the disk once:
+
+```bash
+docker compose down
+docker volume rm \
+  openlinker_postgres_data openlinker_redis_data openlinker_mysql_data \
+  openlinker_prestashop_data openlinker_woocommerce_mysql_data \
+  openlinker_woocommerce_data openlinker_caddy_data openlinker_caddy_config
+pnpm dev:stack:up
+```
+
+Adjust the `openlinker_` prefix if you set `COMPOSE_PROJECT_NAME`. See
+[`README.md` § Runtime requirements](../README.md#runtime-requirements) for the
+full note.
+
 ### Reset Services
 
 To reset PrestaShop to a fresh installation with demo data:
@@ -132,7 +160,7 @@ To reset PrestaShop to a fresh installation with demo data:
 docker compose down
 
 # Remove volumes (⚠️ This deletes all data)
-docker volume rm openlinker_prestashop_data openlinker_mysql_data
+docker volume rm openlinker-prestashop-data openlinker-mysql-data
 
 # Start services again
 pnpm dev:stack:up
@@ -360,7 +388,7 @@ To reset to fresh demo data:
 docker compose down
 
 # Remove PrestaShop and MySQL volumes
-docker volume rm openlinker_prestashop_data openlinker_mysql_data
+docker volume rm openlinker-prestashop-data openlinker-mysql-data
 
 # Start services (PrestaShop will reinstall with demo data)
 pnpm dev:stack:up

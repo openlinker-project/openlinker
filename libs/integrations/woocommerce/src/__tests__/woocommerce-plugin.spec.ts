@@ -131,6 +131,10 @@ describe('woocommerceAdapterManifest', () => {
   it('should be marked as the default adapter for the platform', () => {
     expect(woocommerceAdapterManifest.isDefault).toBe(true);
   });
+
+  it('should declare parent-child variant grouping so a variation cannot carry its own category (#1924)', () => {
+    expect(woocommerceAdapterManifest.variantGrouping).toBe('parent-child');
+  });
 });
 
 describe('createWooCommercePlugin → register(host)', () => {

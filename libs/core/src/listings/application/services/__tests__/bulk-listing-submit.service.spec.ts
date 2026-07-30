@@ -60,6 +60,20 @@ describe('BulkListingSubmitService', () => {
         : {}),
     }) as unknown as OfferManagerPort;
 
+  /** Minimal `getAdapter` resolution for a given declared variant-grouping model (#1924). */
+  const adapterResolutionWith = (
+    variantGrouping?: 'catalog-implicit' | 'explicit-group' | 'parent-child'
+  ): Awaited<ReturnType<IIntegrationsService['getAdapter']>> =>
+    ({
+      connection: {},
+      metadata: {
+        adapterKey: 'test.adapter.v1',
+        platformType: 'test',
+        supportedCapabilities: ['OfferManager'],
+        ...(variantGrouping ? { variantGrouping } : {}),
+      },
+    }) as unknown as Awaited<ReturnType<IIntegrationsService['getAdapter']>>;
+
   const variant = (overrides: Partial<ProductVariant> & Pick<ProductVariant, 'id' | 'productId'>): ProductVariant => ({
     sku: null,
     attributes: null,
@@ -127,7 +141,10 @@ describe('BulkListingSubmitService', () => {
     };
 
     integrations = {
-      getAdapter: jest.fn(),
+      // Default: no declared variantGrouping → resolves to the locked
+      // 'parent-child' default (#1924). Tests exercising a specific model
+      // override this per-case.
+      getAdapter: jest.fn().mockResolvedValue(adapterResolutionWith()),
       getCapabilityAdapter: jest.fn().mockResolvedValue(adapterWith(jest.fn())),
       listCapabilityAdapters: jest.fn(),
       resolveAdapterMetadata: jest.fn(),
@@ -989,7 +1006,9 @@ describe('BulkListingSubmitService', () => {
       expect(enqueueService.enqueueCreation).not.toHaveBeenCalled();
     });
 
-    it('strips categoryId from a per-variant override', async () => {
+    it('strips categoryId from a per-variant override for a parent-child destination (WooCommerce-like, #1924)', async () => {
+      integrations.getAdapter.mockResolvedValue(adapterResolutionWith('parent-child'));
+
       await service.submit({
         connectionId,
         initiatedBy,
@@ -1003,6 +1022,57 @@ describe('BulkListingSubmitService', () => {
       const overrides = enqueueService.enqueueCreation.mock.calls[0][0].overrides;
       expect(overrides).toEqual({ title: 'Variant title' });
       expect(overrides).not.toHaveProperty('categoryId');
+    });
+
+    it('strips categoryId from a per-variant override when the adapter declares nothing (locked default, #1924)', async () => {
+      integrations.getAdapter.mockResolvedValue(adapterResolutionWith());
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a'],
+        sharedConfig: { stock: 1, publishImmediately: false },
+        perVariantOverrides: {
+          ol_variant_a: { overrides: { categoryId: 'cat-x', title: 'Variant title' } },
+        },
+      });
+
+      const overrides = enqueueService.enqueueCreation.mock.calls[0][0].overrides;
+      expect(overrides).not.toHaveProperty('categoryId');
+    });
+
+    it('keeps a per-variant categoryId for a catalog-implicit destination (Allegro-like, #1924)', async () => {
+      integrations.getAdapter.mockResolvedValue(adapterResolutionWith('catalog-implicit'));
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a'],
+        sharedConfig: { stock: 1, publishImmediately: false },
+        perVariantOverrides: {
+          ol_variant_a: { overrides: { categoryId: 'cat-x', title: 'Variant title' } },
+        },
+      });
+
+      const overrides = enqueueService.enqueueCreation.mock.calls[0][0].overrides;
+      expect(overrides).toEqual({ categoryId: 'cat-x', title: 'Variant title' });
+    });
+
+    it('keeps a per-variant categoryId for an explicit-group destination (Erli-like, #1924)', async () => {
+      integrations.getAdapter.mockResolvedValue(adapterResolutionWith('explicit-group'));
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a'],
+        sharedConfig: { stock: 1, publishImmediately: false },
+        perVariantOverrides: {
+          ol_variant_a: { overrides: { categoryId: 'cat-x', title: 'Variant title' } },
+        },
+      });
+
+      const overrides = enqueueService.enqueueCreation.mock.calls[0][0].overrides;
+      expect(overrides).toEqual({ categoryId: 'cat-x', title: 'Variant title' });
     });
 
     it('rejects a per-variant override whose price currency diverges from the batch currency', async () => {

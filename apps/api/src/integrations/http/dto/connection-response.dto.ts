@@ -8,7 +8,11 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { Connection } from '@openlinker/core/identifier-mapping';
-import { CoreCapabilityValues } from '@openlinker/core/integrations';
+import {
+  CoreCapabilityValues,
+  VariantGroupingModelValues,
+} from '@openlinker/core/integrations';
+import { VariantGroupingModel } from '@openlinker/core/integrations';
 import type { UserRole } from '@openlinker/core/users';
 
 export class ConnectionResponseDto {
@@ -63,6 +67,13 @@ export class ConnectionResponseDto {
   })
   supportedCapabilities!: string[];
 
+  @ApiProperty({
+    description:
+      "How this destination groups sibling variants into one listing, and therefore whether - and how consequentially - a single variant may carry its own category (derived from the resolved adapter's manifest, defaulting to the most restrictive shape when undeclared).",
+    enum: VariantGroupingModelValues,
+  })
+  variantGrouping!: VariantGroupingModel;
+
   @ApiProperty({ description: 'Creation timestamp' })
   createdAt!: Date;
 
@@ -72,6 +83,7 @@ export class ConnectionResponseDto {
   static fromDomain(
     connection: Connection,
     supportedCapabilities: string[],
+    variantGrouping: VariantGroupingModel,
     role?: UserRole,
     isDemoModeEnabled = false
   ): ConnectionResponseDto {
@@ -93,6 +105,7 @@ export class ConnectionResponseDto {
     dto.adapterKey = connection.adapterKey;
     dto.enabledCapabilities = connection.enabledCapabilities;
     dto.supportedCapabilities = supportedCapabilities;
+    dto.variantGrouping = variantGrouping;
     dto.createdAt = connection.createdAt;
     dto.updatedAt = connection.updatedAt;
     return dto;
