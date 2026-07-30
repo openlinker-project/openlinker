@@ -164,3 +164,27 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 **Rule**: When a column encodes lifecycle progression and more than one process upserts the row, resolve the conflict by an explicit precedence ladder in SQL (`CASE WHEN rank(EXCLUDED) >= rank(current) THEN EXCLUDED ELSE current END`) rather than by arrival order, and keep the rank map beside the status union so the two cannot drift. Do not "fix" it by reordering the callers - they are deliberately decoupled, and neither can reason about the other's timing. Prove it with an integration test: the guard lives in SQL, so a mocked repository cannot exercise it.
 **Applies to**: repository upserts over a status/lifecycle column with more than one writer - today `webhook_deliveries` (`libs/core/src/webhooks/infrastructure/persistence/repositories/webhook-delivery.repository.ts`); the same shape would apply to any future `*_snapshots` or delivery-audit table written from both an ingress and a consumer path.
 **Source**: #1916 (CI run 30435342214).
+
+## An "authenticates" assertion is not a "works" assertion — assert a successful call, not just the absence of 401
+
+**Context**: Phase 0 (#1486) shipped one MCP tool, `whoami`, reading the principal from `ctx.authInfo`. Its int-spec asserted the minted token was accepted by `/mcp` via `.expect(res => { if (res.status === 401 || res.status === 403) throw ... })`.
+**Problem**: That assertion passes on a 400. `whoami` was in fact broken end-to-end: the principal lives on the **request-scoped** `McpRequestContext` handed to the server *factory*, and NOT on the context the SDK passes a tool callback at dispatch time — so every real `whoami` call would have returned "No OpenLinker principal on this request." Nothing caught it for a full phase, because the only test of the path asserted a negative (not-401) rather than the positive (a parseable result). #1487's first genuine `tools/call` surfaced it immediately.
+**Rule**: When a slice's whole purpose is "X now works end-to-end", assert the SUCCESS shape — parse the response body and check a field. A not-an-error assertion is a placeholder, and it will keep passing while the feature rots. Corollary for the MCP SDK specifically: thread the factory's `ctx` into anything a tool handler needs; treat the dispatch-time context as carrying no auth.
+**Applies to**: `apps/api/src/mcp/transport/mcp-server.factory.ts`, `apps/api/src/mcp/tools/tool-registry.service.ts`, any int-spec whose only assertion is a status-code exclusion.
+**Source**: #1487.
+
+## MCP protocol revision 2026-07-28 requires a per-request envelope + agreeing headers — a missing one looks like an auth/routing 400
+
+**Context**: Hand-rolling JSON-RPC calls against `/mcp` in an int-spec (supertest, no MCP client library).
+**Problem**: Every call 400'd. The revision named in `MCP-Protocol-Version` carries the handshake **on every request** (which is what makes OL's stateless, session-free serving legal per ADR-033), and enforces header/body agreement. Three separate omissions each produced a bare HTTP 400 that read like a bad token or a dead route: (1) `params._meta` absent; (2) `_meta` present but missing `io.modelcontextprotocol/protocolVersion` + `io.modelcontextprotocol/clientCapabilities`; (3) the `Mcp-Method` header absent, and for `tools/call` also `Mcp-Name` — both must match the body so an intermediary can route without parsing the payload. The SDK's error *bodies* name the missing key precisely; the status code alone tells you nothing.
+**Rule**: When an MCP request 400s, read the JSON-RPC `error.message` in the response body before suspecting auth or routing — the SDK says exactly which envelope key or header is missing. Build the request helper once, with `_meta` + `Mcp-Method` (+ `Mcp-Name`) derived from the call, rather than per test.
+**Applies to**: `apps/api/test/integration/mcp-tools.int-spec.ts`; any hand-rolled MCP JSON-RPC caller.
+**Source**: #1487.
+
+## `--testPathPattern` is silently ignored when a Jest config sets `testRegex` — use `--testRegex` to run one int-spec
+
+**Context**: Iterating on a single `*.int-spec.ts` in `apps/api`, where `test/jest-integration.cjs` sets `testRegex: 'test/integration/.*\\.int-spec\\.ts$'`.
+**Problem**: `--testPathPattern=mcp` and a positional `"mcp-"` both ran the ENTIRE integration suite — including the PrestaShop/MySQL container specs, so each "targeted" iteration cost ~15 minutes and booted containers that exhaust Docker. `--listTests` confirms it: the filter is dropped, not narrowed. This is the mechanism behind the older note that `test:integration -- <pattern>` doesn't filter.
+**Rule**: To run one int-spec in this repo, override the config's own key: `pnpm --filter @openlinker/api exec jest --config test/jest-integration.cjs --testRegex="<file>\\.int-spec\\.ts$"`. Verify with `--listTests` before the real run — it is instant and proves the filter took.
+**Applies to**: `apps/api/test/jest-integration.cjs`, `apps/worker/test/jest-integration.cjs`.
+**Source**: #1487.

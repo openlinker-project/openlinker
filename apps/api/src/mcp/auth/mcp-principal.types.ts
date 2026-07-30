@@ -50,3 +50,30 @@ export function isMcpAuthInfoExtra(value: unknown): value is McpAuthInfoExtra {
     typeof candidate.olRole === 'string'
   );
 }
+
+/**
+ * Project an authenticated caller down to the safe-to-log fields (#1487).
+ *
+ * This function IS the security invariant described in the module header —
+ * it exists so that "never log the AuthInfo" is enforced by a call rather
+ * than remembered as a convention. It takes only the already-narrowed
+ * `extra` bag plus scopes, so the raw token is not even in scope here and
+ * cannot be leaked by a future edit.
+ *
+ * Returns `null` when `extra` is not a recognisable OL principal, so callers
+ * can distinguish "unauthenticated" from "authenticated as nobody".
+ */
+export function redactPrincipal(
+  extra: unknown,
+  scopes: readonly string[] = []
+): RedactedMcpPrincipal | null {
+  if (!isMcpAuthInfoExtra(extra)) {
+    return null;
+  }
+  return {
+    mcpTokenId: extra.mcpTokenId,
+    olUserId: extra.olUserId,
+    olRole: extra.olRole,
+    scopes: scopes.filter((s): s is McpTokenScope => s === 'mcp:read' || s === 'mcp:write'),
+  };
+}
