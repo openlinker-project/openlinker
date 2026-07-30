@@ -1226,6 +1226,9 @@ graph LR
   integrations --> identifier-mapping
   shipping --> integrations
   shipping --> mappings
+  shipping --> orders
+  shipping --> identifier-mapping
+  shipping --> sync
   mailer --> integrations
 ```
 

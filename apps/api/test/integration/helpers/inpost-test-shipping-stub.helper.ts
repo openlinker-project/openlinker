@@ -57,6 +57,16 @@ export interface InpostTestShippingStubHandle {
   failOrder(orderId: string): void;
   /** Clear all per-order failure arrangements (call between tests). */
   resetFailures(): void;
+  /**
+   * Suspend `generateLabel` for this order until the returned function is
+   * called (#1917). Lets a spec hold one dispatch mid-carrier-call while a
+   * second dispatch for the same order runs — the exact window the per-order
+   * lock exists to close. `started` resolves once the call is actually
+   * in-flight, so the spec never races the arrangement itself.
+   */
+  holdOrder(orderId: string): { started: Promise<void>; release: () => void };
+  /** How many times `generateLabel` was invoked (across all orders). */
+  generateLabelCallCount(): number;
 }
 
 export function installInpostTestShippingStub(
@@ -68,7 +78,9 @@ export function installInpostTestShippingStub(
     .get<AdapterFactoryResolverService>(ADAPTER_FACTORY_RESOLVER_TOKEN);
 
   let counter = 0;
+  let generateLabelCalls = 0;
   const failingOrderIds = new Set<string>();
+  const heldOrderIds = new Map<string, { release: Promise<void>; signalStarted: () => void }>();
   // Implements ShipmentCanceller + LabelDocumentReader + DispatchProtocolReader
   // too (#846 / #884 / #964): the cancel / label / bulk-protocol endpoints
   // resolve this adapter and narrow via the co-located guards. #835's dispatch
@@ -80,7 +92,15 @@ export function installInpostTestShippingStub(
     getSupportedMethods(): readonly ShippingMethod[] {
       return ['paczkomat', 'kurier'];
     },
-    generateLabel(cmd: GenerateLabelCommand): Promise<GenerateLabelResult> {
+    async generateLabel(cmd: GenerateLabelCommand): Promise<GenerateLabelResult> {
+      generateLabelCalls += 1;
+      // Per-order suspend hook for the #1917 concurrency spec — arranged via
+      // the returned handle's `holdOrder(orderId)`.
+      const held = heldOrderIds.get(cmd.orderId);
+      if (held) {
+        held.signalStarted();
+        await held.release;
+      }
       // Per-order failure hook for the #964 bulk partial-failure spec —
       // arranged via the returned handle's `failOrder(orderId)`.
       if (failingOrderIds.has(cmd.orderId)) {
@@ -134,6 +154,27 @@ export function installInpostTestShippingStub(
     },
     resetFailures: (): void => {
       failingOrderIds.clear();
+      heldOrderIds.clear();
+      generateLabelCalls = 0;
     },
+    holdOrder: (orderId: string): { started: Promise<void>; release: () => void } => {
+      let signalStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        signalStarted = resolve;
+      });
+      let releaseFn!: () => void;
+      const release = new Promise<void>((resolve) => {
+        releaseFn = resolve;
+      });
+      heldOrderIds.set(orderId, { release, signalStarted });
+      return {
+        started,
+        release: () => {
+          heldOrderIds.delete(orderId);
+          releaseFn();
+        },
+      };
+    },
+    generateLabelCallCount: (): number => generateLabelCalls,
   };
 }

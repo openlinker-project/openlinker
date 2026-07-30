@@ -11,6 +11,7 @@ import {
   ShippingProviderRejectionException,
   type GenerateLabelCommand,
 } from '@openlinker/core/shipping';
+import { Logger } from '@openlinker/shared/logging';
 import type { InpostConnectionConfig } from '../../../domain/types/inpost-config.types';
 import type { IInpostHttpClient } from '../../http/inpost-http-client.interface';
 import { InpostUnauthorizedException } from '../../../domain/exceptions/inpost-unauthorized.exception';
@@ -323,6 +324,137 @@ describe('InpostShippingAdapter', () => {
         providerCode: 'preflight.empty-protocol-batch',
       });
       expect(requestBinary).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findShipmentByReference (#1917)', () => {
+    it('should query the org shipment collection filtered by reference', async () => {
+      const { adapter, request } = makeAdapter();
+      request.mockResolvedValueOnce({ items: [] });
+
+      await adapter.findShipmentByReference({ reference: 'ol_shipment_abc' });
+
+      expect(request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: 'GET',
+          path: '/v1/organizations/org-123/shipments',
+          query: expect.objectContaining({ reference: 'ol_shipment_abc' }),
+        }),
+      );
+    });
+
+    it('should map a single exact match', async () => {
+      const { adapter, request } = makeAdapter();
+      request.mockResolvedValueOnce({
+        items: [
+          { id: 998877, status: 'confirmed', tracking_number: '6200001', reference: 'ol_shipment_abc' },
+        ],
+      });
+
+      await expect(adapter.findShipmentByReference({ reference: 'ol_shipment_abc' })).resolves.toEqual(
+        { providerShipmentId: '998877', trackingNumber: '6200001' },
+      );
+    });
+
+    it('should normalise a missing tracking number to null', async () => {
+      const { adapter, request } = makeAdapter();
+      request.mockResolvedValueOnce({
+        items: [{ id: 5, status: 'created', tracking_number: null, reference: 'ol_shipment_abc' }],
+      });
+
+      await expect(adapter.findShipmentByReference({ reference: 'ol_shipment_abc' })).resolves.toEqual(
+        { providerShipmentId: '5', trackingNumber: null },
+      );
+    });
+
+    it('should return null when nothing matches', async () => {
+      const { adapter, request } = makeAdapter();
+      request.mockResolvedValueOnce({ items: [] });
+
+      await expect(
+        adapter.findShipmentByReference({ reference: 'ol_shipment_abc' }),
+      ).resolves.toBeNull();
+    });
+
+    it('should tolerate a response with no items array', async () => {
+      const { adapter, request } = makeAdapter();
+      request.mockResolvedValueOnce({});
+
+      await expect(
+        adapter.findShipmentByReference({ reference: 'ol_shipment_abc' }),
+      ).resolves.toBeNull();
+    });
+
+    it('should ignore items whose reference does not match exactly', async () => {
+      const { adapter, request } = makeAdapter();
+      // ShipX silently ignoring an unsupported filter would answer with an
+      // unfiltered page; the client-side check must not adopt a stranger.
+      request.mockResolvedValueOnce({
+        items: [
+          { id: 1, status: 'created', tracking_number: null, reference: 'ol_shipment_other' },
+          { id: 2, status: 'created', tracking_number: null, reference: undefined },
+        ],
+      });
+
+      await expect(
+        adapter.findShipmentByReference({ reference: 'ol_shipment_abc' }),
+      ).resolves.toBeNull();
+    });
+
+    it('should warn when a full page comes back with no match (filter likely unsupported)', async () => {
+      const { adapter, request } = makeAdapter();
+      // A full page of strangers is the signature of ShipX ignoring the filter:
+      // safe (nothing is adopted) but a permanent silent no-op without a signal.
+      request.mockResolvedValueOnce({
+        items: Array.from({ length: 10 }, (_, index) => ({
+          id: index + 1,
+          status: 'created',
+          tracking_number: null,
+          reference: `ol_shipment_other_${index}`,
+        })),
+      });
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      await expect(
+        adapter.findShipmentByReference({ reference: 'ol_shipment_abc' }),
+      ).resolves.toBeNull();
+
+      const logged = warn.mock.calls.map((call) => String(call[0])).join('\n');
+      expect(logged).toContain('full page');
+      expect(logged).toContain('ol_shipment_abc');
+      warn.mockRestore();
+    });
+
+    it('should not warn when a partial page comes back with no match', async () => {
+      const { adapter, request } = makeAdapter();
+      // Fewer items than the page size means the filter WAS applied (or the org
+      // is small) — nothing to diagnose, so no noise.
+      request.mockResolvedValueOnce({
+        items: [{ id: 1, status: 'created', tracking_number: null, reference: 'ol_shipment_x' }],
+      });
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      await expect(
+        adapter.findShipmentByReference({ reference: 'ol_shipment_abc' }),
+      ).resolves.toBeNull();
+
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    it('should refuse to adopt when more than one shipment shares the reference', async () => {
+      const { adapter, request } = makeAdapter();
+      // The pre-#1917 race could leave two paid labels under one reference.
+      request.mockResolvedValueOnce({
+        items: [
+          { id: 11, status: 'created', tracking_number: 'A', reference: 'ol_shipment_abc' },
+          { id: 22, status: 'created', tracking_number: 'B', reference: 'ol_shipment_abc' },
+        ],
+      });
+
+      await expect(
+        adapter.findShipmentByReference({ reference: 'ol_shipment_abc' }),
+      ).resolves.toBeNull();
     });
   });
 });

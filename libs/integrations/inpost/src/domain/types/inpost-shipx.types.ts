@@ -93,6 +93,21 @@ export interface ShipXShipment {
   id: number;
   status: string;
   tracking_number: string | null;
+  /**
+   * Echo of the `reference` supplied at creation. Optional because the
+   * create-shipment and by-id responses are not documented to guarantee it;
+   * the #1917 reconciler treats an absent value as "not a match" rather than
+   * assuming the server-side filter did its job.
+   */
+  reference?: string | null;
+}
+
+/**
+ * Organization shipment collection (`GET /v1/organizations/:id/shipments`).
+ * Same paged envelope shape as `ShipXPointsResponse`.
+ */
+export interface ShipXShipmentsResponse {
+  items?: readonly ShipXShipment[];
 }
 
 export interface ShipXTrackingDetail {

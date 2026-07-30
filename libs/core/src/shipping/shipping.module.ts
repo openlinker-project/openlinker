@@ -26,6 +26,7 @@ import { IntegrationsModule } from '@openlinker/core/integrations';
 import { MappingsModule } from '@openlinker/core/mappings';
 import { OrdersModule } from '@openlinker/core/orders';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
+import { SyncModule } from '@openlinker/core/sync';
 
 import { ShipmentOrmEntity } from './infrastructure/persistence/entities/shipment.orm-entity';
 import { ShipmentRepository } from './infrastructure/persistence/repositories/shipment.repository';
@@ -75,6 +76,9 @@ import {
     // (IdentifierMappingModule). Acyclic — OrdersModule does not import ShippingModule.
     OrdersModule,
     IdentifierMappingModule,
+    // #1917 per-order dispatch serialization: SYNC_LOCK_TOKEN / SyncLockPort.
+    // Acyclic — SyncModule depends on events/listings/orders, never on shipping.
+    SyncModule,
   ],
   providers: [
     ShipmentRepository,
