@@ -584,7 +584,11 @@ always-registered discovery entry points (`whoami`, `list_connections`) plus fou
 `notifications/tools/list_changed` is deliberately **not** implemented: stateless per-request serving leaves no
 session to push over. Note the accepted cost — the *server* is always fresh, but a **client's cached tool list**
 can go stale, so an agent already connected when a connection is enabled won't see the new tool until it
-reconnects. See [ADR-033 § Phase 1 amendments](./architecture/adrs/033-openlinker-as-mcp-server.md).
+reconnects. See [ADR-033 § Phase 1 amendments](./architecture/adrs/033-openlinker-as-mcp-server.md). The
+operator-facing half of that cost is documented in the product (#1932): the MCP tokens settings page states
+that tool availability follows enabled connections and that a connection change needs a client reconnect.
+Closing the gap for real means adopting sessions, which reverses part of ADR-033 — so it starts with an
+amendment, not with UI.
 
 ---
 

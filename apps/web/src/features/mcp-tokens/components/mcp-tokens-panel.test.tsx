@@ -117,4 +117,20 @@ describe('McpTokensPanel', () => {
     await user.click(await screen.findByRole('button', { name: /^revoke$/i }));
     await waitFor(() => expect(revoke).toHaveBeenCalledWith('token-1'));
   });
+
+  it('should tell the operator that a connection change needs a client reconnect (#1932)', async () => {
+    const apiClient = createMockApiClient({
+      mcpTokens: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<McpTokensPanel />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    // Both halves matter: without the capability sentence, "reconnect" reads as
+    // a bug workaround rather than a consequence of capability-gated tools.
+    expect(screen.getByText(/depends on which connections are enabled/i)).toBeInTheDocument();
+    expect(screen.getByText(/reconnect the client/i)).toBeInTheDocument();
+  });
 });
