@@ -202,7 +202,13 @@ async setup(): Promise<void> {
    a row** is truncated. The reset probes for non-empty tables first, because
    `TRUNCATE` costs ~10 ms per table even when it is empty and a typical test
    dirties two or three (#1920) - so adding a table to `tablesToTruncate` is
-   cheap, but it must still be listed there to be cleaned.
+   cheap, but it must still be listed there to be cleaned. The probe runs over
+   the list's **`CASCADE` closure**, not the literal list: a per-table
+   `TRUNCATE ... CASCADE` also clears anything holding an FK to that table, so
+   the closure (walked once per DataSource via `pg_constraint`) keeps that
+   collateral clear even when the parent itself is empty. Today the closure adds
+   nothing to the apps/api list - the `synchronize`-built schema has four FKs and
+   every dependent is already listed - but a future FK is covered automatically.
 4. **After Tests**: Containers are stopped and removed
 
 ### Benefits
