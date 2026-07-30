@@ -23,13 +23,22 @@ Erli owns its own small Allegro client-credentials HTTP client (`AllegroCategory
 **Third amendment (required by [ADR-037](./037-destination-taxonomy-read-model.md), #1937)**: ADR-037 replaces the *read path* this Decision depends on. Three concrete changes, none of which alter this ADR's mechanism (`client_credentials` against Allegro's public catalog endpoints, no seller context):
 
 1. **`CategoriesCacheService.getAllegroCategories` — named above as Erli's read path — is deleted.** Reads move to `IDestinationTaxonomyService.browse/search` in `listings`, served from a synced projection instead of a live per-parent call. Erli's browsing behaviour is preserved; only its source changes.
-2. **The catalogue fetch stops being per-Erli-connection, which *resolves* this ADR's central tension rather than reopening it.** Under ADR-037 an Erli connection no longer fetches a taxonomy at all — a sync job keyed to the taxonomy *owner* populates the projection once, and every borrowing connection reads it. So `AllegroCategoryCatalogClient` no longer needs to live inside the Erli plugin: Erli requires nothing from it, and **plugin independence (this ADR's decisive constraint) is strengthened, not weakened**. The ~100–150 lines of duplicated OAuth/fetch logic listed under Cons also stop being duplicated, since only one component still performs the catalogue fetch.
+2. **Only the *category* half of the catalogue fetch moves; `AllegroCategoryCatalogClient` stays in the Erli plugin.** ADR-037 projects the category **tree** — its `DestinationCategory` entity carries no parameter schema — while `ErliOfferManagerAdapter`'s conditional constructor wires **two** methods from the client:
+
+   ```ts
+   if (allegroCategoryCatalog) {
+     this.fetchCategories = …          // ← superseded by the ADR-037 projection
+     this.fetchCategoryParameters = …  // ← NOT superseded; still a live per-connection read
+   }
+   ```
+
+   So an Erli connection still resolves `CategoryParametersReader` through this ADR's `client_credentials` client. The client cannot relocate, **plugin independence stays exactly as this ADR left it** (neither strengthened nor weakened), and the ~100–150 lines of duplicated OAuth/fetch logic listed under Cons **remain duplicated**. The relocation tension ADR-037 raises is real and stays open — projecting the parameter schema too would be a separate decision, and ADR-037 explicitly declines it.
 3. **This revives an alternative deliberately rejected above** — "a single OpenLinker-wide, non-tenant-scoped Allegro app credential… mirroring the `ai-provider:{provider}` global-ref pattern" — and the revival must be argued, not slipped in. That rejection was explicitly scoped ("rejected **for v1**… left as a future evolution"), and the calculus changed for a reason unrelated to hosting model: a category tree is **one object**, so per-connection credentials mean N independent syncs of the identical tree and N copies of it. The original objections still stand on their own terms and are accepted as costs — Allegro rate limits are per-app, so one app credential concentrates them, and key rotation gains a single owner. What made per-connection credentials right for a *live, per-connection read* makes them wrong for a *shared, synced projection*.
 
 Two consequences worth recording:
 
 - `ErliConnectionConfig.allegroCategoryAccessEnabled` changes meaning. It currently reports "this connection has Allegro app credentials"; under ADR-037 the question becomes "does the installation have a configured taxonomy source for `allegro`". The FE signal survives, its source moves, and the plain-text category-ID fallback **must remain** for the no-source case (ADR-037 records it as a non-regression).
-- The `supportedCapabilities` limitation recorded in the first correction above — that the static per-`adapterKey` manifest cannot differ between two Erli connections, leaving the bulk wizard's `CategoryBrowser` gate permanently `false` for Erli — **stops being load-bearing**. Under ADR-037 the wizard reads the projection rather than gating on a browse capability, so that pre-existing limitation is resolved as a side effect rather than worked around.
+- The `supportedCapabilities` limitation recorded in the first correction above — that the static per-`adapterKey` manifest cannot differ between two Erli connections, leaving the bulk wizard's `CategoryBrowser` gate permanently `false` for Erli — **stops being load-bearing for category *selection* only**. Under ADR-037 the wizard picks a category from the projection rather than gating on a browse capability. The **parameter step is unaffected**: it still resolves `CategoryParametersReader` per connection and remains subject to the same manifest limitation.
 
 ## Alternatives considered
 
