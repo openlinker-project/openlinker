@@ -105,6 +105,7 @@ export type {
 export type { BulkListingBatchRepositoryPort } from './domain/ports/bulk-listing-batch-repository.port';
 export { BulkListingBatchNotFoundException } from './domain/exceptions/bulk-listing-batch-not-found.exception';
 export { EmptyBulkSubmissionException } from './domain/exceptions/empty-bulk-submission.exception';
+export { AllVariantsAlreadyListedException } from './domain/exceptions/all-variants-already-listed.exception';
 export { InvalidEanException } from './domain/exceptions/invalid-ean.exception';
 export { DuplicateBatchEanException } from './domain/exceptions/duplicate-batch-ean.exception';
 export { CurrencyMismatchException } from './domain/exceptions/currency-mismatch.exception';

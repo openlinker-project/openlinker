@@ -117,6 +117,8 @@ export interface BulkOfferCreateRequest {
 export interface BulkOfferCreateResponse {
   batchId: string;
   jobIds: string[];
+  /** Count of already-listed variants the backend skipped rather than duplicated (#1933). */
+  skippedAlreadyListedCount: number;
 }
 
 export interface BulkBatchRecordSummary {
