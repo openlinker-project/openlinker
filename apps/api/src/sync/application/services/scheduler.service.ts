@@ -48,6 +48,12 @@ const OFFLINE_RESUBMIT_DEFAULT_LIMIT = 100;
 const PENDING_RECOVERY_DEFAULT_LIMIT = 100;
 
 /**
+ * Default page size for the stale-offer-pause reconcile sweep (#1689). Bounds
+ * the per-connection, per-tick query on `OfferMappingRepositoryPort.findStaleMappedVariants`.
+ */
+const STALE_OFFER_PAUSE_DEFAULT_LIMIT = 200;
+
+/**
  * Static descriptor for a core capability-scoped scheduler task. The four core
  * tasks (inventory / product / pickup-point / regulatory-reconcile) are
  * structurally identical — drain every active connection supporting `capability`
@@ -160,6 +166,21 @@ const CORE_CAPABILITY_TASKS: readonly CoreCapabilityTaskDescriptor[] = [
     idempotencyKey: (connectionId, timestamp) =>
       `invoicing:${connectionId}:pendingRecovery:sweep:${timestamp}`,
     extraPayload: { limit: PENDING_RECOVERY_DEFAULT_LIMIT },
+  },
+  {
+    taskId: 'stale-offer-pause-sweep',
+    jobType: 'marketplace.offer.pauseStaleSweep',
+    capability: 'OfferManager',
+    enabledEnvVar: 'OL_STALE_OFFER_PAUSE_ENABLED',
+    // Default ON (unlike offline-resubmit): the failure mode of running this is
+    // a redundant absolute-set to 0 on an offer whose variant is genuinely
+    // deleted; the failure mode of NOT running it is unbounded oversell (#1689).
+    cronEnvVar: 'OL_STALE_OFFER_PAUSE_CRON',
+    // Offset minute (17) so it doesn't pile onto the */15 and */20 master syncs.
+    defaultCron: '17 * * * *',
+    idempotencyKey: (connectionId, timestamp) =>
+      `marketplace:${connectionId}:offer:pauseStaleSweep:${timestamp}`,
+    extraPayload: { limit: STALE_OFFER_PAUSE_DEFAULT_LIMIT },
   },
 ];
 

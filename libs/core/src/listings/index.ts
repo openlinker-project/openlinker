@@ -71,6 +71,7 @@ export type {
   OfferMappingPagination,
   PaginatedOfferMappings,
   ProductListingsCoverage,
+  StaleMappedVariant,
 } from './domain/types/offer-mapping.types';
 export type {
   OfferDescriptionSectionItem,
@@ -279,6 +280,8 @@ export type {
 } from './application/services/offer-status-sync.service.interface';
 export type { IOfferStatusReadService } from './application/services/offer-status-read.service.interface';
 export type { IOfferStockRestoreService } from './application/interfaces/offer-stock-restore.service.interface';
+export type { IStaleOfferPauseService } from './application/interfaces/stale-offer-pause.service.interface';
+export type { StaleOfferPauseResult } from './domain/types/stale-offer-pause.types';
 export { OfferPollNotSupportedException } from './domain/exceptions/offer-poll-not-supported.exception';
 export { OfferNotFoundOnMarketplaceException } from './domain/exceptions/offer-not-found-on-marketplace.exception';
 export type { OfferReader } from './domain/ports/capabilities/offer-reader.capability';

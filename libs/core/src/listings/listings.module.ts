@@ -60,6 +60,7 @@ import { OfferStatusReadService } from './application/services/offer-status-read
 import { OfferStockRestoreService } from './application/services/offer-stock-restore.service';
 import { OfferStatusSnapshotOrmEntity } from './infrastructure/persistence/entities/offer-status-snapshot.orm-entity';
 import { OfferStatusSnapshotRepository } from './infrastructure/persistence/repositories/offer-status-snapshot.repository';
+import { StaleOfferPauseService } from './application/services/stale-offer-pause.service';
 import {
   OFFER_LINKING_SERVICE_TOKEN,
   OFFER_MAPPING_SYNC_SERVICE_TOKEN,
@@ -99,6 +100,7 @@ import {
   SHOP_PRODUCT_MAPPING_REPOSITORY_TOKEN,
   PUBLISHED_VARIANTS_SERVICE_TOKEN,
   SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN,
+  STALE_OFFER_PAUSE_SERVICE_TOKEN,
 } from './listings.tokens';
 
 // Re-export tokens for convenience
@@ -141,6 +143,7 @@ export {
   SHOP_PRODUCT_MAPPING_REPOSITORY_TOKEN,
   PUBLISHED_VARIANTS_SERVICE_TOKEN,
   SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN,
+  STALE_OFFER_PAUSE_SERVICE_TOKEN,
 } from './listings.tokens';
 
 @Module({
@@ -209,6 +212,7 @@ export {
     ShopProductMappingRepository,
     PublishedVariantsService,
     ShopProductMappingsService,
+    StaleOfferPauseService,
     {
       provide: OFFER_LINKING_SERVICE_TOKEN,
       useExisting: OfferLinkingService,
@@ -361,6 +365,10 @@ export {
       provide: OFFER_STOCK_RESTORE_SERVICE_TOKEN,
       useExisting: OfferStockRestoreService,
     },
+    {
+      provide: STALE_OFFER_PAUSE_SERVICE_TOKEN,
+      useExisting: StaleOfferPauseService,
+    },
   ],
   exports: [
     OFFER_LINKING_SERVICE_TOKEN,
@@ -399,6 +407,7 @@ export {
     SHOP_PRODUCT_MAPPING_REPOSITORY_TOKEN,
     PUBLISHED_VARIANTS_SERVICE_TOKEN,
     SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN,
+    STALE_OFFER_PAUSE_SERVICE_TOKEN,
   ],
 })
 export class ListingsModule {}

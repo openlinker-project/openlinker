@@ -274,7 +274,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       const result = await handler.execute(job);
 
       // Success - mark as succeeded with the handler's reported outcome
-      await this.jobRepository.markSucceeded(job.id, result.outcome);
+      await this.jobRepository.markSucceeded(job.id, result.outcome, result.outcomeReason);
       this.logger.log(
         `Job ${job.id} (${job.jobType}) succeeded with outcome=${result.outcome} after ${job.attempts + 1} attempt(s)`
       );

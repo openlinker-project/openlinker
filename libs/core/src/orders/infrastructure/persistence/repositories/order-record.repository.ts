@@ -158,23 +158,28 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * index if scan time creeps.
    */
   async countByHealth(filters: OrderHealthSummaryFilters): Promise<OrderHealthSummary> {
+    const notMappingOrDeleted = OrderRecordRepository.NOT_MAPPING_OR_DELETED;
     const qb = this.repository
       .createQueryBuilder('rec')
       .select('COUNT(*)', 'total')
       .addSelect(
-        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.IS_MAPPING})`,
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.IS_SOURCE_DELETED})`,
+        'source_deleted'
+      )
+      .addSelect(
+        `COUNT(*) FILTER (WHERE NOT (${OrderRecordRepository.IS_SOURCE_DELETED}) AND ${OrderRecordRepository.IS_MAPPING})`,
         'awaiting_mapping'
       )
       .addSelect(
-        `COUNT(*) FILTER (WHERE NOT (${OrderRecordRepository.IS_MAPPING}) AND ${OrderRecordRepository.HAS_FAILED})`,
+        `COUNT(*) FILTER (WHERE ${notMappingOrDeleted} AND ${OrderRecordRepository.HAS_FAILED})`,
         'needs_attention'
       )
       .addSelect(
-        `COUNT(*) FILTER (WHERE NOT (${OrderRecordRepository.IS_MAPPING}) AND NOT (${OrderRecordRepository.HAS_FAILED}) AND ${OrderRecordRepository.HAS_SYNCED})`,
+        `COUNT(*) FILTER (WHERE ${notMappingOrDeleted} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND ${OrderRecordRepository.HAS_SYNCED})`,
         'synced'
       )
       .addSelect(
-        `COUNT(*) FILTER (WHERE NOT (${OrderRecordRepository.IS_MAPPING}) AND NOT (${OrderRecordRepository.HAS_FAILED}) AND NOT (${OrderRecordRepository.HAS_SYNCED}))`,
+        `COUNT(*) FILTER (WHERE ${notMappingOrDeleted} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND NOT (${OrderRecordRepository.HAS_SYNCED}))`,
         'awaiting_dispatch'
       );
 
@@ -195,6 +200,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
 
     const raw = await qb.getRawOne<{
       total: string;
+      source_deleted: string;
       awaiting_mapping: string;
       needs_attention: string;
       synced: string;
@@ -203,6 +209,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
 
     return {
       total: Number(raw?.total ?? 0),
+      sourceDeleted: Number(raw?.source_deleted ?? 0),
       awaitingMapping: Number(raw?.awaiting_mapping ?? 0),
       needsAttention: Number(raw?.needs_attention ?? 0),
       synced: Number(raw?.synced ?? 0),
@@ -213,25 +220,34 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   /**
    * Constant SQL fragments shared by `applyHealthFilter` and `countByHealth`
    * (no user input). `HAS_*` use `@>` containment — matches when `syncStatus[]`
-   * contains an entry with the given status; `IS_MAPPING` keys the highest-
-   * precedence bucket. The three non-mapping buckets gate on `NOT IS_MAPPING`
-   * (residual form) rather than `recordStatus = 'ready'`, so the four buckets
-   * remain a complete partition for ANY `recordStatus` value — adding a third
-   * status later can't silently leave rows uncounted. This mirrors the FE
-   * `deriveOrderHealth` precedence (mapping → failed → synced → else) exactly.
+   * contains an entry with the given status; `IS_SOURCE_DELETED` keys the
+   * highest-precedence bucket, `IS_MAPPING` the second. The three
+   * non-mapping/non-deleted buckets gate on `NOT_MAPPING_OR_DELETED` (residual
+   * form) rather than `recordStatus = 'ready'`, so the five buckets remain a
+   * complete partition for ANY `recordStatus` value — adding a further status
+   * later can't silently leave rows uncounted. This mirrors the FE
+   * `deriveOrderHealth` precedence (source_deleted → mapping → failed → synced
+   * → else) exactly.
    */
+  private static readonly IS_SOURCE_DELETED = `rec."recordStatus" = 'source_deleted'`;
   private static readonly IS_MAPPING = `rec."recordStatus" = 'awaiting_mapping'`;
+  private static readonly NOT_MAPPING_OR_DELETED =
+    `NOT (${OrderRecordRepository.IS_MAPPING}) AND NOT (${OrderRecordRepository.IS_SOURCE_DELETED})`;
   private static readonly HAS_FAILED = `rec."syncStatus" @> '[{"status":"failed"}]'::jsonb`;
   private static readonly HAS_SYNCED = `rec."syncStatus" @> '[{"status":"synced"}]'::jsonb`;
 
   /**
    * Triage-urgency ordinal for the `status` sort (#944): most-urgent first when
-   * ascending. Mirrors the health precedence (mapping → failed → synced → else)
-   * in WHEN order, but assigns the ordinal by urgency:
-   * needs_attention(0) < awaiting_mapping(1) < awaiting_dispatch(2) < synced(3).
+   * ascending. Mirrors the health precedence (source_deleted → mapping →
+   * failed → synced → else) in WHEN order, but assigns the ordinal by urgency:
+   * source_deleted(-1) < needs_attention(0) < awaiting_mapping(1) <
+   * awaiting_dispatch(2) < synced(3). Existing ordinals (0–3) are left
+   * unchanged so a pre-#1689 sort-order expectation on a non-deleted record
+   * set doesn't shift.
    */
   private static readonly HEALTH_ORDINAL =
-    `CASE WHEN ${OrderRecordRepository.IS_MAPPING} THEN 1 ` +
+    `CASE WHEN ${OrderRecordRepository.IS_SOURCE_DELETED} THEN -1 ` +
+    `WHEN ${OrderRecordRepository.IS_MAPPING} THEN 1 ` +
     `WHEN ${OrderRecordRepository.HAS_FAILED} THEN 0 ` +
     `WHEN ${OrderRecordRepository.HAS_SYNCED} THEN 3 ELSE 2 END`;
 
@@ -325,22 +341,27 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     qb: SelectQueryBuilder<OrderRecordOrmEntity>,
     health: OrderHealth
   ): void {
-    const notMapping = `NOT (${OrderRecordRepository.IS_MAPPING})`;
+    const notMappingOrDeleted = OrderRecordRepository.NOT_MAPPING_OR_DELETED;
     switch (health) {
+      case 'source_deleted':
+        qb.andWhere(OrderRecordRepository.IS_SOURCE_DELETED);
+        break;
       case 'awaiting_mapping':
-        qb.andWhere(OrderRecordRepository.IS_MAPPING);
+        qb.andWhere(
+          `NOT (${OrderRecordRepository.IS_SOURCE_DELETED}) AND ${OrderRecordRepository.IS_MAPPING}`
+        );
         break;
       case 'needs_attention':
-        qb.andWhere(`${notMapping} AND ${OrderRecordRepository.HAS_FAILED}`);
+        qb.andWhere(`${notMappingOrDeleted} AND ${OrderRecordRepository.HAS_FAILED}`);
         break;
       case 'synced':
         qb.andWhere(
-          `${notMapping} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND ${OrderRecordRepository.HAS_SYNCED}`
+          `${notMappingOrDeleted} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND ${OrderRecordRepository.HAS_SYNCED}`
         );
         break;
       case 'awaiting_dispatch':
         qb.andWhere(
-          `${notMapping} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND NOT (${OrderRecordRepository.HAS_SYNCED})`
+          `${notMappingOrDeleted} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND NOT (${OrderRecordRepository.HAS_SYNCED})`
         );
         break;
     }
@@ -492,6 +513,22 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     await this.repository.update({ internalOrderId }, { fulfillmentState });
   }
 
+  /**
+   * Push the honest item-resolution-failure state onto the order record
+   * (#1689). Narrow absolute-set on `recordStatus` + `mappingFailureReason`
+   * only — no read-modify-write, so it can't race a concurrent write to any
+   * other column on the same row (mirrors {@link updateFulfillmentState}).
+   */
+  async updateItemResolutionFailure(
+    internalOrderId: string,
+    input: { status: OrderRecordStatus; reason: string }
+  ): Promise<void> {
+    await this.repository.update(
+      { internalOrderId },
+      { recordStatus: input.status, mappingFailureReason: input.reason }
+    );
+  }
+
   async upsert(orderRecord: OrderRecord): Promise<OrderRecord> {
     const entity = this.toOrm(orderRecord);
     // TypeORM save() performs upsert on primary key (internalOrderId)
@@ -621,7 +658,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.updatedAt,
       syncAttempts,
       entity.dispatchByAt,
-      (entity.fulfillmentState as FulfillmentRollupState | null) ?? null
+      (entity.fulfillmentState as FulfillmentRollupState | null) ?? null,
+      entity.mappingFailureReason ?? null
     );
   }
 
@@ -652,6 +690,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       externalOrderNumber: a.externalOrderNumber,
     }));
     entity.recordStatus = orderRecord.recordStatus;
+    entity.mappingFailureReason = orderRecord.mappingFailureReason;
     entity.dispatchByAt = orderRecord.dispatchByAt;
     entity.fulfillmentState = orderRecord.fulfillmentState;
     entity.createdAt = orderRecord.createdAt;

@@ -18,6 +18,7 @@ import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import type {
   OrderRecordFilters,
   OrderRecordPagination,
+  OrderRecordStatus,
   PaginatedOrderRecords,
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
@@ -298,6 +299,17 @@ export class OrderRecordService implements IOrderRecordService {
     fulfillmentState: FulfillmentRollupState
   ): Promise<void> {
     await this.repository.updateFulfillmentState(internalOrderId, fulfillmentState);
+  }
+
+  async markItemResolutionFailure(
+    internalOrderId: string,
+    input: { status: OrderRecordStatus; reason: string }
+  ): Promise<void> {
+    // Narrow absolute-set on recordStatus + mappingFailureReason only (#1689
+    // review) — no read-modify-write, so it can't clobber a concurrent write
+    // to any other column on the same row (e.g. a syncStatus update racing
+    // in from OrderSyncService). Mirrors updateFulfillmentState's pattern.
+    await this.repository.updateItemResolutionFailure(internalOrderId, input);
   }
 
   /**

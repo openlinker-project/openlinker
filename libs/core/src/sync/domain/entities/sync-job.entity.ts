@@ -6,7 +6,7 @@
  *
  * @module libs/core/src/sync/domain/entities
  */
-import type { JobType, JobStatus, JobOutcome } from '../types/sync-job.types';
+import type { JobType, JobStatus, JobOutcome, JobOutcomeReason } from '../types/sync-job.types';
 
 export class SyncJob {
   constructor(
@@ -24,6 +24,7 @@ export class SyncJob {
     public readonly lastError: string | null,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
-    public readonly outcome?: JobOutcome | null
+    public readonly outcome?: JobOutcome | null,
+    public readonly outcomeReason?: JobOutcomeReason | null
   ) {}
 }

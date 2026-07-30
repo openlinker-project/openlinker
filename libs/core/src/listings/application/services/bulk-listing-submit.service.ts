@@ -449,6 +449,13 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     const overrideEan = (variantId: string): string | undefined =>
       input.perVariantOverrides?.[variantId]?.overrides?.ean;
 
+    // #1689 review #7: a variant deleted at its master (`isStale`) must never
+    // become a new offer — the new-offer path fails safe here, mirroring the
+    // live-offer pause. Applied at every job-push site below, including the
+    // directly-selected variant — a stale explicit selection is skipped too,
+    // not silently listed.
+    const shouldSkipStale = (variant: ProductVariant): boolean => variant.isStale === true;
+
     for (const selectedId of uniqueSelectedIds) {
       if (seen.has(selectedId)) continue;
 
@@ -470,6 +477,12 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
       if (siblings.length <= 1) {
         seen.add(selectedId);
         if (excluded.has(selectedId)) continue;
+        if (shouldSkipStale(selectedVariant)) {
+          this.logger.warn(
+            `Bulk submit: skipping variant ${selectedId} of product ${productId} — deleted at the master (isStale)`
+          );
+          continue;
+        }
         jobs.push({ variantId: selectedId, selectedId, useMasterStock: false, clearProductCard: false });
         variantsById.set(selectedId, selectedVariant);
         continue;
@@ -480,6 +493,12 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
         seen.add(sibling.id);
         if (excluded.has(sibling.id)) continue;
         const isSelected = sibling.id === selectedId;
+        if (shouldSkipStale(sibling)) {
+          this.logger.warn(
+            `Bulk submit: skipping variant ${sibling.id} of product ${productId} — deleted at the master (isStale)`
+          );
+          continue;
+        }
         const hasBarcode = Boolean(sibling.ean ?? sibling.gtin ?? overrideEan(sibling.id));
         if (!hasBarcode && !isSelected && dropBarcodelessSiblings) {
           this.logger.warn(
@@ -500,8 +519,8 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
       // Defensive: a multi-variant product whose `getVariantsByProductId`
       // result somehow omits the selected variant must still list it — never
       // silently drop a variant the operator explicitly picked, UNLESS it was
-      // explicitly excluded (#1741).
-      if (!seen.has(selectedId) && !excluded.has(selectedId)) {
+      // explicitly excluded (#1741) or stale (#1689).
+      if (!seen.has(selectedId) && !excluded.has(selectedId) && !shouldSkipStale(selectedVariant)) {
         jobs.push({ variantId: selectedId, selectedId, useMasterStock: true, clearProductCard: false });
         variantsById.set(selectedId, selectedVariant);
         seen.add(selectedId);

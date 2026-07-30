@@ -292,6 +292,7 @@ export class SyncController {
       connectionId: job.connectionId,
       status: job.status,
       outcome: job.outcome ?? null,
+      outcomeReason: job.outcomeReason ?? null,
       attempts: job.attempts,
       maxAttempts: job.maxAttempts,
       nextRunAt: job.nextRunAt instanceof Date ? job.nextRunAt.toISOString() : job.nextRunAt,
