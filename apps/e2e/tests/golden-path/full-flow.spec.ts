@@ -556,6 +556,16 @@ test.describe('golden path — full flow (S0-S9)', () => {
     requireProduct();
     const erli = world.connectionFor(PlatformType.erli);
     test.skip(!erli, 'no Erli connection on this stack');
+    // Creating Erli offers is only worth its ~5 min and its failure surface when
+    // somebody is going to BUY on Erli — the offers exist to be purchased at the
+    // pause, and S5-S9 only track the platforms in `purchasePlatforms`. Without
+    // this an `E2E_PURCHASE_PLATFORMS=allegro` run still lists on Erli and dies
+    // there whenever the sandbox shop is unavailable (Erli disabled it outright
+    // on 2026-07-30), taking down a flow that had no Erli assertion to make.
+    test.skip(
+      !env.purchasePlatforms.includes(PlatformType.erli),
+      `Erli is not in E2E_PURCHASE_PLATFORMS (${env.purchasePlatforms.join(', ')}) — nothing would buy these offers`,
+    );
 
     await createBulkOffers({ api, world, pages, poll, connectionId: erli!.id, connectionName: erli!.name, platform: PlatformType.erli, erliCategoryPath: env.freshAllegroCategoryPath });
     const mapping = await resolvePrimaryMapping(api, poll, erli!.id);
@@ -827,7 +837,17 @@ test.describe('golden path — full flow (S0-S9)', () => {
           phone: recipientAddress.phone,
         },
         parcel: { template: 'small' },
-        ...(env.paczkomatId ? { paczkomatId: env.paczkomatId } : {}),
+        // Same "no server-side derivation" rule as `recipient` / `parcel` above:
+        // OL ingests the buyer-selected locker onto the order
+        // (`orderSnapshot.pickupPoint.id`) but the dispatch preflight does NOT
+        // read it, so a caller that omits `paczkomatId` gets
+        // `502 preflight.missing-paczkomat-id` even though OL knows the locker.
+        // Derive it from the order the way an operator-facing UI would, and let
+        // `E2E_PACZKOMAT_ID` override when the buyer's point is unusable
+        // (Allegro-sandbox lockers are not always real InPost-sandbox APMs).
+        ...(env.paczkomatId ?? snapshot.pickupPoint?.id
+          ? { paczkomatId: env.paczkomatId ?? snapshot.pickupPoint!.id! }
+          : {}),
       });
       const shipment = dispatch.shipment ?? (await api.shipments.active(order.internalOrderId));
       expect(shipment, `a shipment was created for the ${platform} order`).toBeTruthy();
@@ -897,7 +917,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
     });
   });
 
-  test('S7 — orders created in PrestaShop + master stock down', async ({ api, world, jobs, poll }) => {
+  test('S7 — orders created in PrestaShop + master stock down', async ({ api, world, jobs, poll, env }) => {
     const testInfo = test.info();
     requireOrder();
     const prestashop = world.connectionFor(PlatformType.prestashop);
@@ -907,6 +927,28 @@ test.describe('golden path — full flow (S0-S9)', () => {
     // per marketplace purchase. PS-side line/total parity per order runs below.
     const psSyncByPlatform = new Map<string, { externalOrderId: string | null }>();
     for (const [platform, order] of state.orders) {
+      // A resumed run inherits whatever destination-sync verdict the order
+      // already carries, and OL never retries a failed one on its own — so a
+      // stale failure (a since-fixed connection URL, an expired secret) would
+      // make the poll below burn its full budget waiting for a state that can
+      // no longer change. Re-drive ingestion first: `syncOrderFromSource` is
+      // idempotent per (order, destination) under a lock (#906/#909), so this
+      // re-attempts the destination write without duplicating the order. A
+      // normal run needs no nudge — the sync it is waiting for is the one that
+      // ingestion just kicked off.
+      if (env.resumeFromOrder) {
+        const source = world.connections.find((c) => c.id === order.sourceConnectionId);
+        const externalOrderId = readOrderSnapshot(order).orderNumber;
+        if (source && externalOrderId) {
+          await jobs
+            .triggerAndWait({
+              connectionId: source.id,
+              jobType: 'marketplace.order.sync',
+              payload: { externalOrderId },
+            })
+            .catch(() => undefined);
+        }
+      }
       const synced = await poll.until(
         () => api.orders.getById(order.internalOrderId),
         (o) => o.syncStatus.some((s) => s.destinationConnectionId === prestashop!.id && s.status === 'synced'),
@@ -1160,6 +1202,21 @@ test.describe('golden path — full flow (S0-S9)', () => {
     for (const platform of [PlatformType.allegro, PlatformType.erli]) {
       const connection = world.connectionFor(platform);
       if (!connection) continue;
+      // S4 only lists on a destination that someone will buy from
+      // (`E2E_PURCHASE_PLATFORMS`), so a platform outside that set has no offer
+      // for this product and `resolvePrimaryMapping` would poll a mapping that
+      // was never going to exist. Skipping costs real coverage — propagating a
+      // sale to a channel that did NOT sell is the point of this check — so say
+      // so on the report rather than passing quietly.
+      if (!env.purchasePlatforms.includes(platform)) {
+        testInfo.annotations.push({
+          type: 'cross-channel',
+          description:
+            `${platform} has no offer this run (not in E2E_PURCHASE_PLATFORMS) — ` +
+            'post-sale propagation to a non-selling channel went UNVERIFIED',
+        });
+        continue;
+      }
       const mapping = await resolvePrimaryMapping(api, poll, connection.id);
       const offer = await readLiveOfferOrNull(api, mapping.id);
       const expectedQty = expectedChannelQty.get(platform);
@@ -1812,6 +1869,8 @@ interface OrderSnapshotShape {
   shipping?: { methodId: string; methodName?: string };
   shippingAddress?: { firstName?: string; lastName?: string; phone?: string };
   customerEmail?: string;
+  /** Source-native order id (Allegro checkout-form id, PS order reference). */
+  orderNumber?: string;
   /**
    * Locker reference (#952) — present on an order shipped to a pickup point.
    * Read only by the resume path, which has no other evidence that the order it
@@ -1830,6 +1889,7 @@ function readOrderSnapshot(order: OrderRecord): OrderSnapshotShape {
     shipping: snapshot.shipping,
     shippingAddress: snapshot.shippingAddress,
     customerEmail: snapshot.customerEmail,
+    orderNumber: snapshot.orderNumber,
     pickupPoint: snapshot.pickupPoint,
   };
 }
