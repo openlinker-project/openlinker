@@ -129,6 +129,19 @@ describe('truncateTables', () => {
     expect(queries[2]).toBe('TRUNCATE TABLE "child_table" CASCADE');
   });
 
+  it('should constrain the DEPENDENT side of the closure walk to the search path (#1923 review)', async () => {
+    // A table in another schema holding an FK to a listed one would otherwise
+    // enter the closure and then be probed by its bare name, failing every
+    // afterEach in the suite with `relation "x" does not exist`. Asserted on
+    // the emitted SQL because the schema guard IS the behaviour under test.
+    const { fake, queries } = makeFake([]);
+
+    await truncateTables(fake, ['plugin_table_alpha']);
+
+    const walk = queries.find((sql) => sql.includes('pg_constraint'));
+    expect(walk).toContain('depns.nspname = ANY (current_schemas(false))');
+  });
+
   it('should resolve the cascade closure once per DataSource and reuse it', async () => {
     // The FK graph is fixed for the life of the schema, so the pg_constraint
     // walk must not add a round-trip to every afterEach.

@@ -1009,9 +1009,25 @@ interface SharedPrestashopRecord {
  * worker is handed its copy. A lazily-booted container cannot use that route.
  */
 
-/** Where the worker realm leaves the ids for `globalTeardown` to pick up. */
+/**
+ * Where the worker realm leaves the ids for `globalTeardown` to pick up.
+ *
+ * On CI the key carries the run ATTEMPT as well as the run id: `GITHUB_RUN_ID`
+ * is stable across "Re-run jobs", and the orphan sweep deliberately skips its
+ * own run id (`.github/workflows/ci.yml`), so a re-run keyed on the id alone
+ * would adopt the SIGKILLed attempt's half-mutated PrestaShop DB (PR #1923
+ * review).
+ *
+ * Locally the key is the parent pid, which only lines the two realms up
+ * because both integration jest configs pin `maxWorkers: 1` - Jest then runs
+ * the tests in-band, so the test realm and `globalTeardown` share the same
+ * pid/ppid (verified). Raising `maxWorkers` would fork child processes with a
+ * different ppid, diverging the key and leaking the container.
+ */
 function sharedRecordFile(): string {
-  const scope = process.env.GITHUB_RUN_ID ?? `local-${process.ppid}`;
+  const scope = process.env.GITHUB_RUN_ID
+    ? `${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT ?? '1'}`
+    : `local-${process.ppid}`;
   return join(tmpdir(), `ol-shared-ps-${scope}.json`);
 }
 
@@ -1037,7 +1053,10 @@ function readLiveSharedRecord(): SharedPrestashopRecord | undefined {
     const state = execFileSync(
       'docker',
       ['inspect', '-f', '{{.State.Running}}', record.containers.prestashopId],
-      { encoding: 'utf-8' }
+      // `stdio` silences the `No such object` Docker prints on a stale record
+      // before the fallback below handles it; `timeout` keeps an unresponsive
+      // daemon from hanging the first PS spec's beforeAll (PR #1923 review).
+      { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 30_000 }
     ).trim();
     if (state !== 'true') {
       rmSync(file, { force: true });
@@ -1076,7 +1095,14 @@ export async function startSharedPrestashopContainer(): Promise<PrestashopTestCo
 
   let containers: SharedPrestashopContainers | undefined;
   const started = await startPrestashopContainer({
-    installOlModule: true,
+    // The module-installed container satisfies the assertions of the specs that
+    // don't need the module (the reverse does not hold), so the shared one is
+    // always installed - except under the same escape hatch the individual
+    // specs read, where "no module anywhere" has to mean exactly that
+    // (PR #1923 review). The value is constant for a whole run and the record
+    // file is per-run, so a module-less record can never be picked up by a
+    // module-needing spec.
+    installOlModule: process.env.OL_SKIP_PS_MODULE_INSTALL !== 'true',
     onStarted: (ids) => {
       containers = ids;
     },

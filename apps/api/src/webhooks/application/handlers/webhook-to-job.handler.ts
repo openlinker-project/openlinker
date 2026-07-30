@@ -227,6 +227,14 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
           }
 
           for (const message of streamMessage.messages) {
+            // `COUNT ${this.COUNT}` can hand back a whole batch, but the drain
+            // in `stopConsumptionLoop` only covers the message already running
+            // - starting messages 2..N after shutdown was signalled would run
+            // them against a quitting Redis client (PR #1923 review).
+            if (!this.isRunning || this.abortController?.signal.aborted) {
+              break;
+            }
+
             // Tracked so shutdown can await the in-flight message rather than
             // sleeping a fixed grace period (#1920).
             this.inFlightMessage = this.processMessage(message.id, message.message);

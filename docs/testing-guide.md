@@ -258,7 +258,7 @@ is the source of truth.
 
 ```typescript
 import {
-  startPrestashopContainer,
+  startSharedPrestashopContainer,
   PrestashopTestContainer,
 } from '../helpers/prestashop-container.helper';
 
@@ -266,22 +266,37 @@ describe('My PS-dependent int-spec', () => {
   let prestashop: PrestashopTestContainer;
 
   beforeAll(async () => {
-    prestashop = await startPrestashopContainer();
+    // Shared across every PS spec, booted on first use, stopped once in
+    // globalTeardown from the ids the worker realm leaves on disk (#1920).
+    // `cleanup()` is a no-op on this path.
+    prestashop = await startSharedPrestashopContainer();
     // prestashop.baseUrl, prestashop.webserviceApiKey,
     // prestashop.olDynamicCarrierId, prestashop.plnCurrencyId
   }, 15 * 60_000); // long timeout — first-run image pull is slow
-
-  afterAll(async () => {
-    if (prestashop) await prestashop.cleanup();
-  });
 
   // ... tests ...
 });
 ```
 
-The harness is **suite-scoped** — one boot per int-spec file, NOT global. The
-existing `getTestHarness()` (Postgres + Redis) is unaffected; you can use both
-in the same spec.
+The container is **run-scoped, not suite-scoped** (#1920): the first PS spec to
+ask for it boots it, every later spec reuses it, and `globalTeardown` stops it.
+Two consequences a new spec has to respect:
+
+- **Nothing resets PS between specs.** Assert only over OL-side results, or
+  filter by ids your own spec created (`psOrderId`, `external_module_name`, …).
+  Orders and carts a previous file left behind are inert to that shape of
+  assertion, and re-running fixture helpers is safe, but a bare "count all
+  orders" assertion is not.
+- **The shared container is always OL-module-installed.** That satisfies the
+  specs that don't need the module; the reverse does not hold.
+
+Call `startPrestashopContainer()` directly only when the spec's subject **is**
+the from-scratch install — today just `prestashop-webhook-provisioning`
+(it asserts what the OL module writes on *first* install, which sharing would
+erase). That path owns its container and must stop it in `afterAll(cleanup)`.
+
+The existing `getTestHarness()` (Postgres + Redis) is unaffected; you can use
+both in the same spec.
 
 ### Boot-time budget
 
@@ -312,11 +327,12 @@ empty string), then verifies the carrier row + sidecar table + secret all
 landed. This is what makes the `writeCartShipping` → `cartshipping.php` HMAC
 round-trip exercise-able from S-3.
 
-**When NOT to opt in**: specs that don't exercise the OL Dynamic carrier
-round-trip should leave `installOlModule` at its `false` default — keeps boot
-fast. Today only `allegro-prestashop-carrier-mapping.int-spec.ts` opts in;
-`prestashop-harness-smoke.int-spec.ts` and `prestashop-webhook-provisioning.int-spec.ts`
-do not.
+**Who gets the module**: `startSharedPrestashopContainer` passes
+`installOlModule: true`, so every spec on the shared path gets it whether or not
+it exercises the OL Dynamic carrier round-trip — paying the install once per run
+is cheaper than booting a second, module-less container. `installOlModule`
+therefore only matters to a spec that takes its own container
+(`prestashop-webhook-provisioning` installs the module itself as its subject).
 
 The install runs by default in all environments (local and CI). One override:
 
@@ -390,11 +406,12 @@ stubbed Allegro source (registered via the public
 `AdapterRegistryService` + `AdapterFactoryResolverService` seams) and a real
 PrestaShop destination. The S-1 / S-2 split covers the two practical branches
 of the #516 carrier-resolution chain (mapped vs `defaultCarrierId` fallback).
-When adding a new vertical-slice spec, copy the structure: one suite-scoped
-PS container in `beforeAll`, fixtures + helpers under
-`apps/api/test/integration/{fixtures,helpers}/`, and assertions via the same
-PS WS endpoints the production adapter uses (no direct MySQL reads from the
-test body).
+When adding a new vertical-slice spec, copy the structure: the shared PS
+container via `startSharedPrestashopContainer()` in `beforeAll`, fixtures +
+helpers under `apps/api/test/integration/{fixtures,helpers}/`, and assertions
+via the same PS WS endpoints the production adapter uses (no direct MySQL reads
+from the test body), scoped to ids the spec created so leftovers from an earlier
+file cannot skew them.
 
 ---
 

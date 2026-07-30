@@ -92,6 +92,14 @@ function assertSafeTableNames(tables: ReadonlyArray<string>): void {
  * The caller's own names are always kept, even if Postgres reports no such
  * relation — a typo'd table must still fail loudly at probe time rather than
  * being silently dropped from the reset.
+ *
+ * Both terms of the walk are constrained to `current_schemas(false)`, the
+ * recursive one included: the reset is scoped to the schema under test, and a
+ * dependent living outside `search_path` is not something an int-spec's
+ * `TRUNCATE` should reach into. Without the guard on the *dependent* side, a
+ * cross-schema FK pulls an unreachable relation into the closure and the probe
+ * — one `UNION ALL` statement — then fails with `relation "x" does not exist`,
+ * taking every `afterEach` in the suite down with it (PR #1923 review).
  */
 async function resolveCascadeClosure(
   dataSource: QueryRunner,
@@ -113,7 +121,11 @@ async function resolveCascadeClosure(
       ' SELECT oid FROM requested' +
       ' UNION' +
       ' SELECT con.conrelid FROM pg_constraint con' +
-      " JOIN closure ON con.confrelid = closure.oid WHERE con.contype = 'f'" +
+      ' JOIN closure ON con.confrelid = closure.oid' +
+      ' JOIN pg_class dep ON dep.oid = con.conrelid' +
+      ' JOIN pg_namespace depns ON depns.oid = dep.relnamespace' +
+      " WHERE con.contype = 'f'" +
+      ' AND depns.nspname = ANY (current_schemas(false))' +
       ') SELECT c.relname AS table_name FROM closure JOIN pg_class c ON c.oid = closure.oid',
   )) as ReadonlyArray<{ table_name: string }>;
 
