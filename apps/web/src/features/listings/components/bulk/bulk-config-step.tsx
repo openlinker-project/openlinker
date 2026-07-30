@@ -159,7 +159,20 @@ export function BulkConfigStep({
   // (nothing to complete = nothing blocking), matching #1096's original
   // fallback before the unified-publish rework inverted it.
   const sectionComplete = isShop ? true : section ? section.isComplete(values) : true;
-  const canProceed = connectionId !== '' && sharedSliceValid && sectionComplete;
+
+  // The destination needs a master catalogue to read product data from, or the
+  // builder throws `MASTER_CATALOG_NOT_CONFIGURED` for EVERY record (#1934/F4).
+  // Nothing in the wizard used to read this, so a connection created via the
+  // API - or one whose auto-select never fired because the operator has 0 or
+  // 2+ candidate master shops - produced an all-green Review and a batch in
+  // which 100% of children failed. Absent connection ⇒ not yet a problem;
+  // the empty-connection case is already covered by `connectionId !== ''`.
+  const masterCatalogConfigured =
+    connection === null ||
+    typeof connection.config?.masterCatalogConnectionId === 'string';
+
+  const canProceed =
+    connectionId !== '' && sharedSliceValid && sectionComplete && masterCatalogConfigured;
 
   function buildPricingPolicy(): PricingPolicy {
     if (values.pricingMode === 'markup') {
@@ -241,6 +254,14 @@ export function BulkConfigStep({
           Publishing as <strong>{publishConnections[0]?.name}</strong>.
         </Alert>
       )}
+
+      {!masterCatalogConfigured && connection !== null ? (
+        <Alert tone="error">
+          <strong>{connection.name}</strong> has no master catalogue set, so nothing can read
+          the product data these offers need - every offer in the batch would fail. Open the
+          connection&apos;s settings and pick the shop that owns the catalogue, then come back.
+        </Alert>
+      ) : null}
 
       {/* Shops resolve category, attributes & images from the master product at
           publish time (#1829) - no per-platform section to configure. */}

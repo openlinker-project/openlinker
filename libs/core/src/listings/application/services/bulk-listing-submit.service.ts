@@ -316,8 +316,14 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
   }
 
   /**
-   * Drop jobs whose variant already carries an active offer mapping on the
-   * target connection (#1741 review #3). One batched count query rather than
+   * Drop jobs whose variant already carries a LIVE offer mapping on the target
+   * connection (#1741 review #3). "Live" is now enforced rather than merely
+   * asserted: `countByConnectionAndVariants` excludes mappings whose status
+   * snapshot says `ended`, so a variant whose offer is over can be listed again
+   * (#1934/F2). Previously the query had no status predicate at all despite
+   * this docstring, which made an ended offer block its variant permanently.
+   *
+   * One batched count query rather than
    * a per-variant fan-out; a variant with `count > 0` is skipped with a warning
    * so a re-run of the wizard can't silently create duplicate offers.
    */

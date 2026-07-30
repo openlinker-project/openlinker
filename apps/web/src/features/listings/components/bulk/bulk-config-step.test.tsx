@@ -47,6 +47,9 @@ function makeConnectionClient() {
     status: 'active',
     platformType: 'allegro',
     supportedCapabilities: ['OfferManager', 'OfferCreator'],
+    // A publish destination without this fails 100% of its records
+    // (`MASTER_CATALOG_NOT_CONFIGURED`), so the wizard blocks Proceed (#1934/F4).
+    config: { masterCatalogConnectionId: 'conn-master' },
   } as unknown as Connection;
   return createMockApiClient({
     connections: { list: vi.fn().mockResolvedValue([connection]) },
@@ -83,6 +86,40 @@ async function clickProceed(): Promise<void> {
 }
 
 describe('BulkConfigStep', () => {
+  // #1934/F4 - a destination with no master catalogue cannot read the product
+  // data its offers need, so the builder throws `MASTER_CATALOG_NOT_CONFIGURED`
+  // for EVERY record. Nothing in the wizard used to read this: the operator got
+  // an all-green Review and a batch in which 100% of children failed.
+  it('blocks Proceed and explains when the destination has no master catalogue', async () => {
+    const connection = {
+      id: 'conn-1',
+      name: 'My Allegro',
+      status: 'active',
+      platformType: 'allegro',
+      supportedCapabilities: ['OfferManager', 'OfferCreator'],
+      config: {},
+    } as unknown as Connection;
+    renderWithProviders(
+      <BulkConfigStep initial={{}} onProceed={vi.fn()} onCancel={() => undefined} />,
+      {
+        apiClient: createMockApiClient({
+          connections: { list: vi.fn().mockResolvedValue([connection]) },
+          listings: {
+            getSellerPolicies: vi.fn().mockResolvedValue({
+              deliveryPolicies: [{ id: 'dp1', name: 'Courier 24h' }],
+            }),
+          },
+        }),
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      },
+    );
+
+    expect(await screen.findByText(/no master catalogue set/i, {}, { timeout: 5000 })).toBeVisible();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Proceed/ })).toBeDisabled();
+    });
+  }, 15000);
+
   it('proceeds with use-master pricing/stock by default', async () => {
     const { onProceed } = await renderAndSelectPolicy();
 
@@ -136,6 +173,7 @@ describe('BulkConfigStep', () => {
         status: 'active',
         platformType: 'some-future-marketplace',
         supportedCapabilities: ['OfferManager', 'OfferCreator'],
+        config: { masterCatalogConnectionId: 'conn-master' },
       } as unknown as Connection;
       return createMockApiClient({
         connections: { list: vi.fn().mockResolvedValue([unknownMarketplace]) },
@@ -164,6 +202,7 @@ describe('BulkConfigStep', () => {
         platformType: 'woocommerce',
         supportedCapabilities: ['ProductPublisher'],
         enabledCapabilities: ['ProductPublisher'],
+        config: { masterCatalogConnectionId: 'conn-master' },
       } as unknown as Connection;
       return createMockApiClient({
         connections: { list: vi.fn().mockResolvedValue([shop]) },
@@ -217,6 +256,7 @@ describe('BulkConfigStep', () => {
         status: 'active',
         platformType: 'allegro',
         supportedCapabilities: ['OfferManager', 'OfferCreator'],
+        config: { masterCatalogConnectionId: 'conn-master' },
       } as unknown as Connection;
       const shop = {
         id: 'conn-shop',
@@ -225,6 +265,7 @@ describe('BulkConfigStep', () => {
         platformType: 'woocommerce',
         supportedCapabilities: ['ProductPublisher'],
         enabledCapabilities: ['ProductPublisher'],
+        config: { masterCatalogConnectionId: 'conn-master' },
       } as unknown as Connection;
       return createMockApiClient({
         connections: { list: vi.fn().mockResolvedValue([marketplace, shop]) },
@@ -301,6 +342,7 @@ describe('BulkConfigStep', () => {
             status: 'active',
             platformType: 'allegro',
             supportedCapabilities: ['OfferManager', 'OfferCreator'],
+            config: { masterCatalogConnectionId: 'conn-master' },
           } as unknown as Connection,
         ]) },
         listings: {
@@ -342,6 +384,7 @@ describe('BulkConfigStep', () => {
               status: 'active',
               platformType: 'allegro',
               supportedCapabilities: ['OfferManager', 'OfferCreator'],
+              config: { masterCatalogConnectionId: 'conn-master' },
             } as unknown as Connection,
           ]),
         },

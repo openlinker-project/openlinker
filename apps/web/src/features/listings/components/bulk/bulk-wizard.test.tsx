@@ -146,6 +146,7 @@ describe('BulkWizard — demo instrumentation (#1788)', () => {
       status: 'active',
       platformType: 'allegro',
       supportedCapabilities: ['OfferManager', 'OfferCreator'],
+      config: { masterCatalogConnectionId: 'conn-master' },
     } as unknown as Connection;
     const apiClient = createMockApiClient({
       connections: { list: vi.fn().mockResolvedValue([connection]) },
