@@ -62,8 +62,14 @@ async function resolveConnectionId(page) {
   return id;
 }
 
+/**
+ * `.status-badge` is `text-transform: uppercase`, and `innerText` returns the
+ * *rendered* text — so the DOM value "active" reads back as "ACTIVE". Normalise
+ * rather than comparing against the styled casing.
+ */
 async function statusBadgeText(page) {
-  return (await page.locator('.page-summary .status-badge').first().innerText()).trim();
+  const text = await page.locator('.page-summary .status-badge').first().innerText();
+  return text.trim().toLowerCase();
 }
 
 async function main() {
