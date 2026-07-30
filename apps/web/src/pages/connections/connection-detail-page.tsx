@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
 import { useProductMasterConnections } from '../../features/connections/hooks/use-product-master-connections';
 import { ConnectionActionsPanel } from '../../features/connections/components/ConnectionActionsPanel';
+import { EnableConnectionButton } from '../../features/connections/components/EnableConnectionButton';
 import { ConnectionCapabilitiesPanel } from '../../features/connections/components/ConnectionCapabilitiesPanel';
 import { ConnectionConfigPanel } from '../../features/connections/components/ConnectionConfigPanel';
 import { ConnectionDiagnosticsPanel } from '../../features/connections/components/ConnectionDiagnosticsPanel';
@@ -16,6 +17,8 @@ import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { Alert } from '../../shared/ui/alert';
 import { usePlatform } from '../../shared/plugins';
+import { useWriteAccess } from '../../shared/auth/use-permission';
+import { useDemoMode } from '../../features/system';
 
 function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
   switch (status) {
@@ -69,6 +72,39 @@ function ReauthRequiredBanner({ connection }: { connection: Connection }): React
       OpenLinker can no longer authenticate with {platformLabel} — the stored credentials were
       rejected, so syncing is paused for this connection. Re-authenticate to restore access; the
       connection and its mappings are preserved.
+    </Alert>
+  );
+}
+
+/**
+ * Sync-paused banner (#1940).
+ *
+ * Shown when an operator has disabled the connection. Mirrors
+ * {@link ReauthRequiredBanner} — one status, one explanation, one recovery
+ * control — so the pause is visible and reversible from the page itself rather
+ * than only from the Actions tab.
+ *
+ * Info tone, not warning: a disabled connection is a deliberate operator choice,
+ * not a fault. The warning tone stays reserved for states nobody asked for.
+ */
+function SyncPausedBanner({ connection }: { connection: Connection }): ReactElement | null {
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('connections:write', demoMode);
+
+  if (connection.status !== 'disabled') return null;
+
+  return (
+    <Alert
+      tone="info"
+      title="Syncing is paused"
+      action={
+        write.visible ? (
+          <EnableConnectionButton connection={connection} label="Enable connection" />
+        ) : undefined
+      }
+    >
+      This connection is disabled, so OpenLinker runs no jobs against it. Its configuration,
+      credentials, and mappings are untouched. Enable it to resume.
     </Alert>
   );
 }
@@ -247,6 +283,7 @@ export function ConnectionDetailPage(): ReactElement {
         />
       ) : null}
       {connection ? <ReauthRequiredBanner connection={connection} /> : null}
+      {connection ? <SyncPausedBanner connection={connection} /> : null}
       {connection ? (
         <ProductCatalogLinkBanner
           connection={connection}
