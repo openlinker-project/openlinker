@@ -10,7 +10,7 @@
 import type { OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { SyncJobEntity, SyncJobHandlerResult } from '@openlinker/core/sync';
+import type { SyncJobEntity } from '@openlinker/core/sync';
 import {
   SyncJobRepositoryPort,
   SYNC_JOB_REPOSITORY_TOKEN,
@@ -34,7 +34,6 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
   private readonly POLL_INTERVAL_MS = 1000; // Poll interval when no jobs available
   private readonly STUCK_JOB_TIMEOUT_MINUTES = 15; // Lock timeout for stuck jobs
   private readonly STUCK_JOB_RECOVERY_INTERVAL_MS = 5 * 60 * 1000; // Check for stuck jobs every 5 minutes
-  private readonly JOB_HEARTBEAT_INTERVAL_MS = 3 * 60 * 1000; // Refresh lockedAt every 3 minutes while a job runs (#1810)
 
   // Retry policy constants
   private readonly RETRY_BASE_DELAY_SECONDS = 30; // 30 seconds
@@ -272,35 +271,16 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      // Heartbeat while the handler runs so a job queued behind a saturated
-      // per-connection rate limiter for longer than STUCK_JOB_TIMEOUT_MINUTES
-      // is not duplicated by the stuck-job recovery sweep (#1810).
-      const heartbeatInterval = setInterval(() => {
-        void this.jobRepository.heartbeat(job.id, this.WORKER_ID).catch((error) => {
-          this.logger.warn(
-            `Heartbeat failed for job ${job.id}: ${error instanceof Error ? error.message : String(error)}`
-          );
-        });
-      }, this.JOB_HEARTBEAT_INTERVAL_MS);
-      if (typeof heartbeatInterval.unref === 'function') {
-        heartbeatInterval.unref();
-      }
-
-      let result: SyncJobHandlerResult;
-      try {
-        // Execute handler — handlers return their business outcome (issue #400).
-        // Runs under the 'background' rate-limit priority (#1810) so any
-        // outbound HTTP the handler issues through HostServices.http is
-        // classified correctly without threading a parameter through
-        // SyncJobHandler.execute or any adapter signature. Cancellable via
-        // the runner's own shutdown signal.
-        result = await runWithPriority(
-          { priority: 'background', signal: this.abortController?.signal },
-          () => handler.execute(job)
-        );
-      } finally {
-        clearInterval(heartbeatInterval);
-      }
+      // Execute handler — handlers return their business outcome (issue #400).
+      // Runs under the 'background' rate-limit priority (#1810) so any
+      // outbound HTTP the handler issues through HostServices.http is
+      // classified correctly without threading a parameter through
+      // SyncJobHandler.execute or any adapter signature. Cancellable via
+      // the runner's own shutdown signal.
+      const result = await runWithPriority(
+        { priority: 'background', signal: this.abortController?.signal },
+        () => handler.execute(job)
+      );
 
       // Success - mark as succeeded with the handler's reported outcome
       await this.jobRepository.markSucceeded(job.id, result.outcome, result.outcomeReason);

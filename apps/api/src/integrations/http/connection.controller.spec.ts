@@ -102,7 +102,6 @@ describe('ConnectionController', () => {
       findRecentByConnectionId: jest.fn(),
       findGroupedByStatus: jest.fn(),
       requeueDeadJobsInGroup: jest.fn(),
-      heartbeat: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

@@ -62,7 +62,6 @@ describe('SyncJobRunner', () => {
       markFailed: jest.fn(),
       markDead: jest.fn(),
       requeueStuckJobs: jest.fn(),
-      heartbeat: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<SyncJobRepositoryPort>;
 
     // Mock handler registry
@@ -219,70 +218,6 @@ describe('SyncJobRunner', () => {
       await (runner as any).processJob(job);
 
       expect(observedPriority).toBe('background');
-    });
-
-    it('heartbeats periodically while the handler runs and stops once it settles (#1810)', async () => {
-      jest.useFakeTimers();
-      const job = createMockJob({ status: 'running' });
-      let resolveHandler: (value: { outcome: 'ok' }) => void = () => {};
-      const handlerPromise = new Promise<{ outcome: 'ok' }>((resolve) => {
-        resolveHandler = resolve;
-      });
-      mockHandler.execute.mockReturnValueOnce(handlerPromise);
-      handlerRegistry.getHandler.mockReturnValueOnce(mockHandler);
-      jobRepository.markSucceeded.mockResolvedValueOnce(undefined);
-
-      const processPromise = (runner as any).processJob(job);
-      await Promise.resolve();
-
-      // Simulate the handler still running past the 15-minute stuck-job
-      // threshold (3 heartbeat ticks at the 3-minute interval = 9 min; a
-      // 4th tick pushes past 12 min — well beyond a single reclaim sweep).
-      for (let i = 0; i < 4; i++) {
-        jest.advanceTimersByTime((runner as any).JOB_HEARTBEAT_INTERVAL_MS);
-        await Promise.resolve();
-      }
-      expect(jobRepository.heartbeat).toHaveBeenCalledTimes(4);
-      expect(jobRepository.heartbeat).toHaveBeenCalledWith(job.id, (runner as any).WORKER_ID);
-
-      // Handler finally settles — the interval must be cleared so no
-      // further heartbeats fire after the job is no longer running.
-      resolveHandler({ outcome: 'ok' });
-      await processPromise;
-      expect(jobRepository.markSucceeded).toHaveBeenCalledWith(job.id, 'ok', undefined);
-
-      jobRepository.heartbeat.mockClear();
-      jest.advanceTimersByTime((runner as any).JOB_HEARTBEAT_INTERVAL_MS * 2);
-      await Promise.resolve();
-      expect(jobRepository.heartbeat).not.toHaveBeenCalled();
-
-      jest.useRealTimers();
-    });
-
-    it('swallows a heartbeat failure without interrupting the running handler (#1810)', async () => {
-      jest.useFakeTimers();
-      const job = createMockJob({ status: 'running' });
-      let resolveHandler: (value: { outcome: 'ok' }) => void = () => {};
-      const handlerPromise = new Promise<{ outcome: 'ok' }>((resolve) => {
-        resolveHandler = resolve;
-      });
-      mockHandler.execute.mockReturnValueOnce(handlerPromise);
-      handlerRegistry.getHandler.mockReturnValueOnce(mockHandler);
-      jobRepository.markSucceeded.mockResolvedValueOnce(undefined);
-      jobRepository.heartbeat.mockRejectedValueOnce(new Error('DB blip'));
-
-      const processPromise = (runner as any).processJob(job);
-      await Promise.resolve();
-
-      jest.advanceTimersByTime((runner as any).JOB_HEARTBEAT_INTERVAL_MS);
-      await Promise.resolve();
-      await Promise.resolve();
-
-      resolveHandler({ outcome: 'ok' });
-      await processPromise;
-
-      expect(jobRepository.markSucceeded).toHaveBeenCalledWith(job.id, 'ok', undefined);
-      jest.useRealTimers();
     });
 
     it('should persist outcome=business_failure when handler reports a terminal business rejection', async () => {

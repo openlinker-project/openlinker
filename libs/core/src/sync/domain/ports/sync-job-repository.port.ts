@@ -212,18 +212,4 @@ export interface SyncJobRepositoryPort {
     jobType: string,
     maxBatchSize: number
   ): Promise<BulkRetryResult>;
-
-  /**
-   * Refresh the lock timestamp of a job the caller still holds (#1810).
-   *
-   * Lets a long-running job (e.g. one queued behind a saturated per-connection
-   * rate limiter) prove liveness to {@link requeueStuckJobs} without finishing.
-   * Guarded on `lockedBy`: a heartbeat from a worker that no longer owns the
-   * job (already requeued and re-picked by another worker) is a no-op rather
-   * than clobbering the new owner's lock.
-   *
-   * @param id - Job ID
-   * @param workerId - Worker instance ID that must currently hold the lock
-   */
-  heartbeat(id: string, workerId: string): Promise<void>;
 }
