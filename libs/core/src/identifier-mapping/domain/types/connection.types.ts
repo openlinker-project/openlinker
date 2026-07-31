@@ -93,10 +93,10 @@ export interface ConnectionConfig {
    * bursty bucket); `maxConcurrent` is a concurrency semaphore. Both
    * knobs are optional and independent. Validated once, core-owned, in
    * `ConnectionService.create`/`.update` — never defaulted into stored
-   * config. An adapter's `AdapterMetadata.defaultRateLimit` is *intended*
-   * as the resolution-time fallback for a connection with no explicit
-   * value, but that merge is not yet wired into `HttpTransportFactoryPort`
-   * — see the field's own doc comment in `adapter.types.ts`.
+   * config (an adapter's `AdapterMetadata.defaultRateLimit` supplies the
+   * resolution-time fallback for a connection with no explicit value — see
+   * that field's own doc comment in `adapter.types.ts` for the call-site
+   * wiring).
    */
   rateLimit?: ConnectionRateLimit;
   [key: string]: unknown;

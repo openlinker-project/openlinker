@@ -72,12 +72,13 @@ export interface HostServices {
 
   /**
    * Connection-bound outbound transport (#1810). The single seam every
-   * plugin HTTP client goes through — `host.http.for(connection)` returns a
-   * `FetchLike` that paces/caps outbound calls per the connection's live
-   * `config.rateLimit` before delegating to the real transport (the
-   * manifest's `defaultRateLimit` is not yet consulted here — see its own
-   * doc comment). Required: a plugin author cannot silently ship a client
-   * that bypasses per-connection rate limiting.
+   * plugin HTTP client goes through — `host.http.for(connection, defaultRateLimit?)`
+   * returns a `FetchLike` that paces/caps outbound calls per the
+   * connection's live `config.rateLimit` (falling back to the caller's
+   * `defaultRateLimit` — a plugin passes its own manifest's value — when
+   * unset) before delegating to the real transport. Required: a plugin
+   * author cannot silently ship a client that bypasses per-connection rate
+   * limiting.
    */
   readonly http: HttpTransportFactoryPort;
 

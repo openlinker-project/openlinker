@@ -69,6 +69,12 @@ export function resolveVariantGroupingModel(
   return connection?.variantGrouping ?? 'parent-child';
 }
 
+/** Mirrors the backend's `ConnectionRateLimit` (`@openlinker/core/identifier-mapping`). */
+export interface ConnectionRateLimit {
+  requestsPerMinute?: number;
+  maxConcurrent?: number;
+}
+
 export interface Connection {
   id: string;
   name: string;
@@ -82,6 +88,16 @@ export interface Connection {
   supportedCapabilities: string[];
   /** Derived from the resolved adapter's manifest (#1924). Read via `resolveVariantGroupingModel`, not directly, so an absent value still resolves to the locked default. */
   variantGrouping?: VariantGroupingModel;
+  /**
+   * The resolved adapter's fallback outbound rate limit (#1810), rendered by
+   * `RateLimitSection` to describe what applies while `config.rateLimit` is
+   * empty — derived from the adapter manifest, never persisted. Absent/`null`
+   * means the adapter declares none, so an empty `config.rateLimit` is truly
+   * unlimited. The API always sends a resolved value (`null` when none);
+   * optional here only to keep older/hand-rolled test fixtures that omit the
+   * field working without a mass edit.
+   */
+  defaultRateLimit?: ConnectionRateLimit | null;
   createdAt: string;
   updatedAt: string;
 }

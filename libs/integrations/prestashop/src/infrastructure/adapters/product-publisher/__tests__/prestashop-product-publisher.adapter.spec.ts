@@ -353,6 +353,36 @@ describe('PrestashopProductPublisherAdapter', () => {
       fetchSpy.mockRestore();
     });
 
+    it('should use the injected fetchImpl for image upload instead of globalThis.fetch (#1810)', async () => {
+      const globalFetchSpy = jest.spyOn(globalThis, 'fetch');
+      const injectedFetch = jest.fn().mockResolvedValue({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(3)),
+        headers: { get: (_h: string) => 'image/jpeg' },
+      } as unknown as Response);
+      const adapterWithFetch = new PrestashopProductPublisherAdapter(
+        client,
+        connection,
+        injectedFetch,
+      );
+      client.createResource.mockResolvedValue({ id: '1', active: '1' });
+      withDefaultStockMock(client);
+      client.uploadImage.mockResolvedValue({ id: 'img-1' });
+
+      await adapterWithFetch.publishProduct(
+        baseCommand({
+          content: { title: 'Widget', description: 'A widget', imageUrls: ['https://example.com/img.jpg'] },
+        }),
+      );
+
+      expect(injectedFetch).toHaveBeenCalledWith(
+        'https://example.com/img.jpg',
+        expect.objectContaining({ signal: expect.anything() }),
+      );
+      expect(globalFetchSpy).not.toHaveBeenCalled();
+      globalFetchSpy.mockRestore();
+    });
+
     it('should provision features and associate them on the product body', async () => {
       client.listResources.mockImplementation((resource: string) => {
         if (resource === 'product_features') return Promise.resolve([]);

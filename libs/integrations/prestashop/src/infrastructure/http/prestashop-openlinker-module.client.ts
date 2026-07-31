@@ -25,6 +25,7 @@
 import { createHmac } from 'crypto';
 
 import { Logger } from '@openlinker/shared/logging';
+import type { FetchLike } from '@openlinker/shared/http';
 import type { WebhookSecretProviderPort } from '@openlinker/core/integrations';
 
 import type {
@@ -63,7 +64,10 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
   constructor(
     private readonly connectionId: string,
     private readonly baseUrl: string,
-    private readonly secretProvider: WebhookSecretProviderPort
+    private readonly secretProvider: WebhookSecretProviderPort,
+    // Connection-bound outbound transport (#1810) — defaults to bare fetch
+    // for callers that predate the rate-limit mechanism (tests).
+    private readonly fetchImpl: FetchLike = globalThis.fetch
   ) {}
 
   async writeCartShipping(input: WriteCartShippingInput): Promise<void> {
@@ -147,7 +151,7 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
     const url = this.baseUrl.replace(/\/$/, '') + path;
 
     try {
-      return await fetch(url, {
+      return await this.fetchImpl(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
