@@ -10,7 +10,7 @@
 import type { OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { SyncJobEntity } from '@openlinker/core/sync';
+import type { SyncJobEntity, SyncJobHandlerResult } from '@openlinker/core/sync';
 import {
   SyncJobRepositoryPort,
   SYNC_JOB_REPOSITORY_TOKEN,
@@ -285,7 +285,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
         heartbeatInterval.unref();
       }
 
-      let result;
+      let result: SyncJobHandlerResult;
       try {
         // Execute handler — handlers return their business outcome (issue #400)
         result = await handler.execute(job);
