@@ -440,6 +440,7 @@ describe('ShipmentRepository', () => {
         failedAt: fullyPopulated.failedAt,
         errorMessage: fullyPopulated.errorMessage,
         providerCode: fullyPopulated.providerCode,
+        waybillRelayedAt: fullyPopulated.waybillRelayedAt,
         createdAt: fullyPopulated.createdAt,
         updatedAt: fullyPopulated.updatedAt,
       });

@@ -37,7 +37,10 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.status ?? 'generated',
     overrides.providerShipmentId ?? 'prov-1',
     overrides.paczkomatId ?? 'POZ08A',
-    overrides.trackingNumber ?? '6800000001',
+    // `=== undefined`, not `??`: an explicit `null` is the #1947 case (the
+    // carrier has not minted the waybill yet) and must not be masked by the
+    // default.
+    overrides.trackingNumber === undefined ? '6800000001' : overrides.trackingNumber,
     overrides.labelPdfRef ?? 'shipx:label:1',
     overrides.dispatchedAt ?? null,
     overrides.deliveredAt ?? null,
