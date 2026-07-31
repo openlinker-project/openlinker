@@ -74,7 +74,7 @@ export class ConnectionResponseDto {
   })
   variantGrouping!: VariantGroupingModel;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     description:
       "The resolved adapter's fallback outbound rate limit, applied whenever this connection has no explicit `config.rateLimit` (derived from the adapter manifest, not persisted). `null` when the adapter declares none, meaning an empty `config.rateLimit` is truly unlimited. Lets the FE render the real effective policy instead of assuming 'unlimited' whenever the form fields are empty.",
     example: { requestsPerMinute: 60, maxConcurrent: 4 },

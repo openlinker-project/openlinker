@@ -35,7 +35,6 @@ export {
   CORE_CAPABILITY_VALUES,
   VARIANT_GROUPING_MODEL_VALUES,
   resolveVariantGroupingModel,
-  resolveEffectiveRateLimit,
 } from './api/connections.types';
 
 export { useConnectionsQuery } from './hooks/use-connections-query';

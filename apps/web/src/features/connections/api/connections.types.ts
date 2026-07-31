@@ -89,36 +89,17 @@ export interface Connection {
   /** Derived from the resolved adapter's manifest (#1924). Read via `resolveVariantGroupingModel`, not directly, so an absent value still resolves to the locked default. */
   variantGrouping?: VariantGroupingModel;
   /**
-   * The resolved adapter's fallback outbound rate limit (#1810), applied
-   * whenever this connection has no explicit `config.rateLimit` — derived
-   * from the adapter manifest, never persisted. Absent/`null` means the
-   * adapter declares none, so an empty `config.rateLimit` is truly
+   * The resolved adapter's fallback outbound rate limit (#1810), rendered by
+   * `RateLimitSection` to describe what applies while `config.rateLimit` is
+   * empty — derived from the adapter manifest, never persisted. Absent/`null`
+   * means the adapter declares none, so an empty `config.rateLimit` is truly
    * unlimited. The API always sends a resolved value (`null` when none);
-   * optional here only to keep older/hand-rolled test fixtures that omit
-   * the field working without a mass edit — read via
-   * `resolveEffectiveRateLimit`, not directly.
+   * optional here only to keep older/hand-rolled test fixtures that omit the
+   * field working without a mass edit.
    */
   defaultRateLimit?: ConnectionRateLimit | null;
   createdAt: string;
   updatedAt: string;
-}
-
-/**
- * Resolve the effective outbound rate-limit policy for a connection: its
- * own explicit `config.rateLimit` if set, else the resolved adapter's
- * `defaultRateLimit` (#1810). `null` means truly unlimited. Mirrors the
- * backend's `config.rateLimit ?? metadata.defaultRateLimit` resolution in
- * `HttpTransportFactory.for()` — kept in sync manually since the FE never
- * calls that transport.
- */
-export function resolveEffectiveRateLimit(
-  connection: Pick<Connection, 'config' | 'defaultRateLimit'> | undefined | null
-): ConnectionRateLimit | null {
-  const explicit = connection?.config?.rateLimit as ConnectionRateLimit | undefined;
-  if (explicit && (explicit.requestsPerMinute !== undefined || explicit.maxConcurrent !== undefined)) {
-    return explicit;
-  }
-  return connection?.defaultRateLimit ?? null;
 }
 
 export interface ConnectionFilters {
