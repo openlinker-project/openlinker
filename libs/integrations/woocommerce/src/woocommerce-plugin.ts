@@ -92,6 +92,11 @@ export const woocommerceAdapterManifest: AdapterMetadata = {
   // - category is structurally parent-only, not a policy choice. Also the
   // locked default any undeclared adapter resolves to.
   variantGrouping: 'parent-child',
+  // Conservative resolution-time fallback for a connection with no explicit
+  // config.rateLimit (#1810) — WooCommerce is, like PrestaShop, typically a
+  // merchant-hosted platform on shared/modest hosting. Placeholder values;
+  // never written into stored config.
+  defaultRateLimit: { requestsPerMinute: 60, maxConcurrent: 4 },
 };
 
 /** Short brand label for domain-exception prefixes (manifest.displayName is too long). */

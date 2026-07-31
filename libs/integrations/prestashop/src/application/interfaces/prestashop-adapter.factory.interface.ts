@@ -9,6 +9,7 @@
  */
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
+import type { FetchLike } from '@openlinker/shared/http';
 // eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
 import type { PrestashopProductMasterAdapter } from '../../infrastructure/adapters/prestashop-product-master.adapter';
 // eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
@@ -50,6 +51,9 @@ export interface IPrestashopAdapterFactory {
    * @param connection - Connection entity
    * @param identifierMapping - Identifier mapping service
    * @param credentialsResolver - Credentials resolver service
+   * @param fetchImpl - Connection-bound outbound transport (#1810) — every
+   *   client this factory constructs is wired with it, so all outbound HTTP
+   *   for this connection is paced/capped per its `config.rateLimit`.
    * @returns All adapter instances
    * @throws PrestashopConfigException if configuration is invalid
    * @throws Error if credentials cannot be resolved
@@ -57,6 +61,7 @@ export interface IPrestashopAdapterFactory {
   createAdapters(
     connection: Connection,
     identifierMapping: IdentifierMappingPort,
-    credentialsResolver: CredentialsResolverPort
+    credentialsResolver: CredentialsResolverPort,
+    fetchImpl: FetchLike
   ): Promise<PrestashopAdapters>;
 }

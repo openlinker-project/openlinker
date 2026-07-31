@@ -91,6 +91,32 @@ describe('HttpTransportFactory', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
+  it("falls back to the caller-supplied defaultRateLimit when config.rateLimit is absent (AdapterMetadata's manifest value)", async () => {
+    const response = new Response(null, { status: 200 });
+    const fetchImpl = jest.fn().mockResolvedValue(response);
+    const factory = new HttpTransportFactory({ registry, fetchImpl });
+
+    const connection = { id: 'conn-1' };
+    const boundFetch = factory.for(connection, { maxConcurrent: 1 });
+
+    await boundFetch('https://example.com');
+
+    expect(registry.getStatus('conn-1')?.maxConcurrent).toBe(1);
+  });
+
+  it("an explicit config.rateLimit always wins over the caller-supplied defaultRateLimit", async () => {
+    const response = new Response(null, { status: 200 });
+    const fetchImpl = jest.fn().mockResolvedValue(response);
+    const factory = new HttpTransportFactory({ registry, fetchImpl });
+
+    const connection = { id: 'conn-1', config: { rateLimit: { maxConcurrent: 5 } } };
+    const boundFetch = factory.for(connection, { maxConcurrent: 1 });
+
+    await boundFetch('https://example.com');
+
+    expect(registry.getStatus('conn-1')?.maxConcurrent).toBe(5);
+  });
+
   it('divides the configured cap across OL_WORKER_REPLICAS', async () => {
     const response = new Response(null, { status: 200 });
     const fetchImpl = jest.fn().mockResolvedValue(response);

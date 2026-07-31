@@ -26,6 +26,7 @@ import { PrestashopQueryBuilder } from './prestashop-query.builder';
 import { PrestashopResponseParser } from './prestashop-response.parser';
 import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
 import { XMLBuilder } from 'fast-xml-parser';
+import type { FetchLike } from '@openlinker/shared/http';
 
 /**
  * Resources whose PrestaShop singular element name is not the plural minus a
@@ -85,7 +86,11 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     baseUrl: string,
     credentials: PrestashopCredentials,
     config: PrestashopConnectionConfig,
-    retryConfig?: Partial<RetryConfig>
+    retryConfig?: Partial<RetryConfig>,
+    // Connection-bound outbound transport (#1810) — defaults to bare
+    // fetch so existing call sites that predate the rate-limit mechanism
+    // (test harnesses, other-package callers) keep working unchanged.
+    private readonly fetchImpl: FetchLike = globalThis.fetch
   ) {
     // Normalize baseUrl (remove trailing slash)
     const normalizedBaseUrl: string = baseUrl.replace(/\/$/, '');
@@ -261,7 +266,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const response = await fetch(url, {
+      const response = await this.fetchImpl(url, {
         method: 'POST',
         headers,
         body: form,
@@ -570,7 +575,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const response = await fetch(url, {
+      const response = await this.fetchImpl(url, {
         ...options,
         headers,
         signal: controller.signal,

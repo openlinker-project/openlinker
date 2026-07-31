@@ -61,9 +61,13 @@ function parseRetryAfterMs(header: string | null): number | null {
   return null;
 }
 
-/** Mutable holder so a cached closure always reads the latest connection object for its id. */
+/**
+ * Mutable holder so a cached closure always reads the latest connection
+ * object (and the caller's latest `defaultRateLimit` argument) for its id.
+ */
 interface ConnectionRef {
   current: RateLimitedConnection;
+  defaultRateLimit: ConnectionRateLimit | undefined;
 }
 
 export class HttpTransportFactory implements HttpTransportFactoryPort {
@@ -79,16 +83,18 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
     this.baseFetch = deps.fetchImpl ?? globalThis.fetch;
   }
 
-  for(connection: RateLimitedConnection): FetchLike {
+  for(connection: RateLimitedConnection, defaultRateLimit?: ConnectionRateLimit): FetchLike {
     // Keep the ref fresh on every for() call so a cached closure (below)
-    // never reads a stale `config.rateLimit` from the connection object it
-    // happened to be built with — an operator's config edit must take
-    // effect on the very next call through the same cached FetchLike.
+    // never reads a stale `config.rateLimit`/`defaultRateLimit` from the
+    // connection object or argument it happened to be built with — an
+    // operator's config edit must take effect on the very next call
+    // through the same cached FetchLike.
     const ref = this.connectionRefs.get(connection.id);
     if (ref) {
       ref.current = connection;
+      ref.defaultRateLimit = defaultRateLimit;
     } else {
-      this.connectionRefs.set(connection.id, { current: connection });
+      this.connectionRefs.set(connection.id, { current: connection, defaultRateLimit });
     }
 
     const cached = this.cache.get(connection.id);
@@ -101,7 +107,8 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
       input: RequestInfo | URL,
       init?: RequestInit
     ): Promise<Response> => {
-      const rawPolicy: ConnectionRateLimit = connectionRef.current.config?.rateLimit ?? {};
+      const rawPolicy: ConnectionRateLimit =
+        connectionRef.current.config?.rateLimit ?? connectionRef.defaultRateLimit ?? {};
       const policy = dividePolicy(rawPolicy, this.replicas);
       const limiter = this.registry.get(connectionRef.current.id, policy);
       const priority = getCurrentPriority();

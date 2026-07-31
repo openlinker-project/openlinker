@@ -128,16 +128,15 @@ export interface AdapterMetadata {
    * Conservative resolution-time fallback for a connection with no explicit
    * `config.rateLimit` (#1810). Advertised, optional, no forced-dispatch
    * implication — same posture as `isDefault?` / `variantGrouping?`. Never
-   * written into a connection's stored config; the intended effective
-   * policy is `connection.config.rateLimit ?? metadata.defaultRateLimit`.
+   * written into a connection's stored config; the effective policy is
+   * `connection.config.rateLimit ?? metadata.defaultRateLimit`.
    *
-   * NOT YET WIRED: `HttpTransportFactoryPort.for(connection)` only reads
-   * `connection.config?.rateLimit` today — it has no visibility into this
-   * field. Declared now so an adapter's manifest can advertise a value
-   * ahead of the resolution seam; the merge point (either widening
-   * `for()`'s signature or resolving it at each `.for(connection)` call
-   * site) is designed and wired in Phase 4 of #1810, alongside the first
-   * adapter (PrestaShop/WooCommerce) that actually sets a value here.
+   * Wired via `HttpTransportFactoryPort.for(connection, defaultRateLimit?)`
+   * (#1810 Phase 4) — each plugin's `createCapabilityAdapter` passes its own
+   * manifest's `defaultRateLimit` as the second argument at the `host.http.for(...)`
+   * call site (see `PrestashopWebserviceClient`'s / PrestaShop's plugin for
+   * the reference call site); `HttpTransportFactory` never imports
+   * `AdapterMetadata` itself, so the value is threaded in structurally.
    */
   defaultRateLimit?: ConnectionRateLimit;
 }
