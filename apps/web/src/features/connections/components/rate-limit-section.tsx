@@ -77,8 +77,9 @@ export function RateLimitSection({
         {defaultRateLimit ? (
           <>
             Leave both fields empty to use this connection&apos;s adapter default —{' '}
-            <strong>{formatRateLimit(defaultRateLimit)}</strong>. Fill in either field to override
-            it.
+            <strong>{formatRateLimit(defaultRateLimit)}</strong>. Setting either field replaces the
+            adapter default entirely — the other field is then genuinely unlimited, not still
+            capped by the default.
           </>
         ) : (
           <>Leave both fields empty for unlimited (the default for this adapter).</>

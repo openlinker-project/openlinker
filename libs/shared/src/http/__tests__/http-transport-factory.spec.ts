@@ -117,6 +117,25 @@ describe('HttpTransportFactory', () => {
     expect(registry.getStatus('conn-1')?.maxConcurrent).toBe(5);
   });
 
+  it('does not let a defaultRateLimit-less for() call clobber a previously-established default for the same connection id', async () => {
+    // Regression: the process-wide singleton is keyed only by connection.id,
+    // so two independent call sites resolving the same connection must not
+    // fight over `defaultRateLimit` — the second caller omitting it (e.g. a
+    // connection tester that only passes `connection`) must not wipe out the
+    // manifest default a prior caller already established.
+    const response = new Response(null, { status: 200 });
+    const fetchImpl = jest.fn().mockResolvedValue(response);
+    const factory = new HttpTransportFactory({ registry, fetchImpl });
+
+    const connection = { id: 'conn-1' };
+    factory.for(connection, { maxConcurrent: 1 });
+    const boundFetch = factory.for(connection);
+
+    await boundFetch('https://example.com');
+
+    expect(registry.getStatus('conn-1')?.maxConcurrent).toBe(1);
+  });
+
   it('divides the configured cap across OL_WORKER_REPLICAS', async () => {
     const response = new Response(null, { status: 200 });
     const fetchImpl = jest.fn().mockResolvedValue(response);

@@ -45,6 +45,7 @@ import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-c
 import type { PrestashopCredentials } from '../../domain/types/prestashop-credentials.types';
 import { PrestashopWebserviceClient } from '../http/prestashop-webservice.client';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
+import { prestashopAdapterManifest } from '../../prestashop-plugin';
 
 const PROVIDER = 'prestashop';
 
@@ -96,8 +97,11 @@ export class PrestashopWebhookProvisioningAdapter implements WebhookProvisioning
     const { secret } = await this.webhookSecretService.rotate(PROVIDER, connectionId, actorUserId);
 
     // Connection-bound outbound transport (#1810) — resolved once, used for
-    // both the WS config push and the test-ping fetch below.
-    const fetchImpl = this.http.for(connection);
+    // both the WS config push and the test-ping fetch below. Threads the
+    // manifest's `defaultRateLimit` fallback like every other call site — a
+    // fresh connection (no explicit config.rateLimit yet) must still be
+    // rate-limited during install, not fall through to unlimited.
+    const fetchImpl = this.http.for(connection, prestashopAdapterManifest.defaultRateLimit);
 
     // Step 3 — push 3 config rows via PS WS
     const wsClient = await this.createWebserviceClient(

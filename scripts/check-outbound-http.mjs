@@ -53,6 +53,10 @@ const SKIP_DIRS = new Set([
 const EXEMPTION_PATTERN = /eslint-disable-next-line\s+no-restricted-globals/;
 // A bare, un-namespaced `fetch(` call — not `.fetch(` (member access on some
 // object) and not `fetchImpl(`/`fetchSomething(` (a longer identifier).
+// Single-line pattern by design (scanned per-line below) — a call split
+// across lines (`fetch(\n  url,\n  ...\n)`) will not match. This is a
+// backstop against a lint-config regression, not a substitute for the
+// ESLint rule; the low-likelihood multi-line-call gap is accepted.
 const BARE_FETCH_PATTERN = /(?<![.\w])fetch\s*\(/;
 
 function isTestFile(relPath) {
