@@ -1,0 +1,87 @@
+/**
+ * RateLimitSection (#1810)
+ *
+ * Generic, platform-neutral per-connection outbound rate-limit editor —
+ * `config.rateLimit`. Unlike every other structured section in this
+ * feature, it is rendered for EVERY connection regardless of `platformType`
+ * (mirrors the `stockSafetyBuffer`/`pricingRule` core precedent, but this is
+ * the first of that family to actually get an FE control).
+ *
+ * Both knobs are independently optional; leaving both empty means
+ * unlimited (byte-identical to today). Client-side bounds mirror the
+ * server-side check in `ConnectionService.validateRateLimitConfig`
+ * (1-6000 / 1-64) via the Zod schema — this component only renders errors,
+ * it does not duplicate the bounds check itself.
+ *
+ * @module features/connections/components
+ */
+import type { ReactElement } from 'react';
+import type { UseFormReturn } from 'react-hook-form';
+import { FormField } from '../../../shared/ui/form-field';
+import { Input } from '../../../shared/ui/input';
+import type { EditConnectionFormValues } from './edit-connection.schema';
+
+export interface RateLimitSectionProps {
+  form: UseFormReturn<EditConnectionFormValues>;
+  /** When false, raw JSON is unparseable — inputs are disabled (divergence gate). */
+  configIsParseable: boolean;
+  /** Host whole-object serializer; called AFTER setValue (ordering trap — see CapabilityTogglesSection). */
+  syncRateLimitToJson: () => void;
+}
+
+export function RateLimitSection({
+  form,
+  configIsParseable,
+  syncRateLimitToJson,
+}: RateLimitSectionProps): ReactElement {
+  const errors = form.formState.errors.rateLimit;
+
+  const handleChange = (field: 'requestsPerMinute' | 'maxConcurrent', value: string): void => {
+    // ORDERING TRAP: write the form field FIRST, then re-serialize — the
+    // sync function reads CURRENT form state via getValues.
+    form.setValue(`rateLimit.${field}`, value, { shouldDirty: true });
+    syncRateLimitToJson();
+  };
+
+  return (
+    <section className="rate-limit-section">
+      <h3 className="rate-limit-section__title">Outbound rate limit</h3>
+      <p className="rate-limit-section__help">
+        OpenLinker spaces requests evenly rather than sending them in bursts. Leave both fields
+        empty for unlimited (the default).
+      </p>
+
+      <FormField
+        label="Requests per minute"
+        name="rateLimit.requestsPerMinute"
+        error={errors?.requestsPerMinute?.message}
+        description="Smooth-paced cap — e.g. 60 spaces requests roughly one per second."
+      >
+        <Input
+          value={form.watch('rateLimit.requestsPerMinute') ?? ''}
+          onChange={(event) => handleChange('requestsPerMinute', event.target.value)}
+          disabled={!configIsParseable}
+          placeholder="Unlimited"
+          inputMode="numeric"
+          invalid={Boolean(errors?.requestsPerMinute)}
+        />
+      </FormField>
+
+      <FormField
+        label="Max concurrent requests"
+        name="rateLimit.maxConcurrent"
+        error={errors?.maxConcurrent?.message}
+        description="Caps simultaneous in-flight requests to this connection."
+      >
+        <Input
+          value={form.watch('rateLimit.maxConcurrent') ?? ''}
+          onChange={(event) => handleChange('maxConcurrent', event.target.value)}
+          disabled={!configIsParseable}
+          placeholder="Unlimited"
+          inputMode="numeric"
+          invalid={Boolean(errors?.maxConcurrent)}
+        />
+      </FormField>
+    </section>
+  );
+}

@@ -6,7 +6,7 @@
  * stay in sync with the live code:
  *
  *   1. **Verbatim quote** of `CoreCapabilityValues` at
- *      `libs/core/src/integrations/domain/types/adapter.types.ts:22-28`,
+ *      `libs/core/src/integrations/domain/types/adapter.types.ts:23-37`,
  *      reproduced inline in the guide as a fenced TypeScript block.
  *      Drift = the guide quotes stale capability values; readers code
  *      against a list that no longer matches the registry.
@@ -18,7 +18,7 @@
  *      110; the link still resolves but lands on the wrong content.
  *
  *   3. **Boundary check** for the `HostServices` interface at
- *      `libs/plugin-sdk/src/host-services.ts:55-178`. Same shape.
+ *      `libs/plugin-sdk/src/host-services.ts:56-190`. Same shape.
  *
  * Both checks are deliberately strict: when they fire on a benign
  * refactor (e.g., new import above the interface), the human updates
@@ -48,9 +48,9 @@ const VERBATIM_QUOTES = [
   {
     label: 'CoreCapabilityValues',
     sourceFile: 'libs/core/src/integrations/domain/types/adapter.types.ts',
-    sourceStart: 22, // 1-indexed
-    sourceEnd: 36,
-    guideLinkSubstring: 'adapter.types.ts:22-36',
+    sourceStart: 23, // 1-indexed
+    sourceEnd: 37,
+    guideLinkSubstring: 'adapter.types.ts:23-37',
     fenceOpen: '```typescript',
   },
 ];
@@ -68,9 +68,9 @@ const BOUNDARY_REFS = [
   {
     label: 'HostServices',
     sourceFile: 'libs/plugin-sdk/src/host-services.ts',
-    sourceStart: 55,
-    sourceEnd: 178,
-    guideLinkSubstring: 'host-services.ts:55-178',
+    sourceStart: 56,
+    sourceEnd: 190,
+    guideLinkSubstring: 'host-services.ts:56-190',
     expectedStart: /^export interface HostServices \{$/,
     expectedEnd: /^\}\s*$/,
   },

@@ -69,6 +69,8 @@ import {
 import { Logger } from '@openlinker/shared/logging';
 import { CACHE_PORT_TOKEN, type CachePort } from '@openlinker/shared';
 import type { HostServices } from '@openlinker/plugin-sdk';
+import { RateLimitModule, HTTP_TRANSPORT_FACTORY_TOKEN } from '@openlinker/plugin-sdk';
+import { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { WooCommerceCustomerProvisioner } from './infrastructure/provisioners/woocommerce-customer-provisioner';
 import { WooCommerceAddressProvisioner } from './infrastructure/provisioners/woocommerce-address-provisioner';
 import { createWooCommercePlugin } from './woocommerce-plugin';
@@ -84,6 +86,7 @@ import { WooCommerceWebhookProvisioningModule } from './woocommerce-webhook-prov
     // + IWebhookSecretService (not in the HostServices bag), so it self-registers
     // from this companion module rather than from plugin.register(host).
     WooCommerceWebhookProvisioningModule,
+    RateLimitModule,
   ],
   providers: [WooCommerceCustomerProvisioner, WooCommerceAddressProvisioner],
 })
@@ -123,6 +126,8 @@ export class WooCommerceIntegrationModule implements OnModuleInit {
     private readonly identifierMapping: IdentifierMappingPort,
     @Inject(CREDENTIALS_RESOLVER_TOKEN)
     private readonly credentialsResolver: CredentialsResolverPort,
+    @Inject(HTTP_TRANSPORT_FACTORY_TOKEN)
+    private readonly http: HttpTransportFactoryPort,
     private readonly customerProvisioner: WooCommerceCustomerProvisioner,
     private readonly addressProvisioner: WooCommerceAddressProvisioner,
     @Inject(CUSTOMER_PROJECTION_REPOSITORY_TOKEN)
@@ -144,6 +149,7 @@ export class WooCommerceIntegrationModule implements OnModuleInit {
       logger: (context: string) => new Logger(context),
       identifierMapping: this.identifierMapping,
       credentialsResolver: this.credentialsResolver,
+      http: this.http,
       cache: this.cache,
       adapterRegistry: this.adapterRegistry,
       factoryResolver: this.factoryResolver,

@@ -8,6 +8,7 @@
  *
  * @module libs/core/src/integrations/domain/types
  */
+import type { ConnectionRateLimit } from '@openlinker/core/identifier-mapping';
 
 /**
  * Well-known core capabilities — the documented set OpenLinker ships with.
@@ -122,6 +123,16 @@ export interface AdapterMetadata {
    * directly, so the most-restrictive default is always applied.
    */
   variantGrouping?: VariantGroupingModel;
+
+  /**
+   * Conservative resolution-time fallback for a connection with no explicit
+   * `config.rateLimit` (#1810). Advertised, optional, no forced-dispatch
+   * implication — same posture as `isDefault?` / `variantGrouping?`. Never
+   * written into a connection's stored config; the effective policy is
+   * `connection.config.rateLimit ?? metadata.defaultRateLimit`, resolved
+   * fresh on every `HttpTransportFactoryPort.for(connection)` call.
+   */
+  defaultRateLimit?: ConnectionRateLimit;
 }
 
 /**

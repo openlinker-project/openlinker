@@ -64,6 +64,8 @@ import {
 import { Logger } from '@openlinker/shared/logging';
 import { CACHE_PORT_TOKEN, type CachePort } from '@openlinker/shared';
 import type { HostServices } from '@openlinker/plugin-sdk';
+import { RateLimitModule, HTTP_TRANSPORT_FACTORY_TOKEN } from '@openlinker/plugin-sdk';
+import { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { createErliPlugin } from './erli-plugin';
 import { ErliWebhookProvisioningModule } from './erli-webhook-provisioning.module';
 import { ErliCredentialsRewriterModule } from './erli-credentials-rewriter.module';
@@ -83,6 +85,7 @@ import { ErliCredentialsRewriterModule } from './erli-credentials-rewriter.modul
     // companion module rather than from plugin.register(host) — same shape
     // as ErliWebhookProvisioningModule above.
     ErliCredentialsRewriterModule,
+    RateLimitModule,
   ],
 })
 export class ErliIntegrationModule implements OnModuleInit {
@@ -121,6 +124,8 @@ export class ErliIntegrationModule implements OnModuleInit {
     private readonly identifierMapping: IdentifierMappingPort,
     @Inject(CREDENTIALS_RESOLVER_TOKEN)
     private readonly credentialsResolver: CredentialsResolverPort,
+    @Inject(HTTP_TRANSPORT_FACTORY_TOKEN)
+    private readonly http: HttpTransportFactoryPort,
     @Inject(INVENTORY_QUERY_SERVICE_TOKEN)
     private readonly inventoryQuery: IInventoryQueryService,
     @Optional()
@@ -137,6 +142,7 @@ export class ErliIntegrationModule implements OnModuleInit {
       logger: (context: string) => new Logger(context),
       identifierMapping: this.identifierMapping,
       credentialsResolver: this.credentialsResolver,
+      http: this.http,
       cache: this.cache,
       adapterRegistry: this.adapterRegistry,
       factoryResolver: this.factoryResolver,
