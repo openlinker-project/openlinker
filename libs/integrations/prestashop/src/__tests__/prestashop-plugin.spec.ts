@@ -23,6 +23,7 @@ import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customer
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { WebhookSecretProviderPort } from '@openlinker/core/integrations';
 import type { HostServices } from '@openlinker/plugin-sdk';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 
 import { PrestashopAdapterFactory } from '../application/prestashop-adapter.factory';
 import type { PrestashopAdapters } from '../application/interfaces/prestashop-adapter.factory.interface';
@@ -50,9 +51,16 @@ function makeHost(): HostServices {
   return {
     identifierMapping: {} as IdentifierMappingPort,
     credentialsResolver: {} as CredentialsResolverPort,
+    // Connection-bound outbound transport (#1810) — `createCapabilityAdapter`
+    // calls `host.http.for(connection, defaultRateLimit)` to wire every
+    // client it constructs. A bare jest.fn() stub is enough here; these
+    // tests exercise capability dispatch, not rate limiting.
+    http: {
+      for: jest.fn().mockReturnValue(jest.fn()),
+    } as unknown as HttpTransportFactoryPort,
     cache: undefined,
-    // The plugin's `createCapabilityAdapter` only touches `identifierMapping`
-    // and `credentialsResolver`; the other host-services slots
+    // The plugin's `createCapabilityAdapter` only touches `identifierMapping`,
+    // `credentialsResolver`, and `http`; the other host-services slots
     // (`connectionTesterRegistry`, …) are exercised by `register(host)` only,
     // which we don't invoke here.
   } as HostServices;

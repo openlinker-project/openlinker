@@ -16,12 +16,22 @@ import type {
   ConnectionTestResult,
   CredentialsResolverPort,
 } from '@openlinker/core/integrations';
-import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { Connection, ConnectionRateLimit } from '@openlinker/core/identifier-mapping';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { PrestashopWebserviceClient } from '../http/prestashop-webservice.client';
 import type { PrestashopCredentials } from '../../domain/types/prestashop-credentials.types';
 import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
 
 export class PrestashopConnectionTesterAdapter implements ConnectionTesterPort {
+  constructor(
+    private readonly httpTransportFactory: HttpTransportFactoryPort,
+    // The plugin manifest's `defaultRateLimit` (#1810) — passed in by the
+    // registration call site (`prestashop-plugin.ts`) rather than imported
+    // back from it, which would create a module-load cycle
+    // (prestashop-plugin.ts -> this file -> prestashop-plugin.ts).
+    private readonly defaultRateLimit?: ConnectionRateLimit
+  ) {}
+
   async test(
     connection: Connection,
     credentialsResolver: CredentialsResolverPort
@@ -49,12 +59,23 @@ export class PrestashopConnectionTesterAdapter implements ConnectionTesterPort {
         responseFormat: 'auto',
       };
 
-      const client = new PrestashopWebserviceClient(baseUrl, credentials, config, {
-        maxRetries: 0,
-        initialDelayMs: 0,
-        maxDelayMs: 0,
-        backoffMultiplier: 1,
-      });
+      // Connection-bound outbound transport (#1810) — the probe must never
+      // bypass the connection's own rate limiter, or a repeatable "Test
+      // connection" click can burst the exact fragile host #1772 was about.
+      const fetchImpl = this.httpTransportFactory.for(connection, this.defaultRateLimit);
+
+      const client = new PrestashopWebserviceClient(
+        baseUrl,
+        credentials,
+        config,
+        {
+          maxRetries: 0,
+          initialDelayMs: 0,
+          maxDelayMs: 0,
+          backoffMultiplier: 1,
+        },
+        fetchImpl
+      );
 
       await client.listResources('products', undefined, 1);
 

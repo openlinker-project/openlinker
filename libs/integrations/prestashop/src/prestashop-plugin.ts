@@ -100,7 +100,7 @@ export function createPrestashopPlugin(deps: CreatePrestashopPluginDeps): Adapte
     register(host: HostServices): void {
       host.connectionTesterRegistry.register(
         'prestashop.webservice.v1',
-        new PrestashopConnectionTesterAdapter(),
+        new PrestashopConnectionTesterAdapter(host.http, prestashopAdapterManifest.defaultRateLimit),
       );
       // Webhook provisioner — replaces direct injection of the PS-specific
       // service in `apps/api`'s ConnectionController (#583). The controller
