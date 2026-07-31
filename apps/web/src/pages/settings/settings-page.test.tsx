@@ -115,31 +115,26 @@ describe('SettingsPage', () => {
     expect(screen.queryByText('PostHog', { selector: '.toolbar-chip' })).not.toBeInTheDocument();
   });
 
-  it('shows the analytics consent tile in demo mode (#1882)', async () => {
-    renderWithProviders(<SettingsPage />, {
-      apiClient: createMockApiClient({
-        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
-      }),
-      sessionAdapter: createAuthenticatedSessionAdapter(),
-    });
+  it('never renders an analytics consent control, in demo mode or out of it (#1938)', async () => {
+    // The demo's consent decision moved to registration and the /consent page;
+    // Settings offers no way to switch analytics off any more.
+    for (const demoMode of [true, false]) {
+      const apiClient = createMockApiClient({
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode }) },
+      });
 
-    expect(await screen.findByRole('heading', { name: 'Analytics' })).toBeInTheDocument();
-    expect(screen.getByText('Privacy', { selector: '.toolbar-chip' })).toBeInTheDocument();
-    expect(screen.getByRole('checkbox')).toBeInTheDocument();
-  });
+      renderWithProviders(<SettingsPage />, {
+        apiClient,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
 
-  it('never renders the analytics consent tile outside demo mode', async () => {
-    const apiClient = createMockApiClient({
-      system: { getConfig: vi.fn().mockResolvedValue({ demoMode: false }) },
-    });
-
-    renderWithProviders(<SettingsPage />, {
-      apiClient,
-      sessionAdapter: createAuthenticatedSessionAdapter(),
-    });
-
-    await waitFor(() => expect(apiClient.system.getConfig).toHaveBeenCalled());
-    expect(screen.queryByRole('heading', { name: 'Analytics' })).not.toBeInTheDocument();
-    expect(screen.queryByText('Privacy', { selector: '.toolbar-chip' })).not.toBeInTheDocument();
+      // The page renders synchronously from the session; there is no consent
+      // query left to await.
+      await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument());
+      expect(screen.queryByRole('heading', { name: 'Analytics' })).not.toBeInTheDocument();
+      expect(screen.queryByText('Privacy', { selector: '.toolbar-chip' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+      cleanup();
+    }
   });
 });

@@ -20,6 +20,7 @@ import * as bcrypt from 'bcryptjs';
 import { Logger } from '@openlinker/shared/logging';
 import { CACHE_PORT_TOKEN, type CachePort } from '@openlinker/shared/cache';
 import {
+  AnalyticsConsentRequiredException,
   RegistrationDisabledException,
   RegistrationRateLimitedException,
   UserAlreadyExistsException,
@@ -64,6 +65,12 @@ export class RegistrationService implements IRegistrationService {
     }
 
     const demoMode = this.demoModeService.isDemoModeEnabled();
+    // Session recording is a condition of holding a demo account (#1938), and
+    // the registration form discloses it rather than asking. A direct POST must
+    // not be able to create an unrecorded demo account.
+    if (demoMode && analyticsConsent !== true) {
+      throw new AnalyticsConsentRequiredException();
+    }
     if (demoMode && clientIp) {
       await this.enforceRateLimit(clientIp);
     }

@@ -1,0 +1,13 @@
+# Local env overrides (never commit stack credentials)
+.env
+
+# Playwright browser auth state captured by global setup
+.auth/
+
+# Manual-checkpoint resume/fail sentinels (attended runs)
+.e2e/
+
+# Playwright artifacts
+playwright-report/
+test-results/
+blob-report/
