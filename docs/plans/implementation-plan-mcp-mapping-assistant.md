@@ -108,12 +108,44 @@ privileged token.
 | `list_category_mappings` | `IMappingConfigService.getCategoryMappings(destinationConnectionId)` | The "what's already mapped" read the loop starts from |
 | `resolve_category` | `ICategoryResolutionService.resolveCategory(input)` | **Renamed from `suggest_category`** — the service is a *deterministic* placement chain (provision → barcode → configured mapping → `manual`), not a suggester. Calling it "suggest" would tell the agent it is getting a semantic proposal when it is getting a lookup, and would make a `manual` outcome read as "no good suggestion" rather than "nothing is mapped — author one". `barcode` drives the `EanCategoryMatcher` step internally, so **no separate EAN tool is needed**; `sourceCategoryIds` drives the mapping step |
 | `project_attributes` | `IAttributeProjectionService.project(input)` | Shows what the destination would receive for a given category + attribute set — the "did my mapping work?" read |
-| `list_attribute_mappings` | `IMappingConfigService.getAttributeMappings(destinationConnectionId)` | Companion to the above |
+| `list_attribute_mappings` | `IMappingConfigService.getAttributeMappings(destinationConnectionId)` | Companion to the above. **Description must note** it returns the destination-keyed rows; a *borrowed*-taxonomy destination (Erli, #1045) resolves through `getAttributeMappingsByProvenance` instead, so on such a connection this list can differ from what the projection actually uses |
 
 All four are gated on `requiredCapability: null` (always registered). **Deliberate**: mapping config is
 OL-owned data, not adapter-served — gating it on a marketplace capability would repeat the Phase-1
-confusion where a gate implies nothing about the data. `suggest_category` *does* reach an adapter
-internally, and surfaces that as an agent-facing error when the connection can't browse categories.
+confusion where a gate implies nothing about the data.
+
+#### 🔴 `resolve_category` is the one tool that is NOT purely OL-store-backed
+
+Two consequences, both of which must be handled rather than noted in passing.
+
+**(a) It spends the operator's marketplace API quota.** Step 2 of the chain (`tryAutoDetect`,
+`category-resolution.service.ts`) resolves the live `OfferManager` adapter and calls
+`matchCategoryByBarcode` — a real marketplace request. This is precisely the live-round-trip pattern
+[ADR-033 § Phase 1 amendments](../architecture/adrs/033-openlinker-as-mcp-server.md) rejected for
+agent-facing reads.
+
+It is admitted here as a **deliberate, bounded exception**: unlike a taxonomy walk (N calls, the reason
+`browse_categories` is deferred to #1937), this is *one* call per invocation, and it is the entire value
+of the tool — a resolution tool that refuses to resolve is not worth shipping. The tool's agent-facing
+`description` must say that it performs a live destination lookup, so a model does not loop on it.
+
+**(b) Its scope declaration is coupled to a future change — make that coupling fail loudly.** Step 1 of
+the chain is documented as *"Provision — mirror/**create** on the destination"*
+(`category-resolution.service.interface.ts`). Today `tryProvision()` is a hardcoded
+`Promise.resolve(null)` no-op, so `requiredScope: 'mcp:read'` is correct **for current behaviour**. But
+that method's own JSDoc states #1041 will "resolve the destination adapter, narrow via
+`isCategoryProvisioner`, call `provisionCategory(...)`, and return the provisioned id."
+
+**The day #1041 lands, a read-only MCP token silently gains a destination write** — and nothing in this
+phase's suite would fail. That defeats §3.1's entire purpose.
+
+Mitigation (required, not optional):
+- Keep `requiredScope: 'mcp:read'` — correct today, and over-restricting to `mcp:write` now would make
+  the common read path need a write token.
+- **Add a spec asserting `resolve_category` never returns `method: 'provision'`.** When #1041 wires the
+  provision step, that spec goes red and forces a scope re-evaluation instead of shipping the
+  escalation silently.
+- Comment the tool site naming #1041 as the trigger.
 
 ### 3.3 The write tool (`mcp:write` + admin)
 
@@ -151,6 +183,21 @@ correctable, carries no secrets, and is scoped to one destination connection. v1
 tool-approval UX plus the coarse consent implied by an operator minting and installing an
 admin-scoped, write-scoped token. Recorded so Phase 3 doesn't have to re-derive it.
 
+### 3.3b 🔴 The audit wrapper cannot see a mapping tool's connection
+
+`ToolRegistryService.invoke` attributes each audit line to a connection via
+`typeof args.connectionId === 'string' ? args.connectionId : undefined`
+(`tool-registry.service.ts`). Every tool in this phase keys on **`destinationConnectionId`** (matching
+`IMappingConfigService`'s own parameter name), so as written **every mapping-tool audit line records
+`connectionId: undefined`** — including `upsert_category_mapping`, the first write on the MCP surface.
+An unattributable write audit is worse than no new tool.
+
+**Fix in the wrapper, not per tool** — fall back to `destinationConnectionId` when `connectionId` is
+absent. Renaming the tools' argument to `connectionId` was rejected: it would diverge from the core
+service parameter it forwards to, and the next tool keying on some third name would silently reopen the
+same hole. Keeping the extraction in the single choke point is the §3.1 principle applied to
+attribution.
+
 ### 3.4 No-secret invariant
 
 The issue requires "no secrets in any tool arg or return". Mapping data carries none, but the
@@ -171,6 +218,13 @@ and that the agent must show the suggestion before writing.
 apps/api/src/mcp/tools/
   tool-definition.types.ts          # CHANGED: + requiredScope, requiresAdmin, 'forbidden' outcome
   tool-registry.service.ts          # CHANGED: registration filter + call-time refusal
+                                    #          + destinationConnectionId audit fallback (§3.3b)
+  read/whoami.tool.ts               # CHANGED ┐
+  read/list-connections.tool.ts     # CHANGED │ the six Phase-1 tools each declare
+  read/search-catalog.tool.ts       # CHANGED │ requiredScope:'mcp:read' + requiresAdmin:false.
+  read/get-product.tool.ts          # CHANGED │ Required (not defaulted) — see step 1.
+  read/get-availability.tool.ts     # CHANGED │
+  read/get-order.tool.ts            # CHANGED ┘
   mcp-tool-definitions.provider.ts  # CHANGED: + 5 tools, + IMappingConfigService & friends
   read/list-category-mappings.tool.ts
   read/list-attribute-mappings.tool.ts
@@ -186,9 +240,9 @@ apps/api/src/mcp/tools/
 
 | # | Step | Acceptance |
 |---|---|---|
-| 1 | `tool-definition.types.ts` | `requiredScope` + `requiresAdmin` on the definition; `'forbidden'` added to the outcome union |
-| 2 | Registry enforcement | Registration omits tools the principal can't call; call time refuses with agent-facing copy **before** the limiter; audit `outcome: 'forbidden'` |
-| 3 | 4 discovery tools | Each reads its core `I*Service`, projects, maps errors; `requiredScope: 'mcp:read'` |
+| 1 | `tool-definition.types.ts` + the 6 Phase-1 tools | `requiredScope` + `requiresAdmin` are **required** (not optional-with-default): a future write tool that forgets `requiresAdmin` would otherwise default to *unprivileged*, the wrong failure direction. All six existing tools updated in the same step; `'forbidden'` added to the outcome union (log-only — `McpAuditLogger` has no ORM entity, so **no migration**) |
+| 2 | Registry enforcement | Registration omits tools the principal can't call; call time refuses with agent-facing copy **before** `rateLimiter.acquire` (the existing `principal === null` branch already sits there, so the insertion point exists); audit `outcome: 'forbidden'`. Also widen the audit connection extraction per §3.3b |
+| 3 | 4 discovery tools | Each reads its core `I*Service`, projects, maps errors; `requiredScope: 'mcp:read'`. `resolve_category`'s description states it performs a **live destination lookup** (§3.2a) |
 | 4 | `upsert_category_mapping` | `mcp:write` + `requiresAdmin`; neutral `CategoryMappingInput`; **`sourceConnectionId` required in the Zod schema** (§3.3); no legacy DTO import |
 | 5 | Module wiring | `MappingsModule` + listings services imported; API boots |
 | 6 | `configure-mappings` Skill | discover→resolve→confirm→write loop; names the token requirement; states that a `manual` resolve outcome means "author a mapping", not "no suggestion available" |
@@ -202,6 +256,13 @@ apps/api/src/mcp/tools/
 **Unit**
 - `tool-registry.service.spec.ts` (extend) — **the scope/role matrix is the point of this phase**: a read-only principal doesn't see the write tool in `tools/list` AND is refused when calling it by name anyway; a non-admin write-scoped principal is refused; an admin write-scoped principal succeeds; a refused call **does not consume a rate-limit slot** and emits `outcome: 'forbidden'`.
 - One spec per tool — happy path, projection asserts non-projected fields absent, error mapping.
+- **`resolve_category` provision-escalation guard (§3.2b)** — asserts the tool never returns
+  `method: 'provision'`. Goes red when #1041 wires `tryProvision`, forcing a scope re-evaluation instead
+  of silently granting a read-only token a destination write. This spec is the whole mitigation; without
+  it the coupling is invisible.
+- **Audit attribution** — a mapping-tool call records the connection on its audit line (regression guard
+  for §3.3b; today the wrapper only reads `args.connectionId` and every one of these tools would log
+  `undefined`).
 - `upsert_category_mapping` spec — passes a neutral `CategoryMappingInput` through; rejects unknown keys; **rejects a call omitting `sourceConnectionId`** (the §3.3 duplicate-row guard).
 
 **Integration** (`mcp-mapping-tools.int-spec.ts`) — mint a **read-only** token and a **write** token against a real DB; assert the read-only token's `tools/list` omits the write tool and its `tools/call` is refused, and that the write token's call actually persists a mapping (re-read via `list_category_mappings`).
@@ -226,6 +287,8 @@ apps/api/src/mcp/tools/
 | Risk | Severity | Note |
 |---|---|---|
 | **Scope: drop the order-mapping options tools?** | **Decision** | The issue lists `DestinationOptionsReader` / `SourceOptionsReader` discovery tools for status/carrier/payment. **I recommend deferring them.** Three reasons: (a) the issue's own warning says status/carrier/payment are "only partially neutralized per ADR-023/#1036", so tools would bind to a surface mid-refactor; (b) they are enum-pairing, not the semantic matching the issue calls "exactly LLM-shaped" — the ROI argument doesn't cover them; (c) they'd roughly double the tool count and the review surface for the phase whose real purpose is establishing the **write mechanism**. Including them is defensible if you want the phase to match its issue text exactly. |
+| **`resolve_category` gains a destination write when #1041 lands** | **High** | The chain's step 1 is a documented provision/create, inert only because `tryProvision()` is a stub. A read-scoped token would silently gain a write. Mitigated by the provision-escalation spec (§5) — the only mechanism that makes this fail loudly rather than ship silently |
+| Write audit lines unattributable to a connection | Medium | §3.3b — the wrapper's `args.connectionId` extraction misses `destinationConnectionId`; fixed in the wrapper + regression spec |
 | Registration filtering could be read as the security boundary | Medium | Mitigated by design (§3.1: call-time refusal is the guard) and by a spec that calls an unlisted tool by name |
 | First write tool on the MCP surface | Medium | Correctable, no secrets, single-connection scope; admin + write-scope + audit. ADR-034's v1 HITL posture recorded in §3.3 |
 | Capability gate misread as a data guarantee | Low | §3.2 — mapping tools are ungated precisely to avoid it |
@@ -239,6 +302,9 @@ apps/api/src/mcp/tools/
 - [ ] No tool file imports the limiter, the audit logger, or performs its own scope check
 - [ ] Every tool result is an explicit-allowlist projection
 - [ ] A read-only token is refused at call time, not merely hidden from `tools/list`
+- [ ] `resolve_category` cannot provision — asserted by spec, so #1041 breaks the build (§3.2b)
+- [ ] Every mapping-tool audit line carries its connection (§3.3b)
+- [ ] All six Phase-1 tools declare `requiredScope` / `requiresAdmin` explicitly
 - [ ] `as const` unions; types in `*.types.ts`; file header on every new file
 - [ ] No `any`, no `console.log`, no hardcoded secrets
 - [ ] `pnpm lint` / `type-check` / `test` green; `test:integration` for the tool slice
