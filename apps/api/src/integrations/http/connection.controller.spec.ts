@@ -21,6 +21,7 @@ import {
   CallerSuppliedWebhookSecretNotSupportedException,
 } from '@openlinker/core/integrations';
 import { WEBHOOK_STATUS_SERVICE_TOKEN } from '../application/interfaces/webhook-status.service.interface';
+import { RATE_LIMIT_STATUS_SERVICE_TOKEN } from '../application/interfaces/rate-limit-status.service.interface';
 import type { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import type { AuthenticatedUser } from '../../auth/auth.types';
@@ -36,6 +37,7 @@ describe('ConnectionController', () => {
   let demoModeService: jest.Mocked<IDemoModeService>;
   let webhookSecretService: { rotate: jest.Mock; set: jest.Mock };
   let webhookStatusService: { getStatus: jest.Mock };
+  let rateLimitStatusService: { getStatus: jest.Mock };
   let integrationsService: { resolveAdapterMetadata: jest.Mock };
 
   const mockConnection = new Connection(
@@ -145,6 +147,12 @@ describe('ConnectionController', () => {
           },
         },
         {
+          provide: RATE_LIMIT_STATUS_SERVICE_TOKEN,
+          useValue: {
+            getStatus: jest.fn().mockResolvedValue({ enabled: false }),
+          },
+        },
+        {
           provide: DEMO_MODE_SERVICE_TOKEN,
           useValue: { isDemoModeEnabled: jest.fn().mockReturnValue(false) },
         },
@@ -157,6 +165,7 @@ describe('ConnectionController', () => {
     demoModeService = module.get(DEMO_MODE_SERVICE_TOKEN);
     webhookSecretService = module.get(WEBHOOK_SECRET_SERVICE_TOKEN);
     webhookStatusService = module.get(WEBHOOK_STATUS_SERVICE_TOKEN);
+    rateLimitStatusService = module.get(RATE_LIMIT_STATUS_SERVICE_TOKEN);
     integrationsService = module.get(INTEGRATIONS_SERVICE_TOKEN);
   });
 
@@ -194,6 +203,36 @@ describe('ConnectionController', () => {
       expect(result.activation).toBe('verified');
       expect(result.signature).toBe('configured');
       expect(result.lastDeliveryEvent).toBe('send_to_ksef_success');
+    });
+  });
+
+  describe('getRateLimitStatus', () => {
+    it('returns the effective rate-limit status', async () => {
+      rateLimitStatusService.getStatus.mockResolvedValue({
+        enabled: true,
+        requestsPerMinute: 60,
+        maxConcurrent: 4,
+        inFlight: 1,
+        queued: 0,
+        lastAcquiredAt: new Date('2026-07-31T10:00:00.000Z'),
+      });
+
+      const result = await controller.getRateLimitStatus('connection-123');
+
+      expect(rateLimitStatusService.getStatus).toHaveBeenCalledWith('connection-123');
+      expect(result.enabled).toBe(true);
+      expect(result.requestsPerMinute).toBe(60);
+      expect(result.maxConcurrent).toBe(4);
+      expect(result.lastAcquiredAt).toBe('2026-07-31T10:00:00.000Z');
+    });
+
+    it('reports disabled when no cap is in effect', async () => {
+      rateLimitStatusService.getStatus.mockResolvedValue({ enabled: false });
+
+      const result = await controller.getRateLimitStatus('connection-123');
+
+      expect(result.enabled).toBe(false);
+      expect(result.requestsPerMinute).toBeUndefined();
     });
   });
 

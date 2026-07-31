@@ -23,6 +23,7 @@ export type {
   WebhookStatus,
   WebhookActivation,
   WebhookSignatureState,
+  RateLimitStatus,
   CreateConnectionInput,
   UpdateConnectionInput,
   PlatformType,
@@ -44,6 +45,7 @@ export { useConfigureWebhooksMutation } from './hooks/use-configure-webhooks-mut
 export { useRotateWebhookSecretMutation } from './hooks/use-rotate-webhook-secret-mutation';
 export { useSetWebhookSecretMutation } from './hooks/use-set-webhook-secret-mutation';
 export { useWebhookStatusQuery } from './hooks/use-webhook-status-query';
+export { useRateLimitStatusQuery } from './hooks/use-rate-limit-status-query';
 export { useUpdateConnectionCredentialsMutation } from './hooks/use-update-connection-credentials-mutation';
 export { useUpdateConnectionMutation } from './hooks/use-update-connection-mutation';
 export { useBankAccountsQuery } from './hooks/use-bank-accounts-query';
@@ -78,6 +80,7 @@ export {
 } from './components/infakt-webhook-config';
 
 export { ConnectionEntityLabel } from './components/ConnectionEntityLabel';
+export { PrestashopRateLimitReadout } from './components/prestashop-rate-limit-readout';
 export { AllegroSellerDefaultsSection } from './components/allegro-seller-defaults-section';
 export { CapabilityTogglesSection } from './components/CapabilityTogglesSection';
 export type { CapabilityTogglesSectionProps } from './components/CapabilityTogglesSection';

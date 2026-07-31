@@ -32,6 +32,8 @@ import { OAuthConnectionService } from './application/services/oauth-connection.
 import { OAUTH_CONNECTION_SERVICE_TOKEN } from './application/interfaces/oauth-connection.service.interface';
 import { WebhookStatusService } from './application/services/webhook-status.service';
 import { WEBHOOK_STATUS_SERVICE_TOKEN } from './application/interfaces/webhook-status.service.interface';
+import { RateLimitStatusService } from './application/services/rate-limit-status.service';
+import { RATE_LIMIT_STATUS_SERVICE_TOKEN } from './application/interfaces/rate-limit-status.service.interface';
 import { DemoModeService } from '../auth/demo-mode.service';
 import { DEMO_MODE_SERVICE_TOKEN } from '../auth/demo-mode.service.interface';
 
@@ -62,6 +64,13 @@ import { DEMO_MODE_SERVICE_TOKEN } from '../auth/demo-mode.service.interface';
     { provide: WEBHOOK_DELIVERY_QUERY_SERVICE_TOKEN, useExisting: WebhookDeliveryQueryService },
     WebhookStatusService,
     { provide: WEBHOOK_STATUS_SERVICE_TOKEN, useExisting: WebhookStatusService },
+    // Platform-neutral (#1810 Phase 4 rebase of the PrestaShop-only #1815
+    // prerequisite). Depends on RATE_LIMITER_REGISTRY_TOKEN, exported
+    // process-wide by the @Global() RateLimitModule (bootstrapped via
+    // PluginRegistryModule.forRoot({ plugins: apiPlugins }) above) — no
+    // explicit import needed here.
+    RateLimitStatusService,
+    { provide: RATE_LIMIT_STATUS_SERVICE_TOKEN, useExisting: RateLimitStatusService },
     // Wired locally (mirrors SystemModule) — DemoModeService depends only on
     // the global ConfigService, so IntegrationsModule doesn't need AuthModule
     // just to gate demo-viewer config visibility (#1616 review fix).
