@@ -12,6 +12,8 @@ import type {
   IPrestashopWebserviceClient,
   PrestashopQueryFilters,
   PrestashopWriteOptions,
+  RetryConfig,
+  PrestashopWebserviceClientOptions,
 } from './prestashop-webservice.client.interface';
 import type {
   PrestashopConnectionConfig,
@@ -50,16 +52,6 @@ function singularizeResource(resource: string): string {
 }
 
 /**
- * Retry configuration
- */
-interface RetryConfig {
-  maxRetries: number;
-  initialDelayMs: number;
-  maxDelayMs: number;
-  backoffMultiplier: number;
-}
-
-/**
  * Default retry configuration
  */
 const DEFAULT_RETRY_CONFIG: RetryConfig = {
@@ -68,21 +60,6 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
   maxDelayMs: 10000,
   backoffMultiplier: 2,
 };
-
-/**
- * Optional constructor knobs, grouped so adding a future option never forces
- * every caller to thread an `undefined` positional placeholder through the
- * ones it doesn't need (#1810 review follow-up).
- */
-export interface PrestashopWebserviceClientOptions {
-  retryConfig?: Partial<RetryConfig>;
-  /**
-   * Connection-bound outbound transport (#1810) — defaults to bare fetch so
-   * existing call sites that predate the rate-limit mechanism (test
-   * harnesses, other-package callers) keep working unchanged.
-   */
-  fetchImpl?: FetchLike;
-}
 
 /**
  * PrestaShop WebService Client
