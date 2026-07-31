@@ -1,0 +1,132 @@
+name: E2E
+
+# Deliberately NOT wired to `pull_request` / `push`.
+#
+# `apps/e2e` is a black-box suite: it drives a *running* six-system stack over
+# HTTP, and every project except `smoke` mutates that stack (publishes products,
+# creates marketplace offers, dispatches real ShipX labels, issues fiscal
+# documents). None of that belongs on the critical path of an unrelated PR, and
+# there is no ephemeral stack to point it at.
+#
+# What the ordinary CI workflow *does* guarantee for this package is that it
+# compiles and lints — `apps/e2e` sits inside the `apps/*` workspace glob, so
+# root `pnpm lint` / `pnpm type-check` cover it on every PR. This workflow exists
+# to close the other half of the gap: without it, a selector rename in `apps/web`
+# or an API-shape change would not fail anything until a human happened to run
+# the suite by hand.
+#
+# Two triggers, two different jobs to do:
+#
+#   - `schedule` runs the READ-ONLY `smoke` project weekly. That is the rot
+#     detector: it exercises the whole substrate (env resolution -> node API
+#     client -> world topology -> fixtures -> page objects -> login UI) against a
+#     really deployed stack, and it cannot damage anything. Scheduling a mutating
+#     project instead would slowly destroy the target stack unattended.
+#   - `workflow_dispatch` runs whichever project an operator explicitly picks,
+#     against whichever stack they explicitly name. Mutating runs are a human
+#     decision, every time.
+#
+# The scheduled run is gated on the `E2E_SCHEDULED_ENABLED` repository variable
+# so it stays dormant (rather than failing every week) until the secrets and a
+# target stack are actually configured.
+
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: 'Playwright project to run. Everything except `smoke` MUTATES the target stack.'
+        required: true
+        default: smoke
+        type: choice
+        options:
+          - smoke
+          - golden-path
+          - webhooks
+          - woocommerce-parity
+          - shipping
+          - invoicing
+          - lifecycle
+          - access-control
+      web_url:
+        description: 'OL web URL (overrides the OL_WEB_URL secret).'
+        required: false
+        type: string
+      api_url:
+        description: 'OL API URL (overrides the OL_API_URL secret).'
+        required: false
+        type: string
+  schedule:
+    # Mondays 03:00 UTC — read-only `smoke` only (see the header).
+    - cron: '0 3 * * 1'
+
+concurrency:
+  # One e2e run at a time: these share a single live stack, and two concurrent
+  # runs would interleave their mutations. Never cancel a run in flight — an
+  # aborted mutating run leaves the stack in a state nothing cleans up.
+  group: e2e-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    name: ${{ github.event_name == 'schedule' && 'smoke (scheduled)' || inputs.project }}
+    # A mutating project can sit for a long time on its own bounded pollers
+    # (order ingestion, regulatory clearance); `smoke` finishes in ~1 min.
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.E2E_SCHEDULED_ENABLED == 'true' }}
+    env:
+      # The scheduled path is hardcoded to the read-only project; the manual path
+      # honours the operator's choice.
+      E2E_PROJECT: ${{ github.event_name == 'schedule' && 'smoke' || inputs.project }}
+      OL_WEB_URL: ${{ inputs.web_url || secrets.E2E_OL_WEB_URL }}
+      OL_API_URL: ${{ inputs.api_url || secrets.E2E_OL_API_URL }}
+      OL_ADMIN_USER: ${{ secrets.E2E_OL_ADMIN_USER }}
+      OL_ADMIN_PASS: ${{ secrets.E2E_OL_ADMIN_PASS }}
+      # Optional per-suite secrets. Each spec self-skips its deep assertions when
+      # the matching value is absent, so an unset secret degrades coverage rather
+      # than failing the run (see apps/e2e/README.md § Project -> required env).
+      OL_PS_WEBSERVICE_KEY: ${{ secrets.E2E_OL_PS_WEBSERVICE_KEY }}
+      OL_WC_CONSUMER_KEY: ${{ secrets.E2E_OL_WC_CONSUMER_KEY }}
+      OL_WC_CONSUMER_SECRET: ${{ secrets.E2E_OL_WC_CONSUMER_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+
+      # Fail on a missing target before spending three minutes installing a
+      # browser: the suite's localhost defaults would otherwise let the run
+      # proceed and report a confusing connection error against 127.0.0.1.
+      - name: Verify a target stack is configured
+        run: |
+          if [ -z "${OL_WEB_URL}" ] || [ -z "${OL_API_URL}" ]; then
+            echo "::error::OL_WEB_URL / OL_API_URL are unset. Provide the workflow_dispatch inputs, or set the E2E_OL_WEB_URL / E2E_OL_API_URL repository secrets."
+            exit 1
+          fi
+          if [ -z "${OL_ADMIN_USER}" ] || [ -z "${OL_ADMIN_PASS}" ]; then
+            echo "::error::E2E_OL_ADMIN_USER / E2E_OL_ADMIN_PASS secrets are unset — the suite cannot authenticate."
+            exit 1
+          fi
+          echo "Target: ${OL_WEB_URL} (api ${OL_API_URL}), project ${E2E_PROJECT}"
+
+      - name: Install Chromium
+        run: pnpm --filter @openlinker/e2e exec playwright install --with-deps chromium
+
+      - name: Run ${{ github.event_name == 'schedule' && 'smoke' || inputs.project }}
+        run: pnpm --filter @openlinker/e2e exec playwright test --project=setup --project="${E2E_PROJECT}"
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.run_id }}
+          path: |
+            apps/e2e/playwright-report
+            apps/e2e/test-results
+          retention-days: 14
+          if-no-files-found: ignore
