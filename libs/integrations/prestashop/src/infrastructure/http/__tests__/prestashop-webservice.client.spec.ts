@@ -181,7 +181,7 @@ describe('PrestashopWebserviceClient', () => {
     it('should throw PrestashopApiException for 500', async () => {
       // Disable retries for error-handling tests
       const clientNoRetry = new PrestashopWebserviceClient(baseUrl, credentials, config, {
-        maxRetries: 0,
+        retryConfig: { maxRetries: 0 },
       });
 
       (global.fetch as jest.Mock).mockResolvedValueOnce({
@@ -504,7 +504,7 @@ describe('PrestashopWebserviceClient', () => {
 
     it('should bubble PrestashopApiException on non-2xx', async () => {
       const clientNoRetry = new PrestashopWebserviceClient(baseUrl, credentials, config, {
-        maxRetries: 0,
+        retryConfig: { maxRetries: 0 },
       });
 
       (global.fetch as jest.Mock).mockResolvedValueOnce({
@@ -592,10 +592,12 @@ describe('PrestashopWebserviceClient', () => {
       jest.useRealTimers();
 
       const clientWithFastRetry = new PrestashopWebserviceClient(baseUrl, credentials, config, {
-        maxRetries: 2, // 2 retries = 3 total attempts
-        initialDelayMs: 0, // Zero delay - instant retry for test
-        maxDelayMs: 1000,
-        backoffMultiplier: 2,
+        retryConfig: {
+          maxRetries: 2, // 2 retries = 3 total attempts
+          initialDelayMs: 0, // Zero delay - instant retry for test
+          maxDelayMs: 1000,
+          backoffMultiplier: 2,
+        },
       });
 
       try {
@@ -646,10 +648,12 @@ describe('PrestashopWebserviceClient', () => {
       jest.useRealTimers();
 
       const clientWithFastRetry = new PrestashopWebserviceClient(baseUrl, credentials, config, {
-        maxRetries: 1,
-        initialDelayMs: 0, // Zero delay - instant retry for test
-        maxDelayMs: 1000,
-        backoffMultiplier: 2,
+        retryConfig: {
+          maxRetries: 1,
+          initialDelayMs: 0, // Zero delay - instant retry for test
+          maxDelayMs: 1000,
+          backoffMultiplier: 2,
+        },
       });
 
       try {
@@ -717,10 +721,12 @@ describe('PrestashopWebserviceClient', () => {
       jest.useRealTimers();
 
       const clientWithFastRetry = new PrestashopWebserviceClient(baseUrl, credentials, config, {
-        maxRetries: 1, // Only 1 retry for faster test
-        initialDelayMs: 0, // Zero delay - instant retry for test
-        maxDelayMs: 1000,
-        backoffMultiplier: 2,
+        retryConfig: {
+          maxRetries: 1, // Only 1 retry for faster test
+          initialDelayMs: 0, // Zero delay - instant retry for test
+          maxDelayMs: 1000,
+          backoffMultiplier: 2,
+        },
       });
 
       try {
@@ -747,7 +753,7 @@ describe('PrestashopWebserviceClient', () => {
           timeoutMs: 50,
         },
         {
-          maxRetries: 0,
+          retryConfig: { maxRetries: 0 },
         }
       );
 
@@ -770,7 +776,7 @@ describe('PrestashopWebserviceClient', () => {
     it('should handle network errors', async () => {
       // Disable retries for error-handling tests
       const clientNoRetry = new PrestashopWebserviceClient(baseUrl, credentials, config, {
-        maxRetries: 0,
+        retryConfig: { maxRetries: 0 },
       });
 
       (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('Network error'));
@@ -782,7 +788,7 @@ describe('PrestashopWebserviceClient', () => {
     it('should include status code in error for 5xx', async () => {
       // Disable retries for error-handling tests
       const clientNoRetry = new PrestashopWebserviceClient(baseUrl, credentials, config, {
-        maxRetries: 0,
+        retryConfig: { maxRetries: 0 },
       });
 
       (global.fetch as jest.Mock).mockResolvedValueOnce({
@@ -815,7 +821,7 @@ describe('PrestashopWebserviceClient', () => {
 
       // Disable retries for error-handling tests
       const clientNoRetry = new PrestashopWebserviceClient(baseUrl, credentials, config, {
-        maxRetries: 0,
+        retryConfig: { maxRetries: 0 },
       });
 
       const longErrorBody = 'x'.repeat(1000);

@@ -31,13 +31,13 @@ describe('ConnectionResponseDto.fromDomain', () => {
   describe('config redaction', () => {
     it('should return full config for admin role', () => {
       const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities,
-        'parent-child', 'admin');
+        'parent-child', null, 'admin');
       expect(dto.config).toEqual({ baseUrl: 'https://shop.example.com', apiKey: 'secret-key-123' });
     });
 
     it('should return empty config for viewer role outside demo mode', () => {
       const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities,
-        'parent-child', 'viewer');
+        'parent-child', null, 'viewer');
       expect(dto.config).toEqual({});
     });
 
@@ -46,6 +46,7 @@ describe('ConnectionResponseDto.fromDomain', () => {
         baseConnection,
         supportedCapabilities,
         'parent-child',
+        null,
         'viewer',
         false
       );
@@ -57,6 +58,7 @@ describe('ConnectionResponseDto.fromDomain', () => {
         baseConnection,
         supportedCapabilities,
         'parent-child',
+        null,
         'viewer',
         true
       );
@@ -71,6 +73,7 @@ describe('ConnectionResponseDto.fromDomain', () => {
         baseConnection,
         supportedCapabilities,
         'parent-child',
+        null,
         'operator',
         true
       );
@@ -82,6 +85,7 @@ describe('ConnectionResponseDto.fromDomain', () => {
         baseConnection,
         supportedCapabilities,
         'parent-child',
+        null,
         'admin',
         false
       );
@@ -93,13 +97,13 @@ describe('ConnectionResponseDto.fromDomain', () => {
 
     it('should return empty config when role is undefined (no secret reaches unauthenticated callers)', () => {
       const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities,
-        'parent-child', undefined);
+        'parent-child', null, undefined);
       expect(dto.config).toEqual({});
     });
 
     it('should return {} not null or undefined for non-admin — preserves FE Record<string,unknown> contract', () => {
       const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities,
-        'parent-child', 'viewer');
+        'parent-child', null, 'viewer');
       expect(dto.config).not.toBeNull();
       expect(dto.config).not.toBeUndefined();
       expect(typeof dto.config).toBe('object');
@@ -116,7 +120,7 @@ describe('ConnectionResponseDto.fromDomain', () => {
         },
       };
       const dto = ConnectionResponseDto.fromDomain(connection, supportedCapabilities,
-        'parent-child', 'viewer');
+        'parent-child', null, 'viewer');
       expect(Object.keys(dto.config)).toHaveLength(0);
     });
   });
@@ -125,7 +129,7 @@ describe('ConnectionResponseDto.fromDomain', () => {
     it('should always project id, platformType, name, status regardless of role', () => {
       for (const role of ['admin', 'viewer', undefined] as const) {
         const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities,
-        'parent-child', role);
+        'parent-child', null, role);
         expect(dto.id).toBe('conn-uuid-001');
         expect(dto.platformType).toBe('prestashop');
         expect(dto.name).toBe('Test Store');
@@ -136,19 +140,19 @@ describe('ConnectionResponseDto.fromDomain', () => {
     it('should always project supportedCapabilities regardless of role', () => {
       for (const role of ['admin', 'viewer', undefined] as const) {
         const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities,
-        'parent-child', role);
+        'parent-child', null, role);
         expect(dto.supportedCapabilities).toEqual(['ProductMaster', 'InventoryMaster']);
       }
     });
 
     it('should derive credentialsBacked from credentialsRef prefix', () => {
       const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities,
-        'parent-child', 'viewer');
+        'parent-child', null, 'viewer');
       expect(dto.credentialsBacked).toBe(true);
 
       const envBacked: Connection = { ...baseConnection, credentialsRef: 'env:PRESTASHOP_KEY' };
       const dto2 = ConnectionResponseDto.fromDomain(envBacked, supportedCapabilities,
-        'parent-child', 'viewer');
+        'parent-child', null, 'viewer');
       expect(dto2.credentialsBacked).toBe(false);
     });
 
@@ -157,9 +161,32 @@ describe('ConnectionResponseDto.fromDomain', () => {
         baseConnection,
         supportedCapabilities,
         'catalog-implicit',
+        null,
         'viewer'
       );
       expect(dto.variantGrouping).toBe('catalog-implicit');
+    });
+
+    it('should project the resolved defaultRateLimit regardless of role (#1810)', () => {
+      const dto = ConnectionResponseDto.fromDomain(
+        baseConnection,
+        supportedCapabilities,
+        'parent-child',
+        { requestsPerMinute: 60, maxConcurrent: 4 },
+        'viewer'
+      );
+      expect(dto.defaultRateLimit).toEqual({ requestsPerMinute: 60, maxConcurrent: 4 });
+    });
+
+    it('should project null defaultRateLimit when the adapter declares none (#1810)', () => {
+      const dto = ConnectionResponseDto.fromDomain(
+        baseConnection,
+        supportedCapabilities,
+        'parent-child',
+        null,
+        'admin'
+      );
+      expect(dto.defaultRateLimit).toBeNull();
     });
   });
 });

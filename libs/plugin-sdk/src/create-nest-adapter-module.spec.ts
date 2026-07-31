@@ -37,6 +37,7 @@ import {
 } from '@openlinker/core/sync';
 import { IDENTIFIER_MAPPING_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import { CACHE_PORT_TOKEN } from '@openlinker/shared';
+import { HTTP_TRANSPORT_FACTORY_TOKEN } from './rate-limit.module';
 import { createNestAdapterModule } from './create-nest-adapter-module';
 import type { AdapterPlugin } from './adapter-plugin';
 import type { HostServices } from './host-services';
@@ -93,6 +94,7 @@ describe('createNestAdapterModule', () => {
   const stubIdentifierMapping = { identifierMappingStub: true };
   const stubCredentialsResolver = { credentialsResolverStub: true };
   const stubCache = { cacheStub: true };
+  const stubHttp = { httpStub: true };
 
   async function bootPluginModule(plugin: AdapterPlugin, registries = makeStubRegistries()): Promise<{
     registries: ReturnType<typeof makeStubRegistries>;
@@ -141,6 +143,7 @@ describe('createNestAdapterModule', () => {
         { provide: SCHEDULER_TASK_REGISTRY_TOKEN, useValue: registries.schedulerTaskRegistry },
         { provide: IDENTIFIER_MAPPING_PORT_TOKEN, useValue: stubIdentifierMapping },
         { provide: CREDENTIALS_RESOLVER_TOKEN, useValue: stubCredentialsResolver },
+        { provide: HTTP_TRANSPORT_FACTORY_TOKEN, useValue: stubHttp },
         { provide: CACHE_PORT_TOKEN, useValue: stubCache },
         // The generated module class is at moduleDef.module.
         moduleDef.module,
@@ -189,6 +192,7 @@ describe('createNestAdapterModule', () => {
       expect.objectContaining({
         identifierMapping: stubIdentifierMapping,
         credentialsResolver: stubCredentialsResolver,
+        http: stubHttp,
         cache: stubCache,
         logger: expect.any(Function),
         adapterRegistry: expect.any(Object),
@@ -248,6 +252,7 @@ describe('createNestAdapterModule', () => {
     expect(host.credentialsResolver).toBe(perCallCredRes);
     // Host-wide fields still present.
     expect(host.cache).toBe(stubCache);
+    expect(host.http).toBe(stubHttp);
     expect(host.adapterRegistry).toBe(registries.adapterRegistry);
   });
 });

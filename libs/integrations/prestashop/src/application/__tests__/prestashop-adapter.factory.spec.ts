@@ -17,6 +17,9 @@ describe('PrestashopAdapterFactory', () => {
   let factory: PrestashopAdapterFactory;
   let mockIdentifierMapping: jest.Mocked<IdentifierMappingPort>;
   let mockCredentialsResolver: jest.Mocked<CredentialsResolverPort>;
+  // Connection-bound outbound transport (#1810) — a bare jest.fn() stub is
+  // enough here since these tests exercise adapter wiring, not rate limiting.
+  const mockFetchImpl = jest.fn() as unknown as typeof fetch;
 
   beforeEach(() => {
     factory = new PrestashopAdapterFactory();
@@ -68,7 +71,8 @@ describe('PrestashopAdapterFactory', () => {
       const adapters = await factory.createAdapters(
         connection,
         mockIdentifierMapping,
-        mockCredentialsResolver
+        mockCredentialsResolver,
+        mockFetchImpl
       );
 
       expect(adapters.productMaster).toBeDefined();
@@ -82,7 +86,7 @@ describe('PrestashopAdapterFactory', () => {
       const credentials = { webserviceApiKey: 'test-key' };
       mockCredentialsResolver.get.mockResolvedValue(credentials);
 
-      await factory.createAdapters(connection, mockIdentifierMapping, mockCredentialsResolver);
+      await factory.createAdapters(connection, mockIdentifierMapping, mockCredentialsResolver, mockFetchImpl);
 
       expect(mockCredentialsResolver.get).toHaveBeenCalledWith('test_credentials');
     });
@@ -94,7 +98,8 @@ describe('PrestashopAdapterFactory', () => {
       const adapters = await factory.createAdapters(
         connection,
         mockIdentifierMapping,
-        mockCredentialsResolver
+        mockCredentialsResolver,
+        mockFetchImpl
       );
 
       // Adapters should be created with defaults
@@ -108,7 +113,7 @@ describe('PrestashopAdapterFactory', () => {
       const connection = createTestConnection();
       mockCredentialsResolver.get.mockResolvedValue({ webserviceApiKey: 'test-key' });
 
-      await factory.createAdapters(connection, mockIdentifierMapping, mockCredentialsResolver);
+      await factory.createAdapters(connection, mockIdentifierMapping, mockCredentialsResolver, mockFetchImpl);
 
       expect(resolveSpy).toHaveBeenCalledWith('test-connection-id', expect.anything());
       resolveSpy.mockRestore();
@@ -122,7 +127,7 @@ describe('PrestashopAdapterFactory', () => {
       const connection = createTestConnection({ currency: 'EUR' });
       mockCredentialsResolver.get.mockResolvedValue({ webserviceApiKey: 'test-key' });
 
-      await factory.createAdapters(connection, mockIdentifierMapping, mockCredentialsResolver);
+      await factory.createAdapters(connection, mockIdentifierMapping, mockCredentialsResolver, mockFetchImpl);
 
       expect(resolveSpy).not.toHaveBeenCalled();
       resolveSpy.mockRestore();

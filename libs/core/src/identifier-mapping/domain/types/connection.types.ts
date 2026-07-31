@@ -83,7 +83,36 @@ export interface ConnectionConfig {
    * applied via `applyPricingRule` (`pricing-rule.types.ts`).
    */
   pricingRule?: PricingRule;
+  /**
+   * Per-connection outbound rate limit (#1810). Applied via
+   * `HostServices.http` (`HttpTransportFactoryPort.for(connection)`) —
+   * every plugin HTTP client's outbound calls are paced/capped through it
+   * automatically, never read directly by plugin code. A missing value
+   * means unlimited, byte-identical to pre-#1810 behaviour.
+   * `requestsPerMinute` is minimum-interval spacing (capacity ~1, not a
+   * bursty bucket); `maxConcurrent` is a concurrency semaphore. Both
+   * knobs are optional and independent. Validated once, core-owned, in
+   * `ConnectionService.create`/`.update` — never defaulted into stored
+   * config (an adapter's `AdapterMetadata.defaultRateLimit` supplies the
+   * resolution-time fallback for a connection with no explicit value — see
+   * that field's own doc comment in `adapter.types.ts` for the call-site
+   * wiring).
+   */
+  rateLimit?: ConnectionRateLimit;
   [key: string]: unknown;
+}
+
+/**
+ * Per-connection outbound rate limit (#1810). Mirrored (not imported) by
+ * `@openlinker/shared/rate-limit`'s `ConnectionRateLimit` — that package
+ * has zero dependency on any CORE domain type, so the two shapes are kept
+ * structurally identical rather than unified via an import.
+ */
+export interface ConnectionRateLimit {
+  /** Smooth-paced cap (minimum-interval spacing). Undefined = unlimited. */
+  requestsPerMinute?: number;
+  /** Max simultaneous in-flight requests. Undefined = unlimited. */
+  maxConcurrent?: number;
 }
 
 /**

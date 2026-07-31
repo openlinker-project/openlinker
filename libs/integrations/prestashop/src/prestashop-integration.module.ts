@@ -75,6 +75,9 @@ import { RedisConfigModule } from '@openlinker/shared/redis';
 import { Logger } from '@openlinker/shared/logging';
 import { CACHE_PORT_TOKEN, type CachePort } from '@openlinker/shared';
 import type { HostServices } from '@openlinker/plugin-sdk';
+import { RateLimitModule, HTTP_TRANSPORT_FACTORY_TOKEN } from '@openlinker/plugin-sdk';
+import { HttpTransportFactoryPort } from '@openlinker/shared/http';
+
 import { PrestashopCustomerProvisioner } from './infrastructure/provisioners/prestashop-customer-provisioner';
 import { PrestashopAddressProvisioner } from './infrastructure/provisioners/prestashop-address-provisioner';
 import { PrestashopCountryResolver } from './infrastructure/provisioners/prestashop-country-resolver';
@@ -89,6 +92,7 @@ import { createPrestashopPlugin } from './prestashop-plugin';
     CustomersModule,
     RedisConfigModule,
     MappingsModule,
+    RateLimitModule,
   ],
   providers: [
     PrestashopCustomerProvisioner,
@@ -133,6 +137,8 @@ export class PrestashopIntegrationModule implements OnModuleInit {
     private readonly identifierMapping: IdentifierMappingPort,
     @Inject(CREDENTIALS_RESOLVER_TOKEN)
     private readonly credentialsResolver: CredentialsResolverPort,
+    @Inject(HTTP_TRANSPORT_FACTORY_TOKEN)
+    private readonly http: HttpTransportFactoryPort,
     private readonly webhookProvisioningAdapter: PrestashopWebhookProvisioningAdapter,
     private readonly customerProvisioner: PrestashopCustomerProvisioner,
     private readonly addressProvisioner: PrestashopAddressProvisioner,
@@ -166,6 +172,7 @@ export class PrestashopIntegrationModule implements OnModuleInit {
       logger: (context: string) => new Logger(context),
       identifierMapping: this.identifierMapping,
       credentialsResolver: this.credentialsResolver,
+      http: this.http,
       cache: this.cache,
       adapterRegistry: this.adapterRegistry,
       factoryResolver: this.factoryResolver,

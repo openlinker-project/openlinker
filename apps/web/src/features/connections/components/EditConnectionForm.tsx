@@ -12,7 +12,9 @@ import {
   toUpdateConnectionInput,
   type EditConnectionFormSubmission,
   type EditConnectionFormValues,
+  type RateLimitFormValues,
 } from './edit-connection.schema';
+import { RateLimitSection } from './rate-limit-section';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
@@ -105,6 +107,24 @@ function readTriggerModel(
   return typeof raw === 'string' && (INVOICE_TRIGGER_MODEL_VALUES as readonly string[]).includes(raw)
     ? (raw as (typeof INVOICE_TRIGGER_MODEL_VALUES)[number])
     : '';
+}
+
+/**
+ * Read the per-connection outbound rate limit out of `config.rateLimit`
+ * (#1810). Each knob is independently optional; missing/non-number values
+ * read as `''` (unset), same shape as `defaultCarrierId`/`unmanagedStockQuantity`.
+ */
+function readRateLimit(config: Record<string, unknown>): RateLimitFormValues {
+  const rateLimit =
+    typeof config.rateLimit === 'object' && config.rateLimit !== null
+      ? (config.rateLimit as Record<string, unknown>)
+      : {};
+  return {
+    requestsPerMinute:
+      typeof rateLimit.requestsPerMinute === 'number' ? String(rateLimit.requestsPerMinute) : '',
+    maxConcurrent:
+      typeof rateLimit.maxConcurrent === 'number' ? String(rateLimit.maxConcurrent) : '',
+  };
 }
 
 /** Read the InPost environment out of `config.environment` (#771). */
@@ -355,6 +375,8 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       // Infakt default payment method (#1303) — `config.defaultPaymentMethod`.
       infaktPaymentMethod: readInfaktPaymentMethod(connection.config),
       infaktBankAccount: readInfaktBankAccount(connection.config),
+      // Per-connection outbound rate limit (#1810) — platform-neutral.
+      rateLimit: readRateLimit(connection.config),
       // Plugin-owned structured fields (#1330) — the platform's contribution
       // hydrates its own field slice (e.g. KSeF seller/payment) so an
       // unrelated save doesn't blank the persisted platform config.
@@ -504,6 +526,17 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     const merged = mergeStructuredIntoConfig(parsed, {
       infaktBankAccount: form.getValues('infaktBankAccount'),
     });
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
+  }
+
+  // #1810 — re-serialize the whole `rateLimit` object into configText.
+  // Clone of `syncSubiektCapabilitiesToJson`: reads CURRENT form state,
+  // takes NO argument, and KEEPS the `!configIsParseable` early-return. The
+  // section MUST setValue('rateLimit.*', …) BEFORE calling this.
+  function syncRateLimitToJson(): void {
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
+    const merged = mergeStructuredIntoConfig(parsed, { rateLimit: form.getValues('rateLimit') });
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
 
@@ -660,6 +693,14 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           syncSellerDefaultsToJson={syncSellerDefaultsToJson}
         />
       ) : null}
+
+      {/* #1810 — generic, platform-neutral: rendered for every connection regardless of platformType. */}
+      <RateLimitSection
+        form={form}
+        configIsParseable={configIsParseable}
+        syncRateLimitToJson={syncRateLimitToJson}
+        defaultRateLimit={connection.defaultRateLimit ?? null}
+      />
 
       <div className="config-panel__toggle">
         <Button
