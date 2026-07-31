@@ -1,10 +1,19 @@
 # Implementation Plan: MCP Phase 2 — Mapping assistant tools
 
 **Issue**: #1488 (Phase 2 of EPIC #1350)
-**Date**: 2026-07-30
-**Status**: Ready for Review
+**Date**: 2026-07-30, revised 2026-07-31 (resumed after park)
+**Status**: Revised — ready to implement
 **Branch**: `1488-mcp-mapping-assistant-tools`
-**Base**: `f2283251`
+**Base**: `0b8c1303`
+
+> **Revision note (2026-07-31).** This plan was parked on 2026-07-30 when planning surfaced that the
+> issue's stated ROI — *"semantic category matching is exactly LLM-shaped"* — is unreachable with the
+> seams that exist (no neutral marketplace taxonomy-browse seam; `resolveCategory` is deterministic,
+> not semantic). That half is now tracked as **#1937 Wave 4** and is explicitly out of scope here.
+> What remains — **per-tool scope + role enforcement** plus the mapping read/write tools — depends on
+> nothing deferred and is what **#1489** builds on. Three revisions applied: `browse_categories`
+> dropped, `suggest_category` renamed `resolve_category`, `sourceConnectionId` made **required** on the
+> write tool (§3.3).
 
 > Rationale: [ADR-033](../architecture/adrs/033-openlinker-as-mcp-server.md) (incl. **§ Phase 1 amendments**) /
 > [ADR-034](../architecture/adrs/034-mcp-authorization-user-issued-pats.md).
@@ -42,8 +51,8 @@ registry contract. No new capability port, no domain entity, **no migration**.
 
 ### In scope
 1. **Per-tool scope + role enforcement** — `requiredScope` / `requiresAdmin` on `McpToolDefinition`, enforced at both registration and call time (§3.1).
-2. **Four discovery/suggestion tools** (read): `list_category_mappings`, `suggest_category`, `project_attributes`, `list_attribute_mappings`.
-3. **One write tool**: `upsert_category_mapping` — `mcp:write` + admin, neutral `CategoryMappingInput`.
+2. **Four discovery/resolution tools** (read): `list_category_mappings`, `resolve_category`, `project_attributes`, `list_attribute_mappings`.
+3. **One write tool**: `upsert_category_mapping` — `mcp:write` + admin, neutral `CategoryMappingInput`, **`sourceConnectionId` required** (§3.3).
 4. **`configure-mappings` Skill** at `.claude/commands/configure-mappings.md`.
 5. Docs: ADR-033 Phase-2 note, `engineering-standards.md` write-tool rules, `architecture-overview.md`.
 
@@ -52,6 +61,10 @@ registry contract. No new capability port, no domain entity, **no migration**.
 - **Server-enforced two-phase confirmation** — ADR-034 puts v1 HITL on the MCP client's tool-approval UX. Phase 3 (#1489) owns the deferred hardening.
 - **`deleteCategoryMapping` / attribute-mapping writes** — one write tool is enough to establish the mechanism; deleting a mapping is higher blast radius with no agent-shaped upside.
 - **Per-token connection scoping** — #1489.
+- **Taxonomy browse / search tools** (`browse_categories`, `search_categories`) — the *semantic* half of this
+  issue. Blocked on **#1937 Wave 1** (neutral `DestinationCategory` read model + `ITaxonomyService`); shipped as
+  its Wave 4. Building them now over the live `CategoryBrowser` capability would re-adopt exactly the
+  live-round-trip pattern #1487 rejected — and worse, since walking a tree is *N* calls, not one.
 - **New mapping capabilities or ports** — Phase 2 consumes `IMappingConfigService` / `ICategoryResolutionService` / `IAttributeProjectionService` as published.
 
 ---
@@ -93,7 +106,7 @@ privileged token.
 | Tool | Source | Notes |
 |---|---|---|
 | `list_category_mappings` | `IMappingConfigService.getCategoryMappings(destinationConnectionId)` | The "what's already mapped" read the loop starts from |
-| `suggest_category` | `ICategoryResolutionService.resolveCategory(input)` | The LLM-shaped one. `barcode` drives the `EanCategoryMatcher` step internally, so **no separate EAN tool is needed**; `sourceCategoryIds` drives the mapping step |
+| `resolve_category` | `ICategoryResolutionService.resolveCategory(input)` | **Renamed from `suggest_category`** — the service is a *deterministic* placement chain (provision → barcode → configured mapping → `manual`), not a suggester. Calling it "suggest" would tell the agent it is getting a semantic proposal when it is getting a lookup, and would make a `manual` outcome read as "no good suggestion" rather than "nothing is mapped — author one". `barcode` drives the `EanCategoryMatcher` step internally, so **no separate EAN tool is needed**; `sourceCategoryIds` drives the mapping step |
 | `project_attributes` | `IAttributeProjectionService.project(input)` | Shows what the destination would receive for a given category + attribute set — the "did my mapping work?" read |
 | `list_attribute_mappings` | `IMappingConfigService.getAttributeMappings(destinationConnectionId)` | Companion to the above |
 
@@ -106,7 +119,28 @@ internally, and surfaces that as an agent-facing error when the connection can't
 
 `upsert_category_mapping` → `IMappingConfigService.upsertCategoryMapping(destinationConnectionId, input)`
 with the neutral `CategoryMappingInput` (`sourceCategoryId`, `destinationCategoryId`,
-`destinationCategoryName`, optional `destinationCategoryPath` / `sourceConnectionId`).
+`destinationCategoryName`, optional `destinationCategoryPath`).
+
+#### 🔴 `sourceConnectionId` is REQUIRED on this tool, though the core type marks it optional
+
+`CategoryMappingInput.sourceConnectionId` is `?: string | null` — a documented #1036 record-only gap
+("the API create path doesn't yet supply it, so rows are created with `null`"). **The MCP tool must not
+inherit that gap**, because of how the two persistence paths differ (verified in
+`category-mapping.repository.ts`):
+
+- **`upsertMapping` matches on `sourceConnectionId`, treating `null` as `IsNull()`.** An agent omitting
+  the field therefore only ever matches NULL rows — so against an operator-authored row that *does*
+  carry a source connection, the write does not update it. It **inserts a second row**.
+- **`findBySourceCategory` (the resolve path) is oldest-wins** across the now-ambiguous pair, logging
+  `Ambiguous category mapping: N rows …; using oldest`.
+
+The failure mode is therefore worse than shadowing: the agent's write **reports success while having no
+effect on resolution** (the operator's older row keeps winning), and it silently degrades that
+destination's mapping table into an ambiguous state. Requiring the field on the tool costs one schema
+field and makes an agent write either update the intended row or fail loudly.
+
+This does **not** change the core type — widening `CategoryMappingInput` is #1036 follow-up work owned by
+the mappings context, not by an MCP phase. The requirement lives in the tool's Zod schema.
 
 ⚠️ **Do not re-import the legacy `allegro*` / `prestashop*` HTTP DTOs** from
 `apps/api/src/mappings/http/dto/*` (the issue's own warning). The tool builds `CategoryMappingInput`
@@ -140,7 +174,7 @@ apps/api/src/mcp/tools/
   mcp-tool-definitions.provider.ts  # CHANGED: + 5 tools, + IMappingConfigService & friends
   read/list-category-mappings.tool.ts
   read/list-attribute-mappings.tool.ts
-  read/suggest-category.tool.ts
+  read/resolve-category.tool.ts
   read/project-attributes.tool.ts
   write/upsert-category-mapping.tool.ts    # NEW directory — the write half
   mcp.module.ts                     # CHANGED: + MappingsModule, ListingsModule(services)
@@ -155,9 +189,9 @@ apps/api/src/mcp/tools/
 | 1 | `tool-definition.types.ts` | `requiredScope` + `requiresAdmin` on the definition; `'forbidden'` added to the outcome union |
 | 2 | Registry enforcement | Registration omits tools the principal can't call; call time refuses with agent-facing copy **before** the limiter; audit `outcome: 'forbidden'` |
 | 3 | 4 discovery tools | Each reads its core `I*Service`, projects, maps errors; `requiredScope: 'mcp:read'` |
-| 4 | `upsert_category_mapping` | `mcp:write` + `requiresAdmin`; neutral `CategoryMappingInput`; no legacy DTO import |
+| 4 | `upsert_category_mapping` | `mcp:write` + `requiresAdmin`; neutral `CategoryMappingInput`; **`sourceConnectionId` required in the Zod schema** (§3.3); no legacy DTO import |
 | 5 | Module wiring | `MappingsModule` + listings services imported; API boots |
-| 6 | `configure-mappings` Skill | discover→suggest→confirm→write loop; names the token requirement |
+| 6 | `configure-mappings` Skill | discover→resolve→confirm→write loop; names the token requirement; states that a `manual` resolve outcome means "author a mapping", not "no suggestion available" |
 | 7 | Docs | ADR-033 Phase-2 note; write-tool rules in `engineering-standards.md`; `architecture-overview.md` |
 | 8 | Tests | §5 |
 
@@ -168,7 +202,7 @@ apps/api/src/mcp/tools/
 **Unit**
 - `tool-registry.service.spec.ts` (extend) — **the scope/role matrix is the point of this phase**: a read-only principal doesn't see the write tool in `tools/list` AND is refused when calling it by name anyway; a non-admin write-scoped principal is refused; an admin write-scoped principal succeeds; a refused call **does not consume a rate-limit slot** and emits `outcome: 'forbidden'`.
 - One spec per tool — happy path, projection asserts non-projected fields absent, error mapping.
-- `upsert_category_mapping` spec — passes a neutral `CategoryMappingInput` through; rejects unknown keys.
+- `upsert_category_mapping` spec — passes a neutral `CategoryMappingInput` through; rejects unknown keys; **rejects a call omitting `sourceConnectionId`** (the §3.3 duplicate-row guard).
 
 **Integration** (`mcp-mapping-tools.int-spec.ts`) — mint a **read-only** token and a **write** token against a real DB; assert the read-only token's `tools/list` omits the write tool and its `tools/call` is refused, and that the write token's call actually persists a mapping (re-read via `list_category_mappings`).
 
