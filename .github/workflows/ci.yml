@@ -176,6 +176,28 @@ jobs:
         with:
           node-version: '22'
           cache: 'pnpm'
+      # A cold ts-jest transform cache costs the FIRST suite of each
+      # integration step ~32 s (measured: 6.4 s warm vs 76.3 s cold locally for
+      # the same file) because every int-spec pulls the whole AppModule graph
+      # through ts-jest. Both integration configs point `cacheDirectory` at
+      # `.jest-cache/`, so persisting it removes that tax on a cache hit.
+      # ts-jest keys entries by file content, so restoring an older cache is
+      # safe: changed files simply miss and re-transform (#1920).
+      #
+      # The key is scoped to what invalidates the whole cache wholesale (deps,
+      # base tsconfig, the jest configs) plus the run id, so a save still
+      # happens while unchanged-deps runs share one entry. Keying on
+      # `github.sha` instead minted a fresh multi-hundred-MB entry per commit,
+      # which would evict the pnpm store cache this same job restores above -
+      # the repo-wide budget is 10 GB with LRU eviction (PR #1923 review).
+      - name: Cache jest transform output
+        uses: actions/cache@v4
+        with:
+          path: .jest-cache
+          key: jest-integration-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'tsconfig.base.json', 'apps/*/test/jest-integration.cjs') }}-${{ github.run_id }}
+          restore-keys: |
+            jest-integration-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'tsconfig.base.json', 'apps/*/test/jest-integration.cjs') }}-
+            jest-integration-${{ runner.os }}-
       - name: Sweep orphaned Testcontainers from finished CI runs (#1285)
         # Ryuk is disabled (see above) so containers from a cancelled or
         # crashed prior run are never reaped and pile up on this persistent

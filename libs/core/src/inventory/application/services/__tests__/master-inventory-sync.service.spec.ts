@@ -361,15 +361,15 @@ describe('MasterInventorySyncService', () => {
       expect(inventoryService.setInventory).not.toHaveBeenCalled();
       expect(eventPublisher.publish).toHaveBeenCalledWith(
         'events.master.deletion',
-        expect.objectContaining({
-          eventType: 'master.product.stale',
-          payloadJson: JSON.stringify({
-            connectionId,
-            internalProductId,
-            variantIds: ['ol_variant_1', 'ol_variant_2'],
-          }),
-        })
+        expect.objectContaining({ eventType: 'master.product.stale' })
       );
+      const [, envelope] = eventPublisher.publish.mock.calls[0];
+      expect(JSON.parse(envelope.payloadJson)).toMatchObject({
+        connectionId,
+        internalProductId,
+        variantIds: ['ol_variant_1', 'ol_variant_2'],
+        externalId,
+      });
       expect(result).toEqual({
         internalProductId,
         itemsWritten: 0,
@@ -410,11 +410,15 @@ describe('MasterInventorySyncService', () => {
 
       expect(eventPublisher.publish).toHaveBeenCalledWith(
         'events.master.deletion',
-        expect.objectContaining({
-          eventType: 'master.product.stale',
-          payloadJson: JSON.stringify({ connectionId, internalProductId, variantIds: [] }),
-        })
+        expect.objectContaining({ eventType: 'master.product.stale' })
       );
+      const [, envelope] = eventPublisher.publish.mock.calls[0];
+      expect(JSON.parse(envelope.payloadJson)).toMatchObject({
+        connectionId,
+        internalProductId,
+        variantIds: [],
+        externalId,
+      });
     });
 
     it('rethrows a transient (non-not-found) adapter error unchanged', async () => {
@@ -490,7 +494,17 @@ describe('MasterInventorySyncService', () => {
     });
 
     it('publishes master.variant.stale when the prune flags variant rows (#1599)', async () => {
-      inventoryAdapter.listInventory.mockResolvedValue([]);
+      inventoryAdapter.listInventory.mockResolvedValue([
+        {
+          id: 'inv-still-here',
+          productId: internalProductId,
+          variantId: 'ol_variant_kept',
+          quantity: 1,
+          reserved: 0,
+          available: 1,
+          updatedAt: new Date('2026-05-01T10:00:00Z'),
+        },
+      ]);
       (inventoryService.pruneStaleVariants as jest.Mock).mockResolvedValueOnce({
         markedCount: 2,
         variantIds: ['ol_variant_gone'],
@@ -500,15 +514,24 @@ describe('MasterInventorySyncService', () => {
 
       expect(eventPublisher.publish).toHaveBeenCalledWith(
         'events.master.deletion',
-        expect.objectContaining({
-          eventType: 'master.variant.stale',
-          payloadJson: JSON.stringify({
-            connectionId,
-            internalProductId,
-            variantIds: ['ol_variant_gone'],
-          }),
-        })
+        expect.objectContaining({ eventType: 'master.variant.stale' })
       );
+      const [, envelope] = eventPublisher.publish.mock.calls[0];
+      const payload = JSON.parse(envelope.payloadJson) as {
+        connectionId: string;
+        internalProductId: string;
+        variantIds: string[];
+        externalId: string;
+        correlationId: string;
+      };
+      expect(payload).toMatchObject({
+        connectionId,
+        internalProductId,
+        variantIds: ['ol_variant_gone'],
+        externalId,
+      });
+      expect(typeof payload.correlationId).toBe('string');
+      expect(payload.correlationId.length).toBeGreaterThan(0);
     });
 
     it('still publishes master.variant.stale when the prune marks a product-level (NULL-variant) row stale, even though variantIds stays empty (#1688)', async () => {
@@ -522,11 +545,24 @@ describe('MasterInventorySyncService', () => {
 
       expect(eventPublisher.publish).toHaveBeenCalledWith(
         'events.master.deletion',
-        expect.objectContaining({
-          eventType: 'master.variant.stale',
-          payloadJson: JSON.stringify({ connectionId, internalProductId, variantIds: [] }),
-        })
+        expect.objectContaining({ eventType: 'master.variant.stale' })
       );
+      const [, envelope] = eventPublisher.publish.mock.calls[0];
+      const payload = JSON.parse(envelope.payloadJson) as {
+        connectionId: string;
+        internalProductId: string;
+        variantIds: string[];
+        externalId: string;
+        correlationId: string;
+      };
+      expect(payload).toMatchObject({
+        connectionId,
+        internalProductId,
+        variantIds: [],
+        externalId,
+      });
+      expect(typeof payload.correlationId).toBe('string');
+      expect(payload.correlationId.length).toBeGreaterThan(0);
     });
 
     it('does not publish when the prune flags no variant rows', async () => {
@@ -603,6 +639,26 @@ describe('MasterInventorySyncService', () => {
         expect.stringContaining('master_inventory_empty_response_full_stale')
       );
       warnSpy.mockRestore();
+    });
+
+    // A product-level-row-only prune (markedCount > 0, no distinct variantIds)
+    // emits the VARIANT-level event, not `master.product.stale`: the product
+    // still resolves at the master here, so an empty inventory response must not
+    // be reported as a deletion (#1903). The product-level event is reserved for
+    // the confirmed not-found path — see the `master deletion (#1688)` block.
+    it('publishes master.variant.stale for a product-level-row-only prune (markedCount > 0, no distinct variantIds — previously silent)', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([]);
+      (inventoryService.pruneStaleVariants as jest.Mock).mockResolvedValueOnce({
+        markedCount: 1,
+        variantIds: [],
+      });
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(eventPublisher.publish).toHaveBeenCalledWith(
+        'events.master.deletion',
+        expect.objectContaining({ eventType: 'master.variant.stale' })
+      );
     });
   });
 

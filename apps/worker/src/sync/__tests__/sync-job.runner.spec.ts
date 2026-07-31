@@ -199,7 +199,7 @@ describe('SyncJobRunner', () => {
 
       expect(handlerRegistry.getHandler).toHaveBeenCalledWith(job.jobType);
       expect(mockHandler.execute).toHaveBeenCalledWith(job);
-      expect(jobRepository.markSucceeded).toHaveBeenCalledWith(job.id, 'ok');
+      expect(jobRepository.markSucceeded).toHaveBeenCalledWith(job.id, 'ok', undefined);
       expect(jobRepository.markFailed).not.toHaveBeenCalled();
       expect(jobRepository.markDead).not.toHaveBeenCalled();
     });
@@ -212,9 +212,27 @@ describe('SyncJobRunner', () => {
 
       await (runner as any).processJob(job);
 
-      expect(jobRepository.markSucceeded).toHaveBeenCalledWith(job.id, 'business_failure');
+      expect(jobRepository.markSucceeded).toHaveBeenCalledWith(job.id, 'business_failure', undefined);
       expect(jobRepository.markFailed).not.toHaveBeenCalled();
       expect(jobRepository.markDead).not.toHaveBeenCalled();
+    });
+
+    it('should pass outcomeReason through to markSucceeded when the handler supplies one (#1689)', async () => {
+      const job = createMockJob({ status: 'running' });
+      mockHandler.execute.mockResolvedValueOnce({
+        outcome: 'business_failure',
+        outcomeReason: 'master_deleted',
+      });
+      handlerRegistry.getHandler.mockReturnValueOnce(mockHandler);
+      jobRepository.markSucceeded.mockResolvedValueOnce(undefined);
+
+      await (runner as any).processJob(job);
+
+      expect(jobRepository.markSucceeded).toHaveBeenCalledWith(
+        job.id,
+        'business_failure',
+        'master_deleted'
+      );
     });
 
     it('should mark job as dead when no handler is registered', async () => {

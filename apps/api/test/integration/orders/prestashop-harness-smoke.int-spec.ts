@@ -25,7 +25,7 @@
  */
 import {
   PrestashopTestContainer,
-  startPrestashopContainer,
+  startSharedPrestashopContainer,
 } from '../helpers/prestashop-container.helper';
 
 interface PrestashopCarrierRow {
@@ -66,7 +66,7 @@ describe('PrestaShop Testcontainer harness (#506 Phase 1)', () => {
   let container: PrestashopTestContainer;
 
   beforeAll(async () => {
-    container = await startPrestashopContainer();
+    container = await startSharedPrestashopContainer();
     // Long boot — Jest's per-test timeout would cut us off on cold-cache runs.
   }, 15 * 60_000);
 

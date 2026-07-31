@@ -65,6 +65,7 @@ import {
 } from '@openlinker/core/inventory';
 
 import { EmptyBulkSubmissionException } from '../../domain/exceptions/empty-bulk-submission.exception';
+import { AllVariantsAlreadyListedException } from '../../domain/exceptions/all-variants-already-listed.exception';
 import { InvalidEanException } from '../../domain/exceptions/invalid-ean.exception';
 import { DuplicateBatchEanException } from '../../domain/exceptions/duplicate-batch-ean.exception';
 import { CurrencyMismatchException } from '../../domain/exceptions/currency-mismatch.exception';
@@ -194,11 +195,21 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     // `external.id`) and fragment the grouped listing. The FE `alreadyListed`
     // hint is advisory only; this is the authoritative backend guard.
     const jobs = await this.filterAlreadyListed(input.connectionId, expandedJobs);
+    const skippedAlreadyListedCount = expandedJobs.length - jobs.length;
 
-    // Post-exclusion empty guard (#1741): every submitted variant excluded /
-    // unresolvable / already-listed ⇒ no jobs ⇒ never persist a `totalCount:0`
-    // zombie batch that the #737 counter gate can never terminate.
+    // Post-exclusion empty guard (#1741). Two distinct causes, #1933: if the
+    // expansion itself produced no jobs (every submitted id was excluded /
+    // unresolvable), the submission was genuinely empty. If expansion DID
+    // produce jobs but every one was then dropped as already-listed, that is
+    // NOT an empty submission — the operator selected real variants that are
+    // all duplicates of what's already published — and must be reported as
+    // such rather than reusing the generic "requires at least one productId"
+    // message, which the #1837 duplicate-guard confirm flow renders after an
+    // explicit "Publish anyway (creates duplicate)" click.
     if (jobs.length === 0) {
+      if (expandedJobs.length > 0) {
+        throw new AllVariantsAlreadyListedException(skippedAlreadyListedCount);
+      }
       throw new EmptyBulkSubmissionException();
     }
     // Identifier enforcement (#1741): GS1 check-digit on every included job's
@@ -303,7 +314,7 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     //    `incrementCounters`.
     await this.bulkBatchRepository.updateStatus(batch.id, BULK_BATCH_STATUS.Running);
 
-    return { batchId: batch.id, jobIds };
+    return { batchId: batch.id, jobIds, skippedAlreadyListedCount };
   }
 
   async getBatch(batchId: string): Promise<BulkBatchSummary | null> {
@@ -316,8 +327,14 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
   }
 
   /**
-   * Drop jobs whose variant already carries an active offer mapping on the
-   * target connection (#1741 review #3). One batched count query rather than
+   * Drop jobs whose variant already carries a LIVE offer mapping on the target
+   * connection (#1741 review #3). "Live" is now enforced rather than merely
+   * asserted: `countByConnectionAndVariants` excludes mappings whose status
+   * snapshot says `ended`, so a variant whose offer is over can be listed again
+   * (#1934/F2). Previously the query had no status predicate at all despite
+   * this docstring, which made an ended offer block its variant permanently.
+   *
+   * One batched count query rather than
    * a per-variant fan-out; a variant with `count > 0` is skipped with a warning
    * so a re-run of the wizard can't silently create duplicate offers.
    */
@@ -432,6 +449,13 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     const overrideEan = (variantId: string): string | undefined =>
       input.perVariantOverrides?.[variantId]?.overrides?.ean;
 
+    // #1689 review #7: a variant deleted at its master (`isStale`) must never
+    // become a new offer — the new-offer path fails safe here, mirroring the
+    // live-offer pause. Applied at every job-push site below, including the
+    // directly-selected variant — a stale explicit selection is skipped too,
+    // not silently listed.
+    const shouldSkipStale = (variant: ProductVariant): boolean => variant.isStale === true;
+
     for (const selectedId of uniqueSelectedIds) {
       if (seen.has(selectedId)) continue;
 
@@ -453,6 +477,12 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
       if (siblings.length <= 1) {
         seen.add(selectedId);
         if (excluded.has(selectedId)) continue;
+        if (shouldSkipStale(selectedVariant)) {
+          this.logger.warn(
+            `Bulk submit: skipping variant ${selectedId} of product ${productId} — deleted at the master (isStale)`
+          );
+          continue;
+        }
         jobs.push({ variantId: selectedId, selectedId, useMasterStock: false, clearProductCard: false });
         variantsById.set(selectedId, selectedVariant);
         continue;
@@ -463,6 +493,12 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
         seen.add(sibling.id);
         if (excluded.has(sibling.id)) continue;
         const isSelected = sibling.id === selectedId;
+        if (shouldSkipStale(sibling)) {
+          this.logger.warn(
+            `Bulk submit: skipping variant ${sibling.id} of product ${productId} — deleted at the master (isStale)`
+          );
+          continue;
+        }
         const hasBarcode = Boolean(sibling.ean ?? sibling.gtin ?? overrideEan(sibling.id));
         if (!hasBarcode && !isSelected && dropBarcodelessSiblings) {
           this.logger.warn(
@@ -483,8 +519,8 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
       // Defensive: a multi-variant product whose `getVariantsByProductId`
       // result somehow omits the selected variant must still list it — never
       // silently drop a variant the operator explicitly picked, UNLESS it was
-      // explicitly excluded (#1741).
-      if (!seen.has(selectedId) && !excluded.has(selectedId)) {
+      // explicitly excluded (#1741) or stale (#1689).
+      if (!seen.has(selectedId) && !excluded.has(selectedId) && !shouldSkipStale(selectedVariant)) {
         jobs.push({ variantId: selectedId, selectedId, useMasterStock: true, clearProductCard: false });
         variantsById.set(selectedId, selectedVariant);
         seen.add(selectedId);

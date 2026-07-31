@@ -29,6 +29,7 @@ describe('OrderRecordService', () => {
       findById: jest.fn(),
       upsert: jest.fn(),
       updateSyncStatus: jest.fn(),
+      updateItemResolutionFailure: jest.fn(),
     } as unknown as jest.Mocked<OrderRecordRepositoryPort>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -703,6 +704,23 @@ describe('OrderRecordService', () => {
 
       expect(result).toBeNull();
       expect(repository.findById).toHaveBeenCalledWith(internalOrderId);
+    });
+  });
+
+  describe('markItemResolutionFailure (#1689)', () => {
+    it('delegates to the repository as a narrow absolute-set — no read-modify-write', async () => {
+      const internalOrderId = 'order-123';
+
+      await service.markItemResolutionFailure(internalOrderId, {
+        status: 'source_deleted',
+        reason: 'variant ol_variant_b deleted at the master',
+      });
+
+      expect(repository.findById).not.toHaveBeenCalled();
+      expect(repository.updateItemResolutionFailure).toHaveBeenCalledWith(internalOrderId, {
+        status: 'source_deleted',
+        reason: 'variant ol_variant_b deleted at the master',
+      });
     });
   });
 });

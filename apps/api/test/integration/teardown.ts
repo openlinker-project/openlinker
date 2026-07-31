@@ -7,6 +7,7 @@
  * @module apps/api/test/integration
  */
 import { stopHarness } from './harness';
+import { stopSharedPrestashopContainer } from './helpers/prestashop-container.helper';
 
 /**
  * Global teardown hook
@@ -21,6 +22,10 @@ import { stopHarness } from './harness';
 export default async function globalTeardown(): Promise<void> {
   // Stop containers (harness-only, no app imports)
   await stopHarness();
+  // The PrestaShop container shared across specs (#1920) is booted lazily in a
+  // worker realm, so its `cleanup` closure is unreachable from here - stop it
+  // from the ids that realm left on disk.
+  stopSharedPrestashopContainer();
 }
 
 

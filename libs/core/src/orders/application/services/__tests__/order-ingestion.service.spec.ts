@@ -101,6 +101,7 @@ describe('OrderIngestionService', () => {
       updateSyncStatus: jest.fn().mockResolvedValue(undefined),
       getOrderRecord: jest.fn(),
       findMany: jest.fn(),
+      markItemResolutionFailure: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
     customerIdentityResolver = {
@@ -741,6 +742,7 @@ describe('OrderIngestionService', () => {
         resolved: false,
         productRef: { type: 'offer', externalId: 'unmapped-offer' },
         reason: 'no mapping',
+      kind: 'missing_mapping' as const,
       });
 
       await expect(
@@ -956,6 +958,7 @@ describe('OrderIngestionService', () => {
           resolved: false,
           productRef: { type: 'offer', externalId: 'offer-b' },
           reason: 'no mapping',
+        kind: 'missing_mapping' as const,
         });
 
       await expect(
@@ -967,17 +970,94 @@ describe('OrderIngestionService', () => {
       expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
     });
 
+    it('stale item ref: marks the record source_deleted with the stale reason, then still throws (#1689)', async () => {
+      orderItemRefResolver.tryResolve
+        .mockResolvedValueOnce({
+          resolved: true,
+          internalProductId: 'p-1',
+          internalVariantId: 'v-1',
+        })
+        .mockResolvedValueOnce({
+          resolved: false,
+          productRef: { type: 'offer', externalId: 'offer-b' },
+          reason: 'variant ol_variant_b deleted at the master',
+          kind: 'source_deleted' as const,
+        });
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId)
+      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+
+      expect(orderRecordService.markItemResolutionFailure).toHaveBeenCalledWith('ol_order_item_test', {
+        status: 'source_deleted',
+        reason: 'variant ol_variant_b deleted at the master',
+      });
+      expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
+    });
+
+    it('a mix of missing-mapping + stale refs marks the record source_deleted (higher precedence)', async () => {
+      orderItemRefResolver.tryResolve
+        .mockResolvedValueOnce({
+          resolved: false,
+          productRef: { type: 'offer', externalId: 'offer-a' },
+          reason: 'no mapping a',
+          kind: 'missing_mapping' as const,
+        })
+        .mockResolvedValueOnce({
+          resolved: false,
+          productRef: { type: 'offer', externalId: 'offer-b' },
+          reason: 'variant ol_variant_b deleted at the master',
+          kind: 'source_deleted' as const,
+        });
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId)
+      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+
+      expect(orderRecordService.markItemResolutionFailure).toHaveBeenCalledWith('ol_order_item_test', {
+        status: 'source_deleted',
+        reason: 'variant ol_variant_b deleted at the master',
+      });
+    });
+
+    it('all missing-mapping (no stale refs) marks the record awaiting_mapping', async () => {
+      orderItemRefResolver.tryResolve
+        .mockResolvedValueOnce({
+          resolved: false,
+          productRef: { type: 'offer', externalId: 'offer-a' },
+          reason: 'no mapping a',
+          kind: 'missing_mapping' as const,
+        })
+        .mockResolvedValueOnce({
+          resolved: false,
+          productRef: { type: 'offer', externalId: 'offer-b' },
+          reason: 'no mapping b',
+          kind: 'missing_mapping' as const,
+        });
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId)
+      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+
+      expect(orderRecordService.markItemResolutionFailure).toHaveBeenCalledWith('ol_order_item_test', {
+        status: 'awaiting_mapping',
+        reason: 'no mapping a',
+      });
+    });
+
     it('all unresolved: persistIncomingSnapshot called, MissingOrderItemMappingError thrown, persistOrder NOT called', async () => {
       orderItemRefResolver.tryResolve
         .mockResolvedValueOnce({
           resolved: false,
           productRef: { type: 'offer', externalId: 'offer-a' },
           reason: 'no mapping a',
+        kind: 'missing_mapping' as const,
         })
         .mockResolvedValueOnce({
           resolved: false,
           productRef: { type: 'offer', externalId: 'offer-b' },
           reason: 'no mapping b',
+        kind: 'missing_mapping' as const,
         });
 
       await expect(

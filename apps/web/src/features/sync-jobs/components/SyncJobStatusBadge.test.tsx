@@ -35,11 +35,18 @@ describe('SyncJobStatusBadge', () => {
     expect(badge).toHaveClass('status-badge--success');
   });
 
-  it('renders succeeded + outcome=business_failure with warning tone (label stays "succeeded")', () => {
+  it('renders succeeded + outcome=business_failure with a known outcomeReason as its resolved label (#1689)', () => {
+    render(
+      <SyncJobStatusBadge status="succeeded" outcome="business_failure" outcomeReason="master_deleted" />,
+    );
+    const badge = screen.getByText('source deleted').closest('.status-badge');
+    expect(badge).toHaveClass('status-badge--warning');
+    expect(badge).not.toHaveClass('status-badge--success');
+  });
+
+  it('renders succeeded + outcome=business_failure with no outcomeReason as "business failure" (#1689)', () => {
     render(<SyncJobStatusBadge status="succeeded" outcome="business_failure" />);
-    // Two "succeeded" labels would be in the DOM if cleanup isn't running.
-    // afterEach(cleanup) above ensures we read this render's badge only.
-    const badge = screen.getByText('succeeded').closest('.status-badge');
+    const badge = screen.getByText('business failure').closest('.status-badge');
     expect(badge).toHaveClass('status-badge--warning');
     expect(badge).not.toHaveClass('status-badge--success');
   });

@@ -100,6 +100,15 @@ describe('MasterProductSyncService', () => {
       MASTER_DELETION_EVENT_STREAM,
       expect.objectContaining({ eventType: MASTER_VARIANT_STALE_EVENT })
     );
+    const [, envelope] = eventPublisher.publish.mock.calls[0];
+    const payload = JSON.parse(envelope.payloadJson) as {
+      correlationId: string;
+      externalId: string;
+      variantIds: string[];
+    };
+    expect(payload.externalId).toBe(externalId);
+    expect(typeof payload.correlationId).toBe('string');
+    expect(payload.correlationId.length).toBeGreaterThan(0);
     expect(result).toEqual({
       internalProductId,
       variantsUpserted: 1,
@@ -149,6 +158,13 @@ describe('MasterProductSyncService', () => {
       MASTER_DELETION_EVENT_STREAM,
       expect.objectContaining({ eventType: MASTER_PRODUCT_STALE_EVENT })
     );
+    const [, envelope] = eventPublisher.publish.mock.calls[0];
+    const payload = JSON.parse(envelope.payloadJson) as {
+      correlationId: string;
+      externalId: string;
+    };
+    expect(payload.externalId).toBe(externalId);
+    expect(typeof payload.correlationId).toBe('string');
     expect(result).toEqual({
       internalProductId,
       variantsUpserted: 0,

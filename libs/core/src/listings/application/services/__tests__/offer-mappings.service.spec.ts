@@ -17,6 +17,7 @@ function buildRepoMock(): jest.Mocked<OfferMappingRepositoryPort> {
     findMany: jest.fn(),
     countByConnectionAndVariants: jest.fn(),
     countListedVariantsByProducts: jest.fn(),
+    findStaleMappedVariants: jest.fn(),
   };
 }
 

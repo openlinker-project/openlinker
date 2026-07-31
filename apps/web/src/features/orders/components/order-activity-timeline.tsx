@@ -50,6 +50,11 @@ interface OrderActivityTimelineProps {
    * that's the right filter on `/sync/jobs`.
    */
   sourceConnectionId: string;
+  /**
+   * Operator-facing reason item resolution failed at ingestion (#1689), set
+   * alongside `recordStatus = 'awaiting_mapping' | 'source_deleted'`.
+   */
+  mappingFailureReason?: string | null;
 }
 
 const STATUS_PAST_TENSE: Record<OrderSyncStatusValue, string> = {
@@ -71,19 +76,40 @@ function buildEvents(
   recordStatus: string,
   syncAttempts: SyncAttempt[],
   sourceConnectionId: string,
+  mappingFailureReason?: string | null,
 ): TimelineEvent[] {
   const events: TimelineEvent[] = [];
+
+  const ingestDescription = (): { description: string; tone: TimelineEvent['tone'] } => {
+    if (recordStatus === 'source_deleted') {
+      return {
+        description:
+          'Item deleted at the source — this order references a product that was removed at ' +
+          `the master. It cannot be fulfilled until the product reappears or the line is cancelled.${
+            mappingFailureReason ? ` (${mappingFailureReason})` : ''
+          }`,
+        tone: 'error',
+      };
+    }
+    if (recordStatus === 'awaiting_mapping') {
+      return {
+        description:
+          'Awaiting product mapping — some item references could not be resolved yet.' +
+          (mappingFailureReason ? ` (${mappingFailureReason})` : ''),
+        tone: 'warning',
+      };
+    }
+    return { description: 'Ingested and ready for sync.', tone: 'default' };
+  };
+  const ingest = ingestDescription();
 
   events.push({
     id: 'ingested',
     timestamp: createdAt,
     title: 'Order received',
     by: 'system · ingest',
-    description:
-      recordStatus === 'awaiting_mapping'
-        ? 'Awaiting product mapping — some item references could not be resolved yet.'
-        : 'Ingested and ready for sync.',
-    tone: recordStatus === 'awaiting_mapping' ? 'warning' : 'default',
+    description: ingest.description,
+    tone: ingest.tone,
   });
 
   // Identify destinations whose history is at or above the cap so we can
@@ -175,10 +201,12 @@ export function OrderActivityTimeline({
   recordStatus,
   syncAttempts,
   sourceConnectionId,
+  mappingFailureReason,
 }: OrderActivityTimelineProps): ReactElement {
   const events = useMemo(
-    () => buildEvents(createdAt, recordStatus, syncAttempts, sourceConnectionId),
-    [createdAt, recordStatus, syncAttempts, sourceConnectionId],
+    () =>
+      buildEvents(createdAt, recordStatus, syncAttempts, sourceConnectionId, mappingFailureReason),
+    [createdAt, recordStatus, syncAttempts, sourceConnectionId, mappingFailureReason],
   );
 
   if (events.length === 0) {

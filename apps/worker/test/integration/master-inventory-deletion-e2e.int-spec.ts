@@ -245,6 +245,8 @@ describe('Master Inventory Deletion End-to-End Integration (#1688)', () => {
       connectionId: connection.id,
       internalProductId: seeded.internalProductId,
       variantIds: [seeded.variantId],
+      correlationId: expect.any(String),
+      externalId: seeded.externalId,
     });
 
     // The runner persists the handler's outcome atomically with the status flip:

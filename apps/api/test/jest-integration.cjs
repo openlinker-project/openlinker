@@ -8,6 +8,11 @@ module.exports = {
   transform: {
     '^.+\\.(t|j)s$': 'ts-jest',
   },
+  // Explicit, in-workspace transform cache so CI can persist it between
+  // runs. A cold cache costs the run's FIRST suite ~32 s on CI (measured:
+  // 6.4 s warm vs 76.3 s cold locally for the same file) because every
+  // int-spec pulls the whole AppModule graph through ts-jest (#1920).
+  cacheDirectory: path.resolve(__dirname, '../../../.jest-cache/api-integration'),
   maxWorkers: 1,
   testTimeout: 120000,
   // Prevent CI hangs caused by long-lived timers (e.g. SchedulerService CronJobs)

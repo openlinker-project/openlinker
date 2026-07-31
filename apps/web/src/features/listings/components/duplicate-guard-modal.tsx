@@ -8,7 +8,10 @@
  *
  * The wording + primary action are driven by the destination KIND (resolved
  * from the connection's capabilities upstream, never a platformType literal):
- *   - marketplace: publishing creates a *duplicate offer*.
+ *   - marketplace: the backend *skips* already-listed variants rather than
+ *     duplicating them (#1741's authoritative guard) — the copy here must
+ *     match that (#1933; it previously promised a duplicate that was never
+ *     created).
  *   - shop: publishing *updates the existing product* (upsert).
  *
  * A thin wrapper over `ConfirmDialog`; accepts the nested-dialog class hooks so
@@ -62,8 +65,9 @@ export function DuplicateGuardModal({
     ) : (
       <>
         <strong>{duplicateCount}</strong> {variantNoun(duplicateCount)} you selected already have an
-        offer on <strong>{destinationName}</strong>. Publishing again{' '}
-        <strong>creates a duplicate offer</strong> - the existing one is not replaced. Continue?
+        offer on <strong>{destinationName}</strong>. {duplicateCount === 1 ? 'It' : 'They'} will be{' '}
+        <strong>skipped, not duplicated</strong> - only variants not yet listed there will be published.
+        Continue?
       </>
     );
 
@@ -74,7 +78,7 @@ export function DuplicateGuardModal({
       title={title}
       description={description}
       cancelLabel="Go back"
-      confirmLabel={kind === 'shop' ? 'Update existing' : 'Publish anyway (creates duplicate)'}
+      confirmLabel={kind === 'shop' ? 'Update existing' : 'Publish remaining variants'}
       isConfirming={isConfirming}
       onConfirm={onConfirm}
       className={className}

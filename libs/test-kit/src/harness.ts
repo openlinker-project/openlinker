@@ -46,7 +46,129 @@ export interface QueryRunner {
 }
 
 /**
- * Truncate the given tables in order against the DataSource.
+ * Unquoted Postgres identifier shape.
+ *
+ * `truncateTables` interpolates table names into SQL (they are quoted, but
+ * quoting alone does not stop a `"` in the name from closing the identifier).
+ * Every in-tree caller passes hard-coded constants, but the helper is a
+ * published seam plugin authors can reach, so names are asserted rather than
+ * trusted.
+ */
+const UNQUOTED_IDENTIFIER = /^[a-z_][a-z0-9_]*$/i;
+
+/**
+ * Per-DataSource memo of the cascade closure for a given table list.
+ *
+ * The FK graph cannot change while an int-spec runs (the schema is built once
+ * by TypeORM `synchronize` at boot), so the `pg_constraint` walk is resolved on
+ * the first reset and reused for every later one — keeping the steady-state
+ * reset at the two round-trips it had before (probe + `TRUNCATE`).
+ */
+const cascadeClosureCache = new WeakMap<QueryRunner, Map<string, ReadonlyArray<string>>>();
+
+function assertSafeTableNames(tables: ReadonlyArray<string>): void {
+  for (const table of tables) {
+    if (!UNQUOTED_IDENTIFIER.test(table)) {
+      throw new Error(
+        `test-kit: refusing to truncate "${table}" - table names must match ${String(UNQUOTED_IDENTIFIER)}`,
+      );
+    }
+  }
+}
+
+/**
+ * Expand the caller's list with every table that `TRUNCATE ... CASCADE` on it
+ * would have cleared as collateral (transitively), so that skipping an *empty*
+ * parent cannot leave a dependent's rows behind.
+ *
+ * Why this exists: the pre-#1920 code ran one `TRUNCATE <t> CASCADE` per listed
+ * table, which also wipes every table holding an FK to `<t>` — including tables
+ * the caller never listed. Probing only the literal list would drop that side
+ * effect whenever the parent happens to be empty while a dependent still holds
+ * rows (possible with a nullable FK), which is exactly how order-dependent
+ * flakes are born. Probing the closure instead keeps the resulting state
+ * identical to the old loop's.
+ *
+ * The caller's own names are always kept, even if Postgres reports no such
+ * relation — a typo'd table must still fail loudly at probe time rather than
+ * being silently dropped from the reset.
+ *
+ * Both terms of the walk are constrained to `current_schemas(false)`, the
+ * recursive one included: the reset is scoped to the schema under test, and a
+ * dependent living outside `search_path` is not something an int-spec's
+ * `TRUNCATE` should reach into. Without the guard on the *dependent* side, a
+ * cross-schema FK pulls an unreachable relation into the closure and the probe
+ * — one `UNION ALL` statement — then fails with `relation "x" does not exist`,
+ * taking every `afterEach` in the suite down with it (PR #1923 review).
+ */
+async function resolveCascadeClosure(
+  dataSource: QueryRunner,
+  tables: ReadonlyArray<string>,
+): Promise<ReadonlyArray<string>> {
+  const cacheKey = tables.join(',');
+  const cached = cascadeClosureCache.get(dataSource)?.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const literals = tables.map((table) => `'${table}'`).join(', ');
+  const rows = (await dataSource.query(
+    'WITH RECURSIVE requested AS (' +
+      ' SELECT c.oid FROM pg_class c' +
+      ' JOIN pg_namespace n ON n.oid = c.relnamespace' +
+      ` WHERE c.relname IN (${literals}) AND n.nspname = ANY (current_schemas(false))` +
+      '), closure AS (' +
+      ' SELECT oid FROM requested' +
+      ' UNION' +
+      ' SELECT con.conrelid FROM pg_constraint con' +
+      ' JOIN closure ON con.confrelid = closure.oid' +
+      ' JOIN pg_class dep ON dep.oid = con.conrelid' +
+      ' JOIN pg_namespace depns ON depns.oid = dep.relnamespace' +
+      " WHERE con.contype = 'f'" +
+      ' AND depns.nspname = ANY (current_schemas(false))' +
+      ') SELECT c.relname AS table_name FROM closure JOIN pg_class c ON c.oid = closure.oid',
+  )) as ReadonlyArray<{ table_name: string }>;
+
+  const dependents = rows
+    .map((row) => row.table_name)
+    .filter((name) => !tables.includes(name))
+    .sort();
+  assertSafeTableNames(dependents);
+
+  const closure = dependents.length === 0 ? tables : [...tables, ...dependents];
+  const perDataSource =
+    cascadeClosureCache.get(dataSource) ?? new Map<string, ReadonlyArray<string>>();
+  perDataSource.set(cacheKey, closure);
+  cascadeClosureCache.set(dataSource, perDataSource);
+
+  return closure;
+}
+
+/**
+ * Truncate the tables that actually hold a row.
+ *
+ * `TRUNCATE` costs ~10 ms per table regardless of its contents (measured
+ * against the test container: 1 table ~10 ms, 18 tables ~207 ms, 46 tables
+ * ~390 ms - linear in the table count, flat in the row count). Because this
+ * runs in `afterEach` of nearly every int-spec while a typical test dirties
+ * two or three tables, truncating the whole list unconditionally spent most of
+ * the time clearing tables that were already empty (#1920).
+ *
+ * One probe round-trip narrows the list, then a single `TRUNCATE` clears it -
+ * ~207 ms down to ~13 ms per reset. A test that dirtied nothing issues no
+ * `TRUNCATE` at all. Batching alone was measured and is NOT the win (18
+ * statements 280 ms vs one combined statement 215 ms); skipping empty tables
+ * is.
+ *
+ * The probed list is the caller's list expanded to its `CASCADE` closure (see
+ * `resolveCascadeClosure`) so that skipping an empty table cannot silently drop
+ * the collateral clear the old per-table `TRUNCATE ... CASCADE` performed. For
+ * the apps/api list the closure is currently a no-op — the synchronize-built
+ * test schema has exactly four FKs (`product_variants -> products`,
+ * `inventory_items -> products`, `inventory_items -> product_variants`,
+ * `attribute_value_mappings -> attribute_mappings`) and every dependent of a
+ * listed table is itself listed — but the expansion means a future FK does not
+ * have to be noticed by hand.
  *
  * Extracted for testability — keeps the caller-supplied-table semantic
  * unit-testable without standing up Postgres. Each table is quoted
@@ -60,9 +182,24 @@ export async function truncateTables(
   dataSource: QueryRunner,
   tables: ReadonlyArray<string>,
 ): Promise<void> {
-  for (const table of tables) {
-    await dataSource.query(`TRUNCATE TABLE "${table}" CASCADE`);
+  if (tables.length === 0) {
+    return;
   }
+
+  assertSafeTableNames(tables);
+  const candidates = await resolveCascadeClosure(dataSource, tables);
+
+  const probe = candidates
+    .map((table) => `SELECT '${table}' AS table_name WHERE EXISTS (SELECT 1 FROM "${table}")`)
+    .join(' UNION ALL ');
+  const dirty = (await dataSource.query(probe)) as ReadonlyArray<{ table_name: string }>;
+
+  if (dirty.length === 0) {
+    return;
+  }
+
+  const list = dirty.map((row) => `"${row.table_name}"`).join(', ');
+  await dataSource.query(`TRUNCATE TABLE ${list} CASCADE`);
 }
 
 /**

@@ -41,7 +41,7 @@ function buildSyncJobItems(job: SyncJob): KeyValueItem[] {
     {
       id: 'status',
       label: 'Status',
-      value: <SyncJobStatusBadge status={job.status} outcome={job.outcome} />,
+      value: <SyncJobStatusBadge status={job.status} outcome={job.outcome} outcomeReason={job.outcomeReason} />,
     },
     { id: 'jobId', label: 'Job ID', value: job.id, mono: true },
     {
@@ -50,6 +50,9 @@ function buildSyncJobItems(job: SyncJob): KeyValueItem[] {
       value: <ConnectionEntityLabel connectionId={job.connectionId} />,
     },
     { id: 'attempts', label: 'Attempts', value: `${job.attempts} / ${job.maxAttempts}` },
+    ...(job.outcomeReason
+      ? [{ id: 'outcomeReason', label: 'Outcome reason', value: job.outcomeReason, mono: true }]
+      : []),
     { id: 'nextRun', label: 'Next run at', value: <TimeDisplay iso={job.nextRunAt} /> },
     { id: 'createdAt', label: 'Created', value: <TimeDisplay iso={job.createdAt} /> },
     { id: 'updatedAt', label: 'Updated', value: <TimeDisplay iso={job.updatedAt} /> },

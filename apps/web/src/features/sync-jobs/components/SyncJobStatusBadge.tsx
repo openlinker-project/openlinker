@@ -19,7 +19,7 @@
  */
 import type { ReactElement } from 'react';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
-import type { JobOutcome, JobStatus } from '../api/sync-jobs.types';
+import type { JobOutcome, JobOutcomeReason, JobStatus } from '../api/sync-jobs.types';
 
 const BASE_TONE: Record<JobStatus, StatusBadgeTone> = {
   queued: 'info',
@@ -28,9 +28,21 @@ const BASE_TONE: Record<JobStatus, StatusBadgeTone> = {
   dead: 'error',
 };
 
+/**
+ * Human label per `outcomeReason` code (#1689) — resolved only on the
+ * succeeded + business_failure path. An unknown/absent code falls back to
+ * the generic "business failure" label rather than a raw status word, so a
+ * deletion-caused failure reads distinctly from any other business
+ * rejection (e.g. an offer-creation validation error).
+ */
+const OUTCOME_REASON_LABEL: Record<JobOutcomeReason, string> = {
+  master_deleted: 'source deleted',
+};
+
 interface SyncJobStatusBadgeProps {
   status: string;
   outcome?: JobOutcome | null;
+  outcomeReason?: JobOutcomeReason | null;
 }
 
 function deriveTone(status: string, outcome: JobOutcome | null | undefined): StatusBadgeTone {
@@ -40,14 +52,27 @@ function deriveTone(status: string, outcome: JobOutcome | null | undefined): Sta
   return BASE_TONE[status as JobStatus] ?? 'neutral';
 }
 
-export function SyncJobStatusBadge({ status, outcome = null }: SyncJobStatusBadgeProps): ReactElement {
-  // Label stays the literal status word — the warning tone alone carries the
-  // succeeded-with-business-failure signal. The outcome chip on the detail
-  // page (Plan A's OfferCreationTracker) provides the explicit narrative.
+function deriveLabel(
+  status: string,
+  outcome: JobOutcome | null | undefined,
+  outcomeReason: JobOutcomeReason | null | undefined,
+): string {
+  if (status === 'succeeded' && outcome === 'business_failure') {
+    return (outcomeReason && OUTCOME_REASON_LABEL[outcomeReason]) ?? 'business failure';
+  }
+  return status;
+}
+
+export function SyncJobStatusBadge({
+  status,
+  outcome = null,
+  outcomeReason = null,
+}: SyncJobStatusBadgeProps): ReactElement {
   const tone = deriveTone(status, outcome);
+  const label = deriveLabel(status, outcome, outcomeReason);
   return (
     <StatusBadge tone={tone} withDot>
-      {status}
+      {label}
     </StatusBadge>
   );
 }

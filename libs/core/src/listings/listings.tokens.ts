@@ -61,3 +61,6 @@ export const PUBLISHED_VARIANTS_SERVICE_TOKEN = Symbol('IPublishedVariantsServic
 
 // Shop-side products cockpit coverage pills (#1838 follow-up fix)
 export const SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN = Symbol('IShopProductMappingsService');
+
+// Stale-variant offer pause (#1689)
+export const STALE_OFFER_PAUSE_SERVICE_TOKEN = Symbol('IStaleOfferPauseService');
