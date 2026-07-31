@@ -220,11 +220,6 @@ export const DemoEventCatalog = {
     group: 'baseline',
     props: { source: '' } as { source: string },
   },
-  demo_analytics_disabled: {
-    description: 'Viewer opted out of demo analytics via the banner',
-    group: 'baseline',
-    props: {} as Record<string, never>,
-  },
 } as const;
 
 export type DemoEventName = keyof typeof DemoEventCatalog;
