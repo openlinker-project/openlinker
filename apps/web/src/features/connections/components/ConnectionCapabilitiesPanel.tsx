@@ -16,6 +16,7 @@ import {
   capabilityConflictMessage,
   getCapabilityConflict,
 } from '../lib/capability-metadata';
+import { MCP_CONNECTION_CHANGE_HINT, MCP_TOOL_CAPABILITIES } from '../../mcp-tokens';
 import { Alert } from '../../../shared/ui/alert';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { useToast } from '../../../shared/ui/toast-provider';
@@ -51,6 +52,22 @@ export function ConnectionCapabilitiesPanel({
   // list. Tracked under the same #576 follow-up.
   const supported = connection.supportedCapabilities.filter(isCoreCapability);
   const enabled = new Set(connection.enabledCapabilities.filter(isCoreCapability));
+
+  // Deliberately keyed on SUPPORTED, not ENABLED (#1949). MCP tool registration
+  // reads `enabledCapabilities`, so gating the hint on that would make it vanish
+  // the instant an operator toggles a capability off — exactly the moment it is
+  // needed, since that toggle is what just staled the client's tool list.
+  // `supportedCapabilities` is stable across the toggle and answers the question
+  // the hint actually depends on: could this connection ever back an MCP tool?
+  //
+  // Iterated MCP-side-first on purpose: `supported.includes(capability)` type-checks
+  // only while every MCP_TOOL_CAPABILITIES member is a CoreCapability, so the
+  // hand-maintained mirror of the backend's McpToolCapabilityValues fails to COMPILE
+  // if it ever drifts to a non-core capability. The reverse iteration would need a
+  // `readonly string[]` cast and would silently accept the same drift.
+  const backsMcpTools = MCP_TOOL_CAPABILITIES.some((capability) =>
+    supported.includes(capability),
+  );
 
   async function handleToggle(capability: CoreCapability, checked: boolean): Promise<void> {
     const next = new Set(enabled);
@@ -99,6 +116,8 @@ export function ConnectionCapabilitiesPanel({
           {updateMutation.error.message}
         </Alert>
       ) : null}
+
+      {backsMcpTools ? <Alert tone="info">{MCP_CONNECTION_CHANGE_HINT}</Alert> : null}
 
       {supported.length > 0 ? (
         <div className="capability-list__pills" aria-label="Supported capabilities">
