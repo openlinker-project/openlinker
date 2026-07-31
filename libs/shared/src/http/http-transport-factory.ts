@@ -11,7 +11,7 @@
  * @module libs/shared/src/http
  */
 import type { RateLimiterRegistry } from '../rate-limit';
-import { getCurrentPriority } from '../rate-limit';
+import { getCurrentPriority, getCurrentRateLimitSignal } from '../rate-limit';
 import type { ConnectionRateLimit } from '../rate-limit';
 import type {
   FetchLike,
@@ -45,14 +45,15 @@ function dividePolicy(policy: ConnectionRateLimit, replicas: number): Connection
 
 /** Seconds (`Retry-After: 5`) or an HTTP-date. Returns null if unparseable. */
 function parseRetryAfterMs(header: string | null): number | null {
-  if (!header) return null;
+  const trimmed = header?.trim();
+  if (!trimmed) return null;
 
-  const asSeconds = Number(header);
+  const asSeconds = Number(trimmed);
   if (!Number.isNaN(asSeconds)) {
     return Math.max(0, asSeconds * 1000);
   }
 
-  const asDate = Date.parse(header);
+  const asDate = Date.parse(trimmed);
   if (!Number.isNaN(asDate)) {
     return Math.max(0, asDate - Date.now());
   }
@@ -60,8 +61,14 @@ function parseRetryAfterMs(header: string | null): number | null {
   return null;
 }
 
+/** Mutable holder so a cached closure always reads the latest connection object for its id. */
+interface ConnectionRef {
+  current: RateLimitedConnection;
+}
+
 export class HttpTransportFactory implements HttpTransportFactoryPort {
   private readonly cache = new Map<string, FetchLike>();
+  private readonly connectionRefs = new Map<string, ConnectionRef>();
   private readonly replicas: number;
   private readonly baseFetch: FetchLike;
   private readonly registry: RateLimiterRegistry;
@@ -73,21 +80,34 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
   }
 
   for(connection: RateLimitedConnection): FetchLike {
+    // Keep the ref fresh on every for() call so a cached closure (below)
+    // never reads a stale `config.rateLimit` from the connection object it
+    // happened to be built with — an operator's config edit must take
+    // effect on the very next call through the same cached FetchLike.
+    const ref = this.connectionRefs.get(connection.id);
+    if (ref) {
+      ref.current = connection;
+    } else {
+      this.connectionRefs.set(connection.id, { current: connection });
+    }
+
     const cached = this.cache.get(connection.id);
     if (cached) {
       return cached;
     }
 
+    const connectionRef = this.connectionRefs.get(connection.id)!;
     const fetchImpl: FetchLike = (async (
       input: RequestInfo | URL,
       init?: RequestInit
     ): Promise<Response> => {
-      const rawPolicy: ConnectionRateLimit = connection.config?.rateLimit ?? {};
+      const rawPolicy: ConnectionRateLimit = connectionRef.current.config?.rateLimit ?? {};
       const policy = dividePolicy(rawPolicy, this.replicas);
-      const limiter = this.registry.get(connection.id, policy);
+      const limiter = this.registry.get(connectionRef.current.id, policy);
       const priority = getCurrentPriority();
+      const signal = getCurrentRateLimitSignal();
 
-      const release = await limiter.acquire(policy, priority);
+      const release = await limiter.acquire(policy, priority, signal);
       try {
         const response = await this.baseFetch(input, init);
         if (response.status === 429 || response.status === 503) {

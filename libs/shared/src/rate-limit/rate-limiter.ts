@@ -2,10 +2,16 @@
  * Rate Limiter
  *
  * Minimum-interval spacing (capacity ~1, not a bursty token bucket) plus a
- * concurrency semaphore, both gated on a single per-connection queue. A
- * queued `acquire()` is dequeued in priority order — `interactive` callers
- * jump ahead of already-queued `background` ones — which is the "one
- * bucket with a reservation" design instead of two additive pools (#1810).
+ * concurrency semaphore, both gated on a single per-connection queue — one
+ * bucket, not two additive pools (#1810). A queued `acquire()` is dequeued
+ * in STRICT priority order: `interactive` callers always jump ahead of
+ * already-queued `background` ones. There is no reservation/floor
+ * guaranteeing background progress — a sustained stream of interactive
+ * callers can starve a queued background waiter indefinitely (bounded only
+ * by `MAX_TOTAL_WAIT_MS`, at which point it times out rather than hanging
+ * forever). Acceptable for v1: background traffic is worker jobs, which
+ * retry; a future age-promotion policy is a candidate follow-up if this
+ * proves painful in practice.
  *
  * @module libs/shared/src/rate-limit
  */
@@ -73,6 +79,12 @@ export class RateLimiter implements RateLimiterPort {
     priority: RateLimitPriority = 'background',
     signal?: AbortSignal
   ): Promise<RateLimitRelease> {
+    // Authoritative re-read, independent of updatePolicy(). A caller that
+    // goes through RateLimiterRegistry.get() already had updatePolicy()
+    // applied there, making this a no-op re-assignment in that path — but a
+    // caller holding the limiter directly (tests, or any future non-registry
+    // caller) never calls updatePolicy() at all, so acquire() must not skip
+    // this assignment.
     this.policy = policy;
 
     return new Promise<RateLimitRelease>((resolve, reject) => {
@@ -84,6 +96,7 @@ export class RateLimiter implements RateLimiterPort {
       const enqueuedAt = this.now();
       const timeoutHandle = setTimeout(() => {
         this.removeFromQueue(waiter);
+        waiter.cleanup();
         waiter.reject(new RateLimitTimeoutError(this.now() - enqueuedAt));
       }, MAX_TOTAL_WAIT_MS);
       if (typeof timeoutHandle.unref === 'function') {

@@ -9,11 +9,20 @@
  * the request's own `close` event, so a client disconnect cancels a queued
  * rate-limit wait rather than leaving it to time out.
  *
+ * `next.handle()` returns a LAZY Observable — Nest's `RouterExecutionContext`
+ * defers the actual route handler invocation until something subscribes.
+ * Calling `runWithPriority(ctx, () => next.handle())` therefore does nothing
+ * useful: the ALS context is entered and exited around merely *constructing*
+ * the Observable, and the handler (and every `await` inside it) runs later,
+ * at subscribe time, outside that context. The fix subscribes to
+ * `next.handle()` *from inside* `runWithPriority`'s callback, so the handler
+ * actually executes within the ALS scope.
+ *
  * @module apps/api/src/http/interceptors
  */
 import type { CallHandler, ExecutionContext, NestInterceptor } from '@nestjs/common';
 import { Injectable } from '@nestjs/common';
-import type { Observable } from 'rxjs';
+import { Observable } from 'rxjs';
 import { runWithPriority } from '@openlinker/shared/rate-limit';
 
 interface RequestWithCloseEvent {
@@ -28,9 +37,10 @@ export class RequestPriorityInterceptor implements NestInterceptor {
     if (typeof request?.on === 'function') {
       request.on('close', () => controller.abort());
     }
+    const priorityContext = { priority: 'interactive' as const, signal: controller.signal };
 
-    return runWithPriority({ priority: 'interactive', signal: controller.signal }, () =>
-      next.handle()
+    return new Observable((subscriber) =>
+      runWithPriority(priorityContext, () => next.handle().subscribe(subscriber))
     );
   }
 }

@@ -4,7 +4,7 @@
  * @module libs/shared/src/http
  */
 import { HttpTransportFactory } from '../http-transport-factory';
-import { createRateLimiterRegistry } from '../../rate-limit';
+import { createRateLimiterRegistry, runWithPriority } from '../../rate-limit';
 import type { RateLimiterRegistry } from '../../rate-limit';
 
 describe('HttpTransportFactory', () => {
@@ -103,5 +103,55 @@ describe('HttpTransportFactory', () => {
 
     // 4 replicas dividing a cap of 4 leaves each replica a cap of 1.
     expect(registry.getStatus('conn-1')?.maxConcurrent).toBe(1);
+  });
+
+  it('re-reads config.rateLimit on every for() call, even through a cached FetchLike (no stale-connection cache)', async () => {
+    const response = new Response(null, { status: 200 });
+    const fetchImpl = jest.fn().mockResolvedValue(response);
+    const factory = new HttpTransportFactory({ registry, fetchImpl });
+
+    const stale = { id: 'conn-1', config: { rateLimit: { maxConcurrent: 5 } } };
+    const boundFetch = factory.for(stale);
+
+    // Operator edits config.rateLimit — caller re-resolves the connection and
+    // calls for() again with the SAME id but a fresh object. The cached
+    // FetchLike reference must still pick up the new policy.
+    const fresh = { id: 'conn-1', config: { rateLimit: { maxConcurrent: 1 } } };
+    const sameFetch = factory.for(fresh);
+    expect(sameFetch).toBe(boundFetch);
+
+    await boundFetch('https://example.com');
+
+    expect(registry.getStatus('conn-1')?.maxConcurrent).toBe(1);
+  });
+
+  it('forwards the active AsyncLocalStorage cancellation signal into acquire()', async () => {
+    const response = new Response(null, { status: 200 });
+    const fetchImpl = jest.fn().mockResolvedValue(response);
+    const factory = new HttpTransportFactory({ registry, fetchImpl });
+    const connection = { id: 'conn-1', config: { rateLimit: { maxConcurrent: 1 } } };
+    const boundFetch = factory.for(connection);
+
+    // Hold the one available slot so a subsequent acquire() queues on the signal.
+    const release = await registry
+      .get('conn-1', { maxConcurrent: 1 })
+      .acquire({ maxConcurrent: 1 }, 'background');
+
+    const controller = new AbortController();
+    const queuedCall = runWithPriority({ priority: 'background', signal: controller.signal }, () =>
+      boundFetch('https://example.com')
+    );
+
+    let rejected = false;
+    queuedCall.catch(() => {
+      rejected = true;
+    });
+
+    controller.abort();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(rejected).toBe(true);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    release();
   });
 });

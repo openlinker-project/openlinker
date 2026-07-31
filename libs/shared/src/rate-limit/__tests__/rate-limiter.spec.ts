@@ -174,6 +174,24 @@ describe('RateLimiter', () => {
 
       release1();
     });
+
+    it('removes the abort listener on timeout — a signal-bearing waiter must not leak its listener', async () => {
+      const limiter = new RateLimiter({ maxConcurrent: 1 });
+      const release1 = await limiter.acquire({ maxConcurrent: 1 });
+
+      const controller = new AbortController();
+      const removeSpy = jest.spyOn(controller.signal, 'removeEventListener');
+
+      const queuedPromise = limiter.acquire({ maxConcurrent: 1 }, 'background', controller.signal);
+      const assertion = expect(queuedPromise).rejects.toBeInstanceOf(RateLimitTimeoutError);
+
+      jest.advanceTimersByTime(MAX_TOTAL_WAIT_MS + 1);
+      await assertion;
+
+      expect(removeSpy).toHaveBeenCalledWith('abort', expect.any(Function));
+
+      release1();
+    });
   });
 
   describe('abort', () => {
