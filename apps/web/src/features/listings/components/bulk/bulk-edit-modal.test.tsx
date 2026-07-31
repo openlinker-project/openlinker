@@ -36,10 +36,15 @@ vi.mock('../../hooks/use-category-parameters-query', () => ({
 // Mutable so a test can drive the schema of a category ONE sibling overrode
 // (#1946). Keyed by category id, mirroring the hook's own shape.
 let mockVariantSchemas = new Map<string, unknown[]>();
+// Categories whose schema request FAILED (as opposed to being in flight) - the
+// distinction the panel's retry affordance and the blocked-save toast key on.
+let mockFailedSchemaCategories = new Set<string>();
+const mockRetryCategory = vi.fn();
 vi.mock('../../hooks/use-category-parameter-schemas', () => ({
   useCategoryParameterSchemas: () => ({
     schemasByCategory: mockVariantSchemas,
-    isResolving: false,
+    failedCategoryIds: mockFailedSchemaCategories,
+    retryCategory: mockRetryCategory,
   }),
 }));
 vi.mock('../../../content', () => ({ SuggestionDialog: () => null }));
@@ -230,6 +235,8 @@ describe('BulkEditModal', () => {
   beforeEach(() => {
     mockCategoryParameters = [];
     mockVariantSchemas = new Map();
+    mockFailedSchemaCategories = new Set();
+    mockRetryCategory.mockClear();
   });
 
   // #1946: the sibling's fields are rendered from its OWN category's schema, so
@@ -309,6 +316,47 @@ describe('BulkEditModal', () => {
     await new Promise((resolve) => { setTimeout(resolve, 50); });
 
     expect(onSave).not.toHaveBeenCalled();
+    // The block must say so - a click that switches scope and does nothing else
+    // is the same unexplained dead-end #1946 fixed, one step later.
+    expect(
+      await screen.findByText("Can't save yet - a variant's category parameters are still loading"),
+    ).toBeInTheDocument();
+  });
+
+  // A permanently-failed schema query is indistinguishable from a loading one at
+  // the map level, but only one of them ever resolves itself: without the split
+  // the blocked save loops forever with nothing to act on.
+  it('offers a retry when an overridden category schema failed rather than loading (#1946)', async () => {
+    const onSave = vi.fn();
+    mockCategoryParameters = [eanSlot('ean_men')];
+    mockVariantSchemas = new Map();
+    mockFailedSchemaCategories = new Set(['cat_women']);
+
+    renderWithProviders(
+      <BulkEditModal
+        open
+        onOpenChange={() => undefined}
+        row={makeMultiRowWithVariantCategory()}
+        connection={connection}
+        canBrowseCategories={true}
+        currency="PLN"
+        defaults={DEFAULTS}
+        onSave={onSave}
+      />,
+    );
+
+    // The blocked save opens the offending sibling's scope...
+    fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+
+    // ...and the toast names the failure, not a wait.
+    expect(
+      await screen.findByText("Can't save yet - a variant's category parameters failed to load"),
+    ).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+
+    // The panel offers the way out.
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(mockRetryCategory).toHaveBeenCalledWith('cat_women');
   });
 
   it('renders a suggested-category chip per multi-match candidate, falling back to the id', () => {

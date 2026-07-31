@@ -64,6 +64,7 @@ import type { Connection } from '../../../connections';
 import { resolveVariantGroupingModel } from '../../../connections';
 import { Alert, Button, ConfirmDialog, FormField, Input, Textarea } from '../../../../shared/ui';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
+import { useToast } from '../../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../../shared/config/demo-mode';
 import {
@@ -471,6 +472,7 @@ function BulkEditModalForm({
   onClose,
 }: BulkEditModalFormProps): ReactElement {
   const connectionId = connection.id;
+  const { showToast } = useToast();
   const platform = usePlatform(connection.platformType);
   const platformName = platform?.displayName ?? connection.platformType;
   const platformSection = platform?.bulkOfferRowSection;
@@ -582,10 +584,10 @@ function BulkEditModalForm({
         .filter((id): id is string => typeof id === 'string' && id.length > 0),
     [row.variants, variantEdits],
   );
-  // `isResolving` is deliberately not consumed: `variantParamSchema` returning
-  // `null` is the per-sibling loading signal, which is finer-grained than one
-  // batch-wide flag (a sibling whose schema is ready must not be held back).
-  const { schemasByCategory } = useCategoryParameterSchemas(
+  // There is deliberately no batch-wide "still resolving" flag: a sibling whose
+  // schema is ready must not be held back by one that is not, so the per-sibling
+  // signal is `variantParamSchema` returning `null`.
+  const { schemasByCategory, failedCategoryIds, retryCategory } = useCategoryParameterSchemas(
     canBrowseCategories ? connectionId : undefined,
     variantCategoryIds,
   );
@@ -616,6 +618,29 @@ function BulkEditModalForm({
       return schemasByCategory.get(ownCategoryId);
     },
     [variantEdits, schemasByCategory],
+  );
+  /**
+   * True when this sibling's overridden category schema FAILED rather than being
+   * in flight. The two are indistinguishable from `variantParamSchema` alone
+   * (both are "no schema"), but only one of them ever resolves itself - so the
+   * panel must offer a retry instead of an indefinite spinner, and the blocked
+   * save must say which of the two it is (#1950 review).
+   */
+  const ownVariantSchemaFailed = useCallback(
+    (variantId: string): boolean => {
+      const ownCategoryId = variantEdits[variantId]?.categoryId;
+      if (ownCategoryId === undefined || ownCategoryId === '') return false;
+      return failedCategoryIds.has(ownCategoryId);
+    },
+    [variantEdits, failedCategoryIds],
+  );
+  const retryOwnVariantSchema = useCallback(
+    (variantId: string): void => {
+      const ownCategoryId = variantEdits[variantId]?.categoryId;
+      if (ownCategoryId === undefined || ownCategoryId === '') return;
+      retryCategory(ownCategoryId);
+    },
+    [variantEdits, retryCategory],
   );
 
   // ── Dirty tracking (vs the on-open snapshot) ──
@@ -677,12 +702,31 @@ function BulkEditModalForm({
     // With no schema at all there is nothing to serialize for any scope, and an
     // operator who picks a variant category must still be able to save the
     // override immediately, before its schema resolves (#1924).
-    if (isMultiVariant && categoryParameters.length > 0) {
+    //
+    // `canBrowseCategories` is load-bearing, not decorative: it is what feeds the
+    // fan-out its connectionId, so with it false NO variant schema can ever
+    // arrive. Today `categoryParameters` is also empty in that case (it comes
+    // from the same connection, guarded by the same flag) making this
+    // unreachable - but the block must never be able to outlive the queries that
+    // clear it, so the invariant is enforced here rather than assumed.
+    if (isMultiVariant && canBrowseCategories && categoryParameters.length > 0) {
       const unresolved = row.variants.find(
         (v) => variantParamSchema(variantEdits[v.variantId]) === null,
       );
       if (unresolved !== undefined) {
         setScope(unresolved.variantId);
+        // Without this the click is a silent no-op - the same unexplained
+        // dead-end #1946 was about, just moved one step later (#1950 review).
+        const failed = ownVariantSchemaFailed(unresolved.variantId);
+        showToast({
+          tone: failed ? 'error' : 'info',
+          title: failed
+            ? "Can't save yet - a variant's category parameters failed to load"
+            : "Can't save yet - a variant's category parameters are still loading",
+          description: failed
+            ? 'Retry from the variant panel below, or clear its category override, then save again.'
+            : 'Save again in a moment.',
+        });
         return;
       }
     }
@@ -1059,6 +1103,8 @@ function BulkEditModalForm({
                       baseCategoryPathNames={displayPathNames}
                       categoryParameters={renderableCategoryParameters}
                       ownCategoryParameters={ownVariantSchema(v.variantId)}
+                      ownCategoryParametersFailed={ownVariantSchemaFailed(v.variantId)}
+                      onRetryOwnCategoryParameters={() => retryOwnVariantSchema(v.variantId)}
                       duplicateEan={dupEanIds.has(v.variantId)}
                       onPatch={(patch) => patchVariant(v.variantId, patch)}
                       onParamChange={(paramId, value) => setVariantParam(v.variantId, paramId, value)}
@@ -1785,6 +1831,14 @@ interface VariantScopeFormProps {
    * while its schema is still loading.
    */
   ownCategoryParameters: CategoryParameter[] | undefined;
+  /**
+   * True when the overridden category's schema request FAILED (as opposed to
+   * still being in flight). Without the distinction a permanently-failed query
+   * renders as an eternal "Loading parameters..." while `Save all` keeps
+   * bouncing back to this scope with nothing to act on (#1950 review).
+   */
+  ownCategoryParametersFailed: boolean;
+  onRetryOwnCategoryParameters: () => void;
   duplicateEan: boolean;
   /** Opens the shared zoom lightbox for an image url (always allowed, #1741). */
   onZoom: (src: string) => void;
@@ -1806,6 +1860,8 @@ function VariantScopeForm({
   baseCategoryPathNames,
   categoryParameters,
   ownCategoryParameters,
+  ownCategoryParametersFailed,
+  onRetryOwnCategoryParameters,
   duplicateEan,
   onZoom,
   onPatch,
@@ -2452,6 +2508,33 @@ function VariantScopeForm({
             : 'Inherits the base images - add or remove to override for this variant.'}
         </div>
       </div>
+
+      {/* An own-category schema that FAILED renders here instead of the fields.
+          Without it the panel is indistinguishable from "still loading" while
+          `Save all` keeps bouncing back to this scope with nothing to act on -
+          the same unexplained dead-end #1946 fixed, one step later (#1950
+          review). Two ways out, both stated: retry, or drop the override. */}
+      {hasOwnCategory && ownCategoryParametersFailed ? (
+        <div className="bulk-editor__platform-slot">
+          <Alert
+            tone="error"
+            title="Couldn't load this variant's category parameters"
+            action={
+              <Button
+                tone="secondary"
+                type="button"
+                className="button--sm"
+                onClick={onRetryOwnCategoryParameters}
+              >
+                Retry
+              </Button>
+            }
+          >
+            Its parameters can't be filled in or saved until this loads. Retry, or clear the
+            category override to fall back to the shared base category.
+          </Alert>
+        </div>
+      ) : null}
 
       {/* Category parameters - inheritable; required first, optional collapsed
           behind an expander (mirrors the base CategoryParametersStep). Once

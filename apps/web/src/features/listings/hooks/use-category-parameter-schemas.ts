@@ -15,10 +15,15 @@
  * required product-section ids, this hook keeps the schema intact - the
  * serializer needs every parameter, including the hidden EAN/GTIN slot.
  *
+ * An absent map key is deliberately ambiguous, so a FAILED category is reported
+ * separately (`failedCategoryIds` + `retryCategory`): "still loading" resolves
+ * itself, "the request errored" never does, and a caller that blocks on an
+ * unresolved schema must be able to tell the operator which one they are in.
+ *
  * @module apps/web/src/features/listings/hooks
  */
-import { useMemo } from 'react';
-import { useQueries } from '@tanstack/react-query';
+import { useCallback, useMemo } from 'react';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { listingsQueryKeys } from '../api/listings.query-keys';
 import type { CategoryParameter } from '../api/listings.types';
@@ -31,8 +36,13 @@ export interface CategoryParameterSchemas {
    * (that is the silent-drop failure mode #1946 fixes).
    */
   schemasByCategory: Map<string, CategoryParameter[]>;
-  /** True while any requested category's schema is still loading. */
-  isResolving: boolean;
+  /**
+   * Categories whose schema request failed and will not arrive on its own. An id
+   * absent from BOTH this set and `schemasByCategory` is still in flight.
+   */
+  failedCategoryIds: Set<string>;
+  /** Re-runs one failed category's query - the operator-facing "Retry". */
+  retryCategory: (categoryId: string) => void;
 }
 
 export function useCategoryParameterSchemas(
@@ -40,6 +50,7 @@ export function useCategoryParameterSchemas(
   categoryIds: readonly string[],
 ): CategoryParameterSchemas {
   const apiClient = useApiClient();
+  const queryClient = useQueryClient();
 
   // Distinct + stable order so the useQueries array stays index-aligned across
   // renders that don't change the set.
@@ -48,7 +59,33 @@ export function useCategoryParameterSchemas(
     [categoryIds],
   );
 
-  const results = useQueries({
+  // `combine` derives the map/set inside the observer's own memoization, so both
+  // keep their identity while the underlying results are unchanged - a bare
+  // `new Map()` per render would defeat every `useCallback` the caller wraps
+  // around it (and, transitively, its save handler). The observer compares the
+  // combine function BY IDENTITY, so it has to be stable too: an inline arrow
+  // recomputes on every render and buys nothing.
+  const combine = useCallback(
+    (
+      results: readonly { data?: CategoryParameter[]; isError: boolean }[],
+    ): Omit<CategoryParameterSchemas, 'retryCategory'> => {
+      const schemasByCategory = new Map<string, CategoryParameter[]>();
+      const failedCategoryIds = new Set<string>();
+      distinctIds.forEach((categoryId, i) => {
+        const result = results[i];
+        if (result === undefined) return;
+        if (result.data !== undefined) {
+          schemasByCategory.set(categoryId, result.data);
+          return;
+        }
+        if (result.isError) failedCategoryIds.add(categoryId);
+      });
+      return { schemasByCategory, failedCategoryIds };
+    },
+    [distinctIds],
+  );
+
+  const { schemasByCategory, failedCategoryIds } = useQueries({
     queries: distinctIds.map((categoryId) => ({
       queryKey: listingsQueryKeys.categoryParameters(connectionId ?? '', categoryId),
       queryFn: async (): Promise<CategoryParameter[]> => {
@@ -61,16 +98,18 @@ export function useCategoryParameterSchemas(
       enabled: Boolean(connectionId) && categoryId.length > 0,
       staleTime: CATEGORY_PARAMETERS_STALE_TIME_MS,
     })),
+    combine,
   });
 
-  const isResolving = results.some((q) => q.isLoading);
+  const retryCategory = useCallback(
+    (categoryId: string): void => {
+      if (connectionId === undefined || categoryId.length === 0) return;
+      void queryClient.refetchQueries({
+        queryKey: listingsQueryKeys.categoryParameters(connectionId, categoryId),
+      });
+    },
+    [queryClient, connectionId],
+  );
 
-  const schemasByCategory = new Map<string, CategoryParameter[]>();
-  distinctIds.forEach((categoryId, i) => {
-    const data = results[i]?.data;
-    if (!data) return;
-    schemasByCategory.set(categoryId, data);
-  });
-
-  return { schemasByCategory, isResolving };
+  return { schemasByCategory, failedCategoryIds, retryCategory };
 }
