@@ -44,6 +44,7 @@ import { SystemModule } from './system/system.module';
 import { McpModule } from './mcp/mcp.module';
 import { MailerApiModule } from './mailer/mailer.module';
 import { AnalyticsApiModule } from './analytics/analytics.module';
+import { RequestPriorityModule } from './http/request-priority.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { AnalyticsApiModule } from './analytics/analytics.module';
       envFilePath: ['.env.local', '.env'],
     }),
     ScheduleModule.forRoot(),
+    RequestPriorityModule, // Global APP_INTERCEPTOR: classifies interactive requests for rate-limit priority (#1810)
     DatabaseModule,
     RedisConfigModule,
     CacheModule,
