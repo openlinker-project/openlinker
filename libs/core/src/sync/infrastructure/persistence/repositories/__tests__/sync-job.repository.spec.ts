@@ -574,6 +574,52 @@ describe('SyncJobRepository', () => {
     });
   });
 
+  describe('heartbeat (#1810)', () => {
+    it('should refresh lockedAt for a running job held by the calling worker', async () => {
+      const id = randomUUID();
+      const workerId = 'worker-abc';
+
+      const updateQueryBuilder = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected: 1 }),
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock: explicit any narrows the dynamic spy / fixture shape
+      ormRepository.createQueryBuilder.mockReturnValue(updateQueryBuilder as any);
+
+      await repository.heartbeat(id, workerId);
+
+      expect(updateQueryBuilder.update).toHaveBeenCalledWith(SyncJobOrmEntity);
+      expect(updateQueryBuilder.set).toHaveBeenCalledWith({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+        lockedAt: expect.any(Date),
+      });
+      expect(updateQueryBuilder.where).toHaveBeenCalledWith(
+        'id = :id AND status = :status AND "lockedBy" = :workerId',
+        { id, status: 'running', workerId }
+      );
+    });
+
+    it('is a no-op when the calling worker no longer holds the lock (#1810)', async () => {
+      const id = randomUUID();
+
+      const updateQueryBuilder = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        // No row matched — a different worker requeued and re-picked the job.
+        execute: jest.fn().mockResolvedValue({ affected: 0 }),
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock: explicit any narrows the dynamic spy / fixture shape
+      ormRepository.createQueryBuilder.mockReturnValue(updateQueryBuilder as any);
+
+      await expect(repository.heartbeat(id, 'stale-worker')).resolves.toBeUndefined();
+    });
+  });
+
   describe('toDomain', () => {
     it('should convert ORM entity to domain entity', () => {
       const ormEntity = createMockOrmEntity({

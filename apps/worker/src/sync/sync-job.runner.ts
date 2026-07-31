@@ -33,6 +33,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
   private readonly POLL_INTERVAL_MS = 1000; // Poll interval when no jobs available
   private readonly STUCK_JOB_TIMEOUT_MINUTES = 15; // Lock timeout for stuck jobs
   private readonly STUCK_JOB_RECOVERY_INTERVAL_MS = 5 * 60 * 1000; // Check for stuck jobs every 5 minutes
+  private readonly JOB_HEARTBEAT_INTERVAL_MS = 3 * 60 * 1000; // Refresh lockedAt every 3 minutes while a job runs (#1810)
 
   // Retry policy constants
   private readonly RETRY_BASE_DELAY_SECONDS = 30; // 30 seconds
@@ -270,8 +271,27 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      // Execute handler — handlers return their business outcome (issue #400)
-      const result = await handler.execute(job);
+      // Heartbeat while the handler runs so a job queued behind a saturated
+      // per-connection rate limiter for longer than STUCK_JOB_TIMEOUT_MINUTES
+      // is not duplicated by the stuck-job recovery sweep (#1810).
+      const heartbeatInterval = setInterval(() => {
+        void this.jobRepository.heartbeat(job.id, this.WORKER_ID).catch((error) => {
+          this.logger.warn(
+            `Heartbeat failed for job ${job.id}: ${error instanceof Error ? error.message : String(error)}`
+          );
+        });
+      }, this.JOB_HEARTBEAT_INTERVAL_MS);
+      if (typeof heartbeatInterval.unref === 'function') {
+        heartbeatInterval.unref();
+      }
+
+      let result;
+      try {
+        // Execute handler — handlers return their business outcome (issue #400)
+        result = await handler.execute(job);
+      } finally {
+        clearInterval(heartbeatInterval);
+      }
 
       // Success - mark as succeeded with the handler's reported outcome
       await this.jobRepository.markSucceeded(job.id, result.outcome, result.outcomeReason);
