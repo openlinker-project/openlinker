@@ -18,6 +18,7 @@ import {
 } from '@openlinker/core/users';
 import { LoginResponseDto } from './dto/login-response.dto';
 import type { IAuthService } from './auth.service.interface';
+import type { JwtPayload } from './auth.types';
 
 @Injectable()
 export class AuthService implements IAuthService {
@@ -65,7 +66,16 @@ export class AuthService implements IAuthService {
   }
 
   login(user: User): LoginResponseDto {
-    const payload = { sub: user.id, username: user.username, role: user.role };
+    // `analyticsConsent` rides along so AnalyticsConsentGuard (#1938) can gate
+    // demo routes without a database read per request. Re-issuing through
+    // /auth/refresh (which reads the user first) is what picks up a consent
+    // given after this token was minted.
+    const payload: JwtPayload = {
+      sub: user.id,
+      username: user.username,
+      role: user.role,
+      analyticsConsent: user.analyticsConsent,
+    };
     const dto = new LoginResponseDto();
     dto.access_token = this.jwtService.sign(payload);
     return dto;

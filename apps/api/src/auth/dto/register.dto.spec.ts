@@ -22,6 +22,9 @@ const validPayload = {
   username: 'alice',
   email: 'alice@example.com',
   password: 'correct-horse-battery',
+  // Optional at the DTO layer (#1938 / #1945 review) — the demo requirement is
+  // enforced by RegistrationService, so a self-hosted client may omit it.
+  analyticsConsent: true,
 };
 
 describe('RegisterDto', () => {
@@ -29,6 +32,24 @@ describe('RegisterDto', () => {
     const errors = await validate(buildDto(validPayload));
 
     expect(errors).toHaveLength(0);
+  });
+
+  it('should accept a payload that omits analyticsConsent (#1938)', async () => {
+    // The demo-only rule lives in RegistrationService: a required DTO field
+    // would 400 every non-demo client for a flag that does nothing there.
+    const withoutConsent = { ...validPayload };
+    delete (withoutConsent as Partial<typeof validPayload>).analyticsConsent;
+    const errors = await validate(buildDto(withoutConsent));
+
+    expect(errors).toHaveLength(0);
+  });
+
+  it('should still reject a non-boolean analyticsConsent (#1938)', async () => {
+    const errors = await validate(buildDto({ ...validPayload, analyticsConsent: 'yes' }));
+
+    expect(errors.find((e) => e.property === 'analyticsConsent')?.constraints).toHaveProperty(
+      'isBoolean',
+    );
   });
 
   it('should reject a username containing "@"', async () => {

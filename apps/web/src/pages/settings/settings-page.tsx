@@ -1,8 +1,6 @@
 import type { ReactElement } from 'react';
 import { env } from '../../shared/config/env';
 import { useSession } from '../../shared/auth/use-session';
-import { AnalyticsConsentTile } from '../../features/demo';
-import { useDemoMode } from '../../features/system';
 import { MailerSettingsTile } from '../../features/mailer-settings/components/mailer-settings-tile';
 import { PosthogSettingsTile } from '../../features/posthog-settings/components/posthog-settings-tile';
 import { McpTokensTile } from '../../features/mcp-tokens/components/mcp-tokens-tile';
@@ -11,7 +9,6 @@ import { PageLayout } from '../../shared/ui/page-layout';
 export function SettingsPage(): ReactElement {
   const { isReady, session } = useSession();
   const isAdmin = isReady && session.status === 'authenticated' && session.user?.role === 'admin';
-  const demoMode = useDemoMode();
 
   return (
     <PageLayout
@@ -22,7 +19,6 @@ export function SettingsPage(): ReactElement {
         <div className="toolbar__group">
           <span className="toolbar-chip">Environment</span>
           <span className="toolbar-chip">Account</span>
-          {demoMode ? <span className="toolbar-chip">Privacy</span> : null}
           {isAdmin ? <span className="toolbar-chip">Mailer</span> : null}
           {isAdmin ? <span className="toolbar-chip">PostHog</span> : null}
           {isAdmin ? <span className="toolbar-chip">MCP tokens</span> : null}
@@ -89,9 +85,6 @@ export function SettingsPage(): ReactElement {
             </dl>
           )}
         </article>
-
-        {/* ── Analytics consent (demo mode only, self-service) ─────── */}
-        <AnalyticsConsentTile />
 
         {/* ── Mailer (admin-only) ──────────────────────────────────── */}
         {isAdmin ? <MailerSettingsTile /> : null}

@@ -6,8 +6,10 @@ export const registerFormSchema = z
     email: z.string().email('Enter a valid email address'),
     password: z.string().min(8, 'Password must be at least 8 characters'),
     confirmPassword: z.string().min(1, 'Please confirm your password'),
-    // Opt-in (#1743): the checkbox ships unchecked; ticking it opts in.
-    analyticsConsent: z.boolean(),
+    // No consent field (#1938): session recording is a condition of the free
+    // demo, disclosed at registration and accepted by creating the account —
+    // not a choice the visitor makes on this form. The submit handler derives
+    // the acceptance flag from demo mode instead.
   })
   .superRefine(({ password, confirmPassword }, ctx) => {
     if (confirmPassword && password !== confirmPassword) {

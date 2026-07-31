@@ -1,7 +1,6 @@
 import { createRef } from 'react';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { DemoBanner } from './demo-banner';
 
 describe('DemoBanner', () => {
@@ -28,27 +27,11 @@ describe('DemoBanner', () => {
     expect(ref.current).toBeInstanceOf(HTMLDivElement);
   });
 
-  it('should never render an accept/decline consent prompt (#1743)', () => {
-    render(<DemoBanner analyticsActive />);
+  it('should never render a consent prompt or an opt-out affordance (#1743, #1938)', () => {
+    render(<DemoBanner />);
     expect(screen.queryByText(/accept analytics/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /decline/i })).not.toBeInTheDocument();
-  });
-
-  it('should not render the analytics status when analyticsActive is false', () => {
-    render(<DemoBanner analyticsActive={false} />);
     expect(screen.queryByText(/analytics on/i)).not.toBeInTheDocument();
-  });
-
-  it('should render the analytics status with a Disable affordance when analyticsActive is true', () => {
-    render(<DemoBanner analyticsActive />);
-    expect(screen.getByText(/analytics on/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /disable/i })).toBeInTheDocument();
-  });
-
-  it('should call onDisableAnalytics when Disable is clicked', async () => {
-    const onDisableAnalytics = vi.fn();
-    render(<DemoBanner analyticsActive onDisableAnalytics={onDisableAnalytics} />);
-    await userEvent.click(screen.getByRole('button', { name: /disable/i }));
-    expect(onDisableAnalytics).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: /disable/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /decline/i })).not.toBeInTheDocument();
   });
 });
