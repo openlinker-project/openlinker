@@ -48,14 +48,19 @@ export function RateLimitSection({
       <h3 className="rate-limit-section__title">Outbound rate limit</h3>
       <p className="rate-limit-section__help">
         OpenLinker spaces requests evenly rather than sending them in bursts. Leave both fields
-        empty for unlimited (the default).
+        empty for unlimited (the default). Enforcement is rolling out sync path by sync path —
+        setting a cap here has no effect until this connection&apos;s outbound traffic has been
+        migrated onto it. If you run multiple API/worker replicas
+        (<code>OL_WORKER_REPLICAS</code>), each value is divided evenly across them, so the real
+        aggregate throughput matches what you configure below rather than multiplying it per
+        replica.
       </p>
 
       <FormField
         label="Requests per minute"
         name="rateLimit.requestsPerMinute"
         error={errors?.requestsPerMinute?.message}
-        description="Smooth-paced cap — e.g. 60 spaces requests roughly one per second."
+        description="Smooth-paced cap, split evenly across replicas — e.g. 60 with 1 replica spaces requests roughly one per second."
       >
         <Input
           value={form.watch('rateLimit.requestsPerMinute') ?? ''}
@@ -71,7 +76,7 @@ export function RateLimitSection({
         label="Max concurrent requests"
         name="rateLimit.maxConcurrent"
         error={errors?.maxConcurrent?.message}
-        description="Caps simultaneous in-flight requests to this connection."
+        description="Caps simultaneous in-flight requests to this connection, split evenly across replicas. These two caps are independent — whichever one binds first wins."
       >
         <Input
           value={form.watch('rateLimit.maxConcurrent') ?? ''}
