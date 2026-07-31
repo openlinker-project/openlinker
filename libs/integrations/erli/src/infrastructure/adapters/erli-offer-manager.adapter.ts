@@ -307,7 +307,24 @@ export class ErliOfferManagerAdapter
 
   async createOffer(cmd: CreateOfferCommand): Promise<CreateOfferResult> {
     const externalOfferId = this.resolveErliProductId(cmd);
-    const body = this.buildCreateBody(cmd);
+    // Body assembly fails closed on incomplete offer data (no safe https image,
+    // blank title, unusable dispatch time, non-finite price). Those are terminal
+    // BUSINESS rejections, not transport faults, so they must surface as the
+    // neutral `OfferCreateRejectedException` (#1934/F6). Left as a bare
+    // `ErliConfigException` they are classified by nothing in
+    // `OfferCreationExecutionService`, get rethrown, and the record stays
+    // `pending` forever - `advanceBatchStatus` is never reached, so the BATCH
+    // never terminates either and the operator reads "Queued" indefinitely,
+    // with the only trace in `sync_jobs.lastError`.
+    let body: ErliProductCreateBody;
+    try {
+      body = this.buildCreateBody(cmd);
+    } catch (error) {
+      if (error instanceof ErliConfigException) {
+        throw this.toCreateRejectedFromConfig(error);
+      }
+      throw error;
+    }
     try {
       // `POST /products/{id}` is create-only and seller-keyed by the resource id
       // (the OL variant id). It is NOT a silent upsert — a duplicate id 409s
@@ -918,6 +935,27 @@ export class ErliOfferManagerAdapter
       },
     ];
     return new OfferCreateRejectedException(this.adapterKey, error.statusCode ?? 0, errors);
+  }
+
+  /**
+   * Map a fail-closed body-assembly error to the neutral create-rejection
+   * (#1934/F6).
+   *
+   * `ErliConfigException` means the offer data cannot produce a valid Erli
+   * product (no safe public-https image, blank title, unusable dispatch time,
+   * non-finite price). That is deterministic and terminal - retrying the same
+   * command cannot succeed - so it belongs on the record as a business failure
+   * with a readable reason, not as an unclassified throw that strands the
+   * record and its batch. Status `0`: nothing was ever sent to Erli.
+   */
+  private toCreateRejectedFromConfig(error: ErliConfigException): OfferCreateRejectedException {
+    const errors: CreateOfferValidationError[] = [
+      {
+        code: 'ERLI_OFFER_DATA_INCOMPLETE',
+        message: error.message,
+      },
+    ];
+    return new OfferCreateRejectedException(this.adapterKey, 0, errors);
   }
 
   /**

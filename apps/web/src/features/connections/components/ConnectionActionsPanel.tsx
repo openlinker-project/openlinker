@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import type { Connection } from '../api/connections.types';
 import { useDisableConnectionMutation } from '../hooks/use-disable-connection-mutation';
 import { useTestConnectionMutation } from '../hooks/use-test-connection-mutation';
+import { EnableConnectionButton } from './EnableConnectionButton';
 import { usePlatform } from '../../../shared/plugins';
 import { TriggerSyncDialog } from '../../sync-jobs';
 import { Button } from '../../../shared/ui/button';
@@ -153,6 +154,19 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
                 {disableConnection.isPending ? 'Disabling...' : 'Disable'}
               </Button>
             </ReadOnlyLock>
+          </div>
+        ) : null}
+
+        {write.visible && isDisabled ? (
+          <div className="action-list__item">
+            <div>
+              <strong>Enable connection</strong>
+              <p className="muted-text">
+                Resume sync activity for this connection. Scheduled jobs start again on the next
+                run.
+              </p>
+            </div>
+            <EnableConnectionButton connection={connection} />
           </div>
         ) : null}
       </div>

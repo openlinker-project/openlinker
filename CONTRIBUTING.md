@@ -23,9 +23,14 @@ troubleshooting in more detail.
 
 ## Prerequisites
 
-- Node.js 18+ (LTS recommended)
+- Node.js 22+ (LTS recommended)
 - pnpm 10+
 - Docker (for the dev stack and integration tests)
+
+The authoritative version table — including the exact Node/pnpm/Postgres/Redis/MySQL
+versions the Docker images and Compose files are built and tested against — lives in
+[`README.md` § Runtime requirements](./README.md#runtime-requirements). The bounds
+above are what `package.json`'s `engines` field enforces.
 
 The dev stack (`pnpm dev:stack:up`) starts PostgreSQL, Redis, MySQL, and
 PrestaShop in containers — you do not need any of those installed locally.

@@ -57,3 +57,16 @@ export interface ProductListingsCoverage {
   platformType: string;
   listedVariants: number;
 }
+
+/**
+ * A variant with an Offer mapping on a connection whose canonical
+ * `product_variants.isStale` flag is currently `true` (#1689). Backs the
+ * stale-offer-pause reconcile sweep — see
+ * `OfferMappingRepositoryPort.findStaleMappedVariants` for the cross-context
+ * join this is read from.
+ */
+export interface StaleMappedVariant {
+  variantId: string;
+  externalOfferId: string;
+  staleAt: Date;
+}

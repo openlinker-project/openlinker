@@ -61,6 +61,7 @@ import {
 import { zodResolver } from '@hookform/resolvers/zod';
 import { usePlatform, type BulkOfferRowSectionProps } from '../../../../shared/plugins';
 import type { Connection } from '../../../connections';
+import { resolveVariantGroupingModel } from '../../../connections';
 import { Alert, Button, ConfirmDialog, FormField, Input, Textarea } from '../../../../shared/ui';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
@@ -980,6 +981,8 @@ function BulkEditModalForm({
                       basePriceValue={resolveBasePrice(baseValues, pricingPolicy, v.masterPrice)}
                       masterImages={masterImages}
                       onZoom={setZoomSrc}
+                      connection={connection}
+                      baseCategoryPathNames={displayPathNames}
                       categoryParameters={renderableCategoryParameters}
                       duplicateEan={dupEanIds.has(v.variantId)}
                       onPatch={(patch) => patchVariant(v.variantId, patch)}
@@ -1399,12 +1402,23 @@ function BaseScopeForm({
               <FormField
                 name="bulk-edit-stock-policy"
                 label="Stock policy"
-                description="Per-product override of the batch stock policy."
+                description={
+                  // #1934/F9 - for a multi-variant product the backend takes
+                  // each sibling's own master availability and DISCARDS any
+                  // submitted per-variant stock, so offering `cap` / `flat`
+                  // here promised a quantity that was silently replaced (and,
+                  // at 0, quietly downgraded the offer to a draft). Say so
+                  // rather than let the operator set a value that never lands.
+                  row.variants.length > 1
+                    ? 'Each variant lists its own master stock. A fixed or capped quantity cannot be applied per variant.'
+                    : 'Per-product override of the batch stock policy.'
+                }
               >
                 <select
                   className="bulk-editor__input"
                   aria-label="Stock policy"
                   value={stockPolicy.mode}
+                  disabled={row.variants.length > 1}
                   onChange={(e) => onStockPolicyChange(nextStockPolicy(e.target.value as StockPolicyMode, stockPolicy))}
                 >
                   <option value="use-master">Use master stock</option>
@@ -1684,6 +1698,10 @@ interface VariantScopeFormProps {
   /** Concrete base price this variant inherits (pre-filled value, #1741). */
   basePriceValue: string;
   masterImages: string[];
+  /** Drives the per-variant category bar's declared grouping model (#1924). */
+  connection: Connection;
+  /** Resolved breadcrumb for the shared base's category, already computed once by the parent (#1924) - shown instead of the raw id. Null when unresolved (falls back to the id). */
+  baseCategoryPathNames: string[] | null;
   categoryParameters: CategoryParameter[];
   duplicateEan: boolean;
   /** Opens the shared zoom lightbox for an image url (always allowed, #1741). */
@@ -1702,6 +1720,8 @@ function VariantScopeForm({
   baseValues,
   basePriceValue,
   masterImages,
+  connection,
+  baseCategoryPathNames,
   categoryParameters,
   duplicateEan,
   onZoom,
@@ -1746,18 +1766,57 @@ function VariantScopeForm({
     .filter(Boolean)
     .join(' ');
 
+  // Per-variant category (#1924). Whether - and how consequentially - this
+  // variant may carry its own category depends on the destination's declared
+  // grouping model. Only `'catalog-implicit'` (Allegro) renders the
+  // interactive 3-state ladder: giving this variant its own category is a
+  // real choice there (it splits the variant out of the grouped listing).
+  // Every other model (`'explicit-group'` - Erli has no browsable picker yet,
+  // #1045 follow-up; `'parent-child'` - WooCommerce; or undeclared, the
+  // locked default) renders read-only - there is nothing functional to hand
+  // off to regardless of the declared model, or the destination structurally
+  // cannot carry it.
+  const connectionId = connection.id;
+  const variantGroupingModel = resolveVariantGroupingModel(connection);
+  const canOverrideCategory = variantGroupingModel === 'catalog-implicit';
+  const [categoryWarn, setCategoryWarn] = useState(false);
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
+  const [ownCategoryPathNames, setOwnCategoryPathNames] = useState<string[] | null>(null);
+  const hasOwnCategory = edit.categoryId !== undefined;
+  // Breadcrumb name instead of the raw id when the base's path is already
+  // resolved (#1924) - falls back to the id (or "Not set on base") only
+  // while the path hasn't resolved yet.
+  const baseCategoryDisplay =
+    baseCategoryPathNames && baseCategoryPathNames.length > 0
+      ? baseCategoryPathNames.join(' › ')
+      : baseValues.categoryId || 'Not set on base';
+
+  const ownCategoryParametersQuery = useCategoryParametersQuery(
+    connectionId,
+    hasOwnCategory ? (edit.categoryId as string) : '',
+  );
+  const effectiveCategoryParameters = useMemo(
+    () =>
+      hasOwnCategory
+        ? (ownCategoryParametersQuery.data ?? []).filter((p) => !isEanParameterName(p.name))
+        : categoryParameters,
+    [hasOwnCategory, ownCategoryParametersQuery.data, categoryParameters],
+  );
+
   // Category parameters mirror the base scope: filter through parameter-level
   // visibility (a `dependsOn`-gated param is hidden until its parent has a
   // qualifying value), then split required-first / optional-behind-expander
   // (#1741). The effective values are the base values overridden by this
   // variant's own overrides (variant wins; inherited entries fall back to base).
+  // Once this variant has its own category (#1924), its required/optional
+  // schema resolves from THAT category, not the shared base's.
   const effectiveParamValues: CategoryParameterFormValues = useMemo(
     () => ({ ...((baseValues.parameters as CategoryParameterFormValues | undefined) ?? {}), ...edit.params }),
     [baseValues.parameters, edit.params],
   );
   const visibleParams = useMemo(
-    () => categoryParameters.filter((p) => isParameterVisible(p, effectiveParamValues)),
-    [categoryParameters, effectiveParamValues],
+    () => effectiveCategoryParameters.filter((p) => isParameterVisible(p, effectiveParamValues)),
+    [effectiveCategoryParameters, effectiveParamValues],
   );
   const requiredParams = visibleParams.filter((p) => p.required);
   const optionalParams = visibleParams.filter((p) => !p.required);
@@ -1995,10 +2054,13 @@ function VariantScopeForm({
         Per-variant
       </div>
 
-      {/* Title + description overrides - collapsed at the top; inherit base by default. */}
+      {/* Title / description / category overrides - collapsed at the top;
+          inherit base by default. Category joins this accordion (#1924)
+          rather than getting its own - all three are rarely-touched
+          per-variant overrides. */}
       <details className="bulk-editor__field">
         <summary style={{ cursor: 'pointer', color: 'var(--accent-primary)' }}>
-          Override base title / description
+          Override base title / description / category
         </summary>
         <div style={{ marginTop: 'var(--space-3)' }}>
           <InheritableTextField
@@ -2031,8 +2093,132 @@ function VariantScopeForm({
               }
             />
           </div>
+
+          {/* Per-variant category (#1924). Only `'catalog-implicit'` (Allegro)
+              renders the interactive ladder - giving this variant its own
+              category is a real, consequential choice there (it leaves the
+              grouped listing). Every other declared model (or none) renders
+              read-only: `'explicit-group'` (Erli) has no browsable picker yet
+              (#1045 follow-up), `'parent-child'` (WooCommerce) is
+              structurally parent-only, and an undeclared adapter resolves to
+              the same locked shape. */}
+          <div className="bulk-editor__field">
+            <label>
+              Category {hasOwnCategory ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />}
+            </label>
+            {!canOverrideCategory ? (
+              <>
+                <Input
+                  className="bulk-editor__input bulk-editor__input--inherited"
+                  value={baseCategoryDisplay}
+                  readOnly
+                  aria-readonly="true"
+                />
+                <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                  {variantGroupingModel === 'parent-child'
+                    ? 'Category is set on the parent product - it cannot be overridden per variant here.'
+                    : 'Shared across all variants.'}
+                </div>
+              </>
+            ) : hasOwnCategory ? (
+              <>
+                <div className="bulk-editor__cat-chip">
+                  <span className="mono-text">
+                    {ownCategoryPathNames && ownCategoryPathNames.length > 0
+                      ? ownCategoryPathNames.join(' › ')
+                      : edit.categoryId}
+                  </span>
+                  <span className="bulk-editor__prov bulk-editor__prov--split">splits listing</span>
+                </div>
+                <div
+                  className="bulk-editor__scope-toggles"
+                  style={{ marginTop: 'var(--space-2)', gap: 'var(--space-2)' }}
+                >
+                  <Button
+                    tone="ghost"
+                    type="button"
+                    className="button--sm"
+                    onClick={() => setCategoryPickerOpen(true)}
+                  >
+                    Change category
+                  </Button>
+                  <button
+                    type="button"
+                    className="bulk-editor__reset"
+                    onClick={() => {
+                      onPatch({ categoryId: undefined });
+                      setOwnCategoryPathNames(null);
+                      setCategoryWarn(false);
+                    }}
+                  >
+                    ↺ reset to shared
+                  </button>
+                </div>
+                <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                  Publishes as its own listing, outside the grouped card.
+                </div>
+              </>
+            ) : categoryWarn ? (
+              <div className="bulk-editor__split-warn" role="alert">
+                <p>
+                  Giving this variant its own category splits it into its own Allegro listing - it stops
+                  grouping with the other variants.
+                </p>
+                <div className="bulk-editor__split-warn-actions">
+                  <Button
+                    tone="primary"
+                    type="button"
+                    className="button--sm"
+                    onClick={() => {
+                      setCategoryWarn(false);
+                      setCategoryPickerOpen(true);
+                    }}
+                  >
+                    Override anyway
+                  </Button>
+                  <Button tone="ghost" type="button" className="button--sm" onClick={() => setCategoryWarn(false)}>
+                    Keep shared
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <Input
+                  className="bulk-editor__input bulk-editor__input--inherited"
+                  value={baseCategoryDisplay}
+                  readOnly
+                  aria-readonly="true"
+                />
+                <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                  Shared across all variants - overriding splits this variant into its own listing.
+                </div>
+                <button
+                  type="button"
+                  className="bulk-editor__override-link"
+                  onClick={() => setCategoryWarn(true)}
+                >
+                  Override for this variant
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </details>
+
+      {canOverrideCategory ? (
+        <BulkCategoryChooseModal
+          open={categoryPickerOpen}
+          onOpenChange={setCategoryPickerOpen}
+          connectionId={connectionId}
+          productName={`${label} (variant)`}
+          selectedId={edit.categoryId ?? null}
+          scope="variant"
+          onSelect={(categoryId, pathNames) => {
+            onPatch({ categoryId });
+            setOwnCategoryPathNames(pathNames);
+          }}
+        />
+      ) : null}
 
       {/* EAN - from master, editable, GS1 + intra-group duplicate validated. */}
       <div className="bulk-editor__field">
@@ -2176,14 +2362,18 @@ function VariantScopeForm({
       </div>
 
       {/* Category parameters - inheritable; required first, optional collapsed
-          behind an expander (mirrors the base CategoryParametersStep). */}
-      {categoryParameters.length > 0 ? (
+          behind an expander (mirrors the base CategoryParametersStep). Once
+          this variant has its own category (#1924), the schema resolves from
+          THAT category rather than the shared base's. */}
+      {effectiveCategoryParameters.length > 0 ? (
         <div className="bulk-editor__platform-slot">
           <div className="bulk-editor__slot-tag">
             <span className="eyebrow">Category parameters</span>
           </div>
           <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 'var(--space-3)' }}>
-            Everything inherits from base. Override only the parameters that differ for this variant.
+            {hasOwnCategory
+              ? "Resolved from this variant's own category."
+              : 'Everything inherits from base. Override only the parameters that differ for this variant.'}
           </div>
           {requiredParams.length > 0 ? (
             <div className="bulk-editor__vparams-grid">{requiredParams.map(renderVariantParam)}</div>

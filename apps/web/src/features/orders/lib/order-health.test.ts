@@ -51,12 +51,37 @@ function order(overrides: Partial<OrderRecord>): OrderRecord {
 }
 
 describe('deriveOrderHealth', () => {
+  it('should return source_deleted when recordStatus is source_deleted (highest precedence, #1689)', () => {
+    const result = deriveOrderHealth(
+      order({
+        recordStatus: 'source_deleted',
+        syncStatus: [syncEntry({ status: 'failed' })],
+        mappingFailureReason: 'variant ol_variant_b deleted at the master',
+      }),
+    );
+    expect(result.key).toBe('source_deleted');
+    expect(result.tone).toBe('error');
+    expect(result.reason).toBe('variant ol_variant_b deleted at the master');
+  });
+
+  it('should prefer source_deleted over awaiting_mapping when recordStatus is source_deleted', () => {
+    const result = deriveOrderHealth(order({ recordStatus: 'source_deleted' }));
+    expect(result.key).toBe('source_deleted');
+  });
+
   it('should return awaiting_mapping when recordStatus is awaiting_mapping (highest precedence)', () => {
     const result = deriveOrderHealth(
       order({ recordStatus: 'awaiting_mapping', syncStatus: [syncEntry({ status: 'failed' })] }),
     );
     expect(result.key).toBe('awaiting_mapping');
     expect(result.tone).toBe('warning');
+  });
+
+  it('should surface mappingFailureReason on an awaiting_mapping order', () => {
+    const result = deriveOrderHealth(
+      order({ recordStatus: 'awaiting_mapping', mappingFailureReason: 'no offer mapping yet' }),
+    );
+    expect(result.reason).toBe('no offer mapping yet');
   });
 
   it('should return needs_attention with the failed reason when a destination failed', () => {

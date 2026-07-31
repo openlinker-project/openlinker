@@ -1,6 +1,12 @@
 name: CD
 
 on:
+  # Manual escape hatch: re-run a deploy for a tag whose automatic run was lost
+  # (see #1891). Deliberately ref-restricted - this job rsyncs to the deploy host
+  # and holds its SSH key, so it must never run from an unreviewed branch. The
+  # `demo` environment's deployment-branch policy allows only `main` + `v*` tags,
+  # and the `Guard deploy ref` step below re-checks that inside the workflow.
+  workflow_dispatch:
   push:
     tags:
       - 'v*'
@@ -12,6 +18,23 @@ jobs:
     environment: demo
     permissions: {}
     steps:
+      # Defence in depth for the `workflow_dispatch` path. The `demo` environment's
+      # deployment-branch policy is the primary gate, but it is a repo setting -
+      # invisible here and silently removable. This step keeps the guarantee in the
+      # workflow itself: a manual deploy runs only from `main` or a `v*` tag, never
+      # from an arbitrary feature branch. Runs before checkout so nothing from an
+      # unapproved ref is fetched.
+      - name: Guard deploy ref
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          case "$GITHUB_REF" in
+            refs/heads/main | refs/tags/v*) ;;
+            *)
+              echo "::error::Manual deploys are allowed only from main or a v* tag (got $GITHUB_REF)."
+              exit 1
+              ;;
+          esac
+
       - uses: actions/checkout@v6
 
       - name: Build web

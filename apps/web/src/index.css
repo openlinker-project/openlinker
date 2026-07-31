@@ -16785,3 +16785,52 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
     display: none;
   }
 }
+
+/* ── MCP tokens (#1486) ─────────────────────────────────────────────── */
+
+.mcp-tokens-panel {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.mcp-token-create-form {
+  display: grid;
+  gap: var(--space-4);
+  max-width: 560px;
+}
+
+.mcp-token-reveal {
+  display: grid;
+  gap: var(--space-2);
+  margin-block: var(--space-4);
+}
+
+.mcp-token-reveal__label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.mcp-token-reveal__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Deliberately always-visible copy affordance — the value is
+   unrecoverable once this dialog closes (see mcp-token-reveal-dialog.tsx). */
+.mcp-token-reveal__value {
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-muted);
+  font-size: 0.75rem;
+}
+
+.mcp-token-reveal__hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}

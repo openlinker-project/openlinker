@@ -80,6 +80,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.sourceDeliveryMethodId ?? null,
     overrides.carrier ?? null,
     overrides.deliveryIntent ?? null,
+    overrides.providerCode ?? null,
   );
 }
 
@@ -123,6 +124,7 @@ describe('ShipmentController', () => {
       getOrderRecord: jest.fn().mockResolvedValue(null),
       findMany: jest.fn(),
       updateFulfillmentState: jest.fn(),
+      markItemResolutionFailure: jest.fn(),
     };
     controller = new ShipmentController(
       query,
@@ -291,6 +293,20 @@ describe('ShipmentController', () => {
       const result = await controller.list({}, VIEWER_USER);
 
       expect(result.items[0].errorMessage).toBe(REDACTED_ERROR_MESSAGE);
+    });
+
+    it('should NOT redact providerCode for a viewer session (#1918 — short discriminator, not carrier prose)', async () => {
+      const shipment = makeShipment({
+        status: 'failed',
+        errorMessage: 'DPD rejected: sender postcode invalid',
+        providerCode: 'preflight.missing-parcel-template',
+      });
+      query.list.mockResolvedValue({ items: [shipment], total: 1 });
+
+      const result = await controller.list({}, VIEWER_USER);
+
+      expect(result.items[0].errorMessage).toBe(REDACTED_ERROR_MESSAGE);
+      expect(result.items[0].providerCode).toBe('preflight.missing-parcel-template');
     });
 
     it('should redact on GET /shipments/:id for a viewer session, and pass through for admin', async () => {

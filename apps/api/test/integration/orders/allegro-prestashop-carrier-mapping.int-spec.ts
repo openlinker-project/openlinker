@@ -72,6 +72,7 @@ import {
   PRESTASHOP_IMAGE,
   PrestashopTestContainer,
   startPrestashopContainer,
+  startSharedPrestashopContainer,
 } from '../helpers/prestashop-container.helper';
 import {
   DefaultPrestashopCarriers,
@@ -217,7 +218,12 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
     // `cartshipping.php` HMAC round-trip). Gated by `INSTALL_OL_MODULE`
     // above — see the docblock there for the CI-environment override and
     // the conditional `it.skip` wiring for S-3.
-    ps = await startPrestashopContainer({ installOlModule: INSTALL_OL_MODULE });
+    // Shared across the PS specs (#1920). The escape hatch still works: with
+    // OL_SKIP_PS_MODULE_INSTALL=true this spec takes its own module-less
+    // container instead of the shared module-installed one.
+    ps = INSTALL_OL_MODULE
+      ? await startSharedPrestashopContainer()
+      : await startPrestashopContainer({ installOlModule: false });
 
     // S-3 — wire the adapter side of the HMAC contract. The module side is
     // seeded into ps_configuration.OPENLINKER_WEBHOOK_SECRET by

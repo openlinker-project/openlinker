@@ -52,3 +52,25 @@ export const KnownProviderRejectionCodeValues = [
  * runtime shape (any plugin-supplied string), keep using `string | null`.
  */
 export type KnownProviderRejectionCode = (typeof KnownProviderRejectionCodeValues)[number];
+
+/**
+ * Coarse retryability classes (#1918) derivable purely from a
+ * `providerCode`'s STRING SHAPE — the family conventions documented above
+ * (`preflight.*`, `command.*`, `api.http-{status}`) — never from a per-code
+ * lookup table, since that would require per-adapter knowledge this closed
+ * core module doesn't have.
+ *
+ * - `'transient'`: the provider was briefly unavailable / rate-limited;
+ *   regenerating is the fix.
+ * - `'permanent'`: a pre-flight gate or a non-auth 4xx rejection — something
+ *   about the request/order needs fixing before retrying.
+ * - `'auth'`: the connection's credentials are the problem, not this
+ *   shipment.
+ * - `'unknown'`: an opaque carrier-surfaced code (or no code at all) — no
+ *   family convention applies, so no classification claim is made.
+ *
+ * See `deriveRetryabilityClass` (`../provider-code-retryability.ts`) for the
+ * derivation.
+ */
+export const RETRYABILITY_CLASS_VALUES = ['transient', 'permanent', 'auth', 'unknown'] as const;
+export type RetryabilityClass = (typeof RETRYABILITY_CLASS_VALUES)[number];

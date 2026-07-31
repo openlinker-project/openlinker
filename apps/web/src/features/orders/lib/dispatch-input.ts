@@ -165,6 +165,7 @@ export const DISPATCH_INELIGIBILITY_REASONS = [
   'payment-blocked',
   'already-shipped',
   'not-ready',
+  'source-deleted',
 ] as const;
 export type DispatchIneligibilityReason = (typeof DISPATCH_INELIGIBILITY_REASONS)[number];
 
@@ -176,6 +177,7 @@ export const DISPATCH_INELIGIBILITY_LABEL: Record<DispatchIneligibilityReason, s
   'payment-blocked': 'Payment not cleared',
   'already-shipped': 'Already shipped',
   'not-ready': 'Awaiting mapping',
+  'source-deleted': 'Source deleted',
 };
 
 /** One-line reason hint shown under an ineligible row. */
@@ -186,6 +188,7 @@ export const DISPATCH_INELIGIBILITY_HINT: Record<DispatchIneligibilityReason, st
   'payment-blocked': 'Payment is not cleared — resolve payment, then dispatch.',
   'already-shipped': 'A shipment already exists for this order.',
   'not-ready': 'Order is still awaiting mapping.',
+  'source-deleted': 'Item was deleted at the source — cannot be dispatched.',
 };
 
 /**
@@ -217,6 +220,9 @@ export function classifyDispatchEligibility(order: OrderRecord): DispatchEligibi
 
   if (order.fulfillmentState === 'dispatched' || order.fulfillmentState === 'delivered') {
     return { ...base, eligible: false, reason: 'already-shipped' };
+  }
+  if (order.recordStatus === 'source_deleted') {
+    return { ...base, eligible: false, reason: 'source-deleted' };
   }
   if (order.recordStatus !== 'ready') {
     return { ...base, eligible: false, reason: 'not-ready' };

@@ -32,6 +32,7 @@ import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@ne
 
 import {
   AdapterCapabilityNotSupportedException,
+  AllVariantsAlreadyListedException,
   BULK_LISTING_RETRY_SERVICE_TOKEN,
   BULK_LISTING_SUBMIT_SERVICE_TOKEN,
   BulkListingBatchNotFoundException,
@@ -125,13 +126,17 @@ export class BulkListingController {
     };
 
     try {
-      const { batchId, jobIds } = await this.bulkSubmit.submit(input);
-      return { batchId, jobIds };
+      const { batchId, jobIds, skippedAlreadyListedCount } = await this.bulkSubmit.submit(input);
+      return { batchId, jobIds, skippedAlreadyListedCount };
     } catch (error) {
       // Invalid-input identifier / override enforcement (#1741) → 400, the same
-      // mapping shape as the empty-submission guard.
+      // mapping shape as the empty-submission guard. `AllVariantsAlreadyListedException`
+      // (#1933) is deliberately distinct from `EmptyBulkSubmissionException` so the FE
+      // can render an honest message instead of "requires at least one productId" after
+      // an operator explicitly confirmed the #1837 duplicate-guard modal.
       if (
         error instanceof EmptyBulkSubmissionException ||
+        error instanceof AllVariantsAlreadyListedException ||
         error instanceof InvalidEanException ||
         error instanceof DuplicateBatchEanException ||
         error instanceof CurrencyMismatchException ||

@@ -10,9 +10,10 @@
 # see docs/frontend-architecture.md § Runtime Configuration). It must point
 # at the API origin reachable from the operator's BROWSER, not from inside
 # the Docker network.
-FROM node:20-alpine AS build
+FROM node:22.23.1-alpine3.24 AS build
 
-RUN npm install -g pnpm@9
+# Pinned to match the repo's packageManager field (package.json).
+RUN npm install -g pnpm@10.33.4
 
 WORKDIR /app
 
@@ -36,10 +37,13 @@ ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 RUN pnpm --filter @openlinker/web build
 
-# Runtime stage — plain nginx serving the static bundle.
-FROM nginx:alpine AS runtime
+# Runtime stage — nginx serving the static bundle, as a non-root user (#1411).
+# nginxinc/nginx-unprivileged is the official image built for exactly this:
+# it already runs as uid 101 (nginx) and listens on 8080 instead of the
+# privileged port 80 — see apps/web/nginx.conf, which listens on 8080 to match.
+FROM nginxinc/nginx-unprivileged:1.31-alpine AS runtime
 
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 
-EXPOSE 80
+EXPOSE 8080

@@ -334,6 +334,7 @@ import {
   imageCountForVariant,
   isValidGtin,
   recomputeVariantBlockers,
+  toGtin14,
 } from './bulk-policy';
 import type {
   BulkVariantRow,
@@ -521,5 +522,123 @@ describe('recomputeVariantBlockers', () => {
     const blockers = recomputeVariantBlockers(row, rescued, CONFIG, new Map());
     expect(blockers).not.toContain('no-ean');
     expect(blockers).toHaveLength(0);
+  });
+
+  it('validates a variant with its own category (#1924) against THAT category required params, not the family resolved one', () => {
+    // Family/resolved category ('cat-1') requires 'brand'; the variant's own
+    // override category ('cat-tester') requires 'material' instead. A variant
+    // given its own category via the per-variant bar (#1924) must be checked
+    // against its own schema, not the family's.
+    const requiredByCategory = new Map<string, readonly string[]>([
+      ['cat-1', ['brand']],
+      ['cat-tester', ['material']],
+    ]);
+    const withOwnCategory = makeVariant('ol_variant_1', {
+      resolvedCategoryId: 'cat-1',
+      resolvedProductCardId: null,
+      override: { overrides: { categoryId: 'cat-tester' } },
+    });
+    const row = makeWizardRow([withOwnCategory]);
+
+    const blockers = recomputeVariantBlockers(
+      row,
+      withOwnCategory,
+      CONFIG,
+      requiredByCategory,
+      allegroValidate,
+    );
+
+    expect(blockers).toContain(NEEDS_PARAMS);
+  });
+
+  it('does not block on the family category requirement once satisfied by the variant own category override', () => {
+    // 'cat-1' requires 'brand' (unsatisfied), but this variant overrides to
+    // 'cat-tester', which has no required params at all - it must not inherit
+    // the family category's blocker.
+    const requiredByCategory = new Map<string, readonly string[]>([
+      ['cat-1', ['brand']],
+      ['cat-tester', []],
+    ]);
+    const withOwnCategory = makeVariant('ol_variant_1', {
+      resolvedCategoryId: 'cat-1',
+      resolvedProductCardId: null,
+      override: { overrides: { categoryId: 'cat-tester' } },
+    });
+    const row = makeWizardRow([withOwnCategory]);
+
+    const blockers = recomputeVariantBlockers(
+      row,
+      withOwnCategory,
+      CONFIG,
+      requiredByCategory,
+      allegroValidate,
+    );
+
+    expect(blockers).not.toContain(NEEDS_PARAMS);
+  });
+});
+
+// ── #1934 preflight-vs-backend divergences ───────────────────────────────────
+
+describe('#1934/F3 - a non-positive price must block the row, not the batch', () => {
+  // `CreateOfferPriceDto.amount` is `@IsPositive()` and is validated per
+  // override-map value, so one `0` rejects the WHOLE request with an opaque
+  // `price: invalid value`. `markup` and `use-master` already guarded this;
+  // `flat` and the per-row override did not.
+  it('blocks a flat policy amount of 0', () => {
+    const result = computeResolvedPrice({ mode: 'flat', amount: 0 }, 39, {});
+    expect(result.value).toBeNull();
+    expect(result.blocker).toBe('no-master-price');
+  });
+
+  it('blocks a per-row price override of 0', () => {
+    const result = computeResolvedPrice({ mode: 'use-master' }, 39, {
+      price: { amount: 0, currency: 'PLN' },
+    });
+    expect(result.value).toBeNull();
+    expect(result.blocker).toBe('no-master-price');
+  });
+
+  it('still accepts a positive flat amount', () => {
+    const result = computeResolvedPrice({ mode: 'flat', amount: 12.5 }, null, {});
+    expect(result).toMatchObject({ value: 12.5, blocker: null });
+  });
+});
+
+describe('#1934/F7 - duplicate EAN detection must normalise to GTIN-14', () => {
+  // The backend pads to GTIN-14 before comparing, so `5901234123457` and
+  // `05901234123457` are one identity there. Keying on the raw string left the
+  // wizard silent while the backend 400d the whole batch.
+  it('treats a zero-padded GTIN-14 and its EAN-13 as the same identity', () => {
+    const rows = [
+      makeWizardRow([
+        makeVariant('ol_variant_a', { override: { overrides: { ean: '5901234123457' } } }),
+      ]),
+      makeWizardRow([
+        makeVariant('ol_variant_b', { override: { overrides: { ean: '05901234123457' } } }),
+      ]),
+    ];
+
+    expect(duplicateEanVariantIds(rows)).toEqual(
+      new Set(['ol_variant_a', 'ol_variant_b']),
+    );
+  });
+
+  it('does not flag genuinely different barcodes', () => {
+    const rows = [
+      makeWizardRow([
+        makeVariant('ol_variant_a', { override: { overrides: { ean: '5901234123457' } } }),
+      ]),
+      makeWizardRow([
+        makeVariant('ol_variant_b', { override: { overrides: { ean: '4006381333931' } } }),
+      ]),
+    ];
+
+    expect(duplicateEanVariantIds(rows).size).toBe(0);
+  });
+
+  it('normalises to the padded form', () => {
+    expect(toGtin14('5901234123457')).toBe('05901234123457');
+    expect(toGtin14('05901234123457')).toBe('05901234123457');
   });
 });

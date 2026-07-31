@@ -13,6 +13,7 @@ import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import type {
   OrderRecordFilters,
   OrderRecordPagination,
+  OrderRecordStatus,
   PaginatedOrderRecords,
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
@@ -106,5 +107,20 @@ export interface IOrderRecordService {
   updateFulfillmentState(
     internalOrderId: string,
     fulfillmentState: FulfillmentRollupState
+  ): Promise<void>;
+
+  /**
+   * Record why item resolution failed at ingestion (#1689), honestly
+   * classifying the record as `'awaiting_mapping'` (an ordinary, self-healing
+   * gap) or `'source_deleted'` (a permanently unresolvable ref — the mapped
+   * variant is deleted at its master). Called by `OrderIngestionService`
+   * immediately before it throws so the reason isn't lost to the worker log.
+   * No-op (logged, not thrown) when no record exists yet for `internalOrderId`
+   * — `persistIncomingSnapshot` always runs first in the ingestion flow, so
+   * this is a defensive guard, not an expected path.
+   */
+  markItemResolutionFailure(
+    internalOrderId: string,
+    input: { status: OrderRecordStatus; reason: string }
   ): Promise<void>;
 }

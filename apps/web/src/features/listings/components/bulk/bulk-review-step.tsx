@@ -24,6 +24,7 @@ import {
   computeResolvedPrice,
   computeResolvedStock,
   distinguishingLabel,
+  duplicateEanVariantIds,
   effectivePricingPolicy,
   effectiveStockPolicy,
 } from './bulk-policy';
@@ -68,6 +69,13 @@ interface BulkReviewStepProps {
   onApproveAll: () => void;
   onBack: () => void;
 }
+
+/**
+ * Server-side ceiling shared by the expanded fan-out (`EXPANDED_OFFER_CEILING`,
+ * 422) and the `excludedVariantIds` array cap (`@ArrayMaxSize(1000)`, 400).
+ * Mirrored here so Review can say so before submit (#1934/F8).
+ */
+const BULK_SUBMIT_LIMIT = 1000;
 
 /** Products per page in the Review table (keeps a large batch from rendering every row at once). */
 const REVIEW_PAGE_SIZE = 20;
@@ -135,8 +143,32 @@ export function BulkReviewStep({
   const [pendingScroll, setPendingScroll] = useState<string | null>(null);
 
   const counts = useMemo(() => countBatch(rows), [rows]);
+
+  // Batch-wide effective-EAN collision (#1934/F7). `enforceIdentifierRules`
+  // server-side throws `DuplicateBatchEanException` -> 400 for the WHOLE
+  // request, so this has to gate submit, not merely warn: the operator would
+  // otherwise get a rejection naming two variant ids nothing ever flagged.
+  // Until now the helper only ever ran on a single row inside the editor,
+  // so a cross-product collision was structurally invisible.
+  const duplicateEanIds = useMemo(() => duplicateEanVariantIds(rows), [rows]);
+
+  // Two server-side ceilings the wizard never compared against (#1934/F8), so
+  // a large apparel catalogue only found out at submit: the post-exclusion
+  // fan-out is capped at `EXPANDED_OFFER_CEILING` (422) and `excludedVariantIds`
+  // at `@ArrayMaxSize(1000)` (400). Distinct layers, distinct statuses - and
+  // both invisible until now, even though Review already counts exactly the
+  // numbers they bound. (The 100-product cap IS already mirrored, in the
+  // picker.)
+  const overExpansionCeiling = counts.includedReady > BULK_SUBMIT_LIMIT;
+  const overExclusionCap = counts.excluded > BULK_SUBMIT_LIMIT;
+
   const canApprove =
-    counts.includedReady > 0 && counts.includedNeedsAttention === 0 && !paramsResolving;
+    counts.includedReady > 0 &&
+    counts.includedNeedsAttention === 0 &&
+    duplicateEanIds.size === 0 &&
+    !overExpansionCeiling &&
+    !overExclusionCap &&
+    !paramsResolving;
 
   const filteredRows = useMemo(() => {
     const needle = filter.trim().toLowerCase();
@@ -292,10 +324,39 @@ export function BulkReviewStep({
       </div>
 
       <div
-        className={counts.includedNeedsAttention === 0 ? 'bulk-review__banner bulk-review__banner--ok' : 'bulk-review__banner'}
+        className={
+          counts.includedNeedsAttention === 0 && duplicateEanIds.size === 0
+            ? 'bulk-review__banner bulk-review__banner--ok'
+            : 'bulk-review__banner'
+        }
         role="status"
       >
-        {counts.includedNeedsAttention === 0 ? (
+        {overExpansionCeiling ? (
+          <>
+            <b>
+              This batch would create {counts.includedReady} offers, over the {BULK_SUBMIT_LIMIT}
+              -offer limit for one run.
+            </b>{' '}
+            Switch some variants off, or split the selection across two runs.
+          </>
+        ) : overExclusionCap ? (
+          <>
+            <b>
+              {counts.excluded} variants are switched off, over the {BULK_SUBMIT_LIMIT} the
+              submit can carry.
+            </b>{' '}
+            Narrow the product selection instead of switching this many variants off.
+          </>
+        ) : duplicateEanIds.size > 0 ? (
+          <>
+            <b>
+              {duplicateEanIds.size} included variants share a barcode with another variant in
+              this batch.
+            </b>{' '}
+            The marketplace treats them as one product identity and the submit is rejected
+            whole - give each one its own EAN, or switch the duplicates off.
+          </>
+        ) : counts.includedNeedsAttention === 0 ? (
           <>
             <b>All included variants are ready.</b> {counts.includedReady} offers will be created;
             the marketplace groups each product's variants into one listing.

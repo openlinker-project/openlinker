@@ -42,10 +42,11 @@ describe('MasterProductSyncHandler', () => {
       updatedAt: new Date(),
     }) as unknown as SyncJob;
 
-  const result = (masterDeleted: boolean): MasterProductSyncResult => ({
+  const result = (masterDeleted: boolean, pruneSkipped = false): MasterProductSyncResult => ({
     internalProductId: 'ol_product_abc',
     variantsUpserted: masterDeleted ? 0 : 2,
     masterDeleted,
+    pruneSkipped,
   });
 
   it('returns outcome=ok for a normal sync', async () => {
@@ -54,10 +55,21 @@ describe('MasterProductSyncHandler', () => {
     await expect(handler.execute(createJob())).resolves.toEqual({ outcome: 'ok' });
   });
 
-  it('returns outcome=business_failure when the product was deleted at the master', async () => {
+  it('returns outcome=business_failure with outcomeReason=master_deleted when the product was deleted at the master', async () => {
     masterProductSync.syncFromMasterByExternalId.mockResolvedValueOnce(result(true));
 
-    await expect(handler.execute(createJob())).resolves.toEqual({ outcome: 'business_failure' });
+    await expect(handler.execute(createJob())).resolves.toEqual({
+      outcome: 'business_failure',
+      outcomeReason: 'master_deleted',
+    });
+  });
+
+  // A withheld prune (#1904) is an operator-attention condition, not a business
+  // outcome - the upserts still succeeded, so the job stays ok.
+  it('keeps outcome=ok when the staleness prune was skipped for a rival-claimed product id', async () => {
+    masterProductSync.syncFromMasterByExternalId.mockResolvedValueOnce(result(false, true));
+
+    await expect(handler.execute(createJob())).resolves.toEqual({ outcome: 'ok' });
   });
 
   it('wraps a transient service error in a retryable SyncJobExecutionError', async () => {

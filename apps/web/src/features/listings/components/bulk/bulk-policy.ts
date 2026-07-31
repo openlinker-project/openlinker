@@ -58,12 +58,21 @@ export function computeResolvedPrice(
   override: BulkPerProductOverride,
 ): ResolvedPrice {
   if (override.price !== undefined) {
-    return { value: override.price.amount, source: 'override', blocker: null };
+    // An explicit per-row amount is authoritative, but it still has to be
+    // publishable: `CreateOfferPriceDto.amount` is `@IsPositive()` and is
+    // validated per map value, so a single `0` rejects the WHOLE batch with an
+    // opaque `price: invalid value` (#1934/F3). Block it on the row instead.
+    return override.price.amount > 0
+      ? { value: override.price.amount, source: 'override', blocker: null }
+      : { value: null, source: 'override', blocker: 'no-master-price' };
   }
   switch (policy.mode) {
     case 'flat':
-      // Operator's explicit batch-wide amount - used verbatim, never blocks.
-      return { value: policy.amount, source: 'policy', blocker: null };
+      // Operator's explicit batch-wide amount. Same `@IsPositive()` floor as
+      // the override path above - `markup` and `use-master` already guard it.
+      return policy.amount > 0
+        ? { value: policy.amount, source: 'policy', blocker: null }
+        : { value: null, source: 'policy', blocker: 'no-master-price' };
     case 'markup': {
       if (masterPrice === null) {
         return { value: null, source: 'policy', blocker: 'no-master-price' };
@@ -452,6 +461,19 @@ export function isValidGtin(code: string): boolean {
 }
 
 /**
+ * Normalise a GTIN to its 14-digit form, mirroring `enforceIdentifierRules`
+ * server-side (#1934/F7).
+ *
+ * GS1 identity is length-independent: EAN-13 `5901234123457` and its
+ * zero-padded GTIN-14 `05901234123457` are one identifier, and the backend
+ * compares padded. Any duplicate detection that keys on the raw string sees two
+ * different codes and stays quiet while the backend rejects the batch.
+ */
+export function toGtin14(code: string): string {
+  return code.padStart(14, '0');
+}
+
+/**
  * Recompute one sibling's blocker set from its own EAN + master values + the
  * batch policies (#1741). Mirrors `recomputeRowBlockers` but keyed on the
  * per-variant row. `no-master-stock` is downgraded for multi-variant siblings -
@@ -548,9 +570,14 @@ export function duplicateEanVariantIds(rows: BulkWizardRow[]): Set<string> {
       if (!variant.included) continue;
       const ean = effectiveVariantEan(variant);
       if (!ean || !isValidGtin(ean)) continue;
-      const list = byEan.get(ean) ?? [];
+      // Key on the GTIN-14 form, matching `enforceIdentifierRules` server-side
+      // (#1934/F7). `5901234123457` and `05901234123457` are the SAME GS1
+      // identity; keying on the raw string treats them as distinct, so the
+      // wizard stays silent and the backend 400s the whole batch instead.
+      const key = toGtin14(ean);
+      const list = byEan.get(key) ?? [];
       list.push(variant.variantId);
-      byEan.set(ean, list);
+      byEan.set(key, list);
     }
   }
   const dupes = new Set<string>();

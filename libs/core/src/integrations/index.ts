@@ -11,6 +11,8 @@
 export { IntegrationsService } from './application/services/integrations.service';
 export { IIntegrationsService } from './application/interfaces/integrations.service.interface';
 export { ICredentialsService } from './application/interfaces/credentials.service.interface';
+export { IEntityClaimService } from './application/interfaces/entity-claim.service.interface';
+export { EntityClaimService } from './application/services/entity-claim.service';
 export { AdapterFactoryResolverService } from './infrastructure/adapters/adapter-factory-resolver.service';
 export { ConnectionTesterRegistryService } from './infrastructure/adapters/connection-tester-registry.service';
 export { WebhookProvisioningRegistryService } from './infrastructure/adapters/webhook-provisioning-registry.service';
@@ -51,8 +53,12 @@ export {
   CoreCapability,
   CoreCapabilityValues,
   AdapterMetadata,
+  VariantGroupingModel,
+  VariantGroupingModelValues,
+  resolveVariantGroupingModel,
 } from './domain/types/adapter.types';
 export { ConnectionTestResult } from './domain/types/connection-test.types';
+export { EntityClaimQuery } from './application/types/entity-claim.types';
 export { WebhookProvisioningResult } from './domain/types/webhook-provisioning.types';
 export {
   CanonicalInboundEvent,

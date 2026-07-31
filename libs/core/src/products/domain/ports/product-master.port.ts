@@ -41,6 +41,22 @@ export interface Category {
  *
  * Single source of truth for product catalog. Manages product data,
  * variants, attributes, and categories.
+ *
+ * ## Error contract for `getProduct` (#1599)
+ *
+ * An implementer MUST translate a **master-side deletion** — the platform itself
+ * reporting the product absent (a 404 / empty resource fetch) — into the neutral
+ * `MasterProductNotFoundError`. `MasterProductSyncService` treats that error as
+ * "deleted at the master": it stales the product's rows, emits
+ * `master.product.stale`, and the worker handler terminalises the job as
+ * `outcome: 'business_failure'` (ADR-007) rather than retrying a permanent
+ * condition. Any other failure (network, auth, 5xx) must propagate unchanged so
+ * the job stays retryable.
+ *
+ * The sibling `InventoryMasterPort` carries the same contract on its two read
+ * methods (#1688), including the exclusions it documents there for a mapping
+ * gap, a corrupted mapping, and an inferred (rather than platform-reported)
+ * absence.
  */
 export interface ProductMasterPort {
   /**
@@ -51,7 +67,8 @@ export interface ProductMasterPort {
    *
    * @param productId - Internal OpenLinker product ID
    * @returns Product with internal ID
-   * @throws Error if product not found
+   * @throws MasterProductNotFoundError if the product is absent at the master
+   *   (see the error contract on this interface)
    */
   getProduct(productId: string): Promise<Product>;
 

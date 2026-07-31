@@ -29,6 +29,7 @@ import { InfaktInvoicingAdapter, INFAKT_PROVIDER_TYPE } from '../infakt-invoicin
 import { InfaktApiError } from '../../../domain/exceptions/infakt-api.error';
 import { FakeInfaktHttpClient } from '../../../testing/fake-infakt-http-client';
 import type {
+  InfaktAsyncTaskAccepted,
   InfaktInvoice,
   InfaktClient,
   InfaktListResponse,
@@ -134,6 +135,31 @@ function ksefResponseFixture(
     status: 'pending',
     status_description: 'Faktura oczekuje na wysłanie do KSeF.',
     timestamps: { request_created_at: '2026-07-01T12:00:00Z', request_finished_at: '2026-07-01T12:00:00Z' },
+    ...overrides,
+  };
+}
+
+/**
+ * Task envelope returned by `POST async/corrective_invoices.json` and by
+ * `GET async/corrective_invoices/status/{ref}.json` (#1763).
+ *
+ * Defaults to the TERMINAL-SUCCESS shape confirmed live (2026-07-28):
+ * `processing_code: 201` + `invoice_uuid`. Override `processing_code: 100` for
+ * the still-processing envelope, or a 4xx for the failure envelope — note
+ * `invoice_kind` is echoed on ALL THREE (it names the requested resource, not
+ * the outcome), so only `invoice_uuid` discriminates success.
+ */
+function asyncTaskFixture(
+  overrides: Partial<InfaktAsyncTaskAccepted> = {},
+): InfaktAsyncTaskAccepted {
+  return {
+    invoice_task_reference_number: 'task-ref-1',
+    processing_code: 201,
+    processing_description: 'Faktura stworzona',
+    timestamps: { task_created_at: '2026-07-28 16:53:00 +0200' },
+    action: 'create_invoice',
+    invoice_kind: 'corrective_invoice',
+    invoice_uuid: 'corr-uuid-1',
     ...overrides,
   };
 }
@@ -969,20 +995,36 @@ describe('InfaktInvoicingAdapter', () => {
       idempotencyKey: 'idem-corr-1',
     };
 
-    it('should POST to corrective_invoices.json with the corrective_invoice wrapper and corrected_* fields (happy path, #1337)', async () => {
+    /**
+     * Seeds the three-call async correction flow (#1763): POST the task,
+     * hydrate the resolved corrective invoice, kick its own KSeF submission.
+     * `task` overrides let a test return the still-processing or failure
+     * envelope from the POST instead.
+     */
+    function seedAsyncCorrection(
+      task: Partial<InfaktAsyncTaskAccepted> = {},
+      invoice: Partial<InfaktInvoice> = {},
+    ): void {
       http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
-      // Posting kind:'corrective' to invoices.json made Infakt SILENTLY create
-      // a plain, unlinked VAT invoice — the dedicated corrective endpoint is
-      // the only path that yields a real correction (verified live, 2026-07-03).
+      http.seed('POST', 'async/corrective_invoices.json', asyncTaskFixture(task));
       http.seed(
-        'POST',
-        'corrective_invoices.json',
-        invoiceFixture({ uuid: 'corr-uuid-1', kind: 'correction', corrected_invoice_number: 'FV/1/2026' }),
+        'GET',
+        'corrective_invoices/corr-uuid-1.json',
+        invoiceFixture({ uuid: 'corr-uuid-1', kind: 'correction', ...invoice }),
       );
       // A correction is its own KSeF document — needs its own send_to_ksef
       // kick through the corrective resource (invoices/… 404s for corrective
       // uuids; verified live, 2026-07-03).
       http.seed('POST', 'corrective_invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
+    }
+
+    it('should POST to async/corrective_invoices.json and hydrate the resolved corrective invoice (happy path, #1763)', async () => {
+      // The bare `corrective_invoices.json` path is NOT a real Infakt endpoint
+      // — it 500s on every payload regardless of shape. The documented
+      // creation flow is the async task endpoint (#1763), whose envelope
+      // carries only `invoice_uuid`, so the full document must be hydrated
+      // separately.
+      seedAsyncCorrection({}, { corrected_invoice_number: 'FV/1/2026' });
 
       const { record } = await adapter.issueCorrection(baseCmd);
 
@@ -992,8 +1034,27 @@ describe('InfaktInvoicingAdapter', () => {
       expect(record.regulatoryStatus).toBe('submitted');
 
       expect(http.calls.some((c) => c.method === 'POST' && c.path === 'invoices.json')).toBe(false);
+      // The pre-#1763 sync path must never be called again.
+      expect(
+        http.calls.some((c) => c.method === 'POST' && c.path === 'corrective_invoices.json'),
+      ).toBe(false);
+      expect(
+        http.calls.some((c) => c.method === 'GET' && c.path === 'corrective_invoices/corr-uuid-1.json'),
+      ).toBe(true);
+      expect(
+        http.calls.some(
+          (c) => c.method === 'POST' && c.path === 'corrective_invoices/corr-uuid-1/send_to_ksef.json',
+        ),
+      ).toBe(true);
+    });
+
+    it('should send corrected_invoice_uuid and a correction_reason SYMBOL, never the read-only correction_reason_symbol (#1763)', async () => {
+      seedAsyncCorrection();
+
+      await adapter.issueCorrection(baseCmd);
+
       const invoiceCall = http.calls.find(
-        (c) => c.method === 'POST' && c.path === 'corrective_invoices.json',
+        (c) => c.method === 'POST' && c.path === 'async/corrective_invoices.json',
       );
       // Verified live against the real Infakt v3 sandbox (2026-07-01):
       // omitting client_id on a corrective invoice 422s with "client_id
@@ -1003,69 +1064,205 @@ describe('InfaktInvoicingAdapter', () => {
           client_id: 1,
           corrected_invoice_number: 'FV/1/2026',
           corrected_invoice_date: '2026-07-01',
-          correction_reason: 'Zwrot towaru',
-          correction_reason_symbol: 'other',
+          corrected_invoice_uuid: 'inv-uuid-1',
+          // `correction_reason` is the WRITABLE field and takes a symbol from
+          // Infakt's closed vocabulary — the operator's free-text
+          // `cmd.reason` ('Zwrot towaru') is deliberately NOT forwarded.
+          correction_reason: 'other',
         }),
       });
-      expect(
-        http.calls.some(
-          (c) => c.method === 'POST' && c.path === 'corrective_invoices/corr-uuid-1/send_to_ksef.json',
-        ),
-      ).toBe(true);
+      const body = invoiceCall?.body as { corrective_invoice: Record<string, unknown> };
+      expect('correction_reason_symbol' in body.corrective_invoice).toBe(false);
     });
 
-    it('should throw an InfaktApiError with failureMode: in-doubt when the provider downgrades the document kind (#1337)', async () => {
-      // Belt-and-suspenders for the silent-downgrade class of bug: a created
-      // document whose kind is not 'correction' has no corrective linkage. A
-      // document WAS created here (wrong kind), so this is `in-doubt` (5xx),
-      // not `rejected` — re-attempting could spawn a second orphaned corrective.
-      http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
-      http.seed(
-        'POST',
-        'corrective_invoices.json',
-        invoiceFixture({ uuid: 'corr-uuid-1', kind: 'vat' }),
-      );
+    it('should poll the async status endpoint while the task is still processing (#1763)', async () => {
+      // `processing_code: 100` = "Zlecenie przyjęte" (accepted, still
+      // processing) — the POST response carries no invoice_uuid yet, so the
+      // adapter must poll the status endpoint to a terminal state.
+      //
+      // Fake timers so the 2s poll interval is not actually slept through —
+      // the unit suite's budget is ~2-3s in total (#1899 review).
+      jest.useFakeTimers();
+      try {
+        seedAsyncCorrection({ processing_code: 100, processing_description: 'Zlecenie przyjęte' });
+        http.seed('GET', 'async/corrective_invoices/status/task-ref-1.json', asyncTaskFixture());
+
+        const pending = adapter.issueCorrection(baseCmd);
+        await jest.advanceTimersByTimeAsync(2000);
+        const { record } = await pending;
+
+        expect(
+          http.calls.some(
+            (c) =>
+              c.method === 'GET' && c.path === 'async/corrective_invoices/status/task-ref-1.json',
+          ),
+        ).toBe(true);
+        expect(record.providerInvoiceId).toBe('corr-uuid-1');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('should classify a 4xx terminal processing_code as failureMode: rejected (#1763)', async () => {
+      // Verified live (2026-07-29): an invalid payload resolves to
+      // `{processing_code: 422, processing_description: "Nie udało się
+      // stworzyć faktury"}` with NO invoice_uuid — the provider
+      // deterministically created nothing, so this is the re-attemptable
+      // `'rejected'` class. Collapsing it to 502 would make it `'in-doubt'`
+      // and park the record for manual reconciliation instead.
+      seedAsyncCorrection({
+        processing_code: 422,
+        processing_description: 'Nie udało się stworzyć faktury',
+        invoice_uuid: undefined,
+      });
 
       await expect(adapter.issueCorrection(baseCmd)).rejects.toMatchObject({
         name: 'InfaktApiError',
-        failureMode: 'in-doubt',
+        statusCode: 422,
+        failureMode: 'rejected',
       });
-      // The downgraded document must never be submitted to KSeF.
+      // Nothing was created — never hydrate, never submit to KSeF.
+      expect(
+        http.calls.some((c) => c.method === 'GET' && c.path === 'corrective_invoices/corr-uuid-1.json'),
+      ).toBe(false);
       expect(http.calls.some((c) => c.path.endsWith('send_to_ksef.json'))).toBe(false);
     });
 
-    it('should send string quantities and "X.XX PLN" unit_net_price strings, paired per string group (#1337)', async () => {
-      // corrective_invoices.json's wire formats DIFFER from invoices.json
-      // (verified live, 2026-07-03): integer groszy / numeric quantity 500
-      // here; the decimal "amount currency" string + string quantity are the
-      // only accepted shapes. baseCmd's line carries no newUnitPriceGross, so
-      // both the "before" row and the fallback "after" row carry the
-      // original's 100.00 PLN net.
-      http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
-      http.seed('POST', 'corrective_invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'correction' }));
-      http.seed('POST', 'corrective_invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
+    it('should classify an unknown terminal processing_code as failureMode: in-doubt (#1763)', async () => {
+      // A non-4xx terminal code with no invoice_uuid is indeterminate — a
+      // document MAY exist, so core must not auto-re-attempt.
+      seedAsyncCorrection({
+        processing_code: 500,
+        processing_description: 'Błąd serwera',
+        invoice_uuid: undefined,
+      });
+
+      await expect(adapter.issueCorrection(baseCmd)).rejects.toMatchObject({
+        statusCode: 502,
+        failureMode: 'in-doubt',
+      });
+    });
+
+    it('should reject a task envelope resolved for a different invoice kind (#1337 precedent)', async () => {
+      // Belt-and-suspenders for the silent-downgrade class of bug: a task
+      // envelope naming a non-corrective resource must never be hydrated and
+      // persisted as a correction.
+      seedAsyncCorrection({ invoice_kind: 'vat' });
+
+      await expect(adapter.issueCorrection(baseCmd)).rejects.toMatchObject({
+        name: 'InfaktApiError',
+      });
+      expect(http.calls.some((c) => c.path.endsWith('send_to_ksef.json'))).toBe(false);
+    });
+
+    it('should reject a line number that does not exist on the original invoice, before any POST (#1899 review)', async () => {
+      // An out-of-range line number matches no original row, so every group
+      // would emit an identical before/after pair and Infakt would mint a
+      // real 0.00 PLN corrective document (reproduced live 2026-07-29:
+      // `originalLineNumber: 99` produced `3/KOR/07/2026`, gross 0, and it
+      // was submitted to KSeF). Nothing crossed the boundary, so `rejected`.
+      seedAsyncCorrection();
+
+      await expect(
+        adapter.issueCorrection({
+          ...baseCmd,
+          lines: [{ originalLineNumber: 99, newUnitPriceGross: 1 }],
+        }),
+      ).rejects.toMatchObject({
+        name: 'InfaktApiError',
+        statusCode: 422,
+        failureMode: 'rejected',
+      });
+      expect(
+        http.calls.some((c) => c.method === 'POST' && c.path === 'async/corrective_invoices.json'),
+      ).toBe(false);
+    });
+
+    it('should reject a duplicated line number, before any POST (#1899 review)', async () => {
+      // Two corrected rows for one group leaves the group's before/after
+      // pairing — what Infakt computes the delta from — undefined. Same
+      // pre-POST 422 / `rejected` class as the out-of-range guard.
+      seedAsyncCorrection();
+
+      await expect(
+        adapter.issueCorrection({
+          ...baseCmd,
+          lines: [
+            { originalLineNumber: 1, newUnitPriceGross: 10 },
+            { originalLineNumber: 1, newUnitPriceGross: 20 },
+          ],
+        }),
+      ).rejects.toMatchObject({
+        name: 'InfaktApiError',
+        statusCode: 422,
+        failureMode: 'rejected',
+      });
+      expect(
+        http.calls.some((c) => c.method === 'POST' && c.path === 'async/corrective_invoices.json'),
+      ).toBe(false);
+    });
+
+    it('should reject a hydrated document whose kind is not a correction (#1337 guard, #1899 review)', async () => {
+      // The task envelope's `invoice_kind` names the REQUESTED resource, so it
+      // cannot catch the provider silently minting a plain VAT invoice from a
+      // correction payload (the original #1337 defect, verified live
+      // 2026-07-03). The created document's own `kind` is the only field that
+      // can. 502 → `in-doubt`: a document DOES exist, so core must not
+      // auto-re-attempt and mint a second one.
+      seedAsyncCorrection({}, { kind: 'vat' });
+
+      await expect(adapter.issueCorrection(baseCmd)).rejects.toMatchObject({
+        name: 'InfaktApiError',
+        statusCode: 502,
+        failureMode: 'in-doubt',
+      });
+      expect(http.calls.some((c) => c.path.endsWith('send_to_ksef.json'))).toBe(false);
+    });
+
+    it('should warn that the operator free-text reason is discarded (#1899 review)', async () => {
+      // Infakt's correction_reason takes a closed symbol vocabulary, so
+      // cmd.reason cannot be forwarded — the loss must at least be observable.
+      seedAsyncCorrection();
+
+      await adapter.issueCorrection(baseCmd);
+
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('Zwrot towaru'));
+    });
+
+    it('should not warn when no correction reason was supplied (#1899 review)', async () => {
+      seedAsyncCorrection();
+
+      await adapter.issueCorrection({ ...baseCmd, reason: undefined });
+
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('should send integer-groszy unit_net_price and numeric quantity, paired per string group (#1763)', async () => {
+      // Same plain-integer-groszy / numeric-quantity shape as
+      // async/invoices.json — live-verified 2026-07-29. baseCmd's line
+      // carries no newUnitPriceGross, so both the "before" row and the
+      // fallback "after" row carry the original's 10000 groszy net.
+      seedAsyncCorrection();
 
       await adapter.issueCorrection(baseCmd);
 
       const postCall = http.calls.find(
-        (c) => c.method === 'POST' && c.path === 'corrective_invoices.json',
+        (c) => c.method === 'POST' && c.path === 'async/corrective_invoices.json',
       );
       const body = postCall?.body as {
         corrective_invoice: {
-          services: { unit_net_price: string; quantity: string; group: string; correction: boolean }[];
+          services: { unit_net_price: number; quantity: number; group: string; correction: boolean }[];
         };
       };
       const beforeRow = body.corrective_invoice.services.find((s) => s.correction === false);
       const afterRow = body.corrective_invoice.services.find((s) => s.correction === true);
-      expect(beforeRow).toMatchObject({ unit_net_price: '100.00 PLN', quantity: '1', group: '1' });
+      expect(beforeRow).toMatchObject({ unit_net_price: 10000, quantity: 1, group: '1' });
       // baseCmd zeroes the line's quantity (newQuantity: 0).
-      expect(afterRow).toMatchObject({ unit_net_price: '100.00 PLN', quantity: '0', group: '1' });
+      expect(afterRow).toMatchObject({ unit_net_price: 10000, quantity: 0, group: '1' });
     });
 
-    it('should convert a price-changing correction line from gross to net PLN string (#1292 review)', async () => {
-      http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
-      http.seed('POST', 'corrective_invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'correction' }));
-      http.seed('POST', 'corrective_invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
+    it('should convert a price-changing correction line from gross to net groszy (#1292 review)', async () => {
+      seedAsyncCorrection();
 
       await adapter.issueCorrection({
         ...baseCmd,
@@ -1073,20 +1270,18 @@ describe('InfaktInvoicingAdapter', () => {
       });
 
       const postCall = http.calls.find(
-        (c) => c.method === 'POST' && c.path === 'corrective_invoices.json',
+        (c) => c.method === 'POST' && c.path === 'async/corrective_invoices.json',
       );
       const body = postCall?.body as {
-        corrective_invoice: { services: { unit_net_price: string; correction: boolean }[] };
+        corrective_invoice: { services: { unit_net_price: number; correction: boolean }[] };
       };
       const correctedRow = body.corrective_invoice.services.find((s) => s.correction === true);
-      // 61.5 gross / 1.23 (tax_symbol '23') = 50.00 net PLN.
-      expect(correctedRow?.unit_net_price).toBe('50.00 PLN');
+      // 61.5 gross / 1.23 (tax_symbol '23') = 50.00 net = 5000 groszy.
+      expect(correctedRow?.unit_net_price).toBe(5000);
     });
 
     it('should honour a correction to 0.00 PLN instead of falling back to the original price (#1342 review)', async () => {
-      http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
-      http.seed('POST', 'corrective_invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'correction' }));
-      http.seed('POST', 'corrective_invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
+      seedAsyncCorrection();
 
       await adapter.issueCorrection({
         ...baseCmd,
@@ -1094,20 +1289,20 @@ describe('InfaktInvoicingAdapter', () => {
       });
 
       const postCall = http.calls.find(
-        (c) => c.method === 'POST' && c.path === 'corrective_invoices.json',
+        (c) => c.method === 'POST' && c.path === 'async/corrective_invoices.json',
       );
       const body = postCall?.body as {
-        corrective_invoice: { services: { unit_net_price: string; correction: boolean }[] };
+        corrective_invoice: { services: { unit_net_price: number; correction: boolean }[] };
       };
       const correctedRow = body.corrective_invoice.services.find((s) => s.correction === true);
-      expect(correctedRow?.unit_net_price).toBe('0.00 PLN');
+      expect(correctedRow?.unit_net_price).toBe(0);
     });
 
     it('should propagate a 422 InfaktApiError with failureMode: rejected (error path)', async () => {
       http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
       http.seedError(
         'POST',
-        'corrective_invoices.json',
+        'async/corrective_invoices.json',
         new InfaktApiError('Infakt rejected the correction', 422, { error: 'bad correction' }),
       );
 
@@ -1119,7 +1314,11 @@ describe('InfaktInvoicingAdapter', () => {
 
     it('should propagate a 500 InfaktApiError with failureMode: in-doubt (error path)', async () => {
       http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
-      http.seedError('POST', 'corrective_invoices.json', new InfaktApiError('server error', 500, {}));
+      http.seedError(
+        'POST',
+        'async/corrective_invoices.json',
+        new InfaktApiError('server error', 500, {}),
+      );
 
       await expect(adapter.issueCorrection(baseCmd)).rejects.toMatchObject({
         failureMode: 'in-doubt',
@@ -1136,8 +1335,7 @@ describe('InfaktInvoicingAdapter', () => {
     it('should propagate a failure from sendToKsef after the correction draft was already created (error path, #1293 review)', async () => {
       // Same orphaned-draft risk as issueInvoice's equivalent case — the
       // corrective draft succeeds but the explicit KSeF submission kick fails.
-      http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
-      http.seed('POST', 'corrective_invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'correction' }));
+      seedAsyncCorrection();
       http.seedError(
         'POST',
         'corrective_invoices/corr-uuid-1/send_to_ksef.json',
@@ -1288,8 +1486,14 @@ describe('InfaktInvoicingAdapter', () => {
 
     function seedCorrectionFixtures(): void {
       http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
-      // corrections go through the dedicated corrective_invoices resource (#1337)
-      http.seed('POST', 'corrective_invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'correction' }));
+      // corrections go through the documented ASYNC corrective task endpoint
+      // (#1763), then the resolved document is hydrated by uuid
+      http.seed('POST', 'async/corrective_invoices.json', asyncTaskFixture());
+      http.seed(
+        'GET',
+        'corrective_invoices/corr-uuid-1.json',
+        invoiceFixture({ uuid: 'corr-uuid-1', kind: 'correction' }),
+      );
       // a correction is its own KSeF document - issueCorrection submits it inline
       http.seed('POST', 'corrective_invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
     }
@@ -1320,7 +1524,7 @@ describe('InfaktInvoicingAdapter', () => {
       await adapter.issueCorrection(correctionCmd);
 
       const invoiceCall = http.calls.find(
-        (c) => c.method === 'POST' && c.path === 'corrective_invoices.json',
+        (c) => c.method === 'POST' && c.path === 'async/corrective_invoices.json',
       );
       expect(invoiceCall?.body).toMatchObject({
         corrective_invoice: expect.objectContaining({ payment_method: 'cash' }),
@@ -1335,7 +1539,7 @@ describe('InfaktInvoicingAdapter', () => {
       await configured.issueCorrection(correctionCmd);
 
       const invoiceCall = http.calls.find(
-        (c) => c.method === 'POST' && c.path === 'corrective_invoices.json',
+        (c) => c.method === 'POST' && c.path === 'async/corrective_invoices.json',
       );
       expect(invoiceCall?.body).toMatchObject({
         corrective_invoice: expect.objectContaining({ payment_method: 'transfer' }),

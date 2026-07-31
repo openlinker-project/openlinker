@@ -18,6 +18,8 @@ import type {
   PickupPointFinder,
   LabelDocumentReader,
   DispatchProtocolReader,
+  ShipmentReferenceReconciler,
+  ReconciledShipment,
   GenerateLabelCommand,
   GenerateLabelResult,
   LabelDocument,
@@ -37,13 +39,15 @@ export class FakeInpostShippingAdapter
     ShipmentCanceller,
     PickupPointFinder,
     LabelDocumentReader,
-    DispatchProtocolReader
+    DispatchProtocolReader,
+    ShipmentReferenceReconciler
 {
   private counter = 0;
   private seededFailure: Error | null = null;
   private seededPoints: PickupPoint[] = [];
   private readonly statusByShipmentId = new Map<string, ShipmentStatus>();
   private readonly cancelled = new Set<string>();
+  private readonly shipmentsByReference = new Map<string, ReconciledShipment>();
 
   getSupportedMethods(): readonly ShippingMethod[] {
     return SUPPORTED_METHODS;
@@ -131,6 +135,15 @@ export class FakeInpostShippingAdapter
     });
   }
 
+  /**
+   * Report a shipment the carrier already holds under this reference (#1917).
+   * Empty unless a test seeds one, so the default fake behaves like a carrier
+   * that has never seen the reference and the caller creates normally.
+   */
+  findShipmentByReference(input: { reference: string }): Promise<ReconciledShipment | null> {
+    return Promise.resolve(this.shipmentsByReference.get(input.reference) ?? null);
+  }
+
   // --- test helpers ----------------------------------------------------------
 
   /** Make the next `generateLabel` throw the given error. */
@@ -148,6 +161,14 @@ export class FakeInpostShippingAdapter
     this.statusByShipmentId.set(providerShipmentId, status);
   }
 
+  /**
+   * Pretend the carrier already holds a shipment under `reference` — the
+   * lost-response case the #1917 reconciler recovers from.
+   */
+  seedShipmentByReference(reference: string, shipment: ReconciledShipment): void {
+    this.shipmentsByReference.set(reference, shipment);
+  }
+
   /** Reset all in-memory state between tests. */
   clear(): void {
     this.counter = 0;
@@ -155,5 +176,6 @@ export class FakeInpostShippingAdapter
     this.seededPoints = [];
     this.statusByShipmentId.clear();
     this.cancelled.clear();
+    this.shipmentsByReference.clear();
   }
 }

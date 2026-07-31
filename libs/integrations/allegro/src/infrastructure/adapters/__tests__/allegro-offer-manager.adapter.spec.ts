@@ -2136,6 +2136,48 @@ describe('AllegroOfferManagerAdapter', () => {
       );
     });
 
+    describe('offer title length (#1934/F11)', () => {
+      // The request DTO's `@MaxLength(75)` only validates a title the operator
+      // SUBMITTED. A row nobody edited carries no override, so the builder
+      // falls back to `product.name` - which no OL layer measures - and a
+      // routine long PrestaShop name used to reach Allegro unchecked.
+      it('rejects a title over 75 chars before any HTTP call', async () => {
+        const longTitle = 'A'.repeat(116);
+
+        await expect(
+          adapter.createOffer({ ...baseCmd, overrides: { ...baseCmd.overrides, title: longTitle } })
+        ).rejects.toMatchObject({
+          name: 'OfferCreateRejectedException',
+          statusCode: 0,
+          errors: [
+            expect.objectContaining({
+              field: 'title',
+              code: 'TITLE_TOO_LONG',
+              message: expect.stringContaining('116'),
+            }),
+          ],
+        });
+        expect(httpClient.post).not.toHaveBeenCalled();
+      });
+
+      it('does not fire the length gate at exactly 75 chars', async () => {
+        // Boundary only: the create proceeds past the preflight (whatever it
+        // does downstream is covered by the happy-path tests above), so the
+        // failure must not be TITLE_TOO_LONG.
+        await expect(
+          adapter
+            .createOffer({
+              ...baseCmd,
+              overrides: { ...baseCmd.overrides, title: 'B'.repeat(75) },
+            })
+            .catch((e: unknown) => {
+              const errors = (e as { errors?: Array<{ code?: string }> }).errors ?? [];
+              return errors.map((x) => x.code);
+            })
+        ).resolves.not.toContain('TITLE_TOO_LONG');
+      });
+    });
+
     describe('seller defaults (#430)', () => {
       it('throws OfferCreateRejectedException with SELLER_DEFAULTS_NOT_CONFIGURED when sellerDefaults are missing', async () => {
         // Construct an adapter without sellerDefaults — preflight must fire.

@@ -26,6 +26,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     cancelledAt: null,
     failedAt: '2026-07-24T09:12:00.000Z',
     errorMessage: 'NOT_PROCESSED — sender postcode "22-213" is not a valid delivery code',
+    providerCode: null,
     createdAt: '2026-07-24T09:11:00.000Z',
     updatedAt: '2026-07-24T09:12:00.000Z',
     ...overrides,
@@ -201,6 +202,63 @@ describe('groupFailedShipmentsByCause', () => {
       makeShipment({ id: 'ol_shipment_1', errorMessage: REDACTED_ERROR_MESSAGE }),
       makeShipment({ id: 'ol_shipment_2', errorMessage: REDACTED_ERROR_MESSAGE }),
       makeShipment({ id: 'ol_shipment_3', errorMessage: REDACTED_ERROR_MESSAGE }),
+    ];
+    expect(groupFailedShipmentsByCause(shipments)).toEqual([]);
+  });
+
+  it('groups by providerCode when present, ignoring differing errorMessage text (#1918)', () => {
+    const shipments = [
+      makeShipment({
+        id: 'ol_shipment_1',
+        errorMessage: 'Validation error',
+        providerCode: 'preflight.missing-parcel-template',
+      }),
+      makeShipment({
+        id: 'ol_shipment_2',
+        errorMessage: 'Validation error (different wording entirely)',
+        providerCode: 'preflight.missing-parcel-template',
+      }),
+    ];
+    const groups = groupFailedShipmentsByCause(shipments);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].providerCode).toBe('preflight.missing-parcel-template');
+    expect(groups[0].shipments.map((s) => s.id)).toEqual(['ol_shipment_1', 'ol_shipment_2']);
+  });
+
+  it('keeps two DIFFERENT providerCodes apart even when errorMessage text is identical (#1918)', () => {
+    const shipments = [
+      makeShipment({
+        id: 'ol_shipment_1',
+        errorMessage: 'Validation error',
+        providerCode: 'preflight.missing-parcel-template',
+      }),
+      makeShipment({
+        id: 'ol_shipment_2',
+        errorMessage: 'Validation error',
+        providerCode: 'api.http-503',
+      }),
+    ];
+    expect(groupFailedShipmentsByCause(shipments)).toEqual([]);
+  });
+
+  it('falls back to normalised-text grouping when providerCode is null', () => {
+    const shipments = [
+      makeShipment({ id: 'ol_shipment_1', errorMessage: 'sender postcode invalid', providerCode: null }),
+      makeShipment({ id: 'ol_shipment_2', errorMessage: 'sender postcode invalid', providerCode: null }),
+    ];
+    const groups = groupFailedShipmentsByCause(shipments);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].providerCode).toBeNull();
+  });
+
+  it('does not mix a providerCode-keyed row with a text-fallback row even if the text would otherwise match', () => {
+    const shipments = [
+      makeShipment({
+        id: 'ol_shipment_1',
+        errorMessage: 'sender postcode invalid',
+        providerCode: 'preflight.missing-parcel-template',
+      }),
+      makeShipment({ id: 'ol_shipment_2', errorMessage: 'sender postcode invalid', providerCode: null }),
     ];
     expect(groupFailedShipmentsByCause(shipments)).toEqual([]);
   });

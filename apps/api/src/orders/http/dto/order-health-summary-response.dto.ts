@@ -11,10 +11,16 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class OrderHealthSummaryResponseDto {
-  @ApiProperty({ description: 'Total order records in scope (sum of the four buckets)' })
+  @ApiProperty({ description: 'Total order records in scope (sum of the five buckets)' })
   total!: number;
 
-  @ApiProperty({ description: 'recordStatus = awaiting_mapping (item refs unresolved)' })
+  @ApiProperty({
+    description:
+      'recordStatus = source_deleted — at least one item ref is permanently unresolvable, the mapped variant was deleted at its master (#1689)',
+  })
+  sourceDeleted!: number;
+
+  @ApiProperty({ description: 'recordStatus = awaiting_mapping (item refs unresolved, self-healing)' })
   awaitingMapping!: number;
 
   @ApiProperty({ description: 'ready AND at least one destination failed' })

@@ -10,17 +10,11 @@
  *
  * @module apps/api/test/integration
  */
-import {
-  getTestHarness,
-  IntegrationTestHarness,
-  resetTestHarness,
-  teardownTestHarness,
-} from './setup';
+import type { IntegrationTestHarness } from './setup';
+import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { createTestOrderRecord } from './fixtures/order.fixtures';
-import {
-  ORDER_RECORD_REPOSITORY_TOKEN,
-  OrderRecordRepositoryPort,
-} from '@openlinker/core/orders';
+import type { OrderRecordRepositoryPort } from '@openlinker/core/orders';
+import { ORDER_RECORD_REPOSITORY_TOKEN } from '@openlinker/core/orders';
 
 const SOURCE_A = '11111111-1111-4111-8111-111111111111';
 const SOURCE_B = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -111,6 +105,35 @@ describe('Order health summary (integration)', () => {
     ).toBe(summary.total);
   });
 
+  it('gives source_deleted the highest precedence — over awaiting_mapping, over failed (#1689)', async () => {
+    await seedCanonicalSet(); // 7 records under SOURCE_A, none source_deleted
+    const ds = harness.getDataSource();
+    await createTestOrderRecord(ds, {
+      sourceConnectionId: SOURCE_A,
+      recordStatus: 'source_deleted',
+      syncStatus: [{ destinationConnectionId: DEST, status: 'failed', error: 'x' }],
+    });
+
+    const summary = await repository.countByHealth({ sourceConnectionId: SOURCE_A });
+
+    expect(summary.sourceDeleted).toBe(1);
+    // The 7 canonical records are unaffected — source_deleted precedence
+    // pulls only the newly-seeded record out of needs_attention, not any of
+    // the pre-existing failed rows.
+    expect(summary.awaitingMapping).toBe(1);
+    expect(summary.needsAttention).toBe(3);
+    expect(summary.synced).toBe(1);
+    expect(summary.awaitingDispatch).toBe(2);
+    expect(summary.total).toBe(8);
+    expect(
+      summary.sourceDeleted +
+        summary.awaitingMapping +
+        summary.needsAttention +
+        summary.synced +
+        summary.awaitingDispatch,
+    ).toBe(summary.total);
+  });
+
   it('scopes the counts to a single source connection', async () => {
     await seedCanonicalSet(); // 7 under SOURCE_A
     await createTestOrderRecord(harness.getDataSource(), {
@@ -178,5 +201,31 @@ describe('Order health summary (integration)', () => {
     );
     expect(awaitingMapping.total).toBe(1);
     expect(awaitingMapping.items[0].recordStatus).toBe('awaiting_mapping');
+  });
+
+  it('findMany filters to source_deleted, distinct from awaiting_mapping (#1689)', async () => {
+    await seedCanonicalSet();
+    await createTestOrderRecord(harness.getDataSource(), {
+      sourceConnectionId: SOURCE_A,
+      recordStatus: 'source_deleted',
+      syncStatus: [{ destinationConnectionId: DEST, status: 'failed', error: 'x' }],
+      mappingFailureReason: 'variant ol_variant_x deleted at the master',
+    });
+
+    const sourceDeleted = await repository.findMany(
+      { health: 'source_deleted' },
+      { limit: 50, offset: 0 },
+    );
+    expect(sourceDeleted.total).toBe(1);
+    expect(sourceDeleted.items[0].recordStatus).toBe('source_deleted');
+    expect(sourceDeleted.items[0].mappingFailureReason).toBe(
+      'variant ol_variant_x deleted at the master',
+    );
+
+    const awaitingMapping = await repository.findMany(
+      { health: 'awaiting_mapping' },
+      { limit: 50, offset: 0 },
+    );
+    expect(awaitingMapping.total).toBe(1);
   });
 });

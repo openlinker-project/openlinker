@@ -21,6 +21,7 @@ import type { IInventoryQueryService } from '@openlinker/core/inventory';
 import type { OfferCreationRecord } from '../../../domain/entities/offer-creation-record.entity';
 import { BulkListingBatch } from '../../../domain/entities/bulk-listing-batch.entity';
 import { EmptyBulkSubmissionException } from '../../../domain/exceptions/empty-bulk-submission.exception';
+import { AllVariantsAlreadyListedException } from '../../../domain/exceptions/all-variants-already-listed.exception';
 import { InvalidEanException } from '../../../domain/exceptions/invalid-ean.exception';
 import { DuplicateBatchEanException } from '../../../domain/exceptions/duplicate-batch-ean.exception';
 import { CurrencyMismatchException } from '../../../domain/exceptions/currency-mismatch.exception';
@@ -59,6 +60,20 @@ describe('BulkListingSubmitService', () => {
         ? { findProductsByBarcode: jest.fn(), getProduct: jest.fn() }
         : {}),
     }) as unknown as OfferManagerPort;
+
+  /** Minimal `getAdapter` resolution for a given declared variant-grouping model (#1924). */
+  const adapterResolutionWith = (
+    variantGrouping?: 'catalog-implicit' | 'explicit-group' | 'parent-child'
+  ): Awaited<ReturnType<IIntegrationsService['getAdapter']>> =>
+    ({
+      connection: {},
+      metadata: {
+        adapterKey: 'test.adapter.v1',
+        platformType: 'test',
+        supportedCapabilities: ['OfferManager'],
+        ...(variantGrouping ? { variantGrouping } : {}),
+      },
+    }) as unknown as Awaited<ReturnType<IIntegrationsService['getAdapter']>>;
 
   const variant = (overrides: Partial<ProductVariant> & Pick<ProductVariant, 'id' | 'productId'>): ProductVariant => ({
     sku: null,
@@ -127,7 +142,10 @@ describe('BulkListingSubmitService', () => {
     };
 
     integrations = {
-      getAdapter: jest.fn(),
+      // Default: no declared variantGrouping → resolves to the locked
+      // 'parent-child' default (#1924). Tests exercising a specific model
+      // override this per-case.
+      getAdapter: jest.fn().mockResolvedValue(adapterResolutionWith()),
       getCapabilityAdapter: jest.fn().mockResolvedValue(adapterWith(jest.fn())),
       listCapabilityAdapters: jest.fn(),
       resolveAdapterMetadata: jest.fn(),
@@ -181,6 +199,7 @@ describe('BulkListingSubmitService', () => {
       expect(result).toEqual({
         batchId: 'batch-1',
         jobIds: ['job-v-a', 'job-v-b', 'job-v-c'],
+        skippedAlreadyListedCount: 0,
       });
       expect(bulkBatchRepo.updateStatus).toHaveBeenCalledWith('batch-1', 'running');
     });
@@ -583,6 +602,51 @@ describe('BulkListingSubmitService', () => {
         'v-c',
       ]);
       expect(inventoryQuery.getAvailabilityByVariantIds).toHaveBeenCalledWith(['v-a', 'v-c']);
+    });
+
+    it('skips a stale sibling variant deleted at the master (#1689)', async () => {
+      products.getVariant.mockResolvedValue(variant({ id: 'v-a', productId: 'P', ean: '111' }));
+      products.getVariantsByProductId.mockResolvedValue([
+        variant({ id: 'v-a', productId: 'P', ean: '111' }),
+        variant({ id: 'v-b', productId: 'P', ean: '222', isStale: true, staleAt: new Date() }),
+        variant({ id: 'v-c', productId: 'P', gtin: '333' }),
+      ]);
+      inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
+        { productVariantId: 'v-a', totalAvailable: 4, locationCount: 1 },
+        { productVariantId: 'v-c', totalAvailable: 2, locationCount: 1 },
+      ]);
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['v-a'],
+        sharedConfig: { stock: 7, publishImmediately: false },
+      });
+
+      expect(enqueueService.enqueueCreation.mock.calls.map((c) => c[0].internalVariantId)).toEqual([
+        'v-a',
+        'v-c',
+      ]);
+    });
+
+    it('skips a stale directly-selected variant entirely — zero jobs, empty-submission guard fires', async () => {
+      products.getVariant.mockResolvedValue(
+        variant({ id: 'v-a', productId: 'P', ean: '111', isStale: true, staleAt: new Date() })
+      );
+      products.getVariantsByProductId.mockResolvedValue([
+        variant({ id: 'v-a', productId: 'P', ean: '111', isStale: true, staleAt: new Date() }),
+      ]);
+
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['v-a'],
+          sharedConfig: { stock: 7, publishImmediately: false },
+        })
+      ).rejects.toBeInstanceOf(EmptyBulkSubmissionException);
+
+      expect(enqueueService.enqueueCreation).not.toHaveBeenCalled();
     });
 
     it('still lists the selected variant when the product variant list omits it (defensive)', async () => {
@@ -989,7 +1053,9 @@ describe('BulkListingSubmitService', () => {
       expect(enqueueService.enqueueCreation).not.toHaveBeenCalled();
     });
 
-    it('strips categoryId from a per-variant override', async () => {
+    it('strips categoryId from a per-variant override for a parent-child destination (WooCommerce-like, #1924)', async () => {
+      integrations.getAdapter.mockResolvedValue(adapterResolutionWith('parent-child'));
+
       await service.submit({
         connectionId,
         initiatedBy,
@@ -1003,6 +1069,57 @@ describe('BulkListingSubmitService', () => {
       const overrides = enqueueService.enqueueCreation.mock.calls[0][0].overrides;
       expect(overrides).toEqual({ title: 'Variant title' });
       expect(overrides).not.toHaveProperty('categoryId');
+    });
+
+    it('strips categoryId from a per-variant override when the adapter declares nothing (locked default, #1924)', async () => {
+      integrations.getAdapter.mockResolvedValue(adapterResolutionWith());
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a'],
+        sharedConfig: { stock: 1, publishImmediately: false },
+        perVariantOverrides: {
+          ol_variant_a: { overrides: { categoryId: 'cat-x', title: 'Variant title' } },
+        },
+      });
+
+      const overrides = enqueueService.enqueueCreation.mock.calls[0][0].overrides;
+      expect(overrides).not.toHaveProperty('categoryId');
+    });
+
+    it('keeps a per-variant categoryId for a catalog-implicit destination (Allegro-like, #1924)', async () => {
+      integrations.getAdapter.mockResolvedValue(adapterResolutionWith('catalog-implicit'));
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a'],
+        sharedConfig: { stock: 1, publishImmediately: false },
+        perVariantOverrides: {
+          ol_variant_a: { overrides: { categoryId: 'cat-x', title: 'Variant title' } },
+        },
+      });
+
+      const overrides = enqueueService.enqueueCreation.mock.calls[0][0].overrides;
+      expect(overrides).toEqual({ categoryId: 'cat-x', title: 'Variant title' });
+    });
+
+    it('keeps a per-variant categoryId for an explicit-group destination (Erli-like, #1924)', async () => {
+      integrations.getAdapter.mockResolvedValue(adapterResolutionWith('explicit-group'));
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a'],
+        sharedConfig: { stock: 1, publishImmediately: false },
+        perVariantOverrides: {
+          ol_variant_a: { overrides: { categoryId: 'cat-x', title: 'Variant title' } },
+        },
+      });
+
+      const overrides = enqueueService.enqueueCreation.mock.calls[0][0].overrides;
+      expect(overrides).toEqual({ categoryId: 'cat-x', title: 'Variant title' });
     });
 
     it('rejects a per-variant override whose price currency diverges from the batch currency', async () => {
@@ -1099,7 +1216,7 @@ describe('BulkListingSubmitService', () => {
       ]);
     });
 
-    it('skips a variant that already has an active offer mapping on the connection', async () => {
+    it('skips a variant that already has an active offer mapping on the connection and reports the skipped count (#1933)', async () => {
       products.getVariant.mockResolvedValue(variant({ id: 'v-a', productId: 'P', ean: '111' }));
       products.getVariantsByProductId.mockResolvedValue([
         variant({ id: 'v-a', productId: 'P', ean: '111' }),
@@ -1111,7 +1228,7 @@ describe('BulkListingSubmitService', () => {
       // v-a already listed → skipped; only v-b enqueues.
       offerMappings.countByConnectionAndVariants.mockResolvedValue(new Map([['v-a', 1]]));
 
-      await service.submit({
+      const result = await service.submit({
         connectionId,
         initiatedBy,
         productIds: ['v-a'],
@@ -1122,16 +1239,43 @@ describe('BulkListingSubmitService', () => {
         'v-b',
       ]);
       expect(bulkBatchRepo.create).toHaveBeenCalledWith(expect.objectContaining({ totalCount: 1 }));
+      // #1933: the caller (and, up the stack, the FE toast) must be able to
+      // tell "1 requested, 1 delivered" apart from "2 requested, 1 delivered".
+      expect(result.skippedAlreadyListedCount).toBe(1);
     });
 
-    it('throws EmptyBulkSubmissionException when every variant is already listed', async () => {
+    it('throws AllVariantsAlreadyListedException (not EmptyBulkSubmissionException) when every variant is already listed (#1933)', async () => {
       offerMappings.countByConnectionAndVariants.mockResolvedValue(new Map([['v-a', 2]]));
 
+      const submitPromise = service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['v-a'],
+        sharedConfig: { stock: 1, publishImmediately: false },
+      });
+
+      // A real selection that's entirely a duplicate of what's already listed
+      // is NOT the same failure as an empty/unresolvable submission (#1933) —
+      // reusing EmptyBulkSubmissionException here is exactly the bug: it tells
+      // the operator "you selected nothing" right after they confirmed the
+      // #1837 duplicate-guard modal on a real selection.
+      await expect(submitPromise).rejects.toBeInstanceOf(AllVariantsAlreadyListedException);
+      await expect(submitPromise).rejects.not.toBeInstanceOf(EmptyBulkSubmissionException);
+      await expect(submitPromise).rejects.toMatchObject({ skippedCount: 1 });
+
+      expect(bulkBatchRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('still throws EmptyBulkSubmissionException when expansion itself yields no jobs (nothing already-listed involved)', async () => {
+      // Every submitted id is excluded before the already-listed filter ever
+      // runs → expandedJobs.length === 0 → the ORIGINAL empty-submission
+      // contract must be preserved (#1933 must not widen this path).
       await expect(
         service.submit({
           connectionId,
           initiatedBy,
-          productIds: ['v-a'],
+          productIds: ['ol_variant_abc123'],
+          excludedVariantIds: ['ol_variant_abc123'],
           sharedConfig: { stock: 1, publishImmediately: false },
         })
       ).rejects.toBeInstanceOf(EmptyBulkSubmissionException);

@@ -114,6 +114,13 @@ import { AllegroQuantityCommand } from '../../index';
 const ALLEGRO_ADAPTER_KEY = 'allegro.publicapi.v1';
 
 /**
+ * Allegro's hard limit on `body.name` (the offer title). Platform-specific, so
+ * it is enforced here rather than in the neutral builder - Erli imposes no
+ * title limit and the shop-publish path caps at 255 (#1934/F11).
+ */
+const ALLEGRO_OFFER_TITLE_MAX_LENGTH = 75;
+
+/**
  * Allegro "Stan" (condition) parameter id and its dictionary value ids (#1500).
  * "Stan" is an offer-section parameter; the adapter owns this neutral → wire
  * mapping so core carries only the neutral `CreateOfferCommand.condition`. Value
@@ -1377,6 +1384,27 @@ export class AllegroOfferManagerAdapter
       );
     }
 
+    // #1934/F11 — preflight: the offer title must fit Allegro's 75-char limit.
+    // The request DTO's `@MaxLength(75)` only ever sees a title the operator
+    // SUBMITTED as an override; a row nobody opened carries none, and the
+    // builder then falls back to `product.name`, which no OL layer measures.
+    // A routine long PrestaShop name therefore reached Allegro unchecked and
+    // came back as an opaque platform validation error. Reject it here, with
+    // the actual length, so the failure names the field and the fix.
+    // Measured AFTER sanitisation, matching what actually goes on the wire -
+    // sanitising can only shorten, so checking the raw value would reject a
+    // title that ends up within the limit.
+    const offerTitle = sanitizeAllegroName(cmd.overrides?.title ?? '');
+    if (offerTitle.length > ALLEGRO_OFFER_TITLE_MAX_LENGTH) {
+      throw new OfferCreateRejectedException(ALLEGRO_ADAPTER_KEY, 0, [
+        {
+          field: 'title',
+          code: 'TITLE_TOO_LONG',
+          message: `Allegro offer titles are limited to ${ALLEGRO_OFFER_TITLE_MAX_LENGTH} characters; this one is ${offerTitle.length}. Set a shorter title on the offer (the product name is used when no title override is given).`,
+        },
+      ]);
+    }
+
     // #431 — smart-link pre-step. Compute once at the top so the body
     // builder + platform-params applier stay synchronous (their current
     // contract). On `unique`, `productSet[0]` becomes a card-link reference
@@ -1833,8 +1861,11 @@ export class AllegroOfferManagerAdapter
     //
     // Allegro additionally requires `productSet[].product.name` when creating
     // an inline product (no existing `product.id` to inherit from). We reuse
-    // `body.name` (the offer title, already validated ≤75 chars) — MVP
-    // coupling, revisited by the smart-link follow-up (#412).
+    // `body.name` (the offer title) — MVP coupling, revisited by the smart-link
+    // follow-up (#412). The ≤75-char guarantee comes from the explicit
+    // preflight in `createOffer`, NOT from the request DTO: that only validates
+    // an operator-SUBMITTED title override, and the builder's `product.name`
+    // fallback used to reach here unmeasured (#1934/F11).
     //
     // `productSet[0].product.images` is also required (≥1) — confirmed by
     // sandbox repro returning `ProductValidationException` at path

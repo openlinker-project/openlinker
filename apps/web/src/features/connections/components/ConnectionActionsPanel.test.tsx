@@ -40,13 +40,57 @@ describe('ConnectionActionsPanel', () => {
     expect(screen.getByRole('button', { name: 'Disable' })).toBeInTheDocument();
   });
 
-  it('hides trigger sync and disable when connection is already disabled', async () => {
+  it('offers enable instead of disable when connection is already disabled', async () => {
     const disabledConnection = { ...sampleConnection, status: 'disabled' as const };
     renderWithProviders(<ConnectionActionsPanel connection={disabledConnection} />, adminSession);
 
     expect(await screen.findByRole('link', { name: 'Edit' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /trigger sync/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Disable' })).not.toBeInTheDocument();
+    // #1940 — the recovery control the panel used to omit entirely.
+    expect(screen.getByRole('button', { name: 'Enable' })).toBeInTheDocument();
+  });
+
+  it('does not offer enable for a connection that is not disabled', async () => {
+    renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />, adminSession);
+
+    expect(await screen.findByRole('button', { name: 'Disable' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Enable' })).not.toBeInTheDocument();
+  });
+
+  it('patches status to active and confirms with a toast when enable is clicked', async () => {
+    const disabledConnection = { ...sampleConnection, status: 'disabled' as const };
+    const update = vi.fn().mockResolvedValue({ ...disabledConnection, status: 'active' });
+    const apiClient = createMockApiClient({ connections: { update } });
+
+    renderWithProviders(<ConnectionActionsPanel connection={disabledConnection} />, {
+      apiClient,
+      ...adminSession,
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Enable' }));
+
+    await waitFor(() => {
+      expect(update).toHaveBeenCalledWith(disabledConnection.id, { status: 'active' });
+    });
+    expect(await screen.findByText('Connection enabled')).toBeInTheDocument();
+  });
+
+  it('surfaces an error toast and no success toast when enable fails', async () => {
+    const disabledConnection = { ...sampleConnection, status: 'disabled' as const };
+    const update = vi.fn().mockRejectedValue(new Error('Connection is locked by another job'));
+    const apiClient = createMockApiClient({ connections: { update } });
+
+    renderWithProviders(<ConnectionActionsPanel connection={disabledConnection} />, {
+      apiClient,
+      ...adminSession,
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Enable' }));
+
+    expect(await screen.findByText('Unable to enable connection')).toBeInTheDocument();
+    expect(screen.getByText('Connection is locked by another job')).toBeInTheDocument();
+    expect(screen.queryByText('Connection enabled')).not.toBeInTheDocument();
   });
 
   it('links edit action to the correct URL', async () => {
@@ -124,6 +168,16 @@ describe('ConnectionActionsPanel', () => {
       expect(captureDemoEvent).toHaveBeenCalledWith('demo_connection_test_attempted', {
         platform: 'prestashop',
       });
+    });
+
+    it('renders enable visible-but-disabled for a disabled connection (#1940)', async () => {
+      const disabledConnection = { ...sampleConnection, status: 'disabled' as const };
+      renderWithProviders(<ConnectionActionsPanel connection={disabledConnection} />, {
+        apiClient: demoApiClient(),
+        ...viewerSession,
+      });
+
+      expect(await screen.findByRole('button', { name: 'Enable' })).toBeDisabled();
     });
 
     it('opens the TriggerSyncDialog with an enabled job type select but a disabled Trigger submit', async () => {

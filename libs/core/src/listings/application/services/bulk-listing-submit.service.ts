@@ -51,7 +51,9 @@ import type {
 import {
   IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
+  resolveVariantGroupingModel,
 } from '@openlinker/core/integrations';
+import type { VariantGroupingModel } from '@openlinker/core/integrations';
 import {
   IProductsService,
   PRODUCTS_SERVICE_TOKEN,
@@ -63,6 +65,7 @@ import {
 } from '@openlinker/core/inventory';
 
 import { EmptyBulkSubmissionException } from '../../domain/exceptions/empty-bulk-submission.exception';
+import { AllVariantsAlreadyListedException } from '../../domain/exceptions/all-variants-already-listed.exception';
 import { InvalidEanException } from '../../domain/exceptions/invalid-ean.exception';
 import { DuplicateBatchEanException } from '../../domain/exceptions/duplicate-batch-ean.exception';
 import { CurrencyMismatchException } from '../../domain/exceptions/currency-mismatch.exception';
@@ -166,6 +169,14 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     // strategy leaking into the platform-agnostic submit service.
     const dropBarcodelessSiblings = isCatalogProductReader(adapter);
 
+    // Variant-grouping model (#1924): declared on the manifest, read directly
+    // off the metadata `getAdapter` already resolves — not a capability, so
+    // never dispatched through `getCapabilityAdapter`. Drives whether a
+    // per-variant categoryId survives to the built offer (buildEnqueueInput →
+    // stripVariantCategoryId below).
+    const { metadata } = await this.integrationsService.getAdapter(input.connectionId);
+    const variantGroupingModel = resolveVariantGroupingModel(metadata);
+
     // 2. Expand submitted primary-variant ids into the per-offer job list.
     //    A multi-variant product fans out into one job per sibling variant
     //    (#824); single-variant products and unknown ids pass through
@@ -184,11 +195,21 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     // `external.id`) and fragment the grouped listing. The FE `alreadyListed`
     // hint is advisory only; this is the authoritative backend guard.
     const jobs = await this.filterAlreadyListed(input.connectionId, expandedJobs);
+    const skippedAlreadyListedCount = expandedJobs.length - jobs.length;
 
-    // Post-exclusion empty guard (#1741): every submitted variant excluded /
-    // unresolvable / already-listed ⇒ no jobs ⇒ never persist a `totalCount:0`
-    // zombie batch that the #737 counter gate can never terminate.
+    // Post-exclusion empty guard (#1741). Two distinct causes, #1933: if the
+    // expansion itself produced no jobs (every submitted id was excluded /
+    // unresolvable), the submission was genuinely empty. If expansion DID
+    // produce jobs but every one was then dropped as already-listed, that is
+    // NOT an empty submission — the operator selected real variants that are
+    // all duplicates of what's already published — and must be reported as
+    // such rather than reusing the generic "requires at least one productId"
+    // message, which the #1837 duplicate-guard confirm flow renders after an
+    // explicit "Publish anyway (creates duplicate)" click.
     if (jobs.length === 0) {
+      if (expandedJobs.length > 0) {
+        throw new AllVariantsAlreadyListedException(skippedAlreadyListedCount);
+      }
       throw new EmptyBulkSubmissionException();
     }
     // Identifier enforcement (#1741): GS1 check-digit on every included job's
@@ -234,7 +255,13 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     const enqueuedRecordIds = new Set<string>();
     try {
       for (const job of jobs) {
-        const enqueueInput = this.buildEnqueueInput(input, batch.id, job, masterStock);
+        const enqueueInput = this.buildEnqueueInput(
+          input,
+          batch.id,
+          job,
+          masterStock,
+          variantGroupingModel
+        );
         const { jobId, offerCreationRecord } =
           await this.offerCreationEnqueue.enqueueCreation(enqueueInput);
         jobIds.push(jobId);
@@ -287,7 +314,7 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     //    `incrementCounters`.
     await this.bulkBatchRepository.updateStatus(batch.id, BULK_BATCH_STATUS.Running);
 
-    return { batchId: batch.id, jobIds };
+    return { batchId: batch.id, jobIds, skippedAlreadyListedCount };
   }
 
   async getBatch(batchId: string): Promise<BulkBatchSummary | null> {
@@ -300,8 +327,14 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
   }
 
   /**
-   * Drop jobs whose variant already carries an active offer mapping on the
-   * target connection (#1741 review #3). One batched count query rather than
+   * Drop jobs whose variant already carries a LIVE offer mapping on the target
+   * connection (#1741 review #3). "Live" is now enforced rather than merely
+   * asserted: `countByConnectionAndVariants` excludes mappings whose status
+   * snapshot says `ended`, so a variant whose offer is over can be listed again
+   * (#1934/F2). Previously the query had no status predicate at all despite
+   * this docstring, which made an ended offer block its variant permanently.
+   *
+   * One batched count query rather than
    * a per-variant fan-out; a variant with `count > 0` is skipped with a warning
    * so a re-run of the wizard can't silently create duplicate offers.
    */
@@ -416,6 +449,13 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     const overrideEan = (variantId: string): string | undefined =>
       input.perVariantOverrides?.[variantId]?.overrides?.ean;
 
+    // #1689 review #7: a variant deleted at its master (`isStale`) must never
+    // become a new offer — the new-offer path fails safe here, mirroring the
+    // live-offer pause. Applied at every job-push site below, including the
+    // directly-selected variant — a stale explicit selection is skipped too,
+    // not silently listed.
+    const shouldSkipStale = (variant: ProductVariant): boolean => variant.isStale === true;
+
     for (const selectedId of uniqueSelectedIds) {
       if (seen.has(selectedId)) continue;
 
@@ -437,6 +477,12 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
       if (siblings.length <= 1) {
         seen.add(selectedId);
         if (excluded.has(selectedId)) continue;
+        if (shouldSkipStale(selectedVariant)) {
+          this.logger.warn(
+            `Bulk submit: skipping variant ${selectedId} of product ${productId} — deleted at the master (isStale)`
+          );
+          continue;
+        }
         jobs.push({ variantId: selectedId, selectedId, useMasterStock: false, clearProductCard: false });
         variantsById.set(selectedId, selectedVariant);
         continue;
@@ -447,6 +493,12 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
         seen.add(sibling.id);
         if (excluded.has(sibling.id)) continue;
         const isSelected = sibling.id === selectedId;
+        if (shouldSkipStale(sibling)) {
+          this.logger.warn(
+            `Bulk submit: skipping variant ${sibling.id} of product ${productId} — deleted at the master (isStale)`
+          );
+          continue;
+        }
         const hasBarcode = Boolean(sibling.ean ?? sibling.gtin ?? overrideEan(sibling.id));
         if (!hasBarcode && !isSelected && dropBarcodelessSiblings) {
           this.logger.warn(
@@ -467,8 +519,8 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
       // Defensive: a multi-variant product whose `getVariantsByProductId`
       // result somehow omits the selected variant must still list it — never
       // silently drop a variant the operator explicitly picked, UNLESS it was
-      // explicitly excluded (#1741).
-      if (!seen.has(selectedId) && !excluded.has(selectedId)) {
+      // explicitly excluded (#1741) or stale (#1689).
+      if (!seen.has(selectedId) && !excluded.has(selectedId) && !shouldSkipStale(selectedVariant)) {
         jobs.push({ variantId: selectedId, selectedId, useMasterStock: true, clearProductCard: false });
         variantsById.set(selectedId, selectedVariant);
         seen.add(selectedId);
@@ -495,11 +547,11 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
    *   `sharedConfig.price.currency` throws `CurrencyMismatchException`
    *   (currency is batch-wide).
    *
-   * A per-variant `categoryId` (grouping-determining and product-level) is not
-   * mutated away here — the DTO already omits it via `OmitType`, and
-   * `buildEnqueueInput` strips it non-destructively from the variant tier before
-   * merging, so this validator leaves its input untouched (#1741 review — no
-   * input mutation).
+   * A per-variant `categoryId` is not mutated away here — the DTO accepts it at
+   * both tiers (#1924), and `buildEnqueueInput` conditionally strips it
+   * non-destructively from the variant tier before merging (destination-aware,
+   * via `stripVariantCategoryId`), so this validator leaves its input untouched
+   * (#1741 review — no input mutation).
    *
    * Iterates with `Object.keys` (own enumerable keys only) so a JSON
    * `__proto__` own-property key is enumerated + rejected and the prototype
@@ -625,7 +677,8 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     input: BulkListingSubmitInput,
     bulkBatchId: string,
     job: ExpandedVariantJob,
-    masterStock: Map<string, number>
+    masterStock: Map<string, number>,
+    variantGroupingModel: VariantGroupingModel
   ): EnqueueOfferCreationInput {
     // 3-way precedence (#1741): base sharedConfig → family (perProductOverrides
     // by selectedId) → variant (perVariantOverrides by variantId); the variant
@@ -656,13 +709,19 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     const publishEffective = stock > 0 ? publishImmediately : false;
     // Layer overrides base → family → variant; `platformParams` deep-merged
     // across all three so shared keys (e.g. `deliveryPolicyId`, #808) survive.
-    // `categoryId` is stripped from the variant tier here (non-destructively) so
-    // a per-variant category can never override the shared/family category and
-    // split the listing — the family tier keeps it (product-level, shared).
+    // `categoryId` is stripped from the variant tier here (non-destructively)
+    // only when the destination's declared `variantGrouping` model requires it
+    // (#1924) - a `'parent-child'` shop (or any undeclared/unresolved adapter,
+    // via the locked default) cannot carry a per-variant category at all, so
+    // it is silently dropped rather than rejected upstream. `'catalog-implicit'`
+    // (Allegro) and `'explicit-group'` (Erli) both let the variant tier's
+    // categoryId through — Allegro's consequence (splitting the grouped
+    // listing) is a downstream FE/operator concern, not something this service
+    // polices.
     let overrides = this.mergeOverrides(
       input.sharedConfig.overrides,
       familyOverride?.overrides,
-      stripVariantCategoryId(variantOverride?.overrides)
+      stripVariantCategoryId(variantOverride?.overrides, variantGroupingModel)
     );
     // Strip the wizard-resolved card for expanded siblings so each self-links
     // by its own barcode - UNLESS the operator explicitly picked a per-variant
@@ -726,14 +785,21 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
 }
 
 /**
- * Return a copy of the variant-tier overrides with any `categoryId` removed
- * (#1741). Non-destructive — the caller's input object is never mutated. Returns
- * `undefined` unchanged so `mergeOverrides` keeps omitting an absent tier.
+ * Return a copy of the variant-tier overrides with any `categoryId` removed,
+ * conditional on the destination's declared variant-grouping model (#1741,
+ * #1924). Only `'parent-child'` (a variation has no `categories` field at
+ * all - WooCommerce, and the locked default for any undeclared adapter)
+ * strips it; `'catalog-implicit'` (Allegro) and `'explicit-group'` (Erli)
+ * both let a per-variant categoryId through. Non-destructive — the caller's
+ * input object is never mutated. Returns `undefined` unchanged so
+ * `mergeOverrides` keeps omitting an absent tier.
  */
 function stripVariantCategoryId(
-  overrides: CreateOfferOverrides | undefined
+  overrides: CreateOfferOverrides | undefined,
+  variantGroupingModel: VariantGroupingModel
 ): CreateOfferOverrides | undefined {
   if (!overrides || overrides.categoryId === undefined) return overrides;
+  if (variantGroupingModel !== 'parent-child') return overrides;
   const rest: CreateOfferOverrides = { ...overrides };
   delete rest.categoryId;
   return rest;

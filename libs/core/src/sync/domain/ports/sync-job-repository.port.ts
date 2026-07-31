@@ -12,6 +12,7 @@
 import type { SyncJob } from '../entities/sync-job.entity';
 import type {
   JobOutcome,
+  JobOutcomeReason,
   SyncJobFilters,
   SyncJobPagination,
   PaginatedSyncJobs,
@@ -81,8 +82,9 @@ export interface SyncJobRepositoryPort {
    *
    * @param id - Job ID
    * @param outcome - Business outcome of the run (`'ok' | 'business_failure'`)
+   * @param outcomeReason - Optional stable code further classifying `outcome` (#1689)
    */
-  markSucceeded(id: string, outcome: JobOutcome): Promise<void>;
+  markSucceeded(id: string, outcome: JobOutcome, outcomeReason?: JobOutcomeReason): Promise<void>;
 
   /**
    * Mark job as failed and schedule retry

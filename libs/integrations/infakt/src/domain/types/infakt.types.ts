@@ -135,24 +135,54 @@ export interface InfaktListResponse<T> {
 }
 
 /**
- * One "before"/"after" service row on a POST /corrective_invoices.json request.
+ * One "before"/"after" service row on a POST /async/corrective_invoices.json
+ * request. Rows come in pairs per `group`: `correction: false` (original
+ * values) then `correction: true` (corrected values).
  *
- * The corrective endpoint's wire formats DIFFER from invoices.json (verified
- * live, 2026-07-03): `unit_net_price` is a decimal "amount currency" STRING
- * (e.g. `"811.37 PLN"`) and `quantity` is an integer-or-decimal STRING (the
- * adapter sends `String(quantity)`, e.g. `"1"` / `"0"`) — sending the
- * invoices.json integer-groszy / numeric-quantity shapes here
- * 500s. Rows come in pairs per `group`: `correction: false` (original values)
- * then `correction: true` (corrected values).
+ * `unit_net_price`/`quantity` use the same plain-integer-groszy / numeric
+ * shape as `async/invoices.json` (see toGroszy/fromGroszy) — #1763 replaced
+ * an earlier decimal "amount currency" STRING assumption (e.g. `"811.37 PLN"`)
+ * that was only ever tested against the bare `corrective_invoices.json` path,
+ * which turned out to 500 on every payload regardless of shape (the root
+ * #1763 bug).
+ *
+ * Live-verified on the `async/` path (2026-07-29): a `-100.00 PLN` correction
+ * of a `499.99` gross line round-tripped as `before {quantity: 1,
+ * unit_net_price: 40650}` / `after {quantity: 1, unit_net_price: 32520}`, and
+ * the `before` row matched the original invoice's stored line to the groszy.
  */
 export interface InfaktCorrectiveInvoiceServiceRequest {
   name: string;
   tax_symbol: string;
-  quantity: string;
+  quantity: number;
   unit: string;
-  unit_net_price: string;
+  unit_net_price: number;
   group: string;
   correction: boolean;
+}
+
+/**
+ * Body of a `POST /async/corrective_invoices.json` request, under its
+ * `corrective_invoice` wrapper key (#1763).
+ *
+ * `correction_reason` is the WRITABLE reason field and takes a value from
+ * Infakt's closed reason-code vocabulary, NOT free text ("Zapis: symbol
+ * powodu; odczyt: polska nazwa"). The read-only `correction_reason_symbol`
+ * is deliberately absent — Infakt sets it server-side and rejects it here.
+ */
+export interface InfaktCorrectiveInvoiceRequest {
+  corrective_invoice: {
+    payment_method: string;
+    client_id: number | null;
+    bank_account?: string;
+    bank_name?: string;
+    corrected_invoice_number: string | null;
+    corrected_invoice_date: string;
+    corrected_invoice_uuid: string;
+    correction_reason: string;
+    services: InfaktCorrectiveInvoiceServiceRequest[];
+    external_id?: string;
+  };
 }
 
 /** Response from POST /invoices/{uuid}/send_to_ksef.json */
@@ -167,6 +197,32 @@ export interface InfaktSendToKsefResponse {
     request_created_at: string | null;
     request_finished_at: string | null;
   };
+}
+
+/**
+ * Task-accepted envelope returned by inFakt's `async/*.json` creation
+ * endpoints (e.g. `POST async/invoices.json`, `POST async/corrective_invoices.json`)
+ * — confirmed against inFakt's own published API reference. `processing_code:
+ * 100` means "accepted, still processing"; the terminal outcome is only known
+ * via `GET async/{resource}/status/{invoice_task_reference_number}.json`.
+ */
+export interface InfaktAsyncTaskAccepted {
+  invoice_task_reference_number: string;
+  processing_code: number;
+  processing_description: string;
+  timestamps: {
+    task_created_at: string;
+  };
+  /**
+   * Present on the TERMINAL status response once the task resolves — verified
+   * live (2026-07-28) for a corrective-invoice task: `processing_code: 201`,
+   * `processing_description: "Faktura stworzona"`, `action: "create_invoice"`,
+   * `invoice_kind: "corrective_invoice"`, `invoice_uuid: "<uuid>"`. Absent
+   * while still processing (`processing_code: 100`).
+   */
+  action?: string;
+  invoice_kind?: string;
+  invoice_uuid?: string;
 }
 
 /** Wire shape for `GET /bank_accounts.json` entries (#1303 follow-up). */

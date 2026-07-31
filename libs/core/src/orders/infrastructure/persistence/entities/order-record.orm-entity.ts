@@ -78,6 +78,14 @@ export class OrderRecordOrmEntity {
   recordStatus!: string;
 
   /**
+   * Operator-facing reason item resolution failed at ingestion (#1689) —
+   * `recordStatus = 'awaiting_mapping' | 'source_deleted'`. `null` for a
+   * `'ready'` record or a historical row predating the column.
+   */
+  @Column({ type: 'text', nullable: true })
+  mappingFailureReason!: string | null;
+
+  /**
    * Derived marketplace dispatch (ship-by) deadline (#927) — the `.to` of the
    * source dispatch window, denormalized from the snapshot so the orders list
    * can sort/filter on the SLA via an index without parsing JSONB. `null` when

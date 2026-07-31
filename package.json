@@ -39,15 +39,17 @@
     "start:prod:worker": "pnpm --filter @openlinker/worker start",
     "start:dev:web": "pnpm --filter @openlinker/web dev",
     "build:worker": "pnpm --filter @openlinker/worker build",
-    "dev:stack:up": "docker compose up -d postgres redis mysql phpmyadmin prestashop",
+    "dev:stack:up": "docker compose up -d postgres redis mysql prestashop",
     "dev:stack:wc:up": "docker compose up -d woocommerce-mysql woocommerce",
+    "dev:stack:devtools:up": "docker compose --profile devtools up -d phpmyadmin",
     "dev:stack:down": "docker compose down",
     "dev:stack:logs": "docker compose logs -f",
     "dev:stack:seed-prestashop": "docker compose exec prestashop sh -c 'for f in /tmp/post-install-scripts/*.sh; do echo \"--- $f ---\"; sh \"$f\" || exit $?; done'",
     "dev:stack:seed-woocommerce": "docker exec openlinker-woocommerce bash /docker-entrypoint-initdb.d/01-seed-wc-data.sh",
     "dev:stack:wc-credentials": "docker exec openlinker-woocommerce cat /bitnami/wordpress/.dev-secrets/woocommerce-credentials.json | jq .",
     "dev:health": "curl -s http://localhost:3000/v1/health/dev-stack | jq . || curl -s http://localhost:3000/v1/health/dev-stack",
-    "demo:up": "docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build postgres redis mysql phpmyadmin woocommerce-mysql woocommerce prestashop migrate api worker web",
+    "demo:up": "docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build postgres redis mysql woocommerce-mysql woocommerce prestashop migrate api worker web",
+    "demo:devtools:up": "docker compose -f docker-compose.yml -f docker-compose.demo.yml --profile devtools up -d phpmyadmin",
     "demo:down": "docker compose -f docker-compose.yml -f docker-compose.demo.yml down",
     "demo:logs": "docker compose -f docker-compose.yml -f docker-compose.demo.yml logs -f",
     "prepare": "husky install || true"
@@ -73,8 +75,8 @@
     "typescript": "5.4.3"
   },
   "engines": {
-    "node": ">=18.0.0",
-    "pnpm": ">=9.0.0"
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
   },
   "dependencies": {
     "@nestjs/swagger": "^11.2.3",

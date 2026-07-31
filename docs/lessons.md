@@ -23,6 +23,14 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## A destructive sweep keyed on an internal id alone needs an explicit sole-claimant check, because internal ids are only per-connection by convention
+
+**Context**: The master-sync staleness prunes (`MasterProductSyncService.markVariantsStaleExcept`, `MasterInventorySyncService.pruneStaleVariants`) mark every row of an internal product id stale, keyed on that id and nothing else.
+**Problem**: `getOrCreateInternalId` namespaces per `(entityType, externalId, connectionId)`, so two connections *normally* never converge on one internal id - which made the missing connection scoping look safe and go unnoticed through two features (#1599 products, #1688 inventory). Nothing in the schema or the code enforces it: `product_variants` / `inventory_items` carry no provenance column, so a single converged mapping turns one connection's 404 into a sweep over a sibling connection's live rows, silently and unattributably.
+**Rule**: When a sweep/delete/prune keys on an internal id that is only *conventionally* single-owner, add an explicit sole-claimant check at the call site and **withhold the destructive half** when it fails (log loudly, report it on the result) - do not rely on the id-generation convention alone. Reuse `IEntityClaimService.findRivalClaimants` (`@openlinker/core/integrations`): it reads the claimants via `getExternalIds` and narrows them to connections that actually have the writing capability enabled, short-circuiting before the connection listing in the common single-claimant case.
+**Applies to**: any connection-blind sweep over `identifier_mappings`-derived internal ids - today `libs/core/src/products/application/services/master-product-sync.service.ts`, `libs/core/src/inventory/application/services/master-inventory-sync.service.ts`.
+**Source**: #1904 (found reviewing PR #1903 / #1688); guard shipped with `EntityClaimService`.
+
 ## Re-prefix every generated migration timestamp to the synthetic sequence before committing
 
 **Context**: `migration:generate` names files with a real `Date.now()` millisecond prefix; the repo's migrations use synthetic sequential prefixes (`17XX000000000` + small offsets).
@@ -103,6 +111,37 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 **Applies to**: connection credentials/config shape validators (`plugin.register` validators), adapter factories in `libs/integrations/**`, FE connection-wizard schemas in `apps/web/src/features/connections/`.
 **Source**: #1318 / PR #1319.
 
+## `@modelcontextprotocol/sdk` is the **v1** line — SDK v2 ships as a scoped package family
+
+**Context**: Checking whether the MCP TypeScript SDK v2 had shipped, as #1486's acceptance criteria required.
+**Problem**: `npm view @modelcontextprotocol/sdk` reports `latest: 1.30.0` with no `2.x` version and no v2 prerelease, which reads as "v2 has not been released". It has — v2 shipped 2026-07-27 as a **scoped package family** under new names (`@modelcontextprotocol/core`, `/server`, `/client`, `/express`, `/node`, `/hono`, `/fastify`, `/server-legacy`, `/codemod`, all `2.0.0`). The old package name was left on the v1 line. Concluding "not released" from the v1 name would have wrongly parked the whole issue.
+**Rule**: When a dependency's major version appears missing, check the **GitHub releases page and the org's other package names**, not just `npm view <old-name>`. A monorepo SDK that splits packages at a major bump will leave the original name frozen on the previous line.
+**Applies to**: any `@modelcontextprotocol/*` dependency decision; dependency-availability checks generally.
+**Source**: #1486.
+
+## Verify a new SDK's API against its installed `.d.ts`, never a fetched doc summary
+
+**Context**: Planning the MCP transport wiring against a two-day-old SDK.
+**Problem**: A web-fetched summary of the SDK docs produced `createExpressHandler(server)` — a function that **does not exist** in `@modelcontextprotocol/express@2.0.0`. A plan and a set of design decisions were built on it before the package was installed and its `index.d.cts` read. The real surface is `createMcpExpressApp` / `requireBearerAuth` / `toNodeHandler`. The SDK's own prose also referred to `ctx.http.authInfo` while its types declare `McpRequestContext.authInfo` — so even first-party documentation disagreed with the shipped types.
+**Rule**: For any newly-adopted or recently-majored dependency, `npm install` it into a scratch directory and read the shipped `.d.ts`/`.d.cts` **before** committing to an API in a plan or a diff. Treat doc prose (including the vendor's own) as a hint, and the type declarations as the contract.
+**Applies to**: adopting or major-upgrading any external SDK; `libs/integrations/**`, `apps/api/src/mcp/`.
+**Source**: #1486.
+
+## A service in `apps/**` may not inject a core `*RepositoryPort` — put the service in the owning context instead
+
+**Context**: Placing the MCP-token mint/verify service, following the `RefreshTokenService` precedent (`apps/api/src/auth/` over a `libs/core/src/users/` repository port).
+**Problem**: That precedent passes `check-cross-context-imports` **only because it is grandfathered** in the script's `ALLOW_LIST` (tracked tech debt, #718/#722). Copying it for greenfield code fails `pnpm lint` on the first commit, and "fixing" it by adding new ALLOW_LIST entries grows a list that exists to shrink.
+**Rule**: Cross-context callers go through an `I*Service` + Symbol token, never a `*RepositoryPort`. If a new service needs a core context's repository, put the **service** in that context (`libs/core/src/<ctx>/application/services/`) and export its interface. Bonus: `check-service-interfaces` only scans `libs/core`, so the `I*Service` rule becomes machine-enforced rather than merely conventional.
+**Applies to**: any new service in `apps/{api,worker}` that needs core persistence; `scripts/check-cross-context-imports.mjs`.
+**Source**: #1486 (`/pre-implement` gate caught it pre-code).
+
+## Integration-test schema is built by `synchronize`, not migrations — migration-only FKs don't exist there
+
+**Context**: Asserting that deleting a user cascade-deletes their MCP tokens.
+**Problem**: The assertion failed: the row survived. The FK is declared in the migration (`REFERENCES users(id) ON DELETE CASCADE`) but the ORM entity carries only a plain `user_id` column, and `apps/api/test/integration/setup.ts` builds its schema with `synchronize` — so migration-only constraints are absent from the test database. `setup.ts` already documents this for `connection_carrier_mappings` and `fulfillment_routing_rules`.
+**Rule**: Don't assert migration-only DDL (FKs, cascades, check constraints) in an int-spec — it can't be there. Assert the **behaviour** the constraint backs instead (e.g. an orphaned credential still fails authentication), and add the table to `setup.ts`'s truncate list explicitly, since there is no FK for `users` to cascade from and rows will otherwise leak between cases.
+**Applies to**: `apps/api/test/integration/**`, any table whose FKs live only in a migration.
+**Source**: #1486.
 ## Default a response DTO's redaction flag to REDACTED, never to "show it"
 
 **Context**: `ShipmentResponseDto.fromDomain(shipment, customerId, canWrite)` gates the raw carrier `errorMessage` (which can embed a rejected address fragment) on the requester holding `shipments:write` (#1826).
@@ -125,3 +164,43 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 **Rule**: When a column encodes lifecycle progression and more than one process upserts the row, resolve the conflict by an explicit precedence ladder in SQL (`CASE WHEN rank(EXCLUDED) >= rank(current) THEN EXCLUDED ELSE current END`) rather than by arrival order, and keep the rank map beside the status union so the two cannot drift. Do not "fix" it by reordering the callers - they are deliberately decoupled, and neither can reason about the other's timing. Prove it with an integration test: the guard lives in SQL, so a mocked repository cannot exercise it.
 **Applies to**: repository upserts over a status/lifecycle column with more than one writer - today `webhook_deliveries` (`libs/core/src/webhooks/infrastructure/persistence/repositories/webhook-delivery.repository.ts`); the same shape would apply to any future `*_snapshots` or delivery-audit table written from both an ingress and a consumer path.
 **Source**: #1916 (CI run 30435342214).
+
+## Profile the test harness before optimising a "slow suite" - the cost is usually per-test or per-teardown plumbing, not the test
+
+**Context**: The `Integration Tests` job took ~18.5 min. Four hypotheses looked obvious: a slow spec (`order-reingestion-echo-guard`, 37 s), TypeORM `synchronize` running on every app boot, `TRUNCATE ... CASCADE` fan-out, and Postgres durability settings.
+**Problem**: All four were wrong, and each would have cost a day. Measured instead: `synchronize` on an already-synced schema is **73 ms**; the 37 s "slow spec" runs in **6.4 s** warm and **76.3 s** cold, i.e. it was the run's first file absorbing the one-time ts-jest transform; `CASCADE` is irrelevant (the schema has **4** foreign keys); `fsync=off` + friends changed nothing and passing them via `withCommand` made a sample run *worse*. The real costs were a hardcoded `setTimeout(2000)` in a consumer's `onModuleDestroy` (paid on all 77 int-spec teardowns) and `TRUNCATE` costing ~10 ms per table **even when the table is empty**, times 18 tables, times 485 tests.
+**Rule**: Before optimising an integration suite, instrument the harness phases (boot, per-test reset, teardown) and the suite ordering, and measure each candidate in isolation with a revert in between. Numbers first: a plausible mechanism that is real (`quit()` does queue behind an in-flight blocking read) can still be the wrong explanation for where the time goes. Watch specifically for (a) fixed sleeps in shutdown hooks, (b) per-test cleanup that scales with the schema rather than with what the test touched, (c) the first suite of a run absorbing cold-compile cost and looking like a slow test.
+**Applies to**: `libs/test-kit/src/harness.ts`, `apps/{api,worker}/test/jest-integration.cjs`, any `onModuleDestroy` on a long-lived consumer loop.
+**Source**: #1920 (four refuted hypotheses recorded in that issue's Verification log).
+
+## An "authenticates" assertion is not a "works" assertion — assert a successful call, not just the absence of 401
+
+**Context**: Phase 0 (#1486) shipped one MCP tool, `whoami`, reading the principal from `ctx.authInfo`. Its int-spec asserted the minted token was accepted by `/mcp` via `.expect(res => { if (res.status === 401 || res.status === 403) throw ... })`.
+**Problem**: That assertion passes on a 400. `whoami` was in fact broken end-to-end: the principal lives on the **request-scoped** `McpRequestContext` handed to the server *factory*, and NOT on the context the SDK passes a tool callback at dispatch time — so every real `whoami` call would have returned "No OpenLinker principal on this request." Nothing caught it for a full phase, because the only test of the path asserted a negative (not-401) rather than the positive (a parseable result). #1487's first genuine `tools/call` surfaced it immediately.
+**Rule**: When a slice's whole purpose is "X now works end-to-end", assert the SUCCESS shape — parse the response body and check a field. A not-an-error assertion is a placeholder, and it will keep passing while the feature rots. Corollary for the MCP SDK specifically: thread the factory's `ctx` into anything a tool handler needs; treat the dispatch-time context as carrying no auth.
+**Applies to**: `apps/api/src/mcp/transport/mcp-server.factory.ts`, `apps/api/src/mcp/tools/tool-registry.service.ts`, any int-spec whose only assertion is a status-code exclusion.
+**Source**: #1487.
+
+## MCP protocol revision 2026-07-28 requires a per-request envelope + agreeing headers — a missing one looks like an auth/routing 400
+
+**Context**: Hand-rolling JSON-RPC calls against `/mcp` in an int-spec (supertest, no MCP client library).
+**Problem**: Every call 400'd. The revision named in `MCP-Protocol-Version` carries the handshake **on every request** (which is what makes OL's stateless, session-free serving legal per ADR-033), and enforces header/body agreement. Three separate omissions each produced a bare HTTP 400 that read like a bad token or a dead route: (1) `params._meta` absent; (2) `_meta` present but missing `io.modelcontextprotocol/protocolVersion` + `io.modelcontextprotocol/clientCapabilities`; (3) the `Mcp-Method` header absent, and for `tools/call` also `Mcp-Name` — both must match the body so an intermediary can route without parsing the payload. The SDK's error *bodies* name the missing key precisely; the status code alone tells you nothing.
+**Rule**: When an MCP request 400s, read the JSON-RPC `error.message` in the response body before suspecting auth or routing — the SDK says exactly which envelope key or header is missing. Build the request helper once, with `_meta` + `Mcp-Method` (+ `Mcp-Name`) derived from the call, rather than per test.
+**Applies to**: `apps/api/test/integration/mcp-tools.int-spec.ts`; any hand-rolled MCP JSON-RPC caller.
+**Source**: #1487.
+
+## `--testPathPattern` is silently ignored when a Jest config sets `testRegex` — use `--testRegex` to run one int-spec
+
+**Context**: Iterating on a single `*.int-spec.ts` in `apps/api`, where `test/jest-integration.cjs` sets `testRegex: 'test/integration/.*\\.int-spec\\.ts$'`.
+**Problem**: `--testPathPattern=mcp` and a positional `"mcp-"` both ran the ENTIRE integration suite — including the PrestaShop/MySQL container specs, so each "targeted" iteration cost ~15 minutes and booted containers that exhaust Docker. `--listTests` confirms it: the filter is dropped, not narrowed. This is the mechanism behind the older note that `test:integration -- <pattern>` doesn't filter.
+**Rule**: To run one int-spec in this repo, override the config's own key: `pnpm --filter @openlinker/api exec jest --config test/jest-integration.cjs --testRegex="<file>\\.int-spec\\.ts$"`. Verify with `--listTests` before the real run — it is instant and proves the filter took.
+**Applies to**: `apps/api/test/jest-integration.cjs`, `apps/worker/test/jest-integration.cjs`.
+**Source**: #1487.
+
+## A new feature's premise about an existing code path must be verified against that path's *entry point*, not against the layer it names
+
+**Context**: #1837 added a pre-flight "already listed" confirm whose marketplace copy promised "creates a duplicate offer / Publish anyway", justified by `OfferCreationExecutionService` calling `createOffer` unconditionally. #1741 had, five days earlier, added `BulkListingSubmitService.filterAlreadyListed` - an intake guard that silently drops already-listed variants before any job is enqueued.
+**Problem**: Both statements were true of the layer each named, and the premise was still false end-to-end: on the wizard path (the only FE entry point since #1754) the intake guard runs first, so confirming "Publish anyway (creates duplicate)" produced no duplicate. When *every* selected variant was already listed the empty post-filter list surfaced as the generic `EmptyBulkSubmissionException` ("requires at least one productId"), telling an operator who had just confirmed a real selection that they had submitted nothing. `docs/architecture-overview.md` meanwhile asserted the confirm was "a warning only - never a hard block" while the backend hard-excluded, and nothing reconciled the two.
+**Rule**: When a feature's justification is a claim about existing behaviour ("X always happens, so warn about it"), trace the claim from the **caller the feature actually sits in front of** down to the layer that performs it, and check for guards added in between - especially for sibling features shipping in parallel under one epic. Then make the tree consistent in one pass: code, FE copy, and the `architecture-overview.md` bullet that states the guarantee. A doc bullet describing operator-visible semantics is part of the contract, not commentary.
+**Applies to**: `libs/core/src/listings/application/services/bulk-listing-submit.service.ts`, `apps/web/src/features/listings/components/duplicate-guard-modal.tsx`, `docs/architecture-overview.md` §Listings; any pre-flight warning UI fronting a guarded pipeline.
+**Source**: #1933 (PR #1935); premise introduced by #1837 (PR #1857) against #1741 (PR #1757).

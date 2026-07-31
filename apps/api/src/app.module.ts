@@ -41,6 +41,7 @@ import { ShippingApiModule } from './shipping/shipping.module';
 import { InvoicingApiModule } from './invoicing/invoicing.module';
 import { UsersApiModule } from './users/users.module';
 import { SystemModule } from './system/system.module';
+import { McpModule } from './mcp/mcp.module';
 import { MailerApiModule } from './mailer/mailer.module';
 import { AnalyticsApiModule } from './analytics/analytics.module';
 
@@ -82,6 +83,7 @@ import { AnalyticsApiModule } from './analytics/analytics.module';
     UsersApiModule, // User management: list, approve/reject pending, role + status ops (#1125)
     InvoicingApiModule, // Invoicing issue/read HTTP API (#1119); UPO download endpoint (#1224, epic #1142 C15)
     SystemModule, // Server-driven runtime config (demoMode) via GET /system/config (#1127)
+    McpModule, // MCP Resource-Server auth (PATs) + Streamable-HTTP ingress (#1486, ADR-034)
   ],
   controllers: [AppController],
   providers: [AppService],

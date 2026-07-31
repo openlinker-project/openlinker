@@ -37,6 +37,7 @@ import {
   PAYMENT_STATUS,
   ORDER_RECORD_SERVICE_TOKEN,
 } from '@openlinker/core/orders';
+import { type SyncLockPort, SYNC_LOCK_TOKEN } from '@openlinker/core/sync';
 
 import type { IShipmentDispatchService } from '../interfaces/shipment-dispatch.service.interface';
 import { IOrderFulfillmentProjectionService } from '../interfaces/order-fulfillment-projection.service.interface';
@@ -52,9 +53,14 @@ import {
 import { UndispatchableResolutionException } from '../../domain/exceptions/undispatchable-resolution.exception';
 import { OrderNotDispatchablePaymentStatusException } from '../../domain/exceptions/order-not-dispatchable-payment-status.exception';
 import { ShippingProviderRejectionException } from '../../domain/exceptions/shipping-provider-rejection.exception';
+import { ShipmentDispatchContendedException } from '../../domain/exceptions/shipment-dispatch-contended.exception';
 import { ShipmentRepositoryPort } from '../../domain/ports/shipment-repository.port';
 import type { ShippingProviderManagerPort } from '../../domain/ports/shipping-provider-manager.port';
+import { isShipmentReferenceReconciler } from '../../domain/ports/capabilities/shipment-reference-reconciler.capability';
+import { shipmentDispatchLockKey, SHIPMENT_DISPATCH_LOCK_TTL_MS } from './shipment-dispatch-lock';
 import { SHIPMENT_STATUS } from '../../domain/types/shipment-status.types';
+import type { ShippingMethod } from '../../domain/types/shipping-method.types';
+import type { DeliveryIntent } from '../../domain/types/delivery-intent.types';
 import { DISPATCH_BLOCKING_PAYMENT_STATUSES } from '../types/dispatch-payment-policy.types';
 import {
   ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN,
@@ -82,9 +88,86 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
     private readonly orders: IOrderRecordService,
     @Inject(ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN)
     private readonly fulfillmentProjection: IOrderFulfillmentProjectionService,
+    @Inject(SYNC_LOCK_TOKEN)
+    private readonly dispatchLock: SyncLockPort,
   ) {}
 
+  /**
+   * Serialize dispatch per order (#1917), then run the dispatch itself.
+   *
+   * The lock closes the race the in-code note at `dispatchViaShippingProvider`
+   * deferred to "the live call-site": `findActiveByOrderId` is a plain read, so
+   * two concurrent dispatches can both pass it, and the loser then RESETS the
+   * winner's just-created draft row (the partial-unique index forbids inserting
+   * a second waybill-less row, so it reuses instead). Both then call
+   * `generateLabel` with the same shipment id and the carrier mints two paid
+   * labels under one reference.
+   *
+   * Contended behaviour mirrors `OrderSyncService.createOrderIdempotently`:
+   * - **Lock held by a peer:** re-read the active shipment. If the peer already
+   *   FINISHED, return its shipment - the caller pressed the button twice and
+   *   gets the same answer either way. Otherwise the peer is mid-`generateLabel`
+   *   with nothing to return yet, so raise the retryable contended exception
+   *   rather than proceeding into the race we just prevented.
+   * - **Lock acquired:** run the real dispatch; release in `finally`.
+   *
+   * The whole method is wrapped, including the branch-1 (`omp_fulfilled`) path
+   * that generates no label. Two Redis round-trips on a no-op branch is the
+   * price of one entry point with one invariant.
+   */
   async dispatch(input: ShipmentDispatchInput): Promise<ShipmentDispatchResult> {
+    const lockKey = shipmentDispatchLockKey(input.orderId);
+    const token = await this.dispatchLock.acquire(lockKey, SHIPMENT_DISPATCH_LOCK_TTL_MS);
+
+    if (!token) {
+      // "Did the peer FINISH", not "does a row exist". The peer persists its
+      // draft row BEFORE calling `generateLabel`, so for the whole multi-second
+      // carrier round-trip a row exists for a label that does not. Handing that
+      // draft back as `dispatched` would advertise a waybill the operator cannot
+      // download; the retryable contended exception tells the truth instead.
+      // `providerShipmentId` is the completion marker - it is written in the
+      // same update that flips the row to `generated`, and a branch-1/omp
+      // projection row never carries one, so such a row is never mistaken for a
+      // finished label either.
+      //
+      // The re-read is connection-agnostic - as is the idempotency check in
+      // `dispatchViaShippingProvider`, and as is the deliberate per-ORDER lock
+      // key - so the caller can get back a shipment dispatched on a DIFFERENT
+      // carrier connection than the one it asked for. Intended: at this grain
+      // the answer is "this order is already shipping", not "your carrier is".
+      const active = await this.shipments.findActiveByOrderId(input.orderId);
+      if (active?.providerShipmentId) {
+        this.logger.log(
+          `Dispatch for order ${input.orderId} is contended; returning the shipment ` +
+            `the concurrent dispatch already generated (${active.id} on connection ` +
+            `${active.connectionId})`,
+        );
+        return { kind: 'dispatched', shipment: active };
+      }
+      this.logger.warn(
+        `Dispatch for order ${input.orderId} is contended and no labelled shipment is ` +
+          `persisted yet; refusing to race a concurrent label request`,
+      );
+      throw new ShipmentDispatchContendedException(input.orderId);
+    }
+
+    try {
+      return await this.dispatchLocked(input);
+    } finally {
+      // Best-effort release — never let a release failure mask the dispatch
+      // result (a label may already have been paid for at this point).
+      try {
+        await this.dispatchLock.release(lockKey, token);
+      } catch (releaseError) {
+        this.logger.warn(
+          `Failed to release shipment-dispatch lock ${lockKey}: ` +
+            `${releaseError instanceof Error ? releaseError.message : String(releaseError)}`,
+        );
+      }
+    }
+  }
+
+  private async dispatchLocked(input: ShipmentDispatchInput): Promise<ShipmentDispatchResult> {
     const resolution = await this.routing.resolve({
       sourceConnectionId: input.sourceConnectionId,
       sourceDeliveryMethodId: input.sourceDeliveryMethodId,
@@ -226,14 +309,12 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
       );
     }
 
-    // Idempotency (best-effort): don't issue a second label/fee while a
-    // non-terminal shipment for this order is in flight. The cancel + re-issue
-    // flow flips the prior row to `cancelled` first, so a genuine re-dispatch is
-    // still allowed. NOTE: this find→create is NOT atomic — two concurrent
-    // dispatches for the same order can both pass it and double-create (the
-    // schema allows N shipments/order by design, so there is no DB guard). The
-    // live call-site (#769/#771) must serialise dispatch per order
-    // (debounce / job-level dedup).
+    // Idempotency: don't issue a second label/fee while a non-terminal shipment
+    // for this order is in flight. The cancel + re-issue flow flips the prior
+    // row to `cancelled` first, so a genuine re-dispatch is still allowed.
+    // This find→create is still not atomic on its own, but `dispatch()` now
+    // holds a per-order lock around the whole path (#1917), so the concurrent
+    // window it used to leave open is closed by construction.
     const active = await this.shipments.findActiveByOrderId(input.orderId);
     if (active) {
       return active;
@@ -284,6 +365,21 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
       input.orderId,
       processorConnectionId,
     );
+
+    // How this attempt's label-shaping parameters compare with the ones the
+    // PRIOR attempt was made under. Captured here because the reset below
+    // overwrites them with this attempt's values, after which the row can no
+    // longer tell you what the lost label was minted for.
+    const divergedParameters = priorBranchOne
+      ? this.describeParameterDivergence(
+          priorBranchOne,
+          shippingMethod,
+          intent,
+          input.paczkomatId ?? null,
+          input.sourceDeliveryMethodId ?? null,
+        )
+      : [];
+
     const shipment = priorBranchOne
       ? await this.shipments.update(priorBranchOne.id, {
           status: SHIPMENT_STATUS.Draft,
@@ -303,11 +399,37 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
           sourceDeliveryMethodId: input.sourceDeliveryMethodId ?? undefined,
         });
 
-    // NOTE: if generateLabel commits provider-side but its response fails, the
-    // shipment is marked `failed` (catch below) and a later re-dispatch starts a
-    // fresh attempt — which could double-create at the provider. The command
-    // carries `shipmentId`; adapters (#812/#833) should use it as a
-    // provider-side idempotency key to close that at-least-once hazard.
+    // Lost-response recovery (#1917). A prior attempt may have committed at the
+    // carrier and had its response lost (timeout / socket reset / 5xx after
+    // commit) — the catch below persists `failed` with `providerShipmentId`
+    // still NULL, so OL holds no id for a label that exists and was paid for.
+    // Before creating anything, ask the carrier whether it already holds a
+    // shipment under this reference and adopt it if so. Retry path only: on a
+    // first dispatch the reference has never been sent, so the lookup is
+    // guaranteed-empty and would only add latency.
+    //
+    // Skipped when this retry asks for DIFFERENT label parameters than the lost
+    // attempt used: the operator deliberately wants something else (another
+    // locker, another delivery intent), so a fresh label is the correct answer
+    // and adopting the old one would make the row lie about what was paid for.
+    // The orphan is then a separate reconciliation problem, logged loudly.
+    if (priorBranchOne) {
+      if (divergedParameters.length > 0) {
+        this.logger.warn(
+          `Skipping the carrier reference lookup for shipment ${shipment.id} ` +
+            `(order ${input.orderId}): this retry changed ${divergedParameters.join('; ')}, so a ` +
+            `label already minted under the previous parameters must not be adopted. If the ` +
+            `prior attempt did commit at the carrier it is now an orphan needing manual ` +
+            `cancellation.`,
+        );
+      } else {
+        const adopted = await this.adoptExistingCarrierShipment(shipment.id, adapter, input.orderId);
+        if (adopted) {
+          return adopted;
+        }
+      }
+    }
+
     try {
       const result = await adapter.generateLabel({
         shipmentId: shipment.id,
@@ -353,15 +475,129 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
         `generateLabel failed for shipment ${shipment.id} (order ${input.orderId}): ${message}${rejectionDetail}`,
       );
       // Persist the visible failure (surfaces in /shipments + enables retry),
-      // then propagate the domain error so the caller can render it.
+      // then propagate the domain error so the caller can render it. The
+      // structured `providerCode` (#1918) is persisted alongside the
+      // free-text message so triage grouping can key on it instead of
+      // fuzzy-matching prose.
       await this.shipments.update(shipment.id, {
         status: SHIPMENT_STATUS.Failed,
         failedAt: new Date(),
         errorMessage: message,
+        providerCode:
+          error instanceof ShippingProviderRejectionException ? error.providerCode : null,
       });
       // Reflect the failed shipment in the order rollup (#1108) before surfacing.
       await this.fulfillmentProjection.recompute(input.orderId);
       throw error;
     }
+  }
+
+  /**
+   * Describe how a retry's label-shaping parameters differ from the ones the
+   * prior (possibly carrier-committed) attempt on the same row was made under.
+   * Returns `[]` when they agree, so adoption is safe.
+   *
+   * Only the parameters the row PERSISTS can be compared - the recipient,
+   * parcel dimensions, COD and insured value are not on the row, so parameter
+   * identity is established best-effort. That is the right side to err on: a
+   * false "diverged" only costs the recovery (falling back to today's create
+   * path), while a false "identical" would mis-describe a paid label.
+   *
+   * `deliveryIntent` and `sourceDeliveryMethodId` are nullable columns added
+   * after the first shipping release, so a NULL on the prior row means "not
+   * recorded", not "different", and is not treated as divergence. Nothing
+   * material is lost: an intent change resolves into a different
+   * `shippingMethod`, which is compared strictly.
+   */
+  private describeParameterDivergence(
+    prior: Shipment,
+    shippingMethod: ShippingMethod,
+    intent: DeliveryIntent,
+    paczkomatId: string | null,
+    sourceDeliveryMethodId: string | null,
+  ): string[] {
+    const diverged: string[] = [];
+    if (prior.shippingMethod !== shippingMethod) {
+      diverged.push(`shippingMethod '${prior.shippingMethod}' -> '${shippingMethod}'`);
+    }
+    if (prior.paczkomatId !== paczkomatId) {
+      diverged.push(`paczkomatId '${prior.paczkomatId ?? 'null'}' -> '${paczkomatId ?? 'null'}'`);
+    }
+    if (prior.deliveryIntent !== null && prior.deliveryIntent !== intent) {
+      diverged.push(`deliveryIntent '${prior.deliveryIntent}' -> '${intent}'`);
+    }
+    if (
+      prior.sourceDeliveryMethodId !== null &&
+      prior.sourceDeliveryMethodId !== sourceDeliveryMethodId
+    ) {
+      diverged.push(
+        `sourceDeliveryMethodId '${prior.sourceDeliveryMethodId}' -> ` +
+          `'${sourceDeliveryMethodId ?? 'null'}'`,
+      );
+    }
+    return diverged;
+  }
+
+  /**
+   * Adopt a carrier shipment that already exists under this shipment's
+   * reference, instead of creating a second one (#1917).
+   *
+   * Returns the healed `Shipment` when a single unambiguous match was adopted,
+   * or `null` to tell the caller to proceed with a normal `generateLabel`.
+   *
+   * Deliberately NON-FATAL: an adapter that cannot answer, a carrier that 404s
+   * an endpoint, an auth blip — none of these should block a dispatch the
+   * operator explicitly asked for. Every failure degrades to the pre-#1917
+   * create path, which is exactly today's behaviour, so this can only improve
+   * on the status quo and never regress it.
+   */
+  private async adoptExistingCarrierShipment(
+    shipmentId: string,
+    adapter: ShippingProviderManagerPort,
+    orderId: string,
+  ): Promise<Shipment | null> {
+    if (!isShipmentReferenceReconciler(adapter)) {
+      return null;
+    }
+
+    let existing: Awaited<ReturnType<typeof adapter.findShipmentByReference>>;
+    try {
+      existing = await adapter.findShipmentByReference({ reference: shipmentId });
+    } catch (error) {
+      this.logger.warn(
+        `Reference lookup failed for shipment ${shipmentId} (order ${orderId}); ` +
+          `proceeding with a fresh label request: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
+
+    if (!existing) {
+      return null;
+    }
+
+    this.logger.log(
+      `Adopting carrier shipment ${existing.providerShipmentId} for ${shipmentId} ` +
+        `(order ${orderId}): a prior attempt committed at the carrier but lost its response, ` +
+        `so no second label is created`,
+    );
+
+    // `labelPdfRef` stays null — adoption recovers identity and trackability,
+    // not the document. The operator re-fetches it through the existing
+    // LabelDocumentReader path, which is keyed on `providerShipmentId` and
+    // works as soon as that id is known.
+    //
+    // The carrier fee is likewise not recovered — but nothing under-reports
+    // today, because `Shipment` carries no cost column at all (a generated row
+    // records no fee either). If one is ever added, the adopted row must read it
+    // back from the carrier here; the neutral `ReconciledShipment` shape would
+    // need to carry it.
+    const adopted = await this.shipments.update(shipmentId, {
+      status: SHIPMENT_STATUS.Generated,
+      providerShipmentId: existing.providerShipmentId,
+      trackingNumber: existing.trackingNumber ?? undefined,
+    });
+    await this.fulfillmentProjection.recompute(orderId);
+    return adopted;
   }
 }

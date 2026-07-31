@@ -26,6 +26,7 @@ import { InvalidSyncJobStateError } from '../../../domain/exceptions/invalid-syn
 import { SyncJobNotFoundError } from '../../../domain/exceptions/sync-job-not-found.error';
 import type {
   JobOutcome,
+  JobOutcomeReason,
   JobStatus,
   JobType,
   SyncJobFilters,
@@ -38,6 +39,7 @@ import type {
 } from '../../../domain/types/sync-job.types';
 import {
   JobOutcomeValues,
+  JobOutcomeReasonValues,
   JobStatusValues,
   JobTypeValues,
 } from '../../../domain/types/sync-job.types';
@@ -88,6 +90,7 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       entity.lockedBy = null;
       entity.lastError = null;
       entity.outcome = null;
+      entity.outcomeReason = null;
 
       const saved = await this.repository.save(entity);
       return this.toDomain(saved);
@@ -170,10 +173,15 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
     });
   }
 
-  async markSucceeded(id: string, outcome: JobOutcome): Promise<void> {
+  async markSucceeded(
+    id: string,
+    outcome: JobOutcome,
+    outcomeReason?: JobOutcomeReason
+  ): Promise<void> {
     await this.repository.update(id, {
       status: 'succeeded',
       outcome,
+      outcomeReason: outcomeReason ?? null,
       lockedAt: null,
       lockedBy: null,
       lastError: null,
@@ -470,6 +478,16 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       throw new InvalidSyncJobStateError('outcome', entity.outcome, entity.id);
     }
 
+    // Validate outcomeReason if present. NULL/undefined is the expected
+    // resting state for jobs with no finer outcome classification (#1689).
+    if (
+      entity.outcomeReason !== null &&
+      entity.outcomeReason !== undefined &&
+      !this.isValidJobOutcomeReason(entity.outcomeReason)
+    ) {
+      throw new InvalidSyncJobStateError('outcomeReason', entity.outcomeReason, entity.id);
+    }
+
     return new SyncJob(
       entity.id,
       entity.jobType,
@@ -485,7 +503,8 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       entity.lastError,
       entity.createdAt,
       entity.updatedAt,
-      entity.outcome ?? null
+      entity.outcome ?? null,
+      entity.outcomeReason ?? null
     );
   }
 
@@ -508,5 +527,12 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
    */
   private isValidJobOutcome(value: string): value is JobOutcome {
     return (JobOutcomeValues as readonly string[]).includes(value);
+  }
+
+  /**
+   * Type guard for JobOutcomeReason
+   */
+  private isValidJobOutcomeReason(value: string): value is JobOutcomeReason {
+    return (JobOutcomeReasonValues as readonly string[]).includes(value);
   }
 }

@@ -267,6 +267,42 @@ export interface MarketplaceOfferStockRestorePayloadV1 {
 }
 
 /**
+ * Payload for `marketplace.offer.pauseStale` jobs (#1689).
+ *
+ * Enqueued by the `events.master.deletion` stream consumer whenever a
+ * `master.variant.stale` / `master.product.stale` event lands — the
+ * event-driven trigger half of the stale-offer pause. Enqueued against the
+ * sentinel system connection (the deletion is detected on the master
+ * connection, but the offers to pause live on other connections), mirroring
+ * `inventory.propagateToMarketplaces`. The worker handler delegates to the
+ * core `StaleOfferPauseService`, which re-verifies each variant is still
+ * `isStale` before zeroing its mapped offers (an event racing a reappearance
+ * must never zero a live offer).
+ */
+export interface MarketplaceOfferPauseStalePayloadV1 {
+  schemaVersion: 1;
+  internalProductId: string;
+  variantIds: string[];
+  correlationId: string;
+}
+
+/**
+ * Payload for `marketplace.offer.pauseStaleSweep` jobs (#1689).
+ *
+ * Scheduled hourly per `OfferManager`-capable connection — the reconcile
+ * guarantee half of the stale-offer pause, closing the at-most-once gap left
+ * by the event trigger (a lost/undelivered `events.master.deletion` message).
+ * Pages stale-mapped variants for the job's own connection (`job.connectionId`)
+ * via `OfferMappingRepositoryPort.findStaleMappedVariants` and re-asserts a
+ * quantity-0 update for each still-stale one.
+ */
+export interface MarketplaceOfferPauseStaleSweepPayloadV1 {
+  schemaVersion: 1;
+  /** Max stale-mapped variants to page per sweep tick. */
+  limit: number;
+}
+
+/**
  * Payload v1 — Marketplace Shipment Status Sync (#838)
  *
  * Cursor-paced refresh of non-terminal `Shipment` rows for one carrier

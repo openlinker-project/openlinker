@@ -21,6 +21,7 @@ import { Test } from '@nestjs/testing';
 
 import {
   AdapterCapabilityNotSupportedException,
+  AllVariantsAlreadyListedException,
   BULK_LISTING_RETRY_SERVICE_TOKEN,
   BULK_LISTING_SUBMIT_SERVICE_TOKEN,
   BulkListingBatch,
@@ -75,6 +76,7 @@ describe('BulkListingController', () => {
       bulkSubmit.submit.mockResolvedValue({
         batchId: 'b-1',
         jobIds: ['job-1', 'job-2'],
+        skippedAlreadyListedCount: 0,
       });
 
       const dto: BulkOfferCreateRequestDto = {
@@ -91,7 +93,11 @@ describe('BulkListingController', () => {
 
       const response = await controller.submit(dto, adminUser);
 
-      expect(response).toEqual({ batchId: 'b-1', jobIds: ['job-1', 'job-2'] });
+      expect(response).toEqual({
+        batchId: 'b-1',
+        jobIds: ['job-1', 'job-2'],
+        skippedAlreadyListedCount: 0,
+      });
       expect(bulkSubmit.submit).toHaveBeenCalledWith({
         connectionId: dto.connectionId,
         initiatedBy: 'user-admin',
@@ -107,7 +113,11 @@ describe('BulkListingController', () => {
     });
 
     it('forwards perProductOverrides when present', async () => {
-      bulkSubmit.submit.mockResolvedValue({ batchId: 'b-1', jobIds: [] });
+      bulkSubmit.submit.mockResolvedValue({
+        batchId: 'b-1',
+        jobIds: [],
+        skippedAlreadyListedCount: 0,
+      });
 
       const dto: BulkOfferCreateRequestDto = {
         connectionId: '00000000-0000-4000-8000-000000000000',
@@ -140,6 +150,26 @@ describe('BulkListingController', () => {
           adminUser
         )
       ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('maps AllVariantsAlreadyListedException to BadRequestException with a distinguishable message (#1933)', async () => {
+      bulkSubmit.submit.mockRejectedValue(new AllVariantsAlreadyListedException(3));
+
+      const submitPromise = controller.submit(
+        {
+          connectionId: '00000000-0000-4000-8000-000000000000',
+          productIds: ['v-a', 'v-b', 'v-c'],
+          sharedConfig: { stock: 1, publishImmediately: false },
+        },
+        adminUser
+      );
+
+      await expect(submitPromise).rejects.toBeInstanceOf(BadRequestException);
+      // Distinct from the generic "requires at least one productId" message —
+      // this is the whole point of #1933: an operator who confirmed the
+      // duplicate-guard modal on a real selection must not be told they
+      // selected nothing.
+      await expect(submitPromise).rejects.toThrow(/already listed/);
     });
 
     it('propagates other exceptions unchanged (Nest filters map them to the documented codes)', async () => {
