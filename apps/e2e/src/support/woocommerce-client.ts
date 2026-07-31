@@ -6,7 +6,7 @@
  * which never returns credentials) and the site URL from the connection's own
  * `config.siteUrl`. Returns `null` when any prerequisite is missing so callers
  * can `test.skip` rather than throw — mirrors the `buildWooClient` /
- * `buildPrestashopClient` helpers in `tests/golden-path/full-flow.spec.ts`,
+ * `buildPrestashopClient` helpers in `tests/golden-path/full-flow/helpers.ts`,
  * extracted here because the WooCommerce-parity suite (#1571) needs the same
  * construction across several spec files.
  *

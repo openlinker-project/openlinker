@@ -74,7 +74,7 @@ export interface SynthesizedOrder {
 
 /**
  * Resolve the PrestaShop webservice client from env, mirroring the private
- * helper in `tests/golden-path/full-flow.spec.ts` (kept independent per-file —
+ * helper in `tests/golden-path/full-flow/helpers.ts` (kept independent per-file —
  * see `docs/engineering-standards.md`, this is test-support code, not a
  * cross-context port).
  */

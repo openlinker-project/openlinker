@@ -41,7 +41,7 @@
  * post-sync master quantity. Soft (annotated): the channel offer's own quantity
  * converging, because Allegro applies a quantity change asynchronously over
  * minutes (cf #1520), and the WooCommerce leg, whose stock write-back is
- * default-OFF (per S9 in full-flow.spec.ts). The split matters: with only the
+ * default-OFF (per S9 in the full-flow segments). The split matters: with only the
  * soft half, the handler could stop writing to a channel entirely and this file
  * stayed green.
  *
@@ -444,12 +444,12 @@ async function propagateAndAssertChannels(
   // WooCommerce: only a real fan-out target when stock write-back is enabled
   // for the connection (OfferManager on a non-inventory-master WC connection,
   // #1498) — off by default, so a stale value here is an annotated known gap,
-  // never a hard failure (mirrors full-flow.spec.ts S9).
+  // never a hard failure (mirrors full-flow S9, `11-s9-reconciliation.spec.ts`).
   testInfo.annotations.push({
     type: 'propagation-wc',
     description:
       'WooCommerce fan-out requires stock write-back enabled (OfferManager on the WC connection, ' +
-      'off by default) — not asserted here; see full-flow.spec.ts S9 for the same documented gap',
+      'off by default) — not asserted here; see full-flow S9 for the same documented gap',
   });
 }
 

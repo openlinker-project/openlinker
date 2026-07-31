@@ -50,7 +50,7 @@ export interface E2eEnv {
    * (`ol_order_…`). Unset (the default) leaves the flow byte-identical to a
    * normal run — this is a strictly additive path.
    *
-   * Why it exists: `full-flow.spec.ts` runs `mode: 'serial'` and every segment
+   * Why it exists: the full-flow segments run strictly in order and every one
    * after the purchase reads state that S0-S4 build up, so ANY failure before
    * S5 destroys the whole rest of the run. Re-reaching S5 then costs a fresh
    * product, a fresh Allegro offer, roughly 40 minutes waiting for that offer

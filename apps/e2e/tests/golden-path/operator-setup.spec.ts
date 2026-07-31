@@ -340,7 +340,7 @@ async function runBulkOfferSegment(ctx: {
   // Config ("Proceed →") → auto-advancing Resolve → Review ("Create offers (N)"),
   // failing fast if any review row needs attention.
   //
-  // The per-destination options mirror `full-flow.spec.ts`'s own bulk segment.
+  // The per-destination options mirror the full-flow `04-s3-allegro-offers.spec.ts` segment.
   // Omitting them is not a smaller version of the same run — a borrowed-taxonomy
   // destination (Erli) resolves NO category in the wizard preview and exposes a
   // plain "Allegro category ID" field instead of a tree, so without an explicit

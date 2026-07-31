@@ -2,7 +2,7 @@
  * Shipping suite — S7: tracking-number backfill (#1521 generalized)
  *
  * #1521 ("assert InPost tracking-number backfill in the golden-path E2E") is
- * ALREADY covered: PR #1681 hardened `full-flow.spec.ts` S6 to poll
+ * ALREADY covered: PR #1681 hardened full-flow S6 (`08-s6-inpost-labels.spec.ts`) to poll
  * `waitForTrackingBackfill` (`src/support/shipments.ts`) after the attended
  * purchase's paczkomat dispatch, rather than asserting immediately. That
  * coverage is real and this spec does not duplicate it.

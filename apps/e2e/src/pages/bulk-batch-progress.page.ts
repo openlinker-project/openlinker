@@ -3,7 +3,7 @@
  *
  * Covers `/listings/bulk-batches/:batchId`. Reached from
  * `BulkOfferWizardPage.confirmCreation()`, whose two callers
- * (`full-flow.spec.ts`, `operator-setup.spec.ts`) read `batchId` and then assert
+ * (the full-flow segments, `operator-setup.spec.ts`) read `batchId` and then assert
  * against the API rather than the DOM - OL's own offer mappings are the
  * authoritative signal, and the batch id is all they need from this page.
  *

@@ -116,11 +116,15 @@ export default defineConfig({
       // a silent retry would double-buy / double-issue. Run headed via
       // `--project=full-flow --headed`.
       name: 'full-flow',
-      testMatch: /golden-path\/full-flow\.spec\.ts/,
+      // One segment per file (`01-s0-…` … `16-…`), run in sorted path order by
+      // the global `workers: 1` / `fullyParallel: false`. The numeric prefix —
+      // not the S-number — is the running order: the purchase PAUSE sits
+      // between S4 and S5, and the #1574 extensions follow S9.
+      testMatch: /golden-path\/full-flow\/.*\.spec\.ts/,
       retries: 0,
       // The attended flow waits on worker jobs (up to 300 s), manual dashboard
       // checkpoints and the purchase pause — up to 2 hours PER purchase platform
-      // (full-flow.spec.ts PAUSE test), so a dual-purchase run can legitimately
+      // (the `06-purchase-pause.spec.ts` segment), so a dual-purchase run can legitimately
       // sit for 4+ hours inside one test. No per-test timeout can bound that
       // without contradicting the checkpoint budgets, so the project runs
       // unbounded (attended semantics): every wait inside the test is itself

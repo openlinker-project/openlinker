@@ -15,6 +15,26 @@ up from OL state, they do not automate external buyer sites.
 > not import from `libs/*` or `apps/web`; response shapes are mirrored locally in
 > `src/api/api.types.ts`.
 
+## Read this first: UNATTENDED IS NOT THE SAME AS SAFE
+
+⚠️ `test:e2e` — the default command, the one with no scary flag — issues real
+fiscal documents, dispatches real ShipX shipments, seeds WooCommerce-native
+orders, mutates PrestaShop stock, rotates webhook secrets on up to four
+connections, and creates real user accounts. "Unattended" means *no human is
+needed during the run*. It does **not** mean the run is harmless.
+
+Only `smoke` (and the `setup` login it depends on) is read-only. Everything else
+mutates. **Point this suite only at a stack you control**, in a coordinated
+session — never at a shared demo stack someone is using. The suite restores what
+it can (webhook secrets, stock, bank-account defaults, shipments, accounts) and
+prints a `MANUAL FOLLOW-UP:` line for everything it cannot; see
+[What a run leaves behind](#what-a-run-leaves-behind) for the full ledger of
+irreversible residue.
+
+The attended `full-flow` project is separately gated (`E2E_ATTENDED=1`) because
+it additionally blocks on a **manual buyer purchase** — up to 2 h per purchase
+platform — and is excluded from `test:e2e`.
+
 ---
 
 ## Layout
@@ -35,7 +55,8 @@ apps/e2e/
     auth.setup.ts         # global-setup auth project → writes .auth/admin.json
     connection-topology.setup.ts  # same `setup` project: preflight that fails a self-contradictory stack
     smoke/                # health + login + connections list (proves the substrate)
-    golden-path/          # operator-setup.spec (S1-S4, unattended) + full-flow.spec (S0-S9, attended)
+    golden-path/          # operator-setup.spec (S1-S4, unattended)
+    golden-path/full-flow/        # one file per S0-S9 segment (attended) + shared state/helpers/harness
     webhooks/             # real signed inbound-webhook receiver path (#1512)
     woocommerce-parity/   # WC master / order destination / mapping / webhooks / config validation (#1571)
     shipping/             # unattended InPost coverage: labels, COD, insurance, protocol, tracking (#1572)
@@ -116,15 +137,12 @@ so the suite is never swept into the root `pnpm -r test` unit gate.
 > `test:e2e:full-flow` (which sets `E2E_ATTENDED=1`; `full-flow` also self-skips
 > without that flag, belt-and-suspenders).
 
-> ⚠️ **UNATTENDED IS NOT THE SAME AS SAFE.** `test:e2e` issues real fiscal
-> documents, dispatches real ShipX shipments, seeds WooCommerce-native orders,
-> mutates PrestaShop stock, rotates webhook secrets on up to four connections
-> and creates real user accounts. The mutating `golden-path` project runs by
-> default with no `E2E_ATTENDED`-style gate, even though
+> ⚠️ **UNATTENDED IS NOT THE SAME AS SAFE** — see
+> [the warning at the top of this file](#read-this-first-unattended-is-not-the-same-as-safe).
+> Note in particular that the mutating `golden-path` project runs under the
+> default command with no `E2E_ATTENDED`-style gate, even though
 > `operator-setup.spec.ts` itself warns it must never run unattended against a
-> shared stack. Point it only at a stack you control. The suite restores what it
-> can (webhook secrets, stock, bank-account defaults, shipments, accounts) and
-> warns to stdout with a `MANUAL FOLLOW-UP:` prefix for anything it cannot.
+> shared stack.
 
 ```bash
 # From the repo root:
@@ -348,6 +366,66 @@ sources, how to run headed, and how to extend — is documented in
 
 ---
 
+## CI and monorepo integration
+
+### What CI guarantees about this package
+
+**On every PR: this package compiles and lints. It is not executed.**
+
+`apps/e2e` sits inside the `apps/*` workspace glob, so root `pnpm lint` and
+`pnpm type-check` cover it like any other package — a broken import, an unused
+symbol, or a type error here fails the ordinary CI gate. Nothing in the
+`pull_request` path *runs* a spec, because the suite needs a live six-system
+stack and all but one project mutates it.
+
+That leaves one real failure mode: **a selector rename in `apps/web`, or an API
+shape change, is invisible to the compile gate** (this package deliberately
+imports nothing from `libs/*` or `apps/web` — response shapes are mirrored in
+`src/api/api.types.ts`). Only an actual run catches that.
+
+[`.github/workflows/e2e.yml`](../../.github/workflows/e2e.yml) closes that gap:
+
+| Trigger | What it runs | Notes |
+|---|---|---|
+| `schedule` (weekly, Mon 03:00 UTC) | `smoke` only — read-only | The rot detector. Exercises env → API client → world → fixtures → page objects → login UI against a really deployed stack, and cannot damage it. Dormant until the `E2E_SCHEDULED_ENABLED` repo variable is set to `true`. |
+| `workflow_dispatch` | any single project, against a stack you name | Mutating runs stay a deliberate human decision, every time. |
+
+Secrets are read from `E2E_OL_WEB_URL` / `E2E_OL_API_URL` / `E2E_OL_ADMIN_USER` /
+`E2E_OL_ADMIN_PASS` (plus the optional per-suite ones); the workflow fails fast
+with a named error when a target stack is not configured, rather than falling
+back to the localhost defaults and reporting a confusing connection error.
+
+### Why this package is inside the root lint / type-check aggregates
+
+It is deliberate, not an oversight — but the reasoning is the inverse of the
+usual "drift protection" argument, so it is worth stating.
+
+Because the suite imports nothing from the rest of the monorepo, its
+type-check can **never** catch drift in production code. What root aggregation
+actually buys is that `apps/e2e`'s *own* 17 k lines cannot rot into a
+non-compiling state unnoticed, and that a change to shared root config
+(`tsconfig.base.json`, the Prettier/ESLint baseline, a TypeScript bump) surfaces
+its effect here immediately. The cost is bounded in both directions: `tsc
+--noEmit` + ESLint over this package is seconds, and it can only *fail* a PR that
+touches `apps/e2e` or that root config — which is precisely when you want it to.
+
+Excluding the package and gating it behind a path-filtered job was considered and
+rejected: it buys a few seconds on unrelated PRs and, in exchange, lets a test
+package that nothing executes drift out of compiling.
+
+Two coupling notes that follow from this:
+
+- The package pins `typescript@5.4.3` and `@types/node@20.11.30` **to match the
+  root versions exactly**. They must be bumped together; a divergence here would
+  make root `pnpm type-check` compile this package under a different compiler
+  than everything else.
+- The lint config is `.eslintrc.cjs`, not the repo-standard `.eslintrc.js`. That
+  is forced by `"type": "module"` in this package's `package.json` — a `.js`
+  config would be parsed as ESM and ESLint's legacy loader `require()`s it. The
+  divergence is mechanical, not a style choice.
+
+---
+
 ## Auth model
 
 The FE uses a memory-only access token + HttpOnly refresh cookie + `ol_csrf` CSRF
@@ -441,7 +519,7 @@ cross-checked) with a bounded timeout and a clear message.
 Delivered here: framework foundation + smoke + operator-setup segments **S1-S4**
 (no manual purchase needed), **plus the full attended golden path S0-S9** across
 all six systems with field- and amount-level parity
-(`tests/golden-path/full-flow.spec.ts`, project `full-flow`). The full flow
+(`tests/golden-path/full-flow/`, project `full-flow`). The full flow
 covers the post-purchase half (order ingest, InPost label, KSeF invoice,
 reconciliation) and drives a manual buyer purchase + external-dashboard
 checkpoints. See [`docs/manual-testing/e2e-golden-path.md`](../../docs/manual-testing/e2e-golden-path.md).

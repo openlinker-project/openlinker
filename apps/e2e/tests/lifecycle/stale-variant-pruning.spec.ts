@@ -70,7 +70,7 @@ test.describe('lifecycle: stale-variant pruning (#1495 / #1574)', () => {
 
     const variants = await world.variantsOf(product.id);
     // Pick the LAST combination (not necessarily the golden-path's primary
-    // variant) so this doesn't collide with whatever full-flow.spec.ts is
+    // variant) so this doesn't collide with whatever the full-flow segments are
     // using as its driver product's primary variant.
     const toDelete = combinations[combinations.length - 1];
     const targetVariant = variants.find((v) => (v.ean ?? v.gtin) === toDelete.ean13);
@@ -179,7 +179,7 @@ test.describe('lifecycle: stale-variant pruning (#1495 / #1574)', () => {
 /**
  * Live-offer read guarded by capability: `GET /listings/:id/offer` 422s when the
  * connection's adapter ships no `OfferReader` (Erli today). Mirrors the helper
- * of the same name in inventory-propagation.spec.ts / full-flow.spec.ts.
+ * of the same name in inventory-propagation.spec.ts / the full-flow helpers.
  */
 async function readLiveOfferOrNull(api: ApiClient, mappingId: string): Promise<MarketplaceOffer | null> {
   try {

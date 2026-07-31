@@ -1,7 +1,7 @@
 /**
  * Shipping suite — S1: InPost courier label (deliveryIntent: address)
  *
- * The golden path (`full-flow.spec.ts` S6) only exercises the paczkomat
+ * The golden path (full-flow S6, `08-s6-inpost-labels.spec.ts`) only exercises the paczkomat
  * (pickup-point) path, because the attended purchase always instructs the
  * buyer to choose InPost Paczkomat delivery. This spec closes the courier gap
  * (#1572): dispatch a label with `deliveryIntent: 'address'`, which the

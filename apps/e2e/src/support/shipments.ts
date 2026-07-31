@@ -208,7 +208,7 @@ export interface ShippingOrderSnapshot {
 /**
  * Read the fields the shipping suite cares about off `Order.orderSnapshot`
  * (an untyped `Record<string, unknown>` on the wire). Mirrors the equivalent
- * local reader in `tests/golden-path/full-flow.spec.ts` — duplicated rather
+ * local reader in `tests/golden-path/full-flow/helpers.ts` — duplicated rather
  * than imported because that reader is private to the golden-path spec and
  * asserts a stricter shape (items/totals) the shipping suite doesn't need.
  */

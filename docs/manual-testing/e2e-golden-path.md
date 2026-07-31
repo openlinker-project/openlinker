@@ -6,7 +6,10 @@ amount** (field-level + amount-level parity), not image pixels. It is the
 executable, durable reference for a full "does OpenLinker actually work end to
 end" run.
 
-- **Spec**: `apps/e2e/tests/golden-path/full-flow.spec.ts`
+- **Specs**: `apps/e2e/tests/golden-path/full-flow/` — one file per segment,
+  numbered in running order (`01-s0-baseline.spec.ts` … `16-manual-checkpoints.spec.ts`).
+  Shared state lives in `flow-state.ts`, shared helpers in `helpers.ts`, and the
+  ordering / fail-fast / attended-gate contract in `segment.ts`.
 - **Project**: `full-flow` (headed, serial, `workers: 1`, `retries: 0`)
 - **Builds on**: the `apps/e2e` substrate (#1479) — API client, world, fixtures,
   page objects, pollers, job helpers.
