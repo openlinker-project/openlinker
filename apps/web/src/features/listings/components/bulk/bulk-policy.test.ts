@@ -20,6 +20,7 @@ import {
 // id is now namespaced.
 const allegroValidate = allegroOfferValidation.validateRow;
 const NEEDS_PARAMS = 'allegro:needs-product-parameters';
+const TITLE_TOO_LONG = 'allegro:title-too-long';
 
 const NO_OVERRIDE: BulkPerProductOverride = {};
 
@@ -324,6 +325,28 @@ describe('computeBlockers', () => {
     );
     expect(result).toEqual([NEEDS_PARAMS, 'no-master-price', 'no-master-stock']);
   });
+
+  // #1962 - the host feeds the submit title through to the platform validator,
+  // which owns the length rule. Without the thread the row read ready and only
+  // failed per-record after submit.
+  it('forwards the effective title so the platform length rule can fire', () => {
+    const result = computeBlockers(
+      withPickedCategory({ effectiveTitle: 'x'.repeat(120), requiredProductParamIds: [] }),
+    );
+    expect(result).toContain(TITLE_TOO_LONG);
+  });
+
+  it('does NOT fire the length rule for a title within the limit', () => {
+    const result = computeBlockers(
+      withPickedCategory({ effectiveTitle: 'Short enough', requiredProductParamIds: [] }),
+    );
+    expect(result).not.toContain(TITLE_TOO_LONG);
+  });
+
+  it('does NOT fire the length rule when no title is threaded (absent ⇒ empty)', () => {
+    const result = computeBlockers(withPickedCategory({ requiredProductParamIds: [] }));
+    expect(result).not.toContain(TITLE_TOO_LONG);
+  });
 });
 
 // ── Per-variant helpers (#1741) ──────────────────────────────────────────────
@@ -334,6 +357,8 @@ import {
   imageCountForVariant,
   isValidGtin,
   recomputeVariantBlockers,
+  titleForRow,
+  titleForVariant,
   toGtin14,
 } from './bulk-policy';
 import type {
@@ -432,6 +457,26 @@ describe('imageCountForVariant', () => {
     expect(imageCountForVariant(row, row.variants[0])).toBe(1);
     const withOverride = makeVariant('ol_variant_1', { override: { overrides: { imageUrls: [] } } });
     expect(imageCountForVariant(makeWizardRow([withOverride]), withOverride)).toBe(0);
+  });
+});
+
+// #1962 - the title a submit would carry, so a platform length rule can measure
+// it before the operator commits (previously only the adapter ever saw it).
+describe('titleForRow / titleForVariant', () => {
+  it('falls back to the master product name when nobody overrode the title', () => {
+    const row = makeWizardRow([makeVariant('ol_variant_1')]);
+    expect(titleForRow(row)).toBe('P');
+    expect(titleForVariant(row, row.variants[0])).toBe('P');
+  });
+
+  it('prefers the base override, then the sibling own override', () => {
+    const row = makeWizardRow([makeVariant('ol_variant_1')]);
+    const withBase: BulkWizardRow = { ...row, override: { overrides: { title: 'Base title' } } };
+    expect(titleForRow(withBase)).toBe('Base title');
+    expect(titleForVariant(withBase, withBase.variants[0])).toBe('Base title');
+
+    const ownTitle = makeVariant('ol_variant_1', { override: { overrides: { title: 'Own title' } } });
+    expect(titleForVariant({ ...withBase, variants: [ownTitle] }, ownTitle)).toBe('Own title');
   });
 });
 
