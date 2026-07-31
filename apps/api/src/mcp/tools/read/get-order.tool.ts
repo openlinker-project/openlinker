@@ -43,6 +43,8 @@ export function createGetOrderTool(orderRecordService: IOrderRecordService): Mcp
   return {
     name: 'get_order',
     requiredCapability: 'OrderSource',
+    requiredScope: 'mcp:read',
+    requiresAdmin: false,
     description:
       "Read one order from OpenLinker's order store by its internal id: status, sync state, fulfillment/payment state, dispatch deadline, totals, and line items. Buyer personal data (name, email, address) is deliberately NOT returned. Reflects the last completed order sync, not a live marketplace read.",
     inputSchema,

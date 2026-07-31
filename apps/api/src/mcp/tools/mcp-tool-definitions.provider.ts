@@ -22,6 +22,16 @@ import {
   type IInventoryQueryService,
 } from '@openlinker/core/inventory';
 import { ORDER_RECORD_SERVICE_TOKEN, type IOrderRecordService } from '@openlinker/core/orders';
+import {
+  MAPPING_CONFIG_SERVICE_TOKEN,
+  type IMappingConfigService,
+} from '@openlinker/core/mappings';
+import {
+  ATTRIBUTE_PROJECTION_SERVICE_TOKEN,
+  CATEGORY_RESOLUTION_SERVICE_TOKEN,
+  type IAttributeProjectionService,
+  type ICategoryResolutionService,
+} from '@openlinker/core/listings';
 
 import {
   CONNECTION_SERVICE_TOKEN,
@@ -34,6 +44,11 @@ import { createSearchCatalogTool } from './read/search-catalog.tool';
 import { createGetProductTool } from './read/get-product.tool';
 import { createGetAvailabilityTool } from './read/get-availability.tool';
 import { createGetOrderTool } from './read/get-order.tool';
+import { createListCategoryMappingsTool } from './read/list-category-mappings.tool';
+import { createListAttributeMappingsTool } from './read/list-attribute-mappings.tool';
+import { createResolveCategoryTool } from './read/resolve-category.tool';
+import { createProjectAttributesTool } from './read/project-attributes.tool';
+import { createUpsertCategoryMappingTool } from './write/upsert-category-mapping.tool';
 
 export const MCP_TOOL_DEFINITIONS_TOKEN = Symbol('McpToolDefinitions');
 
@@ -44,12 +59,18 @@ export const mcpToolDefinitionsProvider: Provider = {
     PRODUCTS_SERVICE_TOKEN,
     INVENTORY_QUERY_SERVICE_TOKEN,
     ORDER_RECORD_SERVICE_TOKEN,
+    MAPPING_CONFIG_SERVICE_TOKEN,
+    CATEGORY_RESOLUTION_SERVICE_TOKEN,
+    ATTRIBUTE_PROJECTION_SERVICE_TOKEN,
   ],
   useFactory: (
     connectionService: IConnectionService,
     productsService: IProductsService,
     inventoryQueryService: IInventoryQueryService,
-    orderRecordService: IOrderRecordService
+    orderRecordService: IOrderRecordService,
+    mappingConfigService: IMappingConfigService,
+    categoryResolutionService: ICategoryResolutionService,
+    attributeProjectionService: IAttributeProjectionService
   ): readonly McpToolDefinition[] => [
     // Discovery — always registered.
     createWhoamiTool(),
@@ -59,5 +80,13 @@ export const mcpToolDefinitionsProvider: Provider = {
     createGetProductTool(productsService),
     createGetAvailabilityTool(inventoryQueryService),
     createGetOrderTool(orderRecordService),
+    // Mapping assistant (#1488) — ungated: mapping config is OL-owned data, not
+    // adapter-served, so a capability gate would imply nothing about it.
+    createListCategoryMappingsTool(mappingConfigService),
+    createListAttributeMappingsTool(mappingConfigService),
+    createResolveCategoryTool(categoryResolutionService),
+    createProjectAttributesTool(attributeProjectionService),
+    // The write half — scope- and role-gated by the registry wrapper.
+    createUpsertCategoryMappingTool(mappingConfigService),
   ],
 };
