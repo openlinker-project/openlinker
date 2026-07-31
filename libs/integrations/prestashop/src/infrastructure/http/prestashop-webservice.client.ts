@@ -70,6 +70,21 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
 };
 
 /**
+ * Optional constructor knobs, grouped so adding a future option never forces
+ * every caller to thread an `undefined` positional placeholder through the
+ * ones it doesn't need (#1810 review follow-up).
+ */
+export interface PrestashopWebserviceClientOptions {
+  retryConfig?: Partial<RetryConfig>;
+  /**
+   * Connection-bound outbound transport (#1810) — defaults to bare fetch so
+   * existing call sites that predate the rate-limit mechanism (test
+   * harnesses, other-package callers) keep working unchanged.
+   */
+  fetchImpl?: FetchLike;
+}
+
+/**
  * PrestaShop WebService Client
  *
  * Implements HTTP client for PrestaShop WebService API using native fetch.
@@ -81,17 +96,15 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
   private readonly config: PrestashopConnectionConfig;
   private readonly retryConfig: RetryConfig;
   private readonly xmlBuilder: XMLBuilder;
+  private readonly fetchImpl: FetchLike;
 
   constructor(
     baseUrl: string,
     credentials: PrestashopCredentials,
     config: PrestashopConnectionConfig,
-    retryConfig?: Partial<RetryConfig>,
-    // Connection-bound outbound transport (#1810) — defaults to bare
-    // fetch so existing call sites that predate the rate-limit mechanism
-    // (test harnesses, other-package callers) keep working unchanged.
-    private readonly fetchImpl: FetchLike = globalThis.fetch
+    options: PrestashopWebserviceClientOptions = {}
   ) {
+    this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
     // Normalize baseUrl (remove trailing slash)
     const normalizedBaseUrl: string = baseUrl.replace(/\/$/, '');
     this.baseUrl = normalizedBaseUrl;
@@ -120,7 +133,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       responseFormat,
       shopId: configShopId,
     };
-    this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
+    this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...options.retryConfig };
     // Initialize XML builder for converting objects to XML (required for POST requests)
     this.xmlBuilder = new XMLBuilder({
       ignoreAttributes: false,

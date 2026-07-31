@@ -28,12 +28,14 @@ export type {
   PlatformType,
   CoreCapability,
   VariantGroupingModel,
+  ConnectionRateLimit,
 } from './api/connections.types';
 export {
   CORE_PLATFORM_TYPES,
   CORE_CAPABILITY_VALUES,
   VARIANT_GROUPING_MODEL_VALUES,
   resolveVariantGroupingModel,
+  resolveEffectiveRateLimit,
 } from './api/connections.types';
 
 export { useConnectionsQuery } from './hooks/use-connections-query';

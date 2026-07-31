@@ -314,6 +314,31 @@ describe('ConnectionController', () => {
 
       expect(result.variantGrouping).toBe('parent-child');
     });
+
+    it('should project the resolved adapter defaultRateLimit (#1810)', async () => {
+      integrationsService.resolveAdapterMetadata.mockResolvedValueOnce({
+        adapterKey: 'prestashop.webservice.v1',
+        platformType: 'prestashop',
+        supportedCapabilities: ['ProductMaster'],
+        defaultRateLimit: { requestsPerMinute: 60, maxConcurrent: 4 },
+      });
+      service.get.mockResolvedValue(mockConnection);
+
+      const result = await controller.get('connection-123', mockAdminUser);
+
+      expect(result.defaultRateLimit).toEqual({ requestsPerMinute: 60, maxConcurrent: 4 });
+    });
+
+    it('should default defaultRateLimit to null when the adapter declares none or metadata cannot be resolved', async () => {
+      integrationsService.resolveAdapterMetadata.mockRejectedValueOnce(
+        new Error('unknown adapter')
+      );
+      service.get.mockResolvedValue(mockConnection);
+
+      const result = await controller.get('connection-123', mockAdminUser);
+
+      expect(result.defaultRateLimit).toBeNull();
+    });
   });
 
   describe('update', () => {

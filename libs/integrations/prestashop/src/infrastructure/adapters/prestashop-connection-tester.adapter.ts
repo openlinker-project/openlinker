@@ -50,10 +50,12 @@ export class PrestashopConnectionTesterAdapter implements ConnectionTesterPort {
       };
 
       const client = new PrestashopWebserviceClient(baseUrl, credentials, config, {
-        maxRetries: 0,
-        initialDelayMs: 0,
-        maxDelayMs: 0,
-        backoffMultiplier: 1,
+        retryConfig: {
+          maxRetries: 0,
+          initialDelayMs: 0,
+          maxDelayMs: 0,
+          backoffMultiplier: 1,
+        },
       });
 
       await client.listResources('products', undefined, 1);

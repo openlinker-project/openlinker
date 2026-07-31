@@ -699,6 +699,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         form={form}
         configIsParseable={configIsParseable}
         syncRateLimitToJson={syncRateLimitToJson}
+        defaultRateLimit={connection.defaultRateLimit ?? null}
       />
 
       <div className="config-panel__toggle">

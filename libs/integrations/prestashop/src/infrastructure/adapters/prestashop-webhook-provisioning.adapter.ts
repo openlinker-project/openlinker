@@ -265,8 +265,7 @@ export class PrestashopWebhookProvisioningAdapter implements WebhookProvisioning
       config.baseUrl as string,
       credentials,
       config as PrestashopConnectionConfig,
-      undefined,
-      fetchImpl
+      { fetchImpl }
     );
   }
 }
