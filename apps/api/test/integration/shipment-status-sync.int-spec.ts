@@ -91,6 +91,7 @@ describe('Shipment Status Sync Integration (#838)', () => {
     // Suite-scoped stubs — clear recorded state per test (resetTestHarness only
     // truncates the database).
     stubs.dest.calls.length = 0;
+    stubs.source.writebackCalls.length = 0;
     stubs.carrier.providerShipmentIds.length = 0;
     stubs.carrier.setNextSnapshot({ status: 'generated', providerStatus: 'pending' });
     // Outcome queue drains naturally; left empty here so each test stages what it needs.
@@ -203,17 +204,18 @@ describe('Shipment Status Sync Integration (#838)', () => {
     const shipmentId = dispatched.shipment.id;
 
     if (options.advanceToDispatched) {
-      // Drive the real #837 transition so the push-gate is open. Since #1168 the
-      // dispatch-notify path relays a `dispatched` event via the lifecycle relay
-      // (NOT the legacy `updateFulfillment` / `dest.calls` the #838 assertions
-      // below use). No Order identifier mappings are seeded here, so the relay
-      // has no targets and the source half degrades to 'absent' — which doesn't
-      // block the `generated → dispatched` Shipment transition.
+      // Drive the real #837 transition so the relay gate is open. This wave
+      // reaches BOTH participants through the lifecycle relay (#1168) now that
+      // #1947 seeds Order identifier mappings for the source as well as the
+      // destination — and it carries NO waybill, because ShipX mints one only at
+      // confirmation. That absence is exactly the #1947 condition, reproduced
+      // here for real rather than simulated.
       await notificationService().notifyDispatched({ shipmentId });
-      // Belt-and-suspenders: the dispatch wave drives the relay, not this stub's
-      // `updateFulfillment`, so `dest.calls` is already empty — clear anyway so
-      // a future change can't leak into our #838 assertions.
+      // Drop the dispatch wave so each test asserts only about the BACKFILL wave
+      // it stages. Not belt-and-suspenders any more: with the source mapping
+      // seeded, both arrays genuinely receive an entry above.
       stubs.dest.calls.length = 0;
+      stubs.source.writebackCalls.length = 0;
     }
 
     return { carrierConnectionId: carrier.id, destConnectionId: dest.id, shipmentId };
