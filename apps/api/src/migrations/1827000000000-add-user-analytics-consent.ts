@@ -25,6 +25,15 @@
  * because a consent that cannot be declined without losing access is not freely
  * given, and dressing the condition as a choice is what created the exposure.
  *
+ * What the framing settles and what it does not: it fixes the GDPR Art. 6 basis
+ * and removes the Art. 7(3) withdrawal obligation. It does NOT settle ePrivacy
+ * Art. 5(3), which governs storage of / access to information on the visitor's
+ * device independently of the Art. 6 basis and carries its own narrower
+ * exemptions. That is a privacy-notice sign-off question rather than a code one
+ * (the enforcement mechanism is the same either way) — recorded, with the shape
+ * it would force if the answer goes the other way, in
+ * docs/plans/implementation-plan-demo-consent-required.md § 0.
+ *
  * Two things deliberately did NOT change: the default stays `false`, so every
  * pre-existing row reads as "not accepted", and #1938 ships **no data
  * backfill** — the flag still only ever flips when someone actually accepts.

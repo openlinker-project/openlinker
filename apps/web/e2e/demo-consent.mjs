@@ -9,7 +9,9 @@
  *
  * Covers: the registration recording notice (demo and non-demo), the `/consent`
  * gate a pre-#1938 account is redirected to, that Continue returns to `?next=`,
- * and that neither the demo banner nor Settings offers an analytics opt-out.
+ * that neither the demo banner nor Settings offers an analytics opt-out, and
+ * that both new surfaces fit 360×812 / 768×1024 / 1440×900 without horizontal
+ * overflow.
  *
  *   node apps/web/e2e/demo-consent.mjs
  *
@@ -54,10 +56,16 @@ function check(name, condition) {
 
 async function makeContext(
   browser,
-  { demoMode = true, analyticsConsent = false, authenticated = true, capture = {} } = {},
+  {
+    demoMode = true,
+    analyticsConsent = false,
+    authenticated = true,
+    capture = {},
+    viewport = { width: 1280, height: 1500 },
+  } = {},
 ) {
   const context = await browser.newContext({
-    viewport: { width: 1280, height: 1500 },
+    viewport,
     deviceScaleFactor: 2,
     colorScheme: 'dark',
   });
@@ -328,29 +336,57 @@ const browser = await chromium.launch();
   await context.close();
 }
 
-// ── 7. Mobile view of the registration card ──────────────────────────────────
-{
-  const context = await browser.newContext({
-    viewport: { width: 390, height: 900 },
-    deviceScaleFactor: 2,
-    colorScheme: 'dark',
+// ── 7. Both new surfaces at the three style-guide breakpoints ─────────────────
+// Phone / tablet / laptop, per the widths named in the #1945 review. The
+// assertion is the one a screenshot cannot make on its own: the card must not
+// overflow its viewport horizontally at any of them.
+const BREAKPOINTS = [
+  { label: 'mobile', width: 360, height: 812 },
+  { label: 'tablet', width: 768, height: 1024 },
+  { label: 'laptop', width: 1440, height: 900 },
+];
+
+async function assertNoHorizontalOverflow(page, where) {
+  const overflows = await page.evaluate(() => {
+    const doc = document.documentElement;
+    return doc.scrollWidth > doc.clientWidth + 1;
   });
-  await context.addInitScript(() => {
-    window.localStorage.setItem('openlinker.theme', 'dark');
+  check(`${where}: no horizontal overflow`, overflows === false);
+}
+
+for (const { label, width, height } of BREAKPOINTS) {
+  // Registration (anonymous, demo mode).
+  const registerContext = await makeContext(browser, {
+    demoMode: true,
+    authenticated: false,
+    viewport: { width, height },
   });
-  await context.route('**/v1/**', (route) => {
-    const path = new URL(route.request().url()).pathname.replace(/^\/v1/, '');
-    if (path === '/system/config') {
-      return route.fulfill({ json: { demoMode: true, demoIntegrations: {} } });
-    }
-    if (path === '/auth/refresh') return route.fulfill({ status: 401, json: {} });
-    return route.fulfill({ json: [] });
+  const registerPage = await registerContext.newPage();
+  await registerPage.goto(`${BASE}/register`);
+  await registerPage.getByText(/Demo sessions are recorded/i).waitFor();
+  await assertNoHorizontalOverflow(registerPage, `register ${label} (${width}px)`);
+  await assertNoCrash(registerPage, `register ${label}`);
+  await cardShot(registerPage, `10-register-demo-${label}-${width}`);
+  await registerContext.close();
+
+  // The /consent gate (authenticated, no acceptance on the account yet).
+  const consentContext = await makeContext(browser, {
+    demoMode: true,
+    analyticsConsent: false,
+    viewport: { width, height },
   });
-  const page = await context.newPage();
-  await page.goto(`${BASE}/register`);
-  await page.getByText(/Demo sessions are recorded/i).waitFor();
-  await cardShot(page, '10-register-demo-mobile');
-  await context.close();
+  const consentPage = await consentContext.newPage();
+  await consentPage.goto(`${BASE}/consent`);
+  await consentPage.getByRole('heading', { name: /Demo sessions are recorded/i }).waitFor();
+  check(
+    `consent ${label}: both actions are reachable`,
+    (await consentPage.getByRole('button', { name: /^Continue$/ }).isVisible()) &&
+      (await consentPage.getByRole('button', { name: /sign out/i }).isVisible()),
+  );
+  await assertNoHorizontalOverflow(consentPage, `consent ${label} (${width}px)`);
+  await assertNoCrash(consentPage, `consent ${label}`);
+  await cardShot(consentPage, `11-consent-${label}-${width}`);
+  await consentContext.close();
 }
 
 await browser.close();

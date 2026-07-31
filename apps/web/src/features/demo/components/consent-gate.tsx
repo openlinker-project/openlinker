@@ -21,7 +21,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSession } from '../../../shared/auth/use-session';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
-import { useUpdateAnalyticsConsentMutation } from '../../auth/hooks/use-update-analytics-consent-mutation';
+import { useUpdateAnalyticsConsentMutation } from '../../auth';
 import { SessionRecordingBullets } from './session-recording-bullets';
 
 /**

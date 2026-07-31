@@ -146,7 +146,11 @@ export class AuthController {
     summary: 'Self-service registration. Creates a pending user that requires admin approval.',
   })
   @ApiResponse({ status: 201, description: 'Registration submitted — awaiting admin approval', type: OkResponseDto })
-  @ApiResponse({ status: 400, description: 'Demo mode: session-recording consent was not given' })
+  @ApiResponse({
+    status: 400,
+    description:
+      "Demo mode: the session-recording condition was not accepted (`analyticsConsent` omitted or `false`). Outside demo mode the field is optional and this response does not apply.",
+  })
   @ApiResponse({ status: 403, description: 'Registration is disabled for this installation' })
   @ApiResponse({ status: 409, description: 'Username or email already taken' })
   @ApiResponse({ status: 429, description: 'Too many registration attempts from this IP' })

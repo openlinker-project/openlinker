@@ -8,7 +8,8 @@
  *
  * The literal is duplicated from `ANALYTICS_CONSENT_REQUIRED_CODE` in
  * `apps/api/src/auth/guards/analytics-consent.guard.ts` — the browser and the
- * API share no package, so the string is the contract.
+ * API share no package, so the string is the contract. Renaming the code means
+ * editing BOTH sites; nothing links them at compile time.
  *
  * @module shared/api
  */

@@ -35,6 +35,31 @@ The rejected alternative was: unticked box + a visible "withdraw and delete my
 demo account" affordance in Settings. It is legally the more conservative shape,
 but it reintroduces exactly the friction that left the demo unrecorded.
 
+### Open, and deliberately not resolved in code: ePrivacy Art. 5(3)
+
+Raised in the second #1945 review round and recorded here rather than answered:
+**ePrivacy Art. 5(3) governs storage of, and access to, information on the
+subscriber's terminal equipment independently of whichever GDPR lawful basis is
+chosen for the subsequent processing, and session replay generally falls inside
+it.** Choosing "condition of the demo" over "consent" settles the Art. 6 basis
+and removes the Art. 7(3) withdrawal obligation (above); it does not by itself
+settle Art. 5(3), whose own consent requirement has a narrower set of exemptions
+(strictly-necessary / requested-transmission).
+
+This is a legal question for whoever signs off the demo's privacy notice before
+the demo is promoted publicly, not an implementation question — nothing in the
+enforcement mechanism changes with the answer, and it is not a merge blocker for
+#1938. The two shapes it could force are already scoped:
+
+- If Art. 5(3) consent is required for the replay itself, the shape reverts to
+  the rejected alternative above (a real choice plus withdrawal), and the demo
+  accepts the recording rate that implies.
+- If the notice-plus-condition shape is accepted, this section is the record of
+  why, and no code changes.
+
+Kept next to the § 0 decision on purpose: anyone revisiting the framing needs
+both halves in one place.
+
 ## 1. Goal
 
 On a demo-mode instance, an account may only use the demo if it has accepted

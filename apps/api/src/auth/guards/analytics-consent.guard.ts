@@ -36,7 +36,8 @@ import type { AuthenticatedUser } from '../auth.types';
  * Machine-readable marker on the 403 body. The frontend keys its consent-page
  * redirect on this rather than on the message text — see
  * `apps/web/src/shared/api/analytics-consent-error.ts`, which carries the same
- * literal.
+ * literal. Renaming the code means editing BOTH sites — no compiler or test
+ * links them, because the browser and the API share no package.
  */
 export const ANALYTICS_CONSENT_REQUIRED_CODE = 'ANALYTICS_CONSENT_REQUIRED';
 
