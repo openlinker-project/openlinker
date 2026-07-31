@@ -52,15 +52,31 @@
   c. Price and quantity stay visible, marked as needing materialisation.
 
   ── WHY THESE FOUR TABS DON'T OVERLAP ────────────────────────────────────
-  `inactive` splits into two business states on the presence of validation
-  errors (offer-status-poll.service.ts:227-240): clean `inactive` means Draft
-  in the creation-record sense, `inactive` + errors means the marketplace
-  rejected the offer. The Draft TAB here reads OfferCreationRecord.status
-  instead — a different table — matching the issue's own stated assumption
-  that "Draft = created in OL, not yet published to the channel". So Draft and
-  Inactive are disjoint. Counts do not overlap, unlike the issue's original
-  non-exclusive design, which was a consequence of the (now dropped) Needs
-  attention tab.
+  All four buckets derive from ONE source: the offer_status_snapshots row
+  joined on (externalOfferId, connectionId). `inactive` splits into two
+  business states on the presence of validation errors, exactly as the
+  creation poller already branches (offer-status-poll.service.ts:227-241):
+
+    active     → publicationStatus 'active' (+ transient activating/inactivating)
+    inactive   → publicationStatus 'inactive' WITH statusDetails.validationMessages
+                 (the marketplace validator rejected it)
+    draft      → publicationStatus 'inactive' WITHOUT validation messages
+                 (the offer exists on the channel but is not live)
+    ended      → publicationStatus 'ended'
+
+  Because the four conditions partition a single enum + one boolean, the tabs
+  are disjoint and the counts sum to the filtered total — unlike the issue's
+  original non-exclusive design, which was a consequence of the (now dropped)
+  Needs attention tab.
+
+  ⚠ DO NOT source the Draft tab from OfferCreationRecord.status. An earlier
+  revision of this mockup did, on the issue's own assumption that "Draft =
+  created in OL, not yet published to the channel". That is unsafe: the poller
+  maps BOTH clean-`inactive` AND `ended` to OFFER_CREATION_STATUS.Draft
+  (offer-status-poll.service.ts:238-241), so a creation-record-keyed Draft tab
+  would swallow ended offers and break disjointness against Ended. The
+  snapshot's publicationStatus is the only field that separates the two.
+  Corrected 31 Jul 2026; see the correction comment on issue #1965.
 
   Sample data is a ceramic-planter catalogue built out from the real Erli row
   in the PM's screenshot (Doniczka ceramiczna Terra, EAN 5900000000138,
@@ -1107,8 +1123,8 @@
                 <td><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span>Available</span></td>
               </tr>
               <tr>
-                <td>Draft lifecycle</td>
-                <td><code>OfferCreationRecord</code>, same key</td>
+                <td>Draft vs Inactive split</td>
+                <td>Presence of <code>statusDetails.validationMessages</code> on the same snapshot row — <b>not</b> <code>OfferCreationRecord.status</code>, which maps both clean <code>inactive</code> and <code>ended</code> to <code>Draft</code></td>
                 <td><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span>Available</span></td>
               </tr>
               <tr>
@@ -1196,9 +1212,11 @@
 
      `tab` is the resolved lifecycle bucket:
        active   → publicationStatus 'active' (plus the transient 'activating')
-       inactive → publicationStatus 'inactive'; `reason` present means the
-                  marketplace validator rejected it
-       draft    → OfferCreationRecord.status = 'draft' (never published)
+       inactive → publicationStatus 'inactive' WITH validation messages;
+                  `reason` carries the validator's first message
+       draft    → publicationStatus 'inactive' WITHOUT validation messages
+                  (on the channel, not live — NOT OfferCreationRecord.status,
+                  see the ⚠ note in the header comment)
        ended    → publicationStatus 'ended'
   */
   var CONNECTIONS = {
