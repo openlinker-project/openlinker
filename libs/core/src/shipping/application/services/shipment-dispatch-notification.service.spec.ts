@@ -11,6 +11,7 @@
  *
  * @module libs/core/src/shipping/application/services
  */
+import { Logger } from '@openlinker/shared/logging';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type {
   IOrderLifecycleRelayService,
@@ -49,6 +50,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.carrier ?? null,
     overrides.deliveryIntent ?? null,
     overrides.providerCode ?? null,
+    overrides.waybillRelayedAt ?? null,
   );
 }
 
@@ -82,6 +84,8 @@ describe('ShipmentDispatchNotificationService', () => {
       findByProviderShipmentId: jest.fn(),
       findBranchOneByOrderAndConnection: jest.fn(),
       update: jest.fn(),
+      claimWaybillRelay: jest.fn(),
+      releaseWaybillRelay: jest.fn(),
     };
     orderRecords = {
       persistOrder: jest.fn(),
@@ -195,10 +199,15 @@ describe('ShipmentDispatchNotificationService', () => {
     );
   });
 
-  it('should map a source `unsupported` outcome to absent and still advance', async () => {
+  it('should map a source `unsupported`/no-capability outcome to absent and still advance', async () => {
     shipments.findById.mockResolvedValue(makeShipment());
     relay.relay.mockResolvedValue(
-      relayResult({ connectionId: SOURCE, outcome: 'unsupported', detail: 'no order-writeback capability' }),
+      relayResult({
+        connectionId: SOURCE,
+        outcome: 'unsupported',
+        unsupportedReason: 'no-capability',
+        detail: 'no order-writeback capability',
+      }),
     );
 
     const result = await service.notifyDispatched({ shipmentId: 'ol_shipment_1' });
@@ -208,6 +217,44 @@ describe('ShipmentDispatchNotificationService', () => {
       'ol_shipment_1',
       expect.objectContaining({ status: 'dispatched' }),
     );
+  });
+
+  it('should NOT advance when the source adapter could not be resolved (transient, #1947)', async () => {
+    // A source mid-re-auth reports `unsupported`, but for a TRANSIENT reason.
+    // Advancing here would close the at-most-once gate forever on a source that
+    // was merely briefly unreachable — the silent-loss shape #1947 fixes.
+    shipments.findById.mockResolvedValue(makeShipment());
+    relay.relay.mockResolvedValue(
+      relayResult({
+        connectionId: SOURCE,
+        outcome: 'unsupported',
+        unsupportedReason: 'adapter-unresolved',
+        detail: 'adapter unresolved',
+      }),
+    );
+
+    const result = await service.notifyDispatched({ shipmentId: 'ol_shipment_1' });
+
+    expect(result.source).toBe('failed');
+    expect(shipments.update).not.toHaveBeenCalled();
+  });
+
+  it('should warn when the dispatch relays with no waybill (#1947)', async () => {
+    // ShipX mints the waybill at confirmation, so a promptly-dispatched shipment
+    // legitimately has none — but it used to be entirely invisible, which is how
+    // the defect survived.
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    shipments.findById.mockResolvedValue(makeShipment({ trackingNumber: null }));
+
+    await service.notifyDispatched({ shipmentId: 'ol_shipment_1' });
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('carries NO'));
+    expect(relay.relay).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: expect.objectContaining({ trackingNumber: undefined }),
+      }),
+    );
+    warn.mockRestore();
   });
 
   it('should map a destination `unsupported`/`rejected` outcome without blocking the dispatch advance', async () => {

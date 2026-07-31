@@ -30,6 +30,11 @@
  * @module apps/api/test/integration
  */
 import {
+  CORE_ENTITY_TYPE,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+  type IIdentifierMappingService,
+} from '@openlinker/core/identifier-mapping';
+import {
   FULFILLMENT_PROCESSOR_KIND,
   FULFILLMENT_ROUTING_SERVICE_TOKEN,
   IFulfillmentRoutingService,
@@ -50,6 +55,7 @@ import { createTestConnection } from './helpers/test-connection.helper';
 import {
   ShipmentStatusSyncTestStubs,
   STATUS_SYNC_CARRIER_ADAPTER_KEY,
+  STATUS_SYNC_CARRIER_PLATFORM_TYPE,
   STATUS_SYNC_DEST_ADAPTER_KEY,
   STATUS_SYNC_SOURCE_ADAPTER_KEY,
   installShipmentStatusSyncTestStubs,
@@ -57,6 +63,7 @@ import {
 import { getTestHarness, IntegrationTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 
 const DEST_EXTERNAL_ID = 'ps-order-statussync';
+const SOURCE_EXTERNAL_ID = 'allegro-order-statussync';
 const SOURCE_DELIVERY_METHOD_ID = 'allegro-courier';
 const RECIPIENT = {
   email: 'buyer@example.com',
@@ -107,6 +114,8 @@ describe('Shipment Status Sync Integration (#838)', () => {
       .get<IShipmentDispatchNotificationService>(SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN);
   const queryService = (): IShipmentQueryService =>
     harness.getApp().get<IShipmentQueryService>(SHIPMENT_QUERY_SERVICE_TOKEN);
+  const identifierMapping = (): IIdentifierMappingService =>
+    harness.getApp().get<IIdentifierMappingService>(IDENTIFIER_MAPPING_SERVICE_TOKEN);
   const routingService = (): IFulfillmentRoutingService =>
     harness.getApp().get<IFulfillmentRoutingService>(FULFILLMENT_ROUTING_SERVICE_TOKEN);
 
@@ -151,6 +160,23 @@ describe('Shipment Status Sync Integration (#838)', () => {
       },
     ]);
 
+    // #1947: the waybill relay resolves participants from the Order's identifier
+    // mappings, so BOTH the source and the destination need one. Pre-#1947 the
+    // destination-only push read `record.syncStatus` instead, which is exactly
+    // why the source could never be reached.
+    await identifierMapping().createMapping(
+      CORE_ENTITY_TYPE.Order,
+      SOURCE_EXTERNAL_ID,
+      source.id,
+      orderId,
+    );
+    await identifierMapping().createMapping(
+      CORE_ENTITY_TYPE.Order,
+      DEST_EXTERNAL_ID,
+      dest.id,
+      orderId,
+    );
+
     await createTestOrderRecord(dataSource, {
       internalOrderId: orderId,
       sourceConnectionId: source.id,
@@ -193,12 +219,14 @@ describe('Shipment Status Sync Integration (#838)', () => {
     return { carrierConnectionId: carrier.id, destConnectionId: dest.id, shipmentId };
   }
 
-  it('backfills a freshly-arrived carrierWaybill on a dispatched shipment and pushes shipped+tracking to the destination', async () => {
+  it('relays a freshly-arrived waybill to the SOURCE and the destination, and persists it', async () => {
+    // The #1947 regression test: pre-fix the source could never receive a
+    // late-arriving waybill, so the marketplace showed the order as shipped while
+    // still asking the seller to add tracking numbers.
     const { carrierConnectionId, shipmentId } = await seedShipment('ol_order_statussync_1', {
       advanceToDispatched: true,
     });
 
-    // Carrier reports the waybill on the next poll.
     stubs.carrier.setNextSnapshot({
       status: 'dispatched',
       providerStatus: 'waybill-assigned',
@@ -207,12 +235,20 @@ describe('Shipment Status Sync Integration (#838)', () => {
 
     const result = await statusSyncService().sync(carrierConnectionId, { limit: 10 });
 
-    expect(result.scanned).toBe(1);
-    expect(result.updated).toBe(1);
-    expect(result.propagated).toBe(1);
-    expect(result.failed).toBe(0);
+    expect(result).toMatchObject({ scanned: 1, updated: 1, propagated: 1, failed: 0 });
 
-    // Capability B was invoked with the backfilled tracking number.
+    // The source received the waybill — the whole point of the fix.
+    expect(stubs.source.writebackCalls).toEqual([
+      {
+        type: 'dispatched',
+        externalOrderId: SOURCE_EXTERNAL_ID,
+        trackingNumber: 'NEW-WAYBILL',
+        carrier: { platformType: STATUS_SYNC_CARRIER_PLATFORM_TYPE },
+      },
+    ]);
+
+    // The destination still receives it, unchanged in substance: the relay calls
+    // `write`, which the adapter delegates to `updateFulfillment`.
     expect(stubs.dest.calls).toEqual([
       {
         externalOrderId: DEST_EXTERNAL_ID,
@@ -221,15 +257,31 @@ describe('Shipment Status Sync Integration (#838)', () => {
       },
     ]);
 
-    // Patch landed on the Shipment row.
     const persisted = await queryService().getById(shipmentId);
     expect(persisted?.trackingNumber).toBe('NEW-WAYBILL');
-    // Status doesn't regress; `dispatched` carrier state ≠ terminal so the
-    // service leaves the existing `dispatched` row alone.
     expect(persisted?.status).toBe('dispatched');
   });
 
-  it('PUSH-FIRST: drops trackingNumber from the Shipment patch when the destination OMP push throws (v1 workaround #1, #861-dissolves)', async () => {
+  it('relays at most once across two consecutive syncs (the claim is consumed)', async () => {
+    const { carrierConnectionId } = await seedShipment('ol_order_statussync_claim', {
+      advanceToDispatched: true,
+    });
+
+    stubs.carrier.setNextSnapshot({
+      status: 'dispatched',
+      providerStatus: 'waybill-assigned',
+      trackingNumber: 'ONCE-ONLY',
+    });
+
+    await statusSyncService().sync(carrierConnectionId, { limit: 10 });
+    await statusSyncService().sync(carrierConnectionId, { limit: 10 });
+
+    // Second tick: the number is already persisted so the null→value diff no
+    // longer fires, and the claim on `waybillRelayedAt` is spent either way.
+    expect(stubs.source.writebackCalls).toHaveLength(1);
+  });
+
+  it('withholds the tracking number and releases the claim when the SOURCE rejects, so the next tick retries', async () => {
     const { carrierConnectionId, shipmentId } = await seedShipment('ol_order_statussync_2', {
       advanceToDispatched: true,
     });
@@ -237,28 +289,35 @@ describe('Shipment Status Sync Integration (#838)', () => {
     stubs.carrier.setNextSnapshot({
       status: 'dispatched',
       providerStatus: 'waybill-assigned',
-      trackingNumber: 'WOULD-LOSE-1',
+      trackingNumber: 'RETRY-ME',
     });
-    stubs.dest.enqueueOutcomes([{ throw: new Error('PS unreachable') }]);
+    stubs.source.enqueueOutcomes([{ throw: new Error('Allegro unreachable') }]);
 
-    const result = await statusSyncService().sync(carrierConnectionId, { limit: 10 });
+    const first = await statusSyncService().sync(carrierConnectionId, { limit: 10 });
 
-    // The push was attempted (call recorded) but no patch persisted — `updated`
-    // and `propagated` both 0 because the single patch-field (tracking) was
-    // dropped when the push failed.
-    expect(stubs.dest.calls).toHaveLength(1);
-    expect(stubs.dest.calls[0]?.trackingNumber).toBe('WOULD-LOSE-1');
-    expect(result.updated).toBe(0);
-    expect(result.propagated).toBe(0);
-    // Per-destination push failure is logged + masked at the push layer; it
-    // doesn't count as a top-level shipment failure (see service jsdoc).
-    expect(result.failed).toBe(0);
-
-    const persisted = await queryService().getById(shipmentId);
+    expect(first.updated).toBe(0);
+    expect(first.propagated).toBe(0);
+    // Handled inside the patch build, so the poll job itself stays healthy.
+    expect(first.failed).toBe(0);
+    let persisted = await queryService().getById(shipmentId);
     expect(persisted?.trackingNumber).toBeNull();
+
+    // Next tick: the claim was released, so the relay is retried and succeeds.
+    stubs.carrier.setNextSnapshot({
+      status: 'dispatched',
+      providerStatus: 'waybill-assigned',
+      trackingNumber: 'RETRY-ME',
+    });
+
+    const second = await statusSyncService().sync(carrierConnectionId, { limit: 10 });
+
+    expect(second.propagated).toBe(1);
+    persisted = await queryService().getById(shipmentId);
+    expect(persisted?.trackingNumber).toBe('RETRY-ME');
+    expect(stubs.source.writebackCalls).toHaveLength(2);
   });
 
-  it('PUSH-GATE: at `generated` backfills Shipment.trackingNumber but does NOT fire capability B (deferred to #837, v1 workaround #2)', async () => {
+  it('at `generated` backfills the tracking number but notifies nobody (deferred to the dispatch path)', async () => {
     const { carrierConnectionId, shipmentId } = await seedShipment('ol_order_statussync_3', {
       advanceToDispatched: false,
     });
@@ -271,9 +330,8 @@ describe('Shipment Status Sync Integration (#838)', () => {
 
     const result = await statusSyncService().sync(carrierConnectionId, { limit: 10 });
 
-    expect(result.scanned).toBe(1);
-    expect(result.updated).toBe(1);
-    expect(result.propagated).toBe(0);
+    expect(result).toMatchObject({ scanned: 1, updated: 1, propagated: 0 });
+    expect(stubs.source.writebackCalls).toHaveLength(0);
     expect(stubs.dest.calls).toHaveLength(0);
 
     const persisted = await queryService().getById(shipmentId);
