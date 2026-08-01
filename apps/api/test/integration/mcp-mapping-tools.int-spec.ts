@@ -77,6 +77,27 @@ describe('MCP Mapping Tools Integration (#1488)', () => {
     return { status: response.status, text: response.text ?? JSON.stringify(response.body) };
   }
 
+  /**
+   * Tool NAMES from a `tools/list` response.
+   *
+   * Deliberately not a substring check on the raw body: `resolve_category`'s
+   * description mentions `upsert_category_mapping` by name (it tells the agent
+   * how to fix an unmapped category), so a naive `not.toContain` would report
+   * the write tool as listed when it is correctly absent.
+   *
+   * The transport replies as SSE, so the JSON sits on a `data:` line.
+   */
+  function toolNames(text: string): string[] {
+    const line = text.split('\n').find((candidate) => candidate.startsWith('data:'));
+    if (line === undefined) {
+      throw new Error(`No SSE data line in MCP response: ${text.slice(0, 200)}`);
+    }
+    const payload = JSON.parse(line.slice('data:'.length).trim()) as {
+      result?: { tools?: { name: string }[] };
+    };
+    return (payload.result?.tools ?? []).map((tool) => tool.name);
+  }
+
   it('should hide the write tool from a read-only token and expose it to an admin write token', async () => {
     const http = harness.getHttp();
     const dataSource: DataSource = harness.getDataSource();
@@ -102,12 +123,15 @@ describe('MCP Mapping Tools Integration (#1488)', () => {
       params: {},
     });
 
+    const readOnlyTools = toolNames(readOnlyList.text);
+    const writeTools = toolNames(writeList.text);
+
     // The reads are ungated, so both principals see them...
-    expect(readOnlyList.text).toContain('list_category_mappings');
-    expect(writeList.text).toContain('list_category_mappings');
+    expect(readOnlyTools).toContain('list_category_mappings');
+    expect(writeTools).toContain('list_category_mappings');
     // ...but only the admin write token sees the write.
-    expect(readOnlyList.text).not.toContain('upsert_category_mapping');
-    expect(writeList.text).toContain('upsert_category_mapping');
+    expect(readOnlyTools).not.toContain('upsert_category_mapping');
+    expect(writeTools).toContain('upsert_category_mapping');
   });
 
   it('should refuse a write tool call made by a read-only token, naming the missing scope', async () => {
