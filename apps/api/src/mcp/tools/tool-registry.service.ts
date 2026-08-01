@@ -226,6 +226,12 @@ function toolError(text: string): CallToolResult {
  *
  * One function, used by both the registration filter and the call-time guard,
  * so the two can never disagree about what "allowed" means.
+ *
+ * Exported only so its spec can exercise the scope/role matrix directly. The
+ * two checks share one principal, so a tool that registered would also pass at
+ * call time — a round-trip test could therefore only re-assert the
+ * registration filter while appearing to prove the guard. No runtime consumer
+ * outside this module.
  */
 export function describeAuthzRefusal(
   definition: McpToolDefinition,

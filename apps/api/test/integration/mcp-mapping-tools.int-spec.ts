@@ -24,6 +24,7 @@ import {
   teardownTestHarness,
 } from './setup';
 import { loginAsAdmin } from './helpers/test-auth.helper';
+import { createTestConnection } from './helpers/test-connection.helper';
 
 const PROTOCOL_VERSION = '2026-07-28';
 
@@ -158,13 +159,71 @@ describe('MCP Mapping Tools Integration (#1488)', () => {
       },
     });
 
-    // Whether the SDK reports "unknown tool" (never registered) or the
-    // call-time guard refuses, the invariant is the same and is what the AC
-    // asks for: the mapping must not have been written.
+    // The row count alone would be a weak assertion — this call names a
+    // connection that does not exist, so zero rows proves little on its own.
+    // The load-bearing assertion is that the call did not SUCCEED: a refusal
+    // (or an unknown-tool reply) never returns the persisted mapping.
     const rows = await dataSource.query<{ count: string }[]>(
       `SELECT COUNT(*)::text AS count FROM category_mappings`
     );
     expect(rows[0].count).toBe('0');
     expect(called.text).not.toContain('"destinationCategoryName":"Shoes"');
+    expect(called.text).not.toContain('"sourceCategoryId":"42"');
+  });
+
+  it('should let an admin write token persist a mapping that a later read returns', async () => {
+    const http = harness.getHttp();
+    const dataSource: DataSource = harness.getDataSource();
+    const adminToken = await loginAsAdmin(http, dataSource);
+
+    // A real destination connection, so the write exercises persistence rather
+    // than failing earlier for an unrelated reason — the gap the refusal test
+    // above cannot close on its own. Seeded through the shared helper (the same
+    // one mcp-tools.int-spec.ts uses) rather than the HTTP create endpoint,
+    // whose payload contract is not this spec's subject.
+    const connection = await createTestConnection(dataSource, {
+      name: 'int-spec destination',
+      enabledCapabilities: ['OfferManager'],
+    });
+    const destinationConnectionId = connection.id;
+
+    const write = await mint(adminToken, 'mcp:write');
+    await mcp(write, INITIALIZE_BODY);
+
+    await mcp(write, {
+      jsonrpc: '2.0',
+      id: 4,
+      method: 'tools/call',
+      params: {
+        name: 'upsert_category_mapping',
+        arguments: {
+          destinationConnectionId,
+          sourceConnectionId: '22222222-2222-2222-2222-222222222222',
+          sourceCategoryId: '42',
+          destinationCategoryId: '77',
+          destinationCategoryName: 'Shoes',
+          destinationCategoryPath: 'Fashion > Shoes',
+        },
+      },
+    });
+
+    const listed = await mcp(write, {
+      jsonrpc: '2.0',
+      id: 5,
+      method: 'tools/call',
+      params: {
+        name: 'list_category_mappings',
+        arguments: { destinationConnectionId },
+      },
+    });
+
+    // Round-trip: the write reached the DB and the read tool returns it.
+    const rows = await dataSource.query<{ source_category_id: string }[]>(
+      `SELECT source_category_id FROM category_mappings WHERE destination_connection_id = $1`,
+      [destinationConnectionId]
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].source_category_id).toBe('42');
+    expect(listed.text).toContain('Shoes');
   });
 });

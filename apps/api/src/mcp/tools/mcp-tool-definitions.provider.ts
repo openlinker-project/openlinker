@@ -32,6 +32,10 @@ import {
   type IAttributeProjectionService,
   type ICategoryResolutionService,
 } from '@openlinker/core/listings';
+import {
+  INTEGRATIONS_SERVICE_TOKEN,
+  type IIntegrationsService,
+} from '@openlinker/core/integrations';
 
 import {
   CONNECTION_SERVICE_TOKEN,
@@ -62,6 +66,7 @@ export const mcpToolDefinitionsProvider: Provider = {
     MAPPING_CONFIG_SERVICE_TOKEN,
     CATEGORY_RESOLUTION_SERVICE_TOKEN,
     ATTRIBUTE_PROJECTION_SERVICE_TOKEN,
+    INTEGRATIONS_SERVICE_TOKEN,
   ],
   useFactory: (
     connectionService: IConnectionService,
@@ -70,7 +75,8 @@ export const mcpToolDefinitionsProvider: Provider = {
     orderRecordService: IOrderRecordService,
     mappingConfigService: IMappingConfigService,
     categoryResolutionService: ICategoryResolutionService,
-    attributeProjectionService: IAttributeProjectionService
+    attributeProjectionService: IAttributeProjectionService,
+    integrationsService: IIntegrationsService
   ): readonly McpToolDefinition[] => [
     // Discovery — always registered.
     createWhoamiTool(),
@@ -84,8 +90,11 @@ export const mcpToolDefinitionsProvider: Provider = {
     // adapter-served, so a capability gate would imply nothing about it.
     createListCategoryMappingsTool(mappingConfigService),
     createListAttributeMappingsTool(mappingConfigService),
-    createResolveCategoryTool(categoryResolutionService),
-    createProjectAttributesTool(attributeProjectionService),
+    // Both take the integrations service to discover the destination's kind:
+    // an agent supplies an arbitrary connectionId, so unlike the offer/publish
+    // builders these cannot know it statically (see destination-context.ts).
+    createResolveCategoryTool(categoryResolutionService, integrationsService),
+    createProjectAttributesTool(attributeProjectionService, integrationsService),
     // The write half — scope- and role-gated by the registry wrapper.
     createUpsertCategoryMappingTool(mappingConfigService),
   ],

@@ -599,6 +599,15 @@ always-registered discovery entry points (`whoami`, `list_connections`) plus fou
   live destination (barcode catalogue lookup, category schema). Admitted as bounded — one call per invocation,
   not the N-call tree walk that keeps `browse_categories` deferred to #1937 — and stated in the tool
   descriptions so an agent does not loop on them.
+- **The destination's kind must be DISCOVERED, not assumed.** `OfferBuilderService` and
+  `ProductPublishBuilderService` each know their destination kind statically; an MCP tool does not, because
+  the agent supplies an arbitrary `connectionId` from `list_connections`. `resolveDestinationContext`
+  (`apps/api/src/mcp/tools/read/destination-context.ts`) probes `OfferManager` then `ProductPublisher` to
+  resolve two facts the core services cannot derive themselves: which capability exposes the live category
+  schema (a shop serves it under `ProductPublisher` and does **not** support `OfferManager` — projecting a
+  shop under the default would throw), and whether the destination *borrows* a taxonomy (#1045), without
+  which `resolve_category` reports `manual` for an Erli connection whose operator already has a working
+  Allegro-authored mapping.
 - **Two traps the write path had to avoid.** `upsert_category_mapping` requires `sourceConnectionId` even though
   `CategoryMappingInput` marks it optional (#1036 record-only): the repository upsert matches that column with
   `IsNull()` semantics while `findBySourceCategory` is oldest-wins, so an omitted value inserts a duplicate row

@@ -25,12 +25,15 @@ import type {
   AttributeProjectionResult,
   IAttributeProjectionService,
 } from '@openlinker/core/listings';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
 
 import type { McpToolDefinition } from '../tool-definition.types';
+import { resolveDestinationContext } from './destination-context';
 import { jsonResult } from './tool-result';
 
 export function createProjectAttributesTool(
-  attributeProjectionService: IAttributeProjectionService
+  attributeProjectionService: IAttributeProjectionService,
+  integrationsService: IIntegrationsService
 ): McpToolDefinition {
   return {
     name: 'project_attributes',
@@ -52,11 +55,23 @@ export function createProjectAttributesTool(
         .describe("The variant's source attributes, e.g. {\"Color\": \"Red\"}."),
     }),
     handler: async (args): Promise<CallToolResult> => {
+      const destinationConnectionId = args.destinationConnectionId as string;
+      // A shop serves its schema under `ProductPublisher` and does not support
+      // `OfferManager`, so the default would throw for every shop connection.
+      const context = await resolveDestinationContext(
+        integrationsService,
+        destinationConnectionId
+      );
+
       const result = await attributeProjectionService.project({
-        destinationConnectionId: args.destinationConnectionId as string,
+        destinationConnectionId,
         sourceConnectionId: args.sourceConnectionId as string,
         destinationCategoryId: args.destinationCategoryId as string,
         attributes: args.attributes as Record<string, string>,
+        destinationCapability: context.destinationCapability,
+        // #1045 — without this a borrowing destination misses the owner's
+        // mappings and the tool under-reports what would actually be sent.
+        ...(context.borrowedTaxonomy ? { borrowedTaxonomy: context.borrowedTaxonomy } : {}),
       });
       return jsonResult(projectResult(result));
     },

@@ -41,12 +41,15 @@ import type {
   CategoryResolutionResult,
   ICategoryResolutionService,
 } from '@openlinker/core/listings';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
 
 import type { McpToolDefinition } from '../tool-definition.types';
+import { resolveDestinationContext } from './destination-context';
 import { jsonResult } from './tool-result';
 
 export function createResolveCategoryTool(
-  categoryResolutionService: ICategoryResolutionService
+  categoryResolutionService: ICategoryResolutionService,
+  integrationsService: IIntegrationsService
 ): McpToolDefinition {
   return {
     name: 'resolve_category',
@@ -75,11 +78,22 @@ export function createResolveCategoryTool(
         .describe('Source (master) connection id, to scope the mapping lookup.'),
     }),
     handler: async (args): Promise<CallToolResult> => {
+      const destinationConnectionId = args.destinationConnectionId as string;
+      const context = await resolveDestinationContext(
+        integrationsService,
+        destinationConnectionId
+      );
+
       const result = await categoryResolutionService.resolveCategory({
-        connectionId: args.destinationConnectionId as string,
+        connectionId: destinationConnectionId,
         barcode: (args.barcode as string | undefined) ?? null,
         sourceCategoryIds: args.sourceCategoryIds as string[] | undefined,
         sourceConnectionId: args.sourceConnectionId as string | undefined,
+        // #1045 — a borrowing destination (Erli) resolves against the owner's
+        // mappings. Without this the tool reports `manual` for a connection the
+        // operator has already mapped via the owner, and the agent would then
+        // author a redundant row.
+        ...(context.borrowedTaxonomy ? { borrowedTaxonomy: context.borrowedTaxonomy } : {}),
       });
       return jsonResult(projectResolution(result));
     },

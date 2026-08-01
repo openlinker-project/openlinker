@@ -31,6 +31,44 @@ import { createUpsertCategoryMappingTool } from './write/upsert-category-mapping
 
 const CTX = {} as never;
 
+/**
+ * A destination that resolves under neither capability, so
+ * `resolveDestinationContext` falls back to the marketplace default and adds no
+ * borrowed taxonomy — the shape most of these cases care about.
+ */
+function noDestination(): IIntegrationsService {
+  return {
+    getCapabilityAdapter: jest.fn().mockRejectedValue(new Error('no adapter')),
+  } as unknown as IIntegrationsService;
+}
+
+/** A destination that borrows the given owner taxonomy (#1045, Erli-shaped). */
+function borrowingDestination(owner: string): IIntegrationsService {
+  return {
+    getCapabilityAdapter: jest.fn().mockImplementation((_id: string, capability: string) => {
+      if (capability !== 'OfferManager') {
+        return Promise.reject(new Error('unsupported'));
+      }
+      return Promise.resolve({
+        updateOfferQuantity: jest.fn(),
+        getBorrowedTaxonomy: () => owner,
+      });
+    }),
+  } as unknown as IIntegrationsService;
+}
+
+/** A shop: supports ProductPublisher, does NOT support OfferManager. */
+function shopDestination(): IIntegrationsService {
+  return {
+    getCapabilityAdapter: jest.fn().mockImplementation((_id: string, capability: string) => {
+      if (capability !== 'ProductPublisher') {
+        return Promise.reject(new Error('CapabilityNotSupportedException'));
+      }
+      return Promise.resolve({ publishProduct: jest.fn() });
+    }),
+  } as unknown as IIntegrationsService;
+}
+
 function parse(result: CallToolResult): unknown {
   const block = result.content[0] as { type: string; text: string };
   return JSON.parse(block.text);
@@ -117,7 +155,7 @@ describe('mapping-assistant MCP tools', () => {
           method: 'category_mapping',
         }),
       } as unknown as ICategoryResolutionService;
-      const tool = createResolveCategoryTool(service);
+      const tool = createResolveCategoryTool(service, noDestination());
 
       const result = parse(
         await tool.handler(
@@ -150,12 +188,50 @@ describe('mapping-assistant MCP tools', () => {
           .fn()
           .mockResolvedValue({ destinationCategoryId: null, provenance: null, method: 'manual' }),
       } as unknown as ICategoryResolutionService;
-      const tool = createResolveCategoryTool(service);
+      const tool = createResolveCategoryTool(service, noDestination());
 
       await tool.handler({ destinationConnectionId: 'dst-conn' }, CTX);
 
       expect(service.resolveCategory).toHaveBeenCalledWith(
         expect.objectContaining({ barcode: null })
+      );
+    });
+
+    /**
+     * #1045 — a borrowing destination (Erli) resolves against the OWNER's
+     * mappings. Dropping this made the tool report `manual` for a connection
+     * the operator had already mapped via the owner, which would lead the
+     * agent to author a redundant row.
+     */
+    it('should thread the borrowed taxonomy for a borrowing destination', async () => {
+      const service = {
+        resolveCategory: jest.fn().mockResolvedValue({
+          destinationCategoryId: '77',
+          provenance: 'borrows',
+          method: 'category_mapping',
+        }),
+      } as unknown as ICategoryResolutionService;
+      const tool = createResolveCategoryTool(service, borrowingDestination('allegro'));
+
+      await tool.handler({ destinationConnectionId: 'erli-conn' }, CTX);
+
+      expect(service.resolveCategory).toHaveBeenCalledWith(
+        expect.objectContaining({ borrowedTaxonomy: 'allegro' })
+      );
+    });
+
+    it('should omit the borrowed taxonomy for a destination that owns its taxonomy', async () => {
+      const service = {
+        resolveCategory: jest
+          .fn()
+          .mockResolvedValue({ destinationCategoryId: null, provenance: null, method: 'manual' }),
+      } as unknown as ICategoryResolutionService;
+      const tool = createResolveCategoryTool(service, noDestination());
+
+      await tool.handler({ destinationConnectionId: 'dst-conn' }, CTX);
+
+      expect(service.resolveCategory).toHaveBeenCalledWith(
+        expect.not.objectContaining({ borrowedTaxonomy: expect.anything() })
       );
     });
 
@@ -188,7 +264,7 @@ describe('mapping-assistant MCP tools', () => {
         getCategoryMappings: jest.fn().mockResolvedValue([]),
       } as unknown as IMappingConfigService;
       const realService = new CategoryResolutionService(integrations, mappingConfig);
-      const tool = createResolveCategoryTool(realService);
+      const tool = createResolveCategoryTool(realService, noDestination());
 
       const result = parse(
         await tool.handler(
@@ -211,7 +287,7 @@ describe('mapping-assistant MCP tools', () => {
           unresolvedRequired: [{ id: '9', name: 'Brand', section: 'product' }],
         }),
       } as unknown as IAttributeProjectionService;
-      const tool = createProjectAttributesTool(service);
+      const tool = createProjectAttributesTool(service, noDestination());
 
       const result = parse(
         await tool.handler(
@@ -227,6 +303,61 @@ describe('mapping-assistant MCP tools', () => {
 
       expect(result.unmappedSourceKeys).toEqual(['Fit']);
       expect(result.unresolvedRequired).toEqual([{ id: '9', name: 'Brand', section: 'product' }]);
+    });
+
+    /**
+     * A shop serves its category schema under `ProductPublisher` and does NOT
+     * support `OfferManager` — resolving the default would throw
+     * `CapabilityNotSupportedException`, breaking this tool for every shop
+     * connection (the reason `ProductPublishBuilderService` hardcodes it).
+     */
+    it('should project a shop destination under ProductPublisher, not OfferManager', async () => {
+      const service = {
+        project: jest
+          .fn()
+          .mockResolvedValue({ parameters: [], unmappedSourceKeys: [], unresolvedRequired: [] }),
+      } as unknown as IAttributeProjectionService;
+      const tool = createProjectAttributesTool(service, shopDestination());
+
+      await tool.handler(
+        {
+          destinationConnectionId: 'shop-conn',
+          sourceConnectionId: 'src-conn',
+          destinationCategoryId: '77',
+          attributes: {},
+        },
+        CTX
+      );
+
+      expect(service.project).toHaveBeenCalledWith(
+        expect.objectContaining({ destinationCapability: 'ProductPublisher' })
+      );
+    });
+
+    it('should project a marketplace destination under OfferManager with its borrowed taxonomy', async () => {
+      const service = {
+        project: jest
+          .fn()
+          .mockResolvedValue({ parameters: [], unmappedSourceKeys: [], unresolvedRequired: [] }),
+      } as unknown as IAttributeProjectionService;
+      const tool = createProjectAttributesTool(service, borrowingDestination('allegro'));
+
+      await tool.handler(
+        {
+          destinationConnectionId: 'erli-conn',
+          sourceConnectionId: 'src-conn',
+          destinationCategoryId: '77',
+          attributes: {},
+        },
+        CTX
+      );
+
+      expect(service.project).toHaveBeenCalledWith(
+        expect.objectContaining({
+          destinationCapability: 'OfferManager',
+          borrowedTaxonomy: 'allegro',
+        })
+      );
     });
   });
 
