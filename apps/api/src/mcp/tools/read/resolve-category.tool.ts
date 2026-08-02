@@ -57,7 +57,7 @@ export function createResolveCategoryTool(
     requiredScope: 'mcp:read',
     requiresAdmin: false,
     description:
-      "Resolve which destination category OpenLinker would place a listing in, using its deterministic chain: barcode catalogue lookup, then the operator's configured category mappings. Returns the resolved category id and which method produced it. NOTE this performs a LIVE lookup against the destination platform when a barcode is supplied, so call it per item, not in a loop over a catalogue. A result with method 'manual' and a null category id means nothing is mapped for that input — the fix is to author a mapping with upsert_category_mapping, not to retry.",
+      "Resolve which destination category OpenLinker would place a listing in, using its deterministic chain: barcode catalogue lookup, then the operator's configured category mappings. Returns the resolved category id and which method produced it. NOTE that on a marketplace destination a supplied barcode triggers a LIVE lookup against that platform, so call it per item rather than in a loop over a catalogue; a shop destination has no such catalogue and resolves from configured mappings only. A result with method 'manual' and a null category id means nothing is mapped for that input — the fix is to author a mapping with upsert_category_mapping, not to retry.",
     inputSchema: z.object({
       destinationConnectionId: z
         .string()

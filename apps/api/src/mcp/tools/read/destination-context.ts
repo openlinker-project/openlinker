@@ -30,6 +30,9 @@
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { OfferManagerPort } from '@openlinker/core/listings';
 import { isTaxonomyBorrower, type TaxonomyOwner } from '@openlinker/core/listings';
+import { Logger } from '@openlinker/shared/logging';
+
+const logger = new Logger('McpDestinationContext');
 
 export interface DestinationContext {
   /** Capability the destination's live category schema is read under. */
@@ -54,11 +57,10 @@ export async function resolveDestinationContext(
   integrationsService: IIntegrationsService,
   destinationConnectionId: string
 ): Promise<DestinationContext> {
-  const marketplace = await tryResolve(
-    integrationsService,
-    destinationConnectionId,
-    'OfferManager'
-  );
+  // Typed resolve ONLY here, where the adapter is actually consumed
+  // (`isTaxonomyBorrower` narrows it). The shop branch below asks a
+  // presence question and must not claim a port type it never uses.
+  const marketplace = await resolveOfferManager(integrationsService, destinationConnectionId);
   if (marketplace !== null) {
     return {
       destinationCapability: 'OfferManager',
@@ -69,27 +71,61 @@ export async function resolveDestinationContext(
     };
   }
 
-  const shop = await tryResolve(integrationsService, destinationConnectionId, 'ProductPublisher');
-  if (shop !== null) {
+  if (await supportsCapability(integrationsService, destinationConnectionId, 'ProductPublisher')) {
     return { destinationCapability: 'ProductPublisher' };
   }
 
   return { destinationCapability: 'OfferManager' };
 }
 
-async function tryResolve(
+async function resolveOfferManager(
   integrationsService: IIntegrationsService,
-  connectionId: string,
-  capability: 'OfferManager' | 'ProductPublisher'
+  connectionId: string
 ): Promise<OfferManagerPort | null> {
   try {
     return await integrationsService.getCapabilityAdapter<OfferManagerPort>(
       connectionId,
-      capability
+      'OfferManager'
     );
-  } catch {
-    // A connection that does not support this capability is the expected
-    // negative case of the probe, not a fault to surface.
+  } catch (error) {
+    logProbeMiss(connectionId, 'OfferManager', error);
     return null;
   }
+}
+
+/**
+ * Presence probe. Deliberately returns a boolean rather than the adapter:
+ * `getCapabilityAdapter<T>` is unconstrained, so typing this as a port would
+ * ASSERT rather than check — and a shop resolves a `ShopProductManagerPort`,
+ * not an `OfferManagerPort`. Returning the wrong port type would compile and
+ * only fail at runtime once someone called a method on it.
+ */
+async function supportsCapability(
+  integrationsService: IIntegrationsService,
+  connectionId: string,
+  capability: string
+): Promise<boolean> {
+  try {
+    await integrationsService.getCapabilityAdapter<unknown>(connectionId, capability);
+    return true;
+  } catch (error) {
+    logProbeMiss(connectionId, capability, error);
+    return false;
+  }
+}
+
+/**
+ * A miss is usually the expected negative half of the probe — but it is also
+ * how a REAL fault (unresolvable credentials, adapter-factory throw, unknown
+ * connection) presents. Logging keeps the two distinguishable: without it, a
+ * broken connection silently degrades to the marketplace default and the
+ * operator sees only a confusing downstream error. Mirrors
+ * `CategoryResolutionService.tryAutoDetect`, which likewise degrades AND logs.
+ */
+function logProbeMiss(connectionId: string, capability: string, error: unknown): void {
+  logger.debug(
+    `Destination ${connectionId} did not resolve under "${capability}": ${
+      (error as Error).message
+    }`
+  );
 }
