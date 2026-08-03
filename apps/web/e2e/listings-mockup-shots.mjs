@@ -103,6 +103,14 @@ async function stripChrome(page, selector) {
       set(el, 'margin', '0');
     });
   }, selector);
+
+  // Wait two frames before anything reads geometry. page.screenshot() forces its
+  // own layout pass, so the images were always right — but a measurement taken
+  // straight after the strip returned pre-strip numbers, which is how the first
+  // run reported a 636px tablet container that was really 716.
+  await page.evaluate(
+    () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+  );
 }
 
 /** Extract the app's @font-face blocks and re-point them at the repo over file://. */
@@ -136,6 +144,29 @@ async function assertReady(page) {
   }
 }
 
+/** Element-scoped scrollWidth/clientWidth read. */
+function readBox(page, selector) {
+  return page
+    .locator(selector)
+    .evaluate((el) => ({ scrollWidth: el.scrollWidth, clientWidth: el.clientWidth }));
+}
+
+/**
+ * The four lifecycle tabs must fit at 360px without a horizontal scroll — the
+ * whole point of the mobile tab-density override. Guarded, because the margin
+ * is ~15px and any label or padding change could silently eat it.
+ */
+async function measureMobile(page) {
+  const tabs = await readBox(page, '#frame-mobile .tabs__list');
+  if (tabs.scrollWidth > tabs.clientWidth) {
+    throw new Error(
+      `Mobile tab row scrolls (scrollWidth ${tabs.scrollWidth} > clientWidth ${tabs.clientWidth}). ` +
+      'The fourth lifecycle tab is behind a horizontal scroll again.',
+    );
+  }
+  console.log(`  measured · mobile tabs ${tabs.scrollWidth}/${tabs.clientWidth} px (fits)`);
+}
+
 /**
  * Measure the tablet frame's two responsive claims. These numbers are the point
  * of the frame: they turn "six columns scroll rather than being crushed" from an
@@ -145,15 +176,9 @@ async function measureTablet(page) {
   // Measured on the elements themselves rather than through a document-wide
   // evaluate: the latter reported pre-strip geometry even when called after the
   // strip, which would have put wrong numbers in the PR comment.
-  const read = (selector) =>
-    page.locator(selector).evaluate((el) => ({
-      scrollWidth: el.scrollWidth,
-      clientWidth: el.clientWidth,
-    }));
-
   const m = {
-    table: await read('#frame-tablet .data-table__container'),
-    tabs: await read('#frame-tablet .tabs__list'),
+    table: await readBox(page, '#frame-tablet .data-table__container'),
+    tabs: await readBox(page, '#frame-tablet .tabs__list'),
   };
 
   if (!m.table || !m.tabs) throw new Error('Tablet frame is missing its table container or tab list.');
@@ -181,7 +206,7 @@ async function main() {
   const fonts = await fontCss();
 
   const browser = await chromium.launch({ headless: process.env.HEADED !== '1' });
-  let measured = false;
+  const measured = { tablet: false, mobile: false };
 
   try {
     for (const theme of THEMES) {
@@ -207,9 +232,13 @@ async function main() {
 
           // Measure AFTER the strip: only then is the frame at the true viewport
           // width, so the numbers describe the image we are about to write.
-          if (!measured && shot.selector === '#frame-tablet') {
+          if (!measured.tablet && shot.selector === '#frame-tablet') {
             await measureTablet(page);
-            measured = true;
+            measured.tablet = true;
+          }
+          if (!measured.mobile && shot.selector === '#frame-mobile') {
+            await measureMobile(page);
+            measured.mobile = true;
           }
 
           const path = resolve(OUT_DIR, `listings-1965-${shot.name}-${theme}.png`);

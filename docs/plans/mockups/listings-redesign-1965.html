@@ -741,6 +741,21 @@
      sheet, so no @media fires on it: what these show is the intended layout at
      that width, not proof that a breakpoint works. */
   .phone-frame { max-width: 360px; margin: 0 auto; }
+
+  /* Four lifecycle tabs at 360px come to 359px against 326px of room, so by
+     default the last one ("Ended") sits behind a horizontal scroll — which the
+     style guide reserves for a table's own overflow (§ Responsive). Stepping the
+     trigger padding and the label/count gap down one token each frees ~48px and
+     all four fit, with no new spacing value.
+
+     The app does ship a scroll-with-right-edge-fade treatment for a cramped tab
+     bar (index.css:16775-16787, #1784 S14) — deliberately not reused here. That
+     pattern earns its scroll because the mapping tab count is open-ended; the
+     offer lifecycle has exactly four states and always will, so fitting them
+     beats teaching the operator to scroll for one of the four. */
+  .phone-frame .tabs__trigger {
+    padding-left: var(--space-2); padding-right: var(--space-2); gap: var(--space-1);
+  }
   .tablet-frame { max-width: 768px; margin: 0 auto; }
 
   .empty-slot { display: grid; gap: var(--space-4); }
