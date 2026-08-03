@@ -11,15 +11,16 @@ import * as client from '../../http/prestashop-webservice.client';
 import { Connection } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
+import { prestashopAdapterManifest } from '../../../prestashop-plugin';
 
 describe('PrestashopConnectionTesterAdapter', () => {
-  // Connection-bound outbound transport (#1810) — a bare jest.fn() stub is
-  // enough here since these tests exercise error translation, not rate
-  // limiting; `for()` just needs to hand back some FetchLike.
-  const httpTransportFactory: jest.Mocked<HttpTransportFactoryPort> = {
+  const http: jest.Mocked<HttpTransportFactoryPort> = {
     for: jest.fn().mockReturnValue(jest.fn()),
   };
-  const tester = new PrestashopConnectionTesterAdapter(httpTransportFactory);
+  const tester = new PrestashopConnectionTesterAdapter(
+    http,
+    prestashopAdapterManifest.defaultRateLimit
+  );
   const resolver: CredentialsResolverPort = {
     get: jest.fn().mockResolvedValue({ webserviceApiKey: 'K' }),
   } as unknown as CredentialsResolverPort;
@@ -51,6 +52,7 @@ describe('PrestashopConnectionTesterAdapter', () => {
     expect(result.status).toBe(200);
     expect(result.message).toBe('OK');
     expect(result.latencyMs).toBeGreaterThanOrEqual(0);
+    expect(http.for).toHaveBeenCalledWith(connection, prestashopAdapterManifest.defaultRateLimit);
   });
 
   it('maps auth failures to success:false with status 401', async () => {
@@ -78,16 +80,6 @@ describe('PrestashopConnectionTesterAdapter', () => {
 
     expect(result.success).toBe(false);
     expect(result.status).toBe(503);
-  });
-
-  it('resolves the probe transport through the connection-bound rate limiter (#1810)', async () => {
-    jest
-      .spyOn(client.PrestashopWebserviceClient.prototype, 'listResources')
-      .mockResolvedValue([]);
-
-    await tester.test(connection, resolver);
-
-    expect(httpTransportFactory.for).toHaveBeenCalledWith(connection, undefined);
   });
 
   it('fails gracefully when baseUrl is missing', async () => {

@@ -57,6 +57,7 @@ import type {
   Connection,
   ConnectionUpdate,
   ConnectionFilters,
+  ConnectionRateLimit,
 } from '@openlinker/core/identifier-mapping';
 import { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
@@ -99,6 +100,7 @@ export class ConnectionController {
   ): Promise<ConnectionResponseDto> {
     let supported: string[] = [];
     let variantGrouping: VariantGroupingModel = resolveVariantGroupingModel(undefined);
+    let defaultRateLimit: ConnectionRateLimit | null = null;
     try {
       const metadata = await this.integrationsService.resolveAdapterMetadata({
         platformType: connection.platformType,
@@ -106,12 +108,13 @@ export class ConnectionController {
       });
       supported = metadata.supportedCapabilities;
       variantGrouping = resolveVariantGroupingModel(metadata);
+      defaultRateLimit = metadata.defaultRateLimit ?? null;
     } catch (error) {
       // Unknown adapter (e.g., legacy row with unmapped platformType). Leave
-      // supportedCapabilities empty (and variantGrouping at its locked
-      // default); the FE will render an "adapter not recognized" notice. We
-      // still want this to be observable in the API logs so operators can
-      // spot and fix the offending row.
+      // supportedCapabilities empty (and variantGrouping/defaultRateLimit at
+      // their locked defaults); the FE will render an "adapter not
+      // recognized" notice. We still want this to be observable in the API
+      // logs so operators can spot and fix the offending row.
       this.logger.warn(
         `Could not resolve adapter metadata for connection ${connection.id} (platformType=${connection.platformType}, adapterKey=${connection.adapterKey ?? '<derived>'}): ${(error as Error).message}`
       );
@@ -121,6 +124,7 @@ export class ConnectionController {
       connection,
       supported,
       variantGrouping,
+      defaultRateLimit,
       user?.role,
       this.demoModeService.isDemoModeEnabled()
     );

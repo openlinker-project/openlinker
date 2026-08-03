@@ -454,6 +454,21 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
     };
   }
 
+  async heartbeat(id: string, workerId: string): Promise<void> {
+    // Guarded on lockedBy so a heartbeat from a worker that lost the job
+    // (already requeued and re-picked by another worker) is a no-op.
+    await this.repository
+      .createQueryBuilder()
+      .update(SyncJobOrmEntity)
+      .set({ lockedAt: new Date() })
+      .where('id = :id AND status = :status AND "lockedBy" = :workerId', {
+        id,
+        status: 'running',
+        workerId,
+      })
+      .execute();
+  }
+
   /**
    * Map ORM entity to domain entity
    */

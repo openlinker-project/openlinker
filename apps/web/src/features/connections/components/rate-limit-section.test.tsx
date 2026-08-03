@@ -9,17 +9,20 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useForm } from 'react-hook-form';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RateLimitSection } from './rate-limit-section';
+import type { ConnectionRateLimit } from '../api/connections.types';
 
 interface HarnessProps {
   configIsParseable?: boolean;
   syncRateLimitToJson?: () => void;
   initialRateLimit?: { requestsPerMinute?: string; maxConcurrent?: string };
+  defaultRateLimit?: ConnectionRateLimit | null;
 }
 
 function Harness({
   configIsParseable = true,
   syncRateLimitToJson = (): void => {},
   initialRateLimit,
+  defaultRateLimit = null,
 }: HarnessProps): ReactElement {
   const form = useForm<any>({
     defaultValues: { rateLimit: initialRateLimit ?? {} },
@@ -29,6 +32,7 @@ function Harness({
       form={form as any}
       configIsParseable={configIsParseable}
       syncRateLimitToJson={syncRateLimitToJson}
+      defaultRateLimit={defaultRateLimit}
     />
   );
 }
@@ -70,6 +74,7 @@ describe('RateLimitSection', () => {
           form={form as any}
           configIsParseable={true}
           syncRateLimitToJson={syncRateLimitToJson}
+          defaultRateLimit={null}
         />
       );
     }
@@ -80,6 +85,35 @@ describe('RateLimitSection', () => {
     expect(syncRateLimitToJson).toHaveBeenCalledTimes(1);
     expect(calls.indexOf('setValue')).toBeGreaterThanOrEqual(0);
     expect(calls.indexOf('setValue')).toBeLessThan(calls.indexOf('sync'));
+  });
+
+  it('says "unlimited" when the adapter declares no defaultRateLimit (#1810 FE honesty)', () => {
+    render(<Harness defaultRateLimit={null} />);
+    expect(
+      screen.getByText(/Leave both fields empty for unlimited/i)
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Requests per minute')).toHaveAttribute(
+      'placeholder',
+      'Unlimited'
+    );
+  });
+
+  it('surfaces the resolved adapter defaultRateLimit instead of claiming "unlimited" (#1810 FE honesty)', () => {
+    render(
+      <Harness defaultRateLimit={{ requestsPerMinute: 60, maxConcurrent: 4 }} />
+    );
+    expect(
+      screen.getByText(/60 requests\/min, 4 concurrent/i)
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/^Leave both fields empty for unlimited/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Requests per minute')).toHaveAttribute(
+      'placeholder',
+      'Default: 60'
+    );
+    expect(screen.getByLabelText('Max concurrent requests')).toHaveAttribute(
+      'placeholder',
+      'Default: 4'
+    );
   });
 
   it('reads the just-written value via getValues at sync time (both knobs independently editable)', () => {
@@ -93,6 +127,7 @@ describe('RateLimitSection', () => {
           syncRateLimitToJson={() => {
             captured = form.getValues('rateLimit');
           }}
+          defaultRateLimit={null}
         />
       );
     }

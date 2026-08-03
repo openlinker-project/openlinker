@@ -42,11 +42,14 @@ per-call-site throttle:
    `scripts/check-outbound-http.mjs`. Both are scoped to `libs/integrations/prestashop/**` for now —
    the reference adopter — and widen to `libs/integrations/**` once the remaining 8 clients are
    migrated (Phase 5, #1956).
-5. No stuck-job-reclaim prerequisite fix is needed: `RateLimiter`'s own `MAX_TOTAL_WAIT_MS` bound
-   (120s) is well under `SyncJobRunner`'s 15-minute stuck-job-reclaim window, so a job queued behind
-   a saturated limiter times out and reports a normal failure long before the reclaim sweep could
-   ever see it as stuck. This was raised as a candidate prerequisite during design and rejected as
-   unnecessary once the actual bound was checked — recorded here so it isn't re-litigated.
+5. A prerequisite fix, landed first and independently of the rest of this ADR (#1952): a `heartbeat`
+   tick in `SyncJobRunner.processJob` (refreshed every 3 minutes while the handler runs) so a job
+   queued behind a saturated per-connection limiter for longer than `SyncJobRunner`'s 15-minute
+   stuck-job-reclaim window is not duplicated by the existing stuck-job recovery sweep. A "no fix
+   needed, `RateLimiter`'s own `MAX_TOTAL_WAIT_MS` bound (120s) already keeps a queued call well
+   under the 15-minute window" alternative was considered and rejected: `MAX_TOTAL_WAIT_MS` bounds a
+   single `acquire()` call, not the cumulative time a job can spend queued across retries within one
+   handler invocation, so the reclaim sweep could still race a legitimately-still-running job.
 
 #1815's PrestaShop-only limiter is **generalized, not duplicated**: `PrestashopRateLimiter` /
 `PrestashopRateLimiterRegistry` are retired in favour of the shared `@openlinker/shared/rate-limit`

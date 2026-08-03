@@ -109,13 +109,9 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
 
     // Create HTTP client — connection-bound transport (#1810) threaded
     // through every client this factory constructs below.
-    const httpClient = new PrestashopWebserviceClient(
-      config.baseUrl,
-      credentials,
-      config,
-      undefined,
-      fetchImpl
-    );
+    const httpClient = new PrestashopWebserviceClient(config.baseUrl, credentials, config, {
+      fetchImpl,
+    });
 
     // Resolve the product currency: an explicit connection-config `currency`
     // always wins; otherwise fall back to the PrestaShop shop default (cached

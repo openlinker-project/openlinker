@@ -29,6 +29,7 @@ export type {
   PlatformType,
   CoreCapability,
   VariantGroupingModel,
+  ConnectionRateLimit,
 } from './api/connections.types';
 export {
   CORE_PLATFORM_TYPES,

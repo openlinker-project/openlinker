@@ -59,23 +59,21 @@ export class PrestashopConnectionTesterAdapter implements ConnectionTesterPort {
         responseFormat: 'auto',
       };
 
-      // Connection-bound outbound transport (#1810) — the probe must never
-      // bypass the connection's own rate limiter, or a repeatable "Test
-      // connection" click can burst the exact fragile host #1772 was about.
+      // Connection-bound outbound transport (#1810) — a "Test connection"
+      // click is operator-triggered and can be repeated in quick succession;
+      // it must go through the same rate limiter as every other PS call
+      // site, not a bare globalThis.fetch.
       const fetchImpl = this.httpTransportFactory.for(connection, this.defaultRateLimit);
 
-      const client = new PrestashopWebserviceClient(
-        baseUrl,
-        credentials,
-        config,
-        {
+      const client = new PrestashopWebserviceClient(baseUrl, credentials, config, {
+        retryConfig: {
           maxRetries: 0,
           initialDelayMs: 0,
           maxDelayMs: 0,
           backoffMultiplier: 1,
         },
-        fetchImpl
-      );
+        fetchImpl,
+      });
 
       await client.listResources('products', undefined, 1);
 

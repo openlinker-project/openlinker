@@ -85,14 +85,16 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
 
   for(connection: RateLimitedConnection, defaultRateLimit?: ConnectionRateLimit): FetchLike {
     // Keep the ref fresh on every for() call so a cached closure (below)
-    // never reads a stale `config.rateLimit`/`defaultRateLimit` from the
-    // connection object or argument it happened to be built with — an
-    // operator's config edit must take effect on the very next call
-    // through the same cached FetchLike.
+    // never reads a stale `config.rateLimit` from the connection object it
+    // happened to be built with — an operator's config edit must take effect
+    // on the very next call through the same cached FetchLike. `defaultRateLimit`
+    // is per-connection-id, not per-call: a caller that omits it (e.g. a second
+    // call site resolving the same connection) must never clobber the value a
+    // prior caller established, since every caller shares one cached FetchLike.
     const ref = this.connectionRefs.get(connection.id);
     if (ref) {
       ref.current = connection;
-      ref.defaultRateLimit = defaultRateLimit;
+      ref.defaultRateLimit = defaultRateLimit ?? ref.defaultRateLimit;
     } else {
       this.connectionRefs.set(connection.id, { current: connection, defaultRateLimit });
     }

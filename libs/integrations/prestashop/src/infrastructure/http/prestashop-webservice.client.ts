@@ -12,6 +12,8 @@ import type {
   IPrestashopWebserviceClient,
   PrestashopQueryFilters,
   PrestashopWriteOptions,
+  RetryConfig,
+  PrestashopWebserviceClientOptions,
 } from './prestashop-webservice.client.interface';
 import type {
   PrestashopConnectionConfig,
@@ -50,16 +52,6 @@ function singularizeResource(resource: string): string {
 }
 
 /**
- * Retry configuration
- */
-interface RetryConfig {
-  maxRetries: number;
-  initialDelayMs: number;
-  maxDelayMs: number;
-  backoffMultiplier: number;
-}
-
-/**
  * Default retry configuration
  */
 const DEFAULT_RETRY_CONFIG: RetryConfig = {
@@ -81,17 +73,15 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
   private readonly config: PrestashopConnectionConfig;
   private readonly retryConfig: RetryConfig;
   private readonly xmlBuilder: XMLBuilder;
+  private readonly fetchImpl: FetchLike;
 
   constructor(
     baseUrl: string,
     credentials: PrestashopCredentials,
     config: PrestashopConnectionConfig,
-    retryConfig?: Partial<RetryConfig>,
-    // Connection-bound outbound transport (#1810) — defaults to bare
-    // fetch so existing call sites that predate the rate-limit mechanism
-    // (test harnesses, other-package callers) keep working unchanged.
-    private readonly fetchImpl: FetchLike = globalThis.fetch
+    options: PrestashopWebserviceClientOptions = {}
   ) {
+    this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
     // Normalize baseUrl (remove trailing slash)
     const normalizedBaseUrl: string = baseUrl.replace(/\/$/, '');
     this.baseUrl = normalizedBaseUrl;
@@ -120,7 +110,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       responseFormat,
       shopId: configShopId,
     };
-    this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
+    this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...options.retryConfig };
     // Initialize XML builder for converting objects to XML (required for POST requests)
     this.xmlBuilder = new XMLBuilder({
       ignoreAttributes: false,
