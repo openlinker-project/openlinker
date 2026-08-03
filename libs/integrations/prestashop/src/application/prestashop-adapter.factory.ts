@@ -201,17 +201,11 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       );
     }
 
-    // Deliberately NOT `fetchImpl` (the connection-bound, PrestaShop-rate-
-    // limited transport): PrestashopProductPublisherAdapter's third
-    // constructor argument backs only its uploadImages() source-image
-    // fetch, which targets an arbitrary external host (master platform CDN,
-    // S3, ...), never PrestaShop itself. Passing the PrestaShop-scoped
-    // limiter here would (a) spend this connection's PrestaShop API budget
-    // on unrelated image traffic and (b) let a 429/503 from that unrelated
-    // host push back the PrestaShop limiter's own pacing via
-    // `noteRetryAfter`. Leaving it `undefined` falls back to
-    // `globalThis.fetch`, unbound.
-    const productPublisher = new PrestashopProductPublisherAdapter(httpClient, connection);
+    const productPublisher = new PrestashopProductPublisherAdapter(
+      httpClient,
+      connection,
+      fetchImpl
+    );
 
     this.logger.log(`PrestaShop adapters created successfully for connection: ${connection.id}`);
 
