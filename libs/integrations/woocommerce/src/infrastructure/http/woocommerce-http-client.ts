@@ -20,6 +20,7 @@
  */
 import type { RetryConfig } from './woocommerce-http-client.types';
 import type { IWooCommerceHttpClient } from './woocommerce-http-client.interface';
+import type { FetchLike } from '@openlinker/shared/http';
 import { WooCommerceUnauthorizedException } from '../../domain/exceptions/woocommerce-unauthorized.exception';
 import { WooCommerceNetworkException } from '../../domain/exceptions/woocommerce-network.exception';
 import { WooCommerceHttpResponseException } from './woocommerce-http-response.exception';
@@ -44,15 +45,18 @@ const MAX_REDIRECTS = 5;
 export class WooCommerceHttpClient implements IWooCommerceHttpClient {
   private readonly siteUrl: string;
   private readonly retryConfig: RetryConfig;
+  private readonly fetchImpl: FetchLike;
 
   constructor(
     siteUrl: string,
     private readonly consumerKey: string,
     private readonly consumerSecret: string,
     retryConfig?: Partial<RetryConfig>,
+    fetchImpl?: FetchLike,
   ) {
     this.siteUrl = siteUrl.replace(/\/+$/, '');
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
+    this.fetchImpl = fetchImpl ?? globalThis.fetch;
   }
 
   async get<T>(path: string, params?: Record<string, string | number | boolean>): Promise<T> {
@@ -104,7 +108,7 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
           headers['Content-Type'] = 'application/json';
         }
 
-        const response = await fetch(url, {
+        const response = await this.fetchImpl(url, {
           method,
           headers,
           body: body !== undefined ? JSON.stringify(body) : undefined,

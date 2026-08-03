@@ -52,6 +52,7 @@
  */
 import { BadRequestException } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
+import type { FetchLike, HttpTransportFactoryPort } from '@openlinker/shared/http';
 import type { Connection, ConnectionPort } from '@openlinker/core/identifier-mapping';
 import type {
   CredentialsResolverPort,
@@ -71,6 +72,7 @@ import {
   type WooCommerceWebhookResource,
   type WooCommerceWebhookWriteBody,
 } from './woocommerce-webhook.types';
+import { woocommerceAdapterManifest } from '../../woocommerce-plugin';
 
 /** Upper bound on the existing-webhook listing used for idempotent upserts. */
 const WEBHOOK_LIST_PAGE_SIZE = 100;
@@ -82,6 +84,7 @@ export class WooCommerceWebhookProvisioningAdapter implements WebhookProvisionin
     private readonly connectionPort: ConnectionPort,
     private readonly webhookSecretService: IWebhookSecretService,
     private readonly credentialsResolver: CredentialsResolverPort,
+    private readonly http: HttpTransportFactoryPort,
   ) {}
 
   async install(connectionId: string, actorUserId?: string): Promise<WebhookProvisioningResult> {
@@ -113,7 +116,13 @@ export class WooCommerceWebhookProvisioningAdapter implements WebhookProvisionin
       actorUserId,
     );
 
-    const httpClient = await this.createHttpClient(connection.credentialsRef, config.siteUrl);
+    // Connection-bound outbound transport (#1810).
+    const fetchImpl = this.http.for(connection, woocommerceAdapterManifest.defaultRateLimit);
+    const httpClient = await this.createHttpClient(
+      connection.credentialsRef,
+      config.siteUrl,
+      fetchImpl,
+    );
     const deliveryUrl = `${callbackBaseUrl.replace(/\/$/, '')}/webhooks/${WOOCOMMERCE_WEBHOOK_PROVIDER}/${connectionId}`;
 
     try {
@@ -261,8 +270,15 @@ export class WooCommerceWebhookProvisioningAdapter implements WebhookProvisionin
   private async createHttpClient(
     credentialsRef: string,
     siteUrl: string,
+    fetchImpl: FetchLike,
   ): Promise<IWooCommerceHttpClient> {
     const credentials = await this.credentialsResolver.get<WooCommerceCredentials>(credentialsRef);
-    return new WooCommerceHttpClient(siteUrl, credentials.consumerKey, credentials.consumerSecret);
+    return new WooCommerceHttpClient(
+      siteUrl,
+      credentials.consumerKey,
+      credentials.consumerSecret,
+      undefined,
+      fetchImpl,
+    );
   }
 }
