@@ -53,6 +53,12 @@ import type { SyncJobRequest } from '@openlinker/core/sync';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import { Inject } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
+import { HTTP_TRANSPORT_FACTORY_TOKEN } from '@openlinker/plugin-sdk';
+// Non-type-only import: HttpTransportFactoryPort is the type of a
+// constructor parameter on an @Injectable() class, and
+// `emitDecoratorMetadata` requires a non-erased reference (mirrors the
+// RateLimitStatusService convention).
+import { HttpTransportFactoryPort } from '@openlinker/shared/http';
 
 @Injectable()
 export class ConnectionService implements IConnectionService {
@@ -78,7 +84,9 @@ export class ConnectionService implements IConnectionService {
     @Inject(CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN)
     private readonly connectionCredentialsRewriterRegistry: ConnectionCredentialsRewriterRegistryService,
     @Inject(CREDENTIALS_RESOLVER_TOKEN)
-    private readonly credentialsResolver: CredentialsResolverPort
+    private readonly credentialsResolver: CredentialsResolverPort,
+    @Inject(HTTP_TRANSPORT_FACTORY_TOKEN)
+    private readonly httpTransportFactory: HttpTransportFactoryPort
   ) {}
 
   /**
@@ -539,6 +547,11 @@ export class ConnectionService implements IConnectionService {
     try {
       this.logger.log(`Disabling connection: ${connectionId}`);
       const connection = await this.connectionPort.disable(connectionId);
+      // A disabled connection sends no more outbound traffic — drop its
+      // rate-limiter/transport-cache state instead of leaking it for the
+      // rest of the process lifetime. Re-enabling lazily rebuilds it (idle
+      // state, no carried queue) on the next call.
+      this.httpTransportFactory.evict(connectionId);
       this.logger.log(`Connection disabled successfully: ${connection.id} (${connection.name})`);
       return connection;
     } catch (error) {

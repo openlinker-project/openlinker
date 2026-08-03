@@ -53,4 +53,31 @@ describe('createRateLimiterRegistry', () => {
 
     expect(after).not.toBe(before);
   });
+
+  it('evict() removes only the targeted connection\'s limiter, leaving others intact', () => {
+    const registry = createRateLimiterRegistry();
+
+    const connA = registry.get('conn-a', {});
+    const connB = registry.get('conn-b', {});
+
+    registry.evict('conn-a');
+
+    expect(registry.get('conn-a', {})).not.toBe(connA);
+    expect(registry.get('conn-b', {})).toBe(connB);
+  });
+
+  it('evict() on a never-resolved connection id is a safe no-op', () => {
+    const registry = createRateLimiterRegistry();
+
+    expect(() => registry.evict('never-seen')).not.toThrow();
+  });
+
+  it('evict() clears the status read for the evicted connection', () => {
+    const registry = createRateLimiterRegistry();
+
+    registry.get('conn-1', { requestsPerMinute: 60 });
+    registry.evict('conn-1');
+
+    expect(registry.getStatus('conn-1')).toBeNull();
+  });
 });

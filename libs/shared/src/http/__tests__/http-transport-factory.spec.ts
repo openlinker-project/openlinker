@@ -199,4 +199,25 @@ describe('HttpTransportFactory', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
     release();
   });
+
+  it('evict() drops the cached FetchLike, connection ref, and underlying limiter for a connection', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    const factory = new HttpTransportFactory({ registry, fetchImpl });
+    const connection = { id: 'conn-1', config: { rateLimit: { requestsPerMinute: 60 } } };
+
+    const boundFetch = factory.for(connection);
+    await boundFetch('https://example.com');
+    expect(registry.getStatus('conn-1')).not.toBeNull();
+
+    factory.evict('conn-1');
+
+    expect(registry.getStatus('conn-1')).toBeNull();
+    expect(factory.for(connection)).not.toBe(boundFetch);
+  });
+
+  it('evict() on a connection id never resolved via for() is a safe no-op', () => {
+    const factory = new HttpTransportFactory({ registry });
+
+    expect(() => factory.evict('never-seen')).not.toThrow();
+  });
 });
