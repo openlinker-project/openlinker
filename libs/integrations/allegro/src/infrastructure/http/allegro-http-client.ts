@@ -28,6 +28,7 @@ import { AllegroNetworkException } from '../../domain/exceptions/allegro-network
 import { AllegroRateLimitException } from '../../domain/exceptions/allegro-rate-limit.exception';
 import { parseAllegroErrorBody } from './parse-allegro-error-body';
 import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
+import type { FetchLike } from '@openlinker/shared/http';
 import { randomUUID } from 'crypto';
 
 /**
@@ -88,18 +89,21 @@ export class AllegroHttpClient implements IAllegroHttpClient {
   private readonly retryConfig: RetryConfig;
   private readonly connectionId: string;
   private readonly tokenState: AllegroConnectionTokenState;
+  private readonly fetchImpl: FetchLike;
 
   constructor(
     connectionId: string,
     baseUrl: string,
     tokenState: AllegroConnectionTokenState,
-    retryConfig?: Partial<RetryConfig>
+    retryConfig?: Partial<RetryConfig>,
+    fetchImpl?: FetchLike
   ) {
     this.connectionId = connectionId;
     // Normalize baseUrl (remove trailing slash)
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.tokenState = tokenState;
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
+    this.fetchImpl = fetchImpl ?? globalThis.fetch;
   }
 
   async get<T = unknown>(
@@ -346,7 +350,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
         `[${traceId}] ${method} ${url.pathname}${url.search} (connection: ${this.connectionId})`
       );
 
-      const response = await fetch(url.toString(), {
+      const response = await this.fetchImpl(url.toString(), {
         method,
         headers: headersObject,
         body: requestBody,

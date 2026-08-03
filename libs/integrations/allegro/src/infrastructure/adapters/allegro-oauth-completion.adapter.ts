@@ -156,6 +156,7 @@ export class AllegroOAuthCompletionAdapter implements OAuthCompletionPort {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
+      // eslint-disable-next-line no-restricted-globals -- OAuth token endpoint, low-volume auth infra, exempted pending #1810 Phase 5
       return await fetch(url, { ...init, signal: controller.signal });
     } finally {
       clearTimeout(timer);

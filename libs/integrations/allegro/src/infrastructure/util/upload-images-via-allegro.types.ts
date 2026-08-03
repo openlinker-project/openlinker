@@ -8,6 +8,7 @@
  * @module libs/integrations/allegro/src/infrastructure/util
  */
 import type { CreateOfferValidationError } from '@openlinker/core/listings';
+import type { FetchLike } from '@openlinker/shared/http';
 
 /**
  * Discriminated result of `uploadImagesViaAllegro`.
@@ -26,7 +27,7 @@ export type UploadImagesResult =
  */
 export interface UploadImagesViaAllegroOptions {
   /** Override fetch (tests). Defaults to `globalThis.fetch`. */
-  fetchImpl?: typeof fetch;
+  fetchImpl?: FetchLike;
   /** Per-URL download timeout. Default 30 000 ms. */
   downloadTimeoutMs?: number;
 }

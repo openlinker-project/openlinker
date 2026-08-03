@@ -136,7 +136,7 @@ export function createAllegroPlugin(deps: CreateAllegroPluginDeps): AdapterPlugi
     register(host: HostServices): void {
       host.connectionTesterRegistry.register(
         'allegro.publicapi.v1',
-        new AllegroConnectionTesterAdapter()
+        new AllegroConnectionTesterAdapter(host.http)
       );
       host.emailNormalizerRegistry.register(
         'allegro.publicapi.v1',
@@ -187,7 +187,8 @@ export function createAllegroPlugin(deps: CreateAllegroPluginDeps): AdapterPlugi
       const adapters = await factory.createAdapters(
         connection,
         host.identifierMapping,
-        host.credentialsResolver
+        host.credentialsResolver,
+        host.http.for(connection)
       );
       return dispatchCapability<T>(
         capability,

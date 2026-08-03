@@ -10,9 +10,13 @@ import { AllegroConnectionTesterAdapter } from '../allegro-connection-tester.ada
 import * as client from '../../http/allegro-http-client';
 import { Connection } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 
 describe('AllegroConnectionTesterAdapter', () => {
-  const tester = new AllegroConnectionTesterAdapter();
+  const http: jest.Mocked<HttpTransportFactoryPort> = {
+    for: jest.fn().mockReturnValue(jest.fn()),
+  };
+  const tester = new AllegroConnectionTesterAdapter(http);
   const resolver: CredentialsResolverPort = {
     get: jest.fn().mockResolvedValue({ accessToken: 'T' }),
   } as unknown as CredentialsResolverPort;

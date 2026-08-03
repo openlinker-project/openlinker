@@ -228,6 +228,7 @@ export class AllegroTokenRefreshService {
     // non-2xx — stays as the credential-rejection branch (non-retryable).
     let response: Response;
     try {
+      // eslint-disable-next-line no-restricted-globals -- OAuth token endpoint, low-volume auth infra, exempted pending #1810 Phase 5
       response = await fetch(tokenUrl.toString(), {
         method: 'POST',
         headers: {

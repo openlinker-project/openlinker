@@ -46,6 +46,7 @@ import imageSize from 'image-size';
 import type { CreateOfferValidationError } from '@openlinker/core/listings';
 import type { IAllegroHttpClient } from '../http/allegro-http-client.interface';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
+import type { FetchLike } from '@openlinker/shared/http';
 import type {
   UploadImagesResult,
   UploadImagesViaAllegroOptions,
@@ -133,7 +134,7 @@ type DownloadErr = { ok: false; failure: CreateOfferValidationError };
 
 async function downloadImage(
   url: string,
-  fetchImpl: typeof fetch,
+  fetchImpl: FetchLike,
   timeoutMs: number
 ): Promise<DownloadOk | DownloadErr> {
   const controller = new AbortController();
