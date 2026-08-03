@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  createAuthenticatedSessionAdapter,
   createMockApiClient,
   renderWithProviders,
   sampleConnection,
@@ -206,6 +207,52 @@ describe('ConnectionCapabilitiesPanel', () => {
       renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
 
       expect(screen.getByText(/MCP tools follow these capabilities/)).toBeInTheDocument();
+    });
+
+    // The hint explains the consequence of CHANGING capabilities, so it is
+    // gated on `connections:write` (#1993). A read-only session — a public-demo
+    // viewer holds `connections:read` alone — must not be told to reconnect an
+    // agent it cannot have, over a control it cannot operate.
+    describe('permission gate', () => {
+      const mcpBackingConnection: Connection = {
+        ...sampleConnection,
+        supportedCapabilities: ['ProductMaster', 'OfferManager'],
+        enabledCapabilities: ['ProductMaster'],
+      };
+
+      it('should hide the hint from a session without connections:write', async () => {
+        renderWithProviders(<ConnectionCapabilitiesPanel connection={mcpBackingConnection} />, {
+          sessionAdapter: createAuthenticatedSessionAdapter({
+            id: 'demo-viewer',
+            username: 'demo-viewer',
+            email: null,
+            role: 'viewer',
+            permissions: ['connections:read'],
+          }),
+        });
+
+        // The panel itself still renders — only the hint is gated, so this
+        // also pins that the gate did not swallow the surrounding read-only
+        // content a viewer is entitled to.
+        expect(await screen.findByText(/1 of 2 enabled/)).toBeInTheDocument();
+        expect(screen.queryByText(/MCP tools follow these capabilities/)).not.toBeInTheDocument();
+      });
+
+      // `connections:write` is admin-only in `ROLE_PERMISSIONS`, so the fixture
+      // that holds it is an admin — an operator would not see the hint either.
+      it('should show the hint to a session holding connections:write', async () => {
+        renderWithProviders(<ConnectionCapabilitiesPanel connection={mcpBackingConnection} />, {
+          sessionAdapter: createAuthenticatedSessionAdapter({
+            id: 'admin-user',
+            username: 'admin',
+            email: null,
+            role: 'admin',
+            permissions: ['connections:read', 'connections:write'],
+          }),
+        });
+
+        expect(await screen.findByText(/MCP tools follow these capabilities/)).toBeInTheDocument();
+      });
     });
   });
 });
