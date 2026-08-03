@@ -25,6 +25,8 @@ export function createGetProductTool(productsService: IProductsService): McpTool
   return {
     name: 'get_product',
     requiredCapability: 'ProductMaster',
+    requiredScope: 'mcp:read',
+    requiresAdmin: false,
     description:
       "Read one product from OpenLinker's catalog by its internal id, including its variants (id, sku, barcode, price). Use search_catalog to find a product id first.",
     inputSchema,

@@ -588,6 +588,49 @@ always-registered discovery entry points (`whoami`, `list_connections`) plus fou
   output reaches an external LLM provider, so `list_connections` never emits `credentialsRef`/`config` and
   `get_order` never emits buyer name/email/address even when the snapshot stores them.
 
+**Mapping-assistant tools + per-tool authorization are shipped (Phase 2, #1488).** Five tools at
+`apps/api/src/mcp/tools/` — four reads (`list_category_mappings`, `list_attribute_mappings`,
+`resolve_category`, `project_attributes`) and OL's **first MCP write** (`upsert_category_mapping`) — plus the
+`configure-mappings` Skill encoding the discover → resolve → confirm → write → verify loop. Three design points:
+
+- **Per-tool scope + role, enforced in one place.** `McpToolDefinition` carries `requiredScope` +
+  `requiresAdmin` (both required — a write tool that forgot `requiresAdmin` would otherwise default to
+  unprivileged). `McpToolRegistryService` checks at registration *and* at call time before the rate-limiter
+  acquires, so a refusal costs no budget and audits as `outcome: 'forbidden'`. Registration filtering is a
+  listing convenience; the call-time check is the guard. Note that because a handler closes over the
+  request-scoped ctx and registration runs against that same principal, the two cannot diverge **today** — the
+  call-time check is defence-in-depth for a sessionful transport (#1932 option 2).
+- **Ungated, deliberately.** These tools declare `requiredCapability: null`: mapping configuration is OL-owned
+  data, not adapter-served, so a marketplace-capability gate would imply something false about the data. The
+  exception to Phase 1's OL-store-backed rule is `resolve_category` / `project_attributes`, which *do* reach the
+  live destination (barcode catalogue lookup, category schema). Admitted as bounded — one call per invocation,
+  not the N-call tree walk that keeps `browse_categories` deferred to #1937 — and stated in the tool
+  descriptions so an agent does not loop on them.
+- **The destination's kind must be DISCOVERED, not assumed.** `OfferBuilderService` and
+  `ProductPublishBuilderService` each know their destination kind statically; an MCP tool does not, because
+  the agent supplies an arbitrary `connectionId` from `list_connections`. `resolveDestinationContext`
+  (`apps/api/src/mcp/tools/read/destination-context.ts`) probes `OfferManager` then `ProductPublisher` to
+  resolve two facts the core services cannot derive themselves: which capability exposes the live category
+  schema (a shop serves it under `ProductPublisher` and does **not** support `OfferManager` — projecting a
+  shop under the default would throw), and whether the destination *borrows* a taxonomy (#1045), without
+  which `resolve_category` reports `manual` for an Erli connection whose operator already has a working
+  Allegro-authored mapping.
+- **Two traps the write path had to avoid.** `upsert_category_mapping` requires `sourceConnectionId` even though
+  `CategoryMappingInput` marks it optional (#1036 record-only): the repository upsert matches that column with
+  `IsNull()` semantics while `findBySourceCategory` is oldest-wins, so an omitted value inserts a duplicate row
+  and the write reports success while changing nothing. And the audit wrapper now reads
+  `destinationConnectionId` as well as `connectionId`, or every mapping-tool audit line — including the write —
+  would have recorded an undefined connection.
+
+The **semantic** half of Phase 2 (taxonomy browse/search, the LLM-shaped matching the issue was framed around)
+is **not** shipped: it needs a neutral destination-taxonomy read model, tracked as #1937 Wave 4.
+`resolve_category` is named for what it is — a deterministic placement chain (provision → barcode → configured
+mapping → manual), not a suggester. Its `mcp:read` declaration holds only while
+`CategoryResolutionService.tryProvision()` remains a stub; a spec asserts the tool never resolves via
+`provision`, so #1041 wiring that step fails the build instead of silently granting read tokens a destination
+write. Order-mapping options tools (status/carrier/payment) are also deferred — that vocabulary is only
+partially neutralized (ADR-023 / #1036).
+
 `notifications/tools/list_changed` is deliberately **not** implemented: stateless per-request serving leaves no
 session to push over. Note the accepted cost — the *server* is always fresh, but a **client's cached tool list**
 can go stale, so an agent already connected when a connection is enabled won't see the new tool until it

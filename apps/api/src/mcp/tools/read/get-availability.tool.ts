@@ -50,6 +50,8 @@ export function createGetAvailabilityTool(
   return {
     name: 'get_availability',
     requiredCapability: 'InventoryMaster',
+    requiredScope: 'mcp:read',
+    requiresAdmin: false,
     description:
       "Read stock levels from OpenLinker's inventory for a set of products (totals) or variants (per-variant). Supply exactly one of productIds or variantIds — ids come from search_catalog / get_product. Stock reflects the last completed inventory sync, not a live marketplace read.",
     inputSchema,

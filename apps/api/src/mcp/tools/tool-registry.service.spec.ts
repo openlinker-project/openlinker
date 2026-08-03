@@ -13,7 +13,8 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 
-import { McpToolRegistryService } from './tool-registry.service';
+import { McpToolRegistryService, describeAuthzRefusal } from './tool-registry.service';
+import type { RedactedMcpPrincipal } from '../auth/mcp-principal.types';
 import { McpAuditLogger } from './audit/mcp-audit.logger';
 import type { IMcpRateLimiter, McpRateLimitLease } from './ratelimit/mcp-rate-limiter.interface';
 import type { McpToolDefinition } from './tool-definition.types';
@@ -38,6 +39,29 @@ function authInfo(): { token: string; scopes: string[]; extra: Record<string, un
 
 function ctx(): never {
   return { authInfo: authInfo() } as never;
+}
+
+/**
+ * A principal with an explicit scope set and role (#1488), for the
+ * scope/role enforcement matrix.
+ */
+function ctxAs(scopes: readonly string[], olRole: string): never {
+  return {
+    authInfo: {
+      token: RAW_TOKEN,
+      scopes: [...scopes],
+      extra: { mcpTokenId: 'tok-1', tokenName: 'laptop', olUserId: 'user-1', olRole },
+    },
+  } as never;
+}
+
+/** A write tool, as `upsert_category_mapping` declares itself. */
+function writeDefinition(): McpToolDefinition {
+  return definition({
+    name: 'write_tool',
+    requiredScope: 'mcp:write',
+    requiresAdmin: true,
+  });
 }
 
 /** Captures what the server was asked to register. */
@@ -65,6 +89,8 @@ function definition(overrides: Partial<McpToolDefinition> = {}): McpToolDefiniti
   return {
     name: 'test_tool',
     requiredCapability: null,
+    requiredScope: 'mcp:read',
+    requiresAdmin: false,
     description: 'test',
     inputSchema: z.object({}),
     handler: () => Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] }),
@@ -283,6 +309,130 @@ describe('McpToolRegistryService', () => {
       // The registry passes `principal: null` down; rendering it as
       // `principal: 'none'` is the logger's job (see its own spec).
       expect(logged[0]).toContain('"principal":null');
+    });
+  });
+
+  /**
+   * The point of #1488 — the AC is "a read-only token is refused".
+   *
+   * Worth being precise about what these can and cannot prove. A tool handler
+   * closes over the REQUEST-scoped ctx (#1487), and registration runs per
+   * request against that same ctx, so the two checks always see one principal:
+   * a tool that registered will also pass at call time. Registration filtering
+   * is therefore what refuses TODAY, and the call-time guard is
+   * defence-in-depth for the divergence a sessionful transport would introduce
+   * (#1932 option 2, where registration could become session-scoped while
+   * calls stay per-principal). Both are asserted; neither is oversold.
+   */
+  describe('scope + role enforcement', () => {
+    it('should omit a write tool from tools/list for a read-only principal', async () => {
+      const { server, names } = recordingServer();
+      const { service } = build(
+        [definition(), writeDefinition()],
+        integrationsWith([]),
+        allowingLimiter()
+      );
+
+      await service.registerTools(server, ctxAs(['mcp:read'], 'admin'));
+
+      expect(names).toEqual(['test_tool']);
+    });
+
+    it('should omit a write tool for a non-admin principal that holds mcp:write', async () => {
+      const { server, names } = recordingServer();
+      const { service } = build(
+        [definition(), writeDefinition()],
+        integrationsWith([]),
+        allowingLimiter()
+      );
+
+      await service.registerTools(server, ctxAs(['mcp:read', 'mcp:write'], 'viewer'));
+
+      expect(names).toEqual(['test_tool']);
+    });
+
+    it('should register and run a write tool for an admin write-scoped principal', async () => {
+      const handler = jest
+        .fn()
+        .mockResolvedValue({ content: [{ type: 'text' as const, text: 'ok' }] });
+      const { server, names, handlers } = recordingServer();
+      const admin = ctxAs(['mcp:read', 'mcp:write'], 'admin');
+      const { service, logged } = build(
+        [definition({ ...writeDefinition(), handler })],
+        integrationsWith([]),
+        allowingLimiter()
+      );
+      await service.registerTools(server, admin);
+
+      await handlers.get('write_tool')?.({}, admin);
+
+      expect(names).toEqual(['write_tool']);
+      expect(handler).toHaveBeenCalled();
+      expect(logged[0]).toContain('"outcome":"ok"');
+    });
+
+    /**
+     * The call-time guard is tested through its decision function rather than
+     * through `registerTools`, because the two checks share one principal —
+     * anything registered would pass, so a round-trip test could only
+     * re-assert the registration filter while appearing to prove more.
+     */
+    describe('describeAuthzRefusal', () => {
+      const principal = (scopes: string[], olRole: string): RedactedMcpPrincipal =>
+        ({ mcpTokenId: 'tok-1', olUserId: 'u1', olRole, scopes }) as RedactedMcpPrincipal;
+
+      it('should allow a read tool for a read-only principal', () => {
+        expect(describeAuthzRefusal(definition(), principal(['mcp:read'], 'viewer'))).toBeNull();
+      });
+
+      it('should allow a write tool for an admin holding mcp:write', () => {
+        expect(
+          describeAuthzRefusal(writeDefinition(), principal(['mcp:read', 'mcp:write'], 'admin'))
+        ).toBeNull();
+      });
+
+      it('should name the missing scope so the agent can ask for a better token', () => {
+        const refusal = describeAuthzRefusal(writeDefinition(), principal(['mcp:read'], 'admin'));
+
+        // "Forbidden" alone would leave the model unable to tell a fixable
+        // token problem from a permanent one.
+        expect(refusal).toContain('mcp:write');
+      });
+
+      it('should refuse an admin-only tool for a non-admin that holds the scope', () => {
+        const refusal = describeAuthzRefusal(
+          writeDefinition(),
+          principal(['mcp:read', 'mcp:write'], 'viewer')
+        );
+
+        expect(refusal).toContain('admin');
+      });
+    });
+  });
+
+  describe('audit attribution', () => {
+    it('should record the connection for a tool keyed on destinationConnectionId', async () => {
+      const { server, handlers } = recordingServer();
+      const { service, logged } = build([definition()], integrationsWith([]), allowingLimiter());
+      await service.registerTools(server, ctx());
+
+      await handlers.get('test_tool')?.({ destinationConnectionId: 'conn-9' }, ctx());
+
+      // Without the wrapper's fallback every mapping tool — including the
+      // first WRITE on the MCP surface — would log an undefined connection.
+      expect(logged[0]).toContain('"connectionId":"conn-9"');
+    });
+
+    it('should still prefer connectionId when both are present', async () => {
+      const { server, handlers } = recordingServer();
+      const { service, logged } = build([definition()], integrationsWith([]), allowingLimiter());
+      await service.registerTools(server, ctx());
+
+      await handlers
+        .get('test_tool')
+        ?.({ connectionId: 'conn-1', destinationConnectionId: 'conn-9' }, ctx());
+
+      expect(logged[0]).toContain('"connectionId":"conn-1"');
     });
   });
 });

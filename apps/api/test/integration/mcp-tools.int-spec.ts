@@ -129,9 +129,20 @@ describe('MCP Read-Only Tools Integration (#1487)', () => {
 
     expect(response.status).toBe(200);
     // Discovery must work on an empty deployment — that is the whole point of
-    // these two being ungated.
+    // `whoami` / `list_connections` being ungated.
+    //
+    // The four mapping reads (#1488) join them for a different but equally
+    // deliberate reason: mapping configuration is OL-owned data, not
+    // adapter-served, so gating it on a marketplace capability would imply
+    // something false about whether the data exists. `upsert_category_mapping`
+    // is absent here because this token is read-only, not because of a
+    // capability gate — see mcp-mapping-tools.int-spec.ts.
     expect(toolNames(response.body as JsonRpcToolsListResult)).toEqual([
+      'list_attribute_mappings',
+      'list_category_mappings',
       'list_connections',
+      'project_attributes',
+      'resolve_category',
       'whoami',
     ]);
   });
