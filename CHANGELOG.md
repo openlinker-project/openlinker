@@ -12,6 +12,47 @@ From `0.2.0` onward this file is generated automatically by
 Commits. The `0.1.0` entry below is the hand-curated baseline of what shipped
 before automated releases began.
 
+## [0.5.0](https://github.com/openlinker-project/openlinker/compare/v0.4.0...v0.5.0) (2026-08-03)
+
+
+### Features
+
+* **api,web/demo:** require session-recording consent to use the demo ([#1938](https://github.com/openlinker-project/openlinker/issues/1938)) ([#1945](https://github.com/openlinker-project/openlinker/issues/1945)) ([d081195](https://github.com/openlinker-project/openlinker/commit/d081195c7c294cf61310971c29e05d26e0977bcf))
+* **core,api,web/shipments:** persist providerCode on Shipment, re-key failure triage grouping ([#1918](https://github.com/openlinker-project/openlinker/issues/1918)) ([#1925](https://github.com/openlinker-project/openlinker/issues/1925)) ([f654b22](https://github.com/openlinker-project/openlinker/commit/f654b22d2a575ef3bf3fcb42e9e39fdbc3ccad42))
+* **demo:** disclose marketing-UTM tracking on /login and /register ([#1895](https://github.com/openlinker-project/openlinker/issues/1895)) ([7af84a5](https://github.com/openlinker-project/openlinker/commit/7af84a5cfeca94babd5d23823fbc50380ca83e9d))
+* **demo:** PostHog analytics framework, settings panel, and full viewer-event instrumentation ([#1817](https://github.com/openlinker-project/openlinker/issues/1817)) ([a524242](https://github.com/openlinker-project/openlinker/commit/a524242c15360a7df2b9cabde8c19c21e88a75bb))
+* **e2e:** apps/e2e Playwright framework + golden paths S1-S4 (unattended) and S0-S9 (attended, all 6 systems) ([#1480](https://github.com/openlinker-project/openlinker/issues/1480)) ([525dfb1](https://github.com/openlinker-project/openlinker/commit/525dfb1ea9e4098418801f8f19ff11f0cd827d83))
+* **listings:** category per family and per variant in bulk offer creation ([#1930](https://github.com/openlinker-project/openlinker/issues/1930)) ([f228325](https://github.com/openlinker-project/openlinker/commit/f22832513e1c2c97442888d3c0c81638f4604543))
+* **mcp:** mapping assistant tools + per-tool scope and role enforcement ([#1488](https://github.com/openlinker-project/openlinker/issues/1488)) ([#1967](https://github.com/openlinker-project/openlinker/issues/1967)) ([5a181a3](https://github.com/openlinker-project/openlinker/commit/5a181a35069af0303e1cb8fa58c960c586de650d))
+* **mcp:** read-only domain tools with capability-gated dynamic tools/list ([#1931](https://github.com/openlinker-project/openlinker/issues/1931)) ([8907082](https://github.com/openlinker-project/openlinker/commit/89070821fb02e3d46e3a443ab74c0739f17493ec))
+* **mcp:** Resource-Server auth via user-issued Personal Access Tokens ([#1486](https://github.com/openlinker-project/openlinker/issues/1486)) ([#1912](https://github.com/openlinker-project/openlinker/issues/1912)) ([46fea4a](https://github.com/openlinker-project/openlinker/commit/46fea4af1bfd2eb3a963d746581db388000c2372))
+* **shipments:** inline retry from a failed row + carrier-message role visibility ([#1905](https://github.com/openlinker-project/openlinker/issues/1905)) ([b70b071](https://github.com/openlinker-project/openlinker/commit/b70b071ba5a35f8a583ec49e1a0275ee7e8b6e1f))
+* **web/connections:** surface the MCP reconnect hint where capabilities change ([#1951](https://github.com/openlinker-project/openlinker/issues/1951)) ([0b8c130](https://github.com/openlinker-project/openlinker/commit/0b8c130308dd0d43b22471b374384cc3fc859c49)), closes [#1949](https://github.com/openlinker-project/openlinker/issues/1949)
+
+
+### Bug Fixes
+
+* **ci:** add workflow_dispatch to CD and PAT for release-please tag push ([#1894](https://github.com/openlinker-project/openlinker/issues/1894)) ([f6da62b](https://github.com/openlinker-project/openlinker/commit/f6da62bc6e37366f1df7a7b85469897458e69148))
+* **core,inventory:** handle full master deletion in inventory sync ([#1903](https://github.com/openlinker-project/openlinker/issues/1903)) ([83c7ca6](https://github.com/openlinker-project/openlinker/commit/83c7ca674d04deee28f88d4b2583f7f7f3504304))
+* **core,worker:** guard master staleness prunes against rival master connections ([#1914](https://github.com/openlinker-project/openlinker/issues/1914)) ([e8b4c58](https://github.com/openlinker-project/openlinker/commit/e8b4c588a7d46e85bf176f32dd4ef7f5277e32c4))
+* **core/webhooks:** resolve webhook_deliveries.status by lifecycle rank on upsert ([#1919](https://github.com/openlinker-project/openlinker/issues/1919)) ([bb86874](https://github.com/openlinker-project/openlinker/commit/bb86874a95f5b185e20b0c90d853080bd63a692a)), closes [#1916](https://github.com/openlinker-project/openlinker/issues/1916)
+* **infakt:** issue corrections via the documented async endpoint ([#1899](https://github.com/openlinker-project/openlinker/issues/1899)) ([8498c45](https://github.com/openlinker-project/openlinker/commit/8498c45bb3e42c07894e3dfd83ce899ebfa1799a))
+* **infakt:** read the real v3 list envelope and resolve clients by an actual NIP filter ([#1927](https://github.com/openlinker-project/openlinker/issues/1927)) ([21a7722](https://github.com/openlinker-project/openlinker/commit/21a77223101f105f285ee02ae1f66d14278578b8))
+* **infra:** align demo Dockerfiles/compose with SysOps container standards ([#1915](https://github.com/openlinker-project/openlinker/issues/1915)) ([3a990f8](https://github.com/openlinker-project/openlinker/commit/3a990f83aa31058ff31639074ae9a1e263a6cc2f))
+* **listings:** close ten bulk-wizard preflight-vs-backend divergences ([#1939](https://github.com/openlinker-project/openlinker/issues/1939)) ([2bd07c9](https://github.com/openlinker-project/openlinker/commit/2bd07c93f8ddffa40c6df9bef96ec090dbf76668))
+* **listings:** distinguish all-duplicate/partial-duplicate bulk submit outcomes ([#1935](https://github.com/openlinker-project/openlinker/issues/1935)) ([c950f8c](https://github.com/openlinker-project/openlinker/commit/c950f8c1362dc22f73c51256afef95edb96d711e))
+* **listings:** stop rejecting adapter-supplied params, and mirror the category gate in the wizard ([#1963](https://github.com/openlinker-project/openlinker/issues/1963)) ([02172f7](https://github.com/openlinker-project/openlinker/commit/02172f79a94f1cee24023eba2fb300fcfb31ebcf))
+* **prestashop:** hydrate the buyer e-mail on ingested orders ([#1928](https://github.com/openlinker-project/openlinker/issues/1928)) ([#1929](https://github.com/openlinker-project/openlinker/issues/1929)) ([b2cf6c5](https://github.com/openlinker-project/openlinker/commit/b2cf6c587c027fb821b98d753fde85afa81cbe71))
+* **shipping,allegro:** relay a late-arriving waybill to the order source ([#1964](https://github.com/openlinker-project/openlinker/issues/1964)) ([deffd65](https://github.com/openlinker-project/openlinker/commit/deffd6554b7c49e86c617e7d98f214484c154a2e))
+* **shipping:** serialise per-order dispatch and recover a lost carrier response ([#1921](https://github.com/openlinker-project/openlinker/issues/1921)) ([28ecb94](https://github.com/openlinker-project/openlinker/commit/28ecb94f38ec0df574f11c471ca86bf47db7763b))
+* **web/connections:** let a disabled connection be re-enabled from the UI ([#1944](https://github.com/openlinker-project/openlinker/issues/1944)) ([97da368](https://github.com/openlinker-project/openlinker/commit/97da3681bf07e299a19078d71e3373f485bd1104))
+* **web/listings:** serialize a variant's parameters with its own category schema ([#1950](https://github.com/openlinker-project/openlinker/issues/1950)) ([c3a6a6b](https://github.com/openlinker-project/openlinker/commit/c3a6a6bf541622d11ff95163d39963545269df77))
+
+
+### Performance Improvements
+
+* **test-kit,api:** cut integration-suite time - per-test truncation, shutdown sleep, cold jest cache, shared PrestaShop container ([#1920](https://github.com/openlinker-project/openlinker/issues/1920)) ([#1923](https://github.com/openlinker-project/openlinker/issues/1923)) ([8401f3f](https://github.com/openlinker-project/openlinker/commit/8401f3faaf8c9245ef5ed6f71c5b4ff62ce5c5c9))
+
 ## [0.4.0](https://github.com/openlinker-project/openlinker/compare/v0.3.0...v0.4.0) (2026-07-27)
 
 
