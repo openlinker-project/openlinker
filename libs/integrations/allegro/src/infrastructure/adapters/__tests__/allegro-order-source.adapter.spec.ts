@@ -113,6 +113,36 @@ describe('AllegroOrderSourceAdapter', () => {
       expect(result.detail).toContain('bad carrier');
     });
 
+    it('dispatched: treats a 409 on the waybill POST as already-attached (applied) (#1947)', async () => {
+      // A retry after a partial success — the fulfillment PUT landed but this
+      // POST's response was lost — must converge, not report a failure while the
+      // waybill is in fact attached.
+      httpClient.post.mockRejectedValueOnce(new AllegroApiException('conflict', 409));
+      const result = await adapter.write({
+        type: 'dispatched',
+        externalOrderId: 'cf-1',
+        trackingNumber: '680',
+        carrier: { platformType: 'inpost' },
+      });
+      expect(result).toEqual({ outcome: 'applied' });
+    });
+
+    it('dispatched: does NOT swallow a non-409 waybill failure whose message mentions "already" (#1947)', async () => {
+      // The waybill POST creates a resource, so its idempotency check is keyed
+      // strictly on the 409 status — a message-text match would silently report
+      // an unattached waybill as `applied`, which is the defect class #1947 fixes.
+      httpClient.post.mockRejectedValueOnce(
+        new AllegroApiException('carrier already deactivated for this account', 400),
+      );
+      const result = await adapter.write({
+        type: 'dispatched',
+        externalOrderId: 'cf-1',
+        trackingNumber: '680',
+        carrier: { platformType: 'inpost' },
+      });
+      expect(result.outcome).toBe('rejected');
+    });
+
     it('cancelled: sets the Allegro fulfillment status to CANCELLED and returns applied', async () => {
       const result = await adapter.write({ type: 'cancelled', externalOrderId: 'cf-1' });
       expect(httpClient.put).toHaveBeenCalledWith('/order/checkout-forms/cf-1/fulfillment', {

@@ -153,7 +153,7 @@ describe('AuthService', () => {
   });
 
   describe('login', () => {
-    it('should return LoginResponseDto with access_token containing role', () => {
+    it('should return LoginResponseDto with access_token containing role and consent', () => {
       const user = makeUser();
 
       const result = service.login(user);
@@ -162,6 +162,9 @@ describe('AuthService', () => {
         sub: user.id,
         username: user.username,
         role: user.role,
+        // Claim read by the global AnalyticsConsentGuard (#1938), so it never
+        // needs a database round-trip.
+        analyticsConsent: user.analyticsConsent,
       });
       expect(result.access_token).toBe('signed-jwt-token');
     });

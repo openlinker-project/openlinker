@@ -13,7 +13,12 @@ import { describe, expect, it } from 'vitest';
 import { ERLI_MISSING_IMAGE_BLOCKER, erliOfferValidation } from './erli-offer-validation';
 
 describe('erliOfferValidation', () => {
-  const base = { imageCount: 1, needsProductParameters: false, willLinkProductCard: false };
+  const base = {
+    imageCount: 1,
+    needsProductParameters: false,
+    willLinkProductCard: false,
+    title: 'An Erli offer title',
+  };
 
   it('blocks a row whose master product carries no image', () => {
     expect(erliOfferValidation.validateRow({ ...base, imageCount: 0 })).toEqual([
@@ -27,11 +32,7 @@ describe('erliOfferValidation', () => {
 
   it('ignores `needsProductParameters` entirely (Erli has no product-section params)', () => {
     expect(
-      erliOfferValidation.validateRow({
-        imageCount: 1,
-        needsProductParameters: true,
-        willLinkProductCard: false,
-      }),
+      erliOfferValidation.validateRow({ ...base, needsProductParameters: true }),
     ).toEqual([]);
   });
 

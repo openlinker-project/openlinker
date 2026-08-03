@@ -29,6 +29,8 @@ export function createListConnectionsTool(
   return {
     name: 'list_connections',
     requiredCapability: null,
+    requiredScope: 'mcp:read',
+    requiresAdmin: false,
     description:
       'List the integration connections configured in OpenLinker (id, name, platform, status, enabled capabilities). Call this first to discover which connectionId to pass to other tools. An empty list means no connections are configured.',
     inputSchema: z.object({}),

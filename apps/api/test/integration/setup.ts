@@ -100,6 +100,12 @@ const harness = createIntegrationTestHarness({
     // shipments (#763 / #835) — order- + connection-scoped; truncate before
     // connections so the dispatch int-spec starts each case with no rows.
     'shipments',
+    // category_mappings is connection-scoped operator config (#1036). Its FKs
+    // live in the migration rather than the ORM decorators, so the
+    // synchronize-built test schema has nothing to cascade from `connections`
+    // — without this a mapping written by one case is still there for the
+    // next, and the MCP write-refusal assertion (#1488) counts rows.
+    'category_mappings',
     // fulfillment_routing_rules is connection-scoped config (#832). Listed
     // explicitly because — like connection_carrier_mappings — its FKs live in
     // the migration, not the ORM decorators, so the synchronize-built test

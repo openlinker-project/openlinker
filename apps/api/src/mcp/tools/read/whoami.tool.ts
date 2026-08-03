@@ -28,6 +28,8 @@ export function createWhoamiTool(): McpToolDefinition {
   return {
     name: 'whoami',
     requiredCapability: null,
+    requiredScope: 'mcp:read',
+    requiresAdmin: false,
     description:
       'Return the OpenLinker identity backing the presented MCP token (user id, role, token name, granted scopes). Use this to verify a token is installed and working.',
     inputSchema: z.object({}),

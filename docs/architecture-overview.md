@@ -464,6 +464,13 @@ Each is an independent interface + co-located `is{Capability}(adapter)` type gua
 |---|---|---|
 | `OrderFulfillmentUpdater` | `updateFulfillment({ externalOrderId, status, trackingNumber? })` | Push a post-create status + tracking update to the destination order (#837). PrestaShop maps the neutral `OrderStatus` to its native state. |
 | `OrderStatusWriteback` | `write(event: OrderLifecycleEvent)` | Relay-based, source-bound order-status round-trip — push a status change back to the originating marketplace (#1157, [ADR-027](./architecture/adrs/027-order-status-writeback-capability-and-relay.md)). |
+
+**Late-arriving waybills reach the source too (#1947).** A carrier may mint the tracking number *after* the operator dispatched — InPost/ShipX mints it at confirmation — so the operator-dispatch relay legitimately carries no waybill and the marketplace is only marked sent. `ShipmentStatusSyncService`'s `null → value` tracking backfill therefore relays a second `dispatched` event through the same role-agnostic relay, replacing the last surviving pre-#1168 destination-only push (which resolved `record.syncStatus` + `OrderFulfillmentUpdater` — a capability no *source* adapter implements, so the waybill could previously never reach the marketplace at all; it kept asking the seller to add tracking numbers forever). Two supporting rules:
+
+- **`Shipment.trackingNumber` is data; `Shipment.waybillRelayedAt` is the claim.** The field used to be both, which forced a choice between re-driving the source's non-idempotent waybill POST every tick and permanently losing the number. The marker is claimed conditionally (`WHERE "waybillRelayedAt" IS NULL`), which is also the serialization point between the status-sync poll and the carrier webhook — two unlocked triggers observing the same transition. Claim-then-release-on-failure mirrors the webhook dedup gate. Generalised per-*participant* notify state remains #861; retry is still all-or-nothing, so a permanently-broken destination re-drives the source — bounded at the adapter, where the Allegro waybill POST now treats a 409 as already-attached.
+- **`OrderLifecycleRelayTargetResult.unsupportedReason`** splits `unsupported` into structural `no-capability` (nothing to retry) and transient `adapter-unresolved` (disabled connection, credential failure — retryable). Without it a source mid-re-auth was recorded as "nothing to notify", which also let `ShipmentDispatchNotificationService` advance a shipment past its at-most-once gate; that path now leaves it retriable. Deliberately a separate field, not new `OrderWritebackOutcome` values, so a new value cannot fall silently into an existing `default:` arm.
+
+The terminal-status guard suppresses the relay for `cancelled`/`failed` only — **never** `delivered`, since one poll can carry `delivered` together with the first waybill and a delivered parcel unambiguously shipped (matching `FulfillmentStatusSyncService.isInitialDispatch`).
 | `FulfillmentStatusReader` | `getFulfillmentStatus({ externalOrderId })` | Read a destination order's current fulfillment status. |
 | `DestinationOptionsReader` | `listCarriers()`, `listOrderStatuses()`, `listPaymentMethods()` | Discover the destination's option vocabulary for mapping. |
 | `SourceOptionsReader` | `listOrderStatuses()`, `listDeliveryMethods()`, `listPaymentMethods()` | Discover a source's option vocabulary for mapping. |
@@ -580,6 +587,49 @@ always-registered discovery entry points (`whoami`, `list_connections`) plus fou
   slot on the throw path cannot be forgotten per tool. Every result is an explicit-allowlist projection: tool
   output reaches an external LLM provider, so `list_connections` never emits `credentialsRef`/`config` and
   `get_order` never emits buyer name/email/address even when the snapshot stores them.
+
+**Mapping-assistant tools + per-tool authorization are shipped (Phase 2, #1488).** Five tools at
+`apps/api/src/mcp/tools/` — four reads (`list_category_mappings`, `list_attribute_mappings`,
+`resolve_category`, `project_attributes`) and OL's **first MCP write** (`upsert_category_mapping`) — plus the
+`configure-mappings` Skill encoding the discover → resolve → confirm → write → verify loop. Three design points:
+
+- **Per-tool scope + role, enforced in one place.** `McpToolDefinition` carries `requiredScope` +
+  `requiresAdmin` (both required — a write tool that forgot `requiresAdmin` would otherwise default to
+  unprivileged). `McpToolRegistryService` checks at registration *and* at call time before the rate-limiter
+  acquires, so a refusal costs no budget and audits as `outcome: 'forbidden'`. Registration filtering is a
+  listing convenience; the call-time check is the guard. Note that because a handler closes over the
+  request-scoped ctx and registration runs against that same principal, the two cannot diverge **today** — the
+  call-time check is defence-in-depth for a sessionful transport (#1932 option 2).
+- **Ungated, deliberately.** These tools declare `requiredCapability: null`: mapping configuration is OL-owned
+  data, not adapter-served, so a marketplace-capability gate would imply something false about the data. The
+  exception to Phase 1's OL-store-backed rule is `resolve_category` / `project_attributes`, which *do* reach the
+  live destination (barcode catalogue lookup, category schema). Admitted as bounded — one call per invocation,
+  not the N-call tree walk that keeps `browse_categories` deferred to #1937 — and stated in the tool
+  descriptions so an agent does not loop on them.
+- **The destination's kind must be DISCOVERED, not assumed.** `OfferBuilderService` and
+  `ProductPublishBuilderService` each know their destination kind statically; an MCP tool does not, because
+  the agent supplies an arbitrary `connectionId` from `list_connections`. `resolveDestinationContext`
+  (`apps/api/src/mcp/tools/read/destination-context.ts`) probes `OfferManager` then `ProductPublisher` to
+  resolve two facts the core services cannot derive themselves: which capability exposes the live category
+  schema (a shop serves it under `ProductPublisher` and does **not** support `OfferManager` — projecting a
+  shop under the default would throw), and whether the destination *borrows* a taxonomy (#1045), without
+  which `resolve_category` reports `manual` for an Erli connection whose operator already has a working
+  Allegro-authored mapping.
+- **Two traps the write path had to avoid.** `upsert_category_mapping` requires `sourceConnectionId` even though
+  `CategoryMappingInput` marks it optional (#1036 record-only): the repository upsert matches that column with
+  `IsNull()` semantics while `findBySourceCategory` is oldest-wins, so an omitted value inserts a duplicate row
+  and the write reports success while changing nothing. And the audit wrapper now reads
+  `destinationConnectionId` as well as `connectionId`, or every mapping-tool audit line — including the write —
+  would have recorded an undefined connection.
+
+The **semantic** half of Phase 2 (taxonomy browse/search, the LLM-shaped matching the issue was framed around)
+is **not** shipped: it needs a neutral destination-taxonomy read model, tracked as #1937 Wave 4.
+`resolve_category` is named for what it is — a deterministic placement chain (provision → barcode → configured
+mapping → manual), not a suggester. Its `mcp:read` declaration holds only while
+`CategoryResolutionService.tryProvision()` remains a stub; a spec asserts the tool never resolves via
+`provision`, so #1041 wiring that step fails the build instead of silently granting read tokens a destination
+write. Order-mapping options tools (status/carrier/payment) are also deferred — that vocabulary is only
+partially neutralized (ADR-023 / #1036).
 
 `notifications/tools/list_changed` is deliberately **not** implemented: stateless per-request serving leaves no
 session to push over. Note the accepted cost — the *server* is always fresh, but a **client's cached tool list**

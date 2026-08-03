@@ -9,6 +9,7 @@ import { RegistrationService } from './registration.service';
 import type { IDemoModeService } from './demo-mode.service.interface';
 import type { IEmailConfirmationService } from './email-confirmation.service.interface';
 import {
+  AnalyticsConsentRequiredException,
   RegistrationDisabledException,
   RegistrationRateLimitedException,
   UserAlreadyExistsException,
@@ -137,7 +138,7 @@ describe('RegistrationService', () => {
       emailConfirmationService,
     );
 
-    await service.register('demo_user', 'demo@test.com', 'pass123');
+    await service.register('demo_user', 'demo@test.com', 'pass123', '1.2.3.4', true);
 
     expect(repo.save).toHaveBeenCalledTimes(1);
     const saved = repo.save.mock.calls[0][0];
@@ -184,18 +185,40 @@ describe('RegistrationService', () => {
       return { repo, service };
     };
 
-    it('should default analyticsConsent to false when the flag is omitted (opt-in)', async () => {
+    it('should reject a demo registration that omits consent (#1938)', async () => {
       const { repo, service } = makeActiveService();
 
-      await service.register('alice', 'alice@test.com', 'pass123');
-
-      expect(repo.save.mock.calls[0][0].analyticsConsent).toBe(false);
+      await expect(service.register('alice', 'alice@test.com', 'pass123')).rejects.toThrow(
+        AnalyticsConsentRequiredException,
+      );
+      expect(repo.save).not.toHaveBeenCalled();
     });
 
-    it('should persist analyticsConsent=false when the user opts out', async () => {
+    it('should reject a demo registration that declines consent (#1938)', async () => {
+      // The browser blocks this too, but a direct POST must not be able to
+      // create an unrecorded demo account.
       const { repo, service } = makeActiveService();
 
-      await service.register('alice', 'alice@test.com', 'pass123', '1.2.3.4', false);
+      await expect(
+        service.register('alice', 'alice@test.com', 'pass123', '1.2.3.4', false),
+      ).rejects.toThrow(AnalyticsConsentRequiredException);
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('should still default analyticsConsent to false outside demo mode (#1938)', async () => {
+      const repo = makeRepo();
+      repo.findByUsername.mockResolvedValue(null);
+      repo.findByEmail.mockResolvedValue(null);
+      repo.save.mockImplementation((u) => Promise.resolve(makeUser(u.username)));
+      const service = new RegistrationService(
+        repo,
+        makeConfig({ OL_REGISTRATION_ENABLED: 'true' }),
+        makeDemoService(false),
+        new InMemoryCacheAdapter(),
+        makeEmailConfirmationService(),
+      );
+
+      await service.register('alice', 'alice@test.com', 'pass123');
 
       expect(repo.save.mock.calls[0][0].analyticsConsent).toBe(false);
     });
@@ -224,11 +247,11 @@ describe('RegistrationService', () => {
         makeEmailConfirmationService(),
       );
 
-      await service.register('user1', 'user1@test.com', 'pass123', '1.2.3.4');
-      await service.register('user2', 'user2@test.com', 'pass123', '1.2.3.4');
+      await service.register('user1', 'user1@test.com', 'pass123', '1.2.3.4', true);
+      await service.register('user2', 'user2@test.com', 'pass123', '1.2.3.4', true);
 
       await expect(
-        service.register('user3', 'user3@test.com', 'pass123', '1.2.3.4'),
+        service.register('user3', 'user3@test.com', 'pass123', '1.2.3.4', true),
       ).rejects.toThrow(RegistrationRateLimitedException);
       expect(repo.save).toHaveBeenCalledTimes(2);
     });
@@ -247,8 +270,8 @@ describe('RegistrationService', () => {
         makeEmailConfirmationService(),
       );
 
-      await service.register('user1', 'user1@test.com', 'pass123', '1.1.1.1');
-      await service.register('user2', 'user2@test.com', 'pass123', '2.2.2.2');
+      await service.register('user1', 'user1@test.com', 'pass123', '1.1.1.1', true);
+      await service.register('user2', 'user2@test.com', 'pass123', '2.2.2.2', true);
 
       expect(repo.save).toHaveBeenCalledTimes(2);
     });
@@ -267,8 +290,8 @@ describe('RegistrationService', () => {
         makeEmailConfirmationService(),
       );
 
-      await service.register('user1', 'user1@test.com', 'pass123', '1.2.3.4');
-      await service.register('user2', 'user2@test.com', 'pass123', '1.2.3.4');
+      await service.register('user1', 'user1@test.com', 'pass123', '1.2.3.4', true);
+      await service.register('user2', 'user2@test.com', 'pass123', '1.2.3.4', true);
 
       expect(repo.save).toHaveBeenCalledTimes(2);
     });
@@ -287,8 +310,8 @@ describe('RegistrationService', () => {
         makeEmailConfirmationService(),
       );
 
-      await service.register('user1', 'user1@test.com', 'pass123');
-      await service.register('user2', 'user2@test.com', 'pass123');
+      await service.register('user1', 'user1@test.com', 'pass123', undefined, true);
+      await service.register('user2', 'user2@test.com', 'pass123', undefined, true);
 
       expect(repo.save).toHaveBeenCalledTimes(2);
     });

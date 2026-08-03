@@ -94,7 +94,14 @@ export class OrderLifecycleRelayService implements IOrderLifecycleRelayService {
         `Lifecycle relay: could not resolve an order adapter for connection ` +
           `${connectionId} (order ${input.internalOrderId}): ${this.message(error)}`
       );
-      return { connectionId, outcome: 'unsupported', detail: 'adapter unresolved' };
+      // TRANSIENT — a caller keying durable state on this must not record it as
+      // "done" (#1947); see `OrderWritebackUnsupportedReason`.
+      return {
+        connectionId,
+        outcome: 'unsupported',
+        detail: 'adapter unresolved',
+        unsupportedReason: 'adapter-unresolved',
+      };
     }
 
     if (!resolved) {
@@ -102,7 +109,13 @@ export class OrderLifecycleRelayService implements IOrderLifecycleRelayService {
         `Lifecycle relay: connection ${connectionId} exposes no order-writeback capability — ` +
           `skipping '${input.event.type}' for order ${input.internalOrderId}`
       );
-      return { connectionId, outcome: 'unsupported', detail: 'no order-writeback capability' };
+      // STRUCTURAL — nothing to retry.
+      return {
+        connectionId,
+        outcome: 'unsupported',
+        detail: 'no order-writeback capability',
+        unsupportedReason: 'no-capability',
+      };
     }
     const { adapter, capability } = resolved;
 

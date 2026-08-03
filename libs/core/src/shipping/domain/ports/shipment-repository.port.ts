@@ -84,4 +84,30 @@ export interface ShipmentRepositoryPort {
    * unspecified fields stay untouched.
    */
   update(id: string, patch: UpdateShipmentInput): Promise<Shipment>;
+
+  /**
+   * Atomically claim the right to relay this shipment's waybill to the order's
+   * SOURCE participant (#1947). Stamps `waybillRelayedAt` only if it is still
+   * NULL, and reports whether THIS caller won.
+   *
+   * The conditional write is the serialization point between the two unlocked
+   * triggers that both observe the same `trackingNumber` null→value transition:
+   * the status-sync poll and the carrier webhook. Without it, both would relay
+   * and the source would receive two waybill writes.
+   *
+   * Claim BEFORE relaying, then {@link releaseWaybillRelay} on failure —
+   * mirroring the webhook dedup gate, which inserts its row up front and
+   * deletes it when downstream publishing fails so a retry can re-enter the
+   * gate. Claiming after a successful relay would leave the race open.
+   *
+   * @returns `true` when the claim was won (caller must relay), `false` when
+   *          another caller already holds it or the row does not exist.
+   */
+  claimWaybillRelay(id: string, at: Date): Promise<boolean>;
+
+  /**
+   * Release a claim taken by {@link claimWaybillRelay} so a later tick can
+   * retry. Idempotent: releasing an already-released row is a no-op.
+   */
+  releaseWaybillRelay(id: string): Promise<void>;
 }

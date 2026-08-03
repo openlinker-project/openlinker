@@ -20,7 +20,13 @@ export interface ShipmentStatusSyncResult {
   scanned: number;
   /** Number of shipments whose row was patched (status/dates/trackingNumber). */
   updated: number;
-  /** Number of shipments where the OMP push (capability B) fired this run. */
+  /**
+   * Number of shipments whose newly-known waybill was relayed to the order's
+   * participants this run (#1947). Previously counted only the destination-OMP
+   * push; it now counts a successful relay, which reaches the source marketplace
+   * too. A shipment skipped because another trigger already holds the relay claim
+   * is NOT counted — it produced no outbound write.
+   */
   propagated: number;
   /**
    * Number of shipments where per-item processing failed (carrier read, OMP

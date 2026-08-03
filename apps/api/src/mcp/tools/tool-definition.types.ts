@@ -19,6 +19,7 @@
  */
 import type { CallToolResult, McpRequestContext } from '@modelcontextprotocol/server';
 import type { StandardSchemaWithJSON } from '@modelcontextprotocol/server';
+import type { McpTokenScope } from '@openlinker/core/users';
 
 /**
  * Capabilities that can gate a Phase-1 read tool. All three are well-known
@@ -44,8 +45,17 @@ export type McpToolCapability = (typeof McpToolCapabilityValues)[number];
  * `rate-limited` is distinct from `error`: the handler never ran, so the
  * call consumed no downstream resources and reflects client behaviour
  * rather than a fault.
+ *
+ * `forbidden` (#1488) is likewise distinct from both: the caller was
+ * authenticated but lacked the scope or role the tool declares, so the handler
+ * never ran and no rate-limit budget was spent. Keeping it separate from
+ * `error` matters operationally — a burst of `forbidden` is a mis-scoped token
+ * (or a probe), not a fault to page on.
+ *
+ * Log-only: `McpAuditLogger` writes structured log lines and has no ORM entity,
+ * so widening this union needs no migration.
  */
-export const McpToolOutcomeValues = ['ok', 'error', 'rate-limited'] as const;
+export const McpToolOutcomeValues = ['ok', 'error', 'rate-limited', 'forbidden'] as const;
 
 export type McpToolOutcome = (typeof McpToolOutcomeValues)[number];
 
@@ -80,6 +90,27 @@ export interface McpToolDefinition {
    * work even on a deployment with no connections at all).
    */
   readonly requiredCapability: McpToolCapability | null;
+
+  /**
+   * Token scope this tool requires (#1488).
+   *
+   * REQUIRED, deliberately not optional-with-default. A write tool that forgot
+   * to declare it would default to the unprivileged value — the wrong failure
+   * direction for a security field. Making it required means every new tool
+   * states its posture at the compiler.
+   *
+   * Note `McpTokenService.expandScopes` grants BOTH scopes to a write token
+   * (`mcp:write` implies `mcp:read`), so this is a floor, not an equality test.
+   */
+  readonly requiredScope: McpTokenScope;
+
+  /**
+   * Whether the token's owning user must hold the `admin` role (#1488).
+   *
+   * A token inherits its owner's RBAC role (#1486), so this is checked against
+   * the owner and can never exceed them.
+   */
+  readonly requiresAdmin: boolean;
 
   /** Agent-facing description. See the module header on empty-result semantics. */
   readonly description: string;

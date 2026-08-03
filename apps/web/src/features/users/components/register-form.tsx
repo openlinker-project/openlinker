@@ -21,7 +21,7 @@ import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
-import { MarketingTrackingFootnote } from '../../demo';
+import { MarketingTrackingFootnote, SessionRecordingBullets } from '../../demo';
 
 interface RegisterFormProps {
   demoMode?: boolean;
@@ -41,9 +41,6 @@ export function RegisterForm({
       email: '',
       password: '',
       confirmPassword: '',
-      // Opt-in (#1743): unchecked by default so consent is an affirmative
-      // action (GDPR/ePrivacy — a pre-ticked box is not valid consent).
-      analyticsConsent: false,
     },
     resolver: zodResolver(registerFormSchema),
   });
@@ -73,9 +70,13 @@ export function RegisterForm({
     );
   }
 
-  const onSubmit = form.handleSubmit(async ({ username, email, password, analyticsConsent }) => {
+  const onSubmit = form.handleSubmit(async ({ username, email, password }) => {
     try {
-      await register.mutateAsync({ username, email, password, analyticsConsent });
+      // Session recording is a condition of the demo, not a choice on this form
+      // (#1938): creating the account is the acceptance, and the notice under
+      // the submit button is where it is disclosed. Outside demo mode nothing
+      // records, so nothing is accepted.
+      await register.mutateAsync({ username, email, password, analyticsConsent: demoMode });
       setSubmitted(true);
     } catch {
       return;
@@ -152,27 +153,24 @@ export function RegisterForm({
         />
       </FormField>
 
-      {demoMode ? (
-        <label className="guest-form__consent">
-          <input type="checkbox" {...form.register('analyticsConsent')} />
-          <span className="guest-form__consent-text">
-            <strong>Share anonymous usage analytics</strong>
-            {/* Keep in step with the masking config in
-                features/demo/lib/init-demo-integrations.ts — #1878 narrowed it
-                to passwords only, so the old "all inputs masked" wording was a
-                false claim on the signup path (#1882). */}
-            <span className="guest-form__consent-hint">
-              Optional. Helps us improve OpenLinker. Includes session recording — passwords are
-              never recorded, but other text you type and view may be. Off unless you tick this; you
-              can change it anytime on Settings.
-            </span>
-          </span>
-        </label>
-      ) : null}
-
       <Button type="submit" tone="primary" disabled={register.isPending}>
         {register.isPending ? 'Submitting…' : demoMode ? 'Start exploring →' : 'Request access'}
       </Button>
+
+      {demoMode ? (
+        <div className="guest-form__recording-notice">
+          <p>
+            Demo sessions are recorded. By creating an account you accept this. Passwords are never
+            recorded.
+          </p>
+          <details className="guest-form__disclosure">
+            <summary>What we record</summary>
+            <div className="guest-form__disclosure-body">
+              <SessionRecordingBullets />
+            </div>
+          </details>
+        </div>
+      ) : null}
 
       <p className="guest-form__footer-link">
         Already have an account? <Link to="/login">Sign in</Link>

@@ -101,7 +101,12 @@ describe('OrderLifecycleRelayService', () => {
       event: { type: 'cancelled' },
     });
 
-    expect(result.targets[0]).toMatchObject({ connectionId: 'ps-conn', outcome: 'unsupported' });
+    // STRUCTURAL — nothing to retry (#1947).
+    expect(result.targets[0]).toMatchObject({
+      connectionId: 'ps-conn',
+      outcome: 'unsupported',
+      unsupportedReason: 'no-capability',
+    });
   });
 
   it('reports unsupported when the participant adapter cannot be resolved', async () => {
@@ -114,7 +119,12 @@ describe('OrderLifecycleRelayService', () => {
       event: { type: 'cancelled' },
     });
 
-    expect(result.targets[0]).toMatchObject({ connectionId: 'ps-conn', outcome: 'unsupported' });
+    // TRANSIENT — the same call may succeed after a re-auth (#1947).
+    expect(result.targets[0]).toMatchObject({
+      connectionId: 'ps-conn',
+      outcome: 'unsupported',
+      unsupportedReason: 'adapter-unresolved',
+    });
   });
 
   it('reports rejected and continues to the next participant when a write throws', async () => {
@@ -214,6 +224,10 @@ describe('OrderLifecycleRelayService', () => {
       connectionId: 'ps-conn',
       outcome: 'unsupported',
       detail: 'adapter unresolved',
+      // TRANSIENT (#1947) — a caller keying durable state on the outcome must be
+      // able to tell this apart from a structural capability gap, or it records
+      // a delivery that never happened.
+      unsupportedReason: 'adapter-unresolved',
     });
   });
 });
