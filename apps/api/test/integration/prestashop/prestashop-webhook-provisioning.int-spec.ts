@@ -25,6 +25,7 @@
 import { Connection, ConnectionPort } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort, IWebhookSecretService } from '@openlinker/core/integrations';
 import { PrestashopWebhookProvisioningAdapter } from '@openlinker/integrations-prestashop';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import {
   PrestashopTestContainer,
   startPrestashopContainer,
@@ -79,6 +80,7 @@ describe('PrestaShop webhook provisioning — install() against real PS (#541)',
   let connectionPort: jest.Mocked<ConnectionPort>;
   let webhookSecretService: jest.Mocked<IWebhookSecretService>;
   let credentialsResolver: jest.Mocked<CredentialsResolverPort>;
+  let httpTransportFactory: jest.Mocked<HttpTransportFactoryPort>;
   let baseConnection: Connection;
   let lastRotatedSecret: string;
 
@@ -137,10 +139,17 @@ describe('PrestaShop webhook provisioning — install() against real PS (#541)',
       }),
     } as unknown as jest.Mocked<CredentialsResolverPort>;
 
+    // Ping is a real HTTP call against the PS container in this suite, so the
+    // transport factory just hands back the platform fetch (#1810).
+    httpTransportFactory = {
+      for: jest.fn().mockReturnValue(fetch),
+    } as unknown as jest.Mocked<HttpTransportFactoryPort>;
+
     service = new PrestashopWebhookProvisioningAdapter(
       connectionPort,
       webhookSecretService,
-      credentialsResolver
+      credentialsResolver,
+      httpTransportFactory
     );
   });
 
