@@ -735,7 +735,13 @@
     text-transform: uppercase; color: var(--text-muted);
   }
   .data-card__fact dd { margin: 0; font-size: 0.8125rem; color: var(--text-primary); }
-  .phone-frame { max-width: 390px; margin: 0 auto; }
+  /* Device scaffolds. The widths are the style guide's own breakpoints
+     (§ Responsive) — 360 is the mobile capture width, 768 the tablet floor —
+     not new design values. Each frame is a fixed-width box inside the 1320px
+     sheet, so no @media fires on it: what these show is the intended layout at
+     that width, not proof that a breakpoint works. */
+  .phone-frame { max-width: 360px; margin: 0 auto; }
+  .tablet-frame { max-width: 768px; margin: 0 auto; }
 
   .empty-slot { display: grid; gap: var(--space-4); }
 </style>
@@ -772,7 +778,7 @@
   </div>
 
   <!-- ═══════════ FRAME 1 — the page, fully interactive ═══════════ -->
-  <section class="viewport-frame">
+  <section class="viewport-frame" id="frame-desktop">
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">01 · Desktop</span>
       <b>The page — try it</b>
@@ -1061,11 +1067,11 @@
   </section>
 
   <!-- ═══════════ FRAME 5 — mobile ═══════════ -->
-  <section class="viewport-frame">
+  <section class="viewport-frame" id="frame-mobile">
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">05 · Mobile</span>
       <b>≤ 767 px — table folds to cards</b>
-      <span class="caption">390 × 844 · per the responsive parity matrix; no horizontal scroll</span>
+      <span class="caption">360 × 812 · per the responsive parity matrix; no horizontal scroll</span>
     </div>
     <div class="viewport-frame__scroll">
       <div class="phone-frame">
@@ -1095,10 +1101,101 @@
     </div>
   </section>
 
-  <!-- ═══════════ FRAME 6 — what the backend must add ═══════════ -->
+  <!-- ═══════════ FRAME 6 — tablet ═══════════
+       Deliberately placed after Mobile, not after Desktop: this frame's claim is
+       a negation of the one above it — at 768 the table does NOT fold to cards —
+       and that only reads once you have just seen the fold. -->
+  <section class="viewport-frame" id="frame-tablet">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">06 · Tablet</span>
+      <b>768–1023 px — full table, scrolled in its container</b>
+      <span class="caption">768 × 1024 · six columns keep their widths and the container scrolls, rather than crushing them</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="tablet-frame">
+        <div class="app-frame">
+
+          <header class="page-header page-header--split" style="margin-bottom: var(--space-4);">
+            <div>
+              <p class="eyebrow">Operations</p>
+              <h2 class="page-title">Listings</h2>
+              <p class="page-description">
+                Everything you sell on connected channels, and what state it is in right now.
+              </p>
+            </div>
+            <div class="page-header__actions">
+              <button class="button" type="button">Publish products</button>
+            </div>
+          </header>
+
+          <!-- All four controls survive at 768 and wrap to a second row on their
+               own — search (22rem) + connection id (17.5rem) fill the first, the
+               channel select and Clear fall to the second. Mobile drops two of
+               them; tablet keeps every one. -->
+          <div class="toolbar toolbar--compact" style="margin-bottom: var(--space-4);">
+            <input class="control control--search" type="search"
+                   placeholder="Product name, SKU, EAN or external ID" aria-label="Search listings" />
+            <input class="control" type="search" placeholder="Connection ID…" aria-label="Filter by connection ID" />
+            <select class="control control--select" aria-label="Filter by channel">
+              <option value="">All channels</option>
+            </select>
+            <span class="toolbar__spacer"></span>
+            <button class="button button--ghost button--sm" type="button">Clear</button>
+          </div>
+
+          <div class="tabs">
+            <!-- Static, like frame 05: aria-hidden spans, never buttons.
+                 These count spans deliberately carry NO data-count / data-tab —
+                 render() resolves both with a singular querySelector, so adding
+                 them here would silently hijack the desktop frame's live counts. -->
+            <div class="tabs__list" aria-hidden="true">
+              <span class="tabs__trigger" data-state="active">Active <span class="tabs__count" data-tablet-count="active">0</span></span>
+              <span class="tabs__trigger" data-state="inactive">Inactive <span class="tabs__count" data-tablet-count="inactive">0</span></span>
+              <span class="tabs__trigger" data-state="inactive">Draft <span class="tabs__count" data-tablet-count="draft">0</span></span>
+              <span class="tabs__trigger" data-state="inactive">Ended <span class="tabs__count" data-tablet-count="ended">0</span></span>
+            </div>
+
+            <div class="tabs__content">
+              <div class="data-table__container">
+                <table class="data-table">
+                  <caption class="sr-only">Listings</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Listing</th>
+                      <th scope="col">Channel</th>
+                      <th scope="col">Connection</th>
+                      <th scope="col" class="data-table__cell--right">
+                        Price<span class="gap-mark" title="Needs materialising in GET /listings — today only on the live per-row fetch">†</span>
+                      </th>
+                      <th scope="col" class="data-table__cell--right">
+                        Quantity<span class="gap-mark" title="Needs materialising in GET /listings — today only on the live per-row fetch">†</span>
+                      </th>
+                      <th scope="col">Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tablet-rows"></tbody>
+                </table>
+              </div>
+
+              <div class="pagination">
+                <span class="text-muted">Showing 1–7 of 7</span>
+                <div class="pagination__actions">
+                  <button class="button button--secondary button--sm" type="button" disabled>Previous</button>
+                  <button class="button button--secondary button--sm" type="button" disabled>Next</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 7 — what the backend must add ═══════════ -->
   <section class="viewport-frame">
     <div class="viewport-frame__label">
-      <span class="eyebrow-mono">06 · Handover</span>
+      <span class="eyebrow-mono">07 · Handover</span>
       <b>What is already there, and what is not</b>
       <span class="caption">every claim below was checked against the code</span>
     </div>
@@ -1500,6 +1597,31 @@
         '</dl>' +
       '</article>';
     }).join('');
+  })();
+
+  /* Tablet rows — same cell helpers and the same LISTINGS[] the desktop frame
+     renders from, so the two can never drift. Static in the sense that nothing
+     rewrites it after load; it is not hand-written markup. */
+  (function () {
+    var counts = { active: 0, inactive: 0, draft: 0, ended: 0 };
+    LISTINGS.forEach(function (row) { counts[row.tab] += 1; });
+    Object.keys(counts).forEach(function (k) {
+      document.querySelector('[data-tablet-count="' + k + '"]').textContent = counts[k];
+    });
+
+    document.getElementById('tablet-rows').innerHTML = LISTINGS
+      .filter(function (r) { return r.tab === 'active'; })
+      .map(function (row) {
+        var c = CONNECTIONS[row.conn];
+        return '<tr class="data-table__row--linked">' +
+          '<td>' + listingCell(row) + '</td>' +
+          '<td><span class="channel-pill" data-channel="' + c.channel + '">' + esc(c.channel) + '</span></td>' +
+          '<td>' + connCell(row) + '</td>' +
+          '<td class="data-table__cell--right"><span class="price-cell">' + esc(row.price) + '</span></td>' +
+          '<td class="data-table__cell--right">' + qtyCell(row) + '</td>' +
+          '<td>' + timeCell(row.updated) + '</td>' +
+        '</tr>';
+      }).join('');
   })();
 
   render();

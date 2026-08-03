@@ -17,6 +17,10 @@ Each script drives the real UI, so you need the web app (default
 state the script captures (a configured connection, an order id, etc.). Missing
 required env vars either exit early with a message or produce error/404 shots.
 
+**One exception:** `listings-mockup-shots.mjs` captures a standalone HTML mockup
+over `file://`. It needs no server, no API and no login, and honours neither
+`WEB_BASE` nor `OL_ADMIN_*`.
+
 ## Shared conventions
 
 - `WEB_BASE` — web app base URL (default `http://localhost:4173`).
@@ -38,6 +42,7 @@ required env vars either exit early with a message or produce error/404 shots.
 | `subiekt-proofs.mjs` | Subiekt idempotency / auto-issue proofs | `ORDER_AUTO_ID`, `ORDER_B2B_ID` |
 | `ksef-payment-config.mjs` | KSeF payment-config form | `KSEF_CONN_ID`, `WEB_USER`, `WEB_PASSWORD` |
 | `infakt-connection.mjs` | inFakt connection setup | `INFAKT_BASE_URL`, `INFAKT_SANDBOX_API_KEY`, `INFAKT_CONN_NAME` |
+| `listings-mockup-shots.mjs` | Listings redesign mockup (#1965) at the three style-guide widths, both themes — reads a local HTML file, no server | `OUT_DIR`, `THEME` |
 | `infakt-invoice.mjs` | inFakt invoice + clearance | `INFAKT_CONNECTION_ID`, `ORDER_ID`, `CLEARANCE_POLL_MS` |
 | `connection-enable.mjs` | Connection disable → enable round trip (#1940) | `CONNECTION_ID`, `WEB_BASE`, `OUT_DIR`, `HEADED` |
 | `annotate.mjs` | Shared image-annotation helper | (imported by other scripts) |

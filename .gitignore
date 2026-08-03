@@ -67,3 +67,6 @@ Thumbs.db
 # Claude Code scheduled-task lock files
 .claude/scheduled_tasks.lock
 .claude/*.lock
+
+# Playwright documentation-capture output (apps/web/e2e/*.mjs)
+e2e-out/
