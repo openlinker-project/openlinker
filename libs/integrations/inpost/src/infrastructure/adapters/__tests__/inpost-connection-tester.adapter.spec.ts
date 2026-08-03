@@ -10,13 +10,17 @@
  */
 import { Connection } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { InpostConnectionTesterAdapter } from '../inpost-connection-tester.adapter';
 import { InpostHttpClient } from '../../http/inpost-http-client';
 import { InpostUnauthorizedException } from '../../../domain/exceptions/inpost-unauthorized.exception';
 import { InpostNetworkException } from '../../../domain/exceptions/inpost-network.exception';
 
 describe('InpostConnectionTesterAdapter', () => {
-  const tester = new InpostConnectionTesterAdapter();
+  const http: jest.Mocked<HttpTransportFactoryPort> = {
+    for: jest.fn().mockReturnValue(jest.fn()),
+  };
+  const tester = new InpostConnectionTesterAdapter(http);
   const resolver: CredentialsResolverPort = {
     get: jest.fn().mockResolvedValue({ apiToken: 'token-123' }),
   } as unknown as CredentialsResolverPort;

@@ -58,7 +58,7 @@ export function createInpostPlugin(): AdapterPlugin {
       // authenticated `GET /v1/points` probe validates the stored token.
       host.connectionTesterRegistry.register(
         inpostAdapterManifest.adapterKey,
-        new InpostConnectionTesterAdapter(),
+        new InpostConnectionTesterAdapter(host.http),
       );
 
       // Auth-failure classifier (#819 / #1103): a non-retryable 401/403 from the
@@ -96,7 +96,11 @@ export function createInpostPlugin(): AdapterPlugin {
       capability: string,
       host: HostServices,
     ): Promise<T> {
-      const adapter = await createInpostShippingAdapter(connection, host.credentialsResolver);
+      const adapter = await createInpostShippingAdapter(
+        connection,
+        host.credentialsResolver,
+        host.http.for(connection),
+      );
       return dispatchCapability<T>(
         capability,
         { ShippingProviderManager: () => adapter },
