@@ -2,9 +2,15 @@
 
 These `.mjs` files are **not automated tests**. They are manual, Playwright-driven
 screenshot-capture scripts used to produce the images embedded in the integration
-docs (`libs/integrations/<pkg>/docs/`). They contain no assertions and are **not
-wired to any test runner** — `pnpm test` does not run them, and CI does not
-execute them.
+docs (`libs/integrations/<pkg>/docs/`) and in PR descriptions. Most contain no
+assertions, and none is **wired to any test runner** — `pnpm test` does not run
+them, and CI does not execute them.
+
+Two scripts assert as well as capture, and both exit non-zero on a regression:
+`connection-enable.mjs` (see the note under the table) and `demo-consent.mjs`.
+`demo-consent.mjs` is additionally the only one that needs **no backend** — it
+stubs every `/v1/**` call at the network boundary, so a bare SPA server is
+enough, which is what makes it deterministic.
 
 Run one directly with Node against a locally running OpenLinker web app + API:
 
@@ -38,11 +44,13 @@ required env vars either exit early with a message or produce error/404 shots.
 | `subiekt-proofs.mjs` | Subiekt idempotency / auto-issue proofs | `ORDER_AUTO_ID`, `ORDER_B2B_ID` |
 | `ksef-payment-config.mjs` | KSeF payment-config form | `KSEF_CONN_ID`, `WEB_USER`, `WEB_PASSWORD` |
 | `infakt-connection.mjs` | inFakt connection setup | `INFAKT_BASE_URL`, `INFAKT_SANDBOX_API_KEY`, `INFAKT_CONN_NAME` |
+| `demo-consent.mjs` | Demo session-recording notice, `/consent` gate, no-opt-out checks, responsive checks at 360/768/1440 (#1938) | `WEB_BASE`, `SHOT_DIR` — **no API needed**, every `/v1/**` call is stubbed |
 | `infakt-invoice.mjs` | inFakt invoice + clearance | `INFAKT_CONNECTION_ID`, `ORDER_ID`, `CLEARANCE_POLL_MS` |
 | `connection-enable.mjs` | Connection disable → enable round trip (#1940) | `CONNECTION_ID`, `WEB_BASE`, `OUT_DIR`, `HEADED` |
 | `annotate.mjs` | Shared image-annotation helper | (imported by other scripts) |
 
-`connection-enable.mjs` is the one script here that asserts as it goes: every step
-waits for the control it expects and throws if the state is wrong, so a green run
-is evidence the flow works, not just that screenshots exist. It leaves the
-connection `active`, the state it found it in.
+`connection-enable.mjs` asserts as it goes: every step waits for the control it
+expects and throws if the state is wrong, so a green run is evidence the flow
+works, not just that screenshots exist. It leaves the connection `active`, the
+state it found it in. It does talk to a real API — unlike `demo-consent.mjs`,
+which stubs one.

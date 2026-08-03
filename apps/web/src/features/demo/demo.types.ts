@@ -1,23 +1,13 @@
 /**
  * Demo Types
  *
- * Visitor consent for demo-only analytics (PostHog session recording) is a
- * client-owned preference persisted to localStorage, mirroring the theme
- * preference in `shared/theme/theme.types.ts`.
+ * Consent to demo session recording lives on the account and arrives on the
+ * session (#1743, #1938) — no browser-side consent state is left. The old
+ * `openlinker.demoAnalyticsConsent` key, its same-tab change event, and its
+ * `accepted | declined` union are gone: they existed only because consent used
+ * to be an anonymous pre-login banner choice with nowhere else to live, and they
+ * had become a second source of truth able to disagree with the database.
  */
-
-export const DEMO_ANALYTICS_CONSENT_STORAGE_KEY = 'openlinker.demoAnalyticsConsent';
-
-/**
- * Same-tab change notification for the consent key (#1882). The native
- * `storage` event only fires in OTHER tabs, so the settings toggle and the
- * AppShell demo banner — both mounted in the same document — would otherwise
- * disagree until reload.
- */
-export const DEMO_ANALYTICS_CONSENT_CHANGE_EVENT = 'openlinker:demo-analytics-consent-change';
-
-export const DemoAnalyticsConsentValues = ['accepted', 'declined'] as const;
-export type DemoAnalyticsConsent = (typeof DemoAnalyticsConsentValues)[number];
 
 /**
  * Per-tab de-dup flag for the consent-independent `captureMarketingLanding`

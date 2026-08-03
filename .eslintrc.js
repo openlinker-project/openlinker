@@ -211,6 +211,17 @@ module.exports = {
                   '**/allegro/components/**',
                   '**/allegro/lib/**',
                   '**/allegro/types/**',
+                  // Added in #1938 review, when `features/demo` reached into
+                  // `../../auth/hooks/`. Enumerated in full like every other
+                  // slug; note that `pages/auth/*` and `app/api/api-client.ts`
+                  // still deep-import `auth/components/` and `auth/api/` — this
+                  // override is features-scoped and does not cover them, which
+                  // matches how every other feature is consumed from app/pages.
+                  '**/auth/api/**',
+                  '**/auth/hooks/**',
+                  '**/auth/components/**',
+                  '**/auth/lib/**',
+                  '**/auth/types/**',
                   '**/connections/api/**',
                   '**/connections/hooks/**',
                   '**/connections/components/**',
@@ -405,6 +416,15 @@ module.exports = {
                   '**/allegro/components/**',
                   '**/allegro/lib/**',
                   '**/allegro/types/**',
+                  // #1938 review — `features/auth` gained a barrel; a new slug
+                  // goes into BOTH pattern groups per
+                  // docs/frontend-architecture.md § Feature Public Surface,
+                  // even though no plugin imports auth today.
+                  '**/auth/api/**',
+                  '**/auth/hooks/**',
+                  '**/auth/components/**',
+                  '**/auth/lib/**',
+                  '**/auth/types/**',
                   '**/connections/api/**',
                   '**/connections/hooks/**',
                   '**/connections/components/**',
