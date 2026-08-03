@@ -26,6 +26,7 @@ import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { IInventoryQueryService } from '@openlinker/core/inventory';
 import type { CachePort } from '@openlinker/shared';
+import type { FetchLike } from '@openlinker/shared/http';
 import { ErliConfigException } from '../domain/exceptions/erli-config.exception';
 import { isAllowedErliBaseUrl } from '../domain/policies/erli-base-url.policy';
 import {
@@ -74,6 +75,7 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
     connection: Connection,
     _identifierMapping: IdentifierMappingPort,
     credentialsResolver: CredentialsResolverPort,
+    fetchImpl?: FetchLike,
     cache?: CachePort,
     inventoryQuery?: IInventoryQueryService,
   ): Promise<ErliAdapters> {
@@ -82,9 +84,15 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
     // prior version resolved twice per call (#1399 review), paying a second
     // credentialsRef DB round-trip + decrypt on every adapter construction.
     const credentials = await this.resolveCredentials(connection, credentialsResolver);
-    const httpClient = this.buildHttpClient(connection, credentials);
+    const resolvedFetchImpl = fetchImpl ?? globalThis.fetch;
+    const httpClient = this.buildHttpClient(connection, credentials, resolvedFetchImpl);
     const config = (connection.config ?? {}) as ErliConnectionConfig;
-    const allegroCategoryCatalog = this.buildAllegroCategoryCatalog(credentials, config, cache);
+    const allegroCategoryCatalog = this.buildAllegroCategoryCatalog(
+      credentials,
+      config,
+      resolvedFetchImpl,
+      cache,
+    );
     // Construct the offer manager first so its reference can be shared with the
     // order-source adapter (which needs it for the `cancelled` stock-restore path).
     const webBaseUrl =
@@ -123,20 +131,22 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
   async createHttpClient(
     connection: Connection,
     credentialsResolver: CredentialsResolverPort,
+    fetchImpl?: FetchLike,
     retryConfig?: Partial<RetryConfig>,
   ): Promise<IErliHttpClient> {
     const credentials = await this.resolveCredentials(connection, credentialsResolver);
-    return this.buildHttpClient(connection, credentials, retryConfig);
+    return this.buildHttpClient(connection, credentials, fetchImpl, retryConfig);
   }
 
   /** Shared by `createHttpClient` and `createAdapters` so a resolved `ErliCredentials` is never re-fetched to build the client. */
   private buildHttpClient(
     connection: Connection,
     credentials: ErliCredentials,
+    fetchImpl?: FetchLike,
     retryConfig?: Partial<RetryConfig>,
   ): IErliHttpClient {
     const baseUrl = this.resolveBaseUrl(connection);
-    return new ErliHttpClient(connection.id, baseUrl, credentials.apiKey, retryConfig);
+    return new ErliHttpClient(connection.id, baseUrl, credentials.apiKey, retryConfig, fetchImpl);
   }
 
   private async resolveCredentials(
@@ -171,6 +181,7 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
   private buildAllegroCategoryCatalog(
     credentials: ErliCredentials,
     config: ErliConnectionConfig,
+    fetchImpl: FetchLike,
     cache?: CachePort,
   ): AllegroCategoryCatalogClient | undefined {
     // An explicit `false` from the operator-facing "Allegro category access"
@@ -195,6 +206,7 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
       clientSecret,
       config.allegroEnvironment ?? 'production',
       cache,
+      fetchImpl,
     );
   }
 

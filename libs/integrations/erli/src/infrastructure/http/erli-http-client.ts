@@ -26,6 +26,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { Logger } from '@openlinker/shared/logging';
+import type { FetchLike } from '@openlinker/shared/http';
 import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
 import { ErliAuthenticationException } from '../../domain/exceptions/erli-authentication.exception';
 import { ErliConfigException } from '../../domain/exceptions/erli-config.exception';
@@ -76,12 +77,14 @@ export class ErliHttpClient implements IErliHttpClient {
   private readonly baseUrl: string;
   /** Expected origin; every resolved per-request URL is re-checked against it. */
   private readonly baseOrigin: string;
+  private readonly fetchImpl: FetchLike;
 
   constructor(
     private readonly connectionId: string,
     baseUrl: string,
     private readonly apiKey: string,
     retryConfig?: Partial<RetryConfig>,
+    fetchImpl?: FetchLike,
   ) {
     // Config guard: never let the bearer key leave over plaintext (Assumption 6).
     let parsed: URL;
@@ -101,6 +104,7 @@ export class ErliHttpClient implements IErliHttpClient {
     this.baseUrl = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
     this.baseOrigin = parsed.origin;
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
+    this.fetchImpl = fetchImpl ?? globalThis.fetch;
   }
 
   get<T>(path: string, options?: ErliRequestOptions): Promise<ErliHttpResponse<T>> {
@@ -182,7 +186,7 @@ export class ErliHttpClient implements IErliHttpClient {
 
     let response: Response;
     try {
-      response = await fetch(url, {
+      response = await this.fetchImpl(url, {
         method,
         // Caller headers first so the fixed auth/content headers always win —
         // a future adapter can't accidentally clobber the bearer key.

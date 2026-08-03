@@ -27,6 +27,7 @@
  * @see {@link WebhookProvisioningPort} for the port interface
  */
 import { Logger } from '@openlinker/shared/logging';
+import type { FetchLike, HttpTransportFactoryPort } from '@openlinker/shared/http';
 import type { Connection, ConnectionPort } from '@openlinker/core/identifier-mapping';
 import type {
   CredentialsResolverPort,
@@ -58,6 +59,7 @@ export class ErliWebhookProvisioningAdapter implements WebhookProvisioningPort {
     // Injected from the composition root (`ErliWebhookProvisioningModule`); no
     // in-constructor `new` so the dependency stays explicit (and fakeable in tests).
     private readonly factory: IErliAdapterFactory,
+    private readonly http: HttpTransportFactoryPort,
   ) {}
 
   async install(connectionId: string, actorUserId?: string): Promise<WebhookProvisioningResult> {
@@ -84,7 +86,14 @@ export class ErliWebhookProvisioningAdapter implements WebhookProvisioningPort {
       actorUserId,
     );
 
-    const httpClient = await this.factory.createHttpClient(connection, this.credentialsResolver);
+    // Connection-bound outbound transport (#1810) — resolved once, used for
+    // both the hook-registration PUTs and the self-test ping below.
+    const fetchImpl = this.http.for(connection);
+    const httpClient = await this.factory.createHttpClient(
+      connection,
+      this.credentialsResolver,
+      fetchImpl,
+    );
     const url = `${callbackBaseUrl.replace(/\/$/, '')}/webhooks/erli/${connectionId}`;
 
     try {
@@ -134,7 +143,7 @@ export class ErliWebhookProvisioningAdapter implements WebhookProvisioningPort {
         `(${ErliWebhookEventTypeValues.length} hooks${stateUpdateOk ? '' : '; state update pending'}).`,
     );
 
-    const testPingTriggered = await this.selfTestPing(url, secret, connectionId);
+    const testPingTriggered = await this.selfTestPing(url, secret, connectionId, fetchImpl);
 
     return {
       webhooksConfigured: true,
@@ -170,11 +179,12 @@ export class ErliWebhookProvisioningAdapter implements WebhookProvisioningPort {
     url: string,
     secret: string,
     connectionId: string,
+    fetchImpl: FetchLike,
   ): Promise<boolean> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), SELF_TEST_TIMEOUT_MS);
     try {
-      const response = await fetch(url, {
+      const response = await fetchImpl(url, {
         method: 'POST',
         headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' },
         body: '{}',

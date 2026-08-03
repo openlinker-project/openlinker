@@ -110,7 +110,10 @@ export function createErliPlugin(deps?: ErliPluginDeps): AdapterPlugin {
         ERLI_ADAPTER_KEY,
         new ErliConnectionCredentialsShapeValidatorAdapter(ERLI_BRAND),
       );
-      host.connectionTesterRegistry.register(ERLI_ADAPTER_KEY, new ErliConnectionTesterAdapter());
+      host.connectionTesterRegistry.register(
+        ERLI_ADAPTER_KEY,
+        new ErliConnectionTesterAdapter(host.http),
+      );
       // Buyer-identity email normalizer (#995). PROVISIONAL (#992): baseline-only
       // (trim + lowercase, NO +suffix strip) — the per-platform seam + regression
       // anchor; a domain-gated strip mirroring Allegro lands once Erli's relay
@@ -164,6 +167,7 @@ export function createErliPlugin(deps?: ErliPluginDeps): AdapterPlugin {
         connection,
         host.identifierMapping,
         host.credentialsResolver,
+        host.http.for(connection),
         // #1066: distributed frozen-stock flag. Optional on HostServices — when
         // absent the offer adapter fails open (pushes stock = pre-#1066 behaviour).
         host.cache,

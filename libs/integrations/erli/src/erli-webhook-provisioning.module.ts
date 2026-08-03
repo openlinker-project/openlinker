@@ -28,12 +28,14 @@ import {
   CONNECTION_PORT_TOKEN,
   IdentifierMappingModule,
 } from '@openlinker/core/identifier-mapping';
+import { RateLimitModule, HTTP_TRANSPORT_FACTORY_TOKEN } from '@openlinker/plugin-sdk';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { ERLI_ADAPTER_KEY } from './erli.constants';
 import { ErliAdapterFactory } from './application/erli-adapter.factory';
 import { ErliWebhookProvisioningAdapter } from './infrastructure/adapters/erli-webhook-provisioning.adapter';
 
 @Module({
-  imports: [IntegrationsModule, IdentifierMappingModule],
+  imports: [IntegrationsModule, IdentifierMappingModule, RateLimitModule],
 })
 export class ErliWebhookProvisioningModule implements OnModuleInit {
   constructor(
@@ -45,6 +47,8 @@ export class ErliWebhookProvisioningModule implements OnModuleInit {
     private readonly webhookSecretService: IWebhookSecretService,
     @Inject(CREDENTIALS_RESOLVER_TOKEN)
     private readonly credentialsResolver: CredentialsResolverPort,
+    @Inject(HTTP_TRANSPORT_FACTORY_TOKEN)
+    private readonly http: HttpTransportFactoryPort,
   ) {}
 
   onModuleInit(): void {
@@ -57,6 +61,7 @@ export class ErliWebhookProvisioningModule implements OnModuleInit {
         // Factory injected here at the composition root (not defaulted inside the
         // adapter constructor) so the dependency stays explicit per the DI guidance.
         new ErliAdapterFactory(),
+        this.http,
       ),
     );
   }

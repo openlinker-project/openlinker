@@ -23,6 +23,7 @@ import type {
   CredentialsResolverPort,
 } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { ErliAdapterFactory } from '../../application/erli-adapter.factory';
 import type { IErliAdapterFactory } from '../../application/interfaces/erli-adapter.factory.interface';
 import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
@@ -46,7 +47,10 @@ export class ErliConnectionTesterAdapter implements ConnectionTesterPort {
   // Depends on the IErliAdapterFactory abstraction (defaulting to the concrete
   // factory) so the construction seam is injectable and the infra→application
   // edge is against an interface, not a concrete application class.
-  constructor(private readonly factory: IErliAdapterFactory = new ErliAdapterFactory()) {}
+  constructor(
+    private readonly http: HttpTransportFactoryPort,
+    private readonly factory: IErliAdapterFactory = new ErliAdapterFactory()
+  ) {}
 
   async test(
     connection: Connection,
@@ -54,7 +58,17 @@ export class ErliConnectionTesterAdapter implements ConnectionTesterPort {
   ): Promise<ConnectionTestResult> {
     const startedAt = Date.now();
     try {
-      const client = await this.factory.createHttpClient(connection, credentialsResolver, NO_RETRY);
+      // Connection-bound outbound transport (#1810) — a "Test connection"
+      // click is operator-triggered and can be repeated in quick succession;
+      // it must go through the same rate limiter as every other Erli call
+      // site, not a bare globalThis.fetch.
+      const fetchImpl = this.http.for(connection);
+      const client = await this.factory.createHttpClient(
+        connection,
+        credentialsResolver,
+        fetchImpl,
+        NO_RETRY,
+      );
       const response = await client.get(ERLI_CONNECTION_PROBE_PATH);
       return {
         success: true,

@@ -9,6 +9,7 @@
  */
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { ErliApiException } from '../../../domain/exceptions/erli-api.exception';
 import { ErliConnectionTesterAdapter } from '../erli-connection-tester.adapter';
 
@@ -44,11 +45,17 @@ const originalFetch = global.fetch;
 describe('ErliConnectionTesterAdapter', () => {
   let tester: ErliConnectionTesterAdapter;
   let fetchMock: jest.Mock;
+  let http: jest.Mocked<HttpTransportFactoryPort>;
 
   beforeEach(() => {
-    tester = new ErliConnectionTesterAdapter();
     fetchMock = jest.fn();
     global.fetch = fetchMock as unknown as typeof fetch;
+    // `http.for(connection)` hands back the same connection-bound fetchImpl the
+    // real ErliHttpClient calls internally — wired to the mocked `global.fetch`
+    // so this spec's existing `fetchMock.mockResolvedValue(...)` setup still
+    // drives the response the tester observes.
+    http = { for: jest.fn().mockReturnValue(fetchMock) };
+    tester = new ErliConnectionTesterAdapter(http);
   });
 
   afterEach(() => {
@@ -117,8 +124,8 @@ describe('ErliConnectionTesterAdapter', () => {
       createHttpClient: jest
         .fn()
         .mockRejectedValue(new Error('connect ECONNREFUSED https://internal.host/secret-path')),
-    } as unknown as ConstructorParameters<typeof ErliConnectionTesterAdapter>[0];
-    const leakyTester = new ErliConnectionTesterAdapter(leakyFactory);
+    } as unknown as ConstructorParameters<typeof ErliConnectionTesterAdapter>[1];
+    const leakyTester = new ErliConnectionTesterAdapter(http, leakyFactory);
 
     const result = await leakyTester.test(connection(), resolver);
 
@@ -140,8 +147,8 @@ describe('ErliConnectionTesterAdapter', () => {
       createHttpClient: jest.fn().mockResolvedValue({
         get: jest.fn().mockRejectedValue(apiError),
       }),
-    } as unknown as ConstructorParameters<typeof ErliConnectionTesterAdapter>[0];
-    const throwingTester = new ErliConnectionTesterAdapter(throwingFactory);
+    } as unknown as ConstructorParameters<typeof ErliConnectionTesterAdapter>[1];
+    const throwingTester = new ErliConnectionTesterAdapter(http, throwingFactory);
 
     const result = await throwingTester.test(connection(), resolver);
 

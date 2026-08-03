@@ -43,6 +43,7 @@ import type {
   OfferCategory,
 } from '@openlinker/core/listings';
 import type { CachePort } from '@openlinker/shared';
+import type { FetchLike } from '@openlinker/shared/http';
 import type { AllegroCatalogEnvironment } from '../../domain/types/erli-connection.types';
 import { ErliAuthenticationException } from '../../domain/exceptions/erli-authentication.exception';
 import { ErliNetworkException } from '../../domain/exceptions/erli-network.exception';
@@ -88,7 +89,8 @@ export class AllegroCategoryCatalogClient {
     private readonly clientId: string,
     private readonly clientSecret: string,
     environment: AllegroCatalogEnvironment,
-    private readonly cache?: CachePort
+    private readonly cache?: CachePort,
+    private readonly fetchImpl: FetchLike = globalThis.fetch
   ) {
     this.webBaseUrl = environment === 'production' ? PRODUCTION_WEB_BASE_URL : SANDBOX_WEB_BASE_URL;
     this.restApiBaseUrl =
@@ -185,6 +187,7 @@ export class AllegroCategoryCatalogClient {
 
     let response: Response;
     try {
+      // eslint-disable-next-line no-restricted-globals -- OAuth token endpoint (Allegro app client-credentials grant), low-volume auth infra, exempted pending #1810 Phase 5
       response = await fetch(tokenUrl, {
         method: 'POST',
         headers: {
@@ -221,7 +224,7 @@ export class AllegroCategoryCatalogClient {
 
     let response: Response;
     try {
-      response = await fetch(url, {
+      response = await this.fetchImpl(url, {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${accessToken}`,
