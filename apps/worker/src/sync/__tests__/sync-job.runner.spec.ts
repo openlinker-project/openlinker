@@ -20,6 +20,7 @@ import {
   AuthFailureClassifierRegistryService,
 } from '@openlinker/core/sync';
 import { SyncJobHandlerRegistry } from '../handlers/sync-job-handler.registry';
+import { getCurrentPriority } from '@openlinker/shared/rate-limit';
 import type { SyncJobHandler } from '@openlinker/core/sync';
 import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
@@ -267,6 +268,21 @@ describe('SyncJobRunner', () => {
 
       expect(jobRepository.markSucceeded).toHaveBeenCalledWith(job.id, 'ok', undefined);
       jest.useRealTimers();
+    });
+
+    it("executes the handler under the 'background' rate-limit priority (#1810)", async () => {
+      const job = createMockJob({ status: 'running' });
+      let observedPriority: string | undefined;
+      mockHandler.execute.mockImplementationOnce(() => {
+        observedPriority = getCurrentPriority();
+        return Promise.resolve({ outcome: 'ok' });
+      });
+      handlerRegistry.getHandler.mockReturnValueOnce(mockHandler);
+      jobRepository.markSucceeded.mockResolvedValueOnce(undefined);
+
+      await (runner as any).processJob(job);
+
+      expect(observedPriority).toBe('background');
     });
 
     it('should persist outcome=business_failure when handler reports a terminal business rejection', async () => {

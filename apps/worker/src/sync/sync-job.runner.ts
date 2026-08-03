@@ -24,6 +24,7 @@ import { OfferCreationInvariantException } from '@openlinker/core/listings';
 import { ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
 import { Logger } from '@openlinker/shared/logging';
+import { runWithPriority } from '@openlinker/shared/rate-limit';
 
 @Injectable()
 export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
@@ -287,8 +288,16 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
 
       let result: SyncJobHandlerResult;
       try {
-        // Execute handler — handlers return their business outcome (issue #400)
-        result = await handler.execute(job);
+        // Execute handler — handlers return their business outcome (issue #400).
+        // Runs under the 'background' rate-limit priority (#1810) so any
+        // outbound HTTP the handler issues through HostServices.http is
+        // classified correctly without threading a parameter through
+        // SyncJobHandler.execute or any adapter signature. Cancellable via
+        // the runner's own shutdown signal.
+        result = await runWithPriority(
+          { priority: 'background', signal: this.abortController?.signal },
+          () => handler.execute(job)
+        );
       } finally {
         clearInterval(heartbeatInterval);
       }

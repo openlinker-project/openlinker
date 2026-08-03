@@ -115,6 +115,34 @@ const inpostSenderAddressSchema = z.object({
 
 export type InpostSenderAddressFormValues = z.input<typeof inpostSenderAddressSchema>;
 
+/**
+ * Per-connection outbound rate limit (#1810) — platform-neutral, rendered
+ * for every connection. Bounds mirror the server-side check in
+ * `ConnectionService.validateRateLimitConfig` (1-6000 / 1-64) so an
+ * out-of-range value is caught client-side before the round-trip; empty
+ * string is the unset sentinel for each independently-optional knob.
+ */
+const rateLimitFormSchema = z.object({
+  requestsPerMinute: z
+    .union([
+      z
+        .string()
+        .regex(/^[1-9]\d*$/, 'Must be a positive whole number')
+        .refine((v) => Number(v) <= 6000, 'Must be at most 6000'),
+      z.literal(''),
+    ])
+    .optional(),
+  maxConcurrent: z
+    .union([
+      z
+        .string()
+        .regex(/^[1-9]\d*$/, 'Must be a positive whole number')
+        .refine((v) => Number(v) <= 64, 'Must be at most 64'),
+      z.literal(''),
+    ])
+    .optional(),
+});
+
 export const editConnectionSchema = z
   .object({
     name: z.string().trim().min(1, 'Connection name is required'),
@@ -267,6 +295,8 @@ export const editConnectionSchema = z
     inpostEnvironment: z.union([z.enum(['sandbox', 'production']), z.literal('')]).optional(),
     inpostOrganizationId: z.string().trim().optional(),
     inpostSenderAddress: inpostSenderAddressSchema.optional(),
+    // Per-connection outbound rate limit (#1810) — platform-neutral, every connection.
+    rateLimit: rateLimitFormSchema.optional(),
   });
 
 /**
@@ -401,7 +431,26 @@ export type StructuredConfigPatch = {
    * an all-empty pruned object also drops the key (delete-on-empty).
    */
   inpostSenderAddress?: InpostSenderAddressFormValues | null;
+  /**
+   * Per-connection outbound rate limit — whole-object `config.rateLimit`
+   * (#1810). Platform-neutral, rendered for every connection regardless of
+   * `platformType` (unlike every other field in this type, which is
+   * platform-specific). Each knob is a digit-string field (empty clears,
+   * mirrors `unmanagedStockQuantity`/`defaultCarrierId`); an all-empty
+   * result drops the key entirely rather than persisting `{}`.
+   */
+  rateLimit?: RateLimitFormValues | null;
 };
+
+/**
+ * Mirrors `ConnectionRateLimit` (`@openlinker/core/identifier-mapping`) but
+ * as FE form-input strings (empty = unset), like every other numeric field
+ * in this schema — coerced to a number in `mergeStructuredIntoConfig`.
+ */
+export interface RateLimitFormValues {
+  requestsPerMinute?: string;
+  maxConcurrent?: string;
+}
 
 /**
  * The patch shape `mergeStructuredIntoConfig` accepts: the host's own
@@ -611,6 +660,27 @@ export function mergeStructuredIntoConfig(
       delete next.bankAccount;
     } else {
       next.bankAccount = structured.infaktBankAccount;
+    }
+  }
+  // Outbound rate limit (#1810) — whole-object `config.rateLimit`, platform-
+  // neutral. `null` (or an all-empty result after pruning empty-string knobs)
+  // clears the key entirely rather than persisting `{}`.
+  if (structured.rateLimit !== undefined) {
+    if (structured.rateLimit === null) {
+      delete next.rateLimit;
+    } else {
+      const pruned: Record<string, number> = {};
+      if (structured.rateLimit.requestsPerMinute) {
+        pruned.requestsPerMinute = Number.parseInt(structured.rateLimit.requestsPerMinute, 10);
+      }
+      if (structured.rateLimit.maxConcurrent) {
+        pruned.maxConcurrent = Number.parseInt(structured.rateLimit.maxConcurrent, 10);
+      }
+      if (Object.keys(pruned).length === 0) {
+        delete next.rateLimit;
+      } else {
+        next.rateLimit = pruned;
+      }
     }
   }
   // Platform-owned assembly pass (#1330): plugin field names on the patch are

@@ -14,6 +14,7 @@ import type {
   ConnectionPort,
   ConnectionUpdate,
   ConnectionFilters,
+  ConnectionRateLimit,
 } from '@openlinker/core/identifier-mapping';
 import {
   CONNECTION_PORT_TOKEN,
@@ -550,6 +551,91 @@ describe('ConnectionService', () => {
           })
         ).resolves.toEqual(mockConnection);
         expect(connectionPort.create).toHaveBeenCalled();
+      });
+    });
+
+    describe('config.rateLimit validation (#1810)', () => {
+      it('should accept a create with both knobs within bounds', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, rateLimit: { requestsPerMinute: 60, maxConcurrent: 4 } },
+          })
+        ).resolves.toEqual(mockConnection);
+        expect(connectionPort.create).toHaveBeenCalled();
+      });
+
+      it('should accept a create with config.rateLimit absent — unlimited, byte-identical to today', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(service.create(payload)).resolves.toEqual(mockConnection);
+        expect(connectionPort.create).toHaveBeenCalledWith(
+          expect.objectContaining({ config: payload.config })
+        );
+      });
+
+      it('should reject a create with requestsPerMinute below 1', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, rateLimit: { requestsPerMinute: 0 } },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject a create with requestsPerMinute above 6000', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, rateLimit: { requestsPerMinute: 6001 } },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject a create with maxConcurrent above 64', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, rateLimit: { maxConcurrent: 65 } },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject a create with a non-object rateLimit', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, rateLimit: 'fast' as unknown as ConnectionRateLimit },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should update accepting a valid rateLimit and never default a value into stored config', async () => {
+        connectionPort.get.mockResolvedValue(mockConnection);
+        connectionPort.update.mockResolvedValue(mockConnection);
+        const config = { baseUrl: 'https://shop.example.com', rateLimit: { requestsPerMinute: 30 } };
+
+        await expect(
+          service.update('connection-123', { config })
+        ).resolves.toEqual(mockConnection);
+        expect(connectionPort.update).toHaveBeenCalledWith('connection-123', { config });
+      });
+
+      it('should reject an update with an out-of-bounds maxConcurrent', async () => {
+        connectionPort.get.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.update('connection-123', {
+            config: { baseUrl: 'https://shop.example.com', rateLimit: { maxConcurrent: 0 } },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
       });
     });
   });

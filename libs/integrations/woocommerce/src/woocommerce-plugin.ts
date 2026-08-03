@@ -92,6 +92,15 @@ export const woocommerceAdapterManifest: AdapterMetadata = {
   // - category is structurally parent-only, not a policy choice. Also the
   // locked default any undeclared adapter resolves to.
   variantGrouping: 'parent-child',
+  // No `defaultRateLimit` (#1810 review follow-up): unlike PrestaShop,
+  // WooCommerce's own HTTP client (`WooCommerceHttpClient`) does not yet go
+  // through `HttpTransportFactoryPort` — every outbound call is still bare
+  // `fetch()`. Declaring a manifest default here would surface a fabricated
+  // "adapter default — 60 requests/min, 4 concurrent" in the FE
+  // (`RateLimitSection`) for a policy nothing actually enforces, which is
+  // worse than declaring none. Add this back in the same PR that wires
+  // WooCommerce's HTTP client to `host.http` (#1810 Phase 5, tracked in
+  // #1956), mirroring PrestaShop's adoption in this PR.
 };
 
 /** Short brand label for domain-exception prefixes (manifest.displayName is too long). */

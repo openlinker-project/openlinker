@@ -71,6 +71,8 @@ import type { RedisClientType } from 'redis';
 import { Logger } from '@openlinker/shared/logging';
 import { CACHE_PORT_TOKEN, type CachePort } from '@openlinker/shared';
 import type { HostServices } from '@openlinker/plugin-sdk';
+import { RateLimitModule, HTTP_TRANSPORT_FACTORY_TOKEN } from '@openlinker/plugin-sdk';
+import { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { AllegroQuantityCommandOrmEntity } from './infrastructure/persistence/entities/allegro-quantity-command.orm-entity';
 import { AllegroQuantityCommandRepository } from './infrastructure/persistence/repositories/allegro-quantity-command.repository';
 import { AllegroTokenRefreshService } from './infrastructure/token-refresh/allegro-token-refresh.service';
@@ -85,6 +87,7 @@ import { createAllegroPlugin } from './allegro-plugin';
     IdentifierMappingModule, // Brings IDENTIFIER_MAPPING_PORT_TOKEN into DI scope (#593)
     CustomersModule, // Access CustomerIdentityResolverPort
     TypeOrmModule.forFeature([AllegroQuantityCommandOrmEntity]),
+    RateLimitModule,
   ],
   providers: [
     AllegroQuantityCommandRepository,
@@ -147,6 +150,8 @@ export class AllegroIntegrationModule implements OnModuleInit {
     private readonly identifierMapping: IdentifierMappingPort,
     @Inject(CREDENTIALS_RESOLVER_TOKEN)
     private readonly credentialsResolver: CredentialsResolverPort,
+    @Inject(HTTP_TRANSPORT_FACTORY_TOKEN)
+    private readonly http: HttpTransportFactoryPort,
     @Optional()
     @Inject(AllegroTokenRefreshService)
     private readonly tokenRefreshService?: AllegroTokenRefreshService,
@@ -183,6 +188,7 @@ export class AllegroIntegrationModule implements OnModuleInit {
       logger: (context: string) => new Logger(context),
       identifierMapping: this.identifierMapping,
       credentialsResolver: this.credentialsResolver,
+      http: this.http,
       cache: this.cache,
       adapterRegistry: this.adapterRegistry,
       factoryResolver: this.factoryResolver,

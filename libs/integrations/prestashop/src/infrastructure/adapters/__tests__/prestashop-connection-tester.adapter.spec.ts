@@ -10,9 +10,14 @@ import { PrestashopConnectionTesterAdapter } from '../prestashop-connection-test
 import * as client from '../../http/prestashop-webservice.client';
 import { Connection } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
+import { prestashopAdapterManifest } from '../../../prestashop-plugin';
 
 describe('PrestashopConnectionTesterAdapter', () => {
-  const tester = new PrestashopConnectionTesterAdapter();
+  const http: jest.Mocked<HttpTransportFactoryPort> = {
+    for: jest.fn().mockReturnValue(jest.fn()),
+  };
+  const tester = new PrestashopConnectionTesterAdapter(http);
   const resolver: CredentialsResolverPort = {
     get: jest.fn().mockResolvedValue({ webserviceApiKey: 'K' }),
   } as unknown as CredentialsResolverPort;
@@ -44,6 +49,7 @@ describe('PrestashopConnectionTesterAdapter', () => {
     expect(result.status).toBe(200);
     expect(result.message).toBe('OK');
     expect(result.latencyMs).toBeGreaterThanOrEqual(0);
+    expect(http.for).toHaveBeenCalledWith(connection, prestashopAdapterManifest.defaultRateLimit);
   });
 
   it('maps auth failures to success:false with status 401', async () => {

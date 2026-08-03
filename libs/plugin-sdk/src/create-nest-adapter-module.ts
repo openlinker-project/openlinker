@@ -74,8 +74,10 @@ import {
 } from '@openlinker/core/identifier-mapping';
 import { CACHE_PORT_TOKEN, type CachePort } from '@openlinker/shared';
 import { Logger } from '@openlinker/shared/logging';
+import { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import type { AdapterPlugin } from './adapter-plugin';
 import type { HostServices } from './host-services';
+import { RateLimitModule, HTTP_TRANSPORT_FACTORY_TOKEN } from './rate-limit.module';
 
 export interface CreateNestAdapterModuleOptions {
   /** The plugin descriptor. */
@@ -134,6 +136,8 @@ export function createNestAdapterModule(options: CreateNestAdapterModuleOptions)
       private readonly identifierMapping: IdentifierMappingPort,
       @Inject(CREDENTIALS_RESOLVER_TOKEN)
       private readonly credentialsResolver: CredentialsResolverPort,
+      @Inject(HTTP_TRANSPORT_FACTORY_TOKEN)
+      private readonly http: HttpTransportFactoryPort,
       @Optional()
       @Inject(CACHE_PORT_TOKEN)
       private readonly cache?: CachePort
@@ -148,6 +152,7 @@ export function createNestAdapterModule(options: CreateNestAdapterModuleOptions)
         logger: (context: string) => new Logger(context),
         identifierMapping: this.identifierMapping,
         credentialsResolver: this.credentialsResolver,
+        http: this.http,
         cache: this.cache,
         adapterRegistry: this.adapterRegistry,
         factoryResolver: this.factoryResolver,
@@ -197,7 +202,7 @@ export function createNestAdapterModule(options: CreateNestAdapterModuleOptions)
 
   return {
     module: PluginHostModule,
-    imports: [IntegrationsModule, SyncModule, IdentifierMappingModule, ...imports],
+    imports: [IntegrationsModule, SyncModule, IdentifierMappingModule, RateLimitModule, ...imports],
     providers,
     exports: extraExports,
   };

@@ -16,6 +16,7 @@
  * @module libs/integrations/prestashop/src/infrastructure/adapters/product-publisher
  */
 import { Logger } from '@openlinker/shared/logging';
+import type { FetchLike } from '@openlinker/shared/http';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import {
   ProductPublishRejectedException,
@@ -60,6 +61,13 @@ export class PrestashopProductPublisherAdapter
   constructor(
     private readonly client: IPrestashopWebserviceClient,
     private readonly connection: Connection,
+    // Connection-bound outbound transport (#1810) — used for the source
+    // image fetch in uploadImages(), which bypasses the WS client entirely.
+    // Deliberately left unbound to `globalThis.fetch` here (resolved lazily
+    // at call time in uploadImages() instead) so a caller that patches
+    // `globalThis.fetch` after construction — the existing spec's pattern —
+    // still observes its own stub.
+    private readonly fetchImpl?: FetchLike,
   ) {}
 
   async publishProduct(cmd: PublishProductCommand): Promise<PublishProductResult> {
@@ -351,7 +359,9 @@ export class PrestashopProductPublisherAdapter
         let bytes: Uint8Array;
         let mimeType: string;
         try {
-          const response = await fetch(url, { signal: controller.signal });
+          const response = await (this.fetchImpl ?? globalThis.fetch)(url, {
+            signal: controller.signal,
+          });
           if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
           }

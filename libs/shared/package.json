@@ -60,6 +60,14 @@
     "./worker": {
       "types": "./dist/worker/index.d.ts",
       "require": "./dist/worker/index.js"
+    },
+    "./rate-limit": {
+      "types": "./dist/rate-limit/index.d.ts",
+      "require": "./dist/rate-limit/index.js"
+    },
+    "./http": {
+      "types": "./dist/http/index.d.ts",
+      "require": "./dist/http/index.js"
     }
   },
   "files": [
