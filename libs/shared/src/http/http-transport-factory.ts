@@ -134,4 +134,10 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
     this.cache.set(connection.id, fetchImpl);
     return fetchImpl;
   }
+
+  evict(connectionId: string): void {
+    this.cache.delete(connectionId);
+    this.connectionRefs.delete(connectionId);
+    this.registry.evict(connectionId);
+  }
 }
