@@ -157,7 +157,22 @@ export class AllegroOrderSourceAdapter
           { carrierId, waybill: trackingNumber, ...(carrierName ? { carrierName } : {}) },
         );
       } catch (error) {
-        throw this.toRejected(error, `attach waybill to Allegro order ${externalOrderId}`);
+        // A 409 here means this waybill is already attached — e.g. a retry after
+        // a partial success where the fulfillment PUT landed but this POST's
+        // response was lost. Treat it as success so the flow converges instead of
+        // reporting `rejected` while the waybill is in fact attached. Mirrors the
+        // Erli adapter's external-shipment registration, which took the same
+        // decision for the same failure shape (#1947; PR1082-TECH-03 there).
+        //
+        // Defence in depth only: at-most-once for this call is owned upstream by
+        // the `Shipment.waybillRelayedAt` claim, so this branch should be rare.
+        if (this.isWaybillAlreadyAttached(error)) {
+          this.logger.debug(
+            `Allegro order ${externalOrderId} already carries this waybill — treating as success (connection: ${this.connectionId})`,
+          );
+        } else {
+          throw this.toRejected(error, `attach waybill to Allegro order ${externalOrderId}`);
+        }
       }
     }
   }
@@ -187,6 +202,21 @@ export class AllegroOrderSourceAdapter
       error instanceof AllegroApiException &&
       (error.statusCode === 409 || /already/i.test(error.message))
     );
+  }
+
+  /**
+   * Waybill-attach idempotency, keyed STRICTLY on the 409 status (#1947).
+   *
+   * Deliberately narrower than {@link isAlreadySentOrStale}: that predicate also
+   * matches `/already/i` on the message, which is tolerable for the fulfillment
+   * PUT (a status write that is idempotent by nature) but not here. The waybill
+   * POST creates a resource, so a message-text match could swallow a genuine
+   * non-409 validation failure — an unattached waybill silently reported as
+   * `applied`, which is the very defect class this issue fixes. Same reasoning
+   * the Erli adapter records for its own registration guard.
+   */
+  private isWaybillAlreadyAttached(error: unknown): boolean {
+    return error instanceof AllegroApiException && error.statusCode === 409;
   }
 
   private toRejected(error: unknown, context: string): Error {

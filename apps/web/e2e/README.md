@@ -2,9 +2,18 @@
 
 These `.mjs` files are **not automated tests**. They are manual, Playwright-driven
 screenshot-capture scripts used to produce the images embedded in the integration
-docs (`libs/integrations/<pkg>/docs/`). They contain no assertions and are **not
-wired to any test runner** — `pnpm test` does not run them, and CI does not
-execute them.
+docs (`libs/integrations/<pkg>/docs/`) and in PR descriptions. Most contain no
+assertions, and none is **wired to any test runner** — `pnpm test` does not run
+them, and CI does not execute them.
+
+Three scripts assert as well as capture, and each exits non-zero on a regression:
+`connection-enable.mjs` (see the note under the table), `demo-consent.mjs` and
+`listings-mockup-shots.mjs`.
+
+Two of them need **no backend**, which is what makes them deterministic.
+`demo-consent.mjs` stubs every `/v1/**` call at the network boundary, so a bare
+SPA server is enough. `listings-mockup-shots.mjs` needs even less — it renders a
+self-contained HTML mockup over `file://`, so there is nothing to serve at all.
 
 Run one directly with Node against a locally running OpenLinker web app + API:
 
@@ -17,9 +26,8 @@ Each script drives the real UI, so you need the web app (default
 state the script captures (a configured connection, an order id, etc.). Missing
 required env vars either exit early with a message or produce error/404 shots.
 
-**One exception:** `listings-mockup-shots.mjs` captures a standalone HTML mockup
-over `file://`. It needs no server, no API and no login, and honours neither
-`WEB_BASE` nor `OL_ADMIN_*`.
+**Exception:** `listings-mockup-shots.mjs` needs no server, no API and no login,
+and honours neither `WEB_BASE` nor `OL_ADMIN_*`.
 
 ## Shared conventions
 
@@ -42,12 +50,14 @@ over `file://`. It needs no server, no API and no login, and honours neither
 | `subiekt-proofs.mjs` | Subiekt idempotency / auto-issue proofs | `ORDER_AUTO_ID`, `ORDER_B2B_ID` |
 | `ksef-payment-config.mjs` | KSeF payment-config form | `KSEF_CONN_ID`, `WEB_USER`, `WEB_PASSWORD` |
 | `infakt-connection.mjs` | inFakt connection setup | `INFAKT_BASE_URL`, `INFAKT_SANDBOX_API_KEY`, `INFAKT_CONN_NAME` |
-| `listings-mockup-shots.mjs` | Listings redesign mockup (#1965) at the three style-guide widths, both themes — reads a local HTML file, no server | `OUT_DIR`, `THEME` |
+| `demo-consent.mjs` | Demo session-recording notice, `/consent` gate, no-opt-out checks, responsive checks at 360/768/1440 (#1938) | `WEB_BASE`, `SHOT_DIR` — **no API needed**, every `/v1/**` call is stubbed |
+| `listings-mockup-shots.mjs` | Listings redesign mockup (#1965) at the three style-guide widths, both themes | `OUT_DIR`, `THEME` — **no server at all**, reads a local HTML file over `file://` |
 | `infakt-invoice.mjs` | inFakt invoice + clearance | `INFAKT_CONNECTION_ID`, `ORDER_ID`, `CLEARANCE_POLL_MS` |
 | `connection-enable.mjs` | Connection disable → enable round trip (#1940) | `CONNECTION_ID`, `WEB_BASE`, `OUT_DIR`, `HEADED` |
 | `annotate.mjs` | Shared image-annotation helper | (imported by other scripts) |
 
-`connection-enable.mjs` is the one script here that asserts as it goes: every step
-waits for the control it expects and throws if the state is wrong, so a green run
-is evidence the flow works, not just that screenshots exist. It leaves the
-connection `active`, the state it found it in.
+`connection-enable.mjs` asserts as it goes: every step waits for the control it
+expects and throws if the state is wrong, so a green run is evidence the flow
+works, not just that screenshots exist. It leaves the connection `active`, the
+state it found it in. It does talk to a real API — unlike `demo-consent.mjs`,
+which stubs one.

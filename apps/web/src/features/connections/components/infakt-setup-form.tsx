@@ -281,10 +281,9 @@ export function InfaktSetupForm(): ReactElement {
           createdConnection
             ? 'Locked now that the connection is created — change the payment method from ' +
               "the connection's edit screen (post-create changes here would not be saved)."
-            : '"Transfer" 422s on inFakt unless a bank account is configured on the seller’s ' +
-              'inFakt account. Choosing a specific bank account unlocks after connecting — it ' +
-              'defaults to whichever account is set as default in inFakt, or falls back to Cash ' +
-              'if none exist.'
+            : 'Transfer needs a bank account on your inFakt account — without one, inFakt ' +
+              'rejects the invoice. You can pick which account after connecting; we start with ' +
+              'the one marked default in inFakt, or fall back to Cash if there is none.'
         }
       >
         <Select

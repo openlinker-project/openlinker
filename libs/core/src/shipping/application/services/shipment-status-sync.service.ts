@@ -5,29 +5,41 @@
  * connection (#838). For each non-terminal shipment it (1) reads the carrier's
  * `TrackingSnapshot` via `ShippingProviderManagerPort.getTracking`, (2) builds
  * a patch reflecting carrier reality (status into terminal states +
- * trackingNumber backfill), and (3) propagates a newly-arrived tracking number
- * to the destination OMP via capability B (`OrderFulfillmentUpdater`) — same
- * resolution path `ShipmentDispatchNotificationService.updateDestinations`
- * uses, but without that service's `'generated'`-status gate (which exists for
- * #837's first-push semantics and isn't reusable here).
+ * trackingNumber backfill), and (3) relays a newly-arrived waybill to **every**
+ * participant of the order — the source marketplace included — through the
+ * single role-agnostic `OrderStatusWriteback` lifecycle relay (#1168 / ADR-027).
  *
  * Mirrors `OfferStatusSyncService` (#816): the service returns scan stats; the
  * caller (worker handler) advances the persisted `connection_cursors` offset.
  *
- * Two locally-correct v1 workarounds (both dissolve under #861, see the
- * implementation-plan §3.4):
+ * **Why the relay, not a destination push (#1947).** Until this change step (3)
+ * resolved `record.syncStatus` + `OrderProcessorManager`/`OrderFulfillmentUpdater`
+ * — destinations only. A source adapter (Allegro, Erli) implements neither, so a
+ * waybill minted *after* the operator dispatched could never reach the
+ * marketplace: it showed the order as shipped while still asking the seller to
+ * add tracking numbers, permanently. This was the last pre-#1168 destination-only
+ * writer. Destinations lose nothing by the swap — both shop adapters'
+ * `write({type:'dispatched'})` delegates verbatim to
+ * `updateFulfillment({status:'shipped', trackingNumber})`.
  *
- * - **Push-first ordering** — if the OMP push throws for *any* destination,
- *   `trackingNumber` is dropped from the patch so the next poll sees the diff
- *   and retries. Without notify-state, `Shipment.trackingNumber` itself is the
- *   only thing distinguishing "already projected" from "not yet projected";
- *   updating it before a failed push would lose the backfill until manual
- *   intervention.
- * - **Dispatched-gate on the OMP push** — `updateFulfillment(status:'shipped')`
- *   fires only when `Shipment.status` is `dispatched`-or-richer, so #838 never
- *   marks a PS order shipped before #837's `notifyDispatched` has had its
- *   turn. For `generated` shipments we still backfill `Shipment.trackingNumber`
- *   so the next #837 invocation reads it and pushes once, correctly ordered.
+ * **The two roles of `trackingNumber` are now split.** It used to be both the
+ * data and the retry marker for every participant, which forced a choice between
+ * re-driving the source's non-idempotent waybill POST on every tick and
+ * permanently losing the number. So:
+ *
+ * - `Shipment.trackingNumber` is DATA — persisted whenever the source relay did
+ *   not fail. Destination failures stay best-effort and never withhold it.
+ * - `Shipment.waybillRelayedAt` is the source-relay CLAIM — taken conditionally,
+ *   released on failure. At-most-once is a database fact, and the conditional
+ *   claim is also what serializes the poll against the carrier webhook (both
+ *   observe the same null→value transition with no lock between them).
+ *
+ * Generalised per-destination notify state remains #861; this single marker is
+ * the first row of that model.
+ *
+ * **The dispatched-gate stays**: while a shipment is `generated`, only the data
+ * field is backfilled — `ShipmentDispatchNotificationService` owns that
+ * transition and its own at-most-once notify, and #838 must not race it.
  *
  * @module libs/core/src/shipping/application/services
  * @implements {IShipmentStatusSyncService}
@@ -39,14 +51,14 @@ import {
   INTEGRATIONS_SERVICE_TOKEN,
 } from '@openlinker/core/integrations';
 import {
-  type IOrderRecordService,
-  type OrderProcessorManagerPort,
-  isOrderFulfillmentUpdater,
-  ORDER_RECORD_SERVICE_TOKEN,
+  type IOrderLifecycleRelayService,
+  type OrderLifecycleRelayResult,
+  ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
 } from '@openlinker/core/orders';
 
 import type { IShipmentStatusSyncService } from '../interfaces/shipment-status-sync.service.interface';
 import { IOrderFulfillmentProjectionService } from '../interfaces/order-fulfillment-projection.service.interface';
+import { resolveCarrierHint } from './resolve-carrier-hint';
 import type {
   ShipmentStatusSyncOptions,
   ShipmentStatusSyncResult,
@@ -68,7 +80,6 @@ import {
 } from '../../shipping.tokens';
 
 const SHIPPING_PROVIDER_MANAGER_CAPABILITY = 'ShippingProviderManager';
-const ORDER_PROCESSOR_MANAGER_CAPABILITY = 'OrderProcessorManager';
 
 /**
  * Statuses the scan visits — non-terminal, in the order the lifecycle
@@ -82,10 +93,9 @@ const SCAN_STATUSES: readonly ShipmentStatus[] = [
 ];
 
 /**
- * Statuses from which the OMP push is allowed (#838 workaround #2). At
- * `generated` we still backfill `Shipment.trackingNumber` but defer the OMP
- * push to #837's `notifyDispatched` so the source + dest are notified once,
- * in order.
+ * Statuses from which the waybill relay is allowed. At `generated` we still
+ * backfill `Shipment.trackingNumber` but defer notifying anyone to #837's
+ * `notifyDispatched`, which owns that transition and its own at-most-once gate.
  */
 const PUSH_GATE_OPEN_FROM: readonly ShipmentStatus[] = [
   SHIPMENT_STATUS.Dispatched,
@@ -101,8 +111,11 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
     private readonly shipments: ShipmentRepositoryPort,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrations: IIntegrationsService,
-    @Inject(ORDER_RECORD_SERVICE_TOKEN)
-    private readonly orderRecords: IOrderRecordService,
+    // #1947: the waybill goes to every participant through the single
+    // role-agnostic relay (ADR-027), which resolves targets from the Order
+    // identifier mappings — so `IOrderRecordService` is no longer needed here.
+    @Inject(ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN)
+    private readonly orderLifecycleRelay: IOrderLifecycleRelayService,
     @Inject(ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN)
     private readonly fulfillmentProjection: IOrderFulfillmentProjectionService,
   ) {}
@@ -258,10 +271,11 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
     }
 
     // 2b. Tracking number — backfill on null → value transition. Carriers that
-    //    deliver waybills asynchronously (Allegro Delivery #833) populate this
-    //    on a later poll. Same `length > 0` normalization as 2a above — empty
-    //    string is semantically equivalent to "no waybill yet", so don't take
-    //    the irreversible null→empty step.
+    //    deliver waybills asynchronously populate this on a later poll: InPost
+    //    ShipX mints it at confirmation (#1947), Allegro Delivery brokers it
+    //    (#833). Same `length > 0` normalization as 2a above — empty string is
+    //    semantically equivalent to "no waybill yet", so don't take the
+    //    irreversible null→empty step.
     const newTrackingNumber =
       shipment.trackingNumber === null &&
       typeof snapshot.trackingNumber === 'string' &&
@@ -273,80 +287,150 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
       return { didPush: false, patch };
     }
 
-    // 3. OMP push under the dispatched-gate (v1 workaround #2 — removed when
-    //    #861 lands). For `generated` shipments we still backfill the data
-    //    field on `Shipment` so #837's `notifyDispatched` reads it; we just
-    //    don't fire `updateFulfillment` ourselves.
+    // 3. Terminal-status guard (#1947). Step 1 above may have patched `status`
+    //    from the snapshot, while the gate below reads the PRE-patch status. A
+    //    shipment whose snapshot arrives as `cancelled`/`failed` carrying its
+    //    first waybill must NOT be announced as dispatched — that would mark the
+    //    marketplace order sent and attach a waybill for a parcel that will never
+    //    move, plus notify the buyer.
+    //
+    //    `delivered` is deliberately NOT in this guard even though it is also
+    //    terminal: one snapshot can legitimately carry `delivered` together with
+    //    the first waybill (30-minute poll, tracking minted at confirmation), and
+    //    a delivered parcel unambiguously shipped. Skipping it would consume the
+    //    null→value transition and lose the waybill forever on the FASTEST
+    //    orders. `FulfillmentStatusSyncService.isInitialDispatch` treats
+    //    dispatched-or-delivered as relayable for the same reason — match it.
+    if (patch.status === SHIPMENT_STATUS.Cancelled || patch.status === SHIPMENT_STATUS.Failed) {
+      patch.trackingNumber = newTrackingNumber;
+      return { didPush: false, patch };
+    }
+
+    // 4. Gate deferring to the operator-dispatch path. For a `generated`
+    //    shipment we still backfill the data field so #837's `notifyDispatched`
+    //    reads it; that service owns the `generated → dispatched` transition and
+    //    its own at-most-once notify.
     if (!PUSH_GATE_OPEN_FROM.includes(shipment.status)) {
       patch.trackingNumber = newTrackingNumber;
       return { didPush: false, patch };
     }
 
-    const allDestPushOk = await this.pushTrackingToOmps(shipment, newTrackingNumber);
+    // 5. Relay the waybill to EVERY order participant — the source marketplace
+    //    included (#1947). Replaces the pre-#1168 destination-only push that
+    //    resolved `record.syncStatus` + `OrderFulfillmentUpdater`: a source
+    //    adapter implements neither, so the waybill could never reach it, which
+    //    is the whole defect. Destinations lose nothing — both shop adapters'
+    //    `write({type:'dispatched'})` delegates verbatim to
+    //    `updateFulfillment({status:'shipped', trackingNumber})`.
+    const relayedToSource = await this.relayWaybillToParticipants(shipment, newTrackingNumber);
 
-    // 4. Push-first (v1 workaround #1 — removed when #861 lands). Include
-    //    trackingNumber in the patch iff the push succeeded everywhere; on
-    //    failure, drop it so the next poll sees the diff and retries.
-    if (allDestPushOk) {
+    // 6. `trackingNumber` is pure DATA and is persisted whenever the source
+    //    relay did not fail — at-most-once for the source lives on
+    //    `waybillRelayedAt`, not on this field. Destination outcomes stay
+    //    best-effort (logged, never blocking), exactly as before.
+    if (relayedToSource !== 'failed') {
       patch.trackingNumber = newTrackingNumber;
     }
 
-    return { didPush: allDestPushOk, patch };
+    return { didPush: relayedToSource === 'relayed', patch };
   }
 
   /**
-   * Push `{status:'shipped', trackingNumber}` to each synced destination's
-   * `OrderFulfillmentUpdater`. Returns `true` iff every eligible destination
-   * accepted the call (i.e., not unsupported and not throwing). Mirrors the
-   * resolution path in `ShipmentDispatchNotificationService.updateDestinations`.
+   * Relay a newly-known waybill to every participant of the order, source
+   * included (#1947), under an at-most-once claim.
+   *
+   * Claim-then-release, mirroring the webhook dedup gate (which inserts its row
+   * before publishing and deletes it on failure so a retry can re-enter): the
+   * conditional `claimWaybillRelay` is the serialization point between the poll
+   * and the carrier webhook, which both observe the same null→value transition
+   * with no lock between them. Claiming only *after* a successful relay would
+   * leave that race open, and never claiming would let a retry re-drive the
+   * source's non-idempotent waybill POST every tick.
+   *
+   * @returns `'relayed'` on success, `'failed'` when the source could not be
+   *          told (claim released, `trackingNumber` withheld so the next tick
+   *          retries), or `'skipped'` when another caller already holds the claim.
    */
-  private async pushTrackingToOmps(
+  private async relayWaybillToParticipants(
     shipment: Shipment,
     trackingNumber: string,
-  ): Promise<boolean> {
-    const record = await this.orderRecords.getOrderRecord(shipment.orderId);
-    const targets = (record?.syncStatus ?? []).filter(
-      (s): s is typeof s & { externalOrderId: string } => Boolean(s.externalOrderId),
-    );
-    if (targets.length === 0) {
-      // No destination to push to — vacuously "all-ok"; trackingNumber lands
-      // on the Shipment without a downstream call.
-      return true;
+  ): Promise<'relayed' | 'failed' | 'skipped'> {
+    const claimed = await this.shipments.claimWaybillRelay(shipment.id, new Date());
+    if (!claimed) {
+      // Already relayed, or a concurrent trigger won the claim and is relaying
+      // right now. Either way this caller must not write to the source; the
+      // tracking number itself still lands (step 6).
+      this.logger.debug(
+        `Waybill relay skipped for shipment ${shipment.id} — already claimed (#1947).`,
+      );
+      return 'skipped';
     }
 
-    let allOk = true;
-    for (const entry of targets) {
-      try {
-        const adapter = await this.integrations.getCapabilityAdapter<OrderProcessorManagerPort>(
-          entry.destinationConnectionId,
-          ORDER_PROCESSOR_MANAGER_CAPABILITY,
-        );
-        if (!isOrderFulfillmentUpdater(adapter)) {
-          // Destination doesn't implement capability B (yet). Same semantic
-          // as #837: skip, don't count as a failure — there's nothing to retry.
-          continue;
-        }
-        await adapter.updateFulfillment({
-          externalOrderId: entry.externalOrderId,
-          status: 'shipped',
-          trackingNumber,
-        });
-      } catch (error) {
-        // Push-first workaround means we deliberately don't propagate this up
-        // to the worker — the poll job stays `succeeded` and the next tick
-        // retries the diff. Without that propagation, this log line is the
-        // only observable signal of an OMP outage, so log at `error` level
-        // (with stack) for triage visibility. Under #861, per-destination
-        // notify-state becomes the durable failure record and we can drop
-        // back to `warn` cadence here.
-        allOk = false;
+    const carrier = await resolveCarrierHint(this.integrations, shipment.connectionId, this.logger);
+
+    let result: OrderLifecycleRelayResult;
+    try {
+      result = await this.orderLifecycleRelay.relay({
+        internalOrderId: shipment.orderId,
+        originConnectionId: shipment.connectionId,
+        event: { type: 'dispatched', trackingNumber, carrier },
+      });
+    } catch (error) {
+      // The relay reports per-target outcomes rather than throwing, but it CAN
+      // throw before its per-target loop (identifier resolution). Catch it here:
+      // letting it propagate would abort `buildPatchAndMaybePush` and discard the
+      // whole patch — terminal status, deliveredAt, carrier backfill included —
+      // and skip the order-rollup reprojection.
+      await this.shipments.releaseWaybillRelay(shipment.id);
+      this.logger.error(
+        `Waybill relay threw for shipment ${shipment.id} (order ${shipment.orderId}): ${this.message(error)}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      return 'failed';
+    }
+
+    // A target we could not even construct an adapter for is TRANSIENT (#1947):
+    // release the claim so a later tick retries rather than recording a delivery
+    // that never happened. A structural `no-capability` is not a failure — there
+    // is nothing to retry — matching the skip the previous destination-only push
+    // performed for a non-`OrderFulfillmentUpdater` destination.
+    //
+    // NOTE — the claim is released on ANY participant's transient failure, not
+    // just the source's, which means a permanently-broken DESTINATION re-drives
+    // the source's relay on every tick. That is deliberate, and it is the least
+    // bad of three options while notify state is per-shipment rather than
+    // per-participant:
+    //   - releasing only on a source failure would hold the claim while the
+    //     number stays withheld, so the next tick re-detects the diff and then
+    //     skips the relay — a livelock in which the number never persists at all;
+    //   - persisting the number while holding the claim would permanently lose
+    //     destination tracking on one transient blip (the regression that killed
+    //     an earlier draft of this fix);
+    //   - so we keep today's all-or-nothing retry, and bound the blast radius at
+    //     the adapter instead: the Allegro waybill POST now treats a 409 as
+    //     already-attached, so a repeat is a no-op rather than a duplicate row.
+    // Genuinely per-participant retry is #861.
+    const transientlyUnreached = result.targets.filter(
+      (t) =>
+        t.outcome === 'rejected' ||
+        (t.outcome === 'unsupported' && t.unsupportedReason === 'adapter-unresolved'),
+    );
+
+    if (transientlyUnreached.length > 0) {
+      await this.shipments.releaseWaybillRelay(shipment.id);
+      for (const target of transientlyUnreached) {
+        // The poll job deliberately stays `succeeded` (the next tick retries), so
+        // this log line is the only observable signal — `error` level for triage.
         this.logger.error(
-          `OMP push failed for shipment ${shipment.id} dest ${entry.destinationConnectionId}: ${this.message(error)}`,
-          error instanceof Error ? error.stack : undefined,
+          `Waybill relay to ${target.connectionId} failed for shipment ${shipment.id} ` +
+            `(${target.outcome}${target.unsupportedReason ? `/${target.unsupportedReason}` : ''})` +
+            `${target.detail ? `: ${target.detail}` : ''}`,
         );
       }
+      return 'failed';
     }
-    return allOk;
+
+    return 'relayed';
   }
 
   private message(error: unknown): string {

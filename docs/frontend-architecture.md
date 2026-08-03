@@ -90,6 +90,8 @@ A feature must keep its public-facing modules inside the canonical subdirectory 
 
 **Out of scope today.** Pages still deep-import from features (≈128 imports), and `app/api/api-client.ts` deep-imports each feature's `createXApi` factory to compose the host API client. Both are documented gaps — extending the rule to `pages/**` and `app/**` is a follow-up that doesn't change the architectural model, just expands enforcement scope.
 
+**Cross-feature consumption example (#1938):** `demo` imports `useUpdateAnalyticsConsentMutation` from `features/auth`'s barrel (`import { useUpdateAnalyticsConsentMutation } from '../../auth';`) for the `/consent` page, and `users` imports the `RegisterRequest` / `OkResponse` types from the same barrel. `auth` was one of the last features without a barrel, so both were deep imports before; the slug is now in both ESLint pattern groups. `pages/auth/*` and `app/api/api-client.ts` still deep-import `auth/components/` and `auth/api/` — that is the documented app/pages gap below, not an exception to the rule.
+
 **Cross-feature consumption example (#1787):** `posthog-settings` imports `DemoEventCatalog` and `DemoEventGroup` from the `demo` feature's public barrel (`import { DemoEventCatalog, type DemoEventGroup } from '../../demo';`) to auto-derive its Product-events settings panel's group toggles from the event catalog, rather than hand-maintaining a duplicate group list. This is the intended shape of cross-feature consumption described above, not an exception to it.
 
 ## Routing Conventions

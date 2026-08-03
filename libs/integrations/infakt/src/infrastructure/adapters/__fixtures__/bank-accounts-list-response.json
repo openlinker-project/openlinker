@@ -1,0 +1,28 @@
+{
+  "metainfo": {
+    "count": 2,
+    "total_count": 2,
+    "next": "https://api.sandbox-infakt.pl/api/v3/bank_accounts.json?offset=10&limit=10",
+    "previous": "https://api.sandbox-infakt.pl/api/v3/bank_accounts.json?offset=0&limit=10"
+  },
+  "entities": [
+    {
+      "id": 54947,
+      "bank_name": "Fixture Bank 2",
+      "account_number": "65109024028533217149524196",
+      "swift": "EUOTPLP1XXX",
+      "default": false,
+      "currency": "PLN",
+      "custom_name": "Fixture Account #2"
+    },
+    {
+      "id": 54946,
+      "bank_name": "Fixture Bank",
+      "account_number": "49915000093326449042496767",
+      "swift": "BSWPPLP1XXX",
+      "default": true,
+      "currency": "PLN",
+      "custom_name": "Fixture Account #1"
+    }
+  ]
+}

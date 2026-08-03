@@ -112,6 +112,13 @@ export class ShipmentOrmEntity {
   @Column({ type: 'text', nullable: true })
   providerCode!: string | null;
 
+  // Source-relay claim marker for the waybill (#1947) — see the domain entity
+  // for why this is a dedicated column and not inferred from `trackingNumber`.
+  // Claimed conditionally (`WHERE waybill_relayed_at IS NULL`), so it is the
+  // serialization point between the status-sync poll and the carrier webhook.
+  @Column({ type: 'timestamp', nullable: true })
+  waybillRelayedAt!: Date | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

@@ -141,16 +141,30 @@ async function main(): Promise<void> {
   console.log(`baseUrl: ${BASE_URL}`);
   console.log('');
 
-  // Step 1 — upsertCustomer
-  console.log('STEP 1 — upsertCustomer');
+  // Step 1 — upsertCustomer (run TWICE: the second call must reuse the first
+  // client). #1926: this script exercised this exact path for weeks while NIP
+  // de-duplication was dead, because a broken lookup was swallowed and read as
+  // "no match" — a single call can't tell "found" from "created a duplicate".
+  console.log('STEP 1 — upsertCustomer (idempotency by NIP)');
   let clientUuid: string;
   try {
-    const r = await adapter.upsertCustomer({
+    const first = await adapter.upsertCustomer({
       connectionId: CONNECTION_ID,
       buyer: testBuyer,
     });
-    clientUuid = r.providerCustomerId;
-    ok('client upserted', `uuid=${clientUuid}`);
+    clientUuid = first.providerCustomerId;
+    const second = await adapter.upsertCustomer({
+      connectionId: CONNECTION_ID,
+      buyer: testBuyer,
+    });
+    if (second.providerCustomerId !== clientUuid) {
+      fail(
+        'upsertCustomer is not idempotent by NIP — it created a duplicate client',
+        `first=${clientUuid} second=${second.providerCustomerId}`,
+      );
+      process.exit(1);
+    }
+    ok('client upserted + reused on the second call', `id=${clientUuid}`);
   } catch (err) {
     fail('upsertCustomer failed', err);
     process.exit(1);

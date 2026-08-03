@@ -19,7 +19,13 @@ import { inventoryQueryKeys } from '../../../inventory';
 import type { OfferRowValidationInput } from '../../../../shared/plugins';
 import { listingsQueryKeys } from '../../api/listings.query-keys';
 import type { EanMatchCandidate, EanMatchResult } from '../../api/listings.types';
-import { computeBlockers, effectiveVariantEan, imageCountForVariant, isValidGtin } from './bulk-policy';
+import {
+  computeBlockers,
+  effectiveVariantEan,
+  imageCountForVariant,
+  isValidGtin,
+  titleForVariant,
+} from './bulk-policy';
 import type {
   BulkRowBlocker,
   BulkVariantRow,
@@ -199,6 +205,7 @@ export function BulkResolveStep({
           batchCurrency: currency,
           override: variant.override,
           imageCount: imageCountForVariant(row, variant),
+          effectiveTitle: titleForVariant(row, variant),
           platformValidate,
           destinationResolvesCategoryAtSubmit,
         });

@@ -219,6 +219,43 @@ describe('ErliAdapterFactory', () => {
     });
 
     describe('Allegro category-catalog wiring (#1382/#1383, ADR-031)', () => {
+      // #1934/F10 - the operator-facing "Allegro category access" toggle used to
+      // be decorative: unchecking it wrote `allegroCategoryAccessEnabled: false`
+      // as a CONFIG update while the credentials object merely omitted the
+      // Allegro keys, so the stored keys survived and the catalogue stayed
+      // wired. The backend's category gate therefore stayed armed on a
+      // connection the UI reported as having category access off - every row
+      // went green and every child died on `overrides.categoryId / REQUIRED`.
+      it('should NOT wire the catalogue when the operator toggle is explicitly false', async () => {
+        const adapters = await factory.createAdapters(
+          connection({ config: { allegroCategoryAccessEnabled: false } }),
+          {} as IdentifierMappingPort,
+          resolverFor({
+            apiKey: 'k-123',
+            allegroClientId: 'client-1',
+            allegroClientSecret: 'secret-1',
+          }),
+        );
+
+        expect(isCategoryBrowser(adapters.offerManager)).toBe(false);
+        expect(isCategoryParametersReader(adapters.offerManager)).toBe(false);
+      });
+
+      it('should still wire the catalogue when the toggle is absent (pre-toggle connections)', async () => {
+        const adapters = await factory.createAdapters(
+          connection(),
+          {} as IdentifierMappingPort,
+          resolverFor({
+            apiKey: 'k-123',
+            allegroClientId: 'client-1',
+            allegroClientSecret: 'secret-1',
+          }),
+        );
+
+        expect(isCategoryBrowser(adapters.offerManager)).toBe(true);
+        expect(isCategoryParametersReader(adapters.offerManager)).toBe(true);
+      });
+
       it('should NOT wire CategoryBrowser/CategoryParametersReader when Allegro credentials are absent', async () => {
         const adapters = await factory.createAdapters(
           connection(),

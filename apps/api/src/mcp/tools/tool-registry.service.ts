@@ -25,6 +25,16 @@
  *    until it ages out. Tool files therefore contain ONLY their read and
  *    projection; they never import the limiter or the logger.
  *
+ * 3. SCOPE + ROLE ENFORCEMENT (#1488), in TWO places, deliberately:
+ *
+ *    - At REGISTRATION, so a principal who cannot call a tool never sees it in
+ *      `tools/list`. That is a LISTING concern (better agent UX, smaller
+ *      surface) — emphatically NOT the security boundary.
+ *    - At CALL TIME, which IS the guard. Nothing stops an MCP client invoking a
+ *      name it was never shown, so only this check actually refuses.
+ *
+ *    Both run before `rateLimiter.acquire`, so a refused call spends no budget.
+ *
  * @module apps/api/src/mcp/tools
  * @implements {IMcpToolRegistryService}
  */
@@ -41,7 +51,7 @@ import {
 } from '@openlinker/core/integrations';
 import { Logger } from '@openlinker/shared/logging';
 
-import { redactPrincipal } from '../auth/mcp-principal.types';
+import { redactPrincipal, type RedactedMcpPrincipal } from '../auth/mcp-principal.types';
 import {
   MCP_AUDIT_LOGGER_TOKEN,
   type IMcpAuditLogger,
@@ -71,9 +81,19 @@ export class McpToolRegistryService implements IMcpToolRegistryService {
 
   async registerTools(server: McpServer, ctx: McpRequestContext): Promise<void> {
     const available = await this.resolveAvailableCapabilities();
+    const principal = redactPrincipal(ctx.authInfo?.extra, ctx.authInfo?.scopes ?? []);
 
     for (const definition of this.definitions) {
       if (definition.requiredCapability !== null && !available.has(definition.requiredCapability)) {
+        continue;
+      }
+      // Listing-time filter only; `invoke` re-checks — see the module header.
+      //
+      // A principal-less request is deliberately NOT filtered here: there is
+      // nothing to evaluate scope against, and filtering would make `invoke`'s
+      // defensive no-principal branch unreachable. Registration is a listing
+      // concern; refusing is the call-time guard's job, and it refuses.
+      if (principal !== null && describeAuthzRefusal(definition, principal) !== null) {
         continue;
       }
       // The SDK's `registerTool` is generic over each tool's own schema, so its
@@ -141,7 +161,7 @@ export class McpToolRegistryService implements IMcpToolRegistryService {
   ): Promise<CallToolResult> {
     const startedAt = Date.now();
     const principal = redactPrincipal(ctx.authInfo?.extra, ctx.authInfo?.scopes ?? []);
-    const connectionId = typeof args.connectionId === 'string' ? args.connectionId : undefined;
+    const connectionId = readConnectionArg(args);
 
     const emit = (outcome: McpToolOutcome, detail?: string): void => {
       this.auditLogger.record({
@@ -160,6 +180,15 @@ export class McpToolRegistryService implements IMcpToolRegistryService {
     if (principal === null) {
       emit('error', 'no principal on request');
       return toolError('No OpenLinker principal on this request.');
+    }
+
+    // Before the limiter: a refused call must not spend the caller's budget,
+    // and this is the check that actually guards (registration filtering is a
+    // listing concern — an MCP client may invoke an unlisted name).
+    const refusal = describeAuthzRefusal(definition, principal);
+    if (refusal !== null) {
+      emit('forbidden', refusal);
+      return toolError(refusal);
     }
 
     const lease = await this.rateLimiter.acquire(principal.mcpTokenId);
@@ -186,6 +215,55 @@ export class McpToolRegistryService implements IMcpToolRegistryService {
 
 function toolError(text: string): CallToolResult {
   return { content: [{ type: 'text' as const, text }], isError: true };
+}
+
+/**
+ * Why this principal may not call this tool, or `null` if it may (#1488).
+ *
+ * Returns agent-facing copy naming what is MISSING rather than a bare denial —
+ * the calling model reads it to decide whether to give up or ask its operator
+ * for a differently-scoped token.
+ *
+ * One function, used by both the registration filter and the call-time guard,
+ * so the two can never disagree about what "allowed" means.
+ *
+ * Exported only so its spec can exercise the scope/role matrix directly. The
+ * two checks share one principal, so a tool that registered would also pass at
+ * call time — a round-trip test could therefore only re-assert the
+ * registration filter while appearing to prove the guard. No runtime consumer
+ * outside this module.
+ */
+export function describeAuthzRefusal(
+  definition: McpToolDefinition,
+  principal: RedactedMcpPrincipal
+): string | null {
+  if (!principal.scopes.includes(definition.requiredScope)) {
+    return `This tool requires the "${definition.requiredScope}" scope; the token used has [${principal.scopes.join(', ')}].`;
+  }
+  if (definition.requiresAdmin && principal.olRole !== 'admin') {
+    return `This tool requires the OpenLinker "admin" role; the token's owner has "${principal.olRole}".`;
+  }
+  return null;
+}
+
+/**
+ * The connection a call is about, for audit attribution.
+ *
+ * Checks `destinationConnectionId` as well as `connectionId` (#1488): the
+ * mapping tools key on the former, matching `IMappingConfigService`'s own
+ * parameter name. Resolved HERE rather than by renaming those tool arguments,
+ * so the seam stays one place — otherwise the next tool keying on some third
+ * name silently reopens the same hole, and an unattributable WRITE audit line
+ * is the one this would have lost first.
+ */
+function readConnectionArg(args: Record<string, unknown>): string | undefined {
+  for (const key of ['connectionId', 'destinationConnectionId'] as const) {
+    const value = args[key];
+    if (typeof value === 'string' && value.length > 0) {
+      return value;
+    }
+  }
+  return undefined;
 }
 
 /**
