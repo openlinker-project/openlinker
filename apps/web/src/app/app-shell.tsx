@@ -17,7 +17,6 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
   type PropsWithChildren,
   type ReactElement,
 } from 'react';
@@ -45,15 +44,7 @@ import { CommandPaletteProvider, useCommandPalette } from './command-palette-pro
 import { CommandPaletteTrigger } from '../shared/ui/command-palette';
 import { DemoBanner } from '../shared/ui/demo-banner';
 import { useSystemConfigQuery } from '../features/system';
-import {
-  captureDemoEvent,
-  disableDemoAnalytics,
-  getDemoAnalyticsConsent,
-  initDemoIntegrations,
-  setDemoAnalyticsConsent,
-  subscribeToDemoAnalyticsConsent,
-  type DemoAnalyticsConsent,
-} from '../features/demo';
+import { captureDemoEvent, initDemoIntegrations } from '../features/demo';
 
 interface SidebarNavProps {
   ariaLabel: string;
@@ -247,10 +238,6 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   const { showToast } = useToast();
   const systemConfigQuery = useSystemConfigQuery();
   const demoMode = systemConfigQuery.data?.demoMode ?? false;
-  const posthogConfig = systemConfigQuery.data?.demoIntegrations?.posthog;
-  const [analyticsConsent, setAnalyticsConsent] = useState<DemoAnalyticsConsent | null>(() =>
-    getDemoAnalyticsConsent(),
-  );
   const hasInitializedAnalyticsRef = useRef(false);
   const location = useLocation();
   const drawerRef = useRef<HTMLDialogElement>(null);
@@ -292,51 +279,25 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
     })();
   }, [clearSession, showToast]);
 
-  // Seed analytics consent from the account (#1743). Consent is now decided
-  // once at registration (opt-in) and returned on the session, so there's no
-  // post-login prompt. localStorage is a per-browser cache of that decision
-  // (and the store for an in-session Disable): if the visitor already has an
-  // explicit local value we keep it, otherwise we mirror the account choice.
-  useEffect(() => {
-    if (!isReady || session.status !== 'authenticated' || analyticsConsent !== null) {
-      return;
-    }
-    const accountConsent = session.user?.analyticsConsent ?? false;
-    const seeded: DemoAnalyticsConsent = accountConsent ? 'accepted' : 'declined';
-    const persisted = setDemoAnalyticsConsent(seeded);
-    // If localStorage is unavailable the loader (which re-reads it) will decline
-    // to init, so surface 'declined' rather than a stale 'accepted' the banner
-    // would otherwise show while analytics stays off (fail-safe, consistent).
-    setAnalyticsConsent(persisted ? seeded : 'declined');
-  }, [isReady, session, analyticsConsent]);
-
-  // Keep the banner in step with consent changed elsewhere (#1882): the
-  // /settings toggle writes localStorage in THIS tab (custom event) and any
-  // other open tab sees the native `storage` event. Without this the banner
-  // would keep claiming "analytics on" until a reload.
-  useEffect(() => subscribeToDemoAnalyticsConsent(setAnalyticsConsent), []);
-
   // Demo-only analytics (#1301) — attempt init once the config query has
-  // settled and once consent resolves to 'accepted'. The loader's own guards
-  // (demoMode, config presence, consent) make repeat calls a no-op, but
+  // settled and the account's consent is known. Consent comes from the session
+  // (#1938): it is decided at registration or on `/consent`, and a demo viewer
+  // without it never reaches this shell. The loader's own guards (demoMode,
+  // config presence, consent) make repeat calls a no-op, but
   // hasInitializedAnalyticsRef avoids a redundant dynamic import.
   useEffect(() => {
     if (!systemConfigQuery.isSuccess || hasInitializedAnalyticsRef.current) {
       return;
     }
-    if (analyticsConsent !== 'accepted') {
+    if (!isReady || session.status !== 'authenticated') {
+      return;
+    }
+    if (session.user?.analyticsConsent !== true) {
       return;
     }
     hasInitializedAnalyticsRef.current = true;
-    void initDemoIntegrations(systemConfigQuery.data);
-  }, [systemConfigQuery.isSuccess, systemConfigQuery.data, analyticsConsent]);
-
-  const handleDisableAnalytics = useCallback((): void => {
-    setDemoAnalyticsConsent('declined');
-    setAnalyticsConsent('declined');
-    captureDemoEvent('demo_analytics_disabled', {});
-    disableDemoAnalytics();
-  }, []);
+    void initDemoIntegrations(systemConfigQuery.data, true);
+  }, [systemConfigQuery.isSuccess, systemConfigQuery.data, isReady, session]);
 
   const crumbs = resolveCrumbFromMatches(matches);
 
@@ -419,12 +380,7 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
           ) : null}
         </header>
 
-        {demoMode && isViewerOnly ? (
-          <DemoBanner
-            analyticsActive={Boolean(posthogConfig?.key) && analyticsConsent === 'accepted'}
-            onDisableAnalytics={handleDisableAnalytics}
-          />
-        ) : null}
+        {demoMode && isViewerOnly ? <DemoBanner /> : null}
 
         {/* `key={location.pathname}` retriggers the .shell-content
             cross-fade animation on every route change (#775). */}

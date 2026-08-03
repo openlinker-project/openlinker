@@ -357,6 +357,14 @@ export interface OfferRowValidationInput {
   needsProductParameters: boolean;
   /** A catalogue card will be linked, exempting product-param requirements (Allegro). */
   willLinkProductCard: boolean;
+  /**
+   * The title the submit would actually carry — the row's own override when the
+   * operator set one, else the master product name (the same fallback the core
+   * `OfferBuilderService` applies). Platforms with a title-length limit measure
+   * this; a row nobody opened in the Edit modal carries no override, so the
+   * length of the product name is the only thing there is to check (#1962).
+   */
+  title: string;
 }
 
 /**

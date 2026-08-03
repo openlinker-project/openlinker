@@ -33,10 +33,6 @@ import {
   createAuthenticatedSessionAdapter,
   createMockApiClient,
 } from '../test/test-utils';
-import {
-  setDemoAnalyticsConsent,
-  DEMO_ANALYTICS_CONSENT_STORAGE_KEY,
-} from '../features/demo';
 
 const captureDemoEvent = vi.fn();
 vi.mock('../features/demo', async (): Promise<object> => {
@@ -260,7 +256,7 @@ describe('AppShell', () => {
     expect(screen.queryByRole('note', { name: 'Demo mode notice' })).toBeNull();
   });
 
-  it('drops the banner "Analytics on" state when consent is withdrawn elsewhere (#1882)', async () => {
+  it('never renders an analytics status or opt-out in the demo banner (#1938)', async () => {
     const viewerAdapter = createAuthenticatedSessionAdapter({
       id: 'u2',
       username: 'viewer',
@@ -279,48 +275,9 @@ describe('AppShell', () => {
     });
     renderShell({ pathname: '/', apiClient: demoApiClient, sessionAdapter: viewerAdapter });
 
-    // Seeded from the account: consent granted → banner reports analytics on.
-    expect(await screen.findByText('Analytics on.')).toBeInTheDocument();
-
-    // The /settings toggle writes localStorage in this same tab; without the
-    // subscription the banner would keep claiming "on" until a reload.
-    act(() => {
-      setDemoAnalyticsConsent('declined');
-    });
-
-    await waitFor(() => expect(screen.queryByText('Analytics on.')).not.toBeInTheDocument());
-  });
-
-  it('picks up a consent change made in another tab (#1882)', async () => {
-    const viewerAdapter = createAuthenticatedSessionAdapter({
-      id: 'u2',
-      username: 'viewer',
-      email: 'viewer@example.com',
-      role: 'viewer',
-      permissions: [],
-      analyticsConsent: false,
-    });
-    const demoApiClient = createMockApiClient({
-      system: {
-        getConfig: vi.fn().mockResolvedValue({
-          demoMode: true,
-          demoIntegrations: { posthog: { key: 'phc_abc', host: 'https://eu.posthog.com' } },
-        }),
-      },
-    });
-    renderShell({ pathname: '/', apiClient: demoApiClient, sessionAdapter: viewerAdapter });
-
     expect(await screen.findByRole('note', { name: 'Demo mode notice' })).toBeInTheDocument();
     expect(screen.queryByText('Analytics on.')).not.toBeInTheDocument();
-
-    act(() => {
-      window.localStorage.setItem(DEMO_ANALYTICS_CONSENT_STORAGE_KEY, 'accepted');
-      window.dispatchEvent(
-        new StorageEvent('storage', { key: DEMO_ANALYTICS_CONSENT_STORAGE_KEY }),
-      );
-    });
-
-    expect(await screen.findByText('Analytics on.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Disable' })).not.toBeInTheDocument();
   });
 
   it('uses "Connections" as the nav label (not "Integrations")', () => {
@@ -493,7 +450,7 @@ describe('AppShell', () => {
     expect(drawer.open).toBe(false);
   });
 
-  describe('open-source link + analytics opt-out demo events (#1790)', () => {
+  describe('open-source link demo events (#1790)', () => {
     it('renders the "View on GitHub" link in demo mode and fires demo_opensource_link_clicked on click', async () => {
       const demoApiClient = createMockApiClient({
         system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
@@ -521,39 +478,5 @@ describe('AppShell', () => {
       expect(screen.queryByRole('link', { name: /View on GitHub/ })).toBeNull();
     });
 
-    it('fires demo_analytics_disabled when the viewer clicks Disable in the demo banner', async () => {
-      const viewerAdapter = createAuthenticatedSessionAdapter({
-        id: 'u2',
-        username: 'viewer',
-        email: 'viewer@example.com',
-        role: 'viewer',
-        permissions: [],
-        analyticsConsent: true,
-      });
-      const demoApiClient = createMockApiClient({
-        system: {
-          getConfig: vi.fn().mockResolvedValue({
-            demoMode: true,
-            demoIntegrations: {
-              posthog: {
-                key: 'phc_abc',
-                host: 'https://eu.posthog.com',
-                autocapture: true,
-                sessionRecording: false,
-                productEventsEnabled: true,
-                enabledEventGroups: ['baseline'],
-              },
-            },
-          }),
-        },
-      });
-      renderShell({ pathname: '/', apiClient: demoApiClient, sessionAdapter: viewerAdapter });
-
-      const user = userEvent.setup();
-      const disableButton = await screen.findByRole('button', { name: 'Disable' });
-      await user.click(disableButton);
-
-      expect(captureDemoEvent).toHaveBeenCalledWith('demo_analytics_disabled', {});
-    });
   });
 });

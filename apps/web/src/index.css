@@ -13871,16 +13871,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   line-height: 1;
 }
 
-/* Analytics-consent CTA (#1301) — appended to the demo banner only when a
-   demo-only integration (e.g. PostHog) is configured and unconsented. */
-.demo-banner__consent {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
 /* Login / register page: info bar at top of the form-card. */
 .guest-form__demo-bar {
   display: flex;
@@ -13940,38 +13930,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   color: var(--status-info-fg);
 }
 
-/* ── Registration analytics consent (#1743) ── */
-
-.guest-form__consent {
-  display: flex;
-  gap: var(--space-2);
-  align-items: flex-start;
-  margin: 0 0 var(--space-3);
-  padding: var(--space-3);
-  background: var(--bg-surface-muted);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-}
-
-.guest-form__consent input[type='checkbox'] {
-  margin-top: 2px;
-  flex: none;
-  accent-color: var(--accent-primary);
-}
-
-.guest-form__consent-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 12px;
-  color: var(--text-primary);
-}
-
-.guest-form__consent-hint {
-  color: var(--text-secondary);
-}
-
 /* ── Marketing-tracking disclosure footnote (#1892) ──
    Deliberately the least visually prominent thing on the card: no box, no
    icon, no eyebrow label — a single line of fine print reading as boilerplate
@@ -13983,6 +13941,127 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   line-height: 1.5;
   color: var(--text-muted);
   text-align: center;
+}
+
+/* ── Recording notice + consent page (#1938) ──
+   Session recording is a condition of the demo, not a choice on the form, so
+   registration carries a plain notice under the submit button plus a quiet
+   "what we record" disclosure — no checkbox, no validation state. The same
+   disclosure treatment is reused on the /consent page. */
+
+.guest-form__disclosure {
+  margin: 0 0 var(--space-3);
+}
+
+.guest-form__disclosure > summary,
+.demo-consent__disclosure > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  list-style: none;
+  cursor: pointer;
+  padding: 2px 0;
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.guest-form__disclosure > summary::-webkit-details-marker,
+.demo-consent__disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.guest-form__disclosure > summary::before,
+.demo-consent__disclosure > summary::before {
+  content: '▸';
+  font-size: 9px;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.guest-form__disclosure[open] > summary::before,
+.demo-consent__disclosure[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.guest-form__disclosure > summary:focus-visible,
+.demo-consent__disclosure > summary:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.guest-form__disclosure-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.demo-consent__bullets {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding-left: var(--space-4);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.guest-form__recording-notice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.guest-form__recording-notice p {
+  margin: 0;
+}
+
+.demo-consent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.demo-consent__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+
+.demo-consent__copy {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.demo-consent__disclosure-body {
+  margin-top: var(--space-2);
+}
+
+.demo-consent__actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.demo-consent__actions > .button {
+  flex: 1 1 auto;
+}
+
+.demo-consent__fineprint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 /* ── Product detail (#1304) ── */

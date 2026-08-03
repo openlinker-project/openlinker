@@ -108,8 +108,8 @@ export function InfaktStructuredSection({
           name="infaktPaymentMethod"
           error={form.formState.errors.infaktPaymentMethod?.message}
           description={
-            '"Transfer" 422s on inFakt unless a bank account is configured on the seller’s ' +
-            'inFakt account. Leave "Cash" unless you have confirmed that prerequisite.'
+            'Transfer needs a bank account on your inFakt account — without one, inFakt ' +
+            'rejects the invoice. Stay on Cash until you have added one in inFakt.'
           }
         >
           <Select
