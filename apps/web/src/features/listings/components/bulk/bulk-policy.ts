@@ -192,6 +192,14 @@ export interface ComputeBlockersInput {
    */
   imageCount?: number;
   /**
+   * The title the submit would carry for this row (#1962) - the row's own title
+   * override when the operator set one, else the master product name (mirroring
+   * the core builder's `overrides?.title ?? product.name`). Fed to the platform
+   * validator, which owns any length limit. Omitted ⇒ empty string, which no
+   * length rule can reject.
+   */
+  effectiveTitle?: string;
+  /**
    * Per-platform row validator (#1096) - the resolved connection's
    * `offerValidation.validateRow`. When present, its returned blocker ids are
    * concatenated onto the neutral set. Absent ⇒ only neutral blockers apply.
@@ -259,6 +267,7 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
         imageCount: input.imageCount ?? 0,
         needsProductParameters: computeNeedsProductParameters(input),
         willLinkProductCard: input.willLinkProductCard ?? false,
+        title: input.effectiveTitle ?? '',
       }),
     );
   }
@@ -388,6 +397,7 @@ export function recomputeRowBlockers(
       ? requiredByCategory.get(submitCategoryId)
       : undefined,
     imageCount: imageCountForRow(row),
+    effectiveTitle: titleForRow(row),
     platformValidate,
     destinationResolvesCategoryAtSubmit,
   });
@@ -396,6 +406,16 @@ export function recomputeRowBlockers(
 /** Resolved master image count for a row (#1096) - Erli image gate input. */
 export function imageCountForRow(row: BulkWizardRow): number {
   return row.product?.images?.filter((u) => typeof u === 'string' && u.trim() !== '').length ?? 0;
+}
+
+/**
+ * The title a row's submit would carry (#1962) - its own override when the
+ * operator set one, else the master product name. Mirrors the core builder's
+ * `input.overrides?.title ?? product.name`, so a platform title-length rule sees
+ * the same string the wire will.
+ */
+export function titleForRow(row: BulkWizardRow): string {
+  return row.override.overrides?.title ?? row.product?.name ?? '';
 }
 
 // ── Per-variant helpers (#1741) ──────────────────────────────────────────────
@@ -411,6 +431,16 @@ export function imageCountForVariant(row: BulkWizardRow, variant: BulkVariantRow
     return override.filter((u) => typeof u === 'string' && u.trim() !== '').length;
   }
   return imageCountForRow(row);
+}
+
+/**
+ * Effective per-variant title (#1962) - the sibling's own title override when
+ * present, else the shared-base override, else the master product name. Same
+ * precedence the submit payload resolves, so a per-variant title an operator
+ * shortened clears the blocker for that sibling alone.
+ */
+export function titleForVariant(row: BulkWizardRow, variant: BulkVariantRow): string {
+  return variant.override.overrides?.title ?? titleForRow(row);
 }
 
 /**
@@ -507,6 +537,7 @@ export function recomputeVariantBlockers(
       ? requiredByCategory.get(submitCategoryId)
       : undefined,
     imageCount: imageCountForVariant(row, variant),
+    effectiveTitle: titleForVariant(row, variant),
     platformValidate,
     destinationResolvesCategoryAtSubmit,
   });

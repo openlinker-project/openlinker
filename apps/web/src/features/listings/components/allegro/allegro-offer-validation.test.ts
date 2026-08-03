@@ -1,9 +1,10 @@
 /**
  * Allegro offer-validation contract tests (#1096)
  *
- * Locks the migrated `needs-product-parameters` blocker (#810) and the opt-in
- * `needsCategoryParameterSchema` flag that gates the host's per-category param
- * fetch. Keeps the plugin-owned validator honest independent of the wizards.
+ * Locks the migrated `needs-product-parameters` blocker (#810), the pre-submit
+ * title-length blocker (#1962), and the opt-in `needsCategoryParameterSchema`
+ * flag that gates the host's per-category param fetch. Keeps the plugin-owned
+ * validator honest independent of the wizards.
  *
  * @module features/listings/components/allegro
  */
@@ -11,11 +12,17 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ALLEGRO_NEEDS_PRODUCT_PARAMETERS_BLOCKER,
+  ALLEGRO_TITLE_TOO_LONG_BLOCKER,
   allegroOfferValidation,
 } from './allegro-offer-validation';
 
 describe('allegroOfferValidation', () => {
-  const base = { imageCount: 1, needsProductParameters: false, willLinkProductCard: false };
+  const base = {
+    imageCount: 1,
+    needsProductParameters: false,
+    willLinkProductCard: false,
+    title: 'A perfectly ordinary offer title',
+  };
 
   it('raises the namespaced blocker when product params are needed and no card links', () => {
     expect(allegroOfferValidation.validateRow({ ...base, needsProductParameters: true })).toEqual([
@@ -37,9 +44,50 @@ describe('allegroOfferValidation', () => {
     expect(allegroOfferValidation.validateRow(base)).toEqual([]);
   });
 
-  it('declares the blocker chip once with the namespaced id', () => {
+  it('blocks a title over the 75-character limit before submit (#1962)', () => {
+    expect(allegroOfferValidation.validateRow({ ...base, title: 'x'.repeat(76) })).toEqual([
+      ALLEGRO_TITLE_TOO_LONG_BLOCKER,
+    ]);
+  });
+
+  it('allows a title exactly at the limit', () => {
+    expect(allegroOfferValidation.validateRow({ ...base, title: 'x'.repeat(75) })).toEqual([]);
+  });
+
+  it('measures the sanitized title, so collapsed whitespace can bring it back under', () => {
+    // 77 raw characters, but the double spaces collapse to 74 on the wire.
+    const raw = `${'x'.repeat(68)}  a  b  c`;
+    expect(raw.length).toBeGreaterThan(75);
+    expect(allegroOfferValidation.validateRow({ ...base, title: raw })).toEqual([]);
+  });
+
+  it('measures the sanitized title, so an expanding substitution can push it over', () => {
+    // 74 raw characters; the ellipsis becomes "..." (+2) => 76 on the wire.
+    const raw = `${'x'.repeat(73)}…`;
+    expect(raw.length).toBeLessThanOrEqual(75);
+    expect(allegroOfferValidation.validateRow({ ...base, title: raw })).toEqual([
+      ALLEGRO_TITLE_TOO_LONG_BLOCKER,
+    ]);
+  });
+
+  it('co-emits both blockers when a row trips each rule', () => {
+    expect(
+      allegroOfferValidation.validateRow({
+        ...base,
+        needsProductParameters: true,
+        title: 'x'.repeat(120),
+      }),
+    ).toEqual([ALLEGRO_NEEDS_PRODUCT_PARAMETERS_BLOCKER, ALLEGRO_TITLE_TOO_LONG_BLOCKER]);
+  });
+
+  it('declares each blocker chip once with its namespaced id', () => {
     expect(allegroOfferValidation.blockers).toEqual([
-      { id: ALLEGRO_NEEDS_PRODUCT_PARAMETERS_BLOCKER, tone: 'warning', label: 'add product params' },
+      {
+        id: ALLEGRO_NEEDS_PRODUCT_PARAMETERS_BLOCKER,
+        tone: 'warning',
+        label: 'add product params',
+      },
+      { id: ALLEGRO_TITLE_TOO_LONG_BLOCKER, tone: 'error', label: 'title too long' },
     ]);
   });
 

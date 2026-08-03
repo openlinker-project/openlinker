@@ -27,6 +27,7 @@ import type {
   CatalogProductMatchResult,
   CatalogProductSummary,
   FindProductsByBarcodeInput,
+  AdapterSuppliedParametersReader,
   OfferCreator,
   OfferStatusReader,
   OfferStatusReadResult,
@@ -265,6 +266,7 @@ export class AllegroOfferManagerAdapter
     CategoryParametersReader,
     CatalogProductReader,
     OfferCreator,
+    AdapterSuppliedParametersReader,
     OfferStatusReader,
     OfferSmartClassificationReader,
     OfferReader,
@@ -1362,6 +1364,20 @@ export class AllegroOfferManagerAdapter
    * offer exists as a draft on Allegro and the errors are surfaced through
    * `CreateOfferResult.validationErrors`.
    */
+  /**
+   * `AdapterSuppliedParametersReader` (#1934/F1). "Stan" is a REQUIRED
+   * offer-section parameter in effectively every Allegro category, and this
+   * adapter synthesises it from the neutral `command.condition` (which the
+   * builder always sets) - so the builder's gate must not reject an offer for
+   * "missing" it. Declared here because the neutral -> wire id mapping is the
+   * adapter's; core has no business knowing that 11323 means condition.
+   */
+  getAdapterSuppliedParameterIds(
+    cmd: Pick<CreateOfferCommand, 'condition'>,
+  ): readonly string[] {
+    return cmd.condition !== undefined ? [ALLEGRO_CONDITION_PARAMETER_ID] : [];
+  }
+
   async createOffer(cmd: CreateOfferCommand): Promise<CreateOfferResult> {
     // #430 / #437 — preflight: connection-level seller defaults must be
     // structurally complete before we can build a body Allegro will accept.
