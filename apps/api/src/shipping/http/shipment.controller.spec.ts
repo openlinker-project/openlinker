@@ -81,6 +81,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.carrier ?? null,
     overrides.deliveryIntent ?? null,
     overrides.providerCode ?? null,
+    overrides.waybillRelayedAt ?? null,
   );
 }
 

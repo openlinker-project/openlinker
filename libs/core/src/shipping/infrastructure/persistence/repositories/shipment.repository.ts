@@ -129,6 +129,23 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     return this.toDomain(refreshed);
   }
 
+  async claimWaybillRelay(id: string, at: Date): Promise<boolean> {
+    // Conditional write — `IsNull()` in the WHERE is what makes this atomic
+    // under two concurrent triggers (poll + carrier webhook). Exactly one
+    // UPDATE can affect a row.
+    const result = await this.repository.update(
+      { id, waybillRelayedAt: IsNull() },
+      { waybillRelayedAt: at },
+    );
+    return (result.affected ?? 0) > 0;
+  }
+
+  async releaseWaybillRelay(id: string): Promise<void> {
+    // Unconditional: only the claim holder calls this, and re-releasing an
+    // already-NULL row is harmless.
+    await this.repository.update({ id }, { waybillRelayedAt: null });
+  }
+
   private buildOrmEntity(input: CreateShipmentInput): ShipmentOrmEntity {
     const entity = new ShipmentOrmEntity();
     entity.id = formatInternalId('Shipment');
@@ -153,6 +170,9 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     entity.errorMessage = null;
     entity.carrier = null;
     entity.providerCode = null;
+    // Unclaimed at birth (#1947) — even on the atomic-terminal branch-1 path,
+    // which is born with a `trackingNumber` but has told no source yet.
+    entity.waybillRelayedAt = null;
     return entity;
   }
 
@@ -231,6 +251,7 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
       entity.carrier,
       entity.deliveryIntent,
       entity.providerCode,
+      entity.waybillRelayedAt,
     );
   }
 }

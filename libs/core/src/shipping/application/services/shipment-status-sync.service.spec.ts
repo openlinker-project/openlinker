@@ -1,24 +1,28 @@
 /**
- * ShipmentStatusSyncService — unit tests (#838)
+ * ShipmentStatusSyncService — unit tests (#838, #1947)
  *
- * Covers the two v1 workarounds explicitly: push-first ordering (failed OMP
- * push drops `trackingNumber` from the patch) and the `>= dispatched` push
- * gate (generated shipments backfill `Shipment.trackingNumber` but don't fire
- * the destination OMP).
+ * Covers the waybill relay and the state that bounds it: the `>= dispatched`
+ * gate (a `generated` shipment backfills `Shipment.trackingNumber` but notifies
+ * nobody), the at-most-once claim on `Shipment.waybillRelayedAt`, the
+ * terminal-status guard (`cancelled`/`failed` suppress the relay but `delivered`
+ * must NOT), and the transient-vs-structural split on `unsupported`.
  *
  * @module libs/core/src/shipping/application/services
  */
 import type { IIntegrationsService } from '@openlinker/core/integrations';
-import type { IOrderRecordService, OrderRecord } from '@openlinker/core/orders';
+import type {
+  IOrderLifecycleRelayService,
+  OrderLifecycleRelayResult,
+} from '@openlinker/core/orders';
 
 import { Shipment } from '../../domain/entities/shipment.entity';
 import type { ShipmentRepositoryPort } from '../../domain/ports/shipment-repository.port';
 import type { TrackingSnapshot } from '../../domain/types/tracking-snapshot.types';
 import { ShipmentStatusSyncService } from './shipment-status-sync.service';
 
-const CARRIER = 'conn-allegro-delivery';
+const CARRIER = 'conn-inpost';
+const SOURCE = 'conn-allegro';
 const PS1 = 'conn-ps-1';
-const PS2 = 'conn-ps-2';
 
 function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
   // `?? 'prov-abc'` would mask an explicit `null`, but `=== undefined` keeps
@@ -44,16 +48,15 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.carrier === undefined ? null : overrides.carrier,
     overrides.deliveryIntent ?? null,
     overrides.providerCode ?? null,
+    overrides.waybillRelayedAt ?? null,
   );
 }
 
-function makeRecord(overrides: Partial<OrderRecord> = {}): OrderRecord {
-  return {
-    syncStatus: [
-      { destinationConnectionId: PS1, status: 'synced', externalOrderId: 'ps1-100' },
-    ],
-    ...overrides,
-  } as OrderRecord;
+/** Relay result helper — one target per connection, `applied` unless overridden. */
+function relayResult(
+  ...targets: OrderLifecycleRelayResult['targets']
+): OrderLifecycleRelayResult {
+  return { targets: targets.length > 0 ? targets : [{ connectionId: SOURCE, outcome: 'applied' }] };
 }
 
 function snapshot(overrides: Partial<TrackingSnapshot> = {}): TrackingSnapshot {
@@ -66,9 +69,8 @@ function snapshot(overrides: Partial<TrackingSnapshot> = {}): TrackingSnapshot {
 describe('ShipmentStatusSyncService', () => {
   let shipments: jest.Mocked<ShipmentRepositoryPort>;
   let integrations: jest.Mocked<IIntegrationsService>;
-  let orderRecords: jest.Mocked<IOrderRecordService>;
+  let relay: jest.Mocked<IOrderLifecycleRelayService>;
   let getTracking: jest.Mock;
-  let updateFulfillment: jest.Mock;
   let service: ShipmentStatusSyncService;
 
   beforeEach(() => {
@@ -81,18 +83,17 @@ describe('ShipmentStatusSyncService', () => {
       findByProviderShipmentId: jest.fn(),
       findBranchOneByOrderAndConnection: jest.fn(),
       update: jest.fn().mockResolvedValue(undefined),
+      // Claim is won by default; individual tests override to simulate a
+      // concurrent trigger or an already-relayed waybill.
+      claimWaybillRelay: jest.fn().mockResolvedValue(true),
+      releaseWaybillRelay: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<ShipmentRepositoryPort>;
 
-    orderRecords = {
-      persistOrder: jest.fn(),
-      updateSyncStatus: jest.fn(),
-      persistIncomingSnapshot: jest.fn(),
-      getOrderRecord: jest.fn().mockResolvedValue(makeRecord()),
-      findMany: jest.fn(),
-    } as unknown as jest.Mocked<IOrderRecordService>;
+    relay = {
+      relay: jest.fn().mockResolvedValue(relayResult()),
+    } as unknown as jest.Mocked<IOrderLifecycleRelayService>;
 
     getTracking = jest.fn();
-    updateFulfillment = jest.fn().mockResolvedValue(undefined);
 
     integrations = {
       getAdapter: jest.fn(),
@@ -101,19 +102,13 @@ describe('ShipmentStatusSyncService', () => {
       resolveAdapterMetadata: jest.fn(),
     } as unknown as jest.Mocked<IIntegrationsService>;
 
-    (integrations.getCapabilityAdapter as jest.Mock).mockImplementation(
-      (_connId: string, cap: string) => {
-        if (cap === 'ShippingProviderManager') {
-          return Promise.resolve({ getTracking });
-        }
-        // OrderProcessorManager — return an adapter that implements
-        // OrderFulfillmentUpdater (the `updateFulfillment` presence is what
-        // `isOrderFulfillmentUpdater` checks).
-        return Promise.resolve({ createOrder: jest.fn(), updateFulfillment });
-      },
-    );
+    (integrations.getCapabilityAdapter as jest.Mock).mockResolvedValue({ getTracking });
+    // Carrier-hint resolution (`getAdapter`) feeds the relay's `carrier`.
+    (integrations.getAdapter as jest.Mock).mockResolvedValue({
+      metadata: { platformType: 'inpost' },
+    });
 
-    service = new ShipmentStatusSyncService(shipments, integrations, orderRecords, {
+    service = new ShipmentStatusSyncService(shipments, integrations, relay, {
       recompute: jest.fn(),
     });
   });
@@ -212,44 +207,44 @@ describe('ShipmentStatusSyncService', () => {
     });
   });
 
-  describe('tracking-number backfill', () => {
-    it('backfills tracking on generated shipment WITHOUT pushing to the destination OMP (workaround #2)', async () => {
+  describe('waybill relay (#1947)', () => {
+    it('backfills tracking on a generated shipment WITHOUT relaying to anyone', async () => {
+      // #837's notifyDispatched owns the generated → dispatched transition and
+      // its own at-most-once notify; #838 must not race it.
       const s = makeShipment({ status: 'generated', trackingNumber: null });
       shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
       getTracking.mockResolvedValue(snapshot({ status: 'generated', trackingNumber: 'NEW123' }));
+
       const result = await service.sync(CARRIER, { limit: 50 });
+
       expect(shipments.update).toHaveBeenCalledWith(
         s.id,
         expect.objectContaining({ trackingNumber: 'NEW123' }),
       );
-      expect(updateFulfillment).not.toHaveBeenCalled();
+      expect(relay.relay).not.toHaveBeenCalled();
+      expect(shipments.claimWaybillRelay).not.toHaveBeenCalled();
       expect(result.propagated).toBe(0);
       expect(result.updated).toBe(1);
     });
 
-    it('backfills tracking on dispatched shipment AND pushes shipped+tracking to every destination', async () => {
-      orderRecords.getOrderRecord.mockResolvedValue(
-        makeRecord({
-          syncStatus: [
-            { destinationConnectionId: PS1, status: 'synced', externalOrderId: 'ps1-100' },
-            { destinationConnectionId: PS2, status: 'synced', externalOrderId: 'ps2-200' },
-          ],
-        } as Partial<OrderRecord>),
-      );
+    it('relays the waybill to every participant on a dispatched shipment, with carrier hint and origin', async () => {
       const s = makeShipment({ status: 'dispatched', trackingNumber: null });
       shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
       getTracking.mockResolvedValue(snapshot({ status: 'dispatched', trackingNumber: 'NEW456' }));
+
       const result = await service.sync(CARRIER, { limit: 50 });
-      expect(updateFulfillment).toHaveBeenCalledTimes(2);
-      expect(updateFulfillment).toHaveBeenCalledWith({
-        externalOrderId: 'ps1-100',
-        status: 'shipped',
-        trackingNumber: 'NEW456',
-      });
-      expect(updateFulfillment).toHaveBeenCalledWith({
-        externalOrderId: 'ps2-200',
-        status: 'shipped',
-        trackingNumber: 'NEW456',
+
+      expect(relay.relay).toHaveBeenCalledTimes(1);
+      expect(relay.relay).toHaveBeenCalledWith({
+        internalOrderId: s.orderId,
+        // Origin is the carrier connection, so the relay reaches the SOURCE
+        // marketplace as well as every destination shop.
+        originConnectionId: CARRIER,
+        event: {
+          type: 'dispatched',
+          trackingNumber: 'NEW456',
+          carrier: { platformType: 'inpost' },
+        },
       });
       expect(shipments.update).toHaveBeenCalledWith(
         s.id,
@@ -258,75 +253,190 @@ describe('ShipmentStatusSyncService', () => {
       expect(result.propagated).toBe(1);
     });
 
-    it('PUSH-FIRST: drops trackingNumber from the patch when ANY destination push throws (workaround #1)', async () => {
-      orderRecords.getOrderRecord.mockResolvedValue(
-        makeRecord({
-          syncStatus: [
-            { destinationConnectionId: PS1, status: 'synced', externalOrderId: 'ps1-100' },
-            { destinationConnectionId: PS2, status: 'synced', externalOrderId: 'ps2-200' },
-          ],
-        } as Partial<OrderRecord>),
+    it('DELIVERED still relays — a delivered parcel unambiguously shipped', async () => {
+      // Regression guard: `delivered` is terminal, so a naive
+      // "skip the relay on any terminal status" guard would consume the
+      // null→value transition and lose the waybill forever on the FASTEST
+      // orders (one poll can carry delivered + the first waybill together).
+      const s = makeShipment({ status: 'dispatched', trackingNumber: null });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      getTracking.mockResolvedValue(
+        snapshot({
+          status: 'delivered',
+          trackingNumber: 'FAST999',
+          deliveredAt: new Date('2026-05-28'),
+        }),
       );
-      // First push succeeds, second throws.
-      updateFulfillment
-        .mockResolvedValueOnce(undefined)
-        .mockRejectedValueOnce(new Error('500 from PS2'));
+
+      await service.sync(CARRIER, { limit: 50 });
+
+      expect(relay.relay).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: expect.objectContaining({ trackingNumber: 'FAST999' }),
+        }),
+      );
+      expect(shipments.update).toHaveBeenCalledWith(
+        s.id,
+        expect.objectContaining({ status: 'delivered', trackingNumber: 'FAST999' }),
+      );
+    });
+
+    it.each(['cancelled', 'failed'] as const)(
+      'does NOT relay when the snapshot turns the shipment %s, but still persists the number',
+      async (terminal) => {
+        // Relaying here would mark the marketplace order sent and attach a
+        // waybill for a parcel that will never move — plus notify the buyer.
+        const s = makeShipment({ status: 'dispatched', trackingNumber: null });
+        shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+        getTracking.mockResolvedValue(
+          snapshot({ status: terminal, trackingNumber: 'DEAD777' }),
+        );
+
+        const result = await service.sync(CARRIER, { limit: 50 });
+
+        expect(relay.relay).not.toHaveBeenCalled();
+        expect(shipments.update).toHaveBeenCalledWith(
+          s.id,
+          expect.objectContaining({ status: terminal, trackingNumber: 'DEAD777' }),
+        );
+        expect(result.propagated).toBe(0);
+      },
+    );
+
+    it('does not relay twice when the claim is already held (concurrent poll + webhook)', async () => {
+      shipments.claimWaybillRelay.mockResolvedValue(false);
       const s = makeShipment({ status: 'dispatched', trackingNumber: null });
       shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
       getTracking.mockResolvedValue(snapshot({ status: 'dispatched', trackingNumber: 'NEW456' }));
+
       const result = await service.sync(CARRIER, { limit: 50 });
-      // Push attempted on both, only second threw.
-      expect(updateFulfillment).toHaveBeenCalledTimes(2);
-      // No update call — patch was empty because the single field (tracking) was dropped.
+
+      expect(relay.relay).not.toHaveBeenCalled();
+      // The number is DATA — it still lands even though this caller relayed nothing.
+      expect(shipments.update).toHaveBeenCalledWith(
+        s.id,
+        expect.objectContaining({ trackingNumber: 'NEW456' }),
+      );
+      expect(result.propagated).toBe(0);
+    });
+
+    it('relays only once across two consecutive syncs (the claim is consumed)', async () => {
+      const first = makeShipment({ status: 'dispatched', trackingNumber: null });
+      // Second run sees the row as the first run left it: number persisted, so
+      // the null→value diff no longer fires.
+      const second = makeShipment({
+        status: 'dispatched',
+        trackingNumber: 'NEW456',
+        waybillRelayedAt: new Date('2026-05-27T10:05:00.000Z'),
+      });
+      getTracking.mockResolvedValue(snapshot({ status: 'dispatched', trackingNumber: 'NEW456' }));
+
+      shipments.findMany.mockResolvedValueOnce({ items: [first], total: 1 });
+      await service.sync(CARRIER, { limit: 50 });
+      shipments.findMany.mockResolvedValueOnce({ items: [second], total: 1 });
+      await service.sync(CARRIER, { limit: 50 });
+
+      expect(relay.relay).toHaveBeenCalledTimes(1);
+    });
+
+    it('releases the claim and withholds the number when a target REJECTS', async () => {
+      relay.relay.mockResolvedValue(
+        relayResult({ connectionId: SOURCE, outcome: 'rejected', detail: 'Allegro 422' }),
+      );
+      const s = makeShipment({ status: 'dispatched', trackingNumber: null });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      getTracking.mockResolvedValue(snapshot({ status: 'dispatched', trackingNumber: 'NEW456' }));
+
+      const result = await service.sync(CARRIER, { limit: 50 });
+
+      expect(shipments.releaseWaybillRelay).toHaveBeenCalledWith(s.id);
+      // Withheld so the next poll re-detects the diff and retries.
       expect(shipments.update).not.toHaveBeenCalled();
       expect(result.propagated).toBe(0);
-      expect(result.updated).toBe(0);
-      // Per-item error was caught at the destination layer, not the outer try, so it's not "failed".
+      // Handled inside buildPatch, not the outer try — the job stays healthy.
       expect(result.failed).toBe(0);
     });
 
-    it('pushes nothing when no destinations have an externalOrderId yet — still backfills tracking', async () => {
-      orderRecords.getOrderRecord.mockResolvedValue(
-        makeRecord({ syncStatus: [{ destinationConnectionId: PS1, status: 'pending' }] } as Partial<OrderRecord>),
+    it('treats unsupported/adapter-unresolved as TRANSIENT — releases the claim so a retry can happen', async () => {
+      // A connection mid-re-auth must not be recorded as "delivered", or the
+      // waybill is lost forever the moment the number is persisted.
+      relay.relay.mockResolvedValue(
+        relayResult({
+          connectionId: SOURCE,
+          outcome: 'unsupported',
+          unsupportedReason: 'adapter-unresolved',
+        }),
       );
       const s = makeShipment({ status: 'dispatched', trackingNumber: null });
       shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
       getTracking.mockResolvedValue(snapshot({ status: 'dispatched', trackingNumber: 'NEW456' }));
-      const result = await service.sync(CARRIER, { limit: 50 });
-      expect(updateFulfillment).not.toHaveBeenCalled();
-      expect(shipments.update).toHaveBeenCalledWith(
-        s.id,
-        expect.objectContaining({ trackingNumber: 'NEW456' }),
-      );
-      expect(result.propagated).toBe(1); // vacuously: all-zero destinations all-ok
+
+      await service.sync(CARRIER, { limit: 50 });
+
+      expect(shipments.releaseWaybillRelay).toHaveBeenCalledWith(s.id);
+      expect(shipments.update).not.toHaveBeenCalled();
     });
 
-    it('skips a destination that does not implement OrderFulfillmentUpdater (no failure)', async () => {
-      (integrations.getCapabilityAdapter as jest.Mock).mockImplementation(
-        (_connId: string, cap: string) => {
-          if (cap === 'ShippingProviderManager') return Promise.resolve({ getTracking });
-          // OrderProcessorManager that LACKS updateFulfillment.
-          return Promise.resolve({ createOrder: jest.fn() });
-        },
+    it('treats unsupported/no-capability as STRUCTURAL — keeps the claim and persists the number', async () => {
+      // Nothing to retry: this participant will never accept a waybill. Mirrors
+      // the skip the old destination-only push performed.
+      relay.relay.mockResolvedValue(
+        relayResult({
+          connectionId: PS1,
+          outcome: 'unsupported',
+          unsupportedReason: 'no-capability',
+        }),
       );
       const s = makeShipment({ status: 'dispatched', trackingNumber: null });
       shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
       getTracking.mockResolvedValue(snapshot({ status: 'dispatched', trackingNumber: 'NEW456' }));
+
       const result = await service.sync(CARRIER, { limit: 50 });
-      // Push not invoked, but the shipment is patched (treated as vacuously OK).
+
+      expect(shipments.releaseWaybillRelay).not.toHaveBeenCalled();
       expect(shipments.update).toHaveBeenCalledWith(
         s.id,
         expect.objectContaining({ trackingNumber: 'NEW456' }),
       );
+      expect(result.propagated).toBe(1);
+    });
+
+    it('a relay THROW releases the claim and does not discard the rest of the patch', async () => {
+      // The relay reports per-target outcomes rather than throwing, but it CAN
+      // throw before its loop (identifier resolution). An unhandled throw would
+      // abort the patch build and lose the terminal status + carrier backfill.
+      relay.relay.mockRejectedValue(new Error('identifier resolution exploded'));
+      const s = makeShipment({ status: 'dispatched', trackingNumber: null, carrier: null });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      getTracking.mockResolvedValue(
+        snapshot({
+          status: 'delivered',
+          trackingNumber: 'NEW456',
+          carrier: 'inpost',
+          deliveredAt: new Date('2026-05-28'),
+        }),
+      );
+
+      const result = await service.sync(CARRIER, { limit: 50 });
+
+      expect(shipments.releaseWaybillRelay).toHaveBeenCalledWith(s.id);
+      const patch = shipments.update.mock.calls[0]?.[1] as Record<string, unknown>;
+      expect(patch.status).toBe('delivered');
+      expect(patch.carrier).toBe('inpost');
+      expect(patch.trackingNumber).toBeUndefined();
       expect(result.failed).toBe(0);
     });
 
     it('does not overwrite a previously-set tracking number', async () => {
       const s = makeShipment({ status: 'dispatched', trackingNumber: 'EXISTING' });
       shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
-      getTracking.mockResolvedValue(snapshot({ status: 'dispatched', trackingNumber: 'WOULD_OVERWRITE' }));
+      getTracking.mockResolvedValue(
+        snapshot({ status: 'dispatched', trackingNumber: 'WOULD_OVERWRITE' }),
+      );
+
       await service.sync(CARRIER, { limit: 50 });
-      expect(updateFulfillment).not.toHaveBeenCalled();
+
+      expect(relay.relay).not.toHaveBeenCalled();
       expect(shipments.update).not.toHaveBeenCalled();
     });
   });
@@ -351,20 +461,16 @@ describe('ShipmentStatusSyncService', () => {
       expect(shipments.update).not.toHaveBeenCalled();
     });
 
-    it('writes carrier even when the trackingNumber push fails (carrier is independent of push-first workaround)', async () => {
-      orderRecords.getOrderRecord.mockResolvedValue(
-        makeRecord({
-          syncStatus: [
-            { destinationConnectionId: PS1, status: 'synced', externalOrderId: 'ps1-100' },
-          ],
-        } as Partial<OrderRecord>),
+    it('writes carrier even when the waybill relay fails (carrier is independent of the relay)', async () => {
+      relay.relay.mockResolvedValue(
+        relayResult({ connectionId: SOURCE, outcome: 'rejected', detail: 'source down' }),
       );
-      updateFulfillment.mockRejectedValueOnce(new Error('PS unreachable'));
       const s = makeShipment({ status: 'dispatched', trackingNumber: null, carrier: null });
       shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
       getTracking.mockResolvedValue(snapshot({ status: 'dispatched', trackingNumber: 'WAYBILL', carrier: 'inpost' }));
       await service.sync(CARRIER, { limit: 50 });
-      // Push-first dropped trackingNumber from the patch (workaround #1), but carrier still lands.
+      // The number is withheld so the next poll retries the relay, but the
+      // carrier backfill is independent and still lands.
       expect(shipments.update).toHaveBeenCalledWith(
         s.id,
         expect.objectContaining({ carrier: 'inpost' }),
@@ -376,13 +482,6 @@ describe('ShipmentStatusSyncService', () => {
     });
 
     it('writes both carrier and trackingNumber together on the happy path', async () => {
-      orderRecords.getOrderRecord.mockResolvedValue(
-        makeRecord({
-          syncStatus: [
-            { destinationConnectionId: PS1, status: 'synced', externalOrderId: 'ps1-100' },
-          ],
-        } as Partial<OrderRecord>),
-      );
       const s = makeShipment({ status: 'dispatched', trackingNumber: null, carrier: null });
       shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
       getTracking.mockResolvedValue(snapshot({ status: 'dispatched', trackingNumber: 'WAYBILL', carrier: 'inpost' }));

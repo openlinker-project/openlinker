@@ -33,9 +33,12 @@ import type {
   OrderFeedInput,
   OrderFeedOutput,
   OrderFulfillmentUpdater,
+  OrderLifecycleEvent,
   OrderProcessorManagerPort,
   OrderSourcePort,
   OrderStatus,
+  OrderStatusWriteback,
+  OrderWritebackResult,
 } from '@openlinker/core/orders';
 import type {
   GenerateLabelCommand,
@@ -77,6 +80,14 @@ export interface ShipmentStatusSyncTestStubs {
     setNextSnapshot(snapshot: TrackingSnapshot): void;
     /** Provider shipment ids handed out by `generateLabel`, in call order. */
     readonly providerShipmentIds: string[];
+  };
+  readonly source: {
+    readonly adapterKey: string;
+    readonly platformType: string;
+    /** Lifecycle events the SOURCE participant received, in call order (#1947). */
+    readonly writebackCalls: OrderLifecycleEvent[];
+    /** FIFO outcomes for the next `write` calls; drained queue falls back to `'ok'`. */
+    enqueueOutcomes(outcomes: readonly DestFulfillmentOutcome[]): void;
   };
   readonly dest: {
     readonly adapterKey: string;
@@ -129,9 +140,29 @@ export function installShipmentStatusSyncTestStubs(
   const destCalls: DestFulfillmentCall[] = [];
   const destOutcomeQueue: DestFulfillmentOutcome[] = [];
 
-  const destStub: OrderProcessorManagerPort & OrderFulfillmentUpdater = {
+  const destStub: OrderProcessorManagerPort & OrderFulfillmentUpdater & OrderStatusWriteback = {
     createOrder(): Promise<never> {
       return Promise.reject(new Error('status-sync stub: createOrder is not exercised'));
+    },
+    // #1947: the waybill now arrives through the lifecycle relay, which calls
+    // `write`. Delegating to `updateFulfillment` mirrors the real PrestaShop and
+    // WooCommerce adapters verbatim, so `dest.calls` keeps its meaning.
+    write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
+      if (event.type !== 'dispatched') {
+        return Promise.resolve({ outcome: 'applied' });
+      }
+      return this.updateFulfillment({
+        externalOrderId: event.externalOrderId,
+        status: 'shipped',
+        trackingNumber: event.trackingNumber,
+      })
+        .then((): OrderWritebackResult => ({ outcome: 'applied' }))
+        .catch(
+          (error: unknown): OrderWritebackResult => ({
+            outcome: 'rejected',
+            detail: error instanceof Error ? error.message : String(error),
+          }),
+        );
     },
     updateFulfillment(input): Promise<void> {
       destCalls.push({ ...input });
@@ -146,12 +177,26 @@ export function installShipmentStatusSyncTestStubs(
   // Source — declares OrderSource only so the seed's source connection has a
   // valid adapterKey. The shipment-status-sync flow never reaches it; methods
   // reject defensively in case they ever do.
-  const sourceStub: OrderSourcePort = {
+  // #1947: the source is the participant the waybill previously could never
+  // reach, so it now records its writeback calls — that is the assertion the
+  // old destination-only coverage could not make.
+  const sourceWritebackCalls: OrderLifecycleEvent[] = [];
+  const sourceOutcomeQueue: DestFulfillmentOutcome[] = [];
+
+  const sourceStub: OrderSourcePort & OrderStatusWriteback = {
     listOrderFeed(_input: OrderFeedInput): Promise<OrderFeedOutput> {
       return Promise.reject(new Error('status-sync stub: listOrderFeed is not exercised'));
     },
     getOrder(): Promise<never> {
       return Promise.reject(new Error('status-sync stub: getOrder is not exercised'));
+    },
+    write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
+      sourceWritebackCalls.push({ ...event });
+      const outcome: DestFulfillmentOutcome = sourceOutcomeQueue.shift() ?? 'ok';
+      if (typeof outcome === 'object' && outcome !== null && 'throw' in outcome) {
+        return Promise.resolve({ outcome: 'rejected', detail: outcome.throw.message });
+      }
+      return Promise.resolve({ outcome: 'applied' });
     },
   };
 
@@ -198,6 +243,14 @@ export function installShipmentStatusSyncTestStubs(
         nextSnapshot = snapshot;
       },
       providerShipmentIds,
+    },
+    source: {
+      adapterKey: STATUS_SYNC_SOURCE_ADAPTER_KEY,
+      platformType: STATUS_SYNC_SOURCE_PLATFORM_TYPE,
+      writebackCalls: sourceWritebackCalls,
+      enqueueOutcomes(outcomes: readonly DestFulfillmentOutcome[]): void {
+        sourceOutcomeQueue.push(...outcomes);
+      },
     },
     dest: {
       adapterKey: STATUS_SYNC_DEST_ADAPTER_KEY,
