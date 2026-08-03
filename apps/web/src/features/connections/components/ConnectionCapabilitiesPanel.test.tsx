@@ -173,8 +173,14 @@ describe('ConnectionCapabilitiesPanel', () => {
     expect(screen.queryByText(/no capabilities available to toggle/)).not.toBeInTheDocument();
   });
 
+  // These assertions are awaited rather than synchronous because the hint is
+  // behind `AccessGate` (#1993), which renders nothing until the session has
+  // hydrated -- "not known yet" is deliberately not "denied", so the hint
+  // appears one tick after first paint. The negative case waits for the panel
+  // to settle first, so it asserts a real absence rather than the pre-hydration
+  // state every branch shares.
   describe('MCP tool-staleness hint (#1949)', () => {
-    it('should show the reconnect hint when the connection supports an MCP-backing capability', () => {
+    it('should show the reconnect hint when the connection supports an MCP-backing capability', async () => {
       const connection: Connection = {
         ...sampleConnection,
         supportedCapabilities: ['ProductMaster', 'OfferManager'],
@@ -182,10 +188,10 @@ describe('ConnectionCapabilitiesPanel', () => {
       };
       renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
 
-      expect(screen.getByText(/MCP tools follow these capabilities/)).toBeInTheDocument();
+      expect(await screen.findByText(/MCP tools follow these capabilities/)).toBeInTheDocument();
     });
 
-    it('should hide the reconnect hint when no supported capability backs an MCP tool', () => {
+    it('should hide the reconnect hint when no supported capability backs an MCP tool', async () => {
       const connection: Connection = {
         ...sampleConnection,
         supportedCapabilities: ['OfferManager', 'CategoryProvisioner'],
@@ -193,12 +199,15 @@ describe('ConnectionCapabilitiesPanel', () => {
       };
       renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
 
+      // An admin session holds `connections:write`, so anything still missing
+      // once the panel has settled is missing because `backsMcpTools` is false.
+      expect(await screen.findByText(/1 of 2 enabled/)).toBeInTheDocument();
       expect(screen.queryByText(/MCP tools follow these capabilities/)).not.toBeInTheDocument();
     });
 
     // The gate is keyed on SUPPORTED, not ENABLED: the hint must survive the
     // toggle that causes the staleness, or it disappears exactly when it matters.
-    it('should keep the hint visible when the MCP-backing capability is supported but disabled', () => {
+    it('should keep the hint visible when the MCP-backing capability is supported but disabled', async () => {
       const connection: Connection = {
         ...sampleConnection,
         supportedCapabilities: ['ProductMaster', 'OfferManager'],
@@ -206,7 +215,7 @@ describe('ConnectionCapabilitiesPanel', () => {
       };
       renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
 
-      expect(screen.getByText(/MCP tools follow these capabilities/)).toBeInTheDocument();
+      expect(await screen.findByText(/MCP tools follow these capabilities/)).toBeInTheDocument();
     });
 
     // The hint explains the consequence of CHANGING capabilities, so it is

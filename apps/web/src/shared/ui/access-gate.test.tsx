@@ -9,25 +9,47 @@ import { AccessGate } from './access-gate';
 /**
  * Built locally rather than pulled from `test/test-utils` so the suite stays
  * off the plugin-registry import graph, and — more importantly — so the
- * never-resolving adapter below can exist. `SessionProvider` flips `isReady`
- * only once `getSession()` settles, so a pending promise is the only way to
+ * deferred adapter below can exist. `SessionProvider` flips `isReady` only once
+ * `getSession()` settles, so holding that promise open is the only way to
  * observe the hydrating window.
  */
-function createSessionAdapter(session: Session | 'pending'): SessionAdapter {
+function createSessionAdapter(session: Session): SessionAdapter {
   return {
-    getSession(): Promise<Session> {
-      if (session === 'pending') {
-        return new Promise<Session>(() => {
-          // Intentionally never settles — holds the provider in `!isReady`.
-        });
-      }
-      return Promise.resolve(session);
+    async getSession(): Promise<Session> {
+      return session;
     },
     async getAccessToken(): Promise<string | null> {
-      return session === 'pending' || session.accessToken === null ? null : session.accessToken;
+      return session.accessToken;
     },
     async persistSession(): Promise<void> {},
     async clearSession(): Promise<void> {},
+  };
+}
+
+/**
+ * Adapter whose `getSession()` stays pending until `resolve()` is called, so a
+ * test can assert the pre-hydration render and then prove the same tree does
+ * render once the session lands. Without the second half, "renders nothing
+ * while hydrating" would also pass for a component that renders nothing ever.
+ */
+function createDeferredSessionAdapter(session: Session): {
+  adapter: SessionAdapter;
+  resolve: () => void;
+} {
+  let release!: (value: Session) => void;
+  const pending = new Promise<Session>((r) => {
+    release = r;
+  });
+  return {
+    adapter: {
+      getSession: () => pending,
+      async getAccessToken(): Promise<string | null> {
+        return session.accessToken;
+      },
+      async persistSession(): Promise<void> {},
+      async clearSession(): Promise<void> {},
+    },
+    resolve: () => release(session),
   };
 }
 
@@ -51,7 +73,7 @@ function authenticatedWith(permissions: Permission[]): Session {
   };
 }
 
-function renderGate(session: Session | 'pending', gate: ReactNode): ReturnType<typeof render> {
+function renderGate(session: Session, gate: ReactNode): ReturnType<typeof render> {
   return render(
     <SessionProvider adapter={createSessionAdapter(session)}>{gate}</SessionProvider>,
   );
@@ -99,12 +121,21 @@ describe('AccessGate', () => {
     expect(screen.queryByText('gated content')).not.toBeInTheDocument();
   });
 
-  it('should render neither branch while the session is still hydrating', async () => {
-    renderGate('pending', gate(FALLBACK));
+  it('should render neither branch while the session is still hydrating, then the children once it lands', async () => {
+    const { adapter, resolve } = createDeferredSessionAdapter(
+      authenticatedWith(['connections:read', 'connections:write']),
+    );
+    render(<SessionProvider adapter={adapter}>{gate(FALLBACK)}</SessionProvider>);
 
-    // "Not known yet" is not "denied" — flashing the fallback and then
+    // "Not known yet" is not "denied". Flashing the fallback and only then
     // revealing the children is the regression this guards.
-    await waitFor(() => expect(screen.queryByText('no access')).not.toBeInTheDocument());
+    expect(screen.queryByText('no access')).not.toBeInTheDocument();
     expect(screen.queryByText('gated content')).not.toBeInTheDocument();
+
+    // Releasing the session proves the emptiness above was the hydration
+    // guard, not a component that never renders anything.
+    resolve();
+    expect(await screen.findByText('gated content')).toBeInTheDocument();
+    expect(screen.queryByText('no access')).not.toBeInTheDocument();
   });
 });
