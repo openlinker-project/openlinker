@@ -142,7 +142,7 @@ describe('PrestaShop webhook provisioning — install() against real PS (#541)',
     // Ping is a real HTTP call against the PS container in this suite, so the
     // transport factory just hands back the platform fetch (#1810).
     httpTransportFactory = {
-      for: jest.fn().mockReturnValue(fetch),
+      forConnection: jest.fn().mockReturnValue(fetch),
     } as unknown as jest.Mocked<HttpTransportFactoryPort>;
 
     service = new PrestashopWebhookProvisioningAdapter(

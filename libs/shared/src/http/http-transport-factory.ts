@@ -83,8 +83,8 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
     this.baseFetch = deps.fetchImpl ?? globalThis.fetch;
   }
 
-  for(connection: RateLimitedConnection, defaultRateLimit?: ConnectionRateLimit): FetchLike {
-    // Keep the ref fresh on every for() call so a cached closure (below)
+  forConnection(connection: RateLimitedConnection, defaultRateLimit?: ConnectionRateLimit): FetchLike {
+    // Keep the ref fresh on every forConnection() call so a cached closure (below)
     // never reads a stale `config.rateLimit` from the connection object it
     // happened to be built with — an operator's config edit must take effect
     // on the very next call through the same cached FetchLike. `defaultRateLimit`
@@ -133,5 +133,11 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
 
     this.cache.set(connection.id, fetchImpl);
     return fetchImpl;
+  }
+
+  evict(connectionId: string): void {
+    this.cache.delete(connectionId);
+    this.connectionRefs.delete(connectionId);
+    this.registry.evict(connectionId);
   }
 }
