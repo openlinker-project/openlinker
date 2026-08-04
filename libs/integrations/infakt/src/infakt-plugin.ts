@@ -61,7 +61,10 @@ export function createInfaktPlugin(): AdapterPlugin {
         new InfaktConnectionCredentialsShapeValidatorAdapter(INFAKT_BRAND),
       );
       host.retryClassifierRegistry.register(INFAKT_ADAPTER_KEY, new InfaktRetryClassifierAdapter());
-      host.connectionTesterRegistry.register(INFAKT_ADAPTER_KEY, new InfaktConnectionTesterAdapter());
+      host.connectionTesterRegistry.register(
+        INFAKT_ADAPTER_KEY,
+        new InfaktConnectionTesterAdapter(host.http),
+      );
 
       // #1281 / ADR-021 — third-party-native webhook ingress. The decoder
       // (provider-keyed) authenticates + decodes Infakt's KSeF-relay webhook
@@ -89,6 +92,7 @@ export function createInfaktPlugin(): AdapterPlugin {
         connection,
         host.credentialsResolver,
         logger,
+        host.http.forConnection(connection, infaktAdapterManifest.defaultRateLimit),
       );
       return dispatchCapability<T>(capability, { Invoicing: () => invoicingAdapter }, INFAKT_BRAND);
     },

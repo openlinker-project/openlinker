@@ -9,6 +9,7 @@
  * @implements {IInfaktHttpClient}
  */
 import type { LoggerPort } from '@openlinker/shared/logging';
+import type { FetchLike } from '@openlinker/shared/http';
 import { InfaktApiError } from '../../domain/exceptions/infakt-api.error';
 import type { IInfaktHttpClient, InfaktBinaryResponse } from './infakt-http-client.interface';
 
@@ -29,23 +30,26 @@ const MAX_BINARY_RESPONSE_BYTES = 10 * 1024 * 1024;
 
 export class InfaktHttpClient implements IInfaktHttpClient {
   private readonly baseUrl: string;
+  private readonly fetchImpl: FetchLike;
 
   constructor(
     private readonly config: InfaktHttpClientConfig,
     private readonly logger: LoggerPort,
+    fetchImpl?: FetchLike,
   ) {
     this.baseUrl = config.baseUrl?.replace(/\/$/, '') ?? INFAKT_DEFAULT_BASE_URL;
+    this.fetchImpl = fetchImpl ?? globalThis.fetch;
   }
 
   async get<T>(path: string, query?: Record<string, string>): Promise<T> {
     const url = this.buildUrl(path, query);
-    const res = await fetch(url, { headers: this.headers() });
+    const res = await this.fetchImpl(url, { headers: this.headers() });
     return this.parse<T>(res, 'GET', path);
   }
 
   async post<T>(path: string, body: unknown): Promise<T> {
     const url = this.buildUrl(path);
-    const res = await fetch(url, {
+    const res = await this.fetchImpl(url, {
       method: 'POST',
       headers: { ...this.headers(), 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -55,7 +59,7 @@ export class InfaktHttpClient implements IInfaktHttpClient {
 
   async put<T>(path: string, body: unknown): Promise<T> {
     const url = this.buildUrl(path);
-    const res = await fetch(url, {
+    const res = await this.fetchImpl(url, {
       method: 'PUT',
       headers: { ...this.headers(), 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -76,7 +80,7 @@ export class InfaktHttpClient implements IInfaktHttpClient {
    */
   async postForEffect(path: string, body: unknown): Promise<void> {
     const url = this.buildUrl(path);
-    const res = await fetch(url, {
+    const res = await this.fetchImpl(url, {
       method: 'POST',
       headers: { ...this.headers(), 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -102,7 +106,7 @@ export class InfaktHttpClient implements IInfaktHttpClient {
 
   async getBinary(path: string, query?: Record<string, string>): Promise<InfaktBinaryResponse> {
     const url = this.buildUrl(path, query);
-    const res = await fetch(url, { headers: this.headers() });
+    const res = await this.fetchImpl(url, { headers: this.headers() });
     if (!res.ok) {
       const text = await res.text();
       this.logger.warn(`Infakt API GET ${path} → ${res.status}`);

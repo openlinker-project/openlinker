@@ -9,6 +9,7 @@
  * @module libs/integrations/infakt/src/application/__tests__
  */
 import type { LoggerPort } from '@openlinker/shared/logging';
+import type { FetchLike } from '@openlinker/shared/http';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { BuyerProfile } from '@openlinker/core/invoicing';
@@ -73,14 +74,19 @@ describe('InfaktAdapterFactory', () => {
 
   it('should resolve the apiKey from the credentials resolver via connection.credentialsRef', async () => {
     const resolver = resolverFor({ apiKey: 'resolved-key' });
-    await factory.createInvoicingAdapter(connection(), resolver, logger);
+    await factory.createInvoicingAdapter(connection(), resolver, logger, fetchMock as unknown as FetchLike);
 
     expect(resolver.get).toHaveBeenCalledWith('ref-1');
   });
 
   it('should default to INFAKT_DEFAULT_BASE_URL when connection.config has no baseUrl', async () => {
     const resolver = resolverFor({ apiKey: 'k' });
-    const adapter = await factory.createInvoicingAdapter(connection(), resolver, logger);
+    const adapter = await factory.createInvoicingAdapter(
+      connection(),
+      resolver,
+      logger,
+      fetchMock as unknown as FetchLike,
+    );
 
     await adapter.getInvoice({ providerInvoiceId: 'inv-1' }).catch(() => undefined);
 
@@ -96,6 +102,7 @@ describe('InfaktAdapterFactory', () => {
       connection({ config: { baseUrl: sandboxUrl } }),
       resolver,
       logger,
+      fetchMock as unknown as FetchLike,
     );
 
     await adapter.getInvoice({ providerInvoiceId: 'inv-1' }).catch(() => undefined);
@@ -107,7 +114,12 @@ describe('InfaktAdapterFactory', () => {
   it('should throw when the connection has no credentialsRef', async () => {
     const resolver = resolverFor({ apiKey: 'k' });
     await expect(
-      factory.createInvoicingAdapter(connection({ credentialsRef: '' }), resolver, logger),
+      factory.createInvoicingAdapter(
+        connection({ credentialsRef: '' }),
+        resolver,
+        logger,
+        fetchMock as unknown as FetchLike,
+      ),
     ).rejects.toThrow(/no credentialsRef/);
   });
 
@@ -120,6 +132,7 @@ describe('InfaktAdapterFactory', () => {
       connection({ config: { defaultPaymentMethod: 'transfer' } }),
       resolver,
       logger,
+      fetchMock as unknown as FetchLike,
     );
     await adapter
       .issueInvoice({

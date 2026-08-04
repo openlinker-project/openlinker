@@ -90,6 +90,28 @@ describe('InfaktHttpClient', () => {
     });
   });
 
+  describe('fetchImpl injection (#1810)', () => {
+    it('should route every call through an explicitly-injected fetchImpl instead of global.fetch', async () => {
+      const injectedFetch = jest.fn().mockResolvedValue(fakeResponse(200, '{}'));
+      const injectedClient = new InfaktHttpClient(
+        { apiKey: 'k' },
+        logger,
+        injectedFetch as unknown as typeof fetch,
+      );
+
+      await injectedClient.get('invoices.json');
+
+      expect(injectedFetch).toHaveBeenCalledTimes(1);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to global.fetch when fetchImpl is not provided', async () => {
+      fetchMock.mockResolvedValue(fakeResponse(200, '{}'));
+      await client.get('invoices.json');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('GET', () => {
     it('should attach the X-inFakt-ApiKey header', async () => {
       fetchMock.mockResolvedValue(fakeResponse(200, '{"uuid":"abc"}'));
