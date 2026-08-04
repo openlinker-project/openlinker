@@ -852,6 +852,24 @@
      frames here are fixed-width boxes inside the 1320px sheet, so no @media fires
      on them and the tablet pane opts in explicitly with this class. */
   .orders-order-channel { display: inline-flex; align-items: center; gap: 6px; }
+  /* ── The tablet fold (#1996, decided 2026-08-04) ──────────────────────────
+     Below 1024px the Connection column disappears on Products, Shipments and
+     Invoices. Rather than let the fact vanish, it relocates into an adjacent cell
+     — the pattern `.orders-order-channel` already establishes for the channel
+     pill. Same silhouette as that rule; one line, adornment plus the human name.
+
+     The id is deliberately NOT carried into the fold. Its job is to be copied, and
+     copying is a pointer affordance (the Copy button reveals on row hover, which
+     does not exist on touch). At tablet width the question is "which connection is
+     this?", which the name answers; "give me its id" stays a desktop and
+     detail-page action. So the fold is the cell's FIRST line, not both. */
+  .conn-fold {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 0.75rem; color: var(--text-muted); min-width: 0;
+  }
+  .conn-fold__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .conn-fold__name--link { color: var(--text-secondary); text-decoration: none; }
+  .conn-fold__name--link:hover { text-decoration: underline; }
 
   /* ══════════════════ 6. THE ONE NEW RULE (#1996) ══════════════════ */
 
@@ -1261,9 +1279,9 @@
   <section class="viewport-frame" id="frame-tablet">
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">11 &middot; Tablet</span>
-      <b>768 px &mdash; the table keeps its columns, but loses three of them</b>
+      <b>768 px &mdash; the Connection column goes, so the connection moves</b>
       <span class="caption">768 &times; 1024 &middot; no fold to cards here; the container scrolls and <code>hideBelow</code> drops columns</span>
-      <span class="dep dep--blocked">Surfaces a gap</span>
+      <span class="dep">Decided</span>
     </div>
     <div class="viewport-frame__scroll">
       <div class="tablet-frame">
@@ -1271,14 +1289,30 @@
           <div class="page-header">
             <p class="eyebrow">Operations</p>
             <h2 class="page-title">Orders</h2>
+            <p class="page-description">The existing precedent: Channel disappears, the pill folds under the order name.</p>
           </div>
           <div class="data-table__container"><table class="data-table" id="tablet-orders"></table></div>
 
           <div class="page-header" style="margin-top: var(--space-6)">
+            <p class="eyebrow">Catalogue</p>
+            <h2 class="page-title">Products</h2>
+            <p class="page-description">Source is gone; the connection folds into the Product cell as a third line.</p>
+          </div>
+          <div class="data-table__container"><table class="data-table" id="tablet-products"></table></div>
+
+          <div class="page-header" style="margin-top: var(--space-6)">
             <p class="eyebrow">Fulfilment</p>
             <h2 class="page-title">Shipments</h2>
+            <p class="page-description">Connection is gone; it folds into Processor, beside the carrier badge.</p>
           </div>
           <div class="data-table__container"><table class="data-table" id="tablet-shipments"></table></div>
+
+          <div class="page-header" style="margin-top: var(--space-6)">
+            <p class="eyebrow">Finance</p>
+            <h2 class="page-title">Invoices</h2>
+            <p class="page-description">Connection is gone; it folds into Document type, under the document.</p>
+          </div>
+          <div class="data-table__container"><table class="data-table" id="tablet-invoices"></table></div>
         </div>
       </div>
 
@@ -1291,21 +1325,33 @@
 
       <div class="gap-legend">
         <span>
-          <b>The finding.</b> <code>hide-below-1024</code> fires at
-          <code>max-width: 1023.98px</code>, so it is <em>already active</em> at 768. That drops the
-          Connection column on <b>Products, Shipments and Invoices</b> &mdash; three of the five lists that
-          gain the shared cell. On a tablet the operator therefore cannot see which connection a row came
-          from on exactly the lists where the raw UUID was worst today. This is <b>pre-existing</b>
-          behaviour (those <code>hideBelow: 1024</code> values predate #1996), but #1996 inherits it while
-          claiming &bdquo;the same two facts, read the same way everywhere&rdquo; &mdash; so it is worth a
-          decision rather than silence. Options: lower those three to <code>hideBelow: 768</code> so the
-          cell survives tablet (the table already scrolls, so the cost is scroll distance, not layout);
-          or accept it and drop the claim to &bdquo;desktop parity&rdquo;. <b>Not decided here.</b>
+          <b>The problem.</b> <code>hide-below-1024</code> fires at <code>max-width: 1023.98px</code>, so it
+          is <em>already active</em> at 768 &mdash; that value means &bdquo;desktop only&rdquo; in practice.
+          It drops the Connection column on <b>Products, Shipments and Invoices</b>: three of the five lists
+          that gain the shared cell, and precisely the three where today&rsquo;s rendering is worst (Products
+          shows a name with no id at all, Shipments the same, Invoices hides the id in a <code>title</code>
+          attribute &mdash; invisible, unselectable, unreachable on touch). Pre-existing behaviour, but
+          #1996 inherits it together with a promise it then fails to keep.
           <br /><br />
-          Orders behaves differently and correctly: its Channel column also disappears at 768, but the
-          channel pill <em>folds into the Order cell</em> (<code>.orders-order-channel</code>,
-          <code>index.css:8902-8907</code>) &mdash; the fact is relocated, not lost. That is the pattern the
-          three lists above are missing.
+          <b>The decision: relocate, don&rsquo;t hide.</b> Orders already proves the pattern &mdash; its
+          Channel column disappears at 768 too, but the pill folds under the order name
+          (<code>.orders-order-channel</code>, <code>index.css:8902-8907</code>), so the fact moves rather
+          than vanishing. Simply lowering the three thresholds to <code>768</code> was the cheaper option
+          and was rejected: it keeps the column at the cost of pushing it behind horizontal scroll, and a
+          fact you must scroll to find is one an operator stops checking.
+          <br /><br />
+          <b>Each host cell is chosen by meaning, not by free space</b> &mdash; see the table below.
+          Products folds into <b>Product</b> (where the product came from is that column&rsquo;s subject),
+          Shipments into <b>Processor</b> (&bdquo;Carrier&rdquo; and &bdquo;which carrier connection&rdquo;
+          are one question), Invoices into <b>Document type</b> (what the document is and who issued it are
+          the same sentence). Listings and Customers need no fold: their column is
+          <code>hideBelow: 768</code> and survives.
+          <br /><br />
+          <b>The fold carries the name, not the id</b> &mdash; a deliberate reduction. The id exists to be
+          copied, and the Copy button reveals on row hover, which does not exist on touch. At tablet width
+          the question is &bdquo;which connection is this?&rdquo;, which the name answers; &bdquo;give me its
+          id&rdquo; stays a desktop and detail-page action. So the tablet form is the shared cell&rsquo;s
+          <em>first line</em>, relocated &mdash; not a third variant of it.
         </span>
       </div>
     </div>
@@ -1431,9 +1477,9 @@
               <td>Investigated and deliberately not filed: no endpoint has a sort key for order identity, none joins <code>connections</code>, and Shipments / Invoices / Customers / Listings run no server-side sorting at all &mdash; <code>useTableSort</code> writes the URL but nothing forwards it, so those tables sort only the rows on screen.</td>
             </tr>
             <tr>
-              <td>The shared Connection cell vanishes at tablet width</td>
-              <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Decide</span></td>
-              <td>Products, Shipments and Invoices declare <code>hideBelow: 1024</code> on their Connection column, and that media query is already active at 768 — so on a tablet the cell is absent from three of the five lists that gain it. Pre-existing, but #1996 inherits it while promising uniformity. Either lower those three to <code>hideBelow: 768</code> (the table already scrolls; the cost is scroll distance, not layout) or narrow the claim to desktop parity. Surfaced by frame 11. <b>Needs a product decision, not a code decision.</b></td>
+              <td>The Connection cell relocates at tablet width</td>
+              <td><span class="status-badge status-badge--info"><span class="status-badge__dot"></span>Decided</span></td>
+              <td>Products, Shipments and Invoices declare <code>hideBelow: 1024</code>, which is already active at 768 — so the cell would be absent from three of the five lists that gain it. <b>Decision: relocate, following <code>.orders-order-channel</code></b> — into <b>Product</b>, <b>Processor</b> and <b>Document type</b> respectively, one line, adornment plus name, no id. Lowering the thresholds to 768 was rejected: it keeps the column only behind horizontal scroll. Specified in frame 11; adds one CSS rule (<code>.conn-fold</code>) and one render branch per host cell. Listings and Customers are unaffected (<code>hideBelow: 768</code>).</td>
             </tr>
             <tr>
               <td>Multi-item preview inside the Order cell</td>
@@ -1611,6 +1657,25 @@
         '<code class="copyable-id__value" title="' + esc(connId) + '">' + esc(shortenId(connId)) + '</code>' +
         copyBtn(connId, 'Copy connection ID' + (c ? ' for ' + c.name : ''), 'copyable-id__copy') +
       '</span></span>';
+  }
+
+  /* The tablet fold of the Connection cell: the same adornment and the same name as
+     connCell()'s first line, on one line, without the id. Below 1024px the
+     Connection column is gone, so this renders inside whichever adjacent cell owns
+     the neighbouring fact — see frame 11 for which cell per list, and why. */
+  function connFold(connId, opts) {
+    opts = opts || {};
+    var c = CONNECTIONS[connId];
+    var adorn = '';
+    if (opts.adornment === 'dot') {
+      adorn = connDot(c ? c.name : null, c ? c.platformType : null, opts.variant || 'shop');
+    } else if (opts.adornment === 'pill' && c) {
+      adorn = channelPill(c.platformType);
+    }
+    var name = c
+      ? '<a class="conn-fold__name conn-fold__name--link" href="#frame-tablet">' + esc(c.name) + '</a>'
+      : '<span class="conn-fold__name" title="' + esc(connId) + '">Unknown</span>';
+    return '<span class="conn-fold">' + (adorn ? adorn + ' ' : '') + name + '</span>';
   }
 
   /* ══════════════════ Data — one source for every frame ══════════════════ */
@@ -2293,9 +2358,36 @@
       ]);
     }));
 
-  /* Shipments at 768: `connectionId` (hideBelow 1024) is gone and NOTHING relocates
-     it — the shared cell simply is not on screen. `paczkomatId` goes with it;
-     `customerId` and `trackingNumber` (hideBelow 768) survive. */
+  /* Products at 768: `source` (hideBelow 1024) is gone, so the connection folds into
+     the PRODUCT cell as a third line. Host chosen by meaning: the source connection
+     is where this product came from, which is the identity column's own subject. */
+  table('tablet-products',
+    ['', 'Product', 'Stock', 'Listings', '>Price / Updated'],
+    PRODUCTS.slice(0, 3).map(function (p) {
+      return tr([
+        CHECK,
+        '<span class="product-row">' + thumb(p.name, p.hasImage, 'md') +
+          '<span class="products-cell-stack">' +
+            '<span class="ds-row"><a class="product-row__name product-row__name--link" href="#frame-tablet">' + esc(p.name) + '</a>' +
+              (p.variants > 1 ? badge('', p.variants + ' variants', { compact: true, dot: false }) : '') + '</span>' +
+            '<span class="text-muted products-cell-sub">SKU: <span class="mono-text">' + esc(p.sku) + '</span></span>' +
+            connFold(p.conn, { adornment: 'pill' }) +
+          '</span></span>',
+        stockCell(p),
+        '<span class="coverage-pills">' + p.cov.map(function (x) {
+          return '<span class="coverage-pill coverage-pill--' + x[1] + '" data-channel="' + x[0] + '">' +
+            esc(platformLabel(x[0])) + ' <span class="coverage-pill__count tabular">' + x[2] + '/' + x[3] + '</span></span>';
+        }).join('') + '</span>',
+        right('<span class="products-cell-stack products-cell-stack--end">' +
+          '<span class="mono tabular products-stock-value">' + esc(p.price) + '</span>' +
+          '<span class="text-muted products-cell-sub products-cell-sub--date mono tabular">upd. ' + esc(p.updated) + '</span></span>')
+      ]);
+    }));
+
+  /* Shipments at 768: `connectionId` (hideBelow 1024) is gone, so the connection
+     folds into the PROCESSOR cell. Host chosen by meaning: "Carrier" and "which
+     carrier connection" are one question — the badge already answers the first half,
+     so the fold completes it rather than repeating the identity column. */
   table('tablet-shipments',
     ['Status', 'Order', 'Action', 'Processor', 'Created', 'Customer', 'Tracking'],
     SHIPMENTS.slice(0, 3).map(function (s) {
@@ -2304,23 +2396,46 @@
         badge(s.status[0], s.status[1], { compact: true, pulse: s.status[2] }),
         orderCell(o, { gap: true }),
         '<span class="shipments-page__severity" data-severity="' + esc(s.sev) + '">' + esc(s.sev) + '</span>',
-        badge(s.proc[0], s.proc[1], { compact: true }),
+        '<span class="orders-cell-stack">' + badge(s.proc[0], s.proc[1], { compact: true }) +
+          connFold(s.conn, { adornment: 'dot', variant: 'carrier' }) + '</span>',
         '<span class="time-cell">' + esc(s.created) + '</span>',
         '<span class="entity-label"><a class="entity-label__name entity-label__name--link" href="#frame-tablet">' + esc(s.cust) + '</a></span>',
         s.track ? '<span class="mono-text">' + esc(s.track) + '</span>' : '<span class="text-muted">—</span>'
       ], false);
     }));
 
+  /* Invoices at 768: `connection` goes with `regulatoryStatus` and `clearanceRef`
+     (all hideBelow 1024), so the connection folds into the DOCUMENT TYPE cell. Host
+     chosen by meaning: that cell already answers "what document is this", and the
+     provider that issued it is the same sentence. */
+  table('tablet-invoices',
+    ['', 'Order', 'Document type', 'Status', 'Issued'],
+    INVOICES.slice(0, 3).map(function (i) {
+      var o = i.o ? ORDERS[i.o] : null;
+      return tr([
+        CHECK,
+        orderCell(o, { gap: true }),
+        '<span class="orders-cell-stack">' +
+          (i.num ? (i.pdf ? '<a class="invoice-pdf-link" href="#frame-tablet"><span class="mono-text">' + esc(i.num) + '</span></a>'
+                          : '<span class="mono-text">' + esc(i.num) + '</span>')
+                 : '<span class="text-muted">–</span>') +
+          '<span class="text-muted orders-cell-sub">' + esc(i.type) + '</span>' +
+          connFold(i.conn) + '</span>',
+        badge(i.status[0], i.status[1], { compact: true }),
+        i.issued ? '<span class="time-cell">' + esc(i.issued) + '</span>' : '<span class="text-muted">—</span>'
+      ]);
+    }));
+
   /* The matrix. `hide-below-1024` fires at max-width 1023.98px, so it is ACTIVE at
      768; `hide-below-768` fires at max-width 767.98px, so it is NOT. */
   (function () {
     var rows = [
-      ['Orders',    'Channel <code>(1024)</code>',                                              'relocated', 'n/a — Orders has no Connection column; the channel pill folds into the Order cell'],
-      ['Products',  'Source <code>(1024)</code>, Price/Updated <code>(480)</code> survives',     'gone',      'the Source column <em>is</em> the Connection cell'],
-      ['Listings',  'Internal ID <code>(1024)</code>',                                          'visible',   'Connection is <code>hideBelow: 768</code> — survives at exactly 768'],
-      ['Customers', 'Email Hash <code>(1024)</code> — already removed by #1996',                 'visible',   'Last connection source is <code>hideBelow: 768</code>'],
-      ['Shipments', 'Connection <code>(1024)</code>, Paczkomat <code>(1024)</code>',             'gone',      'nothing relocates it'],
-      ['Invoices',  'Regulatory, Clearance ref., Connection <code>(1024)</code>',                'gone',      'nothing relocates it']
+      ['Orders',    'Channel <code>(1024)</code>',                                          'relocated', 'Pre-existing precedent: the channel pill folds into the <b>Order</b> cell (<code>.orders-order-channel</code>). Orders has no Connection column of its own.'],
+      ['Products',  'Source <code>(1024)</code>',                                           'relocated', 'Folds into the <b>Product</b> cell — the source connection is where this product came from, which is that column\'s own subject.'],
+      ['Listings',  'Internal ID <code>(1024)</code>',                                      'visible',   'Connection is <code>hideBelow: 768</code>, so it survives at exactly 768. No fold needed.'],
+      ['Customers', 'Email Hash <code>(1024)</code> — already removed by #1996',             'visible',   'Last connection source is <code>hideBelow: 768</code>. No fold needed.'],
+      ['Shipments', 'Connection <code>(1024)</code>, Paczkomat <code>(1024)</code>',         'relocated', 'Folds into the <b>Processor</b> cell — "Carrier" and "which carrier connection" are one question; the badge answers half of it.'],
+      ['Invoices',  'Regulatory, Clearance ref., Connection <code>(1024)</code>',            'relocated', 'Folds into the <b>Document type</b> cell — that cell already says what the document is; who issued it is the same sentence.']
     ];
     var TONE = { gone: ['error', 'Not shown'], visible: ['success', 'Shown'], relocated: ['info', 'Relocated'] };
     document.getElementById('tablet-matrix').innerHTML = rows.map(function (r) {
