@@ -23,6 +23,7 @@ import { AllegroConnectionTokenState } from '../http/allegro-connection-token-st
 import { getAllegroRestApiBaseUrl } from '../http/allegro-hosts';
 import type { AllegroCredentials } from '../../domain/types/allegro-credentials.types';
 import type { AllegroConnectionConfig } from '../../domain/types/allegro-config.types';
+import { allegroAdapterManifest } from '../../allegro-plugin';
 
 export class AllegroConnectionTesterAdapter implements ConnectionTesterPort {
   constructor(private readonly http: HttpTransportFactoryPort) {}
@@ -44,8 +45,11 @@ export class AllegroConnectionTesterAdapter implements ConnectionTesterPort {
       // Connection-bound outbound transport (#1810) — a "Test connection"
       // click is operator-triggered and can be repeated in quick succession;
       // it must go through the same rate limiter as every other Allegro call
-      // site, not a bare globalThis.fetch.
-      const fetchImpl = this.http.for(connection);
+      // site, not a bare globalThis.fetch. `defaultRateLimit` + the 'api'
+      // hostKey mirror the real api.allegro.pl client's call site
+      // (`allegro-plugin.ts`) so this probe shares that bucket rather than
+      // resolving an unlimited one (#1968 review).
+      const fetchImpl = this.http.for(connection, allegroAdapterManifest.defaultRateLimit, 'api');
 
       // Probe deliberately runs without a token-refresh callback: a stale or
       // invalid token must surface as a clear failure (caller can prompt the

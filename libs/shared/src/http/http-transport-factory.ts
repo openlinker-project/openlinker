@@ -83,28 +83,39 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
     this.baseFetch = deps.fetchImpl ?? globalThis.fetch;
   }
 
-  for(connection: RateLimitedConnection, defaultRateLimit?: ConnectionRateLimit): FetchLike {
+  for(
+    connection: RateLimitedConnection,
+    defaultRateLimit?: ConnectionRateLimit,
+    hostKey?: string
+  ): FetchLike {
+    // `hostKey` separates independent rate-limit buckets for a plugin that
+    // talks to more than one physical host per connection (#1810 Phase 5 —
+    // Allegro's api.allegro.pl vs upload.allegro.pl). Omitted, the cache key
+    // is `connection.id` alone — byte-identical to every pre-existing
+    // single-host caller (PrestaShop).
+    const cacheKey = hostKey ? `${connection.id}:${hostKey}` : connection.id;
+
     // Keep the ref fresh on every for() call so a cached closure (below)
     // never reads a stale `config.rateLimit` from the connection object it
     // happened to be built with — an operator's config edit must take effect
     // on the very next call through the same cached FetchLike. `defaultRateLimit`
-    // is per-connection-id, not per-call: a caller that omits it (e.g. a second
-    // call site resolving the same connection) must never clobber the value a
+    // is per-cache-key, not per-call: a caller that omits it (e.g. a second
+    // call site resolving the same connection/host) must never clobber the value a
     // prior caller established, since every caller shares one cached FetchLike.
-    const ref = this.connectionRefs.get(connection.id);
+    const ref = this.connectionRefs.get(cacheKey);
     if (ref) {
       ref.current = connection;
       ref.defaultRateLimit = defaultRateLimit ?? ref.defaultRateLimit;
     } else {
-      this.connectionRefs.set(connection.id, { current: connection, defaultRateLimit });
+      this.connectionRefs.set(cacheKey, { current: connection, defaultRateLimit });
     }
 
-    const cached = this.cache.get(connection.id);
+    const cached = this.cache.get(cacheKey);
     if (cached) {
       return cached;
     }
 
-    const connectionRef = this.connectionRefs.get(connection.id)!;
+    const connectionRef = this.connectionRefs.get(cacheKey)!;
     const fetchImpl: FetchLike = (async (
       input: RequestInfo | URL,
       init?: RequestInit
@@ -112,7 +123,7 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
       const rawPolicy: ConnectionRateLimit =
         connectionRef.current.config?.rateLimit ?? connectionRef.defaultRateLimit ?? {};
       const policy = dividePolicy(rawPolicy, this.replicas);
-      const limiter = this.registry.get(connectionRef.current.id, policy);
+      const limiter = this.registry.get(cacheKey, policy);
       const priority = getCurrentPriority();
       const signal = getCurrentRateLimitSignal();
 
@@ -131,7 +142,7 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
       }
     }) as FetchLike;
 
-    this.cache.set(connection.id, fetchImpl);
+    this.cache.set(cacheKey, fetchImpl);
     return fetchImpl;
   }
 }

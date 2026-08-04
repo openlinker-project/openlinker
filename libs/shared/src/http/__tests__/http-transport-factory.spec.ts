@@ -170,6 +170,42 @@ describe('HttpTransportFactory', () => {
     expect(registry.getStatus('conn-1')?.maxConcurrent).toBe(1);
   });
 
+  it('gives distinct hostKeys under the same connection independent rate-limit buckets (#1968 review)', async () => {
+    // A plugin talking to two physical hosts per connection (e.g. Allegro's
+    // api.allegro.pl vs upload.allegro.pl) must not have one host's traffic
+    // exhaust the other's budget.
+    const response = new Response(null, { status: 200 });
+    const fetchImpl = jest.fn().mockResolvedValue(response);
+    const factory = new HttpTransportFactory({ registry, fetchImpl });
+
+    const connection = { id: 'conn-1', config: { rateLimit: { maxConcurrent: 1 } } };
+    const apiFetch = factory.for(connection, undefined, 'api');
+    const uploadFetch = factory.for(connection, undefined, 'upload');
+
+    expect(apiFetch).not.toBe(uploadFetch);
+
+    // Saturate the 'api' bucket only.
+    const release = await registry
+      .get('conn-1:api', { maxConcurrent: 1 })
+      .acquire({ maxConcurrent: 1 }, 'background');
+
+    // 'upload' has its own, still-free bucket and must resolve immediately.
+    await uploadFetch('https://upload.example.com');
+    expect(fetchImpl).toHaveBeenCalledWith('https://upload.example.com', undefined);
+
+    release();
+  });
+
+  it('omitting hostKey keys the bucket on connection.id alone, matching single-host callers byte-for-byte', () => {
+    const factory = new HttpTransportFactory({ registry });
+    const connection = { id: 'conn-1' };
+
+    const first = factory.for(connection);
+    const second = factory.for(connection, undefined, undefined);
+
+    expect(first).toBe(second);
+  });
+
   it('forwards the active AsyncLocalStorage cancellation signal into acquire()', async () => {
     const response = new Response(null, { status: 200 });
     const fetchImpl = jest.fn().mockResolvedValue(response);

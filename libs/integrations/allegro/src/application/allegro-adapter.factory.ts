@@ -63,7 +63,8 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
     connection: Connection,
     identifierMapping: IdentifierMappingPort,
     credentialsResolver: CredentialsResolverPort,
-    fetchImpl: FetchLike
+    apiFetchImpl: FetchLike,
+    uploadFetchImpl: FetchLike
   ): Promise<AllegroAdapters> {
     this.logger.debug(`Creating Allegro adapters for connection: ${connection.id}`);
 
@@ -108,20 +109,22 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
     );
 
     // Two HTTP clients per connection — one for api.allegro.pl, one for
-    // upload.allegro.pl. They share the token state above.
+    // upload.allegro.pl. They share the token state above but each gets its
+    // own connection-bound transport / rate-limit bucket (#1968 review) —
+    // the two hosts carry independent quotas on Allegro's side.
     const httpClient = new AllegroHttpClient(
       connection.id,
       apiBaseUrl,
       tokenState,
       undefined,
-      fetchImpl
+      apiFetchImpl
     );
     const uploadHttpClient = new AllegroHttpClient(
       connection.id,
       uploadBaseUrl,
       tokenState,
       undefined,
-      fetchImpl
+      uploadFetchImpl
     );
 
     // The offer-manager adapter needs both clients (api for offer CRUD,
