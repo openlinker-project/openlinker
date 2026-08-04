@@ -5,11 +5,18 @@
  * Given a dispatched OL-managed `Shipment`, it propagates "shipped + tracking"
  * to **every** other participant of the order — the source marketplace *and* the
  * destination shop(s) — through the single, role-agnostic `OrderStatusWriteback`
- * lifecycle relay (#1168 / ADR-027: "one writer per participant"). The branch is
- * irrelevant by construction — an InPost (own-contract) shipment carries a
- * synchronous `trackingNumber` so the source gets a waybill; an Allegro-Delivery
- * (source-brokered) shipment has none yet, so the source is merely marked sent
- * (it already holds the waybill it issued).
+ * lifecycle relay (#1168 / ADR-027: "one writer per participant").
+ *
+ * **A waybill is frequently absent at this point (#1947).** An earlier version of
+ * this comment claimed an InPost (own-contract) shipment "carries a synchronous
+ * `trackingNumber` so the source gets a waybill". It does not: ShipX mints the
+ * waybill at *confirmation*, seconds-to-minutes after label creation, so an
+ * operator dispatching promptly relays `trackingNumber: undefined` and the source
+ * is merely marked sent. The number reaches the source later, from the
+ * tracking-backfill relay in `ShipmentStatusSyncService`, claimed at-most-once
+ * via `Shipment.waybillRelayedAt`. An Allegro-Delivery (source-brokered)
+ * shipment legitimately has none either — the source already holds the waybill
+ * it issued itself.
  *
  * **Origin of an operator dispatch (#1168).** The relay excludes its
  * `originConnectionId` from the targets; an OL-managed shipment has no
@@ -64,6 +71,7 @@ import type {
 import { ShipmentRepositoryPort } from '../../domain/ports/shipment-repository.port';
 import { SHIPMENT_STATUS } from '../../domain/types/shipment-status.types';
 import { SHIPMENT_REPOSITORY_TOKEN } from '../../shipping.tokens';
+import { resolveCarrierHint } from './resolve-carrier-hint';
 
 @Injectable()
 export class ShipmentDispatchNotificationService
@@ -100,9 +108,29 @@ export class ShipmentDispatchNotificationService
     const record = await this.orderRecords.getOrderRecord(shipment.orderId);
     const carrier = await this.resolveCarrierHint(shipment.connectionId);
 
-    // Relay "shipped + tracking" to every participant in one call. Origin =
-    // the carrier connection, which is never an order participant, so the relay
-    // reaches the source marketplace AND all destination shops.
+    if (shipment.trackingNumber === null) {
+      // The single most common cause of "marketplace shows shipped but has no
+      // waybill" (#1947). Not an error — a carrier that mints the waybill at
+      // confirmation (ShipX) legitimately has none yet — but previously it was
+      // entirely invisible, which is how the defect survived. The number is
+      // relayed later by `ShipmentStatusSyncService`'s backfill.
+      this.logger.warn(
+        `Dispatch relay for shipment ${shipment.id} (order ${shipment.orderId}) carries NO ` +
+          `waybill — the source will be marked sent without a tracking number. Expect the ` +
+          `tracking backfill to deliver it once the carrier mints it.`,
+      );
+    }
+
+    // Relay "shipped + tracking" to every participant in one call.
+    //
+    // Origin = the carrier connection. NOTE: the long-standing claim that "a
+    // carrier is never an order participant" is false — the Allegro manifest
+    // advertises `OrderSource` AND `ShippingProviderManager` on one connection,
+    // so for an Allegro-Delivery shipment this origin IS the source and the relay
+    // excludes it. That exclusion is nonetheless correct for that branch: Allegro
+    // issued the waybill itself and already holds it. For the own-contract branch
+    // (#1947's flow) the carrier is a separate connection, so the source is
+    // reached. A first-class operator-origin sentinel is a follow-up.
     const relayOutcome = await this.relayDispatched(shipment.orderId, shipment.connectionId, {
       trackingNumber: shipment.trackingNumber ?? undefined,
       carrier,
@@ -131,20 +159,13 @@ export class ShipmentDispatchNotificationService
     return { shipmentId: shipment.id, outcome: 'notified', source, destinations };
   }
 
-  /** Carrier hint = the shipping processor connection's platformType (#837 Q5). */
+  /**
+   * Carrier hint = the shipping processor connection's platformType (#837 Q5).
+   * Shared with the tracking-backfill relay (#1947) — see the helper for why an
+   * absent hint is not merely cosmetic on every source.
+   */
   private async resolveCarrierHint(connectionId: string): Promise<DispatchCarrierHint | undefined> {
-    try {
-      const { metadata } = await this.integrations.getAdapter(connectionId);
-      return { platformType: metadata.platformType };
-    } catch (error) {
-      // Degraded but non-fatal: with no hint, a source adapter attaching a
-      // waybill falls back to its catch-all carrier (Allegro → OTHER + a generic
-      // name). Log so that silent downgrade is traceable rather than invisible.
-      this.logger.debug(
-        `Carrier-hint resolution failed for connection ${connectionId}; a waybill (if any) will use the source adapter's catch-all carrier: ${this.message(error)}`,
-      );
-      return undefined;
-    }
+    return resolveCarrierHint(this.integrations, connectionId, this.logger);
   }
 
   /**
@@ -197,6 +218,13 @@ export class ShipmentDispatchNotificationService
         return 'ok';
       case 'rejected':
         return 'failed';
+      case 'unsupported':
+        // A source we could not even construct an adapter for is a TRANSIENT
+        // failure, not "nothing to notify" (#1947). Reporting `absent` here
+        // would advance the shipment to `dispatched`, permanently closing the
+        // at-most-once gate on a source that was merely mid-re-auth — the same
+        // silent-loss shape this issue fixes on the backfill path.
+        return target.unsupportedReason === 'adapter-unresolved' ? 'failed' : 'absent';
       default:
         return 'absent';
     }

@@ -82,5 +82,23 @@ export class Shipment {
     // (a plain `Error`) or the shipment never failed. Required (no default)
     // for the same anti-collision reason as `deliveryIntent`/`carrier` above.
     public readonly providerCode: string | null,
+    // When the waybill was successfully relayed to the order's SOURCE
+    // participant (#1947). This is a claim marker, not a timeline entry: the
+    // carrier may mint the waybill only after the operator dispatched (ShipX
+    // mints it at confirmation), so the source must be told on a later
+    // tracking-backfill tick — and told exactly once.
+    //
+    // Why a dedicated column rather than inferring it from `trackingNumber`:
+    // that field is the DATA, and it was previously doing double duty as the
+    // retry marker for every participant. The overload made "delivered to the
+    // source" and "known to OL" indistinguishable, so every retry re-drove the
+    // source's non-idempotent waybill POST. Splitting the roles makes
+    // at-most-once a database fact (claim `WHERE waybill_relayed_at IS NULL`)
+    // and leaves `trackingNumber`'s destination-retry semantics untouched.
+    //
+    // Generalised per-destination notify state is #861; this single marker is
+    // the first row of that model, not a competing half-measure.
+    // Appended last for the same anti-collision rationale as the fields above.
+    public readonly waybillRelayedAt: Date | null,
   ) {}
 }

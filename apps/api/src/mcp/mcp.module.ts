@@ -36,6 +36,11 @@ import { UsersModule } from '@openlinker/core/users';
 import { ProductsModule } from '@openlinker/core/products';
 import { InventoryModule } from '@openlinker/core/inventory';
 import { OrdersModule } from '@openlinker/core/orders';
+import { MappingsModule } from '@openlinker/core/mappings';
+// Listings' Nest wiring lives on the `/services` subpath, not the main barrel,
+// to avoid runtime circular requires (#337/#359). It provides the category
+// resolution + attribute projection services the mapping tools read (#1488).
+import { ListingsModule } from '@openlinker/core/listings/services';
 import { AppInfoModule } from '../app-info/app-info.module';
 // The HOST integrations module (apps/api), NOT the core one — it provides
 // CONNECTION_SERVICE_TOKEN and re-exports CoreIntegrationsModule (which
@@ -64,6 +69,8 @@ import { mcpToolDefinitionsProvider } from './tools/mcp-tool-definitions.provide
     ProductsModule,
     InventoryModule,
     OrdersModule,
+    MappingsModule,
+    ListingsModule,
   ],
   controllers: [McpTokensController, McpTransportController],
   providers: [

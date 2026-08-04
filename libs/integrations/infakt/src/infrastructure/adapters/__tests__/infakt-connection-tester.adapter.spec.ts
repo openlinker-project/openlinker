@@ -33,7 +33,15 @@ function fakeResponse(ok: boolean, status: number): Response {
   return {
     ok,
     status,
-    text: (): Promise<string> => Promise.resolve(ok ? '{"items":[]}' : '{"error":"unauthorized"}'),
+    // Real v3 list envelope (#1926) — the tester only asserts 2xx and discards
+    // the body, but a stale fake shape here is exactly the kind of red herring
+    // that made the #1373/#1374 envelope mistake look corroborated.
+    text: (): Promise<string> =>
+      Promise.resolve(
+        ok
+          ? '{"metainfo":{"count":10,"total_count":0,"next":null,"previous":null},"entities":[]}'
+          : '{"error":"unauthorized"}',
+      ),
   } as unknown as Response;
 }
 

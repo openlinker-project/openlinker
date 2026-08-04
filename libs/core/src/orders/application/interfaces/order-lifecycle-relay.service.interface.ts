@@ -28,10 +28,40 @@ export interface OrderLifecycleRelayInput {
     | { type: 'cancelled'; reason?: string };
 }
 
+/**
+ * Why an `unsupported` target was skipped (#1947).
+ *
+ * `outcome: 'unsupported'` conflates two conditions a caller must treat
+ * differently, and until now they were distinguishable only by a free-text
+ * `detail` string:
+ *
+ * - `no-capability` — STRUCTURAL. This participant exposes no order-writeback
+ *   capability (or has it deliberately gated off). There is nothing to retry;
+ *   waiting will not help.
+ * - `adapter-unresolved` — TRANSIENT. The adapter could not be constructed:
+ *   connection disabled, not found, credentials unresolvable. The same call may
+ *   well succeed after a re-auth, so a caller that keys durable state on the
+ *   outcome must NOT record this as "done".
+ *
+ * Deliberately a separate field rather than two new `OrderWritebackOutcome`
+ * values: that union is the adapter-facing contract, and a new value there would
+ * silently fall into existing `default:`/`switch` arms — notably
+ * `ShipmentDispatchNotificationService.resolveSourceOutcome`, whose default maps
+ * to `'absent'` and advances the shipment past its at-most-once gate.
+ */
+export const OrderWritebackUnsupportedReasonValues = [
+  'no-capability',
+  'adapter-unresolved',
+] as const;
+export type OrderWritebackUnsupportedReason =
+  (typeof OrderWritebackUnsupportedReasonValues)[number];
+
 export interface OrderLifecycleRelayTargetResult {
   connectionId: string;
   outcome: OrderWritebackOutcome;
   detail?: string;
+  /** Present iff `outcome === 'unsupported'`. See the reason type's docs. */
+  unsupportedReason?: OrderWritebackUnsupportedReason;
 }
 
 export interface OrderLifecycleRelayResult {

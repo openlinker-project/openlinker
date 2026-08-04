@@ -2,7 +2,12 @@
  * useUpdateAnalyticsConsentMutation Hook
  *
  * Provides a mutation for updating the user's analytics consent preference.
- * On success, refreshes the session to update the JWT with the new consent value.
+ *
+ * On success it re-mints the access token before re-reading the session (#1938).
+ * `refreshSession()` alone would not do: `getSession()` reuses the cached
+ * in-memory token, so the account would keep presenting a token whose
+ * `analyticsConsent` claim still says `false` and the API's global guard would
+ * keep answering 403.
  *
  * @module features/auth/hooks
  */
@@ -17,11 +22,14 @@ export function useUpdateAnalyticsConsentMutation(): UseMutationResult<
   UpdateAnalyticsConsentRequest
 > {
   const apiClient = useApiClient();
-  const { refreshSession } = useSession();
+  const { adapter, refreshSession } = useSession();
 
   return useMutation({
     mutationFn: async (input: UpdateAnalyticsConsentRequest) => {
       const response = await apiClient.auth.updateAnalyticsConsent(input);
+      // Optional per the SessionAdapter contract: an adapter with no
+      // refresh-token flow omits it, and there is no stale claim to heal there.
+      await adapter.refresh?.();
       await refreshSession();
       return response;
     },

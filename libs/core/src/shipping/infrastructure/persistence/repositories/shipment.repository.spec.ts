@@ -11,7 +11,7 @@
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { In, Not, type Repository, type UpdateResult } from 'typeorm';
+import { In, IsNull, Not, type Repository, type UpdateResult } from 'typeorm';
 
 import { ShipmentNotFoundException } from '../../../domain/exceptions/shipment-not-found.exception';
 import { TerminalShipmentStatusValues } from '../../../domain/types/shipment-status.types';
@@ -43,6 +43,7 @@ describe('ShipmentRepository', () => {
     failedAt: null,
     errorMessage: null,
     providerCode: null,
+    waybillRelayedAt: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -366,6 +367,40 @@ describe('ShipmentRepository', () => {
     });
   });
 
+  describe('waybill-relay claim (#1947)', () => {
+    const ID = 'ol_shipment_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const at = new Date('2026-05-19T11:00:00Z');
+
+    it('should claim conditionally on the marker still being NULL', async () => {
+      // The `IsNull()` predicate in the WHERE is what makes this atomic under two
+      // concurrent triggers (status-sync poll + carrier webhook): exactly one
+      // UPDATE can affect the row.
+      ormRepository.update.mockResolvedValue(buildUpdateResult(1));
+
+      const won = await repository.claimWaybillRelay(ID, at);
+
+      expect(won).toBe(true);
+      expect(ormRepository.update).toHaveBeenCalledWith(
+        { id: ID, waybillRelayedAt: IsNull() },
+        { waybillRelayedAt: at },
+      );
+    });
+
+    it('should report the claim lost when another caller already holds it', async () => {
+      ormRepository.update.mockResolvedValue(buildUpdateResult(0));
+
+      await expect(repository.claimWaybillRelay(ID, at)).resolves.toBe(false);
+    });
+
+    it('should release the claim so a later tick can retry', async () => {
+      ormRepository.update.mockResolvedValue(buildUpdateResult(1));
+
+      await repository.releaseWaybillRelay(ID);
+
+      expect(ormRepository.update).toHaveBeenCalledWith({ id: ID }, { waybillRelayedAt: null });
+    });
+  });
+
   describe('mapper round-trip', () => {
     it('should preserve every field including nullables', async () => {
       const fullyPopulated = buildOrm({
@@ -405,6 +440,7 @@ describe('ShipmentRepository', () => {
         failedAt: fullyPopulated.failedAt,
         errorMessage: fullyPopulated.errorMessage,
         providerCode: fullyPopulated.providerCode,
+        waybillRelayedAt: fullyPopulated.waybillRelayedAt,
         createdAt: fullyPopulated.createdAt,
         updatedAt: fullyPopulated.updatedAt,
       });

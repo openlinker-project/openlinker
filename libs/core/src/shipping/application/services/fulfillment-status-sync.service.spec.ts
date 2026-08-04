@@ -65,6 +65,7 @@ function makeBranchOneShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.carrier === undefined ? null : overrides.carrier,
     overrides.deliveryIntent ?? null,
     overrides.providerCode ?? null,
+    overrides.waybillRelayedAt ?? null,
   );
 }
 
@@ -87,6 +88,8 @@ describe('FulfillmentStatusSyncService', () => {
       findByProviderShipmentId: jest.fn(),
       findBranchOneByOrderAndConnection: jest.fn().mockResolvedValue(null),
       update: jest.fn(),
+      claimWaybillRelay: jest.fn(),
+      releaseWaybillRelay: jest.fn(),
     };
 
     orderRecords = {

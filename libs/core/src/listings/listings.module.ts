@@ -380,6 +380,10 @@ export {
     BULK_BATCH_ADVANCEMENT_REPOSITORY_TOKEN,
     BULK_LISTING_PROGRESS_SERVICE_TOKEN,
     CATEGORY_RESOLUTION_SERVICE_TOKEN,
+    // Provided since #1038 but never exported — no consumer outside this module
+    // needed it until the MCP `project_attributes` tool (#1488), which made the
+    // omission a boot failure rather than a latent gap.
+    ATTRIBUTE_PROJECTION_SERVICE_TOKEN,
     OFFER_BUILDER_SERVICE_TOKEN,
     OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
     OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,

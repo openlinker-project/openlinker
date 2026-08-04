@@ -23,7 +23,6 @@ import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customer
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { WebhookSecretProviderPort } from '@openlinker/core/integrations';
 import type { HostServices } from '@openlinker/plugin-sdk';
-import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 
 import { PrestashopAdapterFactory } from '../application/prestashop-adapter.factory';
 import type { PrestashopAdapters } from '../application/interfaces/prestashop-adapter.factory.interface';
@@ -51,20 +50,13 @@ function makeHost(): HostServices {
   return {
     identifierMapping: {} as IdentifierMappingPort,
     credentialsResolver: {} as CredentialsResolverPort,
-    // Connection-bound outbound transport (#1810) — `createCapabilityAdapter`
-    // calls `host.http.for(connection, defaultRateLimit)` to wire every
-    // client it constructs. A bare jest.fn() stub is enough here; these
-    // tests exercise capability dispatch, not rate limiting.
     // The plugin's `createCapabilityAdapter` resolves a connection-bound
-    // transport via `host.http.for(connection, defaultRateLimit)` (#1810)
+    // transport via `host.http.forConnection(connection, defaultRateLimit)` (#1810)
     // before constructing the adapter factory — `http` must be stubbed or
     // that call throws. The other host-services slots
     // (`connectionTesterRegistry`, …) are exercised by `register(host)` only,
     // which we don't invoke here.
-    http: {
-      for: jest.fn().mockReturnValue(jest.fn()),
-    } as unknown as HttpTransportFactoryPort,
-    cache: undefined,
+    http: { forConnection: jest.fn().mockReturnValue(jest.fn()), evict: jest.fn() },
   } as Partial<HostServices> as HostServices;
 }
 
@@ -98,7 +90,7 @@ describe('createPrestashopPlugin → createCapabilityAdapter', () => {
     expect(adapter).toBe(stubProductMaster);
   });
 
-  it('resolves the connection-bound transport via host.http.for with the manifest defaultRateLimit (#1810)', async () => {
+  it('resolves the connection-bound transport via host.http.forConnection with the manifest defaultRateLimit (#1810)', async () => {
     jest.spyOn(PrestashopAdapterFactory.prototype, 'createAdapters').mockResolvedValue({
       productMaster: {},
       inventoryMaster: {},
@@ -111,7 +103,7 @@ describe('createPrestashopPlugin → createCapabilityAdapter', () => {
     const plugin = createPrestashopPlugin(makeDeps());
     await plugin.createCapabilityAdapter(connection, 'ProductMaster', host);
 
-    expect(host.http.for).toHaveBeenCalledWith(connection, prestashopAdapterManifest.defaultRateLimit);
+    expect(host.http.forConnection).toHaveBeenCalledWith(connection, prestashopAdapterManifest.defaultRateLimit);
   });
 
   it('throws when OrderProcessorManager is requested but the factory wired up no OPM adapter', async () => {

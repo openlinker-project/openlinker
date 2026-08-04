@@ -1240,6 +1240,27 @@ Rules:
   call the tool and how to interpret an empty result. Because tool *registration* is capability-gated while the
   data comes from OL's own store, an empty result can mean "no data yet" — say so explicitly.
 
+##### Scope and role (`requiredScope` / `requiresAdmin`, #1488)
+
+Every `McpToolDefinition` declares both, and both are **required fields, never optional-with-default**. A write
+tool that forgot to declare `requiresAdmin` would default to *unprivileged* — the wrong failure direction for a
+security field, so the compiler asks instead.
+
+- **Never enforce scope inside a tool file.** `McpToolRegistryService` applies the check, in two places: at
+  registration (so an unusable tool is not listed) and at call time, before `rateLimiter.acquire`, so a refused
+  call spends no budget. Registration filtering is a *listing* concern, not the security boundary.
+- **Refusal copy names what is missing** (`describeAuthzRefusal`), because the model reads it to decide whether
+  to ask its operator for a differently-scoped token or to give up.
+- **A write tool must not inherit an optional field that its persistence layer matches on.** The canonical case
+  is `upsert_category_mapping`: `CategoryMappingInput.sourceConnectionId` is optional in core (a #1036
+  record-only gap), but the repository upsert matches it with `IsNull()` semantics — so an agent omitting it
+  inserts a duplicate row while resolution (oldest-wins) keeps using the operator's original. The tool's own Zod
+  schema makes it required. **Check what the write actually keys on before mirroring a core type verbatim.**
+- **If a read tool's underlying chain contains a latent write, pin it with a test.** `resolve_category` declares
+  `mcp:read` and is correct only because `CategoryResolutionService.tryProvision()` is still a stub; a spec
+  asserts it never resolves via `provision`, so wiring that step (#1041) fails the build rather than silently
+  granting read tokens a destination write.
+
 ### Type Safety
 
 **Avoid `any` type**. Use `unknown` if type is truly unknown, then narrow it:

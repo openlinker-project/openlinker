@@ -173,6 +173,18 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
     config: ErliConnectionConfig,
     cache?: CachePort,
   ): AllegroCategoryCatalogClient | undefined {
+    // An explicit `false` from the operator-facing "Allegro category access"
+    // toggle disarms this (#1934/F10). It previously keyed on credentials
+    // ALONE: unchecking the box wrote `allegroCategoryAccessEnabled: false` as
+    // a config update while the credentials object simply omitted the Allegro
+    // keys, so the stored keys survived, the catalogue stayed wired, and the
+    // backend's category gate stayed armed on a connection the UI reported as
+    // having category access off. Absent (not `false`) keeps the pre-existing
+    // credential-driven behaviour, so connections predating the toggle - or
+    // created via the API - are not silently downgraded.
+    if (config.allegroCategoryAccessEnabled === false) {
+      return undefined;
+    }
     const clientId = credentials.allegroClientId?.trim();
     const clientSecret = credentials.allegroClientSecret?.trim();
     if (!clientId || !clientSecret) {

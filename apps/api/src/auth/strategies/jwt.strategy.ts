@@ -28,6 +28,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   validate(payload: JwtPayload): AuthenticatedUser {
-    return { id: payload.sub, username: payload.username, role: payload.role };
+    return {
+      id: payload.sub,
+      username: payload.username,
+      role: payload.role,
+      // A token issued before the claim existed (#1938) reads as no consent —
+      // AnalyticsConsentGuard then fails closed and the frontend re-mints.
+      analyticsConsent: payload.analyticsConsent ?? false,
+    };
   }
 }

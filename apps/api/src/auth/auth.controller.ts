@@ -40,6 +40,7 @@ import {
   EmailNotConfirmedException,
   InvalidEmailConfirmationTokenException,
   InvalidPasswordResetTokenException,
+  AnalyticsConsentRequiredException,
   RegistrationDisabledException,
   RegistrationRateLimitedException,
   RefreshTokenReuseDetectedException,
@@ -48,6 +49,7 @@ import {
 } from '@openlinker/core/users';
 import { AUTH_SERVICE_TOKEN, IAuthService } from './auth.service.interface';
 import { Public } from './decorators/public.decorator';
+import { SkipAnalyticsConsent } from './decorators/skip-analytics-consent.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { CsrfGuard } from './guards/csrf.guard';
 import { LoginDto } from './dto/login.dto';
@@ -144,6 +146,11 @@ export class AuthController {
     summary: 'Self-service registration. Creates a pending user that requires admin approval.',
   })
   @ApiResponse({ status: 201, description: 'Registration submitted — awaiting admin approval', type: OkResponseDto })
+  @ApiResponse({
+    status: 400,
+    description:
+      "Demo mode: the session-recording condition was not accepted (`analyticsConsent` omitted or `false`). Outside demo mode the field is optional and this response does not apply.",
+  })
   @ApiResponse({ status: 403, description: 'Registration is disabled for this installation' })
   @ApiResponse({ status: 409, description: 'Username or email already taken' })
   @ApiResponse({ status: 429, description: 'Too many registration attempts from this IP' })
@@ -165,6 +172,9 @@ export class AuthController {
       }
       if (error instanceof RegistrationRateLimitedException) {
         throw new HttpException(error.message, HttpStatus.TOO_MANY_REQUESTS);
+      }
+      if (error instanceof AnalyticsConsentRequiredException) {
+        throw new BadRequestException(error.message);
       }
       throw error;
     }
@@ -294,6 +304,9 @@ export class AuthController {
     clearAuthCookies(res);
   }
 
+  // Exempt from the demo consent gate (#1938): the frontend reads this to
+  // decide whether to send the account to the consent page at all.
+  @SkipAnalyticsConsent()
   @Get('me')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get the currently authenticated user' })
@@ -307,6 +320,9 @@ export class AuthController {
   // Deliberately carries no @Roles: this is a self-service preference on the
   // caller's OWN account, so every authenticated role — viewer included, which
   // is what a demo signup gets — must be able to change it (#1882).
+  // Exempt from the demo consent gate (#1938) — gating the route that grants
+  // consent would make the missing consent unresolvable.
+  @SkipAnalyticsConsent()
   @Patch('me/analytics-consent')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
