@@ -58,6 +58,9 @@ Thumbs.db
 *.tmp
 *.temp
 
+# E2E script screenshot output (apps/web/e2e/*.mjs, OUT_DIR)
+e2e-out/
+
 # Husky
 .husky/_
 
