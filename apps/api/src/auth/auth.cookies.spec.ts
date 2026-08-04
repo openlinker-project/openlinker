@@ -10,14 +10,13 @@
 import type { CookieOptions, Response } from 'express';
 import {
   CSRF_COOKIE_NAME,
+  CSRF_COOKIE_PATH,
   REFRESH_COOKIE_NAME,
   REFRESH_COOKIE_PATH,
   clearAuthCookies,
   setCsrfCookie,
   setRefreshCookie,
 } from './auth.cookies';
-
-const CSRF_COOKIE_PATH = '/';
 
 interface CookieCall {
   name: string;
@@ -183,6 +182,33 @@ describe('auth.cookies', () => {
 
       const set = cookies.find((c) => c.name === CSRF_COOKIE_NAME);
       expect(set?.options.domain).toBeUndefined();
+    });
+
+    // #1998 follow-up: the extra host-only clear only matters once
+    // OL_COOKIE_DOMAIN introduces a Domain-scoped identity to collapse a
+    // stale host-only one into — with it unset there's nothing to collapse,
+    // so the clear must be skipped rather than firing as a redundant
+    // clear-then-immediately-reissue of the same cookie identity.
+    it('should not clear the current-path refresh cookie before (re-)issuing it', () => {
+      const { res, clears } = createResponseSpy();
+
+      setRefreshCookie(res, 'raw-refresh-token');
+
+      const currentPathClears = clears.filter(
+        (c) => c.name === REFRESH_COOKIE_NAME && c.options.path === REFRESH_COOKIE_PATH,
+      );
+      expect(currentPathClears).toHaveLength(0);
+    });
+
+    it('should not clear the current-path CSRF cookie before (re-)issuing it', () => {
+      const { res, clears } = createResponseSpy();
+
+      setCsrfCookie(res);
+
+      const currentPathClears = clears.filter(
+        (c) => c.name === CSRF_COOKIE_NAME && c.options.path === CSRF_COOKIE_PATH,
+      );
+      expect(currentPathClears).toHaveLength(0);
     });
 
     it('should not clear the current-path cookies twice on logout', () => {

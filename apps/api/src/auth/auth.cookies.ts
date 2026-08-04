@@ -38,7 +38,7 @@ const LEGACY_AUTH_COOKIE_PATH = '/auth';
 // readCsrfCookie() returns null on every route outside /auth/* and silent
 // refresh breaks after a full-page reload (e.g. OAuth bounce back from
 // allegro.pl). See #748.
-const CSRF_COOKIE_PATH = '/';
+export const CSRF_COOKIE_PATH = '/';
 
 const isProd = (): boolean => process.env.NODE_ENV === 'production';
 
@@ -117,9 +117,12 @@ export function setRefreshCookie(res: Response, rawToken: string): void {
   // document.cookie (running on the WEB host) can never see a cookie scoped
   // to the API host in the first place. Clearing the host-only identity
   // before (re-)issuing the current one collapses it back to a single
-  // cookie on every login/refresh. No-op when OL_COOKIE_DOMAIN is unset,
-  // since the cookie being (re-)issued below is itself host-only then.
-  res.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
+  // cookie on every login/refresh. Only relevant once OL_COOKIE_DOMAIN is
+  // configured — guarded so deployments that never set it don't emit a
+  // redundant extra Set-Cookie header on every login/refresh.
+  if (domainOption()) {
+    res.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
+  }
   res.cookie(REFRESH_COOKIE_NAME, rawToken, refreshCookieOptions());
 }
 
@@ -135,8 +138,10 @@ export function setCsrfCookie(res: Response): string {
   // they're being silently bounced to /auth/login.
   res.clearCookie(CSRF_COOKIE_NAME, { path: LEGACY_AUTH_COOKIE_PATH });
   // Migration cleanup (#1998): same host-only-vs-Domain-scoped duplicate
-  // hazard as setRefreshCookie above.
-  res.clearCookie(CSRF_COOKIE_NAME, { path: CSRF_COOKIE_PATH });
+  // hazard as setRefreshCookie above — guarded the same way.
+  if (domainOption()) {
+    res.clearCookie(CSRF_COOKIE_NAME, { path: CSRF_COOKIE_PATH });
+  }
   res.cookie(CSRF_COOKIE_NAME, csrf, csrfCookieOptions());
   return csrf;
 }
