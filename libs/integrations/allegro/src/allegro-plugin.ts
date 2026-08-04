@@ -112,7 +112,7 @@ export const allegroAdapterManifest: AdapterMetadata = {
   // `config.rateLimit` (#1810 Phase 5) — mirrors the PrestaShop reference
   // adopter's posture. Placeholder values pending Allegro's own published
   // per-app limits; applied independently to the api.allegro.pl and
-  // upload.allegro.pl hosts (see the two `hostKey`-scoped `host.http.for()`
+  // upload.allegro.pl hosts (see the two `hostKey`-scoped `host.http.forConnection()`
   // calls below) since the two hosts carry separate quotas on Allegro's
   // side. Never written into stored config.
   defaultRateLimit: { requestsPerMinute: 60, maxConcurrent: 5 },
@@ -199,8 +199,8 @@ export function createAllegroPlugin(deps: CreateAllegroPluginDeps): AdapterPlugi
         connection,
         host.identifierMapping,
         host.credentialsResolver,
-        host.http.for(connection, allegroAdapterManifest.defaultRateLimit, 'api'),
-        host.http.for(connection, allegroAdapterManifest.defaultRateLimit, 'upload')
+        host.http.forConnection(connection, allegroAdapterManifest.defaultRateLimit, 'api'),
+        host.http.forConnection(connection, allegroAdapterManifest.defaultRateLimit, 'upload')
       );
       return dispatchCapability<T>(
         capability,

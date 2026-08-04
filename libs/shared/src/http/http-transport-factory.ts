@@ -73,6 +73,8 @@ interface ConnectionRef {
 export class HttpTransportFactory implements HttpTransportFactoryPort {
   private readonly cache = new Map<string, FetchLike>();
   private readonly connectionRefs = new Map<string, ConnectionRef>();
+  /** Every `hostKey`-scoped cache key (`connectionId:hostKey` or bare `connectionId`) built for a connection id, so `evict` can drop them all. */
+  private readonly cacheKeysByConnection = new Map<string, Set<string>>();
   private readonly replicas: number;
   private readonly baseFetch: FetchLike;
   private readonly registry: RateLimiterRegistry;
@@ -83,7 +85,7 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
     this.baseFetch = deps.fetchImpl ?? globalThis.fetch;
   }
 
-  for(
+  forConnection(
     connection: RateLimitedConnection,
     defaultRateLimit?: ConnectionRateLimit,
     hostKey?: string
@@ -95,7 +97,14 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
     // single-host caller (PrestaShop).
     const cacheKey = hostKey ? `${connection.id}:${hostKey}` : connection.id;
 
-    // Keep the ref fresh on every for() call so a cached closure (below)
+    let keysForConnection = this.cacheKeysByConnection.get(connection.id);
+    if (!keysForConnection) {
+      keysForConnection = new Set();
+      this.cacheKeysByConnection.set(connection.id, keysForConnection);
+    }
+    keysForConnection.add(cacheKey);
+
+    // Keep the ref fresh on every forConnection() call so a cached closure (below)
     // never reads a stale `config.rateLimit` from the connection object it
     // happened to be built with — an operator's config edit must take effect
     // on the very next call through the same cached FetchLike. `defaultRateLimit`
@@ -144,5 +153,15 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
 
     this.cache.set(cacheKey, fetchImpl);
     return fetchImpl;
+  }
+
+  evict(connectionId: string): void {
+    const cacheKeys = this.cacheKeysByConnection.get(connectionId) ?? new Set([connectionId]);
+    for (const cacheKey of cacheKeys) {
+      this.cache.delete(cacheKey);
+      this.connectionRefs.delete(cacheKey);
+      this.registry.evict(cacheKey);
+    }
+    this.cacheKeysByConnection.delete(connectionId);
   }
 }

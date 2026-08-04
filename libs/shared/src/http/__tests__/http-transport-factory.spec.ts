@@ -18,8 +18,8 @@ describe('HttpTransportFactory', () => {
     const factory = new HttpTransportFactory({ registry });
     const connection = { id: 'conn-1' };
 
-    const first = factory.for(connection);
-    const second = factory.for(connection);
+    const first = factory.forConnection(connection);
+    const second = factory.forConnection(connection);
 
     expect(first).toBe(second);
   });
@@ -30,7 +30,7 @@ describe('HttpTransportFactory', () => {
     const factory = new HttpTransportFactory({ registry, fetchImpl });
 
     const connection = { id: 'conn-1', config: { rateLimit: { maxConcurrent: 1 } } };
-    const boundFetch = factory.for(connection);
+    const boundFetch = factory.forConnection(connection);
 
     const result = await boundFetch('https://example.com');
 
@@ -44,7 +44,7 @@ describe('HttpTransportFactory', () => {
     const factory = new HttpTransportFactory({ registry, fetchImpl });
 
     const connection = { id: 'conn-1', config: { rateLimit: { maxConcurrent: 1 } } };
-    const boundFetch = factory.for(connection);
+    const boundFetch = factory.forConnection(connection);
 
     await expect(boundFetch('https://example.com')).rejects.toThrow('network down');
     expect(registry.getStatus('conn-1')?.inFlight).toBe(0);
@@ -59,7 +59,7 @@ describe('HttpTransportFactory', () => {
     const factory = new HttpTransportFactory({ registry, fetchImpl });
 
     const connection = { id: 'conn-1', config: { rateLimit: { requestsPerMinute: 60 } } };
-    const boundFetch = factory.for(connection);
+    const boundFetch = factory.forConnection(connection);
 
     const result = await boundFetch('https://example.com');
 
@@ -84,7 +84,7 @@ describe('HttpTransportFactory', () => {
     const factory = new HttpTransportFactory({ registry, fetchImpl });
 
     const connection = { id: 'conn-1' };
-    const boundFetch = factory.for(connection);
+    const boundFetch = factory.forConnection(connection);
 
     await Promise.all([boundFetch('a'), boundFetch('b'), boundFetch('c')]);
 
@@ -97,7 +97,7 @@ describe('HttpTransportFactory', () => {
     const factory = new HttpTransportFactory({ registry, fetchImpl });
 
     const connection = { id: 'conn-1' };
-    const boundFetch = factory.for(connection, { maxConcurrent: 1 });
+    const boundFetch = factory.forConnection(connection, { maxConcurrent: 1 });
 
     await boundFetch('https://example.com');
 
@@ -110,7 +110,7 @@ describe('HttpTransportFactory', () => {
     const factory = new HttpTransportFactory({ registry, fetchImpl });
 
     const connection = { id: 'conn-1', config: { rateLimit: { maxConcurrent: 5 } } };
-    const boundFetch = factory.for(connection, { maxConcurrent: 1 });
+    const boundFetch = factory.forConnection(connection, { maxConcurrent: 1 });
 
     await boundFetch('https://example.com');
 
@@ -128,8 +128,8 @@ describe('HttpTransportFactory', () => {
     const factory = new HttpTransportFactory({ registry, fetchImpl });
 
     const connection = { id: 'conn-1' };
-    factory.for(connection, { maxConcurrent: 1 });
-    const boundFetch = factory.for(connection);
+    factory.forConnection(connection, { maxConcurrent: 1 });
+    const boundFetch = factory.forConnection(connection);
 
     await boundFetch('https://example.com');
 
@@ -142,7 +142,7 @@ describe('HttpTransportFactory', () => {
     const factory = new HttpTransportFactory({ registry, fetchImpl, replicas: 4 });
 
     const connection = { id: 'conn-1', config: { rateLimit: { maxConcurrent: 4 } } };
-    const boundFetch = factory.for(connection);
+    const boundFetch = factory.forConnection(connection);
 
     await boundFetch('https://example.com');
 
@@ -156,13 +156,13 @@ describe('HttpTransportFactory', () => {
     const factory = new HttpTransportFactory({ registry, fetchImpl });
 
     const stale = { id: 'conn-1', config: { rateLimit: { maxConcurrent: 5 } } };
-    const boundFetch = factory.for(stale);
+    const boundFetch = factory.forConnection(stale);
 
     // Operator edits config.rateLimit — caller re-resolves the connection and
     // calls for() again with the SAME id but a fresh object. The cached
     // FetchLike reference must still pick up the new policy.
     const fresh = { id: 'conn-1', config: { rateLimit: { maxConcurrent: 1 } } };
-    const sameFetch = factory.for(fresh);
+    const sameFetch = factory.forConnection(fresh);
     expect(sameFetch).toBe(boundFetch);
 
     await boundFetch('https://example.com');
@@ -179,8 +179,8 @@ describe('HttpTransportFactory', () => {
     const factory = new HttpTransportFactory({ registry, fetchImpl });
 
     const connection = { id: 'conn-1', config: { rateLimit: { maxConcurrent: 1 } } };
-    const apiFetch = factory.for(connection, undefined, 'api');
-    const uploadFetch = factory.for(connection, undefined, 'upload');
+    const apiFetch = factory.forConnection(connection, undefined, 'api');
+    const uploadFetch = factory.forConnection(connection, undefined, 'upload');
 
     expect(apiFetch).not.toBe(uploadFetch);
 
@@ -200,8 +200,8 @@ describe('HttpTransportFactory', () => {
     const factory = new HttpTransportFactory({ registry });
     const connection = { id: 'conn-1' };
 
-    const first = factory.for(connection);
-    const second = factory.for(connection, undefined, undefined);
+    const first = factory.forConnection(connection);
+    const second = factory.forConnection(connection, undefined, undefined);
 
     expect(first).toBe(second);
   });
@@ -211,7 +211,7 @@ describe('HttpTransportFactory', () => {
     const fetchImpl = jest.fn().mockResolvedValue(response);
     const factory = new HttpTransportFactory({ registry, fetchImpl });
     const connection = { id: 'conn-1', config: { rateLimit: { maxConcurrent: 1 } } };
-    const boundFetch = factory.for(connection);
+    const boundFetch = factory.forConnection(connection);
 
     // Hold the one available slot so a subsequent acquire() queues on the signal.
     const release = await registry
@@ -234,5 +234,45 @@ describe('HttpTransportFactory', () => {
     expect(rejected).toBe(true);
     expect(fetchImpl).not.toHaveBeenCalled();
     release();
+  });
+
+  it('evict() drops the cached FetchLike, connection ref, and underlying limiter for a connection', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    const factory = new HttpTransportFactory({ registry, fetchImpl });
+    const connection = { id: 'conn-1', config: { rateLimit: { requestsPerMinute: 60 } } };
+
+    const boundFetch = factory.forConnection(connection);
+    await boundFetch('https://example.com');
+    expect(registry.getStatus('conn-1')).not.toBeNull();
+
+    factory.evict('conn-1');
+
+    expect(registry.getStatus('conn-1')).toBeNull();
+    expect(factory.forConnection(connection)).not.toBe(boundFetch);
+  });
+
+  it('evict() on a connection id never resolved via forConnection() is a safe no-op', () => {
+    const factory = new HttpTransportFactory({ registry });
+
+    expect(() => factory.evict('never-seen')).not.toThrow();
+  });
+
+  it('evict() drops every hostKey-scoped bucket registered under a connection id (#1968 merge)', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    const factory = new HttpTransportFactory({ registry, fetchImpl });
+    const connection = { id: 'conn-1', config: { rateLimit: { requestsPerMinute: 60 } } };
+
+    const apiFetch = factory.forConnection(connection, undefined, 'api');
+    const uploadFetch = factory.forConnection(connection, undefined, 'upload');
+    await apiFetch('https://api.example.com');
+    await uploadFetch('https://upload.example.com');
+    expect(registry.getStatus('conn-1:api')).not.toBeNull();
+    expect(registry.getStatus('conn-1:upload')).not.toBeNull();
+
+    factory.evict('conn-1');
+
+    expect(registry.getStatus('conn-1:api')).toBeNull();
+    expect(registry.getStatus('conn-1:upload')).toBeNull();
+    expect(factory.forConnection(connection, undefined, 'api')).not.toBe(apiFetch);
   });
 });

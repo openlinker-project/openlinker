@@ -45,6 +45,8 @@ import {
   ConnectionCredentialsRewriteException,
 } from '@openlinker/core/integrations';
 import type { ConnectionCredentialsRewriterPort } from '@openlinker/core/integrations';
+import { HTTP_TRANSPORT_FACTORY_TOKEN } from '@openlinker/plugin-sdk';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { AllegroConnectionConfigShapeValidatorAdapter } from '@openlinker/integrations-allegro';
 import {
   PrestashopConnectionConfigShapeValidatorAdapter,
@@ -67,6 +69,7 @@ describe('ConnectionService', () => {
   let configValidatorRegistry: ConnectionConfigShapeValidatorRegistryService;
   let credentialsValidatorRegistry: ConnectionCredentialsShapeValidatorRegistryService;
   let credentialsRewriterRegistry: ConnectionCredentialsRewriterRegistryService;
+  let mockHttpTransportFactory: jest.Mocked<HttpTransportFactoryPort>;
 
   const mockConnection = new Connection(
     'connection-123',
@@ -187,6 +190,11 @@ describe('ConnectionService', () => {
       get: jest.fn(),
     } as unknown as CredentialsResolverPort;
 
+    mockHttpTransportFactory = {
+      forConnection: jest.fn(),
+      evict: jest.fn(),
+    } as jest.Mocked<HttpTransportFactoryPort>;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ConnectionService,
@@ -209,6 +217,7 @@ describe('ConnectionService', () => {
           useValue: credentialsRewriterRegistry,
         },
         { provide: CREDENTIALS_RESOLVER_TOKEN, useValue: mockCredentialsResolver },
+        { provide: HTTP_TRANSPORT_FACTORY_TOKEN, useValue: mockHttpTransportFactory },
       ],
     }).compile();
 
@@ -1315,6 +1324,28 @@ describe('ConnectionService', () => {
 
       expect(result.status).toBe('disabled');
       expect(connectionPort.disable).toHaveBeenCalledWith('connection-123');
+    });
+
+    it('should evict the connection from the rate-limiter/transport cache so it stops leaking process memory', async () => {
+      const disabledConnection = new Connection(
+        'connection-123',
+        'prestashop',
+        'Test Connection',
+        'disabled',
+        {},
+        'cred_123',
+        new Date(),
+        new Date(),
+
+        undefined,
+        ['ProductMaster']
+      );
+
+      connectionPort.disable.mockResolvedValue(disabledConnection);
+
+      await service.disable('connection-123');
+
+      expect(mockHttpTransportFactory.evict).toHaveBeenCalledWith('connection-123');
     });
 
     it('should throw NotFoundException when connection not found', async () => {

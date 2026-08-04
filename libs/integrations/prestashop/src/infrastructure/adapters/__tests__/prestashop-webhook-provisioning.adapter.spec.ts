@@ -13,7 +13,7 @@
  *   - ConnectionPort        — get + update
  *   - WebhookSecretService  — rotate (returns plaintext)
  *   - CredentialsResolver   — get (returns PS credentials)
- *   - HttpTransportFactoryPort.for() — resolves the fetchImpl used for the ping HTTP call (#1810)
+ *   - HttpTransportFactoryPort.forConnection() — resolves the fetchImpl used for the ping HTTP call (#1810)
  *   - PrestashopWebserviceClient — listResources / createResource / updateResource
  *
  * The WS client is constructed inside the adapter (not injected) so we mock
@@ -89,14 +89,14 @@ describe('PrestashopWebhookProvisioningAdapter', () => {
       .mockImplementation(() => mockWsClient as never);
 
     // Default ping success. Connection-bound transport (#1810) — the
-    // adapter resolves fetchImpl via `this.http.for(connection)`, never
+    // adapter resolves fetchImpl via `this.http.forConnection(connection)`, never
     // bare `fetch` directly.
     fetchSpy = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
     } as Response);
     httpTransportFactory = {
-      for: jest.fn().mockReturnValue(fetchSpy),
+      forConnection: jest.fn().mockReturnValue(fetchSpy),
     } as unknown as jest.Mocked<HttpTransportFactoryPort>;
 
     adapter = new PrestashopWebhookProvisioningAdapter(

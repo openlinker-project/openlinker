@@ -49,7 +49,7 @@ export class AllegroConnectionTesterAdapter implements ConnectionTesterPort {
       // hostKey mirror the real api.allegro.pl client's call site
       // (`allegro-plugin.ts`) so this probe shares that bucket rather than
       // resolving an unlimited one (#1968 review).
-      const fetchImpl = this.http.for(connection, allegroAdapterManifest.defaultRateLimit, 'api');
+      const fetchImpl = this.http.forConnection(connection, allegroAdapterManifest.defaultRateLimit, 'api');
 
       // Probe deliberately runs without a token-refresh callback: a stale or
       // invalid token must surface as a clear failure (caller can prompt the

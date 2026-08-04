@@ -44,9 +44,19 @@ export interface HttpTransportFactoryPort {
    * connection (e.g. PrestaShop) — the bucket is then keyed on `connection.id`
    * alone, matching pre-#1810-Phase-5 single-host callers byte-for-byte.
    */
-  for(
+  forConnection(
     connection: RateLimitedConnection,
     defaultRateLimit?: ConnectionRateLimit,
     hostKey?: string
   ): FetchLike;
+
+  /**
+   * Drop the cached `FetchLike` + `ConnectionRef` for a connection id, and
+   * evict its underlying rate limiter (see `RateLimiterRegistry.evict`).
+   * Call this when a connection is disabled or deleted — otherwise both
+   * this factory's caches and the registry grow unbounded for the life of
+   * the process across every connection id ever resolved. Evicts every
+   * `hostKey`-scoped bucket registered under this connection id.
+   */
+  evict(connectionId: string): void;
 }

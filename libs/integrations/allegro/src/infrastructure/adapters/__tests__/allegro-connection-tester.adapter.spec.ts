@@ -14,7 +14,8 @@ import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 
 describe('AllegroConnectionTesterAdapter', () => {
   const http: jest.Mocked<HttpTransportFactoryPort> = {
-    for: jest.fn().mockReturnValue(jest.fn()),
+    forConnection: jest.fn().mockReturnValue(jest.fn()),
+    evict: jest.fn(),
   };
   const tester = new AllegroConnectionTesterAdapter(http);
   const resolver: CredentialsResolverPort = {
