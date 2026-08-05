@@ -35,6 +35,13 @@ export const dpdAdapterManifest: AdapterMetadata = {
   displayName: 'DPD Polska REST v1',
   version: '1.0.0',
   isDefault: true,
+  // #1810 Phase 5 (tech-review fix): mirrors the conservative default every
+  // other Phase 5 adopter ships (PrestaShop, Erli, WooCommerce, InPost) now
+  // that both DPD clients and the connection tester actually route through
+  // `HttpTransportFactoryPort` — a real, enforced fallback, not a fabricated
+  // FE readout. Without this the two `dpdAdapterManifest.defaultRateLimit`
+  // call sites silently resolved to `undefined` (unlimited).
+  defaultRateLimit: { requestsPerMinute: 60, maxConcurrent: 4 },
 };
 
 /** Short brand label for the config-validator's error prefix. */
