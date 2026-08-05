@@ -50,6 +50,7 @@ function makeHost(): HostServices {
   return {
     identifierMapping: {} as IdentifierMappingPort,
     credentialsResolver: {} as CredentialsResolverPort,
+    cache: undefined,
     // The plugin's `createCapabilityAdapter` resolves a connection-bound
     // transport via `host.http.forConnection(connection, defaultRateLimit)` (#1810)
     // before constructing the adapter factory — `http` must be stubbed or

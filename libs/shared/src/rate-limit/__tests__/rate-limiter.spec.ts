@@ -269,5 +269,34 @@ describe('RateLimiter', () => {
       await p;
       expect(resolved).toBe(true);
     });
+
+    it('is honoured even when the policy configures only maxConcurrent (no requestsPerMinute)', async () => {
+      let nowMs = 0;
+      const limiter = new RateLimiter({ maxConcurrent: 1 }, { now: (): number => nowMs });
+
+      const release1 = await limiter.acquire({ maxConcurrent: 1 });
+      release1();
+
+      limiter.noteRetryAfter(5000);
+
+      let resolved = false;
+      const p = limiter.acquire({ maxConcurrent: 1 }).then((release) => {
+        resolved = true;
+        release();
+      });
+
+      // A slot is free (inFlight back to 0 after release1()) and there is
+      // no requestsPerMinute spacing to wait on — without the fix, drain()
+      // never consults nextAvailableAt for a maxConcurrent-only policy, so
+      // this would resolve immediately instead of waiting out the
+      // Retry-After push.
+      await Promise.resolve();
+      expect(resolved).toBe(false); // still gated by the Retry-After push
+
+      nowMs += 5000;
+      jest.advanceTimersByTime(5000);
+      await p;
+      expect(resolved).toBe(true);
+    });
   });
 });
