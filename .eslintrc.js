@@ -528,12 +528,11 @@ module.exports = {
     {
       // #1810 — every plugin HTTP client goes through the connection-bound
       // transport (`HostServices.http`) instead of raw `fetch()`, so a
-      // connection's `config.rateLimit` can't be silently bypassed. Scoped
-      // to PrestaShop for now — it's the reference adopter (closes #1772) —
-      // and widens to `libs/integrations/**` once the remaining 8 clients
-      // are migrated (#1810 Phase 5, tracked in #1956). Enforced alongside
-      // `scripts/check-outbound-http.mjs` (`check:invariants`).
-      files: ['libs/integrations/prestashop/**/*.ts'],
+      // connection's `config.rateLimit` can't be silently bypassed. PrestaShop
+      // is the reference adopter (closes #1772); each remaining client is
+      // added to this glob as it migrates (#1810 Phase 5, tracked in #1956).
+      // Enforced alongside `scripts/check-outbound-http.mjs` (`check:invariants`).
+      files: ['libs/integrations/prestashop/**/*.ts', 'libs/integrations/ksef/**/*.ts'],
       excludedFiles: ['**/*.spec.ts', '**/*.int-spec.ts'],
       rules: {
         'no-restricted-globals': [

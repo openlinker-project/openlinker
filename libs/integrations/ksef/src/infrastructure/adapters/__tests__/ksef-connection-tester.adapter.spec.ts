@@ -12,12 +12,18 @@
  */
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import { Connection } from '@openlinker/core/identifier-mapping';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { KsefConnectionTesterAdapter } from '../ksef-connection-tester.adapter';
 import { KsefAuthenticationException } from '../../../domain/exceptions/ksef-authentication.exception';
 import { KsefConfigException } from '../../../domain/exceptions/ksef-config.exception';
 import * as httpClientFactory from '../../http/ksef-http-client.factory';
 
 jest.mock('../../http/ksef-http-client.factory');
+
+const http: jest.Mocked<HttpTransportFactoryPort> = {
+  forConnection: jest.fn().mockReturnValue(jest.fn()),
+  evict: jest.fn(),
+};
 
 const SELLER_CONFIG = {
   nip: '1234567890',
@@ -66,7 +72,7 @@ describe('KsefConnectionTesterAdapter', () => {
   });
 
   it('should fail fast when the connection has no valid environment', async () => {
-    const adapter = new KsefConnectionTesterAdapter();
+    const adapter = new KsefConnectionTesterAdapter(http);
     const result = await adapter.test(
       connection({ config: { seller: SELLER_CONFIG } }),
       resolver({ 'ref:ksef': { authType: 'ksef-token', secret: 'tok' } }),
@@ -76,7 +82,7 @@ describe('KsefConnectionTesterAdapter', () => {
   });
 
   it('should fail fast when the connection has no stored credentials', async () => {
-    const adapter = new KsefConnectionTesterAdapter();
+    const adapter = new KsefConnectionTesterAdapter(http);
     const result = await adapter.test(connection({ credentialsRef: '' }), resolver({}));
     expect(result).toMatchObject({
       success: false,
@@ -85,13 +91,13 @@ describe('KsefConnectionTesterAdapter', () => {
   });
 
   it('should fail fast when credentials are missing authType or secret', async () => {
-    const adapter = new KsefConnectionTesterAdapter();
+    const adapter = new KsefConnectionTesterAdapter(http);
     const result = await adapter.test(connection(), resolver({ 'ref:ksef': { authType: 'ksef-token' } }));
     expect(result).toMatchObject({ success: false, message: expect.stringContaining('authType') });
   });
 
   it('should report qualified-seal as not yet supported, without attempting a handshake', async () => {
-    const adapter = new KsefConnectionTesterAdapter();
+    const adapter = new KsefConnectionTesterAdapter(http);
     const result = await adapter.test(
       connection(),
       resolver({ 'ref:ksef': { authType: 'qualified-seal', secret: 'cert-ref' } }),
@@ -104,7 +110,7 @@ describe('KsefConnectionTesterAdapter', () => {
   });
 
   it('should fail fast when the seller NIP is missing (no session context identifier)', async () => {
-    const adapter = new KsefConnectionTesterAdapter();
+    const adapter = new KsefConnectionTesterAdapter(http);
     const result = await adapter.test(
       connection({ config: { env: 'test' } }),
       resolver({ 'ref:ksef': { authType: 'ksef-token', secret: 'tok' } }),
@@ -124,7 +130,7 @@ describe('KsefConnectionTesterAdapter', () => {
       handshake: { authenticate } as never,
     });
 
-    const adapter = new KsefConnectionTesterAdapter();
+    const adapter = new KsefConnectionTesterAdapter(http);
     const result = await adapter.test(
       connection(),
       resolver({ 'ref:ksef': { authType: 'ksef-token', secret: 'super-secret-token' } }),
@@ -149,7 +155,7 @@ describe('KsefConnectionTesterAdapter', () => {
       handshake: { authenticate } as never,
     });
 
-    const adapter = new KsefConnectionTesterAdapter();
+    const adapter = new KsefConnectionTesterAdapter(http);
     const result = await adapter.test(
       connection(),
       resolver({ 'ref:ksef': { authType: 'ksef-token', secret: 'tok' } }),
@@ -171,7 +177,7 @@ describe('KsefConnectionTesterAdapter', () => {
       handshake: { authenticate } as never,
     });
 
-    const adapter = new KsefConnectionTesterAdapter();
+    const adapter = new KsefConnectionTesterAdapter(http);
     const result = await adapter.test(
       connection(),
       resolver({ 'ref:ksef': { authType: 'ksef-token', secret: 'tok' } }),
@@ -191,7 +197,7 @@ describe('KsefConnectionTesterAdapter', () => {
       handshake: { authenticate } as never,
     });
 
-    const adapter = new KsefConnectionTesterAdapter();
+    const adapter = new KsefConnectionTesterAdapter(http);
     const result = await adapter.test(
       connection(),
       resolver({ 'ref:ksef': { authType: 'ksef-token', secret: 'tok' } }),

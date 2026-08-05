@@ -74,7 +74,10 @@ export function createKsefPlugin(): AdapterPlugin {
         new KsefConnectionCredentialsShapeValidatorAdapter(KSEF_BRAND),
       );
       host.retryClassifierRegistry.register(KSEF_ADAPTER_KEY, new KsefRetryClassifierAdapter());
-      host.connectionTesterRegistry.register(KSEF_ADAPTER_KEY, new KsefConnectionTesterAdapter());
+      host.connectionTesterRegistry.register(
+        KSEF_ADAPTER_KEY,
+        new KsefConnectionTesterAdapter(host.http),
+      );
     },
 
     async createCapabilityAdapter<T>(
@@ -87,6 +90,7 @@ export function createKsefPlugin(): AdapterPlugin {
         connection,
         host.identifierMapping,
         host.credentialsResolver,
+        host.http.forConnection(connection, ksefAdapterManifest.defaultRateLimit),
       );
       return dispatchCapability<T>(
         capability,

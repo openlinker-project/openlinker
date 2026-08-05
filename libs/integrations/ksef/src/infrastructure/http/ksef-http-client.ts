@@ -32,6 +32,7 @@
  */
 import { randomUUID } from 'crypto';
 import { Logger } from '@openlinker/shared/logging';
+import type { FetchLike } from '@openlinker/shared/http';
 import type { IKsefHttpClient } from './ksef-http-client.interface';
 import type {
   KsefAuthenticationToken,
@@ -88,6 +89,7 @@ export class KsefHttpClient implements IKsefHttpClient {
   private readonly logger = new Logger(KsefHttpClient.name);
   private readonly baseUrl: string;
   private readonly retryConfig: KsefRetryConfig;
+  private readonly fetchImpl: FetchLike;
 
   private token: KsefAuthenticationToken | null = null;
   private refreshInFlight: Promise<void> | null = null;
@@ -97,9 +99,11 @@ export class KsefHttpClient implements IKsefHttpClient {
     baseUrl: string,
     private readonly lifecycle: KsefTokenLifecycle,
     retryConfig?: Partial<KsefRetryConfig>,
+    fetchImpl?: FetchLike,
   ) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
+    this.fetchImpl = fetchImpl ?? globalThis.fetch;
   }
 
   async get<T = unknown>(path: string, options?: KsefHttpRequestOptions): Promise<KsefHttpResponse<T>> {
@@ -254,7 +258,7 @@ export class KsefHttpClient implements IKsefHttpClient {
     try {
       this.logger.debug(`[${traceId}] ${method} ${url.pathname} (connection ${this.connectionId})`);
 
-      const response = await fetch(url.toString(), {
+      const response = await this.fetchImpl(url.toString(), {
         method,
         headers,
         body: requestBody,

@@ -54,6 +54,31 @@ describe('KsefHttpClient', () => {
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer access-token');
   });
 
+  it('should route every call through an explicitly-injected fetchImpl instead of global.fetch (#1810)', async () => {
+    const injectedFetch = jest.fn().mockResolvedValue(jsonResponse(200, { ok: true }));
+    const client = new KsefHttpClient(
+      'conn-1',
+      baseUrl,
+      lifecycle,
+      undefined,
+      injectedFetch as unknown as typeof fetch,
+    );
+
+    await client.get('/sessions/online');
+
+    expect(injectedFetch).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('should fall back to global.fetch when fetchImpl is not provided', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+
+    await client.get('/sessions/online');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('should NOT inject a bearer when skipAuth is set (unauthenticated bootstrap calls)', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { challenge: 'c', timestamp: 't' }));
     const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);

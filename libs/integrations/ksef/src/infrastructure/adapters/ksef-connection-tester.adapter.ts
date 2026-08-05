@@ -33,15 +33,19 @@ import type {
 } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { createKsefHttpClient } from '../http/ksef-http-client.factory';
 import { KsefApiException } from '../../domain/exceptions/ksef-api.exception';
 import { KsefAuthenticationException } from '../../domain/exceptions/ksef-authentication.exception';
 import { KsefConfigException } from '../../domain/exceptions/ksef-config.exception';
 import { KsefEnvironmentValues } from '../../domain/types/ksef-connection.types';
 import type { KsefConnectionConfig, KsefCredentials } from '../../domain/types/ksef-connection.types';
+import { ksefAdapterManifest } from '../../ksef-plugin';
 
 export class KsefConnectionTesterAdapter implements ConnectionTesterPort {
   private readonly logger = new Logger(KsefConnectionTesterAdapter.name);
+
+  constructor(private readonly http: HttpTransportFactoryPort) {}
 
   async test(
     connection: Connection,
@@ -92,7 +96,17 @@ export class KsefConnectionTesterAdapter implements ConnectionTesterPort {
       }
 
       const authMaterial = { authType: 'ksef-token' as const, token: credentials.secret, contextNip };
-      const { handshake } = createKsefHttpClient({ connectionId: connection.id, env, authMaterial });
+      // Connection-bound outbound transport (#1810) — a "Test connection"
+      // click is operator-triggered and can be repeated in quick succession;
+      // it must go through the same rate limiter as every other KSeF call
+      // site, not a bare globalThis.fetch.
+      const fetchImpl = this.http.forConnection(connection, ksefAdapterManifest.defaultRateLimit);
+      const { handshake } = createKsefHttpClient({
+        connectionId: connection.id,
+        env,
+        authMaterial,
+        fetchImpl,
+      });
       await handshake.authenticate(authMaterial);
 
       return {
