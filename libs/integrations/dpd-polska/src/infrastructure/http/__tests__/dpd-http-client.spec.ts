@@ -54,6 +54,31 @@ describe('DpdHttpClient', () => {
     global.fetch = originalFetch;
   });
 
+  it('should route every call through an explicitly-injected fetchImpl instead of global.fetch (#1810)', async () => {
+    const injectedFetch = jest
+      .fn()
+      .mockResolvedValue(fakeResponse({ ok: true, status: 200, body: '{"status":"OK"}' }));
+    const injectedClient = new DpdHttpClient(
+      BASE_URL,
+      { login: 'user', password: 'pass' },
+      undefined,
+      injectedFetch as unknown as typeof fetch,
+    );
+
+    await injectedClient.request({ method: 'POST', path: CREATE_PATH });
+
+    expect(injectedFetch).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('should fall back to global.fetch when fetchImpl is not provided', async () => {
+    fetchMock.mockResolvedValueOnce(fakeResponse({ ok: true, status: 200, body: '{"status":"OK"}' }));
+
+    await client.request({ method: 'POST', path: CREATE_PATH });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('should parse a 2xx JSON body and attach the Basic auth header', async () => {
     fetchMock.mockResolvedValueOnce(fakeResponse({ ok: true, status: 200, body: '{"status":"OK"}' }));
 

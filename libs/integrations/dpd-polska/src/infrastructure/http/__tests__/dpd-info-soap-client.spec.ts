@@ -48,6 +48,29 @@ describe('DpdInfoSoapClient', () => {
     client = new DpdInfoSoapClient(ENDPOINT, AUTH, { initialDelayMs: 1, maxRetries: 2 });
   });
 
+  it('should route the call through an explicitly-injected fetchImpl instead of global.fetch (#1810)', async () => {
+    const injectedFetch = jest.fn().mockResolvedValue(soapResponse(eventsEnvelope(ROW_COLLECTED)));
+    const injectedClient = new DpdInfoSoapClient(
+      ENDPOINT,
+      AUTH,
+      { initialDelayMs: 1, maxRetries: 2 },
+      injectedFetch as unknown as typeof fetch,
+    );
+
+    await injectedClient.getEventsForWaybill({ waybill: 'WB1' });
+
+    expect(injectedFetch).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('should fall back to global.fetch when fetchImpl is not provided', async () => {
+    fetchMock.mockResolvedValueOnce(soapResponse(eventsEnvelope(ROW_COLLECTED)));
+
+    await client.getEventsForWaybill({ waybill: 'WB1' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('POSTs a SOAP envelope carrying the waybill + escaped auth and parses events', async () => {
     fetchMock.mockResolvedValueOnce(soapResponse(eventsEnvelope(ROW_COLLECTED + ROW_DELIVERED)));
 

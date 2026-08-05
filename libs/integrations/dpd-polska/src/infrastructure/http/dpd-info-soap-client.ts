@@ -23,6 +23,7 @@
 import { randomUUID } from 'node:crypto';
 import { XMLParser } from 'fast-xml-parser';
 import { Logger } from '@openlinker/shared/logging';
+import type { FetchLike } from '@openlinker/shared/http';
 import {
   DPD_EVENTS_SELECT_ALL,
   DPD_EVENT_LANGUAGE,
@@ -74,12 +75,16 @@ export class DpdInfoSoapClient implements IDpdInfoSoapClient {
     isArray: (name) => name === 'eventsList' || name === 'eventDataList',
   });
 
+  private readonly fetchImpl: FetchLike;
+
   constructor(
     private readonly endpoint: string,
     private readonly auth: SoapAuth,
     retryConfig?: Partial<RetryConfig>,
+    fetchImpl?: FetchLike,
   ) {
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
+    this.fetchImpl = fetchImpl ?? globalThis.fetch;
   }
 
   async getEventsForWaybill(input: { waybill: string }): Promise<DpdWaybillEvent[]> {
@@ -120,7 +125,7 @@ export class DpdInfoSoapClient implements IDpdInfoSoapClient {
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     let response: Response;
     try {
-      response = await fetch(this.endpoint, {
+      response = await this.fetchImpl(this.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'text/xml; charset=utf-8', SOAPAction: '' },
         body: envelope,

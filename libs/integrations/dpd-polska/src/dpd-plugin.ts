@@ -57,7 +57,7 @@ export function createDpdPlugin(): AdapterPlugin {
       // reporting "not supported".
       host.connectionTesterRegistry.register(
         dpdAdapterManifest.adapterKey,
-        new DpdConnectionTesterAdapter(),
+        new DpdConnectionTesterAdapter(host.http),
       );
 
       // Auth-failure classifier (#819 / #1103): a non-retryable 401/403 from
@@ -80,7 +80,11 @@ export function createDpdPlugin(): AdapterPlugin {
       capability: string,
       host: HostServices,
     ): Promise<T> {
-      const adapter = await createDpdShippingAdapter(connection, host.credentialsResolver);
+      const adapter = await createDpdShippingAdapter(
+        connection,
+        host.credentialsResolver,
+        host.http.forConnection(connection, dpdAdapterManifest.defaultRateLimit),
+      );
       return dispatchCapability<T>(capability, { ShippingProviderManager: () => adapter }, DPD_BRAND);
     },
   };

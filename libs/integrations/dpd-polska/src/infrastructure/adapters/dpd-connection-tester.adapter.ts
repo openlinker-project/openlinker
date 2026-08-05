@@ -25,15 +25,19 @@ import type {
   CredentialsResolverPort,
 } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import type { DpdConnectionConfig } from '../../domain/types/dpd-config.types';
 import { DpdEnvironmentValues } from '../../domain/types/dpd-config.types';
 import type { DpdCredentials } from '../../domain/types/dpd-credentials.types';
 import { getDpdServicesBaseUrl } from '../http/dpd-hosts';
+import { dpdAdapterManifest } from '../../dpd-plugin';
 
 const PROBE_PATH = '/public/shipment/v1/generatePackagesNumbers';
 const PROBE_TIMEOUT_MS = 10_000;
 
 export class DpdConnectionTesterAdapter implements ConnectionTesterPort {
+  constructor(private readonly http: HttpTransportFactoryPort) {}
+
   async test(
     connection: Connection,
     credentialsResolver: CredentialsResolverPort,
@@ -57,7 +61,7 @@ export class DpdConnectionTesterAdapter implements ConnectionTesterPort {
         return this.fail('Stored credentials are missing login/password', startedAt);
       }
 
-      const status = await this.probe(environment, credentials, config.masterFid);
+      const status = await this.probe(connection, environment, credentials, config.masterFid);
       return this.interpret(status, startedAt);
     } catch (error) {
       return this.fail((error as Error).message ?? 'DPD probe failed', startedAt);
@@ -66,6 +70,7 @@ export class DpdConnectionTesterAdapter implements ConnectionTesterPort {
 
   /** Issue the empty-body probe and return the HTTP status code. */
   private async probe(
+    connection: Connection,
     environment: DpdConnectionConfig['environment'],
     credentials: DpdCredentials,
     masterFid: string | undefined,
@@ -86,7 +91,12 @@ export class DpdConnectionTesterAdapter implements ConnectionTesterPort {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
     try {
-      const response = await fetch(url, {
+      // Connection-bound outbound transport (#1810) — a "Test connection"
+      // click is operator-triggered and can be repeated in quick succession;
+      // it must go through the same rate limiter as every other DPD call site,
+      // not a bare globalThis.fetch.
+      const fetchImpl = this.http.forConnection(connection, dpdAdapterManifest.defaultRateLimit);
+      const response = await fetchImpl(url, {
         method: 'POST',
         headers,
         body: '{}',

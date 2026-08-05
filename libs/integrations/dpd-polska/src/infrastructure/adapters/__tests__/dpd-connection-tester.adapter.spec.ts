@@ -11,6 +11,7 @@
 import { DpdConnectionTesterAdapter } from '../dpd-connection-tester.adapter';
 import { Connection } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 
 function buildConnection(config: Record<string, unknown>): Connection {
   return new Connection(
@@ -28,15 +29,20 @@ function buildConnection(config: Record<string, unknown>): Connection {
 }
 
 describe('DpdConnectionTesterAdapter', () => {
-  const tester = new DpdConnectionTesterAdapter();
   const resolver: CredentialsResolverPort = {
     get: jest.fn().mockResolvedValue({ login: 'test', password: 'secret' }),
   } as unknown as CredentialsResolverPort;
 
   let fetchMock: jest.Mock;
+  let tester: DpdConnectionTesterAdapter;
 
   beforeEach(() => {
     fetchMock = jest.fn();
+    const http: jest.Mocked<HttpTransportFactoryPort> = {
+      forConnection: jest.fn().mockReturnValue(fetchMock),
+      evict: jest.fn(),
+    };
+    tester = new DpdConnectionTesterAdapter(http);
     global.fetch = fetchMock as unknown as typeof fetch;
   });
 

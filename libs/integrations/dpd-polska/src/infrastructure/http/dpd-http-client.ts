@@ -21,6 +21,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { Logger } from '@openlinker/shared/logging';
+import type { FetchLike } from '@openlinker/shared/http';
 import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
 import type { DpdError401, DpdErrorItem, DpdErrors } from '../../domain/types/dpd-rest.types';
 import { DpdUnauthorizedException } from '../../domain/exceptions/dpd-unauthorized.exception';
@@ -65,15 +66,18 @@ export class DpdHttpClient implements IDpdHttpClient {
   private readonly logger = new Logger(DpdHttpClient.name);
   private readonly retryConfig: RetryConfig;
   private readonly authorizationHeader: string;
+  private readonly fetchImpl: FetchLike;
 
   constructor(
     private readonly baseUrl: string,
     private readonly auth: DpdHttpAuth,
     retryConfig?: Partial<RetryConfig>,
+    fetchImpl?: FetchLike,
   ) {
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
     const token = Buffer.from(`${auth.login}:${auth.password}`, 'utf8').toString('base64');
     this.authorizationHeader = `Basic ${token}`;
+    this.fetchImpl = fetchImpl ?? globalThis.fetch;
   }
 
   async request<T>(options: DpdRequestOptions): Promise<T> {
@@ -141,7 +145,7 @@ export class DpdHttpClient implements IDpdHttpClient {
     }
 
     try {
-      return await fetch(url, {
+      return await this.fetchImpl(url, {
         method: options.method,
         headers,
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
