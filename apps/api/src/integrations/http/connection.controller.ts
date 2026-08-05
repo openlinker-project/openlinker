@@ -31,6 +31,7 @@ import { RotateWebhookSecretResponseDto } from './dto/rotate-webhook-secret-resp
 import { InstallWebhooksResponseDto } from './dto/install-webhooks-response.dto';
 import { SetWebhookSecretDto } from './dto/set-webhook-secret.dto';
 import { WebhookStatusResponseDto } from './dto/webhook-status-response.dto';
+import { RateLimitStatusResponseDto } from './dto/rate-limit-status-response.dto';
 import {
   IWebhookSecretService,
   WEBHOOK_SECRET_SERVICE_TOKEN,
@@ -40,6 +41,10 @@ import {
   IWebhookStatusService,
   WEBHOOK_STATUS_SERVICE_TOKEN,
 } from '../application/interfaces/webhook-status.service.interface';
+import {
+  IRateLimitStatusService,
+  RATE_LIMIT_STATUS_SERVICE_TOKEN,
+} from '../application/interfaces/rate-limit-status.service.interface';
 import { CreateConnectionDto } from './dto/create-connection.dto';
 import { UpdateConnectionDto } from './dto/update-connection.dto';
 import { UpdateConnectionCredentialsDto } from './dto/update-connection-credentials.dto';
@@ -83,6 +88,8 @@ export class ConnectionController {
     private readonly webhookSecretService: IWebhookSecretService,
     @Inject(WEBHOOK_STATUS_SERVICE_TOKEN)
     private readonly webhookStatusService: IWebhookStatusService,
+    @Inject(RATE_LIMIT_STATUS_SERVICE_TOKEN)
+    private readonly rateLimitStatusService: IRateLimitStatusService,
     @Inject(DEMO_MODE_SERVICE_TOKEN)
     private readonly demoModeService: IDemoModeService
   ) {}
@@ -334,6 +341,24 @@ export class ConnectionController {
   async getWebhookStatus(@Param('id') id: string): Promise<WebhookStatusResponseDto> {
     const status = await this.webhookStatusService.getStatus(id);
     return WebhookStatusResponseDto.fromDomain(status);
+  }
+
+  /**
+   * Live outbound rate-limit status for this connection (#1810). Pure
+   * in-memory read of the shared `RateLimiterRegistry` the connection's
+   * `HttpTransportFactory`-backed transport paces against — never calls the
+   * destination platform, never consumes a rate-limit slot. Platform-neutral:
+   * any connection's effective policy (explicit `config.rateLimit` or the
+   * resolved adapter's `defaultRateLimit` fallback) is reported the same way.
+   */
+  @Roles('admin')
+  @Get(':id/rate-limit-status')
+  @ApiOperation({ summary: 'Read the live outbound rate-limit status for this connection (#1810)' })
+  @ApiResponse({ status: 200, type: RateLimitStatusResponseDto })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  async getRateLimitStatus(@Param('id') id: string): Promise<RateLimitStatusResponseDto> {
+    const status = await this.rateLimitStatusService.getStatus(id);
+    return RateLimitStatusResponseDto.fromDomain(status);
   }
 
   /**

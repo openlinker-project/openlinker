@@ -82,3 +82,9 @@ export type { CheckboxCellProps } from './checkbox-cell';
 // ── Disclosure (#1303) ───────────────────────────────────────────────
 export { InlineDisclosure } from './inline-disclosure';
 export type { InlineDisclosureProps } from './inline-disclosure';
+
+// ── Access (#1993) ───────────────────────────────────────────────────
+// Content gate. For a *write affordance* reach for `useWriteAccess` +
+// `ReadOnlyLock` instead — demo mode inverts the policy between the two.
+export { AccessGate } from './access-gate';
+export type { AccessGateProps } from './access-gate';

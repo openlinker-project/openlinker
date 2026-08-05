@@ -9,6 +9,8 @@ export const connectionsQueryKeys = {
   bankAccounts: (connectionId: string) => ['connections', 'bank-accounts', connectionId] as const,
   webhookStatus: (connectionId: string) =>
     ['connections', 'webhook-status', connectionId] as const,
+  rateLimitStatus: (connectionId: string) =>
+    ['connections', 'rate-limit-status', connectionId] as const,
   subiektBankAccounts: (connectionId: string) =>
     ['connections', 'subiekt-bank-accounts', connectionId] as const,
   subiektCashRegisters: (connectionId: string) =>
