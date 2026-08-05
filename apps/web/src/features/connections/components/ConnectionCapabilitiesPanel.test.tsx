@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  createAuthenticatedSessionAdapter,
   createMockApiClient,
   renderWithProviders,
   sampleConnection,
@@ -172,40 +173,104 @@ describe('ConnectionCapabilitiesPanel', () => {
     expect(screen.queryByText(/no capabilities available to toggle/)).not.toBeInTheDocument();
   });
 
+  // The hint is behind `AccessGate` on `connections:write` (#1993), so these
+  // tests must supply a session that holds it: `renderWithProviders` defaults to
+  // `createNoopSessionAdapter()`, i.e. an ANONYMOUS session with no permissions
+  // at all, under which the hint is correctly never rendered. Assertions are
+  // awaited because the gate renders nothing until the session has hydrated --
+  // "not known yet" is deliberately not "denied".
   describe('MCP tool-staleness hint (#1949)', () => {
-    it('should show the reconnect hint when the connection supports an MCP-backing capability', () => {
+    const writeSession = createAuthenticatedSessionAdapter({
+      id: 'admin-user',
+      username: 'admin',
+      email: null,
+      role: 'admin',
+      permissions: ['connections:read', 'connections:write'],
+    });
+
+    it('should show the reconnect hint when the connection supports an MCP-backing capability', async () => {
       const connection: Connection = {
         ...sampleConnection,
         supportedCapabilities: ['ProductMaster', 'OfferManager'],
         enabledCapabilities: ['ProductMaster'],
       };
-      renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
+      renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />, {
+        sessionAdapter: writeSession,
+      });
 
-      expect(screen.getByText(/MCP tools follow these capabilities/)).toBeInTheDocument();
+      expect(await screen.findByText(/MCP tools follow these capabilities/)).toBeInTheDocument();
     });
 
-    it('should hide the reconnect hint when no supported capability backs an MCP tool', () => {
+    it('should hide the reconnect hint when no supported capability backs an MCP tool', async () => {
       const connection: Connection = {
         ...sampleConnection,
         supportedCapabilities: ['OfferManager', 'CategoryProvisioner'],
         enabledCapabilities: ['OfferManager'],
       };
-      renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
+      renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />, {
+        sessionAdapter: writeSession,
+      });
 
+      // Permitted session + settled panel, so the absence can only be
+      // `backsMcpTools` being false -- not a missing permission and not the
+      // pre-hydration state that every branch shares.
+      expect(await screen.findByText(/1 of 2 enabled/)).toBeInTheDocument();
       expect(screen.queryByText(/MCP tools follow these capabilities/)).not.toBeInTheDocument();
     });
 
     // The gate is keyed on SUPPORTED, not ENABLED: the hint must survive the
     // toggle that causes the staleness, or it disappears exactly when it matters.
-    it('should keep the hint visible when the MCP-backing capability is supported but disabled', () => {
+    it('should keep the hint visible when the MCP-backing capability is supported but disabled', async () => {
       const connection: Connection = {
         ...sampleConnection,
         supportedCapabilities: ['ProductMaster', 'OfferManager'],
         enabledCapabilities: ['OfferManager'],
       };
-      renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
+      renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />, {
+        sessionAdapter: writeSession,
+      });
 
-      expect(screen.getByText(/MCP tools follow these capabilities/)).toBeInTheDocument();
+      expect(await screen.findByText(/MCP tools follow these capabilities/)).toBeInTheDocument();
+    });
+
+    // The hint explains the consequence of CHANGING capabilities, so it is
+    // gated on `connections:write` (#1993). A read-only session -- a public-demo
+    // viewer holds `connections:read` alone -- must not be told to reconnect an
+    // agent it cannot have, over a control it cannot operate.
+    describe('permission gate', () => {
+      const mcpBackingConnection: Connection = {
+        ...sampleConnection,
+        supportedCapabilities: ['ProductMaster', 'OfferManager'],
+        enabledCapabilities: ['ProductMaster'],
+      };
+
+      it('should hide the hint from a session without connections:write', async () => {
+        renderWithProviders(<ConnectionCapabilitiesPanel connection={mcpBackingConnection} />, {
+          sessionAdapter: createAuthenticatedSessionAdapter({
+            id: 'demo-viewer',
+            username: 'demo-viewer',
+            email: null,
+            role: 'viewer',
+            permissions: ['connections:read'],
+          }),
+        });
+
+        // The panel itself still renders -- only the hint is gated, so this
+        // also pins that the gate did not swallow the surrounding read-only
+        // content a viewer is entitled to.
+        expect(await screen.findByText(/1 of 2 enabled/)).toBeInTheDocument();
+        expect(screen.queryByText(/MCP tools follow these capabilities/)).not.toBeInTheDocument();
+      });
+
+      it('should hide the hint from an anonymous session', async () => {
+        // `renderWithProviders`' default adapter. Called out explicitly so the
+        // three tests above cannot silently revert to it and pass for the wrong
+        // reason -- an absent hint would then prove nothing about the gate.
+        renderWithProviders(<ConnectionCapabilitiesPanel connection={mcpBackingConnection} />);
+
+        expect(await screen.findByText(/1 of 2 enabled/)).toBeInTheDocument();
+        expect(screen.queryByText(/MCP tools follow these capabilities/)).not.toBeInTheDocument();
+      });
     });
   });
 });

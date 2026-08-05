@@ -234,6 +234,22 @@ export interface WebhookStatus {
   lastDeliveryResult: string | null;
 }
 
+/**
+ * Live, in-memory outbound rate-limit status for ANY connection
+ * (`GET /connections/:id/rate-limit-status`, #1810). `enabled: false` means
+ * no cap is currently in effect (neither an explicit `config.rateLimit` nor
+ * the destination adapter's manifest default) — every other field is absent.
+ * Resets on API/worker restart; not a persisted audit trail.
+ */
+export interface RateLimitStatus {
+  enabled: boolean;
+  requestsPerMinute?: number;
+  maxConcurrent?: number;
+  inFlight?: number;
+  queued?: number;
+  lastAcquiredAt?: string | null;
+}
+
 export interface ConnectionDiagnostics {
   connectionId: string;
   connectionName: string;
