@@ -304,6 +304,26 @@ The preferred future direction is:
 
 This means FE-001 intentionally preserves the adapter boundary while avoiding an early commitment to localStorage or sessionStorage.
 
+### Access Control And UI Visibility
+
+The session's `permissions[]` array (derived backend-side from `ROLE_PERMISSIONS`, `libs/core/src/users/domain/types/role.types.ts`) is the only authorization input the frontend reads. `session.user.role` is typed `string` and must never be compared inline — a typo type-checks and silently evaluates false. Backend endpoint authorization is a **separate** axis (`@Roles(...)` guards); a permission drives UI visibility only, and some permissions exist for exactly that purpose (`shipments:write` is documented display-only, #1826).
+
+Three primitives cover every case, chosen by **what** is being gated:
+
+| Gating | Primitive | Behaviour for a session lacking the permission |
+|---|---|---|
+| Content — a banner, panel, section, table column, tooltip copy | `AccessGate` (`shared/ui/access-gate.tsx`) | renders `fallback`, or nothing when omitted |
+| A write affordance — button, checkbox, form, menu item | `useWriteAccess` (`shared/auth/use-permission.ts`) + `ReadOnlyLock` (`shared/ui/read-only-lock.tsx`) | in demo mode: rendered **disabled** with a tooltip; otherwise hidden |
+| Anything that is not a subtree — a query's `enabled:`, a computed `disabled`, derived copy | `usePermission` (`shared/auth/use-permission.ts`) | plain `false` |
+
+**Demo mode inverts the policy between the first two rows, deliberately.** A public-demo viewer is *shown* write controls, disabled, because the point of the demo is to advertise that the capability exists (#1615). Informational content is the opposite: an explanation addressed to someone who cannot act is noise at best and misleading at worst — the MCP capabilities hint told a demo viewer to reconnect an agent it could not have, over a toggle it could not operate (#1993). So `AccessGate` does not read demo mode at all, and must not grow a prop to do so; a call site that wants the disabled-but-visible treatment is gating an affordance and belongs in row two.
+
+Not reading demo mode is also what keeps `AccessGate` in `shared/`: `useDemoMode` lives in `features/system`, and `shared` may not import `features` (see § Dependency Rules). `useWriteAccess` takes `demoMode` as an argument for the same reason.
+
+`AccessGate` owns the session-hydration window centrally. While `isReady` is false, `permissions` is still `[]`, so a naive gate would flash the denied branch and then reveal the content; the component renders **neither** branch until the session resolves, because "not known yet" is not "denied". Call sites do not repeat that check — it was previously spelled at only 2 of 13 identity call sites, which is precisely why it belongs inside the primitive.
+
+There is no `useAccess` hook: it would return the same boolean as `usePermission`. One primitive per shape, no overlapping surface.
+
 ## Environment Variables
 
 Frontend environment variables are public build-time inputs. Only `VITE_*` variables may be consumed by browser code.

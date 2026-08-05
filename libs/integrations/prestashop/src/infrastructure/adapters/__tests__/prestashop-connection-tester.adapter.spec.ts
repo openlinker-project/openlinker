@@ -18,7 +18,10 @@ describe('PrestashopConnectionTesterAdapter', () => {
     forConnection: jest.fn().mockReturnValue(jest.fn()),
     evict: jest.fn(),
   };
-  const tester = new PrestashopConnectionTesterAdapter(http);
+  const tester = new PrestashopConnectionTesterAdapter(
+    http,
+    prestashopAdapterManifest.defaultRateLimit
+  );
   const resolver: CredentialsResolverPort = {
     get: jest.fn().mockResolvedValue({ webserviceApiKey: 'K' }),
   } as unknown as CredentialsResolverPort;

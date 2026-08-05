@@ -23,4 +23,8 @@ export {
   type CreateNestAdapterModuleOptions,
 } from './create-nest-adapter-module';
 export { dispatchCapability } from './dispatch-capability';
-export { RateLimitModule, HTTP_TRANSPORT_FACTORY_TOKEN } from './rate-limit.module';
+export {
+  RateLimitModule,
+  HTTP_TRANSPORT_FACTORY_TOKEN,
+  RATE_LIMITER_REGISTRY_TOKEN,
+} from './rate-limit.module';
