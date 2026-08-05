@@ -487,6 +487,45 @@ describe('SyncJobRepository', () => {
     });
   });
 
+  describe('requeueWithoutPenalty (#1810 review follow-up)', () => {
+    it('should requeue without incrementing attempts', async () => {
+      const jobId = randomUUID();
+      const errorMessage = 'Timed out after waiting 120000ms for a rate-limit slot';
+      const nextRunAt = new Date(Date.now() + 30000);
+
+      ormRepository.update.mockResolvedValue({ affected: 1, generatedMaps: [], raw: [] });
+
+      await repository.requeueWithoutPenalty(jobId, errorMessage, nextRunAt);
+
+      expect(ormRepository.update).toHaveBeenCalledWith(jobId, {
+        status: 'queued',
+        nextRunAt,
+        lockedAt: null,
+        lockedBy: null,
+        lastError: errorMessage,
+      });
+      // Distinguishing behaviour vs markFailed: no findOne + attempts read/increment.
+      expect(ormRepository.findOne).not.toHaveBeenCalled();
+    });
+
+    it('should truncate error message if longer than 1000 characters', async () => {
+      const jobId = randomUUID();
+      const longErrorMessage = 'x'.repeat(2000);
+      const nextRunAt = new Date();
+
+      ormRepository.update.mockResolvedValue({ affected: 1, generatedMaps: [], raw: [] });
+
+      await repository.requeueWithoutPenalty(jobId, longErrorMessage, nextRunAt);
+
+      expect(ormRepository.update).toHaveBeenCalledWith(
+        jobId,
+        expect.objectContaining({
+          lastError: 'x'.repeat(1000), // Truncated
+        })
+      );
+    });
+  });
+
   describe('requeueStuckJobs', () => {
     it('should requeue jobs stuck in running status longer than timeout', async () => {
       const lockTimeoutMinutes = 15;

@@ -19,6 +19,15 @@ export interface RateLimiterRegistry {
   get(connectionId: string, policy: ConnectionRateLimit): RateLimiterPort;
   /** Pure, in-memory status read — never creates a limiter, never consumes a slot. */
   getStatus(connectionId: string): RateLimitStatus | null;
+  /**
+   * Drop a connection's limiter so it stops holding memory once the
+   * connection is disabled/deleted. Safe to call on an in-flight limiter —
+   * any queued/in-flight callers still hold their own reference and resolve
+   * normally; only the registry's own entry is removed, so a later `get()`
+   * for the same id lazily builds a fresh limiter (idle state, no carried
+   * queue).
+   */
+  evict(connectionId: string): void;
   /** Test-isolation helper. */
   clear(): void;
 }
@@ -39,6 +48,9 @@ export function createRateLimiterRegistry(deps: RateLimiterDeps = {}): RateLimit
     },
     getStatus(connectionId: string): RateLimitStatus | null {
       return limiters.get(connectionId)?.getStatus() ?? null;
+    },
+    evict(connectionId: string): void {
+      limiters.delete(connectionId);
     },
     clear(): void {
       limiters.clear();

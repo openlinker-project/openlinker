@@ -72,7 +72,7 @@ export interface HostServices {
 
   /**
    * Connection-bound outbound transport (#1810). The single seam every
-   * plugin HTTP client goes through — `host.http.for(connection, defaultRateLimit?)`
+   * plugin HTTP client goes through — `host.http.forConnection(connection, defaultRateLimit?)`
    * returns a `FetchLike` that paces/caps outbound calls per the
    * connection's live `config.rateLimit` (falling back to the caller's
    * `defaultRateLimit` — a plugin passes its own manifest's value — when

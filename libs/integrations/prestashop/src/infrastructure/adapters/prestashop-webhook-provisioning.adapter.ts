@@ -101,7 +101,7 @@ export class PrestashopWebhookProvisioningAdapter implements WebhookProvisioning
     // manifest's `defaultRateLimit` fallback like every other call site — a
     // fresh connection (no explicit config.rateLimit yet) must still be
     // rate-limited during install, not fall through to unlimited.
-    const fetchImpl = this.http.for(connection, prestashopAdapterManifest.defaultRateLimit);
+    const fetchImpl = this.http.forConnection(connection, prestashopAdapterManifest.defaultRateLimit);
 
     // Step 3 — push 3 config rows via PS WS
     const wsClient = await this.createWebserviceClient(

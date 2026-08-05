@@ -85,7 +85,7 @@ export interface ConnectionConfig {
   pricingRule?: PricingRule;
   /**
    * Per-connection outbound rate limit (#1810). Applied via
-   * `HostServices.http` (`HttpTransportFactoryPort.for(connection)`) —
+   * `HostServices.http` (`HttpTransportFactoryPort.forConnection(connection)`) —
    * every plugin HTTP client's outbound calls are paced/capped through it
    * automatically, never read directly by plugin code. A missing value
    * means unlimited, byte-identical to pre-#1810 behaviour.
