@@ -23,12 +23,12 @@ export interface RateLimitedConnection {
 export interface HttpTransportFactoryPort {
   /**
    * Returns a stable, connection-bound {@link FetchLike} — the same
-   * reference on every call for a given `connection.id` + `hostKey`, not a
-   * new closure per call. Every call through it acquires a rate-limit slot
-   * (per the connection's live `config.rateLimit`, falling back to the
-   * caller-supplied `defaultRateLimit` when unset, or unlimited if neither
-   * is present) before delegating to the underlying transport, and releases
-   * it in a `finally`.
+   * reference on every call for a given `connection.id`, not a new closure
+   * per call. Every call through it acquires a rate-limit slot (per the
+   * connection's live `config.rateLimit`, falling back to the caller-supplied
+   * `defaultRateLimit` when unset, or unlimited if neither is present)
+   * before delegating to the underlying transport, and releases it in a
+   * `finally`.
    *
    * `defaultRateLimit` is the plugin's own `AdapterMetadata.defaultRateLimit`
    * — the caller (each plugin's `createCapabilityAdapter`) passes its own
