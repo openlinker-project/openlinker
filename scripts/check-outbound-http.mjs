@@ -3,7 +3,7 @@
  * Outbound HTTP Bypass Guard (#1810)
  *
  * Every plugin HTTP client is meant to go through the connection-bound
- * transport (`HostServices.http` / `HttpTransportFactoryPort.for(connection)`)
+ * transport (`HostServices.http` / `HttpTransportFactoryPort.forConnection(connection)`)
  * so a connection's `config.rateLimit` can't be silently bypassed by a bare
  * `fetch()` call. This is the filesystem-level twin of the ESLint
  * `no-restricted-globals: fetch` rule in `.eslintrc.js` — independent
@@ -144,7 +144,7 @@ async function main() {
     }
     process.stderr.write(
       '\nRoute the call through the connection-bound transport (HostServices.http /\n' +
-        'HttpTransportFactoryPort.for(connection)) instead, or add a scoped\n' +
+        'HttpTransportFactoryPort.forConnection(connection)) instead, or add a scoped\n' +
         '`// eslint-disable-next-line no-restricted-globals -- <reason>` exemption\n' +
         'immediately above the call (e.g. an OAuth token endpoint).\n',
     );

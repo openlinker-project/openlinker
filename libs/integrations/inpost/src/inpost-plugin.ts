@@ -99,7 +99,7 @@ export function createInpostPlugin(): AdapterPlugin {
       const adapter = await createInpostShippingAdapter(
         connection,
         host.credentialsResolver,
-        host.http.for(connection),
+        host.http.forConnection(connection),
       );
       return dispatchCapability<T>(
         capability,

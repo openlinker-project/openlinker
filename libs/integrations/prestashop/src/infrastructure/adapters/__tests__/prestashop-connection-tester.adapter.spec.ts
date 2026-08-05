@@ -15,7 +15,8 @@ import { prestashopAdapterManifest } from '../../../prestashop-plugin';
 
 describe('PrestashopConnectionTesterAdapter', () => {
   const http: jest.Mocked<HttpTransportFactoryPort> = {
-    for: jest.fn().mockReturnValue(jest.fn()),
+    forConnection: jest.fn().mockReturnValue(jest.fn()),
+    evict: jest.fn(),
   };
   const tester = new PrestashopConnectionTesterAdapter(http);
   const resolver: CredentialsResolverPort = {
@@ -49,7 +50,7 @@ describe('PrestashopConnectionTesterAdapter', () => {
     expect(result.status).toBe(200);
     expect(result.message).toBe('OK');
     expect(result.latencyMs).toBeGreaterThanOrEqual(0);
-    expect(http.for).toHaveBeenCalledWith(connection, prestashopAdapterManifest.defaultRateLimit);
+    expect(http.forConnection).toHaveBeenCalledWith(connection, prestashopAdapterManifest.defaultRateLimit);
   });
 
   it('maps auth failures to success:false with status 401', async () => {

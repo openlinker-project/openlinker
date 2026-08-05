@@ -58,7 +58,7 @@ export class InpostConnectionTesterAdapter implements ConnectionTesterPort {
       // click is operator-triggered and can be repeated in quick succession;
       // it must go through the same rate limiter as every other InPost call
       // site, not a bare globalThis.fetch.
-      const fetchImpl = this.http.for(connection);
+      const fetchImpl = this.http.forConnection(connection);
 
       const client = new InpostHttpClient(
         BASE_URLS[config.environment],

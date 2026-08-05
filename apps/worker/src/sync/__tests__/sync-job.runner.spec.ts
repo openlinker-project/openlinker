@@ -20,7 +20,7 @@ import {
   AuthFailureClassifierRegistryService,
 } from '@openlinker/core/sync';
 import { SyncJobHandlerRegistry } from '../handlers/sync-job-handler.registry';
-import { getCurrentPriority } from '@openlinker/shared/rate-limit';
+import { getCurrentPriority, RateLimitTimeoutError } from '@openlinker/shared/rate-limit';
 import type { SyncJobHandler } from '@openlinker/core/sync';
 import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
@@ -63,6 +63,7 @@ describe('SyncJobRunner', () => {
       markDead: jest.fn(),
       requeueStuckJobs: jest.fn(),
       heartbeat: jest.fn().mockResolvedValue(undefined),
+      requeueWithoutPenalty: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<SyncJobRepositoryPort>;
 
     // Mock handler registry
@@ -563,6 +564,77 @@ describe('SyncJobRunner', () => {
         expect.any(Date)
       );
       expect(jobRepository.markDead).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('rate-limit-timeout requeue (#1810 review follow-up)', () => {
+    const createMockJob = (attempts: number, maxAttempts: number = 10): SyncJob => {
+      return new SyncJob(
+        randomUUID(),
+        'master.product.syncByExternalId',
+        randomUUID(),
+        { externalId: '1' },
+        'running',
+        `test-key-${randomUUID()}`,
+        attempts,
+        maxAttempts,
+        new Date(),
+        new Date(),
+        'worker-123',
+        null,
+        new Date(),
+        new Date()
+      );
+    };
+
+    it('requeues without penalty on a raw RateLimitTimeoutError — attempts untouched, markFailed/markDead never called', async () => {
+      const job = createMockJob(9, 10); // would markDead under the ordinary path (next attempt = 10 >= max)
+      const error = new RateLimitTimeoutError(120_000);
+
+      await (runner as any).handleJobFailure(job, error);
+
+      expect(jobRepository.requeueWithoutPenalty).toHaveBeenCalledWith(
+        job.id,
+        error.message,
+        expect.any(Date)
+      );
+      expect(jobRepository.markFailed).not.toHaveBeenCalled();
+      expect(jobRepository.markDead).not.toHaveBeenCalled();
+
+      const nextRunAt = jobRepository.requeueWithoutPenalty.mock.calls[0][2];
+      expect(nextRunAt.getTime()).toBeGreaterThan(Date.now());
+    });
+
+    it('unwraps SyncJobExecutionError.cause to find a wrapped RateLimitTimeoutError', async () => {
+      const job = createMockJob(0, 10);
+      const rateLimitError = new RateLimitTimeoutError(120_000);
+      const wrapped = new SyncJobExecutionError(
+        'Handler failed',
+        job.id,
+        job.jobType,
+        job.connectionId,
+        rateLimitError
+      );
+
+      await (runner as any).handleJobFailure(job, wrapped);
+
+      expect(jobRepository.requeueWithoutPenalty).toHaveBeenCalledWith(
+        job.id,
+        wrapped.message,
+        expect.any(Date)
+      );
+      expect(jobRepository.markFailed).not.toHaveBeenCalled();
+      expect(jobRepository.markDead).not.toHaveBeenCalled();
+    });
+
+    it('does not treat an ordinary error as a rate-limit timeout', async () => {
+      const job = createMockJob(2, 10);
+      const error = new Error('some other transient failure');
+
+      await (runner as any).handleJobFailure(job, error);
+
+      expect(jobRepository.requeueWithoutPenalty).not.toHaveBeenCalled();
+      expect(jobRepository.markFailed).toHaveBeenCalledWith(job.id, error.message, expect.any(Date));
     });
   });
 

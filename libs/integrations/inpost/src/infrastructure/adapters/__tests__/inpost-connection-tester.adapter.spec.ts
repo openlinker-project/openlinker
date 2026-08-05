@@ -18,7 +18,8 @@ import { InpostNetworkException } from '../../../domain/exceptions/inpost-networ
 
 describe('InpostConnectionTesterAdapter', () => {
   const http: jest.Mocked<HttpTransportFactoryPort> = {
-    for: jest.fn().mockReturnValue(jest.fn()),
+    forConnection: jest.fn().mockReturnValue(jest.fn()),
+    evict: jest.fn(),
   };
   const tester = new InpostConnectionTesterAdapter(http);
   const resolver: CredentialsResolverPort = {

@@ -131,9 +131,9 @@ export interface AdapterMetadata {
    * written into a connection's stored config; the effective policy is
    * `connection.config.rateLimit ?? metadata.defaultRateLimit`.
    *
-   * Wired via `HttpTransportFactoryPort.for(connection, defaultRateLimit?)`
+   * Wired via `HttpTransportFactoryPort.forConnection(connection, defaultRateLimit?)`
    * (#1810 Phase 4) — each plugin's `createCapabilityAdapter` passes its own
-   * manifest's `defaultRateLimit` as the second argument at the `host.http.for(...)`
+   * manifest's `defaultRateLimit` as the second argument at the `host.http.forConnection(...)`
    * call site (see `PrestashopWebserviceClient`'s / PrestaShop's plugin for
    * the reference call site); `HttpTransportFactory` never imports
    * `AdapterMetadata` itself, so the value is threaded in structurally.
