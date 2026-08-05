@@ -1,0 +1,46 @@
+/**
+ * Request Priority Interceptor
+ *
+ * Global `APP_INTERCEPTOR` counterpart to `SyncJobRunner.processJob`'s
+ * `runWithPriority` entry point (#1810) — every interactive HTTP request
+ * classifies its own outbound calls (through `HostServices.http`) as
+ * `'interactive'`, so they are preferred over queued `'background'` worker
+ * traffic on a shared connection's rate limiter. The signal is bridged from
+ * the request's own `close` event, so a client disconnect cancels a queued
+ * rate-limit wait rather than leaving it to time out.
+ *
+ * `next.handle()` returns a LAZY Observable — Nest's `RouterExecutionContext`
+ * defers the actual route handler invocation until something subscribes.
+ * Calling `runWithPriority(ctx, () => next.handle())` therefore does nothing
+ * useful: the ALS context is entered and exited around merely *constructing*
+ * the Observable, and the handler (and every `await` inside it) runs later,
+ * at subscribe time, outside that context. The fix subscribes to
+ * `next.handle()` *from inside* `runWithPriority`'s callback, so the handler
+ * actually executes within the ALS scope.
+ *
+ * @module apps/api/src/http/interceptors
+ */
+import type { CallHandler, ExecutionContext, NestInterceptor } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { Observable } from 'rxjs';
+import { runWithPriority } from '@openlinker/shared/rate-limit';
+
+interface RequestWithCloseEvent {
+  on?: (event: 'close', listener: () => void) => void;
+}
+
+@Injectable()
+export class RequestPriorityInterceptor implements NestInterceptor {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    const request = context.switchToHttp().getRequest<RequestWithCloseEvent>();
+    const controller = new AbortController();
+    if (typeof request?.on === 'function') {
+      request.on('close', () => controller.abort());
+    }
+    const priorityContext = { priority: 'interactive' as const, signal: controller.signal };
+
+    return new Observable((subscriber) =>
+      runWithPriority(priorityContext, () => next.handle().subscribe(subscriber))
+    );
+  }
+}

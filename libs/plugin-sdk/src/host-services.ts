@@ -31,6 +31,7 @@
  */
 import type { LoggerPort } from '@openlinker/shared/logging';
 import type { CachePort } from '@openlinker/shared';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type {
   AdapterRegistryPort,
@@ -68,6 +69,18 @@ export interface HostServices {
 
   /** Process-wide credentials resolver. */
   readonly credentialsResolver: CredentialsResolverPort;
+
+  /**
+   * Connection-bound outbound transport (#1810). The single seam every
+   * plugin HTTP client goes through — `host.http.forConnection(connection, defaultRateLimit?)`
+   * returns a `FetchLike` that paces/caps outbound calls per the
+   * connection's live `config.rateLimit` (falling back to the caller's
+   * `defaultRateLimit` — a plugin passes its own manifest's value — when
+   * unset) before delegating to the real transport. Required: a plugin
+   * author cannot silently ship a client that bypasses per-connection rate
+   * limiting.
+   */
+  readonly http: HttpTransportFactoryPort;
 
   /**
    * Optional distributed cache. Plugins that use it must tolerate `undefined`

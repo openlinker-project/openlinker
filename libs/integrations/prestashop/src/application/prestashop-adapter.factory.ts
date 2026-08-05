@@ -45,6 +45,7 @@ import { PrestashopFeatureResolver } from '../infrastructure/provisioners/presta
 import { PrestashopCategoryPathResolver } from '../infrastructure/provisioners/prestashop-category-path.resolver';
 import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 import { Logger } from '@openlinker/shared/logging';
+import type { FetchLike } from '@openlinker/shared/http';
 
 /**
  * PrestaShop Adapter Factory
@@ -93,7 +94,8 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
   async createAdapters(
     connection: Connection,
     identifierMapping: IdentifierMappingPort,
-    credentialsResolver: CredentialsResolverPort
+    credentialsResolver: CredentialsResolverPort,
+    fetchImpl: FetchLike
   ): Promise<PrestashopAdapters> {
     this.logger.debug(`Creating PrestaShop adapters for connection: ${connection.id}`);
 
@@ -105,8 +107,11 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       connection.credentialsRef
     );
 
-    // Create HTTP client
-    const httpClient = new PrestashopWebserviceClient(config.baseUrl, credentials, config);
+    // Create HTTP client — connection-bound transport (#1810) threaded
+    // through every client this factory constructs below.
+    const httpClient = new PrestashopWebserviceClient(config.baseUrl, credentials, config, {
+      fetchImpl,
+    });
 
     // Resolve the product currency: an explicit connection-config `currency`
     // always wins; otherwise fall back to the PrestaShop shop default (cached
@@ -171,7 +176,8 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       const openlinkerModuleClient = new PrestashopOpenLinkerModuleClient(
         connection.id,
         config.storefrontBaseUrl ?? config.baseUrl,
-        this.webhookSecretProvider
+        this.webhookSecretProvider,
+        fetchImpl
       );
 
       orderProcessorManager = new PrestashopOrderProcessorManagerAdapter(
@@ -195,6 +201,16 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       );
     }
 
+    // Deliberately NOT `fetchImpl` (the connection-bound, PrestaShop-rate-
+    // limited transport): PrestashopProductPublisherAdapter's third
+    // constructor argument backs only its uploadImages() source-image
+    // fetch, which targets an arbitrary external host (master platform CDN,
+    // S3, ...), never PrestaShop itself. Passing the PrestaShop-scoped
+    // limiter here would (a) spend this connection's PrestaShop API budget
+    // on unrelated image traffic and (b) let a 429/503 from that unrelated
+    // host push back the PrestaShop limiter's own pacing via
+    // `noteRetryAfter`. Leaving it `undefined` falls back to
+    // `globalThis.fetch`, unbound.
     const productPublisher = new PrestashopProductPublisherAdapter(httpClient, connection);
 
     this.logger.log(`PrestaShop adapters created successfully for connection: ${connection.id}`);

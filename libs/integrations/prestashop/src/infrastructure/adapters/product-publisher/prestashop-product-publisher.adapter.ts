@@ -16,6 +16,7 @@
  * @module libs/integrations/prestashop/src/infrastructure/adapters/product-publisher
  */
 import { Logger } from '@openlinker/shared/logging';
+import type { FetchLike } from '@openlinker/shared/http';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import {
   ProductPublishRejectedException,
@@ -60,11 +61,18 @@ export class PrestashopProductPublisherAdapter
   constructor(
     private readonly client: IPrestashopWebserviceClient,
     private readonly connection: Connection,
+    // Connection-bound outbound transport (#1810) — used for the source
+    // image fetch in uploadImages(), which bypasses the WS client entirely.
+    // Deliberately left unbound to `globalThis.fetch` here (resolved lazily
+    // at call time in uploadImages() instead) so a caller that patches
+    // `globalThis.fetch` after construction — the existing spec's pattern —
+    // still observes its own stub.
+    private readonly fetchImpl?: FetchLike
   ) {}
 
   async publishProduct(cmd: PublishProductCommand): Promise<PublishProductResult> {
     const languageId = String(
-      cmd.platformParams?.languageId ?? (this.connection.config?.langId as number | undefined) ?? 1,
+      cmd.platformParams?.languageId ?? (this.connection.config?.langId as number | undefined) ?? 1
     );
 
     // Provision features hard-fail: associations are structural — a product without
@@ -79,7 +87,7 @@ export class PrestashopProductPublisherAdapter
 
     this.logger.debug(
       `Publishing variant=${cmd.internalVariantId} connection=${this.connection.id} ` +
-        `mode=${isUpsert ? 'upsert' : 'create'} status=${cmd.status}`,
+        `mode=${isUpsert ? 'upsert' : 'create'} status=${cmd.status}`
     );
 
     let response: PrestashopProductResponse;
@@ -88,7 +96,7 @@ export class PrestashopProductPublisherAdapter
         response = await this.client.updateResource<PrestashopProductResponse>(
           'products',
           String(cmd.externalProductId),
-          { id: String(cmd.externalProductId), ...body },
+          { id: String(cmd.externalProductId), ...body }
         );
       } else {
         // Create-idempotency guard (#1107, Piotr review): a prior attempt may have
@@ -133,15 +141,13 @@ export class PrestashopProductPublisherAdapter
   }
 
   async provisionCategory(cmd: ProvisionCategoryCommand): Promise<ProvisionCategoryResult> {
-    const languageId = String(
-      (this.connection.config?.langId as number | undefined) ?? 1,
-    );
+    const languageId = String((this.connection.config?.langId as number | undefined) ?? 1);
     // PS category tree: id 1 = Root (hidden), id 2 = Home (first visible level).
     // Creating under id_parent='0' is not a valid PS parent and may be rejected or
     // land outside the visible tree. Default to Home (2); operators with a custom
     // root can set connection.config.rootCategoryId to override.
     let parentId = String(
-      (this.connection.config?.rootCategoryId as number | string | undefined) ?? 2,
+      (this.connection.config?.rootCategoryId as number | string | undefined) ?? 2
     );
     const createdPath: string[] = [];
 
@@ -177,7 +183,7 @@ export class PrestashopProductPublisherAdapter
   private buildProductBody(
     cmd: PublishProductCommand,
     languageId: string,
-    featureAssociations: PrestashopFeatureAssociation[],
+    featureAssociations: PrestashopFeatureAssociation[]
   ): PrestashopProductWriteBody {
     const title = cmd.content?.title ?? '';
     const slug = (cmd.content?.seo?.slug ?? this.slugify(title)) || 'product';
@@ -208,7 +214,11 @@ export class PrestashopProductPublisherAdapter
     if (hasCategories || hasFeatures) {
       body.associations = {
         ...(hasCategories
-          ? { categories: { category: cmd.destinationCategoryIds.map((id) => ({ id: String(id) })) } }
+          ? {
+              categories: {
+                category: cmd.destinationCategoryIds.map((id) => ({ id: String(id) })),
+              },
+            }
           : {}),
         ...(hasFeatures ? { product_features: { product_feature: featureAssociations } } : {}),
       };
@@ -245,14 +255,17 @@ export class PrestashopProductPublisherAdapter
     // no longer duplicates — findExistingByReference adopts the orphan by its
     // stable `reference` (#1107). An unset stock heals on the next inventory sync.
     try {
-      const rows = await this.client.listResources<PrestashopStockAvailableItem>('stock_availables', {
-        custom: { 'filter[id_product]': productId },
-      });
+      const rows = await this.client.listResources<PrestashopStockAvailableItem>(
+        'stock_availables',
+        {
+          custom: { 'filter[id_product]': productId },
+        }
+      );
 
       const row = rows[0];
       if (!row) {
         this.logger.warn(
-          `No stock_available row found for product ${productId} on connection ${this.connection.id} — stock not updated.`,
+          `No stock_available row found for product ${productId} on connection ${this.connection.id} — stock not updated.`
         );
         return;
       }
@@ -266,7 +279,7 @@ export class PrestashopProductPublisherAdapter
     } catch (err) {
       this.logger.warn(
         `Stock update failed for product ${productId} on connection ${this.connection.id} — left unset. Will self-heal on next inventory sync.`,
-        (err as Error).stack,
+        (err as Error).stack
       );
     }
   }
@@ -278,7 +291,7 @@ export class PrestashopProductPublisherAdapter
    */
   private async provisionFeatures(
     parameters: OfferParameter[],
-    languageId: string,
+    languageId: string
   ): Promise<PrestashopFeatureAssociation[]> {
     const associations: PrestashopFeatureAssociation[] = [];
 
@@ -288,10 +301,10 @@ export class PrestashopProductPublisherAdapter
       // Resolve or create the feature
       const existingFeatures = await this.client.listResources<PrestashopFeatureListItem>(
         'product_features',
-        { custom: { 'filter[name]': featureName } },
+        { custom: { 'filter[name]': featureName } }
       );
       const existingFeature = existingFeatures.find(
-        (f) => this.extractLangText(f.name, languageId) === featureName,
+        (f) => this.extractLangText(f.name, languageId) === featureName
       );
 
       let featureId: string;
@@ -300,7 +313,7 @@ export class PrestashopProductPublisherAdapter
       } else {
         const created = await this.client.createResource<PrestashopFeatureResponse>(
           'product_features',
-          { name: langField(featureName, languageId) },
+          { name: langField(featureName, languageId) }
         );
         featureId = String(created.id);
       }
@@ -309,10 +322,10 @@ export class PrestashopProductPublisherAdapter
       for (const value of param.values ?? []) {
         const existingValues = await this.client.listResources<PrestashopFeatureValueListItem>(
           'product_feature_values',
-          { custom: { 'filter[id_feature]': featureId } },
+          { custom: { 'filter[id_feature]': featureId } }
         );
         const existingValue = existingValues.find(
-          (v) => this.extractLangText(v.value, languageId) === value,
+          (v) => this.extractLangText(v.value, languageId) === value
         );
 
         let featureValueId: string;
@@ -321,7 +334,7 @@ export class PrestashopProductPublisherAdapter
         } else {
           const created = await this.client.createResource<PrestashopFeatureValueResponse>(
             'product_feature_values',
-            { id_feature: featureId, value: langField(value, languageId) },
+            { id_feature: featureId, value: langField(value, languageId) }
           );
           featureValueId = String(created.id);
         }
@@ -341,17 +354,20 @@ export class PrestashopProductPublisherAdapter
   private async uploadImages(
     productId: string,
     imageUrls: string[],
-    warnings: string[],
+    warnings: string[]
   ): Promise<void> {
     for (const url of imageUrls) {
       try {
         const controller = new AbortController();
-        const timeoutMs: number = (this.connection.config?.timeoutMs as number | undefined) ?? 30000;
+        const timeoutMs: number =
+          (this.connection.config?.timeoutMs as number | undefined) ?? 30000;
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
         let bytes: Uint8Array;
         let mimeType: string;
         try {
-          const response = await fetch(url, { signal: controller.signal });
+          const response = await (this.fetchImpl ?? globalThis.fetch)(url, {
+            signal: controller.signal,
+          });
           if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
           }
@@ -367,10 +383,10 @@ export class PrestashopProductPublisherAdapter
       } catch (err) {
         this.logger.warn(
           `Image upload failed for product ${productId} url="${url}" connection=${this.connection.id} — skipped.`,
-          (err as Error).stack,
+          (err as Error).stack
         );
         warnings.push(
-          `imageUrls: failed to upload "${url}" for product ${productId} — ${(err as Error).message}`,
+          `imageUrls: failed to upload "${url}" for product ${productId} — ${(err as Error).message}`
         );
       }
     }

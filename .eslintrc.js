@@ -526,6 +526,27 @@ module.exports = {
       },
     },
     {
+      // #1810 — every plugin HTTP client goes through the connection-bound
+      // transport (`HostServices.http`) instead of raw `fetch()`, so a
+      // connection's `config.rateLimit` can't be silently bypassed. Scoped
+      // to PrestaShop for now — it's the reference adopter (closes #1772) —
+      // and widens to `libs/integrations/**` once the remaining 8 clients
+      // are migrated (#1810 Phase 5, tracked in #1956). Enforced alongside
+      // `scripts/check-outbound-http.mjs` (`check:invariants`).
+      files: ['libs/integrations/prestashop/**/*.ts'],
+      excludedFiles: ['**/*.spec.ts', '**/*.int-spec.ts'],
+      rules: {
+        'no-restricted-globals': [
+          'error',
+          {
+            name: 'fetch',
+            message:
+              'Use the connection-bound transport from HostServices.http — bare fetch() bypasses per-connection rate limiting (#1810).',
+          },
+        ],
+      },
+    },
+    {
       // FE platformType is an opaque string post-#578/#579. Literal-equality
       // dispatch (`connection.platformType === 'allegro'`, etc.) is forbidden
       // outside the in-tree plugin packages — use `usePlugin()` / `usePlugins()`

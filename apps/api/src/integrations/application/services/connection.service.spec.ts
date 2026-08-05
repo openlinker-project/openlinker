@@ -14,6 +14,7 @@ import type {
   ConnectionPort,
   ConnectionUpdate,
   ConnectionFilters,
+  ConnectionRateLimit,
 } from '@openlinker/core/identifier-mapping';
 import {
   CONNECTION_PORT_TOKEN,
@@ -44,6 +45,8 @@ import {
   ConnectionCredentialsRewriteException,
 } from '@openlinker/core/integrations';
 import type { ConnectionCredentialsRewriterPort } from '@openlinker/core/integrations';
+import { HTTP_TRANSPORT_FACTORY_TOKEN } from '@openlinker/plugin-sdk';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { AllegroConnectionConfigShapeValidatorAdapter } from '@openlinker/integrations-allegro';
 import {
   PrestashopConnectionConfigShapeValidatorAdapter,
@@ -66,6 +69,7 @@ describe('ConnectionService', () => {
   let configValidatorRegistry: ConnectionConfigShapeValidatorRegistryService;
   let credentialsValidatorRegistry: ConnectionCredentialsShapeValidatorRegistryService;
   let credentialsRewriterRegistry: ConnectionCredentialsRewriterRegistryService;
+  let mockHttpTransportFactory: jest.Mocked<HttpTransportFactoryPort>;
 
   const mockConnection = new Connection(
     'connection-123',
@@ -186,6 +190,11 @@ describe('ConnectionService', () => {
       get: jest.fn(),
     } as unknown as CredentialsResolverPort;
 
+    mockHttpTransportFactory = {
+      forConnection: jest.fn(),
+      evict: jest.fn(),
+    } as jest.Mocked<HttpTransportFactoryPort>;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ConnectionService,
@@ -208,6 +217,7 @@ describe('ConnectionService', () => {
           useValue: credentialsRewriterRegistry,
         },
         { provide: CREDENTIALS_RESOLVER_TOKEN, useValue: mockCredentialsResolver },
+        { provide: HTTP_TRANSPORT_FACTORY_TOKEN, useValue: mockHttpTransportFactory },
       ],
     }).compile();
 
@@ -550,6 +560,91 @@ describe('ConnectionService', () => {
           })
         ).resolves.toEqual(mockConnection);
         expect(connectionPort.create).toHaveBeenCalled();
+      });
+    });
+
+    describe('config.rateLimit validation (#1810)', () => {
+      it('should accept a create with both knobs within bounds', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, rateLimit: { requestsPerMinute: 60, maxConcurrent: 4 } },
+          })
+        ).resolves.toEqual(mockConnection);
+        expect(connectionPort.create).toHaveBeenCalled();
+      });
+
+      it('should accept a create with config.rateLimit absent — unlimited, byte-identical to today', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(service.create(payload)).resolves.toEqual(mockConnection);
+        expect(connectionPort.create).toHaveBeenCalledWith(
+          expect.objectContaining({ config: payload.config })
+        );
+      });
+
+      it('should reject a create with requestsPerMinute below 1', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, rateLimit: { requestsPerMinute: 0 } },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject a create with requestsPerMinute above 6000', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, rateLimit: { requestsPerMinute: 6001 } },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject a create with maxConcurrent above 64', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, rateLimit: { maxConcurrent: 65 } },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject a create with a non-object rateLimit', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, rateLimit: 'fast' as unknown as ConnectionRateLimit },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should update accepting a valid rateLimit and never default a value into stored config', async () => {
+        connectionPort.get.mockResolvedValue(mockConnection);
+        connectionPort.update.mockResolvedValue(mockConnection);
+        const config = { baseUrl: 'https://shop.example.com', rateLimit: { requestsPerMinute: 30 } };
+
+        await expect(
+          service.update('connection-123', { config })
+        ).resolves.toEqual(mockConnection);
+        expect(connectionPort.update).toHaveBeenCalledWith('connection-123', { config });
+      });
+
+      it('should reject an update with an out-of-bounds maxConcurrent', async () => {
+        connectionPort.get.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.update('connection-123', {
+            config: { baseUrl: 'https://shop.example.com', rateLimit: { maxConcurrent: 0 } },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
       });
     });
   });
@@ -1229,6 +1324,28 @@ describe('ConnectionService', () => {
 
       expect(result.status).toBe('disabled');
       expect(connectionPort.disable).toHaveBeenCalledWith('connection-123');
+    });
+
+    it('should evict the connection from the rate-limiter/transport cache so it stops leaking process memory', async () => {
+      const disabledConnection = new Connection(
+        'connection-123',
+        'prestashop',
+        'Test Connection',
+        'disabled',
+        {},
+        'cred_123',
+        new Date(),
+        new Date(),
+
+        undefined,
+        ['ProductMaster']
+      );
+
+      connectionPort.disable.mockResolvedValue(disabledConnection);
+
+      await service.disable('connection-123');
+
+      expect(mockHttpTransportFactory.evict).toHaveBeenCalledWith('connection-123');
     });
 
     it('should throw NotFoundException when connection not found', async () => {

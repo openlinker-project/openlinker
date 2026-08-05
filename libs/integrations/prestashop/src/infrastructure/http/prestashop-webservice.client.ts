@@ -12,6 +12,8 @@ import type {
   IPrestashopWebserviceClient,
   PrestashopQueryFilters,
   PrestashopWriteOptions,
+  RetryConfig,
+  PrestashopWebserviceClientOptions,
 } from './prestashop-webservice.client.interface';
 import type {
   PrestashopConnectionConfig,
@@ -26,6 +28,7 @@ import { PrestashopQueryBuilder } from './prestashop-query.builder';
 import { PrestashopResponseParser } from './prestashop-response.parser';
 import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
 import { XMLBuilder } from 'fast-xml-parser';
+import type { FetchLike } from '@openlinker/shared/http';
 
 /**
  * Resources whose PrestaShop singular element name is not the plural minus a
@@ -46,16 +49,6 @@ const IRREGULAR_RESOURCE_SINGULARS: Readonly<Record<string, string>> = {
  */
 function singularizeResource(resource: string): string {
   return IRREGULAR_RESOURCE_SINGULARS[resource] ?? resource.slice(0, -1);
-}
-
-/**
- * Retry configuration
- */
-interface RetryConfig {
-  maxRetries: number;
-  initialDelayMs: number;
-  maxDelayMs: number;
-  backoffMultiplier: number;
 }
 
 /**
@@ -80,13 +73,15 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
   private readonly config: PrestashopConnectionConfig;
   private readonly retryConfig: RetryConfig;
   private readonly xmlBuilder: XMLBuilder;
+  private readonly fetchImpl: FetchLike;
 
   constructor(
     baseUrl: string,
     credentials: PrestashopCredentials,
     config: PrestashopConnectionConfig,
-    retryConfig?: Partial<RetryConfig>
+    options: PrestashopWebserviceClientOptions = {}
   ) {
+    this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
     // Normalize baseUrl (remove trailing slash)
     const normalizedBaseUrl: string = baseUrl.replace(/\/$/, '');
     this.baseUrl = normalizedBaseUrl;
@@ -115,7 +110,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       responseFormat,
       shopId: configShopId,
     };
-    this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
+    this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...options.retryConfig };
     // Initialize XML builder for converting objects to XML (required for POST requests)
     this.xmlBuilder = new XMLBuilder({
       ignoreAttributes: false,
@@ -261,7 +256,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const response = await fetch(url, {
+      const response = await this.fetchImpl(url, {
         method: 'POST',
         headers,
         body: form,
@@ -570,7 +565,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const response = await fetch(url, {
+      const response = await this.fetchImpl(url, {
         ...options,
         headers,
         signal: controller.signal,

@@ -53,6 +53,11 @@ import type { SyncJobRequest } from '@openlinker/core/sync';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import { Inject } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
+import { HTTP_TRANSPORT_FACTORY_TOKEN } from '@openlinker/plugin-sdk';
+// Non-type-only import: HttpTransportFactoryPort is the type of a
+// constructor parameter on an @Injectable() class, and
+// `emitDecoratorMetadata` requires a non-erased reference.
+import { HttpTransportFactoryPort } from '@openlinker/shared/http';
 
 @Injectable()
 export class ConnectionService implements IConnectionService {
@@ -78,7 +83,9 @@ export class ConnectionService implements IConnectionService {
     @Inject(CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN)
     private readonly connectionCredentialsRewriterRegistry: ConnectionCredentialsRewriterRegistryService,
     @Inject(CREDENTIALS_RESOLVER_TOKEN)
-    private readonly credentialsResolver: CredentialsResolverPort
+    private readonly credentialsResolver: CredentialsResolverPort,
+    @Inject(HTTP_TRANSPORT_FACTORY_TOKEN)
+    private readonly httpTransportFactory: HttpTransportFactoryPort
   ) {}
 
   /**
@@ -129,6 +136,39 @@ export class ConnectionService implements IConnectionService {
         });
       }
       throw error;
+    }
+  }
+
+  /**
+   * Core-owned bounds check for `config.rateLimit` (#1810). Neutral —
+   * every adapter shares this validation, so no per-plugin config-shape
+   * validator needs to know about it. Never defaults a value into the
+   * stored config; an absent `rateLimit` (or an absent knob within it)
+   * stays absent.
+   */
+  private validateRateLimitConfig(config: Record<string, unknown>): void {
+    const rateLimit = config.rateLimit;
+    if (rateLimit === undefined || rateLimit === null) return;
+    if (typeof rateLimit !== 'object' || Array.isArray(rateLimit)) {
+      throw new BadRequestException('config.rateLimit must be an object');
+    }
+
+    const { requestsPerMinute, maxConcurrent } = rateLimit as Record<string, unknown>;
+    if (
+      requestsPerMinute !== undefined &&
+      (typeof requestsPerMinute !== 'number' || requestsPerMinute < 1 || requestsPerMinute > 6000)
+    ) {
+      throw new BadRequestException(
+        'config.rateLimit.requestsPerMinute must be a number between 1 and 6000'
+      );
+    }
+    if (
+      maxConcurrent !== undefined &&
+      (typeof maxConcurrent !== 'number' || maxConcurrent < 1 || maxConcurrent > 64)
+    ) {
+      throw new BadRequestException(
+        'config.rateLimit.maxConcurrent must be a number between 1 and 64'
+      );
     }
   }
 
@@ -275,6 +315,7 @@ export class ConnectionService implements IConnectionService {
       // orphan credential row. Absence of a registered validator is a
       // deliberate skip — plugins with no fixed shape don't register one.
       if (rest.config !== undefined) {
+        this.validateRateLimitConfig(rest.config);
         await this.validateConfigShape(metadata.adapterKey, rest.config);
       }
 
@@ -453,6 +494,7 @@ export class ConnectionService implements IConnectionService {
       // override, so the resolved adapterKey above falls back to the
       // platform default via `resolveAdapterMetadata`.
       if (patch.config !== undefined && metadata) {
+        this.validateRateLimitConfig(patch.config);
         await this.validateConfigShape(metadata.adapterKey, patch.config);
       }
 
@@ -504,6 +546,11 @@ export class ConnectionService implements IConnectionService {
     try {
       this.logger.log(`Disabling connection: ${connectionId}`);
       const connection = await this.connectionPort.disable(connectionId);
+      // A disabled connection sends no more outbound traffic — drop its
+      // rate-limiter/transport-cache state instead of leaking it for the
+      // rest of the process lifetime. Re-enabling lazily rebuilds it (idle
+      // state, no carried queue) on the next call.
+      this.httpTransportFactory.evict(connectionId);
       this.logger.log(`Connection disabled successfully: ${connection.id} (${connection.name})`);
       return connection;
     } catch (error) {

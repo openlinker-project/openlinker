@@ -20,6 +20,7 @@ import {
   AuthFailureClassifierRegistryService,
 } from '@openlinker/core/sync';
 import { SyncJobHandlerRegistry } from '../handlers/sync-job-handler.registry';
+import { getCurrentPriority, RateLimitTimeoutError } from '@openlinker/shared/rate-limit';
 import type { SyncJobHandler } from '@openlinker/core/sync';
 import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
@@ -61,6 +62,8 @@ describe('SyncJobRunner', () => {
       markFailed: jest.fn(),
       markDead: jest.fn(),
       requeueStuckJobs: jest.fn(),
+      heartbeat: jest.fn().mockResolvedValue(undefined),
+      requeueWithoutPenalty: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<SyncJobRepositoryPort>;
 
     // Mock handler registry
@@ -202,6 +205,85 @@ describe('SyncJobRunner', () => {
       expect(jobRepository.markSucceeded).toHaveBeenCalledWith(job.id, 'ok', undefined);
       expect(jobRepository.markFailed).not.toHaveBeenCalled();
       expect(jobRepository.markDead).not.toHaveBeenCalled();
+    });
+
+    it('heartbeats periodically while the handler runs and stops once it settles (#1810)', async () => {
+      jest.useFakeTimers();
+      const job = createMockJob({ status: 'running' });
+      let resolveHandler: (value: { outcome: 'ok' }) => void = () => {};
+      const handlerPromise = new Promise<{ outcome: 'ok' }>((resolve) => {
+        resolveHandler = resolve;
+      });
+      mockHandler.execute.mockReturnValueOnce(handlerPromise);
+      handlerRegistry.getHandler.mockReturnValueOnce(mockHandler);
+      jobRepository.markSucceeded.mockResolvedValueOnce(undefined);
+
+      const processPromise = (runner as any).processJob(job);
+      await Promise.resolve();
+
+      // Simulate the handler still running past the 15-minute stuck-job
+      // threshold (3 heartbeat ticks at the 3-minute interval = 9 min; a
+      // 4th tick pushes past 12 min — well beyond a single reclaim sweep).
+      for (let i = 0; i < 4; i++) {
+        jest.advanceTimersByTime((runner as any).JOB_HEARTBEAT_INTERVAL_MS);
+        await Promise.resolve();
+      }
+      expect(jobRepository.heartbeat).toHaveBeenCalledTimes(4);
+      expect(jobRepository.heartbeat).toHaveBeenCalledWith(job.id, (runner as any).WORKER_ID);
+
+      // Handler finally settles — the interval must be cleared so no
+      // further heartbeats fire after the job is no longer running.
+      resolveHandler({ outcome: 'ok' });
+      await processPromise;
+      expect(jobRepository.markSucceeded).toHaveBeenCalledWith(job.id, 'ok', undefined);
+
+      jobRepository.heartbeat.mockClear();
+      jest.advanceTimersByTime((runner as any).JOB_HEARTBEAT_INTERVAL_MS * 2);
+      await Promise.resolve();
+      expect(jobRepository.heartbeat).not.toHaveBeenCalled();
+
+      jest.useRealTimers();
+    });
+
+    it('swallows a heartbeat failure without interrupting the running handler (#1810)', async () => {
+      jest.useFakeTimers();
+      const job = createMockJob({ status: 'running' });
+      let resolveHandler: (value: { outcome: 'ok' }) => void = () => {};
+      const handlerPromise = new Promise<{ outcome: 'ok' }>((resolve) => {
+        resolveHandler = resolve;
+      });
+      mockHandler.execute.mockReturnValueOnce(handlerPromise);
+      handlerRegistry.getHandler.mockReturnValueOnce(mockHandler);
+      jobRepository.markSucceeded.mockResolvedValueOnce(undefined);
+      jobRepository.heartbeat.mockRejectedValueOnce(new Error('DB blip'));
+
+      const processPromise = (runner as any).processJob(job);
+      await Promise.resolve();
+
+      jest.advanceTimersByTime((runner as any).JOB_HEARTBEAT_INTERVAL_MS);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      resolveHandler({ outcome: 'ok' });
+      await processPromise;
+
+      expect(jobRepository.markSucceeded).toHaveBeenCalledWith(job.id, 'ok', undefined);
+      jest.useRealTimers();
+    });
+
+    it("executes the handler under the 'background' rate-limit priority (#1810)", async () => {
+      const job = createMockJob({ status: 'running' });
+      let observedPriority: string | undefined;
+      mockHandler.execute.mockImplementationOnce(() => {
+        observedPriority = getCurrentPriority();
+        return Promise.resolve({ outcome: 'ok' });
+      });
+      handlerRegistry.getHandler.mockReturnValueOnce(mockHandler);
+      jobRepository.markSucceeded.mockResolvedValueOnce(undefined);
+
+      await (runner as any).processJob(job);
+
+      expect(observedPriority).toBe('background');
     });
 
     it('should persist outcome=business_failure when handler reports a terminal business rejection', async () => {
@@ -482,6 +564,77 @@ describe('SyncJobRunner', () => {
         expect.any(Date)
       );
       expect(jobRepository.markDead).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('rate-limit-timeout requeue (#1810 review follow-up)', () => {
+    const createMockJob = (attempts: number, maxAttempts: number = 10): SyncJob => {
+      return new SyncJob(
+        randomUUID(),
+        'master.product.syncByExternalId',
+        randomUUID(),
+        { externalId: '1' },
+        'running',
+        `test-key-${randomUUID()}`,
+        attempts,
+        maxAttempts,
+        new Date(),
+        new Date(),
+        'worker-123',
+        null,
+        new Date(),
+        new Date()
+      );
+    };
+
+    it('requeues without penalty on a raw RateLimitTimeoutError — attempts untouched, markFailed/markDead never called', async () => {
+      const job = createMockJob(9, 10); // would markDead under the ordinary path (next attempt = 10 >= max)
+      const error = new RateLimitTimeoutError(120_000);
+
+      await (runner as any).handleJobFailure(job, error);
+
+      expect(jobRepository.requeueWithoutPenalty).toHaveBeenCalledWith(
+        job.id,
+        error.message,
+        expect.any(Date)
+      );
+      expect(jobRepository.markFailed).not.toHaveBeenCalled();
+      expect(jobRepository.markDead).not.toHaveBeenCalled();
+
+      const nextRunAt = jobRepository.requeueWithoutPenalty.mock.calls[0][2];
+      expect(nextRunAt.getTime()).toBeGreaterThan(Date.now());
+    });
+
+    it('unwraps SyncJobExecutionError.cause to find a wrapped RateLimitTimeoutError', async () => {
+      const job = createMockJob(0, 10);
+      const rateLimitError = new RateLimitTimeoutError(120_000);
+      const wrapped = new SyncJobExecutionError(
+        'Handler failed',
+        job.id,
+        job.jobType,
+        job.connectionId,
+        rateLimitError
+      );
+
+      await (runner as any).handleJobFailure(job, wrapped);
+
+      expect(jobRepository.requeueWithoutPenalty).toHaveBeenCalledWith(
+        job.id,
+        wrapped.message,
+        expect.any(Date)
+      );
+      expect(jobRepository.markFailed).not.toHaveBeenCalled();
+      expect(jobRepository.markDead).not.toHaveBeenCalled();
+    });
+
+    it('does not treat an ordinary error as a rate-limit timeout', async () => {
+      const job = createMockJob(2, 10);
+      const error = new Error('some other transient failure');
+
+      await (runner as any).handleJobFailure(job, error);
+
+      expect(jobRepository.requeueWithoutPenalty).not.toHaveBeenCalled();
+      expect(jobRepository.markFailed).toHaveBeenCalledWith(job.id, error.message, expect.any(Date));
     });
   });
 

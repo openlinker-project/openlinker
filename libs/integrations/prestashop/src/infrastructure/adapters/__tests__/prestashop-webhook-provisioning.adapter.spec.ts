@@ -13,7 +13,7 @@
  *   - ConnectionPort        — get + update
  *   - WebhookSecretService  — rotate (returns plaintext)
  *   - CredentialsResolver   — get (returns PS credentials)
- *   - global `fetch`        — ping HTTP call
+ *   - HttpTransportFactoryPort.forConnection() — resolves the fetchImpl used for the ping HTTP call (#1810)
  *   - PrestashopWebserviceClient — listResources / createResource / updateResource
  *
  * The WS client is constructed inside the adapter (not injected) so we mock
@@ -25,6 +25,7 @@ import { BadRequestException } from '@nestjs/common';
 import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
 import { Connection } from '@openlinker/core/identifier-mapping';
 import type { IWebhookSecretService, CredentialsResolverPort } from '@openlinker/core/integrations';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { PrestashopWebhookProvisioningAdapter } from '../prestashop-webhook-provisioning.adapter';
 import * as wsClientModule from '../../http/prestashop-webservice.client';
 
@@ -39,7 +40,8 @@ describe('PrestashopWebhookProvisioningAdapter', () => {
     updateResource: jest.Mock;
     getResource: jest.Mock;
   };
-  let fetchSpy: jest.SpyInstance;
+  let fetchSpy: jest.Mock;
+  let httpTransportFactory: jest.Mocked<HttpTransportFactoryPort>;
 
   const baseConnection = new Connection(
     'connection-123',
@@ -86,16 +88,22 @@ describe('PrestashopWebhookProvisioningAdapter', () => {
       .spyOn(wsClientModule, 'PrestashopWebserviceClient')
       .mockImplementation(() => mockWsClient as never);
 
-    // Default ping success.
-    fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+    // Default ping success. Connection-bound transport (#1810) — the
+    // adapter resolves fetchImpl via `this.http.forConnection(connection)`, never
+    // bare `fetch` directly.
+    fetchSpy = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
     } as Response);
+    httpTransportFactory = {
+      forConnection: jest.fn().mockReturnValue(fetchSpy),
+    } as unknown as jest.Mocked<HttpTransportFactoryPort>;
 
     adapter = new PrestashopWebhookProvisioningAdapter(
       connectionPort,
       webhookSecretService,
-      credentialsResolver
+      credentialsResolver,
+      httpTransportFactory
     );
   });
 

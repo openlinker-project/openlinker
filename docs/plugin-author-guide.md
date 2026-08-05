@@ -69,7 +69,7 @@ port interfaces in `libs/core/src/<context>/domain/ports/`. An adapter
 implements one or more of them.
 
 The well-known set is `CoreCapabilityValues`, declared verbatim at
-[`libs/core/src/integrations/domain/types/adapter.types.ts:22-36`](../libs/core/src/integrations/domain/types/adapter.types.ts#L22-L36):
+[`libs/core/src/integrations/domain/types/adapter.types.ts:23-37`](../libs/core/src/integrations/domain/types/adapter.types.ts#L23-L37):
 
 ```typescript
 export const CoreCapabilityValues = [
@@ -464,11 +464,13 @@ authoring your plugin). Its four fields:
 
 The `HostServices` bag passed into `register` and `createCapabilityAdapter`
 is defined at
-[`libs/plugin-sdk/src/host-services.ts:55-178`](../libs/plugin-sdk/src/host-services.ts#L55-L178).
+[`libs/plugin-sdk/src/host-services.ts:56-191`](../libs/plugin-sdk/src/host-services.ts#L56-L191).
 It splits into two blocks:
 
 - **Read inputs** (use): `logger`, `identifierMapping`,
-  `credentialsResolver`, optional `cache`.
+  `credentialsResolver`, `http` (required — the connection-bound outbound
+  transport, #1810: pass `host.http.forConnection(connection)` into your client
+  instead of calling `fetch` directly), optional `cache`.
 - **Side registries** (register into at boot): `adapterRegistry`,
   `factoryResolver`, `connectionTesterRegistry`,
   `emailNormalizerRegistry`, `retryClassifierRegistry`,
@@ -1047,7 +1049,7 @@ If you're proposing a new "bulk" capability on a port, that's almost certainly a
   vertical-slice patterns, the PrestaShop opt-in helper.
 - [`libs/plugin-sdk/src/adapter-plugin.ts:42-110`](../libs/plugin-sdk/src/adapter-plugin.ts#L42-L110)
   — the `AdapterPlugin` contract spec, header-comment form.
-- [`libs/plugin-sdk/src/host-services.ts:55-178`](../libs/plugin-sdk/src/host-services.ts#L55-L178)
+- [`libs/plugin-sdk/src/host-services.ts:56-191`](../libs/plugin-sdk/src/host-services.ts#L56-L191)
   — the `HostServices` bag, fields split into read-inputs vs side
   registries.
 

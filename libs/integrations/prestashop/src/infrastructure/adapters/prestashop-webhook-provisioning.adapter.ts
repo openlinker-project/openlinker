@@ -27,6 +27,9 @@
 import { Inject, Injectable, BadRequestException } from '@nestjs/common';
 import { createHmac } from 'crypto';
 import { Logger } from '@openlinker/shared/logging';
+import type { FetchLike } from '@openlinker/shared/http';
+import { HttpTransportFactoryPort } from '@openlinker/shared/http';
+import { HTTP_TRANSPORT_FACTORY_TOKEN } from '@openlinker/plugin-sdk';
 import { ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import type {
   WebhookProvisioningPort,
@@ -42,6 +45,7 @@ import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-c
 import type { PrestashopCredentials } from '../../domain/types/prestashop-credentials.types';
 import { PrestashopWebserviceClient } from '../http/prestashop-webservice.client';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
+import { prestashopAdapterManifest } from '../../prestashop-plugin';
 
 const PROVIDER = 'prestashop';
 
@@ -62,7 +66,9 @@ export class PrestashopWebhookProvisioningAdapter implements WebhookProvisioning
     @Inject(WEBHOOK_SECRET_SERVICE_TOKEN)
     private readonly webhookSecretService: IWebhookSecretService,
     @Inject(CREDENTIALS_RESOLVER_TOKEN)
-    private readonly credentialsResolver: CredentialsResolverPort
+    private readonly credentialsResolver: CredentialsResolverPort,
+    @Inject(HTTP_TRANSPORT_FACTORY_TOKEN)
+    private readonly http: HttpTransportFactoryPort
   ) {}
 
   async install(connectionId: string, actorUserId?: string): Promise<WebhookProvisioningResult> {
@@ -90,8 +96,19 @@ export class PrestashopWebhookProvisioningAdapter implements WebhookProvisioning
     // Step 2 — rotate secret (one-shot plaintext)
     const { secret } = await this.webhookSecretService.rotate(PROVIDER, connectionId, actorUserId);
 
+    // Connection-bound outbound transport (#1810) — resolved once, used for
+    // both the WS config push and the test-ping fetch below. Threads the
+    // manifest's `defaultRateLimit` fallback like every other call site — a
+    // fresh connection (no explicit config.rateLimit yet) must still be
+    // rate-limited during install, not fall through to unlimited.
+    const fetchImpl = this.http.forConnection(connection, prestashopAdapterManifest.defaultRateLimit);
+
     // Step 3 — push 3 config rows via PS WS
-    const wsClient = await this.createWebserviceClient(connection.credentialsRef, config);
+    const wsClient = await this.createWebserviceClient(
+      connection.credentialsRef,
+      config,
+      fetchImpl
+    );
 
     try {
       await this.upsertConfiguration(wsClient, CONFIG_KEYS.baseUrl, callbackUrl);
@@ -128,7 +145,7 @@ export class PrestashopWebhookProvisioningAdapter implements WebhookProvisioning
     // Step 5 — fire test ping (best-effort)
     let pingOk = false;
     try {
-      pingOk = await this.firePing(config.baseUrl, secret, connectionId);
+      pingOk = await this.firePing(config.baseUrl, secret, connectionId, fetchImpl);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(
@@ -214,7 +231,8 @@ export class PrestashopWebhookProvisioningAdapter implements WebhookProvisioning
   private async firePing(
     psBaseUrl: string,
     secret: string,
-    connectionId: string
+    connectionId: string,
+    fetchImpl: FetchLike
   ): Promise<boolean> {
     const url = `${psBaseUrl.replace(/\/$/, '')}/module/openlinker/ping`;
     const body = JSON.stringify({ event: 'test.ping', connectionId });
@@ -225,7 +243,7 @@ export class PrestashopWebhookProvisioningAdapter implements WebhookProvisioning
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
     try {
-      const res = await fetch(url, {
+      const res = await fetchImpl(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -243,13 +261,15 @@ export class PrestashopWebhookProvisioningAdapter implements WebhookProvisioning
 
   private async createWebserviceClient(
     credentialsRef: string,
-    config: Partial<PrestashopConnectionConfig>
+    config: Partial<PrestashopConnectionConfig>,
+    fetchImpl: FetchLike
   ): Promise<IPrestashopWebserviceClient> {
     const credentials = await this.credentialsResolver.get<PrestashopCredentials>(credentialsRef);
     return new PrestashopWebserviceClient(
       config.baseUrl as string,
       credentials,
-      config as PrestashopConnectionConfig
+      config as PrestashopConnectionConfig,
+      { fetchImpl }
     );
   }
 }

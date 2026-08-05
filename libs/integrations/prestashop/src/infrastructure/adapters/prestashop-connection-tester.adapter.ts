@@ -17,11 +17,15 @@ import type {
   CredentialsResolverPort,
 } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { PrestashopWebserviceClient } from '../http/prestashop-webservice.client';
 import type { PrestashopCredentials } from '../../domain/types/prestashop-credentials.types';
 import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
+import { prestashopAdapterManifest } from '../../prestashop-plugin';
 
 export class PrestashopConnectionTesterAdapter implements ConnectionTesterPort {
+  constructor(private readonly http: HttpTransportFactoryPort) {}
+
   async test(
     connection: Connection,
     credentialsResolver: CredentialsResolverPort
@@ -49,11 +53,20 @@ export class PrestashopConnectionTesterAdapter implements ConnectionTesterPort {
         responseFormat: 'auto',
       };
 
+      // Connection-bound outbound transport (#1810) — a "Test connection"
+      // click is operator-triggered and can be repeated in quick succession;
+      // it must go through the same rate limiter as every other PS call
+      // site, not a bare globalThis.fetch.
+      const fetchImpl = this.http.forConnection(connection, prestashopAdapterManifest.defaultRateLimit);
+
       const client = new PrestashopWebserviceClient(baseUrl, credentials, config, {
-        maxRetries: 0,
-        initialDelayMs: 0,
-        maxDelayMs: 0,
-        backoffMultiplier: 1,
+        retryConfig: {
+          maxRetries: 0,
+          initialDelayMs: 0,
+          maxDelayMs: 0,
+          backoffMultiplier: 1,
+        },
+        fetchImpl,
       });
 
       await client.listResources('products', undefined, 1);

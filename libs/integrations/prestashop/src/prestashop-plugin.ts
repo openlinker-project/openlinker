@@ -75,6 +75,12 @@ export const prestashopAdapterManifest: AdapterMetadata = {
   displayName: 'PrestaShop WebService v1',
   version: '1.0.0',
   isDefault: true,
+  // Conservative resolution-time fallback for a connection with no
+  // explicit config.rateLimit (#1810/#1772) — a shared-hosting PrestaShop
+  // VPS is the platform this issue's reporter hit an abuse block on.
+  // Placeholder values pending the reporter's actual abuse-notice text
+  // (see #1810's own open question); never written into stored config.
+  defaultRateLimit: { requestsPerMinute: 60, maxConcurrent: 4 },
 };
 
 /**
@@ -94,7 +100,7 @@ export function createPrestashopPlugin(deps: CreatePrestashopPluginDeps): Adapte
     register(host: HostServices): void {
       host.connectionTesterRegistry.register(
         'prestashop.webservice.v1',
-        new PrestashopConnectionTesterAdapter(),
+        new PrestashopConnectionTesterAdapter(host.http),
       );
       // Webhook provisioner — replaces direct injection of the PS-specific
       // service in `apps/api`'s ConnectionController (#583). The controller
@@ -149,6 +155,7 @@ export function createPrestashopPlugin(deps: CreatePrestashopPluginDeps): Adapte
         connection,
         host.identifierMapping,
         host.credentialsResolver,
+        host.http.forConnection(connection, prestashopAdapterManifest.defaultRateLimit),
       );
 
       return dispatchCapability<T>(

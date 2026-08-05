@@ -7,7 +7,7 @@
  * @module apps/api/src/integrations/http/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { Connection, ConnectionRateLimit } from '@openlinker/core/identifier-mapping';
 import {
   CoreCapabilityValues,
   VariantGroupingModelValues,
@@ -74,6 +74,14 @@ export class ConnectionResponseDto {
   })
   variantGrouping!: VariantGroupingModel;
 
+  @ApiProperty({
+    description:
+      "The resolved adapter's fallback outbound rate limit, applied whenever this connection has no explicit `config.rateLimit` (derived from the adapter manifest, not persisted). `null` when the adapter declares none, meaning an empty `config.rateLimit` is truly unlimited. Lets the FE render the real effective policy instead of assuming 'unlimited' whenever the form fields are empty.",
+    example: { requestsPerMinute: 60, maxConcurrent: 4 },
+    nullable: true,
+  })
+  defaultRateLimit!: ConnectionRateLimit | null;
+
   @ApiProperty({ description: 'Creation timestamp' })
   createdAt!: Date;
 
@@ -84,6 +92,7 @@ export class ConnectionResponseDto {
     connection: Connection,
     supportedCapabilities: string[],
     variantGrouping: VariantGroupingModel,
+    defaultRateLimit: ConnectionRateLimit | null,
     role?: UserRole,
     isDemoModeEnabled = false
   ): ConnectionResponseDto {
@@ -106,6 +115,7 @@ export class ConnectionResponseDto {
     dto.enabledCapabilities = connection.enabledCapabilities;
     dto.supportedCapabilities = supportedCapabilities;
     dto.variantGrouping = variantGrouping;
+    dto.defaultRateLimit = defaultRateLimit;
     dto.createdAt = connection.createdAt;
     dto.updatedAt = connection.updatedAt;
     return dto;

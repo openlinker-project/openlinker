@@ -214,6 +214,19 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
     });
   }
 
+  async requeueWithoutPenalty(id: string, error: string, nextRunAt: Date): Promise<void> {
+    // Deliberately omits `attempts` — this is the one difference from
+    // markFailed (#1810 review follow-up on #1957). A rate-limit-timeout
+    // requeue must not consume retry budget.
+    await this.repository.update(id, {
+      status: 'queued',
+      nextRunAt,
+      lockedAt: null,
+      lockedBy: null,
+      lastError: error.length > 1000 ? error.substring(0, 1000) : error, // Truncate if too long
+    });
+  }
+
   async findById(id: string): Promise<SyncJob | null> {
     const entity = await this.repository.findOne({ where: { id } });
     return entity ? this.toDomain(entity) : null;
@@ -452,6 +465,21 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       count: requeuedJobIds.length,
       skipped: candidateIds.length - requeuedJobIds.length,
     };
+  }
+
+  async heartbeat(id: string, workerId: string): Promise<void> {
+    // Guarded on lockedBy so a heartbeat from a worker that lost the job
+    // (already requeued and re-picked by another worker) is a no-op.
+    await this.repository
+      .createQueryBuilder()
+      .update(SyncJobOrmEntity)
+      .set({ lockedAt: new Date() })
+      .where('id = :id AND status = :status AND "lockedBy" = :workerId', {
+        id,
+        status: 'running',
+        workerId,
+      })
+      .execute();
   }
 
   /**
