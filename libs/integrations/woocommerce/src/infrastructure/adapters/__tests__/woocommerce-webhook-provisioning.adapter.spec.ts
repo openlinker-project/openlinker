@@ -76,7 +76,7 @@ describe('WooCommerceWebhookProvisioningAdapter', () => {
     // WooCommerceHttpClient itself is mocked above, so the fetchImpl this
     // hands back is never actually invoked — a bare stub satisfies the
     // constructor's HttpTransportFactoryPort dependency (#1810).
-    const http = { for: jest.fn().mockReturnValue(jest.fn()) };
+    const http = { forConnection: jest.fn().mockReturnValue(jest.fn()) };
 
     adapter = new WooCommerceWebhookProvisioningAdapter(
       connectionPort,

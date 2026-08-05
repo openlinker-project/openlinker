@@ -24,7 +24,7 @@ import { OfferCreationInvariantException } from '@openlinker/core/listings';
 import { ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
 import { Logger } from '@openlinker/shared/logging';
-import { runWithPriority } from '@openlinker/shared/rate-limit';
+import { runWithPriority, RateLimitTimeoutError } from '@openlinker/shared/rate-limit';
 
 @Injectable()
 export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
@@ -35,6 +35,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
   private readonly STUCK_JOB_TIMEOUT_MINUTES = 15; // Lock timeout for stuck jobs
   private readonly STUCK_JOB_RECOVERY_INTERVAL_MS = 5 * 60 * 1000; // Check for stuck jobs every 5 minutes
   private readonly JOB_HEARTBEAT_INTERVAL_MS = 3 * 60 * 1000; // Refresh lockedAt every 3 minutes while a job runs (#1810)
+  private readonly RATE_LIMIT_TIMEOUT_REQUEUE_DELAY_SECONDS = 30; // Fixed short requeue delay for RateLimitTimeoutError — not exponential, since attempts never increments (#1810 review follow-up)
 
   // Retry policy constants
   private readonly RETRY_BASE_DELAY_SECONDS = 30; // 30 seconds
@@ -324,6 +325,27 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    */
   private async handleJobFailure(job: SyncJobEntity, error: unknown): Promise<void> {
     const errorMessage = this.extractErrorMessage(error);
+
+    // Rate-limit-queue timeout (#1810 review follow-up on #1957): congestion
+    // on a shared per-connection limiter is not the job's own failure, so it
+    // must not burn a retry attempt or eventually markDead the job purely
+    // because a resource was busy. Checked BEFORE the attempts/non-retryable
+    // logic below — unwraps SyncJobExecutionError.cause the same way
+    // isNonRetryableError() does, since a handler may wrap the original
+    // RateLimitTimeoutError before it reaches the runner.
+    if (this.isRateLimitTimeout(error)) {
+      const nextRunAt = new Date(
+        Date.now() + this.RATE_LIMIT_TIMEOUT_REQUEUE_DELAY_SECONDS * 1000
+      );
+      await this.jobRepository.requeueWithoutPenalty(job.id, errorMessage, nextRunAt);
+      this.logger.warn(
+        `Job ${job.id} (${job.jobType}) timed out waiting for a rate-limit slot — requeued in ` +
+          `${this.RATE_LIMIT_TIMEOUT_REQUEUE_DELAY_SECONDS}s without counting against maxAttempts ` +
+          `(attempt stays ${job.attempts}/${job.maxAttempts})`
+      );
+      return;
+    }
+
     const nextAttempt = job.attempts + 1;
 
     this.logger.error(
@@ -407,6 +429,18 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     }
 
     return this.retryClassifierRegistry.isNonRetryable(cause);
+  }
+
+  /**
+   * Detect a `RateLimitTimeoutError` (#1810 review follow-up on #1957) —
+   * checked ahead of {@link isNonRetryableError} in {@link handleJobFailure}
+   * so it's routed to a penalty-free requeue instead of `markFailed`/`markDead`.
+   * Unwraps `SyncJobExecutionError.cause` the same way `isNonRetryableError`
+   * does, since a handler may re-throw the original error wrapped.
+   */
+  private isRateLimitTimeout(error: unknown): boolean {
+    const cause = error instanceof SyncJobExecutionError && error.cause ? error.cause : error;
+    return cause instanceof RateLimitTimeoutError;
   }
 
   /**

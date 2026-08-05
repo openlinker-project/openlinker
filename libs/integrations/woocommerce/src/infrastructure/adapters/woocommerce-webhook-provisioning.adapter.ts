@@ -117,7 +117,7 @@ export class WooCommerceWebhookProvisioningAdapter implements WebhookProvisionin
     );
 
     // Connection-bound outbound transport (#1810).
-    const fetchImpl = this.http.for(connection, woocommerceAdapterManifest.defaultRateLimit);
+    const fetchImpl = this.http.forConnection(connection, woocommerceAdapterManifest.defaultRateLimit);
     const httpClient = await this.createHttpClient(
       connection.credentialsRef,
       config.siteUrl,

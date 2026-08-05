@@ -45,14 +45,17 @@ function stubFetch(status: number, ok = status >= 200 && status < 300): void {
   } as Response);
 }
 
-// `http.for(...)` hands back a fetchImpl that delegates to `global.fetch` —
-// whatever `stubFetch` spies on — so the connection-bound-transport seam
-// (#1810) doesn't disturb this spec's existing fetch-stub assertions.
+// `http.forConnection(...)` hands back a fetchImpl that delegates to
+// `global.fetch` — whatever `stubFetch` spies on — so the
+// connection-bound-transport seam (#1810) doesn't disturb this spec's
+// existing fetch-stub assertions.
 const http: jest.Mocked<HttpTransportFactoryPort> = {
-  for: jest.fn(
-    () =>
+  forConnection: jest
+    .fn()
+    .mockReturnValue(
       (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => global.fetch(...args),
-  ),
+    ),
+  evict: jest.fn(),
 };
 
 describe('WooCommerceConnectionTesterAdapter', () => {

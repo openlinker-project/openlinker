@@ -469,7 +469,7 @@ It splits into two blocks:
 
 - **Read inputs** (use): `logger`, `identifierMapping`,
   `credentialsResolver`, `http` (required — the connection-bound outbound
-  transport, #1810: pass `host.http.for(connection)` into your client
+  transport, #1810: pass `host.http.forConnection(connection)` into your client
   instead of calling `fetch` directly), optional `cache`.
 - **Side registries** (register into at boot): `adapterRegistry`,
   `factoryResolver`, `connectionTesterRegistry`,

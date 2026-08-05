@@ -63,7 +63,7 @@ export class WooCommerceConnectionTesterAdapter implements ConnectionTesterPort 
       // click is operator-triggered and can be repeated in quick succession;
       // it must go through the same rate limiter as every other WooCommerce
       // call site, not a bare globalThis.fetch.
-      const fetchImpl = this.http.for(connection, woocommerceAdapterManifest.defaultRateLimit);
+      const fetchImpl = this.http.forConnection(connection, woocommerceAdapterManifest.defaultRateLimit);
 
       const client = new WooCommerceHttpClient(
         config.siteUrl,

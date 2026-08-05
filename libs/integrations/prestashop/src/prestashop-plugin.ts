@@ -155,7 +155,7 @@ export function createPrestashopPlugin(deps: CreatePrestashopPluginDeps): Adapte
         connection,
         host.identifierMapping,
         host.credentialsResolver,
-        host.http.for(connection, prestashopAdapterManifest.defaultRateLimit),
+        host.http.forConnection(connection, prestashopAdapterManifest.defaultRateLimit),
       );
 
       return dispatchCapability<T>(

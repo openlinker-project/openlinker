@@ -70,6 +70,21 @@ interface ConnectionRef {
   defaultRateLimit: ConnectionRateLimit | undefined;
 }
 
+/**
+ * Note on `evict()` and connection updates (tech-review finding on #1957):
+ * the host only calls `evict()` from `ConnectionService.disable()`, never
+ * from `.update()`. This is deliberate, not an oversight — `forConnection()`
+ * refreshes `ConnectionRef.current` on every call, and the returned
+ * `FetchLike` reads `connectionRef.current.config?.rateLimit` fresh on every
+ * invocation (never cached policy). So an operator's `config.rateLimit` edit
+ * takes effect on the very next outbound call through the same cached
+ * `FetchLike`, without needing eviction. Evicting on every `update()` would
+ * only add churn (throwing away in-flight/queued limiter state for an edit
+ * that didn't even touch `rateLimit`). If a future change makes
+ * `forConnection()` cache the resolved connection/policy instead of
+ * re-reading it live, this note stops being true and `update()` needs its
+ * own `evict()` call to match.
+ */
 export class HttpTransportFactory implements HttpTransportFactoryPort {
   private readonly cache = new Map<string, FetchLike>();
   private readonly connectionRefs = new Map<string, ConnectionRef>();
@@ -80,11 +95,15 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
   constructor(deps: HttpTransportFactoryDeps) {
     this.registry = deps.registry;
     this.replicas = deps.replicas && deps.replicas > 0 ? deps.replicas : 1;
-    this.baseFetch = deps.fetchImpl ?? globalThis.fetch;
+    // Bound: an unbound `globalThis.fetch` reference throws "Illegal
+    // invocation" when later invoked without its `globalThis` receiver in a
+    // browser realm. Node/undici tolerate the unbound form, but this package
+    // is nominally environment-neutral (tech-review finding on #1957).
+    this.baseFetch = deps.fetchImpl ?? globalThis.fetch.bind(globalThis);
   }
 
-  for(connection: RateLimitedConnection, defaultRateLimit?: ConnectionRateLimit): FetchLike {
-    // Keep the ref fresh on every for() call so a cached closure (below)
+  forConnection(connection: RateLimitedConnection, defaultRateLimit?: ConnectionRateLimit): FetchLike {
+    // Keep the ref fresh on every forConnection() call so a cached closure (below)
     // never reads a stale `config.rateLimit` from the connection object it
     // happened to be built with — an operator's config edit must take effect
     // on the very next call through the same cached FetchLike. `defaultRateLimit`
@@ -133,5 +152,11 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
 
     this.cache.set(connection.id, fetchImpl);
     return fetchImpl;
+  }
+
+  evict(connectionId: string): void {
+    this.cache.delete(connectionId);
+    this.connectionRefs.delete(connectionId);
+    this.registry.evict(connectionId);
   }
 }

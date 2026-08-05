@@ -57,7 +57,7 @@ export class PrestashopConnectionTesterAdapter implements ConnectionTesterPort {
       // click is operator-triggered and can be repeated in quick succession;
       // it must go through the same rate limiter as every other PS call
       // site, not a bare globalThis.fetch.
-      const fetchImpl = this.http.for(connection, prestashopAdapterManifest.defaultRateLimit);
+      const fetchImpl = this.http.forConnection(connection, prestashopAdapterManifest.defaultRateLimit);
 
       const client = new PrestashopWebserviceClient(baseUrl, credentials, config, {
         retryConfig: {

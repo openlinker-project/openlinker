@@ -189,7 +189,7 @@ export function createWooCommercePlugin(deps?: CreateWooCommercePluginDeps): Ada
         credentials.consumerKey,
         credentials.consumerSecret,
         undefined,
-        host.http.for(connection, woocommerceAdapterManifest.defaultRateLimit),
+        host.http.forConnection(connection, woocommerceAdapterManifest.defaultRateLimit),
       );
       const mapper = new WooCommerceProductMapper({});
       try {
