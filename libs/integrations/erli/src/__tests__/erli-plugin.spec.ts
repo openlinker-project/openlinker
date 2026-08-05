@@ -37,6 +37,9 @@ function makeDispatchHost(): HostServices {
   return {
     identifierMapping: {},
     credentialsResolver: { get: jest.fn().mockResolvedValue({ apiKey: 'k-123' }) },
+    // Connection-bound outbound transport (#1810) — the factory resolves
+    // `host.http.forConnection(connection, defaultRateLimit)` for every adapter.
+    http: { forConnection: jest.fn().mockReturnValue(jest.fn()), evict: jest.fn() },
   } as unknown as HostServices;
 }
 
