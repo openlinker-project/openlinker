@@ -16,15 +16,21 @@ import type {
   ConnectionTestResult,
   CredentialsResolverPort,
 } from '@openlinker/core/integrations';
-import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { Connection, ConnectionRateLimit } from '@openlinker/core/identifier-mapping';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { PrestashopWebserviceClient } from '../http/prestashop-webservice.client';
 import type { PrestashopCredentials } from '../../domain/types/prestashop-credentials.types';
 import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
-import { prestashopAdapterManifest } from '../../prestashop-plugin';
 
 export class PrestashopConnectionTesterAdapter implements ConnectionTesterPort {
-  constructor(private readonly http: HttpTransportFactoryPort) {}
+  constructor(
+    private readonly httpTransportFactory: HttpTransportFactoryPort,
+    // The plugin manifest's `defaultRateLimit` (#1810) — passed in by the
+    // registration call site (`prestashop-plugin.ts`) rather than imported
+    // back from it, which would create a module-load cycle
+    // (prestashop-plugin.ts -> this file -> prestashop-plugin.ts).
+    private readonly defaultRateLimit?: ConnectionRateLimit
+  ) {}
 
   async test(
     connection: Connection,
@@ -57,7 +63,7 @@ export class PrestashopConnectionTesterAdapter implements ConnectionTesterPort {
       // click is operator-triggered and can be repeated in quick succession;
       // it must go through the same rate limiter as every other PS call
       // site, not a bare globalThis.fetch.
-      const fetchImpl = this.http.forConnection(connection, prestashopAdapterManifest.defaultRateLimit);
+      const fetchImpl = this.httpTransportFactory.forConnection(connection, this.defaultRateLimit);
 
       const client = new PrestashopWebserviceClient(baseUrl, credentials, config, {
         retryConfig: {

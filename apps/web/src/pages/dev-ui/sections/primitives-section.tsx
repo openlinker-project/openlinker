@@ -285,6 +285,45 @@ export function PrimitivesSection(): ReactElement {
       <Group title="BackLink">
         <BackLink to="#" label="Back to orders" />
       </Group>
+
+      <Group
+        title="AccessGate"
+        description={
+          <>
+            Content gate keyed on a <code>Permission</code>. Renders <code>children</code> when the
+            session holds it, <code>fallback</code> (nothing by default) when it does not, and
+            neither while the session is still hydrating. Both branches below are{' '}
+            <strong>static illustrations</strong> — a real{' '}
+            <code>&lt;AccessGate&gt;</code> rendered here would always take the{' '}
+            <code>children</code> branch, because <code>/dev/ui</code> is an admin-only route.{' '}
+            <strong>
+              For a write affordance reach for <code>useWriteAccess</code> + <code>ReadOnlyLock</code>{' '}
+              instead
+            </strong>{' '}
+            — demo mode shows those disabled rather than hiding them, which is the opposite policy.
+          </>
+        }
+      >
+        <div className="ds-stack" style={{ gap: 'var(--space-3)' }}>
+          <p className="ds-section__sub">
+            Permission held — <code>{'<AccessGate require="connections:write">'}</code>
+          </p>
+          <Alert tone="info">
+            MCP tools follow these capabilities — an already-connected agent must reconnect to see a
+            change.
+          </Alert>
+          <p className="ds-section__sub">
+            Permission missing, with a <code>fallback</code>
+          </p>
+          <ErrorState
+            title="Admin role required"
+            message="This page manages agent credentials — it requires an admin session."
+          />
+          <p className="ds-section__sub">
+            Permission missing, no <code>fallback</code> — renders nothing
+          </p>
+        </div>
+      </Group>
     </div>
   );
 }

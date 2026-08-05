@@ -6,6 +6,7 @@ import type {
   ConnectionTestResult,
   CreateConnectionInput,
   InstallWebhooksResult,
+  RateLimitStatus,
   RotateWebhookSecretResult,
   SubiektBankAccount,
   SubiektCashRegister,
@@ -25,6 +26,7 @@ export interface ConnectionsApi {
   rotateWebhookSecret: (connectionId: string) => Promise<RotateWebhookSecretResult>;
   setWebhookSecret: (connectionId: string, secret: string) => Promise<void>;
   getWebhookStatus: (connectionId: string) => Promise<WebhookStatus>;
+  getRateLimitStatus: (connectionId: string) => Promise<RateLimitStatus>;
   list: (filters?: ConnectionFilters) => Promise<Connection[]>;
   setDefaultBankAccount: (connectionId: string, accountId: string) => Promise<void>;
   test: (connectionId: string) => Promise<ConnectionTestResult>;
@@ -110,6 +112,9 @@ export function createConnectionsApi(request: ApiRequest): ConnectionsApi {
     },
     getWebhookStatus(connectionId): Promise<WebhookStatus> {
       return request<WebhookStatus>(`/connections/${connectionId}/webhooks/status`);
+    },
+    getRateLimitStatus(connectionId): Promise<RateLimitStatus> {
+      return request<RateLimitStatus>(`/connections/${connectionId}/rate-limit-status`);
     },
     list(filters): Promise<Connection[]> {
       return request<Connection[]>(`/connections${buildQuery(filters)}`);
