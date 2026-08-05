@@ -84,6 +84,20 @@ value keeps working across the cutover — see the implementation plan's migrati
 - In-memory-only bucket state means a multi-replica deployment needs the static
   `OL_WORKER_REPLICAS` division (v1) rather than a true shared cap; Redis-backed coordination is a
   documented, no-new-dependency follow-up behind the same `RateLimiterPort`.
+- **`apps/api` and `apps/worker` never share a bucket for the same connection, independent of
+  `OL_WORKER_REPLICAS`.** `RateLimitModule` is `@Global()`, but that scopes a *single Nest process*
+  — it provides one `HttpTransportFactory`/`RateLimiterRegistry` instance per process, not one per
+  deployment. A connection's `config.rateLimit` is therefore enforced against two independent
+  buckets: the worker's (background sync jobs) and the api's (webhook install/ping, "Test
+  connection", and any future synchronous api-side adapter call as Phase 5 wires more plugins onto
+  `HostServices.http`). `OL_WORKER_REPLICAS` divides the cap *within* each process type's own pool;
+  it does not — and cannot, as an env-var-only division — make the two pools cooperate. Concretely,
+  a connection configured for 60 requests/min can see close to 120/min of real outbound traffic
+  (60 from each process's independent limiter) even with exactly one api replica and one worker
+  replica. This is the same class of gap as the multi-replica case above and is closed by the same
+  documented Redis-backed follow-up, but it applies unconditionally — not only under horizontal
+  scaling — and is worth calling out on its own since it directly weakens the guarantee against the
+  #1772 incident this ADR exists to prevent.
 
 **Migration path:**
 - #1815's PrestaShop-only `PrestashopRateLimiter`/`PrestashopRateLimiterRegistry` and
