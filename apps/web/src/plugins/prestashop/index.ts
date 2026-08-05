@@ -13,6 +13,7 @@ import { definePlugin } from '../define-plugin';
 import { PrestashopConnectionActions } from './components/prestashop-connection-actions';
 import { PrestashopCredentialsPanel } from './components/prestashop-credentials-panel';
 import { PrestashopStructuredSection } from './components/prestashop-structured-section';
+import { PrestashopExtraSection } from './components/prestashop-extra-section';
 import { prestashopSetupRoute } from './prestashop-setup.route';
 
 export const prestashopPlugin: OpenLinkerPlugin = definePlugin({
@@ -35,5 +36,6 @@ export const prestashopPlugin: OpenLinkerPlugin = definePlugin({
     StructuredConfigSection: PrestashopStructuredSection,
     CredentialsPanel: PrestashopCredentialsPanel,
     ConnectionActions: PrestashopConnectionActions,
+    ExtraConfigSection: PrestashopExtraSection,
   },
 });
