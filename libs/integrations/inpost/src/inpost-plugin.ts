@@ -36,6 +36,12 @@ export const inpostAdapterManifest: AdapterMetadata = {
   displayName: 'InPost ShipX v1',
   version: '1.0.0',
   isDefault: true,
+  // #1810 Phase 5 (tech-review follow-up on #1981): mirrors the conservative
+  // default every other Phase 5 adopter ships (PrestaShop, Erli, WooCommerce)
+  // now that `createInpostShippingAdapter` / `InpostConnectionTesterAdapter`
+  // actually route through `HttpTransportFactoryPort` — a real, enforced
+  // fallback, not a fabricated FE readout.
+  defaultRateLimit: { requestsPerMinute: 60, maxConcurrent: 4 },
 };
 
 /** Short brand label for domain-exception prefixes (manifest.displayName is too long). */
@@ -99,7 +105,7 @@ export function createInpostPlugin(): AdapterPlugin {
       const adapter = await createInpostShippingAdapter(
         connection,
         host.credentialsResolver,
-        host.http.forConnection(connection),
+        host.http.forConnection(connection, inpostAdapterManifest.defaultRateLimit),
       );
       return dispatchCapability<T>(
         capability,

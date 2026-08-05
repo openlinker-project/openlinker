@@ -39,6 +39,7 @@ import type {
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { BASE_URLS, extractConfig, resolveApiToken } from '../../application/inpost-adapter.factory';
+import { inpostAdapterManifest } from '../../inpost-plugin';
 import { InpostUnauthorizedException } from '../../domain/exceptions/inpost-unauthorized.exception';
 import { InpostHttpClient } from '../http/inpost-http-client';
 
@@ -58,7 +59,7 @@ export class InpostConnectionTesterAdapter implements ConnectionTesterPort {
       // click is operator-triggered and can be repeated in quick succession;
       // it must go through the same rate limiter as every other InPost call
       // site, not a bare globalThis.fetch.
-      const fetchImpl = this.http.forConnection(connection);
+      const fetchImpl = this.http.forConnection(connection, inpostAdapterManifest.defaultRateLimit);
 
       const client = new InpostHttpClient(
         BASE_URLS[config.environment],
