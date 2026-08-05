@@ -104,6 +104,24 @@ export interface SyncJobRepositoryPort {
   markDead(id: string, error: string): Promise<void>;
 
   /**
+   * Requeue a job WITHOUT counting it against `maxAttempts` (#1810 review
+   * follow-up on #1957).
+   *
+   * A queued `acquire()` that times out waiting for a saturated per-connection
+   * rate-limit slot (`RateLimitTimeoutError`) is not a business failure of the
+   * job's own logic — it's congestion the job itself did nothing to cause.
+   * Routing it through `markFailed` would burn a real retry attempt (and
+   * eventually `markDead` the job) purely because a shared resource was busy,
+   * which is exactly the kind of noisy-neighbor effect the rate limiter exists
+   * to prevent, not cause. Requeues at `nextRunAt` with `attempts` unchanged.
+   *
+   * @param id - Job ID
+   * @param error - Informational message (not counted as a failure reason for retry-budget purposes)
+   * @param nextRunAt - Next pickup timestamp
+   */
+  requeueWithoutPenalty(id: string, error: string, nextRunAt: Date): Promise<void>;
+
+  /**
    * Find jobs matching filters with offset pagination.
    * Results are ordered by createdAt DESC.
    */

@@ -19,6 +19,7 @@ import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { SyncModule } from '@openlinker/core/sync';
 import { WebhooksCoreModule } from '@openlinker/core/webhooks';
 import { RedisConfigModule } from '@openlinker/shared/redis';
+import { RateLimitModule } from '@openlinker/plugin-sdk';
 import { WebhookDeliveryQueryService } from '../webhooks/application/services/webhook-delivery-query.service';
 import { WEBHOOK_DELIVERY_QUERY_SERVICE_TOKEN } from '../webhooks/application/interfaces/webhook-delivery-query.service.interface';
 import { apiPlugins } from '../plugins';
@@ -44,6 +45,13 @@ import { DEMO_MODE_SERVICE_TOKEN } from '../auth/demo-mode.service.interface';
     SyncModule, // Required for cursor repository
     WebhooksCoreModule, // Webhook-delivery repository for the webhook-status projection (#1770)
     RedisConfigModule, // Required for OAuth state storage
+    // ConnectionService depends on HTTP_TRANSPORT_FACTORY_TOKEN directly
+    // (#1810) — imported explicitly here rather than relying on it leaking
+    // in as a side effect of apiPlugins happening to include a plugin that
+    // imports this @Global() module (tech-review finding on #1957: a fork
+    // that trims apiPlugins to zero entries would otherwise fail to boot
+    // with an opaque "no provider for HTTP_TRANSPORT_FACTORY_TOKEN" error).
+    RateLimitModule,
     PluginRegistryModule.forRoot({ plugins: apiPlugins }),
   ],
   controllers: [ConnectionController, AdapterController, AllegroController, SubiektController],
