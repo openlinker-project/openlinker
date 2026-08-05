@@ -30,8 +30,7 @@ global.fetch = jest.fn();
 // global mock at call time rather than capturing it, so the
 // `(global.fetch as jest.Mock).mockResolvedValueOnce(...)` setup each test
 // already uses keeps driving every client.
-const mockFetch = ((...args: Parameters<FetchLike>) =>
-  (global.fetch as jest.Mock)(...args)) as FetchLike;
+const mockFetch: FetchLike = (...args: Parameters<FetchLike>) => global.fetch(...args);
 
 describe('AllegroHttpClient', () => {
   let client: AllegroHttpClient;
