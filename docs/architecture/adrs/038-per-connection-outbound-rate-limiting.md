@@ -32,7 +32,7 @@ per-call-site throttle:
    change).
 2. `@openlinker/shared/rate-limit` (minimum-interval spacing + a concurrency semaphore, one bucket
    per connection with a background/interactive reservation) and `@openlinker/shared/http`
-   (`HttpTransportFactoryPort.for(connection): FetchLike`), wired as a **required**
+   (`HttpTransportFactoryPort.forConnection(connection): FetchLike`), wired as a **required**
    `HostServices.http` field.
 3. Priority (`background` vs `interactive`) and cancellation are carried by `AsyncLocalStorage`,
    entered once in `SyncJobRunner.processJob` and once in an apps/api `APP_INTERCEPTOR` — not
