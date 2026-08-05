@@ -75,6 +75,11 @@ export const erliAdapterManifest: AdapterMetadata = {
   displayName: 'Erli Shop API v1',
   version: '1.0.0',
   isDefault: true,
+  // Conservative floor applied when the operator hasn't set
+  // `connection.config.rateLimit` — Erli documents no published RPM ceiling
+  // (only that it 429s), so this mirrors PrestaShop's default rather than a
+  // vendor-confirmed number. Revisit once Erli publishes real limits.
+  defaultRateLimit: { requestsPerMinute: 60, maxConcurrent: 4 },
   // Grouping is carried by an explicit group id (`externalVariantGroup`),
   // independent of category (#1924) — a per-variant category is ordinary
   // metadata here, no split. Declared for discovery; not yet interactively
@@ -167,7 +172,7 @@ export function createErliPlugin(deps?: ErliPluginDeps): AdapterPlugin {
         connection,
         host.identifierMapping,
         host.credentialsResolver,
-        host.http.for(connection),
+        host.http.forConnection(connection, erliAdapterManifest.defaultRateLimit),
         // #1066: distributed frozen-stock flag. Optional on HostServices — when
         // absent the offer adapter fails open (pushes stock = pre-#1066 behaviour).
         host.cache,

@@ -50,11 +50,11 @@ describe('ErliConnectionTesterAdapter', () => {
   beforeEach(() => {
     fetchMock = jest.fn();
     global.fetch = fetchMock as unknown as typeof fetch;
-    // `http.for(connection)` hands back the same connection-bound fetchImpl the
-    // real ErliHttpClient calls internally — wired to the mocked `global.fetch`
-    // so this spec's existing `fetchMock.mockResolvedValue(...)` setup still
-    // drives the response the tester observes.
-    http = { for: jest.fn().mockReturnValue(fetchMock) };
+    // `http.forConnection(connection, ...)` hands back the same connection-bound
+    // fetchImpl the real ErliHttpClient calls internally — wired to the mocked
+    // `global.fetch` so this spec's existing `fetchMock.mockResolvedValue(...)`
+    // setup still drives the response the tester observes.
+    http = { forConnection: jest.fn().mockReturnValue(fetchMock), evict: jest.fn() };
     tester = new ErliConnectionTesterAdapter(http);
   });
 

@@ -58,14 +58,16 @@ describe('ErliWebhookProvisioningAdapter', () => {
     };
     webhookSecretService = { rotate: jest.fn().mockResolvedValue({ secret: SECRET }) };
     credentialsResolver = { get: jest.fn() };
-    // `http.for(...)` hands back a fetchImpl that delegates to `global.fetch` —
-    // whatever the test spies below — so the connection-bound-transport seam
-    // (#1810) doesn't disturb this spec's existing fetch-spy assertions.
+    // `http.forConnection(...)` hands back a fetchImpl that delegates to
+    // `global.fetch` — whatever the test spies below — so the
+    // connection-bound-transport seam (#1810) doesn't disturb this spec's
+    // existing fetch-spy assertions.
     const http = {
-      for: jest.fn(
+      forConnection: jest.fn(
         () =>
           (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => global.fetch(...args),
       ),
+      evict: jest.fn(),
     };
     adapter = new ErliWebhookProvisioningAdapter(
       connectionPort as never,
