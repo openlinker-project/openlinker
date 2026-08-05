@@ -88,8 +88,6 @@ interface ConnectionRef {
 export class HttpTransportFactory implements HttpTransportFactoryPort {
   private readonly cache = new Map<string, FetchLike>();
   private readonly connectionRefs = new Map<string, ConnectionRef>();
-  /** Every `hostKey`-scoped cache key (`connectionId:hostKey` or bare `connectionId`) built for a connection id, so `evict` can drop them all. */
-  private readonly cacheKeysByConnection = new Map<string, Set<string>>();
   private readonly replicas: number;
   private readonly baseFetch: FetchLike;
   private readonly registry: RateLimiterRegistry;
@@ -106,22 +104,13 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
 
   forConnection(
     connection: RateLimitedConnection,
-    defaultRateLimit?: ConnectionRateLimit,
-    hostKey?: string
+    defaultRateLimit?: ConnectionRateLimit
   ): FetchLike {
-    // `hostKey` separates independent rate-limit buckets for a plugin that
-    // talks to more than one physical host per connection (#1810 Phase 5 —
-    // Allegro's api.allegro.pl vs upload.allegro.pl). Omitted, the cache key
-    // is `connection.id` alone — byte-identical to every pre-existing
-    // single-host caller (PrestaShop).
-    const cacheKey = hostKey ? `${connection.id}:${hostKey}` : connection.id;
-
-    let keysForConnection = this.cacheKeysByConnection.get(connection.id);
-    if (!keysForConnection) {
-      keysForConnection = new Set();
-      this.cacheKeysByConnection.set(connection.id, keysForConnection);
-    }
-    keysForConnection.add(cacheKey);
+    // One bucket per connection, keyed on the connection id alone — a plugin
+    // with several hosts per connection (Allegro's api./upload.) shares it,
+    // because the quota being paced against is scoped by credential on the
+    // remote's side, not by hostname. See the port doc + ADR-038.
+    const cacheKey = connection.id;
 
     // Keep the ref fresh on every forConnection() call so a cached closure (below)
     // never reads a stale `config.rateLimit` from the connection object it
@@ -175,12 +164,8 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
   }
 
   evict(connectionId: string): void {
-    const cacheKeys = this.cacheKeysByConnection.get(connectionId) ?? new Set([connectionId]);
-    for (const cacheKey of cacheKeys) {
-      this.cache.delete(cacheKey);
-      this.connectionRefs.delete(cacheKey);
-      this.registry.evict(cacheKey);
-    }
-    this.cacheKeysByConnection.delete(connectionId);
+    this.cache.delete(connectionId);
+    this.connectionRefs.delete(connectionId);
+    this.registry.evict(connectionId);
   }
 }

@@ -45,28 +45,21 @@ export class AllegroConnectionTesterAdapter implements ConnectionTesterPort {
       // Connection-bound outbound transport (#1810) — a "Test connection"
       // click is operator-triggered and can be repeated in quick succession;
       // it must go through the same rate limiter as every other Allegro call
-      // site, not a bare globalThis.fetch. `defaultRateLimit` + the 'api'
-      // hostKey mirror the real api.allegro.pl client's call site
-      // (`allegro-plugin.ts`) so this probe shares that bucket rather than
-      // resolving an unlimited one (#1968 review).
-      const fetchImpl = this.http.forConnection(connection, allegroAdapterManifest.defaultRateLimit, 'api');
+      // site, not a bare globalThis.fetch. Passing `defaultRateLimit` mirrors
+      // the real client's call site (`allegro-plugin.ts`) so this probe shares
+      // that connection's bucket rather than resolving an unlimited one.
+      const fetchImpl = this.http.forConnection(connection, allegroAdapterManifest.defaultRateLimit);
 
       // Probe deliberately runs without a token-refresh callback: a stale or
       // invalid token must surface as a clear failure (caller can prompt the
       // operator to reconnect), not silently rotate behind the operator's back.
       const tokenState = new AllegroConnectionTokenState(connection.id, credentials);
-      const client = new AllegroHttpClient(
-        connection.id,
-        apiBaseUrl,
-        tokenState,
-        {
-          maxRetries: 0,
-          initialDelayMs: 0,
-          maxDelayMs: 0,
-          backoffMultiplier: 1,
-        },
-        fetchImpl
-      );
+      const client = new AllegroHttpClient(connection.id, apiBaseUrl, tokenState, fetchImpl, {
+        maxRetries: 0,
+        initialDelayMs: 0,
+        maxDelayMs: 0,
+        backoffMultiplier: 1,
+      });
 
       const response = await client.get('/me');
 

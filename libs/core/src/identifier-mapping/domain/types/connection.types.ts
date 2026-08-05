@@ -97,6 +97,16 @@ export interface ConnectionConfig {
    * resolution-time fallback for a connection with no explicit value — see
    * that field's own doc comment in `adapter.types.ts` for the call-site
    * wiring).
+   *
+   * **Scope: one bucket per connection.** The value means "this connection's
+   * total outbound rate", regardless of how many physical hosts the plugin
+   * talks to on its behalf — Allegro's `api.allegro.pl` and
+   * `upload.allegro.pl` share one bucket, because a remote's quota is scoped
+   * by credential (Allegro documents 9000 req/min per Client ID), not by
+   * hostname. The one axis that *does* divide this number is
+   * `OL_WORKER_REPLICAS`: the cap is split across replicas so the configured
+   * value stays the true aggregate rather than being multiplied by the
+   * deployment's process count. See ADR-038.
    */
   rateLimit?: ConnectionRateLimit;
   [key: string]: unknown;

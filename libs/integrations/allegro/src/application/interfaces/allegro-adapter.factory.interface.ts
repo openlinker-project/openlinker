@@ -43,17 +43,17 @@ export interface IAllegroAdapterFactory {
    * @param connection - Connection entity with Allegro config
    * @param identifierMapping - Identifier mapping service for ID translation
    * @param credentialsResolver - Credentials resolver for OAuth token retrieval
-   * @param apiFetchImpl - Connection-bound transport for api.allegro.pl
-   * @param uploadFetchImpl - Connection-bound transport for upload.allegro.pl —
-   *   a distinct rate-limit bucket from `apiFetchImpl` (#1968 review), since
-   *   the two hosts carry independent quotas on Allegro's side.
+   * @param fetchImpl - The connection's rate-limited transport, shared by both
+   *   of the HTTP clients this factory builds (`api.allegro.pl` for REST,
+   *   `upload.allegro.pl` for image bytes). One bucket, not one per host:
+   *   Allegro's documented quota is per Client ID, so the two hosts draw from
+   *   the same server-side budget.
    * @returns Container with all Allegro adapters
    */
   createAdapters(
     connection: Connection,
     identifierMapping: IdentifierMappingPort,
     credentialsResolver: CredentialsResolverPort,
-    apiFetchImpl: FetchLike,
-    uploadFetchImpl: FetchLike
+    fetchImpl: FetchLike
   ): Promise<AllegroAdapters>;
 }

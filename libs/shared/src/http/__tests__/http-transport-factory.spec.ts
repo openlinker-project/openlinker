@@ -170,40 +170,42 @@ describe('HttpTransportFactory', () => {
     expect(registry.getStatus('conn-1')?.maxConcurrent).toBe(1);
   });
 
-  it('gives distinct hostKeys under the same connection independent rate-limit buckets (#1968 review)', async () => {
-    // A plugin talking to two physical hosts per connection (e.g. Allegro's
-    // api.allegro.pl vs upload.allegro.pl) must not have one host's traffic
-    // exhaust the other's budget.
-    const response = new Response(null, { status: 200 });
-    const fetchImpl = jest.fn().mockResolvedValue(response);
+  it('shares one bucket across every host a connection talks to (#1968 review)', async () => {
+    // A plugin with several physical hosts per connection (Allegro serves REST
+    // from api.allegro.pl and image uploads from upload.allegro.pl) resolves
+    // ONE transport and hands it to every client. The bucket is keyed on the
+    // connection id alone, because the quota being paced against is scoped by
+    // credential on the remote's side (Allegro: 9000 req/min per Client ID),
+    // not by hostname. Per-host buckets would double the real aggregate
+    // against a single server-side budget. See ADR-038 § "The cap is per
+    // connection".
+    const fetchImpl = jest.fn().mockResolvedValue(new Response(null, { status: 200 }));
     const factory = new HttpTransportFactory({ registry, fetchImpl });
 
     const connection = { id: 'conn-1', config: { rateLimit: { maxConcurrent: 1 } } };
-    const apiFetch = factory.forConnection(connection, undefined, 'api');
-    const uploadFetch = factory.forConnection(connection, undefined, 'upload');
+    expect(factory.forConnection(connection)).toBe(factory.forConnection(connection));
 
-    expect(apiFetch).not.toBe(uploadFetch);
+    const boundFetch = factory.forConnection(connection);
 
-    // Saturate the 'api' bucket only.
+    // Saturate the connection's single slot from outside the transport...
     const release = await registry
-      .get('conn-1:api', { maxConcurrent: 1 })
+      .get('conn-1', { maxConcurrent: 1 })
       .acquire({ maxConcurrent: 1 }, 'background');
 
-    // 'upload' has its own, still-free bucket and must resolve immediately.
-    await uploadFetch('https://upload.example.com');
-    expect(fetchImpl).toHaveBeenCalledWith('https://upload.example.com', undefined);
+    // ...and traffic to the *other* host must queue rather than sail past on a
+    // bucket of its own.
+    let settled = false;
+    void boundFetch('https://upload.example.com').then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(settled).toBe(false);
+    expect(fetchImpl).not.toHaveBeenCalled();
 
     release();
-  });
-
-  it('omitting hostKey keys the bucket on connection.id alone, matching single-host callers byte-for-byte', () => {
-    const factory = new HttpTransportFactory({ registry });
-    const connection = { id: 'conn-1' };
-
-    const first = factory.forConnection(connection);
-    const second = factory.forConnection(connection, undefined, undefined);
-
-    expect(first).toBe(second);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(fetchImpl).toHaveBeenCalledWith('https://upload.example.com', undefined);
   });
 
   it('forwards the active AsyncLocalStorage cancellation signal into acquire()', async () => {
@@ -255,24 +257,5 @@ describe('HttpTransportFactory', () => {
     const factory = new HttpTransportFactory({ registry });
 
     expect(() => factory.evict('never-seen')).not.toThrow();
-  });
-
-  it('evict() drops every hostKey-scoped bucket registered under a connection id (#1968 merge)', async () => {
-    const fetchImpl = jest.fn().mockResolvedValue(new Response(null, { status: 200 }));
-    const factory = new HttpTransportFactory({ registry, fetchImpl });
-    const connection = { id: 'conn-1', config: { rateLimit: { requestsPerMinute: 60 } } };
-
-    const apiFetch = factory.forConnection(connection, undefined, 'api');
-    const uploadFetch = factory.forConnection(connection, undefined, 'upload');
-    await apiFetch('https://api.example.com');
-    await uploadFetch('https://upload.example.com');
-    expect(registry.getStatus('conn-1:api')).not.toBeNull();
-    expect(registry.getStatus('conn-1:upload')).not.toBeNull();
-
-    factory.evict('conn-1');
-
-    expect(registry.getStatus('conn-1:api')).toBeNull();
-    expect(registry.getStatus('conn-1:upload')).toBeNull();
-    expect(factory.forConnection(connection, undefined, 'api')).not.toBe(apiFetch);
   });
 });

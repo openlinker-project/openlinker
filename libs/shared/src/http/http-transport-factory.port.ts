@@ -37,17 +37,21 @@ export interface HttpTransportFactoryPort {
    * — never cached — so it stays correct even though the returned
    * `FetchLike` reference is stable.
    *
-   * `hostKey` distinguishes independent rate-limit buckets for a plugin that
-   * talks to more than one physical host per connection (e.g. Allegro's
-   * `api.allegro.pl` vs `upload.allegro.pl`, which carry independent quotas
-   * on Allegro's side). Omit it when a plugin has exactly one host per
-   * connection (e.g. PrestaShop) — the bucket is then keyed on `connection.id`
-   * alone, matching pre-#1810-Phase-5 single-host callers byte-for-byte.
+   * **One bucket per connection, never per host.** A plugin that talks to
+   * several physical hosts for one connection (Allegro serves REST from
+   * `api.allegro.pl` and image uploads from `upload.allegro.pl`) still shares
+   * a single bucket, because the quota it is pacing against is the remote's,
+   * and remotes scope quotas by credential — not by hostname. Allegro
+   * documents exactly one limit, "9000 requests per minute per Client ID",
+   * plus optional lower *per-resource* sub-limits; nothing in its docs
+   * suggests `upload.` draws from a second pool. Splitting per host would
+   * quietly double a connection's real aggregate against one server-side
+   * budget, and make `config.rateLimit` mean something different from what
+   * the operator typed. See ADR-038 § "The cap is per connection".
    */
   forConnection(
     connection: RateLimitedConnection,
-    defaultRateLimit?: ConnectionRateLimit,
-    hostKey?: string
+    defaultRateLimit?: ConnectionRateLimit
   ): FetchLike;
 
   /**
@@ -55,8 +59,7 @@ export interface HttpTransportFactoryPort {
    * evict its underlying rate limiter (see `RateLimiterRegistry.evict`).
    * Call this when a connection is disabled or deleted — otherwise both
    * this factory's caches and the registry grow unbounded for the life of
-   * the process across every connection id ever resolved. Evicts every
-   * `hostKey`-scoped bucket registered under this connection id.
+   * the process across every connection id ever resolved.
    */
   evict(connectionId: string): void;
 }

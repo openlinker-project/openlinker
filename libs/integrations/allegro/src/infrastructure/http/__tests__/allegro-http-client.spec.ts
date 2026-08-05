@@ -10,6 +10,7 @@
  *
  * @module libs/integrations/allegro/src/infrastructure/http/__tests__
  */
+import type { FetchLike } from '@openlinker/shared/http';
 import { AllegroHttpClient } from '../allegro-http-client';
 import { AllegroConnectionTokenState } from '../allegro-connection-token-state';
 import type { AllegroCredentials } from '@openlinker/integrations-allegro';
@@ -22,6 +23,15 @@ import {
 
 // Mock fetch globally
 global.fetch = jest.fn();
+
+// The transport injected into every client built below. `fetchImpl` is a
+// required constructor arg (#1968 review — no silent globalThis.fetch
+// fallback), so the suite supplies one explicitly. It *delegates* to the
+// global mock at call time rather than capturing it, so the
+// `(global.fetch as jest.Mock).mockResolvedValueOnce(...)` setup each test
+// already uses keeps driving every client.
+const mockFetch = ((...args: Parameters<FetchLike>) =>
+  (global.fetch as jest.Mock)(...args)) as FetchLike;
 
 describe('AllegroHttpClient', () => {
   let client: AllegroHttpClient;
@@ -42,12 +52,14 @@ describe('AllegroHttpClient', () => {
     client = new AllegroHttpClient(
       connectionId,
       baseUrl,
-      new AllegroConnectionTokenState(connectionId, credentials)
+      new AllegroConnectionTokenState(connectionId, credentials),
+      mockFetch
     );
     noRetryClient = new AllegroHttpClient(
       connectionId,
       baseUrl,
       new AllegroConnectionTokenState(connectionId, credentials),
+      mockFetch,
       { maxRetries: 0 }
     );
     jest.useFakeTimers();
@@ -63,7 +75,8 @@ describe('AllegroHttpClient', () => {
       const clientWithSlash = new AllegroHttpClient(
         connectionId,
         'https://api.allegro.pl/',
-        new AllegroConnectionTokenState(connectionId, credentials)
+        new AllegroConnectionTokenState(connectionId, credentials),
+        mockFetch
       );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access -- test mock: explicit any narrows the dynamic spy / fixture shape
       expect((clientWithSlash as any).baseUrl).toBe('https://api.allegro.pl');
@@ -94,6 +107,7 @@ describe('AllegroHttpClient', () => {
         connectionId,
         baseUrl,
         new AllegroConnectionTokenState(connectionId, credentials),
+        mockFetch,
         customRetryConfig
       );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access -- test mock: explicit any narrows the dynamic spy / fixture shape
@@ -285,7 +299,7 @@ describe('AllegroHttpClient', () => {
         { accessToken: 'stale-token' },
         refreshCallback
       );
-      const refreshClient = new AllegroHttpClient(connectionId, baseUrl, tokenState);
+      const refreshClient = new AllegroHttpClient(connectionId, baseUrl, tokenState, mockFetch);
 
       (global.fetch as jest.Mock)
         .mockResolvedValueOnce({
@@ -535,7 +549,7 @@ describe('AllegroHttpClient', () => {
       // maxRetries: 0 keeps the assertion focused on the single-attempt
       // throw shape; the request-loop's retry-on-network-error behavior is
       // covered separately and would just delay this test under fake timers.
-      const networkClient = new AllegroHttpClient(connectionId, baseUrl, tokenState, {
+      const networkClient = new AllegroHttpClient(connectionId, baseUrl, tokenState, mockFetch, {
         maxRetries: 0,
       });
 
@@ -569,7 +583,7 @@ describe('AllegroHttpClient', () => {
         { accessToken: 'stale-token' },
         refreshCallback
       );
-      const credentialClient = new AllegroHttpClient(connectionId, baseUrl, tokenState);
+      const credentialClient = new AllegroHttpClient(connectionId, baseUrl, tokenState, mockFetch);
 
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: false,
@@ -886,7 +900,7 @@ describe('AllegroHttpClient', () => {
         { accessToken: opts.accessToken ?? 'initial-token', expiresAt: opts.expiresAt },
         opts.callback
       );
-      return new AllegroHttpClient(connectionId, baseUrl, tokenState, {
+      return new AllegroHttpClient(connectionId, baseUrl, tokenState, mockFetch, {
         maxRetries: 0,
         initialDelayMs: 0,
         maxDelayMs: 0,
@@ -1062,7 +1076,8 @@ describe('AllegroHttpClient', () => {
           connectionId,
           { accessToken: 'initial-token', expiresAt: new Date(NOW + 30_000) },
           refreshCallback
-        )
+        ),
+        mockFetch
       );
 
       const response = await client.get('/test');

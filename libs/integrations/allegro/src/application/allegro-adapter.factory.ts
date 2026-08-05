@@ -63,8 +63,7 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
     connection: Connection,
     identifierMapping: IdentifierMappingPort,
     credentialsResolver: CredentialsResolverPort,
-    apiFetchImpl: FetchLike,
-    uploadFetchImpl: FetchLike
+    fetchImpl: FetchLike
   ): Promise<AllegroAdapters> {
     this.logger.debug(`Creating Allegro adapters for connection: ${connection.id}`);
 
@@ -109,22 +108,18 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
     );
 
     // Two HTTP clients per connection — one for api.allegro.pl, one for
-    // upload.allegro.pl. They share the token state above but each gets its
-    // own connection-bound transport / rate-limit bucket (#1968 review) —
-    // the two hosts carry independent quotas on Allegro's side.
-    const httpClient = new AllegroHttpClient(
-      connection.id,
-      apiBaseUrl,
-      tokenState,
-      undefined,
-      apiFetchImpl
-    );
+    // upload.allegro.pl. They differ only in base URL: both share the token
+    // state above AND the single connection-bound transport, so image uploads
+    // and REST calls pace against one bucket. Allegro's published limit is
+    // "9000 req/min per Client ID" with optional per-resource sub-limits — the
+    // hostname is not a quota axis, so giving `upload.` its own bucket would
+    // silently double the connection's real aggregate (#1968 review).
+    const httpClient = new AllegroHttpClient(connection.id, apiBaseUrl, tokenState, fetchImpl);
     const uploadHttpClient = new AllegroHttpClient(
       connection.id,
       uploadBaseUrl,
       tokenState,
-      undefined,
-      uploadFetchImpl
+      fetchImpl
     );
 
     // The offer-manager adapter needs both clients (api for offer CRUD,

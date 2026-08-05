@@ -91,19 +91,36 @@ export class AllegroHttpClient implements IAllegroHttpClient {
   private readonly tokenState: AllegroConnectionTokenState;
   private readonly fetchImpl: FetchLike;
 
+  /**
+   * `fetchImpl` is **required**, deliberately (#1968 review). An optional
+   * `fetchImpl ?? globalThis.fetch` default would make a forgotten wiring
+   * silently issue full-speed, unrated traffic — and neither guard would
+   * notice: `no-restricted-globals` flags the bare identifier `fetch`, not
+   * the `globalThis.fetch` member expression, and `check-outbound-http.mjs`
+   * matches a `fetch(` call, not a reference. Since #1810's whole premise is
+   * that a connection's `config.rateLimit` cannot be silently bypassed, the
+   * compiler enforces the wiring instead. Every construction site (the
+   * adapter factory's two clients, the connection tester) already resolves
+   * one from `host.http.forConnection(...)`.
+   *
+   * It precedes `retryConfig` because TypeScript forbids an optional
+   * parameter ahead of a required one — keeping the old order would have
+   * forced every caller that wants default retries to pass an explicit
+   * `undefined` placeholder.
+   */
   constructor(
     connectionId: string,
     baseUrl: string,
     tokenState: AllegroConnectionTokenState,
-    retryConfig?: Partial<RetryConfig>,
-    fetchImpl?: FetchLike
+    fetchImpl: FetchLike,
+    retryConfig?: Partial<RetryConfig>
   ) {
     this.connectionId = connectionId;
     // Normalize baseUrl (remove trailing slash)
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.tokenState = tokenState;
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
-    this.fetchImpl = fetchImpl ?? globalThis.fetch;
+    this.fetchImpl = fetchImpl;
   }
 
   async get<T = unknown>(

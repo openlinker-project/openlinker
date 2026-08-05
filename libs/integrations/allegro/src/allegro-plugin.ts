@@ -110,11 +110,11 @@ export const allegroAdapterManifest: AdapterMetadata = {
   variantGrouping: 'catalog-implicit',
   // Conservative resolution-time fallback for a connection with no explicit
   // `config.rateLimit` (#1810 Phase 5) — mirrors the PrestaShop reference
-  // adopter's posture. Placeholder values pending Allegro's own published
-  // per-app limits; applied independently to the api.allegro.pl and
-  // upload.allegro.pl hosts (see the two `hostKey`-scoped `host.http.forConnection()`
-  // calls below) since the two hosts carry separate quotas on Allegro's
-  // side. Never written into stored config.
+  // adopter's posture, and sits far under Allegro's published ceiling of 9000
+  // req/min per Client ID (some resources carry lower sub-limits, e.g. GET
+  // /sale/product-offers/{id} at 3500/min). One bucket covers both the REST
+  // and image-upload hosts, since that ceiling is credential-scoped rather
+  // than per-hostname. Never written into stored config.
   defaultRateLimit: { requestsPerMinute: 60, maxConcurrent: 5 },
 };
 
@@ -192,15 +192,11 @@ export function createAllegroPlugin(deps: CreateAllegroPluginDeps): AdapterPlugi
         host.cache,
         deps.catParamsTtlSec
       );
-      // Two independent rate-limit buckets under one connection —
-      // api.allegro.pl and upload.allegro.pl carry separate quotas on
-      // Allegro's side, so they must not share one limiter (#1968 review).
       const adapters = await factory.createAdapters(
         connection,
         host.identifierMapping,
         host.credentialsResolver,
-        host.http.forConnection(connection, allegroAdapterManifest.defaultRateLimit, 'api'),
-        host.http.forConnection(connection, allegroAdapterManifest.defaultRateLimit, 'upload')
+        host.http.forConnection(connection, allegroAdapterManifest.defaultRateLimit)
       );
       return dispatchCapability<T>(
         capability,
