@@ -10,17 +10,15 @@
  * enforcement so a lint-config regression (or a package the ESLint override
  * doesn't yet cover) doesn't silently let a bypass back in.
  *
- * Scope: currently `libs/integrations/prestashop/**` only — the reference
- * adopter (#1772). Widens to `libs/integrations/**` once the remaining 8
- * clients are migrated (#1810 Phase 5, tracked in #1956); see the identical
- * scope note on the ESLint override.
+ * Scope: PrestaShop (reference adopter, #1772) + each Phase 5 client as it
+ * migrates (#1810, tracked in #1956) — see the identical scope note on the
+ * ESLint override, which this mirrors.
  *
  * A bare `fetch(` call is allowed only with an explicit, scoped exemption
  * comment on the immediately preceding line
  * (`// eslint-disable-next-line no-restricted-globals -- <reason>`) — never
- * a blanket file-level suppression. No such exemption exists in the current
- * scope; the allowance exists for the OAuth-token bypasses Phase 5 will add
- * in the other 8 packages once their scope is included here.
+ * a blanket file-level suppression. No such exemption is needed for Subiekt —
+ * its bridge HTTP client has no ad-hoc OAuth-token bypass to exempt.
  *
  * Run with `--self-check` to exercise the pure classifier against synthetic
  * inputs (no filesystem) — mirrors `check-migration-timestamps.mjs --self-check`.
@@ -40,7 +38,7 @@ const __dirname = dirname(__filename);
 const ROOT = resolve(__dirname, '..');
 
 /** Directories scanned for bare outbound `fetch()` calls. Widens in Phase 5. */
-const SCAN_ROOTS = ['libs/integrations/prestashop'];
+const SCAN_ROOTS = ['libs/integrations/prestashop', 'libs/integrations/subiekt'];
 
 const SKIP_DIRS = new Set([
   '.git',

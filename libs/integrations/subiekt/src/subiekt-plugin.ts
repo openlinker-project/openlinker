@@ -55,7 +55,7 @@ export function createSubiektPlugin(): AdapterPlugin {
       );
       host.connectionTesterRegistry.register(
         subiektAdapterManifest.adapterKey,
-        new SubiektConnectionTesterAdapter(),
+        new SubiektConnectionTesterAdapter(host.http),
       );
       // Retry classifier (fiscal-safety pivot). The runner dispatches classifiers
       // OR-across-all holding the raw error (not an adapterKey), so the key is a
@@ -86,6 +86,7 @@ export function createSubiektPlugin(): AdapterPlugin {
           connection,
           host.credentialsResolver,
           logger,
+          host.http.forConnection(connection, subiektAdapterManifest.defaultRateLimit),
         );
         return dispatchCapability<T>(
           capability,

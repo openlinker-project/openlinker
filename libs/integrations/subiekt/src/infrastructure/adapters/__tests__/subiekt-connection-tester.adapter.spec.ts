@@ -7,6 +7,7 @@
  */
 import { Connection } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { SubiektConnectionTesterAdapter } from '../subiekt-connection-tester.adapter';
 
 function makeConnection(
@@ -35,11 +36,16 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 describe('SubiektConnectionTesterAdapter', () => {
-  const tester = new SubiektConnectionTesterAdapter();
   let fetchMock: jest.Mock;
+  let tester: SubiektConnectionTesterAdapter;
 
   beforeEach(() => {
     fetchMock = jest.fn();
+    const http: jest.Mocked<HttpTransportFactoryPort> = {
+      forConnection: jest.fn().mockReturnValue(fetchMock),
+      evict: jest.fn(),
+    };
+    tester = new SubiektConnectionTesterAdapter(http);
     global.fetch = fetchMock as unknown as typeof fetch;
   });
 

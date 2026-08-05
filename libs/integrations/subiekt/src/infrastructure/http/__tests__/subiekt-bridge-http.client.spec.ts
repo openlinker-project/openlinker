@@ -109,6 +109,29 @@ describe('SubiektBridgeHttpClient', () => {
     });
   });
 
+  describe('fetchImpl injection (#1810)', () => {
+    it('should route the call through an explicitly-injected fetchImpl instead of global.fetch', async () => {
+      const injectedFetch = jest.fn().mockResolvedValue(okResponse({ state: 'issued' }));
+      const client = new SubiektBridgeHttpClient(BASE, {
+        fetchImpl: injectedFetch as unknown as typeof fetch,
+      });
+
+      await client.issueInvoice(sampleIssueInvoiceRequest());
+
+      expect(injectedFetch).toHaveBeenCalledTimes(1);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to global.fetch when fetchImpl is not provided', async () => {
+      fetchMock.mockResolvedValue(okResponse({ state: 'issued' }));
+      const client = new SubiektBridgeHttpClient(BASE);
+
+      await client.issueInvoice(sampleIssueInvoiceRequest());
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('issueInvoice', () => {
     it('returns a typed response on 2xx (unwrapping the envelope)', async () => {
       fetchMock.mockResolvedValue(

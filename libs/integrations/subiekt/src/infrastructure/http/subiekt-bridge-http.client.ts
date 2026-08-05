@@ -31,6 +31,7 @@
  * @module libs/integrations/subiekt/src/infrastructure/http
  */
 import { Logger } from '@openlinker/shared/logging';
+import type { FetchLike } from '@openlinker/shared/http';
 import type { SubiektBridgeClient } from '../../bridge/subiekt-bridge.client';
 import {
   SubiektBridgeUnreachableError,
@@ -131,6 +132,8 @@ export interface SubiektBridgeHttpClientOptions {
   token?: string;
   /** Per-request timeout in milliseconds. */
   timeoutMs?: number;
+  /** Connection-bound outbound transport (#1810). Defaults to `globalThis.fetch`. */
+  fetchImpl?: FetchLike;
 }
 
 /**
@@ -155,6 +158,7 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
   private readonly baseUrl: string;
   private readonly token?: string;
   private readonly timeoutMs: number;
+  private readonly fetchImpl: FetchLike;
 
   constructor(bridgeBaseUrl: string, opts: SubiektBridgeHttpClientOptions = {}) {
     // Defense-in-depth SSRF guard: reject a bad / IMDS bridge URL at
@@ -170,6 +174,7 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
     this.baseUrl = bridgeBaseUrl.replace(/\/+$/, '');
     this.token = opts.token;
     this.timeoutMs = opts.timeoutMs ?? 30000;
+    this.fetchImpl = opts.fetchImpl ?? globalThis.fetch;
   }
 
   async issueInvoice(req: BridgeIssueInvoiceRequest): Promise<BridgeIssueInvoiceResponse> {
@@ -280,7 +285,7 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
 
     let response: Response;
     try {
-      response = await fetch(url, {
+      response = await this.fetchImpl(url, {
         method,
         headers: this.buildHeaders(body !== undefined),
         body: body !== undefined ? JSON.stringify(body) : undefined,

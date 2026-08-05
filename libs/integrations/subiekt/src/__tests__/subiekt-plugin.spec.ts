@@ -32,6 +32,10 @@ function makeHost(getImpl?: jest.Mock): HostServices {
     credentialsResolver: {
       get: getImpl ?? jest.fn().mockResolvedValue({ bridgeToken: 'secret-token' }),
     },
+    http: {
+      forConnection: jest.fn().mockReturnValue(jest.fn()),
+      evict: jest.fn(),
+    },
   } as unknown as HostServices;
 }
 
