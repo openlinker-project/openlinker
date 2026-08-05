@@ -170,7 +170,13 @@ export class RateLimiter implements RateLimiterPort {
       }
 
       const nowMs = this.now();
-      if (requestsPerMinute !== undefined && nowMs < this.nextAvailableAt) {
+      // Checked unconditionally — NOT gated on `requestsPerMinute !==
+      // undefined`. `nextAvailableAt` is also pushed forward by
+      // `noteRetryAfter()` (a live 429/503 `Retry-After` response), which
+      // must be honoured even on a connection configured with only
+      // `maxConcurrent` and no `requestsPerMinute` — otherwise Retry-After
+      // is silently ignored for that policy shape.
+      if (nowMs < this.nextAvailableAt) {
         const delay = this.nextAvailableAt - nowMs;
         this.drainTimer = setTimeout(() => this.drain(), delay);
         if (typeof this.drainTimer.unref === 'function') {
