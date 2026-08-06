@@ -365,6 +365,12 @@ export class PrestashopProductPublisherAdapter
         let bytes: Uint8Array;
         let mimeType: string;
         try {
+          // Downloads source image BYTES from the master product's URLs, not
+          // from the destination PrestaShop — so it belongs on the source
+          // connection's transport, which this adapter cannot reach. Same
+          // shape as the Allegro image-upload download path (#1968); both are
+          // tracked as the same #1810 follow-up.
+          // eslint-disable-next-line no-restricted-globals -- source-image bytes, belongs on the SOURCE connection's transport which this adapter cannot reach (#1810 follow-up)
           const response = await (this.fetchImpl ?? globalThis.fetch)(url, {
             signal: controller.signal,
           });

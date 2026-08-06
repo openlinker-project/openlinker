@@ -32,6 +32,7 @@ import type { TokenRefreshResult } from '../infrastructure/http/allegro-http-cli
 import type { AllegroTokenRefreshService } from '../infrastructure/token-refresh/allegro-token-refresh.service';
 import { Logger } from '@openlinker/shared/logging';
 import type { CachePort } from '@openlinker/shared';
+import type { FetchLike } from '@openlinker/shared/http';
 import type { AllegroQuantityCommandRepositoryPort } from '../domain/ports/allegro-quantity-command-repository.port';
 
 /**
@@ -61,7 +62,8 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
   async createAdapters(
     connection: Connection,
     identifierMapping: IdentifierMappingPort,
-    credentialsResolver: CredentialsResolverPort
+    credentialsResolver: CredentialsResolverPort,
+    fetchImpl: FetchLike
   ): Promise<AllegroAdapters> {
     this.logger.debug(`Creating Allegro adapters for connection: ${connection.id}`);
 
@@ -106,9 +108,17 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
     );
 
     // Two HTTP clients per connection — one for api.allegro.pl, one for
-    // upload.allegro.pl. They share the token state above.
-    const httpClient = new AllegroHttpClient(connection.id, apiBaseUrl, tokenState);
-    const uploadHttpClient = new AllegroHttpClient(connection.id, uploadBaseUrl, tokenState);
+    // upload.allegro.pl. They differ only in base URL: both share the token
+    // state above AND the single connection-bound transport, so image uploads
+    // and REST calls pace against one bucket rather than one each. See
+    // ADR-038 § "The cap is per connection".
+    const httpClient = new AllegroHttpClient(connection.id, apiBaseUrl, tokenState, fetchImpl);
+    const uploadHttpClient = new AllegroHttpClient(
+      connection.id,
+      uploadBaseUrl,
+      tokenState,
+      fetchImpl
+    );
 
     // The offer-manager adapter needs both clients (api for offer CRUD,
     // upload for `POST /sale/images`). The order-source adapter only ever
