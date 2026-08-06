@@ -48,6 +48,10 @@ maybeDescribe('KSeF auth handshake (live test environment)', () => {
         token: token as string,
         contextNip: contextNip as string,
       },
+      // No connection/HostServices in this bare live-network spec — a real
+      // `fetch` against the actual sandbox is the point (see file header).
+      // (int-spec files are excluded from the #1810 outbound-transport lint/checker.)
+      fetchImpl: globalThis.fetch,
     });
 
     const result = await handshake.authenticate({

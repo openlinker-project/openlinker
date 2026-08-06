@@ -9,6 +9,7 @@
  */
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
+import type { FetchLike } from '@openlinker/shared/http';
 // eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
 import type { AllegroOfferManagerAdapter } from '../../infrastructure/adapters/allegro-offer-manager.adapter';
 // eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
@@ -42,11 +43,16 @@ export interface IAllegroAdapterFactory {
    * @param connection - Connection entity with Allegro config
    * @param identifierMapping - Identifier mapping service for ID translation
    * @param credentialsResolver - Credentials resolver for OAuth token retrieval
+   * @param fetchImpl - The connection's rate-limited transport, shared by both
+   *   of the HTTP clients this factory builds (`api.allegro.pl` for REST,
+   *   `upload.allegro.pl` for image bytes) — one bucket, not one per host.
+   *   See ADR-038 § "The cap is per connection".
    * @returns Container with all Allegro adapters
    */
   createAdapters(
     connection: Connection,
     identifierMapping: IdentifierMappingPort,
-    credentialsResolver: CredentialsResolverPort
+    credentialsResolver: CredentialsResolverPort,
+    fetchImpl: FetchLike
   ): Promise<AllegroAdapters>;
 }

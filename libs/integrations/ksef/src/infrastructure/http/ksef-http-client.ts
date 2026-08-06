@@ -94,16 +94,31 @@ export class KsefHttpClient implements IKsefHttpClient {
   private token: KsefAuthenticationToken | null = null;
   private refreshInFlight: Promise<void> | null = null;
 
+  /**
+   * `fetchImpl` is **required**, deliberately (mirrors AllegroHttpClient,
+   * #1968 review). An optional `fetchImpl ?? globalThis.fetch` default would
+   * make a forgotten wiring silently issue full-speed, unrated traffic — and
+   * neither guard would notice: `no-restricted-globals` flags the bare
+   * identifier `fetch`, not the `globalThis.fetch` member expression, and
+   * `check-outbound-http.mjs` matches a `fetch(` call, not a reference.
+   * Since #1810's whole premise is that a connection's `config.rateLimit`
+   * cannot be silently bypassed, the compiler enforces the wiring instead.
+   * Every construction site (`KsefAdapterFactory`, the connection tester)
+   * already resolves one from `host.http.forConnection(...)`.
+   *
+   * It precedes `retryConfig` because TypeScript forbids an optional
+   * parameter ahead of a required one.
+   */
   constructor(
     private readonly connectionId: string,
     baseUrl: string,
     private readonly lifecycle: KsefTokenLifecycle,
+    fetchImpl: FetchLike,
     retryConfig?: Partial<KsefRetryConfig>,
-    fetchImpl?: FetchLike,
   ) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
-    this.fetchImpl = fetchImpl ?? globalThis.fetch;
+    this.fetchImpl = fetchImpl;
   }
 
   async get<T = unknown>(path: string, options?: KsefHttpRequestOptions): Promise<KsefHttpResponse<T>> {

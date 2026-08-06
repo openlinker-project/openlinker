@@ -531,8 +531,13 @@ module.exports = {
       // connection's `config.rateLimit` can't be silently bypassed. PrestaShop
       // is the reference adopter (closes #1772); each remaining client is
       // added to this glob as it migrates (#1810 Phase 5, tracked in #1956).
+      // Genuine OAuth-token endpoints are exempted per-line, never file-level.
       // Enforced alongside `scripts/check-outbound-http.mjs` (`check:invariants`).
-      files: ['libs/integrations/prestashop/**/*.ts', 'libs/integrations/ksef/**/*.ts'],
+      files: [
+        'libs/integrations/prestashop/**/*.ts',
+        'libs/integrations/allegro/**/*.ts',
+        'libs/integrations/ksef/**/*.ts',
+      ],
       excludedFiles: ['**/*.spec.ts', '**/*.int-spec.ts'],
       rules: {
         'no-restricted-globals': [

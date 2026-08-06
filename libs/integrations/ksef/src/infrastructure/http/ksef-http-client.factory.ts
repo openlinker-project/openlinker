@@ -38,8 +38,12 @@ export interface CreateKsefHttpClientInput {
   /** Resolved ksef-token material. Qualified-seal wiring is deferred to C4. */
   authMaterial: KsefTokenAuthMaterial;
   cache?: CachePort;
-  /** Connection-bound outbound transport (#1810). Defaults to `globalThis.fetch`. */
-  fetchImpl?: FetchLike;
+  /**
+   * Connection-bound outbound transport (#1810). Required, deliberately —
+   * mirrors `KsefHttpClient`'s own required `fetchImpl` (see that constructor's
+   * doc). Every caller already resolves one from `host.http.forConnection(...)`.
+   */
+  fetchImpl: FetchLike;
 }
 
 export interface KsefHttpClientBundle {
@@ -73,7 +77,7 @@ export function createKsefHttpClient(input: CreateKsefHttpClientInput): KsefHttp
   };
 
   // 1. Client first (its unauthenticated endpoints bootstrap the services).
-  const httpClient = new KsefHttpClient(input.connectionId, baseUrl, lifecycle, undefined, input.fetchImpl);
+  const httpClient = new KsefHttpClient(input.connectionId, baseUrl, lifecycle, input.fetchImpl);
 
   // 2. Services share the one client instance.
   const publicKeyCache = new MfPublicKeyCacheService(input.connectionId, httpClient, input.cache);

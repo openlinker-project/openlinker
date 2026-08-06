@@ -41,6 +41,7 @@ export class AllegroAccountReader {
 
     let response: Response;
     try {
+      // eslint-disable-next-line no-restricted-globals -- OAuth-completion probe with a raw access token, no Connection exists yet so no connection-bound transport is resolvable; low-volume auth infra, exempted pending #1810 Phase 5
       response = await fetch(meUrl, {
         method: 'GET',
         headers: {

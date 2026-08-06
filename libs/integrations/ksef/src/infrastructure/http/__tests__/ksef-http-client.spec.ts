@@ -44,7 +44,7 @@ describe('KsefHttpClient', () => {
 
   it('should lazily run the handshake and inject the bearer on the first authed GET', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { ok: true }));
-    const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+    const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock);
 
     const res = await client.get('/sessions/online');
 
@@ -54,13 +54,12 @@ describe('KsefHttpClient', () => {
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer access-token');
   });
 
-  it('should route every call through an explicitly-injected fetchImpl instead of global.fetch (#1810)', async () => {
+  it('should route every call through the injected fetchImpl instead of global.fetch (#1810)', async () => {
     const injectedFetch = jest.fn().mockResolvedValue(jsonResponse(200, { ok: true }));
     const client = new KsefHttpClient(
       'conn-1',
       baseUrl,
       lifecycle,
-      undefined,
       injectedFetch as unknown as typeof fetch,
     );
 
@@ -70,18 +69,9 @@ describe('KsefHttpClient', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('should fall back to global.fetch when fetchImpl is not provided', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { ok: true }));
-    const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
-
-    await client.get('/sessions/online');
-
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
   it('should NOT inject a bearer when skipAuth is set (unauthenticated bootstrap calls)', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { challenge: 'c', timestamp: 't' }));
-    const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+    const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock);
 
     await client.post('/auth/challenge', undefined, { idempotent: true, skipAuth: true });
 
@@ -94,7 +84,7 @@ describe('KsefHttpClient', () => {
     // Path-prefix inference is gone: a future authenticated /auth/* sub-resource
     // must NOT be silently bypassed — it goes through the normal auth path.
     fetchMock.mockResolvedValue(jsonResponse(200, { ok: true }));
-    const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+    const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock);
 
     await client.get('/auth/sessions');
 
@@ -107,7 +97,7 @@ describe('KsefHttpClient', () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse(401, { error: 'expired' }))
       .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
-    const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+    const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock);
 
     const res = await client.get('/sessions/online');
 
@@ -118,14 +108,14 @@ describe('KsefHttpClient', () => {
   it('should throw KsefAuthenticationException when refresh is rejected on 401', async () => {
     fetchMock.mockResolvedValue(jsonResponse(401, { error: 'invalid' }));
     (lifecycle.refresh as jest.Mock).mockRejectedValue(new Error('credential rejected'));
-    const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+    const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock);
 
     await expect(client.get('/sessions/online')).rejects.toBeInstanceOf(KsefAuthenticationException);
   });
 
   it('should fail fast on a deterministic 400 without retrying', async () => {
     fetchMock.mockResolvedValue(jsonResponse(400, { error: 'bad request' }));
-    const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+    const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock);
 
     await expect(client.get('/sessions/online')).rejects.toBeInstanceOf(KsefApiException);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -133,7 +123,7 @@ describe('KsefHttpClient', () => {
 
   it('should not retry a non-idempotent POST on 500', async () => {
     fetchMock.mockResolvedValue(jsonResponse(500, { error: 'server' }));
-    const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+    const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock);
 
     await expect(client.post('/sessions', { x: 1 })).rejects.toBeInstanceOf(KsefApiException);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -148,7 +138,7 @@ describe('KsefHttpClient', () => {
       // Fresh Response per call — a `fetch` Response body can only be read once,
       // and these specs issue two requests against the same mock.
       fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(200, { ok: true })));
-      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock);
 
       // First call runs the handshake and caches the (already-stale) token...
       await client.get('/sessions/online');
@@ -165,7 +155,7 @@ describe('KsefHttpClient', () => {
       // Fresh Response per call — a `fetch` Response body can only be read once,
       // and these specs issue two requests against the same mock.
       fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(200, { ok: true })));
-      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock);
 
       await client.get('/sessions/online');
       await client.get('/sessions/online');
@@ -183,7 +173,7 @@ describe('KsefHttpClient', () => {
       // Fresh Response per call — a `fetch` Response body can only be read once,
       // and these specs issue two requests against the same mock.
       fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(200, { ok: true })));
-      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock);
 
       await client.get('/sessions/online');
       const res = await client.get('/sessions/online');
@@ -202,7 +192,7 @@ describe('KsefHttpClient', () => {
       (lifecycle.refresh as jest.Mock).mockRejectedValue(
         new KsefNetworkException('auth endpoint unreachable'),
       );
-      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock);
 
       await expect(client.get('/sessions/online')).rejects.toBeInstanceOf(KsefNetworkException);
     });
@@ -212,7 +202,7 @@ describe('KsefHttpClient', () => {
       // reactive-refresh path — which would re-run the handshake (nested). With
       // noReactiveRefresh it fails terminally and the refresh callback is untouched.
       fetchMock.mockResolvedValue(jsonResponse(401, { error: 'token rejected' }));
-      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock);
 
       await expect(
         client.post('/auth/token/redeem', undefined, {
@@ -230,7 +220,7 @@ describe('KsefHttpClient', () => {
       // 403 is an authorization decision, not an expired token — refreshing
       // can never change the outcome, so the client must not refresh+retry.
       fetchMock.mockResolvedValue(jsonResponse(403, { error: 'forbidden' }));
-      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock);
 
       await expect(client.get('/sessions/online')).rejects.toBeInstanceOf(KsefApiException);
       expect(lifecycle.refresh).not.toHaveBeenCalled();
@@ -248,7 +238,7 @@ describe('KsefHttpClient', () => {
           }),
         )
         .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
-      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock);
 
       const res = await client.get('/sessions/online');
 
@@ -263,7 +253,7 @@ describe('KsefHttpClient', () => {
           headers: { 'content-type': 'application/json', 'retry-after': '2' },
         }),
       );
-      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, {
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock, {
         maxRetries: 0,
         initialDelayMs: 1,
         maxDelayMs: 1,
@@ -281,7 +271,7 @@ describe('KsefHttpClient', () => {
       fetchMock
         .mockResolvedValueOnce(jsonResponse(503, { error: 'unavailable' }))
         .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
-      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, {
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock, {
         maxRetries: 2,
         initialDelayMs: 1,
         maxDelayMs: 2,
@@ -296,7 +286,7 @@ describe('KsefHttpClient', () => {
 
     it('should surface a fetch network error as a KsefNetworkException', async () => {
       fetchMock.mockRejectedValue(new TypeError('fetch failed'));
-      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, {
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock, {
         maxRetries: 0,
         initialDelayMs: 1,
         maxDelayMs: 1,
@@ -312,7 +302,7 @@ describe('KsefHttpClient', () => {
       // exception. Simulate that by having fetch reject with an AbortError.
       const abortErr = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
       fetchMock.mockRejectedValue(abortErr);
-      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, {
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock, {
         maxRetries: 0,
         initialDelayMs: 1,
         maxDelayMs: 1,
@@ -330,7 +320,7 @@ describe('KsefHttpClient', () => {
           headers: { 'content-type': 'application/pdf' },
         }),
       );
-      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock);
 
       const res = await client.postExpectingBinary('/sessions/REF/upo', { x: 1 }, { idempotent: true });
 
@@ -347,7 +337,7 @@ describe('KsefHttpClient', () => {
         headers: new Headers({ 'content-type': 'application/pdf', 'content-length': String(oversizedLength) }),
         arrayBuffer,
       } as unknown as Response);
-      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock);
 
       await expect(client.getExpectingBinary('/sessions/REF/upo')).rejects.toBeInstanceOf(
         KsefApiException,
@@ -361,7 +351,7 @@ describe('KsefHttpClient', () => {
       fetchMock.mockResolvedValue(
         new Response(oversized, { status: 200, headers: { 'content-type': 'application/pdf' } }),
       );
-      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock);
 
       await expect(client.getExpectingBinary('/sessions/REF/upo')).rejects.toBeInstanceOf(
         KsefApiException,
@@ -372,7 +362,7 @@ describe('KsefHttpClient', () => {
       fetchMock.mockResolvedValue(
         new Response('not-json{', { status: 200, headers: { 'content-type': 'application/json' } }),
       );
-      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock);
 
       await expect(client.get('/sessions/online')).rejects.toBeInstanceOf(KsefApiException);
     });
