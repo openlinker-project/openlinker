@@ -53,7 +53,11 @@
 import { BadRequestException } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import type { FetchLike, HttpTransportFactoryPort } from '@openlinker/shared/http';
-import type { Connection, ConnectionPort } from '@openlinker/core/identifier-mapping';
+import type {
+  Connection,
+  ConnectionPort,
+  ConnectionRateLimit,
+} from '@openlinker/core/identifier-mapping';
 import type {
   CredentialsResolverPort,
   IWebhookSecretService,
@@ -72,7 +76,6 @@ import {
   type WooCommerceWebhookResource,
   type WooCommerceWebhookWriteBody,
 } from './woocommerce-webhook.types';
-import { woocommerceAdapterManifest } from '../../woocommerce-plugin';
 
 /** Upper bound on the existing-webhook listing used for idempotent upserts. */
 const WEBHOOK_LIST_PAGE_SIZE = 100;
@@ -85,6 +88,11 @@ export class WooCommerceWebhookProvisioningAdapter implements WebhookProvisionin
     private readonly webhookSecretService: IWebhookSecretService,
     private readonly credentialsResolver: CredentialsResolverPort,
     private readonly http: HttpTransportFactoryPort,
+    // The plugin manifest's `defaultRateLimit` (#1810) — passed in by the
+    // registration call site (`WooCommerceWebhookProvisioningModule`) rather
+    // than imported back from `woocommerce-plugin.ts`, which would create a
+    // module-load cycle (woocommerce-plugin.ts -> this file -> woocommerce-plugin.ts).
+    private readonly defaultRateLimit?: ConnectionRateLimit,
   ) {}
 
   async install(connectionId: string, actorUserId?: string): Promise<WebhookProvisioningResult> {
@@ -117,7 +125,7 @@ export class WooCommerceWebhookProvisioningAdapter implements WebhookProvisionin
     );
 
     // Connection-bound outbound transport (#1810).
-    const fetchImpl = this.http.forConnection(connection, woocommerceAdapterManifest.defaultRateLimit);
+    const fetchImpl = this.http.forConnection(connection, this.defaultRateLimit);
     const httpClient = await this.createHttpClient(
       connection.credentialsRef,
       config.siteUrl,
@@ -277,7 +285,6 @@ export class WooCommerceWebhookProvisioningAdapter implements WebhookProvisionin
       siteUrl,
       credentials.consumerKey,
       credentials.consumerSecret,
-      undefined,
       fetchImpl,
     );
   }

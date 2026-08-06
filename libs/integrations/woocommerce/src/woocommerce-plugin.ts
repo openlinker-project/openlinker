@@ -128,7 +128,7 @@ export function createWooCommercePlugin(deps?: CreateWooCommercePluginDeps): Ada
     register(host: HostServices): void {
       host.connectionTesterRegistry.register(
         woocommerceAdapterManifest.adapterKey,
-        new WooCommerceConnectionTesterAdapter(host.http),
+        new WooCommerceConnectionTesterAdapter(host.http, woocommerceAdapterManifest.defaultRateLimit),
       );
       host.connectionConfigShapeValidatorRegistry.register(
         woocommerceAdapterManifest.adapterKey,
@@ -188,7 +188,6 @@ export function createWooCommercePlugin(deps?: CreateWooCommercePluginDeps): Ada
         config.siteUrl,
         credentials.consumerKey,
         credentials.consumerSecret,
-        undefined,
         host.http.forConnection(connection, woocommerceAdapterManifest.defaultRateLimit),
       );
       const mapper = new WooCommerceProductMapper({});

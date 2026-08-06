@@ -47,17 +47,31 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
   private readonly retryConfig: RetryConfig;
   private readonly fetchImpl: FetchLike;
 
+  /**
+   * `fetchImpl` is **required**, deliberately (mirrors AllegroHttpClient,
+   * #1968 review). An optional `fetchImpl ?? globalThis.fetch` default would
+   * make a forgotten wiring silently issue full-speed, unrated traffic — and
+   * neither guard would notice: `no-restricted-globals` flags the bare
+   * identifier `fetch`, not the `globalThis.fetch` member expression, and
+   * `check-outbound-http.mjs` matches a `fetch(` call, not a reference.
+   * Since #1810's whole premise is that a connection's `config.rateLimit`
+   * cannot be silently bypassed, the compiler enforces the wiring instead.
+   * Every construction site (the plugin, the connection tester, the webhook
+   * provisioner) already resolves one from `host.http.forConnection(...)`.
+   *
+   * It precedes `retryConfig` because TypeScript forbids an optional
+   * parameter ahead of a required one.
+   */
   constructor(
     siteUrl: string,
     private readonly consumerKey: string,
     private readonly consumerSecret: string,
+    fetchImpl: FetchLike,
     retryConfig?: Partial<RetryConfig>,
-    fetchImpl?: FetchLike,
   ) {
     this.siteUrl = siteUrl.replace(/\/+$/, '');
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
-    // eslint-disable-next-line no-restricted-globals -- every production call site always passes host.http.for(connection); the default only keeps existing spec fixtures compiling without threading it (#1810)
-    this.fetchImpl = fetchImpl ?? globalThis.fetch;
+    this.fetchImpl = fetchImpl;
   }
 
   async get<T>(path: string, params?: Record<string, string | number | boolean>): Promise<T> {

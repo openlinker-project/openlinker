@@ -60,6 +60,7 @@ export class WooCommerceWebhookProvisioningModule implements OnModuleInit {
         this.webhookSecretService,
         this.credentialsResolver,
         this.http,
+        woocommerceAdapterManifest.defaultRateLimit,
       ),
     );
   }

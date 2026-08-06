@@ -24,11 +24,10 @@ import type {
   ConnectionTestResult,
   CredentialsResolverPort,
 } from '@openlinker/core/integrations';
-import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { Connection, ConnectionRateLimit } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { WooCommerceHttpClient } from '../http/woocommerce-http-client';
-import { woocommerceAdapterManifest } from '../../woocommerce-plugin';
 import { WooCommerceUnauthorizedException } from '../../domain/exceptions/woocommerce-unauthorized.exception';
 import { WooCommerceNetworkException } from '../../domain/exceptions/woocommerce-network.exception';
 import { WooCommerceHttpResponseException } from '../http/woocommerce-http-response.exception';
@@ -38,7 +37,14 @@ import type { WooCommerceCredentials } from '../../domain/types/woocommerce-cred
 export class WooCommerceConnectionTesterAdapter implements ConnectionTesterPort {
   private readonly logger = new Logger(WooCommerceConnectionTesterAdapter.name);
 
-  constructor(private readonly http: HttpTransportFactoryPort) {}
+  constructor(
+    private readonly http: HttpTransportFactoryPort,
+    // The plugin manifest's `defaultRateLimit` (#1810) — passed in by the
+    // registration call site (`woocommerce-plugin.ts`) rather than imported
+    // back from it, which would create a module-load cycle
+    // (woocommerce-plugin.ts -> this file -> woocommerce-plugin.ts).
+    private readonly defaultRateLimit?: ConnectionRateLimit,
+  ) {}
 
   async test(
     connection: Connection,
@@ -63,16 +69,16 @@ export class WooCommerceConnectionTesterAdapter implements ConnectionTesterPort 
       // click is operator-triggered and can be repeated in quick succession;
       // it must go through the same rate limiter as every other WooCommerce
       // call site, not a bare globalThis.fetch.
-      const fetchImpl = this.http.forConnection(connection, woocommerceAdapterManifest.defaultRateLimit);
+      const fetchImpl = this.http.forConnection(connection, this.defaultRateLimit);
 
       const client = new WooCommerceHttpClient(
         config.siteUrl,
         credentials.consumerKey,
         credentials.consumerSecret,
+        fetchImpl,
         // maxRetries: 0 — connection test is a single-shot probe; retries would
         // mask real latency and make auth failures harder to diagnose.
         { maxRetries: 0, initialDelayMs: 0, backoffMultiplier: 1, maxDelayMs: 0 },
-        fetchImpl,
       );
 
       await client.get('/wp-json/wc/v3/products?per_page=1');
