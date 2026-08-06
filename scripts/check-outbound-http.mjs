@@ -84,25 +84,28 @@ async function* walk(dir) {
 }
 
 /**
- * Pure classifier: given a file's source text, return one entry per
- * unexempted bare `fetch(` call. Line numbers are 1-indexed.
- */
-/**
- * True for a line that is entirely a comment (JSDoc/block continuation `*
- * ...`, a block-comment opener `/** ...` or `/* ...`, or a line comment
- * `// ...`) — a coarse, line-oriented heuristic (no real tokenizer), good
- * enough for this invariant: a genuine `fetch(` call is never itself
- * comment text, only ever *mentioned* in one (e.g. a JSDoc description).
+ * True for a line that is entirely a comment (a line comment `// ...`, a
+ * block-comment opener `/* ...`, or a JSDoc/block continuation `* ...`) — a
+ * coarse, line-oriented heuristic (no real tokenizer), good enough for this
+ * invariant: a genuine `fetch(` call is never itself comment text, only ever
+ * *mentioned* in one (e.g. a JSDoc description).
+ *
+ * A block comment that CLOSES on the same line and is followed by code
+ * (`/* legacy *\/ await fetch(url)`) is code, not comment — skipping it would
+ * hand a bypass exactly the escape hatch this guard exists to deny.
  */
 function isCommentOnlyLine(line) {
   const trimmed = line.trim();
-  return (
-    trimmed.startsWith('//') ||
-    trimmed.startsWith('/*') ||
-    trimmed.startsWith('*')
-  );
+  if (trimmed.startsWith('//')) return true;
+  if (!trimmed.startsWith('/*') && !trimmed.startsWith('*')) return false;
+  const closedAt = trimmed.lastIndexOf('*/');
+  return closedAt === -1 || trimmed.slice(closedAt + 2).trim() === '';
 }
 
+/**
+ * Pure classifier: given a file's source text, return one entry per
+ * unexempted bare `fetch(` call. Line numbers are 1-indexed.
+ */
 export function findBareFetchCalls(content) {
   const lines = content.split('\n');
   const hits = [];
@@ -198,6 +201,16 @@ function selfCheck() {
     {
       name: 'does not flag a line comment mentioning fetch(',
       content: '// Convert Headers to plain object for fetch (Node.js fetch may have issues)',
+      expectHits: 0,
+    },
+    {
+      name: 'flags a real fetch( that follows a closed block comment on the same line',
+      content: '/* legacy path */ const res = await fetch(url);',
+      expectHits: 1,
+    },
+    {
+      name: 'does not flag a self-closed block comment that only mentions fetch(',
+      content: '/* falls back to fetch() when unset */',
       expectHits: 0,
     },
   ];

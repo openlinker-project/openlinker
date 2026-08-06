@@ -36,12 +36,18 @@ export const inpostAdapterManifest: AdapterMetadata = {
   displayName: 'InPost ShipX v1',
   version: '1.0.0',
   isDefault: true,
-  // #1810 Phase 5 (tech-review follow-up on #1981): mirrors the conservative
-  // default every other Phase 5 adopter ships (PrestaShop, Erli, WooCommerce)
-  // now that `createInpostShippingAdapter` / `InpostConnectionTesterAdapter`
-  // actually route through `HttpTransportFactoryPort` — a real, enforced
-  // fallback, not a fabricated FE readout.
-  defaultRateLimit: { requestsPerMinute: 60, maxConcurrent: 4 },
+  // Deliberately NO `defaultRateLimit` (#1810 Phase 5). PrestaShop's 60/4 — the
+  // only manifest default in the repo — is calibrated for an operator's OWN shop
+  // webserver (#1815), which is both the throughput bottleneck and busy serving
+  // customers. ShipX is a carrier platform whose quota OL has no documented
+  // figure for, and `requestsPerMinute` is minimum-interval spacing (capacity
+  // ~1, no burst) divided again by OL_WORKER_REPLICAS — so a guessed 60 would
+  // put a hard 1 req/s ceiling on bulk dispatch (N<=25, sequential, on the
+  // interactive request path) and on the per-shipment status sweep, where today
+  // there is none. A real carrier-side limit is still respected reactively via
+  // the transport's `Retry-After` feedback, and an operator who hits one sets
+  // `config.rateLimit` explicitly. Add a default here only with a documented
+  // ShipX quota to calibrate it against.
 };
 
 /** Short brand label for domain-exception prefixes (manifest.displayName is too long). */
@@ -105,7 +111,7 @@ export function createInpostPlugin(): AdapterPlugin {
       const adapter = await createInpostShippingAdapter(
         connection,
         host.credentialsResolver,
-        host.http.forConnection(connection, inpostAdapterManifest.defaultRateLimit),
+        host.http.forConnection(connection),
       );
       return dispatchCapability<T>(
         capability,

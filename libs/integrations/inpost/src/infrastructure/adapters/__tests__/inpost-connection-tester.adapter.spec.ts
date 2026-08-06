@@ -72,6 +72,20 @@ describe('InpostConnectionTesterAdapter', () => {
     expect(typeof result.latencyMs).toBe('number');
   });
 
+  it('probes through the connection-bound transport, not a bare fetch (#1810)', async () => {
+    // The whole point of the #1810 wiring: once the client no longer calls
+    // `globalThis.fetch` directly, nothing but this assertion catches a
+    // regression that stops threading the transport (lint sees no bare fetch).
+    const fetchImpl = jest.fn();
+    http.forConnection.mockClear().mockReturnValue(fetchImpl);
+    jest.spyOn(InpostHttpClient.prototype, 'request').mockResolvedValue([] as never);
+
+    await tester.test(buildConnection(validConfig), resolver);
+
+    // Exactly one argument — InPost ships no manifest `defaultRateLimit`.
+    expect(http.forConnection).toHaveBeenCalledWith(buildConnection(validConfig));
+  });
+
   it('maps an auth rejection to success:false with status 401', async () => {
     jest
       .spyOn(InpostHttpClient.prototype, 'request')
