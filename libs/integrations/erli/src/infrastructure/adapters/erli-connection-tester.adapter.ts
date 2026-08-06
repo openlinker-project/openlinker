@@ -26,7 +26,6 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { ErliAdapterFactory } from '../../application/erli-adapter.factory';
 import type { IErliAdapterFactory } from '../../application/interfaces/erli-adapter.factory.interface';
-import { erliAdapterManifest } from '../../erli-plugin';
 import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
 import { ErliAuthenticationException } from '../../domain/exceptions/erli-authentication.exception';
 import { ErliConfigException } from '../../domain/exceptions/erli-config.exception';
@@ -63,7 +62,7 @@ export class ErliConnectionTesterAdapter implements ConnectionTesterPort {
       // click is operator-triggered and can be repeated in quick succession;
       // it must go through the same rate limiter as every other Erli call
       // site, not a bare globalThis.fetch.
-      const fetchImpl = this.http.forConnection(connection, erliAdapterManifest.defaultRateLimit);
+      const fetchImpl = this.http.forConnection(connection);
       const client = await this.factory.createHttpClient(
         connection,
         credentialsResolver,

@@ -75,11 +75,17 @@ export const erliAdapterManifest: AdapterMetadata = {
   displayName: 'Erli Shop API v1',
   version: '1.0.0',
   isDefault: true,
-  // Conservative floor applied when the operator hasn't set
-  // `connection.config.rateLimit` — Erli documents no published RPM ceiling
-  // (only that it 429s), so this mirrors PrestaShop's default rather than a
-  // vendor-confirmed number. Revisit once Erli publishes real limits.
-  defaultRateLimit: { requestsPerMinute: 60, maxConcurrent: 4 },
+  // No `defaultRateLimit` (#1810 §1): a manifest default is for MERCHANT-HOSTED
+  // platforms, where the remote is the operator's own (often shared-hosting) box
+  // — the #1772 incident PrestaShop's default answers. Erli is a marketplace
+  // whose API is multi-tenant SaaS and publishes no RPM ceiling, so any number
+  // here would be a fabricated policy surfaced to the operator as "adapter
+  // default" in the FE (`RateLimitSection`) — the same reason WooCommerce
+  // declares none. Absent ⇒ unlimited until the operator sets
+  // `connection.config.rateLimit`; 429s stay covered reactively by
+  // `ErliHttpClient`'s `Retry-After` handling. Add one only if Erli publishes a
+  // real limit (matching Allegro, which adopted the transport in #1977 with no
+  // manifest default either).
   // Grouping is carried by an explicit group id (`externalVariantGroup`),
   // independent of category (#1924) — a per-variant category is ordinary
   // metadata here, no split. Declared for discovery; not yet interactively
@@ -172,7 +178,10 @@ export function createErliPlugin(deps?: ErliPluginDeps): AdapterPlugin {
         connection,
         host.identifierMapping,
         host.credentialsResolver,
-        host.http.forConnection(connection, erliAdapterManifest.defaultRateLimit),
+        // Connection-bound outbound transport (#1810). No manifest default is
+        // passed — Erli declares none (see the manifest note above), so the
+        // policy is whatever the operator configured, or unlimited.
+        host.http.forConnection(connection),
         // #1066: distributed frozen-stock flag. Optional on HostServices — when
         // absent the offer adapter fails open (pushes stock = pre-#1066 behaviour).
         host.cache,

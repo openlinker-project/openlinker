@@ -38,7 +38,7 @@ function makeDispatchHost(): HostServices {
     identifierMapping: {},
     credentialsResolver: { get: jest.fn().mockResolvedValue({ apiKey: 'k-123' }) },
     // Connection-bound outbound transport (#1810) — the factory resolves
-    // `host.http.forConnection(connection, defaultRateLimit)` for every adapter.
+    // `host.http.forConnection(connection)` for every adapter.
     http: { forConnection: jest.fn().mockReturnValue(jest.fn()), evict: jest.fn() },
   } as unknown as HostServices;
 }
@@ -132,6 +132,15 @@ describe('erliAdapterManifest', () => {
 
   it('should declare explicit-group variant grouping so a per-variant category is treated as ordinary metadata, not a split (#1924)', () => {
     expect(erliAdapterManifest.variantGrouping).toBe('explicit-group');
+  });
+
+  it('should declare NO defaultRateLimit — a manifest default is for merchant-hosted platforms, not a marketplace (#1810 §1)', () => {
+    // Erli publishes no RPM ceiling, so any number here would be a fabricated
+    // policy the FE presents to the operator as an "adapter default" — and,
+    // unlike WooCommerce (whose client is not wired to the transport yet), it
+    // WOULD take effect, silently throttling every existing Erli connection.
+    // 429s stay covered reactively by ErliHttpClient's Retry-After handling.
+    expect(erliAdapterManifest.defaultRateLimit).toBeUndefined();
   });
 
   it('should carry a display name and version', () => {
@@ -316,6 +325,16 @@ describe('createErliPlugin', () => {
 
       expect(typeof adapter.listOrderFeed).toBe('function');
       expect(typeof adapter.getOrder).toBe('function');
+    });
+
+    it('should resolve the connection-bound transport with no manifest policy argument (#1810)', async () => {
+      const host = makeDispatchHost();
+
+      await createErliPlugin().createCapabilityAdapter(connection, 'OfferManager', host);
+
+      // Exactly one argument: passing a second would reintroduce an adapter-level
+      // default cap Erli deliberately does not declare (see the manifest spec above).
+      expect(host.http.forConnection).toHaveBeenCalledWith(connection);
     });
 
     it('should reject an unsupported capability with the SDK unsupported-capability error', async () => {

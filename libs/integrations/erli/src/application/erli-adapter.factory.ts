@@ -201,6 +201,14 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
     if (!clientId || !clientSecret) {
       return undefined;
     }
+    // Accepted asymmetry (#1810): this client reads ALLEGRO's catalogue API
+    // (ADR-031 borrowed taxonomy) but is handed the transport bound to the ERLI
+    // connection, because `HttpTransportFactoryPort.forConnection` keys the
+    // limiter per CONNECTION, not per remote host — so an operator-configured
+    // Erli cap is shared between Erli shop traffic and these catalogue reads.
+    // Correct posture for now (both are outbound traffic this connection causes,
+    // and Erli ships no default cap so nothing is throttled unless the operator
+    // asks for it); a per-remote-host bucket is the follow-up if it bites (#1956).
     return new AllegroCategoryCatalogClient(
       clientId,
       clientSecret,

@@ -36,7 +36,6 @@ import type {
   WebhookProvisioningResult,
 } from '@openlinker/core/integrations';
 import type { IErliAdapterFactory } from '../../application/interfaces/erli-adapter.factory.interface';
-import { erliAdapterManifest } from '../../erli-plugin';
 import type { ErliConnectionConfig } from '../../domain/types/erli-connection.types';
 import { ErliConfigException } from '../../domain/exceptions/erli-config.exception';
 import { ErliWebhookEventTypeValues } from './erli-webhook.types';
@@ -88,8 +87,10 @@ export class ErliWebhookProvisioningAdapter implements WebhookProvisioningPort {
     );
 
     // Connection-bound outbound transport (#1810) — resolved once, used for
-    // both the hook-registration PUTs and the self-test ping below.
-    const fetchImpl = this.http.forConnection(connection, erliAdapterManifest.defaultRateLimit);
+    // both the hook-registration PUTs and the self-test ping below. No manifest
+    // default is passed: Erli declares none (see `erliAdapterManifest`), so the
+    // policy is the operator's `config.rateLimit`, or unlimited.
+    const fetchImpl = this.http.forConnection(connection);
     const httpClient = await this.factory.createHttpClient(
       connection,
       this.credentialsResolver,
