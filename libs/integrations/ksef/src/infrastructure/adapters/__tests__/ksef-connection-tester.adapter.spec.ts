@@ -20,8 +20,10 @@ import * as httpClientFactory from '../../http/ksef-http-client.factory';
 
 jest.mock('../../http/ksef-http-client.factory');
 
+/** The connection-bound transport `forConnection` hands back (#1810). */
+const boundFetch = jest.fn();
 const http: jest.Mocked<HttpTransportFactoryPort> = {
-  forConnection: jest.fn().mockReturnValue(jest.fn()),
+  forConnection: jest.fn().mockReturnValue(boundFetch),
   evict: jest.fn(),
 };
 
@@ -69,6 +71,7 @@ describe('KsefConnectionTesterAdapter', () => {
 
   beforeEach(() => {
     createKsefHttpClientMock.mockReset();
+    http.forConnection.mockClear();
   });
 
   it('should fail fast when the connection has no valid environment', async () => {
@@ -143,6 +146,35 @@ describe('KsefConnectionTesterAdapter', () => {
       token: 'super-secret-token',
       contextNip: '1234567890',
     });
+  });
+
+  it('should probe through the connection-bound transport, not a bare fetch (#1810)', async () => {
+    // Once the client stops calling `globalThis.fetch` directly its `?? globalThis.fetch`
+    // default IS the bypass, so lint can no longer detect a dropped transport — only
+    // this assertion can.
+    createKsefHttpClientMock.mockReturnValue({
+      httpClient: {} as never,
+      publicKeyCache: {} as never,
+      handshake: {
+        authenticate: jest.fn().mockResolvedValue({
+          accessToken: 'acc',
+          refreshToken: 'ref',
+          accessTokenExpiresAt: new Date(),
+        }),
+      } as never,
+    });
+    const conn = connection();
+
+    await new KsefConnectionTesterAdapter(http).test(
+      conn,
+      resolver({ 'ref:ksef': { authType: 'ksef-token', secret: 'tok' } }),
+    );
+
+    // Exactly one argument — KSeF ships no manifest `defaultRateLimit`.
+    expect(http.forConnection).toHaveBeenCalledWith(conn);
+    expect(createKsefHttpClientMock).toHaveBeenCalledWith(
+      expect.objectContaining({ fetchImpl: boundFetch }),
+    );
   });
 
   it('should map a live auth rejection to a failed result carrying the status code', async () => {

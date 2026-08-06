@@ -58,6 +58,16 @@ export const ksefAdapterManifest: AdapterMetadata = {
   // Future major API versions (v3+) ship as separate plugins with their own
   // adapterKey and isDefault flag.
   isDefault: true,
+  // No `defaultRateLimit` yet (#1810 Phase 5). Unlike every other adopter, KSeF
+  // is a platform where one WOULD be justified — MF publishes API limits and the
+  // client already models 429 + `Retry-After` — but the figure must be cited
+  // from that documentation, not copied from PrestaShop's 60/4, which is
+  // calibrated for an operator's own shop webserver (#1815). Until it is,
+  // `forConnection(connection)` is called without a fallback: unlimited unless
+  // the operator sets `config.rateLimit`, with the transport's `Retry-After`
+  // feedback as the reactive backstop. Adding it later is one line here plus
+  // constructor-injection into `KsefConnectionTesterAdapter` (never an import
+  // from this module into the adapter — that direction is a cycle).
 };
 
 export function createKsefPlugin(): AdapterPlugin {
@@ -90,7 +100,7 @@ export function createKsefPlugin(): AdapterPlugin {
         connection,
         host.identifierMapping,
         host.credentialsResolver,
-        host.http.forConnection(connection, ksefAdapterManifest.defaultRateLimit),
+        host.http.forConnection(connection),
       );
       return dispatchCapability<T>(
         capability,
