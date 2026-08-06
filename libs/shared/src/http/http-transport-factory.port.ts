@@ -36,8 +36,23 @@ export interface HttpTransportFactoryPort {
    * (no CORE dependency). Re-read on every call alongside `config.rateLimit`
    * — never cached — so it stays correct even though the returned
    * `FetchLike` reference is stable.
+   *
+   * **One bucket per connection, never per host.** A plugin that talks to
+   * several physical hosts for one connection (Allegro serves REST from
+   * `api.allegro.pl` and image uploads from `upload.allegro.pl`) still shares
+   * a single bucket, because the quota it is pacing against is the remote's,
+   * and remotes scope quotas by credential — not by hostname. Allegro
+   * documents exactly one limit, "9000 requests per minute per Client ID",
+   * plus optional lower *per-resource* sub-limits; nothing in its docs
+   * suggests `upload.` draws from a second pool. Splitting per host would
+   * quietly double a connection's real aggregate against one server-side
+   * budget, and make `config.rateLimit` mean something different from what
+   * the operator typed. See ADR-038 § "The cap is per connection".
    */
-  forConnection(connection: RateLimitedConnection, defaultRateLimit?: ConnectionRateLimit): FetchLike;
+  forConnection(
+    connection: RateLimitedConnection,
+    defaultRateLimit?: ConnectionRateLimit
+  ): FetchLike;
 
   /**
    * Drop the cached `FetchLike` + `ConnectionRef` for a connection id, and

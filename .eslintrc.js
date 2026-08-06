@@ -533,7 +533,11 @@ module.exports = {
       // added to this glob as it migrates (#1810 Phase 5, tracked in #1956).
       // Genuine OAuth-token endpoints are exempted per-line, never file-level.
       // Enforced alongside `scripts/check-outbound-http.mjs` (`check:invariants`).
-      files: ['libs/integrations/prestashop/**/*.ts', 'libs/integrations/woocommerce/**/*.ts'],
+      files: [
+        'libs/integrations/prestashop/**/*.ts',
+        'libs/integrations/allegro/**/*.ts',
+        'libs/integrations/woocommerce/**/*.ts',
+      ],
       excludedFiles: ['**/*.spec.ts', '**/*.int-spec.ts'],
       rules: {
         'no-restricted-globals': [

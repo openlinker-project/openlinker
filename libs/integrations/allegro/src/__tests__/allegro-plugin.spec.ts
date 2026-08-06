@@ -9,10 +9,12 @@
  * @module libs/integrations/allegro/src/__tests__
  */
 import type { HostServices } from '@openlinker/plugin-sdk';
+import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 
 import { allegroAdapterManifest, createAllegroPlugin } from '../allegro-plugin';
+import { AllegroAdapterFactory } from '../application/allegro-adapter.factory';
 
 describe('allegroAdapterManifest', () => {
   it('declares the ShippingProviderManager capability so it routes as a source_brokered processor (#833)', () => {
@@ -66,6 +68,10 @@ describe('createAllegroPlugin → register(host)', () => {
       identifierMapping: {} as IdentifierMappingPort,
       credentialsResolver: {} as CredentialsResolverPort,
       cache: undefined,
+      // `register(host)` constructs the connection tester with `host.http`
+      // (#1810). Stubbed so the wiring assertion below has something to check
+      // — an undefined slot would still "pass" every other case in this file.
+      http: { forConnection: jest.fn().mockReturnValue(jest.fn()), evict: jest.fn() },
       connectionTesterRegistry: { register: jest.fn() },
       emailNormalizerRegistry: { register: jest.fn() },
       retryClassifierRegistry: { register: jest.fn() },
@@ -108,6 +114,58 @@ describe('createAllegroPlugin → register(host)', () => {
         exchangeCode: expect.any(Function),
         fetchAccountIdentity: expect.any(Function),
       }),
+    );
+  });
+});
+
+describe('createAllegroPlugin → createCapabilityAdapter', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  function makeAdapterHost(): {
+    host: HostServices;
+    forConnection: jest.Mock;
+    boundFetch: jest.Mock;
+  } {
+    const boundFetch = jest.fn();
+    const forConnection = jest.fn().mockReturnValue(boundFetch);
+    const host = {
+      identifierMapping: {} as IdentifierMappingPort,
+      credentialsResolver: {} as CredentialsResolverPort,
+      cache: undefined,
+      http: { forConnection, evict: jest.fn() },
+    } as unknown as HostServices;
+    return { host, forConnection, boundFetch };
+  }
+
+  const makeConnection = (): Connection =>
+    ({ id: 'connection-1', platformType: 'allegro' }) as Connection;
+
+  it('hands the connection-bound transport to the adapter factory, so every Allegro client paces on that connection (#1810)', async () => {
+    // The load-bearing wiring of #1968: without it the clients fall back to
+    // nothing (fetchImpl is required, so it would not compile) — but a future
+    // refactor could just as easily resolve a transport for the WRONG
+    // connection, which compiles fine and silently mixes two sellers' buckets.
+    // Assert on the arguments, not merely that something was passed.
+    const { host, forConnection, boundFetch } = makeAdapterHost();
+    const connection = makeConnection();
+    const createAdapters = jest
+      .spyOn(AllegroAdapterFactory.prototype, 'createAdapters')
+      .mockResolvedValue({
+        offerManager: { kind: 'offerManager' },
+        orderSource: {},
+        shippingManager: {},
+      } as never);
+
+    await createAllegroPlugin({}).createCapabilityAdapter(connection, 'OfferManager', host);
+
+    expect(forConnection).toHaveBeenCalledWith(connection, allegroAdapterManifest.defaultRateLimit);
+    expect(createAdapters).toHaveBeenCalledWith(
+      connection,
+      host.identifierMapping,
+      host.credentialsResolver,
+      boundFetch
     );
   });
 });
