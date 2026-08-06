@@ -110,10 +110,8 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
     // Two HTTP clients per connection — one for api.allegro.pl, one for
     // upload.allegro.pl. They differ only in base URL: both share the token
     // state above AND the single connection-bound transport, so image uploads
-    // and REST calls pace against one bucket. Allegro's published limit is
-    // "9000 req/min per Client ID" with optional per-resource sub-limits — the
-    // hostname is not a quota axis, so giving `upload.` its own bucket would
-    // silently double the connection's real aggregate (#1968 review).
+    // and REST calls pace against one bucket rather than one each. See
+    // ADR-038 § "The cap is per connection".
     const httpClient = new AllegroHttpClient(connection.id, apiBaseUrl, tokenState, fetchImpl);
     const uploadHttpClient = new AllegroHttpClient(
       connection.id,

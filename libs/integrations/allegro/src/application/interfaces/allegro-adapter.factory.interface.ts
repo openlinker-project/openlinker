@@ -45,9 +45,8 @@ export interface IAllegroAdapterFactory {
    * @param credentialsResolver - Credentials resolver for OAuth token retrieval
    * @param fetchImpl - The connection's rate-limited transport, shared by both
    *   of the HTTP clients this factory builds (`api.allegro.pl` for REST,
-   *   `upload.allegro.pl` for image bytes). One bucket, not one per host:
-   *   Allegro's documented quota is per Client ID, so the two hosts draw from
-   *   the same server-side budget.
+   *   `upload.allegro.pl` for image bytes) — one bucket, not one per host.
+   *   See ADR-038 § "The cap is per connection".
    * @returns Container with all Allegro adapters
    */
   createAdapters(

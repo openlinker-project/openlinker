@@ -16,17 +16,24 @@ import type {
   ConnectionTestResult,
   CredentialsResolverPort,
 } from '@openlinker/core/integrations';
-import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { Connection, ConnectionRateLimit } from '@openlinker/core/identifier-mapping';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { AllegroHttpClient } from '../http/allegro-http-client';
 import { AllegroConnectionTokenState } from '../http/allegro-connection-token-state';
 import { getAllegroRestApiBaseUrl } from '../http/allegro-hosts';
 import type { AllegroCredentials } from '../../domain/types/allegro-credentials.types';
 import type { AllegroConnectionConfig } from '../../domain/types/allegro-config.types';
-import { allegroAdapterManifest } from '../../allegro-plugin';
 
 export class AllegroConnectionTesterAdapter implements ConnectionTesterPort {
-  constructor(private readonly http: HttpTransportFactoryPort) {}
+  constructor(
+    private readonly http: HttpTransportFactoryPort,
+    // The plugin manifest's `defaultRateLimit` (#1810) — passed in by the
+    // registration call site (`allegro-plugin.ts`) rather than imported back
+    // from it, which would create a module-load cycle
+    // (allegro-plugin.ts -> this file -> allegro-plugin.ts). Same shape as
+    // the PrestaShop reference adopter.
+    private readonly defaultRateLimit?: ConnectionRateLimit
+  ) {}
 
   async test(
     connection: Connection,
@@ -48,7 +55,7 @@ export class AllegroConnectionTesterAdapter implements ConnectionTesterPort {
       // site, not a bare globalThis.fetch. Passing `defaultRateLimit` mirrors
       // the real client's call site (`allegro-plugin.ts`) so this probe shares
       // that connection's bucket rather than resolving an unlimited one.
-      const fetchImpl = this.http.forConnection(connection, allegroAdapterManifest.defaultRateLimit);
+      const fetchImpl = this.http.forConnection(connection, this.defaultRateLimit);
 
       // Probe deliberately runs without a token-refresh callback: a stale or
       // invalid token must surface as a clear failure (caller can prompt the

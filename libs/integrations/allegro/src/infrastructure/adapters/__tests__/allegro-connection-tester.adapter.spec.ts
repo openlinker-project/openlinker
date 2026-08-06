@@ -17,7 +17,12 @@ describe('AllegroConnectionTesterAdapter', () => {
     forConnection: jest.fn().mockReturnValue(jest.fn()),
     evict: jest.fn(),
   };
-  const tester = new AllegroConnectionTesterAdapter(http);
+  // An arbitrary stand-in for whatever the registration site passes — what the
+  // assertion below pins is the WIRING, that the fallback is INJECTED rather
+  // than imported back from the plugin module (which would be a cycle:
+  // plugin -> tester -> plugin).
+  const defaultRateLimit = { requestsPerMinute: 1, maxConcurrent: 1 };
+  const tester = new AllegroConnectionTesterAdapter(http, defaultRateLimit);
   const resolver: CredentialsResolverPort = {
     get: jest.fn().mockResolvedValue({ accessToken: 'T' }),
   } as unknown as CredentialsResolverPort;
@@ -59,5 +64,19 @@ describe('AllegroConnectionTesterAdapter', () => {
     expect(result.success).toBe(false);
     expect(result.status).toBe(401);
     expect(result.message).toBe('Unauthorized');
+  });
+
+  it('resolves the probe transport with the injected defaultRateLimit, so the test-connection click shares the connection bucket', async () => {
+    // Regression guard for a silent bypass: dropping the second argument still
+    // compiles (it is optional) and every assertion above still passes, but the
+    // probe would resolve an UNLIMITED bucket while the real clients pace
+    // against the manifest fallback. Only this assertion notices.
+    jest
+      .spyOn(client.AllegroHttpClient.prototype, 'get')
+      .mockResolvedValue({ status: 200, body: {}, headers: {} } as never);
+
+    await tester.test(connection, resolver);
+
+    expect(http.forConnection).toHaveBeenCalledWith(connection, defaultRateLimit);
   });
 });

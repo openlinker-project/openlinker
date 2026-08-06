@@ -7,6 +7,22 @@ import { HttpTransportFactory } from '../http-transport-factory';
 import { createRateLimiterRegistry, runWithPriority } from '../../rate-limit';
 import type { RateLimiterRegistry } from '../../rate-limit';
 
+/**
+ * Poll until `predicate` holds, so assertions about the limiter synchronise on
+ * its own observable state instead of a fixed sleep. Throws on timeout rather
+ * than letting the test fall through to an assertion that would then fail for
+ * a misleading reason.
+ */
+async function waitFor(predicate: () => boolean, timeoutMs = 1000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() > deadline) {
+      throw new Error(`waitFor: condition not met within ${timeoutMs}ms`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+}
+
 describe('HttpTransportFactory', () => {
   let registry: RateLimiterRegistry;
 
@@ -173,12 +189,9 @@ describe('HttpTransportFactory', () => {
   it('shares one bucket across every host a connection talks to (#1968 review)', async () => {
     // A plugin with several physical hosts per connection (Allegro serves REST
     // from api.allegro.pl and image uploads from upload.allegro.pl) resolves
-    // ONE transport and hands it to every client. The bucket is keyed on the
-    // connection id alone, because the quota being paced against is scoped by
-    // credential on the remote's side (Allegro: 9000 req/min per Client ID),
-    // not by hostname. Per-host buckets would double the real aggregate
-    // against a single server-side budget. See ADR-038 § "The cap is per
-    // connection".
+    // ONE transport and hands it to every client — the bucket is keyed on the
+    // connection id alone. See ADR-038 § "The cap is per connection" for why
+    // hostname is not a quota axis.
     const fetchImpl = jest.fn().mockResolvedValue(new Response(null, { status: 200 }));
     const factory = new HttpTransportFactory({ registry, fetchImpl });
 
@@ -193,18 +206,17 @@ describe('HttpTransportFactory', () => {
       .acquire({ maxConcurrent: 1 }, 'background');
 
     // ...and traffic to the *other* host must queue rather than sail past on a
-    // bucket of its own.
-    let settled = false;
-    void boundFetch('https://upload.example.com').then(() => {
-      settled = true;
-    });
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    // bucket of its own. Synchronise on the limiter's own observable state
+    // rather than a fixed sleep: a timing-based assertion would pass for the
+    // wrong reason on a loaded runner (nothing scheduled yet reads the same as
+    // correctly blocked).
+    const inFlight = boundFetch('https://upload.example.com');
+    await waitFor(() => registry.getStatus('conn-1')?.queued === 1);
 
-    expect(settled).toBe(false);
     expect(fetchImpl).not.toHaveBeenCalled();
 
     release();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await inFlight;
     expect(fetchImpl).toHaveBeenCalledWith('https://upload.example.com', undefined);
   });
 

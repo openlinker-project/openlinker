@@ -26,7 +26,15 @@ export type UploadImagesResult =
  * Options for `uploadImagesViaAllegro`.
  */
 export interface UploadImagesViaAllegroOptions {
-  /** Override fetch (tests). Defaults to `globalThis.fetch`. */
+  /**
+   * Override the transport used to DOWNLOAD the source image bytes (tests).
+   *
+   * Defaults to `globalThis.fetch` — an acknowledged unmetered path, not an
+   * oversight: these GETs target the master shop's image URLs, so they belong
+   * on the source connection's rate-limited transport rather than the Allegro
+   * one this helper's `uploadHttpClient` already carries. See the exemption
+   * comment at the default's assignment site.
+   */
   fetchImpl?: FetchLike;
   /** Per-URL download timeout. Default 30 000 ms. */
   downloadTimeoutMs?: number;

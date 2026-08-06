@@ -50,13 +50,23 @@ const SKIP_DIRS = new Set([
 ]);
 
 const EXEMPTION_PATTERN = /eslint-disable-next-line\s+no-restricted-globals/;
-// A bare, un-namespaced `fetch(` call — not `.fetch(` (member access on some
-// object) and not `fetchImpl(`/`fetchSomething(` (a longer identifier).
-// Single-line pattern by design (scanned per-line below) — a call split
-// across lines (`fetch(\n  url,\n  ...\n)`) will not match. This is a
-// backstop against a lint-config regression, not a substitute for the
-// ESLint rule; the low-likelihood multi-line-call gap is accepted.
-const BARE_FETCH_PATTERN = /(?<![.\w])fetch\s*\(/;
+// Two shapes of unmetered outbound call:
+//
+//  1. A bare, un-namespaced `fetch(` call — not `.fetch(` (member access on
+//     some object) and not `fetchImpl(`/`fetchSomething(` (a longer
+//     identifier). This is the shape `no-restricted-globals` also catches;
+//     scanning for it is a backstop against a lint-config regression.
+//  2. A `globalThis.fetch` / `global.fetch` / `window.fetch` REFERENCE, with
+//     or without a call. `no-restricted-globals` structurally cannot see
+//     these — it flags the bare identifier `fetch`, not a member expression —
+//     so here the checker is the ONLY guard, not a backstop. The reference
+//     form matters as much as the call form: `const f = x ?? globalThis.fetch`
+//     hands an unmetered transport to a call site far away.
+//
+// Single-line patterns by design (scanned per-line below) — a call split
+// across lines (`fetch(\n  url,\n  ...\n)`) will not match. The
+// low-likelihood multi-line-call gap is accepted.
+const BARE_FETCH_PATTERN = /(?<![.\w])fetch\s*\(|(?<![.\w])(?:globalThis|global|window)\s*\.\s*fetch\b/;
 
 function isTestFile(relPath) {
   return relPath.endsWith('.spec.ts') || relPath.endsWith('.int-spec.ts');
@@ -190,6 +200,27 @@ function selfCheck() {
       content:
         '// eslint-disable-next-line no-restricted-globals -- OAuth token endpoint\n\nconst res = await fetch(url);',
       expectHits: 1,
+    },
+    {
+      name: 'flags a globalThis.fetch reference (no-restricted-globals cannot see it)',
+      content: 'const fetchImpl = options?.fetchImpl ?? globalThis.fetch;',
+      expectHits: 1,
+    },
+    {
+      name: 'flags a window.fetch call',
+      content: 'const res = await window.fetch(url);',
+      expectHits: 1,
+    },
+    {
+      name: 'honours an exemption above a globalThis.fetch reference',
+      content:
+        '// eslint-disable-next-line no-restricted-globals -- master-shop image bytes\nconst fetchImpl = options?.fetchImpl ?? globalThis.fetch;',
+      expectHits: 0,
+    },
+    {
+      name: 'does not flag an unrelated member named fetch on some object',
+      content: 'const res = await this.fetchImpl(url);',
+      expectHits: 0,
     },
     {
       name: 'does not flag a JSDoc line mentioning fetch(',

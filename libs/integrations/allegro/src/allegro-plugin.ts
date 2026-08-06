@@ -108,14 +108,6 @@ export const allegroAdapterManifest: AdapterMetadata = {
   // Siblings group by sharing a catalog product keyed by category (#1924) —
   // giving one variant its own category splits it out of the grouped listing.
   variantGrouping: 'catalog-implicit',
-  // Conservative resolution-time fallback for a connection with no explicit
-  // `config.rateLimit` (#1810 Phase 5) — mirrors the PrestaShop reference
-  // adopter's posture, and sits far under Allegro's published ceiling of 9000
-  // req/min per Client ID (some resources carry lower sub-limits, e.g. GET
-  // /sale/product-offers/{id} at 3500/min). One bucket covers both the REST
-  // and image-upload hosts, since that ceiling is credential-scoped rather
-  // than per-hostname. Never written into stored config.
-  defaultRateLimit: { requestsPerMinute: 60, maxConcurrent: 5 },
 };
 
 /**
@@ -144,7 +136,7 @@ export function createAllegroPlugin(deps: CreateAllegroPluginDeps): AdapterPlugi
     register(host: HostServices): void {
       host.connectionTesterRegistry.register(
         'allegro.publicapi.v1',
-        new AllegroConnectionTesterAdapter(host.http)
+        new AllegroConnectionTesterAdapter(host.http, allegroAdapterManifest.defaultRateLimit)
       );
       host.emailNormalizerRegistry.register(
         'allegro.publicapi.v1',

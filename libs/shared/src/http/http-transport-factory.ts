@@ -106,33 +106,30 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
     connection: RateLimitedConnection,
     defaultRateLimit?: ConnectionRateLimit
   ): FetchLike {
-    // One bucket per connection, keyed on the connection id alone — a plugin
-    // with several hosts per connection (Allegro's api./upload.) shares it,
-    // because the quota being paced against is scoped by credential on the
-    // remote's side, not by hostname. See the port doc + ADR-038.
-    const cacheKey = connection.id;
-
+    // Keyed on the connection id alone — one bucket per connection, never per
+    // host. See the port doc + ADR-038 § "The cap is per connection".
+    //
     // Keep the ref fresh on every forConnection() call so a cached closure (below)
     // never reads a stale `config.rateLimit` from the connection object it
     // happened to be built with — an operator's config edit must take effect
     // on the very next call through the same cached FetchLike. `defaultRateLimit`
-    // is per-cache-key, not per-call: a caller that omits it (e.g. a second
-    // call site resolving the same connection/host) must never clobber the value a
+    // is per-connection-id, not per-call: a caller that omits it (e.g. a second
+    // call site resolving the same connection) must never clobber the value a
     // prior caller established, since every caller shares one cached FetchLike.
-    const ref = this.connectionRefs.get(cacheKey);
+    const ref = this.connectionRefs.get(connection.id);
     if (ref) {
       ref.current = connection;
       ref.defaultRateLimit = defaultRateLimit ?? ref.defaultRateLimit;
     } else {
-      this.connectionRefs.set(cacheKey, { current: connection, defaultRateLimit });
+      this.connectionRefs.set(connection.id, { current: connection, defaultRateLimit });
     }
 
-    const cached = this.cache.get(cacheKey);
+    const cached = this.cache.get(connection.id);
     if (cached) {
       return cached;
     }
 
-    const connectionRef = this.connectionRefs.get(cacheKey)!;
+    const connectionRef = this.connectionRefs.get(connection.id)!;
     const fetchImpl: FetchLike = (async (
       input: RequestInfo | URL,
       init?: RequestInit
@@ -140,7 +137,7 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
       const rawPolicy: ConnectionRateLimit =
         connectionRef.current.config?.rateLimit ?? connectionRef.defaultRateLimit ?? {};
       const policy = dividePolicy(rawPolicy, this.replicas);
-      const limiter = this.registry.get(cacheKey, policy);
+      const limiter = this.registry.get(connectionRef.current.id, policy);
       const priority = getCurrentPriority();
       const signal = getCurrentRateLimitSignal();
 
@@ -159,7 +156,7 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
       }
     }) as FetchLike;
 
-    this.cache.set(cacheKey, fetchImpl);
+    this.cache.set(connection.id, fetchImpl);
     return fetchImpl;
   }
 
