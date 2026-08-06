@@ -1,4 +1,4 @@
-name: Build and Push Docker Image
+name: Build and up staging
 
 on:
   workflow_dispatch:  # Manual trigger for testing
