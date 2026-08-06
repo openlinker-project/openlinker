@@ -20,18 +20,24 @@ import type {
   ConnectionTestResult,
   CredentialsResolverPort,
 } from '@openlinker/core/integrations';
-import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { Connection, ConnectionRateLimit } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { SubiektBridgeHttpClient } from '../http/subiekt-bridge-http.client';
 import type { SubiektConnectionConfig } from '../../domain/types/subiekt-connection-config.types';
 import type { SubiektBridgeCredentials } from '../../domain/types/subiekt-credentials.types';
-import { subiektAdapterManifest } from '../../subiekt-plugin';
 
 export class SubiektConnectionTesterAdapter implements ConnectionTesterPort {
   private readonly logger = new Logger(SubiektConnectionTesterAdapter.name);
 
-  constructor(private readonly http: HttpTransportFactoryPort) {}
+  // The manifest's `defaultRateLimit` (#1810) — passed in by the plugin at
+  // registration, never re-imported from `subiekt-plugin.ts` here (that
+  // module already value-imports this class, and importing it back would
+  // reintroduce the cycle PrestaShop's identical constructor shape avoids).
+  constructor(
+    private readonly http: HttpTransportFactoryPort,
+    private readonly defaultRateLimit?: ConnectionRateLimit,
+  ) {}
 
   async test(
     connection: Connection,
@@ -62,7 +68,7 @@ export class SubiektConnectionTesterAdapter implements ConnectionTesterPort {
       // click is operator-triggered and can be repeated in quick succession;
       // it must go through the same rate limiter as every other Subiekt call
       // site, not a bare globalThis.fetch.
-      const fetchImpl = this.http.forConnection(connection, subiektAdapterManifest.defaultRateLimit);
+      const fetchImpl = this.http.forConnection(connection, this.defaultRateLimit);
 
       // Construction may throw SubiektConfigException for a bad / IMDS URL —
       // caught below and translated to a failed result, never a throw.

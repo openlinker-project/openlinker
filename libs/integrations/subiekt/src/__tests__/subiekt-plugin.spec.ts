@@ -114,6 +114,18 @@ describe('createSubiektPlugin', () => {
       expect(adapter).toBeInstanceOf(SubiektInvoicingAdapter);
     });
 
+    it('resolves the connection-bound transport via host.http.forConnection with the manifest defaultRateLimit (#1810)', async () => {
+      const host = makeHost();
+      const connection = makeConnection();
+
+      await createSubiektPlugin().createCapabilityAdapter(connection, 'Invoicing', host);
+
+      expect(host.http.forConnection).toHaveBeenCalledWith(
+        connection,
+        subiektAdapterManifest.defaultRateLimit,
+      );
+    });
+
     it('rejects for an unknown capability', async () => {
       const plugin = createSubiektPlugin();
       await expect(
