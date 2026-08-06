@@ -102,7 +102,13 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
     this.baseFetch = deps.fetchImpl ?? globalThis.fetch.bind(globalThis);
   }
 
-  forConnection(connection: RateLimitedConnection, defaultRateLimit?: ConnectionRateLimit): FetchLike {
+  forConnection(
+    connection: RateLimitedConnection,
+    defaultRateLimit?: ConnectionRateLimit
+  ): FetchLike {
+    // Keyed on the connection id alone — one bucket per connection, never per
+    // host. See the port doc + ADR-038 § "The cap is per connection".
+    //
     // Keep the ref fresh on every forConnection() call so a cached closure (below)
     // never reads a stale `config.rateLimit` from the connection object it
     // happened to be built with — an operator's config edit must take effect

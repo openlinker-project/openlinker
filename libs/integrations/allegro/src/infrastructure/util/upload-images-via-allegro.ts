@@ -46,6 +46,7 @@ import imageSize from 'image-size';
 import type { CreateOfferValidationError } from '@openlinker/core/listings';
 import type { IAllegroHttpClient } from '../http/allegro-http-client.interface';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
+import type { FetchLike } from '@openlinker/shared/http';
 import type {
   UploadImagesResult,
   UploadImagesViaAllegroOptions,
@@ -88,7 +89,21 @@ export async function uploadImagesViaAllegro(
     return { ok: true, locations: [] };
   }
 
-  const fetchImpl = options?.fetchImpl ?? globalThis.fetch;
+  // NOT the connection-bound transport (#1810), deliberately and visibly.
+  // These GETs fetch image bytes from the MASTER SHOP's URLs, not from
+  // Allegro — pacing them on the Allegro connection's bucket would spend the
+  // wrong budget. The right owner is the source connection's transport, which
+  // this helper has no handle on (the offer-manager adapter is constructed per
+  // Allegro connection and never sees the master's). Threading it through is
+  // tracked as follow-up work; until then this is an acknowledged unmetered
+  // path, and `Promise.all` below means it is also unbounded in width.
+  // Flagged by `scripts/check-outbound-http.mjs` unless exempted here.
+  // Bound, mirroring `HttpTransportFactory` (#1957 tech-review): the reference
+  // is stored and invoked later without its `globalThis` receiver, which
+  // throws "Illegal invocation" in a browser realm. Node/undici tolerate it,
+  // but the merged factory set the precedent and matching it costs one call.
+  // eslint-disable-next-line no-restricted-globals -- image bytes come from the master shop, not Allegro; belongs on the SOURCE connection's transport, which this helper cannot reach yet (#1810 follow-up)
+  const fetchImpl = options?.fetchImpl ?? globalThis.fetch.bind(globalThis);
   const downloadTimeoutMs = options?.downloadTimeoutMs ?? DEFAULT_DOWNLOAD_TIMEOUT_MS;
 
   const results = await Promise.all(
@@ -133,7 +148,7 @@ type DownloadErr = { ok: false; failure: CreateOfferValidationError };
 
 async function downloadImage(
   url: string,
-  fetchImpl: typeof fetch,
+  fetchImpl: FetchLike,
   timeoutMs: number
 ): Promise<DownloadOk | DownloadErr> {
   const controller = new AbortController();
