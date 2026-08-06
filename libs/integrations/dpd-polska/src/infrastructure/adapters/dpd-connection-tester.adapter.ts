@@ -30,7 +30,6 @@ import type { DpdConnectionConfig } from '../../domain/types/dpd-config.types';
 import { DpdEnvironmentValues } from '../../domain/types/dpd-config.types';
 import type { DpdCredentials } from '../../domain/types/dpd-credentials.types';
 import { getDpdServicesBaseUrl } from '../http/dpd-hosts';
-import { dpdAdapterManifest } from '../../dpd-plugin';
 
 const PROBE_PATH = '/public/shipment/v1/generatePackagesNumbers';
 const PROBE_TIMEOUT_MS = 10_000;
@@ -95,7 +94,7 @@ export class DpdConnectionTesterAdapter implements ConnectionTesterPort {
       // click is operator-triggered and can be repeated in quick succession;
       // it must go through the same rate limiter as every other DPD call site,
       // not a bare globalThis.fetch.
-      const fetchImpl = this.http.forConnection(connection, dpdAdapterManifest.defaultRateLimit);
+      const fetchImpl = this.http.forConnection(connection);
       const response = await fetchImpl(url, {
         method: 'POST',
         headers,
