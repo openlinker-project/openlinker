@@ -41,7 +41,7 @@ export class PerOrderDispatchResultDto {
       // `canWrite: true` — POST /shipments/bulk/generate-labels is
       // `@Roles('admin', 'operator')`-gated, so the caller already holds
       // `shipments:write` and there is nothing to redact (#1826).
-      dto.shipment = ShipmentResponseDto.fromDomain(result.shipment, null, true);
+      dto.shipment = ShipmentResponseDto.fromDomain(result.shipment, null, true, null);
     } else if (result.kind === 'failed') {
       dto.error = result.error;
     }

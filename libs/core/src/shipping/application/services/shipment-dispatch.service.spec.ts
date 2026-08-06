@@ -163,6 +163,7 @@ describe('ShipmentDispatchService', () => {
       updateSyncStatus: jest.fn(),
       getOrderRecord: jest.fn().mockResolvedValue(null),
       findMany: jest.fn(),
+      findByIds: jest.fn(),
       updateFulfillmentState: jest.fn(),
       markItemResolutionFailure: jest.fn(),
     };

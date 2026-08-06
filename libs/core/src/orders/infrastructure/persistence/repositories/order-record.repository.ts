@@ -11,7 +11,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { SelectQueryBuilder } from 'typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import type { OrderSyncStatusJson, SyncAttemptJson } from '../entities/order-record.orm-entity';
 import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
 import type { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
@@ -51,6 +51,20 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     }
 
     return this.toDomain(entity);
+  }
+
+  /**
+   * Batch-find by internal order ID (#1995) — single `IN (...)` query, no
+   * pagination. Ids with no matching row are simply absent from the result.
+   */
+  async findByIds(internalOrderIds: string[]): Promise<OrderRecord[]> {
+    if (internalOrderIds.length === 0) {
+      return [];
+    }
+    const entities = await this.repository.find({
+      where: { internalOrderId: In(internalOrderIds) },
+    });
+    return entities.map((e) => this.toDomain(e));
   }
 
   async findMany(
