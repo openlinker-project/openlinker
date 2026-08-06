@@ -90,6 +90,7 @@ export class AllegroCategoryCatalogClient {
     private readonly clientSecret: string,
     environment: AllegroCatalogEnvironment,
     private readonly cache?: CachePort,
+    // eslint-disable-next-line no-restricted-globals -- every production call site (ErliAdapterFactory) always passes host.http.for(connection); the default only keeps existing spec fixtures compiling without threading it (#1810)
     private readonly fetchImpl: FetchLike = globalThis.fetch
   ) {
     this.webBaseUrl = environment === 'production' ? PRODUCTION_WEB_BASE_URL : SANDBOX_WEB_BASE_URL;

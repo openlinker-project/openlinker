@@ -84,6 +84,7 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
     // prior version resolved twice per call (#1399 review), paying a second
     // credentialsRef DB round-trip + decrypt on every adapter construction.
     const credentials = await this.resolveCredentials(connection, credentialsResolver);
+    // eslint-disable-next-line no-restricted-globals -- every production call site (erli-plugin.ts's createCapabilityAdapter) always passes host.http.for(connection); the default only keeps existing spec fixtures compiling without threading it (#1810)
     const resolvedFetchImpl = fetchImpl ?? globalThis.fetch;
     const httpClient = this.buildHttpClient(connection, credentials, resolvedFetchImpl);
     const config = (connection.config ?? {}) as ErliConnectionConfig;

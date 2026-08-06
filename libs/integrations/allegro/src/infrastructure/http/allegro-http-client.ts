@@ -28,6 +28,7 @@ import { AllegroNetworkException } from '../../domain/exceptions/allegro-network
 import { AllegroRateLimitException } from '../../domain/exceptions/allegro-rate-limit.exception';
 import { parseAllegroErrorBody } from './parse-allegro-error-body';
 import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
+import type { FetchLike } from '@openlinker/shared/http';
 import { randomUUID } from 'crypto';
 
 /**
@@ -88,11 +89,30 @@ export class AllegroHttpClient implements IAllegroHttpClient {
   private readonly retryConfig: RetryConfig;
   private readonly connectionId: string;
   private readonly tokenState: AllegroConnectionTokenState;
+  private readonly fetchImpl: FetchLike;
 
+  /**
+   * `fetchImpl` is **required**, deliberately (#1968 review). An optional
+   * `fetchImpl ?? globalThis.fetch` default would make a forgotten wiring
+   * silently issue full-speed, unrated traffic — and neither guard would
+   * notice: `no-restricted-globals` flags the bare identifier `fetch`, not
+   * the `globalThis.fetch` member expression, and `check-outbound-http.mjs`
+   * matches a `fetch(` call, not a reference. Since #1810's whole premise is
+   * that a connection's `config.rateLimit` cannot be silently bypassed, the
+   * compiler enforces the wiring instead. Every construction site (the
+   * adapter factory's two clients, the connection tester) already resolves
+   * one from `host.http.forConnection(...)`.
+   *
+   * It precedes `retryConfig` because TypeScript forbids an optional
+   * parameter ahead of a required one — keeping the old order would have
+   * forced every caller that wants default retries to pass an explicit
+   * `undefined` placeholder.
+   */
   constructor(
     connectionId: string,
     baseUrl: string,
     tokenState: AllegroConnectionTokenState,
+    fetchImpl: FetchLike,
     retryConfig?: Partial<RetryConfig>
   ) {
     this.connectionId = connectionId;
@@ -100,6 +120,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.tokenState = tokenState;
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
+    this.fetchImpl = fetchImpl;
   }
 
   async get<T = unknown>(
@@ -346,7 +367,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
         `[${traceId}] ${method} ${url.pathname}${url.search} (connection: ${this.connectionId})`
       );
 
-      const response = await fetch(url.toString(), {
+      const response = await this.fetchImpl(url.toString(), {
         method,
         headers: headersObject,
         body: requestBody,

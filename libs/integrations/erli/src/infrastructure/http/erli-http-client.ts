@@ -104,6 +104,7 @@ export class ErliHttpClient implements IErliHttpClient {
     this.baseUrl = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
     this.baseOrigin = parsed.origin;
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
+    // eslint-disable-next-line no-restricted-globals -- every production call site (ErliAdapterFactory) always passes host.http.for(connection); the default only keeps existing spec fixtures compiling without threading it (#1810)
     this.fetchImpl = fetchImpl ?? globalThis.fetch;
   }
 
