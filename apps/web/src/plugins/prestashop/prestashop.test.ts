@@ -52,8 +52,8 @@ describe('prestashopPlugin', () => {
       expect(prestashopPlugin.platform?.ConnectionActions).toBeDefined();
     });
 
-    it('does NOT contribute an extra config section (no Allegro-like GPSR block)', () => {
-      expect(prestashopPlugin.platform?.ExtraConfigSection).toBeUndefined();
+    it('contributes an extra config section (the rate-limit readout, #1810)', () => {
+      expect(prestashopPlugin.platform?.ExtraConfigSection).toBeDefined();
     });
 
     it('does NOT mark itself as external-auth-redirect (PS uses inline credentials)', () => {

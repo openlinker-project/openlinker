@@ -16483,6 +16483,24 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 .infakt-webhook__status-val--muted { color: var(--text-muted); font-weight: 400; }
 
+/* ── PrestaShop rate-limit readout (#1810) ── */
+.prestashop-rate-limit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  margin-top: var(--space-3);
+}
+.prestashop-rate-limit__line {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+}
+
 /* the exchange: a bidirectional relay with a center seam */
 .infakt-webhook__exchange {
   display: grid;

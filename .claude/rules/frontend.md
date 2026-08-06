@@ -19,6 +19,20 @@ paths:
 - Session state → `SessionProvider`
 - Local UI state → component-local `useState` / `useReducer`
 
+## Access control
+
+Never write `session.user?.role === 'admin'` inline — `role` is typed `string`, so a typo compiles and silently returns false. Gate on a `Permission` from `shared/auth/session.types.ts`, and pick the primitive by **what** you are gating:
+
+| Gating | Use | Demo-mode behaviour |
+|---|---|---|
+| Content — banner, panel, section, column, tooltip copy | `<AccessGate require="x:write" fallback={…}>` (`shared/ui`) | **Hidden.** The gate does not read demo mode. |
+| Write affordance — button, checkbox, form, menu item | `useWriteAccess('x:write', demoMode)` + `<ReadOnlyLock>` | **Visible but disabled**, to advertise that the capability exists (#1615). |
+| Anything that isn't a subtree — a query's `enabled:`, a computed `disabled` | `usePermission('x:write')` | none |
+
+**Demo mode inverts the policy between the first two rows** — that is the whole reason `AccessGate` exists separately from `ReadOnlyLock`. An explanation addressed to someone who cannot act should not render; a control they cannot use still should, disabled. Do not add a demo-mode prop to `AccessGate` to "unify" them.
+
+`AccessGate` also owns the session-hydration window: while `useSession().isReady` is false it renders *neither* branch, because "not known yet" is not "denied". Call sites must not re-implement that check.
+
 ## Naming
 
 - Components: `kebab-case.tsx` (named export stays `PascalCase`, e.g. `kpi-card.tsx` exports `KpiCard`)
