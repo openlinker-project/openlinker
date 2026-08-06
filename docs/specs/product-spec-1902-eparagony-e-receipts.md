@@ -138,7 +138,31 @@ Read from the live integrations page 2026-07-28:
 - **IdoSell and AtomStore ARE listed.** The deep-research pass *refuted* that claim during adversarial verification — a **false negative**. Do not rely on that refutation.
 - **`Virtual Kasy` remains "wkrótce".** This matters: a shipped `kasa wirtualna` lane was one of the conditions that would have made device-free issuance possible. It has not fired.
 - **LinkerCloud** (another integrator) is also "wkrótce" — the integrator shelf is actively being filled.
-- API documentation and sandbox remain **gated behind registration**; sandbox by email request to `pomoc@eparagony.pl`. No public OpenAPI/Swagger, no published plugin source found.
+- API documentation and sandbox were **gated behind registration**; sandbox by email request to `pomoc@eparagony.pl`. No public OpenAPI/Swagger, no published plugin source found. **Superseded 2026-08-06 — both are now in hand; see the next subsection.**
+
+### API access & sandbox — ✅ OBTAINED AND VERIFIED (2026-08-06, #1907)
+
+Registration completed, credentials issued, and the sandbox verified by direct read-only calls. This closes the *technical-access* half of #1907; the commercial half (pricing class, who builds) is still open — see R3.
+
+**Documentation.** The canonical contract is an OpenAPI 3.0 spec (`X-Api-Version: 3`, dated 20260311) plus 46 guide pages, mirrored read-only (and gitignored) at `docs/vendor/eparagony/`. Servers: `https://sandbox.eparagony.pl` and `https://api.eparagony.pl`; the OAuth endpoint sits on separate hosts (`login[.sandbox].eparagony.pl`). Surface is small — 1 auth call, 1 document-create, 3 document reads, 2 printer reads, 2 webhooks. The vendor warns the contract is **not frozen** (new fields may appear without notice), so the adapter must parse tolerantly.
+
+**Credentials issued.** Per-server `client_id` / `client_secret`, a shared `posId`, a `webhookSecret`, and — notably — a dedicated `X-Integration-Id` of the form `openlinker:<secret>`. The vendor issues that header only to parties *"building an API integration for many customers rather than a single company"*, which is a supporting (not conclusive) signal that OL is being handled as an integrator rather than a self-serve Custom-API customer. It is **not** the written confirmation R3 needs.
+
+**Sandbox verification** (read-only; nothing created or mutated; production deliberately untouched):
+
+| Probe | Result |
+|---|---|
+| `POST login.sandbox.eparagony.pl/auth/token` (client_credentials) | `200` — bearer token, `expires_in: 3600` |
+| `GET sandbox.eparagony.pl/printers/{num}/status` | `200` — `{"status":"INACTIVE","lastActiveAt":null,"crkStatus":{…}}` |
+| same call without a token | `401 Access denied` — authorization genuinely enforced |
+| `GET /documents/{random-uuid}/status` | `400 errorCode: 92` — token accepted, document absent |
+| `GET /printers/{num}/reports/daily` without the `report_fiscal_get` scope | `403 Forbidden` — scope enforcement confirmed |
+
+Same-day findings that constrain the adapter design (#1908):
+
+- **Granted scopes: `document_create`, `printer_get`, `ecommerce`. Refused at token issuance (`400`): `document_get_jws`, `report_fiscal_get`.** The v1 push + status/link read-back path needs only the granted set, so this is not blocking — but if JWS retrieval or daily fiscal reports enter scope, they must be requested from the vendor first.
+- **`printers/{anything}/status` returns the same `INACTIVE` stub for any device number.** No fiscal printer is attached to the sandbox, so the sandbox exercises the API contract but **not** the end-to-end fiscalisation path (device → eDPS → repository → webhook). Confirming that path needs either a vendor-side simulated device or a real printer, and is a prerequisite for calling #1908 verified rather than merely implemented.
+- **Two documentation/reality drifts:** `X-Api-Version` (spec-mandatory) and `X-Integration-Id` are not actually enforced on the GET endpoints, and `errorCode: 92` is returned for a missing document although the spec documents only `100 – DOCUMENT_NOT_FOUND`. The adapter must not treat the documented error-code list as exhaustive.
 
 ### Evidence gap — explicitly not closed
 
@@ -298,8 +322,10 @@ Attempted: WebSearch (session budget exhausted by the two prior research passes)
 **R2 — No user-pull evidence at all.**
 Zero inbound requests; no interviews with §4-category sellers; the re-keying cost was never quantified. The build rests on a maintainer strategic call, not demand. If v1 goes unused, this is the reason, and it was known in advance.
 
-**R3 — Integrator classification may be declined.**
+**R3 — Integrator classification may be declined. ⏳ STILL OPEN (2026-08-06, #1907).**
 If eparagony.pl treats OL as a Custom-API customer instead, our users pay 79–189 zł/mo rather than 19–69 — permanently, per seller. This is decided in a conversation, not by code, and the default path lands in the expensive class.
+
+API access and a working sandbox are now in hand, and OL was issued a multi-customer `X-Integration-Id` — a supporting signal, **not** a classification. Custom-API customers also get sandboxes, so technical access does not retire this risk. Outstanding: (a) written confirmation of the pricing class, (b) a recorded decision on who builds the connector — us (option A) or them (option C), (c) partner-programme terms. Until (a) and (b) land, #1907 stays open. Per the §9 sequencing, #1908's *design* still runs in parallel — but (b) could make that work redundant if the vendor elects to build the connector themselves, so the conversation should be pressed before #1908 moves from design into build.
 
 **R4 — Counterparty standing. ✅ CHECKED (2026-07-29, #1906). No red flags; one limitation.**
 
@@ -331,7 +357,7 @@ The persona is legally defined and most PL e-commerce is *exempt* (courier COD p
 | # | Issue | Effort | Notes |
 |---|---|---|---|
 | [#1906](https://github.com/openlinker-project/openlinker/issues/1906) | Close certification-liability + counterparty questions | S | **BLOCKING** — spike. R1 is potentially invalidating; must close before code ships |
-| [#1907](https://github.com/openlinker-project/openlinker/issues/1907) | Secure integrator-class listing + API/sandbox access | S | **BLOCKING** — non-engineering. Worth 60–120 zł/mo per seller |
+| [#1907](https://github.com/openlinker-project/openlinker/issues/1907) | Secure integrator-class listing + API/sandbox access | S | **BLOCKING** — non-engineering. Worth 60–120 zł/mo per seller. *Partial 2026-08-06: docs + sandbox obtained and verified; pricing class and build-owner still open.* |
 | [#1908](https://github.com/openlinker-project/openlinker/issues/1908) | Fiscalisation capability + eparagony adapter (register) | M | Core. `/plan` first — new capability port |
 | [#1909](https://github.com/openlinker-project/openlinker/issues/1909) | Receipt status + link on the order | S | The parity bar; push-only fails US-2 |
 | [#1910](https://github.com/openlinker-project/openlinker/issues/1910) | Device/peripheral sub-capability | M | Required for PL. `/plan` first |
@@ -356,6 +382,9 @@ Two deep-research passes back this spec. Both had material errors worth knowing 
 | 2026-07-28 | Spec opened from #1902 | Prior deep-research pass (2026-07-28, 25 claims adversarially verified) supplied the legal and vendor baseline; recorded in #1902 as inputs, not conclusions. |
 | 2026-07-29 | **R1 closed for Poland** (#1906) | art. 111 ust. 6b of the VAT act (Dz.U. 2025 poz. 775) puts the GUM homologation duty on *manufacturers and importers of cash registers*. art. 111b ust. 2 applies art. 111 *odpowiednio* to software-form registers — so the line is **feeding a `kasa` (no duty) vs being one (duty)**. OL stays on the feeding side. |
 | 2026-07-29 | **R4 checked** (#1906) | KRS 0000697156, registered 2017, VAT-czynny, Dział 6 empty (no liquidation/bankruptcy). Financial statements not pulled — noted as a limitation. |
+| 2026-08-06 | **API docs + sandbox obtained and verified** (#1907) | Registration completed; OAuth, an authenticated read, scope enforcement and the unauthenticated-401 control all confirmed against `sandbox.eparagony.pl` (read-only, production untouched). Spec mirrored to `docs/vendor/eparagony/`. Closes the technical-access AC of #1907 only. |
+| 2026-08-06 | **R3 stays open despite sandbox access** (#1907) | A sandbox is issued to Custom-API customers too, so it proves nothing about pricing class. The multi-customer `X-Integration-Id` is a supporting signal, not a classification. #1907 remains BLOCKING until the class is confirmed in writing and the build-owner decision is recorded. |
+| 2026-08-06 | **Sandbox cannot verify the fiscalisation path** (#1907) | `printers/{any}/status` returns a constant `INACTIVE` stub — no device is attached. The sandbox validates the API contract but not device → eDPS → repository → webhook. #1908 needs a simulated or real printer before it can be called verified. |
 | 2026-07-29 | Portugal left open | Access-blocked, not ambiguous. Advisory and non-blocking for v1; recorded with what was tried. |
 | 2026-07-28 | **Gate A: build** | Maintainer decision on strategic grounds. Recorded plainly: the assembled evidence runs the other way (no mandate, no user-pull, persona narrowed to §4 categories). Phase B re-scoped from "should we?" to "what exactly, on what terms?". |
 | 2026-07-28 | Target the **Integrator** pricing class, not Custom API | OL is categorically an integrator (same shelf as BaseLinker/Apilo/SellAsist). Integrator add-on is 19–69 zł/mo vs 79–189 zł for Custom API — a permanent 60–120 zł/mo saving *for our users*, contingent only on a vendor conversation. |
