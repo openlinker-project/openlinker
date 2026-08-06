@@ -30,7 +30,6 @@ import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { InfaktHttpClient, INFAKT_DEFAULT_BASE_URL } from '../http/infakt-http-client';
 import { InfaktApiError } from '../../domain/exceptions/infakt-api.error';
 import type { InfaktCredentials, InfaktConnectionConfig } from '../../domain/types/infakt-connection.types';
-import { infaktAdapterManifest } from '../../infakt-plugin';
 
 const INFAKT_CONNECTION_PROBE_PATH = 'clients.json';
 
@@ -59,7 +58,7 @@ export class InfaktConnectionTesterAdapter implements ConnectionTesterPort {
       // click is operator-triggered and can be repeated in quick succession;
       // it must go through the same rate limiter as every other Infakt call
       // site, not a bare globalThis.fetch.
-      const fetchImpl = this.http.forConnection(connection, infaktAdapterManifest.defaultRateLimit);
+      const fetchImpl = this.http.forConnection(connection);
       const client = new InfaktHttpClient(
         { apiKey: credentials.apiKey, baseUrl: config.baseUrl ?? INFAKT_DEFAULT_BASE_URL },
         this.logger,

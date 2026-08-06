@@ -42,6 +42,16 @@ export const infaktAdapterManifest: AdapterMetadata = {
   displayName: 'Infakt Accounting API v3',
   version: '1.0.0',
   isDefault: true,
+  // No `defaultRateLimit` (#1810 §1), and this adapter is the one where that
+  // matters most. A manifest default is for MERCHANT-HOSTED platforms, where the
+  // remote is the operator's own often-shared-hosting box (the #1772 incident
+  // PrestaShop's default answers) — Infakt is multi-tenant SaaS publishing no
+  // RPM ceiling. On top of that, `issueInvoice` / `issueCorrection` / `markPaid`
+  // block on a bounded async-task poll (see the poll-deadline note in
+  // `infakt-invoicing.adapter.ts`): a cap that starves those polls turns a
+  // document Infakt DID create into `failureMode: 'in-doubt'`, parked for manual
+  // review. Absent ⇒ unlimited until the operator sets `config.rateLimit`; do not
+  // "fill in the missing field" for symmetry with PrestaShop.
 };
 
 const INFAKT_BRAND = 'Infakt';
@@ -92,7 +102,10 @@ export function createInfaktPlugin(): AdapterPlugin {
         connection,
         host.credentialsResolver,
         logger,
-        host.http.forConnection(connection, infaktAdapterManifest.defaultRateLimit),
+        // Connection-bound outbound transport (#1810). No manifest default is
+        // passed — Infakt declares none (see the manifest note above), so the
+        // policy is the operator's `config.rateLimit`, or unlimited.
+        host.http.forConnection(connection),
       );
       return dispatchCapability<T>(capability, { Invoicing: () => invoicingAdapter }, INFAKT_BRAND);
     },
