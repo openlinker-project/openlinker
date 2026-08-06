@@ -17,6 +17,7 @@ import {
   getCapabilityConflict,
 } from '../lib/capability-metadata';
 import { MCP_CONNECTION_CHANGE_HINT, MCP_TOOL_CAPABILITIES } from '../../mcp-tokens';
+import { AccessGate } from '../../../shared/ui/access-gate';
 import { Alert } from '../../../shared/ui/alert';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { useToast } from '../../../shared/ui/toast-provider';
@@ -117,7 +118,16 @@ export function ConnectionCapabilitiesPanel({
         </Alert>
       ) : null}
 
-      {backsMcpTools ? <Alert tone="info">{MCP_CONNECTION_CHANGE_HINT}</Alert> : null}
+      {/* The hint describes what happens when capabilities CHANGE, so it is
+       * only actionable for a session that can change them. A read-only
+       * session (a public-demo viewer holds `connections:read` alone) would
+       * otherwise be told to reconnect an agent it cannot have, over a control
+       * it cannot operate — hence a content gate, not a `ReadOnlyLock`. */}
+      {backsMcpTools ? (
+        <AccessGate require="connections:write">
+          <Alert tone="info">{MCP_CONNECTION_CHANGE_HINT}</Alert>
+        </AccessGate>
+      ) : null}
 
       {supported.length > 0 ? (
         <div className="capability-list__pills" aria-label="Supported capabilities">
