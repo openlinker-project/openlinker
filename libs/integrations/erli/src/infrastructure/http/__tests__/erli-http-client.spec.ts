@@ -31,7 +31,7 @@ function fakeResponse(init: FakeResponseInit): Response {
     status: init.status,
     headers: {
       get: (name: string): string | null =>
-        name.toLowerCase() === 'retry-after' ? (init.retryAfter ?? null) : null,
+        name.toLowerCase() === 'retry-after' ? init.retryAfter ?? null : null,
     },
     text: (): Promise<string> => Promise.resolve(init.body ?? ''),
   } as unknown as Response;
@@ -56,7 +56,13 @@ describe('ErliHttpClient', () => {
   beforeEach(() => {
     fetchMock = jest.fn();
     global.fetch = fetchMock as unknown as typeof fetch;
-    client = new ErliHttpClient('conn-1', BASE_URL, API_KEY, FAST_RETRY);
+    client = new ErliHttpClient(
+      'conn-1',
+      BASE_URL,
+      API_KEY,
+      fetchMock as unknown as typeof fetch,
+      FAST_RETRY
+    );
   });
 
   afterAll(() => {
@@ -65,13 +71,22 @@ describe('ErliHttpClient', () => {
 
   describe('construction', () => {
     it('should reject a non-https baseUrl when constructed', () => {
-      expect(() => new ErliHttpClient('conn-1', 'http://erli.pl/svc', API_KEY)).toThrow(
-        ErliConfigException,
-      );
+      expect(
+        () =>
+          new ErliHttpClient(
+            'conn-1',
+            'http://erli.pl/svc',
+            API_KEY,
+            fetchMock as unknown as typeof fetch
+          )
+      ).toThrow(ErliConfigException);
     });
 
     it('should reject an invalid baseUrl when constructed', () => {
-      expect(() => new ErliHttpClient('conn-1', 'not-a-url', API_KEY)).toThrow(ErliConfigException);
+      expect(
+        () =>
+          new ErliHttpClient('conn-1', 'not-a-url', API_KEY, fetchMock as unknown as typeof fetch)
+      ).toThrow(ErliConfigException);
     });
   });
 
@@ -118,7 +133,7 @@ describe('ErliHttpClient', () => {
       fetchMock.mockResolvedValue(fakeResponse({ ok: true, status: 200, body: '{}' }));
 
       await expect(client.get('https://evil.example/steal')).rejects.toBeInstanceOf(
-        ErliConfigException,
+        ErliConfigException
       );
       expect(fetchMock).not.toHaveBeenCalled();
     });
@@ -130,9 +145,9 @@ describe('ErliHttpClient', () => {
         (_url: string, init: { signal: AbortSignal }): Promise<Response> =>
           new Promise((_resolve, reject) => {
             init.signal.addEventListener('abort', () =>
-              reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+              reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
             );
-          }),
+          })
       );
 
       await expect(client.get('/offers', { timeoutMs: 1 })).rejects.toMatchObject({
@@ -220,7 +235,7 @@ describe('ErliHttpClient', () => {
 
     it('should throw ErliApiException on a deterministic 400 without retry', async () => {
       fetchMock.mockResolvedValue(
-        fakeResponse({ ok: false, status: 400, body: '{"error":"bad"}' }),
+        fakeResponse({ ok: false, status: 400, body: '{"error":"bad"}' })
       );
 
       await expect(client.get('/offers')).rejects.toBeInstanceOf(ErliApiException);
@@ -229,7 +244,7 @@ describe('ErliHttpClient', () => {
 
     it('should carry statusCode and responseBody on ErliApiException', async () => {
       fetchMock.mockResolvedValue(
-        fakeResponse({ ok: false, status: 422, body: '{"error":"invalid"}' }),
+        fakeResponse({ ok: false, status: 422, body: '{"error":"invalid"}' })
       );
 
       await expect(client.post('/offers', {}, { idempotent: false })).rejects.toMatchObject({
@@ -253,12 +268,21 @@ describe('ErliHttpClient', () => {
 
     it('should honor a numeric Retry-After header within the delay ceiling', async () => {
       // maxDelayMs well above the header value so it passes through unclamped.
-      const honoringClient = new ErliHttpClient('conn-1', BASE_URL, API_KEY, {
-        ...FAST_RETRY,
-        maxDelayMs: 5000,
-      });
+      const honoringClient = new ErliHttpClient(
+        'conn-1',
+        BASE_URL,
+        API_KEY,
+        fetchMock as unknown as typeof fetch,
+        {
+          ...FAST_RETRY,
+          maxDelayMs: 5000,
+        }
+      );
       const sleepSpy = jest
-        .spyOn(ErliHttpClient.prototype as unknown as { sleep: (ms: number) => Promise<void> }, 'sleep')
+        .spyOn(
+          ErliHttpClient.prototype as unknown as { sleep: (ms: number) => Promise<void> },
+          'sleep'
+        )
         .mockResolvedValue(undefined);
       fetchMock
         .mockResolvedValueOnce(fakeResponse({ ok: false, status: 429, retryAfter: '2' }))
@@ -272,11 +296,14 @@ describe('ErliHttpClient', () => {
 
     it('should fall back to backoff (never NaN) on a malformed HTTP-date Retry-After', async () => {
       const sleepSpy = jest
-        .spyOn(ErliHttpClient.prototype as unknown as { sleep: (ms: number) => Promise<void> }, 'sleep')
+        .spyOn(
+          ErliHttpClient.prototype as unknown as { sleep: (ms: number) => Promise<void> },
+          'sleep'
+        )
         .mockResolvedValue(undefined);
       fetchMock
         .mockResolvedValueOnce(
-          fakeResponse({ ok: false, status: 429, retryAfter: 'Wed, 21 Oct 2026 07:28:00 GMT' }),
+          fakeResponse({ ok: false, status: 429, retryAfter: 'Wed, 21 Oct 2026 07:28:00 GMT' })
         )
         .mockResolvedValueOnce(fakeResponse({ ok: true, status: 200, body: '{}' }));
 
@@ -292,7 +319,7 @@ describe('ErliHttpClient', () => {
       const sleepSpy = jest
         .spyOn(
           ErliHttpClient.prototype as unknown as { sleep: (ms: number) => Promise<void> },
-          'sleep',
+          'sleep'
         )
         .mockResolvedValue(undefined);
       fetchMock
@@ -321,10 +348,12 @@ describe('ErliHttpClient', () => {
       const sleepSpy = jest
         .spyOn(
           ErliHttpClient.prototype as unknown as { sleep: (ms: number) => Promise<void> },
-          'sleep',
+          'sleep'
         )
         .mockResolvedValue(undefined);
-      fetchMock.mockResolvedValue(fakeResponse({ ok: false, status: 429, retryAfter: '999999999' }));
+      fetchMock.mockResolvedValue(
+        fakeResponse({ ok: false, status: 429, retryAfter: '999999999' })
+      );
 
       // FAST_RETRY.maxDelayMs is 1 — the multi-year header must not survive onto the exception.
       await expect(client.get('/offers')).rejects.toMatchObject({ retryAfterMs: 1 });
@@ -351,7 +380,7 @@ describe('ErliHttpClient', () => {
       fetchMock.mockResolvedValue(fakeResponse({ ok: false, status: 503 }));
 
       await expect(client.post('/offers', { sku: 'A' })).rejects.toBeInstanceOf(
-        ErliNetworkException,
+        ErliNetworkException
       );
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
@@ -360,7 +389,7 @@ describe('ErliHttpClient', () => {
       fetchMock.mockRejectedValue(new Error('ECONNRESET'));
 
       await expect(client.post('/offers', { sku: 'A' })).rejects.toBeInstanceOf(
-        ErliNetworkException,
+        ErliNetworkException
       );
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });

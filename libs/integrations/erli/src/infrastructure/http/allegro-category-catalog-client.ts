@@ -85,13 +85,20 @@ export class AllegroCategoryCatalogClient {
    */
   private inFlightToken: Promise<CachedToken> | undefined;
 
+  /**
+   * `fetchImpl` is **required**, deliberately (mirrors AllegroHttpClient,
+   * #1968 review) — no silent `?? globalThis.fetch` bypass of #1810's
+   * per-connection rate limiting. Every construction site (`ErliAdapterFactory`)
+   * already resolves one from `host.http.forConnection(...)`. It precedes
+   * the optional `cache` because TypeScript forbids an optional parameter
+   * ahead of a required one.
+   */
   constructor(
     private readonly clientId: string,
     private readonly clientSecret: string,
     environment: AllegroCatalogEnvironment,
-    private readonly cache?: CachePort,
-    // eslint-disable-next-line no-restricted-globals -- every production call site (ErliAdapterFactory) always passes host.http.for(connection); the default only keeps existing spec fixtures compiling without threading it (#1810)
-    private readonly fetchImpl: FetchLike = globalThis.fetch
+    private readonly fetchImpl: FetchLike,
+    private readonly cache?: CachePort
   ) {
     this.webBaseUrl = environment === 'production' ? PRODUCTION_WEB_BASE_URL : SANDBOX_WEB_BASE_URL;
     this.restApiBaseUrl =

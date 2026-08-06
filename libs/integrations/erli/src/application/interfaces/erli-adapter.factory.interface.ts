@@ -49,7 +49,7 @@ export interface IErliAdapterFactory {
     connection: Connection,
     identifierMapping: IdentifierMappingPort,
     credentialsResolver: CredentialsResolverPort,
-    fetchImpl?: FetchLike,
+    fetchImpl: FetchLike,
     cache?: CachePort,
     inventoryQuery?: IInventoryQueryService,
   ): Promise<ErliAdapters>;
@@ -62,7 +62,7 @@ export interface IErliAdapterFactory {
   createHttpClient(
     connection: Connection,
     credentialsResolver: CredentialsResolverPort,
-    fetchImpl?: FetchLike,
+    fetchImpl: FetchLike,
     retryConfig?: Partial<RetryConfig>,
   ): Promise<IErliHttpClient>;
 }

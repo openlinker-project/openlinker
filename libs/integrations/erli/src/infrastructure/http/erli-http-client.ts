@@ -79,12 +79,27 @@ export class ErliHttpClient implements IErliHttpClient {
   private readonly baseOrigin: string;
   private readonly fetchImpl: FetchLike;
 
+  /**
+   * `fetchImpl` is **required**, deliberately (mirrors AllegroHttpClient,
+   * #1968 review). An optional `fetchImpl ?? globalThis.fetch` default would
+   * make a forgotten wiring silently issue full-speed, unrated traffic — and
+   * neither guard would notice: `no-restricted-globals` flags the bare
+   * identifier `fetch`, not the `globalThis.fetch` member expression, and
+   * `check-outbound-http.mjs` matches a `fetch(` call, not a reference.
+   * Since #1810's whole premise is that a connection's `config.rateLimit`
+   * cannot be silently bypassed, the compiler enforces the wiring instead.
+   * Every construction site (`ErliAdapterFactory`) already resolves one from
+   * `host.http.forConnection(...)`.
+   *
+   * It precedes `retryConfig` because TypeScript forbids an optional
+   * parameter ahead of a required one.
+   */
   constructor(
     private readonly connectionId: string,
     baseUrl: string,
     private readonly apiKey: string,
+    fetchImpl: FetchLike,
     retryConfig?: Partial<RetryConfig>,
-    fetchImpl?: FetchLike,
   ) {
     // Config guard: never let the bearer key leave over plaintext (Assumption 6).
     let parsed: URL;
@@ -104,8 +119,7 @@ export class ErliHttpClient implements IErliHttpClient {
     this.baseUrl = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
     this.baseOrigin = parsed.origin;
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
-    // eslint-disable-next-line no-restricted-globals -- every production call site (ErliAdapterFactory) always passes host.http.for(connection); the default only keeps existing spec fixtures compiling without threading it (#1810)
-    this.fetchImpl = fetchImpl ?? globalThis.fetch;
+    this.fetchImpl = fetchImpl;
   }
 
   get<T>(path: string, options?: ErliRequestOptions): Promise<ErliHttpResponse<T>> {
