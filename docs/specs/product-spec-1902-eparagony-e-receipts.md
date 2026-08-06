@@ -144,7 +144,7 @@ Read from the live integrations page 2026-07-28:
 
 Registration completed, credentials issued, and the sandbox verified by direct read-only calls. This closes the *technical-access* half of #1907; the commercial half (pricing class, who builds) is still open — see R3.
 
-**Documentation.** The canonical contract is an OpenAPI 3.0 spec (`X-Api-Version: 3`, dated 20260311) plus 46 guide pages, mirrored read-only (and gitignored) at `docs/vendor/eparagony/`. Servers: `https://sandbox.eparagony.pl` and `https://api.eparagony.pl`; the OAuth endpoint sits on separate hosts (`login[.sandbox].eparagony.pl`). Surface is small — 1 auth call, 1 document-create, 3 document reads, 2 printer reads, 2 webhooks. The vendor warns the contract is **not frozen** (new fields may appear without notice), so the adapter must parse tolerantly.
+**Documentation.** The canonical contract is an OpenAPI 3.0 spec (`X-Api-Version: 3`, dated 20260311) plus 46 guide pages, mirrored read-only at `docs/vendor/eparagony/`. **That mirror is deliberately gitignored and must stay that way** — `docs.eparagony.pl/robots.txt` is `Disallow: /`, so the copy is for private use inside this repo, not redistribution. Recorded here so it is not "fixed" by a future contributor; the mirror's own README carries refresh instructions. Servers: `https://sandbox.eparagony.pl` and `https://api.eparagony.pl`; the OAuth endpoint sits on separate hosts (`login[.sandbox].eparagony.pl`). Surface is small — 1 auth call, 1 document-create, 3 document reads, 2 printer reads, 2 webhooks. The vendor warns the contract is **not frozen** (new fields may appear without notice), so the adapter must parse tolerantly.
 
 **Credentials issued.** Per-server `client_id` / `client_secret`, a shared `posId`, a `webhookSecret`, and — notably — a dedicated `X-Integration-Id` of the form `openlinker:<secret>`. The vendor issues that header only to parties *"building an API integration for many customers rather than a single company"*, which is a supporting (not conclusive) signal that OL is being handled as an integrator rather than a self-serve Custom-API customer. It is **not** the written confirmation R3 needs.
 
@@ -358,12 +358,14 @@ The persona is legally defined and most PL e-commerce is *exempt* (courier COD p
 |---|---|---|---|
 | [#1906](https://github.com/openlinker-project/openlinker/issues/1906) | Close certification-liability + counterparty questions | S | **BLOCKING** — spike. R1 is potentially invalidating; must close before code ships |
 | [#1907](https://github.com/openlinker-project/openlinker/issues/1907) | Secure integrator-class listing + API/sandbox access | S | **BLOCKING** — non-engineering. Worth 60–120 zł/mo per seller. *Partial 2026-08-06: docs + sandbox obtained and verified; pricing class and build-owner still open.* |
+| [#2009](https://github.com/openlinker-project/openlinker/issues/2009) | ADR + implementation plan for the fiscalisation capability | S–M | **Pre-code input to #1908**, not a by-product. A new capability port mandates an ADR per `docs/architecture/adrs/README.md`; the plan is the `/plan` #1908 already asks for |
 | [#1908](https://github.com/openlinker-project/openlinker/issues/1908) | Fiscalisation capability + eparagony adapter (register) | M | Core. `/plan` first — new capability port |
 | [#1909](https://github.com/openlinker-project/openlinker/issues/1909) | Receipt status + link on the order | S | The parity bar; push-only fails US-2 |
 | [#1910](https://github.com/openlinker-project/openlinker/issues/1910) | Device/peripheral sub-capability | M | Required for PL. `/plan` first |
 | [#1911](https://github.com/openlinker-project/openlinker/issues/1911) | Connection setup + preconditions UI | S | |
+| [#2010](https://github.com/openlinker-project/openlinker/issues/2010) | Integration documentation set (package docs, capabilities, user + manual-testing guides) | S–M | Follows #1908. Split out so it isn't retrofitted, as it was for infakt and Subiekt. The manual-testing chapter is additionally gated on a sandbox fiscal device |
 
-Sequencing: #1906 and #1907 run in parallel with #1908's design. **#1908 must not ship before #1906 closes.** #1909/#1910/#1911 follow #1908.
+Sequencing: #1906 and #1907 run in parallel with #1908's design. **#1908 must not ship before #1906 closes.** #2009 precedes #1908's build. #1909/#1910/#1911 follow #1908, and #2010 follows them.
 
 ## 9a. Research provenance
 
