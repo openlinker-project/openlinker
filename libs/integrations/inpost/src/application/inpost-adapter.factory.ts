@@ -36,16 +36,11 @@ export const BASE_URLS: Readonly<Record<InpostEnvironment, string>> = {
 export async function createInpostShippingAdapter(
   connection: Connection,
   credentialsResolver: CredentialsResolverPort,
-  fetchImpl?: FetchLike,
+  fetchImpl: FetchLike,
 ): Promise<InpostShippingAdapter> {
   const config = extractConfig(connection);
   const apiToken = await resolveApiToken(connection, credentialsResolver);
-  const client = new InpostHttpClient(
-    BASE_URLS[config.environment],
-    apiToken,
-    undefined,
-    fetchImpl,
-  );
+  const client = new InpostHttpClient(BASE_URLS[config.environment], apiToken, fetchImpl);
   return new InpostShippingAdapter(client, config);
 }
 

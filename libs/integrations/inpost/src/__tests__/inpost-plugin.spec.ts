@@ -5,10 +5,11 @@
  * that no other check can catch:
  *
  *   - `createCapabilityAdapter` resolves the connection-bound transport from
- *     `host.http` and threads it into the shipping adapter. Once the client
- *     stopped calling `globalThis.fetch` directly, the ESLint / invariant-script
- *     guards see nothing wrong with a regression that simply stops passing
- *     `fetchImpl` — the client silently falls back to the bare global.
+ *     `host.http` and threads it into the shipping adapter. `InpostHttpClient`
+ *     now requires `fetchImpl` as a constructor argument (no `?? globalThis.fetch`
+ *     fallback), so a regression that stops threading it is a compile error at
+ *     every construction site — this spec is the integration-level pin that the
+ *     plugin's own call site is one of them.
  *
  *   - No manifest `defaultRateLimit` is passed, because InPost deliberately
  *     ships none (see the rationale on `inpostAdapterManifest`). PrestaShop's

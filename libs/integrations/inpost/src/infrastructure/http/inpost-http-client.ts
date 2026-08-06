@@ -64,11 +64,11 @@ export class InpostHttpClient implements IInpostHttpClient {
   constructor(
     private readonly baseUrl: string,
     private readonly apiToken: string,
+    fetchImpl: FetchLike,
     retryConfig?: Partial<RetryConfig>,
-    fetchImpl?: FetchLike,
   ) {
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
-    this.fetchImpl = fetchImpl ?? globalThis.fetch;
+    this.fetchImpl = fetchImpl;
   }
 
   async request<T>(options: InpostRequestOptions): Promise<T> {

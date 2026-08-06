@@ -63,17 +63,12 @@ export class InpostConnectionTesterAdapter implements ConnectionTesterPort {
       // adapter from — a cycle PrestaShop avoids by injecting the value.
       const fetchImpl = this.http.forConnection(connection);
 
-      const client = new InpostHttpClient(
-        BASE_URLS[config.environment],
-        apiToken,
-        {
-          maxRetries: 0,
-          initialDelayMs: 0,
-          backoffMultiplier: 1,
-          maxDelayMs: 0,
-        },
-        fetchImpl,
-      );
+      const client = new InpostHttpClient(BASE_URLS[config.environment], apiToken, fetchImpl, {
+        maxRetries: 0,
+        initialDelayMs: 0,
+        backoffMultiplier: 1,
+        maxDelayMs: 0,
+      });
 
       await client.request<unknown>({
         method: 'GET',
