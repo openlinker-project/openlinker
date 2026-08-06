@@ -36,6 +36,7 @@ import { randomUUID } from 'crypto';
 import type { DataSource } from 'typeorm';
 import request from 'supertest';
 import { encryptWithKey, loadEncryptionKey } from '@openlinker/shared';
+import type { FetchLike } from '@openlinker/shared/http';
 import { ConnectionOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 import { IntegrationCredentialOrmEntity } from '@openlinker/core/integrations/orm-entities';
 import type {
@@ -60,6 +61,12 @@ import { loginAsAdmin } from '../helpers/test-auth.helper';
 const TEST_ADAPTER_KEY = 'erli.catalog.test.v1';
 const TEST_PLATFORM_TYPE = 'erli';
 const CATEGORY_ID = '258066';
+
+/**
+ * Outbound transport handed to the real factory. Reads `global.fetch` at call
+ * time so `stubAllegroFetch()` (installed per-test) is the one that runs.
+ */
+const lateBoundFetch: FetchLike = (...args) => global.fetch(...args);
 
 /** Registers the test adapterKey once, backed by the REAL `ErliAdapterFactory`. */
 function installErliCatalogTestFactory(harness: IntegrationTestHarness): void {
@@ -92,6 +99,11 @@ function installErliCatalogTestFactory(harness: IntegrationTestHarness): void {
         connection,
         identifierMapping,
         credentialsResolver,
+        // Late-binding delegate to `global.fetch` (#1810 made `fetchImpl`
+        // required). Resolving the real `HttpTransportFactory` instead would
+        // bind `globalThis.fetch` once at construction, so this spec's
+        // per-test `global.fetch` stub would never be seen.
+        lateBoundFetch,
       );
       return adapters.offerManager as unknown as T;
     },
