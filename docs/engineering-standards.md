@@ -1336,6 +1336,16 @@ import { Logger } from '../../../shared/logging';
 - **Short relative for same-context cross-layer**: avoids the `ERR_PACKAGE_PATH_NOT_EXPORTED` runtime trap and keeps intra-context refactors local.
 - **Enforceable**: ESLint guards at `.eslintrc.js` (port files, integration packages, host apps) reject deep aliases at lint time; package.json `exports` reject them at Node runtime.
 
+#### Workspace dependency declarations
+
+The rules above govern how you *write* an import. This one governs what the **manifest** must then declare: a package must declare every `@openlinker/*` workspace package it imports in production source, in whichever bucket is semantically right — `dependencies` for a runtime import, `devDependencies` for build/tooling-only, `peerDependencies` only for a package the host supplies.
+
+Declaring it is what gives `pnpm -r` the topological edge it uses to order builds. **A tsconfig `references` entry does not**, because pnpm never reads tsconfig. A package that references a sibling project without declaring the manifest edge therefore lands in the *same* `pnpm -r` chunk as that sibling, and both `tsc -b` processes emit into the sibling's `dist/` concurrently — a nondeterministic `TS2306 … is not a module` failure (#2011). Omitting the declaration also leaves the emitted `dist`'s bare specifiers resolving only through `shamefully-hoist`, i.e. through *other* packages' declarations.
+
+All four dependency buckets create a pnpm ordering edge, so the bucket choice is a semantics question, not a mechanics one.
+
+**Enforcement.** `scripts/check-workspace-dep-declarations.mjs` (run from `pnpm lint` via `pnpm check:invariants`) asserts both directions — every tsconfig `references` entry and every production `@openlinker/*` import must resolve to a declared dependency. It fails the build with a `file` + reason on any regression. Test files are out of scope (test-import policy is deliberately looser), as is `apps/e2e` (Playwright support code with no build step or runtime).
+
 **Sub-barrels** are the narrow exception to "top-level-barrel-only". They exist to expose a host-only seam that would otherwise pollute the contract surface plugins consume. Three exist today:
 
 - `@openlinker/core/listings/services` — the `ListingsModule` + the 8 `@Injectable` service classes. Kept off the main `@openlinker/core/listings` barrel to prevent runtime circular requires when sibling packages value-import the contract from the main barrel (#337/#359).
