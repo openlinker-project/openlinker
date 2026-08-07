@@ -19,6 +19,7 @@
  * @module libs/integrations/ksef/src/infrastructure/http
  */
 import type { CachePort } from '@openlinker/shared/cache';
+import type { FetchLike } from '@openlinker/shared/http';
 import type { KsefEnvironment } from '../../domain/types/ksef-connection.types';
 import type { KsefAuthenticationToken } from './ksef-http-client.types';
 import { KsefHttpClient, type KsefTokenLifecycle } from './ksef-http-client';
@@ -37,6 +38,12 @@ export interface CreateKsefHttpClientInput {
   /** Resolved ksef-token material. Qualified-seal wiring is deferred to C4. */
   authMaterial: KsefTokenAuthMaterial;
   cache?: CachePort;
+  /**
+   * Connection-bound outbound transport (#1810). Required, deliberately —
+   * mirrors `KsefHttpClient`'s own required `fetchImpl` (see that constructor's
+   * doc). Every caller already resolves one from `host.http.forConnection(...)`.
+   */
+  fetchImpl: FetchLike;
 }
 
 export interface KsefHttpClientBundle {
@@ -70,7 +77,7 @@ export function createKsefHttpClient(input: CreateKsefHttpClientInput): KsefHttp
   };
 
   // 1. Client first (its unauthenticated endpoints bootstrap the services).
-  const httpClient = new KsefHttpClient(input.connectionId, baseUrl, lifecycle);
+  const httpClient = new KsefHttpClient(input.connectionId, baseUrl, lifecycle, input.fetchImpl);
 
   // 2. Services share the one client instance.
   const publicKeyCache = new MfPublicKeyCacheService(input.connectionId, httpClient, input.cache);

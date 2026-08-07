@@ -47,6 +47,7 @@ describe('DpdHttpClient', () => {
       BASE_URL,
       { login: 'user', password: 'pass' },
       { maxRetries: 2, initialDelayMs: 1, backoffMultiplier: 1, maxDelayMs: 1 },
+      fetchMock as unknown as typeof fetch,
     );
   });
 
@@ -71,14 +72,6 @@ describe('DpdHttpClient', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('should fall back to global.fetch when fetchImpl is not provided', async () => {
-    fetchMock.mockResolvedValueOnce(fakeResponse({ ok: true, status: 200, body: '{"status":"OK"}' }));
-
-    await client.request({ method: 'POST', path: CREATE_PATH });
-
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
   it('should parse a 2xx JSON body and attach the Basic auth header', async () => {
     fetchMock.mockResolvedValueOnce(fakeResponse({ ok: true, status: 200, body: '{"status":"OK"}' }));
 
@@ -97,11 +90,12 @@ describe('DpdHttpClient', () => {
   });
 
   it('should attach the X-DPD-FID header when masterFid is configured', async () => {
-    const fidClient = new DpdHttpClient(BASE_URL, {
-      login: 'user',
-      password: 'pass',
-      masterFid: '1495',
-    });
+    const fidClient = new DpdHttpClient(
+      BASE_URL,
+      { login: 'user', password: 'pass', masterFid: '1495' },
+      undefined,
+      fetchMock as unknown as typeof fetch,
+    );
     fetchMock.mockResolvedValueOnce(fakeResponse({ ok: true, status: 200, body: '{"status":"OK"}' }));
 
     await fidClient.request({ method: 'POST', path: CREATE_PATH });

@@ -66,7 +66,12 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
     private readonly baseUrl: string,
     private readonly secretProvider: WebhookSecretProviderPort,
     // Connection-bound outbound transport (#1810) — defaults to bare fetch
-    // for callers that predate the rate-limit mechanism (tests).
+    // for callers that predate the rate-limit mechanism (tests). The sole
+    // production caller (`prestashop-adapter.factory.ts`) injects one; the
+    // default is a test convenience that the strengthened
+    // `check-outbound-http.mjs` (#1968) now makes visible rather than silent.
+    // Dropping it for Allegro parity is the follow-up.
+    // eslint-disable-next-line no-restricted-globals -- test-only default; the production caller injects a transport (#1810 follow-up)
     private readonly fetchImpl: FetchLike = globalThis.fetch
   ) {}
 

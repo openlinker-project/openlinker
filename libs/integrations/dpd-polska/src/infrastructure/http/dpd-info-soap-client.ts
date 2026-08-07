@@ -77,14 +77,22 @@ export class DpdInfoSoapClient implements IDpdInfoSoapClient {
 
   private readonly fetchImpl: FetchLike;
 
+  /**
+   * `fetchImpl` is **required**, deliberately (mirrors AllegroHttpClient /
+   * KsefHttpClient, #1810 follow-up). An optional `fetchImpl ?? globalThis.fetch`
+   * default would satisfy the type checker but reintroduce an unmetered escape
+   * hatch the moment a caller forgets to pass one — silently bypassing the
+   * connection-bound rate limiter. The adapter factory always injects one;
+   * only tests need to pass a fake explicitly.
+   */
   constructor(
     private readonly endpoint: string,
     private readonly auth: SoapAuth,
-    retryConfig?: Partial<RetryConfig>,
-    fetchImpl?: FetchLike,
+    retryConfig: Partial<RetryConfig> | undefined,
+    fetchImpl: FetchLike,
   ) {
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
-    this.fetchImpl = fetchImpl ?? globalThis.fetch;
+    this.fetchImpl = fetchImpl;
   }
 
   async getEventsForWaybill(input: { waybill: string }): Promise<DpdWaybillEvent[]> {

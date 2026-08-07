@@ -72,7 +72,12 @@ describe('AllegroCategoryCatalogClient', () => {
   beforeEach(() => {
     fetchMock = jest.fn();
     global.fetch = fetchMock as unknown as typeof fetch;
-    client = new AllegroCategoryCatalogClient(CLIENT_ID, CLIENT_SECRET, 'sandbox');
+    client = new AllegroCategoryCatalogClient(
+      CLIENT_ID,
+      CLIENT_SECRET,
+      'sandbox',
+      fetchMock as unknown as typeof fetch
+    );
   });
 
   describe('token acquisition', () => {
@@ -325,7 +330,9 @@ describe('AllegroCategoryCatalogClient', () => {
 
       await Promise.all([client.fetchCategories(), client.fetchCategoryParameters('1')]);
 
-      const tokenRequests = recordedCalls(fetchMock).filter(([url]) => url.includes('/auth/oauth/token'));
+      const tokenRequests = recordedCalls(fetchMock).filter(([url]) =>
+        url.includes('/auth/oauth/token')
+      );
       expect(tokenRequests).toHaveLength(1);
       expect(fetchMock).toHaveBeenCalledTimes(3);
     });
@@ -376,7 +383,13 @@ describe('AllegroCategoryCatalogClient', () => {
 
     it('should write the acquired token to the cache keyed by clientId', async () => {
       const cache = inMemoryCachePort();
-      const cachedClient = new AllegroCategoryCatalogClient(CLIENT_ID, CLIENT_SECRET, 'sandbox', cache);
+      const cachedClient = new AllegroCategoryCatalogClient(
+        CLIENT_ID,
+        CLIENT_SECRET,
+        'sandbox',
+        fetchMock as unknown as typeof fetch,
+        cache
+      );
       fetchMock
         .mockResolvedValueOnce(
           jsonResponse(200, { access_token: 'app-token-1', expires_in: 3600, token_type: 'bearer' })
@@ -394,10 +407,20 @@ describe('AllegroCategoryCatalogClient', () => {
 
     it('should reuse a token found in the cache instead of re-acquiring, across separate client instances', async () => {
       const cache = inMemoryCachePort();
-      const first = new AllegroCategoryCatalogClient(CLIENT_ID, CLIENT_SECRET, 'sandbox', cache);
+      const first = new AllegroCategoryCatalogClient(
+        CLIENT_ID,
+        CLIENT_SECRET,
+        'sandbox',
+        fetchMock as unknown as typeof fetch,
+        cache
+      );
       fetchMock
         .mockResolvedValueOnce(
-          jsonResponse(200, { access_token: 'shared-token', expires_in: 3600, token_type: 'bearer' })
+          jsonResponse(200, {
+            access_token: 'shared-token',
+            expires_in: 3600,
+            token_type: 'bearer',
+          })
         )
         .mockResolvedValueOnce(jsonResponse(200, { categories: [] }));
       await first.fetchCategories();
@@ -405,11 +428,19 @@ describe('AllegroCategoryCatalogClient', () => {
       // A fresh instance (e.g. built by a later, unrelated `createAdapters`
       // call) sharing the same CachePort must find the token in `cache`
       // rather than paying another OAuth round-trip.
-      const second = new AllegroCategoryCatalogClient(CLIENT_ID, CLIENT_SECRET, 'sandbox', cache);
+      const second = new AllegroCategoryCatalogClient(
+        CLIENT_ID,
+        CLIENT_SECRET,
+        'sandbox',
+        fetchMock as unknown as typeof fetch,
+        cache
+      );
       fetchMock.mockResolvedValueOnce(jsonResponse(200, { categories: [] }));
       await second.fetchCategories();
 
-      const tokenRequests = recordedCalls(fetchMock).filter(([url]) => url.includes('/auth/oauth/token'));
+      const tokenRequests = recordedCalls(fetchMock).filter(([url]) =>
+        url.includes('/auth/oauth/token')
+      );
       expect(tokenRequests).toHaveLength(1);
       const secondCategoriesCall = recordedCalls(fetchMock)[2];
       expect(secondCategoriesCall[1]?.headers?.Authorization).toBe('Bearer shared-token');
@@ -423,7 +454,13 @@ describe('AllegroCategoryCatalogClient', () => {
         accessToken: 'stale-shared-token',
         expiresAt: 1_000_000 - 1,
       });
-      const cachedClient = new AllegroCategoryCatalogClient(CLIENT_ID, CLIENT_SECRET, 'sandbox', cache);
+      const cachedClient = new AllegroCategoryCatalogClient(
+        CLIENT_ID,
+        CLIENT_SECRET,
+        'sandbox',
+        fetchMock as unknown as typeof fetch,
+        cache
+      );
       fetchMock
         .mockResolvedValueOnce(
           jsonResponse(200, { access_token: 'fresh-token', expires_in: 3600, token_type: 'bearer' })
@@ -432,7 +469,9 @@ describe('AllegroCategoryCatalogClient', () => {
 
       await cachedClient.fetchCategories();
 
-      const tokenRequests = recordedCalls(fetchMock).filter(([url]) => url.includes('/auth/oauth/token'));
+      const tokenRequests = recordedCalls(fetchMock).filter(([url]) =>
+        url.includes('/auth/oauth/token')
+      );
       expect(tokenRequests).toHaveLength(1);
       nowSpy.mockRestore();
     });
@@ -470,7 +509,9 @@ describe('AllegroCategoryCatalogClient', () => {
         )
         .mockResolvedValueOnce(jsonResponse(403, { error: 'access_denied' }));
 
-      await expect(client.fetchCategoryParameters('1')).rejects.toThrow(ErliAuthenticationException);
+      await expect(client.fetchCategoryParameters('1')).rejects.toThrow(
+        ErliAuthenticationException
+      );
     });
   });
 
@@ -487,7 +528,7 @@ describe('AllegroCategoryCatalogClient', () => {
       );
     });
 
-    it('should map every parameter in Allegro\'s real sandbox capture without throwing', async () => {
+    it("should map every parameter in Allegro's real sandbox capture without throwing", async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(200, fixture));
 
       const result = await client.fetchCategoryParameters('257933');

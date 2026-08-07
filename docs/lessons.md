@@ -23,6 +23,22 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## Never copy another platform's `defaultRateLimit` figure — an uncalibrated manifest default is a silent throughput regression
+
+**Context**: Each #1810 Phase 5 adopter wires its HTTP client to `HostServices.http`, and may declare an `AdapterMetadata.defaultRateLimit` as the fallback when a connection has no explicit `config.rateLimit`.
+**Problem**: PrestaShop's `{ requestsPerMinute: 60, maxConcurrent: 4 }` is the only such default in the repo and it is calibrated for an operator's OWN shop webserver (#1815) — simultaneously the throughput bottleneck and busy serving customers. Copying that figure onto a *carrier/marketplace* platform reads as "conservative" but is a guess about someone else's quota, and it is not a soft ceiling: `requestsPerMinute` is minimum-interval spacing (capacity ~1, no burst) and is divided again by `OL_WORKER_REPLICAS`. On InPost it would have capped a previously-unlimited path at 1 req/s — bulk shipment dispatch (N≤25, sequential, on the *interactive* request path) going from seconds to a ≥25 s floor, invisible until an operator noticed slow dispatch. WooCommerce declines a default too, for the adjacent reason (an unenforced default fabricates a "Default: 60" readout in the FE `RateLimitSection`).
+**Rule**: Declare `defaultRateLimit` only with a **documented quota for that platform** to calibrate against. Absent one, ship none: the transport already respects a real limit reactively via `Retry-After` (`limiter.noteRetryAfter`), and an operator who hits one sets `config.rateLimit` per connection. State the omission and its reason in the manifest — the absence is a decision, and the next adopter will otherwise read it as an oversight and "fix" it.
+**Applies to**: every `AdapterMetadata` in `libs/integrations/*/src/*-plugin.ts` as it adopts `host.http`.
+**Source**: #1971 (found reviewing PR #1981, which had added the copied 60/4 to InPost).
+
+## Assert `host.http.forConnection` in a spec when a client stops calling bare `fetch`
+
+**Context**: #1810 Phase 5 replaces each plugin client's `fetch()` with an injected `fetchImpl`, guarded by an ESLint `no-restricted-globals` rule plus `scripts/check-outbound-http.mjs`.
+**Problem**: Both guards only detect a *bare `fetch(`* in the scanned package. Once the client's own call site is `this.fetchImpl(...)` with a `?? globalThis.fetch` default, a regression that simply stops threading the transport (a dropped constructor argument, a new call site built without it) reintroduces the un-rate-limited bypass while lint stays green — the fallback is the bypass.
+**Rule**: Every adopting package needs a spec asserting `host.http.forConnection` is called for each construction path (the capability-adapter factory *and* the connection tester), with exactly the arguments intended — a single-argument `toHaveBeenCalledWith(connection)` also pins that no manifest default is being passed. Prefer closing the gap at the type level over the spec alone where the client's own signature allows it: make the client constructor's `fetchImpl` parameter **required** (no `?? globalThis.fetch` default) rather than optional-with-fallback. A required parameter turns "a dropped constructor argument" into a compile error at every construction site instead of a silent runtime fallback the spec has to remember to keep pinning — InPost (#1981) adopted this after PrestaShop/WooCommerce had already shipped the optional-with-fallback shape; the same tightening is worth carrying to those two.
+**Applies to**: `libs/integrations/*/src/__tests__/*-plugin.spec.ts`, `.../adapters/__tests__/*-connection-tester.adapter.spec.ts`, and each package's `*-http-client.ts` constructor.
+**Source**: #1971 (gap found reviewing PR #1981); PrestaShop's `prestashop-plugin.spec.ts` is the reference shape.
+
 ## A destructive sweep keyed on an internal id alone needs an explicit sole-claimant check, because internal ids are only per-connection by convention
 
 **Context**: The master-sync staleness prunes (`MasterProductSyncService.markVariantsStaleExcept`, `MasterInventorySyncService.pruneStaleVariants`) mark every row of an internal product id stale, keyed on that id and nothing else.
