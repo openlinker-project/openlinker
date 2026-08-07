@@ -9,6 +9,7 @@
  */
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { FetchLike } from '@openlinker/shared/http';
 import {
   isCategoryBrowser,
   isCategoryParametersReader,
@@ -80,6 +81,7 @@ describe('ErliAdapterFactory', () => {
     const client = await factory.createHttpClient(
       connection(),
       resolverFor({ apiKey: 'k-123' }),
+      fetchMock as unknown as FetchLike
     );
     await client.get('/probe');
 
@@ -91,6 +93,7 @@ describe('ErliAdapterFactory', () => {
     const client = await factory.createHttpClient(
       connection({ config: { environment: 'sandbox' } }),
       resolverFor({ apiKey: 'k-123' }),
+      fetchMock as unknown as FetchLike
     );
     await client.get('/probe');
 
@@ -101,6 +104,7 @@ describe('ErliAdapterFactory', () => {
     const client = await factory.createHttpClient(
       connection({ config: { environment: 'production' } }),
       resolverFor({ apiKey: 'k-123' }),
+      fetchMock as unknown as FetchLike
     );
     await client.get('/probe');
 
@@ -116,6 +120,7 @@ describe('ErliAdapterFactory', () => {
         config: { baseUrl: 'https://sandbox.erli.dev/svc/shop-api', environment: 'production' },
       }),
       resolverFor({ apiKey: 'k-123' }),
+      fetchMock as unknown as FetchLike
     );
     await client.get('/probe');
 
@@ -126,6 +131,7 @@ describe('ErliAdapterFactory', () => {
     const client = await factory.createHttpClient(
       connection({ config: { baseUrl: 'https://sandbox.erli.dev/svc/shop-api' } }),
       resolverFor({ apiKey: 'k-123' }),
+      fetchMock as unknown as FetchLike
     );
     await client.get('/probe');
 
@@ -137,13 +143,18 @@ describe('ErliAdapterFactory', () => {
       factory.createHttpClient(
         connection({ credentialsRef: undefined }),
         resolverFor({ apiKey: 'k' }),
-      ),
+        fetchMock as unknown as FetchLike
+      )
     ).rejects.toBeInstanceOf(ErliConfigException);
   });
 
   it('should throw ErliConfigException when the resolved apiKey is empty', async () => {
     await expect(
-      factory.createHttpClient(connection(), resolverFor({ apiKey: '  ' })),
+      factory.createHttpClient(
+        connection(),
+        resolverFor({ apiKey: '  ' }),
+        fetchMock as unknown as FetchLike
+      )
     ).rejects.toBeInstanceOf(ErliConfigException);
   });
 
@@ -156,7 +167,8 @@ describe('ErliAdapterFactory', () => {
       factory.createHttpClient(
         connection({ config: { baseUrl: 'http://sandbox.erli.dev/svc/shop-api' } }),
         resolverFor({ apiKey: 'k-123' }),
-      ),
+        fetchMock as unknown as FetchLike
+      )
     ).rejects.toBeInstanceOf(ErliConfigException);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -168,7 +180,8 @@ describe('ErliAdapterFactory', () => {
       factory.createHttpClient(
         connection({ config: { baseUrl: 'https://evil.example.com/svc/shop-api' } }),
         resolverFor({ apiKey: 'k-123' }),
-      ),
+        fetchMock as unknown as FetchLike
+      )
     ).rejects.toBeInstanceOf(ErliConfigException);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -179,6 +192,7 @@ describe('ErliAdapterFactory', () => {
         connection(),
         {} as IdentifierMappingPort,
         resolverFor({ apiKey: 'k-123' }),
+        fetchMock as unknown as FetchLike
       );
 
       expect(isOfferCreator(adapters.offerManager)).toBe(true);
@@ -190,6 +204,7 @@ describe('ErliAdapterFactory', () => {
         connection(),
         {} as IdentifierMappingPort,
         resolverFor({ apiKey: 'k-123' }),
+        fetchMock as unknown as FetchLike
       );
 
       expect(typeof adapters.orderSource.listOrderFeed).toBe('function');
@@ -202,7 +217,8 @@ describe('ErliAdapterFactory', () => {
           connection({ credentialsRef: undefined }),
           {} as IdentifierMappingPort,
           resolverFor({ apiKey: 'k' }),
-        ),
+          fetchMock as unknown as FetchLike
+        )
       ).rejects.toBeInstanceOf(ErliConfigException);
     });
 
@@ -213,7 +229,12 @@ describe('ErliAdapterFactory', () => {
         allegroClientSecret: 'secret-1',
       });
 
-      await factory.createAdapters(connection(), {} as IdentifierMappingPort, resolver);
+      await factory.createAdapters(
+        connection(),
+        {} as IdentifierMappingPort,
+        resolver,
+        fetchMock as unknown as FetchLike
+      );
 
       expect(resolver.get).toHaveBeenCalledTimes(1);
     });
@@ -235,6 +256,7 @@ describe('ErliAdapterFactory', () => {
             allegroClientId: 'client-1',
             allegroClientSecret: 'secret-1',
           }),
+          fetchMock as unknown as FetchLike
         );
 
         expect(isCategoryBrowser(adapters.offerManager)).toBe(false);
@@ -250,6 +272,7 @@ describe('ErliAdapterFactory', () => {
             allegroClientId: 'client-1',
             allegroClientSecret: 'secret-1',
           }),
+          fetchMock as unknown as FetchLike
         );
 
         expect(isCategoryBrowser(adapters.offerManager)).toBe(true);
@@ -261,6 +284,7 @@ describe('ErliAdapterFactory', () => {
           connection(),
           {} as IdentifierMappingPort,
           resolverFor({ apiKey: 'k-123' }),
+          fetchMock as unknown as FetchLike
         );
 
         expect(isCategoryBrowser(adapters.offerManager)).toBe(false);
@@ -272,6 +296,7 @@ describe('ErliAdapterFactory', () => {
           connection(),
           {} as IdentifierMappingPort,
           resolverFor({ apiKey: 'k-123', allegroClientId: 'client-1' }),
+          fetchMock as unknown as FetchLike
         );
 
         expect(isCategoryBrowser(adapters.offerManager)).toBe(false);
@@ -287,6 +312,7 @@ describe('ErliAdapterFactory', () => {
             allegroClientId: 'client-1',
             allegroClientSecret: 'secret-1',
           }),
+          fetchMock as unknown as FetchLike
         );
 
         expect(isCategoryBrowser(adapters.offerManager)).toBe(true);
@@ -302,6 +328,7 @@ describe('ErliAdapterFactory', () => {
             allegroClientId: 'client-1',
             allegroClientSecret: 'secret-1',
           }),
+          fetchMock as unknown as FetchLike
         );
         expect(isCategoryBrowser(adapters.offerManager)).toBe(true);
 
@@ -311,7 +338,7 @@ describe('ErliAdapterFactory', () => {
 
         expect(fetchMock).toHaveBeenCalledWith(
           expect.stringContaining('allegrosandbox.pl'),
-          expect.anything(),
+          expect.anything()
         );
       });
     });

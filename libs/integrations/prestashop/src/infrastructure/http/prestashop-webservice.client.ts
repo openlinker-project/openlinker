@@ -81,6 +81,15 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     config: PrestashopConnectionConfig,
     options: PrestashopWebserviceClientOptions = {}
   ) {
+    // Pre-existing silent fallback, surfaced (not introduced) by the
+    // strengthened `check-outbound-http.mjs` in #1968 — `no-restricted-globals`
+    // never saw it, because it flags the bare identifier `fetch`, not a member
+    // expression. Every production call site (adapter factory, connection
+    // tester, webhook provisioner) already injects a connection-bound
+    // transport; the fallback only serves ~18 test constructions. Making it
+    // REQUIRED — the posture `AllegroHttpClient` adopts in #1968 — is the
+    // parity follow-up; until then the bypass is at least greppable.
+    // eslint-disable-next-line no-restricted-globals -- pre-existing test-only fallback; production call sites all inject a transport. Make required for Allegro parity (#1810 follow-up)
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
     // Normalize baseUrl (remove trailing slash)
     const normalizedBaseUrl: string = baseUrl.replace(/\/$/, '');

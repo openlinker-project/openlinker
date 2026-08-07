@@ -15,6 +15,7 @@
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { InvoicingPort } from '@openlinker/core/invoicing';
+import type { FetchLike } from '@openlinker/shared/http';
 
 /** Per-connection KSeF capability adapters resolved by `createAdapters`. */
 export interface KsefAdapters {
@@ -32,5 +33,6 @@ export interface IKsefAdapterFactory {
     connection: Connection,
     identifierMapping: IdentifierMappingPort,
     credentialsResolver: CredentialsResolverPort,
+    fetchImpl: FetchLike,
   ): Promise<KsefAdapters>;
 }

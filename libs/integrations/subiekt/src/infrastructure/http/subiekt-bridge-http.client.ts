@@ -132,7 +132,11 @@ export interface SubiektBridgeHttpClientOptions {
   token?: string;
   /** Per-request timeout in milliseconds. */
   timeoutMs?: number;
-  /** Connection-bound outbound transport (#1810). Defaults to `globalThis.fetch`. */
+  /**
+   * Connection-bound outbound transport (#1810). Defaults to `globalThis.fetch`
+   * when omitted — production call sites always inject one; see the
+   * constructor note for why this stays optional for now.
+   */
   fetchImpl?: FetchLike;
 }
 
@@ -174,6 +178,16 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
     this.baseUrl = bridgeBaseUrl.replace(/\/+$/, '');
     this.token = opts.token;
     this.timeoutMs = opts.timeoutMs ?? 30000;
+    // Pre-existing silent fallback, surfaced (not introduced) by the
+    // strengthened `check-outbound-http.mjs` in #1968 — `no-restricted-globals`
+    // never saw it, because it flags the bare identifier `fetch`, not a member
+    // expression. Every production call site (adapter factory, connection
+    // tester) already injects a connection-bound transport; the fallback only
+    // serves test constructions. Making it REQUIRED — the posture
+    // `AllegroHttpClient`/`ErliHttpClient`/`KsefHttpClient` adopt — is the
+    // parity follow-up (mirrors the identical PrestaShop note); until then
+    // the bypass is at least greppable.
+    // eslint-disable-next-line no-restricted-globals -- pre-existing test-only fallback; production call sites all inject a transport. Make required for Allegro/Erli/KSeF parity (#1810 follow-up)
     this.fetchImpl = opts.fetchImpl ?? globalThis.fetch;
   }
 
