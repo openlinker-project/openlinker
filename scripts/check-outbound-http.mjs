@@ -19,7 +19,9 @@
  * (`// eslint-disable-next-line no-restricted-globals -- <reason>`) — never
  * a blanket file-level suppression. Used today for the 3 Allegro OAuth-token
  * bypasses (exchangeCode/fetchAccountIdentity, callRefreshEndpoint,
- * fetchSellerIdentity) — low-volume auth infra, not shop traffic.
+ * fetchSellerIdentity) and Erli's Allegro-app OAuth token bypass
+ * (`acquireToken` in `allegro-category-catalog-client.ts`) — low-volume auth
+ * infra, not shop traffic.
  *
  * Run with `--self-check` to exercise the pure classifier against synthetic
  * inputs (no filesystem) — mirrors `check-migration-timestamps.mjs --self-check`.
@@ -39,7 +41,7 @@ const __dirname = dirname(__filename);
 const ROOT = resolve(__dirname, '..');
 
 /** Directories scanned for bare outbound `fetch()` calls. Widens in Phase 5. */
-const SCAN_ROOTS = ['libs/integrations/prestashop', 'libs/integrations/allegro'];
+const SCAN_ROOTS = ['libs/integrations/prestashop', 'libs/integrations/allegro', 'libs/integrations/erli'];
 
 const SKIP_DIRS = new Set([
   '.git',
