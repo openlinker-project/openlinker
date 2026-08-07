@@ -24,6 +24,7 @@ import type {
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import { getPiiConfig } from '@openlinker/shared/config';
 import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
+import { deriveOrderAnalyticsScalars, deriveOrderLineItems } from '../../domain/order-analytics-projection';
 
 @Injectable()
 export class OrderRecordService implements IOrderRecordService {
@@ -123,6 +124,10 @@ export class OrderRecordService implements IOrderRecordService {
     // Initial sync status: pending for all destinations (will be updated as sync progresses)
     const syncStatus: OrderSyncStatus[] = [];
 
+    // Order analytics read-model scalars (#1985) — denormalized alongside
+    // dispatchByAt above, from the same already-resolved Order. See ADR-039.
+    const analyticsScalars = deriveOrderAnalyticsScalars(order);
+
     const orderRecord = new OrderRecord(
       order.id,
       order.customerId || null,
@@ -134,10 +139,20 @@ export class OrderRecordService implements IOrderRecordService {
       now,
       now,
       [],
-      this.deriveDispatchByAt(order.dispatchTime)
+      this.deriveDispatchByAt(order.dispatchTime),
+      null,
+      null,
+      analyticsScalars.placedAt,
+      analyticsScalars.currency,
+      analyticsScalars.taxTreatment,
+      analyticsScalars.totalAmount
     );
 
-    return this.repository.upsert(orderRecord);
+    // #1985: persist the order record AND its order_line_items rows in one
+    // transaction — replaces the prior line-item set for this order so a
+    // re-ingested order with a changed item list never leaves stale rows.
+    const lineItems = deriveOrderLineItems(order, sourceConnectionId);
+    return this.repository.upsertWithLineItems(orderRecord, lineItems);
   }
 
   async persistIncomingSnapshot(

@@ -20,6 +20,7 @@ import { OrderRecordNotFoundException } from '../../../../domain/exceptions/orde
 describe('OrderRecordRepository', () => {
   let repository: OrderRecordRepository;
   let ormRepository: jest.Mocked<Repository<OrderRecordOrmEntity>>;
+  let transactionalManager: { save: jest.Mock; delete: jest.Mock };
 
   beforeEach(async () => {
     const qb = {
@@ -30,11 +31,23 @@ describe('OrderRecordRepository', () => {
       getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
     };
 
+    transactionalManager = {
+      save: jest.fn(),
+      delete: jest.fn(),
+    };
+
     const mockOrmRepository = {
       findOne: jest.fn(),
       save: jest.fn(),
       query: jest.fn(),
       createQueryBuilder: jest.fn().mockReturnValue(qb),
+      manager: {
+        connection: {
+          transaction: jest.fn(async (cb: (manager: unknown) => Promise<unknown>) =>
+            cb(transactionalManager)
+          ),
+        },
+      },
     } as unknown as jest.Mocked<Repository<OrderRecordOrmEntity>> & { _qb: typeof qb };
 
     (mockOrmRepository as unknown as { _qb: typeof qb })._qb = qb;
@@ -224,6 +237,57 @@ describe('OrderRecordRepository', () => {
 
       const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
       expect(callArg.recordStatus).toBe('awaiting_mapping');
+    });
+  });
+
+  describe('upsertWithLineItems (#1985)', () => {
+    it('saves the order record and inserts the derived line items in one transaction', async () => {
+      const domainEntity = createDomainEntity();
+      const savedEntity = createOrmEntity();
+      transactionalManager.save.mockResolvedValue(savedEntity);
+      transactionalManager.delete.mockResolvedValue(undefined);
+
+      const result = await repository.upsertWithLineItems(domainEntity, [
+        {
+          lineNumber: 0,
+          productId: 'ol_product_1',
+          variantId: 'ol_variant_1',
+          quantity: 2,
+          unitPrice: 10,
+          sourceConnectionId: 'conn-123',
+          placedAt: null,
+        },
+      ]);
+
+      expect(result.internalOrderId).toBe('order-123');
+      // save() is called twice inside the transaction: once for the order
+      // record, once for the line-item batch — both on the SAME manager.
+      expect(transactionalManager.save).toHaveBeenCalledTimes(2);
+      expect(transactionalManager.delete).toHaveBeenCalledWith(expect.anything(), {
+        orderRecordId: 'order-123',
+      });
+    });
+
+    it('deletes the prior line-item set even when the new set is empty (order re-ingested with no items)', async () => {
+      const domainEntity = createDomainEntity();
+      const savedEntity = createOrmEntity();
+      transactionalManager.save.mockResolvedValue(savedEntity);
+      transactionalManager.delete.mockResolvedValue(undefined);
+
+      await repository.upsertWithLineItems(domainEntity, []);
+
+      expect(transactionalManager.delete).toHaveBeenCalledWith(expect.anything(), {
+        orderRecordId: 'order-123',
+      });
+      // Only the order-record save runs — no line-item save call for an empty set.
+      expect(transactionalManager.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('propagates a failure from either write so the caller sees the transaction as failed', async () => {
+      const domainEntity = createDomainEntity();
+      transactionalManager.save.mockRejectedValue(new Error('db error'));
+
+      await expect(repository.upsertWithLineItems(domainEntity, [])).rejects.toThrow('db error');
     });
   });
 
