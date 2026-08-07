@@ -12,6 +12,25 @@ From `0.2.0` onward this file is generated automatically by
 Commits. The `0.1.0` entry below is the hand-curated baseline of what shipped
 before automated releases began.
 
+## [0.6.0](https://github.com/openlinker-project/openlinker/compare/v0.5.0...v0.6.0) (2026-08-07)
+
+
+### Features
+
+* **allegro,shared:** Allegro adopts the connection-bound rate-limit transport ([#1977](https://github.com/openlinker-project/openlinker/issues/1977)) ([ee4ba43](https://github.com/openlinker-project/openlinker/commit/ee4ba43050e09b0a192431a735a08b18fb49ec18))
+* **erli,shared:** Erli adopts the connection-bound rate-limit transport ([#1978](https://github.com/openlinker-project/openlinker/issues/1978)) ([fc15324](https://github.com/openlinker-project/openlinker/commit/fc153247c9f24926938505e1fdbf6c4ff8ec6874))
+* **inpost,shared:** InPost adopts the connection-bound rate-limit transport ([#1981](https://github.com/openlinker-project/openlinker/issues/1981)) ([1e143a1](https://github.com/openlinker-project/openlinker/commit/1e143a1b6bbcb06e37b282609700b5eb6ee1df94))
+* **ksef,shared:** KSeF adopts the connection-bound rate-limit transport ([#2004](https://github.com/openlinker-project/openlinker/issues/2004)) ([b62c351](https://github.com/openlinker-project/openlinker/commit/b62c35165ce0e2b6046e62ba582510dd65614591))
+* **prestashop,api,web:** rate-limit observability for PrestaShop connections ([#1941](https://github.com/openlinker-project/openlinker/issues/1941)) ([93d04f8](https://github.com/openlinker-project/openlinker/commit/93d04f80aa2855b38a34bcd4df3b0efb6fa0533a))
+* **subiekt,shared:** Subiekt nexo adopts the connection-bound rate-limit transport ([#2006](https://github.com/openlinker-project/openlinker/issues/2006)) ([7bfb46e](https://github.com/openlinker-project/openlinker/commit/7bfb46e6e625276b1167178162eb76bc0fb1aac1))
+* **web:** add shared AccessGate primitive and gate the MCP capabilities hint ([#1994](https://github.com/openlinker-project/openlinker/issues/1994)) ([1d24560](https://github.com/openlinker-project/openlinker/commit/1d245605664c5c08b4ce0001af0f7860a6007efd))
+
+
+### Bug Fixes
+
+* **api/auth:** clear stale host-only ol_refresh/ol_csrf duplicates on set/clear ([#2000](https://github.com/openlinker-project/openlinker/issues/2000)) ([18fc501](https://github.com/openlinker-project/openlinker/commit/18fc5012600bffb25dfb36eacbf122ce3806c8a1))
+* **worker,core:** heartbeat running sync jobs to survive the stuck-job reclaim sweep ([#1957](https://github.com/openlinker-project/openlinker/issues/1957)) ([7a4d393](https://github.com/openlinker-project/openlinker/commit/7a4d393d2e0570cd842e1ca3f06da4fca8fef91e))
+
 ## [0.5.0](https://github.com/openlinker-project/openlinker/compare/v0.4.0...v0.5.0) (2026-08-03)
 
 
