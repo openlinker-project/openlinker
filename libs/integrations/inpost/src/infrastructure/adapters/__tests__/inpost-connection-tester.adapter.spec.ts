@@ -26,6 +26,10 @@ describe('InpostConnectionTesterAdapter', () => {
     get: jest.fn().mockResolvedValue({ apiToken: 'token-123' }),
   } as unknown as CredentialsResolverPort;
 
+  // Fixed timestamp (not `new Date()`) so two independent calls with the same
+  // config are deep-equal — a call built for `toHaveBeenCalledWith` must match
+  // the one passed to the method under test, and a live clock only agrees by
+  // accident of timing (the flake this file already hit once).
   function buildConnection(config: Record<string, unknown>): Connection {
     return new Connection(
       'inpost_1',
@@ -34,8 +38,8 @@ describe('InpostConnectionTesterAdapter', () => {
       'active',
       config,
       'db:ref',
-      new Date(),
-      new Date(),
+      new Date(0),
+      new Date(0),
       'inpost.shipx.v1',
       ['ShippingProviderManager'],
     );
