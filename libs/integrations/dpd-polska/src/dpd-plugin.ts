@@ -35,6 +35,24 @@ export const dpdAdapterManifest: AdapterMetadata = {
   displayName: 'DPD Polska REST v1',
   version: '1.0.0',
   isDefault: true,
+  // No `defaultRateLimit` (#1810 §1). PrestaShop is the ONLY adapter that ships
+  // one, and deliberately so: a manifest default is for merchant-hosted
+  // platforms, where the remote is the operator's own often-shared-hosting box
+  // (the #1772 incident). DPD Polska is a national carrier's API — third-party
+  // infrastructure with no limit we can cite. WooCommerce, InPost, Allegro and
+  // Erli all declare none for the same reason; an earlier revision of this file
+  // claimed the opposite and was wrong.
+  //
+  // Carrier-specific reason to leave this unset for now: both clients arm a 30 s
+  // `REQUEST_TIMEOUT_MS` (the tester 10 s) BEFORE the transport's queue wait, and
+  // the transport does not thread `init.signal` into the limiter — so a cap tight
+  // enough to queue past that budget aborts pre-flight, and `fetchOnce`'s catch
+  // reports that as a network error. On the non-idempotent `generatePackagesNumbers`
+  // create that is the terminal "may have reached DPD" branch, for a request that
+  // never left the process. Fixing that is a shared-transport change (bounding the
+  // queue wait by the caller's signal + a never-transmitted discriminator), not a
+  // DPD one; until it lands, a cap here must be a deliberate operator choice via
+  // `config.rateLimit`, never an adapter default.
 };
 
 /** Short brand label for the config-validator's error prefix. */
@@ -57,7 +75,7 @@ export function createDpdPlugin(): AdapterPlugin {
       // reporting "not supported".
       host.connectionTesterRegistry.register(
         dpdAdapterManifest.adapterKey,
-        new DpdConnectionTesterAdapter(),
+        new DpdConnectionTesterAdapter(host.http),
       );
 
       // Auth-failure classifier (#819 / #1103): a non-retryable 401/403 from
@@ -80,7 +98,13 @@ export function createDpdPlugin(): AdapterPlugin {
       capability: string,
       host: HostServices,
     ): Promise<T> {
-      const adapter = await createDpdShippingAdapter(connection, host.credentialsResolver);
+      const adapter = await createDpdShippingAdapter(
+        connection,
+        host.credentialsResolver,
+        // No manifest default is passed — DPD declares none (see the manifest
+        // note above), so the policy is the operator's `config.rateLimit`.
+        host.http.forConnection(connection),
+      );
       return dispatchCapability<T>(capability, { ShippingProviderManager: () => adapter }, DPD_BRAND);
     },
   };
