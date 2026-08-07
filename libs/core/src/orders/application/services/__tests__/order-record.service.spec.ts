@@ -34,6 +34,7 @@ describe('OrderRecordService', () => {
       findById: jest.fn(),
       findByIds: jest.fn(),
       upsert: jest.fn(),
+      upsertWithLineItems: jest.fn(),
       updateSyncStatus: jest.fn(),
       updateItemResolutionFailure: jest.fn(),
       markCancelled: jest.fn(),
@@ -185,13 +186,13 @@ describe('OrderRecordService', () => {
         expect.any(Date)
       );
 
-      repository.upsert.mockResolvedValue(expectedOrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue(expectedOrderRecord);
 
       const result = await service.persistOrder(order, sourceConnectionId, sourceEventId);
 
       expect(result).toBe(expectedOrderRecord);
-      expect(repository.upsert).toHaveBeenCalledTimes(1);
-      const callArg = repository.upsert.mock.calls[0][0];
+      expect(repository.upsertWithLineItems).toHaveBeenCalledTimes(1);
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot.shippingAddress).toEqual(order.shippingAddress);
       expect(callArg.orderSnapshot.billingAddress).toEqual(order.billingAddress);
       expect(callArg.recordStatus).toBe('ready');
@@ -202,11 +203,11 @@ describe('OrderRecordService', () => {
       order.items[0].name = 'Widget';
       order.items[0].imageUrl = 'https://cdn.example/widget.jpg';
 
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       const snapshotItems = (callArg.orderSnapshot as { items: Array<Record<string, unknown>> })
         .items;
       expect(snapshotItems[0]).toMatchObject({
@@ -224,11 +225,11 @@ describe('OrderRecordService', () => {
       expect(order.items[0].name).toBeUndefined();
       expect(order.items[0].imageUrl).toBeUndefined();
 
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       const snapshotItems = (callArg.orderSnapshot as { items: Array<Record<string, unknown>> })
         .items;
       expect(snapshotItems[0]).not.toHaveProperty('name');
@@ -239,11 +240,11 @@ describe('OrderRecordService', () => {
       const order = createMockOrder();
       order.deliverySmart = true;
 
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot['deliverySmart']).toBe(true);
     });
 
@@ -254,11 +255,11 @@ describe('OrderRecordService', () => {
       // so consumers can distinguish "Smart not reported" from "Smart false".
       expect(order.deliverySmart).toBeUndefined();
 
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot).not.toHaveProperty('deliverySmart');
     });
 
@@ -266,11 +267,11 @@ describe('OrderRecordService', () => {
       const order = createMockOrder();
       order.placedAt = new Date('2026-05-31T16:00:00.000Z');
 
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot['placedAt']).toBe('2026-05-31T16:00:00.000Z');
     });
 
@@ -278,11 +279,11 @@ describe('OrderRecordService', () => {
       const order = createMockOrder();
       expect(order.placedAt).toBeUndefined();
 
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot).not.toHaveProperty('placedAt');
     });
 
@@ -290,11 +291,11 @@ describe('OrderRecordService', () => {
       const order = createMockOrder();
       order.customerEmail = 'buyer@example.com';
 
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot['customerEmail']).toBe('buyer@example.com');
     });
 
@@ -302,11 +303,11 @@ describe('OrderRecordService', () => {
       const order = createMockOrder();
       expect(order.customerEmail).toBeUndefined();
 
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot).not.toHaveProperty('customerEmail');
     });
 
@@ -315,11 +316,11 @@ describe('OrderRecordService', () => {
       order.shipping = { methodId: 'allegro-courier-1', methodName: 'Kurier DPD' };
       order.pickupPoint = { id: 'POZ08A', name: 'Paczkomat POZ08A' };
 
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot['shipping']).toEqual({
         methodId: 'allegro-courier-1',
         methodName: 'Kurier DPD',
@@ -335,13 +336,68 @@ describe('OrderRecordService', () => {
       expect(order.shipping).toBeUndefined();
       expect(order.pickupPoint).toBeUndefined();
 
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot).not.toHaveProperty('shipping');
       expect(callArg.orderSnapshot).not.toHaveProperty('pickupPoint');
+    });
+
+    describe('order analytics read-model derivation (#1985)', () => {
+      it('derives the 4 scalars from order.totals/placedAt onto the OrderRecord passed to upsertWithLineItems', async () => {
+        const order = createMockOrder();
+        order.placedAt = new Date('2026-05-31T16:00:00.000Z');
+        order.totals.currency = 'PLN';
+        order.totals.taxTreatment = 'inclusive';
+        order.totals.total = 31.38;
+
+        repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+        await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+        const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+        expect(callArg.placedAt).toEqual(new Date('2026-05-31T16:00:00.000Z'));
+        expect(callArg.currency).toBe('PLN');
+        expect(callArg.taxTreatment).toBe('inclusive');
+        expect(callArg.totalAmount).toBe(31.38);
+      });
+
+      it('degrades taxTreatment/placedAt to null when the order does not carry them', async () => {
+        const order = createMockOrder();
+        expect(order.placedAt).toBeUndefined();
+        expect(order.totals.taxTreatment).toBeUndefined();
+
+        repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+        await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+        const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+        expect(callArg.placedAt).toBeNull();
+        expect(callArg.taxTreatment).toBeNull();
+      });
+
+      it('derives one line item per order item and passes them as the 2nd argument', async () => {
+        const order = createMockOrder();
+
+        repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+        await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+        const [, lineItems] = repository.upsertWithLineItems.mock.calls[0];
+        expect(lineItems).toEqual([
+          {
+            lineNumber: 0,
+            productId: 'product-1',
+            variantId: 'variant-1',
+            quantity: 2,
+            unitPrice: 10.99,
+            sourceConnectionId: 'source-connection-123',
+            placedAt: null,
+          },
+        ]);
+      });
     });
   });
 
@@ -371,13 +427,13 @@ describe('OrderRecordService', () => {
         expect.any(Date)
       );
 
-      repository.upsert.mockResolvedValue(expectedOrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue(expectedOrderRecord);
 
       const result = await service.persistOrder(order, sourceConnectionId, sourceEventId);
 
       expect(result).toBe(expectedOrderRecord);
-      expect(repository.upsert).toHaveBeenCalledTimes(1);
-      const callArg = repository.upsert.mock.calls[0][0];
+      expect(repository.upsertWithLineItems).toHaveBeenCalledTimes(1);
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot.shippingAddress).toEqual({
         address1: '[REDACTED]',
         city: '[REDACTED]',
@@ -414,12 +470,12 @@ describe('OrderRecordService', () => {
         expect.any(Date)
       );
 
-      repository.upsert.mockResolvedValue(expectedOrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue(expectedOrderRecord);
 
       const result = await service.persistOrder(order, sourceConnectionId, sourceEventId);
 
       expect(result).toBe(expectedOrderRecord);
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot.shippingAddress).toBeUndefined();
       expect(callArg.orderSnapshot.billingAddress).toBeUndefined();
     });
@@ -428,11 +484,11 @@ describe('OrderRecordService', () => {
       const order = createMockOrder();
       order.customerEmail = 'buyer@example.com';
 
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot).not.toHaveProperty('customerEmail');
     });
   });

@@ -160,6 +160,10 @@ describe('OrderRecord.isCancelled (#1984)', () => {
       null,
       null,
       null,
+      null,
+      null,
+      null,
+      null,
       cancelledAt,
     );
   }

@@ -10,13 +10,14 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import type { SelectQueryBuilder } from 'typeorm';
-import { In, IsNull, MoreThanOrEqual, Repository } from 'typeorm';
+import type { DataSource, EntityManager, SelectQueryBuilder } from 'typeorm';
 import { In, IsNull, MoreThanOrEqual, Repository } from 'typeorm';
 import type { OrderSyncStatusJson, SyncAttemptJson } from '../entities/order-record.orm-entity';
 import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
+import { OrderLineItemOrmEntity } from '../entities/order-line-item.orm-entity';
 import type { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
+import type { OrderLineItemDraft } from '../../../domain/order-analytics-projection';
 import type { OrderSyncStatus, SyncAttempt } from '../../../domain/types/order-sync.types';
 import { SYNC_ATTEMPTS_PER_DESTINATION_CAP } from '../../../domain/types/order-sync.types';
 import { OrderRecordNotFoundException } from '../../../domain/exceptions/order-record-not-found.exception';
@@ -41,6 +42,7 @@ import {
   isSalesDocumentGateBlockReason,
   isSalesDocumentUnresolvedReason,
 } from '@openlinker/core/sales-documents';
+import type { PriceTaxTreatment } from '../../../domain/types/order.types';
 import type { OrderFxIntent, OrderFxStamp } from '../../../domain/types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../../../domain/types/order-fx-read.types';
 import type { StampedReportingCurrencyCount } from '../../../domain/types/order-fx-read.types';
@@ -51,6 +53,16 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     @InjectRepository(OrderRecordOrmEntity)
     private readonly repository: Repository<OrderRecordOrmEntity>
   ) {}
+
+  /**
+   * DataSource from the injected repository's connection — the established
+   * workaround for injecting DataSource in core library modules (mirrors
+   * `SyncJobRepository.dataSource`), used so `upsertWithLineItems` can run
+   * both writes in one transaction without a second NestJS-injected repository.
+   */
+  private get dataSource(): DataSource {
+    return this.repository.manager.connection;
+  }
 
   async findById(internalOrderId: string): Promise<OrderRecord | null> {
     const entity = await this.repository.findOne({
@@ -926,6 +938,33 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * Upsert the order record AND replace its `order_line_items` rows in one
+   * transaction (#1985). Delete-then-reinsert per order — simpler and
+   * equally correct at this table's size than a diffing upsert, and avoids
+   * ever leaving a stale row from a shrunk item list. Both writes go through
+   * the same transactional `EntityManager`, so a failure on either side rolls
+   * back both (no order_records/order_line_items desync).
+   */
+  async upsertWithLineItems(
+    orderRecord: OrderRecord,
+    lineItems: OrderLineItemDraft[]
+  ): Promise<OrderRecord> {
+    const entity = this.toOrm(orderRecord);
+    const savedRecord = await this.dataSource.transaction(async (manager: EntityManager) => {
+      const saved = await manager.save(OrderRecordOrmEntity, entity);
+      await manager.delete(OrderLineItemOrmEntity, { orderRecordId: orderRecord.internalOrderId });
+      if (lineItems.length > 0) {
+        await manager.save(
+          OrderLineItemOrmEntity,
+          lineItems.map((item) => this.lineItemToOrm(orderRecord.internalOrderId, item))
+        );
+      }
+      return saved;
+    });
+    return this.toDomain(savedRecord);
+  }
+
+  /**
    * Atomic per-destination upsert + append.
    *
    * Single SQL statement so concurrent workers serialize on the row's
@@ -1053,6 +1092,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.dispatchByAt,
       (entity.fulfillmentState as FulfillmentRollupState | null) ?? null,
       entity.mappingFailureReason ?? null,
+      entity.placedAt ?? null,
+      entity.currency ?? null,
+      (entity.taxTreatment as PriceTaxTreatment | null) ?? null,
+      // decimal columns arrive as strings from the pg driver — mirrors
+      // ProductRepository's existing `Number(entity.price)` handling.
+      entity.totalAmount !== null ? Number(entity.totalAmount) : null,
       entity.cancelledAt ?? null,
       entity.reportingCurrency ?? null,
       // `numeric` comes back from pg as a string; `Number()` per the house
@@ -1167,8 +1212,32 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // properties unset makes TypeORM omit the columns from the generated
     // UPDATE entirely. `claimFxIntentIfAbsent` + `stampFxIfAbsent` (both
     // guarded, both single-statement) are their only writers.
+    entity.placedAt = orderRecord.placedAt;
+    entity.currency = orderRecord.currency;
+    entity.taxTreatment = orderRecord.taxTreatment;
+    entity.totalAmount = orderRecord.totalAmount;
     entity.createdAt = orderRecord.createdAt;
     entity.updatedAt = orderRecord.updatedAt;
+    return entity;
+  }
+
+  /**
+   * Convert a derived {@link OrderLineItemDraft} to its ORM entity for
+   * insertion. `id`/`createdAt` are left for TypeORM to generate.
+   */
+  private lineItemToOrm(
+    orderRecordId: string,
+    item: OrderLineItemDraft
+  ): OrderLineItemOrmEntity {
+    const entity = new OrderLineItemOrmEntity();
+    entity.orderRecordId = orderRecordId;
+    entity.lineNumber = item.lineNumber;
+    entity.productId = item.productId;
+    entity.variantId = item.variantId;
+    entity.quantity = item.quantity;
+    entity.unitPrice = item.unitPrice;
+    entity.sourceConnectionId = item.sourceConnectionId;
+    entity.placedAt = item.placedAt;
     return entity;
   }
 }

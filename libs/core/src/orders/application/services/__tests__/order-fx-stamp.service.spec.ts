@@ -33,9 +33,11 @@ function buildRecord(overrides: {
   if (overrides.totals !== null) {
     snapshot.totals = overrides.totals ?? { total: 100, currency: 'EUR' };
   }
-  if (overrides.placedAt !== null) {
-    snapshot.placedAt = overrides.placedAt ?? '2026-06-10T09:00:00.000Z';
-  }
+
+  const placedAt =
+    overrides.placedAt === null
+      ? null
+      : new Date(overrides.placedAt ?? '2026-06-10T09:00:00.000Z');
 
   return new OrderRecord(
     overrides.internalOrderId ?? 'ol_order_1',
@@ -48,6 +50,10 @@ function buildRecord(overrides: {
     new Date('2026-06-10T09:05:00.000Z'),
     new Date('2026-06-10T09:05:00.000Z'),
     [],
+    null,
+    null,
+    null,
+    placedAt,
     null,
     null,
     null,
