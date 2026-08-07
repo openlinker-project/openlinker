@@ -7,8 +7,11 @@ import { KsefAdapterFactory } from '../ksef-adapter.factory';
 import { KsefConfigException } from '../../../domain/exceptions/ksef-config.exception';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import { Connection, type IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { FetchLike } from '@openlinker/shared/http';
+import * as httpClientFactory from '../../../infrastructure/http/ksef-http-client.factory';
 
 const idMapping = {} as IdentifierMappingPort;
+const fetchStub = jest.fn() as unknown as FetchLike;
 
 const SELLER_CONFIG = {
   nip: '1234567890',
@@ -59,8 +62,28 @@ describe('KsefAdapterFactory', () => {
       resolver({
         'ref:ksef': { authType: 'ksef-token', secret: 'super-secret-token' },
       }),
+      fetchStub,
     );
     expect(adapters.invoicing).toBeDefined();
+  });
+
+  it('should thread the connection-bound transport down to the HTTP client (#1810)', async () => {
+    // `createAdapters` takes `fetchImpl` as a REQUIRED param, so the compiler
+    // guards this hop — but `createKsefHttpClient`'s own `fetchImpl` is
+    // optional, so dropping it here would silently fall back to
+    // `globalThis.fetch` with no bare `fetch(` left for lint to flag.
+    const spy = jest.spyOn(httpClientFactory, 'createKsefHttpClient');
+    const factory = new KsefAdapterFactory();
+
+    await factory.createAdapters(
+      connection(),
+      idMapping,
+      resolver({ 'ref:ksef': { authType: 'ksef-token', secret: 'super-secret-token' } }),
+      fetchStub,
+    );
+
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ fetchImpl: fetchStub }));
+    spy.mockRestore();
   });
 
   it('should throw when the seller profile is missing (context NIP unresolvable)', async () => {
@@ -72,6 +95,7 @@ describe('KsefAdapterFactory', () => {
         resolver({
           'ref:ksef': { authType: 'ksef-token', secret: 'super-secret-token' },
         }),
+        fetchStub,
       ),
     ).rejects.toBeInstanceOf(KsefConfigException);
   });
@@ -87,6 +111,7 @@ describe('KsefAdapterFactory', () => {
         resolver({
           'ref:ksef': { authType: 'ksef-token', secret: 'super-secret-token' },
         }),
+        fetchStub,
       ),
     ).rejects.toThrow(/seller profile/);
   });
@@ -94,21 +119,26 @@ describe('KsefAdapterFactory', () => {
   it('should throw when the environment is missing/invalid', async () => {
     const factory = new KsefAdapterFactory();
     await expect(
-      factory.createAdapters(connection({ config: {} }), idMapping, resolver({})),
+      factory.createAdapters(connection({ config: {} }), idMapping, resolver({}), fetchStub),
     ).rejects.toBeInstanceOf(KsefConfigException);
   });
 
   it('should throw when credentialsRef is absent', async () => {
     const factory = new KsefAdapterFactory();
     await expect(
-      factory.createAdapters(connection({ credentialsRef: '' }), idMapping, resolver({})),
+      factory.createAdapters(connection({ credentialsRef: '' }), idMapping, resolver({}), fetchStub),
     ).rejects.toBeInstanceOf(KsefConfigException);
   });
 
   it('should throw when the credential shape is malformed', async () => {
     const factory = new KsefAdapterFactory();
     await expect(
-      factory.createAdapters(connection(), idMapping, resolver({ 'ref:ksef': { authType: 'ksef-token' } })),
+      factory.createAdapters(
+        connection(),
+        idMapping,
+        resolver({ 'ref:ksef': { authType: 'ksef-token' } }),
+        fetchStub,
+      ),
     ).rejects.toBeInstanceOf(KsefConfigException);
   });
 
@@ -119,6 +149,7 @@ describe('KsefAdapterFactory', () => {
         connection(),
         idMapping,
         resolver({ 'ref:ksef': { authType: 'qualified-seal', secret: 'ref:cert' } }),
+        fetchStub,
       ),
     ).rejects.toBeInstanceOf(KsefConfigException);
   });

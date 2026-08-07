@@ -1,0 +1,2512 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>#1996 — One Order cell and one Connection cell across six lists · UI Mockups</title>
+<!--
+  ═══════════════════════════════════════════════════════════════════════════════
+  #1996 — ONE SHARED ORDER CELL AND ONE SHARED CONNECTION CELL ACROSS SIX LISTS
+  ═══════════════════════════════════════════════════════════════════════════════
+
+  What this file is for
+  ─────────────────────
+  Six list pages render the same two facts six different ways: WHICH ORDER a row
+  belongs to, and WHICH CONNECTION it came from. The reported symptom is
+  "the Orders column looks different on every tab and I can't tell which order it
+  is." This mockup is the visual specification for collapsing that into one
+  OrderIdentityCell and one ConnectionCell.
+
+  No new colour, radius, shadow or spacing value is introduced anywhere in this
+  file. Section 1 is a verbatim transcription of `:root` from
+  apps/web/src/index.css; sections 4 and 5 transcribe existing app primitives,
+  each block carrying the source line it came from. Exactly ONE new CSS rule is
+  invented (`.order-cell`, section 6) and it is the same two-level shape the app
+  already ships three times over.
+
+  Every table, card and comparison on this page renders from ONE dataset
+  (ORDERS / CONNECTIONS / … in the script at the bottom) through ONE pair of
+  helpers, orderCell() and connCell(). That is deliberate and it is the whole
+  claim of the issue: if the same cell could drift between two frames of this
+  mockup, the mockup would be arguing against itself.
+
+  ── SCOPE BOUNDARY AGAINST #1965 ────────────────────────────────────────────
+  #1965 owns the full Listings-page redesign and has its own accepted mockup
+  (listings-redesign-1965.html). Frame 06 here changes only two columns on that
+  page — Platform and Connection — so the #1965 redesign INHERITS the shared
+  cells instead of re-inventing them. Nothing else about Listings is proposed
+  here.
+
+  ── FOUR CORRECTIONS TO THE ISSUE BODY ──────────────────────────────────────
+  Found by reading the code the issue points at. Each one changes what this
+  mockup had to draw.
+
+  1. `shortenId` HAS TWO BRANCHES, NOT ONE.
+     entity-label.tsx:98-109 matches OL_ID_PATTERN = /^(ol_[a-z][a-z0-9-]*_)(.+)$/
+     and shortens an OL-native id as prefix + rest[0..4] + '…' + rest[-2:];
+     everything else falls to id[0..8] + '…' + id[-4:] (untouched below 14 chars).
+     The #1965 mockup implemented only the second branch. This one implements
+     BOTH, because an internal orderId is `ol_order_<32 hex>` → `ol_order_a3f24…67`,
+     and that is the branch Shipments and Invoices hit ON EVERY ROW today (their
+     API responses carry no order number at all). Shipping the simple branch here
+     would have misrepresented the cell's most common state.
+
+  2. ORDERS HAS NO CONNECTION COLUMN, AND DOES NOT GAIN ONE.
+     Connection identity on that page is carried by the channel-pill plus a
+     ConnectionDot inside DeliveryOutcomeChip. The issue correctly omits Orders
+     from its Connection table; this mockup does not "helpfully" add a column
+     nobody asked for.
+
+  3. `.channel-pill` HAS FOUR `[data-channel]` SELECTORS, NOT SIX.
+     index.css:9241-9244 covers allegro / prestashop / amazon / shopify, while
+     --channel-erli and --channel-woocommerce have existed as tokens since #1752
+     (index.css:282-293). So Erli and WooCommerce render a grey dot today. The two
+     missing selectors are added locally in section 4 and flagged in the handover
+     frame — it is a two-line fix to index.css, not a design decision.
+
+  4. LINE 1 OF THE CONNECTION CELL IS A LINK.
+     The `.conn-cell` composition accepted in the #1965 mockup renders a plain
+     `.entity-label__name`; #1996 asks for `to={/connections/:id}`, so the name
+     is `.entity-label__name--link` here.
+
+  ── WHAT THIS MOCKUP PROVES ABOUT #1995 ─────────────────────────────────────
+  Frames 08 and 09 (Shipments, Invoices) cannot be built from today's API. Their
+  responses carry `orderId` and nothing else — no order number, no first-item
+  name, no image, no item count. Those four values are exactly what #1995 adds as
+  `orderSummary`. Every cell in this file that depends on #1995 carries a † marker,
+  so those two frames double as the acceptance surface for that issue.
+
+  Nothing else waits on it. The `ean` projection #1995 originally also carried is
+  gone: the Products row shows SKU alone (frame 05 explains why), which leaves
+  #1995 as a single-purpose issue and Products, Orders, Listings and Customers
+  fully unblocked.
+
+  ── RELATIONSHIP TO #1965 ───────────────────────────────────────────────────
+  #1965 redesigns the whole Listings page and its mockup was accepted first. The
+  Connection cell it specified is the SAME two-line composition as this one, so
+  #1996 takes ownership of it and #1965's implementation imports the shared
+  component instead of re-authoring it. Two divergences were reconciled in that
+  file rather than here: its `connCell()` rendered the name as plain text (now a
+  link to /connections/:id) and its `shortenId` implemented only the non-OL branch
+  (now both, so the two mockups cannot teach an implementer two different versions
+  of one shipped function). One claim in #1996's own issue body was wrong instead:
+  it said the channel-pill adornment serves "Products / Listings", but #1965
+  deliberately keeps Channel as its own column, so Listings passes no adornment.
+
+  Sample data is invented but shaped like the real thing: OL-native ids follow
+  `ol_<entity>_<32 hex>`, connection ids are UUIDs, order numbers follow Allegro's
+  `nnnn-nnnn-nnnn` form, and the connections are the platforms actually shipped
+  in the repo (Allegro, PrestaShop, Erli, WooCommerce, InPost, inFakt).
+-->
+<style>
+  /* ══════════════════ 1. TOKENS — verbatim from apps/web/src/index.css ══════════════════ */
+  :root {
+    --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+      'Segoe UI', sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+      'Liberation Mono', monospace;
+
+    --bg-canvas: oklch(99% 0.003 80);
+    --bg-shell: oklch(97.5% 0.004 80);
+    --bg-surface: #ffffff;
+    --bg-surface-elevated: oklch(99% 0.003 80);
+    --bg-muted: oklch(96% 0.005 80);
+    --bg-surface-muted: oklch(96% 0.005 80);
+    --bg-surface-hover: oklch(93% 0.006 80);
+    --bg-strong: oklch(93% 0.006 80);
+
+    --border-subtle: oklch(93.5% 0.006 80);
+    --border-default: oklch(88% 0.008 80);
+    --border-strong: oklch(78% 0.010 80);
+    --border-focus: oklch(68% 0.18 50);
+
+    --text-primary: oklch(20% 0.012 80);
+    --text-secondary: oklch(38% 0.010 80);
+    --text-muted: oklch(52% 0.008 80);
+    --text-disabled: oklch(70% 0.005 80);
+    --text-on-primary: oklch(18% 0.012 50);
+    --text-inverse: oklch(96% 0.005 80);
+    --text-link: oklch(50% 0.14 250);
+
+    --accent-primary: oklch(68% 0.18 50);
+    --accent-primary-hover: oklch(62% 0.19 50);
+    --accent-primary-active: oklch(56% 0.20 50);
+    --accent-primary-soft: oklch(96% 0.04 60);
+    --accent-primary-soft-strong: oklch(40% 0.16 50);
+    --accent-primary-border: oklch(85% 0.10 55);
+    --accent-focus: oklch(68% 0.18 50);
+    --accent-ring: oklch(68% 0.18 50 / 0.30);
+
+    --status-success: oklch(54% 0.14 150);
+    --status-success-soft: oklch(96% 0.04 150);
+    --status-success-border: oklch(85% 0.08 150);
+    --status-success-fg: oklch(36% 0.12 150);
+    --status-success-strong: oklch(36% 0.12 150);
+
+    --status-warning: oklch(72% 0.16 85);
+    --status-warning-soft: oklch(96% 0.05 85);
+    --status-warning-border: oklch(85% 0.10 85);
+    --status-warning-fg: oklch(42% 0.12 80);
+    --status-warning-strong: oklch(42% 0.12 80);
+
+    --status-error: oklch(58% 0.20 25);
+    --status-error-soft: oklch(96% 0.04 25);
+    --status-error-border: oklch(85% 0.10 25);
+    --status-error-fg: oklch(42% 0.16 25);
+    --status-error-strong: oklch(42% 0.16 25);
+
+    --status-info: oklch(56% 0.14 245);
+    --status-info-soft: oklch(96% 0.03 245);
+    --status-info-border: oklch(85% 0.08 245);
+    --status-info-fg: oklch(40% 0.12 245);
+    --status-info-strong: oklch(40% 0.12 245);
+
+    --status-review: oklch(58% 0.16 290);
+    --status-review-soft: oklch(96% 0.04 290);
+    --status-review-border: oklch(85% 0.08 290);
+    --status-review-fg: oklch(42% 0.14 290);
+    --status-review-strong: oklch(42% 0.14 290);
+
+    --status-disabled: oklch(55% 0.008 80);
+    --status-disabled-soft: oklch(95% 0.005 80);
+    --status-disabled-border: oklch(85% 0.008 80);
+    --status-disabled-fg: oklch(38% 0.010 80);
+    --status-disabled-strong: oklch(38% 0.010 80);
+
+    /* Channel brand hues (#1752) — identity, never health. index.css:282-293. */
+    --channel-allegro: oklch(70% 0.18 35);
+    --channel-prestashop: oklch(60% 0.18 250);
+    --channel-erli: oklch(66% 0.17 320);
+    --channel-woocommerce: oklch(64% 0.16 150);
+    --channel-amazon: oklch(72% 0.16 75);
+    --channel-shopify: oklch(64% 0.16 150);
+
+    --shadow-soft: 0 1px 2px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.06);
+    --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+    --shadow-sm: 0 1px 2px rgb(15 18 26 / 0.04), 0 1px 3px rgb(15 18 26 / 0.06);
+    --shadow-md: 0 2px 4px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.08);
+    --shadow-lg: 0 6px 12px rgb(15 18 26 / 0.06), 0 16px 32px rgb(15 18 26 / 0.10);
+    --shadow-focus: 0 0 0 3px var(--accent-ring);
+    --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.6);
+    --button-primary-bg-hover: oklch(62% 0.19 50);
+
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.5rem;
+    --space-6: 2rem;
+    --space-7: 3rem;
+    --space-8: 4rem;
+
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 10px;
+    --radius-xl: 14px;
+    --radius-pill: 9999px;
+
+    --duration-fast: 120ms;
+    --duration-normal: 180ms;
+    --duration-slow: 280ms;
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+    --tracking-tight: -0.012em;
+    --tracking-normal: 0;
+    --tracking-wide: 0.02em;
+    --tracking-caps: 0.08em;
+
+    color-scheme: light;
+  }
+
+  /* Dark theme. The app resolves light/dark in a FOUC guard in index.html and
+     stamps html[data-theme]; the boot script at the bottom of this file mirrors
+     that, so only one dark block is needed here and the viewer's OS preference
+     is still honoured. */
+  html[data-theme='dark'] {
+    color-scheme: dark;
+    --button-primary-bg-hover: oklch(78% 0.18 50);
+
+    --bg-canvas: oklch(14% 0.005 270);
+    --bg-shell: oklch(16% 0.006 270);
+    --bg-surface: oklch(19% 0.007 270);
+    --bg-surface-elevated: oklch(22% 0.008 270);
+    --bg-muted: oklch(24% 0.009 270);
+    --bg-surface-muted: oklch(24% 0.009 270);
+    --bg-surface-hover: oklch(28% 0.010 270);
+    --bg-strong: oklch(28% 0.010 270);
+
+    --border-subtle: oklch(24% 0.010 270);
+    --border-default: oklch(30% 0.012 270);
+    --border-strong: oklch(42% 0.014 270);
+    --border-focus: oklch(72% 0.18 50);
+
+    --text-primary: oklch(96% 0.006 270);
+    --text-secondary: oklch(78% 0.010 270);
+    --text-muted: oklch(60% 0.012 270);
+    --text-disabled: oklch(42% 0.012 270);
+    --text-on-primary: oklch(16% 0.012 50);
+    --text-inverse: oklch(20% 0.012 80);
+    --text-link: oklch(76% 0.14 245);
+
+    --accent-primary: oklch(72% 0.18 50);
+    --accent-primary-hover: oklch(78% 0.18 50);
+    --accent-primary-active: oklch(84% 0.16 50);
+    --accent-primary-soft: oklch(28% 0.08 50);
+    --accent-primary-soft-strong: oklch(86% 0.14 60);
+    --accent-primary-border: oklch(40% 0.14 55);
+    --accent-focus: oklch(72% 0.18 50);
+    --accent-ring: oklch(72% 0.18 50 / 0.40);
+
+    --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150);
+    --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+    --status-success-strong: oklch(86% 0.14 150);
+    --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85);
+    --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+    --status-warning-strong: oklch(88% 0.14 85);
+    --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25);
+    --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25);
+    --status-error-strong: oklch(86% 0.14 25);
+    --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245);
+    --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+    --status-info-strong: oklch(86% 0.12 245);
+    --status-review: oklch(74% 0.14 290); --status-review-soft: oklch(28% 0.06 290);
+    --status-review-border: oklch(38% 0.10 290); --status-review-fg: oklch(88% 0.12 290);
+    --status-review-strong: oklch(88% 0.12 290);
+    --status-disabled: oklch(65% 0.010 270); --status-disabled-soft: oklch(24% 0.010 270);
+    --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
+    --status-disabled-strong: oklch(82% 0.010 270);
+
+    --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+    --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+    --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+    --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  }
+
+  /* ══════════════════ 2. BASE ══════════════════ */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg-canvas);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+    overflow-x: hidden;
+  }
+  /* index.css:2628-2656 */
+  .mono-text, .mono { font-family: var(--font-mono); letter-spacing: -0.01em; overflow-wrap: anywhere; }
+  /* index.css:2656 — inside a table cell a mono identifier truncates on one line
+     instead of wrapping. Without this a 16-digit waybill breaks across two lines
+     and the row grows. */
+  .data-table td .mono-text {
+    display: inline-block; max-width: 20ch;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .tabular { font-variant-numeric: tabular-nums; }
+  .text-muted { color: var(--text-muted); font-size: 0.8125rem; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+
+  /* ══════════════════ 3. MOCKUP SCAFFOLD (not part of the app) ══════════════════ */
+  .controls {
+    position: sticky; top: 0; z-index: 50; display: flex; gap: var(--space-2);
+    align-items: center; justify-content: flex-end;
+    padding: var(--space-3) var(--space-5);
+    background: color-mix(in oklab, var(--bg-shell) 88%, transparent);
+    backdrop-filter: blur(8px); border-bottom: 1px solid var(--border-subtle);
+  }
+  .controls__label {
+    margin-right: auto; font-family: var(--font-mono); font-size: 0.6875rem;
+    letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    color: var(--text-muted); font-weight: 600;
+  }
+  .toggle-btn {
+    border: 1px solid var(--border-default); background: var(--bg-surface);
+    color: var(--text-secondary); border-radius: var(--radius-md);
+    padding: 5px 10px; font-size: 0.75rem; cursor: pointer; font-family: var(--font-sans);
+  }
+  .toggle-btn:hover { background: var(--bg-surface-hover); }
+  .toggle-btn:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+
+  .sheet { max-width: 1320px; margin: 0 auto; padding: var(--space-6) var(--space-5) var(--space-8); }
+  .sheet__title {
+    font-size: 26px; line-height: 32px; font-weight: 700;
+    letter-spacing: var(--tracking-tight); margin: 0 0 var(--space-1); text-wrap: balance;
+  }
+  .sheet__sub { color: var(--text-secondary); margin: 0 0 var(--space-4); max-width: 76ch; }
+  .sheet__note {
+    display: flex; gap: var(--space-3); align-items: flex-start;
+    font-size: 0.78125rem; color: var(--text-secondary); line-height: 1.6;
+    background: var(--bg-surface-muted); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md); padding: var(--space-3) var(--space-4);
+    margin: 0 0 var(--space-6);
+  }
+  .sheet__note b { color: var(--text-primary); font-weight: 600; }
+  .sheet__note code { font-family: var(--font-mono); font-size: 0.75em; }
+  .sheet__note svg { width: 16px; height: 16px; flex: 0 0 auto; color: var(--accent-primary); margin-top: 2px; }
+
+  .viewport-frame { margin: 0 0 var(--space-7); }
+  .viewport-frame__label {
+    display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap;
+    margin: 0 0 var(--space-3); padding-bottom: var(--space-2);
+    border-bottom: 1px dashed var(--border-default);
+  }
+  .viewport-frame__label .eyebrow-mono {
+    font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600;
+    letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    color: var(--accent-primary-hover);
+  }
+  .viewport-frame__label b { font-size: 0.875rem; font-weight: 600; color: var(--text-primary); }
+  .viewport-frame__label span.caption { font-size: 0.75rem; color: var(--text-muted); }
+  .viewport-frame__label .dep {
+    margin-left: auto; font-family: var(--font-mono); font-size: 0.625rem; font-weight: 600;
+    letter-spacing: var(--tracking-wide); text-transform: uppercase;
+    padding: 2px var(--space-2); border-radius: var(--radius-sm);
+    border: 1px solid var(--status-success-border);
+    background: var(--status-success-soft); color: var(--status-success-fg);
+  }
+  .viewport-frame__label .dep--blocked {
+    border-color: var(--status-warning-border);
+    background: var(--status-warning-soft); color: var(--status-warning-fg);
+  }
+  .viewport-frame__scroll {
+    overflow-x: auto; padding: var(--space-4);
+    background: var(--bg-shell); border-radius: var(--radius-xl);
+  }
+  .frame-grid { display: grid; gap: var(--space-4); }
+  @media (min-width: 900px) { .frame-grid--2 { grid-template-columns: 1fr 1fr; } }
+
+  /* The † gap marker — a mockup annotation, never shipped. Marks a value that
+     does not exist in today's API and arrives with #1995. */
+  .gap-mark {
+    font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600;
+    color: var(--status-warning-fg); cursor: help; vertical-align: super;
+    line-height: 1; margin-left: 2px;
+  }
+  .gap-legend {
+    display: flex; gap: var(--space-2); align-items: flex-start;
+    margin-top: var(--space-3); font-size: 0.75rem; color: var(--text-muted); line-height: 1.6;
+  }
+  .gap-legend .gap-mark { cursor: default; }
+
+  .gap-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+  .gap-table th, .gap-table td {
+    text-align: left; padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--border-subtle); vertical-align: top;
+  }
+  .gap-table thead th {
+    font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500;
+    letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    color: var(--text-muted); border-top: 0;
+  }
+  .gap-table code { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); }
+  .gap-table__wrap {
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+    background: var(--bg-surface); box-shadow: var(--shadow-xs); overflow-x: auto;
+  }
+
+  /* The before/after switch. Comparison has to happen in ONE place on screen —
+     two tables two scrolls apart is not a comparison, it is a memory test. */
+  .swap {
+    display: inline-flex; padding: 2px; gap: 2px; margin: 0 0 var(--space-3);
+    border: 1px solid var(--border-default); border-radius: var(--radius-md);
+    background: var(--bg-surface-muted);
+  }
+  .swap__btn {
+    font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600;
+    letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    padding: 4px var(--space-3); border: 0; border-radius: var(--radius-sm);
+    background: transparent; color: var(--text-muted); cursor: pointer;
+  }
+  .swap__btn[aria-pressed='true'] {
+    background: var(--bg-surface); color: var(--text-primary); box-shadow: var(--shadow-xs);
+  }
+  .swap__btn:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+  .swap-pane { display: none; }
+  .app-frame[data-view='before'] .swap-pane--before,
+  .app-frame[data-view='after'] .swap-pane--after,
+  .app-frame[data-view='next'] .swap-pane--next { display: block; }
+
+  /* Divergence frame (frame 01). One narrow column so the shapes are forced to
+     line up against a single left edge — that is what makes the disagreement
+     legible in one glance rather than requiring six page visits. */
+  .diverge { display: grid; gap: var(--space-4); }
+  @media (min-width: 900px) { .diverge--2 { grid-template-columns: 1fr 1fr; } }
+  .diverge__col {
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+    background: var(--bg-surface); box-shadow: var(--shadow-xs); overflow: hidden;
+  }
+  .diverge__head {
+    padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle);
+    background: var(--bg-shell);
+  }
+  .diverge__head h3 {
+    margin: 0 0 2px; font-size: 0.875rem; font-weight: 600; letter-spacing: var(--tracking-tight);
+  }
+  .diverge__head p { margin: 0; font-size: 0.75rem; color: var(--text-muted); }
+  .diverge__item {
+    display: grid; gap: var(--space-2); padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--border-subtle);
+  }
+  .diverge__item:first-of-type { border-top: 0; }
+  .diverge__src {
+    font-family: var(--font-mono); font-size: 0.625rem; letter-spacing: var(--tracking-caps);
+    text-transform: uppercase; color: var(--text-muted);
+  }
+  .diverge__src b { color: var(--text-secondary); font-weight: 600; }
+  .diverge__render {
+    padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);
+    background: var(--bg-surface-muted); min-height: 2.5rem;
+    display: flex; align-items: center;
+  }
+  .diverge__verdict { font-size: 0.75rem; color: var(--status-error-strong); }
+
+  /* Anatomy frames (02, 03). A labelled specimen grid — one state per row. */
+  .specimen { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+  .specimen th, .specimen td {
+    text-align: left; padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--border-subtle); vertical-align: middle;
+  }
+  .specimen thead th {
+    font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500;
+    letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    color: var(--text-muted); border-top: 0; background: var(--bg-shell);
+  }
+  .specimen tbody tr:hover { background: color-mix(in oklab, var(--bg-shell) 60%, transparent); }
+  .specimen__state { font-weight: 600; white-space: nowrap; }
+  .specimen__why { color: var(--text-secondary); font-size: 0.75rem; max-width: 34ch; }
+  .specimen code { font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text-secondary); }
+
+  /* ══════════════════ 4. APP PRIMITIVES — transcribed from index.css ══════════════════ */
+
+  /* Page shell */
+  .app-frame {
+    background: var(--bg-canvas); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg); padding: var(--space-5);
+    box-shadow: var(--shadow-xs); min-width: 0;
+  }
+  .page-header { display: grid; gap: 0.45rem; margin-bottom: var(--space-4); }
+  .eyebrow {
+    margin: 0; font-size: 0.76rem; font-weight: 700; letter-spacing: var(--tracking-caps);
+    text-transform: uppercase; color: var(--accent-primary-hover);
+  }
+  .page-title { margin: 0; color: var(--text-primary); font-size: 1.5rem; font-weight: 700; letter-spacing: var(--tracking-tight); }
+  .page-description { margin: 0; color: var(--text-secondary); font-size: 0.875rem; max-width: 68ch; }
+
+  /* Button */
+  .button {
+    display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+    height: 2rem; padding: 0 var(--space-4); border-radius: var(--radius-md);
+    border: 1px solid var(--accent-primary-border); background: var(--accent-primary);
+    color: var(--text-on-primary); font-family: var(--font-sans); font-size: 0.8125rem;
+    font-weight: 500; line-height: 1; cursor: pointer; white-space: nowrap;
+    box-shadow: var(--shadow-xs), var(--shadow-inset-top);
+    transition: background var(--duration-fast) var(--ease-standard);
+  }
+  .button:hover { background: var(--button-primary-bg-hover); }
+  .button:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+  .button--secondary {
+    background: var(--bg-surface); border-color: var(--border-default);
+    color: var(--text-primary); box-shadow: var(--shadow-xs);
+  }
+  .button--secondary:hover { background: var(--bg-surface-hover); }
+  .button--ghost { background: transparent; border-color: transparent; color: var(--text-secondary); box-shadow: none; }
+  .button--ghost:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+  .button--sm { height: 1.75rem; padding: 0 var(--space-3); font-size: 0.75rem; }
+
+  /* DataTable — index.css:2699-3320 */
+  .data-table__container {
+    overflow-x: auto; border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: var(--shadow-xs);
+  }
+  .data-table { width: auto; min-width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+  .data-table th, .data-table td {
+    padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-subtle);
+    text-align: left; vertical-align: middle; font-size: 0.8125rem; line-height: 1.4;
+  }
+  .data-table thead th {
+    color: var(--text-muted); font-family: var(--font-mono); font-size: 0.6875rem;
+    font-weight: 500; letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    background: var(--bg-shell); border-top: 0; white-space: nowrap;
+  }
+  /* Specificity deliberately raised above the base `.data-table td` rule. In the
+     app today `.data-table__cell--right` (0,1,0 — index.css:2770) loses to
+     `.data-table th, .data-table td { text-align: left }` (0,1,1 — :2797) on both
+     specificity and source order, so every column declaring align:'right'
+     renders left-aligned. Already surfaced as a one-line follow-up by #1965's
+     mockup; this file keeps showing the intended behaviour. */
+  .data-table th.data-table__cell--right,
+  .data-table td.data-table__cell--right { text-align: right; font-variant-numeric: tabular-nums; }
+  .data-table__row--linked { cursor: pointer; }
+  .data-table__row--linked:hover { background: color-mix(in oklab, var(--bg-shell) 60%, transparent); }
+  .data-table__row-link { color: var(--text-primary); text-decoration: none; font-weight: 500; }
+  .data-table__row--linked:hover .data-table__row-link { color: var(--accent-primary); }
+  .data-table__stack { display: grid; gap: 2px; }
+  .data-table__badge-row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+
+  /* StatusBadge */
+  .status-badge {
+    display: inline-flex; align-items: center; gap: var(--space-2);
+    padding: 2px var(--space-2); border: 1px solid var(--status-disabled-border);
+    border-radius: var(--radius-sm); background: var(--status-disabled-soft);
+    color: var(--status-disabled-fg); font-family: var(--font-mono); font-size: 0.6875rem;
+    font-weight: 500; line-height: 1.5; letter-spacing: var(--tracking-wide);
+    text-transform: uppercase; white-space: nowrap;
+  }
+  .status-badge--compact { padding: 1px var(--space-2); font-size: 0.625rem; }
+  .status-badge__dot {
+    width: 0.375rem; height: 0.375rem; border-radius: 999px;
+    background: currentColor; opacity: 0.75; flex-shrink: 0;
+  }
+  .status-badge--success { border-color: var(--status-success-border); background: var(--status-success-soft); color: var(--status-success-fg); }
+  .status-badge--warning { border-color: var(--status-warning-border); background: var(--status-warning-soft); color: var(--status-warning-fg); }
+  .status-badge--error   { border-color: var(--status-error-border);   background: var(--status-error-soft);   color: var(--status-error-fg); }
+  .status-badge--info    { border-color: var(--status-info-border);    background: var(--status-info-soft);    color: var(--status-info-fg); }
+  .status-badge--review  { border-color: var(--status-review-border);  background: var(--status-review-soft);  color: var(--status-review-fg); }
+  .status-badge--pulse .status-badge__dot { animation: status-badge-pulse 1.6s var(--ease-out) infinite; }
+  @keyframes status-badge-pulse {
+    0%   { box-shadow: 0 0 0 0 currentColor; opacity: 0.95; }
+    70%  { box-shadow: 0 0 0 6px transparent; opacity: 0.55; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+
+  /* Channel pill — index.css:9223-9244. The last TWO selectors do NOT exist in
+     the app today even though their tokens do (see correction 3 in the header
+     comment). Without them Erli and WooCommerce render the grey fallback dot. */
+  .channel-pill {
+    display: inline-flex; align-items: center; gap: var(--space-1);
+    padding: 2px var(--space-2); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-pill); background: var(--bg-surface-muted);
+    color: var(--text-secondary); font-family: var(--font-mono);
+    font-size: 0.6875rem; white-space: nowrap;
+  }
+  .channel-pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
+  .channel-pill[data-channel='allegro']::before     { background: var(--channel-allegro); }
+  .channel-pill[data-channel='prestashop']::before  { background: var(--channel-prestashop); }
+  .channel-pill[data-channel='amazon']::before      { background: var(--channel-amazon); }
+  .channel-pill[data-channel='shopify']::before     { background: var(--channel-shopify); }
+  .channel-pill[data-channel='erli']::before        { background: var(--channel-erli); }
+  .channel-pill[data-channel='woocommerce']::before { background: var(--channel-woocommerce); }
+
+  /* EntityLabel — shared/ui/entity-label.tsx */
+  .entity-label { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
+  .entity-label__name {
+    font-weight: 500; color: var(--text-primary); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .entity-label__name--link { color: var(--accent-primary); text-decoration: none; }
+  .entity-label__name--link:hover { text-decoration: underline; }
+  .entity-label__name--link:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-xs); }
+  .entity-label__name--unknown { color: var(--text-muted); font-style: italic; font-weight: 400; }
+  .entity-label__id {
+    font-family: var(--font-mono); font-size: 11.5px; color: var(--text-muted);
+    background: var(--bg-surface-muted); border: 1px solid var(--border-subtle);
+    padding: 1px 6px; border-radius: 4px; white-space: nowrap;
+  }
+  .entity-label__copy {
+    border: none; background: transparent; padding: 2px 4px; color: var(--text-muted);
+    font-family: var(--font-mono); font-size: 11px; border-radius: 4px; cursor: pointer;
+    opacity: 0; transform: translateX(-4px);
+    transition: opacity var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);
+  }
+  .data-table tbody tr:hover .entity-label__copy,
+  .specimen tbody tr:hover .entity-label__copy,
+  .diverge__render:hover .entity-label__copy,
+  .data-card:hover .entity-label__copy,
+  .entity-label:hover .entity-label__copy,
+  .entity-label__copy:focus-visible { opacity: 1; transform: translateX(0); }
+  .entity-label__copy:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+  .entity-label__copy:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+  .entity-label__copy[data-copied='true'] { opacity: 1; transform: translateX(0); color: var(--status-success-fg); }
+
+  /* CopyableId — index.css:9291-9349 */
+  .copyable-id { display: inline-flex; align-items: center; gap: var(--space-2); }
+  .copyable-id__value {
+    font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: var(--tracking-wide);
+    color: var(--text-secondary); background: var(--bg-surface-muted);
+    padding: 1px 6px; border-radius: var(--radius-xs);
+    max-width: 18ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .copyable-id__copy {
+    display: inline-flex; align-items: center; padding: 1px 6px;
+    font-family: var(--font-mono); font-size: 0.625rem; letter-spacing: var(--tracking-wide);
+    color: var(--text-muted); background: transparent;
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-xs); cursor: pointer;
+    opacity: 0; transform: translateX(-4px);
+    transition:
+      opacity var(--duration-fast) var(--ease-out),
+      transform var(--duration-fast) var(--ease-out),
+      color var(--duration-fast) var(--ease-out),
+      border-color var(--duration-fast) var(--ease-out);
+  }
+  .copyable-id__copy:hover { color: var(--text-primary); border-color: var(--border-default); }
+  .copyable-id__copy:focus-visible {
+    outline: none; box-shadow: var(--shadow-focus); opacity: 1; transform: translateX(0);
+  }
+  .data-table tbody tr:hover .copyable-id__copy,
+  .specimen tbody tr:hover .copyable-id__copy,
+  .diverge__render:hover .copyable-id__copy,
+  .data-card:hover .copyable-id__copy,
+  .copyable-id:hover .copyable-id__copy,
+  .copyable-id:focus-within .copyable-id__copy { opacity: 1; transform: translateX(0); }
+  .copyable-id__copy[data-copied='true'] {
+    opacity: 1; transform: translateX(0); color: var(--status-success-fg);
+  }
+  /* ⚠ DELIBERATE DEVIATION from the transcription above, and a follow-up.
+     Every CopyableId in #1996 receives an ALREADY-shortened label, so the
+     primitive's own `max-width: 18ch` (index.css:9299) truncates it a SECOND
+     time. `shortenId('ol_customer_74b1e9c0…')` is 20 characters, which renders as
+     `ol_customer_74…` — that reads as broken, not as abbreviated. The cap earns
+     its keep for a raw id passed straight in; it is wrong for a pre-shortened
+     one. Shown here as intended; logged in frame 12. */
+  .copyable-id__value { max-width: none; }
+
+  /* ProductThumbnail — shared/ui/product-thumbnail.tsx */
+  .product-thumbnail {
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+    border: 1px solid var(--border-subtle); border-radius: 0.375rem;
+    background: var(--bg-surface-muted); overflow: hidden;
+    font-family: var(--font-mono); color: var(--text-muted);
+    text-transform: uppercase; line-height: 1; user-select: none;
+  }
+  .product-thumbnail--sm { width: 1.5rem; height: 1.5rem; font-size: 0.6875rem; }
+  .product-thumbnail--md { width: 2rem; height: 2rem; font-size: 0.8125rem; }
+  /* Stand-in for a real <img>: this file embeds no binaries, so a "has image"
+     thumbnail is a flat tinted tile. The initial-glyph fallback beside it is the
+     REAL component behaviour for an image-less item. */
+  .product-thumbnail--img { background: linear-gradient(135deg, var(--bg-strong), var(--bg-surface-muted)); }
+
+  /* ConnectionDot — index.css:2425-2460 */
+  .conn-dot {
+    display: inline-block; width: 14px; height: 14px; border-radius: 50%;
+    flex: 0 0 auto; vertical-align: -2px;
+    background: hsl(var(--conn-hue, 220) 55% 45%);
+  }
+  .conn-dot__glyph { display: block; width: 14px; height: 14px; }
+  .conn-dot__glyph text { fill: #fff; font-size: 9px; font-weight: 700; font-family: var(--font-mono, ui-monospace); }
+  .conn-dot--generic { background: var(--text-muted); }
+  html[data-theme='dark'] .conn-dot { background: hsl(var(--conn-hue, 220) 60% 55%); }
+  html[data-theme='dark'] .conn-dot--generic { background: var(--text-muted); }
+
+  /* Orders cell stacks — index.css:8783, :8825-8841 */
+  .orders-cell-stack { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+  .orders-cell-stack--end { align-items: flex-end; text-align: right; min-width: 8rem; }
+  .orders-cell-sub { font-size: 0.75rem; }
+  .orders-money-total { font-weight: 640; }
+  /* index.css:8785-8792 — the raw failure reason under the Status badge. */
+  .orders-status-reason {
+    font-size: 0.6875rem; color: var(--status-error-strong); max-width: 220px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* index.css:8899 — SLA badge beside its countdown. The countdown must not wrap:
+     "Overdue 4h" broken across two lines reads as two separate facts. */
+  .orders-shipby-row { display: inline-flex; align-items: center; gap: 6px; }
+  .orders-shipby-row .orders-cell-sub { white-space: nowrap; }
+  /* index.css:8848-8871 — inline "Issue invoice" / "Generate label" row action.
+     Neutral at rest so the accent stays reserved. */
+  .orders-row-cta {
+    display: inline-flex; align-items: center; gap: 4px; min-height: 24px;
+    padding: 1px 8px; border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm); color: var(--text-secondary);
+    font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600;
+    letter-spacing: 0.03em; text-transform: uppercase; text-decoration: none;
+    white-space: nowrap;
+  }
+  .orders-row-cta:hover, .orders-row-cta:focus-visible {
+    border-color: var(--accent-primary-border); color: var(--accent-primary-soft-strong);
+  }
+  .orders-row-cta:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+  .orders-row-cta__plus { color: var(--text-muted); font-weight: 700; }
+  .orders-card-sub { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .orders-items-line { display: inline-flex; align-items: center; gap: 6px; max-width: 250px; min-width: 0; }
+  .orders-items-preview { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .orders-items-line .orders-items-preview { flex: 0 1 auto; min-width: 0; }
+  .orders-more-count {
+    flex-shrink: 0; font-family: var(--font-mono); font-size: 0.6875rem;
+    color: var(--text-muted); background: var(--bg-surface-muted);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0 5px;
+  }
+
+  /* Products cell stacks — index.css:16029-16035 */
+  .products-cell-stack { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+  .products-cell-stack--end { align-items: flex-end; min-width: 8rem; }
+  .products-cell-sub { font-size: 0.75rem; color: var(--text-muted); }
+  .products-cell-sub--date { font-size: 0.6875rem; white-space: nowrap; }
+  .products-stock-value { font-weight: 600; }
+  .product-row { display: inline-flex; align-items: center; gap: var(--space-3); min-width: 0; }
+  .product-row__name { font-weight: 600; color: var(--text-primary); text-decoration: none; }
+  .product-row__name--link { color: var(--text-primary); }
+  .data-table__row--linked:hover .product-row__name--link { color: var(--accent-primary); }
+  .ds-row { display: inline-flex; align-items: center; gap: var(--space-2); }
+  /* Transcribed from the #1965 mockup's `.listing-cell__variant`. */
+  .listing-variant {
+    font-size: 0.75rem; color: var(--text-secondary); padding: 1px 6px;
+    background: var(--bg-surface-muted); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xs); white-space: nowrap;
+  }
+
+  /* Coverage pills — index.css:16106-16145 */
+  .coverage-pills { display: inline-flex; flex-wrap: wrap; gap: var(--space-1); }
+  .coverage-pill {
+    display: inline-flex; align-items: center; gap: var(--space-1);
+    padding: 2px var(--space-2); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-pill); background: var(--bg-surface-muted);
+    color: var(--text-secondary); font-family: var(--font-mono);
+    font-size: 0.6875rem; white-space: nowrap;
+  }
+  .coverage-pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
+  .coverage-pill[data-channel='allegro']::before    { background: var(--channel-allegro); }
+  .coverage-pill[data-channel='prestashop']::before { background: var(--channel-prestashop); }
+  .coverage-pill[data-channel='erli']::before       { background: var(--channel-erli); }
+  .coverage-pill[data-channel='woocommerce']::before { background: var(--channel-woocommerce); }
+  .coverage-pill--full { border-color: var(--status-success-border); background: var(--status-success-soft); color: var(--status-success-fg); }
+  .coverage-pill--partial { border-color: var(--status-warning-border); background: var(--status-warning-soft); color: var(--status-warning-fg); }
+  .coverage-pill--none { color: var(--text-muted); }
+  .coverage-pill__count { font-weight: 600; }
+
+  /* Shipments severity word — index.css:11560-11580. Deliberately no chip. */
+  .shipments-page__severity { font-weight: 600; font-size: 0.8125rem; }
+  .shipments-page__severity[data-severity='Fix'] { color: var(--status-error); }
+  .shipments-page__severity[data-severity='Finish'] { color: var(--status-warning-fg); }
+  .shipments-page__severity[data-severity='Send'] { color: var(--status-info-fg); }
+  .shipments-page__severity[data-severity='View'] { color: var(--text-muted); font-weight: 400; }
+  .shipments-page__provider { display: inline-flex; align-items: center; gap: var(--space-2); }
+
+  /* InvoicePdfLink — the component ships className="invoice-pdf-link" with NO
+     rule in index.css, so it inherits the default anchor. Transcribed as such. */
+  .invoice-pdf-link { color: var(--text-link); }
+
+  .time-cell { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; }
+
+  /* Feedback states */
+  .state-card {
+    border: 1px solid var(--border-default); border-radius: 0.5rem;
+    background: var(--bg-surface); box-shadow: var(--shadow-soft);
+    padding: 1rem; display: grid; gap: 0.75rem; text-align: left;
+  }
+  .state-card__title { margin: 0; font-size: 1.0625rem; font-weight: 600; letter-spacing: var(--tracking-tight); }
+  .state-card__message { margin: 0; color: var(--text-secondary); font-size: 0.875rem; }
+  .state-card__actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
+  /* Skeleton */
+  .skeleton {
+    display: block; border-radius: var(--radius-xs);
+    background: linear-gradient(90deg, var(--bg-surface-muted) 25%, var(--bg-surface-hover) 37%, var(--bg-surface-muted) 63%);
+    background-size: 400% 100%; animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  }
+  @keyframes skeleton-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+  .skeleton--thumb { width: 1.5rem; height: 1.5rem; border-radius: 0.375rem; }
+  .skeleton--line { height: 0.6875rem; }
+
+  /* Card view (≤767px table-to-cards fold, per the style guide parity matrix) */
+  .card-list { display: grid; gap: var(--space-3); }
+  .data-card {
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+    background: var(--bg-surface); box-shadow: var(--shadow-xs);
+    padding: var(--space-3) var(--space-4); display: grid; gap: var(--space-3);
+  }
+  /* The status badge sits on its OWN row, not beside the title. This mirrors the
+     app's card branch, where `meta` is a separate `.data-table__badge-row` region
+     — and it is load-bearing here: putting the badge inline stole ~90px from a
+     328px card and truncated the order number itself, which is the one string on
+     the card that must never be abbreviated. */
+  .data-card__head { display: flex; gap: var(--space-3); align-items: flex-start; }
+  .data-card__main { display: grid; gap: 2px; min-width: 0; flex: 1 1 auto; }
+  .data-card__facts {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2) var(--space-4);
+    border-top: 1px solid var(--border-subtle); padding-top: var(--space-3);
+  }
+  .data-card__fact { display: grid; gap: 2px; min-width: 0; }
+  .data-card__fact dd { min-width: 0; }
+  /* A two-line Connection cell does not fit a half-width card fact at 360px
+     (measured: 156px of content in a 130px track), so it spans the row. The app
+     already ships this exact escape hatch for its widest card fact —
+     `.orders-card-facts__wide` (orders-list-page.tsx card branch) — so this is a
+     reused convention, not a new one. */
+  .data-card__fact--wide { grid-column: 1 / -1; }
+  .data-card__fact dt {
+    font-family: var(--font-mono); font-size: 0.625rem; letter-spacing: var(--tracking-caps);
+    text-transform: uppercase; color: var(--text-muted);
+  }
+  .data-card__fact dd { margin: 0; font-size: 0.8125rem; color: var(--text-primary); }
+
+  /* Device scaffold. 360px is the style guide's own mobile capture width
+     (§ Responsive), not a new design value. A fixed-width box inside the 1320px
+     sheet, so no @media fires on it: it shows the intended layout at that width,
+     it does not prove a breakpoint fires. */
+  .phone-frame { max-width: 360px; margin: 0 auto; }
+  .tablet-frame { max-width: 768px; margin: 0 auto; }
+  /* Channel folds under the order name below the Channel column's 1024px hide
+     breakpoint (index.css:8902-8907). In the app this is a media query; the device
+     frames here are fixed-width boxes inside the 1320px sheet, so no @media fires
+     on them and the tablet pane opts in explicitly with this class. */
+  .orders-order-channel { display: inline-flex; align-items: center; gap: 6px; }
+  /* ── The tablet fold (#1996, decided 2026-08-04) ──────────────────────────
+     Below 1024px the Connection column disappears on Products, Shipments and
+     Invoices. Rather than let the fact vanish, it relocates into an adjacent cell
+     — the pattern `.orders-order-channel` already establishes for the channel
+     pill. Same silhouette as that rule; one line, adornment plus the human name.
+
+     The id is deliberately NOT carried into the fold. Its job is to be copied, and
+     copying is a pointer affordance (the Copy button reveals on row hover, which
+     does not exist on touch). At tablet width the question is "which connection is
+     this?", which the name answers; "give me its id" stays a desktop and
+     detail-page action. So the fold is the cell's FIRST line, not both. */
+  .conn-fold {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 0.75rem; color: var(--text-muted); min-width: 0;
+  }
+  .conn-fold__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .conn-fold__name--link { color: var(--text-secondary); text-decoration: none; }
+  .conn-fold__name--link:hover { text-decoration: underline; }
+
+  /* ══════════════════ 6. THE ONE NEW RULE (#1996) ══════════════════ */
+
+  /* OrderIdentityCell. A thumbnail beside the same two-level stack the app
+     already ships three times over (`.orders-cell-stack` index.css:8783,
+     `.products-cell-stack` :16029, `.conn-cell` in the #1965 mockup) — what a
+     person reads on top, the rest beneath. The thumbnail is what Orders lacks
+     today and what Shipments and Invoices lack entirely. */
+  .order-cell { display: flex; align-items: flex-start; gap: var(--space-3); min-width: 0; }
+  .order-cell__body {
+    display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
+    min-width: 0; flex: 1 1 auto;
+  }
+  /* Same shape, one level up: name over identifier. Identical to `.conn-cell`
+     as accepted in the #1965 mockup. */
+  .conn-cell { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; min-width: 0; }
+
+  /* A column flex container with `align-items: flex-start` sizes each child to
+     its own content, so a long order number or item title escapes the box once
+     the column gets narrow — measured at 360px inside the mobile card: 203px of
+     content in a 176px slot. Capping the children at the container width lets the
+     ellipsis these primitives ALREADY declare (`.entity-label__name`,
+     `.orders-items-preview`, `.copyable-id__value`) actually fire, instead of
+     introducing a character cap. No new value: 100% and `flex: 1 1 auto` are
+     structural, not design tokens. */
+  .order-cell__body > *, .conn-cell > * { max-width: 100%; }
+  .data-card .copyable-id__value { max-width: 100%; }
+</style>
+</head>
+<body>
+
+<div class="controls">
+  <span class="controls__label">#1996 · Shared Order &amp; Connection cells</span>
+  <button class="toggle-btn" id="theme-toggle" type="button">Toggle theme</button>
+</div>
+
+<main class="sheet">
+  <h1 class="sheet__title">One Order cell and one Connection cell, across six lists</h1>
+  <p class="sheet__sub">
+    Orders, Products, Listings, Customers, Shipments and Invoices each answer
+    &bdquo;which order is this?&rdquo; and &bdquo;where did it come from?&rdquo; in their own way. This is the
+    specification for answering both the same way everywhere.
+  </p>
+
+  <div class="sheet__note">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" /><path d="M12 8h.01M11 12h1v4h1" />
+    </svg>
+    <span>
+      <b>Scope.</b> Two shared compositions plus one label helper &mdash; no new
+      <code>shared/ui</code> component. The full Listings-page redesign stays with
+      <b>#1965</b> and its own accepted mockup; frame 06 here touches only that page&rsquo;s
+      Platform and Connection columns, so the redesign inherits the shared cells.
+      Cells marked <span class="gap-mark">&dagger;</span> need data that does not exist in
+      today&rsquo;s API and arrives with <b>#1995</b>.
+    </span>
+  </div>
+
+  <!-- ═══════════ FRAME 01 — the divergence, stated before any solution ═══════════ -->
+  <section class="viewport-frame" id="frame-diverge">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">01 &middot; Divergence</span>
+      <b>One order and one connection, rendered eight different ways</b>
+      <span class="caption">every specimen below is transcribed from the shipping code, at the line given</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="diverge diverge--2">
+
+        <div class="diverge__col">
+          <div class="diverge__head">
+            <h3>The same order, three times</h3>
+            <p>Order <span class="mono-text">6839-2911-4402</span> &middot; internal id <span class="mono-text">ol_order_a3f24&hellip;67</span></p>
+          </div>
+          <div id="diverge-order"></div>
+        </div>
+
+        <div class="diverge__col">
+          <div class="diverge__head">
+            <h3>The same connection, five times</h3>
+            <p>&bdquo;Erli Demo&rdquo; &middot; <span class="mono-text">aa966882-0d21-4e2f-9d5a-71c4a5f14cfb</span></p>
+          </div>
+          <div id="diverge-conn"></div>
+        </div>
+
+      </div>
+      <div class="gap-legend">
+        <span>
+          Nothing here is a strawman: the Invoices row really does print a raw 41-character id with no
+          link and no Copy, and Listings and Customers really do print a bare UUID. Three helpers
+          already implement one truncation algorithm three times &mdash;
+          <span class="mono-text">shortenId()</span> (private, <span class="mono-text">entity-label.tsx:98</span>),
+          <span class="mono-text">truncateOrderId()</span> (<span class="mono-text">shipment-severity.ts:25</span>)
+          and <span class="mono-text">formatOrderRef()</span> (<span class="mono-text">orders-list-page.tsx:195</span>).
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 02 — OrderIdentityCell anatomy ═══════════ -->
+  <section class="viewport-frame" id="frame-anatomy-order">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">02 &middot; Anatomy</span>
+      <b><code>OrderIdentityCell</code> &mdash; six states</b>
+      <span class="caption">features/orders/components/ &middot; props: orderId, orderNumber, firstItemName, firstItemImageUrl, itemCount</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="gap-table__wrap">
+        <table class="specimen">
+          <thead><tr><th>State</th><th>Renders</th><th>Why it looks like that</th></tr></thead>
+          <tbody id="anatomy-order"></tbody>
+        </table>
+      </div>
+      <div class="gap-legend">
+        <span>
+          Copy always writes the <b>full</b> internal order id to the clipboard, never the shortened
+          form &mdash; the shortened string exists to be read, not to be pasted into a support ticket.
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 03 — ConnectionCell anatomy ═══════════ -->
+  <section class="viewport-frame" id="frame-anatomy-conn">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">03 &middot; Anatomy</span>
+      <b><code>ConnectionCell</code> &mdash; four states</b>
+      <span class="caption">features/connections/components/ &middot; props: connectionId, name, platformType, adornment?</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="gap-table__wrap">
+        <table class="specimen">
+          <thead><tr><th>State</th><th>Renders</th><th>Why it looks like that</th></tr></thead>
+          <tbody id="anatomy-conn"></tbody>
+        </table>
+      </div>
+      <div class="gap-legend">
+        <span>
+          The page supplies <span class="mono-text">name</span> from its own
+          <span class="mono-text">useConnectionsQuery()</span> map &mdash; <b>one request per page</b>.
+          Deliberately not <span class="mono-text">ConnectionEntityLabel</span>, which fires
+          <span class="mono-text">useConnectionQuery</span> per row; that is the detail-page convention
+          and inside a 50-row table it is 50 requests.
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 04 — Orders ═══════════ -->
+  <section class="viewport-frame" id="frame-orders">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">04 &middot; 00 Orders</span>
+      <b>Gains the thumbnail it never had</b>
+      <span class="caption">pages/orders/orders-list-page.tsx &middot; 7 columns, unchanged except the Order and Channel cells</span>
+      <span class="dep">Ships now</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="app-frame" data-view="after" data-swap>
+        <div class="page-header">
+          <p class="eyebrow">Operations</p>
+          <h2 class="page-title">Orders</h2>
+          <p class="page-description">Every order ingested from a marketplace or shop, and where each one stands.</p>
+        </div>
+        <div class="swap" role="group" aria-label="Compare Orders before and after">
+          <button class="swap__btn" type="button" data-swap-to="before" aria-pressed="false">Today</button>
+          <button class="swap__btn" type="button" data-swap-to="after" aria-pressed="true">#1996</button>
+        </div>
+        <div class="swap-pane swap-pane--before"><div class="data-table__container"><table class="data-table" id="orders-before"></table></div></div>
+        <div class="swap-pane swap-pane--after"><div class="data-table__container"><table class="data-table" id="orders-after"></table></div></div>
+      </div>
+      <div class="gap-legend">
+        <span>
+          Two changes only. The Order cell gains a <span class="mono-text">ProductThumbnail</span> and
+          drops the <span class="mono-text">entity-label__id</span> chip (the shortened id moves to being
+          the name&rsquo;s fallback, so it never competes with a real order number). The Channel pill&rsquo;s
+          label now comes from the plugin registry, so <span class="mono-text">erli</span> reads
+          &bdquo;Erli&rdquo; instead of falling through the four-entry
+          <span class="mono-text">CHANNEL_LABELS</span> map and rendering raw.
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 05 — Products ═══════════ -->
+  <section class="viewport-frame" id="frame-products">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">05 &middot; 01 Products</span>
+      <b>Source becomes a real connection cell</b>
+      <span class="caption">pages/products/products-list-page.tsx &middot; no backend dependency at all</span>
+      <span class="dep">Ships now</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="app-frame" data-view="after" data-swap>
+        <div class="page-header">
+          <p class="eyebrow">Catalogue</p>
+          <h2 class="page-title">Products</h2>
+          <p class="page-description">Your master catalogue and where each product is listed.</p>
+        </div>
+        <div class="swap" role="group" aria-label="Compare Products before and after">
+          <button class="swap__btn" type="button" data-swap-to="before" aria-pressed="false">Today</button>
+          <button class="swap__btn" type="button" data-swap-to="after" aria-pressed="true">#1996</button>
+        </div>
+        <div class="swap-pane swap-pane--before"><div class="data-table__container"><table class="data-table" id="products-before"></table></div></div>
+        <div class="swap-pane swap-pane--after"><div class="data-table__container"><table class="data-table" id="products-after"></table></div></div>
+      </div>
+      <div class="gap-legend">
+        <span>
+          <b>No EAN on this row &mdash; decided, not deferred.</b> EAN lives on the variant, so a product row
+          could only ever show one when the product happens to resolve to a single variant. That means the
+          column would carry a barcode on some rows and not others, for a reason invisible to the operator
+          &mdash; worse than not showing it at all. The EAN stays where it is unambiguous: the variant table,
+          the product detail page, and the Listings row, which <em>is</em> variant-scoped. The row therefore
+          keeps <span class="mono-text">SKU: &hellip;</span> alone, and Products drops its backend dependency
+          entirely &mdash; the whole page ships without #1995.
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 06 — Listings ═══════════ -->
+  <section class="viewport-frame" id="frame-listings">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">06 &middot; 02 Listings</span>
+      <b>Two columns only &mdash; the redesign stays with #1965</b>
+      <span class="caption">pages/listings/listings-list-page.tsx &middot; Platform and Connection, nothing else</span>
+      <span class="dep">Ships now</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="app-frame" data-view="after" data-swap>
+        <div class="page-header">
+          <p class="eyebrow">Channels</p>
+          <h2 class="page-title">Listings</h2>
+          <p class="page-description">Identifier mappings between your catalogue and each marketplace.</p>
+        </div>
+        <div class="swap" role="group" aria-label="Compare Listings today, after #1996, and after #1965">
+          <button class="swap__btn" type="button" data-swap-to="before" aria-pressed="false">Today</button>
+          <button class="swap__btn" type="button" data-swap-to="after" aria-pressed="true">#1996</button>
+          <button class="swap__btn" type="button" data-swap-to="next" aria-pressed="false">After #1965</button>
+        </div>
+        <div class="swap-pane swap-pane--before"><div class="data-table__container"><table class="data-table" id="listings-before"></table></div></div>
+        <div class="swap-pane swap-pane--after"><div class="data-table__container"><table class="data-table" id="listings-after"></table></div></div>
+        <div class="swap-pane swap-pane--next"><div class="data-table__container"><table class="data-table" id="listings-next"></table></div></div>
+      </div>
+      <div class="gap-legend">
+        <span>
+          This page prints five mono identifiers in a row today, and the Connection column is the one an
+          operator most needs to read rather than decode. #1965 rebuilds the rest of the page into
+          human-readable columns and lifecycle tabs; landing the shared cell here first means that
+          redesign inherits it instead of inventing a seventh variant.
+          <br /><br />
+          <b>Reconciled with #1965 &mdash; switch to &bdquo;After #1965&rdquo; above.</b> The two mockups show two
+          different Listings tables, which invites the question &bdquo;will they conflict?&rdquo;. They will not:
+          they are sequential, and the third view proves it. #1965 replaces the whole page, and the shared
+          cell drops into its Connection column untouched &mdash; that pane is #1965&rsquo;s own column set
+          rendered from <em>this</em> file&rsquo;s <span class="mono-text">connCell()</span>, so a divergence
+          would be visible right there. Ownership of the cell moves here; #1965&rsquo;s implementation imports
+          <span class="mono-text">ConnectionCell</span> rather than re-authoring it. Its table keeps
+          <b>Channel as a separate column</b>, so it passes <em>no</em> adornment &mdash; which corrects this
+          issue&rsquo;s own body, where the pill adornment was wrongly attributed to &bdquo;Products /
+          Listings&rdquo;. It is Products only. The <span class="gap-mark">&dagger;</span> on Price and
+          Quantity is <b>#1965&rsquo;s</b> gap, not #1995&rsquo;s.
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 07 — Customers ═══════════ -->
+  <section class="viewport-frame" id="frame-customers">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">07 &middot; 03 Customers</span>
+      <b>Leads with a person, not a hash</b>
+      <span class="caption">pages/customers/customers-list-page.tsx &middot; 5 columns become 4</span>
+      <span class="dep">Ships now</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="app-frame" data-view="after" data-swap>
+        <div class="page-header">
+          <p class="eyebrow">Operations</p>
+          <h2 class="page-title">Customers</h2>
+          <p class="page-description">Resolved buyer identities across every connected marketplace and shop.</p>
+        </div>
+        <div class="swap" role="group" aria-label="Compare Customers before and after">
+          <button class="swap__btn" type="button" data-swap-to="before" aria-pressed="false">Today</button>
+          <button class="swap__btn" type="button" data-swap-to="after" aria-pressed="true">#1996</button>
+        </div>
+        <div class="swap-pane swap-pane--before"><div class="data-table__container"><table class="data-table" id="customers-before"></table></div></div>
+        <div class="swap-pane swap-pane--after"><div class="data-table__container"><table class="data-table" id="customers-after"></table></div></div>
+      </div>
+      <div class="gap-legend">
+        <span>
+          <b>The standalone Email&nbsp;Hash column is removed &mdash; deliberately.</b> It becomes the
+          customer-name fallback for deployments running <span class="mono-text">OL_STORE_PII=false</span>
+          (row 4 below), where the API returns no first or last name at all, and it stays in full on the
+          customer detail page. The list also does not gain an Orders column: it has none today, and the
+          order count already lives on the detail page&rsquo;s tab heading.
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 08 — Shipments ═══════════ -->
+  <section class="viewport-frame" id="frame-shipments">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">08 &middot; 04 Shipments</span>
+      <b>The order stops being an opaque string</b>
+      <span class="caption">pages/shipments/shipments-page.tsx &middot; stickyLeftColumns=2, no rowHref &mdash; the row expands, it does not navigate</span>
+      <span class="dep dep--blocked">Waits on #1995</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="app-frame" data-view="after" data-swap>
+        <div class="page-header">
+          <p class="eyebrow">Fulfilment</p>
+          <h2 class="page-title">Shipments</h2>
+          <p class="page-description">Labels, waybills and carrier state for every dispatched order.</p>
+        </div>
+        <div class="swap" role="group" aria-label="Compare Shipments before and after">
+          <button class="swap__btn" type="button" data-swap-to="before" aria-pressed="false">Today</button>
+          <button class="swap__btn" type="button" data-swap-to="after" aria-pressed="true">#1996</button>
+        </div>
+        <div class="swap-pane swap-pane--before"><div class="data-table__container"><table class="data-table" id="shipments-before"></table></div></div>
+        <div class="swap-pane swap-pane--after"><div class="data-table__container"><table class="data-table" id="shipments-after"></table></div></div>
+      </div>
+      <div class="gap-legend">
+        <span>
+          <span class="gap-mark">&dagger;</span> Every Order cell in this table is blocked: the shipments
+          response carries <span class="mono-text">orderId</span> and nothing else. The Connection cell is
+          not blocked &mdash; it keeps the <span class="mono-text">ConnectionDot</span> it already has and
+          gains a shortened id with Copy beneath the name.
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 09 — Invoices ═══════════ -->
+  <section class="viewport-frame" id="frame-invoices">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">09 &middot; 05 Invoices</span>
+      <b>Two columns collapse into one document identity</b>
+      <span class="caption">pages/invoicing/invoices-list-page.tsx &middot; 9 columns become 8</span>
+      <span class="dep dep--blocked">Waits on #1995</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="app-frame" data-view="after" data-swap>
+        <div class="page-header">
+          <p class="eyebrow">Finance</p>
+          <h2 class="page-title">Invoices</h2>
+          <p class="page-description">Fiscal documents issued for your orders, and their clearance state.</p>
+        </div>
+        <div class="swap" role="group" aria-label="Compare Invoices before and after">
+          <button class="swap__btn" type="button" data-swap-to="before" aria-pressed="false">Today</button>
+          <button class="swap__btn" type="button" data-swap-to="after" aria-pressed="true">#1996</button>
+        </div>
+        <div class="swap-pane swap-pane--before"><div class="data-table__container"><table class="data-table" id="invoices-before"></table></div></div>
+        <div class="swap-pane swap-pane--after"><div class="data-table__container"><table class="data-table" id="invoices-after"></table></div></div>
+      </div>
+      <div class="gap-legend">
+        <span>
+          <b>Invoice no.</b> and <b>Document type</b> answer one question &mdash; &bdquo;what document is
+          this?&rdquo; &mdash; so they become one column: the number over the type, the number still a working
+          PDF link. A receipt has no number and shows <span class="mono-text">&ndash;</span> over
+          &bdquo;Receipt&rdquo; (row 4), which reads as a receipt rather than as missing data. Row 5 is the
+          honest worst case: a document whose order record no longer resolves, so
+          <span class="mono-text">orderSummary</span> is <span class="mono-text">null</span> and the cell
+          renders <span class="mono-text">&ndash;</span>.
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 10 — mobile ═══════════ -->
+  <section class="viewport-frame" id="frame-mobile">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">10 &middot; Mobile</span>
+      <b>&le; 767 px &mdash; the card title is the same cell as the column</b>
+      <span class="caption">360 &times; 812 &middot; Shipments has a card branch of its own (shipments-page.tsx:584) that must not diverge again</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="phone-frame">
+        <div class="app-frame">
+          <div class="page-header">
+            <p class="eyebrow">Fulfilment</p>
+            <h2 class="page-title">Shipments</h2>
+          </div>
+          <div class="card-list" id="mobile-shipments"></div>
+          <div class="page-header" style="margin-top: var(--space-6)">
+            <p class="eyebrow">Operations</p>
+            <h2 class="page-title">Orders</h2>
+          </div>
+          <div class="card-list" id="mobile-orders"></div>
+        </div>
+      </div>
+      <div class="gap-legend">
+        <span>
+          Both card lists call the same <span class="mono-text">orderCell()</span> helper as every desktop
+          frame above, so the mobile branch cannot drift from its column &mdash; the exact failure mode this
+          issue exists to fix. Shipments&rsquo; card branch is called out explicitly because it is a
+          <em>separate</em> render path in the page today, not a reflow of the column.
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 11 — tablet ═══════════
+       Deliberately AFTER mobile: its claim is a negation of the one above it. The
+       table does not fold to cards at 768 — it keeps its columns and scrolls — but
+       three of them stop rendering, and two of those three are the shared cell this
+       whole issue is about. -->
+  <section class="viewport-frame" id="frame-tablet">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">11 &middot; Tablet</span>
+      <b>768 px &mdash; the Connection column goes, so the connection moves</b>
+      <span class="caption">768 &times; 1024 &middot; no fold to cards here; the container scrolls and <code>hideBelow</code> drops columns</span>
+      <span class="dep">Decided</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="tablet-frame">
+        <div class="app-frame">
+          <div class="page-header">
+            <p class="eyebrow">Operations</p>
+            <h2 class="page-title">Orders</h2>
+            <p class="page-description">The existing precedent: Channel disappears, the pill folds under the order name.</p>
+          </div>
+          <div class="data-table__container"><table class="data-table" id="tablet-orders"></table></div>
+
+          <div class="page-header" style="margin-top: var(--space-6)">
+            <p class="eyebrow">Catalogue</p>
+            <h2 class="page-title">Products</h2>
+            <p class="page-description">Source is gone; the connection folds into the Product cell as a third line.</p>
+          </div>
+          <div class="data-table__container"><table class="data-table" id="tablet-products"></table></div>
+
+          <div class="page-header" style="margin-top: var(--space-6)">
+            <p class="eyebrow">Fulfilment</p>
+            <h2 class="page-title">Shipments</h2>
+            <p class="page-description">Connection is gone; it folds into Processor, beside the carrier badge.</p>
+          </div>
+          <div class="data-table__container"><table class="data-table" id="tablet-shipments"></table></div>
+
+          <div class="page-header" style="margin-top: var(--space-6)">
+            <p class="eyebrow">Finance</p>
+            <h2 class="page-title">Invoices</h2>
+            <p class="page-description">Connection is gone; it folds into Document type, under the document.</p>
+          </div>
+          <div class="data-table__container"><table class="data-table" id="tablet-invoices"></table></div>
+        </div>
+      </div>
+
+      <div class="gap-table__wrap" style="margin-top: var(--space-4)">
+        <table class="gap-table">
+          <thead><tr><th>List</th><th>Dropped at 768 px</th><th>Shared Connection cell</th></tr></thead>
+          <tbody id="tablet-matrix"></tbody>
+        </table>
+      </div>
+
+      <div class="gap-legend">
+        <span>
+          <b>The problem.</b> <code>hide-below-1024</code> fires at <code>max-width: 1023.98px</code>, so it
+          is <em>already active</em> at 768 &mdash; that value means &bdquo;desktop only&rdquo; in practice.
+          It drops the Connection column on <b>Products, Shipments and Invoices</b>: three of the five lists
+          that gain the shared cell, and precisely the three where today&rsquo;s rendering is worst (Products
+          shows a name with no id at all, Shipments the same, Invoices hides the id in a <code>title</code>
+          attribute &mdash; invisible, unselectable, unreachable on touch). Pre-existing behaviour, but
+          #1996 inherits it together with a promise it then fails to keep.
+          <br /><br />
+          <b>The decision: relocate, don&rsquo;t hide.</b> Orders already proves the pattern &mdash; its
+          Channel column disappears at 768 too, but the pill folds under the order name
+          (<code>.orders-order-channel</code>, <code>index.css:8902-8907</code>), so the fact moves rather
+          than vanishing. Simply lowering the three thresholds to <code>768</code> was the cheaper option
+          and was rejected: it keeps the column at the cost of pushing it behind horizontal scroll, and a
+          fact you must scroll to find is one an operator stops checking.
+          <br /><br />
+          <b>Each host cell is chosen by meaning, not by free space</b> &mdash; see the table below.
+          Products folds into <b>Product</b> (where the product came from is that column&rsquo;s subject),
+          Shipments into <b>Processor</b> (&bdquo;Carrier&rdquo; and &bdquo;which carrier connection&rdquo;
+          are one question), Invoices into <b>Document type</b> (what the document is and who issued it are
+          the same sentence). Listings and Customers need no fold: their column is
+          <code>hideBelow: 768</code> and survives.
+          <br /><br />
+          <b>The fold carries the name, not the id</b> &mdash; a deliberate reduction. The id exists to be
+          copied, and the Copy button reveals on row hover, which does not exist on touch. At tablet width
+          the question is &bdquo;which connection is this?&rdquo;, which the name answers; &bdquo;give me its
+          id&rdquo; stays a desktop and detail-page action. So the tablet form is the shared cell&rsquo;s
+          <em>first line</em>, relocated &mdash; not a third variant of it.
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 12 — empty and loading ═══════════ -->
+  <section class="viewport-frame" id="frame-states">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">12 &middot; Empty &amp; loading</span>
+      <b>Nothing to identify yet</b>
+      <span class="caption">the shared cells add no new empty or error state &mdash; the pages&rsquo; existing ones already cover them</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="frame-grid frame-grid--2">
+        <div class="app-frame">
+          <div class="page-header"><p class="eyebrow">Fulfilment</p><h2 class="page-title">Shipments</h2></div>
+          <div class="state-card">
+            <h3 class="state-card__title">No shipments yet</h3>
+            <p class="state-card__message">
+              A shipment appears here once you generate a label for an order. Start from an order that is
+              paid and awaiting dispatch.
+            </p>
+            <div class="state-card__actions">
+              <button class="button" type="button">Go to orders</button>
+              <button class="button button--secondary" type="button">Set up a carrier</button>
+            </div>
+          </div>
+        </div>
+        <div class="app-frame">
+          <div class="page-header"><p class="eyebrow">Fulfilment</p><h2 class="page-title">Shipments</h2></div>
+          <div class="data-table__container"><table class="data-table" id="skeleton-table"></table></div>
+        </div>
+      </div>
+      <div class="gap-legend">
+        <span>
+          The skeleton mirrors the cell&rsquo;s real geometry &mdash; a 24&nbsp;px thumbnail block beside two
+          lines &mdash; so the row does not jump height when data lands. A row whose order does not resolve
+          is <em>not</em> an empty state: it renders <span class="mono-text">&ndash;</span> in place of the
+          cell and keeps every other column (frame 09, row 5).
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 13 — handover ═══════════ -->
+  <section class="viewport-frame" id="frame-handover">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">13 &middot; Handover</span>
+      <b>What exists, what is missing, what this surfaced</b>
+      <span class="caption">read this before starting the branch</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="gap-table__wrap" style="margin-bottom: var(--space-4)">
+        <table class="gap-table">
+          <thead><tr><th>Piece</th><th>Status</th><th>Where</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>ProductThumbnail</code>, <code>CopyableId</code>, <code>EntityLabel</code>, <code>ConnectionDot</code></td>
+              <td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Exists</span></td>
+              <td>Used unchanged. <code>CopyableId</code> is shipped but not yet used by any of the six lists.</td>
+            </tr>
+            <tr>
+              <td><code>shortenId</code></td>
+              <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Private</span></td>
+              <td><code>entity-label.tsx:98-109</code> &mdash; export it, then delete <code>truncateOrderId</code> and <code>formatOrderRef</code>. A function, not a component, so the &bdquo;nothing new in <code>shared/ui/index.ts</code>&rdquo; rule still holds.</td>
+            </tr>
+            <tr>
+              <td><code>resolvePlatformLabel</code></td>
+              <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Misplaced</span></td>
+              <td>Lives in <code>features/mappings/lib/</code> with eight inline duplicates elsewhere. Move to <code>shared/plugins/platform-label.ts</code> &mdash; <code>shared</code> cannot import from <code>features</code>, and this now has six consumers.</td>
+            </tr>
+            <tr>
+              <td><code>CHANNEL_LABELS</code></td>
+              <td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Delete</span></td>
+              <td><code>orders-list-page.tsx:86-91</code> &mdash; a four-entry hardcoded map competing with the plugin registry, which already exposes a correct <code>displayName</code> per platform.</td>
+            </tr>
+            <tr>
+              <td><code>orderSummary</code> on shipments + invoices</td>
+              <td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Blocking</span></td>
+              <td><b>#1995.</b> Frames 08 and 09 cannot be built without it. Must be one batched read per page, not a de-duplicated per-order fan-out.</td>
+            </tr>
+            <tr>
+              <td><code>ean</code> on the products row</td>
+              <td><span class="status-badge"><span class="status-badge__dot"></span>Dropped</span></td>
+              <td><b>Cut from scope.</b> EAN is variant-scoped, so a product row could only show one for a single-variant product &mdash; a column that carries a barcode on some rows and not others, for an invisible reason. Removing it also removes &sect;B from #1995, which becomes a single-purpose <code>orderSummary</code> issue.</td>
+            </tr>
+            <tr>
+              <td>Shared <code>ConnectionCell</code> vs. the #1965 redesign</td>
+              <td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Reconciled</span></td>
+              <td>#1965&rsquo;s accepted mockup specified the same two-line cell. It now defers to this issue&rsquo;s component (name linked to <code>/connections/:id</code>, <code>shortenId</code> with both branches) and keeps Channel as its own column, so no <code>adornment</code> is passed there. Implement #1965&rsquo;s Connection column by importing, never by copying.</td>
+            </tr>
+            <tr>
+              <td><code>connectionName</code> on list responses</td>
+              <td><span class="status-badge"><span class="status-badge__dot"></span>Not wanted</span></td>
+              <td>Explicitly rejected in #1995 &sect;C. Names resolve client-side from one <code>useConnectionsQuery()</code> per page &mdash; the established convention. A batch-by-ids read would mean widening the connection port for no operator-visible gain.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="gap-table__wrap">
+        <table class="gap-table">
+          <thead><tr><th>Follow-up this mockup surfaced</th><th>Size</th><th>Note</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>.channel-pill</code> has no <code>erli</code> or <code>woocommerce</code> selector</td>
+              <td><span class="status-badge status-badge--info"><span class="status-badge__dot"></span>Two lines</span></td>
+              <td>Tokens have existed since #1752 (<code>index.css:282-293</code>); only the four pill selectors at <code>:9241-9244</code> were ever written. Both channels render a grey dot today, on Orders as well as here. Fold into #1996.</td>
+            </tr>
+            <tr>
+              <td><code>CopyableId</code> truncates an already-shortened id twice</td>
+              <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>One line</span></td>
+              <td><code>.copyable-id__value</code> caps at <code>18ch</code> (<code>index.css:9299</code>), but <code>shortenId</code> returns 20 characters for any <code>ol_&lt;entity&gt;_</code> id — so <code>ol_customer_74b1e&hellip;36</code> renders as <code>ol_customer_74&hellip;</code> and reads as broken. Harmless for a UUID (14 chars). Surfaced by frame 07; fold into #1996 since #1996 is what starts feeding it shortened labels.</td>
+            </tr>
+            <tr>
+              <td><code>.data-table__cell--right</code> is dead</td>
+              <td><span class="status-badge status-badge--info"><span class="status-badge__dot"></span>One line</span></td>
+              <td>Loses to <code>.data-table th, .data-table td</code> on specificity <em>and</em> source order, so 14 right-aligned columns render left. Already surfaced by #1965&rsquo;s mockup; still open. Out of scope for #1996.</td>
+            </tr>
+            <tr>
+              <td>Sorting and filtering on the unified cells</td>
+              <td><span class="status-badge"><span class="status-badge__dot"></span>Dropped</span></td>
+              <td>Investigated and deliberately not filed: no endpoint has a sort key for order identity, none joins <code>connections</code>, and Shipments / Invoices / Customers / Listings run no server-side sorting at all &mdash; <code>useTableSort</code> writes the URL but nothing forwards it, so those tables sort only the rows on screen.</td>
+            </tr>
+            <tr>
+              <td>The Connection cell relocates at tablet width</td>
+              <td><span class="status-badge status-badge--info"><span class="status-badge__dot"></span>Decided</span></td>
+              <td>Products, Shipments and Invoices declare <code>hideBelow: 1024</code>, which is already active at 768 — so the cell would be absent from three of the five lists that gain it. <b>Decision: relocate, following <code>.orders-order-channel</code></b> — into <b>Product</b>, <b>Processor</b> and <b>Document type</b> respectively, one line, adornment plus name, no id. Lowering the thresholds to 768 was rejected: it keeps the column only behind horizontal scroll. Specified in frame 11; adds one CSS rule (<code>.conn-fold</code>) and one render branch per host cell. Listings and Customers are unaffected (<code>hideBelow: 768</code>).</td>
+            </tr>
+            <tr>
+              <td>Multi-item preview inside the Order cell</td>
+              <td><span class="status-badge"><span class="status-badge__dot"></span>Out of scope</span></td>
+              <td>First line item only; <code>+N</code> carries the rest. A stacked-thumbnail preview was considered and cut &mdash; it doubles the row height for a fact the count already delivers.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ══════════════════ Theme boot — mirrors the app's FOUC guard ══════════════════ */
+  var root = document.documentElement;
+  /* Defer to a theme the HOST already stamped. When this page is published as an
+     Artifact the viewer sets `data-theme` on the root element and owns the theme
+     switch; overwriting it here would leave two toggles fighting each other. Only
+     seed from the OS preference when nothing has decided yet. */
+  if (!root.getAttribute('data-theme')) {
+    var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    root.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+  }
+  document.getElementById('theme-toggle').addEventListener('click', function () {
+    root.setAttribute('data-theme', root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  });
+
+  /* ══════════════════ Helpers ══════════════════ */
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  /* Faithful port of the PRIVATE shortenId in shared/ui/entity-label.tsx:98-109.
+     Both branches, because an OL-native id and a UUID shorten differently and the
+     Order cell hits the OL branch on every Shipments and Invoices row. */
+  var OL_ID_PATTERN = /^(ol_[a-z][a-z0-9-]*_)(.+)$/;
+  function shortenId(id) {
+    var m = OL_ID_PATTERN.exec(id);
+    if (m) {
+      var prefix = m[1], rest = m[2];
+      if (rest.length <= 6) return id;
+      return prefix + rest.slice(0, 5) + '…' + rest.slice(-2);
+    }
+    if (id.length <= 14) return id;
+    return id.slice(0, 8) + '…' + id.slice(-4);
+  }
+
+  /* The plugin registry's displayName per platformType — what usePlatforms()
+     exposes and resolvePlatformLabel() reads. The point of #1996's label half is
+     that this table lives in ONE place instead of nine. */
+  var PLATFORM_LABEL = {
+    allegro: 'Allegro',
+    prestashop: 'PrestaShop',
+    erli: 'Erli',
+    woocommerce: 'WooCommerce',
+    amazon: 'Amazon',
+    shopify: 'Shopify',
+    inpost: 'InPost',
+    infakt: 'inFakt'
+  };
+  function platformLabel(pt) { return PLATFORM_LABEL[pt] || pt; }
+
+  /* stableHue from features/orders/components/connection-dot.tsx */
+  function stableHue(seed) {
+    var h = 0;
+    for (var i = 0; i < seed.length; i++) { h = (h * 31 + seed.charCodeAt(i)) % 360; }
+    return h;
+  }
+  function initial(name) {
+    var m = /[a-z0-9]/i.exec(name || '');
+    return m ? m[0].toUpperCase() : '?';
+  }
+
+  function copyBtn(id, aria, cls) {
+    return '<button class="' + cls + '" type="button" data-copy="' + esc(id) + '" aria-label="' + esc(aria) + '">Copy</button>';
+  }
+
+  function thumb(name, hasImage, size) {
+    var cls = 'product-thumbnail product-thumbnail--' + (size || 'sm') + (hasImage ? ' product-thumbnail--img' : '');
+    return '<span class="' + cls + '" aria-hidden="true">' + (hasImage ? '' : esc(initial(name))) + '</span>';
+  }
+
+  function connDot(name, platformType, variant) {
+    var generic = !name;
+    var full = generic ? (variant === 'carrier' ? 'a carrier' : 'the destination shop') : name;
+    var glyphChar = generic ? (variant === 'carrier' ? '?' : 'S') : initial(name);
+    return '<span class="conn-dot' + (generic ? ' conn-dot--generic' : '') + '"' +
+      (generic ? '' : ' style="--conn-hue:' + stableHue(platformType || name) + '"') +
+      ' title="' + esc(full) + '">' +
+      '<svg class="conn-dot__glyph" viewBox="0 0 14 14" aria-hidden="true">' +
+      '<text x="7" y="7" dominant-baseline="central" text-anchor="middle">' + esc(glyphChar) + '</text></svg>' +
+      '<span class="sr-only">' + esc(full) + '</span></span>';
+  }
+
+  function channelPill(platformType) {
+    return '<span class="channel-pill" data-channel="' + esc(platformType) + '">' +
+      esc(platformLabel(platformType)) + '</span>';
+  }
+
+  function badge(tone, text, opts) {
+    opts = opts || {};
+    var cls = 'status-badge' + (tone ? ' status-badge--' + tone : '') +
+      (opts.compact ? ' status-badge--compact' : '') + (opts.pulse ? ' status-badge--pulse' : '');
+    return '<span class="' + cls + '">' + (opts.dot === false ? '' : '<span class="status-badge__dot"></span>') +
+      esc(text) + '</span>';
+  }
+
+  var DASH = '<span class="text-muted">–</span>';
+  var DAGGER = '<span class="gap-mark" title="Needs orderSummary from #1995">†</span>';
+  /* #1965's OWN gap marker, not this issue's: price and quantity are the two fields
+     that do not exist on GET /listings today. Reproduced here only so the
+     "After #1965" pane does not silently claim they are solved. */
+  var DAGGER_1965 = '<span class="gap-mark" title="#1965: needs price + quantity on the list read model">†</span>';
+
+  /* ══════════════════ THE TWO SHARED CELLS ══════════════════
+     Everything on this page — six desktop tables, two card lists, the anatomy
+     grids and the divergence frame — renders its Order and Connection identity
+     through these two functions and nothing else. */
+
+  /* OrderIdentityCell. Props mirror the component's: orderId, orderNumber,
+     firstItemName, firstItemImageUrl, itemCount. */
+  function orderCell(order, opts) {
+    opts = opts || {};
+    if (!order) return DASH;
+
+    var name = order.number || shortenId(order.id);
+    var dagger = opts.gap ? DAGGER : '';
+
+    var line2 = '';
+    if (order.item) {
+      line2 = '<span class="orders-items-line">' +
+        '<span class="text-muted orders-cell-sub orders-items-preview">' + esc(order.item) + dagger + '</span>' +
+        (order.count > 1 ? '<span class="orders-more-count">+' + (order.count - 1) + '</span>' : '') +
+        '</span>';
+    }
+
+    return '<span class="order-cell">' +
+      thumb(order.item || name, order.hasImage, 'sm') +
+      '<span class="order-cell__body">' +
+        '<span class="entity-label">' +
+          '<a class="entity-label__name entity-label__name--link" href="#frame-orders">' + esc(name) + '</a>' +
+          copyBtn(order.id, 'Copy order ID ' + order.id, 'entity-label__copy') +
+        '</span>' +
+        line2 +
+      '</span></span>';
+  }
+
+  /* ConnectionCell. adornment: 'dot' | 'pill' | null. The name is supplied by the
+     page from ONE useConnectionsQuery() map — never a per-row query. */
+  function connCell(connId, opts) {
+    opts = opts || {};
+    var c = CONNECTIONS[connId];
+    var adorn = '';
+    if (opts.adornment === 'dot') {
+      adorn = connDot(c ? c.name : null, c ? c.platformType : null, opts.variant || 'shop');
+    } else if (opts.adornment === 'pill' && c) {
+      adorn = channelPill(c.platformType);
+    }
+
+    var line1 = c
+      ? '<a class="entity-label__name entity-label__name--link" href="#frame-handover">' + esc(c.name) + '</a>'
+      : '<span class="entity-label__name entity-label__name--unknown" title="' + esc(connId) + '">Unknown</span>';
+
+    return '<span class="conn-cell">' +
+      '<span class="entity-label">' + (adorn ? adorn + ' ' : '') + line1 + '</span>' +
+      '<span class="copyable-id">' +
+        '<code class="copyable-id__value" title="' + esc(connId) + '">' + esc(shortenId(connId)) + '</code>' +
+        copyBtn(connId, 'Copy connection ID' + (c ? ' for ' + c.name : ''), 'copyable-id__copy') +
+      '</span></span>';
+  }
+
+  /* The tablet fold of the Connection cell: the same adornment and the same name as
+     connCell()'s first line, on one line, without the id. Below 1024px the
+     Connection column is gone, so this renders inside whichever adjacent cell owns
+     the neighbouring fact — see frame 11 for which cell per list, and why. */
+  function connFold(connId, opts) {
+    opts = opts || {};
+    var c = CONNECTIONS[connId];
+    var adorn = '';
+    if (opts.adornment === 'dot') {
+      adorn = connDot(c ? c.name : null, c ? c.platformType : null, opts.variant || 'shop');
+    } else if (opts.adornment === 'pill' && c) {
+      adorn = channelPill(c.platformType);
+    }
+    var name = c
+      ? '<a class="conn-fold__name conn-fold__name--link" href="#frame-tablet">' + esc(c.name) + '</a>'
+      : '<span class="conn-fold__name" title="' + esc(connId) + '">Unknown</span>';
+    return '<span class="conn-fold">' + (adorn ? adorn + ' ' : '') + name + '</span>';
+  }
+
+  /* ══════════════════ Data — one source for every frame ══════════════════ */
+
+  var CONNECTIONS = {
+    '3f81c04b-9a77-4d10-8c2e-6b5d90ff21ae': { name: 'Allegro — Main seller', platformType: 'allegro' },
+    'aa966882-0d21-4e2f-9d5a-71c4a5f14cfb': { name: 'Erli Demo', platformType: 'erli' },
+    '7c2ed915-4b60-42a8-91f7-0ea3c8b41d52': { name: 'PrestaShop — Terra Store', platformType: 'prestashop' },
+    'e5b1740c-8d33-4977-a0c6-2f19bb6e5a84': { name: 'WooCommerce — Terra Outlet', platformType: 'woocommerce' },
+    '4e7fa2d6-1c95-40b8-8a3d-7f62cb015e91': { name: 'InPost — ShipX', platformType: 'inpost' },
+    '9b0c7e51-3a48-4d16-bf2a-5c81e0d47f39': { name: 'inFakt', platformType: 'infakt' }
+    /* c0ffee00-dea1-4bee-9f00-112233445566 is deliberately absent — it backs the
+       "connection no longer exists" state in frame 03 and on one Listings row. */
+  };
+  var CONN_ALLEGRO = '3f81c04b-9a77-4d10-8c2e-6b5d90ff21ae';
+  var CONN_ERLI    = 'aa966882-0d21-4e2f-9d5a-71c4a5f14cfb';
+  var CONN_PRESTA  = '7c2ed915-4b60-42a8-91f7-0ea3c8b41d52';
+  var CONN_WOO     = 'e5b1740c-8d33-4977-a0c6-2f19bb6e5a84';
+  var CONN_INPOST  = '4e7fa2d6-1c95-40b8-8a3d-7f62cb015e91';
+  var CONN_INFAKT  = '9b0c7e51-3a48-4d16-bf2a-5c81e0d47f39';
+  var CONN_GONE    = 'c0ffee00-dea1-4bee-9f00-112233445566';
+
+  /* The canonical orders. Every Order cell on this page resolves through here. */
+  var ORDERS = {
+    o1: { id: 'ol_order_a3f24b09c4d1486789abcdef01234567', number: '6839-2911-4402', item: 'Terra Wool Coat',      hasImage: true,  count: 3, conn: CONN_ALLEGRO },
+    o2: { id: 'ol_order_b71e5c88d0a24f19b3e6771205ab90cd', number: '6840-1187-3021', item: 'Nordic Linen Shirt',   hasImage: true,  count: 1, conn: CONN_ERLI },
+    o3: { id: 'ol_order_c92d47ae61f34b0da7c8e5390b1d6248', number: null,             item: 'Alpine Merino Scarf',  hasImage: false, count: 2, conn: CONN_PRESTA },
+    o4: { id: 'ol_order_d40b8f13a25e47c6b91d0e7f38a5c2b9', number: '6841-0034-7788', item: 'Harbour Canvas Tote',  hasImage: true,  count: 5, conn: CONN_WOO },
+    o5: { id: 'ol_order_e18c6a72b9d3401fa5e2c840719bd365', number: '6842-5560-1193', item: 'Terra Wool Coat',      hasImage: true,  count: 1, conn: CONN_ALLEGRO },
+    /* Anatomy-only specimen. Frame 02 has to isolate ONE variable per row, and o3
+       is missing its number AND its image — so without this the "no order number"
+       and "no image" rows would render identically and prove nothing. */
+    o6: { id: 'ol_order_f52a9d04e7b8416cad39b60e2c74f183', number: '6843-7719-2050', item: 'Coastal Rain Shell',  hasImage: false, count: 2, conn: CONN_ERLI }
+  };
+
+  /* ══════════════════ Frame 01 — divergence ══════════════════ */
+
+  function divergeItem(src, line, render, verdict) {
+    return '<div class="diverge__item">' +
+      '<span class="diverge__src"><b>' + esc(src) + '</b> &middot; ' + esc(line) + '</span>' +
+      '<span class="diverge__render">' + render + '</span>' +
+      '<span class="diverge__verdict">' + esc(verdict) + '</span></div>';
+  }
+
+  (function renderDivergence() {
+    var o = ORDERS.o1;
+
+    /* Today's three Order renderings, transcribed. */
+    var todayOrders =
+      divergeItem('Orders', 'orders-list-page.tsx:600-650',
+        '<span class="orders-cell-stack">' +
+          '<span class="entity-label">' +
+            '<a class="entity-label__name entity-label__name--link" href="#frame-diverge">' + esc(o.number) + '</a>' +
+            '<code class="entity-label__id">' + esc(shortenId(o.id)) + '</code>' +
+            copyBtn(o.id, 'Copy ' + o.id, 'entity-label__copy') +
+          '</span>' +
+          '<span class="orders-items-line">' +
+            '<span class="text-muted orders-cell-sub orders-items-preview">' + esc(o.item) + '</span>' +
+            '<span class="orders-more-count">+2</span>' +
+          '</span>' +
+        '</span>',
+        'Closest to right — but no thumbnail, and the id chip competes with the order number.') +
+
+      divergeItem('Shipments', 'shipments-page.tsx:296-303',
+        '<span class="entity-label">' +
+          '<a class="entity-label__name entity-label__name--link" href="#frame-diverge">' + esc(shortenId(o.id)) + '</a>' +
+          copyBtn(o.id, 'Copy ' + o.id, 'entity-label__copy') +
+        '</span>',
+        'A truncated id used as its own name. No order number, no contents, no count.') +
+
+      divergeItem('Invoices', 'invoices-list-page.tsx:225-230',
+        '<span class="mono-text" title="' + esc(o.id) + '">' + esc(o.id) + '</span>',
+        'A raw 41-character id. Not a link, not copyable, not truncated.');
+
+    document.getElementById('diverge-order').innerHTML = todayOrders;
+
+    /* Today's five Connection renderings, transcribed. */
+    var c = CONNECTIONS[CONN_ERLI];
+    var todayConns =
+      divergeItem('Products', 'products-list-page.tsx:687-701',
+        '<span class="products-cell-stack">' + channelPill(c.platformType) +
+          '<span class="text-muted products-cell-sub">' + esc(c.name) + '</span></span>',
+        'Name and channel, but no id at all — nothing to paste into a support thread.') +
+
+      divergeItem('Shipments', 'shipments-page.tsx:363-380',
+        '<span class="shipments-page__provider">' + connDot(c.name, c.platformType, 'carrier') +
+          '<span>' + esc(c.name) + '</span></span>',
+        'A glyph and a bare name. No id, no Copy.') +
+
+      divergeItem('Invoices', 'invoices-list-page.tsx:282-286',
+        '<span class="text-muted" title="' + esc(CONN_ERLI) + '">' + esc(c.name) + '</span>',
+        'The id hides in a title attribute — invisible, unselectable, unhoverable on touch.') +
+
+      divergeItem('Listings', 'listings-list-page.tsx:56',
+        '<span class="mono-text">' + esc(CONN_ERLI) + '</span>',
+        'A bare UUID. The operator has to remember which connection that is.') +
+
+      divergeItem('Customers', 'customers-list-page.tsx:43-49',
+        '<span class="mono-text">' + esc(CONN_ERLI) + '</span>',
+        'The same bare UUID, under a different column heading.');
+
+    document.getElementById('diverge-conn').innerHTML = todayConns;
+  })();
+
+  /* ══════════════════ Frames 02 & 03 — anatomy ══════════════════ */
+
+  function specimenRow(state, render, why) {
+    return '<tr><td class="specimen__state">' + state + '</td><td>' + render +
+      '</td><td class="specimen__why">' + why + '</td></tr>';
+  }
+
+  document.getElementById('anatomy-order').innerHTML =
+    specimenRow('Order number present',
+      orderCell(ORDERS.o1),
+      'Leads with the marketplace-facing number, because that is the string a buyer quotes and a seller searches for.') +
+    specimenRow('No order number',
+      orderCell(ORDERS.o3),
+      'Falls back to the shortened internal id via <code>shortenId()</code>. This is the OL branch of the pattern: <code>ol_order_</code> + 5 + &hellip; + 2. Every Shipments and Invoices row hits this branch today.') +
+    specimenRow('Item has no image',
+      orderCell(ORDERS.o6),
+      '<code>ProductThumbnail</code>’s own initial-glyph fallback — the letter comes from the item name. Never a broken image, never a blank box.') +
+    specimenRow('Single item',
+      orderCell(ORDERS.o2),
+      'No <code>+N</code> at all. A one-item order must not read as though something is hidden.') +
+    specimenRow('Five items',
+      orderCell(ORDERS.o4),
+      'First item name plus <code>+4</code>. The count chip never truncates, so a multi-item order can never look like a single-item one.') +
+    specimenRow('No order resolves',
+      orderCell(null),
+      'One unambiguous branch: <code>orderSummary === null</code> renders <code>–</code>. Not an object of nulls, not a spinner.');
+
+  document.getElementById('anatomy-conn').innerHTML =
+    specimenRow('With <code>ConnectionDot</code>',
+      connCell(CONN_INPOST, { adornment: 'dot', variant: 'carrier' }),
+      'Shipments keeps the glyph it already shows for carrier connections — passed as the shared cell’s <code>adornment</code>, not bolted on as a second cell shape.') +
+    specimenRow('With <code>channel-pill</code>',
+      connCell(CONN_ERLI, { adornment: 'pill' }),
+      '<b>Products only.</b> Listings keeps Channel as its own column (per #1965’s accepted design), so it passes no adornment — a column of pills scans faster than pills buried in two-line cells. The label comes from the plugin registry, so Erli renders in its brand hue instead of the grey fallback.') +
+    specimenRow('No adornment',
+      connCell(CONN_INFAKT),
+      'Customers and Invoices show name over id. Nothing is invented to fill the slot.') +
+    specimenRow('Connection deleted',
+      connCell(CONN_GONE),
+      '<code>EntityLabel</code>’s existing &bdquo;Unknown&rdquo; branch over a still-copyable id — so a row whose connection was removed is still diagnosable.');
+
+  /* ══════════════════ Table plumbing ══════════════════ */
+
+  function table(el, headers, rows) {
+    var thead = '<thead><tr>' + headers.map(function (h) {
+      var right = h.charAt(0) === '>';
+      return '<th' + (right ? ' class="data-table__cell--right"' : '') + '>' + esc(right ? h.slice(1) : h) + '</th>';
+    }).join('') + '</tr></thead>';
+    document.getElementById(el).innerHTML = thead + '<tbody>' + rows.join('') + '</tbody>';
+  }
+  function tr(cells, linked) {
+    return '<tr' + (linked === false ? '' : ' class="data-table__row--linked"') + '>' +
+      cells.map(function (c) {
+        if (c && c.right) return '<td class="data-table__cell--right">' + c.html + '</td>';
+        return '<td>' + (c && c.html !== undefined ? c.html : c) + '</td>';
+      }).join('') + '</tr>';
+  }
+  function right(html) { return { right: true, html: html }; }
+  var CHECK = '<input type="checkbox" aria-label="Select row" />';
+
+  /* ══════════════════ Frame 04 — Orders ══════════════════ */
+
+  /* ⚠ EVERY status label and tone below is TRANSCRIBED from the shipping code, not
+     invented. An earlier revision of this file made them up and put SLA and
+     fulfillment words in the Status column, which taught the wrong vocabulary.
+     Sources:
+       Status      → ORDER_HEALTH_META, features/orders/lib/order-health.ts:51-58
+                     (Source deleted / Awaiting mapping / Sync failed / Synced /
+                      Awaiting dispatch — note the bucket is `needs_attention` but
+                      the ROW label is "Sync failed"; "Needs attention" is the KPI
+                      card's label only, orders-list-page.tsx:107)
+       Fulfilment  → ORDER_FULFILLMENT_META, order-health.ts:232-240
+       Ship-by SLA → ORDER_SLA_META, order-health.ts:210-217, plus the countdown
+                     strings from shared/format/format-ship-by.ts:39-55
+                     ("3h left", "45m left", "Overdue 4h", "due now")
+       Payment     → PAYMENT_BADGE_META, features/orders/lib/order-row.ts:42-47
+       Invoice     → invoiceBadgeBase, order-row.ts:91-108
+       Created     → TimeDisplay format="datetime" → formatDateTime →
+                     dateStyle:'medium' + timeStyle:'short' → pl-PL "3 sie 2026, 09:14" */
+  var ORDER_ROWS = [
+    { o: 'o1', cust: 'Anna Kowalska',       city: 'Warszawa', dest: CONN_PRESTA,
+      status: ['info', 'Awaiting dispatch'], reason: null,
+      ship: ['neutral', 'Not shipped'], sla: ['success', 'On track'], eta: '3h left',
+      total: '1 249,00 zł', pay: ['success', 'Paid'], inv: null, created: '3 sie 2026, 09:14', rel: '2h ago' },
+    { o: 'o2', cust: 'Marek Nowak',         city: 'Gdańsk',   dest: CONN_PRESTA,
+      status: ['success', 'Synced'], reason: null,
+      ship: ['info', 'Dispatched'], sla: null, eta: '',
+      total: '289,00 zł', pay: ['success', 'Paid'], inv: ['success', 'Cleared'], created: '3 sie 2026, 08:02', rel: '3h ago' },
+    { o: 'o3', cust: 'Zofia Wiśniewska',    city: 'Kraków',   dest: CONN_WOO,
+      status: ['error', 'Sync failed'], reason: 'Destination rejected line 2: variant not found',
+      ship: ['error', 'Dispatch failed'], sla: ['error', 'Overdue'], eta: 'Overdue 4h',
+      total: '178,50 zł', pay: ['success', 'Paid'], inv: ['error', 'Failed'], created: '2 sie 2026, 17:48', rel: '1d ago' },
+    { o: 'o4', cust: 'Piotr Lewandowski',   city: 'Poznań',   dest: CONN_PRESTA,
+      status: ['warning', 'Awaiting mapping'], reason: 'No product mapping for EAN 5900000000771',
+      ship: ['neutral', 'Not shipped'], sla: ['warning', 'At risk'], eta: '45m left',
+      total: '2 480,00 zł', pay: ['warning', 'Awaiting'], inv: null, created: '2 sie 2026, 15:31', rel: '1d ago' },
+    { o: 'o5', cust: 'Katarzyna Dąbrowska', city: 'Wrocław',  dest: CONN_WOO,
+      status: ['success', 'Synced'], reason: null,
+      ship: ['success', 'Delivered'], sla: null, eta: '',
+      total: '1 249,00 zł', pay: ['review', 'COD'], inv: ['info', 'Submitted'], created: '1 sie 2026, 11:07', rel: '3d ago' }
+  ];
+
+  function ordersRows(view) {
+    return ORDER_ROWS.map(function (r) {
+      var o = ORDERS[r.o];
+      var src = CONNECTIONS[o.conn];
+      var dst = CONNECTIONS[r.dest];
+
+      /* Today: EntityLabel with showId=true (no thumbnail) and a CHANNEL_LABELS
+         lookup that has no entry for erli or woocommerce, so those render raw. */
+      var TODAY_CHANNEL_LABELS = { allegro: 'Allegro', prestashop: 'PrestaShop', amazon: 'Amazon', shopify: 'Shopify' };
+      var orderHtml, channelHtml;
+
+      if (view === 'before') {
+        orderHtml = '<span class="orders-cell-stack">' +
+          '<span class="entity-label">' +
+            '<a class="entity-label__name entity-label__name--link" href="#frame-orders">' + esc(o.number || o.id) + '</a>' +
+            '<code class="entity-label__id">' + esc(shortenId(o.id)) + '</code>' +
+            copyBtn(o.id, 'Copy ' + o.id, 'entity-label__copy') +
+          '</span>' +
+          '<span class="orders-items-line">' +
+            '<span class="text-muted orders-cell-sub orders-items-preview">' + esc(o.item) + '</span>' +
+            (o.count > 1 ? '<span class="orders-more-count">+' + (o.count - 1) + '</span>' : '') +
+          '</span></span>';
+        channelHtml = '<span class="orders-cell-stack">' +
+          '<span class="channel-pill" data-channel="' + esc(src.platformType) + '">' +
+            esc(TODAY_CHANNEL_LABELS[src.platformType] || src.platformType) + '</span>' +
+          '<span class="text-muted orders-cell-sub">→ ' + esc(TODAY_CHANNEL_LABELS[dst.platformType] || dst.platformType) + '</span></span>';
+      } else {
+        orderHtml = orderCell(o);
+        channelHtml = '<span class="orders-cell-stack">' + channelPill(src.platformType) +
+          '<span class="text-muted orders-cell-sub">→ ' + esc(platformLabel(dst.platformType)) + '</span></span>';
+      }
+
+      /* Fulfilment badge, then the SLA badge beside its countdown (the countdown is
+         a separate muted mono span, not the badge label — orders-list-page.tsx:801-806). */
+      var shipHtml = '<span class="orders-cell-stack">' + badge(r.ship[0], r.ship[1], { compact: true }) +
+        (r.sla ? '<span class="orders-shipby-row">' + badge(r.sla[0], r.sla[1], { compact: true }) +
+          (r.eta ? '<span class="text-muted orders-cell-sub mono tabular">' + esc(r.eta) + '</span>' : '') +
+          '</span>' : '') + '</span>';
+
+      /* Status badge over the raw failure reason, when the record supplied one. */
+      var statusHtml = '<span class="orders-cell-stack">' + badge(r.status[0], r.status[1], { compact: true }) +
+        (r.reason ? '<span class="orders-status-reason" title="' + esc(r.reason) + '">' + esc(r.reason) + '</span>' : '') +
+        '</span>';
+
+      /* Total → payment → invoice → created. The invoice slot falls back to the
+         "Issue invoice" CTA when no invoice exists (orders-list-page.tsx:886-895). */
+      var moneyHtml = '<span class="orders-cell-stack orders-cell-stack--end">' +
+        '<span class="mono tabular orders-money-total">' + esc(r.total) + '</span>' +
+        badge(r.pay[0], r.pay[1], { compact: true }) +
+        (r.inv
+          ? badge(r.inv[0], r.inv[1], { compact: true })
+          : '<a class="orders-row-cta" href="#frame-orders"><span class="orders-row-cta__plus" aria-hidden="true">+</span> Issue invoice</a>') +
+        '<span class="text-muted orders-cell-sub mono tabular">' + esc(r.created) + '</span></span>';
+
+      return tr([
+        CHECK,
+        orderHtml,
+        '<span class="orders-cell-stack"><span>' + esc(r.cust) + '</span><span class="text-muted orders-cell-sub">' + esc(r.city) + '</span></span>',
+        channelHtml,
+        statusHtml,
+        shipHtml,
+        right(moneyHtml)
+      ]);
+    });
+  }
+  var ORDERS_HEADERS = ['', 'Order', 'Customer', 'Channel', 'Status', 'Shipment / Ship-by', '>Total / Payment / Created'];
+  table('orders-before', ORDERS_HEADERS, ordersRows('before'));
+  table('orders-after', ORDERS_HEADERS, ordersRows('after'));
+
+  /* ══════════════════ Frame 05 — Products ══════════════════ */
+
+  /* Stock values chosen to exercise all four real StockStatus buckets rather than
+     to look tidy: 42 → In stock, 4 → Low stock (threshold 5), 0 → Out of stock,
+     −2 → Oversold (more sold than the master holds). Dates use
+     TimeDisplay format="date" → pl-PL "4 sie 2026", prefixed `upd. `. */
+  var PRODUCTS = [
+    { id: 'ol_product_fce2df4d853f4499b955a6bb1a212bd1', name: 'Terra Wool Coat',     sku: 'TERRA-24-TER', hasImage: true,  variants: 1, stock: 42, reserved: 3, price: '1 249,00 zł', conn: CONN_PRESTA, updated: '3 sie 2026', cov: [['allegro', 'full', 1, 1], ['erli', 'full', 1, 1]] },
+    { id: 'ol_product_8b1a47c0d92e4f6ab35c7e01f4d82963', name: 'Nordic Linen Shirt',  sku: 'NORD-LIN-02',  hasImage: true,  variants: 6, stock: 4,  reserved: 0, price: '289,00 zł',   conn: CONN_PRESTA, updated: '3 sie 2026', cov: [['allegro', 'partial', 4, 6], ['woocommerce', 'none', 0, 6]] },
+    { id: 'ol_product_2d90ba63f14c4e8fa7b5c8e21079d346', name: 'Alpine Merino Scarf', sku: 'ALP-MER-SCF',  hasImage: false, variants: 1, stock: 0,  reserved: 0, price: '178,50 zł',   conn: CONN_WOO,    updated: '2 sie 2026', cov: [['allegro', 'full', 1, 1]] },
+    { id: 'ol_product_5e73c81b0af24d19bc6e2a70f815d924', name: 'Harbour Canvas Tote', sku: 'HARB-CNV-TT',  hasImage: true,  variants: 1, stock: -2, reserved: 0, price: '2 480,00 zł', conn: CONN_ERLI,   updated: '1 sie 2026', cov: [['erli', 'full', 1, 1], ['woocommerce', 'full', 1, 1]] }
+  ];
+
+  /* Faithful port of deriveStockStatus + STOCK_STATUS_LABEL + STOCK_STATUS_BADGE_TONE
+     (pages/products/product-stock-status.ts:21-45). Thresholds and words are the
+     real ones: < 0 → Oversold/error, <= 0 → Out of stock/error, <= 5 → Low stock/
+     warning, else In stock/success. Keyed on the AGGREGATE available quantity, not
+     on available-minus-reserved — an earlier revision of this file invented a
+     "Low" label and the wrong predicate. */
+  var STOCK_LOW_THRESHOLD = 5;
+  var STOCK_META = {
+    oversold: ['error', 'Oversold'],
+    'out-of-stock': ['error', 'Out of stock'],
+    'low-stock': ['warning', 'Low stock'],
+    'in-stock': ['success', 'In stock']
+  };
+  function deriveStockStatus(available) {
+    if (available < 0) return 'oversold';
+    if (available <= 0) return 'out-of-stock';
+    if (available <= STOCK_LOW_THRESHOLD) return 'low-stock';
+    return 'in-stock';
+  }
+  function stockCell(p) {
+    /* An undefined aggregate renders a plain hyphen-minus, not an em dash
+       (products-list-page.tsx:608-610). */
+    if (p.stock === undefined) return '<span class="text-muted">-</span>';
+    var m = STOCK_META[deriveStockStatus(p.stock)];
+    return '<span class="products-cell-stack">' +
+      '<span class="products-stock-value mono tabular">' + p.stock + '</span>' +
+      badge(m[0], m[1], { compact: true }) +
+      (p.reserved ? '<span class="text-muted products-cell-sub tabular">reserved ' + p.reserved + '</span>' : '') + '</span>';
+  }
+
+  function productsRows(view) {
+    return PRODUCTS.map(function (p) {
+      var c = CONNECTIONS[p.conn];
+
+      var idLine, sourceHtml;
+      if (view === 'before') {
+        idLine = '<span class="text-muted products-cell-sub mono-text">' + esc(p.sku) + '</span>';
+        sourceHtml = '<span class="products-cell-stack">' + channelPill(c.platformType) +
+          '<span class="text-muted products-cell-sub">' + esc(c.name) + '</span></span>';
+      } else {
+        /* SKU only. EAN was dropped from this row by PM decision — see the frame's
+           note. The label prefix is the change: a bare mono string does not say
+           what kind of identifier it is. */
+        idLine = '<span class="text-muted products-cell-sub">SKU: <span class="mono-text">' + esc(p.sku) + '</span></span>';
+        sourceHtml = connCell(p.conn, { adornment: 'pill' });
+      }
+
+      return tr([
+        CHECK,
+        '<span class="product-row">' + thumb(p.name, p.hasImage, 'md') +
+          '<span class="products-cell-stack">' +
+            '<span class="ds-row"><a class="product-row__name product-row__name--link" href="#frame-products">' + esc(p.name) + '</a>' +
+            (p.variants > 1 ? badge('', p.variants + ' variants', { compact: true, dot: false }) : '') + '</span>' +
+            idLine +
+          '</span></span>',
+        sourceHtml,
+        stockCell(p),
+        /* Coverage pill title is the real one from listings-coverage-pills.tsx:65-77:
+           "{label}: {listed} of {variantCount} variant(s) listed". */
+        '<span class="coverage-pills">' + p.cov.map(function (x) {
+          var label = platformLabel(x[0]), listed = x[2], total = x[3];
+          return '<span class="coverage-pill coverage-pill--' + x[1] + '" data-channel="' + x[0] + '" ' +
+            'title="' + esc(label + ': ' + listed + ' of ' + total + ' variant' + (total === 1 ? '' : 's') + ' listed') + '">' +
+            esc(label) + ' <span class="coverage-pill__count tabular">' + listed + '/' + total + '</span></span>';
+        }).join('') + '</span>',
+        right('<span class="products-cell-stack products-cell-stack--end">' +
+          '<span class="mono tabular products-stock-value">' + esc(p.price) + '</span>' +
+          '<span class="text-muted products-cell-sub products-cell-sub--date mono tabular">upd. ' + esc(p.updated) + '</span></span>')
+      ]);
+    });
+  }
+  var PRODUCTS_HEADERS = ['', 'Product', 'Source', 'Stock', 'Listings', '>Price / Updated'];
+  table('products-before', PRODUCTS_HEADERS, productsRows('before'));
+  table('products-after', PRODUCTS_HEADERS, productsRows('after'));
+
+  /* ══════════════════ Frame 06 — Listings ══════════════════ */
+
+  var LISTINGS = [
+    { ext: '16843092771', internal: 'ol_variant_e4b98e91340a44edb4892905db8810b1', conn: CONN_ALLEGRO, entity: 'Offer',       created: '28 lip 2026' },
+    { ext: '16843092772', internal: 'ol_variant_7a2f5c19b83d4e06a91c4d7e2f508b63', conn: CONN_ALLEGRO, entity: 'Offer',       created: '28 lip 2026' },
+    { ext: 'ERL-99120847', internal: 'ol_variant_c31d8064a75b42f9be07d215c9f36a48', conn: CONN_ERLI,    entity: 'Offer',       created: '30 lip 2026' },
+    { ext: '4821',        internal: 'ol_variant_9f60b47e2c1a48d5ab83f0e716d2c594', conn: CONN_WOO,     entity: 'ShopProduct', created: '1 sie 2026' },
+    { ext: '16843110042', internal: 'ol_variant_1b7ea3d58f094c62ad10e8b34f7526c9', conn: CONN_GONE,    entity: 'Offer',       created: '12 cze 2026' }
+  ];
+
+  function listingsRows(view) {
+    return LISTINGS.map(function (l) {
+      var c = CONNECTIONS[l.conn];
+      var platformHtml, connHtml;
+      if (view === 'before') {
+        platformHtml = '<span class="mono-text">' + esc(c ? c.platformType : 'allegro') + '</span>';
+        connHtml = '<span class="mono-text">' + esc(l.conn) + '</span>';
+      } else {
+        platformHtml = channelPill(c ? c.platformType : 'allegro');
+        connHtml = connCell(l.conn);
+      }
+      return tr([
+        '<span class="mono-text" title="' + esc(l.ext) + '">' + esc(l.ext) + '</span>',
+        '<span class="mono-text">' + esc(shortenId(l.internal)) + '</span>',
+        platformHtml,
+        '<span class="mono-text">' + esc(l.entity) + '</span>',
+        connHtml,
+        '<span class="time-cell">' + esc(l.created) + '</span>'
+      ]);
+    });
+  }
+  var LISTINGS_HEADERS = ['External ID', 'Internal ID', 'Platform', 'Entity Type', 'Connection', 'Created'];
+  table('listings-before', LISTINGS_HEADERS, listingsRows('before'));
+  table('listings-after', LISTINGS_HEADERS, listingsRows('after'));
+
+  /* ── The "After #1965" pane ────────────────────────────────────────────────
+     This exists to answer one question the two mockups otherwise invite: "these
+     show two different Listings tables — will they conflict?" They will not, and
+     this is why. #1965 replaces the whole page (Listing · Channel · Connection ·
+     Price · Quantity · Updated, per its own accepted mockup); the SHARED cell from
+     this issue drops into its Connection column untouched. The pane below is #1965's
+     column set rendered from THIS file's connCell(), so if the two ever diverge it
+     shows up here.
+
+     Channel stays a separate column there — which is why Listings passes no
+     `adornment`. Price and Quantity are #1965's own blocked fields (they need a list
+     read model; see its handover), so they are marked with its own gap convention.
+     `Updated` is `lastStatusSyncedAt` via TimeDisplay — datetime, not date. */
+  var LISTINGS_1965 = [
+    { name: 'Terra Wool Coat',     variant: 'Terakota 24 cm', offer: '14829301', sku: 'TERRA-24-TER', ean: '5900000000138', hasImage: true,  conn: CONN_ERLI,    price: '100,00 PLN', qty: 41, updated: '30 lip 2026, 02:10' },
+    { name: 'Nordic Linen Shirt',  variant: 'Biały mat 18 cm', offer: '15003877', sku: 'NORD-LIN-02', ean: '5900000000212', hasImage: true,  conn: CONN_ALLEGRO, price: '59,00 PLN',  qty: 0,  updated: '30 lip 2026, 01:54' },
+    { name: 'Alpine Merino Scarf', variant: '20 cm',          offer: '14771120', sku: 'ALP-MER-SCF',  ean: '5900000000309', hasImage: false, conn: CONN_ALLEGRO, price: '24,50 PLN',  qty: 88, updated: '30 lip 2026, 01:47' },
+    { name: 'Harbour Canvas Tote', variant: 'Czarny 22 cm',   offer: '15112044', sku: 'HARB-CNV-TT',  ean: '5900000000415', hasImage: true,  conn: CONN_ERLI,    price: '134,00 PLN', qty: 7,  updated: '30 lip 2026, 02:11' }
+  ];
+  table('listings-next',
+    ['Listing', 'Channel', 'Connection', '>Price', '>Quantity', 'Updated'],
+    LISTINGS_1965.map(function (l) {
+      var c = CONNECTIONS[l.conn];
+      return tr([
+        '<span class="order-cell">' + thumb(l.name, l.hasImage, 'md') +
+          '<span class="order-cell__body">' +
+            '<span class="ds-row"><a class="product-row__name product-row__name--link" href="#frame-listings">' + esc(l.name) + '</a>' +
+              '<span class="listing-variant">' + esc(l.variant) + '</span></span>' +
+            '<span class="text-muted products-cell-sub"><span class="mono-text">' + esc(l.offer) + '</span>' +
+              ' &middot; SKU: <span class="mono-text">' + esc(l.sku) + '</span>' +
+              ' &middot; EAN: <span class="mono-text">' + esc(l.ean) + '</span></span>' +
+          '</span></span>',
+        channelPill(c.platformType),
+        connCell(l.conn),
+        right('<span class="mono tabular">' + esc(l.price) + '</span>' + DAGGER_1965),
+        right('<span class="orders-cell-stack orders-cell-stack--end">' +
+          '<span class="orders-shipby-row"><span class="mono tabular">' + l.qty + '</span>' + DAGGER_1965 + '</span>' +
+          (l.qty === 0 ? badge('error', 'Out of stock', { compact: true }) : '') + '</span>'),
+        '<span class="time-cell">' + esc(l.updated) + '</span>'
+      ]);
+    }));
+
+  /* ══════════════════ Frame 07 — Customers ══════════════════ */
+
+  var CUSTOMERS = [
+    { id: 'ol_customer_74b1e9c03a2d48f6b85c1e70d92f4a36', first: 'Anna',  last: 'Kowalska',      hash: '9f2c41ab7e05d8...', conn: CONN_ALLEGRO, seen: '3 sie 2026' },
+    { id: 'ol_customer_c08fa25d7e614b39ac72d1508f6b3e94', first: 'Marek', last: 'Nowak',         hash: '31de70c4b98a1f...', conn: CONN_ERLI,    seen: '3 sie 2026' },
+    { id: 'ol_customer_1e6d40b95c8f427aa310e75c2fb98d41', first: 'Zofia', last: 'Wiśniewska', hash: 'ac5b1e07d34f92...', conn: CONN_PRESTA,  seen: '2 sie 2026' },
+    /* PII storage disabled for this deployment: the API returns no names at all. */
+    { id: 'ol_customer_a37c8f1b04e2496da5b9c0e63f781d25', first: null,    last: null,            hash: '77e0b4ca19f6d3...', conn: CONN_WOO,     seen: '1 sie 2026' }
+  ];
+
+  function customersRows(view) {
+    return CUSTOMERS.map(function (u) {
+      var name = u.first ? u.first + ' ' + u.last : null;
+      if (view === 'before') {
+        return tr([
+          '<span class="mono-text">' + esc(u.id) + '</span>',
+          '<span class="mono-text">' + esc(u.hash) + '</span>',
+          name ? esc(name) : '<span class="text-muted">—</span>',
+          '<span class="mono-text">' + esc(u.conn) + '</span>',
+          '<span class="time-cell">' + esc(u.seen) + '</span>'
+        ]);
+      }
+      return tr([
+        name
+          ? '<span class="entity-label"><a class="entity-label__name entity-label__name--link" href="#frame-customers">' + esc(name) + '</a></span>'
+          : '<span class="orders-cell-stack"><span class="mono-text">' + esc(u.hash) + '</span>' +
+            '<span class="text-muted orders-cell-sub">Name not stored</span></span>',
+        '<span class="copyable-id"><code class="copyable-id__value" title="' + esc(u.id) + '">' + esc(shortenId(u.id)) + '</code>' +
+          copyBtn(u.id, 'Copy customer ID ' + u.id, 'copyable-id__copy') + '</span>',
+        connCell(u.conn),
+        '<span class="time-cell">' + esc(u.seen) + '</span>'
+      ]);
+    });
+  }
+  table('customers-before', ['Customer ID', 'Email Hash', 'Name', 'Last Source', 'Last Seen'], customersRows('before'));
+  table('customers-after', ['Customer', 'Customer ID', 'Last connection source', 'Last seen'], customersRows('after'));
+
+  /* ══════════════════ Frame 08 — Shipments ══════════════════ */
+
+  /* Transcribed, not invented:
+       Status    → ShipmentStatusBadge (features/shipments/components/shipment-status-badge.tsx:15-36).
+                   The label is the RAW status string — lowercase, hyphenated
+                   (`in-transit`) — uppercased by `.status-badge`'s text-transform.
+                   Tones: draft=review, generated=info, dispatched=info+pulse,
+                   in-transit=info+pulse, delivered=success, failed=error,
+                   cancelled=neutral.
+       Action    → ShipmentSeverityLabel, data-severity ∈ Fix | Finish | Send | View
+                   (features/shipments/lib/shipment-severity.ts:64-86).
+       Processor → PROCESSOR_KIND_LABEL (features/shipments/lib/processor.ts:51-55):
+                   OMP-fulfilled/review · Carrier/info · Pending/neutral. NOT the
+                   carrier's name — an earlier revision of this file printed "InPost"
+                   here, which is a different fact and belongs in Connection.
+       Created   → TimeDisplay with NO format prop ⇒ default "datetime". */
+  var SHIPMENTS = [
+    { o: 'o2', status: ['success', 'delivered', false],  sev: 'View',   proc: ['info', 'Carrier'],       created: '3 sie 2026, 08:20', cust: 'Marek Nowak',        conn: CONN_INPOST, track: '6200012345678901' },
+    { o: 'o1', status: ['info', 'in-transit', true],     sev: 'View',   proc: ['info', 'Carrier'],       created: '3 sie 2026, 09:40', cust: 'Anna Kowalska',      conn: CONN_INPOST, track: '6200012345678902' },
+    { o: 'o3', status: ['error', 'failed', false],       sev: 'Fix',    proc: ['info', 'Carrier'],       created: '2 sie 2026, 17:55', cust: 'Zofia Wiśniewska',   conn: CONN_INPOST, track: null },
+    { o: 'o4', status: ['info', 'generated', false],     sev: 'Send',   proc: ['neutral', 'Pending'],    created: '2 sie 2026, 15:40', cust: 'Piotr Lewandowski',  conn: CONN_INPOST, track: null }
+  ];
+
+  function shipmentsRows(view) {
+    return SHIPMENTS.map(function (s) {
+      var o = ORDERS[s.o];
+      var orderHtml, connHtml;
+      if (view === 'before') {
+        orderHtml = '<span class="entity-label">' +
+          '<a class="entity-label__name entity-label__name--link" href="#frame-shipments">' + esc(shortenId(o.id)) + '</a>' +
+          copyBtn(o.id, 'Copy ' + o.id, 'entity-label__copy') + '</span>';
+        var cb = CONNECTIONS[s.conn];
+        connHtml = '<span class="shipments-page__provider">' + connDot(cb.name, cb.platformType, 'carrier') +
+          '<span>' + esc(cb.name) + '</span></span>';
+      } else {
+        orderHtml = orderCell(o, { gap: true });
+        connHtml = connCell(s.conn, { adornment: 'dot', variant: 'carrier' });
+      }
+      return tr([
+        badge(s.status[0], s.status[1], { compact: true, pulse: s.status[2] }),
+        orderHtml,
+        '<span class="shipments-page__severity" data-severity="' + esc(s.sev) + '">' + esc(s.sev) + '</span>',
+        badge(s.proc[0], s.proc[1], { compact: true }),
+        '<span class="time-cell">' + esc(s.created) + '</span>',
+        '<span class="entity-label"><a class="entity-label__name entity-label__name--link" href="#frame-shipments">' + esc(s.cust) + '</a></span>',
+        connHtml,
+        s.track ? '<span class="mono-text">' + esc(s.track) + '</span>' : '<span class="text-muted">—</span>'
+      ], false);
+    });
+  }
+  var SHIPMENTS_HEADERS = ['Status', 'Order', 'Action', 'Processor', 'Created', 'Customer', 'Connection', 'Tracking'];
+  table('shipments-before', SHIPMENTS_HEADERS, shipmentsRows('before'));
+  table('shipments-after', SHIPMENTS_HEADERS, shipmentsRows('after'));
+
+  /* ══════════════════ Frame 09 — Invoices ══════════════════ */
+
+  /* Transcribed, not invented:
+       Status     → InvoiceStatusBadge fallbacks (features/invoicing/components/
+                    invoice-status-badge.tsx:30-37): Not issued/neutral ·
+                    Pending/warning+pulse · Issuing…/info+pulse · Issued/success ·
+                    Failed/error · Needs review/warning (the `in-doubt` display state,
+                    derived from a failed row whose failureMode ≠ 'rejected').
+       Regulatory → REGULATORY_STATUS_LABEL_FALLBACK (regulatory-status-badge.tsx:36-43).
+                    Every label is KSeF-prefixed, and the list renders a badge for
+                    EVERY value including `N/A`. ⚠ `cleared` is deliberately `info`
+                    ("KSeF: clearing"), never `success` — an unconfirmed clearance must
+                    not read as done. An earlier revision of this file showed
+                    "Cleared"/success, which inverted that rule.
+       Issued     → TimeDisplay format="date"; null renders an em dash. */
+  var INVOICES = [
+    { o: 'o1', num: 'FV/2026/08/0184', type: 'Invoice', pdf: true,  status: ['success', 'Issued'],       reg: ['success', 'KSeF: accepted'],  clr: '4390281-20260803-A1B2C3-8F', conn: CONN_INFAKT, issued: '3 sie 2026' },
+    { o: 'o2', num: 'FV/2026/08/0185', type: 'Invoice', pdf: true,  status: ['success', 'Issued'],       reg: ['info', 'KSeF: submitted'],    clr: null, conn: CONN_INFAKT, issued: '3 sie 2026' },
+    { o: 'o3', num: null,              type: 'Invoice', pdf: false, status: ['error', 'Failed'],         reg: ['error', 'KSeF: rejected'],    clr: null, conn: CONN_INFAKT, issued: null },
+    /* A receipt legitimately has no document number — that is not missing data. */
+    { o: 'o4', num: null,              type: 'Receipt', pdf: false, status: ['success', 'Issued'],       reg: ['neutral', 'N/A'],             clr: null, conn: CONN_INFAKT, issued: '2 sie 2026' },
+    /* The order record no longer resolves, so orderSummary comes back null. Also the
+       `in-doubt` status: the provider may or may not have created the document. */
+    { o: null, num: 'FV/2026/07/0912', type: 'Invoice', pdf: true,  status: ['warning', 'Needs review'], reg: ['info', 'KSeF: clearing'],     clr: '4390281-20260712-77EE10-3C', conn: CONN_INFAKT, issued: '12 lip 2026' }
+  ];
+
+  function invoicesRows(view) {
+    return INVOICES.map(function (i) {
+      var o = i.o ? ORDERS[i.o] : null;
+      var cells;
+
+      if (view === 'before') {
+        cells = [
+          CHECK,
+          o ? '<span class="mono-text" title="' + esc(o.id) + '">' + esc(o.id) + '</span>' : '<span class="text-muted">—</span>',
+          i.num ? (i.pdf ? '<a class="invoice-pdf-link" href="#frame-invoices"><span class="mono-text">' + esc(i.num) + '</span></a>'
+                         : '<span class="mono-text">' + esc(i.num) + '</span>')
+                : '<span class="text-muted">—</span>',
+          '<span class="mono-text">' + esc(i.type) + '</span>',
+          badge(i.status[0], i.status[1], { compact: true }),
+          badge(i.reg[0], i.reg[1], { compact: true }),
+          i.clr ? '<span class="mono-text">' + esc(i.clr) + '</span>' : '<span class="text-muted">—</span>',
+          '<span class="text-muted" title="' + esc(i.conn) + '">' + esc(CONNECTIONS[i.conn].name) + '</span>',
+          i.issued ? '<span class="time-cell">' + esc(i.issued) + '</span>' : '<span class="text-muted">—</span>'
+        ];
+      } else {
+        cells = [
+          CHECK,
+          orderCell(o, { gap: true }),
+          /* Invoice no. + Document type collapse into one document identity. */
+          '<span class="orders-cell-stack">' +
+            (i.num ? (i.pdf ? '<a class="invoice-pdf-link" href="#frame-invoices"><span class="mono-text">' + esc(i.num) + '</span></a>'
+                            : '<span class="mono-text">' + esc(i.num) + '</span>')
+                   : '<span class="text-muted">–</span>') +
+            '<span class="text-muted orders-cell-sub">' + esc(i.type) + '</span></span>',
+          badge(i.status[0], i.status[1], { compact: true }),
+          badge(i.reg[0], i.reg[1], { compact: true }),
+          i.clr ? '<span class="mono-text">' + esc(i.clr) + '</span>' : '<span class="text-muted">—</span>',
+          connCell(i.conn),
+          i.issued ? '<span class="time-cell">' + esc(i.issued) + '</span>' : '<span class="text-muted">—</span>'
+        ];
+      }
+      return tr(cells);
+    });
+  }
+  table('invoices-before',
+    ['', 'Order', 'Invoice no.', 'Document type', 'Status', 'Regulatory', 'Clearance ref.', 'Connection', 'Issued'],
+    invoicesRows('before'));
+  table('invoices-after',
+    ['', 'Order', 'Document type', 'Status', 'Regulatory', 'Clearance ref.', 'Connection', 'Issued'],
+    invoicesRows('after'));
+
+  /* ══════════════════ Frame 10 — mobile cards ══════════════════
+     Same orderCell() as every desktop frame. That is the point: the Shipments
+     card branch is a separate render path in the page today, which is exactly
+     how it drifted from its own column. */
+
+  document.getElementById('mobile-shipments').innerHTML = SHIPMENTS.slice(0, 3).map(function (s) {
+    var o = ORDERS[s.o];
+    return '<div class="data-card">' +
+      '<div class="data-card__head">' +
+        '<div class="data-card__main">' + orderCell(o, { gap: true }) +
+          '<span class="text-muted orders-cell-sub">' + esc(s.cust) + '</span></div>' +
+      '</div>' +
+      '<div class="data-table__badge-row">' +
+        badge(s.status[0], s.status[1], { compact: true, pulse: s.status[2] }) +
+        '<span class="shipments-page__severity" data-severity="' + esc(s.sev) + '">' + esc(s.sev) + '</span>' +
+      '</div>' +
+      '<dl class="data-card__facts">' +
+        '<div class="data-card__fact data-card__fact--wide"><dt>Connection</dt><dd>' +
+          connCell(s.conn, { adornment: 'dot', variant: 'carrier' }) + '</dd></div>' +
+        '<div class="data-card__fact"><dt>Tracking</dt><dd>' +
+          (s.track ? '<span class="mono-text">' + esc(s.track) + '</span>' : '<span class="text-muted">—</span>') + '</dd></div>' +
+      '</dl></div>';
+  }).join('');
+
+  document.getElementById('mobile-orders').innerHTML = ORDER_ROWS.slice(0, 2).map(function (r) {
+    var o = ORDERS[r.o];
+    var src = CONNECTIONS[o.conn];
+    return '<div class="data-card">' +
+      '<div class="data-card__head">' +
+        '<div class="data-card__main">' + orderCell(o) +
+          /* The real card subtitle is channel pill + destination + a RELATIVE
+             timestamp (orders-list-page.tsx:1306, TimeDisplay format="relative").
+             formatRelativeTime emits "just now" / "5m ago" / "2h ago" / "3d ago"
+             and is always English, even under pl-PL — it uses no Intl. */
+          '<span class="text-muted orders-cell-sub orders-card-sub">' + channelPill(src.platformType) +
+            ' <span class="mono tabular">' + esc(r.rel) + '</span></span></div>' +
+      '</div>' +
+      '<div class="data-table__badge-row">' + badge(r.status[0], r.status[1], { compact: true }) + '</div>' +
+      '<dl class="data-card__facts">' +
+        '<div class="data-card__fact"><dt>Total</dt><dd class="mono tabular">' + esc(r.total) + '</dd></div>' +
+        '<div class="data-card__fact"><dt>Customer</dt><dd>' + esc(r.cust) + '</dd></div>' +
+      '</dl></div>';
+  }).join('');
+
+  /* ══════════════════ Frame 11 — tablet, 768 px ══════════════════
+     Renders from the SAME ROWS and the SAME orderCell()/connCell() as every other
+     frame — only the column SET differs, exactly as `hideBelow` would drop it. The
+     device frames are fixed-width boxes inside the 1320px sheet, so no @media fires
+     on them; the omissions below are therefore explicit, not emergent. */
+
+  /* Orders at 768: `channel` (hideBelow 1024) is gone, and the pill relocates into
+     the Order cell — the fact moves, it is not lost. */
+  table('tablet-orders',
+    ['', 'Order', 'Customer', 'Status', 'Shipment / Ship-by', '>Total / Payment / Created'],
+    ORDER_ROWS.slice(0, 3).map(function (r) {
+      var o = ORDERS[r.o];
+      var src = CONNECTIONS[o.conn];
+      var dst = CONNECTIONS[r.dest];
+      /* The Order cell plus the folded channel line beneath it. */
+      var orderHtml = '<span class="orders-cell-stack">' + orderCell(o) +
+        '<span class="orders-order-channel">' + channelPill(src.platformType) +
+          '<span class="text-muted orders-cell-sub">→ ' + esc(platformLabel(dst.platformType)) + '</span></span></span>';
+      var shipHtml = '<span class="orders-cell-stack">' + badge(r.ship[0], r.ship[1], { compact: true }) +
+        (r.sla ? '<span class="orders-shipby-row">' + badge(r.sla[0], r.sla[1], { compact: true }) +
+          (r.eta ? '<span class="text-muted orders-cell-sub mono tabular">' + esc(r.eta) + '</span>' : '') + '</span>' : '') + '</span>';
+      return tr([
+        CHECK,
+        orderHtml,
+        '<span class="orders-cell-stack"><span>' + esc(r.cust) + '</span><span class="text-muted orders-cell-sub">' + esc(r.city) + '</span></span>',
+        '<span class="orders-cell-stack">' + badge(r.status[0], r.status[1], { compact: true }) +
+          (r.reason ? '<span class="orders-status-reason" title="' + esc(r.reason) + '">' + esc(r.reason) + '</span>' : '') + '</span>',
+        shipHtml,
+        right('<span class="orders-cell-stack orders-cell-stack--end">' +
+          '<span class="mono tabular orders-money-total">' + esc(r.total) + '</span>' +
+          badge(r.pay[0], r.pay[1], { compact: true }) +
+          '<span class="text-muted orders-cell-sub mono tabular">' + esc(r.created) + '</span></span>')
+      ]);
+    }));
+
+  /* Products at 768: `source` (hideBelow 1024) is gone, so the connection folds into
+     the PRODUCT cell as a third line. Host chosen by meaning: the source connection
+     is where this product came from, which is the identity column's own subject. */
+  table('tablet-products',
+    ['', 'Product', 'Stock', 'Listings', '>Price / Updated'],
+    PRODUCTS.slice(0, 3).map(function (p) {
+      return tr([
+        CHECK,
+        '<span class="product-row">' + thumb(p.name, p.hasImage, 'md') +
+          '<span class="products-cell-stack">' +
+            '<span class="ds-row"><a class="product-row__name product-row__name--link" href="#frame-tablet">' + esc(p.name) + '</a>' +
+              (p.variants > 1 ? badge('', p.variants + ' variants', { compact: true, dot: false }) : '') + '</span>' +
+            '<span class="text-muted products-cell-sub">SKU: <span class="mono-text">' + esc(p.sku) + '</span></span>' +
+            connFold(p.conn, { adornment: 'pill' }) +
+          '</span></span>',
+        stockCell(p),
+        '<span class="coverage-pills">' + p.cov.map(function (x) {
+          return '<span class="coverage-pill coverage-pill--' + x[1] + '" data-channel="' + x[0] + '">' +
+            esc(platformLabel(x[0])) + ' <span class="coverage-pill__count tabular">' + x[2] + '/' + x[3] + '</span></span>';
+        }).join('') + '</span>',
+        right('<span class="products-cell-stack products-cell-stack--end">' +
+          '<span class="mono tabular products-stock-value">' + esc(p.price) + '</span>' +
+          '<span class="text-muted products-cell-sub products-cell-sub--date mono tabular">upd. ' + esc(p.updated) + '</span></span>')
+      ]);
+    }));
+
+  /* Shipments at 768: `connectionId` (hideBelow 1024) is gone, so the connection
+     folds into the PROCESSOR cell. Host chosen by meaning: "Carrier" and "which
+     carrier connection" are one question — the badge already answers the first half,
+     so the fold completes it rather than repeating the identity column. */
+  table('tablet-shipments',
+    ['Status', 'Order', 'Action', 'Processor', 'Created', 'Customer', 'Tracking'],
+    SHIPMENTS.slice(0, 3).map(function (s) {
+      var o = ORDERS[s.o];
+      return tr([
+        badge(s.status[0], s.status[1], { compact: true, pulse: s.status[2] }),
+        orderCell(o, { gap: true }),
+        '<span class="shipments-page__severity" data-severity="' + esc(s.sev) + '">' + esc(s.sev) + '</span>',
+        '<span class="orders-cell-stack">' + badge(s.proc[0], s.proc[1], { compact: true }) +
+          connFold(s.conn, { adornment: 'dot', variant: 'carrier' }) + '</span>',
+        '<span class="time-cell">' + esc(s.created) + '</span>',
+        '<span class="entity-label"><a class="entity-label__name entity-label__name--link" href="#frame-tablet">' + esc(s.cust) + '</a></span>',
+        s.track ? '<span class="mono-text">' + esc(s.track) + '</span>' : '<span class="text-muted">—</span>'
+      ], false);
+    }));
+
+  /* Invoices at 768: `connection` goes with `regulatoryStatus` and `clearanceRef`
+     (all hideBelow 1024), so the connection folds into the DOCUMENT TYPE cell. Host
+     chosen by meaning: that cell already answers "what document is this", and the
+     provider that issued it is the same sentence. */
+  table('tablet-invoices',
+    ['', 'Order', 'Document type', 'Status', 'Issued'],
+    INVOICES.slice(0, 3).map(function (i) {
+      var o = i.o ? ORDERS[i.o] : null;
+      return tr([
+        CHECK,
+        orderCell(o, { gap: true }),
+        '<span class="orders-cell-stack">' +
+          (i.num ? (i.pdf ? '<a class="invoice-pdf-link" href="#frame-tablet"><span class="mono-text">' + esc(i.num) + '</span></a>'
+                          : '<span class="mono-text">' + esc(i.num) + '</span>')
+                 : '<span class="text-muted">–</span>') +
+          '<span class="text-muted orders-cell-sub">' + esc(i.type) + '</span>' +
+          connFold(i.conn) + '</span>',
+        badge(i.status[0], i.status[1], { compact: true }),
+        i.issued ? '<span class="time-cell">' + esc(i.issued) + '</span>' : '<span class="text-muted">—</span>'
+      ]);
+    }));
+
+  /* The matrix. `hide-below-1024` fires at max-width 1023.98px, so it is ACTIVE at
+     768; `hide-below-768` fires at max-width 767.98px, so it is NOT. */
+  (function () {
+    var rows = [
+      ['Orders',    'Channel <code>(1024)</code>',                                          'relocated', 'Pre-existing precedent: the channel pill folds into the <b>Order</b> cell (<code>.orders-order-channel</code>). Orders has no Connection column of its own.'],
+      ['Products',  'Source <code>(1024)</code>',                                           'relocated', 'Folds into the <b>Product</b> cell — the source connection is where this product came from, which is that column\'s own subject.'],
+      ['Listings',  'Internal ID <code>(1024)</code>',                                      'visible',   'Connection is <code>hideBelow: 768</code>, so it survives at exactly 768. No fold needed.'],
+      ['Customers', 'Email Hash <code>(1024)</code> — already removed by #1996',             'visible',   'Last connection source is <code>hideBelow: 768</code>. No fold needed.'],
+      ['Shipments', 'Connection <code>(1024)</code>, Paczkomat <code>(1024)</code>',         'relocated', 'Folds into the <b>Processor</b> cell — "Carrier" and "which carrier connection" are one question; the badge answers half of it.'],
+      ['Invoices',  'Regulatory, Clearance ref., Connection <code>(1024)</code>',            'relocated', 'Folds into the <b>Document type</b> cell — that cell already says what the document is; who issued it is the same sentence.']
+    ];
+    var TONE = { gone: ['error', 'Not shown'], visible: ['success', 'Shown'], relocated: ['info', 'Relocated'] };
+    document.getElementById('tablet-matrix').innerHTML = rows.map(function (r) {
+      var t = TONE[r[2]];
+      return '<tr><td><b>' + esc(r[0]) + '</b></td><td>' + r[1] + '</td><td>' +
+        badge(t[0], t[1], { compact: true }) + '<br /><span class="text-muted" style="font-size:0.75rem">' + r[3] + '</span></td></tr>';
+    }).join('');
+  })();
+
+  /* ══════════════════ Frame 12 — skeleton ══════════════════
+     Mirrors the cell's real geometry so the row does not change height when the
+     data lands: a 24px thumbnail beside two lines. */
+  (function () {
+    var rows = '';
+    for (var i = 0; i < 4; i++) {
+      rows += '<tr>' +
+        '<td><span class="skeleton skeleton--line" style="width:5rem"></span></td>' +
+        '<td><span class="order-cell">' +
+          '<span class="skeleton skeleton--thumb"></span>' +
+          '<span class="order-cell__body" style="gap:5px">' +
+            '<span class="skeleton skeleton--line" style="width:7.5rem"></span>' +
+            '<span class="skeleton skeleton--line" style="width:10rem"></span>' +
+          '</span></span></td>' +
+        '<td><span class="skeleton skeleton--line" style="width:3rem"></span></td>' +
+        '<td><span class="conn-cell" style="gap:5px">' +
+          '<span class="skeleton skeleton--line" style="width:8rem"></span>' +
+          '<span class="skeleton skeleton--line" style="width:6rem"></span></span></td>' +
+        '<td><span class="skeleton skeleton--line" style="width:6rem"></span></td>' +
+      '</tr>';
+    }
+    table('skeleton-table', ['Status', 'Order', 'Action', 'Connection', 'Created'], [rows]);
+  })();
+
+  /* ══════════════════ Interaction ══════════════════ */
+
+  /* Before/after switch, one per frame. */
+  Array.prototype.forEach.call(document.querySelectorAll('[data-swap]'), function (frame) {
+    frame.addEventListener('click', function (ev) {
+      var btn = ev.target.closest ? ev.target.closest('[data-swap-to]') : null;
+      if (!btn) return;
+      var to = btn.getAttribute('data-swap-to');
+      frame.setAttribute('data-view', to);
+      Array.prototype.forEach.call(frame.querySelectorAll('[data-swap-to]'), function (b) {
+        b.setAttribute('aria-pressed', String(b.getAttribute('data-swap-to') === to));
+      });
+    });
+  });
+
+  /* Copy. Always writes the FULL id from data-copy, never the rendered short
+     form — that is an acceptance criterion of the issue, not a detail. */
+  document.addEventListener('click', function (ev) {
+    var btn = ev.target.closest ? ev.target.closest('[data-copy]') : null;
+    if (!btn) return;
+    ev.preventDefault();
+    var full = btn.getAttribute('data-copy');
+    if (navigator.clipboard) { navigator.clipboard.writeText(full); }
+    btn.setAttribute('data-copied', 'true');
+    btn.textContent = 'Copied';
+    window.setTimeout(function () {
+      btn.removeAttribute('data-copied');
+      btn.textContent = 'Copy';
+    }, 1500);
+  });
+
+  /* Keep the mockup's in-page anchors from scrolling: every href="#frame-…" here
+     stands in for a router Link, and jumping the page would misrepresent it. */
+  document.addEventListener('click', function (ev) {
+    var a = ev.target.closest ? ev.target.closest('a[href^="#frame-"]') : null;
+    if (a) { ev.preventDefault(); }
+  });
+})();
+</script>
+</body>
+</html>

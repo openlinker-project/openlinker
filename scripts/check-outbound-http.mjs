@@ -10,17 +10,20 @@
  * enforcement so a lint-config regression (or a package the ESLint override
  * doesn't yet cover) doesn't silently let a bypass back in.
  *
- * Scope: currently `libs/integrations/prestashop/**` only — the reference
- * adopter (#1772). Widens to `libs/integrations/**` once the remaining 8
- * clients are migrated (#1810 Phase 5, tracked in #1956); see the identical
- * scope note on the ESLint override.
+ * Scope: PrestaShop (reference adopter, #1772) + each Phase 5 client as it
+ * migrates (#1810, tracked in #1956) — see the identical scope note on the
+ * ESLint override, which this mirrors.
  *
  * A bare `fetch(` call is allowed only with an explicit, scoped exemption
  * comment on the immediately preceding line
  * (`// eslint-disable-next-line no-restricted-globals -- <reason>`) — never
- * a blanket file-level suppression. No such exemption exists in the current
- * scope; the allowance exists for the OAuth-token bypasses Phase 5 will add
- * in the other 8 packages once their scope is included here.
+ * a blanket file-level suppression. Used today for the 3 Allegro OAuth-token
+ * bypasses (exchangeCode/fetchAccountIdentity, callRefreshEndpoint,
+ * fetchSellerIdentity) and Erli's Allegro-app OAuth token bypass
+ * (`acquireToken` in `allegro-category-catalog-client.ts`) — low-volume auth
+ * infra, not shop traffic. InPost has no OAuth-token bypass to exempt (static
+ * Bearer API token, no token endpoint). No such exemption is needed for
+ * KSeF or Subiekt — neither client has an ad-hoc OAuth-token bypass.
  *
  * Run with `--self-check` to exercise the pure classifier against synthetic
  * inputs (no filesystem) — mirrors `check-migration-timestamps.mjs --self-check`.
@@ -40,7 +43,14 @@ const __dirname = dirname(__filename);
 const ROOT = resolve(__dirname, '..');
 
 /** Directories scanned for bare outbound `fetch()` calls. Widens in Phase 5. */
-const SCAN_ROOTS = ['libs/integrations/prestashop'];
+const SCAN_ROOTS = [
+  'libs/integrations/prestashop',
+  'libs/integrations/allegro',
+  'libs/integrations/erli',
+  'libs/integrations/inpost',
+  'libs/integrations/ksef',
+  'libs/integrations/subiekt',
+];
 
 const SKIP_DIRS = new Set([
   '.git',
@@ -51,13 +61,23 @@ const SKIP_DIRS = new Set([
 ]);
 
 const EXEMPTION_PATTERN = /eslint-disable-next-line\s+no-restricted-globals/;
-// A bare, un-namespaced `fetch(` call — not `.fetch(` (member access on some
-// object) and not `fetchImpl(`/`fetchSomething(` (a longer identifier).
-// Single-line pattern by design (scanned per-line below) — a call split
-// across lines (`fetch(\n  url,\n  ...\n)`) will not match. This is a
-// backstop against a lint-config regression, not a substitute for the
-// ESLint rule; the low-likelihood multi-line-call gap is accepted.
-const BARE_FETCH_PATTERN = /(?<![.\w])fetch\s*\(/;
+// Two shapes of unmetered outbound call:
+//
+//  1. A bare, un-namespaced `fetch(` call — not `.fetch(` (member access on
+//     some object) and not `fetchImpl(`/`fetchSomething(` (a longer
+//     identifier). This is the shape `no-restricted-globals` also catches;
+//     scanning for it is a backstop against a lint-config regression.
+//  2. A `globalThis.fetch` / `global.fetch` / `window.fetch` REFERENCE, with
+//     or without a call. `no-restricted-globals` structurally cannot see
+//     these — it flags the bare identifier `fetch`, not a member expression —
+//     so here the checker is the ONLY guard, not a backstop. The reference
+//     form matters as much as the call form: `const f = x ?? globalThis.fetch`
+//     hands an unmetered transport to a call site far away.
+//
+// Single-line patterns by design (scanned per-line below) — a call split
+// across lines (`fetch(\n  url,\n  ...\n)`) will not match. The
+// low-likelihood multi-line-call gap is accepted.
+const BARE_FETCH_PATTERN = /(?<![.\w])fetch\s*\(|(?<![.\w])(?:globalThis|global|window)\s*\.\s*fetch\b/;
 
 function isTestFile(relPath) {
   return relPath.endsWith('.spec.ts') || relPath.endsWith('.int-spec.ts');
@@ -86,6 +106,25 @@ async function* walk(dir) {
 }
 
 /**
+ * True for a line that is entirely a comment (a line comment `// ...`, a
+ * block-comment opener `/* ...`, or a JSDoc/block continuation `* ...`) — a
+ * coarse, line-oriented heuristic (no real tokenizer), good enough for this
+ * invariant: a genuine `fetch(` call is never itself comment text, only ever
+ * *mentioned* in one (e.g. a JSDoc description).
+ *
+ * A block comment that CLOSES on the same line and is followed by code
+ * (`/* legacy *\/ await fetch(url)`) is code, not comment — skipping it would
+ * hand a bypass exactly the escape hatch this guard exists to deny.
+ */
+function isCommentOnlyLine(line) {
+  const trimmed = line.trim();
+  if (trimmed.startsWith('//')) return true;
+  if (!trimmed.startsWith('/*') && !trimmed.startsWith('*')) return false;
+  const closedAt = trimmed.lastIndexOf('*/');
+  return closedAt === -1 || trimmed.slice(closedAt + 2).trim() === '';
+}
+
+/**
  * Pure classifier: given a file's source text, return one entry per
  * unexempted bare `fetch(` call. Line numbers are 1-indexed.
  */
@@ -93,6 +132,7 @@ export function findBareFetchCalls(content) {
   const lines = content.split('\n');
   const hits = [];
   for (let i = 0; i < lines.length; i++) {
+    if (isCommentOnlyLine(lines[i])) continue;
     if (!BARE_FETCH_PATTERN.test(lines[i])) continue;
     const prevLine = i > 0 ? lines[i - 1] : '';
     if (EXEMPTION_PATTERN.test(prevLine)) continue;
@@ -174,6 +214,47 @@ function selfCheck() {
       content:
         '// eslint-disable-next-line no-restricted-globals -- OAuth token endpoint\n\nconst res = await fetch(url);',
       expectHits: 1,
+    },
+    {
+      name: 'flags a globalThis.fetch reference (no-restricted-globals cannot see it)',
+      content: 'const fetchImpl = options?.fetchImpl ?? globalThis.fetch;',
+      expectHits: 1,
+    },
+    {
+      name: 'flags a window.fetch call',
+      content: 'const res = await window.fetch(url);',
+      expectHits: 1,
+    },
+    {
+      name: 'honours an exemption above a globalThis.fetch reference',
+      content:
+        '// eslint-disable-next-line no-restricted-globals -- master-shop image bytes\nconst fetchImpl = options?.fetchImpl ?? globalThis.fetch;',
+      expectHits: 0,
+    },
+    {
+      name: 'does not flag an unrelated member named fetch on some object',
+      content: 'const res = await this.fetchImpl(url);',
+      expectHits: 0,
+    },
+    {
+      name: 'does not flag a JSDoc line mentioning fetch(',
+      content: ' * Format a thrown value from `fetch()` into an operator-actionable string.',
+      expectHits: 0,
+    },
+    {
+      name: 'does not flag a line comment mentioning fetch(',
+      content: '// Convert Headers to plain object for fetch (Node.js fetch may have issues)',
+      expectHits: 0,
+    },
+    {
+      name: 'flags a real fetch( that follows a closed block comment on the same line',
+      content: '/* legacy path */ const res = await fetch(url);',
+      expectHits: 1,
+    },
+    {
+      name: 'does not flag a self-closed block comment that only mentions fetch(',
+      content: '/* falls back to fetch() when unset */',
+      expectHits: 0,
     },
   ];
 

@@ -14,6 +14,7 @@
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { LoggerPort } from '@openlinker/shared/logging';
+import type { FetchLike } from '@openlinker/shared/http';
 import type {
   SubiektConnectionConfig,
   SubiektPaymentMethod,
@@ -34,6 +35,7 @@ export class SubiektAdapterFactory {
     connection: Connection,
     credentialsResolver: CredentialsResolverPort,
     logger: LoggerPort,
+    fetchImpl: FetchLike,
   ): Promise<SubiektAdapters> {
     const config = this.validateAndParseConfig(
       (connection.config ?? {}) as Record<string, unknown>,
@@ -54,6 +56,7 @@ export class SubiektAdapterFactory {
     const client = new SubiektBridgeHttpClient(config.bridgeBaseUrl, {
       token,
       timeoutMs: config.timeoutMs,
+      fetchImpl,
     });
 
     return {

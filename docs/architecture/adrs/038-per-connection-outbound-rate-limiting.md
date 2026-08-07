@@ -99,6 +99,35 @@ value keeps working across the cutover — see the implementation plan's migrati
   scaling — and is worth calling out on its own since it directly weakens the guarantee against the
   #1772 incident this ADR exists to prevent.
 
+### The cap is per connection
+
+`config.rateLimit` means "this connection's total outbound rate". Exactly one axis divides that
+number — `OL_WORKER_REPLICAS`, so the operator's value stays the true aggregate instead of being
+multiplied by the process count. Nothing else may multiply it, and in particular **not the hostname**.
+
+This was decided against a concrete temptation. Allegro serves REST from `api.allegro.pl` and image
+uploads from `upload.allegro.pl` (#1968), so a per-host bucket looks natural: bulk image uploads stop
+crowding out offer CRUD. It was rejected because the quota being paced against belongs to the
+*remote*, and remotes scope quotas by credential, not by DNS name — Allegro publishes exactly one
+ceiling, **9000 requests/min per Client ID**, plus optional lower **per-resource** sub-limits (e.g.
+`GET /sale/product-offers/{id}` at 3500/min). No Allegro documentation suggests `upload.` draws from
+a second pool. Splitting per host would therefore have (a) doubled a connection's real aggregate
+against a single server-side budget, and (b) made one config field mean "per host" here while
+meaning "divided across replicas" there — an operator reading the field would size it wrong.
+
+Two consequences worth stating, since both are cheap to get wrong later:
+
+- A plugin with several hosts per connection passes the *same* `FetchLike` to each of its clients
+  (see `AllegroAdapterFactory`), rather than resolving one transport per host.
+- `RateLimiterRegistry` keys are therefore plain connection ids. `RateLimitStatusService.getStatus`
+  (#1941) reads `registry.getStatus(connectionId)` with the bare id, so it stays correct for every
+  plugin. Had buckets been host-scoped, that readout would have reported `inFlight: 0, queued: 0`
+  for an Allegro connection the transport was actively pacing — confidently wrong, and invisible
+  until an operator trusted it.
+
+Starving one host's traffic behind another's remains a real concern; the mechanism's answer is the
+**priority** axis (interactive drains ahead of background), not a second bucket.
+
 **Migration path:**
 - #1815's PrestaShop-only `PrestashopRateLimiter`/`PrestashopRateLimiterRegistry` and
   `PrestashopConnectionConfig.requestsPerMinute` (branch `1815-prestashop-rate-limit-observability`,

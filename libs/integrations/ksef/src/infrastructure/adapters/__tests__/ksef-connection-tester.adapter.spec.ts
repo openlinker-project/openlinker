@@ -12,12 +12,20 @@
  */
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import { Connection } from '@openlinker/core/identifier-mapping';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { KsefConnectionTesterAdapter } from '../ksef-connection-tester.adapter';
 import { KsefAuthenticationException } from '../../../domain/exceptions/ksef-authentication.exception';
 import { KsefConfigException } from '../../../domain/exceptions/ksef-config.exception';
 import * as httpClientFactory from '../../http/ksef-http-client.factory';
 
 jest.mock('../../http/ksef-http-client.factory');
+
+/** The connection-bound transport `forConnection` hands back (#1810). */
+const boundFetch = jest.fn();
+const http: jest.Mocked<HttpTransportFactoryPort> = {
+  forConnection: jest.fn().mockReturnValue(boundFetch),
+  evict: jest.fn(),
+};
 
 const SELLER_CONFIG = {
   nip: '1234567890',
@@ -63,10 +71,11 @@ describe('KsefConnectionTesterAdapter', () => {
 
   beforeEach(() => {
     createKsefHttpClientMock.mockReset();
+    http.forConnection.mockClear();
   });
 
   it('should fail fast when the connection has no valid environment', async () => {
-    const adapter = new KsefConnectionTesterAdapter();
+    const adapter = new KsefConnectionTesterAdapter(http);
     const result = await adapter.test(
       connection({ config: { seller: SELLER_CONFIG } }),
       resolver({ 'ref:ksef': { authType: 'ksef-token', secret: 'tok' } }),
@@ -76,7 +85,7 @@ describe('KsefConnectionTesterAdapter', () => {
   });
 
   it('should fail fast when the connection has no stored credentials', async () => {
-    const adapter = new KsefConnectionTesterAdapter();
+    const adapter = new KsefConnectionTesterAdapter(http);
     const result = await adapter.test(connection({ credentialsRef: '' }), resolver({}));
     expect(result).toMatchObject({
       success: false,
@@ -85,13 +94,13 @@ describe('KsefConnectionTesterAdapter', () => {
   });
 
   it('should fail fast when credentials are missing authType or secret', async () => {
-    const adapter = new KsefConnectionTesterAdapter();
+    const adapter = new KsefConnectionTesterAdapter(http);
     const result = await adapter.test(connection(), resolver({ 'ref:ksef': { authType: 'ksef-token' } }));
     expect(result).toMatchObject({ success: false, message: expect.stringContaining('authType') });
   });
 
   it('should report qualified-seal as not yet supported, without attempting a handshake', async () => {
-    const adapter = new KsefConnectionTesterAdapter();
+    const adapter = new KsefConnectionTesterAdapter(http);
     const result = await adapter.test(
       connection(),
       resolver({ 'ref:ksef': { authType: 'qualified-seal', secret: 'cert-ref' } }),
@@ -104,7 +113,7 @@ describe('KsefConnectionTesterAdapter', () => {
   });
 
   it('should fail fast when the seller NIP is missing (no session context identifier)', async () => {
-    const adapter = new KsefConnectionTesterAdapter();
+    const adapter = new KsefConnectionTesterAdapter(http);
     const result = await adapter.test(
       connection({ config: { env: 'test' } }),
       resolver({ 'ref:ksef': { authType: 'ksef-token', secret: 'tok' } }),
@@ -124,7 +133,7 @@ describe('KsefConnectionTesterAdapter', () => {
       handshake: { authenticate } as never,
     });
 
-    const adapter = new KsefConnectionTesterAdapter();
+    const adapter = new KsefConnectionTesterAdapter(http);
     const result = await adapter.test(
       connection(),
       resolver({ 'ref:ksef': { authType: 'ksef-token', secret: 'super-secret-token' } }),
@@ -139,6 +148,35 @@ describe('KsefConnectionTesterAdapter', () => {
     });
   });
 
+  it('should probe through the connection-bound transport, not a bare fetch (#1810)', async () => {
+    // Once the client stops calling `globalThis.fetch` directly its `?? globalThis.fetch`
+    // default IS the bypass, so lint can no longer detect a dropped transport — only
+    // this assertion can.
+    createKsefHttpClientMock.mockReturnValue({
+      httpClient: {} as never,
+      publicKeyCache: {} as never,
+      handshake: {
+        authenticate: jest.fn().mockResolvedValue({
+          accessToken: 'acc',
+          refreshToken: 'ref',
+          accessTokenExpiresAt: new Date(),
+        }),
+      } as never,
+    });
+    const conn = connection();
+
+    await new KsefConnectionTesterAdapter(http).test(
+      conn,
+      resolver({ 'ref:ksef': { authType: 'ksef-token', secret: 'tok' } }),
+    );
+
+    // Exactly one argument — KSeF ships no manifest `defaultRateLimit`.
+    expect(http.forConnection).toHaveBeenCalledWith(conn);
+    expect(createKsefHttpClientMock).toHaveBeenCalledWith(
+      expect.objectContaining({ fetchImpl: boundFetch }),
+    );
+  });
+
   it('should map a live auth rejection to a failed result carrying the status code', async () => {
     const authenticate = jest
       .fn()
@@ -149,7 +187,7 @@ describe('KsefConnectionTesterAdapter', () => {
       handshake: { authenticate } as never,
     });
 
-    const adapter = new KsefConnectionTesterAdapter();
+    const adapter = new KsefConnectionTesterAdapter(http);
     const result = await adapter.test(
       connection(),
       resolver({ 'ref:ksef': { authType: 'ksef-token', secret: 'tok' } }),
@@ -171,7 +209,7 @@ describe('KsefConnectionTesterAdapter', () => {
       handshake: { authenticate } as never,
     });
 
-    const adapter = new KsefConnectionTesterAdapter();
+    const adapter = new KsefConnectionTesterAdapter(http);
     const result = await adapter.test(
       connection(),
       resolver({ 'ref:ksef': { authType: 'ksef-token', secret: 'tok' } }),
@@ -191,7 +229,7 @@ describe('KsefConnectionTesterAdapter', () => {
       handshake: { authenticate } as never,
     });
 
-    const adapter = new KsefConnectionTesterAdapter();
+    const adapter = new KsefConnectionTesterAdapter(http);
     const result = await adapter.test(
       connection(),
       resolver({ 'ref:ksef': { authType: 'ksef-token', secret: 'tok' } }),

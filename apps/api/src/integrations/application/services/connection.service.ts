@@ -56,7 +56,8 @@ import { Logger } from '@openlinker/shared/logging';
 import { HTTP_TRANSPORT_FACTORY_TOKEN } from '@openlinker/plugin-sdk';
 // Non-type-only import: HttpTransportFactoryPort is the type of a
 // constructor parameter on an @Injectable() class, and
-// `emitDecoratorMetadata` requires a non-erased reference.
+// `emitDecoratorMetadata` requires a non-erased reference (mirrors the
+// RateLimitStatusService convention).
 import { HttpTransportFactoryPort } from '@openlinker/shared/http';
 
 @Injectable()
