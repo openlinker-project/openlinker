@@ -539,6 +539,7 @@ module.exports = {
         'libs/integrations/erli/**/*.ts',
         'libs/integrations/inpost/**/*.ts',
         'libs/integrations/ksef/**/*.ts',
+        'libs/integrations/subiekt/**/*.ts',
       ],
       excludedFiles: ['**/*.spec.ts', '**/*.int-spec.ts'],
       rules: {

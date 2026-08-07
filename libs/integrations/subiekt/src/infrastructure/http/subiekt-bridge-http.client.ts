@@ -31,6 +31,7 @@
  * @module libs/integrations/subiekt/src/infrastructure/http
  */
 import { Logger } from '@openlinker/shared/logging';
+import type { FetchLike } from '@openlinker/shared/http';
 import type { SubiektBridgeClient } from '../../bridge/subiekt-bridge.client';
 import {
   SubiektBridgeUnreachableError,
@@ -131,6 +132,12 @@ export interface SubiektBridgeHttpClientOptions {
   token?: string;
   /** Per-request timeout in milliseconds. */
   timeoutMs?: number;
+  /**
+   * Connection-bound outbound transport (#1810). Defaults to `globalThis.fetch`
+   * when omitted — production call sites always inject one; see the
+   * constructor note for why this stays optional for now.
+   */
+  fetchImpl?: FetchLike;
 }
 
 /**
@@ -155,6 +162,7 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
   private readonly baseUrl: string;
   private readonly token?: string;
   private readonly timeoutMs: number;
+  private readonly fetchImpl: FetchLike;
 
   constructor(bridgeBaseUrl: string, opts: SubiektBridgeHttpClientOptions = {}) {
     // Defense-in-depth SSRF guard: reject a bad / IMDS bridge URL at
@@ -170,6 +178,17 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
     this.baseUrl = bridgeBaseUrl.replace(/\/+$/, '');
     this.token = opts.token;
     this.timeoutMs = opts.timeoutMs ?? 30000;
+    // Pre-existing silent fallback, surfaced (not introduced) by the
+    // strengthened `check-outbound-http.mjs` in #1968 — `no-restricted-globals`
+    // never saw it, because it flags the bare identifier `fetch`, not a member
+    // expression. Every production call site (adapter factory, connection
+    // tester) already injects a connection-bound transport; the fallback only
+    // serves test constructions. Making it REQUIRED — the posture
+    // `AllegroHttpClient`/`ErliHttpClient`/`KsefHttpClient` adopt — is the
+    // parity follow-up (mirrors the identical PrestaShop note); until then
+    // the bypass is at least greppable.
+    // eslint-disable-next-line no-restricted-globals -- pre-existing test-only fallback; production call sites all inject a transport. Make required for Allegro/Erli/KSeF parity (#1810 follow-up)
+    this.fetchImpl = opts.fetchImpl ?? globalThis.fetch;
   }
 
   async issueInvoice(req: BridgeIssueInvoiceRequest): Promise<BridgeIssueInvoiceResponse> {
@@ -280,7 +299,7 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
 
     let response: Response;
     try {
-      response = await fetch(url, {
+      response = await this.fetchImpl(url, {
         method,
         headers: this.buildHeaders(body !== undefined),
         body: body !== undefined ? JSON.stringify(body) : undefined,

@@ -39,6 +39,14 @@ export const subiektAdapterManifest: AdapterMetadata = {
   displayName: 'Subiekt nexo (Sfera bridge)',
   version: '1.0.0',
   isDefault: true,
+  // #1810 §1 — the Sfera bridge runs on the operator's own machine alongside
+  // Subiekt nexo, the same merchant-hosted profile PrestaShop's 60/4 (#1815)
+  // was calibrated for (not a borrowed number — Subiekt genuinely fits that
+  // rationale, unlike a carrier/marketplace platform). Both call sites already
+  // pass this to `host.http.forConnection` (see `createCapabilityAdapter` below
+  // and `SubiektConnectionTesterAdapter`, injected via constructor — never via
+  // an import of this module, which would cycle back into it).
+  defaultRateLimit: { requestsPerMinute: 60, maxConcurrent: 4 },
 };
 
 /** Short brand label for domain-exception / dispatch error prefixes. */
@@ -55,7 +63,7 @@ export function createSubiektPlugin(): AdapterPlugin {
       );
       host.connectionTesterRegistry.register(
         subiektAdapterManifest.adapterKey,
-        new SubiektConnectionTesterAdapter(),
+        new SubiektConnectionTesterAdapter(host.http, subiektAdapterManifest.defaultRateLimit),
       );
       // Retry classifier (fiscal-safety pivot). The runner dispatches classifiers
       // OR-across-all holding the raw error (not an adapterKey), so the key is a
@@ -86,6 +94,7 @@ export function createSubiektPlugin(): AdapterPlugin {
           connection,
           host.credentialsResolver,
           logger,
+          host.http.forConnection(connection, subiektAdapterManifest.defaultRateLimit),
         );
         return dispatchCapability<T>(
           capability,
