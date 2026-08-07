@@ -38,6 +38,7 @@ function makeInvoice(over: Partial<InvoiceRecord> = {}): InvoiceRecord {
     issuedAt: '2026-06-25T14:08:00.000Z',
     createdAt: '2026-06-25T13:50:00.000Z',
     updatedAt: '2026-06-25T14:08:00.000Z',
+    orderSummary: null,
     ...over,
   };
 }

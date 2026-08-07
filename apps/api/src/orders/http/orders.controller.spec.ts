@@ -63,6 +63,7 @@ describe('OrdersController', () => {
   beforeEach(async () => {
     const mockRepository: jest.Mocked<OrderRecordRepositoryPort> = {
       findById: jest.fn(),
+      findByIds: jest.fn(),
       upsert: jest.fn(),
       updateSyncStatus: jest.fn(),
       findMany: jest.fn(),

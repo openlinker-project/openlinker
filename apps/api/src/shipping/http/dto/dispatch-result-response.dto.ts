@@ -29,7 +29,7 @@ export class DispatchResultResponseDto {
       // `canWrite: true` — POST /shipments/generate-label is `@Roles('admin',
       // 'operator')`-gated, so a caller who reached this projection already
       // holds `shipments:write` and there is nothing to redact (#1826).
-      dto.shipment = ShipmentResponseDto.fromDomain(result.shipment, null, true);
+      dto.shipment = ShipmentResponseDto.fromDomain(result.shipment, null, true, null);
     }
     return dto;
   }

@@ -96,6 +96,7 @@ describe('ShipmentDispatchNotificationService', () => {
       persistIncomingSnapshot: jest.fn(),
       getOrderRecord: jest.fn().mockResolvedValue(makeRecord()),
       findMany: jest.fn(),
+      findByIds: jest.fn(),
       updateFulfillmentState: jest.fn(),
       markItemResolutionFailure: jest.fn(),
     };

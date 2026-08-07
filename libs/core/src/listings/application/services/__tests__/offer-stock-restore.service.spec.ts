@@ -67,6 +67,7 @@ describe('OfferStockRestoreService', () => {
 
     orderRecordService = {
       getOrderRecord: jest.fn(),
+      findByIds: jest.fn(),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
     offerMappings = {

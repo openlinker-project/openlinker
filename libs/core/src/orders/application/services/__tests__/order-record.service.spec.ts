@@ -27,6 +27,7 @@ describe('OrderRecordService', () => {
     process.env.OL_PII_HASH_SALT = 'test-salt-for-hashing';
     repository = {
       findById: jest.fn(),
+      findByIds: jest.fn(),
       upsert: jest.fn(),
       updateSyncStatus: jest.fn(),
       updateItemResolutionFailure: jest.fn(),
@@ -704,6 +705,30 @@ describe('OrderRecordService', () => {
 
       expect(result).toBeNull();
       expect(repository.findById).toHaveBeenCalledWith(internalOrderId);
+    });
+  });
+
+  describe('findByIds (#1995)', () => {
+    it('delegates to the repository as a pure passthrough', async () => {
+      const records = [
+        new OrderRecord(
+          'order-123',
+          'customer-456',
+          'source-connection-123',
+          'event-456',
+          { id: 'order-123' },
+          [],
+          'ready',
+          new Date(),
+          new Date()
+        ),
+      ];
+      repository.findByIds.mockResolvedValue(records);
+
+      const result = await service.findByIds(['order-123', 'order-456']);
+
+      expect(result).toBe(records);
+      expect(repository.findByIds).toHaveBeenCalledWith(['order-123', 'order-456']);
     });
   });
 

@@ -27,6 +27,8 @@ import {
   ShippingMethod,
 } from '@openlinker/core/shipping';
 import type { Shipment, DeliveryIntent } from '@openlinker/core/shipping';
+import type { OrderSummary } from '@openlinker/core/orders';
+import { OrderSummaryProjectionDto } from '../../../orders/http/dto/order-summary-projection.dto';
 
 /** Mirrors the FE's redaction placeholder (`shipments-page.tsx`,
  *  `shipment-row-detail.tsx`) so the copy is identical regardless of which
@@ -117,17 +119,29 @@ export class ShipmentResponseDto {
   @ApiProperty({ type: String, format: 'date-time' })
   updatedAt!: string;
 
+  @ApiProperty({
+    nullable: true,
+    type: OrderSummaryProjectionDto,
+    description:
+      "Order-identity projection (#1995) for the unified Order cell — null when no order record resolves for `orderId`, or its snapshot has no parseable items. Only populated on the list endpoint (`GET /shipments`); single-shipment reads pass null (not fetched there).",
+  })
+  orderSummary!: OrderSummaryProjectionDto | null;
+
   /**
    * @param canWrite Whether the requester holds `shipments:write` (resolved
    *   by the controller from `@CurrentUser()`'s role via `ROLE_PERMISSIONS`).
    *   Deliberately REQUIRED and un-defaulted: a default would make "forgot to
    *   thread the requester through a new read endpoint" a silent disclosure
    *   instead of a compile error.
+   * @param orderSummary Batched order-identity projection (#1995), or `null`
+   *   when not resolved for this call site. Also required (not defaulted) so
+   *   a future read path can't silently omit it.
    */
   static fromDomain(
     shipment: Shipment,
     customerId: string | null,
     canWrite: boolean,
+    orderSummary: OrderSummary | null,
   ): ShipmentResponseDto {
     const dto = new ShipmentResponseDto();
     dto.id = shipment.id;
@@ -152,6 +166,7 @@ export class ShipmentResponseDto {
     dto.providerCode = shipment.providerCode;
     dto.createdAt = shipment.createdAt.toISOString();
     dto.updatedAt = shipment.updatedAt.toISOString();
+    dto.orderSummary = orderSummary ? OrderSummaryProjectionDto.fromSummary(orderSummary) : null;
     return dto;
   }
 }
