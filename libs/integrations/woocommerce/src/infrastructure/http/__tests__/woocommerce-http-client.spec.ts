@@ -6,10 +6,22 @@
  *
  * @module libs/integrations/woocommerce/src/infrastructure/http/__tests__
  */
+import type { FetchLike } from '@openlinker/shared/http';
 import { WooCommerceHttpClient } from '../woocommerce-http-client';
 import { WooCommerceUnauthorizedException } from '../../../domain/exceptions/woocommerce-unauthorized.exception';
 import { WooCommerceNetworkException } from '../../../domain/exceptions/woocommerce-network.exception';
 import { WooCommerceHttpResponseException } from '../woocommerce-http-response.exception';
+
+// Mock fetch globally
+global.fetch = jest.fn();
+
+// The transport injected into every client built below. `fetchImpl` is a
+// required constructor arg (mirrors AllegroHttpClient, #1968 review — no
+// silent globalThis.fetch fallback), so the suite supplies one explicitly.
+// It *delegates* to the global mock at call time rather than capturing it,
+// so every `jest.spyOn(global, 'fetch').mockImplementation(...)` in this
+// file keeps driving every client built with it.
+const mockFetch: FetchLike = (...args: Parameters<FetchLike>) => global.fetch(...args);
 
 const CONSUMER_KEY = 'ck_abc123';
 const CONSUMER_SECRET = 'cs_xyz789';
@@ -28,7 +40,7 @@ function makeFetchStub(status: number, body: unknown = {}): jest.Mock {
 }
 
 function makeClient(overrides?: Partial<{ maxRetries: number; initialDelayMs: number }>): WooCommerceHttpClient {
-  return new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, {
+  return new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch, {
     maxRetries: 0,
     initialDelayMs: 0,
     backoffMultiplier: 1,
@@ -46,7 +58,7 @@ describe('WooCommerceHttpClient', () => {
     it('should strip a trailing slash', async () => {
       const stub = makeFetchStub(200);
       jest.spyOn(global, 'fetch').mockImplementation(stub);
-      const client = new WooCommerceHttpClient(`${SITE_URL}/`, CONSUMER_KEY, CONSUMER_SECRET);
+      const client = new WooCommerceHttpClient(`${SITE_URL}/`, CONSUMER_KEY, CONSUMER_SECRET, mockFetch);
       await client.get('/wp-json/wc/v3/products');
       expect(stub).toHaveBeenCalledWith(
         `${SITE_URL}/wp-json/wc/v3/products`,
@@ -57,7 +69,7 @@ describe('WooCommerceHttpClient', () => {
     it('should strip multiple trailing slashes', async () => {
       const stub = makeFetchStub(200);
       jest.spyOn(global, 'fetch').mockImplementation(stub);
-      const client = new WooCommerceHttpClient(`${SITE_URL}///`, CONSUMER_KEY, CONSUMER_SECRET);
+      const client = new WooCommerceHttpClient(`${SITE_URL}///`, CONSUMER_KEY, CONSUMER_SECRET, mockFetch);
       await client.get('/test');
       expect(stub).toHaveBeenCalledWith(`${SITE_URL}/test`, expect.anything());
     });
@@ -67,7 +79,7 @@ describe('WooCommerceHttpClient', () => {
     it('should generate correct Basic Auth header', async () => {
       const stub = makeFetchStub(200);
       jest.spyOn(global, 'fetch').mockImplementation(stub);
-      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET);
+      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch);
       await client.get('/test');
       const [, init] = stub.mock.calls[0] as [string, RequestInit];
       expect((init.headers as Record<string, string>)['Authorization']).toBe(
@@ -78,7 +90,7 @@ describe('WooCommerceHttpClient', () => {
     it('should include Accept: application/json header', async () => {
       const stub = makeFetchStub(200);
       jest.spyOn(global, 'fetch').mockImplementation(stub);
-      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET);
+      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch);
       await client.get('/test');
       const [, init] = stub.mock.calls[0] as [string, RequestInit];
       expect((init.headers as Record<string, string>)['Accept']).toBe('application/json');
@@ -89,7 +101,7 @@ describe('WooCommerceHttpClient', () => {
     it('should append params as query string', async () => {
       const stub = makeFetchStub(200);
       jest.spyOn(global, 'fetch').mockImplementation(stub);
-      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET);
+      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch);
       await client.get('/wp-json/wc/v3/products', { per_page: 100, page: 1 });
       const [url] = stub.mock.calls[0] as [string, RequestInit];
       expect(url).toContain('per_page=100');
@@ -99,7 +111,7 @@ describe('WooCommerceHttpClient', () => {
     it('should append with & when path already contains ?', async () => {
       const stub = makeFetchStub(200);
       jest.spyOn(global, 'fetch').mockImplementation(stub);
-      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET);
+      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch);
       await client.get('/wp-json/wc/v3/products?status=publish', { per_page: 10 });
       const [url] = stub.mock.calls[0] as [string, RequestInit];
       expect(url).toMatch(/\?status=publish&per_page=10/);
@@ -108,7 +120,7 @@ describe('WooCommerceHttpClient', () => {
     it('should not append query string when params is undefined', async () => {
       const stub = makeFetchStub(200);
       jest.spyOn(global, 'fetch').mockImplementation(stub);
-      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET);
+      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch);
       await client.get('/wp-json/wc/v3/products');
       const [url] = stub.mock.calls[0] as [string, RequestInit];
       expect(url).toBe(`${SITE_URL}/wp-json/wc/v3/products`);
@@ -119,7 +131,7 @@ describe('WooCommerceHttpClient', () => {
     it('should return parsed JSON body on 200', async () => {
       const body = [{ id: 1, name: 'Test Product' }];
       jest.spyOn(global, 'fetch').mockImplementation(makeFetchStub(200, body));
-      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET);
+      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch);
       const result = await client.get<typeof body>('/wp-json/wc/v3/products');
       expect(result).toEqual(body);
     });
@@ -128,7 +140,7 @@ describe('WooCommerceHttpClient', () => {
   describe('typed exceptions', () => {
     it('should throw WooCommerceUnauthorizedException on 401', async () => {
       jest.spyOn(global, 'fetch').mockImplementation(makeFetchStub(401));
-      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, {
+      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch, {
         maxRetries: 0,
       });
       await expect(client.get('/test')).rejects.toBeInstanceOf(WooCommerceUnauthorizedException);
@@ -136,7 +148,7 @@ describe('WooCommerceHttpClient', () => {
 
     it('should throw WooCommerceUnauthorizedException on 403', async () => {
       jest.spyOn(global, 'fetch').mockImplementation(makeFetchStub(403));
-      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, {
+      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch, {
         maxRetries: 0,
       });
       await expect(client.get('/test')).rejects.toBeInstanceOf(WooCommerceUnauthorizedException);
@@ -144,7 +156,7 @@ describe('WooCommerceHttpClient', () => {
 
     it('should throw WooCommerceHttpResponseException with statusCode 404 on 404', async () => {
       jest.spyOn(global, 'fetch').mockImplementation(makeFetchStub(404));
-      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, {
+      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch, {
         maxRetries: 0,
       });
       const err = await client.get('/test').catch((e: unknown) => e);
@@ -156,7 +168,7 @@ describe('WooCommerceHttpClient', () => {
       const abortError = new Error('The operation was aborted.');
       abortError.name = 'AbortError';
       jest.spyOn(global, 'fetch').mockRejectedValue(abortError);
-      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, {
+      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch, {
         maxRetries: 0,
       });
       await expect(client.get('/test')).rejects.toBeInstanceOf(WooCommerceNetworkException);
@@ -164,7 +176,7 @@ describe('WooCommerceHttpClient', () => {
 
     it('should throw WooCommerceHttpResponseException on 5xx after retries exhausted', async () => {
       jest.spyOn(global, 'fetch').mockImplementation(makeFetchStub(500));
-      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, {
+      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch, {
         maxRetries: 0,
       });
       const err = await client.get('/test').catch((e: unknown) => e);
@@ -184,7 +196,7 @@ describe('WooCommerceHttpClient', () => {
           json: () => Promise.resolve({ id: 1 }),
         });
       jest.spyOn(global, 'fetch').mockImplementation(stub);
-      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, {
+      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch, {
         maxRetries: 1,
         initialDelayMs: 0,
         backoffMultiplier: 1,
@@ -205,7 +217,7 @@ describe('WooCommerceHttpClient', () => {
           json: () => Promise.resolve({ ok: true }),
         });
       jest.spyOn(global, 'fetch').mockImplementation(stub);
-      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, {
+      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch, {
         maxRetries: 1,
         initialDelayMs: 0,
         backoffMultiplier: 1,
@@ -218,7 +230,7 @@ describe('WooCommerceHttpClient', () => {
     it('should NOT retry on 401', async () => {
       const stub = makeFetchStub(401);
       jest.spyOn(global, 'fetch').mockImplementation(stub);
-      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, {
+      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch, {
         maxRetries: 3,
         initialDelayMs: 0,
         backoffMultiplier: 1,
@@ -231,7 +243,7 @@ describe('WooCommerceHttpClient', () => {
     it('should NOT retry on 404', async () => {
       const stub = makeFetchStub(404);
       jest.spyOn(global, 'fetch').mockImplementation(stub);
-      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, {
+      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch, {
         maxRetries: 3,
         initialDelayMs: 0,
         backoffMultiplier: 1,
@@ -244,7 +256,7 @@ describe('WooCommerceHttpClient', () => {
     it('should stop at maxRetries and throw WooCommerceHttpResponseException', async () => {
       const stub = makeFetchStub(500);
       jest.spyOn(global, 'fetch').mockImplementation(stub);
-      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, {
+      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch, {
         maxRetries: 2,
         initialDelayMs: 0,
         backoffMultiplier: 1,
@@ -259,7 +271,7 @@ describe('WooCommerceHttpClient', () => {
     it('should use maxRetries: 0 for single attempt with no retry', async () => {
       const stub = makeFetchStub(500);
       jest.spyOn(global, 'fetch').mockImplementation(stub);
-      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, {
+      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch, {
         maxRetries: 0,
         initialDelayMs: 0,
         backoffMultiplier: 1,
@@ -315,7 +327,7 @@ describe('WooCommerceHttpClient', () => {
         .mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({}) })
         .mockResolvedValueOnce({ ok: true, status: 201, json: () => Promise.resolve({ id: 1 }) });
       jest.spyOn(global, 'fetch').mockImplementation(stub);
-      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, {
+      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch, {
         maxRetries: 1,
         initialDelayMs: 0,
         backoffMultiplier: 1,
