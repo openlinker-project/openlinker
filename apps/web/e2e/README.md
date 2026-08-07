@@ -6,11 +6,14 @@ docs (`libs/integrations/<pkg>/docs/`) and in PR descriptions. Most contain no
 assertions, and none is **wired to any test runner** — `pnpm test` does not run
 them, and CI does not execute them.
 
-Two scripts assert as well as capture, and both exit non-zero on a regression:
-`connection-enable.mjs` (see the note under the table) and `demo-consent.mjs`.
-`demo-consent.mjs` is additionally the only one that needs **no backend** — it
-stubs every `/v1/**` call at the network boundary, so a bare SPA server is
-enough, which is what makes it deterministic.
+Three scripts assert as well as capture, and each exits non-zero on a regression:
+`connection-enable.mjs` (see the note under the table), `demo-consent.mjs` and
+`listings-mockup-shots.mjs`.
+
+Two of them need **no backend**, which is what makes them deterministic.
+`demo-consent.mjs` stubs every `/v1/**` call at the network boundary, so a bare
+SPA server is enough. `listings-mockup-shots.mjs` needs even less — it renders a
+self-contained HTML mockup over `file://`, so there is nothing to serve at all.
 
 Run one directly with Node against a locally running OpenLinker web app + API:
 
@@ -22,6 +25,9 @@ Each script drives the real UI, so you need the web app (default
 `http://localhost:4173`) and the API reachable, plus whatever integration-specific
 state the script captures (a configured connection, an order id, etc.). Missing
 required env vars either exit early with a message or produce error/404 shots.
+
+**Exception:** `listings-mockup-shots.mjs` needs no server, no API and no login,
+and honours neither `WEB_BASE` nor `OL_ADMIN_*`.
 
 ## Shared conventions
 
@@ -45,6 +51,7 @@ required env vars either exit early with a message or produce error/404 shots.
 | `ksef-payment-config.mjs` | KSeF payment-config form | `KSEF_CONN_ID`, `WEB_USER`, `WEB_PASSWORD` |
 | `infakt-connection.mjs` | inFakt connection setup | `INFAKT_BASE_URL`, `INFAKT_SANDBOX_API_KEY`, `INFAKT_CONN_NAME` |
 | `demo-consent.mjs` | Demo session-recording notice, `/consent` gate, no-opt-out checks, responsive checks at 360/768/1440 (#1938) | `WEB_BASE`, `SHOT_DIR` — **no API needed**, every `/v1/**` call is stubbed |
+| `listings-mockup-shots.mjs` | Listings redesign mockup (#1965) at the three style-guide widths, both themes | `OUT_DIR`, `THEME` — **no server at all**, reads a local HTML file over `file://` |
 | `infakt-invoice.mjs` | inFakt invoice + clearance | `INFAKT_CONNECTION_ID`, `ORDER_ID`, `CLEARANCE_POLL_MS` |
 | `connection-enable.mjs` | Connection disable → enable round trip (#1940) | `CONNECTION_ID`, `WEB_BASE`, `OUT_DIR`, `HEADED` |
 | `annotate.mjs` | Shared image-annotation helper | (imported by other scripts) |
