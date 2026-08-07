@@ -537,6 +537,7 @@ module.exports = {
         'libs/integrations/prestashop/**/*.ts',
         'libs/integrations/allegro/**/*.ts',
         'libs/integrations/erli/**/*.ts',
+        'libs/integrations/inpost/**/*.ts',
       ],
       excludedFiles: ['**/*.spec.ts', '**/*.int-spec.ts'],
       rules: {
