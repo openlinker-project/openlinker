@@ -10,6 +10,7 @@
  * @module libs/integrations/erli/src/__tests__
  */
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { ConnectionTesterPort, CredentialsResolverPort } from '@openlinker/core/integrations';
 import {
   isOfferCreator,
   isResponsibleProducerReader,
@@ -37,12 +38,22 @@ function makeDispatchHost(): HostServices {
   return {
     identifierMapping: {},
     credentialsResolver: { get: jest.fn().mockResolvedValue({ apiKey: 'k-123' }) },
+    // Connection-bound outbound transport (#1810) — the factory resolves
+    // `host.http.forConnection(connection)` for every adapter.
+    http: { forConnection: jest.fn().mockReturnValue(jest.fn()), evict: jest.fn() },
   } as unknown as HostServices;
 }
 
-/** Host stub exposing only the registries `register(host)` touches (#982/#984). */
+/**
+ * Host stub for `register(host)` — the registries it touches (#982/#984) plus
+ * the outbound transport factory (#1810), which `register` now threads into the
+ * connection tester. `http` must be a real mock, not absent: a stub without it
+ * constructs the tester with `undefined` and the registration assertions still
+ * pass, so a regression that stopped threading `host.http` would go unnoticed.
+ */
 function makeRegisterHost(): {
   host: HostServices;
+  http: { forConnection: jest.Mock; evict: jest.Mock };
   configRegistry: { register: jest.Mock };
   credentialsRegistry: { register: jest.Mock };
   testerRegistry: { register: jest.Mock };
@@ -64,7 +75,9 @@ function makeRegisterHost(): {
   const inboundWebhookDecoderRegistry = { register: jest.fn() };
   const webhookEventTranslatorRegistry = { register: jest.fn() };
   const webhookProvisioningRegistry = { register: jest.fn() };
+  const http = { forConnection: jest.fn().mockReturnValue(jest.fn()), evict: jest.fn() };
   const hostStub = {
+    http,
     connectionConfigShapeValidatorRegistry: configRegistry,
     connectionCredentialsShapeValidatorRegistry: credentialsRegistry,
     connectionTesterRegistry: testerRegistry,
@@ -78,6 +91,7 @@ function makeRegisterHost(): {
   } as unknown as HostServices;
   return {
     host: hostStub,
+    http,
     configRegistry,
     credentialsRegistry,
     testerRegistry,
@@ -131,6 +145,15 @@ describe('erliAdapterManifest', () => {
     expect(erliAdapterManifest.variantGrouping).toBe('explicit-group');
   });
 
+  it('should declare NO defaultRateLimit — a manifest default is for merchant-hosted platforms, not a marketplace (#1810 §1)', () => {
+    // Erli publishes no RPM ceiling, so any number here would be a fabricated
+    // policy the FE presents to the operator as an "adapter default" — and,
+    // unlike WooCommerce (whose client is not wired to the transport yet), it
+    // WOULD take effect, silently throttling every existing Erli connection.
+    // 429s stay covered reactively by ErliHttpClient's Retry-After handling.
+    expect(erliAdapterManifest.defaultRateLimit).toBeUndefined();
+  });
+
   it('should carry a display name and version', () => {
     expect(erliAdapterManifest.displayName).toBe('Erli Shop API v1');
     expect(erliAdapterManifest.version).toBe('1.0.0');
@@ -171,6 +194,28 @@ describe('createErliPlugin', () => {
         'erli.shopapi.v1',
         expect.objectContaining({ test: expect.any(Function) }),
       );
+    });
+
+    it('should register a connection tester wired to the host outbound transport (#1810)', async () => {
+      const { host, http, testerRegistry } = makeRegisterHost();
+      createErliPlugin().register?.(host);
+
+      const registrations = testerRegistry.register.mock.calls as unknown as [
+        string,
+        ConnectionTesterPort,
+      ][];
+      const tester = registrations[0][1];
+      // A "Test connection" probe must go through the rate-limited transport, so
+      // the tester resolves it BEFORE building its client — which is why a
+      // rejecting credentials resolver still proves the wiring. Asserting on the
+      // registered instance's behaviour (not a private field) also keeps this
+      // test honest if the construction seam changes shape.
+      const result = await tester.test(connection, {
+        get: jest.fn().mockRejectedValue(new Error('no credentials in this fixture')),
+      } as unknown as CredentialsResolverPort);
+
+      expect(http.forConnection).toHaveBeenCalledWith(connection);
+      expect(result.success).toBe(false);
     });
 
     it('should register the email normalizer at erli.shopapi.v1 (#995)', () => {
@@ -313,6 +358,16 @@ describe('createErliPlugin', () => {
 
       expect(typeof adapter.listOrderFeed).toBe('function');
       expect(typeof adapter.getOrder).toBe('function');
+    });
+
+    it('should resolve the connection-bound transport with no manifest policy argument (#1810)', async () => {
+      const host = makeDispatchHost();
+
+      await createErliPlugin().createCapabilityAdapter(connection, 'OfferManager', host);
+
+      // Exactly one argument: passing a second would reintroduce an adapter-level
+      // default cap Erli deliberately does not declare (see the manifest spec above).
+      expect(host.http.forConnection).toHaveBeenCalledWith(connection);
     });
 
     it('should reject an unsupported capability with the SDK unsupported-capability error', async () => {
