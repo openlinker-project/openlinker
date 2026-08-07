@@ -23,7 +23,8 @@
  * (`acquireToken` in `allegro-category-catalog-client.ts`) — low-volume auth
  * infra, not shop traffic. InPost has no OAuth-token bypass to exempt (static
  * Bearer API token, no token endpoint). No such exemption is needed for
- * KSeF or Subiekt — neither client has an ad-hoc OAuth-token bypass.
+ * KSeF, Subiekt, or Infakt — none of those clients has an ad-hoc
+ * OAuth-token bypass.
  *
  * Run with `--self-check` to exercise the pure classifier against synthetic
  * inputs (no filesystem) — mirrors `check-migration-timestamps.mjs --self-check`.
@@ -47,6 +48,7 @@ const SCAN_ROOTS = [
   'libs/integrations/prestashop',
   'libs/integrations/allegro',
   'libs/integrations/erli',
+  'libs/integrations/infakt',
   'libs/integrations/inpost',
   'libs/integrations/ksef',
   'libs/integrations/subiekt',

@@ -537,6 +537,7 @@ module.exports = {
         'libs/integrations/prestashop/**/*.ts',
         'libs/integrations/allegro/**/*.ts',
         'libs/integrations/erli/**/*.ts',
+        'libs/integrations/infakt/**/*.ts',
         'libs/integrations/inpost/**/*.ts',
         'libs/integrations/ksef/**/*.ts',
         'libs/integrations/subiekt/**/*.ts',

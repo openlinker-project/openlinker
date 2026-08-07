@@ -7,6 +7,7 @@
  * @module libs/integrations/infakt/src/application
  */
 import type { LoggerPort } from '@openlinker/shared/logging';
+import type { FetchLike } from '@openlinker/shared/http';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import { InfaktHttpClient, INFAKT_DEFAULT_BASE_URL } from '../infrastructure/http/infakt-http-client';
@@ -20,6 +21,7 @@ export class InfaktAdapterFactory implements IInfaktAdapterFactory {
     connection: Connection,
     credentialsResolver: CredentialsResolverPort,
     logger: LoggerPort,
+    fetchImpl: FetchLike,
   ): Promise<InfaktInvoicingAdapter> {
     let apiKey: string;
     if (connection.credentialsRef) {
@@ -37,6 +39,7 @@ export class InfaktAdapterFactory implements IInfaktAdapterFactory {
     const httpClient = new InfaktHttpClient(
       { apiKey, baseUrl: config.baseUrl ?? INFAKT_DEFAULT_BASE_URL },
       logger,
+      fetchImpl,
     );
 
     return new InfaktInvoicingAdapter(connection.id, httpClient, logger, config);

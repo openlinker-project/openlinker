@@ -63,7 +63,7 @@ describe('InfaktHttpClient', () => {
     fetchMock = jest.fn();
     global.fetch = fetchMock as unknown as typeof fetch;
     logger = fakeLogger();
-    client = new InfaktHttpClient({ apiKey: 'test-api-key' }, logger);
+    client = new InfaktHttpClient({ apiKey: 'test-api-key' }, logger, fetchMock as unknown as typeof fetch);
   });
 
   afterAll(() => {
@@ -82,11 +82,28 @@ describe('InfaktHttpClient', () => {
       const sandboxClient = new InfaktHttpClient(
         { apiKey: 'k', baseUrl: 'https://api.sandbox.infakt.pl/api/v3/' },
         logger,
+        fetchMock as unknown as typeof fetch,
       );
       fetchMock.mockResolvedValue(fakeResponse(200, '{}'));
       await sandboxClient.get('invoices.json');
       const [url] = fetchMock.mock.calls[0] as [string];
       expect(url).toBe('https://api.sandbox.infakt.pl/api/v3/invoices.json');
+    });
+  });
+
+  describe('fetchImpl injection (#1810)', () => {
+    it('should route every call through an explicitly-injected fetchImpl instead of global.fetch', async () => {
+      const injectedFetch = jest.fn().mockResolvedValue(fakeResponse(200, '{}'));
+      const injectedClient = new InfaktHttpClient(
+        { apiKey: 'k' },
+        logger,
+        injectedFetch as unknown as typeof fetch,
+      );
+
+      await injectedClient.get('invoices.json');
+
+      expect(injectedFetch).toHaveBeenCalledTimes(1);
+      expect(fetchMock).not.toHaveBeenCalled();
     });
   });
 
