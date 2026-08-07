@@ -13,7 +13,7 @@ import { PaymentStatusValues } from '../types/payment-status.types';
 import type { PaymentStatus } from '../types/payment-status.types';
 import type { CodToCollect } from '../types/cod-to-collect.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
-import type { OrderDispatchWindow } from '../types/order.types';
+import type { OrderDispatchWindow, PriceTaxTreatment } from '../types/order.types';
 
 export type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
 
@@ -64,6 +64,32 @@ export class OrderRecord {
      * `null` for a `'ready'` record, or a historical row predating the column.
      */
     public readonly mappingFailureReason: string | null = null,
+    /**
+     * Order analytics read-model scalars (#1985) — denormalized from
+     * `order.placedAt` / `order.totals` at persist time, mirroring the
+     * `dispatchByAt`/`fulfillmentState` precedent so downstream aggregates
+     * (#1987/#1988) can filter/bucket without parsing `orderSnapshot`.
+     *
+     * `placedAt`: the buyer's true order time (#926); `null` when the source
+     * didn't expose one — consumers fall back to `createdAt`.
+     */
+    public readonly placedAt: Date | null = null,
+    /**
+     * ISO 4217 currency code from `order.totals.currency`. `null` only for a
+     * historical row predating this column (backfilled otherwise).
+     */
+    public readonly currency: string | null = null,
+    /**
+     * Whether `order.totals` is gross or net (#1985 [G]). `null` means the
+     * source did not assert it — this must never be defaulted by a consumer;
+     * an unasserted-tax-treatment order is not comparable to one that is.
+     */
+    public readonly taxTreatment: PriceTaxTreatment | null = null,
+    /**
+     * `order.totals.total`, denormalized so revenue aggregates read a plain
+     * indexed column instead of casting a JSONB path on every query.
+     */
+    public readonly totalAmount: number | null = null
   ) {}
 
   /**
