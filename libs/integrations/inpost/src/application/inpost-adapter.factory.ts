@@ -13,6 +13,7 @@
  */
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
+import type { FetchLike } from '@openlinker/shared/http';
 import { InpostConfigException } from '../domain/exceptions/inpost-config.exception';
 import type {
   InpostConnectionConfig,
@@ -35,10 +36,11 @@ export const BASE_URLS: Readonly<Record<InpostEnvironment, string>> = {
 export async function createInpostShippingAdapter(
   connection: Connection,
   credentialsResolver: CredentialsResolverPort,
+  fetchImpl: FetchLike,
 ): Promise<InpostShippingAdapter> {
   const config = extractConfig(connection);
   const apiToken = await resolveApiToken(connection, credentialsResolver);
-  const client = new InpostHttpClient(BASE_URLS[config.environment], apiToken);
+  const client = new InpostHttpClient(BASE_URLS[config.environment], apiToken, fetchImpl);
   return new InpostShippingAdapter(client, config);
 }
 

@@ -13,6 +13,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { Logger } from '@openlinker/shared/logging';
+import type { FetchLike } from '@openlinker/shared/http';
 import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
 import type { ShipXErrorBody } from '../../domain/types/inpost-shipx.types';
 import { InpostUnauthorizedException } from '../../domain/exceptions/inpost-unauthorized.exception';
@@ -58,13 +59,16 @@ class RetryableHttpError extends Error {
 export class InpostHttpClient implements IInpostHttpClient {
   private readonly logger = new Logger(InpostHttpClient.name);
   private readonly retryConfig: RetryConfig;
+  private readonly fetchImpl: FetchLike;
 
   constructor(
     private readonly baseUrl: string,
     private readonly apiToken: string,
+    fetchImpl: FetchLike,
     retryConfig?: Partial<RetryConfig>,
   ) {
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
+    this.fetchImpl = fetchImpl;
   }
 
   async request<T>(options: InpostRequestOptions): Promise<T> {
@@ -149,7 +153,7 @@ export class InpostHttpClient implements IInpostHttpClient {
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     try {
-      return await fetch(url, {
+      return await this.fetchImpl(url, {
         method: options.method,
         headers: {
           Authorization: `Bearer ${this.apiToken}`,
