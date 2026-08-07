@@ -1,9 +1,9 @@
 /**
  * InPost ShipX HTTP Client — unit tests
  *
- * Stubs `global.fetch` to verify the retry loop, the HTTP-status → domain
- * exception classification, and the success/204 paths. Retry delays are tuned
- * to ~1ms so the suite stays fast.
+ * Injects a mock `fetchImpl` (now a required constructor argument) to verify
+ * the retry loop, the HTTP-status → domain exception classification, and the
+ * success/204 paths. Retry delays are tuned to ~1ms so the suite stays fast.
  *
  * @module libs/integrations/inpost/src/infrastructure/http
  */
@@ -44,25 +44,23 @@ function fakeResponse(init: FakeResponseInit): Response {
   } as unknown as Response;
 }
 
-const originalFetch = global.fetch;
-
 describe('InpostHttpClient', () => {
   let fetchMock: jest.Mock;
   let client: InpostHttpClient;
 
   beforeEach(() => {
     fetchMock = jest.fn();
-    global.fetch = fetchMock as unknown as typeof fetch;
-    client = new InpostHttpClient('https://sandbox-api-shipx-pl.easypack24.net', 'test-token', {
-      maxRetries: 2,
-      initialDelayMs: 1,
-      backoffMultiplier: 1,
-      maxDelayMs: 1,
-    });
-  });
-
-  afterAll(() => {
-    global.fetch = originalFetch;
+    client = new InpostHttpClient(
+      'https://sandbox-api-shipx-pl.easypack24.net',
+      'test-token',
+      fetchMock as unknown as typeof fetch,
+      {
+        maxRetries: 2,
+        initialDelayMs: 1,
+        backoffMultiplier: 1,
+        maxDelayMs: 1,
+      },
+    );
   });
 
   it('should parse a 2xx JSON body and attach the Bearer token', async () => {

@@ -43,6 +43,7 @@ import type {
   OfferCategory,
 } from '@openlinker/core/listings';
 import type { CachePort } from '@openlinker/shared';
+import type { FetchLike } from '@openlinker/shared/http';
 import type { AllegroCatalogEnvironment } from '../../domain/types/erli-connection.types';
 import { ErliAuthenticationException } from '../../domain/exceptions/erli-authentication.exception';
 import { ErliNetworkException } from '../../domain/exceptions/erli-network.exception';
@@ -84,10 +85,19 @@ export class AllegroCategoryCatalogClient {
    */
   private inFlightToken: Promise<CachedToken> | undefined;
 
+  /**
+   * `fetchImpl` is **required**, deliberately (mirrors AllegroHttpClient,
+   * #1968 review) — no silent `?? globalThis.fetch` bypass of #1810's
+   * per-connection rate limiting. Every construction site (`ErliAdapterFactory`)
+   * already resolves one from `host.http.forConnection(...)`. It precedes
+   * the optional `cache` because TypeScript forbids an optional parameter
+   * ahead of a required one.
+   */
   constructor(
     private readonly clientId: string,
     private readonly clientSecret: string,
     environment: AllegroCatalogEnvironment,
+    private readonly fetchImpl: FetchLike,
     private readonly cache?: CachePort
   ) {
     this.webBaseUrl = environment === 'production' ? PRODUCTION_WEB_BASE_URL : SANDBOX_WEB_BASE_URL;
@@ -185,6 +195,7 @@ export class AllegroCategoryCatalogClient {
 
     let response: Response;
     try {
+      // eslint-disable-next-line no-restricted-globals -- OAuth token endpoint (Allegro app client-credentials grant), low-volume auth infra, exempted pending #1810 Phase 5
       response = await fetch(tokenUrl, {
         method: 'POST',
         headers: {
@@ -221,7 +232,7 @@ export class AllegroCategoryCatalogClient {
 
     let response: Response;
     try {
-      response = await fetch(url, {
+      response = await this.fetchImpl(url, {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${accessToken}`,
