@@ -22,7 +22,8 @@
  * fetchSellerIdentity) and Erli's Allegro-app OAuth token bypass
  * (`acquireToken` in `allegro-category-catalog-client.ts`) — low-volume auth
  * infra, not shop traffic. InPost has no OAuth-token bypass to exempt (static
- * Bearer API token, no token endpoint).
+ * Bearer API token, no token endpoint). No such exemption is needed for
+ * KSeF — its client has no ad-hoc OAuth-token bypass.
  *
  * Run with `--self-check` to exercise the pure classifier against synthetic
  * inputs (no filesystem) — mirrors `check-migration-timestamps.mjs --self-check`.
@@ -47,6 +48,7 @@ const SCAN_ROOTS = [
   'libs/integrations/allegro',
   'libs/integrations/erli',
   'libs/integrations/inpost',
+  'libs/integrations/ksef',
 ];
 
 const SKIP_DIRS = new Set([

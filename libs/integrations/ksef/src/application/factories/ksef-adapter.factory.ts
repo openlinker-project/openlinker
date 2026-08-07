@@ -25,6 +25,7 @@
  * @module libs/integrations/ksef/src/application/factories
  */
 import type { CachePort } from '@openlinker/shared/cache';
+import type { FetchLike } from '@openlinker/shared/http';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { KsefInvoicingAdapter } from '../../infrastructure/adapters/ksef-invoicing.adapter';
@@ -54,6 +55,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
     connection: Connection,
     _identifierMapping: IdentifierMappingPort,
     credentialsResolver: CredentialsResolverPort,
+    fetchImpl: FetchLike,
   ): Promise<KsefAdapters> {
     const env = this.resolveEnvironment(connection);
     const credentials = await this.resolveCredentials(connection, credentialsResolver);
@@ -70,6 +72,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
       env,
       authMaterial,
       cache: this.cache,
+      fetchImpl,
     });
 
     // C5 issuance dependencies: the session-crypto service (shares the same

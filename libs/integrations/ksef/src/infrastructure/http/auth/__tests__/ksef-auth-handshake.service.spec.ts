@@ -252,6 +252,7 @@ describe('KsefAuthHandshakeService', () => {
         'conn-1',
         'https://api-test.ksef.mf.gov.pl/v2',
         lifecycle,
+        fetchMock,
       );
       const service = new KsefAuthHandshakeService('conn-1', httpClient, encryptorStub());
       (lifecycle.refresh as jest.Mock).mockImplementation(() => service.authenticate(MATERIAL));
