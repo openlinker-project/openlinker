@@ -32,13 +32,22 @@ export class InfaktHttpClient implements IInfaktHttpClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: FetchLike;
 
+  /**
+   * `fetchImpl` is **required**, deliberately (mirrors AllegroHttpClient /
+   * KsefHttpClient, #1810 follow-up). An optional `fetchImpl ?? globalThis.fetch`
+   * default would satisfy the type checker but reintroduce an unmetered escape
+   * hatch the moment a caller forgets to pass one — silently bypassing the
+   * connection-bound rate limiter. Every production call site (the adapter
+   * factory, the connection tester) already injects a transport; only tests
+   * need to pass a fake explicitly.
+   */
   constructor(
     private readonly config: InfaktHttpClientConfig,
     private readonly logger: LoggerPort,
-    fetchImpl?: FetchLike,
+    fetchImpl: FetchLike,
   ) {
     this.baseUrl = config.baseUrl?.replace(/\/$/, '') ?? INFAKT_DEFAULT_BASE_URL;
-    this.fetchImpl = fetchImpl ?? globalThis.fetch;
+    this.fetchImpl = fetchImpl;
   }
 
   async get<T>(path: string, query?: Record<string, string>): Promise<T> {
