@@ -19,9 +19,10 @@
  * (`// eslint-disable-next-line no-restricted-globals -- <reason>`) — never
  * a blanket file-level suppression. Used today for the 3 Allegro OAuth-token
  * bypasses (exchangeCode/fetchAccountIdentity, callRefreshEndpoint,
- * fetchSellerIdentity) — low-volume auth infra, not shop traffic. InPost has
- * no OAuth-token bypass to exempt (static Bearer API token, no token
- * endpoint).
+ * fetchSellerIdentity) and Erli's Allegro-app OAuth token bypass
+ * (`acquireToken` in `allegro-category-catalog-client.ts`) — low-volume auth
+ * infra, not shop traffic. InPost has no OAuth-token bypass to exempt (static
+ * Bearer API token, no token endpoint).
  *
  * Run with `--self-check` to exercise the pure classifier against synthetic
  * inputs (no filesystem) — mirrors `check-migration-timestamps.mjs --self-check`.
@@ -44,6 +45,7 @@ const ROOT = resolve(__dirname, '..');
 const SCAN_ROOTS = [
   'libs/integrations/prestashop',
   'libs/integrations/allegro',
+  'libs/integrations/erli',
   'libs/integrations/inpost',
 ];
 

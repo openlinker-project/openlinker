@@ -21,6 +21,7 @@ import type {
 } from '@openlinker/core/listings';
 import type { OrderSourcePort, OrderStatusWriteback } from '@openlinker/core/orders';
 import type { CachePort } from '@openlinker/shared';
+import type { FetchLike } from '@openlinker/shared/http';
 // eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
 import type { IErliHttpClient } from '../../infrastructure/http/erli-http-client.interface';
 // eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
@@ -48,6 +49,7 @@ export interface IErliAdapterFactory {
     connection: Connection,
     identifierMapping: IdentifierMappingPort,
     credentialsResolver: CredentialsResolverPort,
+    fetchImpl: FetchLike,
     cache?: CachePort,
     inventoryQuery?: IInventoryQueryService,
   ): Promise<ErliAdapters>;
@@ -60,6 +62,7 @@ export interface IErliAdapterFactory {
   createHttpClient(
     connection: Connection,
     credentialsResolver: CredentialsResolverPort,
+    fetchImpl: FetchLike,
     retryConfig?: Partial<RetryConfig>,
   ): Promise<IErliHttpClient>;
 }
