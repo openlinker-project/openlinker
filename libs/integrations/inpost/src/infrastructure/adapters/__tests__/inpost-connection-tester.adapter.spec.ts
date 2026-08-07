@@ -79,11 +79,15 @@ describe('InpostConnectionTesterAdapter', () => {
     const fetchImpl = jest.fn();
     http.forConnection.mockClear().mockReturnValue(fetchImpl);
     jest.spyOn(InpostHttpClient.prototype, 'request').mockResolvedValue([] as never);
+    // Built once and reused for the call + the assertion — two separate
+    // `buildConnection()` calls mint `new Date()` independently, so a
+    // millisecond boundary between them flakes `toHaveBeenCalledWith`.
+    const connection = buildConnection(validConfig);
 
-    await tester.test(buildConnection(validConfig), resolver);
+    await tester.test(connection, resolver);
 
     // Exactly one argument — InPost ships no manifest `defaultRateLimit`.
-    expect(http.forConnection).toHaveBeenCalledWith(buildConnection(validConfig));
+    expect(http.forConnection).toHaveBeenCalledWith(connection);
   });
 
   it('maps an auth rejection to success:false with status 401', async () => {
