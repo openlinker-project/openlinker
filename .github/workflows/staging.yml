@@ -63,13 +63,13 @@ jobs:
           secret-path: "prestashop"
 
       - name: Build web
-        run: docker build --build-arg VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }} -f apps/web/Dockerfile . --tag openlinker-web:latest
+        run: docker build --build-arg VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }} -f apps/web/Dockerfile . --tag openlinker-web:latest --tag openlinker-web:${{ github.sha }}
       - name: Build worker
-        run: docker build -f Dockerfile --target worker . --tag openlinker-worker:latest
+        run: docker build -f Dockerfile --target worker . --tag openlinker-worker:latest --tag openlinker-worker:${{ github.sha }}
       - name: Build api
-        run: docker build -f Dockerfile --target production . --tag openlinker-api:latest
+        run: docker build -f Dockerfile --target production . --tag openlinker-api:latest --tag openlinker-api:${{ github.sha }}
       - name: Build migrate
-        run: docker build -f Dockerfile --target base . --tag openlinker-migrate:latest
+        run: docker build -f Dockerfile --target base . --tag openlinker-migrate:latest --tag openlinker-migrate:${{ github.sha }}
 
       - name: Sync prestashop module
         run: rsync -avz --delete ./apps/prestashop-module/ ${{ secrets.PROJECT_DIR }}/data/prestashop_openlinker_module/
