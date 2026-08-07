@@ -9,13 +9,17 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false
+
 jobs:
   build-and-deploy:
     environment: staging
     runs-on: staging
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
 
       - name: Env for app
         uses: Infisical/secrets-action@v1.0.16
@@ -52,7 +56,7 @@ jobs:
           client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
           client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
           domain: ${{ secrets.INFISICAL_DOMAIN }}
-          env-slug: staging
+          env-slug: ${{ secrets.INFISICAL_ENV_SLUG }}
           project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
           export-type: "file"
           file-output-path: "/.env.presta"
@@ -84,6 +88,7 @@ jobs:
         run: mv .env.presta ${{ secrets.PROJECT_DIR }}/.env.presta
 
       - name: Restart with latest tags
+        working-directory: ${{ secrets.PROJECT_DIR }}
         run: docker compose up -d
 
       - name: Prune old images # save space on server
