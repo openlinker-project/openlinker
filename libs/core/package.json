@@ -181,6 +181,9 @@
     "lint": "eslint \"src/**/*.ts\" --fix",
     "type-check": "tsc --noEmit"
   },
+  "dependencies": {
+    "@openlinker/shared": "workspace:*"
+  },
   "peerDependencies": {
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.0.0",
