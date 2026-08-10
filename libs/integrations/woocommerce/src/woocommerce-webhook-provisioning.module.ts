@@ -30,11 +30,13 @@ import {
   CONNECTION_PORT_TOKEN,
   IdentifierMappingModule,
 } from '@openlinker/core/identifier-mapping';
+import { RateLimitModule, HTTP_TRANSPORT_FACTORY_TOKEN } from '@openlinker/plugin-sdk';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { woocommerceAdapterManifest } from './woocommerce-plugin';
 import { WooCommerceWebhookProvisioningAdapter } from './infrastructure/adapters/woocommerce-webhook-provisioning.adapter';
 
 @Module({
-  imports: [IntegrationsModule, IdentifierMappingModule],
+  imports: [IntegrationsModule, IdentifierMappingModule, RateLimitModule],
 })
 export class WooCommerceWebhookProvisioningModule implements OnModuleInit {
   constructor(
@@ -46,6 +48,8 @@ export class WooCommerceWebhookProvisioningModule implements OnModuleInit {
     private readonly webhookSecretService: IWebhookSecretService,
     @Inject(CREDENTIALS_RESOLVER_TOKEN)
     private readonly credentialsResolver: CredentialsResolverPort,
+    @Inject(HTTP_TRANSPORT_FACTORY_TOKEN)
+    private readonly http: HttpTransportFactoryPort,
   ) {}
 
   onModuleInit(): void {
@@ -55,6 +59,8 @@ export class WooCommerceWebhookProvisioningModule implements OnModuleInit {
         this.connectionPort,
         this.webhookSecretService,
         this.credentialsResolver,
+        this.http,
+        woocommerceAdapterManifest.defaultRateLimit,
       ),
     );
   }
