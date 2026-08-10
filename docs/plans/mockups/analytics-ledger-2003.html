@@ -24,8 +24,44 @@
   the line range it came from. NO new primitive is required — that is an acceptance
   criterion of #2003, and this file holds to it — with ONE named exception, the
   period-over-period delta added in round 6, which the handover files as a scope
-  addition rather than absorbing it silently. Exactly TEN new CSS rules are
+  addition rather than absorbing it silently. Exactly ELEVEN new CSS rules are
   invented; they are isolated in section 5 and named.
+
+  ── WHAT ROUND 8 DID ────────────────────────────────────────────────────────
+  A design-system audit rather than a design round: the page was re-read against the
+  LIVE index.css instead of against the notes of the round that transcribed it. Four
+  things came out of it, and the first two would have shipped wrong.
+
+  1. THE STATUS-STRIP LADDER WAS WRITTEN AGAINST A DEAD RULE. index.css:6241-6260
+     already overrides the auto-fit line rounds 6-7 argued with, so the measured
+     failure never described the running app AND the correction would have lost to
+     `@media (min-width: 1024px) { repeat(4) }`. New rule 6 now restates all three
+     steps under a modifier class. See the handover row.
+  2. THE CARD EDITS WERE NOT SCOPED. `min-height`, the value row's wrap and the strip
+     columns were edited on the bare classes the dashboard at `/` also renders, while
+     this file claimed the dashboard was untouched. All three now hang off
+     `.status-strip--analytics`, so the claim is true in fact and not only in prose.
+  3. SIXTEEN DEAD RULES WERE DELETED, and one was carrying an argument: the
+     `.kpi-card__qualifier-share` block still defended a treatment round 7 had removed,
+     so the file was instructing #1990 to build something no frame drew.
+  4. THE DAGGERS BECAME A LIST — frame 14, new rule 11. See below.
+
+  ── THE TWO CARDS THAT CANNOT READ ANYTHING YET ─────────────────────────────
+  Returns & refunds, and Cancellations, have BOTH figures blocked — four of the twelve.
+  They stay on the strip, and that is the deliberate answer to "should a card with no
+  real number be drawn at all". The brief was to choose the figures a seller needs; a
+  figure the platform cannot serve yet is a REQUIREMENT, and a requirement drawn to
+  scale is what a backend issue gets written against. Deleting the cards would delete
+  the specification and leave the gap invisible — a seller who cannot see what returns
+  cost them is losing the money either way.
+
+  What round 8 added is the honesty the two cards were missing. `.kpi-card--planned`
+  (rule 11) gives them a dashed border and a `Data order` tag where every other card
+  carries its ⓘ, so nothing on them is mistaken for a measurement; and frame 14
+  generates the whole backlog from the same `blocked()` calls the markers render, so
+  the page and the data order cannot drift. The register audits itself: a † rendered on
+  the page that nobody filed appears in the table as an unfiled row rather than being
+  silently dropped.
 
   ── FOUR CORRECTIONS TO THE ISSUE BODY AND THE SPEC ─────────────────────────
   Found by reading the code each document points at. Each one changed what this
@@ -367,7 +403,7 @@
     overflow-x: hidden;
   }
   /* index.css:2628-2660 */
-  .mono-text, .mono { font-family: var(--font-mono); letter-spacing: -0.01em; overflow-wrap: anywhere; }
+  .mono-text { font-family: var(--font-mono); letter-spacing: -0.01em; overflow-wrap: anywhere; }
   .tabular { font-variant-numeric: tabular-nums; }
   .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
   .text-muted { color: var(--text-muted); font-size: 0.8125rem; }
@@ -513,7 +549,6 @@
 
   .frame-grid { display: grid; gap: var(--space-4); grid-template-columns: minmax(0, 1fr); }
   .frame-grid--2 { grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); }
-  .frame-grid--3 { grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); }
 
   .phone-frame { max-width: 360px; min-width: 0; }
   .tablet-frame { max-width: 768px; min-width: 0; }
@@ -523,14 +558,14 @@
      resolve 718 px of frame into three columns plus an orphan. Restating rule 6's one
      declaration under the simulation makes frame 07 show what a real tablet shows. It is
      the same declaration, not a second rule: if rule 6 changes, this line changes with it. */
-  .tablet-frame .status-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tablet-frame .status-strip--analytics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   /* ROUND 7 HAD TO ADD THE PHONE HALF OF THE SAME SIMULATION, and the reason is a
      regression it caused: rule 6 replaced the shipped `auto-fit` with an explicit
      3-column declaration. `auto-fit` degraded gracefully inside a 360 px box — it simply
      resolved to one column — so no phone-frame restatement was needed before. An explicit
      three columns does not degrade: it resolved 360 px into three 113 px columns, which
      the pending frame duly rendered. Same declaration as the ≤767.98 px viewport step. */
-  .phone-frame .status-strip { grid-template-columns: minmax(0, 1fr); }
+  .phone-frame .status-strip--analytics { grid-template-columns: minmax(0, 1fr); }
   /* Same regression, second place: the state frames (frame 09) stand four app-frames
      side by side, so the recalculating specimen renders inside a ~360 px box on a wide
      viewport — three explicit columns resolved it to 113 px each. Two columns was tried
@@ -538,8 +573,7 @@
      2 rem) overran the card edge and every qualifier label broke onto three lines. One
      column is what a ~360 px container honestly holds, which is also what the ≤767.98 px
      viewport step says. The frame is taller for it. Scaffold only. */
-  .frame-grid--2 .status-strip,
-  .frame-grid--3 .status-strip { grid-template-columns: minmax(0, 1fr); }
+  .frame-grid--2 .status-strip--analytics { grid-template-columns: minmax(0, 1fr); }
   .app-frame { max-width: 100%; }
   .device-tag {
     font-family: var(--font-mono); font-size: 0.625rem; font-weight: 600;
@@ -591,9 +625,7 @@
   }
   .page-section { display: grid; gap: var(--space-3); grid-template-columns: minmax(0, 1fr); }
   .page-header { display: grid; gap: 0.45rem; }
-  .page-header--split { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
   .page-header__content { display: grid; gap: 0.45rem; }
-  .page-header__actions { display: grid; gap: var(--space-3); justify-items: end; }
   .eyebrow {
     margin: 0; font-size: 0.76rem; font-weight: 700; letter-spacing: 0.08em;
     text-transform: uppercase; color: var(--accent-primary-hover);
@@ -682,15 +714,12 @@
   }
   .chip:hover { background: var(--bg-surface-hover); border-color: var(--border-default); color: var(--text-primary); }
   .chip:focus-visible { outline: 2px solid var(--accent-focus); outline-offset: 2px; }
-  .chip--active {
-    background: var(--accent-primary-soft);
-    border-color: color-mix(in oklab, var(--accent-primary) 35%, transparent);
-    color: var(--accent-primary-soft-strong); font-weight: 600;
-  }
+  /* Only the two tones this page actually uses are transcribed. Chip ships
+     --active / --success / --error too (index.css:1658-1720); they are left out
+     because a mockup that declares a variant it never draws is a variant #1990
+     has to guess the intent of. */
   .chip--warning { background: var(--status-warning-soft); border-color: var(--status-warning-border); color: var(--status-warning-strong); }
   .chip--info { background: var(--status-info-soft); border-color: var(--status-info-border); color: var(--status-info-strong); }
-  .chip--success { background: var(--status-success-soft); border-color: var(--status-success-border); color: var(--status-success-strong); }
-  .chip--error { background: var(--status-error-soft); border-color: var(--status-error-border); color: var(--status-error-strong); }
 
   /* SegmentedControl — shared/ui/segmented-control.tsx · index.css:12140-12190 */
   .segmented-control {
@@ -768,21 +797,35 @@
 
   /* KpiCard + Sparkline — shared/ui/kpi-card.tsx, shared/ui/sparkline.tsx
      index.css:4469-4560 · top accent rule index.css:9259-9271 */
-  /* ROUND 7: three explicit columns, not `repeat(auto-fit, minmax(180px, 1fr))`.
-     With six cards auto-fit resolves to six columns of ~200px on a 1280px viewport,
-     and a card that carries a name, a ⓘ, a figure, a caption, a delta and a qualifier
-     cannot be read at 200px — the caption wraps to three lines and the delta lands
-     under the qualifier hairline. 3×2 is the shape the content asks for; see new
-     rule 6 for the tablet and phone steps and the handover for what it costs. */
-  .status-strip { display: grid; gap: 0.75rem; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  @media (max-width: 767.98px) { .status-strip { grid-template-columns: minmax(0, 1fr); } }
+  /* The shipped strip, transcribed as it actually behaves today — see new rule 6 for
+     why that is NOT the `auto-fit` line at index.css:1999, and for the analytics
+     ladder that overrides it. */
+  .status-strip { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+
+  /* ROUND 8 SCOPES EVERY CARD CHANGE TO THIS PAGE. Rounds 6-7 edited the bare
+     `.kpi-card` rule, which is the same class the dashboard at `/` renders — so a file
+     that states "the operational dashboard at / is untouched" was in fact restyling it.
+     Three declarations were involved (min-height, the value row's wrap, and the strip's
+     own columns); all three now hang off `.status-strip--analytics`, so the shipped card
+     is read-only here in fact and not just in the prose. #1990 implements this as a
+     page-level class on the strip, not as an edit to the primitive. */
   .kpi-card {
     position: relative; display: flex; flex-direction: column; gap: var(--space-3);
     padding: var(--space-5); background: var(--bg-surface);
     border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
     color: var(--text-primary); text-decoration: none;
-    box-shadow: var(--shadow-xs); height: 100%; min-height: 9.5rem;
+    box-shadow: var(--shadow-xs); height: 100%; min-height: 7rem;
+    transition: border-color var(--duration-fast) var(--ease-out),
+                box-shadow var(--duration-fast) var(--ease-out);
   }
+  /* Transcribed even though nothing on this page is a link, because the FIRST thing
+     asked of this strip will be a drill-down into Transactions — and a card that becomes
+     an <a> must not have to re-invent its focus ring. index.css:4493-4501. */
+  a.kpi-card:hover { border-color: var(--border-default); box-shadow: var(--shadow-sm); }
+  a.kpi-card:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+  /* Six cards carry a name, a ⓘ, a figure, a caption, a delta and a qualifier; the
+     shipped 7rem floor was set for a card carrying a figure and a caption. */
+  .status-strip--analytics .kpi-card { min-height: 9.5rem; }
   .kpi-card::before {
     content: ''; position: absolute; inset: 0 auto auto 0; width: 100%; height: 1px;
     background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--accent-primary) 60%, transparent), transparent);
@@ -794,17 +837,17 @@
     font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500;
     color: var(--text-muted); letter-spacing: var(--tracking-caps); text-transform: uppercase;
   }
-  .kpi-card__icon { display: inline-flex; align-items: center; color: currentColor; }
   .kpi-card__value {
     font-size: 2rem; line-height: 1; font-weight: 600;
     letter-spacing: var(--tracking-tight); font-variant-numeric: tabular-nums;
     display: flex; align-items: baseline; gap: var(--space-2); color: var(--text-primary);
-    /* Round 6 let the delta share this row and made it wrap for the converted GMV,
-       which runs to nine characters plus a currency code. ROUND 7 moved the delta out
-       of the row entirely (new rule 9), so the wrap now only ever catches a suffix —
-       kept anyway, because it costs nothing and the 360px column is unforgiving. */
-    flex-wrap: wrap; row-gap: var(--space-2);
   }
+  /* Round 6 let the delta share this row and made it wrap for the converted GMV, which
+     runs to nine characters plus a currency code. Round 7 moved the delta out of the row
+     entirely (new rule 9), so the wrap now only ever catches a suffix — kept because the
+     360px column is unforgiving, and SCOPED because the dashboard's cards carry no
+     suffix and have no reason to inherit a wrap. */
+  .status-strip--analytics .kpi-card__value { flex-wrap: wrap; row-gap: var(--space-2); }
   .kpi-card__value-suffix { font-size: 0.8125rem; font-weight: 500; color: var(--text-muted); letter-spacing: var(--tracking-normal); white-space: nowrap; }
   .kpi-card__description { font-family: var(--font-mono); font-size: 0.75rem; line-height: 1.4; color: var(--text-secondary); }
   .kpi-card--warning { background: var(--status-warning-soft); border-color: var(--status-warning-border); }
@@ -812,8 +855,10 @@
   .kpi-card--error { background: var(--status-error-soft); border-color: var(--status-error-border); }
   .kpi-card--error .kpi-card__label-text, .kpi-card--error .kpi-card__value, .kpi-card--error .kpi-card__description { color: var(--status-error-strong); }
 
+  /* Line only, no `.sparkline__area`. The component ships a filled variant; two cards
+     on this strip use the line and nothing on the page asks for the fill, so drawing the
+     rule without ever drawing the shape would leave #1990 to decide which one is meant. */
   .sparkline__line { stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; fill: none; }
-  .sparkline__area { fill: currentColor; opacity: 0.12; }
   .sparkline--neutral { color: var(--text-muted); }
   .sparkline--success { color: var(--status-success); }
   .sparkline--warning { color: var(--status-warning); }
@@ -849,12 +894,7 @@
      it is losing the same argument there. */
   .data-table th.data-table__cell--right,
   .data-table td.data-table__cell--right { text-align: right; font-variant-numeric: tabular-nums; }
-  .data-table th.data-table__cell--center,
-  .data-table td.data-table__cell--center { text-align: center; }
   .data-table__stack { display: grid; gap: 2px; }
-  .data-table__action { color: var(--accent-primary); font-weight: 500; text-decoration: none; }
-  .data-table__action:hover { color: var(--accent-primary-hover); text-decoration: underline; }
-  .data-table__badge-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 
   /* ProductThumbnail — shared/ui/product-thumbnail.tsx + index.css:3332-3372, verbatim.
      Falls back to the name's initial when `src` is absent or the image 404s, so a
@@ -933,9 +973,10 @@
      conventional "there is an expansion behind this" signal. */
   .data-table th abbr { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
 
-  /* hideBelow — index.css:2956-2976. Breakpoints are exactly 480 | 768 | 1024
-     (DataTableHideBreakpoint, data-table.tsx:30). */
-  @media (max-width: 479.98px) { .data-table__cell--hide-below-480 { display: none; } }
+  /* hideBelow — index.css:2956-2976. The component offers 480 | 768 | 1024
+     (DataTableHideBreakpoint, data-table.tsx:30); this page uses only 768 and 1024,
+     because below 768 both tables flip to `cardView` and there is no row left to hide a
+     column from. The 480 step is deliberately unused, not overlooked. */
   @media (max-width: 767.98px) { .data-table__cell--hide-below-768 { display: none; } }
   @media (max-width: 1023.98px) { .data-table__cell--hide-below-1024 { display: none; } }
 
@@ -1058,10 +1099,6 @@
     padding-left: calc(8px + var(--space-2)); max-width: min(100%, 100ch);
     font-size: 0.75rem; color: var(--text-muted); line-height: 1.4;
   }
-  /* The panel-level note is about every row, so it sits at the panel's own left
-     edge — the indent is what tells a row note apart from this one. */
-  .trust-header__row--footer { padding-bottom: 0; }
-  .trust-header__row--footer .trust-header__note { padding-left: 0; }
   .trust-header__dot { width: 8px; height: 8px; border-radius: 999px; flex-shrink: 0; }
 
   .attention-list { display: grid; gap: 0; }
@@ -1116,36 +1153,48 @@
     font-size: 0.9375rem; font-weight: 600; color: var(--text-primary);
     font-variant-numeric: tabular-nums; white-space: nowrap;
   }
-  /* The share in "24 (5.5%)" is a second reading of the count beside it, not a second
-     figure — so it is set back to the label's weight and colour. At full weight the
-     pair read as two competing numbers on one line. */
-  .kpi-card__qualifier-share {
-    font-family: var(--font-mono); font-size: 0.75rem; font-weight: 500;
-    color: var(--text-muted);
-  }
-
   .data-table tfoot td {
     border-top: 1px solid var(--border-default);
     background: var(--bg-shell); font-weight: 600;
   }
   .data-table tfoot .data-table__cell--right { font-variant-numeric: tabular-nums; }
 
-  /*   6. .status-strip column override — found by measuring, not by reading.
-   *      The shipped `.status-strip` is `repeat(auto-fit, minmax(180px, 1fr))`, and
-   *      auto-fit is exactly the wrong mechanism for a strip whose card count is fixed
-   *      by the metric model rather than by the viewport: at 768 px it resolved to
-   *      THREE columns plus an orphan, and at 1280 px it now resolves to SIX columns of
-   *      ~200 px, which no card on this strip survives.
+  /*   6. .status-strip--analytics — the column ladder, and ROUND 8 REWROTE BOTH THE
+   *      RULE AND THE REASON FOR IT. Round 7 argued against
+   *      `repeat(auto-fit, minmax(180px, 1fr))` (index.css:1999) and declared ONE media
+   *      query to correct it. Two things were wrong with that, and only re-reading the
+   *      live stylesheet found them:
    *
-   *      ROUND 7 RESTATES THE LADDER. The style guide's parity matrix and #1990 were
-   *      written against a four-card strip and say 1×4 → 2×2 → vertical. Six cards
-   *      cannot honour the first step, so the ladder becomes 3×2 → 2×3 → vertical: the
-   *      guide's INTENT is preserved (a fixed column count per breakpoint, an even
-   *      grid, no orphan row) while its literal 1×4 is not, and that divergence is
-   *      named in the handover rather than left for #1990 to discover.
+   *      (a) THE AUTO-FIT LINE IS NOT WHAT SHIPS. index.css:6241-6260 already overrides
+   *          it with an explicit ladder — 1 column, then 2 at ≥768, then 4 at ≥1024 —
+   *          written for the dashboard's four-card strip. So the measured "three columns
+   *          plus an orphan at 768px" never described the running app; at 768px the app
+   *          gives two. The old justification is deleted rather than patched: it argued
+   *          from a stylesheet state that no longer exists.
+   *
+   *      (b) THE OLD RULE WOULD NOT HAVE HELD. A base `repeat(3)` plus one 768-1023.98
+   *          query loses to `@media (min-width: 1024px) { repeat(4) }` — same
+   *          specificity, later in the file — so the strip would have rendered FOUR
+   *          columns on the desktop this page is designed for, and #1990 would have
+   *          found that at implementation time.
+   *
+   *      Hence a modifier class and all THREE steps, restated in full. It is additive:
+   *      the dashboard keeps its 1 → 2 → 4 ladder untouched, which is the claim the top
+   *      of this file makes and could not previously honour.
+   *
+   *      THE LADDER ITSELF IS UNCHANGED FROM ROUND 7: 3×2 → 2×3 → vertical. The style
+   *      guide's parity matrix and #1990 were written against a four-card strip and say
+   *      1×4 → 2×2 → vertical; six cards cannot honour the first step, so the guide's
+   *      INTENT is preserved (a fixed column count per breakpoint, an even grid, no
+   *      orphan row) while its literal 1×4 is not. That divergence is named in the
+   *      handover rather than left for #1990 to discover.
    */
-  @media (min-width: 768px) and (max-width: 1023.98px) {
-    .status-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .status-strip--analytics { grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 768px) {
+    .status-strip--analytics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (min-width: 1024px) {
+    .status-strip--analytics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   }
 
   /*   7. .kpi-card__headline — the label the big number needs once the card's own
@@ -1258,6 +1307,47 @@
    *      (`collisionPadding`), and the implementation should let it rather than hard-code
    *      a side. The shorthand is here because a static file cannot measure.
    */
+  /*  11. .kpi-card--planned — a card whose BOTH figures are a data order, not a reading.
+   *      Round 7 marked every unavailable figure with the same † and stopped there, which
+   *      was right while a card had one blocked half and one that ships: the marker
+   *      belongs to the figure. It stops being right on the two cards where BOTH figures
+   *      are blocked — Returns & refunds, and Cancellations. There the operator is looking
+   *      at a card on which every number is invented, and two small daggers are not enough
+   *      to say so.
+   *
+   *      THE FIGURES STAY DRAWN, AND THAT IS THE POINT OF THE CARD. This page's job is to
+   *      choose the numbers a seller needs; a number the platform cannot produce yet is a
+   *      requirement, not an omission, and a requirement drawn to scale is what a backend
+   *      issue can be written against. Blanking the card would delete the specification.
+   *      So the card keeps its shape and declares its status instead:
+   *
+   *        · a dashed border, which is the one border treatment nothing else on the page
+   *          uses, so it cannot be read as a severity tone (the --warning / --error cards
+   *          own the tinted backgrounds and mean something different: a real reading that
+   *          is bad news);
+   *        · a `Data order` chip in the eyebrow, sitting where the ⓘ sits on every other
+   *          card, so the status is found in the place the reader already looks;
+   *        · sample figures at the muted weight, so nothing on the card is mistaken for a
+   *          measurement at a glance.
+   *
+   *      Every one of its daggers still resolves to a row in the data-order table
+   *      (frame 14), which is generated from the same strings — a card cannot claim a gap
+   *      the backlog does not list, and the backlog cannot list one no card asked for.
+   */
+  .status-strip--analytics .kpi-card--planned {
+    border-style: dashed; border-color: var(--border-strong); background: var(--bg-shell);
+  }
+  .kpi-card--planned .kpi-card__value,
+  .kpi-card--planned .kpi-card__qualifier-value { color: var(--text-secondary); }
+  .kpi-card__planned-tag {
+    flex-shrink: 0;
+    font-family: var(--font-mono); font-size: 0.625rem; font-weight: 600;
+    letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    padding: 1px var(--space-2); border-radius: var(--radius-sm);
+    border: 1px dashed var(--border-strong); color: var(--text-muted);
+    white-space: nowrap;
+  }
+
   .infotip { position: relative; display: inline-flex; }
   .infotip-popover {
     position: absolute; top: calc(100% + 6px); left: 0; z-index: 5;
@@ -1358,6 +1448,7 @@
     <a href="#frame-degraded">11 Banner rule</a>
     <a href="#frame-microcopy">12 Microcopy</a>
     <a href="#frame-handover">13 Handover</a>
+    <a href="#frame-data-order">14 Data order</a>
   </nav>
 
   <!-- ═══════════ FRAME 00 — The whole page ═══════════
@@ -1436,7 +1527,7 @@
           </article>
 
           <!-- 3 · KPI strip -->
-          <section class="status-strip" id="full-kpi"></section>
+          <section class="status-strip status-strip--analytics" id="full-kpi"></section>
 
           <!-- 4 · By channel -->
           <article class="panel panel--dense">
@@ -1951,12 +2042,12 @@
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">03 &middot; KPI strip</span>
       <b>Six pairs: what happened, and what qualifies it</b>
-      <span class="caption">feeds #1990 &middot; .status-strip + KpiCard (shared/ui/kpi-card.tsx) &middot; qualifier row is new rule 4, headline pair new rule 7, delta new rule 9, per-card definition new rule 10</span>
+      <span class="caption">feeds #1990 &middot; .status-strip + KpiCard (shared/ui/kpi-card.tsx) &middot; qualifier row is new rule 4, headline pair new rule 7, delta new rule 9, per-card definition new rule 10, data-order card new rule 11</span>
       <span class="dep dep--blocked">Ships partly &middot; 6 of 12 figures blocked, plus all 6 deltas</span>
     </div>
     <div class="viewport-frame__scroll">
       <div class="app-frame">
-        <section class="status-strip" id="kpi-strip"></section>
+        <section class="status-strip status-strip--analytics" id="kpi-strip"></section>
       </div>
 
       <div class="gap-legend">
@@ -2322,7 +2413,7 @@
       <div class="tablet-frame">
         <span class="device-tag">768 px &mdash; the KPI strip reflows itself; the table sheds two columns</span>
         <div class="app-frame">
-          <section class="status-strip" id="kpi-strip-tablet"></section>
+          <section class="status-strip status-strip--analytics" id="kpi-strip-tablet"></section>
           <div style="height: var(--space-4)"></div>
           <article class="panel panel--dense">
             <div class="panel__header"><h3 class="section-title">By channel</h3></div>
@@ -2426,7 +2517,7 @@
 
         <div class="app-frame">
           <span class="device-tag">Recalculating &mdash; the range changed; old figures stay</span>
-          <section class="status-strip is-recalculating" id="kpi-strip-pending" aria-busy="true"></section>
+          <section class="status-strip status-strip--analytics is-recalculating" id="kpi-strip-pending" aria-busy="true"></section>
           <div style="height: var(--space-2)"></div>
           <span class="status-badge status-badge--info status-badge--pulse"><span class="status-badge__dot"></span>Updating for 7 Jul &ndash; 5 Aug</span>
         </div>
@@ -2466,6 +2557,28 @@
               <div class="state-card__actions">
                 <button class="button button--secondary" type="button">Widen to 90 days</button>
               </div>
+            </div>
+          </article>
+        </div>
+
+        <!-- ROUND 8: the empty state BELOW 768px, which the file declared a rule for and
+             never drew. `cardView` has its own empty treatment (`.data-table__cards-empty`,
+             index.css:2983-3070) and it is not the panel-level `EmptyState` above: on a
+             phone the section title, the state card's own heading and its message stack
+             into three headings for one fact. The card list's dashed box carries the same
+             sentence in one line and keeps the section identifiable by its panel header. -->
+        <div class="app-frame phone-frame">
+          <span class="device-tag">Empty &mdash; the same range, below 768&nbsp;px</span>
+          <article class="panel panel--dense">
+            <div class="panel__header"><h3 class="section-title">By channel</h3></div>
+            <div class="data-table__cards-empty" role="status" aria-live="polite">
+              No orders in this range
+            </div>
+            <p class="text-muted" style="margin: 0">
+              Earliest order OpenLinker holds: 12 Dec 2025.
+            </p>
+            <div class="state-card__actions">
+              <button class="button button--secondary" type="button">Widen to 90 days</button>
             </div>
           </article>
         </div>
@@ -2747,7 +2860,8 @@
             <tr><td>Strip note + breakdown</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 8</span></td><td><code>.strip-note</code> &mdash; the conversion statement and the button that opens the evidence, belonging to the strip rather than to one card. The table behind it is <code>DataTable</code> + <code>tfoot</code> (rule 5) with no additions. Wraps below 768&nbsp;px so a rate is never truncated mid-number. <b>Not a component:</b> a strip is a layout, not a primitive, so this is markup <code>AnalyticsPage</code> composes &mdash; <code>KpiCard</code> stays out of it.</td></tr>
             <tr><td>KPI delta</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 9</span></td><td><code>.kpi-card__delta</code> &mdash; the period-over-period change, on <b>its own line</b> under the figure and its caption (round&nbsp;7; round&nbsp;6 had it in the value row, pushed right, which broke at six cards where a converted amount and a delta could not share a ~380&nbsp;px row). <b>Not in the label row</b>, where the sparkline lives: a trend line and a delta are two answers to the same question and side by side they read as one compound claim. The own line also buys the visible basis (<code>.kpi-card__delta-basis</code>, &bdquo;vs previous period&ldquo;) &mdash; in round&nbsp;6 that existed only in the <code>.sr-only</code> sentence, so the sighted reader was the one left guessing. Two rules the implementation must not collapse into one: the <b>arrow follows the number</b> but the <b>colour follows the meaning</b> (hence <code>--good</code>/<code>--bad</code>, not <code>--up</code>/<code>--down</code> &mdash; a falling return rate is a down arrow in green), and a <b>rate moves in points, not percent</b>. The glyph is <code>aria-hidden</code> with a full sentence in an <code>.sr-only</code> span, because &bdquo;↑&nbsp;9.5%&ldquo; read aloud loses the direction. Component change: <code>KpiCard</code> gains <code>delta</code>. <b>This is a scope addition</b> &mdash; see the findings table.</td></tr>
             <tr><td>Per-card definition</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 10</span></td><td><code>.infotip</code> + <code>.infotip-popover</code> + <code>.infotip-def*</code> &mdash; one <code>&#9432;</code> per card, in the <b>eyebrow</b>, opened by <b>click</b>, covering <b>both</b> of the card&rsquo;s figures (on a caption it would imply the other figure needs no definition). Everywhere else in this file the marker stands its popover in with a <code>title</code> attribute; this one is built, because a definition is where the shorthand fails hardest &mdash; <code>title</code> shows nothing at all on touch, and the operator who does not know what GMV counts is exactly the one who must not be told nothing. The panel is <b>structured, not prose</b>: term, definition, formula (<code>&lt;code&gt;</code>, so &bdquo;GMV&nbsp;&divide;&nbsp;Orders&ldquo; can be found without reading a sentence), caveat. Behaviour to carry over: one open at a time, click-outside closes, <b>Escape closes and returns focus to the trigger</b>, <code>aria-expanded</code> moves with the panel. In the app this is Radix <code>Popover</code>, <b>never</b> <code>Tooltip</code> &mdash; and let it do <b>collision detection</b>: this file declares <code>.infotip--end</code> per card because a static file cannot measure, which is correct at &ge;1024&nbsp;px and wrong after the reflows. Component change: <code>KpiCard</code> gains an <code>info</code> slot in the label row. The <code>:has()</code> z-index lift is needed because every card is <code>position: relative</code>.</td></tr>
-            <tr><td>Right-aligned table cells</td><td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Was broken</span></td><td><b>Found in round&nbsp;7 and fixed in place.</b> <code>.data-table__cell--right</code> (specificity 0,1,0) loses to <code>.data-table th, .data-table td</code> (0,1,1) whatever the source order, so <b>every money and count column in this file rendered left-aligned</b> while the markup asked for right &mdash; in a document whose own parity matrix calls right-aligned tabular figures &bdquo;non-negotiable in a cockpit table&ldquo;. The fix is the type selector on the helper. <b>Check <code>index.css</code>:</b> if the shipped helper is written the same way, it is losing the same argument in the app.</td></tr>
+            <tr><td>Card with no readable figure</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 11</span></td><td><code>.kpi-card--planned</code> + <code>.kpi-card__planned-tag</code> &mdash; for the two cards where <b>both</b> figures are blocked (Returns &amp; refunds, Cancellations). Round&nbsp;7 marked every unavailable figure with a &dagger; and stopped there, which is right while a card has one blocked half and one that ships, and wrong where every number on the card is invented. <b>The figures stay drawn</b>: this page's job was to choose what a seller needs, so an unavailable figure is a requirement rather than an omission, and a requirement drawn to scale is what a backend issue can be written against. The card declares its status instead &mdash; a <b>dashed</b> border (the one border treatment nothing else uses, so it cannot be read as a severity tone; <code>--warning</code>/<code>--error</code> mean a real reading that is bad news), a <code>Data order</code> tag in the eyebrow slot the sparkline would have taken (a card with no readable figure has no series either, so they cannot collide), and muted figures. Every &dagger; resolves to a row in <b>frame&nbsp;14</b>, generated from the same strings &mdash; a card cannot claim a gap the backlog does not list, and an unregistered marker surfaces there as an <code>Unfiled</code> row rather than being dropped. Component change: <code>KpiCard</code> gains a <code>planned</code> flag &mdash; the fifth prop, and the only one round&nbsp;8 adds.</td></tr>
+            <tr><td>Right-aligned table cells</td><td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Was broken</span></td><td><b>Found in round&nbsp;7 and fixed in place.</b> <code>.data-table__cell--right</code> (specificity 0,1,0) loses to <code>.data-table th, .data-table td</code> (0,1,1) whatever the source order, so <b>every money and count column in this file rendered left-aligned</b> while the markup asked for right &mdash; in a document whose own parity matrix calls right-aligned tabular figures &bdquo;non-negotiable in a cockpit table&ldquo;. The fix is the type selector on the helper. <b>ROUND&nbsp;8 CHECKED, AND IT IS:</b> <code>index.css:2770</code> declares the bare class and <code>index.css:2797</code> sets <code>text-align: left</code> on <code>th, td</code>, so every right-aligned column <b>in the product</b> renders left today &mdash; orders, products, sync jobs, connection diagnostics, bulk batch progress, dashboard. Same one-line fix. <b>It belongs in its own issue, not in #1990</b> &mdash; it predates this epic and touches six pages.</td></tr>
             <tr><td><code>pages/analytics/</code></td><td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Does not exist</span></td><td>Every path in this file&rsquo;s captions is <b>proposed</b>, not existing. The route, the folder and the nav entry are all #1986.</td></tr>
           </tbody>
         </table>
@@ -2819,9 +2933,29 @@
               <td>A median of medians is not a median, and converting a per-currency median is not the median of the converted values. It has to be computed over individual order values, in the reporting currency &mdash; <code>percentile_cont</code> over a total extracted from the <code>orderSnapshot</code> JSONB, which is the same unindexed read every money metric on this page needs and the reason spec &sect;6 puts the substrate work before the money section.</td>
             </tr>
             <tr>
-              <td><code>KpiCard</code> needs <b>four</b> new props</td>
+              <td><code>KpiCard</code> needs <b>five</b> new props</td>
               <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Small &mdash; but cost it</span></td>
-              <td>The shipped component carries one value plus a prose <code>description</code>. This strip needs <code>metric</code> (the caption under the figure), <code>qualifiers</code> (<code>{ label, value }[]</code> &mdash; the figures under the hairline; keep it a LIST, see rule 4), <code>delta</code> (round&nbsp;6) and, from round&nbsp;7, an <code>info</code> slot in the label row for the definition trigger. New rules 4, 7, 9 and 10 are the CSS half; all four props are additive, and every existing consumer &mdash; the dashboard strip &mdash; renders unchanged when they are absent. <b>The &bdquo;no new primitive&ldquo; criterion still holds in the sense that matters</b> (no new component), but four props is not a free change and #1990 should plan it rather than meet it. The FX statement deliberately did <b>not</b> become a fifth prop: it belongs to the strip, not to a card, so it is page markup (rule 8). <code>description</code> carries the tax-basis line on the Revenue card and stays as shipped.</td>
+              <td>The shipped component carries one value plus a prose <code>description</code>. This strip needs <code>metric</code> (the caption under the figure), <code>qualifiers</code> (<code>{ label, value }[]</code> &mdash; the figures under the hairline; keep it a LIST, see rule 4), <code>delta</code> (round&nbsp;6) and, from round&nbsp;7, an <code>info</code> slot in the label row for the definition trigger. New rules 4, 7, 9 and 10 are the CSS half; all four props are additive, and every existing consumer &mdash; the dashboard strip &mdash; renders unchanged when they are absent. Round&nbsp;8 adds a fifth, <code>planned</code> (rule 11), for a card whose every figure is a data order. <b>The &bdquo;no new primitive&ldquo; criterion still holds in the sense that matters</b> (no new component), but five props is not a free change and #1990 should plan it rather than meet it &mdash; and <code>DataTable</code>'s footer is a second component change of the same size, costed in its own row. The FX statement deliberately did <b>not</b> become a fifth prop: it belongs to the strip, not to a card, so it is page markup (rule 8). <code>description</code> carries the tax-basis line on the Revenue card and stays as shipped.</td>
+            </tr>
+            <tr>
+              <td><code>DataTable</code> needs a footer</td>
+              <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Small &mdash; but cost it</span></td>
+              <td>New rule 5 is written as CSS (<code>.data-table tfoot td</code>) and that undersells it: <code>DataTable</code> has no footer API at all, so the Total row on <b>By channel</b> and the per-currency subtotals on the breakdown are a component change of the same kind as <code>KpiCard</code>'s four props &mdash; not a stylesheet addition. Round&nbsp;7 named the card cost and let this one pass as a rule; round&nbsp;8 costs it here so #1990 plans two component changes, not one. <code>cardView</code> is the part to think about: a footer has no obvious card equivalent, and the mockup does not answer it because the two tables carry their totals in the desktop table only.</td>
+            </tr>
+            <tr>
+              <td><b>Every card change is scoped to this page</b></td>
+              <td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>Round 8</span></td>
+              <td>Rounds 6&ndash;7 edited the bare <code>.kpi-card</code> and <code>.status-strip</code> rules &mdash; the same classes the dashboard at <code>/</code> renders &mdash; while this file's scope note claimed the dashboard was untouched. Three declarations were involved: the card's <code>min-height</code> (7rem&nbsp;&rarr;&nbsp;9.5rem), the value row's <code>flex-wrap</code>, and the strip's own columns. All three now hang off <code>.status-strip--analytics</code>. <b>#1990 must implement this as a page-level modifier on the strip, not as an edit to the primitive</b> &mdash; the dashboard's four-card strip is sized for a card carrying a figure and a caption, and inheriting a six-card floor would leave it with a band of dead space under every number.</td>
+            </tr>
+            <tr>
+              <td><b>The shipped <code>.status-strip</code> ladder is not what round 7 read</b></td>
+              <td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Would have shipped wrong</span></td>
+              <td>Round&nbsp;7's rule 6 argued against <code>repeat(auto-fit, minmax(180px, 1fr))</code> (<code>index.css:1999</code>) and declared one media query to correct it. But <code>index.css:6241-6260</code> already overrides that line with an explicit 1&nbsp;&rarr;&nbsp;2&nbsp;&rarr;&nbsp;4 ladder, so (a) the measured &bdquo;three columns plus an orphan at 768&nbsp;px&ldquo; never described the running app, and (b) a base <code>repeat(3)</code> plus one 768&ndash;1023.98 query would have <b>lost</b> to <code>@media (min-width: 1024px) { repeat(4) }</code> &mdash; same specificity, later in the file &mdash; giving four columns on the desktop this page is designed for. Rule 6 now restates all three steps under the modifier. <b>The lesson generalises:</b> a transcription is only as good as its last read of <code>index.css</code>, and a stylesheet of 16,900 lines overrides itself.</td>
+            </tr>
+            <tr>
+              <td><code>.data-table__cell--right</code> is broken <b>in the app</b></td>
+              <td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Separate issue &mdash; not this epic</span></td>
+              <td>Written as the bare class, <code>.data-table__cell--right</code> (<code>index.css:2770</code>, specificity 0,1,0) loses to <code>.data-table th, .data-table td { text-align: left }</code> (<code>index.css:2797</code>, 0,1,1) whatever the source order &mdash; so <b>every right-aligned column in the product renders left-aligned today</b>: orders, products, sync jobs, connection diagnostics, bulk batch progress and the dashboard, wherever a column declares <code>align: 'right'</code>. This file fixes it locally by qualifying with the type selector, which is the same one-line fix <code>index.css</code> needs. <b>It should be its own issue rather than a line in an analytics PR</b> &mdash; it predates this epic, it touches six pages, and a reviewer seeing it inside #1990 cannot tell it apart from the work.</td>
             </tr>
             <tr>
               <td><code>analytics</code> is already taken</td>
@@ -2889,6 +3023,56 @@
           before a single money figure is correct, which is exactly the order §&nbsp;6 of the spec argues
           for, and they leave a page that is honest and useful on its own. Frames 03&ndash;06 wait on the
           substrate. If revenue correctness slips, the first half still stands.
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 14 — Data order ═══════════ -->
+  <section class="viewport-frame" id="frame-data-order">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">14 &middot; Data order</span>
+      <b>Every &dagger; on this page, as one list the backend can work from</b>
+      <span class="caption">generated from the page itself &middot; one row per figure the platform cannot produce yet</span>
+      <span class="dep dep--blocked">Backend input</span>
+    </div>
+    <div class="viewport-frame__scroll">
+
+      <div class="app-frame">
+        <h3 class="section-title" style="margin-bottom: var(--space-3)">What has to exist before these figures can be read</h3>
+        <table class="gap-table" id="data-order-table"></table>
+      </div>
+
+      <div class="gap-legend">
+        <span>
+          <b>This frame exists because the daggers were a specification nobody could act on.</b>
+          Sixteen <code>title</code> attributes spread across six cards, two tables and a strip note
+          say the same thing the list below says &mdash; but only to a reader who hovers each one and
+          keeps their own tally. The rows are generated from the same strings the markers render, so
+          the two <b>cannot</b> drift: a figure that stops being blocked leaves this table by deleting
+          one call, and nothing can appear here that no figure on the page asked for.
+          <br /><br />
+          <b>The order of the columns is the order of the questions.</b> <i>Figure</i> is what the
+          seller would read; <i>What is missing</i> is the state of the repo as of this round, checked
+          against the code rather than against the spec; <i>Shape of the answer</i> is the smallest
+          thing that unblocks the figure &mdash; deliberately not a schema, because the persistence
+          decision belongs to whoever writes the migration.
+          <br /><br />
+          <b>Two clusters, and they are not equally expensive.</b> Everything under
+          <code>placedAt</code> is one column plus an index on data OpenLinker <b>already has</b>
+          &mdash; the precedent exists (<code>IDX_order_records_snapshot_total</code> is an expression
+          index over the same JSONB), so the cost is known and it unblocks the range filter, all six
+          deltas and the daily rate at once. <b>Returns and refunds are a different order of
+          magnitude</b>: no entity exists anywhere in the repo, so this is a capture problem before it
+          is a reporting one. That asymmetry is the single most useful thing on this page for
+          planning, and it is invisible while the gaps are sixteen tooltips.
+          <br /><br />
+          <b>Why the two cards stay drawn.</b> A card that reads <code>&mdash;</code> where its figure
+          should be states a limitation; a card drawn to scale states a requirement. This page's job
+          was to choose the numbers a seller needs, and the answer does not change because the
+          platform cannot serve two of them yet &mdash; a seller who cannot see what returns cost them
+          is losing the money either way. The <code>Data order</code> tag and the dashed border say the
+          figures are not readings, and this table says what would make them so.
         </span>
       </div>
     </div>
@@ -3405,12 +3589,17 @@
      is spoken for by the sparkline, and two claims about change side by side read as one. */
   function kpiCard(o) {
     var quals = o.qualifiers || (o.qualifier ? [o.qualifier] : []);
-    return '<div class="kpi-card' + (o.tone ? ' kpi-card--' + o.tone : '') + '">' +
+    return '<div class="kpi-card' + (o.tone ? ' kpi-card--' + o.tone : '') +
+        (o.planned ? ' kpi-card--planned' : '') + '">' +
       '<div class="kpi-card__label">' +
         '<span class="kpi-card__label-text">' + esc(o.label) +
           (o.info || '') +
         '</span>' +
-        (o.trend ? sparkline(o.trend, o.sparkTone || 'neutral', 72, 20, o.sparkLabel) : '') +
+        /* The tag takes the slot the sparkline would have used, and the two can never
+           collide: a card with no readable figure has no series to draw either. */
+        (o.planned
+          ? '<span class="kpi-card__planned-tag">Data order</span>'
+          : (o.trend ? sparkline(o.trend, o.sparkTone || 'neutral', 72, 20, o.sparkLabel) : '')) +
       '</div>' +
       '<div class="kpi-card__headline">' +
         '<div class="kpi-card__value"><span>' + o.value + '</span>' +
@@ -3437,9 +3626,91 @@
      re-invented as a card badge: it can sit on ONE value, which is what this strip
      needs — six of the twelve figures are blocked, and on four of the six cards the other
      half ships. The six deltas are marked the same way, for the same reason:
-     the marker belongs to the figure that cannot be produced, not to the card. */
-  function blocked(title) {
+     the marker belongs to the figure that cannot be produced, not to the card.
+
+     ROUND 8 MADE EVERY CALL REGISTER ITSELF. The reason is what this page is for: it
+     chooses the figures a seller needs, and a figure the platform cannot produce is a
+     REQUIREMENT rather than a defect — but only if somebody can read the requirements off
+     the page as a list. They used to exist as sixteen `title` attributes scattered across
+     six cards, two tables and a strip note, which is a specification nobody can act on.
+     `blocked()` now files each one, and frame 14 renders the register.
+
+     The register is generated, never hand-written, so the two cannot drift: a figure that
+     stops being blocked drops off the backlog by deleting one call, and a gap the backlog
+     lists but no figure claims cannot exist. `metric` names what the operator would read;
+     `need` is the sentence a backend issue can be opened with.
+
+     Deduplicated by `metric`, because the strip is rendered five times on this page (the
+     full page, the strip frame, the tablet and pending simulations, and the converted
+     variant) and a backlog that listed the same gap five times would be read as five. */
+  var DATA_ORDER = [];
+  var dataOrderSeen = {};
+  var dataOrderNeeds = {};
+  function registerGap(metric, need, shape) {
+    if (dataOrderSeen[metric]) return;
+    dataOrderSeen[metric] = true;
+    dataOrderNeeds[need] = true;
+    DATA_ORDER.push({ metric: metric, need: need, shape: shape || '' });
+  }
+  function blocked(title, metric, shape) {
+    if (metric) registerGap(metric, title, shape);
     return ' <span class="gap-mark" title="' + esc(title) + '">&dagger;</span>';
+  }
+
+  /* Two gaps are marked in STATIC markup rather than through `blocked()` — the date
+     chip in the toolbar (five copies of it across the frames) and the stock threshold in
+     Needs attention — so they are registered by hand. Which would be exactly the drift
+     this register was built to prevent, if `renderDataOrder` did not audit the finished
+     page against it. It does, and it fails loudly rather than silently: a marker nobody
+     registered lands in the table as an unfiled row, so the omission is visible in the
+     one place somebody is reading for omissions. */
+  registerGap('Date range filter (order date)',
+    'placedAt is not a column and cannot be filtered today',
+    'The same placedAt column as the deltas. This is the one that gates the whole page: ' +
+    'every figure here is scoped by a range the API cannot express.');
+  registerGap('Low-stock threshold',
+    'No reorderPoint or low-stock threshold exists on any entity',
+    'An operator-set reorder point per variant. The stock safety buffer is a publish ' +
+    'floor and cannot stand in for one — it never triggers an alarm.');
+  /* The same gap, stated the other way round on the attention row it qualifies: there the
+     sentence has to explain what the buffer is standing in for. One gap, two wordings —
+     so the second is filed as an alias rather than as a second requirement. */
+  dataOrderNeeds['No reorderPoint exists; the buffer is a publish floor, not an alarm'] = true;
+
+  /* Markers that explain the convention rather than claim a gap. Listed by their exact
+     text because there are only two and a pattern would eventually swallow a real one. */
+  var GAP_LEGEND_TITLES = ['Data the API does not expose yet'];
+
+  /* Frame 14. Rendered last, after every strip and table has run, because the register
+     fills as the page draws itself — which is the property that keeps it honest. */
+  function renderDataOrder() {
+    var el = document.getElementById('data-order-table');
+    if (!el) return;
+
+    /* The audit: every † actually rendered on the finished page, minus the ones that
+       explain the convention, minus the ones already filed. Anything left is a gap the
+       page claims and the backlog does not, and it is shown rather than swallowed. */
+    var unfiled = [];
+    Array.prototype.forEach.call(document.querySelectorAll('.gap-mark[title]'), function (m) {
+      var t = m.getAttribute('title');
+      if (dataOrderNeeds[t] || GAP_LEGEND_TITLES.indexOf(t) !== -1) return;
+      if (unfiled.indexOf(t) === -1) unfiled.push(t);
+    });
+
+    el.innerHTML =
+      '<thead><tr><th>Figure</th><th>What is missing</th><th>Shape of the answer</th></tr></thead>' +
+      '<tbody>' + DATA_ORDER.map(function (row) {
+        return '<tr><td>' + esc(row.metric) + '</td><td>' + esc(row.need) + '</td>' +
+          '<td>' + (row.shape ? esc(row.shape) : '<span class="text-muted">&mdash;</span>') + '</td></tr>';
+      }).join('') +
+      unfiled.map(function (t) {
+        return '<tr><td><span class="status-badge status-badge--warning">' +
+            '<span class="status-badge__dot"></span>Unfiled</span></td>' +
+          '<td>' + esc(t) + '</td>' +
+          '<td class="text-muted">Marked on the page but never registered &mdash; ' +
+            'give it a name and a shape, or drop the marker.</td></tr>';
+      }).join('') +
+      '</tbody>';
   }
 
   /* ── Period-over-period delta (new rule 9) ───────────────────────────────────
@@ -3481,7 +3752,9 @@
         '<span aria-hidden="true">' + size + '</span>' +
         '<span class="kpi-card__delta-basis" aria-hidden="true">vs previous period</span>' +
         '<span class="sr-only">' + spoken + '</span>' +
-        blocked(DELTA_GAP) +
+        blocked(DELTA_GAP, 'Period-over-period comparison (all six deltas)',
+                'placedAt as a filterable column plus an index. One change, and it also ' +
+                'unblocks the range filter and Avg. daily orders.') +
       '</span>';
   }
 
@@ -3585,7 +3858,10 @@
     if (!t.converted) return '';
     return 'Converted to ' + REPORTING_CURRENCY + ' using daily ' + FX.source +
       ' average exchange rates &middot; Rates last updated ' + FX.asOf +
-      blocked('No FX exists in the repo; conversion needs the order-day rate stored per order');
+      blocked('No FX exists in the repo; conversion needs the order-day rate stored per order',
+              'Currency conversion to one reporting currency',
+              'The rate that applied on the ORDER date, stored with the order. A rate table ' +
+              'read at query time gives a different answer every day for the same period.');
   }
 
   /* The conversion definition, as the note's OWN marker rather than a second glyph after
@@ -3653,8 +3929,10 @@
   function breakdownTable() {
     var head = '<thead><tr><th>Currency</th>' +
       BREAKDOWN_COLUMNS.map(function (col) {
+        /* The column label is the metric name the register keys on, so a gap already
+           filed by a card is recognised here rather than listed a second time. */
         return '<th class="data-table__cell--right">' + esc(col.label) +
-          (col.mark ? blocked(col.mark) : '') + '</th>';
+          (col.mark ? blocked(col.mark, col.label) : '') + '</th>';
       }).join('') + '</tr></thead>';
 
     var body = '<tbody>' + CURRENCIES_MULTI.map(function (code) {
@@ -3733,7 +4011,9 @@
       trend: totals.revenueTrend, sparkLabel: 'Revenue trend, last 7 days',
       description: grossBasisNote(totals),
       qualifier: { label: 'Net sales' +
-                     blocked('Needs refunded value, and no return or refund amount is stored on any entity'),
+                     blocked('Needs refunded value, and no return or refund amount is stored on any entity',
+                             'Net sales',
+                             'Falls out of Refunded value: GMV − Refunded value. No work of its own.'),
                    value: money(totals.netSales, code) }
     }));
 
@@ -3760,7 +4040,9 @@
       trend: totals.ordersTrend, sparkLabel: 'Order-count trend, last 7 days',
       qualifier: { label: 'Avg. daily orders' +
                      blocked('The divisor is the length of the selected range, and the range ' +
-                             'itself is blocked on placedAt having no column ([C])'),
+                             'itself is blocked on placedAt having no column ([C])',
+                             'Avg. daily orders',
+                             'Nothing beyond placedAt: the divisor is calendar days in the range.'),
                    value: ratio(totals.avgDailyOrders) }
     }));
 
@@ -3828,12 +4110,18 @@
           caveat: 'Partial and full product refunds are included. Shipping refunds are ' +
                   'excluded. This is the amount deducted from GMV when calculating Net sales.' }
       ])),
+      planned: true,
       metric: 'Return rate' +
-        blocked('No return entity exists anywhere in the repo; the spec lists returns under known gaps'),
+        blocked('No return entity exists anywhere in the repo; the spec lists returns under known gaps',
+                'Return rate',
+                'A return record per returned unit, linked to the order line and dated. ' +
+                'Capture first — this is not a reporting gap.'),
       value: pct(totals.returnRate * 100),
       delta: delta(totals.returnRate, prev.returnRate, { pp: true, invert: true }),
       qualifier: { label: 'Refunded value' +
-                     blocked('No refund or return amount is stored on any entity'),
+                     blocked('No refund or return amount is stored on any entity', 'Refunded value',
+                             'A product-refund amount on the return record, excluding shipping. ' +
+                             'Also unblocks Net sales.'),
                    value: money(totals.returnedValue, code) }
     }));
 
@@ -3859,13 +4147,19 @@
           caveat: 'The value is calculated after discounts and uses the same tax basis as ' +
                   'GMV. Cancelled value is excluded from GMV.' }
       ]), { align: 'end' }),
+      planned: true,
       metric: 'Cancellation rate' +
-        blocked('Cancellation is a string inside the order snapshot; nothing counts it ([C])'),
+        blocked('Cancellation is a string inside the order snapshot; nothing counts it ([C])',
+                'Cancellation rate',
+                'Cancellation promoted out of the snapshot into queryable order state. ' +
+                'The data is already ingested; nothing counts it.'),
       value: pct(totals.cancellationRate * 100),
       delta: delta(totals.cancellationRate, prev.cancellationRate, { pp: true, invert: true }),
       qualifier: { label: 'Cancelled value' +
                      blocked('Nothing sums the value of cancelled items; the snapshot carries no ' +
-                             'per-item cancellation amount ([C])'),
+                             'per-item cancellation amount ([C])', 'Cancelled value',
+                             'Per-ITEM cancellation, not per-order: a partially cancelled order ' +
+                             'contributes value while not counting as a cancelled order.'),
                    value: money(totals.cancelledValue, code) }
     }));
 
@@ -3883,7 +4177,7 @@
   var kpiSplitEl = document.getElementById('kpi-strip-currencies');
   if (kpiSplitEl) {
     kpiSplitEl.innerHTML =
-      '<section class="status-strip">' + kpiStrip({ converted: true }) + '</section>' +
+      '<section class="status-strip status-strip--analytics">' + kpiStrip({ converted: true }) + '</section>' +
       stripNote(TOTALS_MULTI, 'kpi-breakdown');
   }
 
@@ -4480,6 +4774,9 @@
 
     commit(applied);
   })();
+
+  /* Last, so the register has seen every strip, table and note on the page. */
+  renderDataOrder();
 
   /* Anchor nav — smooth, and never leaves a dangling hash on reload. */
   Array.prototype.forEach.call(document.querySelectorAll('a[href^="#frame-"]'), function (a) {
