@@ -52,7 +52,12 @@
  */
 import { BadRequestException } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
-import type { Connection, ConnectionPort } from '@openlinker/core/identifier-mapping';
+import type { FetchLike, HttpTransportFactoryPort } from '@openlinker/shared/http';
+import type {
+  Connection,
+  ConnectionPort,
+  ConnectionRateLimit,
+} from '@openlinker/core/identifier-mapping';
 import type {
   CredentialsResolverPort,
   IWebhookSecretService,
@@ -82,6 +87,12 @@ export class WooCommerceWebhookProvisioningAdapter implements WebhookProvisionin
     private readonly connectionPort: ConnectionPort,
     private readonly webhookSecretService: IWebhookSecretService,
     private readonly credentialsResolver: CredentialsResolverPort,
+    private readonly http: HttpTransportFactoryPort,
+    // The plugin manifest's `defaultRateLimit` (#1810) — passed in by the
+    // registration call site (`WooCommerceWebhookProvisioningModule`) rather
+    // than imported back from `woocommerce-plugin.ts`, which would create a
+    // module-load cycle (woocommerce-plugin.ts -> this file -> woocommerce-plugin.ts).
+    private readonly defaultRateLimit?: ConnectionRateLimit,
   ) {}
 
   async install(connectionId: string, actorUserId?: string): Promise<WebhookProvisioningResult> {
@@ -113,7 +124,13 @@ export class WooCommerceWebhookProvisioningAdapter implements WebhookProvisionin
       actorUserId,
     );
 
-    const httpClient = await this.createHttpClient(connection.credentialsRef, config.siteUrl);
+    // Connection-bound outbound transport (#1810).
+    const fetchImpl = this.http.forConnection(connection, this.defaultRateLimit);
+    const httpClient = await this.createHttpClient(
+      connection.credentialsRef,
+      config.siteUrl,
+      fetchImpl,
+    );
     const deliveryUrl = `${callbackBaseUrl.replace(/\/$/, '')}/webhooks/${WOOCOMMERCE_WEBHOOK_PROVIDER}/${connectionId}`;
 
     try {
@@ -261,8 +278,14 @@ export class WooCommerceWebhookProvisioningAdapter implements WebhookProvisionin
   private async createHttpClient(
     credentialsRef: string,
     siteUrl: string,
+    fetchImpl: FetchLike,
   ): Promise<IWooCommerceHttpClient> {
     const credentials = await this.credentialsResolver.get<WooCommerceCredentials>(credentialsRef);
-    return new WooCommerceHttpClient(siteUrl, credentials.consumerKey, credentials.consumerSecret);
+    return new WooCommerceHttpClient(
+      siteUrl,
+      credentials.consumerKey,
+      credentials.consumerSecret,
+      fetchImpl,
+    );
   }
 }

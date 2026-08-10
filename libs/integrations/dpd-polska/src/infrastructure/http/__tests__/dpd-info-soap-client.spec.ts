@@ -45,7 +45,27 @@ describe('DpdInfoSoapClient', () => {
     fetchMock.mockReset();
     global.fetch = fetchMock as unknown as typeof fetch;
     // Tiny backoff so the retry test doesn't wait real seconds.
-    client = new DpdInfoSoapClient(ENDPOINT, AUTH, { initialDelayMs: 1, maxRetries: 2 });
+    client = new DpdInfoSoapClient(
+      ENDPOINT,
+      AUTH,
+      { initialDelayMs: 1, maxRetries: 2 },
+      fetchMock as unknown as typeof fetch,
+    );
+  });
+
+  it('should route the call through an explicitly-injected fetchImpl instead of global.fetch (#1810)', async () => {
+    const injectedFetch = jest.fn().mockResolvedValue(soapResponse(eventsEnvelope(ROW_COLLECTED)));
+    const injectedClient = new DpdInfoSoapClient(
+      ENDPOINT,
+      AUTH,
+      { initialDelayMs: 1, maxRetries: 2 },
+      injectedFetch as unknown as typeof fetch,
+    );
+
+    await injectedClient.getEventsForWaybill({ waybill: 'WB1' });
+
+    expect(injectedFetch).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('POSTs a SOAP envelope carrying the waybill + escaped auth and parses events', async () => {

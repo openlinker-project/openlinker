@@ -47,11 +47,29 @@ describe('DpdHttpClient', () => {
       BASE_URL,
       { login: 'user', password: 'pass' },
       { maxRetries: 2, initialDelayMs: 1, backoffMultiplier: 1, maxDelayMs: 1 },
+      fetchMock as unknown as typeof fetch,
     );
   });
 
   afterAll(() => {
     global.fetch = originalFetch;
+  });
+
+  it('should route every call through an explicitly-injected fetchImpl instead of global.fetch (#1810)', async () => {
+    const injectedFetch = jest
+      .fn()
+      .mockResolvedValue(fakeResponse({ ok: true, status: 200, body: '{"status":"OK"}' }));
+    const injectedClient = new DpdHttpClient(
+      BASE_URL,
+      { login: 'user', password: 'pass' },
+      undefined,
+      injectedFetch as unknown as typeof fetch,
+    );
+
+    await injectedClient.request({ method: 'POST', path: CREATE_PATH });
+
+    expect(injectedFetch).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('should parse a 2xx JSON body and attach the Basic auth header', async () => {
@@ -72,11 +90,12 @@ describe('DpdHttpClient', () => {
   });
 
   it('should attach the X-DPD-FID header when masterFid is configured', async () => {
-    const fidClient = new DpdHttpClient(BASE_URL, {
-      login: 'user',
-      password: 'pass',
-      masterFid: '1495',
-    });
+    const fidClient = new DpdHttpClient(
+      BASE_URL,
+      { login: 'user', password: 'pass', masterFid: '1495' },
+      undefined,
+      fetchMock as unknown as typeof fetch,
+    );
     fetchMock.mockResolvedValueOnce(fakeResponse({ ok: true, status: 200, body: '{"status":"OK"}' }));
 
     await fidClient.request({ method: 'POST', path: CREATE_PATH });
