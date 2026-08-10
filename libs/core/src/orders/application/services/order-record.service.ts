@@ -294,6 +294,10 @@ export class OrderRecordService implements IOrderRecordService {
     return this.repository.findMany(filters, pagination);
   }
 
+  async findByIds(internalOrderIds: string[]): Promise<OrderRecord[]> {
+    return this.repository.findByIds(internalOrderIds);
+  }
+
   async updateFulfillmentState(
     internalOrderId: string,
     fulfillmentState: FulfillmentRollupState

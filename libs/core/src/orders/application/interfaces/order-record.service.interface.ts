@@ -99,6 +99,18 @@ export interface IOrderRecordService {
   ): Promise<PaginatedOrderRecords>;
 
   /**
+   * Batch-find order records by internal order ID (#1995). The cross-context
+   * surface for a page-scoped join (e.g. the Shipments/Invoices lists'
+   * `orderSummary` projection) — repository ports are forbidden across context
+   * boundaries per architecture-overview.md § "Cross-context dependencies in
+   * core", so callers go through this service method instead of
+   * `OrderRecordRepositoryPort.findByIds` directly. Ids with no matching
+   * record are simply absent from the result. Delegates to
+   * `OrderRecordRepositoryPort.findByIds`.
+   */
+  findByIds(internalOrderIds: string[]): Promise<OrderRecord[]>;
+
+  /**
    * Push a per-order fulfillment rollup (#1108) onto the order record. The
    * cross-context surface the shipping context calls after a shipment-status
    * change (`shipping → orders`, via this service — never the repository port).
