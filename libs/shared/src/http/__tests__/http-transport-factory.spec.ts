@@ -152,7 +152,7 @@ describe('HttpTransportFactory', () => {
     expect(registry.getStatus('conn-1')?.maxConcurrent).toBe(1);
   });
 
-  it('divides the configured cap across OL_WORKER_REPLICAS', async () => {
+  it('divides the configured cap when constructed with an explicit replicas count', async () => {
     const response = new Response(null, { status: 200 });
     const fetchImpl = jest.fn().mockResolvedValue(response);
     const factory = new HttpTransportFactory({ registry, fetchImpl, replicas: 4 });
@@ -162,7 +162,11 @@ describe('HttpTransportFactory', () => {
 
     await boundFetch('https://example.com');
 
-    // 4 replicas dividing a cap of 4 leaves each replica a cap of 1.
+    // 4 replicas dividing a cap of 4 leaves each replica a cap of 1. The DI
+    // wiring in `libs/plugin-sdk/src/rate-limit.module.ts` no longer passes
+    // `replicas` (#2015 — the registry is Redis-shared already), but the
+    // option itself still works for a caller that constructs its own
+    // `HttpTransportFactory` directly.
     expect(registry.getStatus('conn-1')?.maxConcurrent).toBe(1);
   });
 

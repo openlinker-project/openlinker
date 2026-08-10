@@ -1,12 +1,18 @@
 /**
  * Http Transport Factory
  *
- * Resolves a connection's live `config.rateLimit`, divides it across
- * `OL_WORKER_REPLICAS` (static division, #1810), and wraps the underlying
+ * Resolves a connection's live `config.rateLimit` and wraps the underlying
  * transport so every call acquires a rate-limit slot first and releases it
  * in a `finally`. A `429`/`503` response's `Retry-After` header feeds back
  * into the limiter's pacing — this is a pass-through wrapper, not a retry
  * engine, so the response itself is returned to the caller unmodified.
+ *
+ * `replicas` (optional constructor dep, divides the policy — #1810) is kept
+ * for callers that still want static division, but the DI wiring
+ * (`libs/plugin-sdk/src/rate-limit.module.ts`) no longer passes it: since
+ * #2015 the registry is Redis-backed and already shared across every
+ * process/replica, so dividing further would only shrink the operator's
+ * configured cap.
  *
  * @module libs/shared/src/http
  */

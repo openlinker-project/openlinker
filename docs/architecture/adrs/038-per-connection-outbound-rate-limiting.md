@@ -99,6 +99,48 @@ value keeps working across the cutover — see the implementation plan's migrati
   scaling — and is worth calling out on its own since it directly weakens the guarantee against the
   #1772 incident this ADR exists to prevent.
 
+### Cross-process coordination — resolved (#2015)
+
+The gap above is closed: `RateLimiterRegistry`'s construction site (`libs/plugin-sdk/src/rate-limit.module.ts`)
+now resolves `RedisRateLimiterAdapter` (`libs/shared/src/rate-limit/redis-rate-limiter.adapter.ts`) instead of
+the in-memory `RateLimiter`, backed by the same `'REDIS_CLIENT'` token `RedisConfigModule` already exposes to
+both `apps/api` and `apps/worker`. `RateLimiterPort`'s method signatures are unchanged — every integration
+adapter and `HttpTransportFactory` required zero code changes. The static `OL_WORKER_REPLICAS` division is
+removed: once the bucket is shared across every process and replica, dividing it further would only shrink the
+operator's configured cap for no reason.
+
+Two Redis primitives, chosen to preserve the in-memory limiter's exact algorithm rather than substitute an
+approximate one:
+
+- **Pacing** (`requestsPerMinute`): a single CAS'd "next-available-at" timestamp key
+  (`ratelimit:pace:{connectionId}`), advanced via a Lua script that reads Redis's own `TIME` (not the caller's
+  local clock, so a skewed host cannot mis-pace relative to the other process). This is the same
+  minimum-interval-spacing algorithm as the in-memory `RateLimiter`, not a windowed counter — preserving the
+  "no burst" property this ADR argues for above. `noteRetryAfter` CAS-advances the same key, so a `Retry-After`
+  observed by either process is honoured by the other's very next pacing check. The key's TTL is computed as
+  `max(one-hour floor, time-until-the-stored-timestamp)`, not a fixed value — an earlier draft that used a fixed
+  floor truncated any pacing interval or `Retry-After` delay longer than the floor almost immediately.
+- **Concurrency** (`maxConcurrent`): the claim-then-rank sorted-set pattern already shipped in
+  `McpRateLimiter.claimRank` (`apps/api/src/mcp/tools/ratelimit/mcp-rate-limiter.ts`, #1487) — add a scored
+  member, evict anything older than a bounded call lifetime (self-heals a crashed caller that never released),
+  admit iff this call's own rank is below the cap. Rank, not a count-then-compare, is what stays correct under
+  concurrent admission from both processes.
+
+Two trade-offs accepted for v1, both scoped to observability/fairness rather than correctness of the cap
+itself:
+
+- **`getStatus()` is per-process-approximate, not a live cross-process read.** `RateLimiterPort.getStatus()` is
+  synchronous by contract, so a Redis-backed adapter cannot do a live network round-trip inside it — it reports
+  only what the calling process instance has itself observed. `RateLimitStatusService` (#1941) is unchanged and
+  now surfaces this approximation transparently; widening `getStatus()` to `Promise<RateLimitStatus>` was
+  considered and rejected as an unrelated breaking change to a port every in-memory caller also implements, for
+  a capability no consumer currently needs.
+- **Priority (`background` vs `interactive`) is not arbitrated across processes.** The in-memory `RateLimiter`
+  holds every waiter as a live in-process queue it can strictly reorder; a Redis-backed adapter has no such
+  queue to reorder across processes without a materially heavier scheme (shared priority-weighted queues).
+  Priority remains a local, per-process bias only (`RedisRateLimiterAdapter.pollDelayFor`) — real, but no longer
+  a hard guarantee once two processes contend for the same connection's bucket.
+
 ### The cap is per connection
 
 `config.rateLimit` means "this connection's total outbound rate". Exactly one axis divides that
@@ -139,6 +181,6 @@ Starving one host's traffic behind another's remains a real concern; the mechani
 
 ## References
 
-- Related issues: #1810, #1772, #1815
+- Related issues: #1810, #1772, #1815, #2015 (closed the cross-process coordination gap — see § "Cross-process coordination — resolved" above)
 - Related PRs: #1941 (PrestaShop-only #1815 prerequisite this ADR generalizes)
 - Primary doc section: [docs/architecture-overview.md § Sync Manager](../../architecture-overview.md#7-sync-manager), [§ Plugin Manager / Integrations](../../architecture-overview.md#10-plugin-manager--integrations)
