@@ -75,7 +75,7 @@
        while channel columns scroll — which is how "a many-channel instance does not
        break the layout" (#1991) is actually satisfied.
 
-  ── THIRTEEN DESIGN DECISIONS THIS FILE SETTLES ─────────────────────────────
+  ── FIFTEEN DESIGN DECISIONS THIS FILE SETTLES ──────────────────────────────
    1  [G] treatment ......... Share by UNITS; revenue as-reported, per row
    2  Date basis ............ `placedAt`, gap marked †
    3  Revenue total ......... conditional: totals when bases agree, degrades when not
@@ -93,15 +93,30 @@
                              standing caveat moved to a ⓘ on the section title (Popover
                              on CLICK, never a hover Tooltip); row notes capped at 1 line
   11  Mixed currency ........ one declared reporting currency; the rate rides on the card
-  12  KPI pairing (round 6) . Revenue is qualified by NET REVENUE, not by a cancellation
-                             rate — GMV already excludes cancelled orders, so the rate
-                             qualified nothing. Cancelled moves to Transactions, which is
-                             the funnel card, and sits BESIDE Units rather than replacing
-                             it (units carry comparability, correction 2)
-  13  Period-over-period .... REVERSES the scope note below. Four deltas, one per card;
-                             arrow follows the number, colour follows the meaning; a rate
-                             changes in POINTS. All four blocked on `placedAt`, so they
-                             ship with the range filter or not at all
+  12  KPI pairing ........... Every card is a PAIR: one figure answering "how much" and
+                             one answering "how much of it can I trust". Round 6 set the
+                             rule (Revenue qualified by net, never by a cancellation rate —
+                             GMV already excludes cancelled orders, so the rate qualified
+                             nothing); round 7 kept the rule and changed how many cards it
+                             takes to honour it — see decision 14
+  13  Period-over-period .... REVERSES the scope note below. One delta per card, and it now
+                             sits on its OWN LINE under the figure and its caption, stating
+                             its basis in words ("vs previous period"). Arrow follows the
+                             number, colour follows the meaning; a rate changes in POINTS.
+                             All of them blocked on `placedAt`, so they ship with the range
+                             filter or not at all
+  14  Six cards (round 7) ... SPLIT ALONG THE METRIC MODEL, NOT THE LAYOUT. Four cards
+                             forced Units and Cancelled to ride as qualifiers on the orders
+                             card, which made one card answer three questions. Now: Revenue,
+                             Orders, Order value, Units, Returns & refunds, Cancellations —
+                             one question each, one true pair each. 3×2 → 2×3 → vertical,
+                             which supersedes the guide's literal 1×4 (see rule 6)
+  15  Definitions on the card One ⓘ per card, in the eyebrow, covering BOTH of its figures —
+                             a Popover on CLICK, never a hover Tooltip. Cards carry the
+                             ABBREVIATIONS the operator uses (GMV, AOV) and the ⓘ carries
+                             the expansion, the formula and the caveat. This reverses round
+                             6's "AOV stays expanded": the argument against introducing the
+                             abbreviation was that nothing defined it, and now the card does
 
   ── WHAT IS DELIBERATELY ABSENT ─────────────────────────────────────────────
   No chart beyond `Sparkline` (shared/ui/sparkline.tsx) — the charting-library
@@ -111,8 +126,26 @@
 
   PERIOD-OVER-PERIOD used to be on this list and was taken off it in round 6 —
   see decision 13. It is the one scope reversal in the file, it is named in the
-  handover as a scope addition rather than absorbed, and it is the only reason
-  `KpiCard` needs a third prop rather than two.
+  handover as a scope addition rather than absorbed.
+
+  ── WHAT ROUND 7 COSTS, SAID ONCE AND PLAINLY ───────────────────────────────
+  `KpiCard` now needs FOUR props, not three: `qualifiers` (rule 4), `metric` (rule 7),
+  `delta` (rule 9) and an `info` slot in the label row (rule 10). The "no new primitive"
+  acceptance criterion still holds in the sense that matters — no new component — but
+  the card it lands on is no longer the card that shipped, and #1990 should cost it as
+  such rather than discovering it mid-implementation.
+
+  A six-card strip is also no longer a glance, which is what a status strip is for. The
+  mitigation is uniformity: every card has the same internal shape, so the reader learns
+  it once. If it still reads heavy on the real page, fold Units back into Orders first —
+  its pair is the one an operator asks for least often. That call belongs on the running
+  app, not here.
+
+  TWO DEFECTS WERE FOUND WHILE DOING THIS, both pre-existing and both fixed in place:
+  every `.data-table__cell--right` in the file rendered LEFT-aligned (the bare class
+  loses on specificity to `.data-table th, .data-table td`), and the device-frame
+  simulations needed a phone-side restatement once `auto-fit` stopped absorbing narrow
+  containers. Neither is a round-7 design decision; both are named where they were fixed.
 
   Sample data is invented but shaped like the real thing: products and prices come
   from the dev-stack seed (docker/prestashop/post-install-lib/30-seed-test-products.php,
@@ -478,6 +511,22 @@
      declaration under the simulation makes frame 07 show what a real tablet shows. It is
      the same declaration, not a second rule: if rule 6 changes, this line changes with it. */
   .tablet-frame .status-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* ROUND 7 HAD TO ADD THE PHONE HALF OF THE SAME SIMULATION, and the reason is a
+     regression it caused: rule 6 replaced the shipped `auto-fit` with an explicit
+     3-column declaration. `auto-fit` degraded gracefully inside a 360 px box — it simply
+     resolved to one column — so no phone-frame restatement was needed before. An explicit
+     three columns does not degrade: it resolved 360 px into three 113 px columns, which
+     the pending frame duly rendered. Same declaration as the ≤767.98 px viewport step. */
+  .phone-frame .status-strip { grid-template-columns: minmax(0, 1fr); }
+  /* Same regression, second place: the state frames (frame 09) stand four app-frames
+     side by side, so the recalculating specimen renders inside a ~360 px box on a wide
+     viewport — three explicit columns resolved it to 113 px each. Two columns was tried
+     next and rejected on the evidence: at 175 px a card's own amount ("PLN 117.01" at
+     2 rem) overran the card edge and every qualifier label broke onto three lines. One
+     column is what a ~360 px container honestly holds, which is also what the ≤767.98 px
+     viewport step says. The frame is taller for it. Scaffold only. */
+  .frame-grid--2 .status-strip,
+  .frame-grid--3 .status-strip { grid-template-columns: minmax(0, 1fr); }
   .app-frame { max-width: 100%; }
   .device-tag {
     font-family: var(--font-mono); font-size: 0.625rem; font-weight: 600;
@@ -706,7 +755,14 @@
 
   /* KpiCard + Sparkline — shared/ui/kpi-card.tsx, shared/ui/sparkline.tsx
      index.css:4469-4560 · top accent rule index.css:9259-9271 */
-  .status-strip { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+  /* ROUND 7: three explicit columns, not `repeat(auto-fit, minmax(180px, 1fr))`.
+     With six cards auto-fit resolves to six columns of ~200px on a 1280px viewport,
+     and a card that carries a name, a ⓘ, a figure, a caption, a delta and a qualifier
+     cannot be read at 200px — the caption wraps to three lines and the delta lands
+     under the qualifier hairline. 3×2 is the shape the content asks for; see new
+     rule 6 for the tablet and phone steps and the handover for what it costs. */
+  .status-strip { display: grid; gap: 0.75rem; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  @media (max-width: 767.98px) { .status-strip { grid-template-columns: minmax(0, 1fr); } }
   .kpi-card {
     position: relative; display: flex; flex-direction: column; gap: var(--space-3);
     padding: var(--space-5); background: var(--bg-surface);
@@ -730,10 +786,10 @@
     font-size: 2rem; line-height: 1; font-weight: 600;
     letter-spacing: var(--tracking-tight); font-variant-numeric: tabular-nums;
     display: flex; align-items: baseline; gap: var(--space-2); color: var(--text-primary);
-    /* ROUND 6: wraps, because the delta shares this row now. A converted GMV runs to
-       nine characters plus a currency code, and at 1×4 that leaves the delta hanging
-       past the card edge — where it was clipped mid-gap-marker. Wrapping drops it to
-       its own line under the figure instead, which is also what it does at 360px. */
+    /* Round 6 let the delta share this row and made it wrap for the converted GMV,
+       which runs to nine characters plus a currency code. ROUND 7 moved the delta out
+       of the row entirely (new rule 9), so the wrap now only ever catches a suffix —
+       kept anyway, because it costs nothing and the 360px column is unforgiving. */
     flex-wrap: wrap; row-gap: var(--space-2);
   }
   .kpi-card__value-suffix { font-size: 0.8125rem; font-weight: 500; color: var(--text-muted); letter-spacing: var(--tracking-normal); white-space: nowrap; }
@@ -770,8 +826,18 @@
   .data-table tbody td { color: var(--text-primary); }
   .data-table tbody tr:last-child td { border-bottom: 0; }
   .data-table tbody tr:hover { background: color-mix(in oklab, var(--bg-surface-muted) 60%, transparent); }
-  .data-table__cell--right { text-align: right; font-variant-numeric: tabular-nums; }
-  .data-table__cell--center { text-align: center; }
+  /* FOUND IN ROUND 7, AND IT WAS SILENTLY WRONG IN EVERY TABLE ON THE PAGE. Written as
+     the bare class, `.data-table__cell--right` (specificity 0,1,0) loses to
+     `.data-table th, .data-table td` (0,1,1) whatever the source order — so every money
+     and count column in this file rendered LEFT-aligned while the markup asked for right,
+     and the parity matrix two screens down calls right-aligned tabular figures
+     "non-negotiable in a cockpit table". The type selector is therefore part of the rule.
+     Worth carrying into the app: if `index.css` states the alignment helper the same way,
+     it is losing the same argument there. */
+  .data-table th.data-table__cell--right,
+  .data-table td.data-table__cell--right { text-align: right; font-variant-numeric: tabular-nums; }
+  .data-table th.data-table__cell--center,
+  .data-table td.data-table__cell--center { text-align: center; }
   .data-table__stack { display: grid; gap: 2px; }
   .data-table__action { color: var(--accent-primary); font-weight: 500; text-decoration: none; }
   .data-table__action:hover { color: var(--accent-primary-hover); text-decoration: underline; }
@@ -964,21 +1030,22 @@
   .is-recalculating { opacity: 0.55; transition: opacity var(--duration-normal) var(--ease-out); }
 
   /* The qualifiers sit on the card floor, not under the headline: `margin-top: auto`
-     is what makes four cards with labels of very different lengths ("Units" against
-     "Net revenue") still draw their hairlines on one line. Baseline alignment
+     is what makes cards with labels of very different lengths ("Units per order" against
+     "Net sales") still draw their hairlines on one line — and in a 3×2 grid it aligns them
+     PER ROW, which is the alignment a reader actually scans. Baseline alignment
      rather than centring, because the label is 12px mono and the figure 15px — centred,
      the two would visibly sit at different heights. It never wraps: at 360px the
      longest pair still fits, and a wrapped qualifier would break the floor alignment
      that is the whole point of the rule.
 
-     ROUND 6: the auto margin moved from the row to a WRAPPER, because Transactions now
-     carries two figures (Units and Cancelled) while its siblings carry one. Floor
-     alignment survives the change intact, and it is worth saying why: every row has the
-     same structure and therefore the same height, so pinning the wrapper to the floor
-     puts the LAST hairline of every card on one line whatever it is stacked behind.
-     Transactions simply grows one hairline above the shared shelf. Aligning the FIRST
-     hairline instead was tried and dropped — it left the three single-figure cards with
-     a band of dead space under their only figure. */
+     ROUND 6 moved the auto margin from the row to a WRAPPER, so that a card carrying two
+     figures under its hairline could grow upward without pushing its siblings' hairlines
+     off the shared shelf. ROUND 7 gives every card exactly one qualifier, so nothing on
+     the strip exercises that today — the wrapper stays because the mechanism is what makes
+     the alignment independent of how many figures a card carries, and a seventh figure
+     landing on an existing card is the likeliest next change. Aligning the FIRST hairline
+     instead was tried and dropped: it left single-figure cards with a band of dead space
+     under their only figure. */
   .kpi-card__qualifiers { display: flex; flex-direction: column; margin-top: auto; }
   .kpi-card__qualifier {
     display: flex; align-items: baseline; justify-content: space-between;
@@ -1008,13 +1075,19 @@
   }
   .data-table tfoot .data-table__cell--right { font-variant-numeric: tabular-nums; }
 
-  /*   6. .status-strip tablet override — found by measuring, not by reading.
-   *      The style guide's parity matrix and #1990 both require the KPI strip to go
-   *      1×4 → 2×2 → vertical. The shipped `.status-strip` is
-   *      `repeat(auto-fit, minmax(180px, 1fr))`, which at 768 px resolves to THREE
-   *      columns plus an orphan on the second row — not 2×2. Either the guide or the
-   *      CSS is wrong; this mockup honours the guide, so the override is explicit
-   *      rather than hoped for. See the handover.
+  /*   6. .status-strip column override — found by measuring, not by reading.
+   *      The shipped `.status-strip` is `repeat(auto-fit, minmax(180px, 1fr))`, and
+   *      auto-fit is exactly the wrong mechanism for a strip whose card count is fixed
+   *      by the metric model rather than by the viewport: at 768 px it resolved to
+   *      THREE columns plus an orphan, and at 1280 px it now resolves to SIX columns of
+   *      ~200 px, which no card on this strip survives.
+   *
+   *      ROUND 7 RESTATES THE LADDER. The style guide's parity matrix and #1990 were
+   *      written against a four-card strip and say 1×4 → 2×2 → vertical. Six cards
+   *      cannot honour the first step, so the ladder becomes 3×2 → 2×3 → vertical: the
+   *      guide's INTENT is preserved (a fixed column count per breakpoint, an even
+   *      grid, no orphan row) while its literal 1×4 is not, and that divergence is
+   *      named in the handover rather than left for #1990 to discover.
    */
   @media (min-width: 768px) and (max-width: 1023.98px) {
     .status-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1037,7 +1110,7 @@
   /*   8. .strip-note — the conversion statement, and the way out of it.
    *      It sat inside the Revenue card for one round and was wrong there twice over:
    *      the rate governs every amount on the strip, not one card, and it made one of
-   *      four identical cards taller than its siblings. Here it belongs to the strip.
+   *      one of the identical cards taller than its siblings. Here it belongs to the strip.
    *      The button is the second half of the same idea — S1 says a converted figure
    *      must declare itself, and a figure that can be opened declares itself far
    *      better than one that merely says "converted". Wraps rather than truncates:
@@ -1059,10 +1132,16 @@
    *      period-over-period", and the acceptance criterion says no new primitive. This
    *      is both, so it is declared rather than absorbed. See the handover row.
    *
-   *      It sits in the row with the big number, pushed right by `margin-left: auto`,
-   *      and NOT in the label row where the sparkline lives. A trend line and a delta
-   *      are two answers to the same question; side by side they read as one compound
-   *      claim, and the reader stops being able to say which of them is the fact.
+   *      ROUND 7 MOVED IT TO ITS OWN LINE, UNDER THE FIGURE AND ITS CAPTION. Round 6
+   *      put it in the row with the big number, pushed right by `margin-left: auto`;
+   *      that survived four cards and broke at six, where a ~380 px card gave a
+   *      converted amount and a delta the same row and the delta wrapped away from the
+   *      figure it qualifies about half the time. On its own line the relationship is
+   *      stated by position instead of being left to the flex algorithm, and it reads in
+   *      the order the operator asks the question: how much, of what, versus when.
+   *      It stays out of the label row, where the sparkline lives — a trend line and a
+   *      delta are two answers to the same question, and side by side they read as one
+   *      compound claim in which the reader cannot say which part is the fact.
    *
    *      Colour is the meaning, not the direction — `--good` and `--bad` rather than
    *      `--up` and `--down`, because a falling return rate is a down arrow and good
@@ -1074,12 +1153,21 @@
    *      to its own line under the figure rather than breaking between glyph and number.
    */
   .kpi-card__delta {
-    margin-left: auto; display: inline-flex; align-items: baseline; gap: 3px;
+    display: inline-flex; align-items: baseline; gap: 3px;
     font-family: var(--font-mono); font-size: 0.75rem; font-weight: 500;
     letter-spacing: var(--tracking-normal); font-variant-numeric: tabular-nums;
     white-space: nowrap; color: var(--text-muted);
   }
   .kpi-card__delta-glyph { font-size: 0.8125rem; line-height: 1; }
+  /* On its own line the delta can finally SAY what it compares against. In round 6 the
+     basis existed only in the sr-only sentence, because the value row had no room for
+     four more words — so a sighted reader was left to assume "versus what?" and a
+     screen-reader user was told. The asymmetry is now gone; the visible text and the
+     spoken sentence make the same claim. Set in the muted colour, never in the delta's
+     own green or red: the basis is not part of the good or bad news. */
+  .kpi-card__delta-basis {
+    margin-left: 3px; color: var(--text-muted); font-weight: 400;
+  }
   .kpi-card__delta--good { color: var(--status-success-fg); }
   .kpi-card__delta--bad { color: var(--status-error-fg); }
   .kpi-card__delta--flat { color: var(--text-muted); }
@@ -1087,15 +1175,33 @@
   /*  10. .infotip-popover — the definition behind a ⓘ, opened by CLICK.
    *      Every other marker in this file stands its popover in with a `title`
    *      attribute, which the handover names as a shorthand for the implementation to
-   *      replace. GMV is the one place it is actually built, because a definition is
-   *      the case where the shorthand fails hardest: `title` never appears on a phone
-   *      at all, and an operator who does not know what GMV counts is exactly the
-   *      reader who cannot afford to be told nothing.
+   *      replace. The card definitions are the one place it is actually built, because a
+   *      definition is the case where the shorthand fails hardest: `title` never appears
+   *      on a phone at all, and an operator who does not know what GMV counts is exactly
+   *      the reader who cannot afford to be told nothing.
+   *
+   *      ROUND 7 GAVE IT STRUCTURE AND MOVED IT TO THE CARD HEADER. It used to sit
+   *      beside one metric caption and carry one paragraph. Now every card owns one ⓘ in
+   *      its eyebrow, covering BOTH of its figures — which is the only placement that
+   *      works once the card carries two metrics, since a ⓘ on one caption would imply
+   *      the other figure needs no explanation. The body is therefore structured rather
+   *      than prose: a term, its definition, optionally the arithmetic, optionally the
+   *      caveat that makes the figure honest. The formula is set as `<code>` because
+   *      "GMV ÷ Orders" is the shortest true answer to "where does this come from", and
+   *      a reader scanning for it must not have to find it inside a sentence.
    *
    *      Absolute over the trigger, `z-index` above the card's own ::before accent,
-   *      capped at 22rem so a definition never runs the width of the strip. Right-aligned
-   *      to the trigger (`right: 0` at the far edge) would need measurement to do
-   *      properly; here the popover starts at the marker and is narrow enough to fit.
+   *      capped at 22rem so a definition never runs the width of the strip. On the
+   *      right-hand column of a 3×2 grid it would overflow the strip, so the popover
+   *      flips to `right: 0` there via `.infotip--end`.
+   *
+   *      THAT FLIP IS A MOCKUP SHORTHAND, AND #1990 MUST NOT COPY IT LITERALLY. Here the
+   *      caller declares the alignment, so it is correct for the two cards that sit in the
+   *      third column at ≥1024px and wrong for whichever cards land on a right edge after
+   *      the 2-column and 1-column reflows. A declared side cannot be right at every
+   *      breakpoint — this is collision detection, which Radix `Popover` already does
+   *      (`collisionPadding`), and the implementation should let it rather than hard-code
+   *      a side. The shorthand is here because a static file cannot measure.
    */
   .infotip { position: relative; display: inline-flex; }
   .infotip-popover {
@@ -1109,9 +1215,42 @@
     white-space: normal; text-transform: none; letter-spacing: var(--tracking-normal);
   }
   .infotip-popover[hidden] { display: none; }
-  /* Every card is `position: relative` with no z-index, so a later sibling paints over
-     an earlier one — and Revenue, which owns the only popover, is the first card in the
-     strip. Without this the definition opens UNDER the Transactions card. */
+  /* The third column of a 3×2 strip: anchored left, a 22rem panel runs past the page.
+     Anchored to the trigger's right edge it opens back over the card that owns it. */
+  .infotip--end .infotip-popover { left: auto; right: 0; }
+  /* One definition block per figure on the card. The gap is a rule, not a margin: two
+     definitions in one panel are siblings of equal standing, and a hairline says that
+     more economically than whitespace alone — which at this size read as one long
+     paragraph with an accidental break in it. */
+  /* `display: block` is load-bearing, not tidiness. The panel is built from spans (it
+     sits inside a span itself, so a <div> would be invalid markup), and an INLINE box
+     takes `border-top` around each of its line fragments rather than as a rule above the
+     block — which drew the hairline straight through the middle of the second term. */
+  .infotip-def { display: block; }
+  .infotip-def + .infotip-def {
+    margin-top: var(--space-3); padding-top: var(--space-3);
+    border-top: 1px solid var(--border-subtle);
+  }
+  .infotip-def__term {
+    display: block; margin-bottom: 4px;
+    font-weight: 600; color: var(--text-primary);
+  }
+  .infotip-def__formula {
+    display: block; margin-top: 6px;
+    font-family: var(--font-mono); font-size: 0.6875rem;
+    color: var(--text-primary); background: var(--bg-shell);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+    padding: 3px 6px; width: max-content; max-width: 100%;
+  }
+  /* The sentence that stops the figure being over-trusted — an open return window, a
+     shipping refund that is NOT included. Set apart from the definition because it is a
+     different kind of claim: the definition says what the number is, this says when it
+     lies. */
+  .infotip-def__caveat { display: block; margin-top: 6px; color: var(--text-muted); }
+  /* Every card is `position: relative` with no z-index, so a later sibling paints over an
+     earlier one. Round 6 needed this for one popover on the first card; round 7 needs it on
+     all six, and in a 3×2 grid it is what stops a definition opening UNDER the card to its
+     right AND under the row beneath it. */
   .kpi-card:has(.infotip-popover:not([hidden])) { z-index: 5; }
 </style>
 </head>
@@ -1756,9 +1895,9 @@
   <section class="viewport-frame" id="frame-kpi">
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">03 &middot; KPI strip</span>
-      <b>Four pairs: what happened, and what qualifies it</b>
-      <span class="caption">feeds #1990 &middot; .status-strip + KpiCard (shared/ui/kpi-card.tsx) &middot; qualifier rows are new rule 4, headline pair new rule 7, delta new rule 9</span>
-      <span class="dep dep--blocked">Ships partly &middot; 4 of 9 figures blocked, plus all 4 deltas</span>
+      <b>Six pairs: what happened, and what qualifies it</b>
+      <span class="caption">feeds #1990 &middot; .status-strip + KpiCard (shared/ui/kpi-card.tsx) &middot; qualifier row is new rule 4, headline pair new rule 7, delta new rule 9, per-card definition new rule 10</span>
+      <span class="dep dep--blocked">Ships partly &middot; 6 of 12 figures blocked, plus all 6 deltas</span>
     </div>
     <div class="viewport-frame__scroll">
       <div class="app-frame">
@@ -1768,46 +1907,62 @@
       <div class="gap-legend">
         <span>
           <b>Every card is a pair, and the pairing is the argument.</b> A large number alone invites the
-          operator to believe it; the second figure is the thing that would change their mind. Revenue is
-          qualified by how much of it survived the returns, transactions by how many items those
-          transactions actually moved &mdash; and by how many baskets never became an order at all &mdash;
-          the mean by the median it can hide behind (spec A&prime;5 &mdash; at
-          10&ndash;100 orders/day one large order visibly moves the mean), and sales by what came back.
+          operator to believe it; the second figure is the thing that would change their mind. GMV is
+          qualified by how much of it stayed sold after refunds, the order count by the daily rate that
+          makes two ranges of different length comparable, the mean by the median it can hide behind
+          (spec A&prime;5 &mdash; at 10&ndash;100 orders/day one large order visibly moves the mean), units
+          by how many of them fit in a basket, and each of the two loss cards by the money its rate cost.
           The qualifier sits under a hairline on the card floor rather than beside the figure: it is
           subordinate by position, not by being small enough to miss. A value-suffix version was tried in
           round&nbsp;3 and cut &mdash; a second number on the same line as a four-figure amount reads as
           part of it.
           <br /><br />
-          <b>Round&nbsp;6 moved one figure and replaced another.</b> Cancellation used to qualify Revenue,
-          and it was answering the wrong question there: GMV <i>already</i> excludes cancelled orders, so a
-          rate underneath it says nothing about the amount above it. It now sits on <b>Transactions</b>,
-          which is a funnel &mdash; how many attempts to buy became orders &mdash; beside Units rather than
-          instead of it, because Units is what carries comparability between channels (correction&nbsp;2).
-          Revenue takes <b>Net revenue</b> in its place: GMV is what was sold, net revenue is what stayed
-          sold, and that is a qualifier of the number above it in the way a cancellation rate never was.
+          <b>Round&nbsp;7 split the strip along the metric model, not along the layout.</b> Round&nbsp;6 had
+          four cards because four cards fit a row &mdash; which meant Units and Cancelled both rode as
+          qualifiers on the orders card, and one card ended up answering three different questions. Six
+          cards give each question its own card and each card a true pair. <b>Cancellations</b> is the clearest
+          gain: it is a funnel fact with a money figure of its own, and as a second qualifier on Transactions
+          it read as a fact about orders while its value had nowhere to go at all.
           <br /><br />
-          <b>Four of the nine figures cannot be produced today</b>, each marked
+          <b>The cards carry abbreviations and the ⓘ carries the definitions.</b> One ⓘ per card, in the
+          eyebrow rather than on a caption &mdash; attached to one figure it would imply the other needs no
+          explaining &mdash; and it opens on <b>click</b>, never hover: Radix <code>Tooltip</code> returns
+          early on <code>pointerType === 'touch'</code>, so a hover definition does not exist on a phone.
+          Each panel gives every figure its term, its definition, its formula where it has one, and the
+          caveat that stops it being over-trusted. That last part is the reason the panel is structured
+          rather than prose: &bdquo;returns can arrive after the sale, so a recent period may be incomplete
+          while the window is still open&ldquo; changes how the number should be READ, and the strip has
+          nowhere else to say it. This <b>reverses round&nbsp;6</b> on <code>AOV</code>: the argument for
+          spelling it out was that nothing in the product defined it (grep: still zero hits in
+          <code>apps/web</code>), and the card now does.
+          <br /><br />
+          <b>Six of the twelve figures cannot be produced today</b>, each marked
           <span class="gap-mark" title="Data the API does not expose yet">&dagger;</span> on the figure
-          itself rather than as a badge on the card, because in three of the four cases the other half of
-          the card ships. <b>Cancelled</b> is spec A7 and needs [C]: cancellation is a string
-          inside the order snapshot and is never written as state, so nothing can count it.
-          <b>Return rate</b>, <b>returned value</b> and now <b>net revenue</b> &mdash; which is GMV minus
-          the returned value and therefore inherits its gap &mdash; are worse than blocked: there is no return
+          itself rather than as a badge on the card, because on four of the six cards the other half ships.
+          <b>Cancellation rate</b> and <b>cancelled value</b> are spec A7 and need [C]: cancellation is a
+          string inside the order snapshot and is never written as state, so nothing counts it and nothing
+          sums it. <b>Return rate</b>, <b>refunded value</b> and <b>net sales</b> &mdash; which is GMV minus
+          the refunded value and therefore inherits its gap &mdash; are worse than blocked: there is no return
           entity anywhere in the repo, and the spec files returns under known gaps and &sect;8 out of
           scope. They are drawn because PL&rsquo;s 14-day right of withdrawal makes returns a real
           operational cost the product is currently blind to, and a card that states the shape is what a
-          data-capture issue can be written against. Note what that costs the Revenue card: it gives up a
-          qualifier that would have rendered for one that will not, and that is a deliberate trade, not an
-          oversight. See the handover.
+          data-capture issue can be written against. <b>Average daily orders</b> is the one blocked figure
+          whose gap is arithmetic rather than missing data: it divides by the length of the selected range,
+          and the range is the same <code>placedAt</code> gap as everything else. Note what the returns pair
+          costs the Revenue card: it gives up a qualifier that would have rendered for one that will not,
+          and that is a deliberate trade, not an oversight. See the handover.
           <br /><br />
-          <b>The four deltas are a scope addition, and they are blocked too.</b> Every one of them compares
+          <b>The six deltas are a scope addition, and they are blocked too.</b> Every one of them compares
           this window against the one before it, which needs a filterable order date &mdash; the same missing
-          <code>placedAt</code> column that blocks the range filter at the top of the page. The arrow follows
-          the number and the colour follows the meaning, which is why a falling return rate is a down arrow
+          <code>placedAt</code> column that blocks the range filter at the top of the page. Round&nbsp;7 moved
+          the delta to its own line under the figure, which is also what let it finally state its basis in
+          words: in round&nbsp;6 &bdquo;vs previous period&ldquo; existed only in the screen-reader sentence,
+          so a sighted reader was left to assume what the comparison was against. The arrow follows the
+          number and the colour follows the meaning, which is why a falling return rate is a down arrow
           in green; and a rate moves in <b>points</b>, not percent, because &bdquo;return rate +10%&ldquo;
           leaves the reader asking ten percent of what.
           <br /><br />
-          Revenue and average order value are money, so both inherit decision 3: they render a figure only
+          GMV and AOV are money, so both inherit decision 3: they render a figure only
           while every contributing channel reports on the same tax basis, and the note under GMV says how
           many channels merely <b>assumed</b> it. Orders and Units are untouched by [G] and always render.
           Sparklines use the real component (<code>shared/ui/sparkline.tsx</code>) and appear only on the
@@ -1850,19 +2005,34 @@
           did &mdash; and because a strip that grows a card per currency stops being a strip at the third
           market.
           <b>What the spec does forbid is doing it quietly.</b> Story S1 is an acceptance criterion:
-          mixed-currency data must never silently sum into one number. So the rate, its source and its
-          date sit under the strip &mdash; not inside the Revenue card, where they lived for one round
-          and were wrong twice over: the rate governs every amount on the strip, not one card, and it
-          made one of four identical cards taller than its siblings. Counts are untouched, because a
+          mixed-currency data must never silently sum into one number. So the conversion statement sits
+          under the strip &mdash; not inside the Revenue card, where it lived for one round
+          and was wrong twice over: it governs every amount on the strip, not one card, and it
+          made one of the identical cards taller than its siblings. Counts are untouched, because a
           count needs no rate: an order is an order in any currency.
           <br /><br />
-          <b>&bdquo;Converted&rdquo; is a claim, so the page shows its working.</b> <b>View breakdown</b>
-          opens the same nine figures split by the currency they were taken in, with the footer
-          restating them in one money &mdash; two inputs and one output on one screen. It is what turns
-          the note from an assurance into something checkable, and it is also where the median stops
-          being a mystery: <b>89.00</b> and <b>74.50</b> do not produce <b>91.00</b> by any arithmetic
-          the reader could do, which is exactly why a median has to be computed over individual orders
-          rather than derived from the rows above it.
+          <b>Round&nbsp;7 stopped printing the rate, and that is a correction rather than a trim.</b> The
+          note used to read &bdquo;at NBP mid, 6 Aug 2026 &middot; 1 EUR = 4.3300&ldquo;, which states one
+          rate for a set of orders that each convert at the rate of <b>their own order date</b> &mdash; so the
+          number described no order on the page. It now names the method and the freshness of the rate table
+          (&bdquo;daily NBP average exchange rates &middot; rates last updated&ldquo;), and the ⓘ that opens
+          the note carries the rest of the contract: refunds and cancellations convert at the original
+          order&rsquo;s rate, a day NBP did not publish falls back to the last published rate, and the table
+          syncs once a day. The note keeps <b>one</b> marker and that marker is the trigger &mdash; an earlier
+          draft appended a second ⓘ after the text, which put two identical glyphs on one line with nothing
+          to say which of them could be clicked.
+          <br /><br />
+          <b>&bdquo;Converted&rdquo; is a claim, so the page shows its working.</b>
+          <b>View currency breakdown</b> opens the <b>six money figures</b> split by the currency they were
+          taken in, with the footer restating them in one money &mdash; two inputs and one output on one
+          screen. Round&nbsp;7 cut the counts and the rates out of it, and the cut is the table&rsquo;s
+          argument rather than a concession to width: a rate does not convert and a count does not convert,
+          so &bdquo;Orders: 268&ldquo; per currency is the same 268 in two piles &mdash; arithmetic the reader
+          can do and did not ask for. All twelve figures were drawn first and rejected, because at that width
+          the table scrolled horizontally and put the footer total off screen from the rows it totals, and the
+          footer <i>is</i> the evidence. It is also where the median stops being a mystery: <b>89.00</b> and
+          <b>74.50</b> do not produce <b>91.00</b> by any arithmetic the reader could do, which is exactly why
+          a median has to be computed over individual orders rather than derived from the rows above it.
           <br /><br />
           <b>The tables below are split, and stay split.</b> A per-table
           <code>In PLN</code> / <code>By currency</code> control was built here and then removed: the
@@ -2067,7 +2237,7 @@
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">07 &middot; Tablet &middot; 768 &times; 1024</span>
       <b>Columns are shed, never crushed</b>
-      <span class="caption">KPI strip 2&times;2 via the tablet override (new rule 6) &middot; hideBelow=1024 drops Trend and average order value</span>
+      <span class="caption">KPI strip 2&times;3 via the tablet override (new rule 6) &middot; hideBelow=1024 drops Trend and average order value</span>
       <span class="dep dep--info">Its own variant</span>
     </div>
     <div class="viewport-frame__scroll">
@@ -2094,8 +2264,12 @@
           The shipped <code>.status-strip</code> is <code>repeat(auto-fit, minmax(180px, 1fr))</code>,
           which at 768&nbsp;px resolves to <b>three</b> columns plus an orphan on the second row.
           This frame therefore carries an explicit tablet override (new rule&nbsp;6) rather than
-          trusting <code>auto-fit</code> to do what the guide claims. Everything else at this width
-          is free. The table drops Trend and average order value through <code>hideBelow: 1024</code> &mdash; the
+          trusting <code>auto-fit</code> to do what the guide claims.
+          <b>Round&nbsp;7 also changes what the ladder can be.</b> Six cards cannot do 1&times;4, so it
+          is 3&times;2 &rarr; 2&times;3 &rarr; vertical: the guide&rsquo;s intent survives (a fixed column
+          count per breakpoint, an even grid, no orphan row) and its literal first step does not. That is a
+          divergence from a document #1990 will also be reading, so it is stated here and in the handover
+          rather than left to be discovered. Everything else at this width is free. The table drops Trend and average order value through <code>hideBelow: 1024</code> &mdash; the
           breakpoint set is exactly <code>480 | 768 | 1024</code>
           (<code>DataTableHideBreakpoint</code>, <code>data-table.tsx:30</code>), so 1024 is the correct
           value for &bdquo;gone on tablet and below&rdquo;. What survives is what the operator came for:
@@ -2488,13 +2662,14 @@
             <tr><td>Trust header list</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 1</span></td><td>Three facts + a state badge per row, one row per channel, always expanded. <code>KeyValueList</code> is a 2-col grid and cannot carry it. <b>Do not summarise, fold, or lay this list out side by side to save height</b> &mdash; both were built in round 5 and rejected: the per-channel rows are the section&rsquo;s purpose, not its detail. Height for this page comes out of the attention list instead.</td></tr>
             <tr><td>Attention list</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 2</span></td><td>Structured list, one line per row (headline + <code>·</code> qualifier, wrapping at narrow widths). <b>Either/or, and enforce it in the renderer:</b> if anything is open, render only the open items; if nothing is open, render the single all-clear row (never an empty box). A resolved row must never appear beside an open one. <b>Supersedes the earlier fixed-shape rule and decision 5</b> &mdash; section height changes with state; see frame&nbsp;02.</td></tr>
             <tr><td>Recalculating</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 3</span></td><td><code>.is-recalculating</code> &mdash; one opacity rule, reused by all five sections.</td></tr>
-            <tr><td>KPI qualifier rows</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 4</span></td><td><code>.kpi-card__qualifiers</code> + <code>.kpi-card__qualifier</code> &mdash; the second figure, under a hairline on the card floor. <code>KpiCard</code> carries only one value today: <code>__description</code> is prose and <code>__value-suffix</code> was tried and cut in round&nbsp;3 (illegible beside a four-figure amount). <b>Round&nbsp;6 makes it a LIST</b>, because Transactions now carries two (Units and Cancelled) while the others carry one &mdash; so the prop is <code>qualifiers: {label, value}[]</code>, not a single object. <code>margin-top: auto</code> moved from the row to the wrapper and is still load-bearing: since every row has the same height, pinning the wrapper to the floor keeps the LAST hairline of all four cards on one line, and Transactions simply grows one hairline above it. <b>This one does need a component change:</b> <code>KpiCard</code> gains <code>qualifiers</code> (see rules 7 and 9 for the other two props).</td></tr>
+            <tr><td>KPI qualifier rows</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 4</span></td><td><code>.kpi-card__qualifiers</code> + <code>.kpi-card__qualifier</code> &mdash; the second figure, under a hairline on the card floor. <code>KpiCard</code> carries only one value today: <code>__description</code> is prose and <code>__value-suffix</code> was tried and cut in round&nbsp;3 (illegible beside a four-figure amount). <b>Round&nbsp;6 made it a LIST</b> so that one card could carry two figures under its hairline; <b>round&nbsp;7 gives every card exactly one</b>, so nothing exercises the plural today. Keep it plural anyway (<code>qualifiers: {label, value}[]</code>): it is what makes the floor alignment independent of how many figures a card carries, and re-pluralising it later is a second component change for the same reason. <code>margin-top: auto</code> on the wrapper is still load-bearing &mdash; in a 3&times;2 grid it lines the hairlines up <b>per row</b>, however long the labels run. <b>This one does need a component change:</b> <code>KpiCard</code> gains <code>qualifiers</code> (see rules 7, 9 and 10 for the other three props).</td></tr>
             <tr><td>Total row</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 5</span></td><td><code>.data-table tfoot td</code> &mdash; the app has no table footer today.</td></tr>
-            <tr><td>KPI 2&times;2 at tablet</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 6</span></td><td>Tablet override on <code>.status-strip</code>. <b>Not optional:</b> the shipped <code>repeat(auto-fit, minmax(180px, 1fr))</code> gives three columns plus an orphan at 768&nbsp;px, not the 2&times;2 the guide and #1990 require.</td></tr>
+            <tr><td>KPI column ladder</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 6</span></td><td>Explicit columns on <code>.status-strip</code>: <b>3&times;2 &rarr; 2&times;3 &rarr; vertical</b>. <b>Not optional:</b> <code>auto-fit</code> is the wrong mechanism for a strip whose card count is fixed by the metric model &mdash; it gave three columns plus an orphan at 768&nbsp;px with four cards, and six columns of ~200&nbsp;px at 1280&nbsp;px with six. <b>This diverges from the style guide&rsquo;s literal 1&times;4</b>, which was written for a four-card strip; the intent (fixed count per breakpoint, even grid, no orphan) is preserved. One consequence #1990 must keep: an explicit count does not degrade in a narrow CONTAINER the way <code>auto-fit</code> did, so any place a strip is rendered inside a box narrower than the viewport (a drawer, a split pane) needs its own declaration &mdash; this file needed two, for its own device-frame scaffolding.</td></tr>
             <tr><td>KPI headline pair</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 7</span></td><td><code>.kpi-card__headline</code> + <code>__metric</code> &mdash; the big number now needs its own caption, because the card label became a group name (&bdquo;REVENUE&ldquo; is not &bdquo;GMV&ldquo;). Sentence case, so the caps eyebrow above it stays the only header. The wrapper exists purely to tighten the card&rsquo;s <code>--space-3</code> flex gap between a figure and its caption. Component change: <code>KpiCard</code> gains <code>metric</code>.</td></tr>
             <tr><td>Strip note + breakdown</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 8</span></td><td><code>.strip-note</code> &mdash; the conversion statement and the button that opens the evidence, belonging to the strip rather than to one card. The table behind it is <code>DataTable</code> + <code>tfoot</code> (rule 5) with no additions. Wraps below 768&nbsp;px so a rate is never truncated mid-number. <b>Not a component:</b> a strip is a layout, not a primitive, so this is markup <code>AnalyticsPage</code> composes &mdash; <code>KpiCard</code> stays out of it.</td></tr>
-            <tr><td>KPI delta</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 9</span></td><td><code>.kpi-card__delta</code> &mdash; the period-over-period change, in the row with the big number and pushed right. <b>Not in the label row</b>, where the sparkline lives: a trend line and a delta are two answers to the same question and side by side they read as one compound claim. Two rules the implementation must not collapse into one: the <b>arrow follows the number</b> but the <b>colour follows the meaning</b> (hence <code>--good</code>/<code>--bad</code>, not <code>--up</code>/<code>--down</code> &mdash; a falling return rate is a down arrow in green), and a <b>rate moves in points, not percent</b>. The glyph is <code>aria-hidden</code> with a full sentence in an <code>.sr-only</code> span, because &bdquo;↑&nbsp;9.5%&ldquo; read aloud loses the direction. Component change: <code>KpiCard</code> gains <code>delta</code>. <b>This is a scope addition</b> &mdash; see the findings table.</td></tr>
-            <tr><td>Infotip popover</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 10</span></td><td><code>.infotip</code> + <code>.infotip-popover</code> &mdash; the definition behind the <code>&#9432;</code> on GMV, opened by <b>click</b>. Everywhere else in this file the marker stands its popover in with a <code>title</code> attribute; this one is built, because a definition is where the shorthand fails hardest &mdash; <code>title</code> shows nothing at all on touch, and the operator who does not know what GMV counts is exactly the one who must not be told nothing. Behaviour to carry over: one open at a time, click-outside closes, <b>Escape closes and returns focus to the trigger</b>, <code>aria-expanded</code> moves with the panel. In the app this is Radix <code>Popover</code>, <b>never</b> <code>Tooltip</code>. The <code>:has()</code> z-index lift is needed because the cards are all <code>position: relative</code> and Revenue is the first of them.</td></tr>
+            <tr><td>KPI delta</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 9</span></td><td><code>.kpi-card__delta</code> &mdash; the period-over-period change, on <b>its own line</b> under the figure and its caption (round&nbsp;7; round&nbsp;6 had it in the value row, pushed right, which broke at six cards where a converted amount and a delta could not share a ~380&nbsp;px row). <b>Not in the label row</b>, where the sparkline lives: a trend line and a delta are two answers to the same question and side by side they read as one compound claim. The own line also buys the visible basis (<code>.kpi-card__delta-basis</code>, &bdquo;vs previous period&ldquo;) &mdash; in round&nbsp;6 that existed only in the <code>.sr-only</code> sentence, so the sighted reader was the one left guessing. Two rules the implementation must not collapse into one: the <b>arrow follows the number</b> but the <b>colour follows the meaning</b> (hence <code>--good</code>/<code>--bad</code>, not <code>--up</code>/<code>--down</code> &mdash; a falling return rate is a down arrow in green), and a <b>rate moves in points, not percent</b>. The glyph is <code>aria-hidden</code> with a full sentence in an <code>.sr-only</code> span, because &bdquo;↑&nbsp;9.5%&ldquo; read aloud loses the direction. Component change: <code>KpiCard</code> gains <code>delta</code>. <b>This is a scope addition</b> &mdash; see the findings table.</td></tr>
+            <tr><td>Per-card definition</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 10</span></td><td><code>.infotip</code> + <code>.infotip-popover</code> + <code>.infotip-def*</code> &mdash; one <code>&#9432;</code> per card, in the <b>eyebrow</b>, opened by <b>click</b>, covering <b>both</b> of the card&rsquo;s figures (on a caption it would imply the other figure needs no definition). Everywhere else in this file the marker stands its popover in with a <code>title</code> attribute; this one is built, because a definition is where the shorthand fails hardest &mdash; <code>title</code> shows nothing at all on touch, and the operator who does not know what GMV counts is exactly the one who must not be told nothing. The panel is <b>structured, not prose</b>: term, definition, formula (<code>&lt;code&gt;</code>, so &bdquo;GMV&nbsp;&divide;&nbsp;Orders&ldquo; can be found without reading a sentence), caveat. Behaviour to carry over: one open at a time, click-outside closes, <b>Escape closes and returns focus to the trigger</b>, <code>aria-expanded</code> moves with the panel. In the app this is Radix <code>Popover</code>, <b>never</b> <code>Tooltip</code> &mdash; and let it do <b>collision detection</b>: this file declares <code>.infotip--end</code> per card because a static file cannot measure, which is correct at &ge;1024&nbsp;px and wrong after the reflows. Component change: <code>KpiCard</code> gains an <code>info</code> slot in the label row. The <code>:has()</code> z-index lift is needed because every card is <code>position: relative</code>.</td></tr>
+            <tr><td>Right-aligned table cells</td><td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Was broken</span></td><td><b>Found in round&nbsp;7 and fixed in place.</b> <code>.data-table__cell--right</code> (specificity 0,1,0) loses to <code>.data-table th, .data-table td</code> (0,1,1) whatever the source order, so <b>every money and count column in this file rendered left-aligned</b> while the markup asked for right &mdash; in a document whose own parity matrix calls right-aligned tabular figures &bdquo;non-negotiable in a cockpit table&ldquo;. The fix is the type selector on the helper. <b>Check <code>index.css</code>:</b> if the shipped helper is written the same way, it is losing the same argument in the app.</td></tr>
             <tr><td><code>pages/analytics/</code></td><td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Does not exist</span></td><td>Every path in this file&rsquo;s captions is <b>proposed</b>, not existing. The route, the folder and the nav entry are all #1986.</td></tr>
           </tbody>
         </table>
@@ -2548,7 +2723,7 @@
             <tr>
               <td><b>No return entity exists anywhere</b></td>
               <td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Blocking &mdash; new issue</span></td>
-              <td><b>The whole Returns card is drawn against nothing.</b> There is no return, withdrawal or refund entity in <code>libs/core</code>; <code>refunded</code> is an unwritten member of the order-status enum and no refund amount is stored on any entity, so neither return rate nor returned value can be computed at any price. The spec files this under known true gaps and &sect;8 out of scope, and it is right to &mdash; but PL&rsquo;s 14-day right of withdrawal makes returns a real operational cost the product is currently blind to, which is why the card is drawn rather than dropped. <b>This needs its own data-capture issue before #1990 can ship the fourth card</b>; the strip degrades to three cards until then, and the shape here is what that issue can be written against.</td>
+              <td><b>The whole Returns &amp; refunds card is drawn against nothing.</b> There is no return, withdrawal or refund entity in <code>libs/core</code>; <code>refunded</code> is an unwritten member of the order-status enum and no refund amount is stored on any entity, so neither return rate nor refunded value can be computed at any price &mdash; and Net sales on the Revenue card inherits the same gap, since it is GMV minus that figure. The spec files this under known true gaps and &sect;8 out of scope, and it is right to &mdash; but PL&rsquo;s 14-day right of withdrawal makes returns a real operational cost the product is currently blind to, which is why the card is drawn rather than dropped. <b>This needs its own data-capture issue.</b> Until it lands, and until [C] is fixed for Cancellations, the six-card strip <b>degrades to four</b>: Revenue (without its qualifier), Orders (without its daily rate, which is blocked on the range), Order value and Units. That degraded shape is the one #1990 will ship first, so it is worth drawing in review rather than discovering at implementation.</td>
             </tr>
             <tr>
               <td><b>FX: no conversion, and no order-day rate to convert with</b></td>
@@ -2566,9 +2741,9 @@
               <td>A median of medians is not a median, and converting a per-currency median is not the median of the converted values. It has to be computed over individual order values, in the reporting currency &mdash; <code>percentile_cont</code> over a total extracted from the <code>orderSnapshot</code> JSONB, which is the same unindexed read every money metric on this page needs and the reason spec &sect;6 puts the substrate work before the money section.</td>
             </tr>
             <tr>
-              <td><code>KpiCard</code> needs three new props</td>
-              <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Small</span></td>
-              <td>The shipped component carries one value plus a prose <code>description</code>. This strip needs <code>metric</code> (the caption under the figure), <code>qualifiers</code> (<code>{ label, value }[]</code> &mdash; the figures under the hairline; a LIST, because Transactions carries two) and, from round&nbsp;6, <code>delta</code>. New rules 4, 7 and 9 are the CSS half; all three props are additive, and every existing consumer &mdash; the dashboard strip &mdash; renders unchanged when they are absent. The FX statement deliberately did <b>not</b> become a fourth prop: it belongs to the strip, not to a card, so it is page markup (rule 8). <code>description</code> carries the tax-basis line on the Revenue card and stays as shipped.</td>
+              <td><code>KpiCard</code> needs <b>four</b> new props</td>
+              <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Small &mdash; but cost it</span></td>
+              <td>The shipped component carries one value plus a prose <code>description</code>. This strip needs <code>metric</code> (the caption under the figure), <code>qualifiers</code> (<code>{ label, value }[]</code> &mdash; the figures under the hairline; keep it a LIST, see rule 4), <code>delta</code> (round&nbsp;6) and, from round&nbsp;7, an <code>info</code> slot in the label row for the definition trigger. New rules 4, 7, 9 and 10 are the CSS half; all four props are additive, and every existing consumer &mdash; the dashboard strip &mdash; renders unchanged when they are absent. <b>The &bdquo;no new primitive&ldquo; criterion still holds in the sense that matters</b> (no new component), but four props is not a free change and #1990 should plan it rather than meet it. The FX statement deliberately did <b>not</b> become a fifth prop: it belongs to the strip, not to a card, so it is page markup (rule 8). <code>description</code> carries the tax-basis line on the Revenue card and stays as shipped.</td>
             </tr>
             <tr>
               <td><code>analytics</code> is already taken</td>
@@ -2576,9 +2751,9 @@
               <td><code>libs/core/src/analytics/</code> and <code>apps/api/src/analytics/</code> are PostHog product analytics. The route <code>/analytics</code> is what #2003 asks for and this file draws; the backend context needs a different name (<code>sales-insights</code>?) or the collision will confuse every future reader.</td>
             </tr>
             <tr>
-              <td><code>.status-strip</code> is not 2&times;2 at tablet</td>
+              <td><code>.status-strip</code>&rsquo;s <code>auto-fit</code> is the wrong mechanism</td>
               <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Small</span></td>
-              <td>Measured, not read: <code>repeat(auto-fit, minmax(180px, 1fr))</code> resolves to three columns plus an orphan at 768&nbsp;px, while the parity matrix and #1990 both say 2&times;2. Either fix <code>.status-strip</code> for every consumer (the dashboard has the same four-card strip) or keep the per-page override this file ships. Worth deciding once rather than per page.</td>
+              <td>Measured, not read. <code>repeat(auto-fit, minmax(180px, 1fr))</code> resolved to three columns plus an orphan at 768&nbsp;px with four cards, and to <b>six columns of ~200&nbsp;px</b> at 1280&nbsp;px with six &mdash; a width no card on this strip survives. A strip whose card count is set by the metric model wants an explicit count per breakpoint, which is what rule&nbsp;6 declares (3&times;2 / 2&times;3 / 1). Either fix <code>.status-strip</code> for every consumer (the dashboard strip has its own card count and would need its own ladder) or keep the per-page override this file ships. <b>Decide once:</b> the moment two pages own contradicting strip ladders, the guide is describing neither.</td>
             </tr>
             <tr>
               <td><b>Decision 11 settled: one reporting currency, rate on the card</b></td>
@@ -2586,19 +2761,29 @@
               <td>Two earlier drafts read [X] two different ways &mdash; dominant currency with a footnote, then one card per currency with no total. The spec permits both and insists only that the choice be made: <i>&bdquo;either group by currency or declare a single reporting currency &mdash; must be decided, not defaulted&rdquo;</i>. It is now decided: the page declares the system&rsquo;s main currency and states every money figure in it, with the rate, its source and its date under the figure (story S1 forbids the silent version, not the converted one) and the by-channel subtotals left in the source currencies so the conversion can be audited. <b>This IS a request for FX, and it is new.</b> <code>exchangeRate</code> / <code>convertCurrency</code> are still zero hits, and the requirement is bigger than a rate lookup: the rate must be the order-day rate, stored per order &mdash; a report-day rate rewrites last month&rsquo;s revenue every morning and breaks the DoD line about reconciling the page against the source. #1984/#1985 own it; until then frame&nbsp;03b is drawn, not reachable.</td>
             </tr>
             <tr>
-              <td>Cancelled moved to the transactions card</td>
+              <td>Cancellations became its own card</td>
               <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Scope addition &mdash; [C]</span></td>
-              <td><b>Named as an addition, not smuggled in as a fix.</b> #2003 asks only for the <i>statement</i> that cancelled orders are excluded, and the spec&rsquo;s chosen Design&nbsp;1 leaves metric <b>A7</b> (cancellation rate / cancelled value) out of its coverage list. <b>Round&nbsp;6 moved it off Revenue and onto Transactions</b>, where it answers a question the card is actually asking: GMV already excludes cancelled orders, so a rate beneath the amount qualified nothing, while a funnel card genuinely wants to know how many attempts to buy never became orders. It is shown as <b>count and share together</b> (&bdquo;24 (5.5%)&ldquo;) &mdash; the share is judgeable without knowing the base and is the form A7 is written in; the count is what the operator would go looking for in the orders list. It sits beside Units, not instead of it: Units is what makes channels comparable (correction&nbsp;2). Still blocked on [C] &mdash; cancellation is a string inside the snapshot and is never written as state, so nothing can count it; the spec itself calls A7 &bdquo;the strongest argument for fixing [C]&rdquo;. If #1984/#1985 decline the scope, Transactions falls back to Units alone and the exclusion survives as the metric caption.</td>
+              <td><b>Named as an addition, not smuggled in as a fix.</b> #2003 asks only for the <i>statement</i> that cancelled orders are excluded, and the spec&rsquo;s chosen Design&nbsp;1 leaves metric <b>A7</b> (cancellation rate / cancelled value) out of its coverage list. Round&nbsp;6 moved it off Revenue &mdash; GMV already excludes cancelled orders, so a rate beneath the amount qualified nothing &mdash; and parked it as a second qualifier on the orders card. <b>Round&nbsp;7 gives it a card</b>, because as a qualifier it read as a fact about orders and, decisively, its <b>money</b> figure had nowhere to go at all: A7 is a rate <i>and</i> a value. The pair also forces the asymmetry into the open, which the card&rsquo;s ⓘ now states: a <b>partially</b> cancelled order is not a cancelled order for the rate, but its cancelled items <i>are</i> in the value &mdash; two figures, two denominators, and a reader will otherwise assume the second is the first priced out. Still blocked on [C] &mdash; cancellation is a string inside the snapshot and is never written as state, so nothing counts it and nothing sums it; the spec itself calls A7 &bdquo;the strongest argument for fixing [C]&rdquo;. If #1984/#1985 decline the scope, the card does not ship and the exclusion survives as the GMV caption and its definition.</td>
             </tr>
             <tr>
-              <td><b>Net revenue on the revenue card</b></td>
+              <td><b>Net sales on the revenue card</b></td>
               <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Scope addition &mdash; blocked on returns</span></td>
-              <td>The Revenue card&rsquo;s qualifier is now <b>GMV minus returned value</b> &mdash; what was sold against what stayed sold. It is the honest pairing, and it costs something worth stating plainly: the card gives up a qualifier that <i>would</i> have rendered (the cancellation rate needs [C], which is a fixable column) for one that <b>cannot render at all</b> until a return entity exists. That is a deliberate trade &mdash; a card whose two figures answer each other, at the price of the second one arriving later. <b>Sequencing consequence for #1990:</b> until returns are captured, the Revenue card ships with its qualifier row empty, exactly as the Returns card ships not at all. Both unblock on the same data-capture issue.</td>
+              <td>The Revenue card&rsquo;s qualifier is <b>GMV minus refunded value</b> &mdash; what was sold against what stayed sold. It is the honest pairing, and it costs something worth stating plainly: the card gives up a qualifier that <i>would</i> have rendered (the cancellation rate needs [C], which is a fixable column) for one that <b>cannot render at all</b> until a return entity exists. That is a deliberate trade &mdash; a card whose two figures answer each other, at the price of the second one arriving later. <b>Sequencing consequence for #1990:</b> until returns are captured, the Revenue card ships with its qualifier row empty, exactly as Returns&nbsp;&amp;&nbsp;refunds ships not at all. Both unblock on the same data-capture issue.</td>
             </tr>
             <tr>
-              <td><b>Period-over-period deltas on all four cards</b></td>
+              <td><b>Period-over-period deltas on all six cards</b></td>
               <td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Scope addition &mdash; contradicts the scope note</span></td>
-              <td><b>This one contradicts this file&rsquo;s own scope note</b>, which says in as many words &bdquo;no period-over-period&ldquo;, and it is the only place where the &bdquo;no new primitive&ldquo; criterion bends (<code>KpiCard</code> gains a third prop). It is here because a strip without it answers &bdquo;how much&ldquo; and never &bdquo;is this better than last month&ldquo;, which is the question an operator actually opens a business page with. <b>Every one of the four is blocked</b>, and on the page&rsquo;s single worst gap: comparing two windows needs a filterable order date, and <code>placedAt</code> has no column &mdash; the same blocker as the range filter itself, so the delta ships exactly when the range does and not one issue earlier. Two rules that must survive implementation: colour follows meaning rather than direction (a falling return rate is green), and a rate&rsquo;s change is stated in <b>percentage points</b>, not as a percentage of a percentage.</td>
+              <td><b>This one contradicts this file&rsquo;s own scope note</b>, which says in as many words &bdquo;no period-over-period&ldquo;. It is here because a strip without it answers &bdquo;how much&ldquo; and never &bdquo;is this better than last month&ldquo;, which is the question an operator actually opens a business page with. <b>Every one of the six is blocked</b>, and on the page&rsquo;s single worst gap: comparing two windows needs a filterable order date, and <code>placedAt</code> has no column &mdash; the same blocker as the range filter itself, so the delta ships exactly when the range does and not one issue earlier. Three rules that must survive implementation: colour follows meaning rather than direction (a falling return rate is green), a rate&rsquo;s change is stated in <b>percentage points</b> rather than as a percentage of a percentage, and the <b>basis is visible text</b> &mdash; not only an <code>.sr-only</code> sentence, which is where round&nbsp;6 left it.</td>
+            </tr>
+            <tr>
+              <td><b>Six cards instead of four</b></td>
+              <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Scope addition &mdash; round 7</span></td>
+              <td>The four-card strip was a layout constraint wearing a metric model: Units and Cancelled rode as qualifiers on the orders card because four cards fit a row, which left one card answering three questions and one money figure (cancelled value) with nowhere to live. Six cards give each question its own card and each card a true pair. <b>What it costs:</b> a strip is meant to be a glance, and six cards is not one &mdash; the mitigation is that every card now has the same internal shape, so the reader learns it once and reads five repetitions. It also forces the column ladder away from the guide&rsquo;s literal 1&times;4 (see rule&nbsp;6) and adds two figures to the count #1990 has to source (<code>Average daily orders</code>, <code>Units per order</code> &mdash; both pure ratios of figures already on the page, neither needing new capture). <b>If it reads heavy on the running app, fold Units back into Orders first;</b> its pair is the one an operator asks for least often. That call belongs on the real page.</td>
+            </tr>
+            <tr>
+              <td><b>Abbreviations on the cards &mdash; reverses round&nbsp;6</b></td>
+              <td><span class="status-badge status-badge--neutral"><span class="status-badge__dot"></span>Reversal, argued</span></td>
+              <td>Round&nbsp;6 spelled out &bdquo;Average order value&ldquo; and refused &bdquo;AOV&ldquo; on the grounds that the abbreviation appears nowhere in <code>apps/web</code> (grep: <b>still</b> zero hits), so the page would be teaching the operator a piece of analyst vocabulary the product does not speak. <b>That argument was conditional on nothing defining it, and now the card does.</b> With one ⓘ per card carrying the expansion, the formula and the caveat, the abbreviation is the operator&rsquo;s own shorthand rather than an unexplained one &mdash; and it is what keeps a caption to one line in a 3-column grid. Both GMV and AOV are therefore captions, with the full terms in the panel. <b>The condition is load-bearing:</b> if #1990 ships the strip without the definition popover, the captions must revert to the expanded terms.</td>
             </tr>
             <tr>
               <td>The tax-basis count was typed, and was wrong</td>
@@ -2664,6 +2849,11 @@
   }
   function int(n) { return new Intl.NumberFormat('en-US').format(n); }
   function pct(n) { return n.toFixed(1) + '%'; }
+  /* ROUND 7: a ratio that is neither money nor a whole count — orders per day, units per
+     order. One decimal, because the second one is noise at this magnitude and a bare
+     integer would hide the difference between 1.6 and 2.4 items per basket, which is the
+     whole reason the figure is on the card. */
+  function ratio(n) { return n.toFixed(1); }
 
   /* ══════════════════ Sparkline — same maths as shared/ui/sparkline.tsx ══════════════════
      Reproduced rather than approximated: if the mockup's trend geometry differed
@@ -2760,25 +2950,31 @@
     { id: 'c1', name: 'Allegro — main', platform: 'allegro', hue: 'var(--channel-allegro)',
       revenue: 31400.00, currency: 'PLN', basis: 'gross', declared: true,
       orders: 268, units: 445, aov: 117.16,
-      cancelledOrders: 16, returnedUnits: 27, returnedValue: 2690.00,
+      cancelledOrders: 16, cancelledValue: 1840.00,
+      returnedUnits: 27, returnedValue: 2690.00,
       previous: { revenue: 27800.00, orders: 245, units: 402,
-                  cancelledOrders: 12, returnedUnits: 20, returnedValue: 1980.00 },
+                  cancelledOrders: 12, cancelledValue: 1420.00,
+                  returnedUnits: 20, returnedValue: 1980.00 },
       trend: [18, 22, 19, 26, 31, 29, 34],
       from: '12 Dec 2025', synced: '14:29', state: 'ok' },
     { id: 'c2', name: 'Sklep główny', platform: 'prestashop', hue: 'var(--channel-prestashop)',
       revenue: 14900.00, currency: 'PLN', basis: 'gross', declared: false,
       orders: 121, units: 198, aov: 123.14,
-      cancelledOrders: 6, returnedUnits: 9, returnedValue: 1010.00,
+      cancelledOrders: 6, cancelledValue: 690.00,
+      returnedUnits: 9, returnedValue: 1010.00,
       previous: { revenue: 15600.00, orders: 118, units: 205,
-                  cancelledOrders: 7, returnedUnits: 11, returnedValue: 1240.00 },
+                  cancelledOrders: 7, cancelledValue: 810.00,
+                  returnedUnits: 11, returnedValue: 1240.00 },
       trend: [11, 12, 10, 14, 13, 15, 16],
       from: '12 Dec 2025', synced: '14:31', state: 'ok' },
     { id: 'c3', name: 'Erli', platform: 'erli', hue: 'var(--channel-erli)',
       revenue: 1910.00, currency: 'PLN', basis: 'gross', declared: true,
       orders: 23, units: 46, aov: 83.04,
-      cancelledOrders: 2, returnedUnits: 3, returnedValue: 214.00,
+      cancelledOrders: 2, cancelledValue: 210.00,
+      returnedUnits: 3, returnedValue: 214.00,
       previous: { revenue: 640.00, orders: 8, units: 15,
-                  cancelledOrders: 1, returnedUnits: 1, returnedValue: 70.00 },
+                  cancelledOrders: 1, cancelledValue: 95.00,
+                  returnedUnits: 1, returnedValue: 70.00 },
       trend: [2, 4, 3, 6, 5, 7, 8],
       from: '30 Jul 2026', synced: '14:28', state: 'backfilling', shortHistory: true }
   ];
@@ -2796,9 +2992,11 @@
     { id: 'c4', name: 'Shop DE', platform: 'woocommerce', hue: 'var(--channel-woocommerce)',
       revenue: 3120.00, currency: 'EUR', basis: 'gross', declared: true,
       orders: 21, units: 34, aov: 148.57,
-      cancelledOrders: 1, returnedUnits: 2, returnedValue: 160.00,
+      cancelledOrders: 1, cancelledValue: 132.00,
+      returnedUnits: 2, returnedValue: 160.00,
       previous: { revenue: 2740.00, orders: 18, units: 29,
-                  cancelledOrders: 1, returnedUnits: 1, returnedValue: 90.00 },
+                  cancelledOrders: 1, cancelledValue: 118.00,
+                  returnedUnits: 1, returnedValue: 90.00 },
       trend: [1, 2, 2, 3, 4, 3, 6],
       from: '18 Jun 2026', synced: '14:30', state: 'ok' }
   ]);
@@ -2821,8 +3019,21 @@
      stand-in for a service that has to exist before the strip can render. The rate
      must eventually be the one from the day of the ORDER, not the day of the report —
      a report-day rate silently rewrites last month's revenue every morning. */
-  var FX = { rate: { EUR: 4.3300 }, source: 'NBP mid', asOf: '6 Aug 2026' };
+  /* `source` names the rate TABLE, not one rate: round 7 stopped printing "1 EUR = 4.3300"
+     on the strip, because a single rate cannot be true of a set of orders each converted on
+     its own date. The number stays here because the mockup still has to convert something
+     to draw a total; the copy no longer claims it is the rate the reader's orders used. */
+  var FX = { rate: { EUR: 4.3300 }, source: 'NBP', asOf: '6 Aug 2026' };
   var REPORTING_CURRENCY = 'PLN';
+
+  /* The length of the selected range, in calendar days — the default 30d preset from
+     frame 01, counted INCLUSIVELY of today (30d on 5 Aug is 7 Jul – 5 Aug, thirty days,
+     not thirty-one; the interaction table in frame 01 owns that contract). It is a
+     constant here for one reason: round 7 added `Average daily orders`, whose divisor is
+     this number, and the coverage note on a short-history channel already states it in
+     prose ("covers 6 of the 30 days in this range"). Two places, one fact — so both read
+     it from here rather than each carrying its own 30. */
+  var RANGE_DAYS = 30;
 
   function toReporting(amount, currency) {
     if (currency === REPORTING_CURRENCY) return amount;
@@ -2862,18 +3073,31 @@
       orders: channels.reduce(function (a, c) { return a + c.orders; }, 0),
       units: channels.reduce(function (a, c) { return a + c.units; }, 0),
       cancelledOrders: channels.reduce(function (a, c) { return a + c.cancelledOrders; }, 0),
+      cancelledValue: channels.reduce(function (a, c) { return a + convert(c.cancelledValue, c.currency); }, 0),
       returnedUnits: channels.reduce(function (a, c) { return a + c.returnedUnits; }, 0),
       returnedValue: channels.reduce(function (a, c) { return a + convert(c.returnedValue, c.currency); }, 0),
       revenueTrend: sumTrends(channels)
     };
     t.aov = t.revenue / t.orders;
-    /* Net revenue is GMV minus what came back — derived here, never typed, so the card
-       cannot disagree with the Returns card it borrows its subtrahend from (AC #1990). */
-    t.netRevenue = t.revenue - t.returnedValue;
+    /* Net sales is GMV minus what was refunded — derived here, never typed, so the
+       Revenue card cannot disagree with the Returns & refunds card it borrows its
+       subtrahend from (AC #1990). */
+    t.netSales = t.revenue - t.returnedValue;
     t.channelCount = channels.length;
     t.assumedBasis = channels.filter(function (c) { return !c.declared; }).length;
     t.cancellationRate = t.cancelledOrders / (t.orders + t.cancelledOrders);
     t.returnRate = t.returnedUnits / t.units;
+    /* ROUND 7: two ratios the six-card strip needs, and neither may be typed by hand —
+       both restate figures that already appear elsewhere on the page, so a hand-kept
+       value would be the second place the same fact is stated (AC #1990 again).
+
+       `avgDailyOrders` divides by the LENGTH OF THE SELECTED RANGE, not by the number
+       of days that happen to carry an order: the definition is orders per calendar day,
+       so a quiet Sunday has to pull the average down or the figure means nothing. That
+       is also why it carries the same gap marker as the range filter itself — the
+       divisor is a property of a range the query cannot yet express. */
+    t.avgDailyOrders = t.orders / RANGE_DAYS;
+    t.unitsPerOrder = t.units / t.orders;
     t.converted = channels.some(function (c) { return c.currency !== REPORTING_CURRENCY; }) && !raw;
     return t;
   }
@@ -2889,6 +3113,7 @@
         currency: c.currency, declared: c.declared, trend: c.trend,
         revenue: c.previous.revenue, orders: c.previous.orders, units: c.previous.units,
         cancelledOrders: c.previous.cancelledOrders,
+        cancelledValue: c.previous.cancelledValue,
         returnedUnits: c.previous.returnedUnits, returnedValue: c.previous.returnedValue
       };
     }), raw);
@@ -2967,7 +3192,8 @@
     var note = '';
     if (ch.state === 'backfilling' && opts.rowNote !== false) {
       note = '<span class="trust-header__note">' + noteMark('warning') +
-        'Covers 6 of the 30 days in this range \u2014 lower figures are missing history, not lower sales.</span>';
+        'Covers 6 of the ' + RANGE_DAYS + ' days in this range \u2014 lower figures are missing ' +
+        'history, not lower sales.</span>';
     }
     if (opts.stalled === ch.id) {
       note = '<span class="trust-header__note">' + noteMark('error') +
@@ -3086,29 +3312,34 @@
   renderAttention(document.getElementById('attention-clear'), [], ATTENTION);
 
   /* ══════════════════ KPI strip ══════════════════ */
-  /* `qualifiers` is a LIST because Transactions carries two figures under its hairline
-     and the other three carry one. A card that took a single `qualifier` would have
-     forced the second figure somewhere else on the Transactions card — beside the big
-     number, where round 3 already proved a second figure reads as part of the first.
-     A lone `qualifier` is still accepted and wrapped, so the three unchanged cards did
-     not have to be rewritten to gain a plural they do not use.
+  /* `qualifiers` is a LIST because round 6 had one card carrying two figures under its
+     hairline while its siblings carried one. Round 7 gives every card exactly one
+     supporting figure, so nothing on the strip uses the plural today — the prop stays,
+     because the shape it was added for (a card that legitimately carries two) is the
+     shape #1990 will meet the moment a seventh figure has nowhere else to go, and
+     removing it would make that a component change all over again.
 
-     The delta sits in the row with the big number, not in the label row: the sparkline
-     already occupies the right end of the label row, and two different claims about
-     change, side by side, would be read as one. */
+     THE ⓘ RIDES IN THE EYEBROW, WITH THE GROUP NAME. It covers both of the card's
+     figures, so it cannot belong to either caption: attached to one, it would say by
+     implication that the other figure needs no definition.
+
+     The delta is its own line under the figure and its caption (round 7) — the label row
+     is spoken for by the sparkline, and two claims about change side by side read as one. */
   function kpiCard(o) {
     var quals = o.qualifiers || (o.qualifier ? [o.qualifier] : []);
     return '<div class="kpi-card' + (o.tone ? ' kpi-card--' + o.tone : '') + '">' +
       '<div class="kpi-card__label">' +
-        '<span class="kpi-card__label-text">' + esc(o.label) + '</span>' +
+        '<span class="kpi-card__label-text">' + esc(o.label) +
+          (o.info || '') +
+        '</span>' +
         (o.trend ? sparkline(o.trend, o.sparkTone || 'neutral', 72, 20, o.sparkLabel) : '') +
       '</div>' +
       '<div class="kpi-card__headline">' +
         '<div class="kpi-card__value"><span>' + o.value + '</span>' +
           (o.suffix ? '<span class="kpi-card__value-suffix">' + o.suffix + '</span>' : '') +
-          (o.delta || '') +
         '</div>' +
         (o.metric ? '<div class="kpi-card__metric">' + o.metric + '</div>' : '') +
+        (o.delta || '') +
       '</div>' +
       (o.description ? '<div class="kpi-card__description">' + o.description + '</div>' : '') +
       (quals.length
@@ -3126,8 +3357,8 @@
 
   /* The house marker for a figure the data cannot produce yet, reused rather than
      re-invented as a card badge: it can sit on ONE value, which is what this strip
-     needs — four of the nine figures are blocked, and three of them share a card with
-     a figure that ships. The four deltas are marked the same way, for the same reason:
+     needs — six of the twelve figures are blocked, and on four of the six cards the other
+     half ships. The six deltas are marked the same way, for the same reason:
      the marker belongs to the figure that cannot be produced, not to the card. */
   function blocked(title) {
     return ' <span class="gap-mark" title="' + esc(title) + '">&dagger;</span>';
@@ -3170,6 +3401,7 @@
     return '<span class="kpi-card__delta kpi-card__delta--' + tone + '">' +
         '<span class="kpi-card__delta-glyph" aria-hidden="true">' + glyph + '</span>' +
         '<span aria-hidden="true">' + size + '</span>' +
+        '<span class="kpi-card__delta-basis" aria-hidden="true">vs previous period</span>' +
         '<span class="sr-only">' + spoken + '</span>' +
         blocked(DELTA_GAP) +
       '</span>';
@@ -3183,37 +3415,78 @@
      So this one is built: a real <button>, a panel toggled by the same delegated
      handler the breakdown table already uses, and `aria-expanded` moving with it. */
   var infotipSeq = 0;
-  function infotip(label, body) {
+  function infotip(label, body, opts) {
+    opts = opts || {};
     var id = 'infotip-' + (++infotipSeq);
-    return '<span class="infotip">' +
+    /* `body` is trusted markup when it comes from `definitions()` below and plain text
+       everywhere else; the plain-text callers pass strings this file authored, so the
+       escape moved into the definition builder rather than being dropped. */
+    return '<span class="infotip' + (opts.align === 'end' ? ' infotip--end' : '') + '">' +
         '<button class="section-infotip" type="button" data-infotip-toggle="' + id + '"' +
           ' aria-expanded="false" aria-controls="' + id + '"' +
           ' aria-label="' + esc(label) + '">&#9432;</button>' +
-        '<span class="infotip-popover" id="' + id + '" role="note" hidden>' + esc(body) + '</span>' +
+        '<span class="infotip-popover" id="' + id + '" role="note" hidden>' + body + '</span>' +
       '</span>';
   }
 
-  /* Four cards, nine figures, and the pairing is the whole idea: each card answers
-     "how much" with a large number and "how much of it can I trust" with a small one
-     underneath. Revenue is qualified by what survived the returns, transactions by how
-     many items those transactions moved and how many baskets never became orders at
-     all, the mean by the median it can hide behind, and sales by what came back.
+  /* A card's ⓘ holds one block per figure, in the order the card states them: the big
+     number first, its qualifier second. Four parts, three of them optional, and the
+     order is the order of the questions an operator actually asks — what is it, how is
+     it computed, and when does it lie.
 
-     ROUND 6 MOVED ONE FIGURE AND REPLACED ANOTHER. Cancellation sat on the Revenue card
-     for two rounds and was answering the wrong question there: GMV already excludes
-     cancelled orders, so a cancellation rate underneath it qualifies nothing about the
-     amount above it. It belongs on Transactions, which is a funnel — how many attempts
-     to buy became orders — and that is where it now sits, carrying its own [C] gap with
-     it. In its place Revenue takes NET REVENUE, which does qualify the number above it:
-     GMV is what was sold, net revenue is what stayed sold.
+     `caveat` is the part worth defending. It is where "returns can arrive after the sale,
+     so a recent period may be incomplete while the return window is still open" lives —
+     a fact that changes how the figure should be READ, not what it is, and one the strip
+     has no room to state anywhere else. A definition panel that only defined would be a
+     glossary; this one is a caveat carrier that happens to define. */
+  function definitions(blocks) {
+    return blocks.map(function (d) {
+      return '<span class="infotip-def">' +
+          '<span class="infotip-def__term">' + esc(d.term) + '</span>' +
+          '<span>' + esc(d.text) + '</span>' +
+          (d.formula ? '<span class="infotip-def__formula">' + esc(d.formula) + '</span>' : '') +
+          (d.caveat ? '<span class="infotip-def__caveat">' + esc(d.caveat) + '</span>' : '') +
+        '</span>';
+    }).join('');
+  }
+
+  /* SIX cards, twelve figures, and the pairing is still the whole idea: each card answers
+     "how much" with a large number and "how much of it can I trust" with a small one
+     underneath.
+
+     ROUND 7 SPLIT THE STRIP ALONG THE METRIC MODEL RATHER THAN ALONG THE LAYOUT. Round 6
+     had four cards because four cards fit a row, which meant Units rode as a qualifier on
+     Transactions and Cancelled rode as its second one — two facts about different
+     questions stacked on one card because there was nowhere else to put them. Six cards
+     give each question its own card and each card a true pair:
+
+       Revenue ............ GMV, qualified by what stayed sold after refunds
+       Orders ............. how many, qualified by the daily rate that makes ranges
+                            of different length comparable
+       Order value ........ the mean, qualified by the median that exposes it
+       Units .............. how many items moved, qualified by items per order
+       Returns & refunds .. the rate, qualified by the money it cost
+       Cancellations ...... the rate, qualified by the value that never became revenue
+
+     WHAT THIS COSTS, STATED PLAINLY: a strip is a glance and six cards is no longer a
+     glance. The mitigation is that every card now has the same internal shape — eyebrow,
+     ⓘ, figure, caption, delta, one qualifier — so the reader learns the shape once and
+     reads five repetitions of it. If #1990 finds the strip too heavy in the real app, the
+     first thing to fold back is Units, whose pair (units, units per order) is the one an
+     operator asks for least often; that is a layout decision, and it should be taken on
+     the real page rather than pre-empted here.
+
+     ABBREVIATIONS ON THE CARDS, EXPANSIONS IN THE ⓘ (reverses round 6). Round 6 argued
+     that "AOV" appears nowhere in apps/web — grep: still zero hits — and therefore should
+     not be introduced. That argument holds for a card standing alone and fails for a card
+     with a definition attached: the abbreviation is the operator's own vocabulary, it is
+     what keeps a caption to one line in a 3-column grid, and the full term is now one
+     click away on every card rather than absent. So GMV and AOV are the captions, and
+     "Gross Merchandise Value" / "Average Order Value" open the ⓘ blocks.
 
      Why the eyebrow is a GROUP name rather than the metric: "REVENUE" and "GMV" are not
      the same word, and once a card carries two metrics neither of them can own the card
      label. So the label names the pair and each figure names itself.
-
-     "AOV" stays expanded, and not as a matter of taste: the abbreviation appears nowhere
-     in apps/web (grep: zero hits), so shipping it here would introduce a piece of analyst
-     vocabulary the product does not otherwise speak.
 
      Sparklines only on the two cards whose main figure has a per-channel series behind
      it. A trend line drawn beside a rate the data cannot produce would be a graphic
@@ -3224,11 +3497,37 @@
       : '';
   }
 
+  /* ROUND 7 REWROTE THIS LINE, AND THE REWRITE IS A DOWNGRADE ON PURPOSE. Round 6 stated
+     the rate itself ("1 EUR = 4.3300"), which is a single number and therefore a claim the
+     page cannot honestly make: each order converts at the rate of ITS OWN order date, so
+     one rate on the strip describes no order in particular. The line now names the METHOD
+     and the freshness of the rate table, and the rate that actually applied to a given
+     order belongs in the breakdown — which is what the note's ⓘ says. */
   function conversionNote(t) {
     if (!t.converted) return '';
-    return 'Converted to ' + REPORTING_CURRENCY + ' at ' + FX.source + ', ' + FX.asOf +
-      ' &middot; 1 EUR = ' + FX.rate.EUR.toFixed(4) +
+    return 'Converted to ' + REPORTING_CURRENCY + ' using daily ' + FX.source +
+      ' average exchange rates &middot; Rates last updated ' + FX.asOf +
       blocked('No FX exists in the repo; conversion needs the order-day rate stored per order');
+  }
+
+  /* The conversion definition, as the note's OWN marker rather than a second glyph after
+     it. Every note on this page opens with a ⓘ or a ⚠ (`noteMark`), and round 7 first
+     appended a clickable ⓘ at the end of this one — which put two identical glyphs on one
+     line, the first inert and the second a button, with nothing to tell them apart. The
+     note keeps exactly one marker and that marker is now the trigger: the affordance the
+     reader already looks for at the start of a note is the affordance that answers it. */
+  function conversionInfotip() {
+    return infotip('About currency conversion', definitions([
+        { term: 'Reporting currency',
+          text: 'All monetary values are displayed in the reporting currency configured ' +
+                'in the system.' },
+        { term: 'Which rate applies',
+          text: 'Each order is converted using the daily NBP average exchange rate ' +
+                'applicable on its order date. Refunds and cancellations use the original ' +
+                'order’s exchange rate.',
+          caveat: 'If NBP does not publish a rate for a given day, the most recently ' +
+                  'published rate is used. Exchange rates are synchronized once daily.' }
+      ]));
   }
 
   /* The note is the claim; the table is the evidence. Rows are the currencies the
@@ -3236,26 +3535,32 @@
      cards show — so the operator reads the two inputs and the output on one screen
      instead of taking "converted" on trust. Columns follow the card order, which is
      the only ordering the reader has already learnt. */
+  /* ROUND 7 CUT THIS TABLE TO THE MONEY FIGURES, and the cut is the point of the table
+     rather than a concession to width. A rate does not convert, and a count does not
+     convert: "Orders: 268" restated per currency is the same 268 split into two piles, an
+     arithmetic the reader can do and did not ask for. What the reader cannot do is see
+     which market the reporting-currency total came from, and that is a question about
+     money. So the six columns are the six money figures on the strip — one per card, in
+     card order — and the counts and rates stay on the cards where they are already true.
+
+     Twelve columns were drawn first and rejected: at that width the table scrolled
+     horizontally, which put the footer total off screen from the rows it totals, and the
+     footer IS the evidence (it restates the figure the cards show). A table whose claim
+     and proof cannot be seen together fails at the only job it has. */
   var BREAKDOWN_COLUMNS = [
     { label: 'GMV', get: function (t, c) { return money(t.revenue, c); } },
-    { label: 'Net revenue',
-      mark: 'Needs returned value, and no return or refund amount is stored on any entity',
-      get: function (t, c) { return money(t.netRevenue, c); } },
-    { label: 'Orders', get: function (t) { return int(t.orders); } },
-    { label: 'Units', get: function (t) { return int(t.units); } },
-    { label: 'Cancelled',
-      mark: 'Cancellation is a string inside the order snapshot; nothing counts it ([C])',
-      get: function (t) {
-        return int(t.cancelledOrders) + ' (' + pct(t.cancellationRate * 100) + ')';
-      } },
-    { label: 'Average order value', get: function (t, c) { return money(t.aov, c); } },
+    { label: 'Net sales',
+      mark: 'Needs refunded value, and no return or refund amount is stored on any entity',
+      get: function (t, c) { return money(t.netSales, c); } },
+    { label: 'AOV', get: function (t, c) { return money(t.aov, c); } },
     { label: 'Median order value', get: function (t, c) { return money(t.median, c); } },
-    { label: 'Return rate',
-      mark: 'No return entity exists anywhere in the repo; the spec lists returns under known gaps',
-      get: function (t) { return pct(t.returnRate * 100); } },
-    { label: 'Returned value',
+    { label: 'Refunded value',
       mark: 'No refund or return amount is stored on any entity',
-      get: function (t, c) { return money(t.returnedValue, c); } }
+      get: function (t, c) { return money(t.returnedValue, c); } },
+    { label: 'Cancelled value',
+      mark: 'Nothing sums the value of cancelled items; the snapshot carries no per-item ' +
+            'cancellation amount ([C])',
+      get: function (t, c) { return money(t.cancelledValue, c); } }
   ];
 
   function breakdownRow(label, totals, code, foot) {
@@ -3285,7 +3590,8 @@
       '</tfoot>';
 
     return '<div class="data-table__container"><table class="data-table">' +
-      '<caption class="sr-only">Every KPI figure broken down by the currency it was taken in</caption>' +
+      '<caption class="sr-only">Every monetary KPI figure broken down by the currency it was ' +
+        'taken in. Counts and rates are not currency-dependent and stay on the cards.</caption>' +
       head + body + foot + '</table></div>';
   }
 
@@ -3294,12 +3600,18 @@
   function stripNote(totals, id) {
     if (!totals.converted) return '';
     return '<div class="strip-note">' +
-        '<span class="strip-note__text">' + noteMark('info') +
+        '<span class="strip-note__text">' + conversionInfotip() +
           '<span>' + conversionNote(totals) + '</span>' +
         '</span>' +
+        /* "View currency breakdown", not "View breakdown": by round 7 the page has two
+           other things a reader could plausibly expect to break down (channels, products),
+           and the button sits in a note about currency rather than under a heading that
+           would supply the noun. The labels ride on the button as data attributes so the
+           one delegated handler below does not have to know which toggle it is flipping. */
         '<button class="button button--secondary button--sm" type="button"' +
-          ' data-breakdown-toggle="' + id + '" aria-expanded="false" aria-controls="' + id + '">' +
-          'View breakdown</button>' +
+          ' data-breakdown-toggle="' + id + '" aria-expanded="false" aria-controls="' + id + '"' +
+          ' data-label-show="View currency breakdown" data-label-hide="Hide currency breakdown">' +
+          'View currency breakdown</button>' +
       '</div>' +
       '<div class="strip-note__panel" id="' + id + '" hidden>' +
         '<h4 class="section-title" style="margin-bottom: var(--space-3)">Breakdown by currency</h4>' +
@@ -3309,7 +3621,7 @@
 
   /* One strip, two shapes. `opts.converted` is the whole switch: absent, the page is
      the single-currency instance most operators run; present, the seller also takes
-     euros and every money figure is stated in the reporting currency. Same four cards
+     euros and every money figure is stated in the reporting currency. Same six cards
      either way — the second currency changes what the numbers mean, not how many there
      are. */
   function kpiStrip(opts) {
@@ -3320,58 +3632,163 @@
 
     var prev = totals.previous;
 
-    /* GMV gets its name spelled out AND the abbreviation kept: the spec calls the metric
-       GMV and #1990 will be written in that word, but the abbreviation appears nowhere
-       in apps/web (grep: zero hits), so an operator meeting it here meets it for the
-       first time. The ⓘ carries what it counts — the exclusion an operator would
-       otherwise have to infer from the Transactions card. */
+    /* CARD 1 — REVENUE. The ⓘ carries the two exclusions an operator would otherwise
+       have to infer from two other cards: cancellations are already out of GMV (which is
+       why the Cancellations card qualifies nothing about this one), and refunds are NOT,
+       which is what Net sales underneath is for. */
     cards.push(kpiCard({
       label: 'Revenue',
-      metric: 'Gross Merchandise Value (GMV)' +
-        infotip('What GMV counts',
-          'GMV is the gross value of every order placed in this range, before fees. ' +
-          'Cancelled orders are excluded from it. Returns are NOT deducted — ' +
-          'the figure after returns is Net revenue, below.'),
+      info: infotip('About the Revenue figures', definitions([
+        { term: 'GMV (Gross Merchandise Value)',
+          text: 'The total value of non-cancelled product items in orders placed during ' +
+                'the selected period, after discounts and before refunds.',
+          caveat: 'Fully cancelled orders and cancelled items from partially cancelled ' +
+                  'orders are excluded. Returned and refunded items remain included.' },
+        { term: 'Net sales',
+          text: 'The value of product sales remaining after customer refunds.',
+          formula: 'GMV − Refunded value',
+          caveat: 'Shipping refunds, marketplace fees and operating costs are not deducted.' }
+      ])),
+      metric: 'GMV',
       value: money(totals.revenue, code),
       delta: delta(totals.revenue, prev.revenue),
       trend: totals.revenueTrend, sparkLabel: 'Revenue trend, last 7 days',
       description: grossBasisNote(totals),
-      qualifier: { label: 'Net revenue' +
-                     blocked('Needs returned value, and no return or refund amount is stored on any entity'),
-                   value: money(totals.netRevenue, code) }
+      qualifier: { label: 'Net sales' +
+                     blocked('Needs refunded value, and no return or refund amount is stored on any entity'),
+                   value: money(totals.netSales, code) }
     }));
 
+    /* CARD 2 — ORDERS. The daily rate is the qualifier because it is what makes two
+       ranges of different length comparable at all: 268 orders says nothing until the
+       reader knows whether it covered a week or a quarter. */
     cards.push(kpiCard({
-      label: 'Transactions', metric: 'Orders &middot; excludes cancelled',
+      label: 'Orders',
+      info: infotip('About the Orders figures', definitions([
+        { term: 'Orders',
+          text: 'The total number of unique orders containing at least one non-cancelled ' +
+                'product item.',
+          caveat: 'Each completed checkout counts as one order, regardless of how many ' +
+                  'products it contains. Fully cancelled orders are excluded. Partially ' +
+                  'cancelled orders count as one order.' },
+        { term: 'Average daily orders',
+          text: 'The average number of non-cancelled orders placed per calendar day ' +
+                'during the selected period.',
+          formula: 'Orders ÷ calendar days in the period' }
+      ])),
+      metric: 'Orders',
       value: int(totals.orders),
       delta: delta(totals.orders, prev.orders),
       trend: totals.ordersTrend, sparkLabel: 'Order-count trend, last 7 days',
-      qualifiers: [
-        { label: 'Units', value: int(totals.units) },
-        { label: 'Cancelled' +
-            blocked('Cancellation is a string inside the order snapshot; nothing counts it ([C])'),
-          value: int(totals.cancelledOrders) +
-            ' <span class="kpi-card__qualifier-share">(' +
-            pct(totals.cancellationRate * 100) + ')</span>' }
-      ]
+      qualifier: { label: 'Avg. daily orders' +
+                     blocked('The divisor is the length of the selected range, and the range ' +
+                             'itself is blocked on placedAt having no column ([C])'),
+                   value: ratio(totals.avgDailyOrders) }
     }));
 
+    /* CARD 3 — ORDER VALUE. The pair is the point of the card: a mean and the median it
+       can hide behind. The ⓘ says so in as many words, because an operator who does not
+       already know what a median is for will read the second figure as a rounding of the
+       first. */
     cards.push(kpiCard({
-      label: 'Cart metrics', metric: 'Average order value',
+      label: 'Order value',
+      info: infotip('About the Order value figures', definitions([
+        { term: 'AOV (Average Order Value)',
+          text: 'The average GMV generated by a single non-cancelled order during the ' +
+                'selected period.',
+          formula: 'GMV ÷ Orders',
+          caveat: 'AOV is calculated per order, not per customer. For partially cancelled ' +
+                  'orders, only the value of non-cancelled items is included.' },
+        { term: 'Median order value',
+          text: 'The middle order value after all non-cancelled orders are arranged from ' +
+                'the lowest to the highest value.',
+          caveat: 'Half of the orders have a lower value and half have a higher value. ' +
+                  'The median helps identify whether AOV is being inflated by a small ' +
+                  'number of unusually high-value orders.' }
+      ]), { align: 'end' }),
+      metric: 'AOV',
       value: money(totals.aov, code),
       delta: delta(totals.aov, prev.aov),
       qualifier: { label: 'Median order value', value: money(totals.median, code) }
     }));
 
     cards.push(kpiCard({
-      label: 'Returns',
+      label: 'Units',
+      info: infotip('About the Units figures', definitions([
+        { term: 'Units',
+          text: 'The total quantity of non-cancelled product items included in counted ' +
+                'orders.',
+          caveat: 'If a customer purchases three units of the same product, they count as ' +
+                  'three units. Returned units remain included because returns are ' +
+                  'reported separately.' },
+        { term: 'Units per order',
+          text: 'The average number of non-cancelled product units included in one order.',
+          formula: 'Units ÷ Orders' }
+      ])),
+      metric: 'Units',
+      value: int(totals.units),
+      delta: delta(totals.units, prev.units),
+      qualifier: { label: 'Units per order', value: ratio(totals.unitsPerOrder) }
+    }));
+
+    /* CARD 5 — RETURNS & REFUNDS. Both figures are blocked, and the card is drawn anyway:
+       a strip that silently omitted returns would let an operator read GMV as money kept.
+       The ⓘ carries the incompleteness caveat, which is the one thing a return rate for a
+       recent period cannot be read without. */
+    cards.push(kpiCard({
+      label: 'Returns & refunds',
+      info: infotip('About the Returns & refunds figures', definitions([
+        { term: 'Return rate',
+          text: 'The percentage of fulfilled units from orders placed during the selected ' +
+                'period that were later returned by customers.',
+          formula: 'Returned units ÷ Fulfilled units × 100%',
+          caveat: 'Because returns can occur after the original sale, results for recent ' +
+                  'periods may be incomplete while the return window is still open.' },
+        { term: 'Refunded value',
+          text: 'The total product amount refunded to customers for orders placed during ' +
+                'the selected period.',
+          caveat: 'Partial and full product refunds are included. Shipping refunds are ' +
+                  'excluded. This is the amount deducted from GMV when calculating Net sales.' }
+      ])),
       metric: 'Return rate' +
         blocked('No return entity exists anywhere in the repo; the spec lists returns under known gaps'),
       value: pct(totals.returnRate * 100),
       delta: delta(totals.returnRate, prev.returnRate, { pp: true, invert: true }),
-      qualifier: { label: 'Returned value' +
+      qualifier: { label: 'Refunded value' +
                      blocked('No refund or return amount is stored on any entity'),
                    value: money(totals.returnedValue, code) }
+    }));
+
+    /* CARD 6 — CANCELLATIONS. Its own card as of round 7. It rode on Transactions in
+       round 6 as a second qualifier, which read as a fact about orders; it is a fact about
+       a funnel, and it has a money figure of its own that had nowhere to go. Note the
+       asymmetry the ⓘ has to state: a PARTIALLY cancelled order is not a cancelled order
+       for the rate, but its cancelled items ARE in the value. Two figures, two
+       denominators, one card — an operator will otherwise assume the second is the first
+       priced out. */
+    cards.push(kpiCard({
+      label: 'Cancellations',
+      info: infotip('About the Cancellations figures', definitions([
+        { term: 'Cancellation rate',
+          text: 'The percentage of all orders placed during the selected period that were ' +
+                'fully cancelled.',
+          formula: 'Fully cancelled orders ÷ All placed orders × 100%',
+          caveat: 'Partially cancelled orders are not counted as cancelled orders, but the ' +
+                  'value of their cancelled items is included in Cancelled value.' },
+        { term: 'Cancelled value',
+          text: 'The total value of product items removed from fully or partially cancelled ' +
+                'orders placed during the selected period.',
+          caveat: 'The value is calculated after discounts and uses the same tax basis as ' +
+                  'GMV. Cancelled value is excluded from GMV.' }
+      ]), { align: 'end' }),
+      metric: 'Cancellation rate' +
+        blocked('Cancellation is a string inside the order snapshot; nothing counts it ([C])'),
+      value: pct(totals.cancellationRate * 100),
+      delta: delta(totals.cancellationRate, prev.cancellationRate, { pp: true, invert: true }),
+      qualifier: { label: 'Cancelled value' +
+                     blocked('Nothing sums the value of cancelled items; the snapshot carries no ' +
+                             'per-item cancellation amount ([C])'),
+                   value: money(totals.cancelledValue, code) }
     }));
 
     return cards.join('');
@@ -3403,7 +3820,9 @@
     var open = panel.hidden;
     panel.hidden = !open;
     btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    btn.textContent = open ? 'Hide breakdown' : 'View breakdown';
+    btn.textContent = open
+      ? (btn.getAttribute('data-label-hide') || 'Hide breakdown')
+      : (btn.getAttribute('data-label-show') || 'View breakdown');
   });
 
   /* The infotip popover, on the same delegated pattern. Three behaviours make it a
@@ -3782,31 +4201,35 @@
      'Mirrors the unresolved wording so the two states read as the same row in different conditions.'],
     ['Cancelled orders are excluded from every money figure', 'By-channel section header',
      'Stated once, near the numbers it governs, because the exclusion is invisible otherwise. Required by AC.'],
-    ['REVENUE / TRANSACTIONS / CART METRICS / RETURNS', 'KPI card labels',
-     'Group names, not metric names — each card now carries two figures and neither can own the label. The metric names itself under its own number.'],
-    ['Gross Merchandise Value (GMV)', 'KPI card metric, Revenue',
-     'Spelled out AND abbreviated, which is the opposite of the call made for AOV one row down — and for the opposite reason. AOV is expanded because the operator is a seller and the abbreviation appears nowhere in the product; GMV is expanded but KEPT because the spec writes metric A1 in that word and #1990 will be built against it, so the page has to teach the abbreviation rather than replace it. What the number counts — goods sold, cancelled orders excluded, returns not deducted, before fees — is one click away behind the ⓘ, because a definition nobody needs twice does not belong on the surface.'],
-    ['GMV is the gross value of every order placed in this range, before fees. Cancelled orders are excluded from it. Returns are NOT deducted — the figure after returns is Net revenue, below.',
+    ['REVENUE / ORDERS / ORDER VALUE / UNITS / RETURNS & REFUNDS / CANCELLATIONS', 'KPI card labels',
+     'Group names, not metric names — each card carries two figures and neither can own the label. The metric names itself under its own number. Round 7 renamed two of them: "Transactions" became ORDERS once Units left it for a card of its own (the group and its main figure are the same thing now, and the plainer word wins), and "Cart metrics" became ORDER VALUE because a median and a mean of the same quantity are not two "metrics" of a "cart" — they are two readings of one order value.'],
+    ['GMV', 'KPI card metric, Revenue',
+     'The abbreviation alone, with "Gross Merchandise Value" behind the ⓘ. This reverses round 6 for both GMV and AOV, and the condition is worth stating: the abbreviation is only honest because the card defines it one click away. The spec writes metric A1 as GMV and #1990 will be built in that word, so the page teaches it rather than replacing it — but if the definition popover does not ship, the caption must revert to the expanded term.'],
+    ['GMV (Gross Merchandise Value) · The total value of non-cancelled product items in orders placed during the selected period, after discounts and before refunds.',
      'Behind the ⓘ on the Revenue card',
-     'Three sentences, in the order the reader’s doubts arrive: what it is, what it leaves out, what it does not leave out. The third is the one that earns the popover — an operator who reads "gross" will assume returns are already gone, and the only place to correct that is next to the word. It ends by pointing at the figure that does deduct them, so the definition closes by answering the question it raises rather than leaving the reader to hunt. Opens on CLICK: a title attribute shows nothing at all on touch (frame 01), and a definition nobody on a phone can read is not a definition.'],
-    ['Net revenue', 'KPI card qualifier, Revenue',
-     'The plainest available words for GMV minus what came back. "Revenue after returns" was tried and dropped: it names an operation rather than a figure, and the qualifier row is a label-and-figure pair, not a sentence. It replaced the cancellation rate in round 6 because GMV already excludes cancelled orders — a rate underneath it qualified nothing, while this qualifies the amount directly: what was sold, against what stayed sold.'],
-    ['Orders · excludes cancelled', 'KPI card metric, Transactions',
-     'The exclusion travels with the metric name, in the same breath. One approved basket is one order however many items went into it — which is exactly why Units sits underneath it.'],
-    ['Average order value', 'KPI card metric',
-     'Spelled out, because "AOV" appears nowhere else in the product (grep of apps/web: zero hits) and the operator is a seller, not an analyst.'],
-    ['Median order value', 'KPI card qualifier, Cart metrics',
-     'Named in full rather than as "Median:", because the qualifier row is a label-and-figure pair, not a sentence. Why it is there is spec A′5: at 10–100 orders a day one large order visibly moves the mean.'],
-    ['Cancelled · 24 (5.5%)', 'KPI card qualifier, Transactions',
-     'Count first, share in brackets. An earlier draft printed the rate alone, and a rate alone is judgeable but not actionable — the operator who wants to go and look at those orders needs to know there are twenty-four of them. The share is set back to the label’s weight so the pair reads as one figure and its reading, not as two numbers competing on one line. It moved here from the Revenue card in round 6: this card is the funnel, and "how many attempts to buy never became orders" is a funnel question.'],
-    ['↑ 9.5% · ↓ 1.4% · ↑ 0.5 pp', 'KPI card delta, all four cards',
-     'Versus the previous window of the same length, and the whole sentence lives in the sr-only span because an arrow read aloud is silent. Two decisions are encoded in the glyph: the ARROW follows the number but the COLOUR follows the meaning, so a falling return rate is a down arrow in green — colouring it red would tell the operator the opposite of the truth. And a rate is stated in POINTS, not percent: "return rate +10.1%" leaves the reader asking ten percent of what, while "+0.5 pp" is the subtraction they would have done by hand.'],
-    ['Return rate / Returned value', 'KPI card, Returns',
-     'Plain seller vocabulary for the thing PL’s 14-day right of withdrawal makes real. Both carry the gap marker: no return entity exists anywhere in the repo.'],
-    ['Converted to PLN at NBP mid, 6 Aug 2026 · 1 EUR = 4.3300', 'Strip note, more than one currency',
-     'The rate, its source and its date, under the strip they produced — not inside one card, because the rate governs every amount above it. Story S1 forbids mixed-currency data summing silently into one figure, and this is the sentence that stops it being silent.'],
-    ['View breakdown / Hide breakdown', 'Button in the strip note',
-     'The button names what it will do next, and the noun stays the same in both directions so the control does not appear to change subject. "Show details" would name the mechanism; "breakdown" is what the operator came for.'],
+     'The definition arrives in the order the reader’s doubts do: what it is, then — as a caveat, set apart — what it leaves out and what it does NOT leave out. That second part is what earns the popover: an operator who reads "gross" will assume refunds are already gone, and the only place to correct that is next to the word. The Net sales block underneath answers the question the correction raises, formula and all, so the panel closes rather than sending the reader hunting. Opens on CLICK: a title attribute shows nothing at all on touch (frame 01), and a definition nobody on a phone can read is not a definition.'],
+    ['Net sales', 'KPI card qualifier, Revenue',
+     'The plainest available words for GMV minus what was refunded. "Revenue after returns" was tried and dropped: it names an operation rather than a figure, and the qualifier row is a label-and-figure pair, not a sentence. Round 7 renamed it from "Net revenue" to match the term the definitions use — one figure, one name, everywhere on the page.'],
+    ['Orders', 'KPI card metric, Orders',
+     'Round 6 wrote this as "Orders · excludes cancelled", carrying the exclusion in the caption. Round 7 moves that into the definition, where the full rule fits: a fully cancelled order is out, a PARTIALLY cancelled order still counts as one order. The caption could state the first half and not the second, and half an exclusion rule is worse than a pointer to all of it.'],
+    ['Avg. daily orders', 'KPI card qualifier, Orders',
+     'Abbreviated only here, and only because the qualifier row is a single line at 3 columns. It is the figure that makes two ranges of different length comparable — 268 orders means nothing until the reader knows whether that was a week or a quarter — and it divides by CALENDAR days, not by days that carried an order, which is why it carries the range gap marker.'],
+    ['AOV', 'KPI card metric, Order value',
+     'See GMV: abbreviation on the card, "Average Order Value" and the formula (GMV ÷ Orders) behind the ⓘ. Round 6 refused this on the grounds that the abbreviation appears nowhere in the product (grep of apps/web: still zero hits) — an argument that held while nothing defined it.'],
+    ['Median order value', 'KPI card qualifier, Order value',
+     'Named in full rather than as "Median:", because the qualifier row is a label-and-figure pair, not a sentence. Why it is there is spec A′5: at 10–100 orders a day one large order visibly moves the mean. The ⓘ says that outright — half the orders are below, half above, and the median is how you catch an AOV inflated by a handful of unusual baskets — because a reader who does not already know what a median is for will read it as a rounding of the figure above it.'],
+    ['Units per order', 'KPI card qualifier, Units',
+     'One decimal, because the difference between 1.6 and 2.4 items in a basket is the whole reason the figure is on the card and an integer would hide it.'],
+    ['Cancellation rate / Cancelled value', 'KPI card, Cancellations',
+     'A rate and the money behind it, which is how spec A7 is written. The ⓘ carries the asymmetry the pair cannot state on its own: a partially cancelled order is NOT counted as a cancelled order for the rate, but the value of its cancelled items IS in the value. Two denominators on one card — without the note a reader assumes the second figure is the first priced out.'],
+    ['↑ 9.5% vs previous period · ↓ 1.4% vs previous period · ↑ 0.5 pp vs previous period', 'KPI card delta, all six cards',
+     'Round 7 moved the basis into visible text. In round 6 "versus the previous period" existed only in the sr-only sentence, so the screen-reader user was told what the comparison was against and the sighted reader had to assume it. The whole sentence still lives in the sr-only span, because an arrow read aloud is silent. Two decisions are encoded in the glyph: the ARROW follows the number but the COLOUR follows the meaning, so a falling return rate is a down arrow in green — colouring it red would tell the operator the opposite of the truth. And a rate is stated in POINTS, not percent: "return rate +10.1%" leaves the reader asking ten percent of what, while "+0.5 pp" is the subtraction they would have done by hand.'],
+    ['Return rate / Refunded value', 'KPI card, Returns & refunds',
+     'Plain seller vocabulary for the thing PL’s 14-day right of withdrawal makes real. Both carry the gap marker: no return entity exists anywhere in the repo. The ⓘ carries the caveat that matters more than the definition — returns arrive AFTER the sale, so a recent period is incomplete while the window is still open, and a rate read without that reads as an improvement.'],
+    ['Converted to PLN using daily NBP average exchange rates · Rates last updated 6 Aug 2026', 'Strip note, more than one currency',
+     'Round 7 stopped printing the rate. "At NBP mid, 6 Aug 2026 · 1 EUR = 4.3300" stated ONE rate for a set of orders that each convert at the rate of their own order date — a number that described no order on the page. The line now names the method and the freshness of the rate table; which rate applied to what, and the fallbacks, sit behind the note’s ⓘ. The note carries exactly one marker and that marker is the trigger: an earlier draft appended a second ⓘ after the text, putting two identical glyphs on one line with nothing to say which could be clicked. Story S1 forbids mixed-currency data summing silently into one figure, and this is the sentence that stops it being silent.'],
+    ['View currency breakdown / Hide currency breakdown', 'Button in the strip note',
+     'The button names what it will do next, and the noun stays the same in both directions so the control does not appear to change subject. "Breakdown" alone was enough in round 6 and is not now: the page has channels and products a reader could also expect to break down, and the button sits in a note about currency rather than under a heading that would supply the noun. "Show details" would name the mechanism.'],
     ['Breakdown by currency', 'Heading of the opened table',
      'Says both what is split and what it is split by. The footer row is labelled "Total · PLN" rather than "Total", so it reads as the currencies above restated in one money and not as a third market.'],
     ['Revenue · PLN / Revenue · EUR', 'Top products column headers, more than one currency',
