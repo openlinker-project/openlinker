@@ -24,6 +24,8 @@
  * infra, not shop traffic. InPost has no OAuth-token bypass to exempt (static
  * Bearer API token, no token endpoint). No such exemption is needed for
  * KSeF or Subiekt — neither client has an ad-hoc OAuth-token bypass.
+ * WooCommerce also has no OAuth-token bypass to exempt (Basic Auth via
+ * consumer key/secret, no token endpoint).
  *
  * Run with `--self-check` to exercise the pure classifier against synthetic
  * inputs (no filesystem) — mirrors `check-migration-timestamps.mjs --self-check`.
@@ -50,6 +52,7 @@ const SCAN_ROOTS = [
   'libs/integrations/inpost',
   'libs/integrations/ksef',
   'libs/integrations/subiekt',
+  'libs/integrations/woocommerce',
 ];
 
 const SKIP_DIRS = new Set([
