@@ -32,6 +32,7 @@ describe('OrderRecordRepository', () => {
 
     const mockOrmRepository = {
       findOne: jest.fn(),
+      find: jest.fn(),
       save: jest.fn(),
       query: jest.fn(),
       createQueryBuilder: jest.fn().mockReturnValue(qb),
@@ -140,6 +141,36 @@ describe('OrderRecordRepository', () => {
       expect(result?.syncStatus[0].status).toBe('synced');
       expect(result?.syncStatus[0].syncedAt).toEqual(new Date('2025-01-01T11:00:00Z'));
       expect(result?.syncStatus[0].externalOrderId).toBe('external-order-999');
+    });
+  });
+
+  describe('findByIds', () => {
+    it('should return [] without querying when given an empty array', async () => {
+      const result = await repository.findByIds([]);
+
+      expect(result).toEqual([]);
+      expect(ormRepository.find).not.toHaveBeenCalled();
+    });
+
+    it('should return matching domain entities for a batch of ids', async () => {
+      const entity = createOrmEntity();
+      ormRepository.find.mockResolvedValue([entity]);
+
+      const result = await repository.findByIds(['order-123', 'non-existent-order']);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].internalOrderId).toBe('order-123');
+      expect(ormRepository.find).toHaveBeenCalledWith({
+        where: { internalOrderId: expect.anything() },
+      });
+    });
+
+    it('should silently omit ids with no matching row', async () => {
+      ormRepository.find.mockResolvedValue([]);
+
+      const result = await repository.findByIds(['missing-1', 'missing-2']);
+
+      expect(result).toEqual([]);
     });
   });
 

@@ -27,6 +27,19 @@ export interface OrderRecordRepositoryPort {
   findById(internalOrderId: string): Promise<OrderRecord | null>;
 
   /**
+   * Batch-find order records by internal order ID (#1995).
+   *
+   * A single query scoped to the given id set — the real batch a cross-context
+   * list join (Shipments, Invoices) needs, as opposed to a de-duplicated
+   * `Promise.all` fan-out over {@link findById}. Ids with no matching row are
+   * silently omitted from the result (never throws, never pads with nulls);
+   * callers join back onto their own rows via a `Map` keyed by
+   * `internalOrderId`. Returns `[]` immediately for an empty `internalOrderIds`
+   * input, without issuing a query.
+   */
+  findByIds(internalOrderIds: string[]): Promise<OrderRecord[]>;
+
+  /**
    * Upsert order record (create or update)
    * Uses internalOrderId as the primary key
    */

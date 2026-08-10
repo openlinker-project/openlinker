@@ -13,6 +13,7 @@
  */
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
+import type { FetchLike } from '@openlinker/shared/http';
 import { DpdConfigException } from '../domain/exceptions/dpd-config.exception';
 import type { DpdConnectionConfig, DpdEnvironment } from '../domain/types/dpd-config.types';
 import { DpdEnvironmentValues } from '../domain/types/dpd-config.types';
@@ -34,20 +35,31 @@ const INFO_BASE_URLS: Readonly<Record<DpdEnvironment, string>> = {
 export async function createDpdShippingAdapter(
   connection: Connection,
   credentialsResolver: CredentialsResolverPort,
+  fetchImpl: FetchLike,
 ): Promise<DpdShippingAdapter> {
   const config = extractConfig(connection);
   const credentials = await resolveCredentials(connection, credentialsResolver);
-  const client = new DpdHttpClient(getDpdServicesBaseUrl(config.environment), {
-    login: credentials.login,
-    password: credentials.password,
-    masterFid: config.masterFid,
-  });
+  const client = new DpdHttpClient(
+    getDpdServicesBaseUrl(config.environment),
+    {
+      login: credentials.login,
+      password: credentials.password,
+      masterFid: config.masterFid,
+    },
+    undefined,
+    fetchImpl,
+  );
   // InfoServices tracking auth is `login`/`password` in the SOAP body (channel
   // empty for the waybill method) — masterFid is shipment-only (ADR-022).
-  const infoClient = new DpdInfoSoapClient(INFO_BASE_URLS[config.environment], {
-    login: credentials.login,
-    password: credentials.password,
-  });
+  const infoClient = new DpdInfoSoapClient(
+    INFO_BASE_URLS[config.environment],
+    {
+      login: credentials.login,
+      password: credentials.password,
+    },
+    undefined,
+    fetchImpl,
+  );
   return new DpdShippingAdapter(client, config, infoClient);
 }
 

@@ -67,7 +67,7 @@ export class PrestashopProductPublisherAdapter
     // at call time in uploadImages() instead) so a caller that patches
     // `globalThis.fetch` after construction — the existing spec's pattern —
     // still observes its own stub.
-    private readonly fetchImpl?: FetchLike
+    private readonly fetchImpl?: FetchLike,
   ) {}
 
   async publishProduct(cmd: PublishProductCommand): Promise<PublishProductResult> {

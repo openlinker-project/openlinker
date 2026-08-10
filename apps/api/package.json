@@ -52,6 +52,8 @@
     "@openlinker/integrations-prestashop": "workspace:*",
     "@openlinker/integrations-subiekt": "workspace:*",
     "@openlinker/integrations-woocommerce": "workspace:*",
+    "@openlinker/plugin-sdk": "workspace:*",
+    "@openlinker/shared": "workspace:*",
     "bcryptjs": "^3.0.3",
     "class-transformer": "0.5.1",
     "class-validator": "0.14.1",

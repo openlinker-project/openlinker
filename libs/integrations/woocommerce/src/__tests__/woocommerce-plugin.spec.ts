@@ -59,6 +59,11 @@ function makeHostStub(): HostStub {
         consumerSecret: 'cs_test',
       }),
     } as unknown as HostServices['credentialsResolver'],
+    // Connection-bound outbound transport (#1810) — `createCapabilityAdapter`
+    // calls `host.http.forConnection(connection, defaultRateLimit)` unconditionally,
+    // so this stub needs a bare `.forConnection()` even though no test here
+    // asserts on it.
+    http: { forConnection: jest.fn().mockReturnValue(jest.fn()) } as unknown as HostServices['http'],
   } as unknown as HostServices;
 
   return {

@@ -124,6 +124,8 @@ describe('ShipmentController', () => {
       // Default: order/customer unknown → customerId resolves to null.
       getOrderRecord: jest.fn().mockResolvedValue(null),
       findMany: jest.fn(),
+      // Default: batch order lookup resolves nothing → context degrades to null.
+      findByIds: jest.fn().mockResolvedValue([]),
       updateFulfillmentState: jest.fn(),
       markItemResolutionFailure: jest.fn(),
     };
@@ -179,7 +181,7 @@ describe('ShipmentController', () => {
       );
     });
 
-    it("should resolve each row's customerId from its order (deduped) and set it on the DTO", async () => {
+    it("should resolve each row's customerId from a single batched order read (deduped) and set it on the DTO", async () => {
       query.list.mockResolvedValue({
         items: [
           makeShipment({ id: 'ol_shipment_1', orderId: 'ol_order_1' }),
@@ -188,31 +190,85 @@ describe('ShipmentController', () => {
         ],
         total: 3,
       });
-      orders.getOrderRecord.mockImplementation((orderId: string) =>
-        Promise.resolve(
-          orderId === 'ol_order_1'
-            ? ({ customerId: 'ol_customer_a' } as OrderRecord)
-            : ({ customerId: null } as OrderRecord),
-        ),
-      );
+      orders.findByIds.mockResolvedValue([
+        { internalOrderId: 'ol_order_1', customerId: 'ol_customer_a' } as OrderRecord,
+      ]);
 
       const result = await controller.list({}, ADMIN_USER);
 
       expect(result.items[0].customerId).toBe('ol_customer_a');
       expect(result.items[1].customerId).toBe('ol_customer_a');
       expect(result.items[2].customerId).toBeNull();
-      // Deduped: 2 distinct order ids → 2 lookups, not 3.
-      expect(orders.getOrderRecord).toHaveBeenCalledTimes(2);
+      // Deduped, single real batch call — 2 distinct order ids across 3 rows,
+      // never a per-order fan-out (#1995).
+      expect(orders.findByIds).toHaveBeenCalledTimes(1);
+      expect(orders.findByIds).toHaveBeenCalledWith(['ol_order_1', 'ol_order_2']);
     });
 
-    it('should degrade customerId to null (not 500) when an order lookup fails', async () => {
+    it('should degrade customerId/orderSummary to null (not 500) when the batch order lookup fails', async () => {
       query.list.mockResolvedValue({ items: [makeShipment({ orderId: 'ol_order_x' })], total: 1 });
-      orders.getOrderRecord.mockRejectedValue(new Error('db blip'));
+      orders.findByIds.mockRejectedValue(new Error('db blip'));
 
       const result = await controller.list({}, ADMIN_USER);
 
       expect(result.items).toHaveLength(1);
       expect(result.items[0].customerId).toBeNull();
+      expect(result.items[0].orderSummary).toBeNull();
+    });
+
+    it('should issue a bounded number of order reads independent of page size (#1995)', async () => {
+      query.list.mockResolvedValue({
+        items: Array.from({ length: 20 }, (_, i) =>
+          makeShipment({ id: `ol_shipment_${i}`, orderId: `ol_order_${i % 5}` }),
+        ),
+        total: 20,
+      });
+
+      await controller.list({}, ADMIN_USER);
+
+      // 20 rows across only 5 distinct orders → exactly one batched call.
+      expect(orders.findByIds).toHaveBeenCalledTimes(1);
+      expect(orders.findByIds).toHaveBeenCalledWith([
+        'ol_order_0',
+        'ol_order_1',
+        'ol_order_2',
+        'ol_order_3',
+        'ol_order_4',
+      ]);
+    });
+
+    it('should populate orderSummary (#1995) from the batched order read', async () => {
+      query.list.mockResolvedValue({
+        items: [makeShipment({ id: 'ol_shipment_1', orderId: 'ol_order_1' })],
+        total: 1,
+      });
+      orders.findByIds.mockResolvedValue([
+        {
+          internalOrderId: 'ol_order_1',
+          customerId: null,
+          orderSnapshot: {
+            orderNumber: 'ORD-001',
+            items: [{ name: 'Terra Wool Coat', imageUrl: 'https://example.com/coat.png' }],
+          },
+        } as unknown as OrderRecord,
+      ]);
+
+      const result = await controller.list({}, ADMIN_USER);
+
+      expect(result.items[0].orderSummary).toEqual({
+        orderNumber: 'ORD-001',
+        firstItemName: 'Terra Wool Coat',
+        firstItemImageUrl: 'https://example.com/coat.png',
+        itemCount: 1,
+      });
+    });
+
+    it('should not call findByIds at all for an empty page', async () => {
+      query.list.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.list({}, ADMIN_USER);
+
+      expect(orders.findByIds).not.toHaveBeenCalled();
     });
   });
 

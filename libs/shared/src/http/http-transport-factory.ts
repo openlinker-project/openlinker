@@ -101,11 +101,15 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
   constructor(deps: HttpTransportFactoryDeps) {
     this.registry = deps.registry;
     this.replicas = deps.replicas && deps.replicas > 0 ? deps.replicas : 1;
-    // Bound: an unbound `globalThis.fetch` reference throws "Illegal
-    // invocation" when later invoked without its `globalThis` receiver in a
-    // browser realm. Node/undici tolerate the unbound form, but this package
-    // is nominally environment-neutral (tech-review finding on #1957).
-    this.baseFetch = deps.fetchImpl ?? globalThis.fetch.bind(globalThis);
+    // Late-bound: the default transport resolves `globalThis.fetch` on every
+    // call, not once at construction. The factory is a `@Global()` singleton
+    // built at app boot, so capturing the reference eagerly would make a later
+    // `global.fetch` swap (how integration tests stub an adapter's outbound
+    // call) silently bypassed — the call would escape to the real network.
+    // Invoking it as a method of `globalThis` also keeps the receiver correct,
+    // which an unbound reference loses ("Illegal invocation" in a browser
+    // realm; Node/undici tolerate it, but this package is environment-neutral).
+    this.baseFetch = deps.fetchImpl ?? ((input, init) => globalThis.fetch(input, init));
   }
 
   forConnection(
