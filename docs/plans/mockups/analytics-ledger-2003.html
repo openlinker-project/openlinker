@@ -141,11 +141,24 @@
   its pair is the one an operator asks for least often. That call belongs on the running
   app, not here.
 
-  TWO DEFECTS WERE FOUND WHILE DOING THIS, both pre-existing and both fixed in place:
-  every `.data-table__cell--right` in the file rendered LEFT-aligned (the bare class
-  loses on specificity to `.data-table th, .data-table td`), and the device-frame
-  simulations needed a phone-side restatement once `auto-fit` stopped absorbing narrow
-  containers. Neither is a round-7 design decision; both are named where they were fixed.
+  THREE DEFECTS WERE FOUND WHILE DOING THIS, all fixed in place and none of them a round-7
+  design decision:
+
+    1. Every `.data-table__cell--right` in the file rendered LEFT-aligned — the bare class
+       loses on specificity to `.data-table th, .data-table td` whatever the source order.
+    2. The `Publish` chip in a "Not listed" cell was a flex sibling at `opacity: 0`, which
+       is invisible but STILL OCCUPIES LAYOUT, so it pushed the label 67 px left of the
+       right edge its own column's numbers use (correction 17: one slot, chip out of flow,
+       label yields on hover).
+    3. The device-frame simulations needed explicit column declarations once `auto-fit`
+       stopped absorbing narrow containers — this one round 7 caused.
+
+  DEFECTS 1 AND 2 WERE CANCELLING EACH OTHER OUT, which is the instructive part and the
+  reason they are listed rather than quietly fixed. While every cell rendered left-aligned,
+  an invisible chip pushing content rightward off the alignment was unobservable; fixing the
+  alignment exposed it in the same minute. A mockup can hide a defect behind a second defect
+  for six rounds, and the only thing that broke the pair open was measuring instead of
+  looking.
 
   Sample data is invented but shaped like the real thing: products and prices come
   from the dev-stack seed (docker/prestashop/post-install-lib/30-seed-test-products.php,
@@ -862,15 +875,57 @@
      so the cell states the fact in words and the legend loses its first entry. The
      text is muted and non-tabular so a column of channel numbers still scans as
      numbers; `Publish` is the opportunity, revealed on row hover / keyboard focus
-     so six rows of chips don't compete with the figures they qualify. */
-  .cell-not-listed { display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end; }
-  .cell-not-listed__label { color: var(--text-muted); font-size: 0.75rem; white-space: nowrap; font-variant-numeric: normal; }
-  .cell-not-listed .chip { opacity: 0; transition: opacity 120ms ease; }
+     so six rows of chips don't compete with the figures they qualify.
+
+     CORRECTION 17 — THE LABEL AND THE CHIP SHARE ONE SLOT, and the bug that forced it is
+     worth recording because it was invisible for six rounds. The chip was a flex sibling
+     at `opacity: 0`, which is invisible but STILL OCCUPIES LAYOUT — so it pushed "Not
+     listed" 67 px (chip + gap) to the left of where the numbers in the same column ended.
+     Nobody saw it while `.data-table__cell--right` was silently losing on specificity and
+     every cell rendered left-aligned; fixing the alignment exposed it at once. Two wrongs
+     had been cancelling out.
+
+     The fix is one slot, not a wider column. The chip is taken OUT of flow and anchored to
+     the slot's right edge — which is exactly where the numbers right-align — and the label
+     fades as the chip arrives. So the column has ONE right edge in every state: at rest the
+     text ends where a number would, on hover the button's right edge lands on the same
+     line, and nothing reflows because an absolutely positioned box cannot change the slot's
+     width. The alternative was a permanent ~64 px action gutter in every channel column,
+     rejected: this table already scrolls horizontally at many channels (which is why the
+     Product column is sticky), so paying that width in every row to serve the few rows with
+     an action is the wrong trade.
+
+     What it costs: while the pointer is in the row, the cell no longer SAYS "not listed".
+     A `Publish` button asserts it — you cannot publish what is already listed — and the
+     label stays in the accessibility tree throughout (opacity, never `display: none`), so a
+     screen reader hears both the state and the action regardless of pointer position. */
+  .cell-not-listed {
+    position: relative; display: inline-flex; align-items: center;
+    justify-content: flex-end; min-height: 1.5rem;
+  }
+  .cell-not-listed__label {
+    color: var(--text-muted); font-size: 0.75rem; white-space: nowrap;
+    font-variant-numeric: normal; transition: opacity 120ms ease;
+  }
+  .cell-not-listed .chip {
+    position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+    opacity: 0; transition: opacity 120ms ease;
+  }
   .data-table tbody tr:hover .cell-not-listed .chip,
   .data-table tbody tr:focus-within .cell-not-listed .chip { opacity: 1; }
-  /* Touch and reduced-motion users get no hover, so the chip is always on there. */
-  @media (hover: none) { .cell-not-listed .chip { opacity: 1; } }
-  @media (prefers-reduced-motion: reduce) { .cell-not-listed .chip { transition: none; } }
+  /* The label yields to the chip rather than being overlapped by it — the swap is what
+     keeps the two out of each other's way inside one slot. */
+  .data-table tbody tr:hover .cell-not-listed:has(.chip) .cell-not-listed__label,
+  .data-table tbody tr:focus-within .cell-not-listed:has(.chip) .cell-not-listed__label { opacity: 0; }
+  /* Touch has no hover, so there is no swap to perform: the chip is simply on, and it is
+     the element that carries the meaning. Same single right edge either way. */
+  @media (hover: none) {
+    .cell-not-listed .chip { opacity: 1; }
+    .cell-not-listed:has(.chip) .cell-not-listed__label { opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cell-not-listed .chip, .cell-not-listed__label { transition: none; }
+  }
   /* Sortable header affordance — data-table.tsx renders the arrow inside the th button. */
   .data-table__sort { display: inline-flex; align-items: center; gap: 4px; color: inherit; font: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-transform: inherit; letter-spacing: inherit; }
   .data-table__sort-arrow { opacity: 0.9; }
@@ -2210,6 +2265,29 @@
           focus and is always visible on touch, so the offer is one glance away without six rows of
           chips competing with the numbers they qualify.
           <br /><br />
+          <b>Correction 17: the label and the chip share ONE slot, and they swap.</b> This started as a
+          visible defect &mdash; &bdquo;Not listed&ldquo; sat 67&nbsp;px left of the right edge the
+          numbers in its own column used &mdash; and the cause is worth carrying into #1991 because it
+          had been invisible for six rounds. The chip was a flex <i>sibling</i> at
+          <code>opacity: 0</code>: invisible, but <b>still occupying layout</b>, so it pushed the label
+          out of the column&rsquo;s alignment by its own width plus the gap. Nobody could see it while
+          <code>.data-table__cell--right</code> was silently losing on specificity and every cell in the
+          file rendered left-aligned. <b>Two defects were cancelling each other out</b>, and fixing the
+          alignment exposed the second one immediately.
+          The chip is now <code>position: absolute; right: 0</code> &mdash; out of flow, anchored to the
+          slot&rsquo;s right edge, which is exactly where a number in that column right-aligns &mdash;
+          and the label fades as the chip arrives. So the column has <b>one right edge in every
+          state</b>: at rest the text ends where a figure would, on hover the button&rsquo;s right edge
+          lands on the same line, and nothing reflows, because an out-of-flow box cannot change the
+          slot&rsquo;s width. A permanent ~64&nbsp;px action gutter in every channel column was the
+          alternative and was rejected: this table already scrolls horizontally at many channels, so
+          paying that width in every row to serve the few rows with an action is the wrong trade.
+          What the swap costs is stated plainly: while the pointer is in the row the cell no longer
+          <i>says</i> &bdquo;not listed&ldquo;. A <code>Publish</code> button asserts it &mdash; you
+          cannot publish what is already listed &mdash; and the label never leaves the accessibility
+          tree (<code>opacity</code>, never <code>display: none</code>), so a screen reader hears both
+          the state and the action however the pointer is placed.
+          <br /><br />
           <b>Decision 8, and the answer to &bdquo;a many-channel instance does not break the
           layout&rdquo;.</b> Channel columns grow with the number of connections, so Product is frozen
           with <code>stickyLeftColumns: 1</code> and the channel block scrolls under it inside
@@ -2650,7 +2728,7 @@
             <tr><td>Mobile cards</td><td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Exists</span></td><td><code>cardView</code> prop &mdash; <code>data-table.tsx:47-76</code>. <b>Not</b> <code>.data-table--stackable</code>.</td></tr>
             <tr><td>Frozen Product column</td><td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Exists</span></td><td><code>stickyLeftColumns: 1</code> &mdash; <code>data-table.tsx:140-158</code></td></tr>
             <tr><td>Trend</td><td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Exists</span></td><td><code>Sparkline</code> &mdash; <code>shared/ui/sparkline.tsx</code>. The only graphic in v1.</td></tr>
-            <tr><td>&bdquo;Not listed&rdquo; cell</td><td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Exists</span></td><td>Plain muted text plus a <code>Chip</code> revealed on <code>:hover</code> / <code>:focus-within</code> (always shown under <code>@media (hover: none)</code>). <code>EmptyValue</code> stays for genuinely absent figures, not for this cell.</td></tr>
+            <tr><td>&bdquo;Not listed&rdquo; cell</td><td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Exists</span></td><td>Plain muted text plus a <code>Chip</code> revealed on <code>:hover</code> / <code>:focus-within</code> (always shown under <code>@media (hover: none)</code>). <code>EmptyValue</code> stays for genuinely absent figures, not for this cell. <b>Correction&nbsp;17:</b> the label and the chip occupy <b>one slot</b> and swap &mdash; the chip is <code>position: absolute; right: 0</code> and the label fades as it arrives. Not cosmetic: as flex siblings, an <code>opacity: 0</code> chip still took layout and pushed the label <b>67&nbsp;px</b> left of the right edge its own column&rsquo;s numbers use. The implementation must not reintroduce the chip into flow, and must not solve it with a fixed action gutter either &mdash; the column pays that width in every row to serve a few.</td></tr>
             <tr><td>Product thumbnail</td><td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Exists</span></td><td><code>ProductThumbnail</code> &mdash; <code>shared/ui/product-thumbnail.tsx</code>. <code>md</code> in the table, <code>sm</code> in the card, per <code>products-list-page.tsx</code>.</td></tr>
             <tr><td>Rank toggle</td><td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Exists</span></td><td><code>SegmentedControl</code> &mdash; <code>index.css:12140</code></td></tr>
             <tr><td>Loading</td><td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Exists</span></td><td><code>DataTableSkeleton</code> &mdash; already mirrors <code>cardView</code> at 767.98px</td></tr>
@@ -4255,10 +4333,10 @@
     ['From / To', 'Labels on the two date inputs',
      'Plain words over "Start date"/"End date": shorter at 11px mono-caps, and the pair reads as one range. `To` includes the whole day, which the specimen table states explicitly.'],
     ['Not listed', 'Visible text in an empty channel cell',
-     'Says the fact instead of encoding it as a dash the operator has to look up. Muted and non-tabular so the column still scans as figures, and sighted and screen-reader users now read the same words — the meaning is no longer carried by an aria-label alone.'],
+     'Says the fact instead of encoding it as a dash the operator has to look up. Muted and non-tabular so the column still scans as figures, right-aligned on the same edge as the figures it stands in for, and sighted and screen-reader users read the same words — the meaning is no longer carried by an aria-label alone. Correction 17: it shares its slot with the Publish chip and yields to it on row hover, so the two never compete for the one right edge.'],
     ['Publish Aparat cyfrowy Canon PowerShot SX740 HS Lite Edition on Erli — it already sells on another channel',
      'aria-label on the Publish chip',
-     'The visible chip is one word because the cell supplies the rest of the sentence; the label spells out product, destination and reason, since a screen-reader user meets the button without that column context.']
+     'The visible chip is one word because the cell supplies the rest of the sentence; the label spells out product, destination and reason, since a screen-reader user meets the button without that column context. That full label is also what makes correction 17 safe: on hover the visible "Not listed" is gone, and this sentence is what still states the situation to anyone reading the button on its own.']
   ];
 
   var mcEl = document.getElementById('microcopy-rows');
