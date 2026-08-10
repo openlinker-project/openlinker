@@ -23,6 +23,8 @@
  * (`acquireToken` in `allegro-category-catalog-client.ts`) — low-volume auth
  * infra, not shop traffic. InPost has no OAuth-token bypass to exempt (static
  * Bearer API token, no token endpoint). No such exemption is needed for
+ * KSeF, Subiekt, or Infakt — none of those clients has an ad-hoc
+ * OAuth-token bypass.
  * KSeF or Subiekt — neither client has an ad-hoc OAuth-token bypass. DPD
  * Polska's HTTP clients and connection tester route through an injected
  * `fetchImpl` too, with no ad-hoc OAuth-token bypass to exempt.
@@ -53,6 +55,7 @@ const SCAN_ROOTS = [
   'libs/integrations/allegro',
   'libs/integrations/dpd-polska',
   'libs/integrations/erli',
+  'libs/integrations/infakt',
   'libs/integrations/inpost',
   'libs/integrations/ksef',
   'libs/integrations/subiekt',
