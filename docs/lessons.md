@@ -237,6 +237,13 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 **Applies to**: `apps/web/src/test/test-utils.tsx` (`renderWithProviders`, `createAuthenticatedSessionAdapter`); any `*.test.tsx` asserting UI behind `AccessGate`, `usePermission`, or `useWriteAccess`.
 **Source**: #1993 (cost two red CI runs before the cause was read correctly).
 
+## A boot-time singleton must resolve `globalThis.fetch` per call, or it silently escapes an integration test's `global.fetch` stub to the real network
+
+**Context**: #1810 routed every plugin's outbound HTTP through the `@Global()` `HttpTransportFactory`; #1972 migrated the DPD plugin onto it. `HttpTransportFactory`'s constructor captured its default transport as `globalThis.fetch.bind(globalThis)`.
+**Problem**: `dpd-tracking.int-spec.ts` stubs `global.fetch`, then resolves the adapter through real DI — the pre-#1972 clients read `globalThis.fetch` at *client construction*, which happens after the stub is installed, so the stub took. Routing through the factory moved that read to *app boot*, before the stub existed: the SOAP call left the CI runner and hit the real `dpdinfoservicesdemo.dpd.com.pl`, which answered with a genuine `Access denied to secured webservice method` fault. The test failed with a plausible-looking auth error rather than anything pointing at the stub being bypassed.
+**Rule**: A process-wide singleton that defaults to a global (`fetch`, `Date`, `crypto`) must read it inside the call, not in the constructor — `(input, init) => globalThis.fetch(input, init)`, which also keeps the receiver an explicit `bind` was there for. When migrating a plugin client onto a shared transport, re-run the int-specs that stub `global.fetch`: an escaped call surfaces as a *remote* error, not as a missing-mock error.
+**Applies to**: `libs/shared/src/http/http-transport-factory.ts`; any plugin client migrating onto `HttpTransportFactoryPort.forConnection`.
+**Source**: #1972 (CI run 31015159797).
 ## Read attempt 1 before concluding a CI failure was spurious
 
 **Context**: the `Build` job failed on PR #2007 (run `31081388177`), was re-run with zero code change, and passed.
