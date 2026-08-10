@@ -19,7 +19,7 @@
  *
  * @module features/connections/components
  */
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
@@ -62,11 +62,34 @@ export function RateLimitSection({
 }: RateLimitSectionProps): ReactElement {
   const errors = form.formState.errors.rateLimit;
 
+  const hasStoredValue =
+    Boolean(form.getValues('rateLimit.requestsPerMinute')) ||
+    Boolean(form.getValues('rateLimit.maxConcurrent'));
+  // Local UI state (docs/frontend-architecture.md § Local UI State) — whether
+  // the override inputs are shown. NOT derived from the field values on every
+  // render: turning the checkbox ON with both fields still empty must keep
+  // the inputs visible (a derived `enabled` would immediately flip back to
+  // "off" the instant it's checked, since neither field has a value yet).
+  const [enabled, setEnabled] = useState(hasStoredValue);
+
   const handleChange = (field: 'requestsPerMinute' | 'maxConcurrent', value: string): void => {
     // ORDERING TRAP: write the form field FIRST, then re-serialize — the
     // sync function reads CURRENT form state via getValues.
     form.setValue(`rateLimit.${field}`, value, { shouldDirty: true });
     syncRateLimitToJson();
+  };
+
+  // #2016 — unchecking is the "revert to adapter default / unlimited" action.
+  // Clearing both fields (rather than just hiding them) is what makes
+  // `mergeStructuredIntoConfig`'s rateLimit clause persist an explicit
+  // `config.rateLimit: null` instead of leaving a stale value in place.
+  const handleEnabledChange = (checked: boolean): void => {
+    setEnabled(checked);
+    if (!checked) {
+      form.setValue('rateLimit.requestsPerMinute', '', { shouldDirty: true });
+      form.setValue('rateLimit.maxConcurrent', '', { shouldDirty: true });
+      syncRateLimitToJson();
+    }
   };
 
   return (
@@ -76,13 +99,13 @@ export function RateLimitSection({
         OpenLinker spaces requests evenly rather than sending them in bursts.{' '}
         {defaultRateLimit ? (
           <>
-            Leave both fields empty to use this connection&apos;s adapter default —{' '}
+            Leave rate limiting off to use this connection&apos;s adapter default —{' '}
             <strong>{formatRateLimit(defaultRateLimit)}</strong>. Setting either field replaces the
             adapter default entirely — the other field is then genuinely unlimited, not still
             capped by the default.
           </>
         ) : (
-          <>Leave both fields empty for unlimited (the default for this adapter).</>
+          <>Leave rate limiting off for unlimited (the default for this adapter).</>
         )}{' '}
         Enforcement is rolling out sync path by sync path — setting a cap here has no effect until
         this connection&apos;s outbound traffic has been migrated onto it. If you run multiple
@@ -91,45 +114,59 @@ export function RateLimitSection({
         multiplying it per replica.
       </p>
 
-      <FormField
-        label="Requests per minute"
-        name="rateLimit.requestsPerMinute"
-        error={errors?.requestsPerMinute?.message}
-        description="Smooth-paced cap, split evenly across replicas — e.g. 60 with 1 replica spaces requests roughly one per second."
-      >
-        <Input
-          value={form.watch('rateLimit.requestsPerMinute') ?? ''}
-          onChange={(event) => handleChange('requestsPerMinute', event.target.value)}
+      <label className="rate-limit-section__toggle">
+        <input
+          type="checkbox"
+          checked={enabled}
           disabled={!configIsParseable}
-          placeholder={
-            defaultRateLimit?.requestsPerMinute !== undefined
-              ? `Default: ${defaultRateLimit.requestsPerMinute}`
-              : 'Unlimited'
-          }
-          inputMode="numeric"
-          invalid={Boolean(errors?.requestsPerMinute)}
+          onChange={(event) => handleEnabledChange(event.target.checked)}
         />
-      </FormField>
+        <span>Enable rate limiting</span>
+      </label>
 
-      <FormField
-        label="Max concurrent requests"
-        name="rateLimit.maxConcurrent"
-        error={errors?.maxConcurrent?.message}
-        description="Caps simultaneous in-flight requests to this connection, split evenly across replicas. These two caps are independent — whichever one binds first wins."
-      >
-        <Input
-          value={form.watch('rateLimit.maxConcurrent') ?? ''}
-          onChange={(event) => handleChange('maxConcurrent', event.target.value)}
-          disabled={!configIsParseable}
-          placeholder={
-            defaultRateLimit?.maxConcurrent !== undefined
-              ? `Default: ${defaultRateLimit.maxConcurrent}`
-              : 'Unlimited'
-          }
-          inputMode="numeric"
-          invalid={Boolean(errors?.maxConcurrent)}
-        />
-      </FormField>
+      {enabled ? (
+        <>
+          <FormField
+            label="Requests per minute"
+            name="rateLimit.requestsPerMinute"
+            error={errors?.requestsPerMinute?.message}
+            description="Smooth-paced cap, split evenly across replicas — e.g. 60 with 1 replica spaces requests roughly one per second."
+          >
+            <Input
+              value={form.watch('rateLimit.requestsPerMinute') ?? ''}
+              onChange={(event) => handleChange('requestsPerMinute', event.target.value)}
+              disabled={!configIsParseable}
+              placeholder={
+                defaultRateLimit?.requestsPerMinute !== undefined
+                  ? `Default: ${defaultRateLimit.requestsPerMinute}`
+                  : 'Unlimited'
+              }
+              inputMode="numeric"
+              invalid={Boolean(errors?.requestsPerMinute)}
+            />
+          </FormField>
+
+          <FormField
+            label="Max concurrent requests"
+            name="rateLimit.maxConcurrent"
+            error={errors?.maxConcurrent?.message}
+            description="Caps simultaneous in-flight requests to this connection, split evenly across replicas. These two caps are independent — whichever one binds first wins."
+          >
+            <Input
+              value={form.watch('rateLimit.maxConcurrent') ?? ''}
+              onChange={(event) => handleChange('maxConcurrent', event.target.value)}
+              disabled={!configIsParseable}
+              placeholder={
+                defaultRateLimit?.maxConcurrent !== undefined
+                  ? `Default: ${defaultRateLimit.maxConcurrent}`
+                  : 'Unlimited'
+              }
+              inputMode="numeric"
+              invalid={Boolean(errors?.maxConcurrent)}
+            />
+          </FormField>
+        </>
+      ) : null}
     </section>
   );
 }

@@ -4224,6 +4224,16 @@ a.delivery-rider-banner__button:focus-visible {
   font-size: 0.875rem;
 }
 
+.rate-limit-section__toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+
 .capability-list__name {
   font-weight: 500;
   color: var(--text-primary);
