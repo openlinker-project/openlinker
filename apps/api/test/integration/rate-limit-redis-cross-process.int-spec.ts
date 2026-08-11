@@ -34,6 +34,17 @@ describe('Redis rate limiter cross-process sharing', () => {
   });
 
   it('shares one maxConcurrent cap across two adapter instances', async () => {
+    // Regression (CI run 31472849426): the original version of this test
+    // awaited all four acquire() calls via a single Promise.all with no
+    // release in between. With maxConcurrent: 2, the 3rd/4th call can only
+    // ever admit either via a genuine release or via the inflight ZSET's
+    // MAX_CALL_LIFETIME_MS (120s) orphan self-heal — and since nothing was
+    // released before the await, it depended entirely on that self-heal,
+    // which sits at exactly Jest's default 120000ms test timeout. The test
+    // therefore raced its own timeout and reliably failed CI. Rewritten to
+    // prove the shared cap the same way the next test does — via an actual
+    // release — while still covering BOTH instances holding a slot AND
+    // BOTH instances having a caller admitted only after release.
     const connectionId = `conn-cross-${Date.now()}`;
     const apiInstance = new RedisRateLimiterAdapter(connectionId, redisClient);
     const workerInstance = new RedisRateLimiterAdapter(connectionId, redisClient, {
@@ -41,18 +52,35 @@ describe('Redis rate limiter cross-process sharing', () => {
     });
     const policy = { maxConcurrent: 2 };
 
-    const releases = await Promise.all([
-      apiInstance.acquire(policy),
-      apiInstance.acquire(policy),
-      workerInstance.acquire(policy),
-      workerInstance.acquire(policy),
-    ]);
+    // Both slots claimed by DIFFERENT instances — already proves the two
+    // instances observe one shared two-slot cap, not two independent ones
+    // (which would let a third/fourth call admit immediately too).
+    const releaseA = await apiInstance.acquire(policy);
+    const releaseB = await workerInstance.acquire(policy);
 
-    // All four eventually admit (none reject), but at no point could more
-    // than 2 be in flight at once — asserted below by re-claiming while the
-    // first two are still held.
-    expect(releases).toHaveLength(4);
-    releases.forEach((release) => release());
+    let thirdAdmitted = false;
+    let fourthAdmitted = false;
+    const thirdPromise = apiInstance.acquire(policy).then((release) => {
+      thirdAdmitted = true;
+      return release;
+    });
+    const fourthPromise = workerInstance.acquire(policy).then((release) => {
+      fourthAdmitted = true;
+      return release;
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(thirdAdmitted).toBe(false);
+    expect(fourthAdmitted).toBe(false);
+
+    releaseA();
+    releaseB();
+
+    const [releaseC, releaseD] = await Promise.all([thirdPromise, fourthPromise]);
+    expect(thirdAdmitted).toBe(true);
+    expect(fourthAdmitted).toBe(true);
+    releaseC();
+    releaseD();
   });
 
   it('rejects the 3rd concurrent caller while 2 slots are held, admits after a release', async () => {
