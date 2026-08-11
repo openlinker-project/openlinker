@@ -2767,7 +2767,7 @@ a.delivery-rider-banner__button:focus-visible {
   box-shadow: var(--shadow-focus);
 }
 
-.data-table__cell--right {
+.data-table td.data-table__cell--right {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
