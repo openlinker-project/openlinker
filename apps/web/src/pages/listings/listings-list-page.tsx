@@ -1,73 +1,198 @@
-import { useState, type ReactElement, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
-import { useTableSort } from '../../shared/ui/use-table-sort';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
+import { EmptyValue } from '../../shared/ui/empty-value';
 import { Input } from '../../shared/ui/input';
+import { KeyValueList } from '../../shared/ui/key-value-list';
+import { ProductThumbnail } from '../../shared/ui/product-thumbnail';
+import { StatusBadge } from '../../shared/ui/status-badge';
 import { TimeDisplay } from '../../shared/ui/time-display';
+import { formatAmount } from '../../shared/format/format-amount';
+import { formatDateTime } from '../../shared/format/format-date';
+import { usePlatforms } from '../../shared/plugins';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
+import {
+  ConnectionCell,
+  useConnectionsQuery,
+  type ConnectionCellFacts,
+} from '../../features/connections';
+import { resolvePlatformLabel } from '../../features/mappings/lib/platform-label';
 import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
 import { OfferProductPickerModal } from '../../features/listings/components/offer-product-picker-modal';
+import {
+  listingRowAlert,
+  listingRowBadges,
+  type ListingRowBadge,
+} from '../../features/listings/lib/listing-row-state';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
-import type {
-  ListingsFilters,
-  OfferMapping,
-} from '../../features/listings/api/listings.types';
+import type { ListingsFilters, OfferMapping } from '../../features/listings/api/listings.types';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
 
-const COLUMNS: DataTableColumn<OfferMapping>[] = [
-  {
-    id: 'externalId',
-    header: 'External ID',
-    cell: (m): ReactNode => (
-      <span className="mono-text" title={m.externalId}>
-        {m.externalId}
+/**
+ * Column heading that names whose number the column carries. Price and quantity
+ * are what the CHANNEL reports - already the output of the connection's
+ * pricing rule and already net of its stock safety buffer - so a bare "Price"
+ * would read as OL's own catalog price and a correctly-configured buffer would
+ * look like a bug (#1843 / #1844).
+ */
+function ColumnHead({ label, note }: { label: string; note: string }): ReactElement {
+  return (
+    <span className="listings-col-head">
+      {label}
+      <span className="listings-col-head__note">{note}</span>
+    </span>
+  );
+}
+
+function RowBadge({ badge }: { badge: ListingRowBadge }): ReactElement {
+  return (
+    <StatusBadge
+      tone={badge.tone}
+      compact
+      withDot
+      pulse={badge.pulse ?? false}
+      solid={badge.solid ?? false}
+      className="listing-cell__badge"
+    >
+      {/* StatusBadge takes no native props, so the hover nuance rides a span. */}
+      <span title={badge.title}>{badge.label}</span>
+    </StatusBadge>
+  );
+}
+
+/**
+ * Thumbnail + product name + variant + conditional badges, over a line that
+ * groups the three identifiers (external offer id, SKU, EAN). The product name
+ * is deliberately NOT its own link: `DataTable` already wraps the first cell in
+ * the row link, and an anchor inside an anchor is invalid markup.
+ */
+function ListingCell({ row }: { row: OfferMapping }): ReactElement {
+  const identity = row.identity ?? null;
+  const badges = listingRowBadges(row);
+  const alert = listingRowAlert(row);
+  const name = identity?.productName ?? null;
+
+  return (
+    <span className="listing-cell">
+      <ProductThumbnail name={name ?? row.externalId} src={identity?.imageUrl ?? null} size="md" />
+      <span className="listing-cell__body">
+        <span className="listing-cell__head">
+          {name ? (
+            <span className="listing-cell__name" title={name}>
+              {name}
+            </span>
+          ) : (
+            <span className="listing-cell__name listing-cell__name--missing">
+              {identity ? 'Unnamed product' : 'No linked variant'}
+            </span>
+          )}
+          {identity?.variantLabel ? (
+            <span className="listing-cell__variant">{identity.variantLabel}</span>
+          ) : null}
+          {badges.map((badge) => (
+            <RowBadge key={badge.id} badge={badge} />
+          ))}
+        </span>
+        <span className="listing-cell__meta">
+          <span className="listing-cell__offerid" title={row.externalId}>
+            {row.externalId}
+          </span>
+          {identity?.sku ? (
+            <span>
+              SKU: <em>{identity.sku}</em>
+            </span>
+          ) : null}
+          {identity?.ean ? (
+            <span>
+              EAN: <em>{identity.ean}</em>
+            </span>
+          ) : null}
+        </span>
+        {alert ? (
+          <span className="listing-cell__reason" title={alert.title}>
+            {alert.text}
+          </span>
+        ) : null}
       </span>
-    ),
-  },
-  {
-    id: 'internalId',
-    header: 'Internal ID',
-    cell: (m): ReactNode => <span className="mono-text">{m.internalId}</span>,
-    hideBelow: 1024,
-  },
-  {
-    id: 'platformType',
-    header: 'Platform',
-    cell: (m): ReactNode => <span className="mono-text">{m.platformType}</span>,
-    accessor: (m): string => m.platformType,
-    sortable: true,
-  },
-  {
-    id: 'entityType',
-    header: 'Entity Type',
-    cell: (m): ReactNode => <span className="mono-text">{m.entityType}</span>,
-    hideBelow: 768,
-  },
-  {
-    id: 'connectionId',
-    header: 'Connection',
-    cell: (m): ReactNode => <span className="mono-text">{m.connectionId}</span>,
-    hideBelow: 768,
-  },
-  {
-    id: 'createdAt',
-    header: 'Created',
-    cell: (m): ReactNode => <TimeDisplay iso={m.createdAt} format="date" />,
-    accessor: (m): string => m.createdAt,
-    sortable: true,
-  },
-];
+    </span>
+  );
+}
+
+function ChannelPill({ row, label }: { row: OfferMapping; label: string }): ReactElement {
+  return (
+    <span className="channel-pill" data-channel={row.platformType}>
+      {label}
+    </span>
+  );
+}
+
+/**
+ * Price with the age of the observation it came from. The age lives here rather
+ * than being split across both commercial columns: it is one per-row fact, and
+ * a price shown without it is a price an operator acts on (ADR-009's #2024
+ * amendment). It renders even when the price itself was not reported, because
+ * "as of" stays true for the quantity beside it.
+ */
+function PriceCell({ row }: { row: OfferMapping }): ReactElement {
+  const commercial = row.commercial ?? null;
+  if (!commercial) return <EmptyValue label="No channel reading yet" />;
+
+  const readAt = `Price and quantity on channel, last read ${formatDateTime(
+    commercial.lastCommercialSyncedAt,
+  )}`;
+
+  return (
+    <span className="price-cell">
+      <span className="price-cell__value">
+        {commercial.price == null ? (
+          <EmptyValue label="Price not reported by the channel" />
+        ) : (
+          formatAmount(commercial.price, commercial.currency ?? undefined)
+        )}
+      </span>
+      <TimeDisplay
+        className="price-cell__age"
+        iso={commercial.lastCommercialSyncedAt}
+        format="relative"
+        title={readAt}
+      />
+    </span>
+  );
+}
+
+function QuantityCell({ row }: { row: OfferMapping }): ReactElement {
+  const quantity = row.commercial?.availableQuantity;
+  // Absence is not zero: a marketplace that reported no quantity says nothing
+  // about whether the offer has stock.
+  if (quantity == null) return <EmptyValue label="Quantity not reported by the channel" />;
+
+  return (
+    <span className="qty-cell">
+      <span className="qty-cell__value">{quantity}</span>
+      {quantity === 0 ? (
+        <StatusBadge tone="error" compact withDot>
+          Out of stock
+        </StatusBadge>
+      ) : null}
+    </span>
+  );
+}
+
+function UpdatedCell({ row }: { row: OfferMapping }): ReactElement {
+  const syncedAt = row.channelStatus?.lastStatusSyncedAt;
+  if (!syncedAt) return <EmptyValue label="Channel status never read" />;
+  return <TimeDisplay className="time-cell" iso={syncedAt} format="datetime" />;
+}
 
 export function ListingsListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { sort, setSort } = useTableSort([{ id: 'createdAt', desc: true }]);
 
   const urlSearch = searchParams.get('search') ?? '';
   const urlConnectionId = searchParams.get('connectionId') ?? '';
@@ -86,6 +211,70 @@ export function ListingsListPage(): ReactElement {
   const pagination = { limit: PAGE_SIZE, offset };
 
   const query = useListingsQuery(filters, pagination);
+
+  const platforms = usePlatforms();
+  // One batched read for the whole page - the Connection column must never cost
+  // a request per row (#1996).
+  const connectionsQuery = useConnectionsQuery();
+  const connectionsById = useMemo(() => {
+    const map = new Map<string, ConnectionCellFacts>();
+    for (const connection of connectionsQuery.data ?? []) {
+      map.set(connection.id, { name: connection.name, status: connection.status });
+    }
+    return map;
+  }, [connectionsQuery.data]);
+
+  const channelLabel = useCallback(
+    (row: OfferMapping): string => resolvePlatformLabel(platforms, row),
+    [platforms],
+  );
+
+  const columns = useMemo<DataTableColumn<OfferMapping>[]>(
+    () => [
+      {
+        id: 'listing',
+        header: 'Listing',
+        cell: (row): ReactNode => <ListingCell row={row} />,
+      },
+      {
+        id: 'channel',
+        header: 'Channel',
+        cell: (row): ReactNode => <ChannelPill row={row} label={channelLabel(row)} />,
+      },
+      {
+        id: 'connection',
+        header: 'Connection',
+        // `.get()` returns undefined on a miss, which ConnectionCell reads as
+        // "resolve it yourself" and would turn back into a per-row fetch -
+        // coalesce to null and hand it the batched query's loading state.
+        cell: (row): ReactNode => (
+          <ConnectionCell
+            connectionId={row.connectionId}
+            connection={connectionsById.get(row.connectionId) ?? null}
+            loading={connectionsQuery.isLoading}
+          />
+        ),
+      },
+      {
+        id: 'price',
+        header: <ColumnHead label="Price" note="on channel" />,
+        align: 'right',
+        cell: (row): ReactNode => <PriceCell row={row} />,
+      },
+      {
+        id: 'quantity',
+        header: <ColumnHead label="Quantity" note="on channel" />,
+        align: 'right',
+        cell: (row): ReactNode => <QuantityCell row={row} />,
+      },
+      {
+        id: 'updated',
+        header: 'Updated',
+        cell: (row): ReactNode => <UpdatedCell row={row} />,
+      },
+    ],
+    [channelLabel, connectionsById, connectionsQuery.isLoading],
+  );
 
   function handleFilterChange(key: string, value: string): void {
     if (key === 'search') setSearchInput(value);
@@ -147,7 +336,7 @@ export function ListingsListPage(): ReactElement {
     <PageLayout
       eyebrow="Operations"
       title="Listings"
-      description="Offer mapping workbench — browse offer-to-variant identifier mappings across platforms."
+      description="Everything you sell on connected channels, and what state it is in right now."
       actions={
         write.visible ? (
           <Button onClick={() => setIsWizardOpen(true)}>Publish products</Button>
@@ -174,7 +363,7 @@ export function ListingsListPage(): ReactElement {
       </div>
 
       {query.isLoading ? (
-        <DataTableSkeleton columns={COLUMNS} />
+        <DataTableSkeleton columns={columns} />
       ) : query.error ? (
         <ErrorState
           title="Unable to load listings"
@@ -211,17 +400,91 @@ export function ListingsListPage(): ReactElement {
       ) : (
         <>
           <DataTable
-            caption="Offer mappings"
-            columns={COLUMNS}
+            caption="Listings"
+            columns={columns}
             rows={query.data?.items ?? []}
             rowKey={(m) => m.id}
             rowHref={(m) => m.id}
-            sort={sort}
-            onSortChange={setSort}
             cardView={{
-              title: (m) => m.externalId,
-              subtitle: (m) => `${m.platformType} · ${m.entityType}`,
-              meta: (m) => <TimeDisplay iso={m.createdAt} format="date" />,
+              title: (m) => <ListingCell row={m} />,
+              // Channel / Connection / Price / Quantity as a two-column fact
+              // list — the four columns the fold drops (#1965 frame 05).
+              summary: (m) => (
+                <dl className="listings-card-facts">
+                  <div>
+                    <dt>Channel</dt>
+                    <dd>
+                      <ChannelPill row={m} label={channelLabel(m)} />
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Connection</dt>
+                    <dd>
+                      <ConnectionCell
+                        connectionId={m.connectionId}
+                        connection={connectionsById.get(m.connectionId) ?? null}
+                        loading={connectionsQuery.isLoading}
+                      />
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Price on channel</dt>
+                    <dd>
+                      <PriceCell row={m} />
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Quantity on channel</dt>
+                    <dd>
+                      <QuantityCell row={m} />
+                    </dd>
+                  </div>
+                </dl>
+              ),
+              // The long-form fields stay behind a disclosure so the card leads
+              // with the four facts above rather than a wall of identifiers.
+              collapsibleDetail: true,
+              detail: (m) => (
+                <KeyValueList
+                  items={[
+                    {
+                      id: 'lifecycle',
+                      label: 'Lifecycle',
+                      value: m.channelStatus?.lifecycle ?? <EmptyValue />,
+                    },
+                    {
+                      id: 'publicationStatus',
+                      label: 'Channel status',
+                      value: m.channelStatus?.publicationStatus ?? <EmptyValue />,
+                      mono: true,
+                    },
+                    {
+                      id: 'updated',
+                      label: 'Status read',
+                      value: <UpdatedCell row={m} />,
+                    },
+                    {
+                      id: 'internalId',
+                      label: 'Variant ID',
+                      value: m.internalId,
+                      mono: true,
+                    },
+                    {
+                      id: 'validation',
+                      label: 'Validator messages',
+                      value: m.channelStatus?.validationMessages.length ? (
+                        <ul className="listings-card-messages">
+                          {m.channelStatus.validationMessages.map((message) => (
+                            <li key={message}>{message}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <EmptyValue label="No validator messages" />
+                      ),
+                    },
+                  ]}
+                />
+              ),
             }}
           />
 
@@ -251,10 +514,7 @@ export function ListingsListPage(): ReactElement {
         </>
       )}
 
-      <OfferProductPickerModal
-        isOpen={isWizardOpen}
-        onClose={() => setIsWizardOpen(false)}
-      />
+      <OfferProductPickerModal isOpen={isWizardOpen} onClose={() => setIsWizardOpen(false)} />
     </PageLayout>
   );
 }
