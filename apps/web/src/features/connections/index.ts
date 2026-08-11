@@ -81,6 +81,8 @@ export {
 } from './components/infakt-webhook-config';
 
 export { ConnectionEntityLabel } from './components/ConnectionEntityLabel';
+export { ConnectionCell } from './components/ConnectionCell';
+export type { ConnectionCellProps } from './components/ConnectionCell';
 export { PrestashopRateLimitReadout } from './components/prestashop-rate-limit-readout';
 export { AllegroSellerDefaultsSection } from './components/allegro-seller-defaults-section';
 export { CapabilityTogglesSection } from './components/CapabilityTogglesSection';

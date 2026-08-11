@@ -97,7 +97,12 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
 
 const OL_ID_PATTERN = /^(ol_[a-z][a-z0-9-]*_)(.+)$/;
 
-function shortenId(id: string): string {
+/**
+ * Shared id-shortening rule (#2027). Exported so composites like
+ * `ConnectionCell` that pair `EntityLabel` with `CopyableId` reuse the exact
+ * same shortening algorithm instead of growing a second implementation.
+ */
+export function shortenId(id: string): string {
   const match = OL_ID_PATTERN.exec(id);
   if (match) {
     const [, prefix, rest] = match;

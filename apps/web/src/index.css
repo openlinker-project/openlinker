@@ -9370,6 +9370,36 @@ a.kpi-card:focus-visible {
   transform: translateX(0);
 }
 
+/* ── ConnectionCell (#2027) ──────────────────────────────────────────
+ * Two-line composition: EntityLabel (name + link) on line 1, CopyableId
+ * (shortened id + hover-Copy) on line 2. EntityLabel's own Copy button is
+ * always-visible by design elsewhere, but here it would duplicate
+ * CopyableId's hover-reveal Copy of the same id with no benefit, so it's
+ * hidden within this cell's scope.
+ */
+.connection-cell {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.connection-cell__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.connection-cell__body > * {
+  max-width: 100%;
+}
+
+.connection-cell .entity-label__copy {
+  display: none;
+}
+
 /* ── Structured error list (#775) ───────────────────────────────────
  * Compact tone-tinted rows that replace the "wall of red pills"
  * treatment for repeated errors on connection-detail health tabs.
