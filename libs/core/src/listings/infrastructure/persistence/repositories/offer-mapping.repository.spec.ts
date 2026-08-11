@@ -14,6 +14,8 @@ import { QueryFailedError } from 'typeorm';
 import { IdentifierMapping } from '@openlinker/core/identifier-mapping';
 import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 
+import { UnfilterableOfferLifecycleException } from '../../../domain/exceptions/unfilterable-offer-lifecycle.exception';
+import type { OfferLifecycle } from '../../../domain/types/offer-lifecycle.types';
 import { OfferCommercialSnapshotOrmEntity } from '../entities/offer-commercial-snapshot.orm-entity';
 import { OfferStatusSnapshotOrmEntity } from '../entities/offer-status-snapshot.orm-entity';
 import { OfferMappingRepository } from './offer-mapping.repository';
@@ -377,6 +379,22 @@ describe('OfferMappingRepository', () => {
       });
     });
 
+    it('should read a publication status outside the union as Unsynced rather than leaving the row on no tab', async () => {
+      const qb = buildListQb([buildRawRow({ publicationStatus: 'suspended' })]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const result = await repository.findMany({}, { limit: 20, offset: 0 });
+
+      // The column is unconstrained text; without narrowing, the exhaustive
+      // switch returns undefined and the row renders on no lifecycle tab.
+      expect(result.items[0].channelStatus).toEqual({
+        publicationStatus: null,
+        lifecycle: 'Unsynced',
+        validationMessages: [],
+        lastStatusSyncedAt: null,
+      });
+    });
+
     it('should report an absent product name honestly rather than as a blank string', async () => {
       const qb = buildListQb([buildRawRow({ productName: null })]);
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
@@ -500,6 +518,23 @@ describe('OfferMappingRepository', () => {
 
         // getCount runs with the lifecycle predicate already attached.
         expect(result.total).toBe(7);
+      });
+
+      it('should throw rather than silently serve the Unsynced page for a bucket it cannot express', async () => {
+        const qb = buildListQb([]);
+        (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+        // Stands in for a sixth bucket keyed on something outside the closed
+        // `OfferSnapshotFacts` pair (variant staleness, snapshot age, a
+        // creation-record field). It resolves to no facts - exactly like
+        // `Unsynced` - so a length check alone would hand it the Unsynced
+        // predicate: a wrong page, no error, no failing type-check.
+        await expect(
+          repository.findMany({ lifecycle: 'Archived' as OfferLifecycle }, { limit: 20, offset: 0 })
+        ).rejects.toBeInstanceOf(UnfilterableOfferLifecycleException);
+
+        const calls = qb.andWhere.mock.calls as Array<[string, unknown?]>;
+        expect(calls.some(([clause]) => clause.startsWith('NOT '))).toBe(false);
       });
 
       it('should keep the other filters alongside the lifecycle narrowing', async () => {
@@ -651,12 +686,19 @@ describe('OfferMappingRepository', () => {
         '(oss."publicationStatus" IS NOT NULL AND oss."lastStatusSyncedAt" IS NOT NULL)'
       );
       // The bucket names must not appear in SQL - the rule lives in TypeScript.
+      // Every clause-emitting call is scanned, not just the projection ones: a
+      // future edit pushing a bucket name into a WHERE on the count path would
+      // otherwise slip past this guard.
       const emittedSql = [
-        ...(qb.groupBy.mock.calls as string[][]),
-        ...(qb.addGroupBy.mock.calls as string[][]),
-        ...(qb.addSelect.mock.calls as string[][]),
+        ...(qb.groupBy.mock.calls as unknown[][]),
+        ...(qb.addGroupBy.mock.calls as unknown[][]),
+        ...(qb.addSelect.mock.calls as unknown[][]),
+        ...(qb.select.mock.calls as unknown[][]),
+        ...(qb.where.mock.calls as unknown[][]),
+        ...(qb.andWhere.mock.calls as unknown[][]),
       ]
         .flat()
+        .filter((argument): argument is string => typeof argument === 'string')
         .join(' ');
       for (const bucket of ['Active', 'Inactive', 'Draft', 'Ended', 'Unsynced']) {
         expect(emittedSql).not.toContain(bucket);
@@ -722,6 +764,154 @@ describe('OfferMappingRepository', () => {
 
       expect(counts.Active).toBe(12);
       expect(typeof counts.Active).toBe('number');
+    });
+
+    it('should count DISTINCT mapping ids, the same count shape the list total uses', async () => {
+      const qb = buildCountsQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.countByLifecycle({});
+
+      // `getCount()` on the list path compiles to COUNT(DISTINCT mapping.id).
+      // A plain COUNT(*) here would agree only by accident, and would inflate
+      // past the total the day a 1:N join reaches the shared builder.
+      expect(qb.addSelect).toHaveBeenCalledWith('COUNT(DISTINCT mapping.id)', 'count');
+    });
+
+    it('should keep an unrecognised publication status inside the partition instead of dropping it', async () => {
+      // `offer_status_snapshots."publicationStatus"` is unconstrained text, so a
+      // value outside the union is reachable. Untreated it falls off the end of
+      // the exhaustive switch as `undefined`, lands on a stray counts key as
+      // NaN and vanishes from all five buckets - a silent under-count.
+      const qb = buildCountsQb([
+        {
+          publicationStatus: 'suspended',
+          hasStatusSnapshot: true,
+          hasValidationMessages: false,
+          count: '5',
+        },
+        synced('active', 2),
+      ]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const counts = await repository.countByLifecycle({});
+
+      expect(counts).toEqual({ Active: 2, Inactive: 0, Draft: 0, Ended: 0, Unsynced: 5 });
+      const total = Object.values(counts).reduce((sum, value) => sum + value, 0);
+      expect(total).toBe(7);
+      expect(Object.keys(counts).sort()).toEqual(
+        ['Active', 'Draft', 'Ended', 'Inactive', 'Unsynced'].sort()
+      );
+    });
+  });
+
+  describe('snapshot-presence agreement between the list and its counts (#2026)', () => {
+    // `HAS_STATUS_SNAPSHOT_SQL` encodes "the snapshot exists" as a pair of null
+    // checks that `toChannelStatus` re-encodes in TypeScript. That pair is the
+    // one lifecycle rule still hand-duplicated, and it decides the Unsynced
+    // bucket - i.e. most of a fresh catalog. These cases pin the two together.
+    type PresenceCase = {
+      label: string;
+      publicationStatus: string | null;
+      lastStatusSyncedAt: Date | null;
+      /** What the SQL predicate yields for the same row. */
+      hasStatusSnapshot: boolean;
+    };
+
+    const cases: PresenceCase[] = [
+      {
+        label: 'no snapshot row at all',
+        publicationStatus: null,
+        lastStatusSyncedAt: null,
+        hasStatusSnapshot: false,
+      },
+      {
+        label: 'a status with no sync timestamp',
+        publicationStatus: 'active',
+        lastStatusSyncedAt: null,
+        hasStatusSnapshot: false,
+      },
+      {
+        label: 'a sync timestamp with no status',
+        publicationStatus: null,
+        lastStatusSyncedAt: new Date('2026-04-20T10:00:00Z'),
+        hasStatusSnapshot: false,
+      },
+    ];
+
+    it.each(cases)('should read $label as Unsynced on BOTH paths', async (testCase) => {
+      const listQb = {
+        leftJoin: jest.fn(),
+        where: jest.fn(),
+        andWhere: jest.fn(),
+        select: jest.fn(),
+        addSelect: jest.fn(),
+        orderBy: jest.fn(),
+        addOrderBy: jest.fn(),
+        offset: jest.fn(),
+        limit: jest.fn(),
+        getCount: jest.fn().mockResolvedValue(1),
+        getRawMany: jest.fn().mockResolvedValue([
+          {
+            id: 'mapping-uuid',
+            entityType: 'Offer',
+            internalId: 'ol_variant_123',
+            externalId: 'allegro-offer-1',
+            platformType: 'allegro',
+            connectionId: 'conn-uuid',
+            context: null,
+            createdAt: now,
+            updatedAt: now,
+            productId: null,
+            productName: null,
+            productImages: null,
+            variantSku: null,
+            variantEan: null,
+            variantAttributes: null,
+            variantIsStale: null,
+            publicationStatus: testCase.publicationStatus,
+            statusDetails: null,
+            lastStatusSyncedAt: testCase.lastStatusSyncedAt,
+            commercialPrice: null,
+            commercialCurrency: null,
+            commercialAvailableQuantity: null,
+            lastCommercialSyncedAt: null,
+          },
+        ]),
+      };
+      for (const [key, value] of Object.entries(listQb)) {
+        if (key !== 'getCount' && key !== 'getRawMany') {
+          (value).mockReturnValue(listQb);
+        }
+      }
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(listQb);
+      const list = await repository.findMany({}, { limit: 20, offset: 0 });
+
+      const countsQb = {
+        leftJoin: jest.fn(),
+        where: jest.fn(),
+        andWhere: jest.fn(),
+        select: jest.fn(),
+        addSelect: jest.fn(),
+        groupBy: jest.fn(),
+        addGroupBy: jest.fn(),
+        getRawMany: jest.fn().mockResolvedValue([
+          {
+            publicationStatus: testCase.publicationStatus,
+            hasStatusSnapshot: testCase.hasStatusSnapshot,
+            hasValidationMessages: false,
+            count: '1',
+          },
+        ]),
+      };
+      for (const [key, value] of Object.entries(countsQb)) {
+        if (key !== 'getRawMany') (value).mockReturnValue(countsQb);
+      }
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(countsQb);
+      const counts = await repository.countByLifecycle({});
+
+      expect(list.items[0].channelStatus.lifecycle).toBe('Unsynced');
+      expect(counts.Unsynced).toBe(1);
     });
   });
 

@@ -28,6 +28,14 @@ import { OfferPublicationStatusValues, type OfferPublicationStatus } from './off
 import type { OfferStatusSnapshotDetails } from './offer-status-snapshot.types';
 
 /**
+ * `Draft` means **not live on the channel, with no validator messages** - and
+ * nothing stronger. It is tempting to read it as "never went live", but the
+ * snapshot cannot support that claim: both shipping adapters map a deliberately
+ * DEACTIVATED formerly-live offer to `inactive` too, and Erli's
+ * `mapErliStatusToReadResult` additionally routes its `default:` branch (a
+ * status OL does not recognise, or none at all) to `inactive` with empty
+ * `validationErrors`. Operator-facing copy must not promise more than that.
+ *
  * `Unsynced` is a deliberate deviation from the #1965 mockup's four tabs, not
  * drift: the status scan is hourly at 100 offers/tick, so most of a large
  * catalog carries no snapshot for days. Without a fifth bucket those rows
@@ -50,6 +58,17 @@ import type { OfferStatusSnapshotDetails } from './offer-status-snapshot.types';
  *
  * It also does NOT mean "unlisted": the duplicate guard deliberately reads an
  * absent snapshot as still-listed, so an `Unsynced` row still blocks a re-list.
+ *
+ * That last point is not specific to `Unsynced`, and it bites hardest on the two
+ * tabs the redesign creates for the go-fix-this workflow.
+ * `OfferMappingRepositoryPort.countByConnectionAndVariants` - the read behind
+ * `BulkListingSubmitService.filterAlreadyListed` - excludes ONLY `ended`, so an
+ * `Inactive` or `Draft` row counts as already-listed just like an `Active` one.
+ * An operator who opens Inactive, selects their rejected offers and hits "Create
+ * offer" gets them silently skipped, or a 400 if that was the whole selection.
+ * Only `Ended` is re-listable. Changing the duplicate guard is out of scope for
+ * #2026; this docblock and the response DTO's per-bucket descriptions exist so
+ * the UI copy built on them does not imply otherwise.
  */
 export const OfferLifecycleValues = ['Active', 'Inactive', 'Draft', 'Ended', 'Unsynced'] as const;
 export type OfferLifecycle = (typeof OfferLifecycleValues)[number];
@@ -92,8 +111,9 @@ export function resolveOfferLifecycle(facts: OfferSnapshotFacts | null): OfferLi
     case 'ended':
       return 'Ended';
     case 'inactive':
-      // The marketplace validator rejected it (Inactive) versus it simply
-      // never went live (Draft) - the only signal separating the two.
+      // The marketplace validator rejected it (Inactive) versus not live with
+      // nothing to say about why (Draft) - the only signal separating the two.
+      // Draft deliberately claims no more than that; see the union's docblock.
       return facts.hasValidationMessages ? 'Inactive' : 'Draft';
   }
 }

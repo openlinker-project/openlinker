@@ -6,6 +6,7 @@
  * @module apps/api/src/listings/http/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
+import type { OfferLifecycle } from '@openlinker/core/listings';
 import { OfferMappingResponseDto } from './offer-mapping-response.dto';
 
 /**
@@ -14,25 +15,50 @@ import { OfferMappingResponseDto } from './offer-mapping-response.dto';
  * Keys are the `OfferLifecycle` values verbatim, so the FE indexes this by the
  * same token it reads off each row's `channelStatus.lifecycle` - no second
  * naming to keep in sync.
+ *
+ * `implements Record<OfferLifecycle, number>` is the compile-time pin that
+ * makes this class break on a sixth bucket like every other producer does.
+ * Without it the class is a hand-written five-field shape assigned from a
+ * `Record<OfferLifecycle, number>` VARIABLE - no excess-property check fires on
+ * a variable, so a sixth bucket would ship in the JSON body while being absent
+ * from the Swagger schema the FE (#2029) generates against, with nothing
+ * failing to compile.
  */
-export class OfferLifecycleCountsResponseDto {
+export class OfferLifecycleCountsResponseDto implements Record<OfferLifecycle, number> {
   @ApiProperty({ description: 'Offers live on the channel, including mid-transition ones' })
   Active!: number;
 
-  @ApiProperty({ description: 'Offers the channel validator rejected (they carry messages)' })
+  @ApiProperty({
+    description:
+      'Offers the channel validator rejected (they carry messages). NOTE: these still count as ' +
+      'already-listed for the duplicate guard, so their variants cannot be re-listed through the ' +
+      'offer wizard - only Ended can.',
+  })
   Inactive!: number;
 
-  @ApiProperty({ description: 'Offers that never went live and carry no validator messages' })
+  @ApiProperty({
+    description:
+      'Offers not live on the channel, with no validator messages. Deliberately NOT "never went ' +
+      'live": a deliberately deactivated formerly-live offer reads as inactive too, as does an ' +
+      'Erli offer whose status OL does not recognise. NOTE: like Inactive, these count as ' +
+      'already-listed for the duplicate guard and cannot be re-listed through the offer wizard.',
+  })
   Draft!: number;
 
-  @ApiProperty({ description: 'Offers the channel reports as ended' })
+  @ApiProperty({
+    description:
+      'Offers the channel reports as ended - the only bucket whose variants the offer wizard will ' +
+      're-list.',
+  })
   Ended!: number;
 
   @ApiProperty({
     description:
       'Mappings with no status snapshot at all - no status has EVER been read. Not a promise ' +
       'that one will be: on a connection whose status-sync task is not scheduled this is ' +
-      'permanent. See the per-row `channelStatus.lifecycle` docs.',
+      'permanent. It also does not mean "unlisted" - the duplicate guard reads an absent ' +
+      'snapshot as still-listed, so these too cannot be re-listed through the offer wizard. ' +
+      'See the per-row `channelStatus.lifecycle` docs.',
   })
   Unsynced!: number;
 }

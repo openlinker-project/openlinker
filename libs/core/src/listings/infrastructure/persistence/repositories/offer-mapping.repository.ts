@@ -11,12 +11,14 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { SelectQueryBuilder } from 'typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
+import { Logger } from '@openlinker/shared/logging';
 import type { CoreEntityType } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { IdentifierMapping } from '@openlinker/core/identifier-mapping';
 import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 import { OfferCommercialSnapshotOrmEntity } from '../entities/offer-commercial-snapshot.orm-entity';
 import { OfferStatusSnapshotOrmEntity } from '../entities/offer-status-snapshot.orm-entity';
+import { UnfilterableOfferLifecycleException } from '../../../domain/exceptions/unfilterable-offer-lifecycle.exception';
 import type { OfferMappingRepositoryPort } from '../../../domain/ports/offer-mapping-repository.port';
 import {
   OFFER_VALIDATION_MESSAGES_KEY,
@@ -42,6 +44,7 @@ import type {
   ProductListingsCoverage,
   StaleMappedVariant,
 } from '../../../domain/types/offer-mapping.types';
+import { isOfferPublicationStatus } from '../../../domain/types/offer-status-read.types';
 import type { OfferPublicationStatus } from '../../../domain/types/offer-status-read.types';
 import type { OfferStatusSnapshotDetails } from '../../../domain/types/offer-status-snapshot.types';
 
@@ -69,7 +72,13 @@ interface OfferMappingListRawRow {
   variantEan: string | null;
   variantAttributes: Record<string, string> | null;
   variantIsStale: boolean | null;
-  publicationStatus: OfferPublicationStatus | null;
+  /**
+   * Deliberately `string | null`, not `OfferPublicationStatus | null`: the
+   * column is unconstrained `text`, so declaring the union here would be a
+   * type-level claim about the DATA the schema does not enforce. Narrowed
+   * through `readPublicationStatus` before anything classifies it.
+   */
+  publicationStatus: string | null;
   statusDetails: OfferStatusSnapshotDetails | null;
   lastStatusSyncedAt: Date | null;
   commercialPrice: string | null;
@@ -110,7 +119,8 @@ const HAS_VALIDATION_MESSAGES_SQL =
 
 /** Raw shape of one `countByLifecycle` group (#2026). */
 interface OfferLifecycleCountRawRow {
-  publicationStatus: OfferPublicationStatus | null;
+  /** Unconstrained `text` - see `OfferMappingListRawRow.publicationStatus`. */
+  publicationStatus: string | null;
   hasStatusSnapshot: boolean;
   hasValidationMessages: boolean;
   count: string;
@@ -118,6 +128,8 @@ interface OfferLifecycleCountRawRow {
 
 @Injectable()
 export class OfferMappingRepository implements OfferMappingRepositoryPort {
+  private readonly logger = new Logger(OfferMappingRepository.name);
+
   constructor(
     @InjectRepository(IdentifierMappingOrmEntity)
     private readonly repository: Repository<IdentifierMappingOrmEntity>
@@ -207,7 +219,14 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       .select('oss."publicationStatus"', 'publicationStatus')
       .addSelect(HAS_STATUS_SNAPSHOT_SQL, 'hasStatusSnapshot')
       .addSelect(HAS_VALIDATION_MESSAGES_SQL, 'hasValidationMessages')
-      .addSelect('COUNT(*)', 'count')
+      // DISTINCT to match what `findMany`'s `getCount()` compiles to
+      // (`COUNT(DISTINCT("mapping"."id"))`), not because today's joins can
+      // duplicate a row - they cannot, every one is unique-indexed on exactly
+      // its join key. `buildFilteredQuery` guarantees the two paths share their
+      // PREDICATES; it does not guarantee cardinality, so the day a 1:N join is
+      // added there the tab counts would silently inflate past the total while
+      // the list de-duplicated. Same count shape means that cannot happen.
+      .addSelect('COUNT(DISTINCT mapping.id)', 'count')
       .groupBy('oss."publicationStatus"')
       .addGroupBy(HAS_STATUS_SNAPSHOT_SQL)
       .addGroupBy(HAS_VALIDATION_MESSAGES_SQL)
@@ -215,11 +234,12 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
 
     const counts = emptyOfferLifecycleCounts();
     for (const row of rows) {
+      const publicationStatus = this.readPublicationStatus(row.publicationStatus);
       const facts =
-        row.publicationStatus === null || !row.hasStatusSnapshot
+        publicationStatus === null || !row.hasStatusSnapshot
           ? null
           : {
-              publicationStatus: row.publicationStatus,
+              publicationStatus,
               hasValidationMessages: row.hasValidationMessages,
             };
       // COUNT comes back as bigint (string) through the raw-query path.
@@ -229,13 +249,46 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
   }
 
   /**
+   * Narrow a persisted `publicationStatus` onto the closed neutral union.
+   *
+   * `offer_status_snapshots."publicationStatus"` is unconstrained `text`, so
+   * `resolveOfferLifecycle`'s exhaustive switch is total over the UNION but not
+   * over the COLUMN. Left untreated, an out-of-union value falls off the end of
+   * the switch as `undefined`: in the fold it lands on a stray `counts` key
+   * (`NaN`), disappears from all five buckets and serialises as
+   * `"undefined": null`; on the per-row path it produces a row on no tab. Both
+   * are silent under-counts that break the partition guarantee the whole design
+   * rests on.
+   *
+   * An unrecognised value is therefore folded into `Unsynced` - "no status we
+   * can read", which is honest and keeps the partition intact - and warn-logged
+   * so the condition is visible rather than merely survivable.
+   */
+  private readPublicationStatus(value: string | null): OfferPublicationStatus | null {
+    if (value === null) return null;
+    if (isOfferPublicationStatus(value)) return value;
+    this.logger.warn(
+      `offer_status_snapshots."publicationStatus" holds "${value}", which is outside ` +
+        'OfferPublicationStatusValues. Classifying the row as Unsynced. This needs a data ' +
+        'migration or a union change - see offer-status-read.types.ts.'
+    );
+    return null;
+  }
+
+  /**
    * The join + filter shape shared by the list and its tab counts (#2025 /
    * #2026). Extracted so neither can gain a predicate the other lacks: two
    * copies of these clauses is exactly how a count starts disagreeing with the
    * page it labels.
+   *
+   * Takes the wider `OfferMappingFilters` and deliberately never reads
+   * `lifecycle`: the bucket narrowing is the ONE clause the two callers must
+   * not share, so `findMany` attaches it afterwards via `applyLifecycleFilter`
+   * and `countByLifecycle` (whose `OfferMappingCountFilters` cannot carry one)
+   * never does.
    */
   private buildFilteredQuery(
-    filters: OfferMappingCountFilters
+    filters: OfferMappingFilters
   ): SelectQueryBuilder<IdentifierMappingOrmEntity> {
     const qb = this.repository.createQueryBuilder('mapping');
 
@@ -333,13 +386,22 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
     qb: SelectQueryBuilder<IdentifierMappingOrmEntity>,
     lifecycle: OfferLifecycle
   ): void {
-    const facts = listSnapshotFactsForLifecycle(lifecycle);
-
     // `Unsynced` is the complement of every snapshot fact - the absence of the
-    // joined row, which no fact combination can express.
-    if (facts.length === 0) {
+    // joined row, which no fact combination can express. Branched on the bucket
+    // BY NAME rather than on "the rule yielded no facts", because an empty fact
+    // set means two different things: this bucket, OR a bucket that is not
+    // expressible from `OfferSnapshotFacts` at all. Conflating them would serve
+    // the Unsynced page for a future bucket keyed on variant staleness /
+    // snapshot age / a creation-record field - a wrong page, no error, no
+    // failing type-check, in a design where everything else fails loudly.
+    if (lifecycle === 'Unsynced') {
       qb.andWhere(`NOT ${HAS_STATUS_SNAPSHOT_SQL}`);
       return;
+    }
+
+    const facts = listSnapshotFactsForLifecycle(lifecycle);
+    if (facts.length === 0) {
+      throw new UnfilterableOfferLifecycleException(lifecycle);
     }
 
     // A status whose BOTH message-presence values land in this bucket needs no
@@ -528,10 +590,15 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
   }
 
   private toChannelStatus(row: OfferMappingListRawRow): OfferMappingChannelStatus {
+    // Narrowed, not trusted: the column is unconstrained text, so an
+    // out-of-union value must not reach the exhaustive switch (see
+    // `readPublicationStatus`). It reads as Unsynced here for the same reason
+    // it does in the counts - one rule, one treatment of a value we cannot map.
+    const publicationStatus = this.readPublicationStatus(row.publicationStatus);
     // No snapshot row is the majority state on a large catalog (the scan is
     // hourly at 100 offers/tick), so it gets its own bucket rather than a
     // `null` that would leave the row on no lifecycle tab at all.
-    if (row.publicationStatus === null || row.lastStatusSyncedAt === null) {
+    if (publicationStatus === null || row.lastStatusSyncedAt === null) {
       return {
         publicationStatus: null,
         lifecycle: 'Unsynced',
@@ -541,11 +608,11 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
     }
     const validationMessages = readValidationMessages(row.statusDetails);
     return {
-      publicationStatus: row.publicationStatus,
+      publicationStatus,
       // Same function the tab counts fold their groups through (#2026), fed
       // the same two facts - the list and its counts share one rule.
       lifecycle: resolveOfferLifecycle({
-        publicationStatus: row.publicationStatus,
+        publicationStatus,
         hasValidationMessages: validationMessages.length > 0,
       }),
       validationMessages,

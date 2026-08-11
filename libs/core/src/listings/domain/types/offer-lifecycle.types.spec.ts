@@ -17,7 +17,10 @@ import {
   resolveOfferLifecycle,
   sumOfferLifecycleCounts,
 } from './offer-lifecycle.types';
-import { OfferPublicationStatusValues } from './offer-status-read.types';
+import {
+  OfferPublicationStatusValues,
+  isOfferPublicationStatus,
+} from './offer-status-read.types';
 import type { OfferStatusSnapshotDetails } from './offer-status-snapshot.types';
 
 describe('deriveOfferLifecycle', () => {
@@ -106,6 +109,19 @@ describe('readValidationMessages', () => {
     expect(OFFER_VALIDATION_MESSAGES_KEY).toBe('validationMessages');
     expect(readValidationMessages({ [OFFER_VALIDATION_MESSAGES_KEY]: ['a'] })).toEqual(['a']);
   });
+});
+
+describe('isOfferPublicationStatus (#2026)', () => {
+  it.each(OfferPublicationStatusValues)('should accept the union member %s', (status) => {
+    expect(isOfferPublicationStatus(status)).toBe(true);
+  });
+
+  it.each(['suspended', 'ACTIVE', '', 'draft'])(
+    'should reject %p, which the unconstrained text column can still hold',
+    (value) => {
+      expect(isOfferPublicationStatus(value)).toBe(false);
+    }
+  );
 });
 
 describe('resolveOfferLifecycle (#2026)', () => {

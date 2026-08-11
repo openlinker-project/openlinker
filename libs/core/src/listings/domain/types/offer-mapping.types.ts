@@ -44,8 +44,17 @@ export interface OfferMappingFilters {
  * feed the tab bar, so scoping them to the selected tab would zero every other
  * tab the moment one is clicked. Every other filter is shared with `findMany`
  * verbatim, which is what makes the counts sum to the list's total.
+ *
+ * `Omit` alone would NOT be that lock - it only drops the key, so a wider
+ * object (an `OfferMappingFilters` variable that happens to carry a bucket)
+ * stays structurally assignable and forwards `lifecycle` right through.
+ * `lifecycle?: never` makes the field unrepresentable, so the exclusion holds
+ * for a passed variable and not just for a fresh object literal at the one
+ * call site that exists today.
  */
-export type OfferMappingCountFilters = Omit<OfferMappingFilters, 'lifecycle'>;
+export type OfferMappingCountFilters = Omit<OfferMappingFilters, 'lifecycle'> & {
+  lifecycle?: never;
+};
 
 /**
  * Catalog identity joined onto an offer mapping for the listings read model

@@ -41,7 +41,6 @@ import {
   RESPONSIBLE_PRODUCER_SERVICE_TOKEN,
   DELIVERY_PRICE_LIST_SERVICE_TOKEN,
   emptyOfferLifecycleCounts,
-  sumOfferLifecycleCounts,
 } from '@openlinker/core/listings';
 import type {
   ICategoryResolutionService,
@@ -314,15 +313,11 @@ describe('ListingsController', () => {
         });
       });
 
-      it('should report counts summing to the filtered total when no tab is selected', async () => {
-        const counts = { Active: 4, Inactive: 1, Draft: 2, Ended: 0, Unsynced: 90 };
-        repository.findMany.mockResolvedValue({ items: [], total: 97 });
-        repository.countByLifecycle.mockResolvedValue(counts);
-
-        const result = await controller.listOfferMappings({});
-
-        expect(sumOfferLifecycleCounts(result.lifecycleCounts)).toBe(result.total);
-      });
+      // NOTE: "the counts sum to the total" is deliberately NOT asserted here.
+      // Both values are mocked at this seam, so any such assertion would only
+      // restate its own fixture - no production code participates. The invariant
+      // is a database property and is covered by
+      // `apps/api/test/integration/listings/offer-lifecycle-counts.int-spec.ts`.
 
       it('should apply the same search and connection filters to the counts as to the list', async () => {
         repository.findMany.mockResolvedValue({ items: [], total: 0 });
