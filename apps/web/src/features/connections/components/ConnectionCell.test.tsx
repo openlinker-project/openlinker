@@ -104,6 +104,7 @@ describe('ConnectionCell', () => {
       { apiClient: api },
     );
 
+    expect(screen.getByText('…')).toHaveAttribute('aria-busy', 'true');
     expect(screen.queryByText('Unknown')).toBeNull();
     expect(getById).not.toHaveBeenCalled();
   });
