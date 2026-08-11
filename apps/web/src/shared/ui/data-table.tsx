@@ -30,7 +30,7 @@ import { useMediaQuery } from './use-media-query';
 export type DataTableHideBreakpoint = 480 | 768 | 1024;
 
 export interface DataTableColumn<Row> {
-  align?: 'center' | 'left' | 'right';
+  align?: 'left' | 'right';
   cell: (row: Row) => ReactNode;
   header: ReactNode;
   hideBelow?: DataTableHideBreakpoint;
