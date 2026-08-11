@@ -14,16 +14,60 @@ import type { CoreEntityType } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { IdentifierMapping } from '@openlinker/core/identifier-mapping';
 import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
+import { OfferCommercialSnapshotOrmEntity } from '../entities/offer-commercial-snapshot.orm-entity';
+import { OfferStatusSnapshotOrmEntity } from '../entities/offer-status-snapshot.orm-entity';
 import type { OfferMappingRepositoryPort } from '../../../domain/ports/offer-mapping-repository.port';
+import {
+  deriveOfferLifecycle,
+  readValidationMessages,
+} from '../../../domain/types/offer-lifecycle.types';
+import { deriveVariantLabel } from '../../../domain/types/offer-mapping.types';
 import type {
+  OfferMappingChannelStatus,
+  OfferMappingCommercial,
   OfferMappingFilters,
+  OfferMappingIdentity,
+  OfferMappingListItem,
   OfferMappingPagination,
   PaginatedOfferMappings,
   ProductListingsCoverage,
   StaleMappedVariant,
 } from '../../../domain/types/offer-mapping.types';
+import type { OfferPublicationStatus } from '../../../domain/types/offer-status-read.types';
+import type { OfferStatusSnapshotDetails } from '../../../domain/types/offer-status-snapshot.types';
 
 const OFFER_ENTITY_TYPE: CoreEntityType = CORE_ENTITY_TYPE.Offer;
+
+/**
+ * Raw shape of one enriched `findMany` row (#2025). Every joined column is
+ * nullable because all four joins are LEFT joins - a mapping can outlive its
+ * variant, and neither snapshot table is guaranteed to have been written yet.
+ */
+interface OfferMappingListRawRow {
+  id: string;
+  entityType: string;
+  internalId: string;
+  externalId: string;
+  platformType: string;
+  connectionId: string;
+  context: IdentifierMapping['context'];
+  createdAt: Date;
+  updatedAt: Date;
+  productId: string | null;
+  productName: string | null;
+  productImages: string[] | null;
+  variantSku: string | null;
+  variantEan: string | null;
+  variantAttributes: Record<string, string> | null;
+  variantIsStale: boolean | null;
+  publicationStatus: OfferPublicationStatus | null;
+  statusDetails: OfferStatusSnapshotDetails | null;
+  lastStatusSyncedAt: Date | null;
+  commercialPrice: string | null;
+  commercialCurrency: string | null;
+  commercialAvailableQuantity: number | null;
+  lastCommercialSyncedAt: Date | null;
+}
 
 /**
  * The one publication status that means the offer is genuinely over and the
@@ -67,17 +111,43 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
   ): Promise<PaginatedOfferMappings> {
     const qb = this.repository.createQueryBuilder('mapping');
 
+    // Cross-context read-model reporting joins onto the products context BY
+    // TABLE NAME - ADR-036's sanctioned escape hatch (no cross-context
+    // ORM-entity import, so the import contract stays intact; same pattern as
+    // `countListedVariantsByProducts`, #1720). Columns are camelCase and must
+    // be double-quoted in raw fragments.
+    //
+    // One query per page, never an N+1 enrichment loop: every join below is an
+    // at-most-one index lookup (variant and product on their primary keys,
+    // both snapshots on their unique `(externalOfferId, connectionId)` key),
+    // so row cardinality is unchanged.
+    qb.leftJoin('product_variants', 'pv', 'pv."id" = mapping."internalId"').leftJoin(
+      'products',
+      'p',
+      'p."id" = pv."productId"'
+    );
+
+    // The two snapshot tables are SAME-context (listings, same persistence
+    // layer), so ADR-036 does not apply to them: joining by entity class keeps
+    // a table rename a compile-time break instead of the silent runtime one
+    // the ADR accepts only where an import contract has to be protected.
+    qb.leftJoin(
+      OfferStatusSnapshotOrmEntity,
+      'oss',
+      'oss."externalOfferId" = mapping."externalId" ' +
+        'AND oss."connectionId" = mapping."connectionId"'
+    ).leftJoin(
+      OfferCommercialSnapshotOrmEntity,
+      'ocs',
+      'ocs."externalOfferId" = mapping."externalId" ' +
+        'AND ocs."connectionId" = mapping."connectionId"'
+    );
+
     qb.where('mapping.entityType = :entityType', { entityType: OFFER_ENTITY_TYPE });
 
     if (filters.connectionId) {
       qb.andWhere('mapping.connectionId = :connectionId', {
         connectionId: filters.connectionId,
-      });
-    }
-
-    if (filters.platformType) {
-      qb.andWhere('mapping.platformType = :platformType', {
-        platformType: filters.platformType,
       });
     }
 
@@ -87,17 +157,75 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       });
     }
 
-    if (filters.search) {
-      const escapedSearch = filters.search.replace(/[%_]/g, '\\$&');
-      qb.andWhere('mapping.externalId ILIKE :search', {
-        search: `%${escapedSearch}%`,
-      });
+    const searchTerm = filters.search?.trim();
+    if (searchTerm) {
+      // `\` is Postgres' default LIKE escape character, so it must be escaped
+      // alongside the wildcards: a term ENDING in `\` would otherwise escape
+      // the appended trailing `%` and silently make the suffix wildcard literal.
+      const escapedSearch = searchTerm.replace(/[\\%_]/g, '\\$&');
+      // `ean` and `gtin` are separate, independently-populated columns (each
+      // master adapter fills whichever the platform exposes), so a barcode
+      // search must cover both or a variant is unfindable by the code printed
+      // on it. `products.sku` is the master reference many sellers call "the
+      // SKU", distinct from the variant's own.
+      //
+      // The variant term matches attribute VALUES only. A plain
+      // `attributes::text ILIKE` would also match the jsonb keys, so a search
+      // for "kolor" would return every coloured variant in the catalog. The
+      // `jsonb_typeof` guard is required because `jsonb_each_text` raises on
+      // any non-object jsonb, which would 500 every search on the page until
+      // the offending row was found.
+      qb.andWhere(
+        '(mapping."externalId" ILIKE :search ' +
+          'OR p."name" ILIKE :search ' +
+          'OR p."sku" ILIKE :search ' +
+          'OR pv."sku" ILIKE :search ' +
+          'OR pv."ean" ILIKE :search ' +
+          'OR pv."gtin" ILIKE :search ' +
+          'OR (jsonb_typeof(pv."attributes") = \'object\' ' +
+          'AND EXISTS (SELECT 1 FROM jsonb_each_text(pv."attributes") attr ' +
+          'WHERE attr.value ILIKE :search)))',
+        { search: `%${escapedSearch}%` }
+      );
     }
 
-    qb.orderBy('mapping.createdAt', 'DESC').skip(pagination.offset).take(pagination.limit);
+    // Counted before the projection/paging clauses are attached so the count
+    // is unambiguously the filtered total, independent of the raw select.
+    const total = await qb.getCount();
 
-    const [entities, total] = await qb.getManyAndCount();
-    return { items: entities.map((e) => this.toDomain(e)), total };
+    qb.select('mapping.id', 'id')
+      .addSelect('mapping.entityType', 'entityType')
+      .addSelect('mapping.internalId', 'internalId')
+      .addSelect('mapping.externalId', 'externalId')
+      .addSelect('mapping.platformType', 'platformType')
+      .addSelect('mapping.connectionId', 'connectionId')
+      .addSelect('mapping.context', 'context')
+      .addSelect('mapping.createdAt', 'createdAt')
+      .addSelect('mapping.updatedAt', 'updatedAt')
+      .addSelect('pv."productId"', 'productId')
+      .addSelect('pv."sku"', 'variantSku')
+      .addSelect('pv."ean"', 'variantEan')
+      .addSelect('pv."attributes"', 'variantAttributes')
+      .addSelect('pv."isStale"', 'variantIsStale')
+      .addSelect('p."name"', 'productName')
+      .addSelect('p."images"', 'productImages')
+      .addSelect('oss."publicationStatus"', 'publicationStatus')
+      .addSelect('oss."statusDetails"', 'statusDetails')
+      .addSelect('oss."lastStatusSyncedAt"', 'lastStatusSyncedAt')
+      .addSelect('ocs."price"', 'commercialPrice')
+      .addSelect('ocs."currency"', 'commercialCurrency')
+      .addSelect('ocs."availableQuantity"', 'commercialAvailableQuantity')
+      .addSelect('ocs."lastCommercialSyncedAt"', 'lastCommercialSyncedAt');
+
+    // `createdAt` alone is not unique, so a same-timestamp cluster could
+    // repeat or skip rows across pages; the id tiebreaker makes paging total.
+    qb.orderBy('mapping."createdAt"', 'DESC')
+      .addOrderBy('mapping."id"', 'DESC')
+      .offset(pagination.offset)
+      .limit(pagination.limit);
+
+    const rows = await qb.getRawMany<OfferMappingListRawRow>();
+    return { items: rows.map((row) => this.toListItem(row)), total };
   }
 
   async countByConnectionAndVariants(
@@ -125,8 +253,10 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       .createQueryBuilder('mapping')
       .select('mapping.internalId', 'internalId')
       .addSelect('COUNT(*)', 'count')
+      // Same-context entity (see the findMany join block): by class, so a table
+      // rename stays a compile-time break.
       .leftJoin(
-        'offer_status_snapshots',
+        OfferStatusSnapshotOrmEntity,
         'snapshot',
         'snapshot."externalOfferId" = mapping."externalId" ' +
           'AND snapshot."connectionId" = mapping."connectionId"'
@@ -158,10 +288,10 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       .addSelect('mapping.connectionId', 'connectionId')
       .addSelect('mapping.platformType', 'platformType')
       .addSelect('COUNT(DISTINCT mapping.internalId)', 'listedVariants')
-      // Read-model reporting join onto the products-context table by name -
-      // no cross-context ORM-entity import, so the import contract stays
-      // intact (#1720; columns are camelCase and must be double-quoted in
-      // raw fragments).
+      // Cross-context read-model reporting join onto the products-context
+      // table by name (ADR-036) - no cross-context ORM-entity import, so the
+      // import contract stays intact (#1720; columns are camelCase and must
+      // be double-quoted in raw fragments).
       .innerJoin('product_variants', 'pv', 'pv."id" = mapping."internalId"')
       .where('mapping.entityType = :entityType', { entityType: OFFER_ENTITY_TYPE })
       .andWhere('pv."productId" IN (:...productIds)', { productIds: [...productIds] })
@@ -194,10 +324,10 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       .select('pv."id"', 'variantId')
       .addSelect('mapping.externalId', 'externalOfferId')
       .addSelect('pv."staleAt"', 'staleAt')
-      // Read-model reporting join onto the products-context table by name —
-      // no cross-context ORM-entity import, mirroring
-      // countListedVariantsByProducts (#1720; columns are camelCase and must
-      // be double-quoted in raw fragments).
+      // Cross-context read-model reporting join onto the products-context
+      // table by name (ADR-036) - no cross-context ORM-entity import,
+      // mirroring countListedVariantsByProducts (#1720; columns are camelCase
+      // and must be double-quoted in raw fragments).
       .innerJoin('product_variants', 'pv', 'pv."id" = mapping."internalId"')
       .where('mapping.entityType = :entityType', { entityType: OFFER_ENTITY_TYPE })
       .andWhere('mapping.connectionId = :connectionId', { connectionId })
@@ -212,6 +342,70 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       externalOfferId: row.externalOfferId,
       staleAt: row.staleAt,
     }));
+  }
+
+  private toListItem(row: OfferMappingListRawRow): OfferMappingListItem {
+    return {
+      id: row.id,
+      entityType: row.entityType,
+      internalId: row.internalId,
+      externalId: row.externalId,
+      platformType: row.platformType,
+      connectionId: row.connectionId,
+      context: row.context ?? null,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      identity: this.toIdentity(row),
+      channelStatus: this.toChannelStatus(row),
+      commercial: this.toCommercial(row),
+    };
+  }
+
+  private toIdentity(row: OfferMappingListRawRow): OfferMappingIdentity | null {
+    // `productId` comes from the variant join: its absence is what says the
+    // mapping's `internalId` no longer resolves to a live variant.
+    if (row.productId === null) return null;
+    return {
+      productId: row.productId,
+      productName: row.productName,
+      variantLabel: deriveVariantLabel(row.variantAttributes),
+      sku: row.variantSku,
+      ean: row.variantEan,
+      imageUrl: row.productImages?.[0] ?? null,
+      isStale: row.variantIsStale ?? false,
+    };
+  }
+
+  private toChannelStatus(row: OfferMappingListRawRow): OfferMappingChannelStatus {
+    // No snapshot row is the majority state on a large catalog (the scan is
+    // hourly at 100 offers/tick), so it gets its own bucket rather than a
+    // `null` that would leave the row on no lifecycle tab at all.
+    if (row.publicationStatus === null || row.lastStatusSyncedAt === null) {
+      return {
+        publicationStatus: null,
+        lifecycle: 'Unsynced',
+        validationMessages: [],
+        lastStatusSyncedAt: null,
+      };
+    }
+    return {
+      publicationStatus: row.publicationStatus,
+      lifecycle: deriveOfferLifecycle(row.publicationStatus, row.statusDetails),
+      validationMessages: readValidationMessages(row.statusDetails),
+      lastStatusSyncedAt: row.lastStatusSyncedAt,
+    };
+  }
+
+  private toCommercial(row: OfferMappingListRawRow): OfferMappingCommercial | null {
+    if (row.lastCommercialSyncedAt === null) return null;
+    return {
+      // `numeric` arrives as a string through the driver - an explicit cast
+      // keeps the wire value a number rather than "100.00".
+      price: row.commercialPrice === null ? null : Number(row.commercialPrice),
+      currency: row.commercialCurrency,
+      availableQuantity: row.commercialAvailableQuantity,
+      lastCommercialSyncedAt: row.lastCommercialSyncedAt,
+    };
   }
 
   private toDomain(entity: IdentifierMappingOrmEntity): IdentifierMapping {

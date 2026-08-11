@@ -14,6 +14,8 @@ import { QueryFailedError } from 'typeorm';
 import { IdentifierMapping } from '@openlinker/core/identifier-mapping';
 import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 
+import { OfferCommercialSnapshotOrmEntity } from '../entities/offer-commercial-snapshot.orm-entity';
+import { OfferStatusSnapshotOrmEntity } from '../entities/offer-status-snapshot.orm-entity';
 import { OfferMappingRepository } from './offer-mapping.repository';
 
 describe('OfferMappingRepository', () => {
@@ -94,6 +96,306 @@ describe('OfferMappingRepository', () => {
       ormRepository.findOne.mockRejectedValue(error);
 
       await expect(repository.findById('mapping-uuid')).rejects.toBe(error);
+    });
+  });
+
+  describe('findMany (#2025)', () => {
+    type ListQb = {
+      leftJoin: jest.Mock;
+      where: jest.Mock;
+      andWhere: jest.Mock;
+      select: jest.Mock;
+      addSelect: jest.Mock;
+      orderBy: jest.Mock;
+      addOrderBy: jest.Mock;
+      offset: jest.Mock;
+      limit: jest.Mock;
+      getCount: jest.Mock;
+      getRawMany: jest.Mock;
+    };
+
+    const buildRawRow = (overrides: Record<string, unknown> = {}) => ({
+      id: 'mapping-uuid',
+      entityType: 'Offer',
+      internalId: 'ol_variant_123',
+      externalId: 'allegro-offer-1',
+      platformType: 'allegro',
+      connectionId: 'conn-uuid',
+      context: null,
+      createdAt: now,
+      updatedAt: now,
+      productId: 'ol_product_1',
+      productName: 'Doniczka ceramiczna Terra',
+      productImages: ['https://cdn.example/terra-1.jpg', 'https://cdn.example/terra-2.jpg'],
+      variantSku: 'TERRA-24-LIM',
+      variantEan: '5900000000138',
+      variantAttributes: { Kolor: 'Limonka', Rozmiar: '24 cm' },
+      variantIsStale: false,
+      publicationStatus: 'active',
+      statusDetails: null,
+      lastStatusSyncedAt: now,
+      commercialPrice: '100.00',
+      commercialCurrency: 'PLN',
+      commercialAvailableQuantity: 41,
+      lastCommercialSyncedAt: now,
+      ...overrides,
+    });
+
+    type AndWhereCall = [string, { search?: string } | undefined];
+
+    /** The `andWhere` call carrying the search term, if one was emitted. */
+    function findSearchCall(qb: ListQb): AndWhereCall | undefined {
+      const calls = qb.andWhere.mock.calls as AndWhereCall[];
+      return calls.find((call) => call[1]?.search !== undefined);
+    }
+
+    function buildListQb(rows: Array<Record<string, unknown>>, total = rows.length): ListQb {
+      const qb: ListQb = {
+        leftJoin: jest.fn(),
+        where: jest.fn(),
+        andWhere: jest.fn(),
+        select: jest.fn(),
+        addSelect: jest.fn(),
+        orderBy: jest.fn(),
+        addOrderBy: jest.fn(),
+        offset: jest.fn(),
+        limit: jest.fn(),
+        getCount: jest.fn().mockResolvedValue(total),
+        getRawMany: jest.fn().mockResolvedValue(rows),
+      };
+      for (const key of Object.keys(qb) as Array<keyof ListQb>) {
+        if (key !== 'getCount' && key !== 'getRawMany') {
+          qb[key].mockReturnValue(qb);
+        }
+      }
+      return qb;
+    }
+
+    it('should join the products context by table name and the listings snapshots by entity class', async () => {
+      const qb = buildListQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.findMany({}, { limit: 20, offset: 0 });
+
+      // Cross-context: ADR-036 raw table name, no ORM-entity import.
+      expect(qb.leftJoin).toHaveBeenCalledWith(
+        'product_variants',
+        'pv',
+        'pv."id" = mapping."internalId"'
+      );
+      expect(qb.leftJoin).toHaveBeenCalledWith('products', 'p', 'p."id" = pv."productId"');
+      // Same-context: the entity class, so a table rename stays a compile error.
+      expect(qb.leftJoin).toHaveBeenCalledWith(
+        OfferStatusSnapshotOrmEntity,
+        'oss',
+        'oss."externalOfferId" = mapping."externalId" AND oss."connectionId" = mapping."connectionId"'
+      );
+      expect(qb.leftJoin).toHaveBeenCalledWith(
+        OfferCommercialSnapshotOrmEntity,
+        'ocs',
+        'ocs."externalOfferId" = mapping."externalId" AND ocs."connectionId" = mapping."connectionId"'
+      );
+      // A single page is one query builder run - never an N+1 enrichment loop.
+      expect(qb.getRawMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('should widen search across both product and variant SKU, both barcode columns, name, attributes and externalId', async () => {
+      const qb = buildListQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.findMany({ search: 'terra' }, { limit: 20, offset: 0 });
+
+      const searchCall = findSearchCall(qb);
+      expect(searchCall).toBeDefined();
+      const [clause, params] = searchCall as [string, { search: string }];
+
+      expect(clause).toContain('mapping."externalId" ILIKE :search');
+      expect(clause).toContain('p."name" ILIKE :search');
+      expect(clause).toContain('p."sku" ILIKE :search');
+      expect(clause).toContain('pv."sku" ILIKE :search');
+      // `ean` and `gtin` are independently populated - matching one only would
+      // leave a variant unfindable by the barcode printed on it.
+      expect(clause).toContain('pv."ean" ILIKE :search');
+      expect(clause).toContain('pv."gtin" ILIKE :search');
+      // Attribute VALUES only - a plain `attributes::text` would also match keys.
+      expect(clause).toContain('jsonb_each_text(pv."attributes")');
+      expect(clause).toContain('attr.value ILIKE :search');
+      expect(params).toEqual({ search: '%terra%' });
+    });
+
+    it('should guard the jsonb attribute scan against a non-object value', async () => {
+      const qb = buildListQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.findMany({ search: 'terra' }, { limit: 20, offset: 0 });
+
+      // Without this, one malformed row 500s every search on the page.
+      expect((findSearchCall(qb) as [string, { search: string }])[0]).toContain(
+        'jsonb_typeof(pv."attributes") = \'object\''
+      );
+    });
+
+    it('should escape ILIKE wildcards and the backslash escape character in the search term', async () => {
+      const qb = buildListQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.findMany({ search: '50%_off\\' }, { limit: 20, offset: 0 });
+
+      // The trailing `\` must be escaped or it would escape the appended `%`
+      // and silently turn the suffix wildcard into a literal.
+      expect((findSearchCall(qb) as [string, { search: string }])[1]).toEqual({
+        search: '%50\\%\\_off\\\\%',
+      });
+    });
+
+    it('should trim the search term before matching', async () => {
+      const qb = buildListQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.findMany({ search: '  TERRA-24-LIM \n' }, { limit: 20, offset: 0 });
+
+      expect((findSearchCall(qb) as [string, { search: string }])[1]).toEqual({
+        search: '%TERRA-24-LIM%',
+      });
+    });
+
+    it('should not emit a search predicate when no term was supplied', async () => {
+      const qb = buildListQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.findMany({ connectionId: 'conn-uuid' }, { limit: 20, offset: 0 });
+
+      expect(findSearchCall(qb)).toBeUndefined();
+    });
+
+    it('should not emit a search predicate when the term is only whitespace', async () => {
+      const qb = buildListQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.findMany({ search: '   ' }, { limit: 20, offset: 0 });
+
+      expect(findSearchCall(qb)).toBeUndefined();
+    });
+
+    it('should project identity, derived lifecycle and commercial data onto each item', async () => {
+      const qb = buildListQb([buildRawRow()], 1);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const result = await repository.findMany({}, { limit: 20, offset: 0 });
+
+      expect(result.total).toBe(1);
+      expect(result.items[0].externalId).toBe('allegro-offer-1');
+      expect(result.items[0].identity).toEqual({
+        productId: 'ol_product_1',
+        productName: 'Doniczka ceramiczna Terra',
+        variantLabel: 'Limonka · 24 cm',
+        sku: 'TERRA-24-LIM',
+        ean: '5900000000138',
+        imageUrl: 'https://cdn.example/terra-1.jpg',
+        isStale: false,
+      });
+      expect(result.items[0].channelStatus).toEqual({
+        publicationStatus: 'active',
+        lifecycle: 'Active',
+        validationMessages: [],
+        lastStatusSyncedAt: now,
+      });
+      expect(result.items[0].commercial).toEqual({
+        price: 100,
+        currency: 'PLN',
+        availableQuantity: 41,
+        lastCommercialSyncedAt: now,
+      });
+    });
+
+    it('should derive Inactive from an inactive snapshot carrying validator messages', async () => {
+      const qb = buildListQb([
+        buildRawRow({
+          publicationStatus: 'inactive',
+          statusDetails: { validationMessages: ['Brak parametru: Marka'] },
+        }),
+      ]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const result = await repository.findMany({}, { limit: 20, offset: 0 });
+
+      expect(result.items[0].channelStatus?.lifecycle).toBe('Inactive');
+      expect(result.items[0].channelStatus?.validationMessages).toEqual(['Brak parametru: Marka']);
+    });
+
+    it('should flag a stale variant so a paused offer is not read as a sell-out (#1689)', async () => {
+      const qb = buildListQb([
+        buildRawRow({ variantIsStale: true, commercialAvailableQuantity: 0 }),
+      ]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const result = await repository.findMany({}, { limit: 20, offset: 0 });
+
+      expect(result.items[0].identity?.isStale).toBe(true);
+      expect(result.items[0].commercial?.availableQuantity).toBe(0);
+    });
+
+    it('should null out identity and commercial independently when their join found nothing', async () => {
+      const qb = buildListQb([
+        buildRawRow({
+          productId: null,
+          productName: null,
+          productImages: null,
+          variantSku: null,
+          variantEan: null,
+          variantAttributes: null,
+          variantIsStale: null,
+          commercialPrice: null,
+          commercialCurrency: null,
+          commercialAvailableQuantity: null,
+          lastCommercialSyncedAt: null,
+        }),
+      ]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const result = await repository.findMany({}, { limit: 20, offset: 0 });
+
+      expect(result.items[0].identity).toBeNull();
+      expect(result.items[0].commercial).toBeNull();
+      expect(result.items[0].internalId).toBe('ol_variant_123');
+    });
+
+    it('should bucket a row with no status snapshot as Unsynced rather than leaving it unclassified', async () => {
+      const qb = buildListQb([
+        buildRawRow({ publicationStatus: null, statusDetails: null, lastStatusSyncedAt: null }),
+      ]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const result = await repository.findMany({}, { limit: 20, offset: 0 });
+
+      // The exact shape FE-C (#2029) renders its fifth tab from.
+      expect(result.items[0].channelStatus).toEqual({
+        publicationStatus: null,
+        lifecycle: 'Unsynced',
+        validationMessages: [],
+        lastStatusSyncedAt: null,
+      });
+    });
+
+    it('should report an absent product name honestly rather than as a blank string', async () => {
+      const qb = buildListQb([buildRawRow({ productName: null })]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const result = await repository.findMany({}, { limit: 20, offset: 0 });
+
+      expect(result.items[0].identity?.productName).toBeNull();
+    });
+
+    it('should page deterministically with an id tiebreaker on the createdAt ordering', async () => {
+      const qb = buildListQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.findMany({}, { limit: 50, offset: 100 });
+
+      expect(qb.orderBy).toHaveBeenCalledWith('mapping."createdAt"', 'DESC');
+      expect(qb.addOrderBy).toHaveBeenCalledWith('mapping."id"', 'DESC');
+      expect(qb.offset).toHaveBeenCalledWith(100);
+      expect(qb.limit).toHaveBeenCalledWith(50);
     });
   });
 

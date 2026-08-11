@@ -15,17 +15,22 @@ export class ListOfferMappingsQueryDto {
   @IsString()
   connectionId?: string;
 
-  @ApiPropertyOptional({ description: 'Filter by platform type (e.g. allegro)' })
-  @IsOptional()
-  @IsString()
-  platformType?: string;
+  // The raw free-text `platformType` filter was dropped in #2025: the
+  // redesigned toolbar scopes by connection (a select over the operator's own
+  // connections), and a connection already implies its channel. Two Allegro
+  // accounts are the common case, so filtering by platform string answered a
+  // question nobody was asking while inviting typo'd, empty result sets.
 
   @ApiPropertyOptional({ description: 'Filter by linked internal ID (variant ID)' })
   @IsOptional()
   @IsString()
   internalId?: string;
 
-  @ApiPropertyOptional({ description: 'Case-insensitive search on external ID' })
+  @ApiPropertyOptional({
+    description:
+      'Case-insensitive search across product name, variant label, product SKU, variant SKU, EAN, ' +
+      'GTIN and the external offer ID. Leading/trailing whitespace is trimmed.',
+  })
   @IsOptional()
   @IsString()
   search?: string;

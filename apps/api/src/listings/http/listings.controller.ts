@@ -64,6 +64,7 @@ import type {
   CategoryPathSegment,
   OfferCreationRecord,
   OfferManagerPort,
+  OfferMappingListItem,
   OfferStatusSnapshot,
 } from '@openlinker/core/listings';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
@@ -175,7 +176,11 @@ export class ListingsController {
   @ApiOperation({
     summary: 'List offer mappings',
     description:
-      'Returns a paginated list of offer-to-variant mappings. Supports filtering by connectionId, platformType, internalId, and search on externalId.',
+      'Returns a paginated list of offer-to-variant mappings, each enriched in the same query with ' +
+      'catalog identity (product name, variant, SKU, EAN, thumbnail), channel publication status ' +
+      'plus its derived lifecycle bucket, and channel-side price/quantity with their freshness ' +
+      'timestamp. Supports filtering by connectionId and internalId, and a search spanning product ' +
+      'name, variant label, SKU, EAN and externalId.',
   })
   @ApiResponse({
     status: 200,
@@ -186,15 +191,15 @@ export class ListingsController {
   async listOfferMappings(
     @Query() query: ListOfferMappingsQueryDto
   ): Promise<PaginatedOfferMappingsResponseDto> {
-    const { connectionId, platformType, internalId, search, limit = 20, offset = 0 } = query;
+    const { connectionId, internalId, search, limit = 20, offset = 0 } = query;
 
     const { items, total } = await this.offerMappingRepository.findMany(
-      { connectionId, platformType, internalId, search },
+      { connectionId, internalId, search },
       { limit, offset }
     );
 
     return {
-      items: items.map((m) => this.toDto(m)),
+      items: items.map((m) => this.toListDto(m)),
       total,
       limit,
       offset,
@@ -952,6 +957,39 @@ export class ListingsController {
         mapping.createdAt instanceof Date ? mapping.createdAt.toISOString() : mapping.createdAt,
       updatedAt:
         mapping.updatedAt instanceof Date ? mapping.updatedAt.toISOString() : mapping.updatedAt,
+    };
+  }
+
+  private toListDto(item: OfferMappingListItem): OfferMappingResponseDto {
+    return {
+      ...this.toDto(item),
+      // Mapped field by field rather than passed through, so a field added to
+      // the domain projection cannot silently reach the wire.
+      identity: item.identity
+        ? {
+            productId: item.identity.productId,
+            productName: item.identity.productName,
+            variantLabel: item.identity.variantLabel,
+            sku: item.identity.sku,
+            ean: item.identity.ean,
+            imageUrl: item.identity.imageUrl,
+            isStale: item.identity.isStale,
+          }
+        : null,
+      channelStatus: {
+        publicationStatus: item.channelStatus.publicationStatus,
+        lifecycle: item.channelStatus.lifecycle,
+        validationMessages: [...item.channelStatus.validationMessages],
+        lastStatusSyncedAt: item.channelStatus.lastStatusSyncedAt?.toISOString() ?? null,
+      },
+      commercial: item.commercial
+        ? {
+            price: item.commercial.price,
+            currency: item.commercial.currency,
+            availableQuantity: item.commercial.availableQuantity,
+            lastCommercialSyncedAt: item.commercial.lastCommercialSyncedAt.toISOString(),
+          }
+        : null,
     };
   }
 

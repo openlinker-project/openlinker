@@ -14,6 +14,7 @@ import type {
   OfferMappingRepositoryPort,
   OfferStatusSnapshotRepositoryPort,
   OfferCommercialSnapshotRepositoryPort,
+  OfferMappingListItem,
   PaginatedOfferMappings,
   UpsertOfferStatusSnapshotCommand,
 } from '@openlinker/core/listings';
@@ -43,8 +44,8 @@ function commercialSnapshot(): OfferCommercialSnapshot {
   });
 }
 
-function makeMapping(externalOfferId: string, internalVariantId: string): IdentifierMapping {
-  return new IdentifierMapping(
+function makeMapping(externalOfferId: string, internalVariantId: string): OfferMappingListItem {
+  const mapping = new IdentifierMapping(
     `idmap-${externalOfferId}`,
     'Offer',
     internalVariantId,
@@ -55,6 +56,17 @@ function makeMapping(externalOfferId: string, internalVariantId: string): Identi
     new Date('2026-05-01T12:00:00Z'),
     new Date('2026-05-01T12:00:00Z')
   );
+  return {
+    ...mapping,
+    identity: null,
+    channelStatus: {
+      publicationStatus: null,
+      lifecycle: 'Unsynced',
+      validationMessages: [],
+      lastStatusSyncedAt: null,
+    },
+    commercial: null,
+  };
 }
 
 function makeSnapshot(externalOfferId: string, status: OfferPublicationStatus): OfferStatusSnapshot {
@@ -100,7 +112,7 @@ describe('OfferStatusSyncService', () => {
   let snapshots: jest.Mocked<Pick<OfferStatusSnapshotRepositoryPort, 'upsert'>>;
   let commercialSnapshots: jest.Mocked<Pick<OfferCommercialSnapshotRepositoryPort, 'upsert'>>;
 
-  function page(items: IdentifierMapping[], total: number): PaginatedOfferMappings {
+  function page(items: OfferMappingListItem[], total: number): PaginatedOfferMappings {
     return { items, total };
   }
 
