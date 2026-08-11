@@ -59,6 +59,41 @@
  * warning — mirroring `McpRateLimiter`'s fail-open posture, since this
  * limiter is outbound-pacing hygiene, not a correctness-critical gate.
  *
+ * **Bounded-staleness pacing fast path (tech-review follow-up, #2019).**
+ * `HttpTransportFactory.forConnection` builds a limiter for EVERY connection,
+ * including one with no `config.rateLimit` at all — and the pacing gate
+ * above is checked unconditionally, so a fully-unconfigured connection would
+ * otherwise pay a mandatory Redis round-trip on every single outbound call,
+ * where the pre-#2015 in-memory `RateLimiter` paid nothing. `acquire()`
+ * instead caches, per instance, "pacing is clear until this local timestamp"
+ * (`localPaceOkUntil`) whenever `requestsPerMinute` is undefined and the pace
+ * key admitted with zero wait, and skips the Redis round-trip entirely for
+ * the next `unconfiguredPaceGraceMs` (default 200ms) while that holds. This
+ * bounds — rather than eliminates — how quickly THIS instance observes a
+ * `noteRetryAfter()` pushed by a DIFFERENT process while riding the cache: up
+ * to `unconfiguredPaceGraceMs` of staleness, deliberately traded for
+ * collapsing the common (no rate limit configured) case back to zero Redis
+ * cost between grace windows. A `noteRetryAfter()` call on THIS instance
+ * invalidates its own cache immediately, so same-process backoff is never
+ * delayed by the grace window — only a genuinely cross-process push can be.
+ * The concurrency gate is unaffected: it is never checked unconditionally
+ * (skipped outright when `maxConcurrent` is undefined), so it had no
+ * equivalent zero-config cost to begin with.
+ *
+ * **Concurrency claim scoring uses the local clock, not Redis `TIME`**
+ * (mirroring `McpRateLimiter.claimRank`'s precedent), unlike the pacing gate
+ * above. This is a narrower version of the same clock-skew question: under
+ * real skew between hosts, the staleness eviction
+ * (`zRemRangeByScore(inflightKey, 0, nowMs - MAX_CALL_LIFETIME_MS)`) compares
+ * a score written by one process's clock against a bound computed from
+ * another's, so a sufficiently fast-clocked evictor could in principle
+ * reclaim a still-live claim from a slower-clocked one before it releases.
+ * Accepted for v1, matching the existing `McpRateLimiter` shape rather than
+ * introducing a bespoke atomic claim script here: `MAX_CALL_LIFETIME_MS`
+ * (120s) is generously wide relative to any real outbound call, and NTP-
+ * synced hosts keep the practical skew several orders of magnitude below
+ * that floor.
+ *
  * @module libs/shared/src/rate-limit
  */
 import { randomUUID } from 'node:crypto';
@@ -93,6 +128,13 @@ const DEFAULT_CONCURRENCY_POLL_INTERVAL_MS = 200;
 
 /** Extra jitter a `background` waiter backs off by while an `interactive` waiter is queued on this instance. */
 const BACKGROUND_YIELD_JITTER_MS = 50;
+
+/**
+ * Default bounded-staleness window for the unconfigured-pacing fast path —
+ * see the class doc's "Bounded-staleness pacing fast path" section for the
+ * trade-off this exists to make.
+ */
+const DEFAULT_UNCONFIGURED_PACE_GRACE_MS = 200;
 
 const NOOP_RELEASE: RateLimitRelease = () => {
   /* fail-open: nothing to release */
@@ -163,6 +205,12 @@ export interface RedisRateLimiterDeps {
   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
   /** Poll interval while blocked on the concurrency gate. Defaults to 200ms. */
   concurrencyPollIntervalMs?: number;
+  /**
+   * Bounded-staleness window (ms) for the unconfigured-pacing fast path —
+   * see the class doc's "Bounded-staleness pacing fast path" section.
+   * Defaults to 200ms; set to 0 to always consult Redis (no local caching).
+   */
+  unconfiguredPaceGraceMs?: number;
 }
 
 function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -203,6 +251,7 @@ export class RedisRateLimiterAdapter implements RateLimiterPort {
   private readonly now: () => number;
   private readonly sleep: (ms: number, signal?: AbortSignal) => Promise<void>;
   private readonly concurrencyPollIntervalMs: number;
+  private readonly unconfiguredPaceGraceMs: number;
   private readonly paceKey: string;
   private readonly inflightKey: string;
 
@@ -211,6 +260,8 @@ export class RedisRateLimiterAdapter implements RateLimiterPort {
   private localQueued = 0;
   private localInteractiveWaiters = 0;
   private lastAcquiredAt: Date | null = null;
+  /** See the class doc's "Bounded-staleness pacing fast path" section. */
+  private localPaceOkUntil = 0;
 
   constructor(
     private readonly connectionId: string,
@@ -221,6 +272,8 @@ export class RedisRateLimiterAdapter implements RateLimiterPort {
     this.sleep = deps.sleep ?? defaultSleep;
     this.concurrencyPollIntervalMs =
       deps.concurrencyPollIntervalMs ?? DEFAULT_CONCURRENCY_POLL_INTERVAL_MS;
+    this.unconfiguredPaceGraceMs =
+      deps.unconfiguredPaceGraceMs ?? DEFAULT_UNCONFIGURED_PACE_GRACE_MS;
     this.paceKey = `${PACE_KEY_PREFIX}${connectionId}`;
     this.inflightKey = `${INFLIGHT_KEY_PREFIX}${connectionId}`;
   }
@@ -242,6 +295,11 @@ export class RedisRateLimiterAdapter implements RateLimiterPort {
 
   noteRetryAfter(delayMs: number): void {
     if (delayMs <= 0) return;
+    // Invalidate the unconfigured-pacing fast path immediately for THIS
+    // instance — a same-process backoff must never be delayed by the grace
+    // window; only a genuinely cross-process push rides it out. See the
+    // class doc's "Bounded-staleness pacing fast path" section.
+    this.localPaceOkUntil = 0;
     const warn = (error: unknown): void => {
       this.logger.warn(
         `Failed to propagate Retry-After for connection ${this.connectionId} — Redis unavailable, this process's own pacing is unaffected. ${(error as Error).message}`
@@ -304,7 +362,7 @@ export class RedisRateLimiterAdapter implements RateLimiterPort {
         // `maxConcurrent` set must still honour it — otherwise Retry-After
         // is silently ignored for that policy shape. Mirrors the in-memory
         // `RateLimiter.drain()`'s unconditional `nextAvailableAt` check.
-        const pace = await this.tryAdvancePace(policy.requestsPerMinute);
+        const pace = await this.checkPace(policy.requestsPerMinute);
         if (!pace.admitted) {
           if (pendingClaim) {
             await this.rollbackConcurrency(pendingClaim.callId);
@@ -376,7 +434,30 @@ export class RedisRateLimiterAdapter implements RateLimiterPort {
    * interval) rather than being skipped — see the call site's comment for
    * why: a bare `noteRetryAfter()` push must be honoured even when this
    * connection has no configured pacing of its own.
+   *
+   * For that unconfigured case specifically, this is fronted by a bounded-
+   * staleness local cache (`localPaceOkUntil`) instead of always hitting
+   * Redis — see the class doc's "Bounded-staleness pacing fast path"
+   * section for why and its accepted trade-off.
    */
+  private async checkPace(
+    requestsPerMinute: number | undefined
+  ): Promise<{ admitted: boolean; waitMs: number }> {
+    if (
+      requestsPerMinute === undefined &&
+      this.unconfiguredPaceGraceMs > 0 &&
+      this.now() < this.localPaceOkUntil
+    ) {
+      return { admitted: true, waitMs: 0 };
+    }
+
+    const { admitted, waitMs } = await this.tryAdvancePace(requestsPerMinute);
+    if (admitted && requestsPerMinute === undefined) {
+      this.localPaceOkUntil = this.now() + this.unconfiguredPaceGraceMs;
+    }
+    return { admitted, waitMs };
+  }
+
   private async tryAdvancePace(
     requestsPerMinute: number | undefined
   ): Promise<{ admitted: boolean; waitMs: number }> {

@@ -141,11 +141,34 @@ itself:
   Priority remains a local, per-process bias only (`RedisRateLimiterAdapter.pollDelayFor`) — real, but no longer
   a hard guarantee once two processes contend for the same connection's bucket.
 
+Two further trade-offs, added on tech review (#2019) once it was clear the pacing gate's unconditional check
+(needed so a bare `maxConcurrent`-only policy still honours `noteRetryAfter`, see `RedisRateLimiterAdapter`'s
+class doc) meant a connection with **no `config.rateLimit` at all** would otherwise pay a mandatory Redis
+round-trip on every outbound call — a cost the pre-#2015 in-memory limiter never had for that case:
+
+- **Bounded-staleness local cache for the unconfigured-pacing fast path.** `RedisRateLimiterAdapter` caches
+  "pacing is clear" locally for a short grace window (default 200ms, `unconfiguredPaceGraceMs`) whenever
+  `requestsPerMinute` is undefined, skipping the Redis round-trip entirely while the cache holds. This bounds —
+  rather than eliminates — how quickly this process instance observes a `noteRetryAfter()` pushed by a
+  *different* process while riding the cache (up to the grace window), in exchange for collapsing the common
+  no-rate-limit-configured case back to near-zero Redis cost. A `noteRetryAfter()` call on the *same* instance
+  invalidates its own cache immediately, so same-process backoff is never delayed by it.
+- **Concurrency claim scoring uses the local clock, not Redis `TIME`** (mirroring the existing `McpRateLimiter`
+  precedent), unlike the pacing gate. Under real clock skew between hosts, the claim's staleness eviction
+  (`zRemRangeByScore` against `nowMs - MAX_CALL_LIFETIME_MS`) compares a score written by one process's clock
+  against a bound computed from another's — a narrower version of the clock-skew question pacing already
+  solved via `TIME`. Accepted for v1 rather than introducing a bespoke atomic claim script: the 120s
+  `MAX_CALL_LIFETIME_MS` floor is generously wide relative to any real outbound call and to realistic NTP skew.
+
 ### The cap is per connection
 
-`config.rateLimit` means "this connection's total outbound rate". Exactly one axis divides that
-number — `OL_WORKER_REPLICAS`, so the operator's value stays the true aggregate instead of being
-multiplied by the process count. Nothing else may multiply it, and in particular **not the hostname**.
+`config.rateLimit` means "this connection's total outbound rate", no matter how many processes or
+replicas act on the connection's behalf. Pre-#2015, exactly one axis divided that number —
+`OL_WORKER_REPLICAS` — so a multi-replica deployment's operator-configured value stayed the true
+aggregate instead of being multiplied by the process count. Since #2015 the registry is Redis-shared
+across every process/replica directly (see § "Cross-process coordination — resolved" above), so that
+division is gone too: the configured number is already the aggregate. Nothing may multiply or divide
+it, and in particular **not the hostname**.
 
 This was decided against a concrete temptation. Allegro serves REST from `api.allegro.pl` and image
 uploads from `upload.allegro.pl` (#1968), so a per-host bucket looks natural: bulk image uploads stop

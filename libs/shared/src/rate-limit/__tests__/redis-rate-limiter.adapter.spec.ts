@@ -208,6 +208,62 @@ describe('RedisRateLimiterAdapter', () => {
     expect(fake.clockMs).toBeGreaterThanOrEqual(before + 5_000);
   });
 
+  it('skips the Redis pacing round-trip on a fully unconfigured connection once the local grace window is warm', async () => {
+    const fake = createFakeRedis();
+    const evalSpy = jest.fn(fake.client.eval.bind(fake.client));
+    const client = { ...fake.client, eval: evalSpy } as unknown as typeof fake.client;
+    const adapter = new RedisRateLimiterAdapter('conn-10', client, {
+      now: () => fake.clockMs,
+      sleep: makeAdvancingSleep(fake),
+    });
+
+    (await adapter.acquire({}))();
+    expect(evalSpy).toHaveBeenCalledTimes(1);
+
+    // Well within the default 200ms grace window — the second acquire() must
+    // not round-trip to Redis at all for the pacing gate.
+    (await adapter.acquire({}))();
+    expect(evalSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to Redis for the pacing gate once the local grace window expires', async () => {
+    const fake = createFakeRedis();
+    const evalSpy = jest.fn(fake.client.eval.bind(fake.client));
+    const client = { ...fake.client, eval: evalSpy } as unknown as typeof fake.client;
+    const adapter = new RedisRateLimiterAdapter('conn-11', client, {
+      now: () => fake.clockMs,
+      sleep: makeAdvancingSleep(fake),
+      unconfiguredPaceGraceMs: 100,
+    });
+
+    (await adapter.acquire({}))();
+    expect(evalSpy).toHaveBeenCalledTimes(1);
+
+    fake.advanceClock(150);
+    (await adapter.acquire({}))();
+    expect(evalSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('noteRetryAfter invalidates the local grace window immediately, even mid-cache', async () => {
+    const fake = createFakeRedis();
+    const adapter = new RedisRateLimiterAdapter('conn-12', fake.client, {
+      now: () => fake.clockMs,
+      sleep: makeAdvancingSleep(fake),
+    });
+
+    (await adapter.acquire({}))();
+
+    // Still well inside the default grace window, but a Retry-After push
+    // for THIS instance must be honoured immediately, not delayed by it.
+    adapter.noteRetryAfter(3_000);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const before = fake.clockMs;
+    (await adapter.acquire({}))();
+    expect(fake.clockMs).toBeGreaterThanOrEqual(before + 3_000);
+  });
+
   it('sizes the pace key TTL to cover a Retry-After far beyond the fixed floor', async () => {
     // Regression test: an earlier draft passed the TTL floor (seconds) as
     // Redis's `PX` argument (milliseconds), so the key expired ~1000x
