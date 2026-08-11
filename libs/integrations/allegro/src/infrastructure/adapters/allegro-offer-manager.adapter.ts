@@ -31,6 +31,7 @@ import type {
   OfferCreator,
   OfferStatusReader,
   OfferStatusReadResult,
+  OfferCommercialObservation,
   OfferPublicationStatus,
   OfferReader,
   OfferSmartClassificationReader,
@@ -634,6 +635,10 @@ export class AllegroOfferManagerAdapter
       throw err;
     }
 
+    // #2024: price + available quantity read off this SAME fetched offer
+    // (identical fields `getOffer` maps below) - no second per-offer call.
+    const commercial = this.toCommercialObservation(offer);
+
     const rawStatus = offer.publication?.status;
     if (!rawStatus) {
       // Allegro returned the offer but without a publication block. Treat as
@@ -648,7 +653,25 @@ export class AllegroOfferManagerAdapter
     const publicationStatus = this.mapAllegroPublicationStatus(rawStatus);
     const validationErrors = this.mapValidationErrors(offer.validation?.errors ?? []);
 
-    return { publicationStatus, validationErrors };
+    return { publicationStatus, validationErrors, commercial };
+  }
+
+  /**
+   * Read-only projection of price + available quantity off an already-fetched
+   * AllegroProductOffer (#2024). Returns null when the response carries no
+   * sellingMode.price - never fabricated as zero, unlike getOffer which
+   * treats a missing price as a malformed payload (that stricter contract is
+   * unchanged; this read tolerates absence instead of throwing).
+   */
+  private toCommercialObservation(offer: AllegroProductOffer): OfferCommercialObservation | null {
+    const price = offer.sellingMode?.price;
+    if (!price) {
+      return null;
+    }
+    return {
+      price: { amount: price.amount, currency: price.currency },
+      availableQuantity: offer.stock?.available ?? 0,
+    };
   }
 
   /**

@@ -2812,6 +2812,53 @@ describe('AllegroOfferManagerAdapter', () => {
       });
     });
 
+    it('carries commercial (price + availableQuantity) off the same fetched offer (#2024)', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          id: 'offer-7781562863',
+          name: 'Test offer',
+          publication: { status: 'ACTIVE' },
+          sellingMode: { price: { amount: '99.99', currency: 'PLN' } },
+          stock: { available: 12 },
+        },
+        status: 200,
+      } as never);
+
+      const result = await adapter.getOfferStatus('7781562863');
+
+      expect(httpClient.get).toHaveBeenCalledTimes(1);
+      expect(result.commercial).toEqual({
+        price: { amount: '99.99', currency: 'PLN' },
+        availableQuantity: 12,
+      });
+    });
+
+    it('defaults availableQuantity to 0 when stock.available is absent (#2024)', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          id: 'offer-7781562863',
+          publication: { status: 'ACTIVE' },
+          sellingMode: { price: { amount: '10.00', currency: 'PLN' } },
+        },
+        status: 200,
+      } as never);
+
+      const result = await adapter.getOfferStatus('7781562863');
+
+      expect(result.commercial).toEqual({
+        price: { amount: '10.00', currency: 'PLN' },
+        availableQuantity: 0,
+      });
+    });
+
+    it('reports commercial as null when the offer carries no sellingMode.price (#2024)', async () => {
+      httpClient.get.mockResolvedValueOnce(offerResponse('ACTIVE') as never);
+
+      const result = await adapter.getOfferStatus('7781562863');
+
+      expect(result.commercial).toBeNull();
+    });
+
     it('shares the GET helper with fetchOfferIdentifiers (regression for the helper extraction)', async () => {
       // Both calls hit the same `/sale/product-offers/{id}` endpoint via the
       // private `fetchProductOfferById` helper. Verify the helper extraction

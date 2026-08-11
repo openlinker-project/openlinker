@@ -13,6 +13,7 @@ import type {
   OfferStatusReadResult,
   OfferMappingRepositoryPort,
   OfferStatusSnapshotRepositoryPort,
+  OfferCommercialSnapshotRepositoryPort,
   PaginatedOfferMappings,
   UpsertOfferStatusSnapshotCommand,
 } from '@openlinker/core/listings';
@@ -80,6 +81,7 @@ describe('OfferStatusSyncService', () => {
   let integrations: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
   let offerMappings: jest.Mocked<Pick<OfferMappingRepositoryPort, 'findMany'>>;
   let snapshots: jest.Mocked<Pick<OfferStatusSnapshotRepositoryPort, 'upsert'>>;
+  let commercialSnapshots: jest.Mocked<Pick<OfferCommercialSnapshotRepositoryPort, 'upsert'>>;
 
   function page(items: IdentifierMapping[], total: number): PaginatedOfferMappings {
     return { items, total };
@@ -104,11 +106,15 @@ describe('OfferStatusSyncService', () => {
           })
         ),
     } as unknown as jest.Mocked<Pick<OfferStatusSnapshotRepositoryPort, 'upsert'>>;
+    commercialSnapshots = { upsert: jest.fn() } as unknown as jest.Mocked<
+      Pick<OfferCommercialSnapshotRepositoryPort, 'upsert'>
+    >;
 
     service = new OfferStatusSyncService(
       integrations as unknown as IIntegrationsService,
       offerMappings as unknown as OfferMappingRepositoryPort,
-      snapshots as unknown as OfferStatusSnapshotRepositoryPort
+      snapshots as unknown as OfferStatusSnapshotRepositoryPort,
+      commercialSnapshots as unknown as OfferCommercialSnapshotRepositoryPort
     );
   });
 
@@ -245,5 +251,117 @@ describe('OfferStatusSyncService', () => {
     offerMappings.findMany.mockResolvedValue(page([makeMapping('111', 'ol_variant_a')], 1));
 
     await expect(service.sync(CONNECTION_ID, { limit: 10 })).rejects.toThrow('502 Bad Gateway');
+  });
+
+  describe('commercial snapshot (#2024)', () => {
+    it('upserts offer_commercial_snapshots from an Allegro-shaped commercial observation', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader(() => ({
+          publicationStatus: 'active',
+          validationErrors: [],
+          commercial: { price: { amount: '99.99', currency: 'PLN' }, availableQuantity: 12 },
+        }))
+      );
+      offerMappings.findMany.mockResolvedValue(page([makeMapping('111', 'ol_variant_a')], 1));
+
+      await service.sync(CONNECTION_ID, { limit: 10 });
+
+      expect(commercialSnapshots.upsert).toHaveBeenCalledTimes(1);
+      expect(commercialSnapshots.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionId: CONNECTION_ID,
+          externalOfferId: '111',
+          internalVariantId: 'ol_variant_a',
+          price: '99.99',
+          currency: 'PLN',
+          availableQuantity: 12,
+        })
+      );
+    });
+
+    it('upserts offer_commercial_snapshots from an Erli-shaped commercial observation (grosze-derived decimal price)', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader(() => ({
+          publicationStatus: 'activating',
+          validationErrors: [],
+          // Erli represents money as integer grosze; the adapter converts to a
+          // decimal string before it ever reaches this service.
+          commercial: { price: { amount: '34.90', currency: 'PLN' }, availableQuantity: 16 },
+        }))
+      );
+      offerMappings.findMany.mockResolvedValue(page([makeMapping('222', 'ol_variant_b')], 1));
+
+      await service.sync(CONNECTION_ID, { limit: 10 });
+
+      expect(commercialSnapshots.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          externalOfferId: '222',
+          internalVariantId: 'ol_variant_b',
+          price: '34.90',
+          currency: 'PLN',
+          availableQuantity: 16,
+        })
+      );
+    });
+
+    it('skips the commercial upsert when the adapter response carries no commercial observation', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(statusReader(() => readResult('active')));
+      offerMappings.findMany.mockResolvedValue(page([makeMapping('111', 'ol_variant_a')], 1));
+
+      await service.sync(CONNECTION_ID, { limit: 10 });
+
+      expect(commercialSnapshots.upsert).not.toHaveBeenCalled();
+    });
+
+    it('skips the commercial upsert when commercial is explicitly null', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader(() => ({ publicationStatus: 'active', validationErrors: [], commercial: null }))
+      );
+      offerMappings.findMany.mockResolvedValue(page([makeMapping('111', 'ol_variant_a')], 1));
+
+      await service.sync(CONNECTION_ID, { limit: 10 });
+
+      expect(commercialSnapshots.upsert).not.toHaveBeenCalled();
+    });
+
+    it('upserts the commercial snapshot on refreshOne using the same status response', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader(() => ({
+          publicationStatus: 'active',
+          validationErrors: [],
+          commercial: { price: { amount: '15.50', currency: 'PLN' }, availableQuantity: 4 },
+        }))
+      );
+
+      await service.refreshOne(CONNECTION_ID, {
+        externalOfferId: '333',
+        internalVariantId: 'ol_variant_c',
+      });
+
+      expect(commercialSnapshots.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionId: CONNECTION_ID,
+          externalOfferId: '333',
+          internalVariantId: 'ol_variant_c',
+          price: '15.50',
+          currency: 'PLN',
+          availableQuantity: 4,
+        })
+      );
+    });
+
+    it('does not upsert the commercial snapshot on refreshOne when the offer is not found', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader(() => Promise.reject(new OfferNotFoundOnMarketplaceException('333', CONNECTION_ID)))
+      );
+
+      const result = await service.refreshOne(CONNECTION_ID, {
+        externalOfferId: '333',
+        internalVariantId: 'ol_variant_c',
+      });
+
+      expect(result).toBeNull();
+      expect(commercialSnapshots.upsert).not.toHaveBeenCalled();
+    });
   });
 });

@@ -14,6 +14,14 @@
  * Enumeration uses OL's own offer mappings (Allegro has no bulk status
  * endpoint); the worker handler pages via a rolling scan offset.
  *
+ * Also persists channel-side commercial data (#2024): whenever the SAME
+ * `getOfferStatus` response carries a `commercial` observation (Allegro and
+ * Erli both populate it off the identical per-offer fetch already made for
+ * status — no second marketplace call), it is upserted into
+ * `offer_commercial_snapshots`. An adapter that never populates `commercial`
+ * (or a response with no price) simply skips the commercial upsert for that
+ * offer — status persistence is unaffected either way.
+ *
  * @module libs/core/src/listings/application/services
  * @implements {IOfferStatusSyncService}
  */
@@ -28,9 +36,11 @@ import { isOfferStatusReader, OfferNotFoundOnMarketplaceException ,
 import { Logger } from '@openlinker/shared/logging';
 import { OfferStatusSnapshotRepositoryPort } from '../../domain/ports/offer-status-snapshot-repository.port';
 import type { OfferStatusSnapshotDetails } from '../../domain/types/offer-status-snapshot.types';
+import { OfferCommercialSnapshotRepositoryPort } from '../../domain/ports/offer-commercial-snapshot-repository.port';
 import {
   OFFER_MAPPING_REPOSITORY_TOKEN,
   OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
+  OFFER_COMMERCIAL_SNAPSHOT_REPOSITORY_TOKEN,
 } from '../../listings.tokens';
 import type {
   IOfferStatusSyncService,
@@ -50,7 +60,9 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
     @Inject(OFFER_MAPPING_REPOSITORY_TOKEN)
     private readonly offerMappings: OfferMappingRepositoryPort,
     @Inject(OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN)
-    private readonly snapshots: OfferStatusSnapshotRepositoryPort
+    private readonly snapshots: OfferStatusSnapshotRepositoryPort,
+    @Inject(OFFER_COMMERCIAL_SNAPSHOT_REPOSITORY_TOKEN)
+    private readonly commercialSnapshots: OfferCommercialSnapshotRepositoryPort
   ) {}
 
   async sync(
@@ -112,6 +124,8 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
           `Offer status transition (connection=${connectionId}, offerId=${externalOfferId}): ${previousStatus} → ${status.publicationStatus}`
         );
       }
+
+      await this.upsertCommercialSnapshot(connectionId, externalOfferId, internalVariantId, status);
     }
 
     const proposedNext = offset + limit;
@@ -174,6 +188,13 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
       );
     }
 
+    await this.upsertCommercialSnapshot(
+      connectionId,
+      target.externalOfferId,
+      target.internalVariantId,
+      status
+    );
+
     return status.publicationStatus;
   }
 
@@ -184,5 +205,33 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
       return null;
     }
     return { validationMessages: validationErrors.map((error) => error.message) };
+  }
+
+  /**
+   * Upsert `offer_commercial_snapshots` (#2024) from the `commercial`
+   * observation already carried on the `getOfferStatus` result — no second
+   * per-offer marketplace call. A `null`/absent `commercial` (the adapter
+   * doesn't populate it, or the response carried no price) is a silent no-op:
+   * status persistence above is unaffected either way.
+   */
+  private async upsertCommercialSnapshot(
+    connectionId: string,
+    externalOfferId: string,
+    internalVariantId: string,
+    status: OfferStatusReadResult
+  ): Promise<void> {
+    const commercial = status.commercial;
+    if (!commercial) {
+      return;
+    }
+    await this.commercialSnapshots.upsert({
+      connectionId,
+      externalOfferId,
+      internalVariantId,
+      price: commercial.price.amount,
+      currency: commercial.price.currency,
+      availableQuantity: commercial.availableQuantity,
+      lastCommercialSyncedAt: new Date(),
+    });
   }
 }

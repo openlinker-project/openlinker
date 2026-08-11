@@ -1082,6 +1082,44 @@ describe('ErliOfferManagerAdapter', () => {
       await expect(adapter.getOfferStatus('evil/../x')).rejects.toBeInstanceOf(ErliConfigException);
       expect(httpClient.get).not.toHaveBeenCalled();
     });
+
+    it('should carry commercial (price + availableQuantity) off the same fetched product (#2024)', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        status: 200,
+        // Erli represents money as an integer in grosze (minor units), PLN-only.
+        data: { status: 'active', price: 3490, stock: 16 },
+      });
+
+      const result = await adapter.getOfferStatus(VALID_ID);
+
+      expect(httpClient.get).toHaveBeenCalledTimes(1);
+      expect(result.commercial).toEqual({
+        price: { amount: '34.90', currency: 'PLN' },
+        availableQuantity: 16,
+      });
+    });
+
+    it('should default availableQuantity to 0 when stock is absent (#2024)', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        status: 200,
+        data: { status: 'active', price: 1000 },
+      });
+
+      const result = await adapter.getOfferStatus(VALID_ID);
+
+      expect(result.commercial).toEqual({
+        price: { amount: '10.00', currency: 'PLN' },
+        availableQuantity: 0,
+      });
+    });
+
+    it('should report commercial as null when the product carries no price (#2024)', async () => {
+      httpClient.get.mockResolvedValueOnce({ status: 200, data: { status: 'active' } });
+
+      const result = await adapter.getOfferStatus(VALID_ID);
+
+      expect(result.commercial).toBeNull();
+    });
   });
 
   describe('getOffer (#464 — OfferReader)', () => {

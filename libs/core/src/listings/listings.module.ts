@@ -60,6 +60,8 @@ import { OfferStatusReadService } from './application/services/offer-status-read
 import { OfferStockRestoreService } from './application/services/offer-stock-restore.service';
 import { OfferStatusSnapshotOrmEntity } from './infrastructure/persistence/entities/offer-status-snapshot.orm-entity';
 import { OfferStatusSnapshotRepository } from './infrastructure/persistence/repositories/offer-status-snapshot.repository';
+import { OfferCommercialSnapshotOrmEntity } from './infrastructure/persistence/entities/offer-commercial-snapshot.orm-entity';
+import { OfferCommercialSnapshotRepository } from './infrastructure/persistence/repositories/offer-commercial-snapshot.repository';
 import { StaleOfferPauseService } from './application/services/stale-offer-pause.service';
 import {
   OFFER_LINKING_SERVICE_TOKEN,
@@ -81,6 +83,7 @@ import {
   OFFER_STATUS_SYNC_SERVICE_TOKEN,
   OFFER_STATUS_READ_SERVICE_TOKEN,
   OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
+  OFFER_COMMERCIAL_SNAPSHOT_REPOSITORY_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
   SELLER_POLICIES_CACHE_TOKEN,
   RESPONSIBLE_PRODUCER_SERVICE_TOKEN,
@@ -124,6 +127,7 @@ export {
   OFFER_STATUS_SYNC_SERVICE_TOKEN,
   OFFER_STATUS_READ_SERVICE_TOKEN,
   OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
+  OFFER_COMMERCIAL_SNAPSHOT_REPOSITORY_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
   SELLER_POLICIES_CACHE_TOKEN,
   RESPONSIBLE_PRODUCER_SERVICE_TOKEN,
@@ -156,6 +160,7 @@ export {
       BulkBatchAdvancementOrmEntity,
       SellerPoliciesCacheOrmEntity,
       OfferStatusSnapshotOrmEntity,
+      OfferCommercialSnapshotOrmEntity,
       ShopProductStatusSnapshotOrmEntity,
     ]),
     IntegrationsModule,
@@ -202,6 +207,7 @@ export {
     OfferStatusSyncService,
     OfferStatusReadService,
     OfferStatusSnapshotRepository,
+    OfferCommercialSnapshotRepository,
     SellerPoliciesCacheRepository,
     SellerPoliciesService,
     ResponsibleProducerService,
@@ -336,6 +342,10 @@ export {
     {
       provide: OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
       useExisting: OfferStatusSnapshotRepository,
+    },
+    {
+      provide: OFFER_COMMERCIAL_SNAPSHOT_REPOSITORY_TOKEN,
+      useExisting: OfferCommercialSnapshotRepository,
     },
     {
       provide: SELLER_POLICIES_CACHE_TOKEN,

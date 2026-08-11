@@ -110,6 +110,7 @@ import {
   type DeliveryPriceListReader,
   type MarketplaceOffer,
   type OfferCategory,
+  type OfferCommercialObservation,
   type OfferCondition,
   type OfferCreator,
   type OfferDescriptionUpdate,
@@ -1098,24 +1099,46 @@ function readDeliveryPriceListParam(
  * change — additive-only per offer-status-read.types ADR-009 note). `'accepted'`
  * (stored but still propagating through Erli's ~20-min cache) → `'activating'`.
  * Unknown/absent → `'inactive'` (conservative; never claims live).
+ *
+ * `commercial` (#2024) is read off this SAME already-fetched `product` resource
+ * (the identical `price`/`stock` fields `toMarketplaceOffer` maps for `getOffer`)
+ * — no second `GET /products/{externalId}` call.
  */
 function mapErliStatusToReadResult(product: ErliProductResource): OfferStatusReadResult {
+  const commercial = toErliCommercialObservation(product);
   switch (product.status) {
     case 'active':
-      return { publicationStatus: 'active', validationErrors: [] };
+      return { publicationStatus: 'active', validationErrors: [], commercial };
     case 'accepted':
-      return { publicationStatus: 'activating', validationErrors: [] };
+      return { publicationStatus: 'activating', validationErrors: [], commercial };
     case 'rejected':
       return {
         publicationStatus: 'inactive',
         validationErrors: [
           { code: 'ERLI_REJECTED', message: product.statusReason ?? 'Erli rejected the offer.' },
         ],
+        commercial,
       };
     case 'inactive':
     default:
-      return { publicationStatus: 'inactive', validationErrors: [] };
+      return { publicationStatus: 'inactive', validationErrors: [], commercial };
   }
+}
+
+/**
+ * Read-only projection of price + available quantity off an already-fetched
+ * `ErliProductResource` (#2024). Returns `null` when the read carries no
+ * `price` (never fabricated as zero) — mirrors `toMarketplaceOffer`'s money
+ * conversion (grosze integer → decimal string, PLN-only).
+ */
+function toErliCommercialObservation(product: ErliProductResource): OfferCommercialObservation | null {
+  if (product.price === undefined) {
+    return null;
+  }
+  return {
+    price: { amount: (product.price / 100).toFixed(2), currency: ERLI_CURRENCY },
+    availableQuantity: product.stock ?? 0,
+  };
 }
 
 /**
