@@ -50,16 +50,48 @@ describe('ConnectionCell', () => {
     expect(screen.getByText('aa966882…4cfb')).toBeInTheDocument();
   });
 
-  it('uses the page-supplied name without fetching the connection', async () => {
+  it('uses the page-supplied connection without fetching it', async () => {
     const getById = vi.fn();
     const api = createMockApiClient({ connections: { getById } });
 
     renderWithProviders(
-      <ConnectionCell connectionId={CONNECTION_ID} name="Warehouse EU" platformType="prestashop" />,
+      <ConnectionCell
+        connectionId={CONNECTION_ID}
+        connection={{ name: 'Warehouse EU', status: 'active' }}
+      />,
       { apiClient: api },
     );
 
     expect(await screen.findByRole('link', { name: 'Warehouse EU' })).toBeInTheDocument();
+    expect(getById).not.toHaveBeenCalled();
+  });
+
+  it('surfaces the status note from the page-supplied connection', async () => {
+    const getById = vi.fn();
+    const api = createMockApiClient({ connections: { getById } });
+
+    renderWithProviders(
+      <ConnectionCell
+        connectionId={CONNECTION_ID}
+        connection={{ name: 'Warehouse EU', status: 'needs_reauth' }}
+      />,
+      { apiClient: api },
+    );
+
+    expect(await screen.findByText('Reauth needed')).toBeInTheDocument();
+    expect(getById).not.toHaveBeenCalled();
+  });
+
+  it('renders Unknown without fetching when the page reports the connection as unknown', () => {
+    const getById = vi.fn();
+    const api = createMockApiClient({ connections: { getById } });
+
+    renderWithProviders(<ConnectionCell connectionId={CONNECTION_ID} connection={null} />, {
+      apiClient: api,
+    });
+
+    expect(screen.getByText('Unknown')).toBeInTheDocument();
+    expect(screen.queryByText('Reauth needed')).toBeNull();
     expect(getById).not.toHaveBeenCalled();
   });
 
@@ -141,23 +173,22 @@ describe('ConnectionCell', () => {
       connections: { getById: vi.fn().mockResolvedValue(mockConnection()) },
     });
 
-    const { container } = renderWithProviders(<ConnectionCell connectionId={CONNECTION_ID} />, {
-      apiClient: api,
-    });
+    renderWithProviders(<ConnectionCell connectionId={CONNECTION_ID} />, { apiClient: api });
 
     await screen.findByRole('link', { name: 'Erli Demo' });
-    expect(container.querySelector('.connection-cell__status')).toBeNull();
+    expect(screen.queryByText('Reauth needed')).toBeNull();
+    expect(screen.queryByText('Disabled')).toBeNull();
+    expect(screen.queryByText('Error')).toBeNull();
   });
 
   it('renders an empty-value placeholder when connectionId is empty', () => {
     const api = createMockApiClient({ connections: { getById: vi.fn() } });
 
-    const { container } = renderWithProviders(<ConnectionCell connectionId="" />, {
-      apiClient: api,
-    });
+    renderWithProviders(<ConnectionCell connectionId="" />, { apiClient: api });
 
-    expect(container.querySelector('.connection-cell')).toBeNull();
     expect(screen.getByLabelText('No value')).toBeInTheDocument();
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
   });
 
   it('renders an adornment when provided', async () => {
@@ -172,21 +203,5 @@ describe('ConnectionCell', () => {
 
     await screen.findByRole('link', { name: 'Erli Demo' });
     expect(screen.getByText('pill')).toBeInTheDocument();
-  });
-
-  it('hands the resolved connection to a function adornment', async () => {
-    const api = createMockApiClient({
-      connections: { getById: vi.fn().mockResolvedValue(mockConnection()) },
-    });
-
-    renderWithProviders(
-      <ConnectionCell
-        connectionId={CONNECTION_ID}
-        adornment={(facts) => <span>{facts.platformType}</span>}
-      />,
-      { apiClient: api },
-    );
-
-    expect(await screen.findByText('erli')).toBeInTheDocument();
   });
 });

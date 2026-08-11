@@ -88,7 +88,9 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
         {resolvedName}
       </Link>
     ) : (
-      <span className="entity-label__name">{resolvedName}</span>
+      <span className="entity-label__name" title={resolvedName}>
+        {resolvedName}
+      </span>
     )
   ) : (
     <span className="entity-label__name entity-label__name--unknown" title={id}>

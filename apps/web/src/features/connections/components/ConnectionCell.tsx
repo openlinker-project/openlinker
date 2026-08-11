@@ -6,11 +6,14 @@
  * adornment; line 2 pairs `CopyableId`'s shortened UUID with an
  * attention-only status note.
  *
- * `name` / `platformType` / `status` are page-supplied: a list page already
- * holds them from one batched `useConnectionsQuery()` read, and #1996 requires
- * the Connection column to cost one request per page rather than one per row.
- * The internal `useConnectionQuery` stays as the standalone fallback for a
- * caller that holds nothing but an id (#2027's own scope).
+ * The page-supplied facts arrive as ONE object because they are correlated: a
+ * list page already holds the whole `Connection` from a batched
+ * `useConnectionsQuery()` read (#1996 requires the Connection column to cost
+ * one request per page, not one per row), and supplying only part of it used to
+ * disable the internal query while leaving the status unresolved - silently
+ * dropping the operator-facing status note on exactly the batched path the AC
+ * demands. The internal `useConnectionQuery` stays as the standalone fallback
+ * for a caller that holds nothing but an id (#2027's own scope).
  */
 import type { ReactElement, ReactNode } from 'react';
 import { CopyableId } from '../../../shared/ui/copyable-id';
@@ -20,26 +23,22 @@ import type { ConnectionStatus } from '../api/connections.types';
 import { useConnectionQuery } from '../hooks/use-connection-query';
 import { ConnectionEntityLabel } from './ConnectionEntityLabel';
 
-/** What the cell resolved, handed back so an adornment needs no second lookup. */
+/** The connection facts this cell renders. A whole `Connection` satisfies it. */
 export interface ConnectionCellFacts {
-  connectionId: string;
-  name: string | null;
-  platformType: string | null;
-  status: ConnectionStatus | null;
+  name: string;
+  status: ConnectionStatus;
 }
 
 export interface ConnectionCellProps {
   connectionId: string;
-  /** `undefined` = resolve internally; a value (including `null`) = page-supplied. */
-  name?: string | null;
-  platformType?: string | null;
-  status?: ConnectionStatus | null;
   /**
-   * Leading glyph on line 1 - a channel pill or `ConnectionDot`. The function
-   * form receives the resolved connection so the consumer does not have to
-   * re-resolve what this cell already knows.
+   * `undefined` = resolve internally; a value = page-supplied, and `null`
+   * specifically means "the page looked and this connection is unknown", which
+   * renders the Unknown label without a per-row fetch.
    */
-  adornment?: ReactNode | ((facts: ConnectionCellFacts) => ReactNode);
+  connection?: ConnectionCellFacts | null;
+  /** Leading glyph on line 1 - a channel pill or `ConnectionDot`. */
+  adornment?: ReactNode;
   className?: string;
 }
 
@@ -51,31 +50,20 @@ const STATUS_NOTES: Record<Exclude<ConnectionStatus, 'active'>, string> = {
 
 export function ConnectionCell({
   connectionId,
-  name,
-  platformType,
-  status,
+  connection,
   adornment,
   className = '',
 }: ConnectionCellProps): ReactElement {
-  const nameSupplied = name !== undefined;
-  const query = useConnectionQuery(connectionId, { enabled: !nameSupplied });
+  const factsSupplied = connection !== undefined;
+  const query = useConnectionQuery(connectionId, { enabled: !factsSupplied });
 
   if (!connectionId) return <EmptyValue />;
 
-  const resolvedName = (nameSupplied ? name : query.data?.name) ?? null;
-  const resolvedPlatformType = platformType ?? query.data?.platformType ?? null;
-  const resolvedStatus = status ?? query.data?.status ?? null;
-  const loading = !nameSupplied && query.isLoading;
-
-  const adornmentNode =
-    typeof adornment === 'function'
-      ? adornment({
-          connectionId,
-          name: resolvedName,
-          platformType: resolvedPlatformType,
-          status: resolvedStatus,
-        })
-      : adornment;
+  const facts: ConnectionCellFacts | null =
+    connection !== undefined ? connection : (query.data ?? null);
+  const resolvedName = facts?.name ?? null;
+  const resolvedStatus = facts?.status ?? null;
+  const loading = !factsSupplied && query.isLoading;
 
   const statusNote =
     resolvedStatus && resolvedStatus !== 'active' ? STATUS_NOTES[resolvedStatus] : null;
@@ -87,9 +75,7 @@ export function ConnectionCell({
     <span className={classes}>
       <span className="connection-cell__body">
         <span className="connection-cell__line">
-          {adornmentNode ? (
-            <span className="connection-cell__adornment">{adornmentNode}</span>
-          ) : null}
+          {adornment ? <span className="connection-cell__adornment">{adornment}</span> : null}
           <ConnectionEntityLabel
             connectionId={connectionId}
             name={resolvedName}
@@ -108,7 +94,7 @@ export function ConnectionCell({
           {statusNote ? (
             <span className={`connection-cell__status connection-cell__status--${resolvedStatus}`}>
               <span className="connection-cell__status-dot" aria-hidden="true" />
-              {statusNote}
+              <span className="connection-cell__status-label">{statusNote}</span>
             </span>
           ) : null}
         </span>
