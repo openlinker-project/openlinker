@@ -35,22 +35,45 @@ export interface ConnectionCellProps {
    * `undefined` = resolve internally; a value = page-supplied, and `null`
    * specifically means "the page looked and this connection is unknown", which
    * renders the Unknown label without a per-row fetch.
+   *
+   * A list page MUST coalesce its lookup: `connectionsById.get(id)` and
+   * `connections.find(...)` both return `undefined` on a miss, which this cell
+   * reads as "resolve it yourself" and would silently reinstate the per-row
+   * fetch #1996 rejected. Pass `connection={map.get(id) ?? null}` together with
+   * `loading={connectionsQuery.isLoading}`, so an unresolved row renders Unknown
+   * and a not-yet-loaded one renders the loading state instead.
    */
   connection?: ConnectionCellFacts | null;
-  /** Leading glyph on line 1 - a channel pill or `ConnectionDot`. */
+  /**
+   * Page-supplied loading state, for the window before the batched connections
+   * query settles. Without it a page that coalesces to `null` (as it must)
+   * would render a column of "Unknown" on every cold load - indistinguishable
+   * from a genuinely deleted connection.
+   */
+  loading?: boolean;
+  /**
+   * Leading glyph on line 1 - a channel pill or `ConnectionDot`. The cell ships
+   * no built-in channel signal, so pass one on any list where two connections
+   * can share a `platformType`: otherwise the only disambiguators between two
+   * same-platform shops are the operator-authored name and a shortened id.
+   */
   adornment?: ReactNode;
   className?: string;
 }
 
+// "Re-auth" rather than the app's longer "Re-authentication required": line 2's
+// fixed cost (shortened id + copy control) leaves ~58px inside the 220px cap, so
+// a longer label truncates on every affected row.
 const STATUS_NOTES: Record<Exclude<ConnectionStatus, 'active'>, string> = {
   disabled: 'Disabled',
   error: 'Error',
-  needs_reauth: 'Reauth needed',
+  needs_reauth: 'Re-auth',
 };
 
 export function ConnectionCell({
   connectionId,
   connection,
+  loading: loadingProp = false,
   adornment,
   className = '',
 }: ConnectionCellProps): ReactElement {
@@ -63,7 +86,7 @@ export function ConnectionCell({
     connection !== undefined ? connection : (query.data ?? null);
   const resolvedName = facts?.name ?? null;
   const resolvedStatus = facts?.status ?? null;
-  const loading = !factsSupplied && query.isLoading;
+  const loading = loadingProp || (!factsSupplied && query.isLoading);
 
   const statusNote =
     resolvedStatus && resolvedStatus !== 'active' ? STATUS_NOTES[resolvedStatus] : null;
@@ -94,7 +117,9 @@ export function ConnectionCell({
           {statusNote ? (
             <span className={`connection-cell__status connection-cell__status--${resolvedStatus}`}>
               <span className="connection-cell__status-dot" aria-hidden="true" />
-              <span className="connection-cell__status-label">{statusNote}</span>
+              <span className="connection-cell__status-label" title={statusNote}>
+                {statusNote}
+              </span>
             </span>
           ) : null}
         </span>

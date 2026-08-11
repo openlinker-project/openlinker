@@ -78,7 +78,7 @@ describe('ConnectionCell', () => {
       { apiClient: api },
     );
 
-    expect(await screen.findByText('Reauth needed')).toBeInTheDocument();
+    expect(await screen.findByText('Re-auth')).toBeInTheDocument();
     expect(getById).not.toHaveBeenCalled();
   });
 
@@ -91,7 +91,20 @@ describe('ConnectionCell', () => {
     });
 
     expect(screen.getByText('Unknown')).toBeInTheDocument();
-    expect(screen.queryByText('Reauth needed')).toBeNull();
+    expect(screen.queryByText('Re-auth')).toBeNull();
+    expect(getById).not.toHaveBeenCalled();
+  });
+
+  it('renders the loading state rather than Unknown while the page reports its batch as loading', () => {
+    const getById = vi.fn();
+    const api = createMockApiClient({ connections: { getById } });
+
+    renderWithProviders(
+      <ConnectionCell connectionId={CONNECTION_ID} connection={null} loading />,
+      { apiClient: api },
+    );
+
+    expect(screen.queryByText('Unknown')).toBeNull();
     expect(getById).not.toHaveBeenCalled();
   });
 
@@ -165,7 +178,7 @@ describe('ConnectionCell', () => {
 
     renderWithProviders(<ConnectionCell connectionId={CONNECTION_ID} />, { apiClient: api });
 
-    expect(await screen.findByText('Reauth needed')).toBeInTheDocument();
+    expect(await screen.findByText('Re-auth')).toBeInTheDocument();
   });
 
   it('renders no status note for a healthy connection', async () => {
@@ -176,7 +189,7 @@ describe('ConnectionCell', () => {
     renderWithProviders(<ConnectionCell connectionId={CONNECTION_ID} />, { apiClient: api });
 
     await screen.findByRole('link', { name: 'Erli Demo' });
-    expect(screen.queryByText('Reauth needed')).toBeNull();
+    expect(screen.queryByText('Re-auth')).toBeNull();
     expect(screen.queryByText('Disabled')).toBeNull();
     expect(screen.queryByText('Error')).toBeNull();
   });

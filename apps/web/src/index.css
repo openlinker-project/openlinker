@@ -9441,18 +9441,20 @@ a.kpi-card:focus-visible {
   white-space: nowrap;
 }
 
+/* No base background: every status supplies its own below, so a fourth one
+ * added later renders no dot at all rather than a silent grey one that reads
+ * as a deliberate tone. The TS side is already exhaustive (STATUS_NOTES is a
+ * Record over every non-active ConnectionStatus), so the two fail together. */
 .connection-cell__status-dot {
   width: 6px;
   height: 6px;
   flex: none;
   border-radius: var(--radius-pill);
-  background: var(--text-muted);
 }
 
 /* The -fg family, not the raw hue: --status-warning is ~2.5:1 on white, under
  * the 3:1 WCAG 1.4.11 non-text minimum, so a 6px amber dot vanishes in light
- * theme. Every status carries an explicit modifier so a fourth one added later
- * fails visibly instead of silently inheriting the neutral base. */
+ * theme. */
 .connection-cell__status--disabled .connection-cell__status-dot {
   background: var(--status-disabled-fg);
 }
