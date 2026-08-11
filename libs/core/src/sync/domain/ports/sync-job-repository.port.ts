@@ -13,6 +13,7 @@ import type { SyncJob } from '../entities/sync-job.entity';
 import type {
   JobOutcome,
   JobOutcomeReason,
+  JobType,
   SyncJobFilters,
   SyncJobPagination,
   PaginatedSyncJobs,
@@ -230,6 +231,22 @@ export interface SyncJobRepositoryPort {
     jobType: string,
     maxBatchSize: number
   ): Promise<BulkRetryResult>;
+
+  /**
+   * Find the most recently *completed* succeeded job for a connection and
+   * job type, ordered by `updatedAt` DESC (the moment it flipped to
+   * succeeded) rather than `createdAt` (enqueue time). This is the precise
+   * "last successful ingestion" signal — `findMany` orders by `createdAt`
+   * only, which is enqueue time, not completion time (#1982).
+   *
+   * @param connectionId - Connection UUID
+   * @param jobType - Job type to match (e.g. 'marketplace.orders.poll')
+   * @returns The most recently succeeded matching job, or null if none exists
+   */
+  findLastSucceededByConnectionAndJobType(
+    connectionId: string,
+    jobType: JobType
+  ): Promise<SyncJob | null>;
 
   /**
    * Refresh the lock timestamp of a job the caller still holds (#1810).

@@ -17,7 +17,9 @@ describe('SyncJobsService', () => {
   let repository: jest.Mocked<
     Pick<
       SyncJobRepositoryPort,
-      'createIfNotExistsByIdempotencyKey' | 'requeueDeadByIdempotencyKey'
+      | 'createIfNotExistsByIdempotencyKey'
+      | 'requeueDeadByIdempotencyKey'
+      | 'findLastSucceededByConnectionAndJobType'
     >
   >;
   let service: SyncJobsService;
@@ -26,6 +28,7 @@ describe('SyncJobsService', () => {
     repository = {
       createIfNotExistsByIdempotencyKey: jest.fn(),
       requeueDeadByIdempotencyKey: jest.fn(),
+      findLastSucceededByConnectionAndJobType: jest.fn(),
     };
     service = new SyncJobsService(repository as unknown as SyncJobRepositoryPort);
   });
@@ -95,6 +98,29 @@ describe('SyncJobsService', () => {
 
       expect(result).toBe(false);
       expect(repository.requeueDeadByIdempotencyKey).toHaveBeenCalledWith('missing');
+    });
+  });
+
+  describe('findLastSucceededJob (#1982)', () => {
+    it('delegates to the repository and returns the matching job', async () => {
+      const job = { id: 'job-1' } as SyncJob;
+      repository.findLastSucceededByConnectionAndJobType.mockResolvedValue(job);
+
+      const result = await service.findLastSucceededJob('conn-1', 'marketplace.orders.poll');
+
+      expect(result).toBe(job);
+      expect(repository.findLastSucceededByConnectionAndJobType).toHaveBeenCalledWith(
+        'conn-1',
+        'marketplace.orders.poll'
+      );
+    });
+
+    it('returns null when no succeeded job exists for the connection + job type', async () => {
+      repository.findLastSucceededByConnectionAndJobType.mockResolvedValue(null);
+
+      const result = await service.findLastSucceededJob('conn-1', 'marketplace.orders.poll');
+
+      expect(result).toBeNull();
     });
   });
 });

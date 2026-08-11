@@ -340,6 +340,17 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
     return entities.map((e) => this.toDomain(e));
   }
 
+  async findLastSucceededByConnectionAndJobType(
+    connectionId: string,
+    jobType: JobType
+  ): Promise<SyncJob | null> {
+    const entity = await this.repository.findOne({
+      where: { connectionId, jobType, status: 'succeeded' },
+      order: { updatedAt: 'DESC' },
+    });
+    return entity ? this.toDomain(entity) : null;
+  }
+
   async findGroupedByStatus(
     filters: SyncJobGroupFilters,
     maxGroups: number

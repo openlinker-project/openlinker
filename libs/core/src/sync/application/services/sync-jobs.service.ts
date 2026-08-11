@@ -18,6 +18,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '../../sync.tokens';
 import { SyncJobRepositoryPort } from '../../domain/ports/sync-job-repository.port';
 import type { SyncJob } from '../../domain/entities/sync-job.entity';
+import type { JobType } from '../../domain/types/sync-job.types';
 import type { ISyncJobsService } from './sync-jobs.service.interface';
 import type { ScheduleJobInput } from './sync-jobs.types';
 
@@ -56,5 +57,9 @@ export class SyncJobsService implements ISyncJobsService {
     // (returns false), leaving the record `pending` (still claimable) rather than
     // misbehaving - safe, but the coupling must be kept in lock-step.
     return this.syncJobRepository.requeueDeadByIdempotencyKey(idempotencyKey);
+  }
+
+  async findLastSucceededJob(connectionId: string, jobType: JobType): Promise<SyncJob | null> {
+    return this.syncJobRepository.findLastSucceededByConnectionAndJobType(connectionId, jobType);
   }
 }

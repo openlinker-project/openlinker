@@ -228,4 +228,35 @@ describe('SyncJobRepository', () => {
       expect(result).toBe(false);
     });
   });
+
+  describe('findLastSucceededByConnectionAndJobType (#1982)', () => {
+    it('queries by connectionId + jobType + succeeded status, ordered by updatedAt DESC', async () => {
+      ormRepo.findOne.mockResolvedValue(
+        makeOrmEntity({ status: 'succeeded', updatedAt: new Date('2026-06-01T00:00:00Z') })
+      );
+
+      const result = await repo.findLastSucceededByConnectionAndJobType(
+        'conn-1',
+        'marketplace.orders.poll'
+      );
+
+      expect(result).not.toBeNull();
+      expect(result?.status).toBe('succeeded');
+      expect(ormRepo.findOne).toHaveBeenCalledWith({
+        where: { connectionId: 'conn-1', jobType: 'marketplace.orders.poll', status: 'succeeded' },
+        order: { updatedAt: 'DESC' },
+      });
+    });
+
+    it('returns null when no succeeded job exists for the connection + job type', async () => {
+      ormRepo.findOne.mockResolvedValue(null);
+
+      const result = await repo.findLastSucceededByConnectionAndJobType(
+        'conn-1',
+        'marketplace.orders.poll'
+      );
+
+      expect(result).toBeNull();
+    });
+  });
 });
