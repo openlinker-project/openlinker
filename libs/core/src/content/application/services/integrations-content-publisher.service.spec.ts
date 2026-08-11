@@ -183,6 +183,9 @@ describe('IntegrationsContentPublisher', () => {
             context: null,
             createdAt: new Date(),
             updatedAt: new Date(),
+            identity: null,
+            channelStatus: null,
+            commercial: null,
           })),
           total: ids.length,
         });

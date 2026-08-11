@@ -210,7 +210,6 @@ interface ApiRequest {
 function buildQuery(filters?: ListingsFilters, pagination?: ListingsPagination): string {
   const params = new URLSearchParams();
   if (filters?.connectionId) params.set('connectionId', filters.connectionId);
-  if (filters?.platformType) params.set('platformType', filters.platformType);
   if (filters?.internalId) params.set('internalId', filters.internalId);
   if (filters?.search) params.set('search', filters.search);
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));

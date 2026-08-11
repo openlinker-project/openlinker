@@ -71,21 +71,17 @@ export function ListingsListPage(): ReactElement {
 
   const urlSearch = searchParams.get('search') ?? '';
   const urlConnectionId = searchParams.get('connectionId') ?? '';
-  const urlPlatformType = searchParams.get('platformType') ?? '';
   const offset = Number(searchParams.get('offset') ?? '0');
 
   const [searchInput, setSearchInput] = useState(urlSearch);
   const [connectionIdInput, setConnectionIdInput] = useState(urlConnectionId);
-  const [platformTypeInput, setPlatformTypeInput] = useState(urlPlatformType);
 
   const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
   const debouncedConnectionId = useDebouncedValue(connectionIdInput, SEARCH_DEBOUNCE_MS);
-  const debouncedPlatformType = useDebouncedValue(platformTypeInput, SEARCH_DEBOUNCE_MS);
 
   const filters: ListingsFilters = {
     search: debouncedSearch || undefined,
     connectionId: debouncedConnectionId || undefined,
-    platformType: debouncedPlatformType || undefined,
   };
   const pagination = { limit: PAGE_SIZE, offset };
 
@@ -94,7 +90,6 @@ export function ListingsListPage(): ReactElement {
   function handleFilterChange(key: string, value: string): void {
     if (key === 'search') setSearchInput(value);
     if (key === 'connectionId') setConnectionIdInput(value);
-    if (key === 'platformType') setPlatformTypeInput(value);
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       if (value) {
@@ -122,18 +117,16 @@ export function ListingsListPage(): ReactElement {
   function clearFilters(): void {
     setSearchInput('');
     setConnectionIdInput('');
-    setPlatformTypeInput('');
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.delete('search');
       next.delete('connectionId');
-      next.delete('platformType');
       next.delete('offset');
       return next;
     });
   }
 
-  const hasFilters = !!(debouncedSearch || debouncedConnectionId || debouncedPlatformType);
+  const hasFilters = !!(debouncedSearch || debouncedConnectionId);
   const total = query.data?.total ?? 0;
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
@@ -159,8 +152,8 @@ export function ListingsListPage(): ReactElement {
     >
       <div className="toolbar toolbar--compact">
         <Input
-          aria-label="Search by external ID"
-          placeholder="External ID…"
+          aria-label="Search listings"
+          placeholder="Product name, SKU, EAN or external ID…"
           value={searchInput}
           onChange={(e) => {
             handleFilterChange('search', e.target.value);
@@ -172,14 +165,6 @@ export function ListingsListPage(): ReactElement {
           value={connectionIdInput}
           onChange={(e) => {
             handleFilterChange('connectionId', e.target.value);
-          }}
-        />
-        <Input
-          aria-label="Filter by platform type"
-          placeholder="Platform type…"
-          value={platformTypeInput}
-          onChange={(e) => {
-            handleFilterChange('platformType', e.target.value);
           }}
         />
       </div>

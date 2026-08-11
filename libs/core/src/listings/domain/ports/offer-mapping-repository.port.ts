@@ -23,7 +23,16 @@ export interface OfferMappingRepositoryPort {
 
   /**
    * Find offer mappings matching filters with offset pagination.
-   * Always scoped to entityType = 'Offer'. Results ordered by createdAt DESC.
+   * Always scoped to entityType = 'Offer'. Results ordered by createdAt DESC
+   * (id DESC as tiebreaker, so paging is total).
+   *
+   * Each item carries the mapping plus three independently-nullable read-model
+   * projections resolved in the SAME query via reporting joins (#2025):
+   * catalog `identity` (product/variant), `channelStatus` (the
+   * `offer_status_snapshots` row and the lifecycle bucket derived from it) and
+   * `commercial` (the `offer_commercial_snapshots` price/quantity together
+   * with their freshness timestamp). Callers that only need the mapping fields
+   * read them off the item directly and can ignore all three.
    */
   findMany(
     filters: OfferMappingFilters,

@@ -51,6 +51,7 @@ import type {
   IResponsibleProducerService,
   IDeliveryPriceListService,
   OfferCreationRecordRepositoryPort,
+  OfferMappingListItem,
   OfferMappingRepositoryPort,
   OfferStatusSnapshot,
 } from '@openlinker/core/listings';
@@ -90,6 +91,32 @@ describe('ListingsController', () => {
     new Date('2026-01-01T00:00:00Z'),
     new Date('2026-01-01T00:00:00Z')
   );
+
+  // The list read model (#2025): the mapping plus the three reporting-join
+  // projections. `findById` still yields the bare mapping.
+  const mockListItem: OfferMappingListItem = {
+    ...mockMapping,
+    identity: {
+      productId: 'ol_product_1',
+      productName: 'Doniczka ceramiczna Terra',
+      variantLabel: 'Limonka · 24 cm',
+      sku: 'TERRA-24-LIM',
+      ean: '5900000000138',
+      imageUrl: 'https://cdn.example/terra.jpg',
+    },
+    channelStatus: {
+      publicationStatus: 'inactive',
+      lifecycle: 'Inactive',
+      validationMessages: ['Brak parametru: Marka'],
+      lastStatusSyncedAt: new Date('2026-01-02T00:00:00Z'),
+    },
+    commercial: {
+      price: 100,
+      currency: 'PLN',
+      availableQuantity: 41,
+      lastCommercialSyncedAt: new Date('2026-01-02T00:00:00Z'),
+    },
+  };
 
   const mockRecord = new OfferCreationRecord(
     'record-1',
@@ -220,7 +247,7 @@ describe('ListingsController', () => {
 
   describe('listOfferMappings', () => {
     it('should return paginated offer mappings with default pagination', async () => {
-      repository.findMany.mockResolvedValue({ items: [mockMapping], total: 1 });
+      repository.findMany.mockResolvedValue({ items: [mockListItem], total: 1 });
 
       const result = await controller.listOfferMappings({});
 
@@ -231,7 +258,6 @@ describe('ListingsController', () => {
       expect(repository.findMany).toHaveBeenCalledWith(
         {
           connectionId: undefined,
-          platformType: undefined,
           internalId: undefined,
           search: undefined,
         },
@@ -244,7 +270,6 @@ describe('ListingsController', () => {
 
       await controller.listOfferMappings({
         connectionId: 'conn-1',
-        platformType: 'allegro',
         internalId: 'ol_offer_variant123',
         search: '456',
         limit: 10,
@@ -254,7 +279,6 @@ describe('ListingsController', () => {
       expect(repository.findMany).toHaveBeenCalledWith(
         {
           connectionId: 'conn-1',
-          platformType: 'allegro',
           internalId: 'ol_offer_variant123',
           search: '456',
         },
@@ -263,12 +287,41 @@ describe('ListingsController', () => {
     });
 
     it('should serialize dates as ISO 8601 strings', async () => {
-      repository.findMany.mockResolvedValue({ items: [mockMapping], total: 1 });
+      repository.findMany.mockResolvedValue({ items: [mockListItem], total: 1 });
 
       const result = await controller.listOfferMappings({});
 
       expect(result.items[0].createdAt).toBe('2026-01-01T00:00:00.000Z');
       expect(result.items[0].updatedAt).toBe('2026-01-01T00:00:00.000Z');
+    });
+
+    it('should expose identity, lifecycle and commercial data with its freshness stamp (#2025)', async () => {
+      repository.findMany.mockResolvedValue({ items: [mockListItem], total: 1 });
+
+      const result = await controller.listOfferMappings({});
+
+      expect(result.items[0].identity?.productName).toBe('Doniczka ceramiczna Terra');
+      expect(result.items[0].identity?.imageUrl).toBe('https://cdn.example/terra.jpg');
+      expect(result.items[0].channelStatus?.lifecycle).toBe('Inactive');
+      expect(result.items[0].channelStatus?.validationMessages).toEqual(['Brak parametru: Marka']);
+      expect(result.items[0].channelStatus?.lastStatusSyncedAt).toBe('2026-01-02T00:00:00.000Z');
+      expect(result.items[0].commercial?.price).toBe(100);
+      expect(result.items[0].commercial?.availableQuantity).toBe(41);
+      // ADR-009 (#2024): a price is never returned without its age.
+      expect(result.items[0].commercial?.lastCommercialSyncedAt).toBe('2026-01-02T00:00:00.000Z');
+    });
+
+    it('should null every projection when the joins found nothing', async () => {
+      repository.findMany.mockResolvedValue({
+        items: [{ ...mockMapping, identity: null, channelStatus: null, commercial: null }],
+        total: 1,
+      });
+
+      const result = await controller.listOfferMappings({});
+
+      expect(result.items[0].identity).toBeNull();
+      expect(result.items[0].channelStatus).toBeNull();
+      expect(result.items[0].commercial).toBeNull();
     });
   });
 

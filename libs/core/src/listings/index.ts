@@ -69,10 +69,20 @@ export type { IShopProductMappingsService } from './application/services/shop-pr
 export type {
   OfferMappingFilters,
   OfferMappingPagination,
+  OfferMappingIdentity,
+  OfferMappingChannelStatus,
+  OfferMappingCommercial,
+  OfferMappingListItem,
   PaginatedOfferMappings,
   ProductListingsCoverage,
   StaleMappedVariant,
 } from './domain/types/offer-mapping.types';
+export { deriveVariantLabel } from './domain/types/offer-mapping.types';
+
+// Offer lifecycle (#2025) — the four disjoint buckets the redesigned listings
+// page partitions on, plus the pure derivation off a status snapshot.
+export { OfferLifecycleValues, deriveOfferLifecycle } from './domain/types/offer-lifecycle.types';
+export type { OfferLifecycle } from './domain/types/offer-lifecycle.types';
 export type {
   OfferDescriptionSectionItem,
   OfferDescriptionSection,

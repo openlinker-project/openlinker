@@ -23,7 +23,7 @@ import type {
   OfferMappingRepositoryPort,
   OfferStockRestorer,
 } from '@openlinker/core/listings';
-import type { IdentifierMapping } from '@openlinker/core/identifier-mapping';
+import type { OfferMappingListItem } from '@openlinker/core/listings';
 import type { OrderRecord } from '@openlinker/core/orders';
 
 const CONNECTION_ID = 'conn-1';
@@ -33,8 +33,8 @@ const VARIANT_B = 'ol_variant_b';
 const OFFER_A = 'erli-offer-a';
 const OFFER_B = 'erli-offer-b';
 
-function mapping(internalId: string, externalId: string): IdentifierMapping {
-  return { internalId, externalId } as unknown as IdentifierMapping;
+function mapping(internalId: string, externalId: string): OfferMappingListItem {
+  return { internalId, externalId } as unknown as OfferMappingListItem;
 }
 
 function availability(rows: Array<[string, number]>): VariantAvailability[] {

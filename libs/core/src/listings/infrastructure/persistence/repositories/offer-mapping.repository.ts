@@ -15,15 +15,56 @@ import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { IdentifierMapping } from '@openlinker/core/identifier-mapping';
 import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 import type { OfferMappingRepositoryPort } from '../../../domain/ports/offer-mapping-repository.port';
+import {
+  deriveOfferLifecycle,
+  readValidationMessages,
+} from '../../../domain/types/offer-lifecycle.types';
+import { deriveVariantLabel } from '../../../domain/types/offer-mapping.types';
 import type {
+  OfferMappingChannelStatus,
+  OfferMappingCommercial,
   OfferMappingFilters,
+  OfferMappingIdentity,
+  OfferMappingListItem,
   OfferMappingPagination,
   PaginatedOfferMappings,
   ProductListingsCoverage,
   StaleMappedVariant,
 } from '../../../domain/types/offer-mapping.types';
+import type { OfferPublicationStatus } from '../../../domain/types/offer-status-read.types';
+import type { OfferStatusSnapshotDetails } from '../../../domain/types/offer-status-snapshot.types';
 
 const OFFER_ENTITY_TYPE: CoreEntityType = CORE_ENTITY_TYPE.Offer;
+
+/**
+ * Raw shape of one enriched `findMany` row (#2025). Every joined column is
+ * nullable because all four joins are LEFT joins - a mapping can outlive its
+ * variant, and neither snapshot table is guaranteed to have been written yet.
+ */
+interface OfferMappingListRawRow {
+  id: string;
+  entityType: string;
+  internalId: string;
+  externalId: string;
+  platformType: string;
+  connectionId: string;
+  context: IdentifierMapping['context'];
+  createdAt: Date;
+  updatedAt: Date;
+  productId: string | null;
+  productName: string | null;
+  productImages: string[] | null;
+  variantSku: string | null;
+  variantEan: string | null;
+  variantAttributes: Record<string, string> | null;
+  publicationStatus: OfferPublicationStatus | null;
+  statusDetails: OfferStatusSnapshotDetails | null;
+  lastStatusSyncedAt: Date | null;
+  commercialPrice: string | null;
+  commercialCurrency: string | null;
+  commercialAvailableQuantity: number | null;
+  lastCommercialSyncedAt: Date | null;
+}
 
 /**
  * The one publication status that means the offer is genuinely over and the
@@ -67,17 +108,34 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
   ): Promise<PaginatedOfferMappings> {
     const qb = this.repository.createQueryBuilder('mapping');
 
+    // Read-model reporting joins onto the products context and the two
+    // listings snapshot tables BY TABLE NAME - no cross-context ORM-entity
+    // import, so the import contract stays intact (same pattern as
+    // `countListedVariantsByProducts`, #1720; columns are camelCase and must
+    // be double-quoted in raw fragments). One query per page, never an N+1
+    // enrichment loop: every join is an at-most-one index lookup (variant and
+    // product on their primary keys, both snapshots on their unique
+    // `(externalOfferId, connectionId)` key), so row cardinality is unchanged.
+    qb.leftJoin('product_variants', 'pv', 'pv."id" = mapping."internalId"')
+      .leftJoin('products', 'p', 'p."id" = pv."productId"')
+      .leftJoin(
+        'offer_status_snapshots',
+        'oss',
+        'oss."externalOfferId" = mapping."externalId" ' +
+          'AND oss."connectionId" = mapping."connectionId"'
+      )
+      .leftJoin(
+        'offer_commercial_snapshots',
+        'ocs',
+        'ocs."externalOfferId" = mapping."externalId" ' +
+          'AND ocs."connectionId" = mapping."connectionId"'
+      );
+
     qb.where('mapping.entityType = :entityType', { entityType: OFFER_ENTITY_TYPE });
 
     if (filters.connectionId) {
       qb.andWhere('mapping.connectionId = :connectionId', {
         connectionId: filters.connectionId,
-      });
-    }
-
-    if (filters.platformType) {
-      qb.andWhere('mapping.platformType = :platformType', {
-        platformType: filters.platformType,
       });
     }
 
@@ -89,15 +147,56 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
 
     if (filters.search) {
       const escapedSearch = filters.search.replace(/[%_]/g, '\\$&');
-      qb.andWhere('mapping.externalId ILIKE :search', {
-        search: `%${escapedSearch}%`,
-      });
+      // The variant term matches attribute VALUES only. A plain
+      // `attributes::text ILIKE` would also match the jsonb keys, so a search
+      // for "kolor" would return every coloured variant in the catalog.
+      qb.andWhere(
+        '(mapping."externalId" ILIKE :search ' +
+          'OR p."name" ILIKE :search ' +
+          'OR pv."sku" ILIKE :search ' +
+          'OR pv."ean" ILIKE :search ' +
+          'OR EXISTS (SELECT 1 FROM jsonb_each_text(pv."attributes") attr ' +
+          'WHERE attr.value ILIKE :search))',
+        { search: `%${escapedSearch}%` }
+      );
     }
 
-    qb.orderBy('mapping.createdAt', 'DESC').skip(pagination.offset).take(pagination.limit);
+    // Counted before the projection/paging clauses are attached so the count
+    // is unambiguously the filtered total, independent of the raw select.
+    const total = await qb.getCount();
 
-    const [entities, total] = await qb.getManyAndCount();
-    return { items: entities.map((e) => this.toDomain(e)), total };
+    qb.select('mapping.id', 'id')
+      .addSelect('mapping.entityType', 'entityType')
+      .addSelect('mapping.internalId', 'internalId')
+      .addSelect('mapping.externalId', 'externalId')
+      .addSelect('mapping.platformType', 'platformType')
+      .addSelect('mapping.connectionId', 'connectionId')
+      .addSelect('mapping.context', 'context')
+      .addSelect('mapping.createdAt', 'createdAt')
+      .addSelect('mapping.updatedAt', 'updatedAt')
+      .addSelect('pv."productId"', 'productId')
+      .addSelect('pv."sku"', 'variantSku')
+      .addSelect('pv."ean"', 'variantEan')
+      .addSelect('pv."attributes"', 'variantAttributes')
+      .addSelect('p."name"', 'productName')
+      .addSelect('p."images"', 'productImages')
+      .addSelect('oss."publicationStatus"', 'publicationStatus')
+      .addSelect('oss."statusDetails"', 'statusDetails')
+      .addSelect('oss."lastStatusSyncedAt"', 'lastStatusSyncedAt')
+      .addSelect('ocs."price"', 'commercialPrice')
+      .addSelect('ocs."currency"', 'commercialCurrency')
+      .addSelect('ocs."availableQuantity"', 'commercialAvailableQuantity')
+      .addSelect('ocs."lastCommercialSyncedAt"', 'lastCommercialSyncedAt');
+
+    // `createdAt` alone is not unique, so a same-timestamp cluster could
+    // repeat or skip rows across pages; the id tiebreaker makes paging total.
+    qb.orderBy('mapping."createdAt"', 'DESC')
+      .addOrderBy('mapping."id"', 'DESC')
+      .offset(pagination.offset)
+      .limit(pagination.limit);
+
+    const rows = await qb.getRawMany<OfferMappingListRawRow>();
+    return { items: rows.map((row) => this.toListItem(row)), total };
   }
 
   async countByConnectionAndVariants(
@@ -212,6 +311,61 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       externalOfferId: row.externalOfferId,
       staleAt: row.staleAt,
     }));
+  }
+
+  private toListItem(row: OfferMappingListRawRow): OfferMappingListItem {
+    return {
+      ...new IdentifierMapping(
+        row.id,
+        row.entityType,
+        row.internalId,
+        row.externalId,
+        row.platformType,
+        row.connectionId,
+        row.context ?? null,
+        row.createdAt,
+        row.updatedAt
+      ),
+      identity: this.toIdentity(row),
+      channelStatus: this.toChannelStatus(row),
+      commercial: this.toCommercial(row),
+    };
+  }
+
+  private toIdentity(row: OfferMappingListRawRow): OfferMappingIdentity | null {
+    // `productId` comes from the variant join: its absence is what says the
+    // mapping's `internalId` no longer resolves to a live variant.
+    if (row.productId === null) return null;
+    return {
+      productId: row.productId,
+      productName: row.productName ?? '',
+      variantLabel: deriveVariantLabel(row.variantAttributes),
+      sku: row.variantSku,
+      ean: row.variantEan,
+      imageUrl: row.productImages?.[0] ?? null,
+    };
+  }
+
+  private toChannelStatus(row: OfferMappingListRawRow): OfferMappingChannelStatus | null {
+    if (row.publicationStatus === null || row.lastStatusSyncedAt === null) return null;
+    return {
+      publicationStatus: row.publicationStatus,
+      lifecycle: deriveOfferLifecycle(row.publicationStatus, row.statusDetails),
+      validationMessages: readValidationMessages(row.statusDetails),
+      lastStatusSyncedAt: row.lastStatusSyncedAt,
+    };
+  }
+
+  private toCommercial(row: OfferMappingListRawRow): OfferMappingCommercial | null {
+    if (row.lastCommercialSyncedAt === null) return null;
+    return {
+      // `numeric` arrives as a string through the driver - an explicit cast
+      // keeps the wire value a number rather than "100.00".
+      price: row.commercialPrice === null ? null : Number(row.commercialPrice),
+      currency: row.commercialCurrency,
+      availableQuantity: row.commercialAvailableQuantity,
+      lastCommercialSyncedAt: row.lastCommercialSyncedAt,
+    };
   }
 
   private toDomain(entity: IdentifierMappingOrmEntity): IdentifierMapping {
