@@ -44,9 +44,12 @@ export function classifyIngestionStatus(
  * cron expression, computed as the gap between the next two fire times
  * from `now`. Correctly handles the fixed-interval expressions every
  * registered order-poll scheduler task uses today (`*\/N * * * *`); an
- * irregular expression (e.g. fixed times of day) would report the gap
- * between those two specific fires rather than a true average interval —
- * a known, currently-inapplicable limitation (#1982).
+ * irregular expression (e.g. `0 3,15 * * *`, fixed times of day) would
+ * report the gap between whichever two fires are next from `now`, which
+ * can be the shorter of the two real gaps depending on when `now` falls,
+ * rather than a true average interval. A known, currently-inapplicable
+ * limitation (#1982): no registered scheduler task uses an irregular
+ * expression today, so no connection's staleness threshold is affected.
  *
  * Returns `null` on a malformed cron expression rather than throwing — a
  * parse failure must degrade one connection's `expectedIntervalMs`, never

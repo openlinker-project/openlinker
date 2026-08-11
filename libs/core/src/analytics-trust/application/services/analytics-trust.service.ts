@@ -25,7 +25,8 @@ import {
   SYNC_JOBS_SERVICE_TOKEN,
   SCHEDULER_TASK_REGISTRY_TOKEN,
   SchedulerTaskRegistryService,
- ISyncJobsService} from '@openlinker/core/sync';
+  ISyncJobsService,
+} from '@openlinker/core/sync';
 import type { IAnalyticsTrustService } from './analytics-trust.service.interface';
 import type {
   AnalyticsTrustSnapshot,
@@ -105,16 +106,20 @@ export class AnalyticsTrustService implements IAnalyticsTrustService {
           error instanceof Error ? error.message : String(error)
         }`
       );
-      return {
-        connectionId: connection.id,
-        connectionName: connection.name,
-        platformType: connection.platformType,
-        status: 'never-ingested',
-        lastSuccessfulIngestionAt: null,
-        coverageStartAt: connection.createdAt,
-        expectedIntervalMs: null,
-        staleAfterMs: null,
-      };
+      return this.buildDegradedEntry(connection);
     }
+  }
+
+  private buildDegradedEntry(connection: Connection): ConnectionIngestionTrust {
+    return {
+      connectionId: connection.id,
+      connectionName: connection.name,
+      platformType: connection.platformType,
+      status: 'never-ingested',
+      lastSuccessfulIngestionAt: null,
+      coverageStartAt: connection.createdAt,
+      expectedIntervalMs: null,
+      staleAfterMs: null,
+    };
   }
 }
