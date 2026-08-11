@@ -663,13 +663,27 @@ export class AllegroOfferManagerAdapter
    * indistinguishable from a genuine sell-out (or a free item) at list scale.
    * getOffer's stricter contract, which treats a missing price as a malformed
    * payload, is unchanged; this read tolerates absence instead of throwing.
+   *
+   * The field guards match the Erli side's discipline because both read untyped
+   * wire JSON: an amount without a currency would persist unlabeled money (the
+   * service stores a real number next to a `null` currency), and
+   * `typeof x === 'number'` alone admits `Infinity`, which `JSON.parse` really
+   * does produce from a `1e999` literal.
    */
   private toCommercialObservation(offer: AllegroProductOffer): OfferCommercialObservation {
-    const price = offer.sellingMode?.price;
+    const amount = offer.sellingMode?.price?.amount;
+    const currency = offer.sellingMode?.price?.currency;
     const available = offer.stock?.available;
     return {
-      price: price ? { amount: price.amount, currency: price.currency } : null,
-      availableQuantity: typeof available === 'number' ? available : null,
+      price:
+        typeof amount === 'string' &&
+        amount.length > 0 &&
+        typeof currency === 'string' &&
+        currency.length > 0
+          ? { amount, currency }
+          : null,
+      availableQuantity:
+        typeof available === 'number' && Number.isFinite(available) ? available : null,
     };
   }
 

@@ -319,6 +319,45 @@ describe('OfferStatusSyncService', () => {
       );
     });
 
+    it('skips the commercial upsert when the observation carries neither price nor quantity', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader(() => ({
+          publicationStatus: 'active',
+          validationErrors: [],
+          commercial: { price: null, availableQuantity: null },
+        }))
+      );
+      offerMappings.findMany.mockResolvedValue(page([makeMapping('111', 'ol_variant_a')], 1));
+
+      const result = await service.sync(CONNECTION_ID, { limit: 10 });
+
+      expect(commercialSnapshots.upsert).not.toHaveBeenCalled();
+      expect(snapshots.upsert).toHaveBeenCalledTimes(1);
+      expect(result.commercialUpdated).toBe(0);
+      expect(result.commercialFailed).toBe(0);
+    });
+
+    it('counts written and failed commercial writes on the result', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader(() => ({
+          publicationStatus: 'active',
+          validationErrors: [],
+          commercial: { price: { amount: '99.99', currency: 'PLN' }, availableQuantity: 12 },
+        }))
+      );
+      offerMappings.findMany.mockResolvedValue(
+        page([makeMapping('111', 'ol_variant_a'), makeMapping('222', 'ol_variant_b')], 2)
+      );
+      commercialSnapshots.upsert
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('invalid input syntax for type numeric'));
+
+      const result = await service.sync(CONNECTION_ID, { limit: 10 });
+
+      expect(result.commercialUpdated).toBe(1);
+      expect(result.commercialFailed).toBe(1);
+    });
+
     it('skips the commercial upsert but still persists status when the adapter carries no observation', async () => {
       integrations.getCapabilityAdapter.mockResolvedValue(statusReader(() => readResult('active')));
       offerMappings.findMany.mockResolvedValue(page([makeMapping('111', 'ol_variant_a')], 1));

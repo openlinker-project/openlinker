@@ -3,7 +3,9 @@
  *
  * Verifies the insert/update branches of `upsert`, mirroring
  * `offer-status-snapshot.repository.spec.ts` (#816). The TypeORM `Repository`
- * is mocked; the real-DB behaviour is exercised by the worker e2e int-spec.
+ * is mocked here — no int-spec exercises this table yet (the find-then-save
+ * race and the null-persistence path are unit-verified only, unlike the
+ * sibling snapshot table which has a dedicated int-spec).
  *
  * @module libs/core/src/listings/infrastructure/persistence/repositories
  */

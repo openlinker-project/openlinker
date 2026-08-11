@@ -26,7 +26,8 @@
  *
  * `price`/`currency` and `availableQuantity` are independently nullable: a
  * sparse marketplace response must not persist `0`, which an operator cannot
- * tell apart from a genuine sell-out.
+ * tell apart from a genuine sell-out. An observation that carries neither axis
+ * is not written at all - see `UpsertOfferCommercialSnapshotCommand`.
  */
 export interface OfferCommercialSnapshotProps {
   id: string;
@@ -40,7 +41,7 @@ export interface OfferCommercialSnapshotProps {
    * `null` when the marketplace reported no price.
    */
   price: string | null;
-  /** ISO 4217 code; `null` whenever `price` is `null`. */
+  /** ISO 4217 code; `null` when the price is absent or carried no currency. */
   currency: string | null;
   /** `null` when the marketplace reported no quantity - never `0` by default. */
   availableQuantity: number | null;
@@ -53,9 +54,16 @@ export interface OfferCommercialSnapshotProps {
 /**
  * Upsert command for a single offer's commercial observation. The repository
  * inserts a new row or updates the existing `(connectionId, externalOfferId)`
- * row, always refreshing `lastCommercialSyncedAt` - the row is written whenever
- * the marketplace read succeeded, even if it carried no price or no quantity,
- * so the freshness stamp never overstates or understates what was observed.
+ * row, always refreshing `lastCommercialSyncedAt` - so the caller must only
+ * issue the command for an observation that carries something to record.
+ *
+ * A read carrying EITHER axis is written, `null` on the other: a good quantity
+ * must not be discarded because the price was missing. A read carrying NEITHER
+ * is not issued at all, because the upsert overwrites every field: it would
+ * blank a previously-good row and simultaneously stamp it as freshly synced,
+ * so the operator reads "no data, synced a minute ago" when the truth is
+ * "34.90, synced two days ago". Leaving the prior row untouched keeps its
+ * timestamp correctly ageing, which is the honest signal.
  */
 export interface UpsertOfferCommercialSnapshotCommand {
   connectionId: string;
@@ -66,3 +74,13 @@ export interface UpsertOfferCommercialSnapshotCommand {
   availableQuantity: number | null;
   lastCommercialSyncedAt: Date;
 }
+
+/**
+ * Outcome of one attempted commercial write, tallied by the status-sync service
+ * into `OfferStatusSyncResult.commercialUpdated` / `commercialFailed`. Without
+ * a job-level counter a systematically failing write (code deployed ahead of
+ * the migration, a column/permission mismatch) is visible only as one warn line
+ * per offer next to an `outcome: 'ok'` job record.
+ */
+export const OfferCommercialWriteOutcomeValues = ['written', 'skipped', 'failed'] as const;
+export type OfferCommercialWriteOutcome = (typeof OfferCommercialWriteOutcomeValues)[number];

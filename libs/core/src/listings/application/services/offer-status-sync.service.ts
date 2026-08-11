@@ -19,9 +19,10 @@
  * Erli both populate it off the identical per-offer fetch already made for
  * status — no second marketplace call), it is upserted into
  * `offer_commercial_snapshots`. An adapter that never populates `commercial`
- * skips the commercial upsert for that offer, and a failing commercial write
- * is caught and warn-logged - the commercial half is supplementary and can
- * never abort the status pass or stall its scan cursor.
+ * skips the commercial upsert for that offer, as does an observation carrying
+ * neither a price nor a quantity, and a failing commercial write is caught and
+ * warn-logged - the commercial half is supplementary and can never abort the
+ * status pass or stall its scan cursor.
  *
  * @module libs/core/src/listings/application/services
  * @implements {IOfferStatusSyncService}
@@ -49,6 +50,7 @@ import type {
   OfferStatusSyncOptions,
 } from './offer-status-sync.service.interface';
 import type { OfferStatusSyncResult } from '../../domain/types/offer-status-snapshot.types';
+import type { OfferCommercialWriteOutcome } from '../../domain/types/offer-commercial-snapshot.types';
 import type { OfferPublicationStatus } from '../../domain/types/offer-status-read.types';
 
 @Injectable()
@@ -81,7 +83,16 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
       this.logger.warn(
         `Connection ${connectionId} adapter does not support OfferStatusReader; skipping offer-status sync`
       );
-      return { scanned: 0, updated: 0, transitioned: 0, notFound: 0, total: 0, nextOffset: 0 };
+      return {
+        scanned: 0,
+        updated: 0,
+        transitioned: 0,
+        notFound: 0,
+        total: 0,
+        nextOffset: 0,
+        commercialUpdated: 0,
+        commercialFailed: 0,
+      };
     }
 
     const page = await this.offerMappings.findMany({ connectionId }, { limit, offset });
@@ -90,6 +101,8 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
     let updated = 0;
     let transitioned = 0;
     let notFound = 0;
+    let commercialUpdated = 0;
+    let commercialFailed = 0;
 
     for (const mapping of items) {
       const externalOfferId = mapping.externalId;
@@ -126,14 +139,24 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
         );
       }
 
-      await this.upsertCommercialSnapshot(connectionId, externalOfferId, internalVariantId, status);
+      const commercialOutcome = await this.upsertCommercialSnapshot(
+        connectionId,
+        externalOfferId,
+        internalVariantId,
+        status
+      );
+      if (commercialOutcome === 'written') {
+        commercialUpdated += 1;
+      } else if (commercialOutcome === 'failed') {
+        commercialFailed += 1;
+      }
     }
 
     const proposedNext = offset + limit;
     const nextOffset = proposedNext >= page.total ? 0 : proposedNext;
 
     this.logger.log(
-      `Offer-status sync (connection=${connectionId}): scanned=${items.length}, updated=${updated}, transitioned=${transitioned}, notFound=${notFound}, offset=${offset}→${nextOffset}/${page.total}`
+      `Offer-status sync (connection=${connectionId}): scanned=${items.length}, updated=${updated}, transitioned=${transitioned}, notFound=${notFound}, commercialUpdated=${commercialUpdated}, commercialFailed=${commercialFailed}, offset=${offset}→${nextOffset}/${page.total}`
     );
 
     return {
@@ -143,6 +166,8 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
       notFound,
       total: page.total,
       nextOffset,
+      commercialUpdated,
+      commercialFailed,
     };
   }
 
@@ -212,9 +237,13 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
    * Upsert `offer_commercial_snapshots` (#2024) from the `commercial`
    * observation already carried on the `getOfferStatus` result — no second
    * per-offer marketplace call. An absent `commercial` (the adapter doesn't
-   * populate it) is a silent no-op; a present one is written even when its
-   * price or quantity is `null`, because a successful read is itself the
-   * freshness signal.
+   * populate it) is a silent no-op, and so is an observation carrying neither
+   * axis: the upsert overwrites every field, so writing one would blank a
+   * previously-good row AND advance its freshness stamp, leaving the operator
+   * reading "no data, synced a minute ago" where the truth is "34.90, synced
+   * two days ago" — and the scan cursor only returns hours or days later. A
+   * single-axis observation IS written, `null` on the missing half, because a
+   * good quantity must not be discarded because the price was missing.
    *
    * The commercial half is strictly supplementary to the #816 status sync, so
    * a failed write must never abort the caller: an unguarded throw inside the
@@ -228,10 +257,16 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
     externalOfferId: string,
     internalVariantId: string,
     status: OfferStatusReadResult
-  ): Promise<void> {
+  ): Promise<OfferCommercialWriteOutcome> {
     const commercial = status.commercial;
     if (!commercial) {
-      return;
+      return 'skipped';
+    }
+    if (commercial.price === null && commercial.availableQuantity === null) {
+      this.logger.debug(
+        `Commercial observation carried neither price nor quantity (connection=${connectionId}, offerId=${externalOfferId}); leaving the prior snapshot and its freshness stamp intact`
+      );
+      return 'skipped';
     }
     try {
       await this.commercialSnapshots.upsert({
@@ -243,12 +278,15 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
         availableQuantity: commercial.availableQuantity,
         lastCommercialSyncedAt: new Date(),
       });
+      return 'written';
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
       this.logger.warn(
-        `Failed to persist commercial snapshot (connection=${connectionId}, offerId=${externalOfferId}): ${
-          (error as Error).message
-        }; status snapshot is unaffected`
+        `Failed to persist commercial snapshot (connection=${connectionId}, offerId=${externalOfferId}): ${message}; status snapshot is unaffected`,
+        stack
       );
+      return 'failed';
     }
   }
 }

@@ -68,6 +68,11 @@ const harness = createIntegrationTestHarness({
     // status. No ORM/migration FK to connections, so nothing cascades; truncate
     // explicitly so the Erli offers-status reconciliation case (#991) starts clean.
     'offer_status_snapshots',
+    // offer_commercial_snapshots (#2024) — connection-scoped channel-side price
+    // + quantity, written by the same status-sync pass. No ORM/migration FK to
+    // connections, so nothing cascades; truncate explicitly so the Erli offers
+    // vertical slice does not leak rows into every later spec in the worker.
+    'offer_commercial_snapshots',
     // listing_creation_records (#1042) — variant- + connection-scoped shop
     // publish attempts. No ORM/migration FK, so nothing cascades from
     // connections; truncate explicitly so each shop-publish case starts clean.
