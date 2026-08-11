@@ -10,9 +10,10 @@
  * Four of the five derive from ONE source: the `offer_status_snapshots` row
  * joined on `(externalOfferId, connectionId)`. Because they partition a single
  * closed enum plus one boolean (does the snapshot carry validator messages),
- * those four are disjoint. `Unsynced` covers the complement - a mapping the
- * hourly status scan has not reached yet - so all five together do partition
- * the filtered total and their counts sum to it.
+ * those four are disjoint. `Unsynced` covers the complement - a mapping with no
+ * snapshot row at all - so all five together do partition the filtered total
+ * and their counts sum to it. See the union's own docblock below for what
+ * `Unsynced` does and does not promise; it is not simply "not reached yet".
  *
  * ⚠ The Draft bucket must NOT be sourced from `OfferCreationRecord.status`.
  * The creation poller (#447) maps BOTH a clean `inactive` AND `ended` to
