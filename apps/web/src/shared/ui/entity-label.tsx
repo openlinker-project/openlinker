@@ -13,6 +13,12 @@ interface EntityLabelProps extends Omit<ComponentPropsWithoutRef<'span'>, 'id'> 
   loading?: boolean;
   name?: string | null;
   showId?: boolean;
+  /**
+   * Composites that pair this label with their own copy affordance (e.g.
+   * `ConnectionCell`'s `CopyableId` line) opt the built-in button out, so the
+   * same id never grows two copy controls (#2027).
+   */
+  showCopy?: boolean;
   to?: string;
   /**
    * Fired when the inner name link is clicked (navigation), never when the
@@ -23,7 +29,17 @@ interface EntityLabelProps extends Omit<ComponentPropsWithoutRef<'span'>, 'id'> 
 }
 
 export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(function EntityLabel(
-  { id, loading = false, name, showId = true, to, onNavigate, className = '', ...props },
+  {
+    id,
+    loading = false,
+    name,
+    showId = true,
+    showCopy = true,
+    to,
+    onNavigate,
+    className = '',
+    ...props
+  },
   ref,
 ) {
   const [copied, setCopied] = useState(false);
@@ -63,7 +79,12 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
     </span>
   ) : resolvedName ? (
     to ? (
-      <Link to={to} className="entity-label__name entity-label__name--link" onClick={onNavigate}>
+      <Link
+        to={to}
+        className="entity-label__name entity-label__name--link"
+        onClick={onNavigate}
+        title={resolvedName}
+      >
         {resolvedName}
       </Link>
     ) : (
@@ -83,14 +104,16 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
           {shortenId(id)}
         </code>
       ) : null}
-      <button
-        type="button"
-        className="entity-label__copy"
-        onClick={handleCopy}
-        aria-label={copied ? `Copied ${id}` : `Copy ${id}`}
-      >
-        {copied ? 'Copied' : 'Copy'}
-      </button>
+      {showCopy ? (
+        <button
+          type="button"
+          className="entity-label__copy"
+          onClick={handleCopy}
+          aria-label={copied ? `Copied ${id}` : `Copy ${id}`}
+        >
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      ) : null}
     </span>
   );
 });

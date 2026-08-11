@@ -9371,16 +9371,16 @@ a.kpi-card:focus-visible {
 }
 
 /* ── ConnectionCell (#2027) ──────────────────────────────────────────
- * Two-line composition: EntityLabel (name + link) on line 1, CopyableId
- * (shortened id + hover-Copy) on line 2. EntityLabel's own Copy button is
- * always-visible by design elsewhere, but here it would duplicate
- * CopyableId's hover-reveal Copy of the same id with no benefit, so it's
- * hidden within this cell's scope.
+ * Two-line composition: adornment + name link on line 1, shortened id with
+ * hover-Copy plus an attention-only status note on line 2. The 220px cap
+ * matches the neighbouring stacked cells (.orders-items-line :8852,
+ * .orders-carrier :8922) - without it the cell is content-sized inside an
+ * auto-layout table, so a long connection name widens the column instead of
+ * firing the children's own ellipsis.
  */
 .connection-cell {
   display: inline-flex;
   align-items: flex-start;
-  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -9390,14 +9390,55 @@ a.kpi-card:focus-visible {
   gap: 2px;
   align-items: flex-start;
   min-width: 0;
+  max-width: 220px;
 }
 
 .connection-cell__body > * {
   max-width: 100%;
 }
 
-.connection-cell .entity-label__copy {
-  display: none;
+.connection-cell__line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.connection-cell__adornment {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+.connection-cell__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.connection-cell__status {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: var(--space-1);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.connection-cell__status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--status-disabled);
+}
+
+.connection-cell__status--error .connection-cell__status-dot {
+  background: var(--status-error);
+}
+
+.connection-cell__status--needs_reauth .connection-cell__status-dot {
+  background: var(--status-warning);
 }
 
 /* ── Structured error list (#775) ───────────────────────────────────

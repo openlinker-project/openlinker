@@ -1,25 +1,15 @@
-import { cleanup, fireEvent, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConnectionCell } from './ConnectionCell';
+import type { Connection } from '../api/connections.types';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 
 const CONNECTION_ID = 'aa966882-0d21-4e2f-9d5a-71c4a5f14cfb';
 
-function mockConnection(overrides: Partial<{ name: string }> = {}): {
-  id: string;
-  name: string;
-  platformType: string;
-  status: 'active';
-  config: Record<string, never>;
-  credentialsBacked: boolean;
-  enabledCapabilities: never[];
-  supportedCapabilities: never[];
-  createdAt: string;
-  updatedAt: string;
-} {
+function mockConnection(overrides: Partial<Connection> = {}): Connection {
   return {
     id: CONNECTION_ID,
-    name: overrides.name ?? 'Erli Demo',
+    name: 'Erli Demo',
     platformType: 'erli',
     status: 'active',
     config: {},
@@ -28,11 +18,15 @@ function mockConnection(overrides: Partial<{ name: string }> = {}): {
     supportedCapabilities: [],
     createdAt: '2026-04-20T00:00:00.000Z',
     updatedAt: '2026-04-20T00:00:00.000Z',
+    ...overrides,
   };
 }
 
 describe('ConnectionCell', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
 
   it('renders the connection name as a link to the connection detail page', async () => {
     const api = createMockApiClient({
@@ -56,39 +50,42 @@ describe('ConnectionCell', () => {
     expect(screen.getByText('aa966882…4cfb')).toBeInTheDocument();
   });
 
-  it('copies the full connection id when the copy button is clicked', async () => {
+  it('uses the page-supplied name without fetching the connection', async () => {
+    const getById = vi.fn();
+    const api = createMockApiClient({ connections: { getById } });
+
+    renderWithProviders(
+      <ConnectionCell connectionId={CONNECTION_ID} name="Warehouse EU" platformType="prestashop" />,
+      { apiClient: api },
+    );
+
+    expect(await screen.findByRole('link', { name: 'Warehouse EU' })).toBeInTheDocument();
+    expect(getById).not.toHaveBeenCalled();
+  });
+
+  it('renders the single copy button with a human-readable accessible name', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText },
-      configurable: true,
-    });
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
 
     const api = createMockApiClient({
       connections: { getById: vi.fn().mockResolvedValue(mockConnection()) },
     });
 
-    const { container } = renderWithProviders(<ConnectionCell connectionId={CONNECTION_ID} />, {
-      apiClient: api,
-    });
+    renderWithProviders(<ConnectionCell connectionId={CONNECTION_ID} />, { apiClient: api });
 
     await screen.findByRole('link', { name: 'Erli Demo' });
 
-    // `EntityLabel` always renders its own Copy button too (suppressed only
-    // by CSS, which jsdom doesn't apply) — scope to the `CopyableId` line so
-    // this exercises the cell's intended, hover-revealed copy control.
-    const copyableId = container.querySelector('.copyable-id');
-    expect(copyableId).not.toBeNull();
-    const copyButton = within(copyableId as HTMLElement).getByRole('button', {
-      name: `Copy ${CONNECTION_ID}`,
-    });
+    const copyButtons = screen.getAllByRole('button');
+    expect(copyButtons).toHaveLength(1);
 
+    const copyButton = screen.getByRole('button', {
+      name: 'Copy connection ID for Erli Demo',
+    });
     fireEvent.click(copyButton);
 
     expect(writeText).toHaveBeenCalledWith(CONNECTION_ID);
     expect(
-      await within(copyableId as HTMLElement).findByRole('button', {
-        name: `Copied ${CONNECTION_ID}`,
-      }),
+      await screen.findByRole('button', { name: 'Copied connection ID for Erli Demo' }),
     ).toBeInTheDocument();
   });
 
@@ -113,16 +110,54 @@ describe('ConnectionCell', () => {
     expect(screen.getByText('aa966882…4cfb')).toBeInTheDocument();
   });
 
-  it('renders nothing when connectionId is empty', () => {
+  it('drops the link when the current path already matches the connection', async () => {
     const api = createMockApiClient({
-      connections: { getById: vi.fn() },
+      connections: { getById: vi.fn().mockResolvedValue(mockConnection()) },
     });
+
+    renderWithProviders(<ConnectionCell connectionId={CONNECTION_ID} />, {
+      apiClient: api,
+      route: `/connections/${CONNECTION_ID}`,
+    });
+
+    expect(await screen.findByText('Erli Demo')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Erli Demo' })).toBeNull();
+  });
+
+  it('surfaces a status note when the connection needs attention', async () => {
+    const api = createMockApiClient({
+      connections: {
+        getById: vi.fn().mockResolvedValue(mockConnection({ status: 'needs_reauth' })),
+      },
+    });
+
+    renderWithProviders(<ConnectionCell connectionId={CONNECTION_ID} />, { apiClient: api });
+
+    expect(await screen.findByText('Reauth needed')).toBeInTheDocument();
+  });
+
+  it('renders no status note for a healthy connection', async () => {
+    const api = createMockApiClient({
+      connections: { getById: vi.fn().mockResolvedValue(mockConnection()) },
+    });
+
+    const { container } = renderWithProviders(<ConnectionCell connectionId={CONNECTION_ID} />, {
+      apiClient: api,
+    });
+
+    await screen.findByRole('link', { name: 'Erli Demo' });
+    expect(container.querySelector('.connection-cell__status')).toBeNull();
+  });
+
+  it('renders an empty-value placeholder when connectionId is empty', () => {
+    const api = createMockApiClient({ connections: { getById: vi.fn() } });
 
     const { container } = renderWithProviders(<ConnectionCell connectionId="" />, {
       apiClient: api,
     });
 
     expect(container.querySelector('.connection-cell')).toBeNull();
+    expect(screen.getByLabelText('No value')).toBeInTheDocument();
   });
 
   it('renders an adornment when provided', async () => {
@@ -137,5 +172,21 @@ describe('ConnectionCell', () => {
 
     await screen.findByRole('link', { name: 'Erli Demo' });
     expect(screen.getByText('pill')).toBeInTheDocument();
+  });
+
+  it('hands the resolved connection to a function adornment', async () => {
+    const api = createMockApiClient({
+      connections: { getById: vi.fn().mockResolvedValue(mockConnection()) },
+    });
+
+    renderWithProviders(
+      <ConnectionCell
+        connectionId={CONNECTION_ID}
+        adornment={(facts) => <span>{facts.platformType}</span>}
+      />,
+      { apiClient: api },
+    );
+
+    expect(await screen.findByText('erli')).toBeInTheDocument();
   });
 });

@@ -24,10 +24,18 @@ interface CopyableIdProps extends Omit<ComponentPropsWithoutRef<'span'>, 'childr
   id: string;
   /** Optional shorter display label. Defaults to the full id. */
   label?: string;
+  /**
+   * Accessible name of the copy button. Defaults to `Copy {id}`, which reads
+   * as a spelled-out UUID; a caller that can resolve the id to something
+   * human ("Copy connection ID for Erli Demo") should pass it (#1996).
+   */
+  copyLabel?: string;
+  /** Accessible name once the copy succeeded. Defaults to `Copied {id}`. */
+  copiedLabel?: string;
 }
 
 export const CopyableId = forwardRef<HTMLSpanElement, CopyableIdProps>(function CopyableId(
-  { id, label, className = '', ...props },
+  { id, label, copyLabel, copiedLabel, className = '', ...props },
   ref,
 ): ReactElement {
   const [copied, setCopied] = useState(false);
@@ -65,7 +73,7 @@ export const CopyableId = forwardRef<HTMLSpanElement, CopyableIdProps>(function 
         type="button"
         className="copyable-id__copy"
         onClick={handleCopy}
-        aria-label={copied ? `Copied ${id}` : `Copy ${id}`}
+        aria-label={copied ? (copiedLabel ?? `Copied ${id}`) : (copyLabel ?? `Copy ${id}`)}
       >
         {copied ? 'Copied' : 'Copy'}
       </button>
