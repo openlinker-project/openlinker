@@ -103,6 +103,7 @@ describe('ListingsController', () => {
       sku: 'TERRA-24-LIM',
       ean: '5900000000138',
       imageUrl: 'https://cdn.example/terra.jpg',
+      isStale: false,
     },
     channelStatus: {
       publicationStatus: 'inactive',
@@ -309,19 +310,58 @@ describe('ListingsController', () => {
       expect(result.items[0].commercial?.availableQuantity).toBe(41);
       // ADR-009 (#2024): a price is never returned without its age.
       expect(result.items[0].commercial?.lastCommercialSyncedAt).toBe('2026-01-02T00:00:00.000Z');
+      expect(result.items[0].identity?.isStale).toBe(false);
     });
 
-    it('should null every projection when the joins found nothing', async () => {
+    it('should null identity and commercial when their joins found nothing', async () => {
       repository.findMany.mockResolvedValue({
-        items: [{ ...mockMapping, identity: null, channelStatus: null, commercial: null }],
+        items: [
+          {
+            ...mockMapping,
+            identity: null,
+            channelStatus: {
+              publicationStatus: null,
+              lifecycle: 'Unsynced',
+              validationMessages: [],
+              lastStatusSyncedAt: null,
+            },
+            commercial: null,
+          },
+        ],
         total: 1,
       });
 
       const result = await controller.listOfferMappings({});
 
       expect(result.items[0].identity).toBeNull();
-      expect(result.items[0].channelStatus).toBeNull();
       expect(result.items[0].commercial).toBeNull();
+    });
+
+    it('should serialise the Unsynced bucket with null status fields (#2025)', async () => {
+      repository.findMany.mockResolvedValue({
+        items: [
+          {
+            ...mockListItem,
+            channelStatus: {
+              publicationStatus: null,
+              lifecycle: 'Unsynced',
+              validationMessages: [],
+              lastStatusSyncedAt: null,
+            },
+          },
+        ],
+        total: 1,
+      });
+
+      const result = await controller.listOfferMappings({});
+
+      // The exact wire shape FE-C (#2029) renders its fifth tab from.
+      expect(result.items[0].channelStatus).toEqual({
+        publicationStatus: null,
+        lifecycle: 'Unsynced',
+        validationMessages: [],
+        lastStatusSyncedAt: null,
+      });
     });
   });
 

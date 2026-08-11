@@ -23,7 +23,10 @@ export interface OfferMappingFilters {
   internalId?: string;
   /**
    * Case-insensitive search across the row's human-readable identity -
-   * product name, variant label, SKU, EAN - and the external offer ID (#2025).
+   * product name, variant label, variant SKU, product SKU, EAN, GTIN - and the
+   * external offer ID (#2025). `ean` and `gtin` are separate, independently
+   * populated columns, so both are matched (mirroring the sibling variant
+   * search in `ProductVariantRepository`).
    */
   search?: string;
 }
@@ -36,7 +39,11 @@ export interface OfferMappingFilters {
 export interface OfferMappingIdentity {
   /** Internal product ID owning the linked variant. */
   productId: string;
-  productName: string;
+  /**
+   * `products.name` is NOT NULL behind a real FK, so `null` here can only mean
+   * a corrupt row - reported honestly rather than rendered as a blank cell.
+   */
+  productName: string | null;
   /**
    * Distinguishing attribute values joined for display (e.g. `Limonka · 24 cm`).
    * `null` for a simple product's synthetic variant, which carries no attributes.
@@ -49,22 +56,38 @@ export interface OfferMappingIdentity {
    * so the list renders `products.images[0]`. `null` when the product has none.
    */
   imageUrl: string | null;
+  /**
+   * `product_variants.isStale` (#1689). A stale variant's offers were zeroed by
+   * the stale-offer pause, so without this flag the row reads as
+   * `availableQuantity: 0` + `Active` and is indistinguishable from a genuine
+   * sell-out - sending the operator hunting for stock that has no master record.
+   */
+  isStale: boolean;
 }
 
 /**
  * Channel-side publication state joined from `offer_status_snapshots` (#816).
- * `null` on the list item when no status has ever been read for the offer -
- * which is a real, frequent state, not an error.
+ *
+ * Always present on a list item: when no status has ever been read for the
+ * offer the projection carries `lifecycle: 'Unsynced'` with a `null`
+ * `publicationStatus` / `lastStatusSyncedAt`, so every row has a lifecycle
+ * bucket and the five buckets genuinely partition the filtered total.
  */
 export interface OfferMappingChannelStatus {
-  /** Raw neutral observation, kept so the row can badge a mid-transition offer. */
-  publicationStatus: OfferPublicationStatus;
+  /**
+   * Raw neutral observation, kept so the row can badge a mid-transition offer.
+   * `null` exactly when `lifecycle` is `Unsynced`.
+   */
+  publicationStatus: OfferPublicationStatus | null;
   /** Bucket the redesigned lifecycle tabs partition on. */
   lifecycle: OfferLifecycle;
   /** Marketplace validator messages; empty when the validator raised none. */
   validationMessages: readonly string[];
-  /** When the channel status was last read - the list's "Updated" column. */
-  lastStatusSyncedAt: Date;
+  /**
+   * When the channel status was last read - the list's "Updated" column.
+   * `null` exactly when `lifecycle` is `Unsynced`.
+   */
+  lastStatusSyncedAt: Date | null;
 }
 
 /**
@@ -96,19 +119,28 @@ export interface OfferMappingCommercial {
  */
 export interface OfferMappingListItem extends IdentifierMapping {
   identity: OfferMappingIdentity | null;
-  channelStatus: OfferMappingChannelStatus | null;
+  channelStatus: OfferMappingChannelStatus;
   commercial: OfferMappingCommercial | null;
 }
 
 /**
  * Join a variant's distinguishing attribute values into a display label.
- * Pure; mirrors the FE `variantShortLabel` selector so both sides read the
- * same way. Attribute KEYS are deliberately dropped - the operator recognises
+ * Pure. Attribute KEYS are deliberately dropped - the operator recognises
  * `Limonka · 24 cm`, not `Kolor: Limonka · Rozmiar: 24 cm`.
+ *
+ * Values are coerced before trimming: `attributes` is jsonb, so a numeric or
+ * boolean value reaches here despite the `Record<string, string>` type and
+ * would otherwise throw on `.trim()`.
+ *
+ * Unlike the FE `variantShortLabel` selector this returns `null` rather than
+ * falling back to SKU or variant id, and it drops blank values - the row
+ * already renders SKU in its own column, so a fallback would duplicate it.
  */
 export function deriveVariantLabel(attributes: Record<string, string> | null): string | null {
   if (!attributes) return null;
-  const values = Object.values(attributes).filter((value) => value.trim() !== '');
+  const values = Object.values(attributes)
+    .map((value) => String(value).trim())
+    .filter((value) => value !== '');
   return values.length > 0 ? values.join(' · ') : null;
 }
 

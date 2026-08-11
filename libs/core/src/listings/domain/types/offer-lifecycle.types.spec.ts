@@ -1,13 +1,17 @@
 /**
  * Offer Lifecycle — Unit Tests
  *
- * Pins the four-bucket partition the redesigned listings page depends on
+ * Pins the five-bucket partition the redesigned listings page depends on
  * (#2025), including the `inactive` split that is the whole reason the
  * derivation cannot be sourced from `OfferCreationRecord.status`.
  *
  * @module libs/core/src/listings/domain/types
  */
-import { deriveOfferLifecycle, readValidationMessages } from './offer-lifecycle.types';
+import {
+  OfferLifecycleValues,
+  deriveOfferLifecycle,
+  readValidationMessages,
+} from './offer-lifecycle.types';
 import { OfferPublicationStatusValues } from './offer-status-read.types';
 import type { OfferStatusSnapshotDetails } from './offer-status-snapshot.types';
 
@@ -53,13 +57,34 @@ describe('deriveOfferLifecycle', () => {
     expect(deriveOfferLifecycle('inactive', null)).not.toBe(deriveOfferLifecycle('ended', null));
   });
 
-  it('should classify every publication status into exactly one bucket', () => {
-    const buckets = OfferPublicationStatusValues.map((status) =>
-      deriveOfferLifecycle(status, null)
-    );
+  it('should map every publication status to its exact bucket', () => {
+    const buckets = OfferPublicationStatusValues.map((status) => [
+      status,
+      deriveOfferLifecycle(status, null),
+    ]);
 
-    expect(buckets).toHaveLength(OfferPublicationStatusValues.length);
-    expect(buckets.every((bucket) => bucket !== undefined)).toBe(true);
+    expect(buckets).toEqual([
+      ['active', 'Active'],
+      ['activating', 'Active'],
+      ['inactivating', 'Active'],
+      ['inactive', 'Draft'],
+      ['ended', 'Ended'],
+    ]);
+  });
+
+  it('should never return Unsynced - absence of a snapshot is classified by the caller', () => {
+    const buckets = OfferPublicationStatusValues.flatMap((status) => [
+      deriveOfferLifecycle(status, null),
+      deriveOfferLifecycle(status, { validationMessages: ['x'] }),
+    ]);
+
+    expect(buckets).not.toContain('Unsynced');
+  });
+});
+
+describe('OfferLifecycleValues', () => {
+  it('should carry the Unsynced bucket so every mapped offer has a home (#2025)', () => {
+    expect(OfferLifecycleValues).toEqual(['Active', 'Inactive', 'Draft', 'Ended', 'Unsynced']);
   });
 });
 

@@ -47,7 +47,10 @@ export interface OfferMapping {
 export interface ListingsFilters {
   connectionId?: string;
   internalId?: string;
-  /** Spans product name, variant label, SKU, EAN and the external offer ID (#2025). */
+  /**
+   * Spans product name, variant label, product SKU, variant SKU, EAN, GTIN and
+   * the external offer ID (#2025).
+   */
   search?: string;
 }
 

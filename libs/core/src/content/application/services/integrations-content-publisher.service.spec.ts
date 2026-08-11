@@ -184,7 +184,12 @@ describe('IntegrationsContentPublisher', () => {
             createdAt: new Date(),
             updatedAt: new Date(),
             identity: null,
-            channelStatus: null,
+            channelStatus: {
+              publicationStatus: null,
+              lifecycle: 'Unsynced',
+              validationMessages: [],
+              lastStatusSyncedAt: null,
+            },
             commercial: null,
           })),
           total: ids.length,

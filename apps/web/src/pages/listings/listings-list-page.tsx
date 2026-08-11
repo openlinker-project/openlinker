@@ -156,8 +156,8 @@ export function ListingsListPage(): ReactElement {
     >
       <div className="toolbar toolbar--compact">
         <Input
-          aria-label="Search listings by product name, SKU, EAN or external ID"
-          placeholder="Product name, SKU, EAN or external ID…"
+          aria-label="Search listings by product name, SKU, barcode or external ID"
+          placeholder="Product name, SKU, barcode or external ID…"
           value={searchInput}
           onChange={(e) => {
             handleFilterChange('search', e.target.value);

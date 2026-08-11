@@ -7,8 +7,11 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-import { OfferLifecycleValues } from '@openlinker/core/listings';
-import { OfferLifecycle, OfferPublicationStatus } from '@openlinker/core/listings';
+import {
+  OfferLifecycleValues,
+  type OfferLifecycle,
+  type OfferPublicationStatus,
+} from '@openlinker/core/listings';
 
 import { OfferCreationStatusResponseDto } from './offer-creation-status-response.dto';
 
@@ -16,8 +19,13 @@ export class OfferMappingIdentityResponseDto {
   @ApiProperty({ description: 'Internal product ID owning the linked variant' })
   productId!: string;
 
-  @ApiProperty({ description: 'Catalog product name' })
-  productName!: string;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Catalog product name. `products.name` is NOT NULL behind a real FK, so null here means a ' +
+      'corrupt row - reported rather than rendered as a blank cell.',
+  })
+  productName!: string | null;
 
   @ApiPropertyOptional({
     nullable: true,
@@ -38,19 +46,33 @@ export class OfferMappingIdentityResponseDto {
       'Thumbnail URL. There is no dedicated thumbnail column, so this is the owning product’s first image (`products.images[0]`).',
   })
   imageUrl!: string | null;
+
+  @ApiProperty({
+    description:
+      'Whether the linked variant is stale (#1689) - its master product was deleted, so the ' +
+      'stale-offer pause zeroed its offers. Without this flag the row is indistinguishable from a ' +
+      'genuine sell-out.',
+  })
+  isStale!: boolean;
 }
 
 export class OfferMappingChannelStatusResponseDto {
-  @ApiProperty({
-    description: 'Raw marketplace publication status observed on the last status sync',
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Raw marketplace publication status observed on the last status sync. Null exactly when ' +
+      '`lifecycle` is `Unsynced`.',
   })
-  publicationStatus!: OfferPublicationStatus;
+  publicationStatus!: OfferPublicationStatus | null;
 
   @ApiProperty({
     enum: OfferLifecycleValues,
     description:
-      'Lifecycle bucket derived from `publicationStatus` plus the presence of validator messages. ' +
-      'The four buckets are disjoint and partition the filtered total.',
+      'Lifecycle bucket. Four buckets are derived from `publicationStatus` plus the presence of ' +
+      'validator messages; the fifth, `Unsynced`, covers a mapping the hourly status scan has not ' +
+      'reached yet. All five are disjoint and together partition the filtered total. Note this is ' +
+      'five buckets, not the four of the #1965 mockup - a deliberate #2025 decision, because most ' +
+      'of a large catalog carries no snapshot for days.',
   })
   lifecycle!: OfferLifecycle;
 
@@ -60,14 +82,22 @@ export class OfferMappingChannelStatusResponseDto {
   })
   validationMessages!: string[];
 
-  @ApiProperty({ description: 'When the channel status was last read (ISO 8601)' })
-  lastStatusSyncedAt!: string;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'When the channel status was last read (ISO 8601). Null exactly when `lifecycle` is ' +
+      '`Unsynced`.',
+  })
+  lastStatusSyncedAt!: string | null;
 }
 
 export class OfferMappingCommercialResponseDto {
   @ApiPropertyOptional({
     nullable: true,
-    description: 'Channel-side price. Null means "not reported by the marketplace", never zero.',
+    description:
+      "Price the CHANNEL reports for this offer - already net of the connection's `pricingRule` " +
+      '(#1843), not OL\'s own catalog price. Surface it as "on channel", never as OL\'s price. ' +
+      'Null means "not reported by the marketplace", never zero.',
   })
   price!: number | null;
 
@@ -77,7 +107,10 @@ export class OfferMappingCommercialResponseDto {
   @ApiPropertyOptional({
     nullable: true,
     description:
-      'Channel-side available quantity. Null means "not reported by the marketplace", never zero.',
+      "Quantity the CHANNEL reports as available - already net of the connection's " +
+      '`stockSafetyBuffer` (#1844), so it can legitimately sit below master stock. Surface it as ' +
+      '"on channel", never as OL\'s own stock, or a correctly-configured buffer reads as a bug. ' +
+      'Null means "not reported by the marketplace", never zero.',
   })
   availableQuantity!: number | null;
 
@@ -158,8 +191,10 @@ export class OfferMappingResponseDto {
     type: OfferMappingChannelStatusResponseDto,
     description:
       'Live channel publication state from `offer_status_snapshots` (#816) plus the derived ' +
-      'lifecycle bucket. Populated only by `GET /listings`. Null when no status has ever been ' +
-      'read for the offer — a real, frequent state, not an error.',
+      'lifecycle bucket. Populated on EVERY row of `GET /listings`: when no status has ever been ' +
+      'read for the offer — a real, frequent state, not an error — it carries ' +
+      '`lifecycle: "Unsynced"` with a null `publicationStatus`/`lastStatusSyncedAt`. Absent (not ' +
+      'null) on `GET /listings/:id`.',
   })
   channelStatus?: OfferMappingChannelStatusResponseDto | null;
 

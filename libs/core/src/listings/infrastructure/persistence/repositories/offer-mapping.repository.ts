@@ -14,6 +14,8 @@ import type { CoreEntityType } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { IdentifierMapping } from '@openlinker/core/identifier-mapping';
 import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
+import { OfferCommercialSnapshotOrmEntity } from '../entities/offer-commercial-snapshot.orm-entity';
+import { OfferStatusSnapshotOrmEntity } from '../entities/offer-status-snapshot.orm-entity';
 import type { OfferMappingRepositoryPort } from '../../../domain/ports/offer-mapping-repository.port';
 import {
   deriveOfferLifecycle,
@@ -57,6 +59,7 @@ interface OfferMappingListRawRow {
   variantSku: string | null;
   variantEan: string | null;
   variantAttributes: Record<string, string> | null;
+  variantIsStale: boolean | null;
   publicationStatus: OfferPublicationStatus | null;
   statusDetails: OfferStatusSnapshotDetails | null;
   lastStatusSyncedAt: Date | null;
@@ -108,28 +111,37 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
   ): Promise<PaginatedOfferMappings> {
     const qb = this.repository.createQueryBuilder('mapping');
 
-    // Read-model reporting joins onto the products context and the two
-    // listings snapshot tables BY TABLE NAME - no cross-context ORM-entity
-    // import, so the import contract stays intact (same pattern as
-    // `countListedVariantsByProducts`, #1720; columns are camelCase and must
-    // be double-quoted in raw fragments). One query per page, never an N+1
-    // enrichment loop: every join is an at-most-one index lookup (variant and
-    // product on their primary keys, both snapshots on their unique
-    // `(externalOfferId, connectionId)` key), so row cardinality is unchanged.
-    qb.leftJoin('product_variants', 'pv', 'pv."id" = mapping."internalId"')
-      .leftJoin('products', 'p', 'p."id" = pv."productId"')
-      .leftJoin(
-        'offer_status_snapshots',
-        'oss',
-        'oss."externalOfferId" = mapping."externalId" ' +
-          'AND oss."connectionId" = mapping."connectionId"'
-      )
-      .leftJoin(
-        'offer_commercial_snapshots',
-        'ocs',
-        'ocs."externalOfferId" = mapping."externalId" ' +
-          'AND ocs."connectionId" = mapping."connectionId"'
-      );
+    // Cross-context read-model reporting joins onto the products context BY
+    // TABLE NAME - ADR-036's sanctioned escape hatch (no cross-context
+    // ORM-entity import, so the import contract stays intact; same pattern as
+    // `countListedVariantsByProducts`, #1720). Columns are camelCase and must
+    // be double-quoted in raw fragments.
+    //
+    // One query per page, never an N+1 enrichment loop: every join below is an
+    // at-most-one index lookup (variant and product on their primary keys,
+    // both snapshots on their unique `(externalOfferId, connectionId)` key),
+    // so row cardinality is unchanged.
+    qb.leftJoin('product_variants', 'pv', 'pv."id" = mapping."internalId"').leftJoin(
+      'products',
+      'p',
+      'p."id" = pv."productId"'
+    );
+
+    // The two snapshot tables are SAME-context (listings, same persistence
+    // layer), so ADR-036 does not apply to them: joining by entity class keeps
+    // a table rename a compile-time break instead of the silent runtime one
+    // the ADR accepts only where an import contract has to be protected.
+    qb.leftJoin(
+      OfferStatusSnapshotOrmEntity,
+      'oss',
+      'oss."externalOfferId" = mapping."externalId" ' +
+        'AND oss."connectionId" = mapping."connectionId"'
+    ).leftJoin(
+      OfferCommercialSnapshotOrmEntity,
+      'ocs',
+      'ocs."externalOfferId" = mapping."externalId" ' +
+        'AND ocs."connectionId" = mapping."connectionId"'
+    );
 
     qb.where('mapping.entityType = :entityType', { entityType: OFFER_ENTITY_TYPE });
 
@@ -145,18 +157,34 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       });
     }
 
-    if (filters.search) {
-      const escapedSearch = filters.search.replace(/[%_]/g, '\\$&');
+    const searchTerm = filters.search?.trim();
+    if (searchTerm) {
+      // `\` is Postgres' default LIKE escape character, so it must be escaped
+      // alongside the wildcards: a term ENDING in `\` would otherwise escape
+      // the appended trailing `%` and silently make the suffix wildcard literal.
+      const escapedSearch = searchTerm.replace(/[\\%_]/g, '\\$&');
+      // `ean` and `gtin` are separate, independently-populated columns (each
+      // master adapter fills whichever the platform exposes), so a barcode
+      // search must cover both or a variant is unfindable by the code printed
+      // on it. `products.sku` is the master reference many sellers call "the
+      // SKU", distinct from the variant's own.
+      //
       // The variant term matches attribute VALUES only. A plain
       // `attributes::text ILIKE` would also match the jsonb keys, so a search
-      // for "kolor" would return every coloured variant in the catalog.
+      // for "kolor" would return every coloured variant in the catalog. The
+      // `jsonb_typeof` guard is required because `jsonb_each_text` raises on
+      // any non-object jsonb, which would 500 every search on the page until
+      // the offending row was found.
       qb.andWhere(
         '(mapping."externalId" ILIKE :search ' +
           'OR p."name" ILIKE :search ' +
+          'OR p."sku" ILIKE :search ' +
           'OR pv."sku" ILIKE :search ' +
           'OR pv."ean" ILIKE :search ' +
-          'OR EXISTS (SELECT 1 FROM jsonb_each_text(pv."attributes") attr ' +
-          'WHERE attr.value ILIKE :search))',
+          'OR pv."gtin" ILIKE :search ' +
+          'OR (jsonb_typeof(pv."attributes") = \'object\' ' +
+          'AND EXISTS (SELECT 1 FROM jsonb_each_text(pv."attributes") attr ' +
+          'WHERE attr.value ILIKE :search)))',
         { search: `%${escapedSearch}%` }
       );
     }
@@ -178,6 +206,7 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       .addSelect('pv."sku"', 'variantSku')
       .addSelect('pv."ean"', 'variantEan')
       .addSelect('pv."attributes"', 'variantAttributes')
+      .addSelect('pv."isStale"', 'variantIsStale')
       .addSelect('p."name"', 'productName')
       .addSelect('p."images"', 'productImages')
       .addSelect('oss."publicationStatus"', 'publicationStatus')
@@ -257,10 +286,10 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       .addSelect('mapping.connectionId', 'connectionId')
       .addSelect('mapping.platformType', 'platformType')
       .addSelect('COUNT(DISTINCT mapping.internalId)', 'listedVariants')
-      // Read-model reporting join onto the products-context table by name -
-      // no cross-context ORM-entity import, so the import contract stays
-      // intact (#1720; columns are camelCase and must be double-quoted in
-      // raw fragments).
+      // Cross-context read-model reporting join onto the products-context
+      // table by name (ADR-036) - no cross-context ORM-entity import, so the
+      // import contract stays intact (#1720; columns are camelCase and must
+      // be double-quoted in raw fragments).
       .innerJoin('product_variants', 'pv', 'pv."id" = mapping."internalId"')
       .where('mapping.entityType = :entityType', { entityType: OFFER_ENTITY_TYPE })
       .andWhere('pv."productId" IN (:...productIds)', { productIds: [...productIds] })
@@ -293,10 +322,10 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       .select('pv."id"', 'variantId')
       .addSelect('mapping.externalId', 'externalOfferId')
       .addSelect('pv."staleAt"', 'staleAt')
-      // Read-model reporting join onto the products-context table by name —
-      // no cross-context ORM-entity import, mirroring
-      // countListedVariantsByProducts (#1720; columns are camelCase and must
-      // be double-quoted in raw fragments).
+      // Cross-context read-model reporting join onto the products-context
+      // table by name (ADR-036) - no cross-context ORM-entity import,
+      // mirroring countListedVariantsByProducts (#1720; columns are camelCase
+      // and must be double-quoted in raw fragments).
       .innerJoin('product_variants', 'pv', 'pv."id" = mapping."internalId"')
       .where('mapping.entityType = :entityType', { entityType: OFFER_ENTITY_TYPE })
       .andWhere('mapping.connectionId = :connectionId', { connectionId })
@@ -315,17 +344,15 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
 
   private toListItem(row: OfferMappingListRawRow): OfferMappingListItem {
     return {
-      ...new IdentifierMapping(
-        row.id,
-        row.entityType,
-        row.internalId,
-        row.externalId,
-        row.platformType,
-        row.connectionId,
-        row.context ?? null,
-        row.createdAt,
-        row.updatedAt
-      ),
+      id: row.id,
+      entityType: row.entityType,
+      internalId: row.internalId,
+      externalId: row.externalId,
+      platformType: row.platformType,
+      connectionId: row.connectionId,
+      context: row.context ?? null,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
       identity: this.toIdentity(row),
       channelStatus: this.toChannelStatus(row),
       commercial: this.toCommercial(row),
@@ -338,16 +365,27 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
     if (row.productId === null) return null;
     return {
       productId: row.productId,
-      productName: row.productName ?? '',
+      productName: row.productName,
       variantLabel: deriveVariantLabel(row.variantAttributes),
       sku: row.variantSku,
       ean: row.variantEan,
       imageUrl: row.productImages?.[0] ?? null,
+      isStale: row.variantIsStale ?? false,
     };
   }
 
-  private toChannelStatus(row: OfferMappingListRawRow): OfferMappingChannelStatus | null {
-    if (row.publicationStatus === null || row.lastStatusSyncedAt === null) return null;
+  private toChannelStatus(row: OfferMappingListRawRow): OfferMappingChannelStatus {
+    // No snapshot row is the majority state on a large catalog (the scan is
+    // hourly at 100 offers/tick), so it gets its own bucket rather than a
+    // `null` that would leave the row on no lifecycle tab at all.
+    if (row.publicationStatus === null || row.lastStatusSyncedAt === null) {
+      return {
+        publicationStatus: null,
+        lifecycle: 'Unsynced',
+        validationMessages: [],
+        lastStatusSyncedAt: null,
+      };
+    }
     return {
       publicationStatus: row.publicationStatus,
       lifecycle: deriveOfferLifecycle(row.publicationStatus, row.statusDetails),

@@ -14,6 +14,8 @@ import { QueryFailedError } from 'typeorm';
 import { IdentifierMapping } from '@openlinker/core/identifier-mapping';
 import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 
+import { OfferCommercialSnapshotOrmEntity } from '../entities/offer-commercial-snapshot.orm-entity';
+import { OfferStatusSnapshotOrmEntity } from '../entities/offer-status-snapshot.orm-entity';
 import { OfferMappingRepository } from './offer-mapping.repository';
 
 describe('OfferMappingRepository', () => {
@@ -128,6 +130,7 @@ describe('OfferMappingRepository', () => {
       variantSku: 'TERRA-24-LIM',
       variantEan: '5900000000138',
       variantAttributes: { Kolor: 'Limonka', Rozmiar: '24 cm' },
+      variantIsStale: false,
       publicationStatus: 'active',
       statusDetails: null,
       lastStatusSyncedAt: now,
@@ -168,25 +171,27 @@ describe('OfferMappingRepository', () => {
       return qb;
     }
 
-    it('should join the products context and both snapshot tables by table name', async () => {
+    it('should join the products context by table name and the listings snapshots by entity class', async () => {
       const qb = buildListQb([]);
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
 
       await repository.findMany({}, { limit: 20, offset: 0 });
 
+      // Cross-context: ADR-036 raw table name, no ORM-entity import.
       expect(qb.leftJoin).toHaveBeenCalledWith(
         'product_variants',
         'pv',
         'pv."id" = mapping."internalId"'
       );
       expect(qb.leftJoin).toHaveBeenCalledWith('products', 'p', 'p."id" = pv."productId"');
+      // Same-context: the entity class, so a table rename stays a compile error.
       expect(qb.leftJoin).toHaveBeenCalledWith(
-        'offer_status_snapshots',
+        OfferStatusSnapshotOrmEntity,
         'oss',
         'oss."externalOfferId" = mapping."externalId" AND oss."connectionId" = mapping."connectionId"'
       );
       expect(qb.leftJoin).toHaveBeenCalledWith(
-        'offer_commercial_snapshots',
+        OfferCommercialSnapshotOrmEntity,
         'ocs',
         'ocs."externalOfferId" = mapping."externalId" AND ocs."connectionId" = mapping."connectionId"'
       );
@@ -194,7 +199,7 @@ describe('OfferMappingRepository', () => {
       expect(qb.getRawMany).toHaveBeenCalledTimes(1);
     });
 
-    it('should widen search across product name, variant attributes, SKU, EAN and externalId', async () => {
+    it('should widen search across both product and variant SKU, both barcode columns, name, attributes and externalId', async () => {
       const qb = buildListQb([]);
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
 
@@ -206,22 +211,51 @@ describe('OfferMappingRepository', () => {
 
       expect(clause).toContain('mapping."externalId" ILIKE :search');
       expect(clause).toContain('p."name" ILIKE :search');
+      expect(clause).toContain('p."sku" ILIKE :search');
       expect(clause).toContain('pv."sku" ILIKE :search');
+      // `ean` and `gtin` are independently populated - matching one only would
+      // leave a variant unfindable by the barcode printed on it.
       expect(clause).toContain('pv."ean" ILIKE :search');
+      expect(clause).toContain('pv."gtin" ILIKE :search');
       // Attribute VALUES only - a plain `attributes::text` would also match keys.
       expect(clause).toContain('jsonb_each_text(pv."attributes")');
       expect(clause).toContain('attr.value ILIKE :search');
       expect(params).toEqual({ search: '%terra%' });
     });
 
-    it('should escape ILIKE wildcards in the search term', async () => {
+    it('should guard the jsonb attribute scan against a non-object value', async () => {
       const qb = buildListQb([]);
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
 
-      await repository.findMany({ search: '50%_off' }, { limit: 20, offset: 0 });
+      await repository.findMany({ search: 'terra' }, { limit: 20, offset: 0 });
+
+      // Without this, one malformed row 500s every search on the page.
+      expect((findSearchCall(qb) as [string, { search: string }])[0]).toContain(
+        'jsonb_typeof(pv."attributes") = \'object\''
+      );
+    });
+
+    it('should escape ILIKE wildcards and the backslash escape character in the search term', async () => {
+      const qb = buildListQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.findMany({ search: '50%_off\\' }, { limit: 20, offset: 0 });
+
+      // The trailing `\` must be escaped or it would escape the appended `%`
+      // and silently turn the suffix wildcard into a literal.
+      expect((findSearchCall(qb) as [string, { search: string }])[1]).toEqual({
+        search: '%50\\%\\_off\\\\%',
+      });
+    });
+
+    it('should trim the search term before matching', async () => {
+      const qb = buildListQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.findMany({ search: '  TERRA-24-LIM \n' }, { limit: 20, offset: 0 });
 
       expect((findSearchCall(qb) as [string, { search: string }])[1]).toEqual({
-        search: '%50\\%\\_off%',
+        search: '%TERRA-24-LIM%',
       });
     });
 
@@ -230,6 +264,15 @@ describe('OfferMappingRepository', () => {
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
 
       await repository.findMany({ connectionId: 'conn-uuid' }, { limit: 20, offset: 0 });
+
+      expect(findSearchCall(qb)).toBeUndefined();
+    });
+
+    it('should not emit a search predicate when the term is only whitespace', async () => {
+      const qb = buildListQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.findMany({ search: '   ' }, { limit: 20, offset: 0 });
 
       expect(findSearchCall(qb)).toBeUndefined();
     });
@@ -249,6 +292,7 @@ describe('OfferMappingRepository', () => {
         sku: 'TERRA-24-LIM',
         ean: '5900000000138',
         imageUrl: 'https://cdn.example/terra-1.jpg',
+        isStale: false,
       });
       expect(result.items[0].channelStatus).toEqual({
         publicationStatus: 'active',
@@ -279,7 +323,19 @@ describe('OfferMappingRepository', () => {
       expect(result.items[0].channelStatus?.validationMessages).toEqual(['Brak parametru: Marka']);
     });
 
-    it('should null out each projection independently when its join found nothing', async () => {
+    it('should flag a stale variant so a paused offer is not read as a sell-out (#1689)', async () => {
+      const qb = buildListQb([
+        buildRawRow({ variantIsStale: true, commercialAvailableQuantity: 0 }),
+      ]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const result = await repository.findMany({}, { limit: 20, offset: 0 });
+
+      expect(result.items[0].identity?.isStale).toBe(true);
+      expect(result.items[0].commercial?.availableQuantity).toBe(0);
+    });
+
+    it('should null out identity and commercial independently when their join found nothing', async () => {
       const qb = buildListQb([
         buildRawRow({
           productId: null,
@@ -288,9 +344,7 @@ describe('OfferMappingRepository', () => {
           variantSku: null,
           variantEan: null,
           variantAttributes: null,
-          publicationStatus: null,
-          statusDetails: null,
-          lastStatusSyncedAt: null,
+          variantIsStale: null,
           commercialPrice: null,
           commercialCurrency: null,
           commercialAvailableQuantity: null,
@@ -302,9 +356,34 @@ describe('OfferMappingRepository', () => {
       const result = await repository.findMany({}, { limit: 20, offset: 0 });
 
       expect(result.items[0].identity).toBeNull();
-      expect(result.items[0].channelStatus).toBeNull();
       expect(result.items[0].commercial).toBeNull();
       expect(result.items[0].internalId).toBe('ol_variant_123');
+    });
+
+    it('should bucket a row with no status snapshot as Unsynced rather than leaving it unclassified', async () => {
+      const qb = buildListQb([
+        buildRawRow({ publicationStatus: null, statusDetails: null, lastStatusSyncedAt: null }),
+      ]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const result = await repository.findMany({}, { limit: 20, offset: 0 });
+
+      // The exact shape FE-C (#2029) renders its fifth tab from.
+      expect(result.items[0].channelStatus).toEqual({
+        publicationStatus: null,
+        lifecycle: 'Unsynced',
+        validationMessages: [],
+        lastStatusSyncedAt: null,
+      });
+    });
+
+    it('should report an absent product name honestly rather than as a blank string', async () => {
+      const qb = buildListQb([buildRawRow({ productName: null })]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const result = await repository.findMany({}, { limit: 20, offset: 0 });
+
+      expect(result.items[0].identity?.productName).toBeNull();
     });
 
     it('should page deterministically with an id tiebreaker on the createdAt ordering', async () => {

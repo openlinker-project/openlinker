@@ -963,15 +963,25 @@ export class ListingsController {
   private toListDto(item: OfferMappingListItem): OfferMappingResponseDto {
     return {
       ...this.toDto(item),
-      identity: item.identity,
-      channelStatus: item.channelStatus
+      // Mapped field by field rather than passed through, so a field added to
+      // the domain projection cannot silently reach the wire.
+      identity: item.identity
         ? {
-            publicationStatus: item.channelStatus.publicationStatus,
-            lifecycle: item.channelStatus.lifecycle,
-            validationMessages: [...item.channelStatus.validationMessages],
-            lastStatusSyncedAt: item.channelStatus.lastStatusSyncedAt.toISOString(),
+            productId: item.identity.productId,
+            productName: item.identity.productName,
+            variantLabel: item.identity.variantLabel,
+            sku: item.identity.sku,
+            ean: item.identity.ean,
+            imageUrl: item.identity.imageUrl,
+            isStale: item.identity.isStale,
           }
         : null,
+      channelStatus: {
+        publicationStatus: item.channelStatus.publicationStatus,
+        lifecycle: item.channelStatus.lifecycle,
+        validationMessages: [...item.channelStatus.validationMessages],
+        lastStatusSyncedAt: item.channelStatus.lastStatusSyncedAt?.toISOString() ?? null,
+      },
       commercial: item.commercial
         ? {
             price: item.commercial.price,

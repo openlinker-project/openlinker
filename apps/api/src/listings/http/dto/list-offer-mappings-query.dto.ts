@@ -28,7 +28,8 @@ export class ListOfferMappingsQueryDto {
 
   @ApiPropertyOptional({
     description:
-      'Case-insensitive search across product name, variant label, SKU, EAN and the external offer ID',
+      'Case-insensitive search across product name, variant label, product SKU, variant SKU, EAN, ' +
+      'GTIN and the external offer ID. Leading/trailing whitespace is trimmed.',
   })
   @IsOptional()
   @IsString()

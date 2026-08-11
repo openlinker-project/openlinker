@@ -56,7 +56,17 @@ function makeMapping(externalOfferId: string, internalVariantId: string): OfferM
     new Date('2026-05-01T12:00:00Z'),
     new Date('2026-05-01T12:00:00Z')
   );
-  return { ...mapping, identity: null, channelStatus: null, commercial: null };
+  return {
+    ...mapping,
+    identity: null,
+    channelStatus: {
+      publicationStatus: null,
+      lifecycle: 'Unsynced',
+      validationMessages: [],
+      lastStatusSyncedAt: null,
+    },
+    commercial: null,
+  };
 }
 
 function makeSnapshot(externalOfferId: string, status: OfferPublicationStatus): OfferStatusSnapshot {
