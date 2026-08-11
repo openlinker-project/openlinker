@@ -115,7 +115,7 @@ export interface OfferMapping {
    * carries `lifecycle: 'Unsynced'` rather than a null projection. Absent (not
    * null) on `GET /listings/:id`.
    */
-  channelStatus?: OfferMappingChannelStatus | null;
+  channelStatus?: OfferMappingChannelStatus;
   /**
    * Populated only by `GET /listings`. Null when no commercial observation has
    * been persisted for the offer yet.

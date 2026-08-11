@@ -20,7 +20,7 @@ import {
   useConnectionsQuery,
   type ConnectionCellFacts,
 } from '../../features/connections';
-import { resolvePlatformLabel } from '../../features/mappings/lib/platform-label';
+import { resolvePlatformLabel } from '../../features/mappings';
 import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
 import { OfferProductPickerModal } from '../../features/listings/components/offer-product-picker-modal';
 import {
@@ -40,14 +40,43 @@ const SEARCH_DEBOUNCE_MS = 300;
  * are what the CHANNEL reports - already the output of the connection's
  * pricing rule and already net of its stock safety buffer - so a bare "Price"
  * would read as OL's own catalog price and a correctly-configured buffer would
- * look like a bug (#1843 / #1844).
+ * look like a bug (#1843 / #1844). "Updated" needs the same qualifier for the
+ * opposite reason: it is when OL last READ the channel, not when the listing
+ * last changed, and a days-old value otherwise reads as a stalled sync.
  */
-function ColumnHead({ label, note }: { label: string; note: string }): ReactElement {
+function ColumnHead({
+  label,
+  note,
+  align,
+}: {
+  label: string;
+  note: string;
+  align?: 'right';
+}): ReactElement {
   return (
-    <span className="listings-col-head">
+    <span
+      className={
+        align === 'right' ? 'listings-col-head listings-col-head--right' : 'listings-col-head'
+      }
+    >
       {label}
       <span className="listings-col-head__note">{note}</span>
     </span>
+  );
+}
+
+/**
+ * `EmptyValue` names itself with `aria-label` on a bare `<span>` - a generic
+ * element ARIA prohibits naming, which screen readers commonly drop. The
+ * never-read-versus-zero distinction is the whole point of this page's
+ * commercial columns, so the wording is also carried visually-hidden.
+ */
+function AbsentValue({ label }: { label: string }): ReactElement {
+  return (
+    <>
+      <EmptyValue label={label} />
+      <span className="sr-only">{label}</span>
+    </>
   );
 }
 
@@ -61,8 +90,11 @@ function RowBadge({ badge }: { badge: ListingRowBadge }): ReactElement {
       solid={badge.solid ?? false}
       className="listing-cell__badge"
     >
-      {/* StatusBadge takes no native props, so the hover nuance rides a span. */}
+      {/* StatusBadge takes no native props, so the hover nuance rides a span -
+          and repeats visually-hidden, because a two-word label whose meaning
+          lives only in a tooltip is meaning a keyboard user cannot reach. */}
       <span title={badge.title}>{badge.label}</span>
+      {badge.title ? <span className="sr-only">. {badge.title}</span> : null}
     </StatusBadge>
   );
 }
@@ -72,15 +104,27 @@ function RowBadge({ badge }: { badge: ListingRowBadge }): ReactElement {
  * groups the three identifiers (external offer id, SKU, EAN). The product name
  * is deliberately NOT its own link: `DataTable` already wraps the first cell in
  * the row link, and an anchor inside an anchor is invalid markup.
+ *
+ * The `card` shape is frame 05's own reshape for 360px, not the table cell
+ * squeezed: name + badges lead, then variant and SKU only. The offer id and EAN
+ * move to the card's disclosure - at that width they would take the product
+ * name's room, and the name is what the card is about.
  */
-function ListingCell({ row }: { row: OfferMapping }): ReactElement {
+function ListingCell({
+  row,
+  shape = 'row',
+}: {
+  row: OfferMapping;
+  shape?: 'row' | 'card';
+}): ReactElement {
   const identity = row.identity ?? null;
   const badges = listingRowBadges(row);
   const alert = listingRowAlert(row);
   const name = identity?.productName ?? null;
+  const isCard = shape === 'card';
 
   return (
-    <span className="listing-cell">
+    <span className={isCard ? 'listing-cell listing-cell--card' : 'listing-cell'}>
       <ProductThumbnail name={name ?? row.externalId} src={identity?.imageUrl ?? null} size="md" />
       <span className="listing-cell__body">
         <span className="listing-cell__head">
@@ -93,7 +137,7 @@ function ListingCell({ row }: { row: OfferMapping }): ReactElement {
               {identity ? 'Unnamed product' : 'No linked variant'}
             </span>
           )}
-          {identity?.variantLabel ? (
+          {!isCard && identity?.variantLabel ? (
             <span className="listing-cell__variant">{identity.variantLabel}</span>
           ) : null}
           {badges.map((badge) => (
@@ -101,15 +145,21 @@ function ListingCell({ row }: { row: OfferMapping }): ReactElement {
           ))}
         </span>
         <span className="listing-cell__meta">
-          <span className="listing-cell__offerid" title={row.externalId}>
-            {row.externalId}
-          </span>
+          {isCard ? (
+            identity?.variantLabel ? (
+              <span>{identity.variantLabel}</span>
+            ) : null
+          ) : (
+            <span className="listing-cell__offerid" title={row.externalId}>
+              {row.externalId}
+            </span>
+          )}
           {identity?.sku ? (
             <span>
               SKU: <em>{identity.sku}</em>
             </span>
           ) : null}
-          {identity?.ean ? (
+          {!isCard && identity?.ean ? (
             <span>
               EAN: <em>{identity.ean}</em>
             </span>
@@ -134,44 +184,46 @@ function ChannelPill({ row, label }: { row: OfferMapping; label: string }): Reac
 }
 
 /**
- * Price with the age of the observation it came from. The age lives here rather
- * than being split across both commercial columns: it is one per-row fact, and
- * a price shown without it is a price an operator acts on (ADR-009's #2024
- * amendment). It renders even when the price itself was not reported, because
- * "as of" stays true for the quantity beside it.
+ * The channel's own price, on one mono/tabular line. The age of the reading is
+ * NOT repeated here: per #2024 the commercial snapshot is written by the same
+ * `marketplace.offer.statusSync` pass as the status snapshot, so for
+ * effectively every row it is the instant the Updated column already prints.
+ * Printing it twice in two formats costs a line on every row and leaves the
+ * operator to work out they are the same clock. It rides the cell's title
+ * instead, which stays true for the quantity beside it.
  */
 function PriceCell({ row }: { row: OfferMapping }): ReactElement {
   const commercial = row.commercial ?? null;
-  if (!commercial) return <EmptyValue label="No channel reading yet" />;
+  if (!commercial) return <AbsentValue label="No channel reading yet" />;
 
   const readAt = `Price and quantity on channel, last read ${formatDateTime(
     commercial.lastCommercialSyncedAt,
   )}`;
 
   return (
-    <span className="price-cell">
+    <span className="price-cell" title={readAt}>
       <span className="price-cell__value">
         {commercial.price == null ? (
-          <EmptyValue label="Price not reported by the channel" />
+          <AbsentValue label="Price not reported by the channel" />
         ) : (
           formatAmount(commercial.price, commercial.currency ?? undefined)
         )}
       </span>
-      <TimeDisplay
-        className="price-cell__age"
-        iso={commercial.lastCommercialSyncedAt}
-        format="relative"
-        title={readAt}
-      />
     </span>
   );
 }
 
 function QuantityCell({ row }: { row: OfferMapping }): ReactElement {
-  const quantity = row.commercial?.availableQuantity;
+  const commercial = row.commercial ?? null;
+  // Nothing was ever persisted for this offer, so no reading was taken - which
+  // is a different fact from a channel that answered and withheld the number.
+  // On a connection whose status-sync task is off this is every row.
+  if (!commercial) return <AbsentValue label="No channel reading yet" />;
+
+  const quantity = commercial.availableQuantity;
   // Absence is not zero: a marketplace that reported no quantity says nothing
   // about whether the offer has stock.
-  if (quantity == null) return <EmptyValue label="Quantity not reported by the channel" />;
+  if (quantity == null) return <AbsentValue label="Quantity not reported by the channel" />;
 
   return (
     <span className="qty-cell">
@@ -187,7 +239,7 @@ function QuantityCell({ row }: { row: OfferMapping }): ReactElement {
 
 function UpdatedCell({ row }: { row: OfferMapping }): ReactElement {
   const syncedAt = row.channelStatus?.lastStatusSyncedAt;
-  if (!syncedAt) return <EmptyValue label="Channel status never read" />;
+  if (!syncedAt) return <AbsentValue label="Channel status never read" />;
   return <TimeDisplay className="time-cell" iso={syncedAt} format="datetime" />;
 }
 
@@ -257,19 +309,22 @@ export function ListingsListPage(): ReactElement {
       },
       {
         id: 'price',
-        header: <ColumnHead label="Price" note="on channel" />,
+        header: <ColumnHead label="Price" note="on channel" align="right" />,
         align: 'right',
         cell: (row): ReactNode => <PriceCell row={row} />,
       },
       {
         id: 'quantity',
-        header: <ColumnHead label="Quantity" note="on channel" />,
+        header: <ColumnHead label="Quantity" note="on channel" align="right" />,
         align: 'right',
         cell: (row): ReactNode => <QuantityCell row={row} />,
       },
       {
         id: 'updated',
-        header: 'Updated',
+        // Not "when this listing changed" - when OL last read the channel. The
+        // hourly scan makes a days-old value ordinary, and the mobile card
+        // already calls the identical value "Status read".
+        header: <ColumnHead label="Updated" note="status read" />,
         cell: (row): ReactNode => <UpdatedCell row={row} />,
       },
     ],
@@ -401,12 +456,16 @@ export function ListingsListPage(): ReactElement {
         <>
           <DataTable
             caption="Listings"
+            // Scopes the identity column's width floor to this table - the
+            // mockup put `min-width: 28rem` on `.data-table td:first-child`,
+            // which here would reach ~12 unrelated tables (#2028).
+            className="listings-table"
             columns={columns}
             rows={query.data?.items ?? []}
             rowKey={(m) => m.id}
             rowHref={(m) => m.id}
             cardView={{
-              title: (m) => <ListingCell row={m} />,
+              title: (m) => <ListingCell row={m} shape="card" />,
               // Channel / Connection / Price / Quantity as a two-column fact
               // list — the four columns the fold drops (#1965 frame 05).
               summary: (m) => (
@@ -462,6 +521,21 @@ export function ListingsListPage(): ReactElement {
                       id: 'updated',
                       label: 'Status read',
                       value: <UpdatedCell row={m} />,
+                    },
+                    // The card head drops these two so the product name keeps
+                    // its room at 360px (#1965 frame 05) - they stay reachable
+                    // one tap away rather than disappearing.
+                    {
+                      id: 'externalId',
+                      label: 'Offer ID',
+                      value: m.externalId,
+                      mono: true,
+                    },
+                    {
+                      id: 'ean',
+                      label: 'EAN/GTIN',
+                      value: m.identity?.ean ?? <EmptyValue label="No EAN on the linked variant" />,
+                      mono: true,
                     },
                     {
                       id: 'internalId',

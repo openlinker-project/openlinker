@@ -17063,8 +17063,22 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
    Transcribed from the #1965 mockup: a listing row leads with the catalog
    product name, groups its three identifiers on a second line, and keeps the
    two commercial columns mono + tabular so they scan as columns. */
+/* The identity column carries four facts, so it gets the width to keep them on
+   two lines; below this the row grows to four and the ~36px density budget is
+   gone. Scoped to this table's own container class - the mockup hung it off
+   `.data-table td:first-child`, which in the app would reach every other
+   DataTable. */
+.listings-table th:first-child,
+.listings-table td:first-child {
+  min-width: 28rem;
+}
+/* `inline-flex`, not `flex`: DataTable wraps the first cell in an INLINE <a>
+   whose focus ring is a box-shadow, and a block box inside an inline anchor
+   paints that ring around inline fragments wrapping an anonymous block - a
+   hairline or nothing. An atomic inline-level box keeps the ring intact. */
 .listing-cell {
-  display: flex;
+  display: inline-flex;
+  width: 100%;
   align-items: flex-start;
   gap: var(--space-3);
   min-width: 0;
@@ -17083,10 +17097,13 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 /* Shrink only when the row genuinely runs out of room (a long name next to a
    badge), never at a fixed character cap - a truncated name with empty space
    beside it reads as a bug. */
+/* Inherits from the row link / card title rather than declaring its own colour,
+   so DataTable's own `:hover .data-table__row-link` accent reaches it without a
+   listings rule keying off a DataTable-internal modifier. */
 .listing-cell__name {
   font-size: 0.8125rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: inherit;
   min-width: 0;
   flex: 0 1 auto;
   overflow: hidden;
@@ -17103,9 +17120,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .listing-cell__badge {
   flex: 0 0 auto;
 }
-.data-table__row--linked:hover .listing-cell__name {
-  color: var(--accent-primary);
-}
 .listing-cell__variant {
   font-size: 0.75rem;
   color: var(--text-secondary);
@@ -17120,8 +17134,12 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   font-size: 0.6875rem;
   color: var(--text-muted);
 }
+/* Weight is declared, not inherited: on the mobile card DataTable wraps the
+   title in a 600-weight <strong>, which would otherwise make the identifier
+   line and the validator message read as headings. */
 .listing-cell__meta {
   font-size: 0.75rem;
+  font-weight: 400;
   color: var(--text-muted);
   display: flex;
   gap: var(--space-2);
@@ -17147,6 +17165,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
    overselling warning for a stale variant that still reports channel stock. */
 .listing-cell__reason {
   font-size: 0.6875rem;
+  font-weight: 400;
   color: var(--status-error-strong);
   max-width: 46ch;
   overflow: hidden;
@@ -17154,21 +17173,49 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   white-space: nowrap;
 }
 
+/* Mobile card head (#1965 frame 05): at 360px the name is what the card is
+   about, so nothing next to it may hold a fixed width and nothing may clip. */
+.listing-cell--card .listing-cell__head {
+  flex-wrap: wrap;
+}
+.listing-cell--card .listing-cell__name {
+  flex: 1 1 auto;
+  overflow: visible;
+  white-space: normal;
+}
+.listing-cell--card .listing-cell__meta {
+  flex-wrap: wrap;
+  overflow: visible;
+  white-space: normal;
+}
+.listing-cell--card .listing-cell__reason {
+  max-width: none;
+  overflow: visible;
+  white-space: normal;
+}
+
 /* Whose number this column carries. Price and quantity are the channel's, not
-   OL's, and the note says so in the header rather than in a tooltip nobody
-   opens (#1843 / #1844). */
+   OL's, and Updated is when OL last READ the channel, not when the listing
+   changed - the note says so in the header rather than in a tooltip nobody
+   opens (#1843 / #1844 / ADR-009). */
 .listings-col-head {
   display: inline-flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 1px;
 }
+.listings-col-head--right {
+  align-items: flex-end;
+}
 .listings-col-head__note {
-  font-size: 0.5625rem;
+  font-size: 0.625rem;
   font-weight: 400;
   letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
   color: var(--text-muted);
+  /* Nothing else in the system goes below 10px, and at 10px + caps tracking
+     this must not be allowed to wrap into the row beneath. */
+  white-space: nowrap;
 }
 
 .price-cell {
@@ -17180,13 +17227,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .price-cell__value {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-/* A channel price can legitimately be days old (hourly scan, 100 offers/tick),
-   so the value never appears without its age. */
-.price-cell__age {
-  font-size: 0.625rem;
-  color: var(--text-muted);
   white-space: nowrap;
 }
 

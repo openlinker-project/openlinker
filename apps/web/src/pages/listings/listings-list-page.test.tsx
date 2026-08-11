@@ -96,7 +96,9 @@ function oneRow(overrides: Partial<OfferMapping>): PaginatedOfferMappings {
   };
 }
 
-const ERLI_CONNECTION = {
+// Deliberately carries a DIFFERENT platformType than the rows it is wired to:
+// the channel pill must resolve from the ROW, never from its connection.
+const MISMATCHED_PLATFORM_CONNECTION = {
   id: 'conn_allegro_1',
   name: 'Erli Demo',
   platformType: 'erli',
@@ -161,7 +163,9 @@ describe('ListingsListPage', () => {
       'Connection',
       'Priceon channel',
       'Quantityon channel',
-      'Updated',
+      // Not "when this listing changed" - when OL last read the channel. The
+      // mobile card calls the identical value "Status read".
+      'Updatedstatus read',
     ]);
   });
 
@@ -177,20 +181,24 @@ describe('ListingsListPage', () => {
   });
 
   it('should resolve the connection column from one batched read, not a per-row fetch', async () => {
-    const connectionsList = vi.fn().mockResolvedValue([ERLI_CONNECTION]);
+    const connectionsList = vi.fn().mockResolvedValue([MISMATCHED_PLATFORM_CONNECTION]);
     const connectionGetById = vi.fn();
     const mockApi = createMockApiClient({
       listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
       connections: { list: connectionsList, getById: connectionGetById },
     });
 
-    renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+    const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
     expect(await screen.findAllByText('Erli Demo')).toHaveLength(2);
     expect(connectionGetById).not.toHaveBeenCalled();
+    // The fixture's platformType ('erli') differs from its rows' ('allegro') -
+    // the pill must follow the row.
+    expect(container.querySelectorAll('.channel-pill[data-channel="allegro"]')).toHaveLength(2);
+    expect(container.querySelector('.channel-pill[data-channel="erli"]')).toBeNull();
   });
 
-  it('should render the channel price with its reading age, labelled as on-channel', async () => {
+  it('should date the channel price on the cell rather than repeating the Updated column', async () => {
     const mockApi = createMockApiClient({
       listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
     });
@@ -198,12 +206,12 @@ describe('ListingsListPage', () => {
     const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
     await screen.findByText('Doniczka ceramiczna Terra');
-    const price = container.querySelector('.price-cell__value');
-    expect(price?.textContent).toContain('100');
-    // A price without its age is a price an operator acts on (#2024 / ADR-009).
-    const age = container.querySelector('.price-cell__age');
-    expect(age).toHaveAttribute('datetime', '2026-01-20T09:30:00.000Z');
-    expect(age?.getAttribute('title')).toMatch(/^Price and quantity on channel, last read /);
+    const price = container.querySelector('.price-cell');
+    expect(price?.querySelector('.price-cell__value')?.textContent).toContain('100');
+    expect(price?.getAttribute('title')).toMatch(/^Price and quantity on channel, last read /);
+    // The commercial and status snapshots come from the same statusSync pass
+    // (#2024), so the age is not printed a second time under the price.
+    expect(container.querySelector('.price-cell__age')).toBeNull();
   });
 
   it('should badge a zero channel quantity as out of stock', async () => {
@@ -239,7 +247,22 @@ describe('ListingsListPage', () => {
     expect(screen.getByLabelText('Quantity not reported by the channel')).toBeInTheDocument();
     expect(screen.queryByText('Out of stock')).not.toBeInTheDocument();
     // The reading is still dated even when neither value came back.
-    expect(container.querySelector('.price-cell__age')).toBeInTheDocument();
+    expect(container.querySelector('.price-cell')?.getAttribute('title')).toMatch(/last read/);
+  });
+
+  it('should say no reading was taken - not that the channel withheld one - when no snapshot exists', async () => {
+    const mockApi = createMockApiClient({
+      listings: { list: vi.fn().mockResolvedValue(oneRow({ commercial: null })) },
+    });
+
+    renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Doniczka ceramiczna Terra');
+    // Both commercial cells state the same fact: nothing was ever persisted for
+    // this offer. On a connection whose status-sync task is off, that is every
+    // row - so neither cell may blame the marketplace for withholding a number.
+    expect(screen.getAllByLabelText('No channel reading yet')).toHaveLength(2);
+    expect(screen.queryByLabelText('Quantity not reported by the channel')).not.toBeInTheDocument();
   });
 
   it('should give a stale variant that still has channel stock a solid overselling treatment', async () => {
@@ -297,10 +320,19 @@ describe('ListingsListPage', () => {
       listings: { list: vi.fn().mockResolvedValue(oneRow({ identity: null })) },
     });
 
-    renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+    const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
     expect(await screen.findByText('No linked variant')).toBeInTheDocument();
     expect(screen.getByText('allegro-offer-999')).toBeInTheDocument();
+    // A listing OL can no longer key on, still selling on the channel, is the
+    // same money-shaped state as a stale one - not quieter than a Draft chip.
+    expect(screen.getByText('Unlinked')).toBeInTheDocument();
+    expect(container.querySelector('.status-badge--solid')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Still 41 available on channel - no OpenLinker product is linked to this listing',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('should show error state when fetch fails', async () => {
@@ -400,7 +432,7 @@ describe('ListingsListPage', () => {
       try {
         const mockApi = createMockApiClient({
           listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
-          connections: { list: vi.fn().mockResolvedValue([ERLI_CONNECTION]) },
+          connections: { list: vi.fn().mockResolvedValue([MISMATCHED_PLATFORM_CONNECTION]) },
         });
 
         const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
@@ -408,9 +440,9 @@ describe('ListingsListPage', () => {
         await screen.findByText('Doniczka ceramiczna Terra');
         expect(container.querySelector('table')).not.toBeInTheDocument();
         expect(container.querySelectorAll('.data-table__card')).toHaveLength(2);
-        // The head keeps the full row anatomy; the four dropped columns become
-        // the fact list beneath it.
-        expect(container.querySelectorAll('.listing-cell')).toHaveLength(2);
+        // The head is frame 05's own reshape, not the table cell squeezed; the
+        // four dropped columns become the fact list beneath it.
+        expect(container.querySelectorAll('.listing-cell--card')).toHaveLength(2);
         const facts = container.querySelector('.listings-card-facts');
         expect(facts?.querySelectorAll('dt')).toHaveLength(4);
         expect([...(facts?.querySelectorAll('dt') ?? [])].map((dt) => dt.textContent)).toEqual([
@@ -424,7 +456,7 @@ describe('ListingsListPage', () => {
       }
     });
 
-    it('should keep the long-form fields behind a disclosure', async () => {
+    it('should keep the card head to name, variant and SKU, with the rest behind a disclosure', async () => {
       const viewport = mockMobileViewport();
       try {
         const user = userEvent.setup();
@@ -435,10 +467,18 @@ describe('ListingsListPage', () => {
         renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
         await screen.findByText('Doniczka ceramiczna Terra');
+        expect(screen.getByText('Terakota 24 cm')).toBeInTheDocument();
+        expect(screen.getByText('TERRA-24-TER')).toBeInTheDocument();
+        // At 360px the offer id and EAN would take the product name's room, so
+        // frame 05 drops them from the head - they move into the disclosure.
+        expect(screen.queryByText('allegro-offer-999')).not.toBeInTheDocument();
+        expect(screen.queryByText('5900000000138')).not.toBeInTheDocument();
         expect(screen.queryByText('ol_variant_abc123')).not.toBeInTheDocument();
 
         await user.click(screen.getByRole('button', { name: /view full details/i }));
 
+        expect(screen.getByText('allegro-offer-999')).toBeInTheDocument();
+        expect(screen.getByText('5900000000138')).toBeInTheDocument();
         expect(screen.getByText('ol_variant_abc123')).toBeInTheDocument();
         expect(screen.getByText('Lifecycle')).toBeInTheDocument();
       } finally {
