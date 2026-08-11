@@ -2767,12 +2767,12 @@ a.delivery-rider-banner__button:focus-visible {
   box-shadow: var(--shadow-focus);
 }
 
-.data-table td.data-table__cell--right {
+.data-table .data-table__cell--right {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-.data-table__cell--center {
+.data-table .data-table__cell--center {
   text-align: center;
 }
 
