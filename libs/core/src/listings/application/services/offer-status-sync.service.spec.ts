@@ -5,12 +5,14 @@ import type { IIntegrationsService } from '@openlinker/core/integrations';
 import { OfferNotFoundOnMarketplaceException } from '@openlinker/core/listings';
 import type { OfferMappingRepositoryPort } from '@openlinker/core/listings';
 import type { OfferStatusSnapshotRepositoryPort } from '../../domain/ports/offer-status-snapshot-repository.port';
+import type { OfferCommercialSnapshotRepositoryPort } from '../../domain/ports/offer-commercial-snapshot-repository.port';
 import { OfferStatusSyncService } from './offer-status-sync.service';
 
 describe('OfferStatusSyncService.refreshOne', () => {
   let integrations: { getCapabilityAdapter: jest.Mock };
   let offerMappings: jest.Mocked<Pick<OfferMappingRepositoryPort, 'findMany'>>;
   let snapshots: jest.Mocked<Pick<OfferStatusSnapshotRepositoryPort, 'upsert'>>;
+  let commercialSnapshots: jest.Mocked<Pick<OfferCommercialSnapshotRepositoryPort, 'upsert'>>;
   let service: OfferStatusSyncService;
 
   const target = { externalOfferId: '7781896308', internalVariantId: 'ol_variant_1' };
@@ -19,10 +21,14 @@ describe('OfferStatusSyncService.refreshOne', () => {
     integrations = { getCapabilityAdapter: jest.fn() };
     offerMappings = { findMany: jest.fn() };
     snapshots = { upsert: jest.fn() };
+    commercialSnapshots = { upsert: jest.fn() } as unknown as jest.Mocked<
+      Pick<OfferCommercialSnapshotRepositoryPort, 'upsert'>
+    >;
     service = new OfferStatusSyncService(
       integrations as unknown as IIntegrationsService,
       offerMappings as unknown as OfferMappingRepositoryPort,
-      snapshots as unknown as OfferStatusSnapshotRepositoryPort
+      snapshots as unknown as OfferStatusSnapshotRepositoryPort,
+      commercialSnapshots as unknown as OfferCommercialSnapshotRepositoryPort
     );
   });
 

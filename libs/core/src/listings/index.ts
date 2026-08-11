@@ -263,6 +263,7 @@ export { isOfferStatusReader } from './domain/ports/capabilities/offer-status-re
 export type {
   OfferPublicationStatus,
   OfferStatusReadResult,
+  OfferCommercialObservation,
 } from './domain/types/offer-status-read.types';
 export { OfferPublicationStatusValues } from './domain/types/offer-status-read.types';
 export { OfferStatusSnapshot } from './domain/entities/offer-status-snapshot.entity';
@@ -276,6 +277,12 @@ export type {
   OfferStatusSnapshotRepositoryPort,
   OfferStatusUpsertResult,
 } from './domain/ports/offer-status-snapshot-repository.port';
+export { OfferCommercialSnapshot } from './domain/entities/offer-commercial-snapshot.entity';
+export type {
+  OfferCommercialSnapshotProps,
+  UpsertOfferCommercialSnapshotCommand,
+} from './domain/types/offer-commercial-snapshot.types';
+export type { OfferCommercialSnapshotRepositoryPort } from './domain/ports/offer-commercial-snapshot-repository.port';
 export type {
   IOfferStatusSyncService,
   OfferStatusSyncOptions,

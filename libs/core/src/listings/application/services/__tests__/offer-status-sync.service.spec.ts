@@ -13,17 +13,35 @@ import type {
   OfferStatusReadResult,
   OfferMappingRepositoryPort,
   OfferStatusSnapshotRepositoryPort,
+  OfferCommercialSnapshotRepositoryPort,
   PaginatedOfferMappings,
   UpsertOfferStatusSnapshotCommand,
 } from '@openlinker/core/listings';
 import { IdentifierMapping } from '@openlinker/core/identifier-mapping';
 import { OfferNotFoundOnMarketplaceException } from '@openlinker/core/listings';
 
+import { OfferCommercialSnapshot } from '../../../domain/entities/offer-commercial-snapshot.entity';
 import { OfferStatusSnapshot } from '../../../domain/entities/offer-status-snapshot.entity';
 import type { OfferPublicationStatus } from '../../../domain/types/offer-status-read.types';
 import { OfferStatusSyncService } from '../offer-status-sync.service';
 
 const CONNECTION_ID = 'conn-allegro-1';
+
+function commercialSnapshot(): OfferCommercialSnapshot {
+  const now = new Date('2026-08-11T00:00:00.000Z');
+  return new OfferCommercialSnapshot({
+    id: 'ocs-1',
+    connectionId: CONNECTION_ID,
+    externalOfferId: '111',
+    internalVariantId: 'ol_variant_a',
+    price: '99.99',
+    currency: 'PLN',
+    availableQuantity: 12,
+    lastCommercialSyncedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
 
 function makeMapping(externalOfferId: string, internalVariantId: string): IdentifierMapping {
   return new IdentifierMapping(
@@ -80,6 +98,7 @@ describe('OfferStatusSyncService', () => {
   let integrations: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
   let offerMappings: jest.Mocked<Pick<OfferMappingRepositoryPort, 'findMany'>>;
   let snapshots: jest.Mocked<Pick<OfferStatusSnapshotRepositoryPort, 'upsert'>>;
+  let commercialSnapshots: jest.Mocked<Pick<OfferCommercialSnapshotRepositoryPort, 'upsert'>>;
 
   function page(items: IdentifierMapping[], total: number): PaginatedOfferMappings {
     return { items, total };
@@ -104,11 +123,15 @@ describe('OfferStatusSyncService', () => {
           })
         ),
     } as unknown as jest.Mocked<Pick<OfferStatusSnapshotRepositoryPort, 'upsert'>>;
+    commercialSnapshots = { upsert: jest.fn() } as unknown as jest.Mocked<
+      Pick<OfferCommercialSnapshotRepositoryPort, 'upsert'>
+    >;
 
     service = new OfferStatusSyncService(
       integrations as unknown as IIntegrationsService,
       offerMappings as unknown as OfferMappingRepositoryPort,
-      snapshots as unknown as OfferStatusSnapshotRepositoryPort
+      snapshots as unknown as OfferStatusSnapshotRepositoryPort,
+      commercialSnapshots as unknown as OfferCommercialSnapshotRepositoryPort
     );
   });
 
@@ -245,5 +268,215 @@ describe('OfferStatusSyncService', () => {
     offerMappings.findMany.mockResolvedValue(page([makeMapping('111', 'ol_variant_a')], 1));
 
     await expect(service.sync(CONNECTION_ID, { limit: 10 })).rejects.toThrow('502 Bad Gateway');
+  });
+
+  describe('commercial snapshot (#2024)', () => {
+    it('upserts offer_commercial_snapshots from an Allegro-shaped commercial observation', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader(() => ({
+          publicationStatus: 'active',
+          validationErrors: [],
+          commercial: { price: { amount: '99.99', currency: 'PLN' }, availableQuantity: 12 },
+        }))
+      );
+      offerMappings.findMany.mockResolvedValue(page([makeMapping('111', 'ol_variant_a')], 1));
+
+      await service.sync(CONNECTION_ID, { limit: 10 });
+
+      expect(commercialSnapshots.upsert).toHaveBeenCalledTimes(1);
+      expect(commercialSnapshots.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionId: CONNECTION_ID,
+          externalOfferId: '111',
+          internalVariantId: 'ol_variant_a',
+          price: '99.99',
+          currency: 'PLN',
+          availableQuantity: 12,
+        })
+      );
+    });
+
+    it('persists a null price while keeping the observed quantity', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader(() => ({
+          publicationStatus: 'activating',
+          validationErrors: [],
+          commercial: { price: null, availableQuantity: 16 },
+        }))
+      );
+      offerMappings.findMany.mockResolvedValue(page([makeMapping('222', 'ol_variant_b')], 1));
+
+      await service.sync(CONNECTION_ID, { limit: 10 });
+
+      expect(commercialSnapshots.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          externalOfferId: '222',
+          internalVariantId: 'ol_variant_b',
+          price: null,
+          currency: null,
+          availableQuantity: 16,
+        })
+      );
+    });
+
+    it('persists a null quantity rather than a zero when the marketplace reported none', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader(() => ({
+          publicationStatus: 'active',
+          validationErrors: [],
+          commercial: { price: { amount: '99.99', currency: 'PLN' }, availableQuantity: null },
+        }))
+      );
+      offerMappings.findMany.mockResolvedValue(page([makeMapping('111', 'ol_variant_a')], 1));
+
+      await service.sync(CONNECTION_ID, { limit: 10 });
+
+      expect(commercialSnapshots.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ price: '99.99', availableQuantity: null })
+      );
+    });
+
+    it('skips the commercial upsert when the observation carries neither price nor quantity', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader(() => ({
+          publicationStatus: 'active',
+          validationErrors: [],
+          commercial: { price: null, availableQuantity: null },
+        }))
+      );
+      offerMappings.findMany.mockResolvedValue(page([makeMapping('111', 'ol_variant_a')], 1));
+
+      const result = await service.sync(CONNECTION_ID, { limit: 10 });
+
+      expect(commercialSnapshots.upsert).not.toHaveBeenCalled();
+      expect(snapshots.upsert).toHaveBeenCalledTimes(1);
+      expect(result.commercialUpdated).toBe(0);
+      expect(result.commercialFailed).toBe(0);
+    });
+
+    it('counts written and failed commercial writes on the result', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader(() => ({
+          publicationStatus: 'active',
+          validationErrors: [],
+          commercial: { price: { amount: '99.99', currency: 'PLN' }, availableQuantity: 12 },
+        }))
+      );
+      offerMappings.findMany.mockResolvedValue(
+        page([makeMapping('111', 'ol_variant_a'), makeMapping('222', 'ol_variant_b')], 2)
+      );
+      commercialSnapshots.upsert
+        .mockResolvedValueOnce(commercialSnapshot())
+        .mockRejectedValueOnce(new Error('invalid input syntax for type numeric'));
+
+      const result = await service.sync(CONNECTION_ID, { limit: 10 });
+
+      expect(result.commercialUpdated).toBe(1);
+      expect(result.commercialFailed).toBe(1);
+    });
+
+    it('skips the commercial upsert but still persists status when the adapter carries no observation', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(statusReader(() => readResult('active')));
+      offerMappings.findMany.mockResolvedValue(page([makeMapping('111', 'ol_variant_a')], 1));
+
+      await service.sync(CONNECTION_ID, { limit: 10 });
+
+      expect(commercialSnapshots.upsert).not.toHaveBeenCalled();
+      expect(snapshots.upsert).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips the commercial upsert but still persists status on refreshOne when there is no observation', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(statusReader(() => readResult('active')));
+
+      await service.refreshOne(CONNECTION_ID, {
+        externalOfferId: '333',
+        internalVariantId: 'ol_variant_c',
+      });
+
+      expect(commercialSnapshots.upsert).not.toHaveBeenCalled();
+      expect(snapshots.upsert).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not abort the page or stall the cursor when the commercial upsert throws', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader(() => ({
+          publicationStatus: 'active',
+          validationErrors: [],
+          commercial: { price: { amount: '99.99', currency: 'PLN' }, availableQuantity: 12 },
+        }))
+      );
+      offerMappings.findMany.mockResolvedValue(
+        page([makeMapping('111', 'ol_variant_a'), makeMapping('222', 'ol_variant_b')], 50)
+      );
+      commercialSnapshots.upsert.mockRejectedValue(
+        new Error('invalid input syntax for type numeric')
+      );
+
+      const result = await service.sync(CONNECTION_ID, { limit: 10, offset: 0 });
+
+      expect(snapshots.upsert).toHaveBeenCalledTimes(2);
+      expect(result.scanned).toBe(2);
+      expect(result.updated).toBe(2);
+      expect(result.nextOffset).toBe(10);
+    });
+
+    it('does not propagate a commercial upsert failure out of refreshOne', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader(() => ({
+          publicationStatus: 'active',
+          validationErrors: [],
+          commercial: { price: { amount: '15.50', currency: 'PLN' }, availableQuantity: 4 },
+        }))
+      );
+      commercialSnapshots.upsert.mockRejectedValue(new Error('unique constraint violation'));
+
+      const result = await service.refreshOne(CONNECTION_ID, {
+        externalOfferId: '333',
+        internalVariantId: 'ol_variant_c',
+      });
+
+      expect(result).toBe('active');
+      expect(snapshots.upsert).toHaveBeenCalledTimes(1);
+    });
+
+    it('upserts the commercial snapshot on refreshOne using the same status response', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader(() => ({
+          publicationStatus: 'active',
+          validationErrors: [],
+          commercial: { price: { amount: '15.50', currency: 'PLN' }, availableQuantity: 4 },
+        }))
+      );
+
+      await service.refreshOne(CONNECTION_ID, {
+        externalOfferId: '333',
+        internalVariantId: 'ol_variant_c',
+      });
+
+      expect(commercialSnapshots.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionId: CONNECTION_ID,
+          externalOfferId: '333',
+          internalVariantId: 'ol_variant_c',
+          price: '15.50',
+          currency: 'PLN',
+          availableQuantity: 4,
+        })
+      );
+    });
+
+    it('does not upsert the commercial snapshot on refreshOne when the offer is not found', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader(() => Promise.reject(new OfferNotFoundOnMarketplaceException('333', CONNECTION_ID)))
+      );
+
+      const result = await service.refreshOne(CONNECTION_ID, {
+        externalOfferId: '333',
+        internalVariantId: 'ol_variant_c',
+      });
+
+      expect(result).toBeNull();
+      expect(commercialSnapshots.upsert).not.toHaveBeenCalled();
+    });
   });
 });
