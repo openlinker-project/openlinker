@@ -5,6 +5,14 @@
  * backend OfferMappingResponseDto and PaginatedOfferMappingsResponseDto contracts.
  * All date fields are ISO 8601 strings.
  *
+ * `OfferMapping` deliberately does NOT yet model the list-only `identity`,
+ * `channelStatus` and `commercial` projections #2025 added - the current table
+ * renders none of them, so they are modelled where they are consumed (#2028 /
+ * #2029). Two things to carry over when they are: `channelStatus` is
+ * non-nullable on a list row, and its `lifecycle` has FIVE values, not the
+ * four tabs of the #1965 mockup (`Unsynced` was added deliberately - see the
+ * union's docblock in core for what it does and does not promise).
+ *
  * @module apps/web/src/features/listings/api
  */
 

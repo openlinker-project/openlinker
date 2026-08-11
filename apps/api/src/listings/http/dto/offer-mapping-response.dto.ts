@@ -7,6 +7,10 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+// Inline `type` modifiers in ONE statement, deliberately: `eslint --fix` merges
+// a separate `import type` line from this module back into the value import,
+// and drops the `type` keyword while doing it (which then trips
+// consistent-type-imports). The inline form is the only shape stable under fix.
 import {
   OfferLifecycleValues,
   type OfferLifecycle,
@@ -49,9 +53,12 @@ export class OfferMappingIdentityResponseDto {
 
   @ApiProperty({
     description:
-      'Whether the linked variant is stale (#1689) - its master product was deleted, so the ' +
-      'stale-offer pause zeroed its offers. Without this flag the row is indistinguishable from a ' +
-      'genuine sell-out.',
+      'Whether the linked variant is stale (#1689) - its master record is gone, either because ' +
+      'the product was deleted or because this one variant disappeared from the master. Its ' +
+      'offers should have been paused, but do not assume the quantity is zero: on a connection ' +
+      'with seller-frozen stock the pause is a documented no-op. `isStale` together with a ' +
+      'non-zero `commercial.availableQuantity` is therefore a live listing for a product that no ' +
+      'longer exists - the overselling case, and worth louder treatment than a stale chip.',
   })
   isStale!: boolean;
 }
@@ -69,10 +76,15 @@ export class OfferMappingChannelStatusResponseDto {
     enum: OfferLifecycleValues,
     description:
       'Lifecycle bucket. Four buckets are derived from `publicationStatus` plus the presence of ' +
-      'validator messages; the fifth, `Unsynced`, covers a mapping the hourly status scan has not ' +
-      'reached yet. All five are disjoint and together partition the filtered total. Note this is ' +
+      'validator messages; the fifth, `Unsynced`, means no status has ever been read for this ' +
+      'mapping. All five are disjoint and together partition the filtered total. Note this is ' +
       'five buckets, not the four of the #1965 mockup - a deliberate #2025 decision, because most ' +
-      'of a large catalog carries no snapshot for days.',
+      'of a large catalog carries no snapshot for days. `Unsynced` is NOT a promise that it will ' +
+      'resolve shortly: a successful wizard create lands here too (the creation poller reconciles ' +
+      'only on timeout and draft, not on the active branch), and on a connection whose status-sync ' +
+      'task is not scheduled - Erli is strict opt-in and default OFF - it is permanent. It also ' +
+      'does NOT mean unlisted: the duplicate guard reads an absent snapshot as still-listed, so ' +
+      'such a row still blocks a re-list.',
   })
   lifecycle!: OfferLifecycle;
 

@@ -32,6 +32,23 @@ import type { OfferStatusSnapshotDetails } from './offer-status-snapshot.types';
  * catalog carries no snapshot for days. Without a fifth bucket those rows
  * belong to no tab at all and an operator reads a four-figure catalog as
  * having lost most of its listings.
+ *
+ * It means **no status has ever been read** - NOT "will resolve shortly". Three
+ * ways a row stays here, and operator-facing copy must not promise otherwise:
+ *
+ * - The rolling scan has not reached it yet (resolves on its own, but a fresh
+ *   mapping sits at offset 0 of a `createdAt DESC` scan, so it waits a full
+ *   wrap - tens of hours on a four-figure catalog).
+ * - A successful wizard create writes no snapshot at all: the creation poller
+ *   schedules its reconcile only on `POLL_TIMEOUT` and `Draft`, not on the
+ *   `Active` terminal branch. So the happy path lands here too.
+ * - **Permanently**, on a connection whose status-sync task is not scheduled -
+ *   Erli's is strict opt-in and default OFF
+ *   (`OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED`), where Allegro's is
+ *   default ON. Such a seller finds their whole catalog in this bucket forever.
+ *
+ * It also does NOT mean "unlisted": the duplicate guard deliberately reads an
+ * absent snapshot as still-listed, so an `Unsynced` row still blocks a re-list.
  */
 export const OfferLifecycleValues = ['Active', 'Inactive', 'Draft', 'Ended', 'Unsynced'] as const;
 export type OfferLifecycle = (typeof OfferLifecycleValues)[number];

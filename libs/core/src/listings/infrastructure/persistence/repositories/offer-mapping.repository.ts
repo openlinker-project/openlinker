@@ -253,8 +253,10 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       .createQueryBuilder('mapping')
       .select('mapping.internalId', 'internalId')
       .addSelect('COUNT(*)', 'count')
+      // Same-context entity (see the findMany join block): by class, so a table
+      // rename stays a compile-time break.
       .leftJoin(
-        'offer_status_snapshots',
+        OfferStatusSnapshotOrmEntity,
         'snapshot',
         'snapshot."externalOfferId" = mapping."externalId" ' +
           'AND snapshot."connectionId" = mapping."connectionId"'
