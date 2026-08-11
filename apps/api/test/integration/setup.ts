@@ -70,8 +70,11 @@ const harness = createIntegrationTestHarness({
     'offer_status_snapshots',
     // offer_commercial_snapshots (#2024) — connection-scoped channel-side price
     // + quantity, written by the same status-sync pass. No ORM/migration FK to
-    // connections, so nothing cascades; truncate explicitly so the Erli offers
-    // vertical slice does not leak rows into every later spec in the worker.
+    // connections, so nothing cascades; truncate explicitly. No spec writes to
+    // it today (the Erli vertical slice drives the sync, but its fixtures carry
+    // no price/stock, so every observation is both-null and skipped) - listed
+    // ahead of the first spec that does, since a table with no FK is invisible
+    // to the cascade closure and would leak silently.
     'offer_commercial_snapshots',
     // listing_creation_records (#1042) — variant- + connection-scoped shop
     // publish attempts. No ORM/migration FK, so nothing cascades from

@@ -31,7 +31,7 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 **Applies to**: any application service that adds work inside `libs/core/src/**/application/services/*-sync.service.ts`'s per-item loop.
 **Source**: #2024 (found reviewing PR #2035).
 
-## Guard a numeric field from untyped wire JSON with `typeof` + `Number.isFinite`, never `!== undefined`
+## Guard a numeric field from untyped wire JSON with `typeof` + `Number.isFinite`, never a bare `=== undefined` check
 
 **Context**: #2024's Erli adapter projected a marketplace price with `if (product.price === undefined) return null`.
 **Problem**: A JSON `null` (not `undefined`) slips past that guard, and `null / 100` evaluates to `0` — persisting a fabricated `"0.00"` price for an offer that is not actually free. There is no finite check either: a non-numeric value produces `NaN`, and Postgres `numeric` accepts the string `'NaN'` silently, so it stores rather than erroring. Separately, `typeof x === 'number'` alone still admits `Infinity` — reachable from `JSON.parse('{"a":1e999}')` — so an `Infinity` quantity would pass too.

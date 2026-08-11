@@ -64,9 +64,11 @@ export interface OfferStatusReadResult {
   publicationStatus: OfferPublicationStatus;
   validationErrors: CreateOfferValidationError[];
   /**
-   * Price + available quantity read off the same per-offer response. Present
-   * whenever the read succeeded, even if both fields came back `null` - the
-   * successful read is itself the freshness signal. Optional so every existing
+   * Price + available quantity read off the same per-offer response. An adapter
+   * populates this whenever the read succeeded, including when one or both
+   * fields came back `null` - reporting absence is the adapter's job, deciding
+   * what to persist is not (see `UpsertOfferCommercialSnapshotCommand` for the
+   * rule the sync service applies). Optional so every existing
    * `OfferStatusReader` implementer keeps compiling unchanged; a reader that
    * never populates it behaves exactly as it did pre-#2024.
    */

@@ -668,20 +668,23 @@ export class AllegroOfferManagerAdapter
    * wire JSON: an amount without a currency would persist unlabeled money (the
    * service stores a real number next to a `null` currency), and
    * `typeof x === 'number'` alone admits `Infinity`, which `JSON.parse` really
-   * does produce from a `1e999` literal.
+   * does produce from a `1e999` literal. Allegro's amount arrives as a string,
+   * so it is finite-checked after coercion too - Postgres `numeric` accepts the
+   * literal `'NaN'`, which would then render as a real reading rather than as
+   * "not reported".
    */
   private toCommercialObservation(offer: AllegroProductOffer): OfferCommercialObservation {
     const amount = offer.sellingMode?.price?.amount;
     const currency = offer.sellingMode?.price?.currency;
     const available = offer.stock?.available;
+    const hasUsablePrice =
+      typeof amount === 'string' &&
+      amount.length > 0 &&
+      Number.isFinite(Number(amount)) &&
+      typeof currency === 'string' &&
+      currency.length > 0;
     return {
-      price:
-        typeof amount === 'string' &&
-        amount.length > 0 &&
-        typeof currency === 'string' &&
-        currency.length > 0
-          ? { amount, currency }
-          : null,
+      price: hasUsablePrice ? { amount, currency } : null,
       availableQuantity:
         typeof available === 'number' && Number.isFinite(available) ? available : null,
     };

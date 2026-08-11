@@ -20,11 +20,28 @@ import type {
 import { IdentifierMapping } from '@openlinker/core/identifier-mapping';
 import { OfferNotFoundOnMarketplaceException } from '@openlinker/core/listings';
 
+import { OfferCommercialSnapshot } from '../../../domain/entities/offer-commercial-snapshot.entity';
 import { OfferStatusSnapshot } from '../../../domain/entities/offer-status-snapshot.entity';
 import type { OfferPublicationStatus } from '../../../domain/types/offer-status-read.types';
 import { OfferStatusSyncService } from '../offer-status-sync.service';
 
 const CONNECTION_ID = 'conn-allegro-1';
+
+function commercialSnapshot(): OfferCommercialSnapshot {
+  const now = new Date('2026-08-11T00:00:00.000Z');
+  return new OfferCommercialSnapshot({
+    id: 'ocs-1',
+    connectionId: CONNECTION_ID,
+    externalOfferId: '111',
+    internalVariantId: 'ol_variant_a',
+    price: '99.99',
+    currency: 'PLN',
+    availableQuantity: 12,
+    lastCommercialSyncedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
 
 function makeMapping(externalOfferId: string, internalVariantId: string): IdentifierMapping {
   return new IdentifierMapping(
@@ -349,7 +366,7 @@ describe('OfferStatusSyncService', () => {
         page([makeMapping('111', 'ol_variant_a'), makeMapping('222', 'ol_variant_b')], 2)
       );
       commercialSnapshots.upsert
-        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(commercialSnapshot())
         .mockRejectedValueOnce(new Error('invalid input syntax for type numeric'));
 
       const result = await service.sync(CONNECTION_ID, { limit: 10 });

@@ -81,8 +81,12 @@ Two nullability rules follow from the table being *observational*:
 - **Every column of the observation is independently nullable, and `null` never means zero.** A sparse
   marketplace response persists "not reported", because a stored `0` is indistinguishable from a genuine
   sell-out at list scale, and a stored `0.00` from a free item. Price and quantity are nullable separately so
-  a good reading on one axis is never discarded because the other was missing; the row (and its freshness
-  stamp) is written whenever the read succeeded.
+  a good reading on one axis is never discarded because the other was missing. The row (and its freshness
+  stamp) is written whenever the observation carries **at least one** axis; an observation carrying neither is
+  **not written at all**, because the upsert overwrites every column - writing one would blank a
+  previously-good row while simultaneously stamping it as freshly synced. Leaving the prior row untouched lets
+  `lastCommercialSyncedAt` age honestly, which is the signal a read surface must expose alongside the values:
+  a price with no age is a price an operator will act on.
 - **The values are what the marketplace reports, not what OL intended to publish** - already net of the
   connection's `stockSafetyBuffer` (#1844) and already the output of its `pricingRule` (#1843). A constant
   delta against master is correct configuration, not a sync defect, and operator-facing surfaces must read

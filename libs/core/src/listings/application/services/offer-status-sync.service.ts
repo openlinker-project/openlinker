@@ -145,10 +145,15 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
         internalVariantId,
         status
       );
-      if (commercialOutcome === 'written') {
-        commercialUpdated += 1;
-      } else if (commercialOutcome === 'failed') {
-        commercialFailed += 1;
+      switch (commercialOutcome) {
+        case 'written':
+          commercialUpdated += 1;
+          break;
+        case 'failed':
+          commercialFailed += 1;
+          break;
+        case 'skipped':
+          break;
       }
     }
 
@@ -281,10 +286,14 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
       return 'written';
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack : undefined;
+      // Pass the Error itself, not its `.stack`: LoggerPort treats a trailing
+      // STRING param as the per-call context, so a stack string would replace
+      // the class-name context and key the Nest per-context logger cache -
+      // which grows for the process lifetime, on exactly the systemic failure
+      // this counter exists to surface.
       this.logger.warn(
         `Failed to persist commercial snapshot (connection=${connectionId}, offerId=${externalOfferId}): ${message}; status snapshot is unaffected`,
-        stack
+        error
       );
       return 'failed';
     }

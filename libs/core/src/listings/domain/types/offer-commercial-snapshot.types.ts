@@ -81,6 +81,10 @@ export interface UpsertOfferCommercialSnapshotCommand {
  * a job-level counter a systematically failing write (code deployed ahead of
  * the migration, a column/permission mismatch) is visible only as one warn line
  * per offer next to an `outcome: 'ok'` job record.
+ *
+ * `skipped` is a genuine third state (no observation at all, or one carrying
+ * neither axis) that maps to NEITHER counter, which is why this is not a
+ * boolean. Deliberately kept off the listings barrel: it is the return type of
+ * one private method, not something a sibling context consumes.
  */
-export const OfferCommercialWriteOutcomeValues = ['written', 'skipped', 'failed'] as const;
-export type OfferCommercialWriteOutcome = (typeof OfferCommercialWriteOutcomeValues)[number];
+export type OfferCommercialWriteOutcome = 'written' | 'skipped' | 'failed';
