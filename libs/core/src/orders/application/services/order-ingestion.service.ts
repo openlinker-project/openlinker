@@ -511,6 +511,26 @@ export class OrderIngestionService implements IOrderIngestionService {
       return [];
     }
 
+    // Durably record the cancellation on the order record itself (#1984) —
+    // previously this handler only relayed to destinations and returned,
+    // leaving no queryable trace of the cancellation on the order record.
+    // Attempted BEFORE the relay call so the record write isn't skipped if
+    // the relay itself throws; first-write-wins, so a redelivered cancel
+    // event is a harmless no-op. Swallowed (logged, not rethrown): the
+    // pre-existing relay-to-destinations behaviour must not regress because
+    // of this new, best-effort write — a transient DB error here must not
+    // prevent the cancel from reaching the destination shop.
+    try {
+      await this.orderRecordService.markCancelled(internalOrderId, new Date());
+    } catch (error) {
+      this.logger.error(
+        `Failed to record cancellation on order record ${internalOrderId} — proceeding with the ` +
+          `destination relay regardless; the record will remain queryable as non-cancelled until a ` +
+          `future re-poll or retry observes the cancellation again`,
+        (error as Error).stack
+      );
+    }
+
     const result = await this.orderLifecycleRelay.relay({
       internalOrderId,
       originConnectionId: connectionId,
