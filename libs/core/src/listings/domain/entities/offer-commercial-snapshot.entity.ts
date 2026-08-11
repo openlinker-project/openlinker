@@ -20,9 +20,9 @@ export class OfferCommercialSnapshot {
   readonly connectionId: string;
   readonly externalOfferId: string;
   readonly internalVariantId: string;
-  readonly price: string;
-  readonly currency: string;
-  readonly availableQuantity: number;
+  readonly price: string | null;
+  readonly currency: string | null;
+  readonly availableQuantity: number | null;
   readonly lastCommercialSyncedAt: Date;
   readonly createdAt: Date;
   readonly updatedAt: Date;

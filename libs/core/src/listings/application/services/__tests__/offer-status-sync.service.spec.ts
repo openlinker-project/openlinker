@@ -279,14 +279,12 @@ describe('OfferStatusSyncService', () => {
       );
     });
 
-    it('upserts offer_commercial_snapshots from an Erli-shaped commercial observation (grosze-derived decimal price)', async () => {
+    it('persists a null price while keeping the observed quantity', async () => {
       integrations.getCapabilityAdapter.mockResolvedValue(
         statusReader(() => ({
           publicationStatus: 'activating',
           validationErrors: [],
-          // Erli represents money as integer grosze; the adapter converts to a
-          // decimal string before it ever reaches this service.
-          commercial: { price: { amount: '34.90', currency: 'PLN' }, availableQuantity: 16 },
+          commercial: { price: null, availableQuantity: 16 },
         }))
       );
       offerMappings.findMany.mockResolvedValue(page([makeMapping('222', 'ol_variant_b')], 1));
@@ -297,31 +295,92 @@ describe('OfferStatusSyncService', () => {
         expect.objectContaining({
           externalOfferId: '222',
           internalVariantId: 'ol_variant_b',
-          price: '34.90',
-          currency: 'PLN',
+          price: null,
+          currency: null,
           availableQuantity: 16,
         })
       );
     });
 
-    it('skips the commercial upsert when the adapter response carries no commercial observation', async () => {
+    it('persists a null quantity rather than a zero when the marketplace reported none', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader(() => ({
+          publicationStatus: 'active',
+          validationErrors: [],
+          commercial: { price: { amount: '99.99', currency: 'PLN' }, availableQuantity: null },
+        }))
+      );
+      offerMappings.findMany.mockResolvedValue(page([makeMapping('111', 'ol_variant_a')], 1));
+
+      await service.sync(CONNECTION_ID, { limit: 10 });
+
+      expect(commercialSnapshots.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ price: '99.99', availableQuantity: null })
+      );
+    });
+
+    it('skips the commercial upsert but still persists status when the adapter carries no observation', async () => {
       integrations.getCapabilityAdapter.mockResolvedValue(statusReader(() => readResult('active')));
       offerMappings.findMany.mockResolvedValue(page([makeMapping('111', 'ol_variant_a')], 1));
 
       await service.sync(CONNECTION_ID, { limit: 10 });
 
       expect(commercialSnapshots.upsert).not.toHaveBeenCalled();
+      expect(snapshots.upsert).toHaveBeenCalledTimes(1);
     });
 
-    it('skips the commercial upsert when commercial is explicitly null', async () => {
-      integrations.getCapabilityAdapter.mockResolvedValue(
-        statusReader(() => ({ publicationStatus: 'active', validationErrors: [], commercial: null }))
-      );
-      offerMappings.findMany.mockResolvedValue(page([makeMapping('111', 'ol_variant_a')], 1));
+    it('skips the commercial upsert but still persists status on refreshOne when there is no observation', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(statusReader(() => readResult('active')));
 
-      await service.sync(CONNECTION_ID, { limit: 10 });
+      await service.refreshOne(CONNECTION_ID, {
+        externalOfferId: '333',
+        internalVariantId: 'ol_variant_c',
+      });
 
       expect(commercialSnapshots.upsert).not.toHaveBeenCalled();
+      expect(snapshots.upsert).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not abort the page or stall the cursor when the commercial upsert throws', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader(() => ({
+          publicationStatus: 'active',
+          validationErrors: [],
+          commercial: { price: { amount: '99.99', currency: 'PLN' }, availableQuantity: 12 },
+        }))
+      );
+      offerMappings.findMany.mockResolvedValue(
+        page([makeMapping('111', 'ol_variant_a'), makeMapping('222', 'ol_variant_b')], 50)
+      );
+      commercialSnapshots.upsert.mockRejectedValue(
+        new Error('invalid input syntax for type numeric')
+      );
+
+      const result = await service.sync(CONNECTION_ID, { limit: 10, offset: 0 });
+
+      expect(snapshots.upsert).toHaveBeenCalledTimes(2);
+      expect(result.scanned).toBe(2);
+      expect(result.updated).toBe(2);
+      expect(result.nextOffset).toBe(10);
+    });
+
+    it('does not propagate a commercial upsert failure out of refreshOne', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader(() => ({
+          publicationStatus: 'active',
+          validationErrors: [],
+          commercial: { price: { amount: '15.50', currency: 'PLN' }, availableQuantity: 4 },
+        }))
+      );
+      commercialSnapshots.upsert.mockRejectedValue(new Error('unique constraint violation'));
+
+      const result = await service.refreshOne(CONNECTION_ID, {
+        externalOfferId: '333',
+        internalVariantId: 'ol_variant_c',
+      });
+
+      expect(result).toBe('active');
+      expect(snapshots.upsert).toHaveBeenCalledTimes(1);
     });
 
     it('upserts the commercial snapshot on refreshOne using the same status response', async () => {

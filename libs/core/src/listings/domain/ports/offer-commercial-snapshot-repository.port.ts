@@ -5,8 +5,8 @@
  * periodically-refreshed channel-side price/currency/available-quantity of
  * mapped offers. Intentionally minimal, mirroring
  * `OfferStatusSnapshotRepositoryPort`: the steady-state status-sync service
- * needs only a keyed read and an upsert. Does not mirror the TypeORM
- * `Repository<T>` surface.
+ * needs only an upsert. Does not mirror the TypeORM `Repository<T>` surface;
+ * a keyed read arrives with its first consumer.
  *
  * @module libs/core/src/listings/domain/ports
  */
@@ -15,20 +15,16 @@ import type { UpsertOfferCommercialSnapshotCommand } from '../types/offer-commer
 
 export interface OfferCommercialSnapshotRepositoryPort {
   /**
-   * Look up the snapshot for a `(connectionId, externalOfferId)` pair.
-   * Returns `null` when the offer has never had a commercial observation
-   * persisted.
-   */
-  findByConnectionAndExternalOfferId(
-    connectionId: string,
-    externalOfferId: string
-  ): Promise<OfferCommercialSnapshot | null>;
-
-  /**
    * Insert a new snapshot or update the existing `(connectionId,
    * externalOfferId)` row, always refreshing `lastCommercialSyncedAt`.
-   * Implementations must be safe under concurrent upserts of the same key
-   * (unique-constraint races resolve to an update on retry).
+   *
+   * Implementations need not be atomic. The writing job is effectively
+   * single-writer per connection (the scheduler dedups concurrent runs via a
+   * per-minute idempotency key and advances the scan cursor sequentially), and
+   * the one caller that can race it - the delayed `refreshSnapshot` job -
+   * treats a failed commercial write as non-fatal and logs it, so a losing
+   * INSERT costs one skipped observation until the next pass, never a wedged
+   * sync. Same reasoning as `OfferStatusSnapshotRepositoryPort.upsert`.
    */
   upsert(command: UpsertOfferCommercialSnapshotCommand): Promise<OfferCommercialSnapshot>;
 }

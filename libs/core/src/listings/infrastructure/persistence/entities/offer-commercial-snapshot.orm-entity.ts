@@ -28,6 +28,8 @@ import {
 })
 // Reverse navigation from a variant to its offers' commercial snapshots.
 @Index('IDX_offer_commercial_snapshots_variant', ['internalVariantId'])
+// Stalest-first ordering / "which offers carry stale commercial data" sweeps.
+@Index('IDX_offer_commercial_snapshots_lastSyncedAt', ['lastCommercialSyncedAt'])
 export class OfferCommercialSnapshotOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -41,14 +43,14 @@ export class OfferCommercialSnapshotOrmEntity {
   @Column({ type: 'text' })
   internalVariantId!: string;
 
-  @Column({ type: 'numeric' })
-  price!: string;
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  price!: string | null;
 
-  @Column({ type: 'text' })
-  currency!: string;
+  @Column({ type: 'text', nullable: true })
+  currency!: string | null;
 
-  @Column({ type: 'integer' })
-  availableQuantity!: number;
+  @Column({ type: 'integer', nullable: true })
+  availableQuantity!: number | null;
 
   @Column({ type: 'timestamptz' })
   lastCommercialSyncedAt!: Date;

@@ -1,7 +1,7 @@
 /**
  * Offer Commercial Snapshot Repository — Unit Tests
  *
- * Verifies the keyed read and the insert/update branches of `upsert`, mirroring
+ * Verifies the insert/update branches of `upsert`, mirroring
  * `offer-status-snapshot.repository.spec.ts` (#816). The TypeORM `Repository`
  * is mocked; the real-DB behaviour is exercised by the worker e2e int-spec.
  *
@@ -68,31 +68,6 @@ describe('OfferCommercialSnapshotRepository', () => {
     ormRepository = module.get(getRepositoryToken(OfferCommercialSnapshotOrmEntity));
   });
 
-  describe('findByConnectionAndExternalOfferId', () => {
-    it('maps the ORM row to a domain entity when found', async () => {
-      ormRepository.findOne.mockResolvedValue(buildOrm());
-
-      const result = await repository.findByConnectionAndExternalOfferId('conn-uuid', '7781562863');
-
-      expect(ormRepository.findOne).toHaveBeenCalledWith({
-        where: { connectionId: 'conn-uuid', externalOfferId: '7781562863' },
-      });
-      expect(result).not.toBeNull();
-      expect(result?.id).toBe('snap-uuid');
-      expect(result?.price).toBe('99.99');
-      expect(result?.currency).toBe('PLN');
-      expect(result?.availableQuantity).toBe(5);
-    });
-
-    it('returns null when not found', async () => {
-      ormRepository.findOne.mockResolvedValue(null);
-
-      const result = await repository.findByConnectionAndExternalOfferId('conn-uuid', 'missing');
-
-      expect(result).toBeNull();
-    });
-  });
-
   describe('upsert', () => {
     it('inserts a new row when none exists for the key', async () => {
       ormRepository.findOne.mockResolvedValue(null);
@@ -127,6 +102,28 @@ describe('OfferCommercialSnapshotRepository', () => {
       expect(saved.availableQuantity).toBe(3);
       expect(result.price).toBe('109.00');
       expect(result.availableQuantity).toBe(3);
+    });
+
+    it('persists a null price and a null quantity rather than coercing either to zero', async () => {
+      ormRepository.findOne.mockResolvedValue(null);
+      ormRepository.save.mockImplementation((entity) =>
+        Promise.resolve(buildOrm(entity as Partial<OfferCommercialSnapshotOrmEntity>))
+      );
+
+      const result = await repository.upsert({
+        ...command,
+        price: null,
+        currency: null,
+        availableQuantity: null,
+      });
+
+      const saved = ormRepository.save.mock.calls[0][0] as OfferCommercialSnapshotOrmEntity;
+      expect(saved.price).toBeNull();
+      expect(saved.currency).toBeNull();
+      expect(saved.availableQuantity).toBeNull();
+      expect(saved.lastCommercialSyncedAt).toBe(now);
+      expect(result.price).toBeNull();
+      expect(result.availableQuantity).toBeNull();
     });
   });
 });

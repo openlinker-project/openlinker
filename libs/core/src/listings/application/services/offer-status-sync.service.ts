@@ -19,8 +19,9 @@
  * Erli both populate it off the identical per-offer fetch already made for
  * status — no second marketplace call), it is upserted into
  * `offer_commercial_snapshots`. An adapter that never populates `commercial`
- * (or a response with no price) simply skips the commercial upsert for that
- * offer — status persistence is unaffected either way.
+ * skips the commercial upsert for that offer, and a failing commercial write
+ * is caught and warn-logged - the commercial half is supplementary and can
+ * never abort the status pass or stall its scan cursor.
  *
  * @module libs/core/src/listings/application/services
  * @implements {IOfferStatusSyncService}
@@ -210,9 +211,17 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
   /**
    * Upsert `offer_commercial_snapshots` (#2024) from the `commercial`
    * observation already carried on the `getOfferStatus` result — no second
-   * per-offer marketplace call. A `null`/absent `commercial` (the adapter
-   * doesn't populate it, or the response carried no price) is a silent no-op:
-   * status persistence above is unaffected either way.
+   * per-offer marketplace call. An absent `commercial` (the adapter doesn't
+   * populate it) is a silent no-op; a present one is written even when its
+   * price or quantity is `null`, because a successful read is itself the
+   * freshness signal.
+   *
+   * The commercial half is strictly supplementary to the #816 status sync, so
+   * a failed write must never abort the caller: an unguarded throw inside the
+   * per-offer loop would cost every remaining offer on the page its status
+   * refresh AND skip the `nextOffset` computation, re-reading the same poison
+   * page forever. Same posture as the Smart-classification readback in the
+   * Allegro adapter, which must not fail the offer-creation job.
    */
   private async upsertCommercialSnapshot(
     connectionId: string,
@@ -224,14 +233,22 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
     if (!commercial) {
       return;
     }
-    await this.commercialSnapshots.upsert({
-      connectionId,
-      externalOfferId,
-      internalVariantId,
-      price: commercial.price.amount,
-      currency: commercial.price.currency,
-      availableQuantity: commercial.availableQuantity,
-      lastCommercialSyncedAt: new Date(),
-    });
+    try {
+      await this.commercialSnapshots.upsert({
+        connectionId,
+        externalOfferId,
+        internalVariantId,
+        price: commercial.price?.amount ?? null,
+        currency: commercial.price?.currency ?? null,
+        availableQuantity: commercial.availableQuantity,
+        lastCommercialSyncedAt: new Date(),
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Failed to persist commercial snapshot (connection=${connectionId}, offerId=${externalOfferId}): ${
+          (error as Error).message
+        }; status snapshot is unaffected`
+      );
+    }
   }
 }

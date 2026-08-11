@@ -1127,17 +1127,23 @@ function mapErliStatusToReadResult(product: ErliProductResource): OfferStatusRea
 
 /**
  * Read-only projection of price + available quantity off an already-fetched
- * `ErliProductResource` (#2024). Returns `null` when the read carries no
- * `price` (never fabricated as zero) — mirrors `toMarketplaceOffer`'s money
- * conversion (grosze integer → decimal string, PLN-only).
+ * `ErliProductResource` (#2024). Each axis reports `null` independently when
+ * the read does not carry a usable number - never fabricated as zero, since a
+ * persisted `0.00` / `0` is indistinguishable from a free item or a genuine
+ * sell-out. The guards are `typeof` + `Number.isFinite` rather than
+ * `!== undefined` because the values come off untyped wire JSON: a JSON `null`
+ * would divide to `"0.00"`, and a non-numeric would yield `"NaN"`, which
+ * Postgres `numeric` accepts and stores silently. Money conversion mirrors
+ * `toMarketplaceOffer` (grosze integer → decimal string, PLN-only).
  */
-function toErliCommercialObservation(product: ErliProductResource): OfferCommercialObservation | null {
-  if (product.price === undefined) {
-    return null;
-  }
+function toErliCommercialObservation(product: ErliProductResource): OfferCommercialObservation {
+  const { price, stock } = product;
   return {
-    price: { amount: (product.price / 100).toFixed(2), currency: ERLI_CURRENCY },
-    availableQuantity: product.stock ?? 0,
+    price:
+      typeof price === 'number' && Number.isFinite(price)
+        ? { amount: (price / 100).toFixed(2), currency: ERLI_CURRENCY }
+        : null,
+    availableQuantity: typeof stock === 'number' && Number.isFinite(stock) ? stock : null,
   };
 }
 

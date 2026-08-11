@@ -2833,7 +2833,7 @@ describe('AllegroOfferManagerAdapter', () => {
       });
     });
 
-    it('defaults availableQuantity to 0 when stock.available is absent (#2024)', async () => {
+    it('reports availableQuantity as null when stock.available is absent (#2024)', async () => {
       httpClient.get.mockResolvedValueOnce({
         data: {
           id: 'offer-7781562863',
@@ -2847,16 +2847,23 @@ describe('AllegroOfferManagerAdapter', () => {
 
       expect(result.commercial).toEqual({
         price: { amount: '10.00', currency: 'PLN' },
-        availableQuantity: 0,
+        availableQuantity: null,
       });
     });
 
-    it('reports commercial as null when the offer carries no sellingMode.price (#2024)', async () => {
-      httpClient.get.mockResolvedValueOnce(offerResponse('ACTIVE') as never);
+    it('reports price as null but keeps the quantity when sellingMode.price is absent (#2024)', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          id: 'offer-7781562863',
+          publication: { status: 'ACTIVE' },
+          stock: { available: 7 },
+        },
+        status: 200,
+      } as never);
 
       const result = await adapter.getOfferStatus('7781562863');
 
-      expect(result.commercial).toBeNull();
+      expect(result.commercial).toEqual({ price: null, availableQuantity: 7 });
     });
 
     it('shares the GET helper with fetchOfferIdentifiers (regression for the helper extraction)', async () => {

@@ -25,22 +25,17 @@ export class OfferCommercialSnapshotRepository implements OfferCommercialSnapsho
     private readonly ormRepository: Repository<OfferCommercialSnapshotOrmEntity>
   ) {}
 
-  async findByConnectionAndExternalOfferId(
-    connectionId: string,
-    externalOfferId: string
-  ): Promise<OfferCommercialSnapshot | null> {
-    const entity = await this.ormRepository.findOne({
-      where: { connectionId, externalOfferId },
-    });
-    return entity ? this.toDomain(entity) : null;
-  }
-
-  async upsert(
-    command: UpsertOfferCommercialSnapshotCommand
-  ): Promise<OfferCommercialSnapshot> {
+  async upsert(command: UpsertOfferCommercialSnapshotCommand): Promise<OfferCommercialSnapshot> {
     // find-then-save (not atomic), matching OfferStatusSnapshotRepository —
     // safe under the same single-writer-per-connection posture the status
-    // sync job already relies on (see that repository's upsert docblock).
+    // sync job already relies on (see that repository's upsert docblock). The
+    // one caller that can race it treats a failed write as non-fatal, so a
+    // losing INSERT costs one skipped observation, not a wedged sync.
+    //
+    // Deliberately no QueryFailedError → domain-error translation: the sole
+    // caller catches every failure mode identically and warn-logs it, so a
+    // dedicated domain error would be a type nothing ever branches on. Add one
+    // with the first caller that needs to tell the failures apart.
     const existing = await this.ormRepository.findOne({
       where: {
         connectionId: command.connectionId,

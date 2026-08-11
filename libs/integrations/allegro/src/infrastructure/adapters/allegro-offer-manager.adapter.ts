@@ -658,19 +658,18 @@ export class AllegroOfferManagerAdapter
 
   /**
    * Read-only projection of price + available quantity off an already-fetched
-   * AllegroProductOffer (#2024). Returns null when the response carries no
-   * sellingMode.price - never fabricated as zero, unlike getOffer which
-   * treats a missing price as a malformed payload (that stricter contract is
-   * unchanged; this read tolerates absence instead of throwing).
+   * AllegroProductOffer (#2024). Each axis reports null independently when the
+   * response omits it - never fabricated as zero, since a persisted 0 is
+   * indistinguishable from a genuine sell-out (or a free item) at list scale.
+   * getOffer's stricter contract, which treats a missing price as a malformed
+   * payload, is unchanged; this read tolerates absence instead of throwing.
    */
-  private toCommercialObservation(offer: AllegroProductOffer): OfferCommercialObservation | null {
+  private toCommercialObservation(offer: AllegroProductOffer): OfferCommercialObservation {
     const price = offer.sellingMode?.price;
-    if (!price) {
-      return null;
-    }
+    const available = offer.stock?.available;
     return {
-      price: { amount: price.amount, currency: price.currency },
-      availableQuantity: offer.stock?.available ?? 0,
+      price: price ? { amount: price.amount, currency: price.currency } : null,
+      availableQuantity: typeof available === 'number' ? available : null,
     };
   }
 
