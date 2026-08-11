@@ -11,190 +11,174 @@
 
   What this file is for
   ─────────────────────
-  The spec for this epic says of itself (product-spec-1976-analytics.md § 5):
-  "Wireframes are structural, not visual." Design 1 ("Ledger") was chosen as the
-  v1 shape, but it existed only as ASCII boxes. This file is the missing half —
-  the form, the states, and the words — so that #1986, #1989, #1990 and #1991 can
-  each cite one source instead of re-deciding the same four questions apart from
-  one another.
+  The spec says of itself (product-spec-1976-analytics.md § 5): "Wireframes are
+  structural, not visual." Design 1 ("Ledger") was chosen as the v1 shape but
+  existed only as ASCII boxes. This file is the missing half — the form, the states
+  and the words — so that #1986, #1989, #1990 and #1991 each cite one source
+  instead of re-deciding the same four questions apart from one another.
 
   It is a specification, not a preview. Every colour, radius, shadow and spacing
   value is a token copied verbatim from apps/web/src/index.css. Every component is
   transcribed from an existing primitive in apps/web/src/shared/ui/, annotated with
-  the line range it came from. NO new primitive is required — that is an acceptance
-  criterion of #2003, and this file holds to it — with ONE named exception, the
-  period-over-period delta added in round 6, which the handover files as a scope
-  addition rather than absorbing it silently. Exactly ELEVEN new CSS rules are
-  invented; they are isolated in section 5 and named.
+  the line range it came from. NO new primitive is required — an acceptance
+  criterion of #2003 — with ONE named exception, the period-over-period delta,
+  which the handover files as a scope addition rather than absorbing it silently.
+  Exactly ELEVEN new CSS rules are invented; they are isolated in section 5.
 
-  ── WHAT ROUND 8 DID ────────────────────────────────────────────────────────
-  A design-system audit rather than a design round: the page was re-read against the
-  LIVE index.css instead of against the notes of the round that transcribed it. Four
-  things came out of it, and the first two would have shipped wrong.
+  How to read it
+  ──────────────
+  One frame per section of the page. Each frame carries a build card underneath it
+  with four fields: BUILD (what to build), RULES (numbered, one line each), BLOCKED
+  (what cannot be produced yet and why) and WATCH OUT (the trap that will break the
+  implementation). Read the frame for your ticket; frame 00 maps frames to issues.
 
-  1. THE STATUS-STRIP LADDER WAS WRITTEN AGAINST A DEAD RULE. index.css:6241-6260
-     already overrides the auto-fit line rounds 6-7 argued with, so the measured
-     failure never described the running app AND the correction would have lost to
-     `@media (min-width: 1024px) { repeat(4) }`. New rule 6 now restates all three
-     steps under a modifier class. See the handover row.
-  2. THE CARD EDITS WERE NOT SCOPED. `min-height`, the value row's wrap and the strip
-     columns were edited on the bare classes the dashboard at `/` also renders, while
-     this file claimed the dashboard was untouched. All three now hang off
-     `.status-strip--analytics`, so the claim is true in fact and not only in prose.
-  3. SIXTEEN DEAD RULES WERE DELETED, and one was carrying an argument: the
-     `.kpi-card__qualifier-share` block still defended a treatment round 7 had removed,
-     so the file was instructing #1990 to build something no frame drew.
-  4. THE DAGGERS BECAME A LIST — frame 14, new rule 11. See below.
+  Frame 12 is an acceptance criterion — paste those strings, do not paraphrase them.
+  Frame 13 is the handover: what exists, what is invented, what this file surfaced.
+  Frame 14 lists every † on the page as one backlog the backend can work from.
 
   ── THE TWO CARDS THAT CANNOT READ ANYTHING YET ─────────────────────────────
-  Returns & refunds, and Cancellations, have BOTH figures blocked — four of the twelve.
-  They stay on the strip, and that is the deliberate answer to "should a card with no
-  real number be drawn at all". The brief was to choose the figures a seller needs; a
-  figure the platform cannot serve yet is a REQUIREMENT, and a requirement drawn to
-  scale is what a backend issue gets written against. Deleting the cards would delete
-  the specification and leave the gap invisible — a seller who cannot see what returns
-  cost them is losing the money either way.
+  Returns & refunds, and Cancellations, have BOTH figures blocked — four of the
+  twelve. They stay on the strip, and that is the deliberate answer to "should a
+  card with no real number be drawn at all". The brief was to choose the figures a
+  seller needs; a figure the platform cannot serve yet is a REQUIREMENT, and a
+  requirement drawn to scale is what a backend issue gets written against. Deleting
+  the cards would delete the specification and leave the gap invisible.
 
-  What round 8 added is the honesty the two cards were missing. `.kpi-card--planned`
-  (rule 11) gives them a dashed border and a `Data order` tag where every other card
-  carries its ⓘ, so nothing on them is mistaken for a measurement; and frame 14
-  generates the whole backlog from the same `blocked()` calls the markers render, so
-  the page and the data order cannot drift. The register audits itself: a † rendered on
-  the page that nobody filed appears in the table as an unfiled row rather than being
-  silently dropped.
+  `.kpi-card--planned` (rule 11) gives them a dashed border and a `Data order` tag
+  where every other card carries its ⓘ, so nothing on them is mistaken for a
+  measurement. Frame 14 generates the whole backlog from the same `blocked()` calls
+  the markers render, so the page and the data order cannot drift: a † rendered on
+  the page that nobody filed appears in the table as an unfiled row.
 
   ── FOUR CORRECTIONS TO THE ISSUE BODY AND THE SPEC ─────────────────────────
   Found by reading the code each document points at. Each one changed what this
   mockup had to draw.
 
-  1. NOTHING REPORTS NET. The spec calls gross-vs-net dependency [G] "the most
-     dangerous item in this document" and states "a shop like PrestaShop prices
-     net (exclusive)". A grep of libs/ and apps/ for `taxTreatment: 'exclusive'`
-     returns ZERO hits. Only Allegro (allegro-order-source.adapter.ts:412) and
-     Erli (erli-order.mapper.ts:192) declare anything, and both declare
-     'inclusive'. PrestaShop's mapper (prestashop-order.mapper.ts:63) puts NET in
-     `subtotal` and GROSS in `total` — and `total` is the field revenue reads. The
-     destination-side fallback (prestashop-order-processor-manager.adapter.ts:586)
-     confirms the reading: `taxTreatment !== 'exclusive'` means "treat as gross".
-     → [G] is a LATENT risk, not a live breakage. The honest marker is therefore
-       DECLARED vs ASSUMED, not GROSS vs NET, and the table totals conditionally
-       (frame 04) and degrades when a net source appears (frame 05). Drawing only
-       the degraded state would have shipped a page that refuses to answer a
-       question it can currently answer correctly.
+   1. NOTHING REPORTS NET. The spec calls gross-vs-net dependency [G] "the most
+      dangerous item in this document" and states "a shop like PrestaShop prices
+      net (exclusive)". A grep of libs/ and apps/ for `taxTreatment: 'exclusive'`
+      returns ZERO hits. Only Allegro (allegro-order-source.adapter.ts:412) and
+      Erli (erli-order.mapper.ts:192) declare anything, and both declare
+      'inclusive'. PrestaShop's mapper (prestashop-order.mapper.ts:63) puts NET in
+      `subtotal` and GROSS in `total` — and `total` is the field revenue reads. The
+      destination-side fallback (prestashop-order-processor-manager.adapter.ts:586)
+      confirms it: `taxTreatment !== 'exclusive'` means "treat as gross".
+      → [G] is a LATENT risk, not a live breakage. The honest marker is therefore
+      DECLARED vs ASSUMED, not GROSS vs NET, and the table totals conditionally
+      (frame 04) and degrades when a net source appears (frame 05). Drawing only
+      the degraded state would ship a page that refuses to answer a question it
+      can currently answer correctly.
 
-  2. NET NORMALISATION IS NOT BUILDABLE. Allegro and Erli both report `tax: 0` —
-     Allegro does not decompose VAT, and the tax RATE is deliberately absent from
-     the order contract. There is nothing to subtract. A net/gross toggle, and any
-     "normalise then compare" treatment, is out — not inconvenient, impossible.
-     → Comparability is carried by UNITS instead. `Orders` and `Units` are
-       untouched by [G], so `Share (units)` is a true channel mix. The spec already
-       catalogues this as B6. Revenue stays per-row, as reported.
+   2. NET NORMALISATION IS NOT BUILDABLE. Allegro and Erli both report `tax: 0` —
+      Allegro does not decompose VAT, and the tax RATE is deliberately absent from
+      the order contract. There is nothing to subtract. A net/gross toggle, and any
+      "normalise then compare" treatment, is out — not inconvenient, impossible.
+      → Comparability is carried by UNITS instead. `Orders` and `Units` are
+      untouched by [G], so `Share (units)` is a true channel mix. The spec already
+      catalogues this as B6. Revenue stays per-row, as reported.
 
-  3. THE DATE RANGE CANNOT MEAN WHAT IT SHOULD. `placedAt` — when the buyer
-     actually ordered — lives only inside orderSnapshot (JSONB), has no column and
-     no index, and OrderRecordFilters exposes only createdFrom/createdTo, which map
-     to `createdAt`: OpenLinker's INGESTION clock. A range filtered on ingestion
-     time silently misreports any channel that was backfilled.
-     → This mockup designs for `placedAt` and marks the gap with †. The precedent
-       for closing it exists (IDX_order_records_snapshot_total is an expression
-       index over the same JSONB), so the cost is known. Designing for `createdAt`
-       would have cemented the wrong metric.
+   3. THE DATE RANGE CANNOT MEAN WHAT IT SHOULD. `placedAt` — when the buyer
+      actually ordered — lives only inside orderSnapshot (JSONB), has no column and
+      no index, and OrderRecordFilters exposes only createdFrom/createdTo, which map
+      to `createdAt`: OpenLinker's INGESTION clock. A range filtered on ingestion
+      time silently misreports any channel that was backfilled.
+      → This mockup designs for `placedAt` and marks the gap with †. The precedent
+      for closing it exists (IDX_order_records_snapshot_total is an expression
+      index over the same JSONB), so the cost is known. Designing for `createdAt`
+      would have cemented the wrong metric.
 
-  4. THE MOBILE CARD VIEW IS A PROP, NOT A CSS HACK. The style guide's parity
-     matrix promises card view on mobile; `.data-table--stackable` (index.css:16762)
-     looks like the mechanism but is scoped to the mapping/routing tables and flips
-     at 640px. The real one is DataTable's `cardView` prop (data-table.tsx:47-76),
-     which flips at (max-width: 767.98px) — matching the guide — and carries
-     title / subtitle / meta / summary / detail / collapsibleDetail.
-     → Both tables here use `cardView`. Top products additionally uses
-       `stickyLeftColumns: 1` (data-table.tsx:140-158) so the Product column freezes
-       while channel columns scroll — which is how "a many-channel instance does not
-       break the layout" (#1991) is actually satisfied.
+   4. THE MOBILE CARD VIEW IS A PROP, NOT A CSS HACK. The style guide's parity
+      matrix promises card view on mobile; `.data-table--stackable` (index.css:16762)
+      looks like the mechanism but is scoped to the mapping/routing tables and flips
+      at 640px. The real one is DataTable's `cardView` prop (data-table.tsx:47-76),
+      which flips at (max-width: 767.98px) — matching the guide — and carries
+      title / subtitle / meta / summary / detail / collapsibleDetail.
+      → Both tables here use `cardView`. Top products additionally uses
+      `stickyLeftColumns: 1` (data-table.tsx:140-158) so the Product column freezes
+      while channel columns scroll — which is how "a many-channel instance does not
+      break the layout" (#1991) is actually satisfied.
 
   ── FIFTEEN DESIGN DECISIONS THIS FILE SETTLES ──────────────────────────────
-   1  [G] treatment ......... Share by UNITS; revenue as-reported, per row
-   2  Date basis ............ `placedAt`, gap marked †
-   3  Revenue total ......... conditional: totals when bases agree, degrades when not
-   4  `pending` ............. two distinct states: recalculating, and backfilling
-   5  Resolved attention .... REVOKED by correction 16. Either/or: all clear = ONE line
-                             naming the checks; otherwise only the open items, no
-                             resolved rows, no fixed three-row shape
-   6  Number format ......... the app's real output; pl-PL shown once as a specimen
-   7  Not-listed vs zero .... `EmptyValue` (—) vs a real `0`
-   8  Narrow screens ........ `cardView` both tables; sticky Product column
-   9  Banner threshold ...... only when a channel WITH SALES in range has stalled
-  10  Coverage window ....... "data from …", never "complete since …"; per channel and
-                             at full size — correction 14 tried to fold/aggregate this
-                             list twice and put it back both times. Correction 15: the
-                             standing caveat moved to a ⓘ on the section title (Popover
-                             on CLICK, never a hover Tooltip); row notes capped at 1 line
-  11  Mixed currency ........ one declared reporting currency; the rate rides on the card
-  12  KPI pairing ........... Every card is a PAIR: one figure answering "how much" and
-                             one answering "how much of it can I trust". Round 6 set the
-                             rule (Revenue qualified by net, never by a cancellation rate —
-                             GMV already excludes cancelled orders, so the rate qualified
-                             nothing); round 7 kept the rule and changed how many cards it
-                             takes to honour it — see decision 14
-  13  Period-over-period .... REVERSES the scope note below. One delta per card, and it now
-                             sits on its OWN LINE under the figure and its caption, stating
-                             its basis in words ("vs previous period"). Arrow follows the
-                             number, colour follows the meaning; a rate changes in POINTS.
-                             All of them blocked on `placedAt`, so they ship with the range
-                             filter or not at all
-  14  Six cards (round 7) ... SPLIT ALONG THE METRIC MODEL, NOT THE LAYOUT. Four cards
-                             forced Units and Cancelled to ride as qualifiers on the orders
-                             card, which made one card answer three questions. Now: Revenue,
-                             Orders, Order value, Units, Returns & refunds, Cancellations —
-                             one question each, one true pair each. 3×2 → 2×3 → vertical,
-                             which supersedes the guide's literal 1×4 (see rule 6)
-  15  Definitions on the card One ⓘ per card, in the eyebrow, covering BOTH of its figures —
-                             a Popover on CLICK, never a hover Tooltip. Cards carry the
-                             ABBREVIATIONS the operator uses (GMV, AOV) and the ⓘ carries
-                             the expansion, the formula and the caveat. This reverses round
-                             6's "AOV stays expanded": the argument against introducing the
-                             abbreviation was that nothing defined it, and now the card does
+   1 [G] treatment ......... Share by UNITS; revenue as-reported, per row
+   2 Date basis ............ `placedAt`, gap marked †
+   3 Revenue total ......... conditional: totals when bases agree, degrades when not
+   4 `pending` ............. two distinct states: recalculating, and backfilling
+   5 Resolved attention .... either/or. All clear = ONE line naming the checks;
+                             otherwise only the open items, no resolved rows
+   6 Number format ......... the app's real output; pl-PL shown once as a specimen
+   7 Not-listed vs zero .... the words "Not listed" vs a real `0`. `EmptyValue` (—)
+                             stays for figures that are genuinely absent
+   8 Narrow screens ........ `cardView` both tables; sticky Product column
+   9 Banner threshold ...... only when a channel WITH SALES in range has stalled
+  10 Coverage window ....... "data from …", never "complete since …"; per channel
+                             and at full size — do not fold or aggregate the list.
+                             The standing caveat sits behind a ⓘ on the section
+                             title (Popover on CLICK, never a hover Tooltip);
+                             row notes are capped at one line
+  11 Mixed currency ........ one declared reporting currency; the method and the
+                             rate table's freshness ride under the strip
+  12 KPI pairing ........... every card is a PAIR: one figure answering "how much"
+                             and one answering "how much of it can I trust".
+                             Revenue is qualified by net sales, never by a
+                             cancellation rate — GMV already excludes cancelled
+                             orders, so the rate would qualify nothing
+  13 Period-over-period .... REVERSES the scope note below. One delta per card, on
+                             its OWN LINE under the figure and its caption, stating
+                             its basis in words ("vs previous period"). Arrow
+                             follows the number, colour follows the meaning; a rate
+                             changes in POINTS. All blocked on `placedAt`, so they
+                             ship with the range filter or not at all
+  14 Six cards ............. SPLIT ALONG THE METRIC MODEL, NOT THE LAYOUT: Revenue,
+                             Orders, Order value, Units, Returns & refunds,
+                             Cancellations — one question each, one true pair each.
+                             3×2 → 2×3 → vertical, which supersedes the guide's
+                             literal 1×4 (see rule 6)
+  15 Definitions on the card One ⓘ per card, in the eyebrow, covering BOTH figures —
+                             a Popover on CLICK, never a hover Tooltip. Cards carry
+                             the ABBREVIATIONS (GMV, AOV) and the ⓘ carries the
+                             expansion, the formula and the caveat. CONDITIONAL: if
+                             the strip ships without the popover, the captions must
+                             revert to the expanded terms
 
   ── WHAT IS DELIBERATELY ABSENT ─────────────────────────────────────────────
   No chart beyond `Sparkline` (shared/ui/sparkline.tsx) — the charting-library
   decision stays deferred, per § 6 of the spec. No commerce mix (COD / Paczkomat /
   Smart!), no time series, no price dispersion, no margin.
-  The operational dashboard at `/` is untouched.
+  The operational dashboard at `/` is untouched — and that is enforced, not just
+  claimed: every card change hangs off `.status-strip--analytics`, never the bare
+  `.kpi-card` / `.status-strip` classes the dashboard also renders.
 
-  PERIOD-OVER-PERIOD used to be on this list and was taken off it in round 6 —
-  see decision 13. It is the one scope reversal in the file, it is named in the
-  handover as a scope addition rather than absorbed.
+  PERIOD-OVER-PERIOD used to be on this list — see decision 13. It is the one scope
+  reversal in the file, named in the handover as a scope addition.
 
-  ── WHAT ROUND 7 COSTS, SAID ONCE AND PLAINLY ───────────────────────────────
-  `KpiCard` now needs FOUR props, not three: `qualifiers` (rule 4), `metric` (rule 7),
-  `delta` (rule 9) and an `info` slot in the label row (rule 10). The "no new primitive"
-  acceptance criterion still holds in the sense that matters — no new component — but
-  the card it lands on is no longer the card that shipped, and #1990 should cost it as
-  such rather than discovering it mid-implementation.
+  ── WHAT THIS COSTS, SAID ONCE AND PLAINLY ──────────────────────────────────
+  `KpiCard` needs FIVE new props: `qualifiers` (rule 4), `metric` (rule 7), `delta`
+  (rule 9), an `info` slot in the label row (rule 10) and `planned` (rule 11). The
+  "no new primitive" criterion still holds in the sense that matters — no new
+  component — but the card it lands on is no longer the card that shipped, and
+  #1990 should cost it rather than discover it mid-implementation. `DataTable`
+  needs a footer API, which is a second component change of the same size.
 
-  A six-card strip is also no longer a glance, which is what a status strip is for. The
-  mitigation is uniformity: every card has the same internal shape, so the reader learns
-  it once. If it still reads heavy on the real page, fold Units back into Orders first —
-  its pair is the one an operator asks for least often. That call belongs on the running
-  app, not here.
+  A six-card strip is also no longer a glance, which is what a status strip is for.
+  The mitigation is uniformity: every card has the same internal shape, so the
+  reader learns it once. If it still reads heavy on the real page, fold Units back
+  into Orders first — its pair is the one an operator asks for least often. That
+  call belongs on the running app, not here.
 
-  THREE DEFECTS WERE FOUND WHILE DOING THIS, all fixed in place and none of them a round-7
-  design decision:
+  ── TWO DEFECTS FOUND WHILE BUILDING THIS, BOTH FIXED IN PLACE ──────────────
+   1. Every `.data-table__cell--right` rendered LEFT-aligned — the bare class loses
+      on specificity to `.data-table th, .data-table td` whatever the source order.
+      The same bug is live in the product; it needs its own issue, not #1990.
+   2. The `Publish` chip in a "Not listed" cell was a flex sibling at `opacity: 0`,
+      which is invisible but STILL OCCUPIES LAYOUT, so it pushed the label 67 px
+      left of the right edge its own column's numbers use. Fixed by taking the chip
+      out of flow; the label yields on hover.
 
-    1. Every `.data-table__cell--right` in the file rendered LEFT-aligned — the bare class
-       loses on specificity to `.data-table th, .data-table td` whatever the source order.
-    2. The `Publish` chip in a "Not listed" cell was a flex sibling at `opacity: 0`, which
-       is invisible but STILL OCCUPIES LAYOUT, so it pushed the label 67 px left of the
-       right edge its own column's numbers use (correction 17: one slot, chip out of flow,
-       label yields on hover).
-    3. The device-frame simulations needed explicit column declarations once `auto-fit`
-       stopped absorbing narrow containers — this one round 7 caused.
-
-  DEFECTS 1 AND 2 WERE CANCELLING EACH OTHER OUT, which is the instructive part and the
-  reason they are listed rather than quietly fixed. While every cell rendered left-aligned,
-  an invisible chip pushing content rightward off the alignment was unobservable; fixing the
-  alignment exposed it in the same minute. A mockup can hide a defect behind a second defect
-  for six rounds, and the only thing that broke the pair open was measuring instead of
-  looking.
+  They were CANCELLING EACH OTHER OUT, which is the instructive part. While every
+  cell rendered left-aligned, an invisible chip pushing content rightward off the
+  alignment was unobservable; fixing the alignment exposed it in the same minute. A
+  mockup can hide a defect behind a second defect indefinitely, and what broke the
+  pair open was measuring instead of looking.
 
   Sample data is invented but shaped like the real thing: products and prices come
   from the dev-stack seed (docker/prestashop/post-install-lib/30-seed-test-products.php,
@@ -508,6 +492,56 @@
   .gap-mark {
     color: var(--accent-primary-hover); font-weight: 700; cursor: help;
     font-family: var(--font-mono);
+  }
+
+  /* ── Build cards ───────────────────────────────────────────────────
+     The per-frame notes are read by a developer holding one ticket, not
+     by someone reading the pack end to end. Same fields in the same order
+     every time, so the eye lands on BUILD or BLOCKED without reading the
+     ones in between. An empty field is omitted, never left as a heading
+     with nothing under it. */
+  .gap-legend--card {
+    display: grid; gap: var(--space-2) var(--space-4);
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    align-items: baseline;
+  }
+  .build-field__label {
+    font-family: var(--font-mono); font-size: 0.625rem; font-weight: 600;
+    letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    color: var(--text-muted); padding-top: 2px;
+  }
+  .build-field__body { margin: 0; }
+  /* Long identifiers (connection.config.stockSafetyBuffer) must wrap, not push the card wide. */
+  .build-field__body code, .build-gaps code { overflow-wrap: anywhere; }
+  .build-field__body > :first-child { margin-top: 0; }
+  .build-field__body > :last-child { margin-bottom: 0; }
+  .build-field__body ol, .build-field__body ul {
+    margin: 0; padding-left: 1.25em; display: grid; gap: 2px;
+  }
+  .build-field__body ol { list-style: decimal; }
+  .build-field__body ul { list-style: none; padding-left: 0; }
+
+  /* BLOCKED is a routing table, not prose: figure on the left, the thing
+     that has to exist before it can render on the right. */
+  .build-gaps { display: grid; gap: 2px; }
+  .build-gaps__row {
+    display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    gap: var(--space-3); align-items: baseline;
+  }
+  .build-gaps__cause { color: var(--text-muted); }
+  /* A line that follows the routing table must not read as another row in it. */
+  .build-gaps__note { margin-top: var(--space-2); color: var(--text-muted); }
+  .build-field__label--blocked { color: var(--status-warning-fg); }
+  .build-field__label--watch { color: var(--status-error-fg); }
+  .build-field__body--watch {
+    border-left: 2px solid var(--status-error-border);
+    padding-left: var(--space-3);
+  }
+
+  @media (max-width: 720px) {
+    .gap-legend--card { grid-template-columns: minmax(0, 1fr); gap: var(--space-1) 0; }
+    .gap-legend--card .build-field__label { padding-top: var(--space-2); }
+    .build-gaps__row { grid-template-columns: minmax(0, 1fr); gap: 0; }
   }
 
   /* ── Note markers — NOT a ninth new rule ───────────────────────────
@@ -1514,7 +1548,7 @@
             <div class="trust-header" id="full-trust"></div>
           </article>
 
-          <!-- 2 · Needs attention. Directly under coverage, per correction 13.
+          <!-- 2 · Needs attention. Directly under coverage.
                Coverage says what the page cannot vouch for; attention says what an
                operator can do about it — the two read as one block about the state
                of the data before the figures start. -->
@@ -1576,43 +1610,41 @@
         </section>
       </div>
 
-      <div class="gap-legend">
-        <span>
-          <b>Five sections, and the order is the argument.</b> Data coverage comes first because a figure
-          the operator cannot date is worse than no figure &mdash; it qualifies every number below it, so
-          it has to be read before them. The KPI strip, the channel table and top products then answer
-          &bdquo;how much&rdquo;, &bdquo;from where&rdquo; and &bdquo;of what&rdquo; in the order an
-          operator asks them.
-          <br /><br />
-          <b>Correction&nbsp;14 addressed the height, and only where it could be taken honestly.</b> The
-          two trust sections cost about 500&nbsp;px, which on a 1440&times;800 laptop meant the whole first
-          screen was information <i>about</i> the data. Two ways of shrinking <b>Data coverage</b> were
-          built and rejected &mdash; folding the per-channel rows behind a disclosure, and laying them out
-          three-across &mdash; because both traded away the thing the panel exists for: an operator opens
-          it to read <i>which shops are reporting and how current each one is</i>, row by row. That list
-          stays at full size. <b>Needs attention</b> is where the height came from instead: its rows carry
-          a headline and a qualifier, not two facts, so they collapse to one line each, and an all-clear
-          section collapses to one line total.
-          <br /><br />
-          <b>&bdquo;Needs attention&rdquo; sits directly under coverage (correction 13), and that pairing
-          is the claim.</b> An earlier draft put it last, arguing that handing out work is not analytics
-          and that a task ahead of the money makes the operator scroll past three chores to reach the
-          number they came for. The pairing answers that differently: coverage states what the page
-          <i>cannot vouch for</i>, attention states what can be <i>done</i> about it, and the two are the
-          same subject &mdash; the state of the data &mdash; read once, before the figures rather than
-          twice around them. The cost is real and worth naming: the money now starts two sections down
-          instead of one, and an operator who opens the page purely to read revenue passes the task list
-          on the way. What used to make that cost affordable was a fixed three-row shape; correction&nbsp;14
-          <b>revokes</b> that. Height stability was insurance against a re-render nobody watches &mdash; the
-          panel only redraws on a refetch &mdash; paid for on the first screen, which is watched every time.
-          A clear section is now one line (frame&nbsp;02), and the higher position is affordable because it
-          is cheap, not because it is rigid.
-          <br /><br />
+      <div class="gap-legend gap-legend--card">
+        <span class="build-field__label">Read this</span>
+        <div class="build-field__body">
+          One frame per section. Read the frame for your ticket and skip the rest.
+          <div class="build-gaps" style="margin-top: var(--space-2)">
+            <div class="build-gaps__row"><span><b>01</b> &middot; Trust header &amp; date filter</span>
+              <span class="build-gaps__cause">#1986 &middot; ships now</span></div>
+            <div class="build-gaps__row"><span><b>02</b> &middot; Needs attention</span>
+              <span class="build-gaps__cause">#1989 &middot; ships now, depends on nothing</span></div>
+            <div class="build-gaps__row"><span><b>03</b> &middot; KPI strip</span>
+              <span class="build-gaps__cause">#1990 &middot; 6 of 12 figures blocked</span></div>
+            <div class="build-gaps__row"><span><b>04&ndash;05</b> &middot; By channel</span>
+              <span class="build-gaps__cause">#1990 &middot; 05 is the degraded half</span></div>
+            <div class="build-gaps__row"><span><b>06</b> &middot; Top products</span>
+              <span class="build-gaps__cause">#1991 &middot; ships now</span></div>
+            <div class="build-gaps__row"><span><b>07&ndash;09</b> &middot; Tablet, mobile, states</span>
+              <span class="build-gaps__cause">applies to all of the above</span></div>
+            <div class="build-gaps__row"><span><b>10&ndash;14</b> &middot; Edge cases, microcopy, handover</span>
+              <span class="build-gaps__cause">reference &mdash; 12 is an acceptance criterion</span></div>
+          </div>
+        </div>
+        <span class="build-field__label">Build</span>
+        <div class="build-field__body">
+          Five sections, and the order is the argument. <b>Data coverage</b> first, because a figure the
+          operator cannot date is worse than no figure &mdash; it qualifies every number below it.
+          <b>Needs attention</b> directly under it: coverage states what the page cannot vouch for,
+          attention states what can be done about it. Then the strip, the channel table and top products
+          answer <i>how much</i>, <i>from where</i> and <i>of what</i>.
+        </div>
+        <span class="build-field__label build-field__label--watch">Watch out</span>
+        <div class="build-field__body build-field__body--watch">
           Note what is <b>not</b> here: no banner (nothing is degraded in this state), no chart beyond the
-          sparklines, and no card grid &mdash; two tables and two lists carry the whole page, which is the
-          house idiom. Every frame below takes one of these sections apart; this is the only one where the
-          vertical rhythm between them can be judged.
-        </span>
+          sparklines, no card grid. Two tables and two lists carry the whole page &mdash; that is the house
+          idiom.
+        </div>
       </div>
     </div>
   </section>
@@ -1722,15 +1754,22 @@
             <span class="chip chip--info">Order date <span class="gap-mark" title="placedAt is not a column and cannot be filtered today">&dagger;</span></span>
           </div>
         </div>
-        <div class="gap-legend">
-          <span>
-            <b>An enabled Apply is the only signal that the fields are ahead of the page.</b>
-            Everything below still reports 1&nbsp;Mar&nbsp;&ndash;&nbsp;15&nbsp;Apr, so for this one
-            moment the fields are a draft rather than the truth. That is the cost of a commit step
-            and it needs exactly one carrier &mdash; a second badge saying &bdquo;not applied&rdquo;
-            would be a second place to forget to update. The draft is <b>local and disposable</b>:
-            it never reaches the URL, cannot be linked, and a reload discards it.
-          </span>
+        <div class="gap-legend gap-legend--card">
+          <span class="build-field__label">Build</span>
+          <div class="build-field__body">
+            An enabled Apply is the only signal that the fields are ahead of the page. Everything below
+            still reports 1&nbsp;Mar&nbsp;&ndash;&nbsp;15&nbsp;Apr, so for this one moment the fields are a
+            draft rather than the truth.
+          </div>
+          <span class="build-field__label">Rules</span>
+          <div class="build-field__body">
+            <ol>
+              <li>That state needs exactly <b>one</b> carrier. A second badge saying &bdquo;not
+                applied&ldquo; would be a second place to forget to update.</li>
+              <li>The draft is local and disposable: it never reaches the URL, cannot be linked, and a
+                reload discards it.</li>
+            </ol>
+          </div>
         </div>
       </div>
 
@@ -1787,116 +1826,101 @@
         </tbody>
       </table>
 
-      <div class="gap-legend">
-        <span>
-          <b>Absolute dates in the URL, never a relative preset.</b> This is a product decision, not
-          URL cosmetics. <code>?range=30d</code> opened tomorrow shows a <i>different</i> thirty days
-          &mdash; fine as a bookmark, wrong as a link, because the figures change under whoever
-          received it and they have no way to know. <code>?from=&hellip;&amp;to=&hellip;</code> opened
-          tomorrow shows the same figures forever. The spec settles it twice: the DoD requires that
-          &bdquo;a maintainer can reconcile a day&rsquo;s revenue against the source and explain any
-          difference <b>from the page itself</b>&rdquo; &mdash; you cannot reconcile something that
-          moves &mdash; and risk R2 states that a quietly-changed number is worse than no number.
-          <br /><br />
-          <b>One truth, not two.</b> Keeping both <code>range</code> and <code>from/to</code> in the URL
-          lets them contradict (<code>?range=7d&amp;from=2026-01-01</code>) and forces a precedence rule
-          nobody will remember or test. Deriving the highlight from the dates deletes that state
-          entirely.
-          <br /><br />
-          <b>Apply is a draft buffer, not a second source of truth.</b> The commit step does add
-          state &mdash; the fields can hold dates the page is not using yet &mdash; and that is worth
-          naming rather than hiding. It stays harmless because the draft is <b>local and
-          non-durable</b>: it is never serialized to the URL, cannot be shared, and does not survive
-          a reload. #1986 should keep it in component state and write the URL only on commit. Two
-          things follow. A preset needs no Apply, because writing today&nbsp;&minus;&nbsp;(N&minus;1)
-          &hellip; today is unambiguous and reviewing it would be busywork. And a typed range does,
-          because <code>From</code> and <code>To</code> are entered one at a time: applying on each
-          keystroke would fire a query against a half-built range and, worse, briefly show the
-          operator figures for a range they never asked for.
-          <br /><br />
-          <b>No new primitive.</b> <code>SegmentedControl</code> takes four options and a
-          <code>value</code> like it takes three &mdash; and because <code>Custom</code> is always
-          the fallback selection, the group is never in the &bdquo;nothing checked&rdquo; state its
-          roving tabindex also supports (<code>segmented-control.tsx:97</code>). Apply is the
-          existing <code>.button--secondary</code> at default height &mdash; matching the
-          <code>.control</code> fields beside it &mdash; plus the shipped
-          <code>:disabled</code> treatment (<code>index.css:633</code>).
-          <br /><br />
-          <b>Naming.</b> Do <i>not</i> reuse <code>createdFrom</code>/<code>createdTo</code> from the
-          orders list &mdash; those mean <b>ingestion</b> time. This page filters <b>order date</b>
-          (decision 2), so the params are plain <code>from</code>/<code>to</code>: the page has exactly
-          one time axis, and a borrowed name would imply the wrong filter.
-        </span>
+      <div class="gap-legend gap-legend--card">
+        <span class="build-field__label">Build</span>
+        <div class="build-field__body">
+          Absolute dates in the URL, never a relative preset. <code>?range=30d</code> opened tomorrow shows a
+          different thirty days &mdash; fine as a bookmark, wrong as a link. The spec settles it twice: the
+          DoD requires that <i>&bdquo;a maintainer can reconcile a day&rsquo;s revenue against the
+          source&ldquo;</i>, and risk R2 states that a quietly-changed number is worse than no number.
+        </div>
+        <span class="build-field__label">Rules</span>
+        <div class="build-field__body">
+          <ol>
+            <li>URL carries <code>from</code>/<code>to</code> only. Keeping <code>range</code> too lets them
+              contradict (<code>?range=7d&amp;from=2026-01-01</code>) and forces a precedence rule nobody
+              will test.</li>
+            <li>Derive the highlighted preset <b>from the dates</b> &mdash; that deletes the state instead of
+              synchronising it.</li>
+            <li>Apply is a draft buffer: #1986 keeps it in component state and writes the URL only on commit.
+              The draft never reaches the URL and does not survive a reload.</li>
+            <li>A preset needs no Apply; a typed range does, because From and To are entered one at a time
+              and applying per keystroke would query a half-built range.</li>
+            <li>Params are plain <code>from</code>/<code>to</code>. Do <b>not</b> reuse
+              <code>createdFrom</code>/<code>createdTo</code> &mdash; those mean ingestion time, and this
+              page filters order date (decision 2).</li>
+          </ol>
+        </div>
+        <span class="build-field__label build-field__label--watch">Watch out</span>
+        <div class="build-field__body build-field__body--watch">
+          No new primitives are needed, so do not build any.
+          <code>SegmentedControl</code> takes four options like three, and Custom as permanent fallback keeps
+          the group out of the &bdquo;nothing checked&ldquo; state its roving tabindex supports
+          (<code>segmented-control.tsx:97</code>). Apply is the existing <code>.button--secondary</code> at
+          default height plus the shipped <code>:disabled</code> treatment (<code>index.css:633</code>).
+        </div>
       </div>
 
-      <div class="gap-legend">
-        <span>
-          Three facts per channel, and the third is the one that matters. <b>Freshness</b> answers
-          &bdquo;is this current&rdquo;; the app can derive it from
-          <code>MAX(sync_jobs.updatedAt)</code> where <code>status='succeeded'</code>, or better from
-          <code>connection_cursors.updatedAt</code>, which only advances on real progress. <b>Coverage</b>
-          answers &bdquo;how far back does this go&rdquo; &mdash; and it deliberately reads
-          <b>&bdquo;data from&rdquo;</b>, never &bdquo;complete since&rdquo;, because the window is
-          <b>not computable</b>: cursors are opaque and per-provider, and nothing records where a
-          backfill began. <code>MIN(placedAt)</code> is the closest honest approximation, so the words
-          must not promise more than it delivers. <b>State</b> separates a channel that is caught up
-          from one still <code>backfilling</code> &mdash; decision 4&rsquo;s second meaning of
-          &bdquo;pending&rdquo;, and a different fact from &bdquo;ingestion stalled&rdquo;.
-          Channel names come from <code>connection.name</code>, a required field on the create form
-          &mdash; never <code>platformType</code>, which is an open string with no display contract.
-          <br /><br />
-          <b>Correction&nbsp;14 tried to summarise this list and put it back.</b> Two versions were built:
-          one folded the rows behind a <code>&lt;details&gt;</code> under an aggregated line (&bdquo;3
-          channels &middot; data from 30 Jul 2026 &middot; oldest sync 14:28&rdquo;), the other laid the
-          three channels out side by side in one band. Both were rejected, and for the same reason: this
-          panel is not a status indicator that happens to list channels, it is <b>the list of shops</b>,
-          and per-channel facts are what an operator came here to read. An aggregate also has to be
-          written pessimistically to stay honest &mdash; latest start, oldest sync, worst state, because
-          the page is only as complete as its weakest channel &mdash; which makes it strictly less useful
-          than the rows it replaced. It saved about 100&nbsp;px and cost the section its purpose.
-          <b>If height has to come out of this page, it does not come out of here.</b>
-        </span>
+      <div class="gap-legend gap-legend--card">
+        <span class="build-field__label">Build</span>
+        <div class="build-field__body">
+          Three facts per channel, and the third is the one that matters. <b>Freshness</b> answers &bdquo;is
+          this current&ldquo;, <b>coverage</b> answers &bdquo;how far back does this go&ldquo;, <b>state</b>
+          separates a channel that is caught up from one still backfilling &mdash; decision 4&rsquo;s second
+          meaning of &bdquo;pending&ldquo;, a different fact from &bdquo;ingestion stalled&ldquo;.
+        </div>
+        <span class="build-field__label">Rules</span>
+        <div class="build-field__body">
+          <ol>
+            <li>Freshness from <code>connection_cursors.updatedAt</code>, which only advances on real
+              progress &mdash; failing that,
+              <code>MAX(sync_jobs.updatedAt) WHERE status='succeeded'</code>.</li>
+            <li>Coverage reads <b>&bdquo;data from&ldquo;</b>, never &bdquo;complete since&ldquo;: the window
+              is not computable, and <code>MIN(placedAt)</code> is the closest honest approximation. The
+              words must not promise more than it delivers.</li>
+            <li>Channel names from <code>connection.name</code>, never <code>platformType</code> &mdash; an
+              open string with no display contract.</li>
+            <li>Rows stay at full size. This is the list of shops, not a status indicator that happens to
+              list channels.</li>
+          </ol>
+        </div>
+        <span class="build-field__label build-field__label--watch">Watch out</span>
+        <div class="build-field__body build-field__body--watch">
+          Do not aggregate these rows to save height. An aggregate must be written pessimistically to stay
+          honest &mdash; latest start, oldest sync, worst state &mdash; which makes it strictly less useful
+          than the rows it replaced.
+        </div>
       </div>
 
-      <div class="gap-legend">
-        <span>
-          <b>Two kinds of note, and the difference is what changes.</b> A <b>row note</b> is about ONE
-          channel and moves with that channel&rsquo;s state, so it stays inline, indented to its
-          channel&rsquo;s name, opening with a marker whose tone follows the row&rsquo;s own badge:
-          <span class="note-mark note-mark--warning" role="img" aria-label="Caution">&#9888;&#65038;</span>
-          for a channel still filling in, <span class="note-mark note-mark--error" role="img"
-          aria-label="Problem">&#9888;&#65038;</span> for one that stopped. Row notes are held to
-          <b>one line</b> (correction&nbsp;15) &mdash; a caveat that needs a paragraph is a banner, not
-          a note.
-          <br /><br />
-          <b>The standing caveat is now the <span class="note-mark" role="img" aria-label="Note">&#9432;</span>
-          on the section title (correction&nbsp;15).</b> It is a fact about how the dates are computed,
-          it is true of every row, and it never changes &mdash; so a permanent full-width line was the
-          most expensive possible way to say something the operator learns once. Earlier rounds kept it
-          visible on the argument that it is needed to read the dates correctly the first time; what
-          that missed is that the <i>first</i> time is the only time, and the marker still marks the
-          spot afterwards.
-          <br /><br />
-          <b>What the marker must NOT be built from.</b> An earlier round tried the app&rsquo;s
-          <code>Tooltip</code> (<code>shared/ui/tooltip.tsx</code>) and the finding stands: it opens
-          from Radix&rsquo;s <code>onPointerMove</code>, and that handler returns immediately when
-          <code>event.pointerType === 'touch'</code> (<code>@radix-ui/react-tooltip@1.2.8</code>)
-          &mdash; so on a phone a tooltip is not awkward, it is <b>unreachable</b>. The marker is
-          therefore a real <code>&lt;button&gt;</code> opening a <code>Popover</code> on click, which
-          also answers hover and <kbd>Enter</kbd>. The mockup stands the popover in with a
-          <code>title</code> attribute; <b>shipping it as a hover-only tooltip re-opens the bug this
-          page already found once.</b>
-          <br /><br />
-          <b>Markers reuse what ships; no new rule.</b> There is no icon library in this project &mdash;
-          no lucide, no heroicons, no icons directory &mdash; and every inline status marker in the app
-          is a Unicode glyph plus a colour class:
-          <code>.bulk-editor__infotip</code> (<code>index.css:10901</code>, <code>&amp;#9432;</code>)
-          and <code>.bulk-editor__warn-tri</code>. These notes transcribe both, so #2003 still invents
-          exactly eight rules. Each glyph is <code>role="img"</code> with an
-          <code>aria-label</code> &mdash; it carries meaning, so it must not be
-          <code>aria-hidden</code> &mdash; and colour is never the only signal, since the sentence
-          beside it says the same thing in words.
-        </span>
+      <div class="gap-legend gap-legend--card">
+        <span class="build-field__label">Build</span>
+        <div class="build-field__body">
+          Two kinds of note, and the difference is what changes. A <b>row note</b> is about one channel and
+          moves with its state, so it stays inline, indented to that channel&rsquo;s name. The <b>standing
+          caveat</b> is the &#9432; on the section title: true of every row, and it never changes &mdash; a
+          permanent full-width line is the most expensive way to say something the operator learns once.
+        </div>
+        <span class="build-field__label">Rules</span>
+        <div class="build-field__body">
+          <ol>
+            <li>Row notes are one line. A caveat that needs a paragraph is a banner, not a note.</li>
+            <li>The marker is a real <code>&lt;button&gt;</code> opening a Popover on <b>click</b>, which
+              also answers hover and Enter. The mockup stands it in with <code>title</code>.</li>
+            <li>Markers reuse what ships: no icon library exists here, and every inline status marker in the
+              app is a Unicode glyph plus a colour class &mdash; <code>.bulk-editor__infotip</code>
+              (<code>index.css:10901</code>) and <code>.bulk-editor__warn-tri</code>. Transcribing both keeps
+              #2003 at eight invented rules.</li>
+            <li>Each glyph is <code>role="img"</code> with an <code>aria-label</code>, never
+              <code>aria-hidden</code>. Colour is never the only signal.</li>
+          </ol>
+        </div>
+        <span class="build-field__label build-field__label--watch">Watch out</span>
+        <div class="build-field__body build-field__body--watch">
+          Do not build the marker from <code>shared/ui/tooltip.tsx</code>. It opens from Radix&rsquo;s
+          <code>onPointerMove</code>, and that handler returns immediately when
+          <code>event.pointerType === 'touch'</code> (<code>@radix-ui/react-tooltip@1.2.8</code>) &mdash; on
+          a phone a tooltip is not awkward, it is unreachable.
+        </div>
       </div>
     </div>
   </section>
@@ -1910,7 +1934,7 @@
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">01b &middot; The date filter, live</span>
       <b>The same contract, clickable &mdash; the ordering rules, in three clicks</b>
-      <span class="caption">behaviour reference for #1986 &middot; today = 5&nbsp;Aug&nbsp;2026, pinned to match the package</span>
+      <span class="caption">behaviour reference for #1986 &middot; today is pinned to 5&nbsp;Aug&nbsp;2026age</span>
       <span class="dep">Behaviour</span>
     </div>
     <div class="viewport-frame__scroll">
@@ -1983,7 +2007,7 @@
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">02 &middot; Needs attention</span>
       <b>Every row ends in something OpenLinker can do</b>
-      <span class="caption">feeds #1989 &middot; independent of the order-money substrate &mdash; can ship first</span>
+      <span class="caption">feeds #1989 &middot; independent of the order-money substrate &mdash; ships first</span>
       <span class="dep">Ships now</span>
     </div>
     <div class="viewport-frame__scroll">
@@ -2010,29 +2034,34 @@
         </div>
       </div>
 
-      <div class="gap-legend">
-        <span>
-          <b>The section is EITHER the all-clear line OR the open items. Never both</b>
-          (correction&nbsp;16 &mdash; this <b>revokes decision 5</b>). Left panel: two categories
-          reporting, and the third &mdash; which is clear &mdash; simply does not appear. Right panel:
-          nothing open at all, so the whole section is one line that names the count and the categories.
-          <br /><br />
-          <b>Why the resolved row lost its place.</b> Decision 5 argued that &bdquo;no coverage gaps&rdquo;
-          is a <i>finding</i>, not an absence, and that a fixed three-row shape stopped the page moving
-          under a reader as categories cleared and reported again. Both halves failed for the same reason:
-          they were paying, on the first screen, for something the reader was not getting. Beside two open
-          items, a row whose entire content is &bdquo;not this one&rdquo; spends a line repeating what its
-          own absence already says, and the panel header (&bdquo;checked 14:32&rdquo;) has meanwhile
-          stated that the section ran. The stability argument bought protection against a redraw that only
-          happens on a refetch. What survives of decision 5 is its real insight, and only where it is
-          load-bearing: <b>an all-clear section must not render as an empty box</b>, because empty reads as
-          broken &mdash; hence the one line, with the count in it.
-          <br /><br />
-          The stock threshold is <span class="gap-mark" title="No reorderPoint or low-stock threshold exists on any entity">&dagger;</span>
-          arbitrary: <code>connection.config.stockSafetyBuffer</code> (#1844) is a publish-time floor,
-          not an alarm, and no entity carries a reorder point. Whatever number ships must be stated in
-          the row, as it is here, so the operator can judge it.
-        </span>
+      <div class="gap-legend gap-legend--card">
+        <span class="build-field__label">Build</span>
+        <div class="build-field__body">
+          The section is <b>either</b> the all-clear line <b>or</b> the open items. Never both. Left panel:
+          two categories reporting, and the third &mdash; which is clear &mdash; simply does not appear.
+          Right panel: nothing open at all, so the whole section is one line naming the count and the
+          categories.
+        </div>
+        <span class="build-field__label">Rules</span>
+        <div class="build-field__body">
+          <ol>
+            <li>A resolved category renders nothing. Beside two open items, a row whose content is
+              &bdquo;not this one&ldquo; spends a line repeating what its own absence already says.</li>
+            <li>An all-clear section must <b>not</b> render as an empty box &mdash; empty reads as broken.
+              Hence the one line, with the count in it.</li>
+            <li>Rows carry a headline and a qualifier, not two facts, so each collapses to one line.</li>
+            <li>Whatever stock threshold ships must be stated in the row, so the operator can judge it.</li>
+          </ol>
+        </div>
+        <span class="build-field__label build-field__label--blocked">Blocked</span>
+        <div class="build-field__body">
+          <div class="build-gaps">
+            <div class="build-gaps__row"><span>Stock threshold <span class="gap-mark" title="Data the API does not expose yet">&dagger;</span></span>
+              <span class="build-gaps__cause"><code>connection.config.stockSafetyBuffer</code> (#1844) is a
+              publish-time floor, not an alarm, and no entity carries a reorder point &mdash; so the number
+              here is arbitrary until one exists</span></div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -2042,7 +2071,7 @@
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">03 &middot; KPI strip</span>
       <b>Six pairs: what happened, and what qualifies it</b>
-      <span class="caption">feeds #1990 &middot; .status-strip + KpiCard (shared/ui/kpi-card.tsx) &middot; new rules 4, 7, 9, 10, 11</span>
+      <span class="caption">feeds #1990 &middot; .status-strip + KpiCard (shared/ui/kpi-card.tsx)</span>
       <span class="dep dep--blocked">Ships partly &middot; 6 of 12 figures blocked, plus all 6 deltas</span>
     </div>
     <div class="viewport-frame__scroll">
@@ -2050,71 +2079,56 @@
         <section class="status-strip status-strip--analytics" id="kpi-strip"></section>
       </div>
 
-      <div class="gap-legend">
-        <span>
-          <b>Every card is a pair, and the pairing is the argument.</b> A large number alone invites the
-          operator to believe it; the second figure is the thing that would change their mind. GMV is
-          qualified by how much of it stayed sold after refunds, the order count by the daily rate that
-          makes two ranges of different length comparable, the mean by the median it can hide behind
-          (spec A&prime;5 &mdash; at 10&ndash;100 orders/day one large order visibly moves the mean), units
-          by how many of them fit in a basket, and each of the two loss cards by the money its rate cost.
-          The qualifier sits under a hairline on the card floor rather than beside the figure: it is
-          subordinate by position, not by being small enough to miss. A value-suffix version was tried in
-          round&nbsp;3 and cut &mdash; a second number on the same line as a four-figure amount reads as
-          part of it.
-          <br /><br />
-          <b>Round&nbsp;7 split the strip along the metric model, not along the layout.</b> Round&nbsp;6 had
-          four cards because four cards fit a row &mdash; which meant Units and Cancelled both rode as
-          qualifiers on the orders card, and one card ended up answering three different questions. Six
-          cards give each question its own card and each card a true pair. <b>Cancellations</b> is the clearest
-          gain: it is a funnel fact with a money figure of its own, and as a second qualifier on Transactions
-          it read as a fact about orders while its value had nowhere to go at all.
-          <br /><br />
-          <b>The cards carry abbreviations and the ⓘ carries the definitions.</b> One ⓘ per card, in the
-          eyebrow rather than on a caption &mdash; attached to one figure it would imply the other needs no
-          explaining &mdash; and it opens on <b>click</b>, never hover: Radix <code>Tooltip</code> returns
-          early on <code>pointerType === 'touch'</code>, so a hover definition does not exist on a phone.
-          Each panel gives every figure its term, its definition, its formula where it has one, and the
-          caveat that stops it being over-trusted. That last part is the reason the panel is structured
-          rather than prose: &bdquo;returns can arrive after the sale, so a recent period may be incomplete
-          while the window is still open&ldquo; changes how the number should be READ, and the strip has
-          nowhere else to say it. This <b>reverses round&nbsp;6</b> on <code>AOV</code>: the argument for
-          spelling it out was that nothing in the product defined it (grep: still zero hits in
-          <code>apps/web</code>), and the card now does.
-          <br /><br />
-          <b>Six of the twelve figures cannot be produced today</b>, each marked
-          <span class="gap-mark" title="Data the API does not expose yet">&dagger;</span> on the figure
-          itself rather than as a badge on the card, because on four of the six cards the other half ships.
-          <b>Cancellation rate</b> and <b>cancelled value</b> are spec A7 and need [C]: cancellation is a
-          string inside the order snapshot and is never written as state, so nothing counts it and nothing
-          sums it. <b>Return rate</b>, <b>refunded value</b> and <b>net sales</b> &mdash; which is GMV minus
-          the refunded value and therefore inherits its gap &mdash; are worse than blocked: there is no return
-          entity anywhere in the repo, and the spec files returns under known gaps and &sect;8 out of
-          scope. They are drawn because PL&rsquo;s 14-day right of withdrawal makes returns a real
-          operational cost the product is currently blind to, and a card that states the shape is what a
-          data-capture issue can be written against. <b>Average daily orders</b> is the one blocked figure
-          whose gap is arithmetic rather than missing data: it divides by the length of the selected range,
-          and the range is the same <code>placedAt</code> gap as everything else. Note what the returns pair
-          costs the Revenue card: it gives up a qualifier that would have rendered for one that will not,
-          and that is a deliberate trade, not an oversight. See the handover.
-          <br /><br />
-          <b>The six deltas are a scope addition, and they are blocked too.</b> Every one of them compares
-          this window against the one before it, which needs a filterable order date &mdash; the same missing
-          <code>placedAt</code> column that blocks the range filter at the top of the page. Round&nbsp;7 moved
-          the delta to its own line under the figure, which is also what let it finally state its basis in
-          words: in round&nbsp;6 &bdquo;vs previous period&ldquo; existed only in the screen-reader sentence,
-          so a sighted reader was left to assume what the comparison was against. The arrow follows the
-          number and the colour follows the meaning, which is why a falling return rate is a down arrow
-          in green; and a rate moves in <b>points</b>, not percent, because &bdquo;return rate +10%&ldquo;
-          leaves the reader asking ten percent of what.
-          <br /><br />
-          GMV and AOV are money, so both inherit decision 3: they render a figure only
-          while every contributing channel reports on the same tax basis, and the note under GMV says how
-          many channels merely <b>assumed</b> it. Orders and Units are untouched by [G] and always render.
-          Sparklines use the real component (<code>shared/ui/sparkline.tsx</code>) and appear only on the
-          two figures with a per-channel series behind them &mdash; a trend line beside a rate the data
-          cannot produce would assert more than the page knows.
-        </span>
+      <div class="gap-legend gap-legend--card">
+        <span class="build-field__label">Build</span>
+        <div class="build-field__body">
+          <code>.status-strip</code> + six <code>KpiCard</code> (<code>shared/ui/kpi-card.tsx</code>). Every
+          card is a pair: a headline figure, and beneath a hairline on the card floor, the qualifier that
+          would change the operator&rsquo;s mind about it. Under the hairline, never beside the figure
+          &mdash; a second number on the same line as a four-figure amount reads as part of it.
+        </div>
+        <span class="build-field__label">Rules</span>
+        <div class="build-field__body">
+          <ol>
+            <li>One &#9432; per card, in the eyebrow: term, definition, formula, and the caveat that stops
+              the figure being over-trusted.</li>
+            <li>Delta on its own line under the figure, arrow after the number, basis stated in words
+              (&bdquo;vs previous period&ldquo;) &mdash; not only for screen readers.</li>
+            <li>Rates move in <b>points</b>, never percent. Colour follows meaning: a falling return rate is
+              a green down arrow.</li>
+            <li>GMV and AOV inherit decision 3 &mdash; they render only while every channel reports the same
+              tax basis, and the note under GMV says how many merely <b>assumed</b> it. Orders and Units are
+              untouched by [G].</li>
+            <li>Sparkline (<code>shared/ui/sparkline.tsx</code>) only on the two figures with a per-channel
+              series.</li>
+          </ol>
+        </div>
+        <span class="build-field__label build-field__label--blocked">Blocked</span>
+        <div class="build-field__body">
+          Six of twelve figures and all six deltas. Mark each
+          <span class="gap-mark" title="Data the API does not expose yet">&dagger;</span> on the figure, not
+          the card &mdash; on four cards the other half ships. Three causes, three fixes:
+          <div class="build-gaps">
+            <div class="build-gaps__row"><span>Cancellation rate, cancelled value</span>
+              <span class="build-gaps__cause">Spec A7, needs [C] &mdash; cancellation is a string in the
+              order snapshot, never a state</span></div>
+            <div class="build-gaps__row"><span>Return rate, refunded value</span>
+              <span class="build-gaps__cause">No return entity in the repo; spec &sect;8, out of scope</span></div>
+            <div class="build-gaps__row"><span>Net sales</span>
+              <span class="build-gaps__cause">Inherits the row above</span></div>
+            <div class="build-gaps__row"><span>Average daily orders</span>
+              <span class="build-gaps__cause">Arithmetic, not missing data: divides by range length, needs
+              <code>placedAt</code></span></div>
+            <div class="build-gaps__row"><span>All six deltas</span>
+              <span class="build-gaps__cause">Need <code>placedAt</code></span></div>
+          </div>
+          <div class="build-gaps__note">What would unblock each: frame 14.</div>
+        </div>
+        <span class="build-field__label build-field__label--watch">Watch out</span>
+        <div class="build-field__body build-field__body--watch">
+          The &#9432; opens on <b>click</b>, never hover. Radix <code>Tooltip</code> returns early on
+          <code>pointerType === 'touch'</code>, so a hover-only definition does not exist on a phone.
+        </div>
       </div>
     </div>
   </section>
@@ -2124,7 +2138,7 @@
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">03b &middot; Two currencies</span>
       <b>One reporting currency, and the rate says so on the card</b>
-      <span class="caption">feeds #1990 &middot; strip note + Breakdown by currency (<b>clickable</b>) &middot; both tables split by currency</span>
+      <span class="caption">feeds #1990 &middot; strip note + Breakdown by currency (<b>clickable</b>)</span>
       <span class="dep dep--blocked">Not reachable today &middot; [X]</span>
     </div>
     <div class="viewport-frame__scroll">
@@ -2139,66 +2153,40 @@
         <div id="product-currency"></div>
       </div>
 
-      <div class="gap-legend">
-        <span>
-          <b>Decision 11, reversed a second time &mdash; and this is the standing version.</b> The file
-          first reported the dominant currency with a footnote, then split into one card per currency with
-          no total at all. Both were readings of the same dependency [X]; the spec actually leaves the
-          choice open and says so in one line: <i>&ldquo;either group by currency or declare a single
-          reporting currency &mdash; must be decided, not defaulted&rdquo;</i>. It is now decided. The page
-          declares a reporting currency (the system&rsquo;s main currency, PLN here) and states every money
-          figure in it, because the operator&rsquo;s question is how the business did, not how each ledger
-          did &mdash; and because a strip that grows a card per currency stops being a strip at the third
-          market.
-          <b>What the spec does forbid is doing it quietly.</b> Story S1 is an acceptance criterion:
-          mixed-currency data must never silently sum into one number. So the conversion statement sits
-          under the strip &mdash; not inside the Revenue card, where it lived for one round
-          and was wrong twice over: it governs every amount on the strip, not one card, and it
-          made one of the identical cards taller than its siblings. Counts are untouched, because a
-          count needs no rate: an order is an order in any currency.
-          <br /><br />
-          <b>Round&nbsp;7 stopped printing the rate, and that is a correction rather than a trim.</b> The
-          note used to read &bdquo;at NBP mid, 6 Aug 2026 &middot; 1 EUR = 4.3300&ldquo;, which states one
-          rate for a set of orders that each convert at the rate of <b>their own order date</b> &mdash; so the
-          number described no order on the page. It now names the method and the freshness of the rate table
-          (&bdquo;daily NBP average exchange rates &middot; rates last updated&ldquo;), and the ⓘ that opens
-          the note carries the rest of the contract: refunds and cancellations convert at the original
-          order&rsquo;s rate, a day NBP did not publish falls back to the last published rate, and the table
-          syncs once a day. The note keeps <b>one</b> marker and that marker is the trigger &mdash; an earlier
-          draft appended a second ⓘ after the text, which put two identical glyphs on one line with nothing
-          to say which of them could be clicked.
-          <br /><br />
-          <b>&bdquo;Converted&rdquo; is a claim, so the page shows its working.</b>
-          <b>View currency breakdown</b> opens the <b>six money figures</b> split by the currency they were
-          taken in, with the footer restating them in one money &mdash; two inputs and one output on one
-          screen. Round&nbsp;7 cut the counts and the rates out of it, and the cut is the table&rsquo;s
-          argument rather than a concession to width: a rate does not convert and a count does not convert,
-          so &bdquo;Orders: 268&ldquo; per currency is the same 268 in two piles &mdash; arithmetic the reader
-          can do and did not ask for. All twelve figures were drawn first and rejected, because at that width
-          the table scrolled horizontally and put the footer total off screen from the rows it totals, and the
-          footer <i>is</i> the evidence. It is also where the median stops being a mystery: <b>89.00</b> and
-          <b>74.50</b> do not produce <b>91.00</b> by any arithmetic the reader could do, which is exactly why
-          a median has to be computed over individual orders rather than derived from the rows above it.
-          <br /><br />
-          <b>The tables below are split, and stay split.</b> A per-table
-          <code>In PLN</code> / <code>By currency</code> control was built here and then removed: the
-          strip already states the converted figure and the breakdown already reconciles it, so a third
-          place to convert offered a second way to read the same rows and no reason to prefer either.
-          Splitting is the table&rsquo;s whole contribution &mdash; it is the unconverted evidence the
-          strip is checked against. Top products splits the same way, into
-          <code>Revenue&nbsp;&middot;&nbsp;PLN</code> and <code>Revenue&nbsp;&middot;&nbsp;EUR</code>;
-          a product that never went to the euro market carries <code>EmptyValue</code> there rather than
-          a zero, because it did not sell nothing &mdash; it was not on sale. Unit columns and unit
-          shares are untouched in both tables, since splitting money is a statement about a rate and
-          counting items is not.
-          <b>The badge says blocked</b> because nothing in the repo converts anything
-          (<code>exchangeRate</code>, <code>convertCurrency</code>: zero hits), and the missing piece is
-          bigger than a lookup. The rate has to be the one from the day of the <b>order</b>, stored with the
-          order &mdash; a report-day rate silently rewrites last month&rsquo;s revenue every morning, which
-          breaks the DoD line about a maintainer reconciling the page against the source. That, plus the
-          cancellation dependency [C], belongs to #1984/#1985. The shape is settled here so the data work
-          has something unambiguous to satisfy.
-        </span>
+      <div class="gap-legend gap-legend--card">
+        <span class="build-field__label">Build</span>
+        <div class="build-field__body">
+          One reporting currency (the system&rsquo;s main currency, PLN here), and every money figure stated
+          in it. Counts are untouched: an order is an order in any currency. Decision 11 &mdash; the spec
+          leaves the choice open only on condition it is <i>&ldquo;decided, not defaulted&rdquo;</i>.
+        </div>
+        <span class="build-field__label">Rules</span>
+        <div class="build-field__body">
+          <ol>
+            <li>Conversion statement goes <b>under the strip</b>, not in the Revenue card: it governs every
+              amount, and in a card it made one sibling taller. Story S1 is an acceptance criterion.</li>
+            <li>Name the method and the rate table&rsquo;s freshness &mdash; never a single rate. Each order
+              converts at its own order date, so one printed rate describes no order on the page.</li>
+            <li>The &#9432; carries the rest of the contract: refunds and cancellations convert at the
+              original order&rsquo;s rate, an unpublished day falls back to the last, the table syncs daily.
+              <b>One</b> marker, and it is the trigger.</li>
+            <li>Breakdown shows the six money figures split by the currency they were taken in, footer
+              restating them in one money. No counts, no rates &mdash; neither converts.</li>
+            <li>Both tables stay split: this is the unconverted evidence. A product that never went to the
+              euro market gets <code>EmptyValue</code>, not a zero.</li>
+          </ol>
+        </div>
+        <span class="build-field__label build-field__label--blocked">Blocked</span>
+        <div class="build-field__body">
+          <code>exchangeRate</code>, <code>convertCurrency</code>: zero hits in the repo. With [C], belongs
+          to #1984/#1985.
+        </div>
+        <span class="build-field__label build-field__label--watch">Watch out</span>
+        <div class="build-field__body build-field__body--watch">
+          The rate must be the one from the day of the <b>order</b>, stored with the order. A report-day rate
+          silently rewrites last month&rsquo;s revenue every morning, breaking the DoD line about
+          reconciling the page against the source.
+        </div>
       </div>
     </div>
   </section>
@@ -2241,18 +2229,24 @@
         </article>
       </div>
 
-      <div class="gap-legend">
-        <span>
-          <b>Decision 1 and 3, together.</b> The spec named gross-vs-net [G] the most dangerous item in
-          the epic, and it is right about the danger &mdash; but a grep of the adapters shows nothing
-          reports net today: only Allegro and Erli declare a basis, both <code>'inclusive'</code>, and
-          PrestaShop&rsquo;s <code>total</code> is <code>total_paid_tax_incl</code>. So the table
-          <b>does</b> total revenue here, and marks the one channel whose basis is assumed rather than
-          asserted. What it never does is derive share from revenue: <code>Share (units)</code> is
-          comparable no matter what happens to the tax basis later, which is why the column is labelled
-          in the header rather than left to be inferred. Frame&nbsp;05 is the same table once a net
-          source arrives.
-        </span>
+      <div class="gap-legend gap-legend--card">
+        <span class="build-field__label">Build</span>
+        <div class="build-field__body">
+          Decision 1 and 3, together. The spec named gross-vs-net [G] the most dangerous item in the epic,
+          and it is right about the danger &mdash; but a grep of the adapters shows nothing reports net
+          today: only Allegro and Erli declare a basis, both <code>'inclusive'</code>, and PrestaShop&rsquo;s
+          total is <code>total_paid_tax_incl</code>. So the table totals revenue here, and marks the one
+          channel whose basis is assumed rather than asserted.
+        </div>
+        <span class="build-field__label">Rules</span>
+        <div class="build-field__body">
+          <ol>
+            <li>Never derive Share from revenue. <b>Share (units)</b> stays comparable whatever happens to
+              the tax basis later &mdash; which is why the column is labelled in the header rather than
+              left to be inferred.</li>
+            <li>Frame 05 is this same table once a net source arrives.</li>
+          </ol>
+        </div>
       </div>
     </div>
   </section>
@@ -2295,20 +2289,23 @@
         </article>
       </div>
 
-      <div class="gap-legend">
-        <span>
-          <b>Mixed tax basis removes the total; mixed currency does not.</b> They look like the same
-          refusal and are not. A net source and a gross source cannot be added at all &mdash; the sum
-          would overstate the gross channels by roughly the VAT rate &mdash; so the total goes away and
-          explains itself once, below the table. Two currencies can each be added perfectly well; what
-          cannot be done is adding them <i>to each other</i> without a rate &mdash; and a rate is a thing that
-          can be obtained and disclosed, which is why currency converts rather than degrades: the page
-          declares one reporting currency and prints the rate under the figure (decision 11,
-          frame&nbsp;03b). A tax basis has no equivalent &mdash; there is nothing to look up, because
-          Allegro and Erli report <code>tax: 0</code>. Note also what does
-          <b>not</b> escalate to a page banner: both are normal, permanent conditions, and a banner that
-          is always on stops being read. Frame&nbsp;11 draws the line.
-        </span>
+      <div class="gap-legend gap-legend--card">
+        <span class="build-field__label">Build</span>
+        <div class="build-field__body">
+          Mixed tax basis removes the total; mixed currency does not. They look like the same refusal and
+          are not. A net source and a gross source cannot be added at all &mdash; the sum would overstate
+          the gross channels by roughly the VAT rate &mdash; so the total goes away and explains itself
+          once, below the table. Two currencies can each be added perfectly well; what is missing is a
+          rate, and a rate can be obtained and disclosed. So currency <b>converts</b> and tax basis
+          <b>degrades</b>: the page declares one reporting currency and prints the method under the figure
+          (decision 11, frame 03b). A tax basis has no equivalent &mdash; there is nothing to look up,
+          because Allegro and Erli report <code>tax: 0</code>.
+        </div>
+        <span class="build-field__label build-field__label--watch">Watch out</span>
+        <div class="build-field__body build-field__body--watch">
+          Neither condition escalates to a page banner. Both are normal and permanent, and a banner that is
+          always on stops being read. Frame 11 draws the line.
+        </div>
       </div>
     </div>
   </section>
@@ -2339,64 +2336,66 @@
         </article>
       </div>
 
-      <div class="gap-legend">
-        <span>
-          <b>Decision 7, revised by correction 12.</b> A missing listing and a zero mean different
-          things and must not look alike. The earlier draft carried that distinction on a
-          <b>glyph</b> &mdash; <code>EmptyValue</code>'s <code>&mdash;</code> against a full-weight
-          <code>0</code> &mdash; which failed the only test that matters: a dash reads as
-          <i>missing data</i>, so the cell needed a legend to be understood, and a cell that needs a
-          legend has not communicated. The cell now <b>says it</b>: <code>Not listed</code>, muted and
-          non-tabular so a column of channel figures still scans as figures. Only the assertion keeps
-          the glyph treatment &mdash; a real <code>0</code> in full weight and tabular figures, with the
-          legend reduced to that one entry. <code>EmptyValue</code> stays the right component wherever
-          a figure is genuinely absent (the currency and AOV cells); it is the wrong one here, because
-          this cell knows <i>why</i> it is empty. Where the gap is also an <b>opportunity</b> &mdash;
-          the product sells elsewhere &mdash; <code>Publish</code> appears on row hover or keyboard
-          focus and is always visible on touch, so the offer is one glance away without six rows of
-          chips competing with the numbers they qualify.
-          <br /><br />
-          <b>Correction 17: the label and the chip share ONE slot, and they swap.</b> This started as a
-          visible defect &mdash; &bdquo;Not listed&ldquo; sat 67&nbsp;px left of the right edge the
-          numbers in its own column used &mdash; and the cause is worth carrying into #1991 because it
-          had been invisible for six rounds. The chip was a flex <i>sibling</i> at
-          <code>opacity: 0</code>: invisible, but <b>still occupying layout</b>, so it pushed the label
-          out of the column&rsquo;s alignment by its own width plus the gap. Nobody could see it while
-          <code>.data-table__cell--right</code> was silently losing on specificity and every cell in the
-          file rendered left-aligned. <b>Two defects were cancelling each other out</b>, and fixing the
-          alignment exposed the second one immediately.
-          The chip is now <code>position: absolute; right: 0</code> &mdash; out of flow, anchored to the
-          slot&rsquo;s right edge, which is exactly where a number in that column right-aligns &mdash;
-          and the label fades as the chip arrives. So the column has <b>one right edge in every
-          state</b>: at rest the text ends where a figure would, on hover the button&rsquo;s right edge
-          lands on the same line, and nothing reflows, because an out-of-flow box cannot change the
-          slot&rsquo;s width. A permanent ~64&nbsp;px action gutter in every channel column was the
-          alternative and was rejected: this table already scrolls horizontally at many channels, so
-          paying that width in every row to serve the few rows with an action is the wrong trade.
-          What the swap costs is stated plainly: while the pointer is in the row the cell no longer
-          <i>says</i> &bdquo;not listed&ldquo;. A <code>Publish</code> button asserts it &mdash; you
-          cannot publish what is already listed &mdash; and the label never leaves the accessibility
-          tree (<code>opacity</code>, never <code>display: none</code>), so a screen reader hears both
-          the state and the action however the pointer is placed.
-          <br /><br />
-          <b>Decision 8, and the answer to &bdquo;a many-channel instance does not break the
-          layout&rdquo;.</b> Channel columns grow with the number of connections, so Product is frozen
-          with <code>stickyLeftColumns: 1</code> and the channel block scrolls under it inside
-          <code>.data-table__container</code> &mdash; the one place the style guide permits horizontal
-          scrolling. Aggregation keys on <code>productId</code>/<code>variantId</code>, never
-          <code>sku</code>: Allegro sets <code>sku = offer.id</code>, so a SKU-keyed roll-up would split
-          one product across channels. That same key is what makes <b>thumbnails</b> possible
-          (correction 12): the row already points at an internal product, so the photo comes from the
-          <b>catalogue</b> &mdash; <code>Product.images[0]</code>, the field the Products page renders
-          &mdash; through <code>ProductThumbnail</code> (<code>shared/ui/product-thumbnail.tsx</code>),
-          at <code>size="md"</code> in the table and <code>size="sm"</code> in the mobile card, matching
-          <code>products-list-page.tsx</code>. Read it from <code>OrderItem.imageUrl</code> instead and
-          the column turns patchy: WooCommerce populates that field on ingestion, Allegro's
-          checkout-form endpoint cannot, and Erli and PrestaShop never set it &mdash; the photo would
-          then depend on which channel the sale happened to land on. An order item with no catalogue
-          mapping has nothing to join, and that row falls back to <code>ProductThumbnail</code>'s
-          initial, never a broken-image box.
-        </span>
+      <div class="gap-legend gap-legend--card">
+        <span class="build-field__label">Build</span>
+        <div class="build-field__body">
+          <b>The empty cell, and the action that shares its slot.</b> A missing listing and a zero mean
+          different things and must not look alike. The cell says it in words &mdash; <b>Not listed</b>,
+          muted and non-tabular, so the column still scans as figures. Only the assertion keeps the glyph
+          treatment: a real <code>0</code>, full weight, tabular. Where the product sells elsewhere,
+          <b>Publish</b> appears on row hover or keyboard focus, always visible on touch.
+        </div>
+        <span class="build-field__label">Rules</span>
+        <div class="build-field__body">
+          <ol>
+            <li>Do not carry this on a glyph. A dash reads as <i>missing data</i>, so the cell needed a
+              legend &mdash; and a cell that needs a legend has not communicated.</li>
+            <li><code>EmptyValue</code> stays right where a figure is genuinely absent (currency, AOV). It is
+              wrong here, because this cell knows <i>why</i> it is empty.</li>
+            <li>Label and chip share <b>one</b> slot and swap. Chip is
+              <code>position: absolute; right: 0</code> &mdash; out of flow, on the slot&rsquo;s right edge,
+              where a number in that column right-aligns.</li>
+            <li>The label never leaves the accessibility tree (<code>opacity</code>, never
+              <code>display: none</code>).</li>
+          </ol>
+        </div>
+        <span class="build-field__label build-field__label--watch">Watch out</span>
+        <div class="build-field__body build-field__body--watch">
+          The mechanism matters more than the fix: the chip was a flex sibling at <code>opacity: 0</code>
+          &mdash; invisible, but <b>still occupying layout</b>, so it pushed the label out of alignment by
+          its own width plus the gap. It hid for six rounds behind
+          <code>.data-table__cell--right</code> losing on specificity. Hiding the chip any other way
+          (<code>visibility: hidden</code>, zero opacity in flow) reproduces it.
+        </div>
+      </div>
+
+      <div class="gap-legend gap-legend--card">
+        <span class="build-field__label">Build</span>
+        <div class="build-field__body">
+          <b>Many channels, and the row still knows what it is.</b> Channel columns grow with the number of
+          connections, so Product is frozen with <code>stickyLeftColumns: 1</code> and the channel block
+          scrolls under it inside <code>.data-table__container</code> &mdash; the one place the style guide
+          permits horizontal scrolling. Decision 8.
+        </div>
+        <span class="build-field__label">Rules</span>
+        <div class="build-field__body">
+          <ol>
+            <li>Aggregate on <code>productId</code>/<code>variantId</code>, never <code>sku</code>: Allegro
+              sets <code>sku = offer.id</code>, so a SKU-keyed roll-up splits one product across channels.</li>
+            <li>Thumbnails come from the catalogue &mdash; <code>Product.images[0]</code> through
+              <code>ProductThumbnail</code> (<code>shared/ui/product-thumbnail.tsx</code>),
+              <code>size="md"</code> in the table and <code>size="sm"</code> in the mobile card, matching
+              <code>products-list-page.tsx</code>.</li>
+            <li>An order item with no catalogue mapping falls back to <code>ProductThumbnail</code>&rsquo;s
+              initial, never a broken-image box.</li>
+          </ol>
+        </div>
+        <span class="build-field__label build-field__label--watch">Watch out</span>
+        <div class="build-field__body build-field__body--watch">
+          Do not read the photo from <code>OrderItem.imageUrl</code>. WooCommerce populates that field on
+          ingestion, Allegro&rsquo;s checkout-form endpoint cannot, and Erli and PrestaShop never set it
+          &mdash; the column would turn patchy depending on which channel the sale landed on.
+        </div>
       </div>
     </div>
   </section>
@@ -2406,7 +2405,7 @@
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">07 &middot; Tablet &middot; 768 &times; 1024</span>
       <b>Columns are shed, never crushed</b>
-      <span class="caption">KPI strip 2&times;3 via the tablet override (new rule 6) &middot; hideBelow=1024 drops Trend and average order value</span>
+      <span class="caption">tablet override (new rule 6) &middot; hideBelow=1024</span>
       <span class="dep dep--info">Its own variant</span>
     </div>
     <div class="viewport-frame__scroll">
@@ -2426,25 +2425,27 @@
         </div>
       </div>
 
-      <div class="gap-legend">
-        <span>
-          <b>One thing here is not free, and measuring found it.</b> The style guide&rsquo;s parity
-          matrix and #1990 both require the KPI strip to go 1&times;4 &rarr; 2&times;2 &rarr; vertical.
-          The shipped <code>.status-strip</code> is <code>repeat(auto-fit, minmax(180px, 1fr))</code>,
-          which at 768&nbsp;px resolves to <b>three</b> columns plus an orphan on the second row.
-          This frame therefore carries an explicit tablet override (new rule&nbsp;6) rather than
-          trusting <code>auto-fit</code> to do what the guide claims.
-          <b>Round&nbsp;7 also changes what the ladder can be.</b> Six cards cannot do 1&times;4, so it
-          is 3&times;2 &rarr; 2&times;3 &rarr; vertical: the guide&rsquo;s intent survives (a fixed column
-          count per breakpoint, an even grid, no orphan row) and its literal first step does not. That is a
-          divergence from a document #1990 will also be reading, so it is stated here and in the handover
-          rather than left to be discovered. Everything else at this width is free. The table drops Trend and average order value through <code>hideBelow: 1024</code> &mdash; the
-          breakpoint set is exactly <code>480 | 768 | 1024</code>
+      <div class="gap-legend gap-legend--card">
+        <span class="build-field__label">Build</span>
+        <div class="build-field__body">
+          KPI strip goes 3&times;2 &rarr; 2&times;3 &rarr; vertical, via an explicit tablet override
+          (new rule 6). The table drops Trend and average order value through
+          <code>hideBelow: 1024</code> &mdash; the breakpoint set is exactly 480 | 768 | 1024
           (<code>DataTableHideBreakpoint</code>, <code>data-table.tsx:30</code>), so 1024 is the correct
-          value for &bdquo;gone on tablet and below&rdquo;. What survives is what the operator came for:
-          which channel, how much, how many, what share. Average order value is recoverable from revenue and orders;
-          Trend is decoration at this width.
-        </span>
+          value for &bdquo;gone on tablet and below&ldquo;. What survives is what the operator came for:
+          which channel, how much, how many, what share.
+        </div>
+        <span class="build-field__label build-field__label--watch">Watch out</span>
+        <div class="build-field__body build-field__body--watch">
+          Do not trust <code>auto-fit</code> here. The shipped <code>.status-strip</code> is
+          <code>repeat(auto-fit, minmax(180px, 1fr))</code>, which at 768&nbsp;px resolves to three columns
+          plus an orphan on the second row &mdash; hence the explicit override.
+          <br />
+          Also a stated divergence: the style guide&rsquo;s parity matrix and #1990 both require
+          1&times;4 &rarr; 2&times;2 &rarr; vertical, and six cards cannot do 1&times;4. The guide&rsquo;s
+          intent survives (fixed column count per breakpoint, even grid, no orphan row); its literal first
+          step does not. #1990 will be reading that document too, so it is stated here and in the handover.
+        </div>
       </div>
     </div>
   </section>
@@ -2473,23 +2474,26 @@
         </div>
       </div>
 
-      <div class="gap-legend">
-        <span>
-          <b>The two tables need different card shapes, and the reason is semantic.</b> A by-channel row
-          <i>is</i> a card &mdash; &bdquo;here is this channel&rdquo; &mdash; so every figure goes in
-          the <code>summary</code> slot and nothing is hidden. A top-products row is a
-          <b>comparison</b>: its whole point is reading the per-channel split across one line. Flattened
-          into a vertical list it stops being a comparison and becomes six numbers, so it goes behind
-          <code>collapsibleDetail: true</code> (#1713), which keeps the card leading with product,
-          revenue and units and puts the split one tap away &mdash; preserved as a unit rather than
-          dissolved.
-          <br /><br />
-          Use <code>cardView</code>, <b>not</b> <code>.data-table--stackable</code>: the latter is
-          scoped to the mapping and routing tables and flips at 640&nbsp;px, while
-          <code>cardView</code> flips at <code>767.98px</code>, matching the style guide, and
-          <code>DataTableSkeleton</code> already mirrors it so nothing reflows when data lands. Tap
-          targets on the disclosure and the chip are &ge;&nbsp;44&nbsp;px.
-        </span>
+      <div class="gap-legend gap-legend--card">
+        <span class="build-field__label">Build</span>
+        <div class="build-field__body">
+          The two tables need different card shapes, and the reason is semantic. A by-channel row <b>is</b> a
+          card &mdash; &bdquo;here is this channel&ldquo; &mdash; so every figure goes in the summary slot and
+          nothing is hidden. A top-products row is a <b>comparison</b>: its whole point is reading the
+          per-channel split across one line. Flattened into a vertical list it stops being a comparison and
+          becomes six numbers, so it goes behind <code>collapsibleDetail: true</code> (#1713) &mdash;
+          preserved as a unit, one tap away.
+        </div>
+        <span class="build-field__label">Rules</span>
+        <div class="build-field__body">
+          <ol>
+            <li>Use <code>cardView</code>, not <code>.data-table--stackable</code>: the latter is scoped to
+              the mapping and routing tables and flips at 640&nbsp;px, while <code>cardView</code> flips at
+              <code>767.98px</code>, matching the style guide &mdash; and <code>DataTableSkeleton</code>
+              already mirrors it, so nothing reflows when data lands.</li>
+            <li>Tap targets on the disclosure and the chip are &ge;&nbsp;44&nbsp;px.</li>
+          </ol>
+        </div>
       </div>
     </div>
   </section>
@@ -2584,22 +2588,28 @@
         </div>
       </div>
 
-      <div class="gap-legend">
-        <span>
-          <b>Loading and recalculating are not the same state</b>, which is why decision 4 splits
-          &bdquo;pending&rdquo; in two. On first paint there is nothing to preserve, so
-          <code>DataTableSkeleton</code> holds the table&rsquo;s exact geometry and the row height never
-          jumps. When the operator changes the range there <i>is</i> something to preserve: the previous
-          figures dim via <code>.is-recalculating</code> and a pulsing badge names what is being
-          recomputed, instead of the page collapsing to skeletons on every interaction. In TanStack
-          Query terms that is <code>isLoading</code> versus
-          <code>isFetching &amp;&amp; !isLoading</code> &mdash; the distinction is free.
-          <br /><br />
-          <b>Every state is per section.</b> Each of the five sections owns its own query, so a
-          top-products timeout leaves the KPI strip and the channel table standing &mdash; and the error
-          copy says so, because an operator who cannot tell how far the failure spread will distrust
-          the numbers that are fine. Errors name what happened and what to do; they do not apologise.
-        </span>
+      <div class="gap-legend gap-legend--card">
+        <span class="build-field__label">Build</span>
+        <div class="build-field__body">
+          Loading and recalculating are not the same state &mdash; decision 4 splits &bdquo;pending&ldquo; in
+          two. On first paint there is nothing to preserve, so <code>DataTableSkeleton</code> holds the
+          table&rsquo;s exact geometry and the row height never jumps. When the operator changes the range
+          there <i>is</i> something to preserve: the previous figures dim via <code>.is-recalculating</code>
+          and a pulsing badge names what is being recomputed, instead of the page collapsing to skeletons on
+          every interaction.
+        </div>
+        <span class="build-field__label">Rules</span>
+        <div class="build-field__body">
+          <ol>
+            <li>In TanStack Query terms that is <code>isLoading</code> versus
+              <code>isFetching &amp;&amp; !isLoading</code> &mdash; the distinction is free.</li>
+            <li>Every state is <b>per section</b>. Each of the five owns its own query, so a top-products
+              timeout leaves the KPI strip and the channel table standing.</li>
+            <li>The error copy says how far the failure spread &mdash; an operator who cannot tell will
+              distrust the numbers that are fine.</li>
+            <li>Errors name what happened and what to do. They do not apologise.</li>
+          </ol>
+        </div>
       </div>
     </div>
   </section>
@@ -2664,16 +2674,21 @@
         </div>
       </div>
 
-      <div class="gap-legend">
-        <span>
-          Spec risk R5 is that a brand-new install shows a page of dashes and reads as broken. Both
-          states here answer it with a sentence, and they are <b>different</b> sentences: one instance
-          has nothing connected, the other has a connection whose history is still loading. The second
-          is decision 4&rsquo;s &bdquo;backfilling&rdquo; at full-page scale &mdash; the crucial line is
-          <b>&bdquo;Nothing is missing; it is not here yet&rdquo;</b>, because &bdquo;no data&rdquo; and
-          &bdquo;data on its way&rdquo; produce identical zeros and only one of them is a problem.
-          An empty screen is an invitation to act, so each carries exactly one action.
-        </span>
+      <div class="gap-legend gap-legend--card">
+        <span class="build-field__label">Build</span>
+        <div class="build-field__body">
+          Spec risk R5 is that a brand-new install shows a page of dashes and reads as broken. Both states
+          answer it with a sentence, and they are <b>different</b> sentences: one instance has nothing
+          connected, the other has a connection whose history is still loading &mdash; decision 4&rsquo;s
+          &bdquo;backfilling&ldquo; at full-page scale. An empty screen is an invitation to act, so each
+          carries exactly one action.
+        </div>
+        <span class="build-field__label build-field__label--watch">Microcopy</span>
+        <div class="build-field__body build-field__body--watch">
+          &bdquo;Nothing is missing; it is not here yet&ldquo; &mdash; paste it, do not paraphrase it.
+          &bdquo;No data&ldquo; and &bdquo;data on its way&ldquo; produce identical zeros, and only one of
+          them is a problem.
+        </div>
       </div>
     </div>
   </section>
@@ -2683,7 +2698,7 @@
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">11 &middot; Degradation</span>
       <b>The banner rule, written down</b>
-      <span class="caption">style guide allows a status banner only when degraded &mdash; so the threshold has to be stated</span>
+      <span class="caption">status banner only when degraded &mdash; so the threshold has to be stated</span>
       <span class="dep">Decided</span>
     </div>
     <div class="viewport-frame__scroll">
@@ -2751,14 +2766,15 @@
         </tbody>
       </table>
 
-      <div class="gap-legend">
-        <span>
-          <b>The threshold is a fact, not a percentage.</b> &bdquo;Has this channel sold anything in the
-          selected range&rdquo; is answerable from data already on screen, needs no tuning, and survives
-          code review without anyone defending a magic number. It also degrades correctly by itself: a
-          channel that normally carries the business escalates, a test connection someone disabled last
-          month does not.
-        </span>
+      <div class="gap-legend gap-legend--card">
+        <span class="build-field__label">Rules</span>
+        <div class="build-field__body">
+          The threshold is a fact, not a percentage: <b>has this channel sold anything in the selected
+          range</b>. It is answerable from data already on screen, needs no tuning, and survives code review
+          without anyone defending a magic number. It also degrades correctly by itself &mdash; a channel
+          that normally carries the business escalates, a test connection someone disabled last month does
+          not.
+        </div>
       </div>
     </div>
   </section>
@@ -2808,14 +2824,17 @@
         </table>
       </div>
 
-      <div class="gap-legend">
-        <span>
-          Two rules run through every string above. <b>Name the limit, not the mechanism</b> &mdash;
-          &bdquo;data from 12&nbsp;Dec&nbsp;2025&rdquo; rather than &bdquo;cursor watermark&rdquo;, and
-          &bdquo;has not ingested since&rdquo; rather than &bdquo;poll job dead&rdquo;. <b>Never let a
-          number stand alone when it is qualified</b>: the qualification travels with it, in the same
-          sentence, because a figure and its caveat separated by whitespace will be read apart.
-        </span>
+      <div class="gap-legend gap-legend--card">
+        <span class="build-field__label">Rules</span>
+        <div class="build-field__body">
+          <ol>
+            <li><b>Name the limit, not the mechanism</b> &mdash; &bdquo;data from 12 Dec 2025&ldquo; rather
+              than &bdquo;cursor watermark&ldquo;, and &bdquo;has not ingested since&ldquo; rather than
+              &bdquo;poll job dead&ldquo;.</li>
+            <li><b>Never let a qualified number stand alone.</b> The qualification travels with it, in the
+              same sentence &mdash; a figure and its caveat separated by whitespace will be read apart.</li>
+          </ol>
+        </div>
       </div>
     </div>
   </section>
@@ -2841,27 +2860,27 @@
             <tr><td>Mobile cards</td><td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Exists</span></td><td><code>cardView</code> prop &mdash; <code>data-table.tsx:47-76</code>. <b>Not</b> <code>.data-table--stackable</code>.</td></tr>
             <tr><td>Frozen Product column</td><td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Exists</span></td><td><code>stickyLeftColumns: 1</code> &mdash; <code>data-table.tsx:140-158</code></td></tr>
             <tr><td>Trend</td><td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Exists</span></td><td><code>Sparkline</code> &mdash; <code>shared/ui/sparkline.tsx</code>. The only graphic in v1.</td></tr>
-            <tr><td>&bdquo;Not listed&rdquo; cell</td><td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Exists</span></td><td>Plain muted text plus a <code>Chip</code> revealed on <code>:hover</code> / <code>:focus-within</code> (always shown under <code>@media (hover: none)</code>). <code>EmptyValue</code> stays for genuinely absent figures, not for this cell. Label and chip occupy <b>one slot</b> and swap: the chip is <code>position: absolute; right: 0</code>, the label fades as it arrives. As flex siblings an <code>opacity: 0</code> chip still takes layout and pushed the label <b>67&nbsp;px</b> off the right edge its own column&rsquo;s numbers use. Do not put the chip back in flow, and do not solve it with a fixed action gutter &mdash; every row pays that width to serve a few.</td></tr>
+            <tr><td>&bdquo;Not listed&rdquo; cell</td><td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Exists</span></td><td>Plain muted text plus a <code>Chip</code> revealed on <code>:hover</code> / <code>:focus-within</code>, always shown under <code>@media (hover: none)</code>. <code>EmptyValue</code> stays for genuinely absent figures, not for this cell. <b>Label and chip share one slot and swap</b> &mdash; chip is <code>position: absolute; right: 0</code>, label fades as it arrives. Do not put the chip back in flow (an <code>opacity: 0</code> flex sibling still takes layout and pushed the label 67&nbsp;px off its column&rsquo;s right edge), and do not solve it with a fixed action gutter &mdash; the column would pay that width in every row to serve a few.</td></tr>
             <tr><td>Product thumbnail</td><td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Exists</span></td><td><code>ProductThumbnail</code> &mdash; <code>shared/ui/product-thumbnail.tsx</code>. <code>md</code> in the table, <code>sm</code> in the card, per <code>products-list-page.tsx</code>.</td></tr>
             <tr><td>Rank toggle</td><td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Exists</span></td><td><code>SegmentedControl</code> &mdash; <code>index.css:12140</code></td></tr>
             <tr><td>Loading</td><td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Exists</span></td><td><code>DataTableSkeleton</code> &mdash; already mirrors <code>cardView</code> at 767.98px</td></tr>
             <tr><td>Error / empty</td><td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Exists</span></td><td><code>ErrorState</code>, <code>EmptyState</code> &mdash; <code>shared/ui/feedback-state.tsx</code></td></tr>
             <tr><td>Degradation banner</td><td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Exists</span></td><td><code>Alert</code> &mdash; <code>index.css:1768</code></td></tr>
-            <tr><td>Date range control</td><td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Pattern only</span></td><td>No <code>DateRangePicker</code> and no <code>FilterBar</code> exist. Reuse the <code>.toolbar</code> + native <code>&lt;input type="date"&gt;</code> pattern from <code>orders-list-page.tsx:1094-1155</code> and <code>setFilterParam</code> (<code>:965-976</code>) verbatim &mdash; with one change: that pattern is <b>write-through</b> (every keystroke hits the URL), this page commits on Apply, so the fields bind to local state and call <code>setFilterParam</code> only on commit. The rest composes shipped parts: <code>SegmentedControl</code> with four options, <code>.button--secondary</code> + <code>:disabled</code> for Apply. Extracting a shared component is #1986&rsquo;s call.</td></tr>
-            <tr><td>Date range contract</td><td><span class="status-badge status-badge--info"><span class="status-badge__dot"></span>Specified</span></td><td><b>The URL carries absolute dates, never a preset.</b> A preset writes <code>from</code>/<code>to</code> and applies at once; <code>Custom</code> is the fourth option of the same group and commits on <b>Apply</b>; which option is lit is derived by comparison <b>at commit time</b>, never stored. Two things to get right: a preset spans <b>today&nbsp;&minus;&nbsp;(N&minus;1)&nbsp;&hellip;&nbsp;today</b> (<code>30d</code> is thirty days, not thirty-one), and Apply&rsquo;s pending range is <b>component state only</b> &mdash; never serialize the draft to the URL. Params are <code>from</code>/<code>to</code>, <b>not</b> <code>createdFrom</code>/<code>createdTo</code>, which mean ingestion time. Full interaction table in frame&nbsp;01.</td></tr>
-            <tr><td>Note markers (ⓘ / ⚠)</td><td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Exists</span></td><td>Unicode glyph + colour class, the house pattern &mdash; <code>.bulk-editor__infotip</code> (<code>index.css:10901</code>, <code>&amp;#9432;</code>) and <code>.bulk-editor__warn-tri</code>. <b>There is no icon library in this project</b>; do not add one. <code>role="img"</code> + <code>aria-label</code> per <code>bulk-confirm-modal.tsx:107</code>. The coverage caveat sits behind the <code>&#9432;</code> on the section title and must open from a <b><code>Popover</code> on click</b>, never a <code>Tooltip</code>: Radix bails out of its open handler on <code>pointerType === 'touch'</code>, so a tooltip is unreachable on a phone. The mockup stands the popover in with a <code>title</code> attribute. Row notes stay visible text. One new CSS rule (<code>.section-infotip</code>) for the trigger.</td></tr>
-            <tr><td>Trust header list</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 1</span></td><td>Three facts + a state badge per row, one row per channel, always expanded. <code>KeyValueList</code> is a 2-col grid and cannot carry it. <b>Do not summarise, fold, or lay this out side by side to save height</b> &mdash; both were built and rejected: the per-channel rows are the section&rsquo;s purpose, not its detail. Height comes out of the attention list instead.</td></tr>
-            <tr><td>Attention list</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 2</span></td><td>Structured list, one line per row (headline + <code>·</code> qualifier, wrapping at narrow widths). <b>Either/or, and enforce it in the renderer:</b> if anything is open, render only the open items; if nothing is open, render the single all-clear row (never an empty box). A resolved row must never appear beside an open one. <b>Supersedes the earlier fixed-shape rule and decision 5</b> &mdash; section height changes with state; see frame&nbsp;02.</td></tr>
+            <tr><td>Date range control</td><td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Pattern only</span></td><td>No <code>DateRangePicker</code> and no <code>FilterBar</code> exist. Reuse the <code>.toolbar</code> + native <code>&lt;input type="date"&gt;</code> pattern from <code>orders-list-page.tsx:1094-1155</code> and <code>setFilterParam</code> (<code>:965-976</code>). <b>One difference:</b> that pattern is write-through (every keystroke hits the URL); this page commits on Apply, so the fields bind to local state and call <code>setFilterParam</code> only on commit. The rest is composition of shipped parts. Extracting a shared component is #1986&rsquo;s call.</td></tr>
+            <tr><td>Date range contract</td><td><span class="status-badge status-badge--info"><span class="status-badge__dot"></span>Specified</span></td><td><b>The URL carries absolute dates, never a preset.</b> A preset writes <code>from</code>/<code>to</code> and applies at once; <code>Custom</code> is the fourth option of the same group and commits on <b>Apply</b>; which option is lit is derived by comparison at commit time, never stored. Three things to get right: a preset spans <b>today&nbsp;&minus;&nbsp;(N&minus;1)&nbsp;&hellip;&nbsp;today</b> (<code>30d</code> is thirty days, not thirty-one); Apply&rsquo;s pending range is component state only, never serialised; params are <code>from</code>/<code>to</code>, <b>not</b> <code>createdFrom</code>/<code>createdTo</code>, which mean ingestion time. Full interaction table in frame&nbsp;01.</td></tr>
+            <tr><td>Note markers (ⓘ / ⚠)</td><td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Exists</span></td><td>Unicode glyph + colour class, the house pattern &mdash; <code>.bulk-editor__infotip</code> (<code>index.css:10901</code>) and <code>.bulk-editor__warn-tri</code>. <b>There is no icon library in this project</b>; do not add one. <code>role="img"</code> + <code>aria-label</code> per <code>bulk-confirm-modal.tsx:107</code>. The standing coverage caveat sits behind the <code>&#9432;</code> on the section title and must open from a <b><code>Popover</code> on click</b>, never a <code>Tooltip</code> &mdash; Radix bails out of its open handler on <code>pointerType === 'touch'</code>, so a tooltip is unreachable on a phone. The mockup stands the popover in with a <code>title</code> attribute. One new CSS rule (<code>.section-infotip</code>).</td></tr>
+            <tr><td>Trust header list</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 1</span></td><td>Three facts + a state badge per row, one row per channel, always expanded. <code>KeyValueList</code> is a 2-col grid and cannot carry it. <b>Do not summarise, fold, or lay this list out side by side to save height</b> &mdash; the per-channel rows are the section&rsquo;s purpose, not its detail. Height comes out of the attention list instead.</td></tr>
+            <tr><td>Attention list</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 2</span></td><td>Structured list, one line per row (headline + <code>&middot;</code> qualifier, wrapping at narrow widths). <b>Either/or, enforced in the renderer:</b> if anything is open, render only the open items; if nothing is open, render the single all-clear row &mdash; never an empty box. A resolved row must never appear beside an open one. Section height changes with state; see frame&nbsp;02.</td></tr>
             <tr><td>Recalculating</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 3</span></td><td><code>.is-recalculating</code> &mdash; one opacity rule, reused by all five sections.</td></tr>
-            <tr><td>KPI qualifier rows</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 4</span></td><td><code>.kpi-card__qualifiers</code> + <code>.kpi-card__qualifier</code> &mdash; the second figure, under a hairline on the card floor. <code>KpiCard</code> carries only one value today: <code>__description</code> is prose and <code>__value-suffix</code> was cut as illegible beside a four-figure amount. Every card carries exactly one qualifier, so nothing exercises the plural &mdash; <b>keep it plural anyway</b> (<code>qualifiers: {label, value}[]</code>): it makes floor alignment independent of how many figures a card carries, and re-pluralising later is a second component change for the same reason. <code>margin-top: auto</code> on the wrapper is load-bearing &mdash; in a 3&times;2 grid it lines the hairlines up <b>per row</b>, however long the labels run. Component change: <code>KpiCard</code> gains <code>qualifiers</code> (rules 7, 9, 10 for the other three props).</td></tr>
+            <tr><td>KPI qualifier rows</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 4</span></td><td><code>.kpi-card__qualifiers</code> + <code>.kpi-card__qualifier</code> &mdash; the second figure, under a hairline on the card floor. <b>Keep <code>qualifiers</code> a LIST</b> (<code>{label, value}[]</code>) even though every card carries exactly one today: that is what makes floor alignment independent of the count, and re-pluralising later is a second component change for the same reason. <code>margin-top: auto</code> on the wrapper is load-bearing &mdash; in a 3&times;2 grid it aligns the hairlines per row however long the labels run. Component change: <code>KpiCard</code> gains <code>qualifiers</code>.</td></tr>
             <tr><td>Total row</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 5</span></td><td><code>.data-table tfoot td</code> &mdash; the app has no table footer today.</td></tr>
-            <tr><td>KPI column ladder</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 6</span></td><td>Explicit columns on <code>.status-strip</code>: <b>3&times;2 &rarr; 2&times;3 &rarr; vertical</b>. <b>Not optional:</b> <code>auto-fit</code> is the wrong mechanism for a strip whose card count is fixed by the metric model &mdash; it gave three columns plus an orphan at 768&nbsp;px with four cards, and six columns of ~200&nbsp;px at 1280&nbsp;px with six. <b>This diverges from the style guide&rsquo;s literal 1&times;4</b>, written for a four-card strip; the intent (fixed count per breakpoint, even grid, no orphan) is preserved. One consequence #1990 must keep: an explicit count does not degrade in a narrow CONTAINER the way <code>auto-fit</code> did, so a strip inside a box narrower than the viewport (drawer, split pane) needs its own declaration &mdash; this file needed two for its device-frame scaffolding.</td></tr>
-            <tr><td>KPI headline pair</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 7</span></td><td><code>.kpi-card__headline</code> + <code>__metric</code> &mdash; the big number now needs its own caption, because the card label became a group name (&bdquo;REVENUE&ldquo; is not &bdquo;GMV&ldquo;). Sentence case, so the caps eyebrow above it stays the only header. The wrapper exists purely to tighten the card&rsquo;s <code>--space-3</code> flex gap between a figure and its caption. Component change: <code>KpiCard</code> gains <code>metric</code>.</td></tr>
-            <tr><td>Strip note + breakdown</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 8</span></td><td><code>.strip-note</code> &mdash; the conversion statement and the button that opens the evidence, belonging to the strip rather than to one card. The table behind it is <code>DataTable</code> + <code>tfoot</code> (rule 5) with no additions. Wraps below 768&nbsp;px so a rate is never truncated mid-number. <b>Not a component:</b> a strip is a layout, not a primitive, so this is markup <code>AnalyticsPage</code> composes &mdash; <code>KpiCard</code> stays out of it.</td></tr>
-            <tr><td>KPI delta</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 9</span></td><td><code>.kpi-card__delta</code> &mdash; the period-over-period change, on <b>its own line</b> under the figure and its caption. Not in the value row: at six cards a converted amount and a delta cannot share a ~380&nbsp;px row. <b>Not in the label row</b> either, where the sparkline lives &mdash; a trend line and a delta answer the same question, and side by side they read as one compound claim. The own line also buys a visible basis (<code>.kpi-card__delta-basis</code>, &bdquo;vs previous period&ldquo;) rather than an <code>.sr-only</code> sentence only. Two rules the implementation must not collapse: the <b>arrow follows the number</b> while the <b>colour follows the meaning</b> (<code>--good</code>/<code>--bad</code>, not <code>--up</code>/<code>--down</code> &mdash; a falling return rate is a down arrow in green), and a <b>rate moves in points, not percent</b>. The glyph is <code>aria-hidden</code> with a full sentence in an <code>.sr-only</code> span, because &bdquo;↑&nbsp;9.5%&ldquo; read aloud loses the direction. Component change: <code>KpiCard</code> gains <code>delta</code>. <b>Scope addition</b> &mdash; see the findings table.</td></tr>
-            <tr><td>Per-card definition</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 10</span></td><td><code>.infotip</code> + <code>.infotip-popover</code> + <code>.infotip-def*</code> &mdash; one <code>&#9432;</code> per card, in the <b>eyebrow</b>, opened by <b>click</b>, covering <b>both</b> of the card&rsquo;s figures (on a caption it would imply the other needs no definition). Elsewhere in this file the marker stands its popover in with a <code>title</code> attribute; this one is built, because a definition is where the shorthand fails hardest &mdash; <code>title</code> shows nothing at all on touch, and the operator who does not know what GMV counts is the one who must not be told nothing. The panel is <b>structured, not prose</b>: term, definition, formula (in <code>&lt;code&gt;</code>, so &bdquo;GMV&nbsp;&divide;&nbsp;Orders&ldquo; is findable without reading a sentence), caveat. Behaviour to carry over: one open at a time, click-outside closes, <b>Escape closes and returns focus to the trigger</b>, <code>aria-expanded</code> moves with the panel. In the app this is Radix <code>Popover</code>, <b>never</b> <code>Tooltip</code> &mdash; and let it do <b>collision detection</b>: this file declares <code>.infotip--end</code> per card because a static file cannot measure, which is right at &ge;1024&nbsp;px and wrong after the reflows. Component change: <code>KpiCard</code> gains an <code>info</code> slot in the label row. The <code>:has()</code> z-index lift is needed because every card is <code>position: relative</code>.</td></tr>
-            <tr><td>Card with no readable figure</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 11</span></td><td><code>.kpi-card--planned</code> + <code>.kpi-card__planned-tag</code> &mdash; for the two cards where <b>both</b> figures are blocked (Returns &amp; refunds, Cancellations). A &dagger; per unavailable figure is right while a card has one blocked half and one that ships, and wrong where every number on the card is invented. <b>The figures stay drawn</b>: this page's job was to choose what a seller needs, so an unavailable figure is a requirement, not an omission &mdash; and a requirement drawn to scale is what a backend issue can be written against. The card declares its status instead: a <b>dashed</b> border (the one treatment nothing else uses, so it cannot read as a severity tone &mdash; <code>--warning</code>/<code>--error</code> mean a real reading that is bad news), a <code>Data order</code> tag in the eyebrow slot the sparkline would have taken (no readable figure means no series, so they cannot collide), and muted figures. Every &dagger; resolves to a row in <b>frame&nbsp;14</b>, generated from the same strings &mdash; a card cannot claim a gap the backlog does not list, and an unregistered marker surfaces there as <code>Unfiled</code> rather than being dropped. Component change: <code>KpiCard</code> gains a <code>planned</code> flag, the fifth prop.</td></tr>
-            <tr><td>Right-aligned table cells</td><td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Was broken</span></td><td><b>Found and fixed in place here.</b> <code>.data-table__cell--right</code> (specificity 0,1,0) loses to <code>.data-table th, .data-table td</code> (0,1,1) whatever the source order, so every money and count column in this file rendered left-aligned while the markup asked for right. The fix is the type selector on the helper. <b>The same bug is live in the product:</b> <code>index.css:2770</code> declares the bare class and <code>index.css:2797</code> sets <code>text-align: left</code> on <code>th, td</code>, so every right-aligned column renders left today &mdash; orders, products, sync jobs, connection diagnostics, bulk batch progress, dashboard. Same one-line fix. <b>Its own issue, not #1990</b> &mdash; it predates this epic and touches six pages.</td></tr>
+            <tr><td>KPI column ladder</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 6</span></td><td>Explicit columns on <code>.status-strip</code>: <b>3&times;2 &rarr; 2&times;3 &rarr; vertical</b>, all three steps declared under the page modifier. <b>Not optional:</b> <code>auto-fit</code> is the wrong mechanism for a strip whose card count is fixed by the metric model &mdash; it gives six columns of ~200&nbsp;px at 1280&nbsp;px. <b>Diverges from the style guide&rsquo;s literal 1&times;4</b>, written for a four-card strip; the intent (fixed count per breakpoint, even grid, no orphan) is preserved. Consequence to keep: an explicit count does not degrade inside a narrow <b>container</b> the way <code>auto-fit</code> did, so a strip in a drawer or split pane needs its own declaration.</td></tr>
+            <tr><td>KPI headline pair</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 7</span></td><td><code>.kpi-card__headline</code> + <code>__metric</code> &mdash; the big number needs its own caption, because the card label is a group name (&bdquo;REVENUE&ldquo; is not &bdquo;GMV&ldquo;). Sentence case, so the caps eyebrow stays the only header. The wrapper exists to tighten the card&rsquo;s <code>--space-3</code> gap between figure and caption. Component change: <code>KpiCard</code> gains <code>metric</code>.</td></tr>
+            <tr><td>Strip note + breakdown</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 8</span></td><td><code>.strip-note</code> &mdash; the conversion statement and the button that opens the evidence, belonging to the strip rather than to one card. The table behind it is <code>DataTable</code> + <code>tfoot</code> (rule 5), no additions. Wraps below 768&nbsp;px so a rate is never truncated mid-number. <b>Not a component:</b> a strip is a layout, so this is markup <code>AnalyticsPage</code> composes.</td></tr>
+            <tr><td>KPI delta</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 9</span></td><td><code>.kpi-card__delta</code> &mdash; the period-over-period change, on <b>its own line</b> under the figure and its caption. <b>Not in the label row</b>, where the sparkline lives: a trend line and a delta answer the same question and side by side read as one compound claim. The own line carries the visible basis (<code>.kpi-card__delta-basis</code>, &bdquo;vs previous period&ldquo;). Two rules that must not collapse into one: the <b>arrow follows the number</b> but the <b>colour follows the meaning</b> (hence <code>--good</code>/<code>--bad</code>, not <code>--up</code>/<code>--down</code> &mdash; a falling return rate is a down arrow in green), and a <b>rate moves in points, not percent</b>. Glyph is <code>aria-hidden</code> with a full sentence in <code>.sr-only</code>. Component change: <code>KpiCard</code> gains <code>delta</code>. <b>Scope addition</b> &mdash; see the findings table.</td></tr>
+            <tr><td>Per-card definition</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 10</span></td><td><code>.infotip</code> + <code>.infotip-popover</code> + <code>.infotip-def*</code> &mdash; one <code>&#9432;</code> per card, in the <b>eyebrow</b>, opened by <b>click</b>, covering <b>both</b> figures (on a caption it would imply the other needs no definition). This is the one marker built rather than stood in with <code>title</code>, because <code>title</code> shows nothing on touch and the operator who does not know what GMV counts is the one who must not be told nothing. Panel is <b>structured, not prose</b>: term, definition, formula in <code>&lt;code&gt;</code>, caveat. Behaviour: one open at a time, click-outside closes, <b>Escape closes and returns focus to the trigger</b>, <code>aria-expanded</code> moves with the panel. Radix <code>Popover</code>, <b>never</b> <code>Tooltip</code>, and let it do <b>collision detection</b> &mdash; this file hard-codes <code>.infotip--end</code> because a static file cannot measure. Component change: <code>KpiCard</code> gains an <code>info</code> slot.</td></tr>
+            <tr><td>Card with no readable figure</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 11</span></td><td><code>.kpi-card--planned</code> + <code>.kpi-card__planned-tag</code> &mdash; for the two cards where <b>both</b> figures are blocked (Returns &amp; refunds, Cancellations). <b>The figures stay drawn:</b> an unavailable figure a seller needs is a requirement, not an omission, and a requirement drawn to scale is what a backend issue can be written against. The card declares its status instead &mdash; a <b>dashed</b> border (the one treatment nothing else uses, so it cannot read as a severity tone), a <code>Data order</code> tag in the eyebrow slot the sparkline would have taken, and muted figures. Every &dagger; resolves to a row in <b>frame&nbsp;14</b>, generated from the same strings, so a card cannot claim a gap the backlog does not list. Component change: <code>KpiCard</code> gains a <code>planned</code> flag.</td></tr>
+            <tr><td>Right-aligned table cells</td><td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Was broken</span></td><td><code>.data-table__cell--right</code> (specificity 0,1,0) loses to <code>.data-table th, .data-table td</code> (0,1,1) whatever the source order, so every money and count column here rendered left-aligned. Fixed in place with a type selector on the helper. <b>The same bug is live in the product:</b> <code>index.css:2770</code> declares the bare class and <code>index.css:2797</code> sets <code>text-align: left</code> on <code>th, td</code> &mdash; orders, products, sync jobs, connection diagnostics, bulk batch progress and the dashboard all render left today. Same one-line fix, but <b>its own issue, not #1990</b>: it predates this epic and touches six pages.</td></tr>
             <tr><td><code>pages/analytics/</code></td><td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Does not exist</span></td><td>Every path in this file&rsquo;s captions is <b>proposed</b>, not existing. The route, the folder and the nav entry are all #1986.</td></tr>
           </tbody>
         </table>
@@ -2875,12 +2894,12 @@
             <tr>
               <td><b>Every tooltip in the product is invisible on a phone</b></td>
               <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Small, product-wide</span></td>
-              <td>The app&rsquo;s <code>Tooltip</code> is hover/focus-only by construction: Radix opens it from <code>onPointerMove</code> and that handler returns on <code>pointerType === 'touch'</code>. So every info glyph in the product &mdash; <code>.bulk-editor__infotip</code> on &bdquo;Publish immediately&rdquo; among them &mdash; reveals <b>nothing at all</b> on touch, and the help text behind it is simply missing there. This page chose visible text instead, so it needs no fix; the existing tooltips do &mdash; either a shared <code>InfoTip</code> composing <code>Tooltip</code> + <code>Popover</code>, or move that copy onto the page.</td>
+              <td>The app&rsquo;s <code>Tooltip</code> is hover/focus-only by construction: Radix opens it from <code>onPointerMove</code>, and that handler returns on <code>pointerType === 'touch'</code>. Every info glyph in the product reveals <b>nothing at all</b> on touch, so the help text behind it is simply missing there. <b>This page needs no fix</b> (it uses visible text and click-Popovers); the existing tooltips do &mdash; either a shared <code>InfoTip</code> composing <code>Tooltip</code> + <code>Popover</code>, or move that copy onto the page.</td>
             </tr>
             <tr>
               <td><b>The spec is wrong about PrestaShop</b></td>
               <td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Blocking</span></td>
-              <td>§4 says PrestaShop prices net. Its mapper puts net in <code>subtotal</code> and <b>gross</b> in <code>total</code>, and <code>total</code> is what revenue reads. No adapter anywhere sets <code>'exclusive'</code>. Correct the spec before #1984/#1985 build to it, or the substrate will normalise a problem that does not exist while missing the one that does &mdash; an <i>unstated</i> basis.</td>
+              <td>&sect;4 says PrestaShop prices net. Its mapper puts net in <code>subtotal</code> and <b>gross</b> in <code>total</code>, and <code>total</code> is what revenue reads. No adapter anywhere sets <code>'exclusive'</code>. Correct the spec before #1984/#1985 build to it, or the substrate normalises a problem that does not exist while missing the one that does &mdash; an <i>unstated</i> basis.</td>
             </tr>
             <tr>
               <td><code>placedAt</code> is unqueryable</td>
@@ -2910,17 +2929,17 @@
             <tr>
               <td>Money is formatted <code>en-US</code></td>
               <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Follow-up</span></td>
-              <td>A PL-first product renders <code>PLN 48,210.00</code>. Empty i18n catalogue, no switcher. Its own issue, not #2003. <b>Frame&nbsp;03b sharpens it:</b> under <code>en-US</code> the same formatter writes PLN as a <i>code</i> and EUR as a <i>symbol</i> (<code>PLN 48,210.00</code> beside <code>&euro;3,120.00</code>), so the by-channel subtotals the operator is meant to reconcile against the strip stop looking like the same kind of figure. Drawn as-is because that is what the app renders today &mdash; which makes the locale fix load-bearing for a multi-currency page, not cosmetic.</td>
+              <td>A PL-first product renders <code>PLN 48,210.00</code>. Empty i18n catalogue, no switcher. Its own issue, not #2003. <b>Frame&nbsp;03b sharpens it:</b> under <code>en-US</code> the same formatter writes PLN as a <i>code</i> and EUR as a <i>symbol</i> (<code>PLN 48,210.00</code> beside <code>&euro;3,120.00</code>), so the by-channel subtotals the operator reconciles against the strip stop looking like the same kind of figure. Drawn as-is because that is what the app renders today &mdash; which makes the locale fix load-bearing for the multi-currency page, not cosmetic.</td>
             </tr>
             <tr>
               <td><b>No return entity exists anywhere</b></td>
               <td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Blocking &mdash; new issue</span></td>
-              <td><b>The whole Returns &amp; refunds card is drawn against nothing.</b> There is no return, withdrawal or refund entity in <code>libs/core</code>; <code>refunded</code> is an unwritten member of the order-status enum and no refund amount is stored anywhere, so neither return rate nor refunded value can be computed at any price &mdash; and Net sales inherits the gap, being GMV minus that figure. The spec files it under known gaps and &sect;8 out of scope, rightly &mdash; but PL&rsquo;s 14-day right of withdrawal makes returns a real operational cost the product is blind to, which is why the card is drawn rather than dropped. <b>Needs its own data-capture issue.</b> Until it lands, and until [C] is fixed for Cancellations, the six-card strip <b>degrades to four</b>: Revenue (no qualifier), Orders (no daily rate, blocked on the range), Order value and Units. That degraded shape is what #1990 ships first, so it is worth drawing in review rather than discovering at implementation.</td>
+              <td><b>The whole Returns &amp; refunds card is drawn against nothing.</b> No return, withdrawal or refund entity exists in <code>libs/core</code>; <code>refunded</code> is an unwritten member of the order-status enum and no refund amount is stored anywhere, so neither return rate nor refunded value is computable at any price &mdash; and Net sales inherits the gap, being GMV minus that figure. The spec files it under known gaps and &sect;8 out of scope. It is drawn anyway because PL&rsquo;s 14-day right of withdrawal makes returns a real cost the product is blind to. <b>Needs its own data-capture issue.</b> Until it lands, and until [C] is fixed, the six-card strip <b>degrades to four</b>: Revenue (no qualifier), Orders (no daily rate, blocked on the range), Order value, Units. That degraded shape is what #1990 ships first.</td>
             </tr>
             <tr>
               <td><b>FX: no conversion, and no order-day rate to convert with</b></td>
               <td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Blocking &mdash; [X]</span></td>
-              <td>Declaring a reporting currency (decision 11, settled) needs two things the repo has neither of: a conversion service, and a rate <b>stored per order at ingestion</b>. The second is the one that gets missed. Converting at report time makes every historical figure a function of today&rsquo;s rate &mdash; last month&rsquo;s revenue changes every morning, and the DoD line about a maintainer reconciling the page against the source becomes unsatisfiable. Store the order-day rate beside the order total, convert from that, and keep the source-currency figure so the by-channel table can still show what each market took.</td>
+              <td>Declaring a reporting currency (decision 11) needs two things the repo has neither of: a conversion service, and a rate <b>stored per order at ingestion</b>. The second gets missed. Converting at report time makes every historical figure a function of today&rsquo;s rate &mdash; last month&rsquo;s revenue changes every morning, and the DoD line about reconciling the page against the source becomes unsatisfiable. Store the order-day rate beside the order total, convert from that, and keep the source-currency figure so the by-channel table can still show what each market took.</td>
             </tr>
             <tr>
               <td>Money tables split by currency; only the strip converts</td>
@@ -2930,32 +2949,32 @@
             <tr>
               <td>The median cannot be derived from the channel rows</td>
               <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Follow-up</span></td>
-              <td>A median of medians is not a median, and converting a per-currency median is not the median of the converted values. It has to be computed over individual order values, in the reporting currency &mdash; <code>percentile_cont</code> over a total extracted from the <code>orderSnapshot</code> JSONB, which is the same unindexed read every money metric on this page needs and the reason spec &sect;6 puts the substrate work before the money section.</td>
+              <td>A median of medians is not a median, and converting a per-currency median is not the median of converted values. It has to be computed over individual order values in the reporting currency &mdash; <code>percentile_cont</code> over a total extracted from the <code>orderSnapshot</code> JSONB, the same unindexed read every money metric here needs, and the reason spec &sect;6 puts substrate work before the money section.</td>
             </tr>
             <tr>
               <td><code>KpiCard</code> needs <b>five</b> new props</td>
               <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Small &mdash; but cost it</span></td>
-              <td>The shipped component carries one value plus a prose <code>description</code>. This strip needs four more &mdash; <code>metric</code> (the caption under the figure), <code>qualifiers</code> (<code>{ label, value }[]</code>, keep it a LIST, see rule 4), <code>delta</code>, and an <code>info</code> slot in the label row for the definition trigger &mdash; plus <code>planned</code> (rule 11) for a card whose every figure is a data order. New rules 4, 7, 9, 10 and 11 are the CSS half; all five props are additive, and the dashboard strip renders unchanged without them. <b>The &bdquo;no new primitive&ldquo; criterion still holds</b> (no new component), but <b>five props is not free</b> &mdash; #1990 should plan it, and <code>DataTable</code>'s footer is a second change of the same size (own row). The FX statement stayed page markup (rule 8) rather than becoming a prop: it belongs to the strip, not a card. <code>description</code> keeps the tax-basis line on the Revenue card.</td>
+              <td>The shipped component carries one value plus a prose <code>description</code>. This strip needs <code>metric</code> (caption under the figure), <code>qualifiers</code> (<code>{ label, value }[]</code> &mdash; keep it a LIST, see rule 4), <code>delta</code>, <code>info</code> (definition trigger in the label row) and <code>planned</code> (rule 11, for a card whose every figure is a data order). All five are additive and the dashboard strip renders unchanged when they are absent. <b>&bdquo;No new primitive&ldquo; still holds</b> (no new component), but five props is not a free change &mdash; #1990 should plan it. The FX statement deliberately did <b>not</b> become a sixth: it belongs to the strip, not a card (rule 8).</td>
             </tr>
             <tr>
               <td><code>DataTable</code> needs a footer</td>
               <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Small &mdash; but cost it</span></td>
-              <td>New rule 5 is written as CSS (<code>.data-table tfoot td</code>) and that undersells it: <code>DataTable</code> has no footer API at all, so the Total row on <b>By channel</b> and the per-currency subtotals on the breakdown are a component change of the same kind as <code>KpiCard</code>'s props &mdash; not a stylesheet addition. <b>#1990 plans two component changes, not one.</b> <code>cardView</code> is the part to think about: a footer has no obvious card equivalent, and the mockup does not answer it &mdash; both tables carry their totals in the desktop table only.</td>
+              <td>New rule 5 is written as CSS (<code>.data-table tfoot td</code>) and that undersells it: <code>DataTable</code> has <b>no footer API at all</b>, so the Total row on By channel and the per-currency subtotals are a component change of the same size as <code>KpiCard</code>&rsquo;s props &mdash; not a stylesheet addition. #1990 plans two component changes, not one. <code>cardView</code> is the open part: a footer has no obvious card equivalent, and this mockup does not answer it &mdash; both tables carry totals in the desktop table only.</td>
             </tr>
             <tr>
               <td><b>Every card change is scoped to this page</b></td>
-              <td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>Round 8</span></td>
-              <td>Earlier rounds edited the bare <code>.kpi-card</code> and <code>.status-strip</code> rules &mdash; the same classes the dashboard at <code>/</code> renders &mdash; while the scope note claimed the dashboard was untouched. Three declarations: the card's <code>min-height</code> (7rem&nbsp;&rarr;&nbsp;9.5rem), the value row's <code>flex-wrap</code>, and the strip's columns. All three now hang off <code>.status-strip--analytics</code>. <b>#1990 must implement this as a page-level modifier on the strip, not an edit to the primitive</b> &mdash; the dashboard's four-card strip is sized for a card carrying a figure and a caption, and a six-card floor would leave a band of dead space under every number.</td>
+              <td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>Scoping</span></td>
+              <td>The <code>.kpi-card</code> and <code>.status-strip</code> classes are what the dashboard at <code>/</code> renders too, so three declarations had to move behind <code>.status-strip--analytics</code>: the card&rsquo;s <code>min-height</code> (7rem&nbsp;&rarr;&nbsp;9.5rem), the value row&rsquo;s <code>flex-wrap</code>, and the strip&rsquo;s columns. <b>#1990 must implement this as a page-level modifier on the strip, not as an edit to the primitive</b> &mdash; the dashboard&rsquo;s four-card strip is sized for a figure and a caption, and inheriting a six-card floor would leave a band of dead space under every number.</td>
             </tr>
             <tr>
-              <td><b>The shipped <code>.status-strip</code> ladder is not what round 7 read</b></td>
+              <td><b>The shipped <code>.status-strip</code> overrides itself</b></td>
               <td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Would have shipped wrong</span></td>
-              <td>An earlier draft argued against <code>repeat(auto-fit, minmax(180px, 1fr))</code> (<code>index.css:1999</code>) and declared one media query to correct it. But <code>index.css:6241-6260</code> already overrides that line with an explicit 1&nbsp;&rarr;&nbsp;2&nbsp;&rarr;&nbsp;4 ladder, so (a) the measured &bdquo;three columns plus an orphan at 768&nbsp;px&ldquo; never described the running app, and (b) a base <code>repeat(3)</code> plus one 768&ndash;1023.98 query would have <b>lost</b> to <code>@media (min-width: 1024px) { repeat(4) }</code> &mdash; same specificity, later in the file &mdash; giving four columns on the desktop this page targets. Rule 6 now restates all three steps under the modifier. <b>The lesson generalises:</b> a transcription is only as good as its last read of <code>index.css</code>, and a stylesheet of 16,900 lines overrides itself.</td>
+              <td><code>index.css:1999</code> declares <code>repeat(auto-fit, minmax(180px, 1fr))</code>, but <code>index.css:6241-6260</code> already overrides it with an explicit 1&nbsp;&rarr;&nbsp;2&nbsp;&rarr;&nbsp;4 ladder. So a base <code>repeat(3)</code> plus a single 768&ndash;1023.98 query would have <b>lost</b> to <code>@media (min-width: 1024px) { repeat(4) }</code> &mdash; same specificity, later in the file &mdash; giving four columns on the desktop this page is designed for. Rule 6 therefore restates all three steps under the modifier. <b>The lesson generalises:</b> a transcription is only as good as its last read of <code>index.css</code>, and a stylesheet of 16,900 lines overrides itself.</td>
             </tr>
             <tr>
               <td><code>.data-table__cell--right</code> is broken <b>in the app</b></td>
               <td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Separate issue &mdash; not this epic</span></td>
-              <td>The bare class <code>.data-table__cell--right</code> (<code>index.css:2770</code>, specificity 0,1,0) loses to <code>.data-table th, .data-table td { text-align: left }</code> (<code>index.css:2797</code>, 0,1,1) whatever the source order &mdash; so <b>every right-aligned column in the product renders left-aligned today</b>: orders, products, sync jobs, connection diagnostics, bulk batch progress and the dashboard, wherever a column declares <code>align: 'right'</code>. This file fixes it locally by qualifying with the type selector; <code>index.css</code> needs the same one-line fix. <b>Its own issue, not a line in an analytics PR</b> &mdash; it predates this epic, touches six pages, and a reviewer seeing it inside #1990 cannot tell it apart from the work.</td>
+              <td>Written as the bare class, <code>.data-table__cell--right</code> (<code>index.css:2770</code>, specificity 0,1,0) loses to <code>.data-table th, .data-table td { text-align: left }</code> (<code>index.css:2797</code>, 0,1,1) whatever the source order &mdash; so <b>every right-aligned column in the product renders left-aligned today</b>: orders, products, sync jobs, connection diagnostics, bulk batch progress, dashboard. One-line fix (qualify with the type selector), already applied locally here. <b>Its own issue, not a line in an analytics PR:</b> it predates this epic, touches six pages, and a reviewer seeing it inside #1990 cannot tell it apart from the work.</td>
             </tr>
             <tr>
               <td><code>analytics</code> is already taken</td>
@@ -2965,42 +2984,42 @@
             <tr>
               <td><code>.status-strip</code>&rsquo;s <code>auto-fit</code> is the wrong mechanism</td>
               <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Small</span></td>
-              <td>Measured, not read. <code>repeat(auto-fit, minmax(180px, 1fr))</code> resolved to three columns plus an orphan at 768&nbsp;px with four cards, and to <b>six columns of ~200&nbsp;px</b> at 1280&nbsp;px with six &mdash; a width no card on this strip survives. A strip whose card count is set by the metric model wants an explicit count per breakpoint, which is what rule&nbsp;6 declares (3&times;2 / 2&times;3 / 1). Either fix <code>.status-strip</code> for every consumer (the dashboard strip has its own card count and would need its own ladder) or keep the per-page override this file ships. <b>Decide once:</b> the moment two pages own contradicting strip ladders, the guide is describing neither.</td>
+              <td>Measured, not read. <code>repeat(auto-fit, minmax(180px, 1fr))</code> resolves to <b>six columns of ~200&nbsp;px</b> at 1280&nbsp;px with six cards &mdash; a width no card on this strip survives. A strip whose card count is set by the metric model wants an explicit count per breakpoint (rule&nbsp;6). <b>Decide once:</b> either fix <code>.status-strip</code> for every consumer, or keep the per-page override &mdash; the moment two pages own contradicting ladders, the guide describes neither.</td>
             </tr>
             <tr>
               <td><b>Decision 11 settled: one reporting currency, rate on the card</b></td>
               <td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Blocking &mdash; [X]</span></td>
-              <td>The spec permits either grouping by currency or declaring one reporting currency, and insists only that the choice be made: <i>&bdquo;must be decided, not defaulted&rdquo;</i>. Decided: the page declares the system&rsquo;s main currency and states every money figure in it, with the rate, its source and its date under the figure (story S1 forbids the silent version, not the converted one), and leaves the by-channel subtotals in source currencies so the conversion can be audited. <b>This IS a request for FX, and it is new.</b> <code>exchangeRate</code> / <code>convertCurrency</code> are still zero hits, and the requirement is bigger than a rate lookup: it must be the order-day rate, stored per order &mdash; a report-day rate rewrites last month&rsquo;s revenue every morning and breaks the DoD line about reconciling the page against the source. #1984/#1985 own it; until then frame&nbsp;03b is drawn, not reachable.</td>
+              <td>The spec permits either grouping by currency or declaring one reporting currency, and insists only that the choice be made: <i>&bdquo;must be decided, not defaulted&rdquo;</i>. Decided: the page declares the system&rsquo;s main currency, states every money figure in it with the method and rate-table freshness under the figure (story S1 forbids the silent version, not the converted one), and leaves the by-channel subtotals in source currencies so the conversion can be audited. <b>This IS a request for FX, and it is new.</b> <code>exchangeRate</code>/<code>convertCurrency</code> are zero hits, and the requirement is bigger than a rate lookup &mdash; see the FX row above. #1984/#1985 own it; until then frame&nbsp;03b is drawn, not reachable.</td>
             </tr>
             <tr>
               <td>Cancellations became its own card</td>
               <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Scope addition &mdash; [C]</span></td>
-              <td><b>Named as an addition, not smuggled in as a fix.</b> #2003 asks only for the <i>statement</i> that cancelled orders are excluded, and the spec&rsquo;s chosen Design&nbsp;1 leaves metric <b>A7</b> (cancellation rate / cancelled value) out of its coverage list. It gets its own card because as a qualifier it read as a fact about orders, and because its <b>money</b> figure had nowhere to go: A7 is a rate <i>and</i> a value. The pair also forces the asymmetry into the open, which the card&rsquo;s ⓘ states: a <b>partially</b> cancelled order is not a cancelled order for the rate, but its cancelled items <i>are</i> in the value &mdash; two figures, two denominators, and a reader will otherwise assume the second is the first priced out. Still blocked on [C] &mdash; cancellation is a string inside the snapshot, never written as state, so nothing counts it and nothing sums it; the spec calls A7 &bdquo;the strongest argument for fixing [C]&rdquo;. If #1984/#1985 decline the scope, the card does not ship and the exclusion survives as the GMV caption and its definition.</td>
+              <td><b>Named as an addition, not smuggled in as a fix.</b> #2003 asks only for the <i>statement</i> that cancelled orders are excluded, and the spec&rsquo;s chosen Design&nbsp;1 leaves metric <b>A7</b> (cancellation rate / cancelled value) out of its coverage list. It gets a card because A7 is a rate <i>and</i> a value, and as a qualifier on the orders card its money figure had nowhere to go. The pair forces an asymmetry into the open, which the card&rsquo;s &#9432; states: a <b>partially</b> cancelled order is not a cancelled order for the rate, but its cancelled items <i>are</i> in the value &mdash; two figures, two denominators. Blocked on [C]: cancellation is a string inside the snapshot, never written as state, so nothing counts it and nothing sums it. If #1984/#1985 decline the scope, the card does not ship and the exclusion survives as the GMV caption.</td>
             </tr>
             <tr>
               <td><b>Net sales on the revenue card</b></td>
               <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Scope addition &mdash; blocked on returns</span></td>
-              <td>The Revenue card&rsquo;s qualifier is <b>GMV minus refunded value</b> &mdash; what was sold against what stayed sold. The honest pairing, and it costs something worth stating plainly: the card gives up a qualifier that <i>would</i> have rendered (cancellation rate needs [C], a fixable column) for one that <b>cannot render at all</b> until a return entity exists. A deliberate trade &mdash; two figures that answer each other, at the price of the second arriving later. <b>Sequencing for #1990:</b> until returns are captured, the Revenue card ships with its qualifier row empty, exactly as Returns&nbsp;&amp;&nbsp;refunds ships not at all. Both unblock on the same data-capture issue.</td>
+              <td>The Revenue card&rsquo;s qualifier is <b>GMV minus refunded value</b> &mdash; what was sold against what stayed sold. It costs something worth stating: the card gives up a qualifier that <i>would</i> have rendered (cancellation rate needs [C], a fixable column) for one that <b>cannot render at all</b> until a return entity exists. <b>Sequencing consequence for #1990:</b> until returns are captured, the Revenue card ships with its qualifier row empty, exactly as Returns&nbsp;&amp;&nbsp;refunds ships not at all. Both unblock on the same data-capture issue.</td>
             </tr>
             <tr>
               <td><b>Period-over-period deltas on all six cards</b></td>
               <td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Scope addition &mdash; contradicts the scope note</span></td>
-              <td><b>This contradicts this file&rsquo;s own scope note</b>, which says &bdquo;no period-over-period&ldquo;. It is here because a strip without it answers &bdquo;how much&ldquo; and never &bdquo;is this better than last month&ldquo;, the question an operator actually opens a business page with. <b>All six are blocked</b> on the page&rsquo;s worst gap: comparing two windows needs a filterable order date, and <code>placedAt</code> has no column &mdash; the same blocker as the range filter, so the delta ships exactly when the range does. Three rules that must survive implementation: colour follows meaning rather than direction (a falling return rate is green), a rate&rsquo;s change is stated in <b>percentage points</b>, not a percentage of a percentage, and the <b>basis is visible text</b>, not only an <code>.sr-only</code> sentence.</td>
+              <td><b>This contradicts this file&rsquo;s own scope note</b>, which says &bdquo;no period-over-period&ldquo;. It is here because a strip without it answers &bdquo;how much&ldquo; and never &bdquo;is this better than last month&ldquo;. <b>All six are blocked</b> on the page&rsquo;s worst gap: comparing two windows needs a filterable order date, and <code>placedAt</code> has no column &mdash; the same blocker as the range filter, so the delta ships exactly when the range does. Three rules that must survive implementation: colour follows meaning rather than direction (a falling return rate is green), a rate&rsquo;s change is stated in <b>percentage points</b>, and the <b>basis is visible text</b>, not only an <code>.sr-only</code> sentence.</td>
             </tr>
             <tr>
               <td><b>Six cards instead of four</b></td>
-              <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Scope addition &mdash; round 7</span></td>
-              <td>The four-card strip was a layout constraint wearing a metric model: Units and Cancelled rode as qualifiers on the orders card because four cards fit a row, leaving one card answering three questions and one money figure (cancelled value) with nowhere to live. Six cards give each question its own card and each card a true pair. <b>What it costs:</b> a strip is meant to be a glance and six cards is not one &mdash; mitigated by every card having the same internal shape, so the reader learns it once. It also forces the column ladder away from the guide&rsquo;s literal 1&times;4 (rule&nbsp;6) and adds two figures for #1990 to source (<code>Average daily orders</code>, <code>Units per order</code> &mdash; pure ratios of figures already on the page, no new capture). <b>If it reads heavy on the running app, fold Units back into Orders first;</b> its pair is the one an operator asks for least often.</td>
+              <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Scope addition</span></td>
+              <td>Four cards was a layout constraint wearing a metric model: Units and Cancelled rode as qualifiers on the orders card because four cards fit a row, leaving one card answering three questions and one money figure (cancelled value) with nowhere to live. Six cards give each question its own card and each card a true pair. <b>What it costs:</b> a strip is meant to be a glance, and six is not one &mdash; mitigated by every card having the same internal shape, so the reader learns it once. It also forces the ladder away from the guide&rsquo;s literal 1&times;4 (rule&nbsp;6) and adds two figures to source (<code>Average daily orders</code>, <code>Units per order</code> &mdash; pure ratios of figures already present). <b>If it reads heavy on the running app, fold Units back into Orders first.</b></td>
             </tr>
             <tr>
-              <td><b>Abbreviations on the cards &mdash; reverses round&nbsp;6</b></td>
-              <td><span class="status-badge status-badge--neutral"><span class="status-badge__dot"></span>Reversal, argued</span></td>
-              <td>&bdquo;AOV&ldquo; appears nowhere in <code>apps/web</code> (grep: <b>still</b> zero hits), so an earlier draft spelled it out rather than teach the operator analyst vocabulary the product does not speak. <b>That argument was conditional on nothing defining it, and now the card does.</b> With one ⓘ per card carrying the expansion, the formula and the caveat, the abbreviation is the operator&rsquo;s own shorthand rather than an unexplained one &mdash; and it keeps a caption to one line in a 3-column grid. GMV and AOV are therefore captions, with the full terms in the panel. <b>The condition is load-bearing:</b> if #1990 ships the strip without the definition popover, the captions must revert to the expanded terms.</td>
+              <td><b>Abbreviations on the cards, definitions in the &#9432;</b></td>
+              <td><span class="status-badge status-badge--neutral"><span class="status-badge__dot"></span>Conditional</span></td>
+              <td>&bdquo;AOV&ldquo; appears nowhere in <code>apps/web</code> (grep: zero hits), so an unexplained abbreviation would teach the operator analyst vocabulary the product does not speak. With one &#9432; per card carrying the expansion, the formula and the caveat, it is the operator&rsquo;s own shorthand instead &mdash; and it is what keeps a caption to one line in a 3-column grid. <b>The condition is load-bearing: if #1990 ships the strip without the definition popover, the captions must revert to the expanded terms.</b></td>
             </tr>
             <tr>
               <td>The tax-basis count was typed, and was wrong</td>
               <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Small, but instructive</span></td>
-              <td>Three strings in this file said &bdquo;two channels did not state their tax basis&rdquo; while the dataset had exactly one undeclared channel &mdash; matching the repo, where only PrestaShop fails to declare. Corrected to one, and the KPI card now <b>derives</b> the count instead of carrying it as prose. Worth carrying into #1990: the alert copy has to be built from the same query as the figure it qualifies, or it will drift the first time a connection is added.</td>
+              <td>Three strings said &bdquo;two channels did not state their tax basis&rdquo; while the dataset had exactly one &mdash; matching the repo, where only PrestaShop fails to declare. The KPI card now <b>derives</b> the count instead of carrying it as prose. Worth carrying into #1990: alert copy has to be built from the same query as the figure it qualifies, or it drifts the first time a connection is added.</td>
             </tr>
             <tr>
               <td>Card view vs. the style guide</td>
@@ -3010,7 +3029,7 @@
             <tr>
               <td>Thumbnail source</td>
               <td><span class="status-badge status-badge--neutral"><span class="status-badge__dot"></span>Resolved</span></td>
-              <td>An earlier draft called thumbnails impossible, reading them off <code>OrderItem.imageUrl</code> &mdash; a field only the WooCommerce order-source adapter sets (Allegro's checkout-form endpoint has no image; Erli and PrestaShop omit it). The row keys on the internal <code>productId</code>, so the endpoint joins the <b>catalogue</b> instead and serves <code>Product.images[0]</code>. Cost: one join on a page that already reads the catalogue. Unmapped items fall back to the initial.</td>
+              <td>Do not read thumbnails off <code>OrderItem.imageUrl</code> &mdash; only the WooCommerce order-source adapter sets it (Allegro&rsquo;s checkout-form endpoint has no image; Erli and PrestaShop omit it), so the column would turn patchy. The row keys on the internal <code>productId</code>, so the endpoint joins the <b>catalogue</b> and serves <code>Product.images[0]</code>. Cost: one join on a page that already reads the catalogue. Unmapped items fall back to the initial.</td>
             </tr>
           </tbody>
         </table>
@@ -3033,7 +3052,7 @@
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">14 &middot; Data order</span>
       <b>Every &dagger; on this page, as one list the backend can work from</b>
-      <span class="caption">generated from the page itself &middot; one row per figure the platform cannot produce yet</span>
+      <span class="caption">generated from the page &middot; one row per blocked figure</span>
       <span class="dep dep--blocked">Backend input</span>
     </div>
     <div class="viewport-frame__scroll">
@@ -3043,37 +3062,42 @@
         <table class="gap-table" id="data-order-table"></table>
       </div>
 
-      <div class="gap-legend">
-        <span>
-          <b>This frame exists because the daggers were a specification nobody could act on.</b>
-          Sixteen <code>title</code> attributes spread across six cards, two tables and a strip note
-          say the same thing the list below says &mdash; but only to a reader who hovers each one and
-          keeps their own tally. The rows are generated from the same strings the markers render, so
-          the two <b>cannot</b> drift: a figure that stops being blocked leaves this table by deleting
-          one call, and nothing can appear here that no figure on the page asked for.
-          <br /><br />
-          <b>The order of the columns is the order of the questions.</b> <i>Figure</i> is what the
-          seller would read; <i>What is missing</i> is the state of the repo as of this round, checked
-          against the code rather than against the spec; <i>Shape of the answer</i> is the smallest
-          thing that unblocks the figure &mdash; deliberately not a schema, because the persistence
-          decision belongs to whoever writes the migration.
-          <br /><br />
-          <b>Two clusters, and they are not equally expensive.</b> Everything under
-          <code>placedAt</code> is one column plus an index on data OpenLinker <b>already has</b>
-          &mdash; the precedent exists (<code>IDX_order_records_snapshot_total</code> is an expression
-          index over the same JSONB), so the cost is known and it unblocks the range filter, all six
-          deltas and the daily rate at once. <b>Returns and refunds are a different order of
-          magnitude</b>: no entity exists anywhere in the repo, so this is a capture problem before it
-          is a reporting one. That asymmetry is the single most useful thing on this page for
-          planning, and it is invisible while the gaps are sixteen tooltips.
-          <br /><br />
-          <b>Why the two cards stay drawn.</b> A card that reads <code>&mdash;</code> where its figure
-          should be states a limitation; a card drawn to scale states a requirement. This page's job
-          was to choose the numbers a seller needs, and the answer does not change because the
-          platform cannot serve two of them yet &mdash; a seller who cannot see what returns cost them
-          is losing the money either way. The <code>Data order</code> tag and the dashed border say the
-          figures are not readings, and this table says what would make them so.
-        </span>
+      <div class="gap-legend gap-legend--card">
+        <span class="build-field__label">Build</span>
+        <div class="build-field__body">
+          The daggers alone were a specification nobody could act on: sixteen <code>title</code> attributes
+          say what this table says, but only to a reader who hovers each one and keeps their own tally. The
+          column order is the order of the questions &mdash; <b>Figure</b> is what the seller reads,
+          <b>What is missing</b> is the state of the repo checked against the code, <b>Shape of the answer</b>
+          is the smallest thing that unblocks it.
+        </div>
+        <span class="build-field__label">Rules</span>
+        <div class="build-field__body">
+          <ol>
+            <li>Rows are generated from the same strings the markers render, so the two cannot drift. A
+              figure that stops being blocked leaves by deleting one call.</li>
+            <li>&bdquo;Shape of the answer&ldquo; is deliberately not a schema &mdash; the persistence
+              decision belongs to whoever writes the migration.</li>
+          </ol>
+        </div>
+        <span class="build-field__label build-field__label--blocked">Two clusters</span>
+        <div class="build-field__body">
+          Not equally expensive, and the asymmetry is the useful part for planning.
+          <div class="build-gaps">
+            <div class="build-gaps__row"><span>Everything under <code>placedAt</code></span>
+              <span class="build-gaps__cause">One column plus an index on data already held &mdash; the
+              precedent exists (<code>IDX_order_records_snapshot_total</code> over the same JSONB). Unblocks
+              the range filter, six deltas and the daily rate at once.</span></div>
+            <div class="build-gaps__row"><span>Returns and refunds</span>
+              <span class="build-gaps__cause">No entity anywhere in the repo &mdash; a capture problem
+              before it is a reporting one.</span></div>
+          </div>
+        </div>
+        <span class="build-field__label build-field__label--watch">Watch out</span>
+        <div class="build-field__body build-field__body--watch">
+          The two blocked cards stay drawn on purpose: a card reading &mdash; states a <i>limitation</i>, a
+          card drawn to scale states a <i>requirement</i>.
+        </div>
       </div>
     </div>
   </section>
@@ -4547,26 +4571,26 @@
     ['Data current to 14:32', 'Trust header, always visible',
      'A time, not a duration — "5 minutes ago" is unreadable at a glance and goes stale while the page is open.'],
     ['data from 12 Dec 2025', 'Trust header, per channel',
-     'Never "complete since". The coverage boundary is not recorded anywhere, so the words must not promise completeness. This is the load-bearing string on the page.'],
+     'Never "complete since". The coverage boundary is not recorded anywhere, so the words must not promise completeness.'],
     ['Dates are the earliest order stored for each channel, not a guarantee of completeness. Some later orders may also be missing.',
      'Trust header, behind the ⓘ on the section title',
-     '"Stored" is the load-bearing word: it says the boundary is a property of what OpenLinker holds, not of what the channel sold. The added clause ("not a guarantee of completeness") is what earns the right to move off the surface — once the sentence is one click away it has to state its own conclusion rather than leave the operator to draw it. Correction 15 moved it there because it is a standing fact about the section, true of every row and never changing; a permanent full-width line was too expensive for something learnt once. It opens from a Popover on CLICK — never a hover Tooltip, which is unreachable on touch (frame 01).'],
+     '"Stored" means the boundary is what OpenLinker holds, not what sold. Opens via Popover on CLICK — hover is unreachable on touch.'],
     ['Covers 6 of the 30 days in this range — lower figures are missing history, not lower sales.', 'Trust header, short-history channel',
-     'Pattern: "Covers {n} of the {m} days in this range". A ratio, not a bare "6 days of history" — the operator should not have to subtract two dates to learn how unfair the comparison is. Correction 15 cut it to ONE LINE, from three sentences to one: a row note is read while scanning a list, and a note that wraps stops being a note. Two of the three sentences were sacrificed on purpose. The dropped "they will rise as the backfill continues" cost the most — without it the row states a shortfall without saying it is temporary — but the Backfilling badge on the same row already carries "still in progress", so the sentence was paying twice for one fact. What survives is the misreading itself, kept in the banner\'s own two-concrete-nouns construction ("missing history, not lower sales"); an earlier draft read "understated, not underperforming", which was rejected — a pair of bare adjectives with no subject, and "understated" also means "tasteful". Suppressed on day one (frame 12): with no sibling channels to be compared against, the note has no misreading left to pre-empt, and the panel below already carries the message.'],
+     '"Covers {n} of {m} days" — a ratio, one line, guards against a gap reading as a sales drop. Suppressed with no siblings.'],
     ['Allegro — main has not ingested since 3 Aug, 14:02', 'Page banner, stalled channel',
      'Names the channel and the moment. "Sync failed" would describe the system; this describes the consequence.'],
     ['It carries 64% of units in this range, so every figure below is understated. This is an ingestion gap, not a drop in sales.', 'Page banner, second line',
      'The last sentence is the whole point of the trust header — it pre-empts the single most dangerous misreading on the page.'],
     ['Revenue is totalled; one channel did not state its tax basis', 'Note under by-channel, bases aligned',
-     'Discloses the assumption while still answering the question. An unstated basis is treated as gross, which matches every shipped source.'],
+     'Discloses the assumption while still answering the question. An unstated basis is treated as gross, matching every shipped source.'],
     ['Revenue cannot be totalled for this range', 'Note under by-channel, bases mixed',
-     'States the refusal before the reason. "Cannot", not "will not" — this is a property of the data, not a policy.'],
+     'States the refusal before the reason. "Cannot", not "will not" — a property of the data, not a policy.'],
     ['Total · PLN / Total · EUR', 'By-channel footer, more than one currency',
-     'Subtotals in the currencies the markets actually took, and no grand total beneath them — the total is the strip, one row up, in the reporting currency. Naming the currency on the row is what lets the operator check the conversion instead of trusting it.'],
+     'Per-currency subtotals, no grand total beneath — the total sits one row up, in reporting currency, so conversion is verifiable.'],
     ['Share is measured in units, which is comparable regardless.', 'Note under by-channel',
      'Explains why the share column is not revenue-based, in the one place someone would ask.'],
     ['12 variants sell on Allegro — main but are not listed in Sklep główny', 'Needs attention, coverage gap',
-     'Both channel names, by the operator’s own naming. "Coverage gap detected" would name the system’s concept instead of the operator’s.'],
+     'Both channel names, by the operator’s own naming. "Coverage gap detected" would name the system’s concept instead.'],
     ['All destination syncs delivered · nothing stuck', 'Needs attention, resolved',
      'A finding, not an absence. The row stays so the operator can see the category was checked.'],
     ['No fast mover is near its stock safety buffer', 'Needs attention, resolved',
@@ -4574,38 +4598,38 @@
     ['Cancelled orders are excluded from every money figure', 'By-channel section header',
      'Stated once, near the numbers it governs, because the exclusion is invisible otherwise. Required by AC.'],
     ['REVENUE / ORDERS / ORDER VALUE / UNITS / RETURNS & REFUNDS / CANCELLATIONS', 'KPI card labels',
-     'Group names, not metric names — each card carries two figures and neither can own the label. The metric names itself under its own number. Round 7 renamed two of them: "Transactions" became ORDERS once Units left it for a card of its own (the group and its main figure are the same thing now, and the plainer word wins), and "Cart metrics" became ORDER VALUE because a median and a mean of the same quantity are not two "metrics" of a "cart" — they are two readings of one order value.'],
+     'Group names, not metric names — each card carries two figures, so the metric names itself under its own number.'],
     ['GMV', 'KPI card metric, Revenue',
-     'The abbreviation alone, with "Gross Merchandise Value" behind the ⓘ. This reverses round 6 for both GMV and AOV, and the condition is worth stating: the abbreviation is only honest because the card defines it one click away. The spec writes metric A1 as GMV and #1990 will be built in that word, so the page teaches it rather than replacing it — but if the definition popover does not ship, the caption must revert to the expanded term.'],
+     'Abbreviation alone, full name behind the ⓘ — honest because the definition is one click away. Reverts if the popover doesn’t ship.'],
     ['GMV (Gross Merchandise Value) · The total value of non-cancelled product items in orders placed during the selected period, after discounts and before refunds.',
      'Behind the ⓘ on the Revenue card',
-     'The definition arrives in the order the reader’s doubts do: what it is, then — as a caveat, set apart — what it leaves out and what it does NOT leave out. That second part is what earns the popover: an operator who reads "gross" will assume refunds are already gone, and the only place to correct that is next to the word. The Net sales block underneath answers the question the correction raises, formula and all, so the panel closes rather than sending the reader hunting. Opens on CLICK: a title attribute shows nothing at all on touch (frame 01), and a definition nobody on a phone can read is not a definition.'],
+     'States what it is, then what it excludes — "gross" implies refunds are already gone. Opens on CLICK; a title attribute shows nothing on touch.'],
     ['Net sales', 'KPI card qualifier, Revenue',
-     'The plainest available words for GMV minus what was refunded. "Revenue after returns" was tried and dropped: it names an operation rather than a figure, and the qualifier row is a label-and-figure pair, not a sentence. Round 7 renamed it from "Net revenue" to match the term the definitions use — one figure, one name, everywhere on the page.'],
+     'Plainest words for GMV minus refunds. The qualifier row is a label-and-figure pair — a figure, not an operation.'],
     ['Orders', 'KPI card metric, Orders',
-     'Round 6 wrote this as "Orders · excludes cancelled", carrying the exclusion in the caption. Round 7 moves that into the definition, where the full rule fits: a fully cancelled order is out, a PARTIALLY cancelled order still counts as one order. The caption could state the first half and not the second, and half an exclusion rule is worse than a pointer to all of it.'],
+     'Cancellation rule in the definition: a fully cancelled order is excluded, a PARTIALLY cancelled order still counts as one.'],
     ['Avg. daily orders', 'KPI card qualifier, Orders',
-     'Abbreviated only here, and only because the qualifier row is a single line at 3 columns. It is the figure that makes two ranges of different length comparable — 268 orders means nothing until the reader knows whether that was a week or a quarter — and it divides by CALENDAR days, not by days that carried an order, which is why it carries the range gap marker.'],
+     'Abbreviated only here (one line, 3 cols). Divides by CALENDAR days, not days with an order — carries the gap marker.'],
     ['AOV', 'KPI card metric, Order value',
-     'See GMV: abbreviation on the card, "Average Order Value" and the formula (GMV ÷ Orders) behind the ⓘ. Round 6 refused this on the grounds that the abbreviation appears nowhere in the product (grep of apps/web: still zero hits) — an argument that held while nothing defined it.'],
+     'See GMV: abbreviation on the card, "Average Order Value" and the formula (GMV ÷ Orders) behind the ⓘ.'],
     ['Median order value', 'KPI card qualifier, Order value',
-     'Named in full rather than as "Median:", because the qualifier row is a label-and-figure pair, not a sentence. Why it is there is spec A′5: at 10–100 orders a day one large order visibly moves the mean. The ⓘ says that outright — half the orders are below, half above, and the median is how you catch an AOV inflated by a handful of unusual baskets — because a reader who does not already know what a median is for will read it as a rounding of the figure above it.'],
+     'Named in full, not "Median:". At 10–100 orders/day one order skews the mean; the ⓘ blocks a misread as rounded AOV.'],
     ['Units per order', 'KPI card qualifier, Units',
-     'One decimal, because the difference between 1.6 and 2.4 items in a basket is the whole reason the figure is on the card and an integer would hide it.'],
+     'One decimal, because the difference between 1.6 and 2.4 items in a basket is the whole point, and an integer would hide it.'],
     ['Cancellation rate / Cancelled value', 'KPI card, Cancellations',
-     'A rate and the money behind it, which is how spec A7 is written. The ⓘ carries the asymmetry the pair cannot state on its own: a partially cancelled order is NOT counted as a cancelled order for the rate, but the value of its cancelled items IS in the value. Two denominators on one card — without the note a reader assumes the second figure is the first priced out.'],
+     'Spec A7: rate plus the money behind it. A partially cancelled order does NOT count toward the rate, but its value DOES.'],
     ['↑ 9.5% vs previous period · ↓ 1.4% vs previous period · ↑ 0.5 pp vs previous period', 'KPI card delta, all six cards',
-     'Round 7 moved the basis into visible text. In round 6 "versus the previous period" existed only in the sr-only sentence, so the screen-reader user was told what the comparison was against and the sighted reader had to assume it. The whole sentence still lives in the sr-only span, because an arrow read aloud is silent. Two decisions are encoded in the glyph: the ARROW follows the number but the COLOUR follows the meaning, so a falling return rate is a down arrow in green — colouring it red would tell the operator the opposite of the truth. And a rate is stated in POINTS, not percent: "return rate +10.1%" leaves the reader asking ten percent of what, while "+0.5 pp" is the subtraction they would have done by hand.'],
+     'Basis text is visible, not sr-only. Colour follows meaning, not direction — a falling return rate is a green arrow. Rates use POINTS, not percent.'],
     ['Return rate / Refunded value', 'KPI card, Returns & refunds',
-     'Plain seller vocabulary for the thing PL’s 14-day right of withdrawal makes real. Both carry the gap marker: no return entity exists anywhere in the repo. The ⓘ carries the caveat that matters more than the definition — returns arrive AFTER the sale, so a recent period is incomplete while the window is still open, and a rate read without that reads as an improvement.'],
+     'Plain words for PL’s 14-day right of withdrawal. Carries the gap marker (no return entity exists). Returns arrive AFTER the sale, so a recent rate reads high.'],
     ['Converted to PLN using daily NBP average exchange rates · Rates last updated 6 Aug 2026', 'Strip note, more than one currency',
-     'Round 7 stopped printing the rate. "At NBP mid, 6 Aug 2026 · 1 EUR = 4.3300" stated ONE rate for a set of orders that each convert at the rate of their own order date — a number that described no order on the page. The line now names the method and the freshness of the rate table; which rate applied to what, and the fallbacks, sit behind the note’s ⓘ. The note carries exactly one marker and that marker is the trigger: an earlier draft appended a second ⓘ after the text, putting two identical glyphs on one line with nothing to say which could be clicked. Story S1 forbids mixed-currency data summing silently into one figure, and this is the sentence that stops it being silent.'],
+     'Names method and freshness, not one rate — each order converts at its own date. One ⓘ marker only; no silent mixed-currency totals (Story S1).'],
     ['View currency breakdown / Hide currency breakdown', 'Button in the strip note',
-     'The button names what it will do next, and the noun stays the same in both directions so the control does not appear to change subject. "Breakdown" alone was enough in round 6 and is not now: the page has channels and products a reader could also expect to break down, and the button sits in a note about currency rather than under a heading that would supply the noun. "Show details" would name the mechanism.'],
+     'The noun stays the same both directions, so the control doesn’t appear to change subject. "Breakdown" alone is ambiguous on this page.'],
     ['Breakdown by currency', 'Heading of the opened table',
-     'Says both what is split and what it is split by. The footer row is labelled "Total · PLN" rather than "Total", so it reads as the currencies above restated in one money and not as a third market.'],
+     'Says what is split and by what. Footer reads "Total · PLN", not "Total", so it isn’t read as a third market.'],
     ['Revenue · PLN / Revenue · EUR', 'Top products column headers, more than one currency',
-     'The currency qualifies the metric in the header rather than being left to the cells, because two money columns side by side otherwise read as one figure and its variant. A product not sold in euros gets EmptyValue, not a zero — it did not sell nothing there, it was not on sale.'],
+     'Currency qualifies the metric in the header, not the cells, so two money columns don’t merge visually. EmptyValue, not zero, when unsold in euros.'],
     ['Updating for 7 Jul – 5 Aug', 'Recalculating badge',
      'Names the range being computed, so the dimmed figures are legibly stale rather than merely faded.'],
     ['Unable to load top products', 'Section ErrorState title',
@@ -4615,22 +4639,22 @@
     ['Connect a sales channel to see figures here', 'Fresh instance, nothing connected',
      'An empty screen is an invitation to act. One action, no apology.'],
     ['First orders are still arriving', 'Fresh instance, backfilling',
-     'The second sentence — "Nothing is missing; it is not here yet" — is what separates this from an empty state. Zeros look identical; only one of them is a problem.'],
+     '"Nothing is missing, it is not here yet" separates this from empty — zeros look identical, only one is a problem.'],
     ['7d / 30d / 90d', 'Preset options in the date-range group',
-     'Unit shorthand, matching the density of the toolbar it sits in — the three presets are read as a set, and the group is labelled "Date range" so the unit needs no spelling out. Each counts INCLUSIVELY to today: 30d ends today and starts 29 days earlier.'],
+     'Unit shorthand matching the toolbar’s density; labelled "Date range" so the unit needs no spelling out. Counts INCLUSIVELY to today.'],
     ['Custom', 'Fourth option in the date-range group',
-     'A destination, not a state: the operator picks it to say "I will type the dates". It is also where the group lands whenever the committed dates match no preset — so the same word covers the deliberate choice and the arrived-at condition, and there is nothing else to name.'],
+     'A destination, not a state: picking it means "I will type the dates" — also where the group lands with no matching preset.'],
     ['Apply', 'Button after the To field',
-     'The verb, not "Update" or "Go" — it applies the range that is already visible in the fields. Disabled whenever there is nothing to apply, which is also how the operator can tell a draft from the range in force. A preset never needs it.'],
+     'The verb, not "Update" or "Go" — applies the visible range. Disabled with nothing to apply; a preset never needs it.'],
     ['Order date †', 'Chip in the toolbar, always visible',
-     'Names which clock the range filters. Without it the operator cannot tell "sold in July" from "ingested in July" — and today the API can only do the latter, which the † marks.'],
+     'Names which clock filters the range — "sold" vs "ingested". The API can only do the latter today, hence the †.'],
     ['From / To', 'Labels on the two date inputs',
-     'Plain words over "Start date"/"End date": shorter at 11px mono-caps, and the pair reads as one range. `To` includes the whole day, which the specimen table states explicitly.'],
+     'Plain words over "Start date"/"End date": shorter, and the pair reads as one range. `To` includes the whole day.'],
     ['Not listed', 'Visible text in an empty channel cell',
-     'Says the fact instead of encoding it as a dash the operator has to look up. Muted and non-tabular so the column still scans as figures, right-aligned on the same edge as the figures it stands in for, and sighted and screen-reader users read the same words — the meaning is no longer carried by an aria-label alone. Correction 17: it shares its slot with the Publish chip and yields to it on row hover, so the two never compete for the one right edge.'],
+     'States the fact instead of a dash; muted, right-aligned with the figures. Yields its slot to the Publish chip on row hover.'],
     ['Publish Aparat cyfrowy Canon PowerShot SX740 HS Lite Edition on Erli — it already sells on another channel',
      'aria-label on the Publish chip',
-     'The visible chip is one word because the cell supplies the rest of the sentence; the label spells out product, destination and reason, since a screen-reader user meets the button without that column context. That full label is also what makes correction 17 safe: on hover the visible "Not listed" is gone, and this sentence is what still states the situation to anyone reading the button on its own.']
+     'One word; the label spells out product, destination and reason for screen readers, since "Not listed" disappears on hover.']
   ];
 
   var mcEl = document.getElementById('microcopy-rows');
@@ -4789,5 +4813,6 @@
   });
 })();
 </script>
+
 </body>
 </html>
