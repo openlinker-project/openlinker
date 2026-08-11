@@ -122,6 +122,10 @@ export function ListingsListPage(): ReactElement {
       next.delete('search');
       next.delete('connectionId');
       next.delete('offset');
+      // The platform-type filter is gone (#2025) but a bookmarked URL can still
+      // carry it - strip it so the address bar cannot claim a scope the table
+      // no longer applies. FE-D (#2030) replaces it with a channel select.
+      next.delete('platformType');
       return next;
     });
   }
@@ -152,7 +156,7 @@ export function ListingsListPage(): ReactElement {
     >
       <div className="toolbar toolbar--compact">
         <Input
-          aria-label="Search listings"
+          aria-label="Search listings by product name, SKU, EAN or external ID"
           placeholder="Product name, SKU, EAN or external ID…"
           value={searchInput}
           onChange={(e) => {
