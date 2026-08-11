@@ -9,6 +9,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import type { SelectQueryBuilder } from 'typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import type { CoreEntityType } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
@@ -18,13 +19,21 @@ import { OfferCommercialSnapshotOrmEntity } from '../entities/offer-commercial-s
 import { OfferStatusSnapshotOrmEntity } from '../entities/offer-status-snapshot.orm-entity';
 import type { OfferMappingRepositoryPort } from '../../../domain/ports/offer-mapping-repository.port';
 import {
-  deriveOfferLifecycle,
+  OFFER_VALIDATION_MESSAGES_KEY,
+  emptyOfferLifecycleCounts,
+  listSnapshotFactsForLifecycle,
   readValidationMessages,
+  resolveOfferLifecycle,
+} from '../../../domain/types/offer-lifecycle.types';
+import type {
+  OfferLifecycle,
+  OfferLifecycleCounts,
 } from '../../../domain/types/offer-lifecycle.types';
 import { deriveVariantLabel } from '../../../domain/types/offer-mapping.types';
 import type {
   OfferMappingChannelStatus,
   OfferMappingCommercial,
+  OfferMappingCountFilters,
   OfferMappingFilters,
   OfferMappingIdentity,
   OfferMappingListItem,
@@ -77,6 +86,36 @@ interface OfferMappingListRawRow {
  */
 const ENDED_PUBLICATION_STATUS = 'ended';
 
+/**
+ * Whether the status-snapshot LEFT join actually found a row (#2026). Mirrors
+ * the pair of null checks `toChannelStatus` makes, so a row the list renders
+ * as `Unsynced` is the same row this counts as `Unsynced`.
+ */
+const HAS_STATUS_SNAPSHOT_SQL =
+  '(oss."publicationStatus" IS NOT NULL AND oss."lastStatusSyncedAt" IS NOT NULL)';
+
+/**
+ * The one snapshot fact that is not a plain column: does the detail blob carry
+ * validator messages. A `CASE` rather than an `AND` chain because Postgres
+ * does not promise to short-circuit `AND`, and `jsonb_array_length` RAISES on
+ * a non-array - which would 500 the whole page over one malformed row (the
+ * same trap the search predicate's `jsonb_typeof` guard avoids). `CASE` does
+ * guarantee only the taken branch is evaluated, and the `ELSE` makes the
+ * expression total, so it is safe to GROUP BY and to negate.
+ */
+const HAS_VALIDATION_MESSAGES_SQL =
+  `(CASE WHEN jsonb_typeof(oss."statusDetails" -> '${OFFER_VALIDATION_MESSAGES_KEY}') = 'array' ` +
+  `THEN jsonb_array_length(oss."statusDetails" -> '${OFFER_VALIDATION_MESSAGES_KEY}') > 0 ` +
+  `ELSE false END)`;
+
+/** Raw shape of one `countByLifecycle` group (#2026). */
+interface OfferLifecycleCountRawRow {
+  publicationStatus: OfferPublicationStatus | null;
+  hasStatusSnapshot: boolean;
+  hasValidationMessages: boolean;
+  count: string;
+}
+
 @Injectable()
 export class OfferMappingRepository implements OfferMappingRepositoryPort {
   constructor(
@@ -109,6 +148,95 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
     filters: OfferMappingFilters,
     pagination: OfferMappingPagination
   ): Promise<PaginatedOfferMappings> {
+    const qb = this.buildFilteredQuery(filters);
+
+    if (filters.lifecycle) {
+      this.applyLifecycleFilter(qb, filters.lifecycle);
+    }
+
+    // Counted before the projection/paging clauses are attached so the count
+    // is unambiguously the filtered total, independent of the raw select.
+    const total = await qb.getCount();
+
+    qb.select('mapping.id', 'id')
+      .addSelect('mapping.entityType', 'entityType')
+      .addSelect('mapping.internalId', 'internalId')
+      .addSelect('mapping.externalId', 'externalId')
+      .addSelect('mapping.platformType', 'platformType')
+      .addSelect('mapping.connectionId', 'connectionId')
+      .addSelect('mapping.context', 'context')
+      .addSelect('mapping.createdAt', 'createdAt')
+      .addSelect('mapping.updatedAt', 'updatedAt')
+      .addSelect('pv."productId"', 'productId')
+      .addSelect('pv."sku"', 'variantSku')
+      .addSelect('pv."ean"', 'variantEan')
+      .addSelect('pv."attributes"', 'variantAttributes')
+      .addSelect('pv."isStale"', 'variantIsStale')
+      .addSelect('p."name"', 'productName')
+      .addSelect('p."images"', 'productImages')
+      .addSelect('oss."publicationStatus"', 'publicationStatus')
+      .addSelect('oss."statusDetails"', 'statusDetails')
+      .addSelect('oss."lastStatusSyncedAt"', 'lastStatusSyncedAt')
+      .addSelect('ocs."price"', 'commercialPrice')
+      .addSelect('ocs."currency"', 'commercialCurrency')
+      .addSelect('ocs."availableQuantity"', 'commercialAvailableQuantity')
+      .addSelect('ocs."lastCommercialSyncedAt"', 'lastCommercialSyncedAt');
+
+    // `createdAt` alone is not unique, so a same-timestamp cluster could
+    // repeat or skip rows across pages; the id tiebreaker makes paging total.
+    qb.orderBy('mapping."createdAt"', 'DESC')
+      .addOrderBy('mapping."id"', 'DESC')
+      .offset(pagination.offset)
+      .limit(pagination.limit);
+
+    const rows = await qb.getRawMany<OfferMappingListRawRow>();
+    return { items: rows.map((row) => this.toListItem(row)), total };
+  }
+
+  async countByLifecycle(filters: OfferMappingCountFilters): Promise<OfferLifecycleCounts> {
+    // One aggregate pass over the join `findMany` already builds - far cheaper
+    // than five predicated counts or a second endpoint, and it reuses the same
+    // predicates so a tab count can never describe a different row set than
+    // the tab's own page.
+    //
+    // Grouped by the RAW snapshot facts, never by a bucket: the lifecycle rule
+    // stays in `resolveOfferLifecycle` and is applied to each group below.
+    // That is what keeps SQL and TypeScript from drifting - there is no second
+    // implementation of the rule to drift from.
+    const rows = await this.buildFilteredQuery(filters)
+      .select('oss."publicationStatus"', 'publicationStatus')
+      .addSelect(HAS_STATUS_SNAPSHOT_SQL, 'hasStatusSnapshot')
+      .addSelect(HAS_VALIDATION_MESSAGES_SQL, 'hasValidationMessages')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('oss."publicationStatus"')
+      .addGroupBy(HAS_STATUS_SNAPSHOT_SQL)
+      .addGroupBy(HAS_VALIDATION_MESSAGES_SQL)
+      .getRawMany<OfferLifecycleCountRawRow>();
+
+    const counts = emptyOfferLifecycleCounts();
+    for (const row of rows) {
+      const facts =
+        row.publicationStatus === null || !row.hasStatusSnapshot
+          ? null
+          : {
+              publicationStatus: row.publicationStatus,
+              hasValidationMessages: row.hasValidationMessages,
+            };
+      // COUNT comes back as bigint (string) through the raw-query path.
+      counts[resolveOfferLifecycle(facts)] += Number(row.count);
+    }
+    return counts;
+  }
+
+  /**
+   * The join + filter shape shared by the list and its tab counts (#2025 /
+   * #2026). Extracted so neither can gain a predicate the other lacks: two
+   * copies of these clauses is exactly how a count starts disagreeing with the
+   * page it labels.
+   */
+  private buildFilteredQuery(
+    filters: OfferMappingCountFilters
+  ): SelectQueryBuilder<IdentifierMappingOrmEntity> {
     const qb = this.repository.createQueryBuilder('mapping');
 
     // Cross-context read-model reporting joins onto the products context BY
@@ -189,43 +317,66 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       );
     }
 
-    // Counted before the projection/paging clauses are attached so the count
-    // is unambiguously the filtered total, independent of the raw select.
-    const total = await qb.getCount();
+    return qb;
+  }
 
-    qb.select('mapping.id', 'id')
-      .addSelect('mapping.entityType', 'entityType')
-      .addSelect('mapping.internalId', 'internalId')
-      .addSelect('mapping.externalId', 'externalId')
-      .addSelect('mapping.platformType', 'platformType')
-      .addSelect('mapping.connectionId', 'connectionId')
-      .addSelect('mapping.context', 'context')
-      .addSelect('mapping.createdAt', 'createdAt')
-      .addSelect('mapping.updatedAt', 'updatedAt')
-      .addSelect('pv."productId"', 'productId')
-      .addSelect('pv."sku"', 'variantSku')
-      .addSelect('pv."ean"', 'variantEan')
-      .addSelect('pv."attributes"', 'variantAttributes')
-      .addSelect('pv."isStale"', 'variantIsStale')
-      .addSelect('p."name"', 'productName')
-      .addSelect('p."images"', 'productImages')
-      .addSelect('oss."publicationStatus"', 'publicationStatus')
-      .addSelect('oss."statusDetails"', 'statusDetails')
-      .addSelect('oss."lastStatusSyncedAt"', 'lastStatusSyncedAt')
-      .addSelect('ocs."price"', 'commercialPrice')
-      .addSelect('ocs."currency"', 'commercialCurrency')
-      .addSelect('ocs."availableQuantity"', 'commercialAvailableQuantity')
-      .addSelect('ocs."lastCommercialSyncedAt"', 'lastCommercialSyncedAt');
+  /**
+   * Narrow the query to one lifecycle bucket (#2026).
+   *
+   * The predicate is GENERATED from `listSnapshotFactsForLifecycle`, which
+   * runs the TypeScript rule over the closed fact space - so reclassifying a
+   * publication status changes this WHERE clause with no SQL edit, and there
+   * is no hand-written second copy of the rule that could disagree with the
+   * per-row derivation.
+   */
+  private applyLifecycleFilter(
+    qb: SelectQueryBuilder<IdentifierMappingOrmEntity>,
+    lifecycle: OfferLifecycle
+  ): void {
+    const facts = listSnapshotFactsForLifecycle(lifecycle);
 
-    // `createdAt` alone is not unique, so a same-timestamp cluster could
-    // repeat or skip rows across pages; the id tiebreaker makes paging total.
-    qb.orderBy('mapping."createdAt"', 'DESC')
-      .addOrderBy('mapping."id"', 'DESC')
-      .offset(pagination.offset)
-      .limit(pagination.limit);
+    // `Unsynced` is the complement of every snapshot fact - the absence of the
+    // joined row, which no fact combination can express.
+    if (facts.length === 0) {
+      qb.andWhere(`NOT ${HAS_STATUS_SNAPSHOT_SQL}`);
+      return;
+    }
 
-    const rows = await qb.getRawMany<OfferMappingListRawRow>();
-    return { items: rows.map((row) => this.toListItem(row)), total };
+    // A status whose BOTH message-presence values land in this bucket needs no
+    // jsonb inspection at all, so it collapses into a plain indexed `IN` - the
+    // Active and Ended tabs, i.e. the common case, never touch the blob.
+    const factsByStatus = new Map<OfferPublicationStatus, boolean[]>();
+    for (const { publicationStatus, hasValidationMessages } of facts) {
+      const seen = factsByStatus.get(publicationStatus) ?? [];
+      seen.push(hasValidationMessages);
+      factsByStatus.set(publicationStatus, seen);
+    }
+
+    const unconditionalStatuses: OfferPublicationStatus[] = [];
+    const terms: string[] = [];
+    const parameters: Record<string, unknown> = {};
+
+    for (const [publicationStatus, messagePresence] of factsByStatus) {
+      // Each fact combination is enumerated once, so more than one entry here
+      // means both `true` and `false` map to this bucket.
+      if (messagePresence.length > 1) {
+        unconditionalStatuses.push(publicationStatus);
+        continue;
+      }
+      const key = `lifecycleStatus${String(terms.length)}`;
+      parameters[key] = publicationStatus;
+      terms.push(
+        `(oss."publicationStatus" = :${key} AND ` +
+          `${messagePresence[0] ? '' : 'NOT '}${HAS_VALIDATION_MESSAGES_SQL})`
+      );
+    }
+
+    if (unconditionalStatuses.length > 0) {
+      parameters.lifecycleStatuses = unconditionalStatuses;
+      terms.push('oss."publicationStatus" IN (:...lifecycleStatuses)');
+    }
+
+    qb.andWhere(`${HAS_STATUS_SNAPSHOT_SQL} AND (${terms.join(' OR ')})`, parameters);
   }
 
   async countByConnectionAndVariants(
@@ -388,10 +539,16 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
         lastStatusSyncedAt: null,
       };
     }
+    const validationMessages = readValidationMessages(row.statusDetails);
     return {
       publicationStatus: row.publicationStatus,
-      lifecycle: deriveOfferLifecycle(row.publicationStatus, row.statusDetails),
-      validationMessages: readValidationMessages(row.statusDetails),
+      // Same function the tab counts fold their groups through (#2026), fed
+      // the same two facts - the list and its counts share one rule.
+      lifecycle: resolveOfferLifecycle({
+        publicationStatus: row.publicationStatus,
+        hasValidationMessages: validationMessages.length > 0,
+      }),
+      validationMessages,
       lastStatusSyncedAt: row.lastStatusSyncedAt,
     };
   }

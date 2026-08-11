@@ -5,9 +5,14 @@
  *
  * @module apps/api/src/listings/http/dto
  */
-import { IsOptional, IsString, IsInt, Min, Max } from 'class-validator';
+import { IsOptional, IsString, IsInt, IsIn, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+
+// Inline `type` modifier in ONE statement, deliberately: `eslint --fix` merges
+// a separate `import type` line from this module back into the value import
+// (see the same note in `offer-mapping-response.dto.ts`).
+import { OfferLifecycleValues, type OfferLifecycle } from '@openlinker/core/listings';
 
 export class ListOfferMappingsQueryDto {
   @ApiPropertyOptional({ description: 'Filter by connection ID' })
@@ -34,6 +39,18 @@ export class ListOfferMappingsQueryDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @ApiPropertyOptional({
+    enum: OfferLifecycleValues,
+    description:
+      'Restrict the page to one lifecycle bucket (#2026). Server-side, so selecting a tab pages ' +
+      'through that bucket across the whole catalog - filtering the returned page client-side ' +
+      'would report an empty tab to a seller whose matching offers all sit past page 1. Does NOT ' +
+      'affect `lifecycleCounts`, which always describes every bucket under the other filters.',
+  })
+  @IsOptional()
+  @IsIn(OfferLifecycleValues)
+  lifecycle?: OfferLifecycle;
 
   @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100, description: 'Page size' })
   @IsOptional()

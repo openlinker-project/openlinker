@@ -29,7 +29,23 @@ export interface OfferMappingFilters {
    * search in `ProductVariantRepository`).
    */
   search?: string;
+  /**
+   * Restrict the page to one lifecycle bucket (#2026). Server-side on purpose:
+   * filtering the current page client-side would show "nothing has ended yet"
+   * to a seller whose 300 ended offers all sit past page 1.
+   */
+  lifecycle?: OfferLifecycle;
 }
+
+/**
+ * Filters accepted by the per-bucket count read (#2026).
+ *
+ * `lifecycle` is excluded AT THE TYPE LEVEL, not merely ignored: the counts
+ * feed the tab bar, so scoping them to the selected tab would zero every other
+ * tab the moment one is clicked. Every other filter is shared with `findMany`
+ * verbatim, which is what makes the counts sum to the list's total.
+ */
+export type OfferMappingCountFilters = Omit<OfferMappingFilters, 'lifecycle'>;
 
 /**
  * Catalog identity joined onto an offer mapping for the listings read model

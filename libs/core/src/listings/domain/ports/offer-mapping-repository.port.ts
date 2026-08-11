@@ -7,7 +7,9 @@
  * @module libs/core/src/listings/domain/ports
  */
 import type { IdentifierMapping } from '@openlinker/core/identifier-mapping';
+import type { OfferLifecycleCounts } from '../types/offer-lifecycle.types';
 import type {
+  OfferMappingCountFilters,
   OfferMappingFilters,
   OfferMappingPagination,
   PaginatedOfferMappings,
@@ -40,11 +42,29 @@ export interface OfferMappingRepositoryPort {
    * `filters.search` is trimmed and matched case-insensitively across product
    * name, product SKU, variant SKU, variant EAN, variant GTIN, the variant's
    * attribute VALUES and the external offer ID.
+   *
+   * `filters.lifecycle` (#2026) narrows to one bucket; `total` then reports
+   * that bucket's size, so paging stays correct inside a selected tab.
    */
   findMany(
     filters: OfferMappingFilters,
     pagination: OfferMappingPagination
   ): Promise<PaginatedOfferMappings>;
+
+  /**
+   * Count Offer mappings per lifecycle bucket under the SAME filters
+   * `findMany` applies (#2026) - the tab-bar counts.
+   *
+   * Every bucket is present, zeroed when empty. The counts partition the
+   * filtered set, so they sum to the `total` `findMany` reports for the same
+   * filters WITHOUT a `lifecycle` narrowing - which is why the filter type
+   * excludes `lifecycle` outright rather than ignoring it.
+   *
+   * The query never encodes the lifecycle rule: it groups by the raw snapshot
+   * facts and the caller folds each group through `resolveOfferLifecycle`, the
+   * same function that classifies each list row.
+   */
+  countByLifecycle(filters: OfferMappingCountFilters): Promise<OfferLifecycleCounts>;
 
   /**
    * Count Offer mappings grouped by `internalId` for a connection.

@@ -24,7 +24,7 @@
  * @module libs/core/src/listings/domain/types
  * @see {@link OfferPublicationStatus} for the neutral marketplace observation
  */
-import type { OfferPublicationStatus } from './offer-status-read.types';
+import { OfferPublicationStatusValues, type OfferPublicationStatus } from './offer-status-read.types';
 import type { OfferStatusSnapshotDetails } from './offer-status-snapshot.types';
 
 /**
@@ -55,23 +55,36 @@ export const OfferLifecycleValues = ['Active', 'Inactive', 'Draft', 'Ended', 'Un
 export type OfferLifecycle = (typeof OfferLifecycleValues)[number];
 
 /**
- * Resolve the lifecycle bucket of one mapped offer from its persisted status
- * snapshot. Pure - no I/O, no defaults invented from absence.
- *
- * Its domain is a snapshot that EXISTS; it never returns `Unsynced`. A caller
- * whose join found no snapshot row classifies that absence itself (the read
- * model emits `Unsynced`), keeping this function a total map over the closed
- * `OfferPublicationStatus` union.
+ * The two - and only two - snapshot facts the lifecycle rule reads. Isolating
+ * them is what lets a grouped SQL aggregate count per bucket (#2026) without
+ * the query ever learning the rule: the database groups by these raw facts and
+ * `resolveOfferLifecycle` folds each group, exactly as it classifies each list
+ * row. One implementation, two call sites, so the counts and the list cannot
+ * disagree about what an `Inactive` offer is.
+ */
+export interface OfferSnapshotFacts {
+  publicationStatus: OfferPublicationStatus;
+  hasValidationMessages: boolean;
+}
+
+/**
+ * Per-bucket row counts. `Record` over the union rather than a hand-written
+ * shape, so adding a sixth bucket fails to compile at every producer.
+ */
+export type OfferLifecycleCounts = Record<OfferLifecycle, number>;
+
+/**
+ * The single lifecycle rule. `null` facts mean the status-snapshot join found
+ * no row - the `Unsynced` complement, classified here rather than at each call
+ * site so the five buckets provably partition their input.
  *
  * `activating` / `inactivating` fold into `Active`: both describe an offer the
  * marketplace is mid-transition on, and an operator scanning the Active tab
  * should still see it (the row carries an `ACTIVATING` badge instead).
  */
-export function deriveOfferLifecycle(
-  publicationStatus: OfferPublicationStatus,
-  statusDetails: OfferStatusSnapshotDetails | null
-): OfferLifecycle {
-  switch (publicationStatus) {
+export function resolveOfferLifecycle(facts: OfferSnapshotFacts | null): OfferLifecycle {
+  if (facts === null) return 'Unsynced';
+  switch (facts.publicationStatus) {
     case 'active':
     case 'activating':
     case 'inactivating':
@@ -81,9 +94,81 @@ export function deriveOfferLifecycle(
     case 'inactive':
       // The marketplace validator rejected it (Inactive) versus it simply
       // never went live (Draft) - the only signal separating the two.
-      return readValidationMessages(statusDetails).length > 0 ? 'Inactive' : 'Draft';
+      return facts.hasValidationMessages ? 'Inactive' : 'Draft';
   }
 }
+
+/**
+ * Resolve the lifecycle bucket of one mapped offer from its persisted status
+ * snapshot. Pure - no I/O, no defaults invented from absence.
+ *
+ * Its domain is a snapshot that EXISTS; it never returns `Unsynced`. A caller
+ * whose join found no snapshot row classifies that absence itself (by passing
+ * `null` to `resolveOfferLifecycle`), keeping this function a total map over
+ * the closed `OfferPublicationStatus` union.
+ */
+export function deriveOfferLifecycle(
+  publicationStatus: OfferPublicationStatus,
+  statusDetails: OfferStatusSnapshotDetails | null
+): OfferLifecycle {
+  return resolveOfferLifecycle({
+    publicationStatus,
+    hasValidationMessages: readValidationMessages(statusDetails).length > 0,
+  });
+}
+
+/**
+ * Every snapshot-fact combination that exists, enumerated from the closed
+ * `OfferPublicationStatus` union crossed with the one boolean.
+ */
+const ALL_SNAPSHOT_FACTS: readonly OfferSnapshotFacts[] = OfferPublicationStatusValues.flatMap(
+  (publicationStatus) =>
+    [true, false].map((hasValidationMessages) => ({ publicationStatus, hasValidationMessages }))
+);
+
+/**
+ * The snapshot facts that land in `lifecycle` - derived by running the rule
+ * over the whole (small, closed) fact space rather than by restating it.
+ *
+ * This is how a *filter* for one bucket reaches SQL (#2026): the repository
+ * turns these facts into a WHERE predicate, so the predicate is generated from
+ * the same rule that classifies rows and can never drift from it. Reclassify a
+ * status and the predicate follows with no SQL edit.
+ *
+ * Returns `[]` for `Unsynced`, which is the complement of every snapshot fact
+ * (no snapshot row at all) and therefore has no fact combination of its own -
+ * a caller filtering for it must test for the absence of the join instead.
+ */
+export function listSnapshotFactsForLifecycle(
+  lifecycle: OfferLifecycle
+): readonly OfferSnapshotFacts[] {
+  return ALL_SNAPSHOT_FACTS.filter((facts) => resolveOfferLifecycle(facts) === lifecycle);
+}
+
+/**
+ * A zeroed count for every bucket, so a bucket the query returned no rows for
+ * still reports `0` rather than being absent from the response.
+ */
+export function emptyOfferLifecycleCounts(): OfferLifecycleCounts {
+  return { Active: 0, Inactive: 0, Draft: 0, Ended: 0, Unsynced: 0 };
+}
+
+/**
+ * Total across all buckets. Because the buckets partition the filtered set,
+ * this equals the unfiltered-by-lifecycle row total.
+ */
+export function sumOfferLifecycleCounts(counts: OfferLifecycleCounts): number {
+  return OfferLifecycleValues.reduce((sum, lifecycle) => sum + counts[lifecycle], 0);
+}
+
+/**
+ * The `OfferStatusSnapshotDetails` key holding the validator messages, pinned
+ * as a constant because SQL has to name it too (#2026 reads it out of the
+ * `statusDetails` jsonb to group by "has messages"). `satisfies keyof` turns a
+ * rename of the field into a compile error instead of a query that silently
+ * classifies every rejected offer as a Draft.
+ */
+export const OFFER_VALIDATION_MESSAGES_KEY = 'validationMessages' satisfies keyof OfferStatusSnapshotDetails;
 
 /**
  * Normalise the optional, intentionally-loose validator message list off a
@@ -92,5 +177,5 @@ export function deriveOfferLifecycle(
 export function readValidationMessages(
   statusDetails: OfferStatusSnapshotDetails | null
 ): readonly string[] {
-  return statusDetails?.validationMessages ?? [];
+  return statusDetails?.[OFFER_VALIDATION_MESSAGES_KEY] ?? [];
 }
