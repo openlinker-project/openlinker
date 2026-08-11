@@ -2772,10 +2772,6 @@ a.delivery-rider-banner__button:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
-.data-table .data-table__cell--center {
-  text-align: center;
-}
-
 .data-table__empty-cell {
   padding: var(--space-5) var(--space-3);
   color: var(--text-muted);
