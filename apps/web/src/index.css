@@ -9366,6 +9366,111 @@ a.kpi-card:focus-visible {
   transform: translateX(0);
 }
 
+/* ── ConnectionCell (#2027) ──────────────────────────────────────────
+ * Two-line composition: adornment + name link on line 1, shortened id with
+ * hover-Copy plus an attention-only status note on line 2. The 220px cap
+ * matches the neighbouring stacked cells (.orders-items-line :8852,
+ * .orders-carrier :8922) - without it the cell is content-sized inside an
+ * auto-layout table, so a long connection name widens the column instead of
+ * firing the children's own ellipsis.
+ *
+ * Gaps are raw px throughout: 2px and 6px have no token at this density, and
+ * mixing them with var(--space-*) inside one block reads as an accident.
+ */
+.connection-cell {
+  display: inline-flex;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.connection-cell__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  min-width: 0;
+  max-width: 220px;
+}
+
+.connection-cell__body > * {
+  max-width: 100%;
+}
+
+.connection-cell__line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.connection-cell__adornment {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+.connection-cell__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* The shortened id is the disambiguator an operator scans, so it never absorbs
+ * the line's width deficit - the status note is the accessory that truncates. */
+.connection-cell__meta > .copyable-id {
+  flex: none;
+}
+
+.connection-cell__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.connection-cell__status-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* No base background: every status supplies its own below, so a fourth one
+ * added later renders no dot at all rather than a silent grey one that reads
+ * as a deliberate tone. The TS side is already exhaustive (STATUS_NOTES is a
+ * Record over every non-active ConnectionStatus), so the two fail together. */
+.connection-cell__status-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: var(--radius-pill);
+}
+
+/* The -fg family, not the raw hue: --status-warning is ~2.5:1 on white, under
+ * the 3:1 WCAG 1.4.11 non-text minimum, so a 6px amber dot vanishes in light
+ * theme. */
+.connection-cell__status--disabled .connection-cell__status-dot {
+  background: var(--status-disabled-fg);
+}
+
+.connection-cell__status--error {
+  color: var(--status-error-fg);
+}
+
+.connection-cell__status--error .connection-cell__status-dot {
+  background: var(--status-error-fg);
+}
+
+.connection-cell__status--needs_reauth {
+  color: var(--status-warning-fg);
+}
+
+.connection-cell__status--needs_reauth .connection-cell__status-dot {
+  background: var(--status-warning-fg);
+}
+
 /* ── Structured error list (#775) ───────────────────────────────────
  * Compact tone-tinted rows that replace the "wall of red pills"
  * treatment for repeated errors on connection-detail health tabs.
