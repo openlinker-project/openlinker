@@ -113,18 +113,6 @@ export function RateLimitSection({
         )}
       </p>
 
-      {enabled ? (
-        <p className="rate-limit-section__help">
-          Setting either field below replaces the adapter default entirely — the other field is
-          then genuinely unlimited, not still capped by the default. Enforcement is rolling out
-          sync path by sync path — setting a cap here has no effect until this connection&apos;s
-          outbound traffic has been migrated onto it. If you run multiple API/worker replicas
-          (<code>OL_WORKER_REPLICAS</code>), each value is divided evenly across them, so the real
-          aggregate throughput matches what you configure below rather than multiplying it per
-          replica.
-        </p>
-      ) : null}
-
       <label className="rate-limit-section__toggle">
         <input
           type="checkbox"
@@ -137,6 +125,16 @@ export function RateLimitSection({
 
       {enabled ? (
         <>
+          <p className="rate-limit-section__help">
+            Setting either field below replaces the adapter default entirely — the other field is
+            then genuinely unlimited, not still capped by the default. Enforcement is rolling out
+            sync path by sync path — setting a cap here has no effect until this connection&apos;s
+            outbound traffic has been migrated onto it. If you run multiple API/worker replicas
+            (<code>OL_WORKER_REPLICAS</code>), each value is divided evenly across them, so the
+            real aggregate throughput matches what you configure below rather than multiplying it
+            per replica.
+          </p>
+
           <FormField
             label="Requests per minute"
             name="rateLimit.requestsPerMinute"
