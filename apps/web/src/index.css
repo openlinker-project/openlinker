@@ -17150,13 +17150,30 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 /* `inline-flex`, not `flex`: DataTable wraps the first cell in an INLINE <a>
    whose focus ring is a box-shadow, and a block box inside an inline anchor
    paints that ring around inline fragments wrapping an anonymous block - a
-   hairline or nothing. An atomic inline-level box keeps the ring intact. */
+   hairline or nothing. An atomic inline-level box keeps the ring as ONE
+   fragment (verified live - see the `:has()` rule below for the part this
+   alone doesn't fix). */
 .listing-cell {
   display: inline-flex;
   width: 100%;
   align-items: flex-start;
   gap: var(--space-3);
   min-width: 0;
+}
+/* A single fragment isn't a correctly-SIZED one: `.data-table__row-link`
+   itself stays `display: inline` (shared by every DataTable consumer, most
+   of which wrap plain text with no height mismatch), so its own line-box
+   height comes from its default inline metrics - shorter than this row's
+   real content, which includes a thumbnail. The :focus-visible ring lives
+   on that anchor, so it painted around the anchor's own shrunken line-box,
+   not the taller flex child inside it: a thin band crossing the row's
+   vertical middle instead of enclosing it (caught in manual QA, #2023).
+   Scoped to rows that wrap `.listing-cell` via `:has()` rather than
+   changing the shared rule, since every other table's row-link relies on
+   staying plain `inline` for its own (correctly-sized) text content. */
+.data-table__row-link:has(> .listing-cell) {
+  display: inline-flex;
+  width: 100%;
 }
 .listing-cell__body {
   display: grid;
