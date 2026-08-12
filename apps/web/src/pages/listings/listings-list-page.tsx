@@ -14,6 +14,7 @@ import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
 import { EmptyValue } from '../../shared/ui/empty-value';
 import { Input } from '../../shared/ui/input';
+import { Select } from '../../shared/ui/select';
 import { KeyValueList } from '../../shared/ui/key-value-list';
 import { ProductThumbnail } from '../../shared/ui/product-thumbnail';
 import { StatusBadge } from '../../shared/ui/status-badge';
@@ -338,14 +339,15 @@ export function ListingsListPage(): ReactElement {
   const activeTabDef = LIFECYCLE_TABS.find((def) => def.key === tab) ?? LIFECYCLE_TABS[0];
 
   const [searchInput, setSearchInput] = useState(urlSearch);
-  const [connectionIdInput, setConnectionIdInput] = useState(urlConnectionId);
 
   const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
-  const debouncedConnectionId = useDebouncedValue(connectionIdInput, SEARCH_DEBOUNCE_MS);
 
+  // The channel filter is a discrete <Select> value, not free text, so it
+  // reads/writes the URL directly with no debounce - unlike search, there is
+  // no keystroke-by-keystroke value to settle.
   const filters: ListingsFilters = {
     search: debouncedSearch || undefined,
-    connectionId: debouncedConnectionId || undefined,
+    connectionId: urlConnectionId || undefined,
     lifecycle: activeTabDef.lifecycle,
   };
   const pagination = { limit: PAGE_SIZE, offset };
@@ -374,7 +376,7 @@ export function ListingsListPage(): ReactElement {
   const lifecycleCountsRef = useRef<{ fingerprint: string; counts: OfferLifecycleCounts } | null>(
     null,
   );
-  const countsFingerprint = `${debouncedSearch}::${debouncedConnectionId}`;
+  const countsFingerprint = `${debouncedSearch}::${urlConnectionId}`;
   if (query.data?.lifecycleCounts) {
     lifecycleCountsRef.current = { fingerprint: countsFingerprint, counts: query.data.lifecycleCounts };
   }
@@ -451,9 +453,8 @@ export function ListingsListPage(): ReactElement {
     [channelLabel, connectionsById, connectionsQuery.isLoading],
   );
 
-  function handleFilterChange(key: string, value: string): void {
+  function handleFilterChange(key: 'search' | 'connectionId', value: string): void {
     if (key === 'search') setSearchInput(value);
-    if (key === 'connectionId') setConnectionIdInput(value);
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       if (value) {
@@ -496,23 +497,29 @@ export function ListingsListPage(): ReactElement {
     });
   }
 
+  /**
+   * Resets search, the channel filter and the lifecycle tab back to their
+   * defaults in one URL-state update (#2030) - a plain `setSearchParams` call,
+   * never `window.location`, so the table re-renders from the new (empty)
+   * filter set without a full page reload.
+   */
   function clearFilters(): void {
     setSearchInput('');
-    setConnectionIdInput('');
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.delete('search');
       next.delete('connectionId');
       next.delete('offset');
-      // The platform-type filter is gone (#2025) but a bookmarked URL can still
-      // carry it - strip it so the address bar cannot claim a scope the table
-      // no longer applies. FE-D (#2030) replaces it with a channel select.
+      next.delete('tab');
+      // The platform-type filter is gone (#2025/#2030) but a bookmarked URL can
+      // still carry it - strip it so the address bar cannot claim a scope the
+      // table no longer applies.
       next.delete('platformType');
       return next;
     });
   }
 
-  const hasFilters = !!(debouncedSearch || debouncedConnectionId);
+  const hasFilters = !!(debouncedSearch || urlConnectionId);
   const total = query.data?.total ?? 0;
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
@@ -542,23 +549,45 @@ export function ListingsListPage(): ReactElement {
         ) : null
       }
     >
-      <div className="toolbar toolbar--compact">
-        <Input
-          aria-label="Search listings by product name, SKU, EAN/GTIN or external ID"
-          placeholder="Name, SKU, EAN/GTIN or external ID…"
-          value={searchInput}
-          onChange={(e) => {
-            handleFilterChange('search', e.target.value);
-          }}
-        />
-        <Input
-          aria-label="Filter by connection ID"
-          placeholder="Connection ID…"
-          value={connectionIdInput}
-          onChange={(e) => {
-            handleFilterChange('connectionId', e.target.value);
-          }}
-        />
+      <div className="toolbar toolbar--compact listings-toolbar">
+        <div className="toolbar__group">
+          <Input
+            aria-label="Search listings by product name, SKU, EAN or external ID"
+            placeholder="Product name, SKU, EAN or external ID"
+            value={searchInput}
+            onChange={(e) => {
+              handleFilterChange('search', e.target.value);
+            }}
+          />
+          {/* Channel select replaces the old raw connectionId/platformType text
+              inputs (#2030) - populated from the same batched connections read
+              already used for the Connection column (#1996), so it never costs
+              a second request, and shows each connection's own NAME rather than
+              its raw id or platformType. Scoped to OfferManager-capable
+              connections (mirrors useProductMasterConnections' ProductMaster
+              filter) - /listings is backed exclusively by offer mappings, so a
+              ProductMaster/ProductPublisher-only connection can never produce a
+              row here and would otherwise dead-end the table on selection. */}
+          <Select
+            aria-label="Filter by channel"
+            value={urlConnectionId}
+            onChange={(e) => {
+              handleFilterChange('connectionId', e.target.value);
+            }}
+          >
+            <option value="">All channels</option>
+            {(connectionsQuery.data ?? [])
+              .filter((connection) => connection.enabledCapabilities.includes('OfferManager'))
+              .map((connection) => (
+                <option key={connection.id} value={connection.id}>
+                  {connection.name}
+                </option>
+              ))}
+          </Select>
+        </div>
+        <Button tone="ghost" className="button--sm" onClick={clearFilters}>
+          Clear
+        </Button>
       </div>
 
       <Tabs

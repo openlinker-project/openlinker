@@ -17108,6 +17108,32 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   color: var(--text-muted);
 }
 
+/* ── Listings toolbar wrap opt-in (#2030) ────────────────────────────────────
+   `.toolbar` / `.toolbar__group` stay `nowrap` by default (see the comment on
+   `.orders-toolbar` below) because most toolbars fit their controls on one
+   row. This page's toolbar (search + channel select + Clear) doesn't at
+   tablet/phone widths, so it opts in the same way `.orders-toolbar` does:
+   wrap the toolbar itself, and wrap its `.toolbar__group` child so the
+   search/select pair inside it can also drop onto their own lines rather
+   than being squeezed into a single nowrap row. */
+.listings-toolbar {
+  flex-wrap: wrap;
+}
+.listings-toolbar .toolbar__group {
+  flex-wrap: wrap;
+}
+/* `.toolbar`'s base `justify-content: space-between` only right-anchors Clear
+   while it shares a line with `.toolbar__group`. The moment the row above
+   wraps, Clear becomes the lone item on its own line, and `space-between`
+   degrades to `flex-start` per the flexbox spec - stranding it at the LEFT
+   edge instead. `.orders-toolbar` never hit this because it has no separate
+   Clear sibling (all its controls sit inside one `.toolbar__group`). `margin
+   -left: auto` absorbs the leftover space itself, so Clear stays right-
+   anchored whether it's sharing a line or wrapped onto its own. */
+.listings-toolbar > .button {
+  margin-left: auto;
+}
+
 /* ── Listings table row anatomy (#2028) ──────────────────────────────────────
    Transcribed from the #1965 mockup: a listing row leads with the catalog
    product name, groups its three identifiers on a second line, and keeps the
