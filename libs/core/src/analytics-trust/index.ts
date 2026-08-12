@@ -21,6 +21,7 @@ export type {
 export {
   ConnectionIngestionStatusValues,
   STALE_THRESHOLD_MULTIPLIER,
+  MIN_STALE_THRESHOLD_MS,
 } from './domain/types/connection-ingestion-trust.types';
 
 // Module

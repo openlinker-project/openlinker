@@ -72,6 +72,7 @@ describe('AutoIssueTriggerService', () => {
       schedule: jest.fn().mockResolvedValue({} as never),
       requeueDeadByIdempotencyKey: jest.fn().mockResolvedValue(false),
       findLastSucceededJob: jest.fn().mockResolvedValue(null),
+      findEnabledPollTask: jest.fn().mockReturnValue(null),
     };
     service = new AutoIssueTriggerService(
       connectionPort as unknown as ConnectionPort,

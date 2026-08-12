@@ -18,14 +18,16 @@ describe('AnalyticsTrustController', () => {
   it('maps the snapshot to the response DTO with ISO date strings', async () => {
     const snapshot: AnalyticsTrustSnapshot = {
       generatedAt: new Date('2026-06-01T12:00:00.000Z'),
+      worstStatus: 'fresh',
       connections: [
         {
           connectionId: 'conn-1',
           connectionName: 'My Allegro Store',
           platformType: 'allegro',
           status: 'fresh',
-          lastSuccessfulIngestionAt: new Date('2026-06-01T11:55:00.000Z'),
-          coverageStartAt: new Date('2026-01-01T00:00:00.000Z'),
+          lastPollAt: new Date('2026-06-01T11:55:00.000Z'),
+          lastOrderIngestedAt: new Date('2026-06-01T10:00:00.000Z'),
+          connectionCreatedAt: new Date('2026-01-01T00:00:00.000Z'),
           expectedIntervalMs: 300_000,
           staleAfterMs: 900_000,
         },
@@ -36,30 +38,34 @@ describe('AnalyticsTrustController', () => {
     const result = await controller.getTrust();
 
     expect(result.generatedAt).toBe('2026-06-01T12:00:00.000Z');
+    expect(result.worstStatus).toBe('fresh');
     expect(result.connections).toHaveLength(1);
     expect(result.connections[0]).toEqual({
       connectionId: 'conn-1',
       connectionName: 'My Allegro Store',
       platformType: 'allegro',
       status: 'fresh',
-      lastSuccessfulIngestionAt: '2026-06-01T11:55:00.000Z',
-      coverageStartAt: '2026-01-01T00:00:00.000Z',
+      lastPollAt: '2026-06-01T11:55:00.000Z',
+      lastOrderIngestedAt: '2026-06-01T10:00:00.000Z',
+      connectionCreatedAt: '2026-01-01T00:00:00.000Z',
       expectedIntervalMs: 300_000,
       staleAfterMs: 900_000,
     });
   });
 
-  it('maps a never-ingested connection with null lastSuccessfulIngestionAt', async () => {
+  it('maps a never-ingested connection with null lastPollAt and lastOrderIngestedAt', async () => {
     const snapshot: AnalyticsTrustSnapshot = {
       generatedAt: new Date('2026-06-01T12:00:00.000Z'),
+      worstStatus: 'never-ingested',
       connections: [
         {
           connectionId: 'conn-2',
           connectionName: 'New Erli Connection',
           platformType: 'erli',
           status: 'never-ingested',
-          lastSuccessfulIngestionAt: null,
-          coverageStartAt: new Date('2026-05-30T00:00:00.000Z'),
+          lastPollAt: null,
+          lastOrderIngestedAt: null,
+          connectionCreatedAt: new Date('2026-05-30T00:00:00.000Z'),
           expectedIntervalMs: null,
           staleAfterMs: null,
         },
@@ -69,18 +75,47 @@ describe('AnalyticsTrustController', () => {
 
     const result = await controller.getTrust();
 
-    expect(result.connections[0].lastSuccessfulIngestionAt).toBeNull();
+    expect(result.connections[0].lastPollAt).toBeNull();
+    expect(result.connections[0].lastOrderIngestedAt).toBeNull();
     expect(result.connections[0].status).toBe('never-ingested');
+  });
+
+  it('maps an unknown-status (degraded) connection', async () => {
+    const snapshot: AnalyticsTrustSnapshot = {
+      generatedAt: new Date('2026-06-01T12:00:00.000Z'),
+      worstStatus: 'unknown',
+      connections: [
+        {
+          connectionId: 'conn-3',
+          connectionName: 'Flaky Connection',
+          platformType: 'allegro',
+          status: 'unknown',
+          lastPollAt: null,
+          lastOrderIngestedAt: null,
+          connectionCreatedAt: new Date('2026-05-30T00:00:00.000Z'),
+          expectedIntervalMs: null,
+          staleAfterMs: null,
+        },
+      ],
+    };
+    analyticsTrustService.getIngestionTrustSnapshot.mockResolvedValue(snapshot);
+
+    const result = await controller.getTrust();
+
+    expect(result.connections[0].status).toBe('unknown');
+    expect(result.worstStatus).toBe('unknown');
   });
 
   it('returns an empty connections array when there are none', async () => {
     analyticsTrustService.getIngestionTrustSnapshot.mockResolvedValue({
       generatedAt: new Date('2026-06-01T12:00:00.000Z'),
+      worstStatus: 'fresh',
       connections: [],
     });
 
     const result = await controller.getTrust();
 
     expect(result.connections).toEqual([]);
+    expect(result.worstStatus).toBe('fresh');
   });
 });

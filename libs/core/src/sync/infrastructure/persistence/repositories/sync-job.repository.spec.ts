@@ -230,7 +230,7 @@ describe('SyncJobRepository', () => {
   });
 
   describe('findLastSucceededByConnectionAndJobType (#1982)', () => {
-    it('queries by connectionId + jobType + succeeded status, ordered by updatedAt DESC', async () => {
+    it('queries by connectionId + jobType + succeeded status, ordered by updatedAt DESC then id DESC', async () => {
       ormRepo.findOne.mockResolvedValue(
         makeOrmEntity({ status: 'succeeded', updatedAt: new Date('2026-06-01T00:00:00Z') })
       );
@@ -243,9 +243,27 @@ describe('SyncJobRepository', () => {
       expect(result).not.toBeNull();
       expect(result?.status).toBe('succeeded');
       expect(ormRepo.findOne).toHaveBeenCalledWith({
-        where: { connectionId: 'conn-1', jobType: 'marketplace.orders.poll', status: 'succeeded' },
-        order: { updatedAt: 'DESC' },
+        where: expect.objectContaining({
+          connectionId: 'conn-1',
+          jobType: 'marketplace.orders.poll',
+          status: 'succeeded',
+        }),
+        order: { updatedAt: 'DESC', id: 'DESC' },
       });
+    });
+
+    it('excludes a succeeded job whose outcome is business_failure', async () => {
+      // Asserted via the `where` shape rather than a real TypeORM query
+      // (this spec mocks `findOne` directly) — the `outcome` predicate is
+      // an FindOperator, so assert its SQL-generating shape indirectly by
+      // confirming it is present at all rather than deep-equal (which is
+      // brittle against TypeORM's internal FindOperator representation).
+      ormRepo.findOne.mockResolvedValue(null);
+
+      await repo.findLastSucceededByConnectionAndJobType('conn-1', 'marketplace.orders.poll');
+
+      const [callArgs] = ormRepo.findOne.mock.calls[0] as [{ where: Record<string, unknown> }];
+      expect(callArgs.where).toHaveProperty('outcome');
     });
 
     it('returns null when no succeeded job exists for the connection + job type', async () => {

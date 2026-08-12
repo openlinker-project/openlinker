@@ -13,6 +13,7 @@
  */
 import type { SyncJob } from '../../domain/entities/sync-job.entity';
 import type { JobType } from '../../domain/types/sync-job.types';
+import type { SchedulerTaskConfig } from '../../domain/types/scheduler-task.types';
 import type { ScheduleJobInput } from './sync-jobs.types';
 
 export interface ISyncJobsService {
@@ -50,4 +51,18 @@ export interface ISyncJobsService {
    * succeeded job exists yet.
    */
   findLastSucceededJob(connectionId: string, jobType: JobType): Promise<SyncJob | null>;
+
+  /**
+   * Find the registered scheduler task for a platform + job type, but only
+   * when it is currently *enabled* (respects `enabledEnvVar` /
+   * `enabledDefault` — the same runtime enablement check `SchedulerService`
+   * applies before executing a tick). Returns null when no task is
+   * registered for the platform, or when one is registered but disabled.
+   *
+   * This is the cross-context seam for "what's this connection's live poll
+   * cadence" (#1982) — it keeps `SchedulerTaskRegistryService` (a concrete
+   * infrastructure class, not a port or service interface) from being
+   * injected directly by a sibling context.
+   */
+  findEnabledPollTask(platformType: string, jobType: JobType): SchedulerTaskConfig | null;
 }

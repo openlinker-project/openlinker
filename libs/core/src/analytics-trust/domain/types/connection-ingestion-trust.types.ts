@@ -2,7 +2,7 @@
  * Connection Ingestion Trust Types
  *
  * Defines the shape of the analytics data-trust read: per-OrderSource-
- * connection freshness, coverage window, and stalled-ingestion status
+ * connection poll liveness, order-data recency, and stalled-ingestion status
  * (#1982). These are pure read-model types — no persistence of their own,
  * composed from existing sync-job and connection state.
  *
@@ -15,25 +15,35 @@
  * Runtime array of all valid ingestion-status values. Used for validation
  * and Swagger documentation.
  */
-export const ConnectionIngestionStatusValues = ['never-ingested', 'fresh', 'stalled'] as const;
+export const ConnectionIngestionStatusValues = [
+  'never-ingested',
+  'fresh',
+  'stalled',
+  'unknown',
+] as const;
 
 /**
  * Connection Ingestion Status
  *
  * Derived union type from ConnectionIngestionStatusValues.
  *
- * - `'never-ingested'`: no succeeded ingestion job has ever run for this
- *   connection.
- * - `'fresh'`: the last succeeded ingestion job is within the connection's
+ * - `'never-ingested'`: no succeeded `marketplace.orders.poll` job has ever
+ *   run for this connection.
+ * - `'fresh'`: the last succeeded poll job is within the connection's
  *   expected polling cadence (or cadence is unknown).
- * - `'stalled'`: the last succeeded ingestion job is older than the
- *   connection's staleness threshold.
+ * - `'stalled'`: the last succeeded poll job is older than the connection's
+ *   staleness threshold.
+ * - `'unknown'`: this connection's entry could not be computed (e.g. a
+ *   transient repository error) — distinct from `'never-ingested'` on
+ *   purpose, since the latter is a claim about the operator's data, not
+ *   about infrastructure availability. Never assert `'never-ingested'` for
+ *   a connection whose real ingestion history could not be read.
  */
 export type ConnectionIngestionStatus = (typeof ConnectionIngestionStatusValues)[number];
 
 /**
  * Staleness threshold multiplier applied to a connection's expected poll
- * interval (`staleAfterMs = expectedIntervalMs * STALE_THRESHOLD_MULTIPLIER`).
+ * interval (`staleAfterMs = max(expectedIntervalMs * STALE_THRESHOLD_MULTIPLIER, MIN_STALE_THRESHOLD_MS)`).
  * Three missed ticks absorbs one worst-case processing delay plus jitter
  * without false-positiving on a slow-but-alive poller, while still catching
  * a genuinely dead poll well before it looks like a multi-day outage.
@@ -41,23 +51,57 @@ export type ConnectionIngestionStatus = (typeof ConnectionIngestionStatusValues)
 export const STALE_THRESHOLD_MULTIPLIER = 3;
 
 /**
+ * Floor applied to `staleAfterMs` regardless of the multiplier result.
+ * A tight-cadence poll (e.g. Allegro at 5 min) is not affected by this floor
+ * (15 min > 30 min is false, so the multiplier result stands... see
+ * `computeStaleAfterMs`). A slow, backstop-only poll (e.g. PrestaShop's
+ * 10-min reconciliation sweep, which exists precisely because webhooks are
+ * the primary path there) would otherwise threshold at 30 min, well inside
+ * normal worker-queue backpressure — this floor keeps a backstop poll from
+ * false-positiving a healthy webhook-fed connection into `'stalled'`.
+ */
+export const MIN_STALE_THRESHOLD_MS = 30 * 60 * 1000;
+
+/**
  * Connection Ingestion Trust
  *
- * Per-connection projection of the three data-trust facts: freshness,
- * coverage window, and stalled status.
+ * Per-connection projection of the data-trust facts: poll-pipe liveness,
+ * order-data recency, connection age, and stalled status.
  */
 export interface ConnectionIngestionTrust {
   connectionId: string;
   connectionName: string;
   platformType: string;
+  /** Derived from `lastPollAt` vs. `staleAfterMs` — pipe liveness, not data recency. */
   status: ConnectionIngestionStatus;
-  /** Completion time of the most recently succeeded ingestion job, or null when never-ingested. */
-  lastSuccessfulIngestionAt: Date | null;
-  /** Start of this connection's coverage window — the connection's own createdAt. */
-  coverageStartAt: Date;
-  /** Expected interval (ms) between successful ingestion ticks, derived from the connection's registered poll cadence. Null when no matching scheduler task is registered. */
+  /**
+   * Completion time of the most recently succeeded `marketplace.orders.poll`
+   * job, or null when it has never succeeded. This is a liveness signal for
+   * the ingestion pipe itself ("is the poll tick still running"), not proof
+   * that any order data has actually arrived — see `lastOrderIngestedAt`.
+   */
+  lastPollAt: Date | null;
+  /**
+   * Completion time of the most recently succeeded `marketplace.order.sync`
+   * job for this connection, or null when none has ever succeeded. This is
+   * the actual order-data-recency signal and is deliberately NOT
+   * thresholded against `staleAfterMs`: a low-volume connection can go days
+   * without a new order and still be perfectly healthy.
+   */
+  lastOrderIngestedAt: Date | null;
+  /**
+   * This connection's own `createdAt` — when the operator configured it,
+   * NOT a claim about when its earliest order data begins (a connection can
+   * legitimately ingest orders placed before it was created, e.g. Allegro's
+   * event journal seeded from the beginning; conversely a connection stuck
+   * in `needs_reauth` for months has ingested nothing for most of its age).
+   * Renamed from `coverageStartAt` — the field never supported a "coverage
+   * window" claim.
+   */
+  connectionCreatedAt: Date;
+  /** Expected interval (ms) between poll ticks, derived from the connection's *enabled* registered poll cadence. Null when no matching, enabled scheduler task is registered. */
   expectedIntervalMs: number | null;
-  /** Staleness threshold (ms) = expectedIntervalMs * STALE_THRESHOLD_MULTIPLIER. Null when expectedIntervalMs is null. */
+  /** Staleness threshold (ms), see `computeStaleAfterMs`. Null when expectedIntervalMs is null. */
   staleAfterMs: number | null;
 }
 
@@ -69,5 +113,12 @@ export interface ConnectionIngestionTrust {
  */
 export interface AnalyticsTrustSnapshot {
   generatedAt: Date;
+  /**
+   * The single worst status across `connections` (see
+   * `computeWorstStatus`), so a consumer can render one banner without
+   * re-encoding the severity ordering itself. `'fresh'` when `connections`
+   * is empty — mirrors `DevStackHealthResponse.status` in `apps/api/src/health/`.
+   */
+  worstStatus: ConnectionIngestionStatus;
   connections: ConnectionIngestionTrust[];
 }

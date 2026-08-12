@@ -25,29 +25,45 @@ export class ConnectionIngestionTrustResponseDto {
   @ApiProperty({
     enum: ConnectionIngestionStatusValues,
     description:
-      "'never-ingested' = no succeeded ingestion job has ever run; 'stalled' = the last succeeded " +
-      "ingestion job is older than this connection's staleness threshold; 'fresh' = otherwise.",
+      "Derived from lastPollAt vs. staleAfterMs — pipe liveness, not data recency. " +
+      "'never-ingested' = no succeeded marketplace.orders.poll job has ever run; 'stalled' = the last " +
+      "succeeded poll job is older than this connection's staleness threshold; 'fresh' = otherwise; " +
+      "'unknown' = this entry could not be computed (e.g. a transient error) — distinct from " +
+      "'never-ingested' on purpose, since that would otherwise be a false claim about the operator's data.",
   })
   status!: ConnectionIngestionStatus;
 
   @ApiProperty({
     nullable: true,
     description:
-      'Completion time (ISO 8601) of the most recently succeeded ingestion job, or null when never-ingested.',
+      'Completion time (ISO 8601) of the most recently succeeded marketplace.orders.poll job, or null ' +
+      'if it has never succeeded. A liveness signal for the ingestion pipe itself, not proof that any ' +
+      'order data has arrived — see lastOrderIngestedAt for that.',
   })
-  lastSuccessfulIngestionAt!: string | null;
-
-  @ApiProperty({
-    description:
-      "Start of this connection's coverage window (ISO 8601) — the connection's own creation time.",
-  })
-  coverageStartAt!: string;
+  lastPollAt!: string | null;
 
   @ApiProperty({
     nullable: true,
     description:
-      'Expected interval (ms) between successful ingestion ticks, derived from the registered poll ' +
-      'cadence. Null when no matching scheduler task is registered for this platform.',
+      'Completion time (ISO 8601) of the most recently succeeded marketplace.order.sync job for this ' +
+      'connection, or null if none has ever succeeded. The actual order-data-recency signal — ' +
+      'deliberately not thresholded against staleAfterMs, since a low-volume connection can go days ' +
+      'without a new order and still be healthy.',
+  })
+  lastOrderIngestedAt!: string | null;
+
+  @ApiProperty({
+    description:
+      "This connection's own creation time (ISO 8601) — when the operator configured it, not a claim " +
+      'about when its earliest order data begins.',
+  })
+  connectionCreatedAt!: string;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Expected interval (ms) between poll ticks, derived from the registered, currently-enabled poll ' +
+      'cadence. Null when no matching, enabled scheduler task is registered for this platform.',
   })
   expectedIntervalMs!: number | null;
 
@@ -61,6 +77,14 @@ export class ConnectionIngestionTrustResponseDto {
 export class AnalyticsTrustResponseDto {
   @ApiProperty({ description: 'Time (ISO 8601) this snapshot was computed' })
   generatedAt!: string;
+
+  @ApiProperty({
+    enum: ConnectionIngestionStatusValues,
+    description:
+      'The single worst status across `connections`, so a caller can render one banner without ' +
+      "re-deriving the severity ordering itself. 'fresh' when there are no connections.",
+  })
+  worstStatus!: ConnectionIngestionStatus;
 
   @ApiProperty({
     type: [ConnectionIngestionTrustResponseDto],

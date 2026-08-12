@@ -3,12 +3,17 @@
  *
  * @module libs/core/src/analytics-trust/domain/domain-services
  */
-import { classifyIngestionStatus, estimateCronIntervalMs } from './ingestion-trust.domain-service';
+import {
+  classifyIngestionStatus,
+  estimateCronIntervalMs,
+  computeStaleAfterMs,
+  computeWorstStatus,
+} from './ingestion-trust.domain-service';
 
 describe('classifyIngestionStatus', () => {
   const now = new Date('2026-06-01T12:00:00.000Z');
 
-  it('returns never-ingested when lastSuccessfulIngestionAt is null', () => {
+  it('returns never-ingested when lastPollAt is null', () => {
     expect(classifyIngestionStatus(null, 900_000, now)).toBe('never-ingested');
   });
 
@@ -50,5 +55,47 @@ describe('estimateCronIntervalMs', () => {
 
   it('returns null for a malformed cron expression without throwing', () => {
     expect(estimateCronIntervalMs('not a cron expression', now)).toBeNull();
+  });
+});
+
+describe('computeStaleAfterMs', () => {
+  it('applies the multiplier when the result is above the floor', () => {
+    // 5-min poll * 3 = 15 min, above a 10-min floor.
+    expect(computeStaleAfterMs(5 * 60 * 1000, 3, 10 * 60 * 1000)).toBe(15 * 60 * 1000);
+  });
+
+  it('applies the floor when the multiplied result is below it', () => {
+    // 10-min poll * 3 = 30 min, but a 60-min floor should win.
+    expect(computeStaleAfterMs(10 * 60 * 1000, 3, 60 * 60 * 1000)).toBe(60 * 60 * 1000);
+  });
+
+  it('is exactly the multiplied value when it equals the floor', () => {
+    expect(computeStaleAfterMs(10 * 60 * 1000, 3, 30 * 60 * 1000)).toBe(30 * 60 * 1000);
+  });
+});
+
+describe('computeWorstStatus', () => {
+  it('returns fresh for an empty list', () => {
+    expect(computeWorstStatus([])).toBe('fresh');
+  });
+
+  it('returns fresh when every entry is fresh', () => {
+    expect(computeWorstStatus(['fresh', 'fresh'])).toBe('fresh');
+  });
+
+  it('ranks unknown as worse than stalled', () => {
+    expect(computeWorstStatus(['stalled', 'unknown'])).toBe('unknown');
+  });
+
+  it('ranks stalled as worse than never-ingested', () => {
+    expect(computeWorstStatus(['never-ingested', 'stalled'])).toBe('stalled');
+  });
+
+  it('ranks never-ingested as worse than fresh', () => {
+    expect(computeWorstStatus(['fresh', 'never-ingested'])).toBe('never-ingested');
+  });
+
+  it('is order-independent', () => {
+    expect(computeWorstStatus(['fresh', 'unknown', 'stalled', 'never-ingested'])).toBe('unknown');
   });
 });

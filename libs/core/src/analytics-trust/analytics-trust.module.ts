@@ -3,8 +3,9 @@
  *
  * NestJS module for the analytics data-trust read (#1982). Composes the
  * integrations and sync contexts via their published cross-context seams
- * (IIntegrationsService, ISyncJobsService, SchedulerTaskRegistryService) —
- * no persistence of its own.
+ * (IIntegrationsService, ISyncJobsService) — no persistence of its own.
+ * Scheduler cadence is read through ISyncJobsService.findEnabledPollTask,
+ * not by injecting SchedulerTaskRegistryService directly.
  *
  * @module libs/core/src/analytics-trust
  */

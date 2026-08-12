@@ -31,8 +31,9 @@ export class AnalyticsTrustController {
   @ApiOperation({
     summary: 'Get the analytics data-trust snapshot',
     description:
-      'Reports, for every active OrderSource-capable connection, when it last successfully ingested, ' +
-      'how far back its data goes, and whether ingestion appears stalled.',
+      'Reports, for every active OrderSource-capable connection, when its ingestion pipe last polled ' +
+      'successfully, when it last actually ingested an order, when the connection was created, and ' +
+      'whether the poll pipe appears stalled.',
   })
   @ApiResponse({ status: 200, type: AnalyticsTrustResponseDto })
   async getTrust(): Promise<AnalyticsTrustResponseDto> {
@@ -43,16 +44,18 @@ export class AnalyticsTrustController {
   private toResponseDto(snapshot: AnalyticsTrustSnapshot): AnalyticsTrustResponseDto {
     const dto = new AnalyticsTrustResponseDto();
     dto.generatedAt = snapshot.generatedAt.toISOString();
+    dto.worstStatus = snapshot.worstStatus;
     dto.connections = snapshot.connections.map((entry) => {
       const connectionDto = new ConnectionIngestionTrustResponseDto();
       connectionDto.connectionId = entry.connectionId;
       connectionDto.connectionName = entry.connectionName;
       connectionDto.platformType = entry.platformType;
       connectionDto.status = entry.status;
-      connectionDto.lastSuccessfulIngestionAt = entry.lastSuccessfulIngestionAt
-        ? entry.lastSuccessfulIngestionAt.toISOString()
+      connectionDto.lastPollAt = entry.lastPollAt ? entry.lastPollAt.toISOString() : null;
+      connectionDto.lastOrderIngestedAt = entry.lastOrderIngestedAt
+        ? entry.lastOrderIngestedAt.toISOString()
         : null;
-      connectionDto.coverageStartAt = entry.coverageStartAt.toISOString();
+      connectionDto.connectionCreatedAt = entry.connectionCreatedAt.toISOString();
       connectionDto.expectedIntervalMs = entry.expectedIntervalMs;
       connectionDto.staleAfterMs = entry.staleAfterMs;
       return connectionDto;

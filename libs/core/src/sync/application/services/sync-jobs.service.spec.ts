@@ -11,7 +11,21 @@
 import { SyncJobsService } from './sync-jobs.service';
 import type { SyncJobRepositoryPort } from '../../domain/ports/sync-job-repository.port';
 import type { SyncJob } from '../../domain/entities/sync-job.entity';
+import type { SchedulerTaskConfig } from '../../domain/types/scheduler-task.types';
+import type { SchedulerTaskRegistryService } from '../../infrastructure/adapters/scheduler-task-registry.service';
 import type { ScheduleJobInput } from './sync-jobs.types';
+
+function makeTask(overrides: Partial<SchedulerTaskConfig> = {}): SchedulerTaskConfig {
+  return {
+    taskId: 'test-task',
+    platformType: 'allegro',
+    jobType: 'marketplace.orders.poll',
+    cronExpression: '*/5 * * * *',
+    generatePayload: () => ({}),
+    generateIdempotencyKey: () => 'key',
+    ...overrides,
+  };
+}
 
 describe('SyncJobsService', () => {
   let repository: jest.Mocked<
@@ -22,7 +36,9 @@ describe('SyncJobsService', () => {
       | 'findLastSucceededByConnectionAndJobType'
     >
   >;
+  let schedulerTaskRegistry: jest.Mocked<Pick<SchedulerTaskRegistryService, 'getAll'>>;
   let service: SyncJobsService;
+  const originalEnv = { ...process.env };
 
   beforeEach(() => {
     repository = {
@@ -30,7 +46,15 @@ describe('SyncJobsService', () => {
       requeueDeadByIdempotencyKey: jest.fn(),
       findLastSucceededByConnectionAndJobType: jest.fn(),
     };
-    service = new SyncJobsService(repository as unknown as SyncJobRepositoryPort);
+    schedulerTaskRegistry = { getAll: jest.fn().mockReturnValue([]) };
+    service = new SyncJobsService(
+      repository as unknown as SyncJobRepositoryPort,
+      schedulerTaskRegistry as unknown as SchedulerTaskRegistryService
+    );
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
   });
 
   describe('schedule', () => {
@@ -119,6 +143,71 @@ describe('SyncJobsService', () => {
       repository.findLastSucceededByConnectionAndJobType.mockResolvedValue(null);
 
       const result = await service.findLastSucceededJob('conn-1', 'marketplace.orders.poll');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('findEnabledPollTask (#1982)', () => {
+    it('returns the matching task when no enabledEnvVar is set (defaults to enabled)', () => {
+      schedulerTaskRegistry.getAll.mockReturnValue([makeTask()]);
+
+      const result = service.findEnabledPollTask('allegro', 'marketplace.orders.poll');
+
+      expect(result?.taskId).toBe('test-task');
+    });
+
+    it('returns null when no task is registered for the platform', () => {
+      schedulerTaskRegistry.getAll.mockReturnValue([makeTask({ platformType: 'allegro' })]);
+
+      const result = service.findEnabledPollTask('prestashop', 'marketplace.orders.poll');
+
+      expect(result).toBeNull();
+    });
+
+    it('returns the task when enabledEnvVar is unset in the environment (falls back to enabled)', () => {
+      delete process.env.OL_PRESTASHOP_POLL_SCHEDULER_ENABLED;
+      schedulerTaskRegistry.getAll.mockReturnValue([
+        makeTask({ platformType: 'prestashop', enabledEnvVar: 'OL_PRESTASHOP_POLL_SCHEDULER_ENABLED' }),
+      ]);
+
+      const result = service.findEnabledPollTask('prestashop', 'marketplace.orders.poll');
+
+      expect(result).not.toBeNull();
+    });
+
+    it('returns null when enabledEnvVar is literally "false" — a disabled task is not a cadence source', () => {
+      process.env.OL_PRESTASHOP_POLL_SCHEDULER_ENABLED = 'false';
+      schedulerTaskRegistry.getAll.mockReturnValue([
+        makeTask({ platformType: 'prestashop', enabledEnvVar: 'OL_PRESTASHOP_POLL_SCHEDULER_ENABLED' }),
+      ]);
+
+      const result = service.findEnabledPollTask('prestashop', 'marketplace.orders.poll');
+
+      expect(result).toBeNull();
+    });
+
+    it('returns null when enabledDefault is false and the env var is unset (opt-in task never enabled by default)', () => {
+      delete process.env.OL_SOME_OPT_IN_TASK_ENABLED;
+      schedulerTaskRegistry.getAll.mockReturnValue([
+        makeTask({
+          platformType: 'allegro',
+          enabledEnvVar: 'OL_SOME_OPT_IN_TASK_ENABLED',
+          enabledDefault: false,
+        }),
+      ]);
+
+      const result = service.findEnabledPollTask('allegro', 'marketplace.orders.poll');
+
+      expect(result).toBeNull();
+    });
+
+    it('does not match a task with a different jobType', () => {
+      schedulerTaskRegistry.getAll.mockReturnValue([
+        makeTask({ jobType: 'marketplace.offers.sync' }),
+      ]);
+
+      const result = service.findEnabledPollTask('allegro', 'marketplace.orders.poll');
 
       expect(result).toBeNull();
     });
