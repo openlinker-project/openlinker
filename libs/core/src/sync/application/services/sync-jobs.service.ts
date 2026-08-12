@@ -20,7 +20,7 @@ import { SyncJobRepositoryPort } from '../../domain/ports/sync-job-repository.po
 import type { SyncJob } from '../../domain/entities/sync-job.entity';
 import type { JobType } from '../../domain/types/sync-job.types';
 import type { SchedulerTaskConfig } from '../../domain/types/scheduler-task.types';
-import type { SchedulerTaskRegistryService } from '../../infrastructure/adapters/scheduler-task-registry.service';
+import { SchedulerTaskRegistryService } from '../../infrastructure/adapters/scheduler-task-registry.service';
 import type { ISyncJobsService } from './sync-jobs.service.interface';
 import type { ScheduleJobInput } from './sync-jobs.types';
 

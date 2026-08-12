@@ -11,8 +11,11 @@
  */
 import { Controller, Get, Inject } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import type { IAnalyticsTrustService, AnalyticsTrustSnapshot } from '@openlinker/core/analytics-trust';
-import { ANALYTICS_TRUST_SERVICE_TOKEN } from '@openlinker/core/analytics-trust';
+import type { AnalyticsTrustSnapshot } from '@openlinker/core/analytics-trust';
+import {
+  ANALYTICS_TRUST_SERVICE_TOKEN,
+  IAnalyticsTrustService,
+} from '@openlinker/core/analytics-trust';
 import {
   AnalyticsTrustResponseDto,
   ConnectionIngestionTrustResponseDto,

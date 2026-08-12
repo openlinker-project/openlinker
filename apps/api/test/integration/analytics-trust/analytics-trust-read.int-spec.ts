@@ -38,6 +38,24 @@ import type { SchedulerTaskRegistryService } from '@openlinker/core/sync';
 const ALLEGRO_ORDERS_POLL_CRON = '*/5 * * * *'; // 5 min * 3 = 15 min, floored up to the 30-min MIN_STALE_THRESHOLD_MS.
 const EXPECTED_STALE_AFTER_MS = 30 * 60 * 1000;
 
+interface ConnectionIngestionTrustTestEntry {
+  connectionId: string;
+  connectionName: string;
+  platformType: string;
+  status: string;
+  lastPollAt: string | null;
+  lastOrderIngestedAt: string | null;
+  connectionCreatedAt: string;
+  expectedIntervalMs: number | null;
+  staleAfterMs: number | null;
+}
+
+interface AnalyticsTrustTestResponse {
+  generatedAt: string;
+  worstStatus: string;
+  connections: ConnectionIngestionTrustTestEntry[];
+}
+
 async function setSyncJobUpdatedAt(
   harness: IntegrationTestHarness,
   jobId: string,
@@ -90,10 +108,11 @@ describe('Analytics Trust Read API Integration', () => {
         .get('/v1/analytics/trust')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
+      const body = response.body as AnalyticsTrustTestResponse;
 
-      expect(response.body.connections).toEqual([]);
-      expect(response.body.worstStatus).toBe('fresh');
-      expect(response.body.generatedAt).toBeDefined();
+      expect(body.connections).toEqual([]);
+      expect(body.worstStatus).toBe('fresh');
+      expect(body.generatedAt).toBeDefined();
     });
 
     it('should report never-ingested for a connection with no succeeded poll job', async () => {
@@ -111,9 +130,10 @@ describe('Analytics Trust Read API Integration', () => {
         .get('/v1/analytics/trust')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
+      const body = response.body as AnalyticsTrustTestResponse;
 
-      expect(response.body.connections).toHaveLength(1);
-      const entry = response.body.connections[0];
+      expect(body.connections).toHaveLength(1);
+      const entry = body.connections[0];
       expect(entry.connectionId).toBe(connection.id);
       expect(entry.platformType).toBe('allegro');
       expect(entry.status).toBe('never-ingested');
@@ -146,11 +166,12 @@ describe('Analytics Trust Read API Integration', () => {
         .get('/v1/analytics/trust')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
+      const body = response.body as AnalyticsTrustTestResponse;
 
-      const entry = response.body.connections[0];
+      const entry = body.connections[0];
       expect(entry.status).toBe('stalled');
-      expect(response.body.worstStatus).toBe('stalled');
-      expect(new Date(entry.lastPollAt).getTime()).toBe(staleTimestamp.getTime());
+      expect(body.worstStatus).toBe('stalled');
+      expect(new Date(entry.lastPollAt!).getTime()).toBe(staleTimestamp.getTime());
     });
 
     it('should report fresh when the last succeeded poll is within the platform cadence', async () => {
@@ -176,9 +197,9 @@ describe('Analytics Trust Read API Integration', () => {
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
-      const entry = response.body.connections[0];
+      const entry = (response.body as AnalyticsTrustTestResponse).connections[0];
       expect(entry.status).toBe('fresh');
-      expect(new Date(entry.lastPollAt).getTime()).toBe(recentTimestamp.getTime());
+      expect(new Date(entry.lastPollAt!).getTime()).toBe(recentTimestamp.getTime());
     });
 
     it('should reflect the most recently succeeded job when several exist (real updatedAt DESC ordering)', async () => {
@@ -212,12 +233,12 @@ describe('Analytics Trust Read API Integration', () => {
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
-      const entry = response.body.connections[0];
+      const entry = (response.body as AnalyticsTrustTestResponse).connections[0];
       // Must reflect the newer job's timestamp, not the older one's, and
       // therefore 'fresh' (1min ago) rather than 'stalled' (10min ago would
       // also be within the 30min threshold, so this also implicitly proves
       // the *newer* row won, not just "some" row).
-      expect(new Date(entry.lastPollAt).getTime()).toBe(newerTimestamp.getTime());
+      expect(new Date(entry.lastPollAt!).getTime()).toBe(newerTimestamp.getTime());
       expect(entry.status).toBe('fresh');
     });
 
@@ -247,9 +268,9 @@ describe('Analytics Trust Read API Integration', () => {
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
-      const entry = response.body.connections[0];
+      const entry = (response.body as AnalyticsTrustTestResponse).connections[0];
       expect(entry.lastPollAt).toBeNull();
-      expect(new Date(entry.lastOrderIngestedAt).getTime()).toBe(orderSyncTimestamp.getTime());
+      expect(new Date(entry.lastOrderIngestedAt!).getTime()).toBe(orderSyncTimestamp.getTime());
       // No poll job ever succeeded — still never-ingested (the poll-pipe
       // liveness reading), even though real order data has arrived.
       expect(entry.status).toBe('never-ingested');
@@ -282,17 +303,17 @@ describe('Analytics Trust Read API Integration', () => {
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
-      const entry = response.body.connections.find(
-        (c: { connectionId: string }) => c.connectionId === connection.id,
+      const entry = (response.body as AnalyticsTrustTestResponse).connections.find(
+        (c) => c.connectionId === connection.id,
       );
       expect(entry).toBeDefined();
       // The job lookup must never be gated on a task being registered AND
       // enabled — the evidence (the succeeded job) and the cadence (used
       // only for the threshold) are independent facts.
-      expect(new Date(entry.lastPollAt).getTime()).toBe(recentTimestamp.getTime());
-      expect(entry.status).toBe('fresh');
-      expect(entry.expectedIntervalMs).toBeNull();
-      expect(entry.staleAfterMs).toBeNull();
+      expect(new Date(entry!.lastPollAt!).getTime()).toBe(recentTimestamp.getTime());
+      expect(entry!.status).toBe('fresh');
+      expect(entry!.expectedIntervalMs).toBeNull();
+      expect(entry!.staleAfterMs).toBeNull();
     });
 
     it('should return 401 without a token', async () => {

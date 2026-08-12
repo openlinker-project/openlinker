@@ -10,7 +10,7 @@
  */
 import { ApiProperty } from '@nestjs/swagger';
 import { ConnectionIngestionStatusValues } from '@openlinker/core/analytics-trust';
-import type { ConnectionIngestionStatus } from '@openlinker/core/analytics-trust';
+import { ConnectionIngestionStatus } from '@openlinker/core/analytics-trust';
 
 export class ConnectionIngestionTrustResponseDto {
   @ApiProperty({ description: 'Connection UUID' })
@@ -25,7 +25,7 @@ export class ConnectionIngestionTrustResponseDto {
   @ApiProperty({
     enum: ConnectionIngestionStatusValues,
     description:
-      "Derived from lastPollAt vs. staleAfterMs — pipe liveness, not data recency. " +
+      'Derived from lastPollAt vs. staleAfterMs — pipe liveness, not data recency. ' +
       "'never-ingested' = no succeeded marketplace.orders.poll job has ever run; 'stalled' = the last " +
       "succeeded poll job is older than this connection's staleness threshold; 'fresh' = otherwise; " +
       "'unknown' = this entry could not be computed (e.g. a transient error) — distinct from " +
@@ -88,7 +88,8 @@ export class AnalyticsTrustResponseDto {
 
   @ApiProperty({
     type: [ConnectionIngestionTrustResponseDto],
-    description: 'One entry per active OrderSource-capable connection. Empty on a day-one instance.',
+    description:
+      'One entry per active OrderSource-capable connection. Empty on a day-one instance.',
   })
   connections!: ConnectionIngestionTrustResponseDto[];
 }

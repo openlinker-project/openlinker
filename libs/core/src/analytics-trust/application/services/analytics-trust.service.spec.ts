@@ -45,9 +45,9 @@ describe('AnalyticsTrustService', () => {
   const now = new Date('2026-06-01T12:00:00.000Z');
 
   function mockJobsFor(connectionId: string, pollJob: SyncJobEntity | null, orderSyncJob: SyncJobEntity | null): void {
-    syncJobsService.findLastSucceededJob.mockImplementation(async (id, jobType) => {
-      if (id !== connectionId) return null;
-      return jobType === 'marketplace.orders.poll' ? pollJob : orderSyncJob;
+    syncJobsService.findLastSucceededJob.mockImplementation((id, jobType) => {
+      if (id !== connectionId) return Promise.resolve(null);
+      return Promise.resolve(jobType === 'marketplace.orders.poll' ? pollJob : orderSyncJob);
     });
   }
 
@@ -90,13 +90,13 @@ describe('AnalyticsTrustService', () => {
       { connectionId: stalledConnection.id, connection: stalledConnection, adapter: {}, metadata: {} as never },
     ]);
     syncJobsService.findEnabledPollTask.mockReturnValue(makeTask());
-    syncJobsService.findLastSucceededJob.mockImplementation(async (id, jobType) => {
-      if (jobType !== 'marketplace.orders.poll') return null;
+    syncJobsService.findLastSucceededJob.mockImplementation((id, jobType) => {
+      if (jobType !== 'marketplace.orders.poll') return Promise.resolve(null);
       const pollAt =
         id === freshConnection.id
           ? new Date(now.getTime() - 2 * 60 * 1000)
           : new Date(now.getTime() - 60 * 60 * 1000);
-      return { id: `job-${id}`, updatedAt: pollAt } as SyncJobEntity;
+      return Promise.resolve({ id: `job-${id}`, updatedAt: pollAt } as SyncJobEntity);
     });
 
     const result = await service.getIngestionTrustSnapshot();
