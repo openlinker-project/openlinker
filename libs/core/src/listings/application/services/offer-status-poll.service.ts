@@ -19,6 +19,8 @@
  * @see {@link ISyncJobsService} for the cross-context scheduling seam (#718)
  */
 
+import { randomUUID } from 'node:crypto';
+
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
@@ -33,6 +35,7 @@ import {
   type OfferStatusReadResult,
 } from '@openlinker/core/listings';
 import {
+  buildOfferRefreshSnapshotIdempotencyKey,
   ISyncJobsService,
   type MarketplaceOfferPollCreationStatusPayloadV1,
   type MarketplaceOfferRefreshSnapshotPayloadV1,
@@ -368,18 +371,32 @@ export class OfferStatusPollService implements IOfferStatusPollService {
   ): Promise<void> {
     const attempt = 1;
     const delaySeconds = OFFER_REFRESH_SNAPSHOT_DELAYS_SECONDS[attempt - 1];
+    // One id per reconcile chain (#2039). `sync_jobs.idempotencyKey` is globally
+    // unique with no TTL, so the pre-#2039 offer-id-scoped key let one offer
+    // receive only ever ONE attempt-1 reconcile: a second connection listing the
+    // same id, a re-create, or a retry wave found its schedule silently deduped
+    // against a long-dead job. At-most-one chain per terminalisation is already
+    // guaranteed upstream by the record state machine (`pollOnce` no-ops once the
+    // record leaves `validating`), so the key does not need to carry that duty.
+    const reconcileId = randomUUID();
     const payload: MarketplaceOfferRefreshSnapshotPayloadV1 = {
       schemaVersion: 1,
       externalOfferId,
       internalVariantId,
       attempt,
+      reconcileId,
     };
     try {
       await this.syncJobs.schedule({
         jobType: REFRESH_SNAPSHOT_JOB_TYPE,
         connectionId,
         payload: payload as unknown as Record<string, unknown>,
-        idempotencyKey: `refreshSnapshot:${externalOfferId}:${attempt}`,
+        idempotencyKey: buildOfferRefreshSnapshotIdempotencyKey({
+          connectionId,
+          externalOfferId,
+          attempt,
+          reconcileId,
+        }),
         maxAttempts: RUNNER_RETRY_BUDGET,
         runAfter: new Date(Date.now() + delaySeconds * 1000),
       });

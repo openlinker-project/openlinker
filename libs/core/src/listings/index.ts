@@ -263,6 +263,7 @@ export type { OfferStatusReader } from './domain/ports/capabilities/offer-status
 export { isOfferStatusReader } from './domain/ports/capabilities/offer-status-reader.capability';
 export type {
   OfferPublicationStatus,
+  OfferPublicationStatusView,
   OfferStatusReadResult,
 } from './domain/types/offer-status-read.types';
 export { OfferPublicationStatusValues } from './domain/types/offer-status-read.types';

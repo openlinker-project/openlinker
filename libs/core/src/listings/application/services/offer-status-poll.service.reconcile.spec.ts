@@ -97,4 +97,47 @@ describe('OfferStatusPollService — snapshot reconcile scheduling (#1760)', () 
     expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
     expect(scheduledRefreshCalls()).toHaveLength(1);
   });
+
+  it('should key the reconcile per connection + chain so it cannot dedup against another offer id (#2039)', async () => {
+    integrations.getCapabilityAdapter.mockResolvedValue({
+      updateOfferQuantity: jest.fn(),
+      getOfferStatus: jest.fn().mockResolvedValue({
+        publicationStatus: 'inactive',
+        validationErrors: [],
+      }),
+    } as unknown as never);
+    records.updateStatus.mockResolvedValue({ ...validatingRecord, status: 'draft' } as never);
+
+    await service.pollOnce(input);
+
+    const [scheduled] = scheduledRefreshCalls() as [[{ idempotencyKey: string; payload: unknown }]];
+    const { idempotencyKey, payload } = scheduled[0];
+    const reconcileId = (payload as { reconcileId?: string }).reconcileId;
+    expect(reconcileId).toEqual(expect.any(String));
+    // Pre-#2039 this was `refreshSnapshot:{externalOfferId}:1` against a
+    // globally unique, TTL-less key, so one offer id could only ever receive
+    // one attempt-1 reconcile.
+    expect(idempotencyKey).toBe(`refreshSnapshot:conn-1:${reconcileId as string}:1`);
+  });
+
+  it('should mint a distinct chain per reconcile so a re-created offer is not silently deduped (#2039)', async () => {
+    integrations.getCapabilityAdapter.mockResolvedValue({
+      updateOfferQuantity: jest.fn(),
+      getOfferStatus: jest.fn().mockResolvedValue({
+        publicationStatus: 'inactive',
+        validationErrors: [],
+      }),
+    } as unknown as never);
+    records.updateStatus.mockResolvedValue({ ...validatingRecord, status: 'draft' } as never);
+
+    await service.pollOnce(input);
+    records.findById.mockResolvedValue(validatingRecord as never);
+    await service.pollOnce(input);
+
+    const keys = (scheduledRefreshCalls() as [{ idempotencyKey: string }][]).map(
+      ([call]) => call.idempotencyKey
+    );
+    expect(keys).toHaveLength(2);
+    expect(new Set(keys).size).toBe(2);
+  });
 });

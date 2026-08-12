@@ -87,6 +87,7 @@ export { OfferDescriptionToneValues } from './domain/types/marketplace-job-paylo
 export {
   OFFER_REFRESH_SNAPSHOT_DELAYS_SECONDS,
   OFFER_REFRESH_SNAPSHOT_MAX_ATTEMPTS,
+  buildOfferRefreshSnapshotIdempotencyKey,
 } from './domain/types/marketplace-job-payloads.types';
 export {
   MasterProductSyncByExternalIdPayloadV1,

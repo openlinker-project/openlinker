@@ -80,6 +80,22 @@ looked better-synced than a healthy one.
 Erli remains uncovered by design: its create is an async 202 with no status, and its status *read* defaults
 unknown wire values to `inactive` — the hazard the review-#1063 scheduler gate suppresses until #992.
 
+Two adjacent defects in the #1760 machinery close with it:
+
+- **The reconcile ladder's idempotency key was offer-id-scoped.**
+  `refreshSnapshot:{externalOfferId}:{attempt}` against a globally unique, TTL-less
+  `sync_jobs.idempotencyKey` meant one offer id could only ever receive one attempt-1 reconcile — across
+  connections (an Erli `externalOfferId` *is* the internal variant id, shared by every Erli connection), across
+  re-creates, and across retry waves. A `reconcileId` now identifies one chain: minted at attempt 1, carried
+  through the handler's self-rescheduled follow-ups, and folded into the key by a shared builder so the two
+  writers cannot drift. It is **optional**, so a chain already in flight across the deploy keeps rescheduling
+  under its legacy key instead of dead-lettering. At-most-one chain per terminalisation was never the key's
+  duty — the record state machine owns it (`pollOnce` no-ops once the record leaves `validating`).
+- **The read surface hid offers it had no snapshot for.** `getPublicationStatusForProduct` returned snapshot
+  rows only, so "this product has no offers" and "its offers have no status yet" were the same empty response —
+  and because the manual refresh is rendered per returned row, it was unreachable for exactly the offers that
+  needed it. It now returns one `OfferPublicationStatusView` per mapped offer, with a null status when unread.
+
 ## References
 
 - Related PRs: #816, #1760
