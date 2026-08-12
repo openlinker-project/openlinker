@@ -1,4 +1,4 @@
-import { cleanup, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import type * as ReactRouterDom from 'react-router-dom';
@@ -713,6 +713,43 @@ describe('ListingsListPage', () => {
       expect(screen.getByRole('tab', { name: 'Draft 2' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Ended 1' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Unsynced 0' })).toBeInTheDocument();
+    });
+
+    it("falls back to skeletons - not the pre-search counts - once the search term changes and the new query has not resolved (#2029 round 2 review)", async () => {
+      const list = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ...sampleMappings,
+          lifecycleCounts: { Active: 7, Inactive: 3, Draft: 2, Ended: 1, Unsynced: 0 },
+        })
+        // The new search term's query key has never been fetched before - it
+        // hangs, which is the window during which a state+Effect pair used to
+        // keep showing the now-wrong "Active 7" (it only ever cleared on the
+        // NEXT successful fetch, so an error here would have left it stuck
+        // forever). The fingerprint-gated ref must drop it immediately.
+        .mockReturnValueOnce(new Promise(() => {}));
+      const mockApi = createMockApiClient({ listings: { list } });
+
+      const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Doniczka ceramiczna Terra');
+      expect(screen.getByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
+
+      fireEvent.change(
+        screen.getByLabelText('Search listings by product name, SKU, EAN/GTIN or external ID'),
+        { target: { value: 'brand new search term' } },
+      );
+
+      // Wait past the debounce window for the new (still-pending) request.
+      await vi.waitFor(() => {
+        expect(list).toHaveBeenCalledTimes(2);
+      });
+
+      // The stale count must not survive the filter change - it falls
+      // through to the skeleton, the honest state while the real count for
+      // the new search term is unknown.
+      expect(screen.queryByRole('tab', { name: 'Active 7' })).not.toBeInTheDocument();
+      expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(5);
     });
 
     it("separates a tab's label from its count badge in the accessible name", async () => {

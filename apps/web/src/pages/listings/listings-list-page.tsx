@@ -1,7 +1,7 @@
 import {
   useCallback,
-  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactElement,
   type ReactNode,
@@ -353,20 +353,36 @@ export function ListingsListPage(): ReactElement {
   const query = useListingsQuery(filters, pagination);
 
   /**
-   * Held separately from `query.data` so a tab switch - a distinct query key,
-   * hence `query.isLoading` true for that fetch - does not blank every tab's
-   * count badge back to skeleton (#2029 round 1 review). The five buckets are
-   * unaffected by which tab is active (the backend excludes `lifecycle` from
-   * the counts aggregate), so the last-known value stays correct while the
-   * new tab's own rows load; only the very first-ever load has nothing to
-   * fall back on and shows the skeleton.
+   * Held in a ref (mutated during render, not an Effect) so a tab switch -
+   * a distinct query key, hence `query.isLoading` true for that fetch - does
+   * not blank every tab's count badge back to skeleton (#2029 round 1
+   * review). The five buckets are unaffected by which tab is active (the
+   * backend excludes `lifecycle` from the counts aggregate), so the
+   * last-known value stays correct while the new tab's own rows load.
+   *
+   * Gated on a fingerprint of `search` + `connectionId` - deliberately
+   * excluding `lifecycle` - because those two filters DO change what the
+   * counts should be. A state+Effect pair here held the value across ANY
+   * `query.data` transition, so a search/connection change kept showing the
+   * old, now-wrong counts with no way to self-correct if the new request
+   * errored (#2029 round 2 review). Changing the fingerprint immediately
+   * invalidates the held value even before the new fetch's data arrives, so
+   * a stale count is never surfaced - it falls through to the skeleton
+   * guard instead, which is the honest state while the real count for the
+   * new filter combination is unknown.
    */
-  const [lifecycleCounts, setLifecycleCounts] = useState<OfferLifecycleCounts | null>(null);
-  useEffect(() => {
-    if (query.data) {
-      setLifecycleCounts(query.data.lifecycleCounts);
-    }
-  }, [query.data]);
+  const lifecycleCountsRef = useRef<{ fingerprint: string; counts: OfferLifecycleCounts } | null>(
+    null,
+  );
+  const countsFingerprint = `${debouncedSearch}::${debouncedConnectionId}`;
+  if (query.data?.lifecycleCounts) {
+    lifecycleCountsRef.current = { fingerprint: countsFingerprint, counts: query.data.lifecycleCounts };
+  }
+  const lifecycleCounts =
+    query.data?.lifecycleCounts ??
+    (lifecycleCountsRef.current?.fingerprint === countsFingerprint
+      ? lifecycleCountsRef.current.counts
+      : null);
 
   const platforms = usePlatforms();
   // One batched read for the whole page - the Connection column must never cost
@@ -568,7 +584,7 @@ export function ListingsListPage(): ReactElement {
                 {lifecycleCounts === null && query.isLoading ? (
                   <span className="tabs__count-skeleton" aria-hidden="true" />
                 ) : (
-                  (lifecycleCounts ?? query.data?.lifecycleCounts)?.[def.lifecycle] ?? '—'
+                  (lifecycleCounts?.[def.lifecycle] ?? '—')
                 )}
               </span>
             </TabsTrigger>
