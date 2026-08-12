@@ -310,7 +310,7 @@ describe('OfferMappingRepository', () => {
       });
     });
 
-    it('should derive Inactive from an inactive snapshot carrying validator messages', async () => {
+    it('should derive Invalid from an inactive snapshot carrying validator messages', async () => {
       const qb = buildListQb([
         buildRawRow({
           publicationStatus: 'inactive',
@@ -321,7 +321,7 @@ describe('OfferMappingRepository', () => {
 
       const result = await repository.findMany({}, { limit: 20, offset: 0 });
 
-      expect(result.items[0].channelStatus?.lifecycle).toBe('Inactive');
+      expect(result.items[0].channelStatus?.lifecycle).toBe('Invalid');
       expect(result.items[0].channelStatus?.validationMessages).toEqual(['Brak parametru: Marka']);
     });
 
@@ -433,7 +433,7 @@ describe('OfferMappingRepository', () => {
         expect(findLifecycleCall(qb)).toBeUndefined();
       });
 
-      it('should filter Unsynced by the ABSENCE of a status snapshot, never by a status value', async () => {
+      it('should filter Unsynced by the ABSENCE of a status snapshot OR an unrecognised status value', async () => {
         const qb = buildListQb([]);
         (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
 
@@ -441,8 +441,12 @@ describe('OfferMappingRepository', () => {
 
         const calls = qb.andWhere.mock.calls as Array<[string, unknown?]>;
         const clause = calls.map(([sql]) => sql).find((sql) => sql.startsWith('NOT '));
+        // Must be the complement of BOTH "no snapshot" and "unrecognised status" -
+        // a synced snapshot carrying an out-of-union value (#2032 review thread 1)
+        // must also land here, or it lands on no tab at all.
         expect(clause).toBe(
-          'NOT (oss."publicationStatus" IS NOT NULL AND oss."lastStatusSyncedAt" IS NOT NULL)'
+          'NOT ((oss."publicationStatus" IS NOT NULL AND oss."lastStatusSyncedAt" IS NOT NULL) AND ' +
+            "oss.\"publicationStatus\" IN ('active', 'activating', 'inactivating', 'inactive', 'ended'))"
         );
       });
 
@@ -471,10 +475,10 @@ describe('OfferMappingRepository', () => {
         );
       });
 
-      it('should split Inactive from Draft on validator-message presence', async () => {
+      it('should split Invalid from Draft on validator-message presence', async () => {
         const inactiveQb = buildListQb([]);
         (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(inactiveQb);
-        await repository.findMany({ lifecycle: 'Inactive' }, { limit: 20, offset: 0 });
+        await repository.findMany({ lifecycle: 'Invalid' }, { limit: 20, offset: 0 });
 
         const draftQb = buildListQb([]);
         (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(draftQb);
@@ -501,7 +505,7 @@ describe('OfferMappingRepository', () => {
         const qb = buildListQb([]);
         (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
 
-        await repository.findMany({ lifecycle: 'Inactive' }, { limit: 20, offset: 0 });
+        await repository.findMany({ lifecycle: 'Invalid' }, { limit: 20, offset: 0 });
 
         // jsonb_array_length RAISES on a non-array, which would 500 the tab.
         const [clause] = findLifecycleCall(qb) as [string, Record<string, unknown>];
@@ -625,7 +629,7 @@ describe('OfferMappingRepository', () => {
 
       expect(counts).toEqual({
         Active: 7,
-        Inactive: 3,
+        Invalid: 3,
         Draft: 6,
         Ended: 5,
         Unsynced: 90,
@@ -668,7 +672,7 @@ describe('OfferMappingRepository', () => {
       // A tab with no rows must render "0", never vanish.
       expect(await repository.countByLifecycle({})).toEqual({
         Active: 0,
-        Inactive: 0,
+        Invalid: 0,
         Draft: 0,
         Ended: 0,
         Unsynced: 0,
@@ -700,7 +704,7 @@ describe('OfferMappingRepository', () => {
         .flat()
         .filter((argument): argument is string => typeof argument === 'string')
         .join(' ');
-      for (const bucket of ['Active', 'Inactive', 'Draft', 'Ended', 'Unsynced']) {
+      for (const bucket of ['Active', 'Invalid', 'Draft', 'Ended', 'Unsynced']) {
         expect(emittedSql).not.toContain(bucket);
       }
     });
@@ -796,11 +800,11 @@ describe('OfferMappingRepository', () => {
 
       const counts = await repository.countByLifecycle({});
 
-      expect(counts).toEqual({ Active: 2, Inactive: 0, Draft: 0, Ended: 0, Unsynced: 5 });
+      expect(counts).toEqual({ Active: 2, Invalid: 0, Draft: 0, Ended: 0, Unsynced: 5 });
       const total = Object.values(counts).reduce((sum, value) => sum + value, 0);
       expect(total).toBe(7);
       expect(Object.keys(counts).sort()).toEqual(
-        ['Active', 'Draft', 'Ended', 'Inactive', 'Unsynced'].sort()
+        ['Active', 'Draft', 'Ended', 'Invalid', 'Unsynced'].sort()
       );
     });
   });

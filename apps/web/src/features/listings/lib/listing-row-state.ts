@@ -15,7 +15,7 @@
  * @module apps/web/src/features/listings/lib
  */
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
-import type { OfferMapping } from '../api/listings.types';
+import type { OfferLifecycle, OfferMapping } from '../api/listings.types';
 
 export interface ListingRowBadge {
   id: string;
@@ -86,8 +86,20 @@ const UNLINKED_TITLE: Record<ChannelStockSignal, string> = {
  * Badges for one row, loudest first. Zero, one or two: a stale row that is also
  * rejected earns both, because suppressing either would hide a fact the
  * operator needs to act on.
+ *
+ * `activeLifecycle` (#2032 review thread 12.4) suppresses the plain lifecycle
+ * badge when it would just restate the selected tab - the tab's own label
+ * already says "Ended" for every row on the Ended tab, so repeating it on
+ * every row is noise. Compared against `status.lifecycle` (the bucket), never
+ * against the badge's own label text: the Unsynced bucket's badge label is
+ * "Not synced", not "Unsynced", so a text comparison would silently miss it.
+ * The `activating`/`inactivating` transient badges are NOT suppressible -
+ * they carry a fact the "Active" tab label alone does not state.
  */
-export function listingRowBadges(row: OfferMapping): ListingRowBadge[] {
+export function listingRowBadges(
+  row: OfferMapping,
+  activeLifecycle?: OfferLifecycle
+): ListingRowBadge[] {
   const badges: ListingRowBadge[] = [];
   const signal = channelStockSignal(row);
 
@@ -123,14 +135,20 @@ export function listingRowBadges(row: OfferMapping): ListingRowBadge[] {
     return badges;
   }
 
+  if (status.lifecycle === activeLifecycle) return badges;
+
   switch (status.lifecycle) {
-    case 'Inactive':
-      // NOT "Rejected": the backend derives this bucket from `inactive` PLUS
-      // validator messages, which a seller who deactivated the offer himself
-      // can also satisfy. The messages are real, the refusal may not be.
+    case 'Invalid':
+      // Named `Invalid`, not `Inactive` (#2032 review thread 9) - Allegro's
+      // own INACTIVE already means "not live", and that reading would make
+      // an Allegro-literate operator expect most of their deactivated offers
+      // on this tab instead of Draft. Not "Rejected" either: the backend
+      // derives this bucket from `inactive` PLUS validator messages, which a
+      // seller who deactivated the offer himself can also satisfy - the
+      // messages are real, the refusal may not be.
       badges.push({
         id: 'lifecycle',
-        label: 'Inactive',
+        label: 'Invalid',
         tone: 'error',
         title: 'Not live on the channel, with validator errors outstanding.',
       });

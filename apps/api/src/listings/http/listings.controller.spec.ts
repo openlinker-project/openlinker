@@ -108,12 +108,12 @@ describe('ListingsController', () => {
     },
     channelStatus: {
       publicationStatus: 'inactive',
-      lifecycle: 'Inactive',
+      lifecycle: 'Invalid',
       validationMessages: ['Brak parametru: Marka'],
       lastStatusSyncedAt: new Date('2026-01-02T00:00:00Z'),
     },
     commercial: {
-      price: 100,
+      price: '100.00',
       currency: 'PLN',
       availableQuantity: 41,
       lastCommercialSyncedAt: new Date('2026-01-02T00:00:00Z'),
@@ -136,6 +136,7 @@ describe('ListingsController', () => {
     repository = {
       findById: jest.fn(),
       findMany: jest.fn(),
+      findMappingPage: jest.fn(),
       countByLifecycle: jest.fn().mockResolvedValue(emptyOfferLifecycleCounts()),
       countByConnectionAndVariants: jest.fn().mockResolvedValue(new Map<string, number>()),
       countListedVariantsByProducts: jest.fn().mockResolvedValue([]),
@@ -292,25 +293,44 @@ describe('ListingsController', () => {
     });
 
     describe('lifecycle counts (#2026)', () => {
+      // All these tests set `includeLifecycleCounts: true` (#2032 review
+      // thread 3) - the counts aggregate is now OFF by default, since three
+      // other callers (product drawer, nav badge probe) share this endpoint
+      // and never render a tab bar to pay the second full scan for.
+
       it('should carry a per-bucket count alongside the page', async () => {
-        repository.findMany.mockResolvedValue({ items: [], total: 97 });
+        repository.findMany.mockResolvedValue({ items: [], total: -1 });
         repository.countByLifecycle.mockResolvedValue({
           Active: 4,
-          Inactive: 1,
+          Invalid: 1,
           Draft: 2,
           Ended: 0,
           Unsynced: 90,
         });
 
-        const result = await controller.listOfferMappings({});
+        const result = await controller.listOfferMappings({ includeLifecycleCounts: true });
 
         expect(result.lifecycleCounts).toEqual({
           Active: 4,
-          Inactive: 1,
+          Invalid: 1,
           Draft: 2,
           Ended: 0,
           Unsynced: 90,
         });
+      });
+
+      it('should not compute lifecycleCounts, or ask findMany to skip its own total, when not requested', async () => {
+        repository.findMany.mockResolvedValue({ items: [], total: 5 });
+
+        const result = await controller.listOfferMappings({});
+
+        expect(result.lifecycleCounts).toBeUndefined();
+        expect(result.total).toBe(5);
+        expect(repository.countByLifecycle).not.toHaveBeenCalled();
+        expect(repository.findMany).toHaveBeenCalledWith(
+          { connectionId: undefined, internalId: undefined, search: undefined, lifecycle: undefined },
+          { limit: 20, offset: 0 }
+        );
       });
 
       // NOTE: "the counts sum to the total" is deliberately NOT asserted here.
@@ -320,9 +340,13 @@ describe('ListingsController', () => {
       // `apps/api/test/integration/listings/offer-lifecycle-counts.int-spec.ts`.
 
       it('should apply the same search and connection filters to the counts as to the list', async () => {
-        repository.findMany.mockResolvedValue({ items: [], total: 0 });
+        repository.findMany.mockResolvedValue({ items: [], total: -1 });
 
-        await controller.listOfferMappings({ connectionId: 'conn-1', search: 'terra' });
+        await controller.listOfferMappings({
+          connectionId: 'conn-1',
+          search: 'terra',
+          includeLifecycleCounts: true,
+        });
 
         expect(repository.countByLifecycle).toHaveBeenCalledWith({
           connectionId: 'conn-1',
@@ -332,13 +356,24 @@ describe('ListingsController', () => {
       });
 
       it('should narrow only the list by the selected tab, never the counts', async () => {
-        repository.findMany.mockResolvedValue({ items: [], total: 300 });
+        repository.findMany.mockResolvedValue({ items: [], total: -1 });
+        repository.countByLifecycle.mockResolvedValue({
+          ...emptyOfferLifecycleCounts(),
+          Ended: 300,
+        });
 
-        await controller.listOfferMappings({ lifecycle: 'Ended', search: 'terra' });
+        await controller.listOfferMappings({
+          lifecycle: 'Ended',
+          search: 'terra',
+          includeLifecycleCounts: true,
+        });
 
+        // The third arg tells `findMany` to skip its own now-redundant
+        // `getCount()` - `total` is derived from `countByLifecycle` instead.
         expect(repository.findMany).toHaveBeenCalledWith(
           expect.objectContaining({ lifecycle: 'Ended' }),
-          { limit: 20, offset: 0 }
+          { limit: 20, offset: 0 },
+          { skipTotal: true }
         );
         // Forwarding it here would zero every other tab the moment one is clicked.
         expect(repository.countByLifecycle).toHaveBeenCalledWith(
@@ -347,18 +382,36 @@ describe('ListingsController', () => {
       });
 
       it('should report the selected bucket size as total so paging inside a tab works', async () => {
-        repository.findMany.mockResolvedValue({ items: [], total: 300 });
+        repository.findMany.mockResolvedValue({ items: [], total: -1 });
         repository.countByLifecycle.mockResolvedValue({
           ...emptyOfferLifecycleCounts(),
           Ended: 300,
           Active: 12,
         });
 
-        const result = await controller.listOfferMappings({ lifecycle: 'Ended' });
+        const result = await controller.listOfferMappings({
+          lifecycle: 'Ended',
+          includeLifecycleCounts: true,
+        });
 
         expect(result.total).toBe(300);
         // The other tabs stay live while Ended is selected.
-        expect(result.lifecycleCounts.Active).toBe(12);
+        expect(result.lifecycleCounts?.Active).toBe(12);
+      });
+
+      it('should report the sum across every bucket as total when no tab is selected', async () => {
+        repository.findMany.mockResolvedValue({ items: [], total: -1 });
+        repository.countByLifecycle.mockResolvedValue({
+          Active: 4,
+          Invalid: 1,
+          Draft: 2,
+          Ended: 3,
+          Unsynced: 90,
+        });
+
+        const result = await controller.listOfferMappings({ includeLifecycleCounts: true });
+
+        expect(result.total).toBe(100);
       });
 
       it('should issue the list and the counts concurrently rather than back to back', async () => {
@@ -366,7 +419,7 @@ describe('ListingsController', () => {
         repository.findMany.mockImplementation(async () => {
           await Promise.resolve();
           listSettled = true;
-          return { items: [], total: 0 };
+          return { items: [], total: -1 };
         });
         repository.countByLifecycle.mockImplementation(() => {
           // Reached before the list resolved: the two are not chained.
@@ -374,7 +427,7 @@ describe('ListingsController', () => {
           return Promise.resolve(emptyOfferLifecycleCounts());
         });
 
-        await controller.listOfferMappings({});
+        await controller.listOfferMappings({ includeLifecycleCounts: true });
 
         expect(repository.countByLifecycle).toHaveBeenCalledTimes(1);
       });
@@ -396,10 +449,10 @@ describe('ListingsController', () => {
 
       expect(result.items[0].identity?.productName).toBe('Doniczka ceramiczna Terra');
       expect(result.items[0].identity?.imageUrl).toBe('https://cdn.example/terra.jpg');
-      expect(result.items[0].channelStatus?.lifecycle).toBe('Inactive');
+      expect(result.items[0].channelStatus?.lifecycle).toBe('Invalid');
       expect(result.items[0].channelStatus?.validationMessages).toEqual(['Brak parametru: Marka']);
       expect(result.items[0].channelStatus?.lastStatusSyncedAt).toBe('2026-01-02T00:00:00.000Z');
-      expect(result.items[0].commercial?.price).toBe(100);
+      expect(result.items[0].commercial?.price).toBe('100.00');
       expect(result.items[0].commercial?.availableQuantity).toBe(41);
       // ADR-009 (#2024): a price is never returned without its age.
       expect(result.items[0].commercial?.lastCommercialSyncedAt).toBe('2026-01-02T00:00:00.000Z');

@@ -17337,6 +17337,12 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+/* #2032 review thread 7: a commercial reading whose own clock has drifted
+   from the visible "Updated" (status) clock earns a visible flag, not just a
+   tooltip. */
+.price-cell__stale {
+  margin-top: 1px;
+}
 
 .qty-cell {
   display: inline-flex;

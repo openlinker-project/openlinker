@@ -39,12 +39,12 @@ describe('deriveOfferLifecycle', () => {
     expect(deriveOfferLifecycle('ended', null)).toBe('Ended');
   });
 
-  it('should return Inactive when an inactive offer carries validator messages', () => {
+  it('should return Invalid when an inactive offer carries validator messages', () => {
     const details: OfferStatusSnapshotDetails = {
       validationMessages: ['Brak parametru: Marka'],
     };
 
-    expect(deriveOfferLifecycle('inactive', details)).toBe('Inactive');
+    expect(deriveOfferLifecycle('inactive', details)).toBe('Invalid');
   });
 
   it('should return Draft when an inactive offer carries no statusDetails at all', () => {
@@ -92,7 +92,7 @@ describe('deriveOfferLifecycle', () => {
 
 describe('OfferLifecycleValues', () => {
   it('should carry the Unsynced bucket so every mapped offer has a home (#2025)', () => {
-    expect(OfferLifecycleValues).toEqual(['Active', 'Inactive', 'Draft', 'Ended', 'Unsynced']);
+    expect(OfferLifecycleValues).toEqual(['Active', 'Invalid', 'Draft', 'Ended', 'Unsynced']);
   });
 });
 
@@ -164,8 +164,8 @@ describe('listSnapshotFactsForLifecycle (#2026)', () => {
     expect(listSnapshotFactsForLifecycle('Unsynced')).toEqual([]);
   });
 
-  it('should split the inactive status across Inactive and Draft by message presence', () => {
-    expect(listSnapshotFactsForLifecycle('Inactive')).toEqual([
+  it('should split the inactive status across Invalid and Draft by message presence', () => {
+    expect(listSnapshotFactsForLifecycle('Invalid')).toEqual([
       { publicationStatus: 'inactive', hasValidationMessages: true },
     ]);
     expect(listSnapshotFactsForLifecycle('Draft')).toEqual([
@@ -185,7 +185,7 @@ describe('offer lifecycle counts (#2026)', () => {
   it('should zero every bucket so an empty one is reported rather than absent', () => {
     expect(emptyOfferLifecycleCounts()).toEqual({
       Active: 0,
-      Inactive: 0,
+      Invalid: 0,
       Draft: 0,
       Ended: 0,
       Unsynced: 0,
@@ -195,7 +195,7 @@ describe('offer lifecycle counts (#2026)', () => {
 
   it('should sum every bucket, including Unsynced', () => {
     expect(
-      sumOfferLifecycleCounts({ Active: 3, Inactive: 1, Draft: 2, Ended: 4, Unsynced: 90 })
+      sumOfferLifecycleCounts({ Active: 3, Invalid: 1, Draft: 2, Ended: 4, Unsynced: 90 })
     ).toBe(100);
   });
 

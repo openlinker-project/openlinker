@@ -30,7 +30,7 @@ export type KnownMappingEntityType = (typeof KNOWN_MAPPING_ENTITY_TYPES)[number]
  */
 export const OFFER_LIFECYCLE_VALUES = [
   'Active',
-  'Inactive',
+  'Invalid',
   'Draft',
   'Ended',
   'Unsynced',
@@ -91,7 +91,12 @@ export interface OfferMappingChannelStatus {
  * reported by the marketplace", never zero.
  */
 export interface OfferMappingCommercial {
-  price: number | null;
+  /**
+   * A decimal STRING (e.g. `"99.99"`), not a number (#2032 review thread 6) -
+   * the API keeps `numeric` precision intact across the wire; convert with
+   * `Number()` only at render time, right before `formatAmount`.
+   */
+  price: string | null;
   currency: string | null;
   availableQuantity: number | null;
   /**
@@ -161,6 +166,14 @@ export interface ListingsFilters {
    * returned page client-side. Does NOT affect `lifecycleCounts`.
    */
   lifecycle?: OfferLifecycle;
+  /**
+   * Compute `lifecycleCounts` alongside the page (#2032 review thread 3).
+   * Off by default - the aggregate is a second full scan over the same join,
+   * so a caller with no tab bar to feed (`variant-stock-table.tsx`,
+   * `product-row-detail.tsx`, `use-nav-counts.ts`) must not pay for it. Only
+   * `listings-list-page.tsx` sets this.
+   */
+  includeLifecycleCounts?: boolean;
 }
 
 export interface ListingsPagination {
@@ -176,9 +189,10 @@ export interface PaginatedOfferMappings {
    * filters as the list, but never narrowed by `lifecycle` itself - otherwise
    * selecting a tab would zero every other tab's badge (#2026 / #2029). The
    * buckets partition the filtered set, so they sum to `total` for the same
-   * request without a `lifecycle` filter.
+   * request without a `lifecycle` filter. Present only when the request set
+   * `includeLifecycleCounts` (#2032 review thread 3).
    */
-  lifecycleCounts: OfferLifecycleCounts;
+  lifecycleCounts?: OfferLifecycleCounts;
   limit: number;
   offset: number;
 }

@@ -5,7 +5,7 @@
  *
  * @module apps/api/src/listings/http/dto
  */
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { OfferLifecycle } from '@openlinker/core/listings';
 import { OfferMappingResponseDto } from './offer-mapping-response.dto';
 
@@ -30,17 +30,18 @@ export class OfferLifecycleCountsResponseDto implements Record<OfferLifecycle, n
 
   @ApiProperty({
     description:
-      'Offers the channel validator rejected (they carry messages). NOTE: these still count as ' +
-      'already-listed for the duplicate guard, so their variants cannot be re-listed through the ' +
-      'offer wizard - only Ended can.',
+      'Offers the channel validator rejected (they carry messages). Named Invalid, not Inactive ' +
+      "(#2032 review thread 9) - Allegro's own INACTIVE already means \"not live\", which this " +
+      "bucket is not. NOTE: these still count as already-listed for the duplicate guard, so " +
+      'their variants cannot be re-listed through the offer wizard - only Ended can.',
   })
-  Inactive!: number;
+  Invalid!: number;
 
   @ApiProperty({
     description:
       'Offers not live on the channel, with no validator messages. Deliberately NOT "never went ' +
       'live": a deliberately deactivated formerly-live offer reads as inactive too, as does an ' +
-      'Erli offer whose status OL does not recognise. NOTE: like Inactive, these count as ' +
+      'Erli offer whose status OL does not recognise. NOTE: like Invalid, these count as ' +
       'already-listed for the duplicate guard and cannot be re-listed through the offer wizard.',
   })
   Draft!: number;
@@ -74,15 +75,17 @@ export class PaginatedOfferMappingsResponseDto {
   })
   total!: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     type: OfferLifecycleCountsResponseDto,
     description:
       'Row count per lifecycle bucket under the SAME search/connection/variant filters as the ' +
       'list, but deliberately NOT narrowed by `lifecycle` - otherwise selecting a tab would zero ' +
       'every other tab. The buckets partition the filtered set, so they sum to the `total` ' +
-      'reported for the same request without a `lifecycle` filter.',
+      'reported for the same request without a `lifecycle` filter. Present only when the request ' +
+      'set `includeLifecycleCounts` (#2032 review thread 3) - omitted otherwise, since computing ' +
+      'it costs a second full scan a caller with no tab bar to feed must not pay for.',
   })
-  lifecycleCounts!: OfferLifecycleCountsResponseDto;
+  lifecycleCounts?: OfferLifecycleCountsResponseDto;
 
   @ApiProperty({ description: 'Page size used for this response' })
   limit!: number;

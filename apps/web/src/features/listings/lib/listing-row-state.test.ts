@@ -32,7 +32,7 @@ function makeRow(overrides: Partial<OfferMapping> = {}): OfferMapping {
       lastStatusSyncedAt: '2026-07-21T02:10:00.000Z',
     },
     commercial: {
-      price: 100,
+      price: '100.00',
       currency: 'PLN',
       availableQuantity: 41,
       lastCommercialSyncedAt: '2026-07-21T02:10:00.000Z',
@@ -64,19 +64,19 @@ describe('listingRowBadges', () => {
 
   // NOT "Rejected": the bucket is `inactive` PLUS validator messages, which a
   // seller who deactivated the offer himself also satisfies.
-  it('should label a validator-flagged inactive offer as Inactive, not Rejected', () => {
+  it('should label a validator-flagged inactive offer as Invalid, not Rejected', () => {
     const badges = listingRowBadges(
       makeRow({
         channelStatus: {
           publicationStatus: 'inactive',
-          lifecycle: 'Inactive',
+          lifecycle: 'Invalid',
           validationMessages: ['Brak wymaganego parametru: Materiał'],
           lastStatusSyncedAt: '2026-07-20T23:12:00.000Z',
         },
       }),
     );
 
-    expect(badges.map((b) => b.label)).toEqual(['Inactive']);
+    expect(badges.map((b) => b.label)).toEqual(['Invalid']);
     expect(badges[0]?.title).toMatch(/validator errors/i);
     expect(badges[0]?.title).not.toMatch(/refused|rejected/i);
   });
@@ -122,7 +122,7 @@ describe('listingRowBadges', () => {
       makeRow({
         identity: STALE_IDENTITY,
         commercial: {
-          price: 100,
+          price: '100.00',
           currency: 'PLN',
           availableQuantity: 0,
           lastCommercialSyncedAt: '2026-07-21T02:10:00.000Z',
@@ -149,7 +149,7 @@ describe('listingRowBadges', () => {
       makeRow({
         identity: null,
         commercial: {
-          price: 100,
+          price: '100.00',
           currency: 'PLN',
           availableQuantity: 0,
           lastCommercialSyncedAt: '2026-07-21T02:10:00.000Z',
@@ -185,14 +185,14 @@ describe('listingRowBadges', () => {
         identity: STALE_IDENTITY,
         channelStatus: {
           publicationStatus: 'inactive',
-          lifecycle: 'Inactive',
+          lifecycle: 'Invalid',
           validationMessages: ['Zdjęcie główne poniżej wymaganej rozdzielczości'],
           lastStatusSyncedAt: '2026-07-20T22:40:00.000Z',
         },
       }),
     );
 
-    expect(badges.map((b) => b.label)).toEqual(['Selling deleted product', 'Inactive']);
+    expect(badges.map((b) => b.label)).toEqual(['Selling deleted product', 'Invalid']);
   });
 });
 
@@ -211,7 +211,7 @@ describe('isOverselling', () => {
         makeRow({
           identity: STALE_IDENTITY,
           commercial: {
-            price: 100,
+            price: '100.00',
             currency: 'PLN',
             availableQuantity: null,
             lastCommercialSyncedAt: '2026-07-21T02:10:00.000Z',
@@ -240,7 +240,7 @@ describe('listingRowAlert', () => {
       makeRow({
         channelStatus: {
           publicationStatus: 'inactive',
-          lifecycle: 'Inactive',
+          lifecycle: 'Invalid',
           validationMessages: ['Brak wymaganego parametru: Materiał', 'second'],
           lastStatusSyncedAt: '2026-07-20T23:12:00.000Z',
         },
@@ -256,7 +256,7 @@ describe('listingRowAlert', () => {
         identity: STALE_IDENTITY,
         channelStatus: {
           publicationStatus: 'inactive',
-          lifecycle: 'Inactive',
+          lifecycle: 'Invalid',
           validationMessages: ['Brak wymaganego parametru: Materiał'],
           lastStatusSyncedAt: '2026-07-20T23:12:00.000Z',
         },

@@ -95,7 +95,7 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
       };
     }
 
-    const page = await this.offerMappings.findMany({ connectionId }, { limit, offset });
+    const page = await this.offerMappings.findMappingPage({ connectionId }, { limit, offset });
     const items = page.items;
 
     let updated = 0;

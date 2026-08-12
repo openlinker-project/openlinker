@@ -58,6 +58,7 @@ import {
   IDeliveryPriceListService,
   OfferCreationRecordRepositoryPort,
   OfferMappingRepositoryPort,
+  sumOfferLifecycleCounts,
 } from '@openlinker/core/listings';
 import type {
   CategoryParameter,
@@ -180,9 +181,12 @@ export class ListingsController {
       'catalog identity (product name, variant, SKU, EAN, thumbnail), channel publication status ' +
       'plus its derived lifecycle bucket, and channel-side price/quantity with their freshness ' +
       'timestamp. Supports filtering by connectionId, internalId and lifecycle bucket, and a ' +
-      'search spanning product name, variant label, SKU, EAN and externalId. Also returns ' +
-      '`lifecycleCounts` - one row count per bucket under the same filters minus the lifecycle ' +
-      'narrowing, so the tab bar stays live while a tab is selected.',
+      'search spanning product name, variant label, SKU, EAN and externalId. Set ' +
+      '`includeLifecycleCounts` to also get `lifecycleCounts` - one row count per bucket under ' +
+      'the same filters minus the lifecycle narrowing, so the tab bar stays live while a tab is ' +
+      'selected. Off by default (#2032 review thread 3): this endpoint also backs callers that ' +
+      'never render a tab bar (the product drawer, the nav badge probe), and the aggregate is a ' +
+      'second full scan they would otherwise pay for on every call.',
   })
   @ApiResponse({
     status: 200,
@@ -193,19 +197,46 @@ export class ListingsController {
   async listOfferMappings(
     @Query() query: ListOfferMappingsQueryDto
   ): Promise<PaginatedOfferMappingsResponseDto> {
-    const { connectionId, internalId, search, lifecycle, limit = 20, offset = 0 } = query;
+    const {
+      connectionId,
+      internalId,
+      search,
+      lifecycle,
+      includeLifecycleCounts,
+      limit = 20,
+      offset = 0,
+    } = query;
+
+    if (!includeLifecycleCounts) {
+      const { items, total } = await this.offerMappingRepository.findMany(
+        { connectionId, internalId, search, lifecycle },
+        { limit, offset }
+      );
+      return { items: items.map((m) => this.toListDto(m)), total, limit, offset };
+    }
 
     // Issued together, not sequentially: the counts are a second aggregate over
     // the same join, so making the operator wait for two round-trips would be
     // pure latency. `lifecycle` is deliberately NOT forwarded to the counts -
     // they label every tab, not the selected one.
-    const [{ items, total }, lifecycleCounts] = await Promise.all([
+    //
+    // `total` is DERIVED from `lifecycleCounts` rather than from a second
+    // `findMany`-owned `getCount()` (#2032 review thread 3) - the five buckets
+    // partition the filtered set (see `OfferLifecycleValues`'s docblock), so
+    // their sum is provably the same number a second `COUNT(DISTINCT)` over
+    // the identical join would return. `findMany` is told to skip its own
+    // count accordingly.
+    const [lifecycleCounts, { items }] = await Promise.all([
+      this.offerMappingRepository.countByLifecycle({ connectionId, internalId, search }),
       this.offerMappingRepository.findMany(
         { connectionId, internalId, search, lifecycle },
-        { limit, offset }
+        { limit, offset },
+        { skipTotal: true }
       ),
-      this.offerMappingRepository.countByLifecycle({ connectionId, internalId, search }),
     ]);
+    const total = lifecycle
+      ? lifecycleCounts[lifecycle]
+      : sumOfferLifecycleCounts(lifecycleCounts);
 
     return {
       items: items.map((m) => this.toListDto(m)),

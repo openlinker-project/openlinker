@@ -3,9 +3,9 @@
  *
  * TypeORM implementation of `OfferCommercialSnapshotRepositoryPort` (#2024).
  * Persists the periodically-refreshed channel-side price/currency/available
- * quantity of mapped offers and maps between the ORM row and the
- * `OfferCommercialSnapshot` domain entity. Mapping is private; application
- * services only see domain entities.
+ * quantity of mapped offers via an atomic upsert (#2032 review thread 5). No
+ * caller reads a mapped domain entity back, so this repository writes only -
+ * see `OfferCommercialSnapshotRepositoryPort` for why.
  *
  * @module libs/core/src/listings/infrastructure/persistence/repositories
  * @implements {OfferCommercialSnapshotRepositoryPort}
@@ -13,7 +13,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { OfferCommercialSnapshot } from '../../../domain/entities/offer-commercial-snapshot.entity';
 import type { OfferCommercialSnapshotRepositoryPort } from '../../../domain/ports/offer-commercial-snapshot-repository.port';
 import type { UpsertOfferCommercialSnapshotCommand } from '../../../domain/types/offer-commercial-snapshot.types';
 import { OfferCommercialSnapshotOrmEntity } from '../entities/offer-commercial-snapshot.orm-entity';
@@ -25,49 +24,37 @@ export class OfferCommercialSnapshotRepository implements OfferCommercialSnapsho
     private readonly ormRepository: Repository<OfferCommercialSnapshotOrmEntity>
   ) {}
 
-  async upsert(command: UpsertOfferCommercialSnapshotCommand): Promise<OfferCommercialSnapshot> {
-    // find-then-save (not atomic), matching OfferStatusSnapshotRepository —
-    // safe under the same single-writer-per-connection posture the status
-    // sync job already relies on (see that repository's upsert docblock). The
-    // one caller that can race it treats a failed write as non-fatal, so a
-    // losing INSERT costs one skipped observation, not a wedged sync.
-    //
-    // Deliberately no QueryFailedError → domain-error translation: the sole
-    // caller catches every failure mode identically and warn-logs it, so a
-    // dedicated domain error would be a type nothing ever branches on. Add one
-    // with the first caller that needs to tell the failures apart.
-    const existing = await this.ormRepository.findOne({
-      where: {
+  async upsert(command: UpsertOfferCommercialSnapshotCommand): Promise<void> {
+    // Atomic `INSERT ... ON CONFLICT DO UPDATE` (#2032 review thread 5) - NOT
+    // find-then-save. Unlike `OfferStatusSnapshotRepository.upsert` (which
+    // reads first because its caller needs the row's PREVIOUS status to
+    // detect a transition), this row has exactly one writer per key and no
+    // caller reads the persisted entity back, so there is nothing the find
+    // half of find-then-save would have bought. And unlike that sibling's
+    // effectively-single-writer posture, `refreshOne` (this table's sole
+    // write path) is reachable from three independent triggers - the hourly
+    // scan, the delayed post-creation refresh, and the operator "Refresh
+    // status" endpoint - so a genuine INSERT/INSERT race is reachable. Under
+    // find-then-save the losing INSERT hit a unique-violation that
+    // `upsertCommercialSnapshot` counts into `commercialFailed`, a counter
+    // whose docblock reserves non-zero for a SYSTEMIC failure (adapter/schema
+    // breakage) - ordinary concurrency should never trip it.
+    await this.ormRepository.upsert(
+      {
         connectionId: command.connectionId,
         externalOfferId: command.externalOfferId,
+        internalVariantId: command.internalVariantId,
+        price: command.price,
+        currency: command.currency,
+        availableQuantity: command.availableQuantity,
+        lastCommercialSyncedAt: command.lastCommercialSyncedAt,
+        // TypeORM 0.3.17 (pinned) does not bump `@UpdateDateColumn` on the
+        // upsert-update path (fixed upstream in 0.3.18, typeorm#10458) -
+        // stamped explicitly so a merge-path write is not silently missing
+        // from `updatedAt`.
+        updatedAt: () => 'now()',
       },
-    });
-
-    const entity = existing ?? new OfferCommercialSnapshotOrmEntity();
-    entity.connectionId = command.connectionId;
-    entity.externalOfferId = command.externalOfferId;
-    entity.internalVariantId = command.internalVariantId;
-    entity.price = command.price;
-    entity.currency = command.currency;
-    entity.availableQuantity = command.availableQuantity;
-    entity.lastCommercialSyncedAt = command.lastCommercialSyncedAt;
-
-    const saved = await this.ormRepository.save(entity);
-    return this.toDomain(saved);
-  }
-
-  private toDomain(entity: OfferCommercialSnapshotOrmEntity): OfferCommercialSnapshot {
-    return new OfferCommercialSnapshot({
-      id: entity.id,
-      connectionId: entity.connectionId,
-      externalOfferId: entity.externalOfferId,
-      internalVariantId: entity.internalVariantId,
-      price: entity.price,
-      currency: entity.currency,
-      availableQuantity: entity.availableQuantity,
-      lastCommercialSyncedAt: entity.lastCommercialSyncedAt,
-      createdAt: entity.createdAt,
-      updatedAt: entity.updatedAt,
-    });
+      { conflictPaths: ['connectionId', 'externalOfferId'] }
+    );
   }
 }

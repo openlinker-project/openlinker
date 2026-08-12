@@ -63,14 +63,23 @@ import type { OfferStatusSnapshotDetails } from './offer-status-snapshot.types';
  * tabs the redesign creates for the go-fix-this workflow.
  * `OfferMappingRepositoryPort.countByConnectionAndVariants` - the read behind
  * `BulkListingSubmitService.filterAlreadyListed` - excludes ONLY `ended`, so an
- * `Inactive` or `Draft` row counts as already-listed just like an `Active` one.
- * An operator who opens Inactive, selects their rejected offers and hits "Create
+ * `Invalid` or `Draft` row counts as already-listed just like an `Active` one.
+ * An operator who opens Invalid, selects their rejected offers and hits "Create
  * offer" gets them silently skipped, or a 400 if that was the whole selection.
  * Only `Ended` is re-listable. Changing the duplicate guard is out of scope for
  * #2026; this docblock and the response DTO's per-bucket descriptions exist so
  * the UI copy built on them does not imply otherwise.
+ *
+ * Named `Invalid`, not `Inactive` (#2032 review thread 9): Allegro's own
+ * `publication.status` union already contains `INACTIVE`, glossed in Allegro's
+ * own docs as the draft state - so an Allegro-literate operator opening a tab
+ * called "Inactive" would expect most of their marketplace-`INACTIVE` offers
+ * there and not find them (those, with no validator messages, are `Draft`
+ * here). `Invalid` is also the vocabulary the comparable corpus uses for
+ * exactly this validator-rejected bucket (BaseLinker's fourth tab is literally
+ * *Invalid* / `Błędne`; ChannelEngine's is `INVALID_ON_CREATE`).
  */
-export const OfferLifecycleValues = ['Active', 'Inactive', 'Draft', 'Ended', 'Unsynced'] as const;
+export const OfferLifecycleValues = ['Active', 'Invalid', 'Draft', 'Ended', 'Unsynced'] as const;
 export type OfferLifecycle = (typeof OfferLifecycleValues)[number];
 
 /**
@@ -79,7 +88,7 @@ export type OfferLifecycle = (typeof OfferLifecycleValues)[number];
  * the query ever learning the rule: the database groups by these raw facts and
  * `resolveOfferLifecycle` folds each group, exactly as it classifies each list
  * row. One implementation, two call sites, so the counts and the list cannot
- * disagree about what an `Inactive` offer is.
+ * disagree about what an `Invalid` offer is.
  */
 export interface OfferSnapshotFacts {
   publicationStatus: OfferPublicationStatus;
@@ -111,10 +120,10 @@ export function resolveOfferLifecycle(facts: OfferSnapshotFacts | null): OfferLi
     case 'ended':
       return 'Ended';
     case 'inactive':
-      // The marketplace validator rejected it (Inactive) versus not live with
+      // The marketplace validator rejected it (Invalid) versus not live with
       // nothing to say about why (Draft) - the only signal separating the two.
       // Draft deliberately claims no more than that; see the union's docblock.
-      return facts.hasValidationMessages ? 'Inactive' : 'Draft';
+      return facts.hasValidationMessages ? 'Invalid' : 'Draft';
   }
 }
 
@@ -170,7 +179,7 @@ export function listSnapshotFactsForLifecycle(
  * still reports `0` rather than being absent from the response.
  */
 export function emptyOfferLifecycleCounts(): OfferLifecycleCounts {
-  return { Active: 0, Inactive: 0, Draft: 0, Ended: 0, Unsynced: 0 };
+  return { Active: 0, Invalid: 0, Draft: 0, Ended: 0, Unsynced: 0 };
 }
 
 /**
@@ -193,9 +202,21 @@ export const OFFER_VALIDATION_MESSAGES_KEY = 'validationMessages' satisfies keyo
 /**
  * Normalise the optional, intentionally-loose validator message list off a
  * snapshot's detail blob into an always-present array.
+ *
+ * Guards the shape at runtime (#2032 review thread 10), mirroring
+ * `HAS_VALIDATION_MESSAGES_SQL`'s `jsonb_typeof(...) = 'array'` guard on the
+ * SQL side: `statusDetails` is unconstrained `jsonb`, so the declared
+ * `string[]` type is trusted by the compiler but not enforced by the column.
+ * A future adapter or migration writing a scalar (e.g.
+ * `{"validationMessages": "Brak parametru"}`) would otherwise make this side
+ * report `hasValidationMessages = true` (`"Brak parametru".length > 0`) while
+ * the SQL side reports `false` - a row landing on Draft's count but Invalid's
+ * page - and `[...validationMessages]` downstream would silently explode a
+ * string into one-character "messages".
  */
 export function readValidationMessages(
   statusDetails: OfferStatusSnapshotDetails | null
 ): readonly string[] {
-  return statusDetails?.[OFFER_VALIDATION_MESSAGES_KEY] ?? [];
+  const raw = statusDetails?.[OFFER_VALIDATION_MESSAGES_KEY];
+  return Array.isArray(raw) ? raw.filter((message): message is string => typeof message === 'string') : [];
 }

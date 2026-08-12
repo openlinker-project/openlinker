@@ -44,7 +44,7 @@ import { loginAsAdmin } from '../helpers/test-auth.helper';
  * the WIRE contract, so a renamed or dropped bucket must fail here instead of
  * quietly following the source it is meant to pin.
  */
-const BUCKETS = ['Active', 'Inactive', 'Draft', 'Ended', 'Unsynced'] as const;
+const BUCKETS = ['Active', 'Invalid', 'Draft', 'Ended', 'Unsynced'] as const;
 type Bucket = (typeof BUCKETS)[number];
 
 type LifecycleCounts = Record<Bucket, number>;
@@ -58,18 +58,20 @@ interface ListingsPageBody {
 const SYNCED_AT = '2026-08-01T10:00:00.000Z';
 
 /**
- * 13 mappings on the connection under test: Active 4 (active x2 + activating +
- * inactivating), Inactive 2, Draft 3 (one with no statusDetails, one with an
- * empty message array, one with neither), Ended 2, Unsynced 2.
+ * 14 mappings on the connection under test: Active 4 (active x2 + activating +
+ * inactivating), Invalid 2, Draft 3 (one with no statusDetails, one with an
+ * empty message array, one with neither), Ended 2, Unsynced 3 (2 with no
+ * snapshot row at all, 1 with a snapshot whose `publicationStatus` is
+ * out-of-union - see thread 1 of the #2032 review).
  */
 const EXPECTED: LifecycleCounts = {
   Active: 4,
-  Inactive: 2,
+  Invalid: 2,
   Draft: 3,
   Ended: 2,
-  Unsynced: 2,
+  Unsynced: 3,
 };
-const TOTAL = 13;
+const TOTAL = 14;
 
 describe('Offer Lifecycle Counts API Integration (#2026)', () => {
   let harness: IntegrationTestHarness;
@@ -163,7 +165,7 @@ describe('Offer Lifecycle Counts API Integration (#2026)', () => {
     await seedOffer({ externalOfferId: 'inactivating-1', publicationStatus: 'inactivating' });
 
     // `inactive` splits on validator-message presence - the only signal
-    // separating Inactive from Draft.
+    // separating Invalid from Draft.
     await seedOffer({
       externalOfferId: 'terra-rejected-1',
       publicationStatus: 'inactive',
@@ -176,7 +178,7 @@ describe('Offer Lifecycle Counts API Integration (#2026)', () => {
     });
     await seedOffer({ externalOfferId: 'draft-1', publicationStatus: 'inactive' });
     await seedOffer({ externalOfferId: 'draft-2', publicationStatus: 'inactive' });
-    // An empty message array must read as Draft, not Inactive.
+    // An empty message array must read as Draft, not Invalid.
     await seedOffer({
       externalOfferId: 'draft-3',
       publicationStatus: 'inactive',
@@ -189,6 +191,23 @@ describe('Offer Lifecycle Counts API Integration (#2026)', () => {
     // Unsynced: the mapping exists, no status has ever been read for it.
     await seedOffer({ externalOfferId: 'terra-unsynced-1' });
     await seedOffer({ externalOfferId: 'unsynced-2' });
+
+    // Unsynced via an out-of-union `publicationStatus` (e.g. a renamed member
+    // mid-migration, ADR-009): the snapshot row EXISTS and is fully synced, so
+    // `HAS_STATUS_SNAPSHOT_SQL` alone would wrongly exclude it from Unsynced
+    // while it also fails every recognised-status predicate - landing on no
+    // tab at all. `seedOffer` only accepts union values, so this row is
+    // inserted directly with a status the union does not contain.
+    await seedOffer({ externalOfferId: 'unrecognised-status-1' });
+    // `seedOffer` only accepts union values for `publicationStatus`, so the
+    // out-of-union snapshot row is inserted directly here.
+    await harness.getDataSource().query(
+      `INSERT INTO offer_status_snapshots
+         ("connectionId", "externalOfferId", "internalVariantId", "publicationStatus",
+          "statusDetails", "lastStatusSyncedAt")
+       VALUES ($1, $2, $3, 'archived', NULL, $4)`,
+      [connectionId, 'unrecognised-status-1', 'ol_variant_unrecognised-status-1', SYNCED_AT]
+    );
 
     // Must never be counted for `connectionId`.
     await seedOffer({
@@ -241,13 +260,13 @@ describe('Offer Lifecycle Counts API Integration (#2026)', () => {
 
   it('keeps the partition intact under a search narrowing', async () => {
     // Four seeded offers carry `terra` in their external id: 2 Active,
-    // 1 Inactive, 1 Unsynced. The counts must narrow with the list, or the tab
+    // 1 Invalid, 1 Unsynced. The counts must narrow with the list, or the tab
     // bar would describe the whole catalog while the page shows the search.
     const body = await listListings(`connectionId=${connectionId}&search=terra&limit=100`);
 
     expect(body.lifecycleCounts).toEqual({
       Active: 2,
-      Inactive: 1,
+      Invalid: 1,
       Draft: 0,
       Ended: 0,
       Unsynced: 1,
@@ -264,7 +283,7 @@ describe('Offer Lifecycle Counts API Integration (#2026)', () => {
     // A tab with no rows must render "0", never vanish from the bar.
     expect(body.lifecycleCounts).toEqual({
       Active: 0,
-      Inactive: 0,
+      Invalid: 0,
       Draft: 0,
       Ended: 0,
       Unsynced: 0,

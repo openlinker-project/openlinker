@@ -10,7 +10,6 @@
  *
  * @module libs/core/src/listings/domain/ports
  */
-import type { OfferCommercialSnapshot } from '../entities/offer-commercial-snapshot.entity';
 import type { UpsertOfferCommercialSnapshotCommand } from '../types/offer-commercial-snapshot.types';
 
 export interface OfferCommercialSnapshotRepositoryPort {
@@ -18,13 +17,13 @@ export interface OfferCommercialSnapshotRepositoryPort {
    * Insert a new snapshot or update the existing `(connectionId,
    * externalOfferId)` row, always refreshing `lastCommercialSyncedAt`.
    *
-   * Implementations need not be atomic. The writing job is effectively
-   * single-writer per connection (the scheduler dedups concurrent runs via a
-   * per-minute idempotency key and advances the scan cursor sequentially), and
-   * the one caller that can race it - the delayed `refreshSnapshot` job -
-   * treats a failed commercial write as non-fatal and logs it, so a losing
-   * INSERT costs one skipped observation until the next pass, never a wedged
-   * sync. Same reasoning as `OfferStatusSnapshotRepositoryPort.upsert`.
+   * Implementations MUST be atomic (#2032 review thread 5): `refreshOne` (the
+   * sole write path) is reachable from three independent triggers - the
+   * hourly scan, the delayed post-creation refresh, and the operator
+   * "Refresh status" endpoint - so a genuine same-key INSERT/INSERT race is
+   * reachable, unlike `OfferStatusSnapshotRepositoryPort.upsert`'s
+   * effectively-single-writer posture. Returns `void`: no caller reads the
+   * persisted row back.
    */
-  upsert(command: UpsertOfferCommercialSnapshotCommand): Promise<OfferCommercialSnapshot>;
+  upsert(command: UpsertOfferCommercialSnapshotCommand): Promise<void>;
 }

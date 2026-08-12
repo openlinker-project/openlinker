@@ -127,7 +127,14 @@ export interface OfferMappingChannelStatus {
  * means zero - it means the marketplace did not report the field.
  */
 export interface OfferMappingCommercial {
-  price: number | null;
+  /**
+   * A decimal STRING (e.g. `"99.99"`), not a number (#2032 review thread 6) -
+   * mirrors `MarketplaceOfferPrice.amount`. `numeric` round-trips through
+   * Postgres/TypeORM as a string specifically to avoid float64 precision
+   * loss; coercing to `number` here would throw that precision away one hop
+   * before the wire.
+   */
+  price: string | null;
   currency: string | null;
   availableQuantity: number | null;
   lastCommercialSyncedAt: Date;
@@ -184,6 +191,19 @@ export interface OfferMappingPagination {
  */
 export interface PaginatedOfferMappings {
   items: OfferMappingListItem[];
+  total: number;
+}
+
+/**
+ * Bare paginated `identifier_mappings` rows, with none of `findMany`'s four
+ * read-model reporting joins (#2032 review thread 11). Backs
+ * `OfferMappingRepositoryPort.findMappingPage` - the write/sync-path query
+ * shape from before #2025, for callers that only ever read `.externalId` /
+ * `.internalId` off the mapping and would otherwise pay for the enriched
+ * read model's joins and its separate `COUNT(DISTINCT)` on every tick.
+ */
+export interface PaginatedIdentifierMappings {
+  items: IdentifierMapping[];
   total: number;
 }
 

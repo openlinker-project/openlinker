@@ -106,12 +106,15 @@ export class OfferMappingChannelStatusResponseDto {
 export class OfferMappingCommercialResponseDto {
   @ApiPropertyOptional({
     nullable: true,
+    type: String,
     description:
       "Price the CHANNEL reports for this offer - already net of the connection's `pricingRule` " +
       '(#1843), not OL\'s own catalog price. Surface it as "on channel", never as OL\'s price. ' +
-      'Null means "not reported by the marketplace", never zero.',
+      'Null means "not reported by the marketplace", never zero. A DECIMAL STRING (e.g. "99.99"), ' +
+      'not a number (#2032 review thread 6) - `numeric` round-trips through Postgres/TypeORM as a ' +
+      'string specifically to avoid float64 precision loss; convert at render time only.',
   })
-  price!: number | null;
+  price!: string | null;
 
   @ApiPropertyOptional({ nullable: true, description: 'Channel-side price currency' })
   currency!: string | null;

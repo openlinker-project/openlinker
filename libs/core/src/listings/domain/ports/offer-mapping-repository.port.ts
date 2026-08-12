@@ -12,6 +12,7 @@ import type {
   OfferMappingCountFilters,
   OfferMappingFilters,
   OfferMappingPagination,
+  PaginatedIdentifierMappings,
   PaginatedOfferMappings,
   ProductListingsCoverage,
   StaleMappedVariant,
@@ -46,10 +47,36 @@ export interface OfferMappingRepositoryPort {
    * `filters.lifecycle` (#2026) narrows to one bucket; `total` then reports
    * that bucket's size, so paging stays correct inside a selected tab.
    */
+  /**
+   * `skipTotal` (#2032 review thread 3): when the caller already knows the
+   * total from a `countByLifecycle` call under the same filters (the ONE
+   * caller that requests both), running `findMany`'s own `getCount()` too is
+   * a provably-redundant second full scan of the same join. Returns `total:
+   * -1` as a sentinel when set - the caller MUST supply the real value from
+   * elsewhere. Omitted or `false` preserves the original behaviour.
+   */
   findMany(
     filters: OfferMappingFilters,
-    pagination: OfferMappingPagination
+    pagination: OfferMappingPagination,
+    options?: { skipTotal?: boolean }
   ): Promise<PaginatedOfferMappings>;
+
+  /**
+   * Find Offer mappings matching filters with offset pagination, WITHOUT the
+   * read-model reporting joins `findMany` carries (#2032 review thread 11).
+   *
+   * For a caller that only ever reads `.externalId` / `.internalId` off the
+   * mapping - `OfferStatusSyncService` (100 rows/tick, continuously) and
+   * `OfferStockRestoreService` - `findMany`'s four LEFT JOINs, 14-column
+   * projection and separate `COUNT(DISTINCT)` are pure overhead: the
+   * write/sync path would pay for the listings-page read model on every tick.
+   * Mirrors `findMany`'s pre-#2025 shape: one table, `externalId` search only,
+   * `getManyAndCount()`.
+   */
+  findMappingPage(
+    filters: OfferMappingFilters,
+    pagination: OfferMappingPagination
+  ): Promise<PaginatedIdentifierMappings>;
 
   /**
    * Count Offer mappings per lifecycle bucket under the SAME filters

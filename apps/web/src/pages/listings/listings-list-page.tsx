@@ -1,7 +1,6 @@
 import {
   useCallback,
   useMemo,
-  useRef,
   useState,
   type ReactElement,
   type ReactNode,
@@ -42,7 +41,6 @@ import { useDemoMode } from '../../features/system';
 import type {
   ListingsFilters,
   OfferLifecycle,
-  OfferLifecycleCounts,
   OfferMapping,
 } from '../../features/listings/api/listings.types';
 
@@ -54,7 +52,7 @@ const SEARCH_DEBOUNCE_MS = 300;
  * from the PascalCase `OfferLifecycle` the API speaks, mirroring the existing
  * `?health=` convention (`orders-list-page.tsx`) of a lowercase URL param.
  */
-const LIFECYCLE_TAB_VALUES = ['active', 'inactive', 'draft', 'ended', 'unsynced'] as const;
+const LIFECYCLE_TAB_VALUES = ['active', 'invalid', 'draft', 'ended', 'unsynced'] as const;
 type LifecycleTab = (typeof LIFECYCLE_TAB_VALUES)[number];
 
 const DEFAULT_TAB: LifecycleTab = 'active';
@@ -87,10 +85,13 @@ const LIFECYCLE_TABS: readonly LifecycleTabDef[] = [
     emptyMessage: 'Nothing here is currently live on a channel.',
   },
   {
-    key: 'inactive',
-    lifecycle: 'Inactive',
-    label: 'Inactive',
-    emptyTitle: 'No inactive listings',
+    // Named `invalid`/`Invalid`, not `inactive`/`Inactive` (#2032 review
+    // thread 9): Allegro's own INACTIVE means "not live", which this bucket
+    // is not - see `OfferLifecycleValues`'s docblock for the full rationale.
+    key: 'invalid',
+    lifecycle: 'Invalid',
+    label: 'Invalid',
+    emptyTitle: 'No invalid listings',
     emptyMessage: 'Nothing here has been rejected by a channel validator.',
   },
   {
@@ -197,12 +198,14 @@ function RowBadge({ badge }: { badge: ListingRowBadge }): ReactElement {
 function ListingCell({
   row,
   shape = 'row',
+  activeLifecycle,
 }: {
   row: OfferMapping;
   shape?: 'row' | 'card';
+  activeLifecycle?: OfferLifecycle;
 }): ReactElement {
   const identity = row.identity ?? null;
-  const badges = listingRowBadges(row);
+  const badges = listingRowBadges(row, activeLifecycle);
   const alert = listingRowAlert(row);
   const name = identity?.productName ?? null;
   const isCard = shape === 'card';
@@ -268,13 +271,34 @@ function ChannelPill({ row, label }: { row: OfferMapping; label: string }): Reac
 }
 
 /**
- * The channel's own price, on one mono/tabular line. The age of the reading is
- * NOT repeated here: per #2024 the commercial snapshot is written by the same
- * `marketplace.offer.statusSync` pass as the status snapshot, so for
- * effectively every row it is the instant the Updated column already prints.
- * Printing it twice in two formats costs a line on every row and leaves the
- * operator to work out they are the same clock. It rides the cell's title
- * instead, which stays true for the quantity beside it.
+ * The commercial snapshot's own reading can go stale independently of the
+ * "Updated" column: `upsertCommercialSnapshot` returns `'skipped'`/`'failed'`
+ * on a status pass that otherwise succeeds (offer-status-sync.service.ts), so
+ * the status clock advances while the price's own clock does not (#2032
+ * review thread 7). One hour of slack absorbs the ordinary case where both
+ * were written by the same pass a few seconds apart.
+ */
+const COMMERCIAL_STALE_THRESHOLD_MS = 60 * 60 * 1000;
+
+function isCommercialReadingStale(row: OfferMapping): boolean {
+  const commercial = row.commercial;
+  const statusReadAt = row.channelStatus?.lastStatusSyncedAt ?? null;
+  if (!commercial || !statusReadAt) return false;
+  const drift =
+    new Date(statusReadAt).getTime() - new Date(commercial.lastCommercialSyncedAt).getTime();
+  return drift > COMMERCIAL_STALE_THRESHOLD_MS;
+}
+
+/**
+ * The channel's own price, on one mono/tabular line. The reading's age used to
+ * ride only the cell's `title` - invisible on touch, unreachable by keyboard,
+ * with no screen-reader counterpart (#2032 review thread 7) - and the visible
+ * "Updated" column prints `channelStatus.lastStatusSyncedAt`, the STATUS
+ * clock, which diverges from the price's own clock exactly when the price is
+ * stalest (a commercial write can fail while the status write it rode in on
+ * succeeds). The age is now paired with an `sr-only` copy mirroring
+ * `RowBadge`, and a divergence past the threshold earns its own visible badge
+ * rather than staying silent in a tooltip.
  */
 function PriceCell({ row }: { row: OfferMapping }): ReactElement {
   const commercial = row.commercial ?? null;
@@ -283,6 +307,7 @@ function PriceCell({ row }: { row: OfferMapping }): ReactElement {
   const readAt = `Price and quantity on channel, last read ${formatDateTime(
     commercial.lastCommercialSyncedAt,
   )}`;
+  const stale = isCommercialReadingStale(row);
 
   return (
     <span className="price-cell" title={readAt}>
@@ -290,9 +315,18 @@ function PriceCell({ row }: { row: OfferMapping }): ReactElement {
         {commercial.price == null ? (
           <AbsentValue label="Price not reported by the channel" />
         ) : (
-          formatAmount(commercial.price, commercial.currency ?? undefined)
+          formatAmount(Number(commercial.price), commercial.currency ?? undefined)
         )}
       </span>
+      <span className="sr-only">. {readAt}</span>
+      {stale ? (
+        <StatusBadge tone="warning" compact withDot className="price-cell__stale">
+          <span title="This price reading is older than the latest channel status read">Stale</span>
+          <span className="sr-only">
+            . This price reading is older than the latest channel status read
+          </span>
+        </StatusBadge>
+      ) : null}
     </span>
   );
 }
@@ -332,7 +366,10 @@ export function ListingsListPage(): ReactElement {
 
   const urlSearch = searchParams.get('search') ?? '';
   const urlConnectionId = searchParams.get('connectionId') ?? '';
-  const offset = Number(searchParams.get('offset') ?? '0');
+  // A malformed `?offset=` (hand-edited, or a stale bookmark) must fall back
+  // to page 1, not become `NaN` and 400 the request (#2032 review thread 12).
+  const rawOffset = Number(searchParams.get('offset') ?? '0');
+  const offset = Number.isInteger(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
 
   const rawTab = searchParams.get('tab');
   const tab: LifecycleTab = isLifecycleTab(rawTab) ? rawTab : DEFAULT_TAB;
@@ -349,42 +386,26 @@ export function ListingsListPage(): ReactElement {
     search: debouncedSearch || undefined,
     connectionId: urlConnectionId || undefined,
     lifecycle: activeTabDef.lifecycle,
+    // This page is the only caller that renders a tab bar (#2032 review
+    // thread 3) - `variant-stock-table.tsx` / `product-row-detail.tsx` /
+    // `use-nav-counts.ts` share this same query hook and must not pay for
+    // the aggregate's second full scan.
+    includeLifecycleCounts: true,
   };
   const pagination = { limit: PAGE_SIZE, offset };
 
   const query = useListingsQuery(filters, pagination);
 
   /**
-   * Held in a ref (mutated during render, not an Effect) so a tab switch -
-   * a distinct query key, hence `query.isLoading` true for that fetch - does
-   * not blank every tab's count badge back to skeleton (#2029 round 1
-   * review). The five buckets are unaffected by which tab is active (the
-   * backend excludes `lifecycle` from the counts aggregate), so the
-   * last-known value stays correct while the new tab's own rows load.
-   *
-   * Gated on a fingerprint of `search` + `connectionId` - deliberately
-   * excluding `lifecycle` - because those two filters DO change what the
-   * counts should be. A state+Effect pair here held the value across ANY
-   * `query.data` transition, so a search/connection change kept showing the
-   * old, now-wrong counts with no way to self-correct if the new request
-   * errored (#2029 round 2 review). Changing the fingerprint immediately
-   * invalidates the held value even before the new fetch's data arrives, so
-   * a stale count is never surfaced - it falls through to the skeleton
-   * guard instead, which is the honest state while the real count for the
-   * new filter combination is unknown.
+   * `useListingsQuery`'s `placeholderData: keepPreviousData` (#2032 review
+   * thread 12.5) does what a hand-rolled ref+fingerprint used to: a tab/
+   * search/connection change is a distinct query key, so without it `data`
+   * (and `lifecycleCounts` with it) would blank on every one of them.
+   * TanStack itself resolves the case the old fingerprint dance was for -
+   * an errored refetch does not keep surfacing the previous, now-unverified
+   * counts - so no bespoke invalidation logic is needed here any more.
    */
-  const lifecycleCountsRef = useRef<{ fingerprint: string; counts: OfferLifecycleCounts } | null>(
-    null,
-  );
-  const countsFingerprint = `${debouncedSearch}::${urlConnectionId}`;
-  if (query.data?.lifecycleCounts) {
-    lifecycleCountsRef.current = { fingerprint: countsFingerprint, counts: query.data.lifecycleCounts };
-  }
-  const lifecycleCounts =
-    query.data?.lifecycleCounts ??
-    (lifecycleCountsRef.current?.fingerprint === countsFingerprint
-      ? lifecycleCountsRef.current.counts
-      : null);
+  const lifecycleCounts = query.data?.lifecycleCounts ?? null;
 
   const platforms = usePlatforms();
   // One batched read for the whole page - the Connection column must never cost
@@ -408,7 +429,7 @@ export function ListingsListPage(): ReactElement {
       {
         id: 'listing',
         header: 'Listing',
-        cell: (row): ReactNode => <ListingCell row={row} />,
+        cell: (row): ReactNode => <ListingCell row={row} activeLifecycle={activeTabDef.lifecycle} />,
       },
       {
         id: 'channel',
@@ -450,21 +471,28 @@ export function ListingsListPage(): ReactElement {
         cell: (row): ReactNode => <UpdatedCell row={row} />,
       },
     ],
-    [channelLabel, connectionsById, connectionsQuery.isLoading],
+    [channelLabel, connectionsById, connectionsQuery.isLoading, activeTabDef.lifecycle],
   );
 
   function handleFilterChange(key: 'search' | 'connectionId', value: string): void {
     if (key === 'search') setSearchInput(value);
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      if (value) {
-        next.set(key, value);
-      } else {
-        next.delete(key);
-      }
-      next.delete('offset');
-      return next;
-    });
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value) {
+          next.set(key, value);
+        } else {
+          next.delete(key);
+        }
+        next.delete('offset');
+        return next;
+      },
+      // Every keystroke calls this for `search` (#2032 review thread 12.3) -
+      // `useSearchParams` defaults to push, so typing "kurtka" would leave six
+      // back-button steps to undo. A discrete connectionId change stays a
+      // pushed entry, matching every other filter's back-button semantics.
+      { replace: key === 'search' }
+    );
   }
 
   /**
@@ -606,11 +634,12 @@ export function ListingsListPage(): ReactElement {
               <span className="tabs__count">
                 {/* A count that snaps from 0 to its real value reads as a
                     bug (#2029 / mockup frame 04) - render a skeleton line
-                    instead of a placeholder zero while it's unknown. Once any
-                    counts have ever loaded, a tab switch keeps showing them
-                    (rather than reverting to skeleton) so switching tabs never
-                    blanks the four buckets that did not just change. */}
-                {lifecycleCounts === null && query.isLoading ? (
+                    instead of a placeholder zero while it's unknown.
+                    `isPending` (no data at all yet), not `isLoading` (also
+                    true while placeholder data is showing during a
+                    tab/filter refetch, #2032 review thread 12.5) - a tab
+                    switch must keep showing the counts it already has. */}
+                {query.isPending ? (
                   <span className="tabs__count-skeleton" aria-hidden="true" />
                 ) : (
                   (lifecycleCounts?.[def.lifecycle] ?? '—')
@@ -627,8 +656,25 @@ export function ListingsListPage(): ReactElement {
           {lifecycleCounts ? 'Listing counts loaded.' : 'Loading listing counts…'}
         </span>
 
+        {/* Only the active tab's data is ever fetched (one lifecycle-filtered
+            request, not five), so the other four render an empty, forceMount'd
+            panel purely so their trigger's `aria-controls` resolves to a real
+            DOM node (#2032 review thread 12.1) - Radix always emits
+            `aria-controls={contentId}` on every trigger regardless of whether
+            a matching panel is mounted, and the APG tabs pattern requires each
+            `tab` to reference its `tabpanel`. Radix sets the native `hidden`
+            attribute on a forceMount'd, non-selected panel itself. */}
+        {LIFECYCLE_TABS.filter((def) => def.key !== tab).map((def) => (
+          <TabsContent key={def.key} value={def.key} forceMount />
+        ))}
+
         <TabsContent value={tab}>
-          {query.isLoading ? (
+          {/* `isPending`, not `isLoading` (#2032 review thread 12.5): with
+              `placeholderData: keepPreviousData` a tab/search/page change
+              keeps `isLoading` momentarily true too, and gating the
+              skeleton on it would still blank the table on every one of
+              them - the exact symptom this fix removes. */}
+          {query.isPending ? (
             <DataTableSkeleton columns={columns} />
           ) : query.error ? (
             <ErrorState
@@ -664,11 +710,33 @@ export function ListingsListPage(): ReactElement {
                 }
               />
             ) : (
-              <EmptyState
-                liveRegion="off"
-                title={activeTabDef.emptyTitle}
-                message={activeTabDef.emptyMessage}
-              />
+              // The default `Active` tab lands empty on a fresh install and
+              // permanently on an Erli-only one (#2032 review thread 8): the
+              // hourly status scan is 100 offers/tick, a wizard create writes
+              // no snapshot at all, and Erli's status-sync scheduler defaults
+              // OFF. The nav badge (total mappings) can read 40 while this
+              // tab reads zero, which looks broken rather than "not synced
+              // yet" - so a non-Unsynced empty tab whose Unsynced bucket
+              // holds the catalog offers a direct way there instead of a
+              // dead end.
+              tab !== 'unsynced' && (lifecycleCounts?.Unsynced ?? 0) > 0 ? (
+                <EmptyState
+                  liveRegion="off"
+                  title={activeTabDef.emptyTitle}
+                  message={`${activeTabDef.emptyMessage} ${lifecycleCounts?.Unsynced} mapping(s) have never had their channel status read.`}
+                  action={
+                    <Button onClick={() => setTab('unsynced')}>
+                      Show unsynced ({lifecycleCounts?.Unsynced})
+                    </Button>
+                  }
+                />
+              ) : (
+                <EmptyState
+                  liveRegion="off"
+                  title={activeTabDef.emptyTitle}
+                  message={activeTabDef.emptyMessage}
+                />
+              )
             )
           ) : (
             <>
@@ -689,7 +757,7 @@ export function ListingsListPage(): ReactElement {
                 rowKey={(m) => m.id}
                 rowHref={(m) => m.id}
                 cardView={{
-                  title: (m) => <ListingCell row={m} shape="card" />,
+                  title: (m) => <ListingCell row={m} shape="card" activeLifecycle={activeTabDef.lifecycle} />,
                   // Channel / Connection / Price / Quantity as a two-column fact
                   // list — the four columns the fold drops (#1965 frame 05).
                   summary: (m) => (

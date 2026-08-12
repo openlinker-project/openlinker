@@ -16,6 +16,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  Check,
 } from 'typeorm';
 
 @Entity('offer_commercial_snapshots')
@@ -28,8 +29,15 @@ import {
 })
 // Reverse navigation from a variant to its offers' commercial snapshots.
 @Index('IDX_offer_commercial_snapshots_variant', ['internalVariantId'])
-// Stalest-first ordering / "which offers carry stale commercial data" sweeps.
-@Index('IDX_offer_commercial_snapshots_lastSyncedAt', ['lastCommercialSyncedAt'])
+// An unlabeled amount is schema-legal without this (#2032 review thread 6) -
+// every comparable project (Vendure/Medusa/Saleor/Spree/Sylius) makes an
+// amount's currency mandatory whenever the amount is present. `currency`
+// stays nullable for the legitimate "nothing reported" row, so a CHECK - not
+// a plain NOT NULL - is what encodes the pairing.
+@Check(
+  'CHK_offer_commercial_snapshots_price_currency_pair',
+  '("price" IS NULL) = ("currency" IS NULL)'
+)
 export class OfferCommercialSnapshotOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -43,7 +51,11 @@ export class OfferCommercialSnapshotOrmEntity {
   @Column({ type: 'text' })
   internalVariantId!: string;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  // `(12, 3)`, not `(10, 2)` (#2032 review thread 6): KWD/BHD/OMR/TND/JOD
+  // carry three decimal places, and Postgres rounds a SCALE overflow
+  // silently (a PRECISION overflow errors instead) - `(10, 2)` would drop
+  // those currencies' last digit with no warning.
+  @Column({ type: 'decimal', precision: 12, scale: 3, nullable: true })
   price!: string | null;
 
   @Column({ type: 'text', nullable: true })
@@ -55,9 +67,13 @@ export class OfferCommercialSnapshotOrmEntity {
   @Column({ type: 'timestamptz' })
   lastCommercialSyncedAt!: Date;
 
-  @CreateDateColumn()
+  // Explicit `timestamptz`, not the bare `timestamp` TypeORM's Postgres
+  // driver hardcodes for `@CreateDateColumn`/`@UpdateDateColumn` (#2032
+  // review thread 6) - otherwise these sit inconsistently next to
+  // `lastCommercialSyncedAt`, a `timestamptz` business column in the same row.
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
 }

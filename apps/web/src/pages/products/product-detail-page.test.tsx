@@ -18,7 +18,7 @@ import type {
 
 const ZERO_LIFECYCLE_COUNTS: OfferLifecycleCounts = {
   Active: 0,
-  Inactive: 0,
+  Invalid: 0,
   Draft: 0,
   Ended: 0,
   Unsynced: 0,

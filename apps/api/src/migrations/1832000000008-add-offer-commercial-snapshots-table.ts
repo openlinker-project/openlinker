@@ -12,20 +12,31 @@
  * - `connectionId` is `uuid` (connections use uuid PKs); `externalOfferId` and
  *   `internalVariantId` are `text` (marketplace offer ids and `ol_variant_*`
  *   internal ids are stored as text elsewhere).
- * - `price` is `numeric(10,2)` (matching every other money column in the repo;
- *   the decimal string round-trips losslessly through TypeORM); `currency` is
+ * - `price` is `numeric(12,3)` (#2032 review thread 6): three decimal places,
+ *   not two — KWD/BHD/OMR/TND/JOD have three minor units, and Postgres rounds
+ *   scale overflow SILENTLY (precision overflow errors instead), so `(10,2)`
+ *   would drop those currencies' last digit with no warning. `currency` is
  *   `text` (ISO 4217); `availableQuantity` is `integer`. All three are
- *   NULLABLE: a sparse marketplace response must record "not reported" rather
- *   than a fabricated `0`/`0.00`, which an operator cannot tell apart from a
- *   genuine sell-out or a free item. Price and quantity are independently
- *   nullable so a good reading on one axis is never discarded because the
- *   other was missing.
+ *   independently NULLABLE: a sparse marketplace response must record "not
+ *   reported" rather than a fabricated `0`/`0.00`, which an operator cannot
+ *   tell apart from a genuine sell-out or a free item.
+ * - `CHK_offer_commercial_snapshots_price_currency_pair` enforces
+ *   `(price IS NULL) = (currency IS NULL)` — every comparable project
+ *   (Vendure/Medusa/Saleor/Spree/Sylius) makes an amount's currency mandatory
+ *   whenever the amount itself is present; this is the nullable-schema
+ *   equivalent, since `currency` still has to stay nullable for the
+ *   "nothing reported" row.
  * - `lastCommercialSyncedAt` is `timestamptz` — an absolute instant set by the
- *   application on each refresh; `createdAt`/`updatedAt` follow the
- *   `TIMESTAMP DEFAULT now()` convention used by the ORM date columns.
+ *   application on each refresh; `createdAt`/`updatedAt` are ALSO `timestamptz`
+ *   (#2032 review thread 6) rather than bare `timestamp` — TypeORM's Postgres
+ *   driver hardcodes `createDate`/`updateDate` to `timestamp`, which would
+ *   otherwise sit inconsistently next to a `timestamptz` business column in
+ *   the same row.
  * - Unique index on `(externalOfferId, connectionId)` backs the keyed read +
- *   upsert; supporting indexes cover reverse-variant lookup and stalest-first
- *   ordering.
+ *   upsert; a supporting index covers reverse-variant lookup. No
+ *   stalest-first index: nothing in this table's write path scans by
+ *   `lastCommercialSyncedAt` yet (#2032 review, smaller items) — add one with
+ *   the first reader that needs it.
  * - No FK constraints emitted (matches the `offer_status_snapshots` /
  *   `offer_creation_records` convention; cross-context FKs add coupling).
  *
@@ -43,13 +54,15 @@ export class AddOfferCommercialSnapshotsTable1832000000008 implements MigrationI
         "connectionId"            uuid NOT NULL,
         "externalOfferId"         text NOT NULL,
         "internalVariantId"       text NOT NULL,
-        "price"                   numeric(10,2),
+        "price"                   numeric(12,3),
         "currency"                text,
         "availableQuantity"       integer,
         "lastCommercialSyncedAt"  TIMESTAMP WITH TIME ZONE NOT NULL,
-        "createdAt"               TIMESTAMP NOT NULL DEFAULT now(),
-        "updatedAt"               TIMESTAMP NOT NULL DEFAULT now(),
-        CONSTRAINT "PK_offer_commercial_snapshots" PRIMARY KEY ("id")
+        "createdAt"               TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+        "updatedAt"               TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+        CONSTRAINT "PK_offer_commercial_snapshots" PRIMARY KEY ("id"),
+        CONSTRAINT "CHK_offer_commercial_snapshots_price_currency_pair"
+          CHECK (("price" IS NULL) = ("currency" IS NULL))
       )
     `);
     await queryRunner.query(
@@ -58,15 +71,9 @@ export class AddOfferCommercialSnapshotsTable1832000000008 implements MigrationI
     await queryRunner.query(
       `CREATE INDEX "IDX_offer_commercial_snapshots_variant" ON "offer_commercial_snapshots" ("internalVariantId")`
     );
-    await queryRunner.query(
-      `CREATE INDEX "IDX_offer_commercial_snapshots_lastSyncedAt" ON "offer_commercial_snapshots" ("lastCommercialSyncedAt")`
-    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      `DROP INDEX IF EXISTS "public"."IDX_offer_commercial_snapshots_lastSyncedAt"`
-    );
     await queryRunner.query(
       `DROP INDEX IF EXISTS "public"."IDX_offer_commercial_snapshots_variant"`
     );

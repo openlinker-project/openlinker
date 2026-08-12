@@ -40,11 +40,15 @@ import type {
   OfferMappingIdentity,
   OfferMappingListItem,
   OfferMappingPagination,
+  PaginatedIdentifierMappings,
   PaginatedOfferMappings,
   ProductListingsCoverage,
   StaleMappedVariant,
 } from '../../../domain/types/offer-mapping.types';
-import { isOfferPublicationStatus } from '../../../domain/types/offer-status-read.types';
+import {
+  isOfferPublicationStatus,
+  OfferPublicationStatusValues,
+} from '../../../domain/types/offer-status-read.types';
 import type { OfferPublicationStatus } from '../../../domain/types/offer-status-read.types';
 import type { OfferStatusSnapshotDetails } from '../../../domain/types/offer-status-snapshot.types';
 
@@ -104,6 +108,18 @@ const HAS_STATUS_SNAPSHOT_SQL =
   '(oss."publicationStatus" IS NOT NULL AND oss."lastStatusSyncedAt" IS NOT NULL)';
 
 /**
+ * Whether the snapshot's `publicationStatus` is a value `resolveOfferLifecycle`
+ * can actually classify (#2032 review thread 1). `readPublicationStatus` folds
+ * an out-of-union value to `null` - the same treatment as "no snapshot" - so
+ * the Unsynced predicate must be the complement of BOTH conditions, not just
+ * `HAS_STATUS_SNAPSHOT_SQL`. Generated from `OfferPublicationStatusValues`
+ * rather than hand-written so a union change updates this WHERE clause too.
+ */
+const RECOGNISED_STATUS_SQL = `oss."publicationStatus" IN (${OfferPublicationStatusValues.map(
+  (value) => `'${value}'`
+).join(', ')})`;
+
+/**
  * The one snapshot fact that is not a plain column: does the detail blob carry
  * validator messages. A `CASE` rather than an `AND` chain because Postgres
  * does not promise to short-circuit `AND`, and `jsonb_array_length` RAISES on
@@ -158,7 +174,8 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
 
   async findMany(
     filters: OfferMappingFilters,
-    pagination: OfferMappingPagination
+    pagination: OfferMappingPagination,
+    options?: { skipTotal?: boolean }
   ): Promise<PaginatedOfferMappings> {
     const qb = this.buildFilteredQuery(filters);
 
@@ -168,7 +185,9 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
 
     // Counted before the projection/paging clauses are attached so the count
     // is unambiguously the filtered total, independent of the raw select.
-    const total = await qb.getCount();
+    // Skipped when the caller already has the total from `countByLifecycle`
+    // under the same filters (#2032 review thread 3) - see the port docblock.
+    const total = options?.skipTotal ? -1 : await qb.getCount();
 
     qb.select('mapping.id', 'id')
       .addSelect('mapping.entityType', 'entityType')
@@ -203,6 +222,43 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
 
     const rows = await qb.getRawMany<OfferMappingListRawRow>();
     return { items: rows.map((row) => this.toListItem(row)), total };
+  }
+
+  async findMappingPage(
+    filters: OfferMappingFilters,
+    pagination: OfferMappingPagination
+  ): Promise<PaginatedIdentifierMappings> {
+    const qb = this.repository.createQueryBuilder('mapping');
+
+    qb.where('mapping.entityType = :entityType', { entityType: OFFER_ENTITY_TYPE });
+
+    if (filters.connectionId) {
+      qb.andWhere('mapping.connectionId = :connectionId', {
+        connectionId: filters.connectionId,
+      });
+    }
+
+    if (filters.internalId) {
+      qb.andWhere('mapping.internalId = :internalId', {
+        internalId: filters.internalId,
+      });
+    }
+
+    const searchTerm = filters.search?.trim();
+    if (searchTerm) {
+      const escapedSearch = searchTerm.replace(/[\\%_]/g, '\\$&');
+      qb.andWhere('mapping.externalId ILIKE :search', { search: `%${escapedSearch}%` });
+    }
+
+    // Same tiebreaker as `findMany` - `createdAt` alone can repeat across a
+    // same-timestamp cluster.
+    qb.orderBy('mapping.createdAt', 'DESC')
+      .addOrderBy('mapping.id', 'DESC')
+      .skip(pagination.offset)
+      .take(pagination.limit);
+
+    const [entities, total] = await qb.getManyAndCount();
+    return { items: entities.map((entity) => this.toDomain(entity)), total };
   }
 
   async countByLifecycle(filters: OfferMappingCountFilters): Promise<OfferLifecycleCounts> {
@@ -395,7 +451,7 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
     // snapshot age / a creation-record field - a wrong page, no error, no
     // failing type-check, in a design where everything else fails loudly.
     if (lifecycle === 'Unsynced') {
-      qb.andWhere(`NOT ${HAS_STATUS_SNAPSHOT_SQL}`);
+      qb.andWhere(`NOT (${HAS_STATUS_SNAPSHOT_SQL} AND ${RECOGNISED_STATUS_SQL})`);
       return;
     }
 
@@ -623,9 +679,11 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
   private toCommercial(row: OfferMappingListRawRow): OfferMappingCommercial | null {
     if (row.lastCommercialSyncedAt === null) return null;
     return {
-      // `numeric` arrives as a string through the driver - an explicit cast
-      // keeps the wire value a number rather than "100.00".
-      price: row.commercialPrice === null ? null : Number(row.commercialPrice),
+      // Kept as the driver's decimal STRING, not coerced to `number` (#2032
+      // review thread 6) - `numeric` arrives as a string specifically to
+      // avoid float64 precision loss, and a `Number()` cast here would
+      // discard that precision one hop before the wire.
+      price: row.commercialPrice,
       currency: row.commercialCurrency,
       availableQuantity: row.commercialAvailableQuantity,
       lastCommercialSyncedAt: row.lastCommercialSyncedAt,

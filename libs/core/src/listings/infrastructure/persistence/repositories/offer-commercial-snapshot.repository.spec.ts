@@ -1,11 +1,12 @@
 /**
  * Offer Commercial Snapshot Repository — Unit Tests
  *
- * Verifies the insert/update branches of `upsert`, mirroring
- * `offer-status-snapshot.repository.spec.ts` (#816). The TypeORM `Repository`
- * is mocked here — no int-spec exercises this table yet (the find-then-save
- * race and the null-persistence path are unit-verified only, unlike the
- * sibling snapshot table which has a dedicated int-spec).
+ * Verifies `upsert` issues an atomic `INSERT ... ON CONFLICT DO UPDATE`
+ * (#2032 review thread 5), not find-then-save: `refreshOne` is reachable from
+ * three independent triggers (hourly scan, delayed post-creation refresh,
+ * operator "Refresh status"), so a same-key race is reachable and must
+ * resolve without a unique-violation. No caller reads the persisted row
+ * back, so the repository writes only.
  *
  * @module libs/core/src/listings/infrastructure/persistence/repositories
  */
@@ -24,22 +25,6 @@ describe('OfferCommercialSnapshotRepository', () => {
 
   const now = new Date('2026-08-11T10:00:00Z');
 
-  const buildOrm = (
-    overrides: Partial<OfferCommercialSnapshotOrmEntity> = {}
-  ): OfferCommercialSnapshotOrmEntity => ({
-    id: 'snap-uuid',
-    connectionId: 'conn-uuid',
-    externalOfferId: '7781562863',
-    internalVariantId: 'ol_variant_123',
-    price: '99.99',
-    currency: 'PLN',
-    availableQuantity: 5,
-    lastCommercialSyncedAt: now,
-    createdAt: now,
-    updatedAt: now,
-    ...overrides,
-  });
-
   const command: UpsertOfferCommercialSnapshotCommand = {
     connectionId: 'conn-uuid',
     externalOfferId: '7781562863',
@@ -52,8 +37,7 @@ describe('OfferCommercialSnapshotRepository', () => {
 
   beforeEach(async () => {
     const mockOrmRepo = {
-      findOne: jest.fn(),
-      save: jest.fn(),
+      upsert: jest.fn(),
     } as unknown as jest.Mocked<Repository<OfferCommercialSnapshotOrmEntity>>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -71,61 +55,55 @@ describe('OfferCommercialSnapshotRepository', () => {
   });
 
   describe('upsert', () => {
-    it('inserts a new row when none exists for the key', async () => {
-      ormRepository.findOne.mockResolvedValue(null);
-      ormRepository.save.mockImplementation((entity) =>
-        Promise.resolve(buildOrm(entity as Partial<OfferCommercialSnapshotOrmEntity>))
-      );
+    it('issues an atomic upsert conflicting on (connectionId, externalOfferId)', async () => {
+      ormRepository.upsert.mockResolvedValue({} as never);
 
-      const result = await repository.upsert(command);
+      await repository.upsert(command);
 
-      expect(ormRepository.save).toHaveBeenCalledTimes(1);
-      const saved = ormRepository.save.mock.calls[0][0] as OfferCommercialSnapshotOrmEntity;
-      expect(saved.id).toBeUndefined();
-      expect(saved.price).toBe('109.00');
-      expect(saved.currency).toBe('PLN');
-      expect(saved.availableQuantity).toBe(3);
-      expect(saved.lastCommercialSyncedAt).toBe(now);
-      expect(result.price).toBe('109.00');
-      expect(result.availableQuantity).toBe(3);
+      expect(ormRepository.upsert).toHaveBeenCalledTimes(1);
+      const [row, options] = ormRepository.upsert.mock.calls[0];
+      expect(options).toEqual({ conflictPaths: ['connectionId', 'externalOfferId'] });
+      expect(row).toMatchObject({
+        connectionId: 'conn-uuid',
+        externalOfferId: '7781562863',
+        internalVariantId: 'ol_variant_123',
+        price: '109.00',
+        currency: 'PLN',
+        availableQuantity: 3,
+        lastCommercialSyncedAt: now,
+      });
     });
 
-    it('updates the existing row in place when the key already exists', async () => {
-      ormRepository.findOne.mockResolvedValue(buildOrm({ price: '50.00', availableQuantity: 1 }));
-      ormRepository.save.mockImplementation((entity) =>
-        Promise.resolve(entity as OfferCommercialSnapshotOrmEntity)
-      );
+    it('stamps updatedAt with a raw now() fragment, since TypeORM 0.3.17 does not bump it on the upsert-update path', async () => {
+      ormRepository.upsert.mockResolvedValue({} as never);
 
-      const result = await repository.upsert(command);
+      await repository.upsert(command);
 
-      const saved = ormRepository.save.mock.calls[0][0] as OfferCommercialSnapshotOrmEntity;
-      expect(saved.id).toBe('snap-uuid');
-      expect(saved.price).toBe('109.00');
-      expect(saved.availableQuantity).toBe(3);
-      expect(result.price).toBe('109.00');
-      expect(result.availableQuantity).toBe(3);
+      const [row] = ormRepository.upsert.mock.calls[0];
+      expect(typeof (row as { updatedAt?: unknown }).updatedAt).toBe('function');
+      expect((row as { updatedAt: () => string }).updatedAt()).toBe('now()');
     });
 
     it('persists a null price and a null quantity rather than coercing either to zero', async () => {
-      ormRepository.findOne.mockResolvedValue(null);
-      ormRepository.save.mockImplementation((entity) =>
-        Promise.resolve(buildOrm(entity as Partial<OfferCommercialSnapshotOrmEntity>))
-      );
+      ormRepository.upsert.mockResolvedValue({} as never);
 
-      const result = await repository.upsert({
+      await repository.upsert({
         ...command,
         price: null,
         currency: null,
         availableQuantity: null,
       });
 
-      const saved = ormRepository.save.mock.calls[0][0] as OfferCommercialSnapshotOrmEntity;
-      expect(saved.price).toBeNull();
-      expect(saved.currency).toBeNull();
-      expect(saved.availableQuantity).toBeNull();
-      expect(saved.lastCommercialSyncedAt).toBe(now);
-      expect(result.price).toBeNull();
-      expect(result.availableQuantity).toBeNull();
+      const [row] = ormRepository.upsert.mock.calls[0];
+      expect(row).toMatchObject({ price: null, currency: null, availableQuantity: null });
+    });
+
+    it('resolves to void - no caller reads the persisted row back', async () => {
+      ormRepository.upsert.mockResolvedValue({} as never);
+
+      const result = await repository.upsert(command);
+
+      expect(result).toBeUndefined();
     });
   });
 });

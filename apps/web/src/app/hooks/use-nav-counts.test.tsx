@@ -49,7 +49,7 @@ describe('useNavCounts', () => {
           total: 5,
           limit: 1,
           offset: 0,
-          lifecycleCounts: { Active: 5, Inactive: 0, Draft: 0, Ended: 0, Unsynced: 0 },
+          lifecycleCounts: { Active: 5, Invalid: 0, Draft: 0, Ended: 0, Unsynced: 0 },
         }),
       },
       syncJobs: {

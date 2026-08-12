@@ -13,7 +13,7 @@ import type {
 
 const ZERO_LIFECYCLE_COUNTS: OfferLifecycleCounts = {
   Active: 0,
-  Inactive: 0,
+  Invalid: 0,
   Draft: 0,
   Ended: 0,
   Unsynced: 0,
@@ -57,7 +57,7 @@ const sampleMappings: PaginatedOfferMappings = {
         lastStatusSyncedAt: '2026-01-20T09:30:00.000Z',
       },
       commercial: {
-        price: 100,
+        price: '100.00',
         currency: 'PLN',
         availableQuantity: 41,
         lastCommercialSyncedAt: '2026-01-20T09:30:00.000Z',
@@ -89,7 +89,7 @@ const sampleMappings: PaginatedOfferMappings = {
         lastStatusSyncedAt: '2026-02-10T11:30:00.000Z',
       },
       commercial: {
-        price: 59,
+        price: '59.00',
         currency: 'PLN',
         availableQuantity: 0,
         lastCommercialSyncedAt: '2026-02-10T11:30:00.000Z',
@@ -223,9 +223,46 @@ describe('ListingsListPage', () => {
     const price = container.querySelector('.price-cell');
     expect(price?.querySelector('.price-cell__value')?.textContent).toContain('100');
     expect(price?.getAttribute('title')).toMatch(/^Price and quantity on channel, last read /);
-    // The commercial and status snapshots come from the same statusSync pass
-    // (#2024), so the age is not printed a second time under the price.
+    // The commercial and status snapshots in this fixture share one instant
+    // (#2024's common case), so no separate age line renders under the
+    // price - the tooltip carries it, mirrored for a11y via sr-only text
+    // rather than a second visible element (#2032 review thread 7).
     expect(container.querySelector('.price-cell__age')).toBeNull();
+    expect(price?.textContent).toContain('Price and quantity on channel, last read');
+    // No divergence in this fixture, so no stale flag.
+    expect(price?.querySelector('.price-cell__stale')).toBeNull();
+  });
+
+  it('should flag the price as stale when its own reading is older than the visible status clock', async () => {
+    const mockApi = createMockApiClient({
+      listings: {
+        list: vi.fn().mockResolvedValue(
+          oneRow({
+            channelStatus: {
+              publicationStatus: 'active',
+              lifecycle: 'Active',
+              validationMessages: [],
+              lastStatusSyncedAt: '2026-01-20T12:00:00.000Z',
+            },
+            commercial: {
+              price: '100.00',
+              currency: 'PLN',
+              availableQuantity: 41,
+              // Over two hours behind the status read (#2032 review thread 7)
+              // - the commercial write can fail while the status write it
+              // rode in on succeeds, so the two clocks are not interchangeable.
+              lastCommercialSyncedAt: '2026-01-20T09:30:00.000Z',
+            },
+          }),
+        ),
+      },
+    });
+
+    const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Doniczka ceramiczna Terra');
+    expect(container.querySelector('.price-cell .price-cell__stale')).not.toBeNull();
+    expect(screen.getByText('Stale')).toBeInTheDocument();
   });
 
   it('should badge a zero channel quantity as out of stock', async () => {
@@ -658,7 +695,7 @@ describe('ListingsListPage', () => {
         listings: {
           list: vi.fn().mockResolvedValue({
             ...sampleMappings,
-            lifecycleCounts: { Active: 7, Inactive: 3, Draft: 2, Ended: 1, Unsynced: 0 },
+            lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 },
           }),
         },
       });
@@ -667,7 +704,7 @@ describe('ListingsListPage', () => {
 
       await screen.findByText('Doniczka ceramiczna Terra');
       expect(screen.getByRole('tab', { name: /^Active/ })).toHaveTextContent('7');
-      expect(screen.getByRole('tab', { name: /^Inactive/ })).toHaveTextContent('3');
+      expect(screen.getByRole('tab', { name: /^Invalid/ })).toHaveTextContent('3');
       expect(screen.getByRole('tab', { name: /^Draft/ })).toHaveTextContent('2');
       expect(screen.getByRole('tab', { name: /^Ended/ })).toHaveTextContent('1');
       expect(screen.getByRole('tab', { name: /^Unsynced/ })).toHaveTextContent('0');
@@ -690,7 +727,7 @@ describe('ListingsListPage', () => {
         .fn()
         .mockResolvedValueOnce({
           ...sampleMappings,
-          lifecycleCounts: { Active: 7, Inactive: 3, Draft: 2, Ended: 1, Unsynced: 0 },
+          lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 },
         })
         // The Draft tab's own fetch never resolves in this test - it is the
         // "still loading" window the skeleton must not reappear during.
@@ -709,7 +746,7 @@ describe('ListingsListPage', () => {
       // that did not just change - back to skeleton.
       expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(0);
       expect(screen.getByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: 'Inactive 3' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Invalid 3' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Draft 2' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Ended 1' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Unsynced 0' })).toBeInTheDocument();
@@ -720,7 +757,7 @@ describe('ListingsListPage', () => {
         .fn()
         .mockResolvedValueOnce({
           ...sampleMappings,
-          lifecycleCounts: { Active: 7, Inactive: 3, Draft: 2, Ended: 1, Unsynced: 0 },
+          lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 },
         })
         // The new search term's query key has never been fetched before - it
         // hangs, which is the window during which a state+Effect pair used to
@@ -757,7 +794,7 @@ describe('ListingsListPage', () => {
         listings: {
           list: vi.fn().mockResolvedValue({
             ...sampleMappings,
-            lifecycleCounts: { Active: 7, Inactive: 3, Draft: 2, Ended: 1, Unsynced: 0 },
+            lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 },
           }),
         },
       });
@@ -768,7 +805,7 @@ describe('ListingsListPage', () => {
       // A missing separator collapses the JSX whitespace entirely, so the
       // accessible name would read the run-on "Active7" instead of "Active 7".
       expect(screen.getByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: 'Inactive 3' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Invalid 3' })).toBeInTheDocument();
     });
 
     it('announces via a live region once the tab counts resolve from skeleton to real numbers', async () => {
@@ -805,22 +842,22 @@ describe('ListingsListPage', () => {
       expect(screen.queryByText(/without being live yet/)).not.toBeInTheDocument();
     });
 
-    it("does not borrow Draft's definition into the Inactive tab's empty state", async () => {
+    it("does not borrow Draft's definition into the Invalid tab's empty state", async () => {
       const mockApi = createMockApiClient({
         listings: { list: vi.fn().mockResolvedValue(emptyPage()) },
       });
 
       renderWithProviders(<ListingsListPage />, {
         apiClient: mockApi,
-        route: '/listings?tab=inactive',
+        route: '/listings?tab=invalid',
       });
 
-      expect(await screen.findByText('No inactive listings')).toBeInTheDocument();
+      expect(await screen.findByText('No invalid listings')).toBeInTheDocument();
       expect(
         screen.getByText('Nothing here has been rejected by a channel validator.'),
       ).toBeInTheDocument();
       // "taken offline" is Draft's defining case (a deliberately deactivated
-      // offer), not Inactive's (validator-rejected) - it must not appear here.
+      // offer), not Invalid's (validator-rejected) - it must not appear here.
       expect(screen.queryByText(/taken offline/)).not.toBeInTheDocument();
     });
   });

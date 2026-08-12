@@ -213,6 +213,7 @@ function buildQuery(filters?: ListingsFilters, pagination?: ListingsPagination):
   if (filters?.internalId) params.set('internalId', filters.internalId);
   if (filters?.search) params.set('search', filters.search);
   if (filters?.lifecycle) params.set('lifecycle', filters.lifecycle);
+  if (filters?.includeLifecycleCounts) params.set('includeLifecycleCounts', 'true');
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
   if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
   const qs = params.toString();
