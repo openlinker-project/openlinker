@@ -17191,7 +17191,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   color: var(--text-muted);
 }
 .listing-cell__variant,
-.listing-cell__offerid,
 .listing-cell__badge {
   flex: 0 0 auto;
 }
@@ -17204,6 +17203,14 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   border-radius: var(--radius-xs);
   white-space: nowrap;
 }
+/* An external offer ID has no length contract - some adapters' ids run 40+
+   chars - and it led the meta line with no cap of its own, so it could eat
+   the entire line's width and push SKU/EAN off the edge of `.listing-cell__
+   meta`'s `overflow: hidden` with no ellipsis to show anything was cut. The
+   size/truncation behavior is shared with every meta field via the generic
+   `.listing-cell__meta span` rule below, so it truncates like the rest
+   rather than staying an unbounded exception; the full value is already one
+   hover away via the span's own `title`. */
 .listing-cell__offerid {
   font-family: var(--font-mono);
   font-size: 0.6875rem;
@@ -17222,7 +17229,16 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   white-space: nowrap;
   overflow: hidden;
 }
+/* Applies to every meta field, including the offer ID above: an unusually
+   long value must show `…` rather than vanish past `.listing-cell__meta`'s
+   own `overflow: hidden` with no indication anything was cut. Each span also
+   carries its own `title` now that it can truncate. */
 .listing-cell__meta span {
+  min-width: 0;
+  max-width: 16ch;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .listing-cell__meta span + span::before {

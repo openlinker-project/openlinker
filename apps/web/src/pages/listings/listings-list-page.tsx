@@ -239,12 +239,12 @@ function ListingCell({
             </span>
           )}
           {identity?.sku ? (
-            <span>
+            <span title={`SKU: ${identity.sku}`}>
               SKU: <em>{identity.sku}</em>
             </span>
           ) : null}
           {!isCard && identity?.ean ? (
-            <span>
+            <span title={`EAN: ${identity.ean}`}>
               EAN: <em>{identity.ean}</em>
             </span>
           ) : null}
@@ -678,6 +678,12 @@ export function ListingsListPage(): ReactElement {
                 // mockup put `min-width: 28rem` on `.data-table td:first-child`,
                 // which here would reach ~12 unrelated tables (#2028).
                 className="listings-table"
+                // Freezes the Listing column so it stays visible while the
+                // commercial columns scroll into view on a narrower desktop -
+                // same pattern as orders/products, just 1 column here since
+                // Listing (not a Channel/Connection pair) is the sole identity
+                // anchor for this table.
+                stickyLeftColumns={1}
                 columns={columns}
                 rows={query.data?.items ?? []}
                 rowKey={(m) => m.id}
