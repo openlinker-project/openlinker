@@ -76,6 +76,11 @@ const harness = createIntegrationTestHarness({
     // No ORM/migration FK; truncate explicitly so each invoicing case (incl.
     // the (connectionId, idempotencyKey) dedup assertion) starts clean.
     'invoice_records',
+    // refund_records (#2036) — order-scoped refund-capture projection. No
+    // ORM/migration FK to order_records (plain indexed text column, matching
+    // the invoice_records precedent); truncate explicitly so each refund case
+    // starts clean.
+    'refund_records',
     // product_content_field FKs to both products + connections, so it goes
     // before them.
     'product_content_field',
