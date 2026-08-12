@@ -79,6 +79,39 @@ describe('RateLimitSection', () => {
     expect(syncRateLimitToJson).toHaveBeenCalledTimes(1);
   });
 
+  it('clears both knobs before re-syncing when unchecked (#2016) — asserts on captured form state, not just call count', () => {
+    let capturedAtSync: unknown;
+    function Harness2(): ReactElement {
+      const form = useForm<any>({
+        defaultValues: { rateLimit: { requestsPerMinute: '60', maxConcurrent: '4' } },
+      });
+      return (
+        <RateLimitSection
+          form={form as any}
+          configIsParseable={true}
+          syncRateLimitToJson={() => {
+            capturedAtSync = form.getValues('rateLimit');
+          }}
+          defaultRateLimit={null}
+        />
+      );
+    }
+    render(<Harness2 />);
+    fireEvent.click(screen.getByLabelText('Enable rate limiting'));
+    expect(capturedAtSync).toEqual({ requestsPerMinute: '', maxConcurrent: '' });
+  });
+
+  it('re-syncs when the toggle is checked with both knobs still blank (no silent no-op on Save)', () => {
+    const syncRateLimitToJson = vi.fn();
+    render(<Harness syncRateLimitToJson={syncRateLimitToJson} />);
+
+    fireEvent.click(screen.getByLabelText('Enable rate limiting'));
+
+    expect(screen.getByLabelText('Requests per minute')).toHaveValue('');
+    expect(screen.getByLabelText('Max concurrent requests')).toHaveValue('');
+    expect(syncRateLimitToJson).toHaveBeenCalledTimes(1);
+  });
+
   it('disables the toggle and both inputs when configIsParseable is false (divergence gate)', () => {
     render(
       <Harness

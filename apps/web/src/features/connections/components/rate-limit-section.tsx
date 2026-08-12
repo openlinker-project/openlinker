@@ -70,6 +70,9 @@ export function RateLimitSection({
   // render: turning the checkbox ON with both fields still empty must keep
   // the inputs visible (a derived `enabled` would immediately flip back to
   // "off" the instant it's checked, since neither field has a value yet).
+  // Invariant: nothing outside this component may call
+  // `form.setValue('rateLimit.*', …)` — this frozen state won't notice, and a
+  // knob could populate behind a checkbox still rendered unchecked.
   const [enabled, setEnabled] = useState(hasStoredValue);
 
   const handleChange = (field: 'requestsPerMinute' | 'maxConcurrent', value: string): void => {
@@ -83,13 +86,16 @@ export function RateLimitSection({
   // Clearing both fields (rather than just hiding them) is what makes
   // `mergeStructuredIntoConfig`'s rateLimit clause persist an explicit
   // `config.rateLimit: null` instead of leaving a stale value in place.
+  // Always sync (checking and unchecking alike) — otherwise checking the box
+  // with both knobs left blank never re-serializes into `configText`, and
+  // Save fires its success toast over a payload that silently didn't change.
   const handleEnabledChange = (checked: boolean): void => {
     setEnabled(checked);
     if (!checked) {
       form.setValue('rateLimit.requestsPerMinute', '', { shouldDirty: true });
       form.setValue('rateLimit.maxConcurrent', '', { shouldDirty: true });
-      syncRateLimitToJson();
     }
+    syncRateLimitToJson();
   };
 
   return (
@@ -100,19 +106,24 @@ export function RateLimitSection({
         {defaultRateLimit ? (
           <>
             Leave rate limiting off to use this connection&apos;s adapter default —{' '}
-            <strong>{formatRateLimit(defaultRateLimit)}</strong>. Setting either field replaces the
-            adapter default entirely — the other field is then genuinely unlimited, not still
-            capped by the default.
+            <strong>{formatRateLimit(defaultRateLimit)}</strong>.
           </>
         ) : (
           <>Leave rate limiting off for unlimited (the default for this adapter).</>
-        )}{' '}
-        Enforcement is rolling out sync path by sync path — setting a cap here has no effect until
-        this connection&apos;s outbound traffic has been migrated onto it. If you run multiple
-        API/worker replicas (<code>OL_WORKER_REPLICAS</code>), each value is divided evenly across
-        them, so the real aggregate throughput matches what you configure below rather than
-        multiplying it per replica.
+        )}
       </p>
+
+      {enabled ? (
+        <p className="rate-limit-section__help">
+          Setting either field below replaces the adapter default entirely — the other field is
+          then genuinely unlimited, not still capped by the default. Enforcement is rolling out
+          sync path by sync path — setting a cap here has no effect until this connection&apos;s
+          outbound traffic has been migrated onto it. If you run multiple API/worker replicas
+          (<code>OL_WORKER_REPLICAS</code>), each value is divided evenly across them, so the real
+          aggregate throughput matches what you configure below rather than multiplying it per
+          replica.
+        </p>
+      ) : null}
 
       <label className="rate-limit-section__toggle">
         <input
