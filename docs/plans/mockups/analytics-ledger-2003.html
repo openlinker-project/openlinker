@@ -2050,17 +2050,9 @@
             <li>An all-clear section must <b>not</b> render as an empty box &mdash; empty reads as broken.
               Hence the one line, with the count in it.</li>
             <li>Rows carry a headline and a qualifier, not two facts, so each collapses to one line.</li>
-            <li>Whatever stock threshold ships must be stated in the row, so the operator can judge it.</li>
+            <li>The stock row states the buffer it subtracted, so the operator can check the
+              arithmetic rather than trust a threshold nobody set.</li>
           </ol>
-        </div>
-        <span class="build-field__label build-field__label--blocked">Blocked</span>
-        <div class="build-field__body">
-          <div class="build-gaps">
-            <div class="build-gaps__row"><span>Stock threshold <span class="gap-mark" title="Data the API does not expose yet">&dagger;</span></span>
-              <span class="build-gaps__cause"><code>connection.config.stockSafetyBuffer</code> (#1844) is a
-              publish-time floor, not an alarm, and no entity carries a reorder point &mdash; so the number
-              here is arbitrary until one exists</span></div>
-          </div>
         </div>
       </div>
     </div>
@@ -2922,9 +2914,14 @@
               <td>Derive from <code>connection_cursors.updatedAt</code> (advances only on real progress) or <code>MAX(sync_jobs.updatedAt)</code>. Neither is indexed for this read.</td>
             </tr>
             <tr>
-              <td>No low-stock threshold anywhere</td>
-              <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Small</span></td>
-              <td><code>stockSafetyBuffer</code> is a publish floor, not an alarm. &bdquo;Stock at risk&rdquo; needs a stated threshold; frame&nbsp;02 shows it in the row for that reason.</td>
+              <td>No reorder point anywhere</td>
+              <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Follow-up</span></td>
+              <td>v1 reports a <i>fact</i>, not an alarm: a variant whose published quantity is already 0 because master stock is at or below the connection&rsquo;s <code>stockSafetyBuffer</code> (#1844), under <code>max(0, masterStock &minus; buffer)</code>. That needs no threshold, which is why frame&nbsp;02 carries no gap marker. A true low-stock <i>warning</i> &mdash; &bdquo;running out soon&ldquo; rather than &bdquo;unavailable now&ldquo; &mdash; would need an operator-set <code>reorderPoint</code> per variant, which no entity carries. v2.</td>
+            </tr>
+            <tr>
+              <td><b>Wording departs from #1989 and the spec, deliberately</b></td>
+              <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Decision</span></td>
+              <td>Spec &sect;4 E1, &sect;7 S4 and #1989 all say &bdquo;<b>fast movers</b>&ldquo;; this package says &bdquo;variants&ldquo;. E1 is flagged <code>&#128993; [L] for velocity + &#128994; for the stock read</code>, and &sect;6 takes only the green half into v1 (&bdquo;mappings + inventory + sync only&ldquo;) &mdash; so #1983 computes <code>masterStock &minus; stockSafetyBuffer</code> and never learns how fast anything sells. The same applies to coverage: #1989 quotes &bdquo;12 variants <b>sell</b> on Allegro&ldquo;, while #1983 ranks by mapping presence and lists &bdquo;sales-weighting the coverage gaps&ldquo; as out of scope. <b>Paste the strings from frame&nbsp;12, not from the issue bodies</b> &mdash; a variant that is mapped but never sold would otherwise be announced as selling.</td>
             </tr>
             <tr>
               <td>Money is formatted <code>en-US</code></td>
@@ -3529,13 +3526,13 @@
      something the page still renders. */
   var ATTENTION = [
     { key: 'coverage', tone: 'warning',
-      headline: '<b>12 variants</b> sell on Allegro — main but are not listed in Sklep główny',
-      sub: 'ranked by units sold on Allegro — main · last 30 days',
+      headline: '<b>12 variants</b> are listed on Allegro — main but not in Sklep główny',
+      sub: 'stale variants excluded',
       action: 'Publish to Sklep główny',
       label: 'coverage' },
     { key: 'stock', tone: 'warning',
-      headline: '<b>4 fast movers</b> are at or below their channel’s stock safety buffer',
-      sub: 'threshold: connection stock safety buffer <span class="gap-mark" title="No reorderPoint exists; the buffer is a publish floor, not an alarm">&dagger;</span>',
+      headline: '<b>4 variants</b> publish as out of stock on Allegro — main',
+      sub: 'master stock at or below the connection’s safety buffer · buffer 2',
       action: 'View inventory',
       label: 'stock' },
     { key: 'stuck', tone: 'error',
@@ -3681,25 +3678,23 @@
     return ' <span class="gap-mark" title="' + esc(title) + '">&dagger;</span>';
   }
 
-  /* Two gaps are marked in STATIC markup rather than through `blocked()` — the date
-     chip in the toolbar (five copies of it across the frames) and the stock threshold in
-     Needs attention — so they are registered by hand. Which would be exactly the drift
-     this register was built to prevent, if `renderDataOrder` did not audit the finished
-     page against it. It does, and it fails loudly rather than silently: a marker nobody
-     registered lands in the table as an unfiled row, so the omission is visible in the
-     one place somebody is reading for omissions. */
+  /* One gap is marked in STATIC markup rather than through `blocked()` — the date chip in
+     the toolbar, which appears in five copies across the frames — so it is registered by
+     hand. Which would be exactly the drift this register was built to prevent, if
+     `renderDataOrder` did not audit the finished page against it. It does, and it fails
+     loudly rather than silently: a marker nobody registered lands in the table as an
+     unfiled row, so the omission is visible in the one place somebody is reading for
+     omissions.
+
+     The stock threshold used to be the second hand-registered gap. It is gone because the
+     row no longer needs a threshold: it reports the variants whose published quantity is
+     already 0 under `max(0, masterStock - buffer)` (#1844), which is arithmetic, not an
+     alarm. A real low-stock warning would still need a reorder point — that is a v2
+     upgrade filed in the handover, not a gap this page claims. */
   registerGap('Date range filter (order date)',
     'placedAt is not a column and cannot be filtered today',
     'The same placedAt column as the deltas. This is the one that gates the whole page: ' +
     'every figure here is scoped by a range the API cannot express.');
-  registerGap('Low-stock threshold',
-    'No reorderPoint or low-stock threshold exists on any entity',
-    'An operator-set reorder point per variant. The stock safety buffer is a publish ' +
-    'floor and cannot stand in for one — it never triggers an alarm.');
-  /* The same gap, stated the other way round on the attention row it qualifies: there the
-     sentence has to explain what the buffer is standing in for. One gap, two wordings —
-     so the second is filed as an alias rather than as a second requirement. */
-  dataOrderNeeds['No reorderPoint exists; the buffer is a publish floor, not an alarm'] = true;
 
   /* Markers that explain the convention rather than claim a gap. Listed by their exact
      text because there are only two and a pattern would eventually swallow a real one. */
@@ -4589,12 +4584,12 @@
      'Per-currency subtotals, no grand total beneath — the total sits one row up, in reporting currency, so conversion is verifiable.'],
     ['Share is measured in units, which is comparable regardless.', 'Note under by-channel',
      'Explains why the share column is not revenue-based, in the one place someone would ask.'],
-    ['12 variants sell on Allegro — main but are not listed in Sklep główny', 'Needs attention, coverage gap',
-     'Both channel names, by the operator’s own naming. "Coverage gap detected" would name the system’s concept instead.'],
-    ['All destination syncs delivered · nothing stuck', 'Needs attention, resolved',
-     'A finding, not an absence. The row stays so the operator can see the category was checked.'],
-    ['No fast mover is near its stock safety buffer', 'Needs attention, resolved',
-     'Mirrors the unresolved wording so the two states read as the same row in different conditions.'],
+    ['12 variants are listed on Allegro — main but not in Sklep główny', 'Needs attention, coverage gap',
+     'Both channel names, by the operator’s own naming. "Coverage gap detected" would name the system’s concept instead. Says "are listed", not "sell": v1 ranks by mapping presence, so a mapped variant that never sold appears here too.'],
+    ['4 variants publish as out of stock on Allegro — main', 'Needs attention, stock at risk',
+     'Names the consequence in the channel, not the state in the warehouse — the channel showing zero is the thing the operator can act on. Not "fast movers": nothing here measures how fast anything sells.'],
+    ['master stock at or below the connection’s safety buffer · buffer 2', 'Qualifier under the stock row',
+     'States the buffer it subtracted, so the arithmetic of max(0, masterStock − buffer) is checkable. A bare "below the safety buffer" would hide which number was used, and the buffer is per connection.'],
     ['Cancelled orders are excluded from every money figure', 'By-channel section header',
      'Stated once, near the numbers it governs, because the exclusion is invisible otherwise. Required by AC.'],
     ['REVENUE / ORDERS / ORDER VALUE / UNITS / RETURNS & REFUNDS / CANCELLATIONS', 'KPI card labels',
