@@ -109,7 +109,7 @@ export class ShopProductMappingRepository implements ShopProductMappingRepositor
       .groupBy('mapping.internalId')
       .addGroupBy('pv."productId"')
       .orderBy('"latestMappedAt"', 'DESC')
-      .limit(options.limit);
+      .take(options.limit);
 
     if (options.connectionId) {
       qb.andWhere('mapping.connectionId = :connectionId', { connectionId: options.connectionId });
