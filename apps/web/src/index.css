@@ -9260,6 +9260,10 @@ a.kpi-card:focus-visible {
 .channel-pill[data-channel='prestashop']::before { background: var(--channel-prestashop); }
 .channel-pill[data-channel='amazon']::before     { background: var(--channel-amazon); }
 .channel-pill[data-channel='shopify']::before    { background: var(--channel-shopify); }
+/* Erli and WooCommerce had their hues defined but never wired, so both rendered
+   the grey fallback dot on every surface using the pill (#2028). */
+.channel-pill[data-channel='erli']::before        { background: var(--channel-erli); }
+.channel-pill[data-channel='woocommerce']::before { background: var(--channel-woocommerce); }
 
 /* ── Patterns: entity label (thumb + name + sub-id) ──────────────── */
 .entity-label { display: inline-flex; align-items: center; gap: var(--space-2); }
@@ -17053,4 +17057,233 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   margin: 0;
   font-size: 0.75rem;
   color: var(--text-muted);
+}
+
+/* ── Listings table row anatomy (#2028) ──────────────────────────────────────
+   Transcribed from the #1965 mockup: a listing row leads with the catalog
+   product name, groups its three identifiers on a second line, and keeps the
+   two commercial columns mono + tabular so they scan as columns. */
+/* The identity column carries four facts, so it gets the width to keep them on
+   two lines; below this the row grows to four and the ~36px density budget is
+   gone. Scoped to this table's own container class - the mockup hung it off
+   `.data-table td:first-child`, which in the app would reach every other
+   DataTable. */
+.listings-table th:first-child,
+.listings-table td:first-child {
+  min-width: 28rem;
+}
+/* `inline-flex`, not `flex`: DataTable wraps the first cell in an INLINE <a>
+   whose focus ring is a box-shadow, and a block box inside an inline anchor
+   paints that ring around inline fragments wrapping an anonymous block - a
+   hairline or nothing. An atomic inline-level box keeps the ring intact. */
+.listing-cell {
+  display: inline-flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.listing-cell__body {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.listing-cell__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+/* Shrink only when the row genuinely runs out of room (a long name next to a
+   badge), never at a fixed character cap - a truncated name with empty space
+   beside it reads as a bug. */
+/* Inherits from the row link / card title rather than declaring its own colour,
+   so DataTable's own `:hover .data-table__row-link` accent reaches it without a
+   listings rule keying off a DataTable-internal modifier. */
+.listing-cell__name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: inherit;
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.listing-cell__name--missing {
+  font-weight: 500;
+  font-style: italic;
+  color: var(--text-muted);
+}
+.listing-cell__variant,
+.listing-cell__offerid,
+.listing-cell__badge {
+  flex: 0 0 auto;
+}
+.listing-cell__variant {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  padding: 1px 6px;
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  white-space: nowrap;
+}
+.listing-cell__offerid {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+/* Weight is declared, not inherited: on the mobile card DataTable wraps the
+   title in a 600-weight <strong>, which would otherwise make the identifier
+   line and the validator message read as headings. */
+.listing-cell__meta {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.listing-cell__meta span {
+  white-space: nowrap;
+}
+.listing-cell__meta span + span::before {
+  content: '·';
+  margin-right: var(--space-2);
+  color: var(--border-strong);
+}
+.listing-cell__meta em {
+  font-style: normal;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+/* The validator's own words, verbatim - this is the one place the marketplace
+   speaks directly to the seller, so it is not paraphrased. Also carries the
+   overselling warning for a stale variant that still reports channel stock. */
+.listing-cell__reason {
+  font-size: 0.6875rem;
+  font-weight: 400;
+  color: var(--status-error-strong);
+  max-width: 46ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Mobile card head (#1965 frame 05): at 360px the name is what the card is
+   about, so nothing next to it may hold a fixed width and nothing may clip. */
+.listing-cell--card .listing-cell__head {
+  flex-wrap: wrap;
+}
+.listing-cell--card .listing-cell__name {
+  flex: 1 1 auto;
+  overflow: visible;
+  white-space: normal;
+}
+.listing-cell--card .listing-cell__meta {
+  flex-wrap: wrap;
+  overflow: visible;
+  white-space: normal;
+}
+.listing-cell--card .listing-cell__reason {
+  max-width: none;
+  overflow: visible;
+  white-space: normal;
+}
+
+/* Whose number this column carries. Price and quantity are the channel's, not
+   OL's, and Updated is when OL last READ the channel, not when the listing
+   changed - the note says so in the header rather than in a tooltip nobody
+   opens (#1843 / #1844 / ADR-009). */
+.listings-col-head {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+.listings-col-head--right {
+  align-items: flex-end;
+}
+.listings-col-head__note {
+  font-size: 0.625rem;
+  font-weight: 400;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  /* Nothing else in the system goes below 10px, and at 10px + caps tracking
+     this must not be allowed to wrap into the row beneath. */
+  white-space: nowrap;
+}
+
+.price-cell {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+.price-cell__value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.qty-cell {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.qty-cell__value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.time-cell {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* Mobile card fold (#1965 frame 05): the four columns the fold drops, as a
+   two-column fact list under the listing head. */
+.listings-card-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3) var(--space-4);
+  margin: 0;
+  padding: var(--space-3);
+  background: var(--bg-surface-muted);
+  border-radius: var(--radius-md);
+}
+.listings-card-facts > div {
+  min-width: 0;
+}
+.listings-card-facts dt {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+.listings-card-facts dd {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+/* Right-aligned in the table because they are columns; left-aligned here
+   because a card fact reads left-to-right under its label. */
+.listings-card-facts .price-cell,
+.listings-card-facts .qty-cell {
+  align-items: flex-start;
+}
+.listings-card-messages {
+  margin: 0;
+  padding-left: var(--space-4);
+  font-size: 0.75rem;
+  color: var(--status-error-strong);
 }
