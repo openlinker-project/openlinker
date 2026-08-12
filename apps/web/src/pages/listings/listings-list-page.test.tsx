@@ -841,7 +841,7 @@ describe('ListingsListPage', () => {
     };
     const TWO_CONNECTIONS = [SECOND_CONNECTION, MISMATCHED_PLATFORM_CONNECTION];
 
-    it('renders the channel select with connection names, not raw ids or platform types, from one shared connections read', async () => {
+    it('renders the channel select with connection names for OfferManager-capable connections only, from one shared connections read', async () => {
       const connectionsList = vi.fn().mockResolvedValue(TWO_CONNECTIONS);
       const mockApi = createMockApiClient({
         listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
@@ -853,14 +853,34 @@ describe('ListingsListPage', () => {
       await screen.findByText('Doniczka ceramiczna Terra');
       const select = screen.getByRole('combobox', { name: 'Filter by channel' });
       const optionLabels = [...select.querySelectorAll('option')].map((o) => o.textContent);
-      expect(optionLabels).toEqual(['All channels', 'Main PrestaShop Store', 'Erli Demo']);
+      // SECOND_CONNECTION only has ProductMaster - /listings is backed
+      // exclusively by offer mappings, so a ProductMaster-only connection can
+      // never produce a row here and must not be offered as a filter option
+      // (it would deterministically empty the table forever if selected).
+      // Only the OfferManager-capable MISMATCHED_PLATFORM_CONNECTION appears.
+      expect(optionLabels).toEqual(['All channels', 'Erli Demo']);
+      expect(screen.queryByText('Main PrestaShop Store')).not.toBeInTheDocument();
       // Names only - never the raw connection id or its platformType string.
       expect(screen.queryByText('conn_allegro_1')).not.toBeInTheDocument();
-      expect(screen.queryByText('prestashop')).not.toBeInTheDocument();
+      expect(screen.queryByText('erli')).not.toBeInTheDocument();
       // The Connection column already reads `useConnectionsQuery()` once for the
       // whole page (#1996) - the toolbar select must reuse that same result
       // rather than firing a second connections request.
       expect(connectionsList).toHaveBeenCalledTimes(1);
+    });
+
+    it('excludes a connection that lacks OfferManager even when it is otherwise active and named', async () => {
+      const mockApi = createMockApiClient({
+        listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
+        connections: { list: vi.fn().mockResolvedValue([SECOND_CONNECTION]) },
+      });
+
+      renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Doniczka ceramiczna Terra');
+      const select = screen.getByRole('combobox', { name: 'Filter by channel' });
+      const optionLabels = [...select.querySelectorAll('option')].map((o) => o.textContent);
+      expect(optionLabels).toEqual(['All channels']);
     });
 
     it('filters the request by the selected channel connection id', async () => {

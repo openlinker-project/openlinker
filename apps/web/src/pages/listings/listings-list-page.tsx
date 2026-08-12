@@ -549,7 +549,7 @@ export function ListingsListPage(): ReactElement {
         ) : null
       }
     >
-      <div className="toolbar toolbar--compact">
+      <div className="toolbar toolbar--compact listings-toolbar">
         <div className="toolbar__group">
           <Input
             aria-label="Search listings by product name, SKU, EAN or external ID"
@@ -563,7 +563,11 @@ export function ListingsListPage(): ReactElement {
               inputs (#2030) - populated from the same batched connections read
               already used for the Connection column (#1996), so it never costs
               a second request, and shows each connection's own NAME rather than
-              its raw id or platformType. */}
+              its raw id or platformType. Scoped to OfferManager-capable
+              connections (mirrors useProductMasterConnections' ProductMaster
+              filter) - /listings is backed exclusively by offer mappings, so a
+              ProductMaster/ProductPublisher-only connection can never produce a
+              row here and would otherwise dead-end the table on selection. */}
           <Select
             aria-label="Filter by channel"
             value={urlConnectionId}
@@ -572,11 +576,13 @@ export function ListingsListPage(): ReactElement {
             }}
           >
             <option value="">All channels</option>
-            {(connectionsQuery.data ?? []).map((connection) => (
-              <option key={connection.id} value={connection.id}>
-                {connection.name}
-              </option>
-            ))}
+            {(connectionsQuery.data ?? [])
+              .filter((connection) => connection.enabledCapabilities.includes('OfferManager'))
+              .map((connection) => (
+                <option key={connection.id} value={connection.id}>
+                  {connection.name}
+                </option>
+              ))}
           </Select>
         </div>
         <Button tone="ghost" className="button--sm" onClick={clearFilters}>

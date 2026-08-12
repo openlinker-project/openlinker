@@ -17108,6 +17108,21 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   color: var(--text-muted);
 }
 
+/* ── Listings toolbar wrap opt-in (#2030) ────────────────────────────────────
+   `.toolbar` / `.toolbar__group` stay `nowrap` by default (see the comment on
+   `.orders-toolbar` below) because most toolbars fit their controls on one
+   row. This page's toolbar (search + channel select + Clear) doesn't at
+   tablet/phone widths, so it opts in the same way `.orders-toolbar` does:
+   wrap the toolbar itself, and wrap its `.toolbar__group` child so the
+   search/select pair inside it can also drop onto their own lines rather
+   than being squeezed into a single nowrap row. */
+.listings-toolbar {
+  flex-wrap: wrap;
+}
+.listings-toolbar .toolbar__group {
+  flex-wrap: wrap;
+}
+
 /* ── Listings table row anatomy (#2028) ──────────────────────────────────────
    Transcribed from the #1965 mockup: a listing row leads with the catalog
    product name, groups its three identifiers on a second line, and keeps the
