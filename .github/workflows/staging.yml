@@ -2,9 +2,11 @@ name: Build and up staging
 
 on:
   workflow_dispatch:  # Manual trigger for testing
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types: 
+      - completed
 
 permissions:
   contents: read
@@ -92,4 +94,4 @@ jobs:
         run: docker compose up -d
 
       - name: Prune old images # save space on server
-        run: docker image prune
+        run: docker image prune -f
