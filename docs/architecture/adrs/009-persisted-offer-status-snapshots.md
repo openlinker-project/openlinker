@@ -24,7 +24,14 @@ Persist offer publication status in a new, listings-owned `offer_status_snapshot
 
 **Pros:**
 - Live offer status is queryable and persisted; downstream FE/filters/alerts can build on a stable column.
-- Steady-state sync and the creation poller (#447) write disjoint tables — no coordination or race.
+- Steady-state sync and the creation poller (#447) write disjoint tables — the creation record and the
+  snapshot never contend. **Amended by #2039**: the disjoint-*tables* invariant still holds (the terminal
+  creation record is never mutated), but `offer_status_snapshots` is no longer single-writer — the create path
+  and the poller's `active` terminal now upsert it alongside the steady-state scan and `refreshOne`. Since
+  nothing orders those writers, the repository resolves a conflict by **observation freshness**
+  (`lastStatusSyncedAt`, monotonic via `GREATEST`) rather than by arrival order. Freshness, not status rank:
+  `active → ended → active` is a legitimate sequence, so the rank ladder used for `webhook_deliveries` (#1916)
+  does not transfer here.
 - Marketplace-agnostic: any adapter implementing `OfferStatusReader` inherits the flow.
 
 **Cons / trade-offs:**
@@ -45,9 +52,37 @@ The snapshot table shipped write-only — populated by the hourly `marketplace.o
 
 This does not change the storage decision or the disjoint-tables invariant; it adds the missing read half and a targeted freshness path on top of the same table.
 
+## Amendment (#2039, 2026-08-12): the create path writes the snapshot it already knows
+
+#1760 made the snapshot the authoritative operator-facing status, but nothing on the **create** path ever wrote
+one — `upsert` had exactly two callers, both inside `OfferStatusSyncService`. A freshly published offer
+therefore had no live status until the hourly rolling scan reached it, which for a new mapping is the *end* of
+the scan cycle (it enters the `createdAt DESC` scan at an offset the cursor has already passed), i.e. ~40 h
+worst case on a 4,000-offer catalog. The `draft` branch's reconcile ladder did write, so a rejected offer
+looked better-synced than a healthy one.
+
+- **The rule**: persist a status only when an authoritative one is already in hand; otherwise write nothing.
+  Adapters report it via an optional `CreateOfferResult.publicationStatus`, set only when the create response
+  carried a platform status. Core never coerces the create-status vocabulary
+  (`draft | validating | active`) into `OfferPublicationStatus` — only the adapter can map its own raw value,
+  and a guessed `inactive` would read as a rejected offer.
+- **One write seam**: `IOfferStatusSyncService.recordObservedStatus`, called from the end of
+  `OfferCreationExecutionService.executeCreation` (unconditionally, which also covers a failed
+  `scheduleFirstPoll`) and from the poller's `active` terminal (the live read just happened; a delayed re-read
+  job would be waste). The `POLL_TIMEOUT` / `draft` ladder from the #1760 amendment is unchanged.
+- **Never throws.** `loadOrCreateRecord` has no terminal-state guard, so a throw after the adapter create
+  would let a job retry re-invoke `createOffer`, and Allegro does not deduplicate product-offer creates. Both
+  call sites swallow-and-warn, with the hourly sync as the backstop.
+- **Multi-writer consequence**: see the amended § Consequences bullet — `upsert` becomes a freshness-guarded
+  `INSERT … ON CONFLICT DO UPDATE`, proven by an integration test (a SQL guard cannot be exercised through a
+  mocked repository).
+
+Erli remains uncovered by design: its create is an async 202 with no status, and its status *read* defaults
+unknown wire values to `inactive` — the hazard the review-#1063 scheduler gate suppresses until #992.
+
 ## References
 
 - Related PRs: #816, #1760
-- Related issues: #816, #447, #464, #391, #400, #1520, #1760
+- Related issues: #816, #447, #464, #391, #400, #1520, #1760, #2039
 - Related ADRs: [ADR-007](./007-syncjob-status-vs-outcome-split.md)
 - Primary doc section: [docs/architecture-overview.md](../../architecture-overview.md) § Listings (Offers)

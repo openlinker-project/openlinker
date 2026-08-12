@@ -13,6 +13,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { OfferStatusSnapshot } from '../../../domain/entities/offer-status-snapshot.entity';
+import { OfferStatusSnapshotUpsertFailedError } from '../../../domain/exceptions/offer-status-snapshot-upsert-failed.exception';
 import type {
   OfferStatusSnapshotRepositoryPort,
   OfferStatusUpsertResult,
@@ -20,6 +21,9 @@ import type {
 import type { UpsertOfferStatusSnapshotCommand } from '../../../domain/types/offer-status-snapshot.types';
 import type { OfferPublicationStatus } from '../../../domain/types/offer-status-read.types';
 import { OfferStatusSnapshotOrmEntity } from '../entities/offer-status-snapshot.orm-entity';
+
+/** Physical table name, referenced by the guarded `ON CONFLICT` assignments. */
+const TABLE = 'offer_status_snapshots';
 
 @Injectable()
 export class OfferStatusSnapshotRepository implements OfferStatusSnapshotRepositoryPort {
@@ -39,13 +43,9 @@ export class OfferStatusSnapshotRepository implements OfferStatusSnapshotReposit
   }
 
   async upsert(command: UpsertOfferStatusSnapshotCommand): Promise<OfferStatusUpsertResult> {
-    // find-then-save (not atomic). Safe because the status-sync job is
-    // effectively single-writer per connection: the scheduler dedups
-    // concurrent runs via a per-minute idempotency key and advances the scan
-    // cursor sequentially. A same-key race would surface a unique-violation on
-    // the loser's INSERT, which the runner's retry then resolves via the
-    // update path on the next pass. The prior status is captured here (one
-    // read) so the service can detect a transition without a second query.
+    // The prior status is captured here (one read) so the service can detect a
+    // transition without a second query. It is deliberately NOT the basis of
+    // the write — see the guard below.
     const existing = await this.ormRepository.findOne({
       where: {
         connectionId: command.connectionId,
@@ -54,15 +54,58 @@ export class OfferStatusSnapshotRepository implements OfferStatusSnapshotReposit
     });
     const previousStatus = existing?.publicationStatus ?? null;
 
-    const entity = existing ?? new OfferStatusSnapshotOrmEntity();
-    entity.connectionId = command.connectionId;
-    entity.externalOfferId = command.externalOfferId;
-    entity.internalVariantId = command.internalVariantId;
-    entity.publicationStatus = command.publicationStatus;
-    entity.statusDetails = command.statusDetails;
-    entity.lastStatusSyncedAt = command.lastStatusSyncedAt;
+    // Raw parameterized INSERT … ON CONFLICT DO UPDATE rather than
+    // find-then-save. Until #2039 this table had ONE writer (the hourly scan,
+    // serialised per connection by its own idempotency key + cursor), so a
+    // non-atomic read-modify-write was safe. It now has three deliberately
+    // decoupled writers — the scan, the single-offer refresh, and the create
+    // path (create response + the creation poller's `active` terminal) — and
+    // nothing orders them, so the assignment resolves by OBSERVATION FRESHNESS
+    // instead of arrival order (`docs/lessons.md`, #1916 precedent).
+    //
+    // Freshness, not status rank: `active → ended → active` is a legitimate
+    // sequence, so ranking the status values (as `webhook_deliveries` does for
+    // its monotonic lifecycle) would be wrong here. `<=` keeps a same-instant
+    // rewrite effective, and `GREATEST` makes the timestamp itself monotonic so
+    // a late-arriving stale observation cannot drag the row backwards.
+    //
+    // Column names are a fixed whitelist of entity fields (never user input);
+    // every value is a bound parameter. `QueryBuilder.insert()` is avoided on
+    // purpose: its lazy `require()` of InsertQueryBuilder can resolve to
+    // `undefined` under jest's per-file module sandbox (#1511).
+    const guard = `${TABLE}."lastStatusSyncedAt" <= EXCLUDED."lastStatusSyncedAt"`;
+    const freshest = (column: string): string =>
+      `"${column}" = CASE WHEN ${guard} THEN EXCLUDED."${column}" ELSE ${TABLE}."${column}" END`;
 
-    const saved = await this.ormRepository.save(entity);
+    await this.ormRepository.query(
+      `INSERT INTO ${TABLE} ("connectionId", "externalOfferId", "internalVariantId", "publicationStatus", "statusDetails", "lastStatusSyncedAt")
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT ("externalOfferId", "connectionId")
+       DO UPDATE SET ${freshest('internalVariantId')}, ${freshest('publicationStatus')}, ${freshest('statusDetails')},
+         "lastStatusSyncedAt" = GREATEST(${TABLE}."lastStatusSyncedAt", EXCLUDED."lastStatusSyncedAt"),
+         "updatedAt" = now()`,
+      [
+        command.connectionId,
+        command.externalOfferId,
+        command.internalVariantId,
+        command.publicationStatus,
+        command.statusDetails === null ? null : JSON.stringify(command.statusDetails),
+        command.lastStatusSyncedAt,
+      ]
+    );
+
+    const saved = await this.ormRepository.findOne({
+      where: {
+        connectionId: command.connectionId,
+        externalOfferId: command.externalOfferId,
+      },
+    });
+    if (!saved) {
+      throw new OfferStatusSnapshotUpsertFailedError(
+        command.connectionId,
+        command.externalOfferId
+      );
+    }
     return { snapshot: this.toDomain(saved), previousStatus };
   }
 

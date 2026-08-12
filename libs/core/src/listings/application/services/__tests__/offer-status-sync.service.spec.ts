@@ -246,4 +246,52 @@ describe('OfferStatusSyncService', () => {
 
     await expect(service.sync(CONNECTION_ID, { limit: 10 })).rejects.toThrow('502 Bad Gateway');
   });
+
+  describe('recordObservedStatus (#2039)', () => {
+    const target = { externalOfferId: '111', internalVariantId: 'ol_variant_1' };
+
+    it('should upsert a status the caller already observed, without reading the marketplace', async () => {
+      await service.recordObservedStatus(CONNECTION_ID, target, {
+        publicationStatus: 'active',
+        validationMessages: [],
+      });
+
+      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+      expect(snapshots.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionId: CONNECTION_ID,
+          externalOfferId: '111',
+          internalVariantId: 'ol_variant_1',
+          publicationStatus: 'active',
+          statusDetails: null,
+        }) as UpsertOfferStatusSnapshotCommand
+      );
+    });
+
+    it('should persist observed validation messages as status details', async () => {
+      await service.recordObservedStatus(CONNECTION_ID, target, {
+        publicationStatus: 'inactive',
+        validationMessages: ['Missing parameter'],
+      });
+
+      expect(snapshots.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          statusDetails: { validationMessages: ['Missing parameter'] },
+        }) as UpsertOfferStatusSnapshotCommand
+      );
+    });
+
+    it('should stamp the caller-supplied observation time so the freshness guard can order writes', async () => {
+      const observedAt = new Date('2026-08-12T10:00:00Z');
+
+      await service.recordObservedStatus(CONNECTION_ID, target, {
+        publicationStatus: 'activating',
+        observedAt,
+      });
+
+      expect(snapshots.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ lastStatusSyncedAt: observedAt }) as UpsertOfferStatusSnapshotCommand
+      );
+    });
+  });
 });

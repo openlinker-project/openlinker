@@ -109,4 +109,58 @@ describe('Offer Status Snapshot Repository Integration', () => {
     expect(counts.get('active')).toBe(2);
     expect(counts.get('inactive')).toBe(1);
   });
+
+  describe('freshness guard (#2039)', () => {
+    // The table now has several deliberately decoupled writers (hourly scan,
+    // single-offer refresh, create path). The guard that orders them lives in
+    // SQL, so a mocked repository cannot exercise it — see docs/lessons.md.
+    const OFFER_ID = '7781999001';
+
+    const observe = (
+      publicationStatus: 'active' | 'inactive' | 'activating',
+      lastStatusSyncedAt: Date
+    ) =>
+      repository.upsert({
+        connectionId: CONNECTION_ID,
+        externalOfferId: OFFER_ID,
+        internalVariantId: 'ol_variant_guard',
+        publicationStatus,
+        statusDetails: null,
+        lastStatusSyncedAt,
+      });
+
+    it('keeps the fresher row when a stale observation arrives late', async () => {
+      const fresh = new Date('2026-05-23T12:00:00.000Z');
+      const stale = new Date('2026-05-23T11:00:00.000Z');
+
+      await observe('active', fresh);
+      const result = await observe('inactive', stale);
+
+      expect(result.snapshot.publicationStatus).toBe('active');
+      expect(result.snapshot.lastStatusSyncedAt.toISOString()).toBe(fresh.toISOString());
+
+      const read = await repository.findByConnectionAndExternalOfferId(CONNECTION_ID, OFFER_ID);
+      expect(read?.publicationStatus).toBe('active');
+    });
+
+    it('applies a newer observation', async () => {
+      await observe('activating', new Date('2026-05-23T11:00:00.000Z'));
+      const newer = new Date('2026-05-23T12:00:00.000Z');
+
+      const result = await observe('active', newer);
+
+      expect(result.snapshot.publicationStatus).toBe('active');
+      expect(result.snapshot.lastStatusSyncedAt.toISOString()).toBe(newer.toISOString());
+      expect(result.previousStatus).toBe('activating');
+    });
+
+    it('applies a same-instant rewrite, so a re-observation is never dropped', async () => {
+      const sameInstant = new Date('2026-05-23T12:00:00.000Z');
+      await observe('activating', sameInstant);
+
+      const result = await observe('active', sameInstant);
+
+      expect(result.snapshot.publicationStatus).toBe('active');
+    });
+  });
 });

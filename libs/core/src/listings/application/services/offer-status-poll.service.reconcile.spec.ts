@@ -8,6 +8,7 @@ import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { ISyncJobsService } from '@openlinker/core/sync';
 import type { OfferCreationRecordRepositoryPort } from '../../domain/ports/offer-creation-record-repository.port';
 import { OfferStatusPollService } from './offer-status-poll.service';
+import type { IOfferStatusSyncService } from './offer-status-sync.service.interface';
 
 const REFRESH_JOB_TYPE = 'marketplace.offer.refreshSnapshot';
 
@@ -17,6 +18,7 @@ describe('OfferStatusPollService — snapshot reconcile scheduling (#1760)', () 
     Pick<OfferCreationRecordRepositoryPort, 'findById' | 'updateStatus' | 'updateClassificationReport'>
   >;
   let syncJobs: jest.Mocked<Pick<ISyncJobsService, 'schedule'>>;
+  let statusSync: jest.Mocked<Pick<IOfferStatusSyncService, 'recordObservedStatus'>>;
   let service: OfferStatusPollService;
 
   const input = {
@@ -41,11 +43,13 @@ describe('OfferStatusPollService — snapshot reconcile scheduling (#1760)', () 
       updateClassificationReport: jest.fn().mockResolvedValue(undefined),
     };
     syncJobs = { schedule: jest.fn().mockResolvedValue(undefined as never) };
+    statusSync = { recordObservedStatus: jest.fn().mockResolvedValue(undefined) };
     const config = { get: jest.fn().mockReturnValue(undefined) } as unknown as ConfigService;
     service = new OfferStatusPollService(
       integrations as unknown as IIntegrationsService,
       records as unknown as OfferCreationRecordRepositoryPort,
       syncJobs as unknown as ISyncJobsService,
+      statusSync as unknown as IOfferStatusSyncService,
       config
     );
   });

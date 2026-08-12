@@ -34,6 +34,7 @@ import {
 } from '../../listings.tokens';
 import type {
   IOfferStatusSyncService,
+  OfferStatusObservation,
   OfferStatusRefreshTarget,
   OfferStatusSyncOptions,
 } from './offer-status-sync.service.interface';
@@ -159,22 +160,35 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
       throw error;
     }
 
+    await this.recordObservedStatus(connectionId, target, {
+      publicationStatus: status.publicationStatus,
+      validationMessages: status.validationErrors.map((error) => error.message),
+    });
+
+    return status.publicationStatus;
+  }
+
+  async recordObservedStatus(
+    connectionId: string,
+    target: OfferStatusRefreshTarget,
+    observation: OfferStatusObservation
+  ): Promise<void> {
     const { previousStatus } = await this.snapshots.upsert({
       connectionId,
       externalOfferId: target.externalOfferId,
       internalVariantId: target.internalVariantId,
-      publicationStatus: status.publicationStatus,
-      statusDetails: this.toStatusDetails(status.validationErrors),
-      lastStatusSyncedAt: new Date(),
+      publicationStatus: observation.publicationStatus,
+      statusDetails: this.toStatusDetails(
+        (observation.validationMessages ?? []).map((message) => ({ message }))
+      ),
+      lastStatusSyncedAt: observation.observedAt ?? new Date(),
     });
 
-    if (previousStatus !== null && previousStatus !== status.publicationStatus) {
+    if (previousStatus !== null && previousStatus !== observation.publicationStatus) {
       this.logger.log(
-        `Offer status transition on refresh (connection=${connectionId}, offerId=${target.externalOfferId}): ${previousStatus} → ${status.publicationStatus}`
+        `Offer status transition (connection=${connectionId}, offerId=${target.externalOfferId}): ${previousStatus} → ${observation.publicationStatus}`
       );
     }
-
-    return status.publicationStatus;
   }
 
   private toStatusDetails(

@@ -41,13 +41,17 @@ import {
 } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
-import { OFFER_CREATION_RECORD_REPOSITORY_TOKEN } from '../../listings.tokens';
+import {
+  OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
+  OFFER_STATUS_SYNC_SERVICE_TOKEN,
+} from '../../listings.tokens';
 import { OfferCreationRecordRepositoryPort } from '../../domain/ports/offer-creation-record-repository.port';
 import type {
   OfferCreationError,
   OfferCreationStatus,
 } from '../../domain/types/offer-creation-record.types';
 import type { IOfferStatusPollService } from '../interfaces/offer-status-poll.service.interface';
+import { IOfferStatusSyncService } from './offer-status-sync.service.interface';
 import type {
   OfferPollCadenceConfig,
   PollOnceInput,
@@ -77,6 +81,8 @@ export class OfferStatusPollService implements IOfferStatusPollService {
     private readonly offerCreationRecords: OfferCreationRecordRepositoryPort,
     @Inject(SYNC_JOBS_SERVICE_TOKEN)
     private readonly syncJobs: ISyncJobsService,
+    @Inject(OFFER_STATUS_SYNC_SERVICE_TOKEN)
+    private readonly offerStatusSync: IOfferStatusSyncService,
     configService: ConfigService
   ) {
     this.cadence = {
@@ -186,6 +192,18 @@ export class OfferStatusPollService implements IOfferStatusPollService {
           adapter,
           input.externalOfferId,
           input.offerCreationRecordId
+        );
+        // The live status is already in hand from `getOfferStatus` above, so
+        // persist it now (#2039). Before this, `validating → active` wrote no
+        // snapshot at all and the offer waited for the hourly scan — while the
+        // *draft* branch below did get a row, so the healthy offer looked less
+        // synced than the rejected one. Scheduling a delayed re-read here would
+        // only re-fetch what was just read.
+        await this.recordObservedStatus(
+          input.connectionId,
+          input.externalOfferId,
+          record.internalVariantId,
+          result
         );
       }
 
@@ -304,6 +322,35 @@ export class OfferStatusPollService implements IOfferStatusPollService {
       `Scheduled poll iteration ${input.pollAttempt} for record ${input.offerCreationRecordId} ` +
         `at +${delaySeconds}s (offer ${input.externalOfferId}).`
     );
+  }
+
+  /**
+   * Persist a status this iteration already read (#2039). Best-effort with the
+   * same posture as {@link OfferStatusPollService.scheduleSnapshotReconcile}: a
+   * snapshot write failure must not fail the poll iteration — the record is
+   * already terminal, the offer exists on the marketplace, and the hourly
+   * steady-state sync is the backstop.
+   */
+  private async recordObservedStatus(
+    connectionId: string,
+    externalOfferId: string,
+    internalVariantId: string,
+    observed: OfferStatusReadResult
+  ): Promise<void> {
+    try {
+      await this.offerStatusSync.recordObservedStatus(
+        connectionId,
+        { externalOfferId, internalVariantId },
+        {
+          publicationStatus: observed.publicationStatus,
+          validationMessages: observed.validationErrors.map((error) => error.message),
+        }
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Failed to persist observed status for offer ${externalOfferId}: ${(err as Error).message}`
+      );
+    }
   }
 
   /**
