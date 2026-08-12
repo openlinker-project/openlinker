@@ -6,9 +6,22 @@ import { renderWithProviders, createMockApiClient, createAuthenticatedSessionAda
 import { mockMobileViewport } from '../../test/viewport';
 import { ListingsListPage } from './listings-list-page';
 import type {
+  OfferLifecycleCounts,
   OfferMapping,
   PaginatedOfferMappings,
 } from '../../features/listings/api/listings.types';
+
+const ZERO_LIFECYCLE_COUNTS: OfferLifecycleCounts = {
+  Active: 0,
+  Inactive: 0,
+  Draft: 0,
+  Ended: 0,
+  Unsynced: 0,
+};
+
+function emptyPage(counts: OfferLifecycleCounts = ZERO_LIFECYCLE_COUNTS): PaginatedOfferMappings {
+  return { items: [], total: 0, limit: 20, offset: 0, lifecycleCounts: counts };
+}
 
 const navigateMock = vi.fn();
 vi.mock('react-router-dom', async (): Promise<typeof ReactRouterDom> => {
@@ -86,6 +99,7 @@ const sampleMappings: PaginatedOfferMappings = {
   total: 2,
   limit: 20,
   offset: 0,
+  lifecycleCounts: { ...ZERO_LIFECYCLE_COUNTS, Active: 2 },
 };
 
 function oneRow(overrides: Partial<OfferMapping>): PaginatedOfferMappings {
@@ -348,17 +362,31 @@ describe('ListingsListPage', () => {
     expect(screen.getByText('Network error')).toBeInTheDocument();
   });
 
-  it('should show empty state with a Manage connections CTA when no mappings exist', async () => {
+  it("should show the Active tab's own empty state when a connection exists but nothing is synced", async () => {
     const mockApi = createMockApiClient({
       listings: {
-        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+        list: vi.fn().mockResolvedValue(emptyPage()),
       },
     });
 
     renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
-    expect(await screen.findByText('No offer mappings found')).toBeInTheDocument();
-    const cta = screen.getByRole('link', { name: 'Manage connections' });
+    expect(await screen.findByText('No active listings')).toBeInTheDocument();
+    expect(screen.getByText('Nothing here is currently live on a channel.')).toBeInTheDocument();
+    // No connections CTA - a connection already exists (test-utils default).
+    expect(screen.queryByRole('link', { name: 'Connect a channel' })).not.toBeInTheDocument();
+  });
+
+  it('should show a channel-connect empty state when no connections are configured', async () => {
+    const mockApi = createMockApiClient({
+      listings: { list: vi.fn().mockResolvedValue(emptyPage()) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+    expect(await screen.findByText('No channels connected yet')).toBeInTheDocument();
+    const cta = screen.getByRole('link', { name: 'Connect a channel' });
     expect(cta).toHaveAttribute('href', '/connections');
   });
 
@@ -366,7 +394,7 @@ describe('ListingsListPage', () => {
     const user = userEvent.setup();
     const mockApi = createMockApiClient({
       listings: {
-        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+        list: vi.fn().mockResolvedValue(emptyPage()),
       },
     });
 
@@ -380,7 +408,7 @@ describe('ListingsListPage', () => {
     ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Clear filters' }));
 
-    expect(await screen.findByRole('link', { name: 'Manage connections' })).toBeInTheDocument();
+    expect(await screen.findByText('No active listings')).toBeInTheDocument();
   });
 
   it('renders a single "Publish products" entry (no separate shop CTA) with no pre-filter', async () => {
@@ -555,6 +583,105 @@ describe('ListingsListPage', () => {
 
       await screen.findByText('allegro-offer-999');
       expect(screen.queryByRole('button', { name: /publish products/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('lifecycle tabs (#2029)', () => {
+    it('defaults to the Active tab and filters the request by lifecycle=Active', async () => {
+      const list = vi.fn().mockResolvedValue(sampleMappings);
+      const mockApi = createMockApiClient({ listings: { list } });
+
+      renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Doniczka ceramiczna Terra');
+      expect(screen.getByRole('tab', { name: /^Active/ })).toHaveAttribute('aria-selected', 'true');
+      const calledWithActive = list.mock.calls.some(
+        ([filters]) => (filters as { lifecycle?: string } | undefined)?.lifecycle === 'Active'
+      );
+      expect(calledWithActive).toBe(true);
+    });
+
+    it('reads a valid ?tab param, marks it active and filters the request by its lifecycle', async () => {
+      const list = vi.fn().mockResolvedValue(emptyPage());
+      const mockApi = createMockApiClient({ listings: { list } });
+
+      renderWithProviders(<ListingsListPage />, {
+        apiClient: mockApi,
+        route: '/listings?tab=ended',
+      });
+
+      expect(await screen.findByText('No ended listings')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /^Ended/ })).toHaveAttribute('aria-selected', 'true');
+      const calledWithEnded = list.mock.calls.some(
+        ([filters]) => (filters as { lifecycle?: string } | undefined)?.lifecycle === 'Ended'
+      );
+      expect(calledWithEnded).toBe(true);
+    });
+
+    it('falls back to the Active tab for an unrecognized ?tab param', async () => {
+      const mockApi = createMockApiClient({
+        listings: { list: vi.fn().mockResolvedValue(emptyPage()) },
+      });
+
+      renderWithProviders(<ListingsListPage />, {
+        apiClient: mockApi,
+        route: '/listings?tab=bogus',
+      });
+
+      expect(await screen.findByText('No active listings')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /^Active/ })).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('updates the ?tab URL param and resets pagination to page 1 when a tab is clicked', async () => {
+      const user = userEvent.setup();
+      const list = vi.fn().mockResolvedValue(emptyPage());
+      const mockApi = createMockApiClient({ listings: { list } });
+
+      renderWithProviders(<ListingsListPage />, {
+        apiClient: mockApi,
+        route: '/listings?offset=40',
+      });
+
+      await screen.findByText('No active listings');
+      await user.click(screen.getByRole('tab', { name: /^Draft/ }));
+
+      expect(await screen.findByText('No draft listings')).toBeInTheDocument();
+      await vi.waitFor(() => {
+        const [filters, pagination] = list.mock.calls.at(-1) ?? [];
+        expect((filters as { lifecycle?: string } | undefined)?.lifecycle).toBe('Draft');
+        expect((pagination as { offset?: number } | undefined)?.offset).toBe(0);
+      });
+    });
+
+    it("renders each tab's own count from lifecycleCounts, not the active bucket's row count", async () => {
+      const mockApi = createMockApiClient({
+        listings: {
+          list: vi.fn().mockResolvedValue({
+            ...sampleMappings,
+            lifecycleCounts: { Active: 7, Inactive: 3, Draft: 2, Ended: 1, Unsynced: 0 },
+          }),
+        },
+      });
+
+      renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Doniczka ceramiczna Terra');
+      expect(screen.getByRole('tab', { name: /^Active/ })).toHaveTextContent('7');
+      expect(screen.getByRole('tab', { name: /^Inactive/ })).toHaveTextContent('3');
+      expect(screen.getByRole('tab', { name: /^Draft/ })).toHaveTextContent('2');
+      expect(screen.getByRole('tab', { name: /^Ended/ })).toHaveTextContent('1');
+      expect(screen.getByRole('tab', { name: /^Unsynced/ })).toHaveTextContent('0');
+    });
+
+    it('renders tab counts as skeleton placeholders while loading, never as a placeholder zero', () => {
+      const mockApi = createMockApiClient({
+        listings: { list: vi.fn().mockReturnValue(new Promise(() => {})) },
+      });
+
+      const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      expect(screen.getAllByRole('tab')).toHaveLength(5);
+      expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(5);
     });
   });
 });

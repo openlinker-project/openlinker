@@ -10,7 +10,19 @@ import {
 import { ProductDetailPage } from './product-detail-page';
 import type { Product } from '../../features/products/api/products.types';
 import type { InventoryItem, PaginatedInventory } from '../../features/inventory/api/inventory.types';
-import type { OfferMapping, PaginatedOfferMappings } from '../../features/listings/api/listings.types';
+import type {
+  OfferLifecycleCounts,
+  OfferMapping,
+  PaginatedOfferMappings,
+} from '../../features/listings/api/listings.types';
+
+const ZERO_LIFECYCLE_COUNTS: OfferLifecycleCounts = {
+  Active: 0,
+  Inactive: 0,
+  Draft: 0,
+  Ended: 0,
+  Unsynced: 0,
+};
 
 const sampleProduct: Product = {
   id: 'ol_product_abc123',
@@ -100,7 +112,13 @@ function offerMapping(overrides: Partial<OfferMapping>): OfferMapping {
 }
 
 function paginatedListings(items: OfferMapping[]): PaginatedOfferMappings {
-  return { items, total: items.length, limit: 50, offset: 0 };
+  return {
+    items,
+    total: items.length,
+    limit: 50,
+    offset: 0,
+    lifecycleCounts: ZERO_LIFECYCLE_COUNTS,
+  };
 }
 
 async function findAvailableKpiCard(): Promise<HTMLElement> {

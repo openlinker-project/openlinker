@@ -44,7 +44,13 @@ describe('useNavCounts', () => {
         list: vi.fn().mockResolvedValue({ items: [], total: 12, limit: 1, offset: 0 }),
       },
       listings: {
-        list: vi.fn().mockResolvedValue({ items: [], total: 5, limit: 1, offset: 0 }),
+        list: vi.fn().mockResolvedValue({
+          items: [],
+          total: 5,
+          limit: 1,
+          offset: 0,
+          lifecycleCounts: { Active: 5, Inactive: 0, Draft: 0, Ended: 0, Unsynced: 0 },
+        }),
       },
       syncJobs: {
         list: vi.fn().mockResolvedValue({ items: [], total: 9, limit: 1, offset: 0 }),

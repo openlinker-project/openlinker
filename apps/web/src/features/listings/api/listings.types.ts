@@ -37,6 +37,14 @@ export const OFFER_LIFECYCLE_VALUES = [
 ] as const;
 export type OfferLifecycle = (typeof OFFER_LIFECYCLE_VALUES)[number];
 
+/**
+ * Per-bucket row counts backing the lifecycle tab bar (#2026 / #2029). Mirrors
+ * the backend `OfferLifecycleCountsResponseDto` verbatim - keyed by the same
+ * `OfferLifecycle` token the FE reads off each row's `channelStatus.lifecycle`,
+ * so there is no second naming to keep in sync.
+ */
+export type OfferLifecycleCounts = Record<OfferLifecycle, number>;
+
 /** Catalog identity of the variant a list row's mapping points at (#2025). */
 export interface OfferMappingIdentity {
   productId: string;
@@ -147,6 +155,12 @@ export interface ListingsFilters {
    * the external offer ID (#2025).
    */
   search?: string;
+  /**
+   * Restrict the page to one lifecycle bucket (#2026 / #2029) - server-side,
+   * so a tab pages through the whole catalog rather than filtering the
+   * returned page client-side. Does NOT affect `lifecycleCounts`.
+   */
+  lifecycle?: OfferLifecycle;
 }
 
 export interface ListingsPagination {
@@ -157,6 +171,14 @@ export interface ListingsPagination {
 export interface PaginatedOfferMappings {
   items: OfferMapping[];
   total: number;
+  /**
+   * Row count per lifecycle bucket under the same search/connection/variant
+   * filters as the list, but never narrowed by `lifecycle` itself - otherwise
+   * selecting a tab would zero every other tab's badge (#2026 / #2029). The
+   * buckets partition the filtered set, so they sum to `total` for the same
+   * request without a `lifecycle` filter.
+   */
+  lifecycleCounts: OfferLifecycleCounts;
   limit: number;
   offset: number;
 }
