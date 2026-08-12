@@ -17122,6 +17122,17 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .listings-toolbar .toolbar__group {
   flex-wrap: wrap;
 }
+/* `.toolbar`'s base `justify-content: space-between` only right-anchors Clear
+   while it shares a line with `.toolbar__group`. The moment the row above
+   wraps, Clear becomes the lone item on its own line, and `space-between`
+   degrades to `flex-start` per the flexbox spec - stranding it at the LEFT
+   edge instead. `.orders-toolbar` never hit this because it has no separate
+   Clear sibling (all its controls sit inside one `.toolbar__group`). `margin
+   -left: auto` absorbs the leftover space itself, so Clear stays right-
+   anchored whether it's sharing a line or wrapped onto its own. */
+.listings-toolbar > .button {
+  margin-left: auto;
+}
 
 /* ── Listings table row anatomy (#2028) ──────────────────────────────────────
    Transcribed from the #1965 mockup: a listing row leads with the catalog
