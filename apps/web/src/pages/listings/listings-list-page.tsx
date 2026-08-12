@@ -1,4 +1,11 @@
-import { useCallback, useMemo, useState, type ReactElement, type ReactNode } from 'react';
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -10,6 +17,7 @@ import { Input } from '../../shared/ui/input';
 import { KeyValueList } from '../../shared/ui/key-value-list';
 import { ProductThumbnail } from '../../shared/ui/product-thumbnail';
 import { StatusBadge } from '../../shared/ui/status-badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { formatAmount } from '../../shared/format/format-amount';
 import { formatDateTime } from '../../shared/format/format-date';
@@ -30,10 +38,85 @@ import {
 } from '../../features/listings/lib/listing-row-state';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
-import type { ListingsFilters, OfferMapping } from '../../features/listings/api/listings.types';
+import type {
+  ListingsFilters,
+  OfferLifecycle,
+  OfferLifecycleCounts,
+  OfferMapping,
+} from '../../features/listings/api/listings.types';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
+
+/**
+ * Lowercase URL-state token for each lifecycle bucket (#2029). Kept distinct
+ * from the PascalCase `OfferLifecycle` the API speaks, mirroring the existing
+ * `?health=` convention (`orders-list-page.tsx`) of a lowercase URL param.
+ */
+const LIFECYCLE_TAB_VALUES = ['active', 'inactive', 'draft', 'ended', 'unsynced'] as const;
+type LifecycleTab = (typeof LIFECYCLE_TAB_VALUES)[number];
+
+const DEFAULT_TAB: LifecycleTab = 'active';
+
+/** Type-guard for the `tab` URL param, mirroring `isOrderHealth` in `orders-list-page.tsx`. */
+function isLifecycleTab(value: string | null): value is LifecycleTab {
+  return value !== null && (LIFECYCLE_TAB_VALUES as readonly string[]).includes(value);
+}
+
+/**
+ * One entry per lifecycle tab: its URL token, the `OfferLifecycle` value it
+ * filters by, its label, and its own empty-state copy (#2029) - each bucket
+ * means something different (see `offer-lifecycle.types.ts` docblocks), so a
+ * single generic "no results" message would under-inform the operator.
+ */
+interface LifecycleTabDef {
+  key: LifecycleTab;
+  lifecycle: OfferLifecycle;
+  label: string;
+  emptyTitle: string;
+  emptyMessage: string;
+}
+
+const LIFECYCLE_TABS: readonly LifecycleTabDef[] = [
+  {
+    key: 'active',
+    lifecycle: 'Active',
+    label: 'Active',
+    emptyTitle: 'No active listings',
+    emptyMessage: 'Nothing here is currently live on a channel.',
+  },
+  {
+    key: 'inactive',
+    lifecycle: 'Inactive',
+    label: 'Inactive',
+    emptyTitle: 'No inactive listings',
+    emptyMessage: 'Nothing here has been rejected by a channel validator.',
+  },
+  {
+    key: 'draft',
+    lifecycle: 'Draft',
+    label: 'Draft',
+    emptyTitle: 'No draft listings',
+    // Deliberately NOT "not live yet" - Draft also holds an offer an operator
+    // deliberately deactivated weeks ago and will never relist
+    // (offer-lifecycle.types.ts), so the copy must not promise a future state.
+    emptyMessage: 'Nothing here is currently live, and none of it has been rejected.',
+  },
+  {
+    key: 'ended',
+    lifecycle: 'Ended',
+    label: 'Ended',
+    emptyTitle: 'No ended listings',
+    emptyMessage: 'Nothing here has been ended by a channel.',
+  },
+  {
+    key: 'unsynced',
+    lifecycle: 'Unsynced',
+    label: 'Unsynced',
+    emptyTitle: 'No unsynced listings',
+    emptyMessage: 'Every mapping here has had its channel status read at least once.',
+  },
+];
 
 /**
  * Column heading that names whose number the column carries. Price and quantity
@@ -250,6 +333,10 @@ export function ListingsListPage(): ReactElement {
   const urlConnectionId = searchParams.get('connectionId') ?? '';
   const offset = Number(searchParams.get('offset') ?? '0');
 
+  const rawTab = searchParams.get('tab');
+  const tab: LifecycleTab = isLifecycleTab(rawTab) ? rawTab : DEFAULT_TAB;
+  const activeTabDef = LIFECYCLE_TABS.find((def) => def.key === tab) ?? LIFECYCLE_TABS[0];
+
   const [searchInput, setSearchInput] = useState(urlSearch);
   const [connectionIdInput, setConnectionIdInput] = useState(urlConnectionId);
 
@@ -259,10 +346,43 @@ export function ListingsListPage(): ReactElement {
   const filters: ListingsFilters = {
     search: debouncedSearch || undefined,
     connectionId: debouncedConnectionId || undefined,
+    lifecycle: activeTabDef.lifecycle,
   };
   const pagination = { limit: PAGE_SIZE, offset };
 
   const query = useListingsQuery(filters, pagination);
+
+  /**
+   * Held in a ref (mutated during render, not an Effect) so a tab switch -
+   * a distinct query key, hence `query.isLoading` true for that fetch - does
+   * not blank every tab's count badge back to skeleton (#2029 round 1
+   * review). The five buckets are unaffected by which tab is active (the
+   * backend excludes `lifecycle` from the counts aggregate), so the
+   * last-known value stays correct while the new tab's own rows load.
+   *
+   * Gated on a fingerprint of `search` + `connectionId` - deliberately
+   * excluding `lifecycle` - because those two filters DO change what the
+   * counts should be. A state+Effect pair here held the value across ANY
+   * `query.data` transition, so a search/connection change kept showing the
+   * old, now-wrong counts with no way to self-correct if the new request
+   * errored (#2029 round 2 review). Changing the fingerprint immediately
+   * invalidates the held value even before the new fetch's data arrives, so
+   * a stale count is never surfaced - it falls through to the skeleton
+   * guard instead, which is the honest state while the real count for the
+   * new filter combination is unknown.
+   */
+  const lifecycleCountsRef = useRef<{ fingerprint: string; counts: OfferLifecycleCounts } | null>(
+    null,
+  );
+  const countsFingerprint = `${debouncedSearch}::${debouncedConnectionId}`;
+  if (query.data?.lifecycleCounts) {
+    lifecycleCountsRef.current = { fingerprint: countsFingerprint, counts: query.data.lifecycleCounts };
+  }
+  const lifecycleCounts =
+    query.data?.lifecycleCounts ??
+    (lifecycleCountsRef.current?.fingerprint === countsFingerprint
+      ? lifecycleCountsRef.current.counts
+      : null);
 
   const platforms = usePlatforms();
   // One batched read for the whole page - the Connection column must never cost
@@ -346,6 +466,24 @@ export function ListingsListPage(): ReactElement {
     });
   }
 
+  /**
+   * Selecting a tab sets the `tab` URL param (omitted at the default 'active'
+   * value, mirroring the `offset=0` omission convention below) and resets
+   * paging - a tab switch always lands on page 1 of the new bucket (#2029).
+   */
+  function setTab(next: LifecycleTab): void {
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (next === DEFAULT_TAB) {
+        p.delete('tab');
+      } else {
+        p.set('tab', next);
+      }
+      p.delete('offset');
+      return p;
+    });
+  }
+
   function setOffset(next: number): void {
     setSearchParams((prev) => {
       const p = new URLSearchParams(prev);
@@ -378,6 +516,12 @@ export function ListingsListPage(): ReactElement {
   const total = query.data?.total ?? 0;
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
+
+  // Distinct from the generic "connections exist but this bucket is empty"
+  // case (#2029) - clearing filters can't help an operator with zero
+  // connections configured, so it gets its own empty state + CTA.
+  const noConnectionsConfigured =
+    !connectionsQuery.isLoading && (connectionsQuery.data ?? []).length === 0;
 
   const demoMode = useDemoMode();
   // The unified "Publish products" entry opens a picker first — visible
@@ -417,176 +561,225 @@ export function ListingsListPage(): ReactElement {
         />
       </div>
 
-      {query.isLoading ? (
-        <DataTableSkeleton columns={columns} />
-      ) : query.error ? (
-        <ErrorState
-          title="Unable to load listings"
-          message={query.error.message}
-          action={
-            <Button
-              onClick={() => {
-                void query.refetch();
-              }}
-            >
-              Retry
-            </Button>
-          }
-        />
-      ) : (query.data?.items.length ?? 0) === 0 ? (
-        <EmptyState
-          liveRegion="off"
-          title="No offer mappings found"
-          message={
-            hasFilters
-              ? 'No offer mappings match the current filters.'
-              : 'No offer mappings have been synced yet.'
-          }
-          action={
-            hasFilters ? (
-              <Button onClick={clearFilters}>Clear filters</Button>
-            ) : (
-              <Link className="button button--primary" to="/connections">
-                Manage connections
-              </Link>
-            )
-          }
-        />
-      ) : (
-        <>
-          <DataTable
-            caption="Listings"
-            // Scopes the identity column's width floor to this table - the
-            // mockup put `min-width: 28rem` on `.data-table td:first-child`,
-            // which here would reach ~12 unrelated tables (#2028).
-            className="listings-table"
-            columns={columns}
-            rows={query.data?.items ?? []}
-            rowKey={(m) => m.id}
-            rowHref={(m) => m.id}
-            cardView={{
-              title: (m) => <ListingCell row={m} shape="card" />,
-              // Channel / Connection / Price / Quantity as a two-column fact
-              // list — the four columns the fold drops (#1965 frame 05).
-              summary: (m) => (
-                <dl className="listings-card-facts">
-                  <div>
-                    <dt>Channel</dt>
-                    <dd>
-                      <ChannelPill row={m} label={channelLabel(m)} />
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Connection</dt>
-                    <dd>
-                      <ConnectionCell
-                        connectionId={m.connectionId}
-                        connection={connectionsById.get(m.connectionId) ?? null}
-                        loading={connectionsQuery.isLoading}
-                      />
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Price on channel</dt>
-                    <dd>
-                      <PriceCell row={m} />
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Quantity on channel</dt>
-                    <dd>
-                      <QuantityCell row={m} />
-                    </dd>
-                  </div>
-                </dl>
-              ),
-              // The long-form fields stay behind a disclosure so the card leads
-              // with the four facts above rather than a wall of identifiers.
-              collapsibleDetail: true,
-              detail: (m) => (
-                <KeyValueList
-                  items={[
-                    {
-                      id: 'lifecycle',
-                      label: 'Lifecycle',
-                      value: m.channelStatus?.lifecycle ?? <EmptyValue />,
-                    },
-                    {
-                      id: 'publicationStatus',
-                      label: 'Channel status',
-                      value: m.channelStatus?.publicationStatus ?? <EmptyValue />,
-                      mono: true,
-                    },
-                    {
-                      id: 'updated',
-                      label: 'Status read',
-                      value: <UpdatedCell row={m} />,
-                    },
-                    // The card head drops these two so the product name keeps
-                    // its room at 360px (#1965 frame 05) - they stay reachable
-                    // one tap away rather than disappearing.
-                    {
-                      id: 'externalId',
-                      label: 'Offer ID',
-                      value: m.externalId,
-                      mono: true,
-                    },
-                    {
-                      id: 'ean',
-                      label: 'EAN/GTIN',
-                      value: m.identity?.ean ?? <EmptyValue label="No EAN on the linked variant" />,
-                      mono: true,
-                    },
-                    {
-                      id: 'internalId',
-                      label: 'Variant ID',
-                      value: m.internalId,
-                      mono: true,
-                    },
-                    {
-                      id: 'validation',
-                      label: 'Validator messages',
-                      value: m.channelStatus?.validationMessages.length ? (
-                        <ul className="listings-card-messages">
-                          {m.channelStatus.validationMessages.map((message) => (
-                            <li key={message}>{message}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <EmptyValue label="No validator messages" />
-                      ),
-                    },
-                  ]}
-                />
-              ),
-            }}
-          />
+      <Tabs
+        value={tab}
+        onValueChange={(value) => {
+          if (isLifecycleTab(value)) setTab(value);
+        }}
+      >
+        <TabsList aria-label="Listing lifecycle">
+          {LIFECYCLE_TABS.map((def) => (
+            <TabsTrigger key={def.key} value={def.key}>
+              {/* Explicit {' '} - not JSX whitespace, which collapses away
+                  entirely - so the accessible name reads "Active 7", not the
+                  run-on "Active7" (#2029 round 1 review). */}
+              {def.label}{' '}
+              <span className="tabs__count">
+                {/* A count that snaps from 0 to its real value reads as a
+                    bug (#2029 / mockup frame 04) - render a skeleton line
+                    instead of a placeholder zero while it's unknown. Once any
+                    counts have ever loaded, a tab switch keeps showing them
+                    (rather than reverting to skeleton) so switching tabs never
+                    blanks the four buckets that did not just change. */}
+                {lifecycleCounts === null && query.isLoading ? (
+                  <span className="tabs__count-skeleton" aria-hidden="true" />
+                ) : (
+                  (lifecycleCounts?.[def.lifecycle] ?? '—')
+                )}
+              </span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {/* Screen-reader-only counterpart to the skeleton-to-number transition
+            above: DataTableSkeleton uses the same role/aria-live pattern for
+            the row table, so the tab bar announces its own loading -> loaded
+            transition the same way (#2029 round 1 review). */}
+        <span className="sr-only" role="status" aria-live="polite">
+          {lifecycleCounts ? 'Listing counts loaded.' : 'Loading listing counts…'}
+        </span>
 
-          <div className="pagination">
-            <span className="text-muted">
-              Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
-            </span>
-            <div className="pagination__actions">
-              <Button
-                disabled={!hasPrev}
-                onClick={() => {
-                  setOffset(offset - PAGE_SIZE);
+        <TabsContent value={tab}>
+          {query.isLoading ? (
+            <DataTableSkeleton columns={columns} />
+          ) : query.error ? (
+            <ErrorState
+              title="Unable to load listings"
+              message={query.error.message}
+              action={
+                <Button
+                  onClick={() => {
+                    void query.refetch();
+                  }}
+                >
+                  Retry
+                </Button>
+              }
+            />
+          ) : (query.data?.items.length ?? 0) === 0 ? (
+            hasFilters ? (
+              <EmptyState
+                liveRegion="off"
+                title="No offer mappings found"
+                message="No offer mappings match the current filters."
+                action={<Button onClick={clearFilters}>Clear filters</Button>}
+              />
+            ) : noConnectionsConfigured ? (
+              <EmptyState
+                liveRegion="off"
+                title="No channels connected yet"
+                message="Listings are published to connected sales channels."
+                action={
+                  <Link className="button button--primary" to="/connections">
+                    Connect a channel
+                  </Link>
+                }
+              />
+            ) : (
+              <EmptyState
+                liveRegion="off"
+                title={activeTabDef.emptyTitle}
+                message={activeTabDef.emptyMessage}
+              />
+            )
+          ) : (
+            <>
+              <DataTable
+                caption="Listings"
+                // Scopes the identity column's width floor to this table - the
+                // mockup put `min-width: 28rem` on `.data-table td:first-child`,
+                // which here would reach ~12 unrelated tables (#2028).
+                className="listings-table"
+                columns={columns}
+                rows={query.data?.items ?? []}
+                rowKey={(m) => m.id}
+                rowHref={(m) => m.id}
+                cardView={{
+                  title: (m) => <ListingCell row={m} shape="card" />,
+                  // Channel / Connection / Price / Quantity as a two-column fact
+                  // list — the four columns the fold drops (#1965 frame 05).
+                  summary: (m) => (
+                    <dl className="listings-card-facts">
+                      <div>
+                        <dt>Channel</dt>
+                        <dd>
+                          <ChannelPill row={m} label={channelLabel(m)} />
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Connection</dt>
+                        <dd>
+                          <ConnectionCell
+                            connectionId={m.connectionId}
+                            connection={connectionsById.get(m.connectionId) ?? null}
+                            loading={connectionsQuery.isLoading}
+                          />
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Price on channel</dt>
+                        <dd>
+                          <PriceCell row={m} />
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Quantity on channel</dt>
+                        <dd>
+                          <QuantityCell row={m} />
+                        </dd>
+                      </div>
+                    </dl>
+                  ),
+                  // The long-form fields stay behind a disclosure so the card leads
+                  // with the four facts above rather than a wall of identifiers.
+                  collapsibleDetail: true,
+                  detail: (m) => (
+                    <KeyValueList
+                      items={[
+                        {
+                          id: 'lifecycle',
+                          label: 'Lifecycle',
+                          value: m.channelStatus?.lifecycle ?? <EmptyValue />,
+                        },
+                        {
+                          id: 'publicationStatus',
+                          label: 'Channel status',
+                          value: m.channelStatus?.publicationStatus ?? <EmptyValue />,
+                          mono: true,
+                        },
+                        {
+                          id: 'updated',
+                          label: 'Status read',
+                          value: <UpdatedCell row={m} />,
+                        },
+                        // The card head drops these two so the product name keeps
+                        // its room at 360px (#1965 frame 05) - they stay reachable
+                        // one tap away rather than disappearing.
+                        {
+                          id: 'externalId',
+                          label: 'Offer ID',
+                          value: m.externalId,
+                          mono: true,
+                        },
+                        {
+                          id: 'ean',
+                          label: 'EAN/GTIN',
+                          value: m.identity?.ean ?? (
+                            <EmptyValue label="No EAN on the linked variant" />
+                          ),
+                          mono: true,
+                        },
+                        {
+                          id: 'internalId',
+                          label: 'Variant ID',
+                          value: m.internalId,
+                          mono: true,
+                        },
+                        {
+                          id: 'validation',
+                          label: 'Validator messages',
+                          value: m.channelStatus?.validationMessages.length ? (
+                            <ul className="listings-card-messages">
+                              {m.channelStatus.validationMessages.map((message) => (
+                                <li key={message}>{message}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <EmptyValue label="No validator messages" />
+                          ),
+                        },
+                      ]}
+                    />
+                  ),
                 }}
-              >
-                Previous
-              </Button>
-              <Button
-                disabled={!hasNext}
-                onClick={() => {
-                  setOffset(offset + PAGE_SIZE);
-                }}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        </>
-      )}
+              />
+
+              <div className="pagination">
+                <span className="text-muted">
+                  Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
+                </span>
+                <div className="pagination__actions">
+                  <Button
+                    disabled={!hasPrev}
+                    onClick={() => {
+                      setOffset(offset - PAGE_SIZE);
+                    }}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    disabled={!hasNext}
+                    onClick={() => {
+                      setOffset(offset + PAGE_SIZE);
+                    }}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </TabsContent>
+      </Tabs>
 
       <OfferProductPickerModal isOpen={isWizardOpen} onClose={() => setIsWizardOpen(false)} />
     </PageLayout>

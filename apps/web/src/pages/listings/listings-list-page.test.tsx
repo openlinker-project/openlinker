@@ -1,4 +1,4 @@
-import { cleanup, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import type * as ReactRouterDom from 'react-router-dom';
@@ -6,9 +6,22 @@ import { renderWithProviders, createMockApiClient, createAuthenticatedSessionAda
 import { mockMobileViewport } from '../../test/viewport';
 import { ListingsListPage } from './listings-list-page';
 import type {
+  OfferLifecycleCounts,
   OfferMapping,
   PaginatedOfferMappings,
 } from '../../features/listings/api/listings.types';
+
+const ZERO_LIFECYCLE_COUNTS: OfferLifecycleCounts = {
+  Active: 0,
+  Inactive: 0,
+  Draft: 0,
+  Ended: 0,
+  Unsynced: 0,
+};
+
+function emptyPage(counts: OfferLifecycleCounts = ZERO_LIFECYCLE_COUNTS): PaginatedOfferMappings {
+  return { items: [], total: 0, limit: 20, offset: 0, lifecycleCounts: counts };
+}
 
 const navigateMock = vi.fn();
 vi.mock('react-router-dom', async (): Promise<typeof ReactRouterDom> => {
@@ -86,6 +99,7 @@ const sampleMappings: PaginatedOfferMappings = {
   total: 2,
   limit: 20,
   offset: 0,
+  lifecycleCounts: { ...ZERO_LIFECYCLE_COUNTS, Active: 2 },
 };
 
 function oneRow(overrides: Partial<OfferMapping>): PaginatedOfferMappings {
@@ -348,17 +362,31 @@ describe('ListingsListPage', () => {
     expect(screen.getByText('Network error')).toBeInTheDocument();
   });
 
-  it('should show empty state with a Manage connections CTA when no mappings exist', async () => {
+  it("should show the Active tab's own empty state when a connection exists but nothing is synced", async () => {
     const mockApi = createMockApiClient({
       listings: {
-        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+        list: vi.fn().mockResolvedValue(emptyPage()),
       },
     });
 
     renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
-    expect(await screen.findByText('No offer mappings found')).toBeInTheDocument();
-    const cta = screen.getByRole('link', { name: 'Manage connections' });
+    expect(await screen.findByText('No active listings')).toBeInTheDocument();
+    expect(screen.getByText('Nothing here is currently live on a channel.')).toBeInTheDocument();
+    // No connections CTA - a connection already exists (test-utils default).
+    expect(screen.queryByRole('link', { name: 'Connect a channel' })).not.toBeInTheDocument();
+  });
+
+  it('should show a channel-connect empty state when no connections are configured', async () => {
+    const mockApi = createMockApiClient({
+      listings: { list: vi.fn().mockResolvedValue(emptyPage()) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+    expect(await screen.findByText('No channels connected yet')).toBeInTheDocument();
+    const cta = screen.getByRole('link', { name: 'Connect a channel' });
     expect(cta).toHaveAttribute('href', '/connections');
   });
 
@@ -366,7 +394,7 @@ describe('ListingsListPage', () => {
     const user = userEvent.setup();
     const mockApi = createMockApiClient({
       listings: {
-        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+        list: vi.fn().mockResolvedValue(emptyPage()),
       },
     });
 
@@ -380,7 +408,7 @@ describe('ListingsListPage', () => {
     ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Clear filters' }));
 
-    expect(await screen.findByRole('link', { name: 'Manage connections' })).toBeInTheDocument();
+    expect(await screen.findByText('No active listings')).toBeInTheDocument();
   });
 
   it('renders a single "Publish products" entry (no separate shop CTA) with no pre-filter', async () => {
@@ -555,6 +583,245 @@ describe('ListingsListPage', () => {
 
       await screen.findByText('allegro-offer-999');
       expect(screen.queryByRole('button', { name: /publish products/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('lifecycle tabs (#2029)', () => {
+    it('defaults to the Active tab and filters the request by lifecycle=Active', async () => {
+      const list = vi.fn().mockResolvedValue(sampleMappings);
+      const mockApi = createMockApiClient({ listings: { list } });
+
+      renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Doniczka ceramiczna Terra');
+      expect(screen.getByRole('tab', { name: /^Active/ })).toHaveAttribute('aria-selected', 'true');
+      const calledWithActive = list.mock.calls.some(
+        ([filters]) => (filters as { lifecycle?: string } | undefined)?.lifecycle === 'Active'
+      );
+      expect(calledWithActive).toBe(true);
+    });
+
+    it('reads a valid ?tab param, marks it active and filters the request by its lifecycle', async () => {
+      const list = vi.fn().mockResolvedValue(emptyPage());
+      const mockApi = createMockApiClient({ listings: { list } });
+
+      renderWithProviders(<ListingsListPage />, {
+        apiClient: mockApi,
+        route: '/listings?tab=ended',
+      });
+
+      expect(await screen.findByText('No ended listings')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /^Ended/ })).toHaveAttribute('aria-selected', 'true');
+      const calledWithEnded = list.mock.calls.some(
+        ([filters]) => (filters as { lifecycle?: string } | undefined)?.lifecycle === 'Ended'
+      );
+      expect(calledWithEnded).toBe(true);
+    });
+
+    it('falls back to the Active tab for an unrecognized ?tab param', async () => {
+      const mockApi = createMockApiClient({
+        listings: { list: vi.fn().mockResolvedValue(emptyPage()) },
+      });
+
+      renderWithProviders(<ListingsListPage />, {
+        apiClient: mockApi,
+        route: '/listings?tab=bogus',
+      });
+
+      expect(await screen.findByText('No active listings')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /^Active/ })).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('updates the ?tab URL param and resets pagination to page 1 when a tab is clicked', async () => {
+      const user = userEvent.setup();
+      const list = vi.fn().mockResolvedValue(emptyPage());
+      const mockApi = createMockApiClient({ listings: { list } });
+
+      renderWithProviders(<ListingsListPage />, {
+        apiClient: mockApi,
+        route: '/listings?offset=40',
+      });
+
+      await screen.findByText('No active listings');
+      await user.click(screen.getByRole('tab', { name: /^Draft/ }));
+
+      expect(await screen.findByText('No draft listings')).toBeInTheDocument();
+      await vi.waitFor(() => {
+        const [filters, pagination] = list.mock.calls.at(-1) ?? [];
+        expect((filters as { lifecycle?: string } | undefined)?.lifecycle).toBe('Draft');
+        expect((pagination as { offset?: number } | undefined)?.offset).toBe(0);
+      });
+    });
+
+    it("renders each tab's own count from lifecycleCounts, not the active bucket's row count", async () => {
+      const mockApi = createMockApiClient({
+        listings: {
+          list: vi.fn().mockResolvedValue({
+            ...sampleMappings,
+            lifecycleCounts: { Active: 7, Inactive: 3, Draft: 2, Ended: 1, Unsynced: 0 },
+          }),
+        },
+      });
+
+      renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Doniczka ceramiczna Terra');
+      expect(screen.getByRole('tab', { name: /^Active/ })).toHaveTextContent('7');
+      expect(screen.getByRole('tab', { name: /^Inactive/ })).toHaveTextContent('3');
+      expect(screen.getByRole('tab', { name: /^Draft/ })).toHaveTextContent('2');
+      expect(screen.getByRole('tab', { name: /^Ended/ })).toHaveTextContent('1');
+      expect(screen.getByRole('tab', { name: /^Unsynced/ })).toHaveTextContent('0');
+    });
+
+    it('renders tab counts as skeleton placeholders while loading, never as a placeholder zero', () => {
+      const mockApi = createMockApiClient({
+        listings: { list: vi.fn().mockReturnValue(new Promise(() => {})) },
+      });
+
+      const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      expect(screen.getAllByRole('tab')).toHaveLength(5);
+      expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(5);
+    });
+
+    it("keeps every tab's already-known count visible - no skeleton reappears - while a switched-to tab is still loading its own rows", async () => {
+      const user = userEvent.setup();
+      const list = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ...sampleMappings,
+          lifecycleCounts: { Active: 7, Inactive: 3, Draft: 2, Ended: 1, Unsynced: 0 },
+        })
+        // The Draft tab's own fetch never resolves in this test - it is the
+        // "still loading" window the skeleton must not reappear during.
+        .mockReturnValueOnce(new Promise(() => {}));
+      const mockApi = createMockApiClient({ listings: { list } });
+
+      const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Doniczka ceramiczna Terra');
+      expect(screen.getByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
+
+      await user.click(screen.getByRole('tab', { name: /^Draft/ }));
+
+      // The Draft tab's own request is now pending (a fresh query key with no
+      // cached data), which used to blank every badge - including the four
+      // that did not just change - back to skeleton.
+      expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(0);
+      expect(screen.getByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Inactive 3' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Draft 2' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Ended 1' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Unsynced 0' })).toBeInTheDocument();
+    });
+
+    it("falls back to skeletons - not the pre-search counts - once the search term changes and the new query has not resolved (#2029 round 2 review)", async () => {
+      const list = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ...sampleMappings,
+          lifecycleCounts: { Active: 7, Inactive: 3, Draft: 2, Ended: 1, Unsynced: 0 },
+        })
+        // The new search term's query key has never been fetched before - it
+        // hangs, which is the window during which a state+Effect pair used to
+        // keep showing the now-wrong "Active 7" (it only ever cleared on the
+        // NEXT successful fetch, so an error here would have left it stuck
+        // forever). The fingerprint-gated ref must drop it immediately.
+        .mockReturnValueOnce(new Promise(() => {}));
+      const mockApi = createMockApiClient({ listings: { list } });
+
+      const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Doniczka ceramiczna Terra');
+      expect(screen.getByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
+
+      fireEvent.change(
+        screen.getByLabelText('Search listings by product name, SKU, EAN/GTIN or external ID'),
+        { target: { value: 'brand new search term' } },
+      );
+
+      // Wait past the debounce window for the new (still-pending) request.
+      await vi.waitFor(() => {
+        expect(list).toHaveBeenCalledTimes(2);
+      });
+
+      // The stale count must not survive the filter change - it falls
+      // through to the skeleton, the honest state while the real count for
+      // the new search term is unknown.
+      expect(screen.queryByRole('tab', { name: 'Active 7' })).not.toBeInTheDocument();
+      expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(5);
+    });
+
+    it("separates a tab's label from its count badge in the accessible name", async () => {
+      const mockApi = createMockApiClient({
+        listings: {
+          list: vi.fn().mockResolvedValue({
+            ...sampleMappings,
+            lifecycleCounts: { Active: 7, Inactive: 3, Draft: 2, Ended: 1, Unsynced: 0 },
+          }),
+        },
+      });
+
+      renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Doniczka ceramiczna Terra');
+      // A missing separator collapses the JSX whitespace entirely, so the
+      // accessible name would read the run-on "Active7" instead of "Active 7".
+      expect(screen.getByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Inactive 3' })).toBeInTheDocument();
+    });
+
+    it('announces via a live region once the tab counts resolve from skeleton to real numbers', async () => {
+      const mockApi = createMockApiClient({
+        listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
+      });
+
+      renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      expect(screen.getByText('Loading listing counts…')).toBeInTheDocument();
+      await screen.findByText('Doniczka ceramiczna Terra');
+      expect(screen.getByText('Listing counts loaded.')).toBeInTheDocument();
+      expect(screen.queryByText('Loading listing counts…')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('lifecycle tab empty-state copy (#2042 review)', () => {
+    it("does not overclaim the Draft bucket will go live, and avoids a double negative", async () => {
+      const mockApi = createMockApiClient({
+        listings: { list: vi.fn().mockResolvedValue(emptyPage()) },
+      });
+
+      renderWithProviders(<ListingsListPage />, {
+        apiClient: mockApi,
+        route: '/listings?tab=draft',
+      });
+
+      expect(await screen.findByText('No draft listings')).toBeInTheDocument();
+      expect(
+        screen.getByText('Nothing here is currently live, and none of it has been rejected.'),
+      ).toBeInTheDocument();
+      // Draft carries offers an operator deliberately deactivated and will
+      // never relist - the copy must not promise a future "will go live".
+      expect(screen.queryByText(/without being live yet/)).not.toBeInTheDocument();
+    });
+
+    it("does not borrow Draft's definition into the Inactive tab's empty state", async () => {
+      const mockApi = createMockApiClient({
+        listings: { list: vi.fn().mockResolvedValue(emptyPage()) },
+      });
+
+      renderWithProviders(<ListingsListPage />, {
+        apiClient: mockApi,
+        route: '/listings?tab=inactive',
+      });
+
+      expect(await screen.findByText('No inactive listings')).toBeInTheDocument();
+      expect(
+        screen.getByText('Nothing here has been rejected by a channel validator.'),
+      ).toBeInTheDocument();
+      // "taken offline" is Draft's defining case (a deliberately deactivated
+      // offer), not Inactive's (validator-rejected) - it must not appear here.
+      expect(screen.queryByText(/taken offline/)).not.toBeInTheDocument();
     });
   });
 });

@@ -5584,6 +5584,33 @@ a.kpi-card:focus-visible {
   color: var(--accent-primary-soft-strong);
 }
 
+/* ── Lifecycle tab count skeleton (#2029) ──────────────────────────────
+   Reuses the shimmer keyframe already defined for `.data-table-skeleton__bar`
+   so a loading count never snaps from a skeleton straight to a real number
+   using two different animation curves. */
+.tabs__count-skeleton {
+  display: inline-block;
+  width: 14px;
+  height: 0.625rem;
+  border-radius: var(--radius-xs);
+  background-color: var(--bg-surface-muted);
+  background-image: linear-gradient(
+    90deg,
+    var(--bg-surface-muted) 0%,
+    var(--bg-surface-hover) 50%,
+    var(--bg-surface-muted) 100%
+  );
+  background-size: 200% 100%;
+  animation: data-table-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabs__count-skeleton {
+    animation: none;
+    background-image: none;
+  }
+}
+
 .tabs__trigger:hover {
   color: var(--text-primary);
   background: transparent;
@@ -5611,6 +5638,28 @@ a.kpi-card:focus-visible {
 
 .tabs__content:focus-visible {
   outline: none;
+}
+
+/* ── Listings lifecycle tab bar: scroll, don't wrap, at phone widths
+   (#2029 / #2042 round 1) ───────────────────────────────────────────
+   Five buckets (the original four plus Unsynced) no longer fit unwrapped at
+   360px, so this bar scrolls horizontally instead of wrapping each trigger
+   onto two lines. Scoped to this page's own aria-label, not a shared rule -
+   the mapping tab bar's own mobile treatment (`aria-label='Mapping types'`,
+   above) targets the wrong element there and isn't a working reference. */
+@media (max-width: 640px) {
+  .tabs__list[aria-label='Listing lifecycle'] {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tabs__list[aria-label='Listing lifecycle']::-webkit-scrollbar {
+    display: none;
+  }
+  .tabs__list[aria-label='Listing lifecycle'] .tabs__trigger {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
 }
 
 /*
