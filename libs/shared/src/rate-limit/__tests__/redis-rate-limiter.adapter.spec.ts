@@ -1,13 +1,12 @@
 /**
  * Redis Rate Limiter Adapter Unit Tests
  *
- * A fake Redis client stands in for the string (pace) and ZSET (inflight)
- * primitives the adapter uses — `eval` is pattern-matched against the two
- * known scripts (distinguished by their distinct return shapes) and
- * interpreted against an in-memory "server clock" the tests advance
- * explicitly, mirroring `mcp-rate-limiter.spec.ts`'s fake-ZSET approach for
- * the concurrency half. The injected `sleep` advances that same clock
- * instead of using real timers, so pacing/backoff tests run instantly.
+ * A fake Redis client stands in for the string (pace) key and the atomic
+ * concurrency-claim script — `eval` is pattern-matched against the three
+ * known scripts (distinguished by a unique substring each) and interpreted
+ * against an in-memory "server clock" the tests advance explicitly. The
+ * injected `sleep` advances that same clock instead of using real timers, so
+ * pacing/backoff tests run instantly.
  *
  * @module libs/shared/src/rate-limit
  */
@@ -19,26 +18,29 @@ interface FakeRedis {
   client: RedisClientType;
   clockMs: number;
   advanceClock: (ms: number) => void;
-  failNext: () => void;
+  failNext: (times?: number) => void;
   /** Absolute ms-since-epoch (on the fake's own clock) the pace key expires at, or undefined if unset. */
   paceExpiryMs: (key: string) => number | undefined;
+  /** Current members of an inflight ZSET, ordered by score — for assertions on the concurrency claim script. */
+  inflightMembers: (key: string) => string[];
 }
 
 function createFakeRedis(startMs = 1_000_000): FakeRedis {
   const pace = new Map<string, number>();
   const paceExpiry = new Map<string, number>();
-  const zsets = new Map<string, Map<string, number>>();
-  const state = { clockMs: startMs, shouldFail: false };
+  const inflightSets = new Map<string, Map<string, number>>();
+  const lastScores = new Map<string, number>();
+  const state = { clockMs: startMs, failuresRemaining: 0 };
   const setFor = (key: string): Map<string, number> => {
-    const existing = zsets.get(key);
+    const existing = inflightSets.get(key);
     if (existing) return existing;
     const created = new Map<string, number>();
-    zsets.set(key, created);
+    inflightSets.set(key, created);
     return created;
   };
   const maybeFail = (): void => {
-    if (state.shouldFail) {
-      state.shouldFail = false;
+    if (state.failuresRemaining > 0) {
+      state.failuresRemaining -= 1;
       throw new Error('simulated Redis outage');
     }
   };
@@ -54,17 +56,53 @@ function createFakeRedis(startMs = 1_000_000): FakeRedis {
     paceExpiry.set(key, now + ttlMs);
   };
 
+  /** Emulates `CONCURRENCY_CLAIM_SCRIPT` — see the adapter's doc comment for the algorithm this mirrors. */
+  const evalConcurrencyClaim = (opts: { keys: string[]; arguments: string[] }): [number] => {
+    const [inflightKey, lastScoreKey] = opts.keys;
+    const maxLifetimeMs = Number(opts.arguments[0]);
+    const maxConcurrent = Number(opts.arguments[1]);
+    const member = opts.arguments[3];
+    const now = state.clockMs;
+    const set = setFor(inflightKey);
+
+    for (const [existingMember, score] of set) {
+      if (score <= now - maxLifetimeMs) set.delete(existingMember);
+    }
+
+    const last = lastScores.get(lastScoreKey);
+    let score = now;
+    if (last !== undefined && score <= last) {
+      score = last + 0.001;
+    }
+    lastScores.set(lastScoreKey, score);
+    set.set(member, score);
+
+    const ordered = [...set.entries()].sort(([, a], [, b]) => a - b);
+    const rank = ordered.findIndex(([candidate]) => candidate === member);
+    if (rank === -1 || rank >= maxConcurrent) {
+      set.delete(member);
+      return [0];
+    }
+    return [1];
+  };
+
   const client = {
     eval: (script: string, opts: { keys: string[]; arguments: string[] }) => {
       maybeFail();
-      const key = opts.keys[0];
       const now = state.clockMs;
+      if (script.includes('local member = ARGV[4]')) {
+        return Promise.resolve(evalConcurrencyClaim(opts));
+      }
+      const key = opts.keys[0];
       const floorSeconds = Number(opts.arguments[1]);
-      if (script.includes('return {1, 0}')) {
+      if (script.includes('local interval = tonumber(ARGV[1])')) {
         // PACE_ADMIT_SCRIPT
         const intervalMs = Number(opts.arguments[0]);
         const current = pace.get(key);
         if (current === undefined || now >= current) {
+          if (intervalMs === 0) {
+            return Promise.resolve([1, 0]);
+          }
           applyPaceWrite(key, now + intervalMs, floorSeconds, now);
           return Promise.resolve([1, 0]);
         }
@@ -78,33 +116,11 @@ function createFakeRedis(startMs = 1_000_000): FakeRedis {
       applyPaceWrite(key, next, floorSeconds, now);
       return Promise.resolve(next);
     },
-    zRemRangeByScore: (key: string, _min: number, max: number) => {
-      maybeFail();
-      const set = setFor(key);
-      for (const [member, score] of set) {
-        if (score <= max) set.delete(member);
-      }
-      return Promise.resolve(0);
-    },
-    zAdd: (key: string, entry: { score: number; value: string }) => {
-      maybeFail();
-      setFor(key).set(entry.value, entry.score);
-      return Promise.resolve(1);
-    },
-    zRank: (key: string, member: string) => {
-      maybeFail();
-      const ordered = [...setFor(key).entries()].sort(
-        ([memberA, scoreA], [memberB, scoreB]) =>
-          scoreA - scoreB || memberA.localeCompare(memberB)
-      );
-      const index = ordered.findIndex(([candidate]) => candidate === member);
-      return Promise.resolve(index === -1 ? null : index);
-    },
     zRem: (key: string, member: string) => {
-      setFor(key).delete(member);
-      return Promise.resolve(1);
+      maybeFail();
+      const existed = setFor(key).delete(member);
+      return Promise.resolve(existed ? 1 : 0);
     },
-    expire: () => Promise.resolve(true),
   } as unknown as RedisClientType;
 
   return {
@@ -115,10 +131,12 @@ function createFakeRedis(startMs = 1_000_000): FakeRedis {
     advanceClock: (ms: number) => {
       state.clockMs += ms;
     },
-    failNext: () => {
-      state.shouldFail = true;
+    failNext: (times = 1) => {
+      state.failuresRemaining = times;
     },
     paceExpiryMs: (key: string) => paceExpiry.get(key),
+    inflightMembers: (key: string) =>
+      [...setFor(key).entries()].sort(([, a], [, b]) => a - b).map(([member]) => member),
   };
 }
 
@@ -175,20 +193,95 @@ describe('RedisRateLimiterAdapter', () => {
     const releaseFirst = await adapter.acquire(policy);
 
     let secondAdmitted = false;
+    let pollCount = 0;
+    const originalEval = (fake.client as unknown as { eval: typeof fake.client.eval }).eval;
+    const evalSpy = jest
+      .spyOn(fake.client as unknown as { eval: typeof fake.client.eval }, 'eval')
+      .mockImplementation((...args: Parameters<typeof originalEval>) => {
+        pollCount += 1;
+        return originalEval(...args);
+      });
+
     const secondPromise = adapter.acquire(policy).then((release) => {
       secondAdmitted = true;
       release();
     });
 
-    // Give the second call's polling loop a few microtask turns to run —
-    // it must still be blocked because the first slot hasn't been released.
-    await Promise.resolve();
-    await Promise.resolve();
+    // Deterministically wait for the second call's polling loop to make at
+    // least one real attempt (a claim + rollback round trip), asserting on
+    // the mechanism (a call actually happened and was rejected) rather than
+    // on ambient microtask timing.
+    await new Promise<void>((resolve) => {
+      const check = (): void => {
+        if (pollCount > 0) {
+          resolve();
+          return;
+        }
+        setImmediate(check);
+      };
+      check();
+    });
     expect(secondAdmitted).toBe(false);
+    expect(fake.inflightMembers('ratelimit:inflight:conn-2')).toHaveLength(1);
 
     releaseFirst();
     await secondPromise;
     expect(secondAdmitted).toBe(true);
+    evalSpy.mockRestore();
+  });
+
+  it('never admits two claims past the cap even when they land in the same millisecond (regression: UUID-tie-break over-admission)', async () => {
+    const fake = createFakeRedis();
+    const adapterA = new RedisRateLimiterAdapter('conn-tie', fake.client, {
+      now: () => fake.clockMs,
+    });
+    const adapterB = new RedisRateLimiterAdapter('conn-tie', fake.client, {
+      now: () => fake.clockMs,
+    });
+    const claim = (
+      adapter: RedisRateLimiterAdapter,
+      maxConcurrent: number
+    ): Promise<{ admitted: boolean }> =>
+      (
+        adapter as unknown as {
+          claimConcurrency: (n: number) => Promise<{ admitted: boolean }>;
+        }
+      ).claimConcurrency(maxConcurrent);
+
+    // Both claims are made against the exact same fake clock millisecond —
+    // the scenario that broke a raw-UUID-tie-break scheme (~50% of trials
+    // over-admitted in the reproduction this test is written against).
+    const results = await Promise.all([claim(adapterA, 1), claim(adapterB, 1)]);
+
+    const admittedCount = results.filter((r) => r.admitted).length;
+    expect(admittedCount).toBe(1);
+  });
+
+  it('pollDelayFor stretches a background wait by BACKGROUND_YIELD_JITTER_MS while an interactive waiter is queued on the same instance', () => {
+    // Direct unit test of the priority mechanism itself — asserting via two
+    // competing real `acquire()` loops is a timing race (either an instant
+    // fake-clock sleep free-spins past MAX_TOTAL_WAIT_MS with nothing to
+    // bound it, or real timers make the two admission orderings
+    // non-deterministic to choreograph in a unit test). `pollDelayFor` is
+    // the entire mechanism ADR-038 calls "a local, per-process bias only" —
+    // pin it here so it cannot silently rot into a no-op.
+    const fake = createFakeRedis();
+    const adapter = new RedisRateLimiterAdapter('conn-priority', fake.client, {
+      concurrencyPollIntervalMs: 10,
+    });
+    const internal = adapter as unknown as {
+      pollDelayFor: (priority: 'background' | 'interactive', paceWaitMs?: number) => number;
+      localInteractiveWaiters: number;
+    };
+
+    expect(internal.pollDelayFor('background')).toBe(10);
+    expect(internal.pollDelayFor('interactive')).toBe(10);
+
+    internal.localInteractiveWaiters = 1;
+    expect(internal.pollDelayFor('background')).toBe(60);
+    // An interactive waiter never yields to itself — no jitter is added when
+    // priority IS 'interactive', regardless of how many others are queued.
+    expect(internal.pollDelayFor('interactive')).toBe(10);
   });
 
   it('propagates noteRetryAfter into the next acquire()s pacing check', async () => {
@@ -289,9 +382,10 @@ describe('RedisRateLimiterAdapter', () => {
     expect(expiryMs! - before).toBeGreaterThanOrEqual(twoHoursMs);
   });
 
-  it('fails open when Redis is unavailable during acquire()', async () => {
+  it('falls back to per-process in-memory limiting (degraded, not unthrottled) when Redis is unavailable during acquire()', async () => {
     const fake = createFakeRedis();
-    fake.failNext();
+    // Fail every Redis call so the adapter never recovers mid-test.
+    fake.failNext(100);
     const adapter = new RedisRateLimiterAdapter('conn-4', fake.client, {
       now: () => fake.clockMs,
       sleep: makeAdvancingSleep(fake),
@@ -299,7 +393,22 @@ describe('RedisRateLimiterAdapter', () => {
 
     const release = await adapter.acquire({ maxConcurrent: 1 });
     expect(typeof release).toBe('function');
-    expect(() => release()).not.toThrow();
+
+    // The insurance limiter must still enforce the cap locally — a second
+    // concurrent acquire() on the SAME degraded instance must block, not
+    // admit unconditionally the way a bare fail-open would.
+    let secondAdmitted = false;
+    const secondPromise = adapter.acquire({ maxConcurrent: 1 }).then((r) => {
+      secondAdmitted = true;
+      r();
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(secondAdmitted).toBe(false);
+
+    release();
+    await secondPromise;
+    expect(secondAdmitted).toBe(true);
   });
 
   it('does not throw when noteRetryAfter hits a Redis error', () => {

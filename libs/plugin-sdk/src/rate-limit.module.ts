@@ -31,6 +31,16 @@
  * instance has locally observed, not a live cross-process count — see
  * `RedisRateLimiterAdapter`'s file header.
  *
+ * This module wires ONLY the Redis-backed factory - see
+ * `rate-limiter-registry.ts`'s doc comment for why the in-memory factory
+ * has no production caller here (it isn't dead: `RateLimiter` is still
+ * composed inside `RedisRateLimiterAdapter` as its degraded-mode fallback).
+ * This factory also resolves the `'REDIS_CLIENT'` string token from a
+ * module it does not import - every host/plugin module that imports
+ * `RateLimitModule` must also have `RedisConfigModule` somewhere in its
+ * graph (true today for both `apps/api` and `apps/worker`), or Nest's DI
+ * error at boot will not name this dependency explicitly.
+ *
  * @module libs/plugin-sdk/src
  */
 import { Global, Module } from '@nestjs/common';

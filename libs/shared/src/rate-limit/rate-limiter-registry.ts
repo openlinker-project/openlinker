@@ -14,6 +14,17 @@
  * the interface; DI wiring (`libs/plugin-sdk/src/rate-limit.module.ts`)
  * decides which factory backs it.
  *
+ * `createRateLimiterRegistry` itself has no production DI wiring today —
+ * `RateLimitModule` resolves only the Redis-backed factory below. It is
+ * NOT dead code: `RateLimiter` (the class, not this factory) is composed
+ * directly inside `RedisRateLimiterAdapter` as its private per-instance
+ * "insurance limiter" — the fail-DEGRADED fallback used whenever Redis is
+ * unreachable or a call times out (see that adapter's class doc). This
+ * factory function stays as the deliberate single-process alternative for
+ * a future `OL_RATE_LIMIT_BACKEND=memory|redis` switch, should an operator
+ * ever need one during a Redis incident; it is not presented as an equal
+ * peer to the Redis factory in current production wiring.
+ *
  * @module libs/shared/src/rate-limit
  */
 import type { RedisClientType } from 'redis';

@@ -131,12 +131,16 @@ describe('Redis rate limiter cross-process sharing', () => {
     const apiInstance = new RedisRateLimiterAdapter(connectionId, redisClient);
     const workerInstance = new RedisRateLimiterAdapter(connectionId, redisClient);
 
+    // Captured BEFORE the write and the settle-wait below, so the measured
+    // wait covers the full 1500ms rather than `1500 - settleMs` — a prior
+    // version captured this after the settle and could measure under 1400ms
+    // on a loaded CI box where the 50ms settle itself overran.
+    const startedAt = Date.now();
     apiInstance.noteRetryAfter(1_500);
     // Let the fire-and-forget Redis write settle.
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    const startedAt = Date.now();
     (await workerInstance.acquire({ maxConcurrent: 5 }))();
-    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(1_400);
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(1_450);
   }, 15_000);
 });

@@ -81,10 +81,12 @@ value keeps working across the cutover — see the implementation plan's migrati
 - `HostServices.http` as a **required** field is a breaking change to the plugin contract at exactly
   5 typed construction sites — deliberate, so it cannot be silently skipped, but it is a coordinated
   cross-package change landing in one PR.
-- In-memory-only bucket state means a multi-replica deployment needs the static
+- (historical — resolved in #2015, see § "Cross-process coordination — resolved" below) In-memory-only
+  bucket state means a multi-replica deployment needs the static
   `OL_WORKER_REPLICAS` division (v1) rather than a true shared cap; Redis-backed coordination is a
   documented, no-new-dependency follow-up behind the same `RateLimiterPort`.
-- **`apps/api` and `apps/worker` never share a bucket for the same connection, independent of
+- (historical — resolved in #2015, see § "Cross-process coordination — resolved" below) **`apps/api` and
+  `apps/worker` never share a bucket for the same connection, independent of
   `OL_WORKER_REPLICAS`.** `RateLimitModule` is `@Global()`, but that scopes a *single Nest process*
   — it provides one `HttpTransportFactory`/`RateLimiterRegistry` instance per process, not one per
   deployment. A connection's `config.rateLimit` is therefore enforced against two independent
@@ -120,26 +122,34 @@ approximate one:
   observed by either process is honoured by the other's very next pacing check. The key's TTL is computed as
   `max(one-hour floor, time-until-the-stored-timestamp)`, not a fixed value — an earlier draft that used a fixed
   floor truncated any pacing interval or `Retry-After` delay longer than the floor almost immediately.
-- **Concurrency** (`maxConcurrent`): the claim-then-rank sorted-set pattern already shipped in
-  `McpRateLimiter.claimRank` (`apps/api/src/mcp/tools/ratelimit/mcp-rate-limiter.ts`, #1487) — add a scored
-  member, evict anything older than a bounded call lifetime (self-heals a crashed caller that never released),
-  admit iff this call's own rank is below the cap. Rank, not a count-then-compare, is what stays correct under
-  concurrent admission from both processes.
+- **Concurrency** (`maxConcurrent`): a single atomic Lua script (`CONCURRENCY_CLAIM_SCRIPT`) evicts anything
+  older than a bounded call lifetime (self-heals a crashed caller that never released), adds a scored member,
+  and admits iff this call's own rank is below the cap — rolling itself back inside the same script when it
+  isn't. Rank, not a count-then-compare, is what stays correct under concurrent admission from both processes.
+  The initial draft mirrored `McpRateLimiter.claimRank`'s (`apps/api/src/mcp/tools/ratelimit/mcp-rate-limiter.ts`,
+  #1487) local-clock-scored, four-round-trip shape; tech review (#2019) found it under-protective at the scale
+  this file operates at (see the "Concurrency claim scoring" bullet below) and it was rewritten to a single
+  Redis-`TIME`-scored atomic script instead.
 
 Two trade-offs accepted for v1, both scoped to observability/fairness rather than correctness of the cap
 itself:
 
 - **`getStatus()` is per-process-approximate, not a live cross-process read.** `RateLimiterPort.getStatus()` is
   synchronous by contract, so a Redis-backed adapter cannot do a live network round-trip inside it — it reports
-  only what the calling process instance has itself observed. `RateLimitStatusService` (#1941) is unchanged and
-  now surfaces this approximation transparently; widening `getStatus()` to `Promise<RateLimitStatus>` was
-  considered and rejected as an unrelated breaking change to a port every in-memory caller also implements, for
-  a capability no consumer currently needs.
+  only what the calling process instance has itself observed. `RateLimitStatusService` (#1941) is unchanged, and
+  the approximation is **not** currently surfaced to the operator anywhere — the service header, the response
+  DTO, and the FE readout all still read as if the count were authoritative. Tracked as a follow-up (a one-line
+  service-doc update plus a "this process only" FE caveat); widening `getStatus()` to `Promise<RateLimitStatus>`
+  was considered and rejected as an unrelated breaking change to a port every in-memory caller also implements,
+  for a capability no consumer currently needs.
 - **Priority (`background` vs `interactive`) is not arbitrated across processes.** The in-memory `RateLimiter`
   holds every waiter as a live in-process queue it can strictly reorder; a Redis-backed adapter has no such
   queue to reorder across processes without a materially heavier scheme (shared priority-weighted queues).
-  Priority remains a local, per-process bias only (`RedisRateLimiterAdapter.pollDelayFor`) — real, but no longer
-  a hard guarantee once two processes contend for the same connection's bucket.
+  Priority remains a weak, local, per-process bias only (`RedisRateLimiterAdapter.pollDelayFor`) — not a hard
+  guarantee even within one process: every poll re-claims with a fresh member/score, so there is no seniority
+  queue, and the bias only nudges who re-polls sooner, not who is admitted first. It is closer to "the fast path
+  when there is no contention" than to a scheduling guarantee once two processes contend for the same
+  connection's bucket.
 
 Two further trade-offs, added on tech review (#2019) once it was clear the pacing gate's unconditional check
 (needed so a bare `maxConcurrent`-only policy still honours `noteRetryAfter`, see `RedisRateLimiterAdapter`'s
@@ -153,12 +163,28 @@ round-trip on every outbound call — a cost the pre-#2015 in-memory limiter nev
   *different* process while riding the cache (up to the grace window), in exchange for collapsing the common
   no-rate-limit-configured case back to near-zero Redis cost. A `noteRetryAfter()` call on the *same* instance
   invalidates its own cache immediately, so same-process backoff is never delayed by it.
-- **Concurrency claim scoring uses the local clock, not Redis `TIME`** (mirroring the existing `McpRateLimiter`
-  precedent), unlike the pacing gate. Under real clock skew between hosts, the claim's staleness eviction
-  (`zRemRangeByScore` against `nowMs - MAX_CALL_LIFETIME_MS`) compares a score written by one process's clock
-  against a bound computed from another's — a narrower version of the clock-skew question pacing already
-  solved via `TIME`. Accepted for v1 rather than introducing a bespoke atomic claim script: the 120s
-  `MAX_CALL_LIFETIME_MS` floor is generously wide relative to any real outbound call and to realistic NTP skew.
+- **Concurrency claim scoring is now Redis-`TIME`-based and atomic (tech-review follow-up, #2019).** An earlier
+  draft scored the claim by the caller's local clock and tie-broke same-millisecond claims by a raw UUID member,
+  mirroring `McpRateLimiter.claimRank`'s shape. That mistake over-admits past the cap: `ZRANK` breaks equal
+  scores lexicographically by member, so a later arrival can out-rank one already admitted (reproduced at ~50%
+  of trials for two same-millisecond claims against `maxConcurrent: 1`), and under real clock skew a
+  slower-clocked process wins every contested round and starves the other. `CONCURRENCY_CLAIM_SCRIPT` fixes
+  both in one atomic Lua script (evict, add, expire, rank, and roll back on rejection — one round trip instead
+  of four): the score is Redis's own `TIME`, with a persisted per-key monotonic counter breaking same-millisecond
+  ties by SCRIPT EXECUTION ORDER (Redis serializes `EVAL`, so this is real arrival order, not a UUID comparison).
+  `MAX_CALL_LIFETIME_MS` is 300s, deliberately distinct from `MAX_TOTAL_WAIT_MS` (120s) — the two bound unrelated
+  things and an earlier accidental equality made an integration test race its own timeout.
+- **Fails DEGRADED, not open, on a Redis outage or a hung call (tech-review follow-up, #2019).** An earlier
+  draft failed open on any Redis error — admitting unconditionally, with zero pacing and zero concurrency cap,
+  for as long as Redis was unavailable. Two problems: node-redis's default offline queue means a post-boot
+  socket drop HANGS a command rather than rejecting it, so a Redis blip could silently stall every outbound HTTP
+  call in the process rather than degrade; and even a clean rejection removed all throttling, which is a
+  regression against the pre-#2015 in-memory limiter (which had no Redis on the request path at all) and risks
+  a marketplace API ban, not just a hygiene lapse. Every Redis await is now bounded by a timeout (default 1s),
+  and on a bounded timeout or a rejected call `acquire()` delegates the current call to a private per-process
+  in-memory `RateLimiter` ("insurance limiter") instead of admitting unconditionally — the same pattern
+  `rate-limiter-flexible` ships as `insuranceLimiter`. `noteRetryAfter()` mirrors a `Retry-After` into the
+  insurance limiter synchronously, so a 429 observed mid-outage is not silently dropped either.
 
 ### The cap is per connection
 

@@ -21,15 +21,22 @@
  *     `Retry-After` response is just an out-of-band push of
  *     "next-available-at" further into the future), so any process's next
  *     pacing check picks it up.
- *   - concurrency (`maxConcurrent`): the claim-then-rank ZSET pattern
- *     already shipped in `McpRateLimiter.claimRank`
- *     (apps/api/src/mcp/tools/ratelimit/mcp-rate-limiter.ts) — add a
- *     scored member for this call, evict anything older than
+ *   - concurrency (`maxConcurrent`): a single atomic Lua script
+ *     (`CONCURRENCY_CLAIM_SCRIPT`) that evicts anything older than
  *     `MAX_CALL_LIFETIME_MS` (self-heals a crashed caller that never
- *     released), then admit iff this call's own `ZRANK` is below the cap.
- *     Rank, not a count-then-compare, is what makes this race-safe under
- *     concurrent admission from both processes — see that file's own doc
- *     comment for why check-then-act and count-then-claim both fail.
+ *     released), adds a scored member for this call, and admits iff this
+ *     call's own `ZRANK` is below the cap — rolling itself back inside the
+ *     SAME script when it isn't. One round trip, not four, and the score is
+ *     derived from Redis's own `TIME` (not the caller's local clock) via a
+ *     persisted per-key monotonic counter (`lastScoreKey`) that breaks
+ *     same-millisecond ties by SCRIPT EXECUTION ORDER — since Redis
+ *     serializes `EVAL` calls, this is real arrival order, not a
+ *     lexicographic comparison of an unordered random member. This closes
+ *     two gaps an earlier draft had: scoring by the caller's local clock
+ *     (skew between hosts could invert admission order) and tie-breaking
+ *     equal-millisecond claims by a raw UUID (letting a later arrival
+ *     out-rank one already admitted — see `McpRateLimiter.claimRank`'s doc
+ *     for why that specific mistake over-admits past the cap).
  *
  * Ordering mirrors the in-memory `RateLimiter.drain()` exactly: concurrency
  * is claimed FIRST, then pacing is checked; only once BOTH gates pass is
@@ -52,12 +59,32 @@
  * As a cheap, purely-local approximation, a `background` waiter adds a
  * small extra backoff jitter while an `interactive` waiter is queued on
  * THIS adapter instance, biasing (not guaranteeing) who wins the next
- * Redis contention round — see `pollDelayFor`.
+ * Redis contention round — see `pollDelayFor`. This is a weak, non-ordering
+ * bias, not a real priority guarantee: every poll re-claims with a fresh
+ * member/score, so there is no seniority queue and a long-waiting caller
+ * competes on equal footing with a freshly-arrived one each round. Accepted
+ * for v1 (tracked as a follow-up) — closing it needs a genuine cross-poll
+ * waiting queue, which is a materially bigger change than this file's scope.
  *
- * Fails open on any Redis error: `acquire()` resolves immediately with a
- * no-op release and `noteRetryAfter()` swallows the error, both logging a
- * warning — mirroring `McpRateLimiter`'s fail-open posture, since this
- * limiter is outbound-pacing hygiene, not a correctness-critical gate.
+ * **Fails DEGRADED, not open, on a Redis outage or a hung call.** Every
+ * Redis await in this file is bounded by `redisCallTimeoutMs` (default
+ * 1000ms) — node-redis's default offline queue means a post-boot socket
+ * drop otherwise HANGS a command rather than rejecting it, which would
+ * silently stall every outbound HTTP call in the process. On a bounded
+ * timeout or a rejected Redis call, `acquire()` delegates the CURRENT call
+ * to a private per-process in-memory `RateLimiter` (`insuranceLimiter`)
+ * instead of admitting unconditionally — mirroring `rate-limiter-flexible`'s
+ * "insurance limiter" pattern. This keeps THIS process's own pacing/
+ * concurrency enforced (just not cross-process-shared) for as long as Redis
+ * is unavailable, rather than removing all throttling — a marketplace API
+ * ban is not a hygiene-only outcome. `noteRetryAfter()` mirrors a
+ * `Retry-After` into the insurance limiter synchronously (in addition to
+ * its normal Redis write), so a 429 observed during an outage is not lost.
+ * Degraded-mode entry logs at `error` once per transition, then at most one
+ * `warn` per 30s while it persists, to avoid drowning an operator's logs
+ * during an incident; recovery (the next successful Redis round trip) logs
+ * once. This is per-adapter-instance state — each `acquire()` call retries
+ * Redis fresh, so a transient blip self-heals on the next call.
  *
  * **Bounded-staleness pacing fast path (tech-review follow-up, #2019).**
  * `HttpTransportFactory.forConnection` builds a limiter for EVERY connection,
@@ -78,27 +105,16 @@
  * delayed by the grace window — only a genuinely cross-process push can be.
  * The concurrency gate is unaffected: it is never checked unconditionally
  * (skipped outright when `maxConcurrent` is undefined), so it had no
- * equivalent zero-config cost to begin with.
- *
- * **Concurrency claim scoring uses the local clock, not Redis `TIME`**
- * (mirroring `McpRateLimiter.claimRank`'s precedent), unlike the pacing gate
- * above. This is a narrower version of the same clock-skew question: under
- * real skew between hosts, the staleness eviction
- * (`zRemRangeByScore(inflightKey, 0, nowMs - MAX_CALL_LIFETIME_MS)`) compares
- * a score written by one process's clock against a bound computed from
- * another's, so a sufficiently fast-clocked evictor could in principle
- * reclaim a still-live claim from a slower-clocked one before it releases.
- * Accepted for v1, matching the existing `McpRateLimiter` shape rather than
- * introducing a bespoke atomic claim script here: `MAX_CALL_LIFETIME_MS`
- * (120s) is generously wide relative to any real outbound call, and NTP-
- * synced hosts keep the practical skew several orders of magnitude below
- * that floor.
+ * equivalent zero-config cost to begin with. `PACE_ADMIT_SCRIPT` is also a
+ * pure read (no `SET`) on this fast path's cold-cache probe, since a
+ * zero-interval admission has nothing to advance.
  *
  * @module libs/shared/src/rate-limit
  */
 import { randomUUID } from 'node:crypto';
 import type { RedisClientType } from 'redis';
 import { Logger } from '../logging';
+import { RateLimiter } from './rate-limiter';
 import { RateLimitAbortedError, RateLimitTimeoutError } from './rate-limiter.errors';
 import { MAX_TOTAL_WAIT_MS } from './rate-limiter';
 import type {
@@ -111,6 +127,7 @@ import type { RateLimiterPort } from './rate-limiter.port';
 
 const PACE_KEY_PREFIX = 'ratelimit:pace:';
 const INFLIGHT_KEY_PREFIX = 'ratelimit:inflight:';
+const LAST_SCORE_KEY_PREFIX = 'ratelimit:inflight-seq:';
 
 /**
  * Floor for the pace key's TTL, in seconds — NOT the actual TTL. The Lua
@@ -119,8 +136,17 @@ const INFLIGHT_KEY_PREFIX = 'ratelimit:inflight:';
  */
 const PACE_KEY_TTL_FLOOR_SECONDS = 3600;
 
-/** How long an in-flight concurrency claim may live before it is presumed orphaned by a crashed caller. */
-const MAX_CALL_LIFETIME_MS = 120_000;
+/**
+ * How long an in-flight concurrency claim may live before it is presumed
+ * orphaned by a crashed caller. Deliberately distinct from
+ * `MAX_TOTAL_WAIT_MS` (also 120s) — the two bound unrelated things (a claim
+ * held by an in-flight call vs. total time spent waiting for one) and an
+ * earlier draft's accidental equality made an integration test race its own
+ * timeout (see `docs/lessons.md`). Set above the slowest known real outbound
+ * call in this codebase — inFakt/KSeF issuance runs ~90s — so a legitimately
+ * slow call does not have its slot silently reclaimed mid-flight.
+ */
+const MAX_CALL_LIFETIME_MS = 300_000;
 const MAX_CALL_LIFETIME_SECONDS = MAX_CALL_LIFETIME_MS / 1_000;
 
 /** Poll interval while waiting for a concurrency slot to free up (no push/pub-sub wakeup across processes). */
@@ -136,9 +162,11 @@ const BACKGROUND_YIELD_JITTER_MS = 50;
  */
 const DEFAULT_UNCONFIGURED_PACE_GRACE_MS = 200;
 
-const NOOP_RELEASE: RateLimitRelease = () => {
-  /* fail-open: nothing to release */
-};
+/** Default bound on a single Redis await — see the class doc's "Fails DEGRADED, not open" section. */
+const DEFAULT_REDIS_CALL_TIMEOUT_MS = 1_000;
+
+/** Minimum interval between repeated degraded-mode log lines, to avoid drowning the logs during an outage. */
+const DEGRADED_LOG_INTERVAL_MS = 30_000;
 
 /**
  * `now >= current ? admit and advance : reject with the wait` — computed
@@ -161,8 +189,12 @@ const PACE_ADMIT_SCRIPT = `
 local t = redis.call('TIME')
 local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
 local current = tonumber(redis.call('GET', KEYS[1]))
+local interval = tonumber(ARGV[1])
 if current == nil or now >= current then
-  local nextTs = now + tonumber(ARGV[1])
+  if interval == 0 then
+    return {1, 0}
+  end
+  local nextTs = now + interval
   local minTtlMs = tonumber(ARGV[2]) * 1000
   local ttlMs = nextTs - now
   if ttlMs < minTtlMs then
@@ -173,6 +205,49 @@ if current == nil or now >= current then
 else
   return {0, current - now}
 end
+`;
+
+/**
+ * Atomic concurrency claim — evict, add, expire, rank, and (on rejection)
+ * roll back, all in one round trip. See the class doc's `concurrency`
+ * bullet for the monotonic-score tie-break this relies on to make `ZRANK`
+ * a real ceiling rather than an approximation.
+ *
+ * `KEYS[2]` (`lastScoreKey`) persists the last score handed out for this
+ * connection's inflight set. Scoring by Redis `TIME` alone still lets two
+ * `EVAL` calls land in the same millisecond; since Redis serializes script
+ * execution, the SECOND call to observe a given millisecond is provably the
+ * one that arrived later, so bumping the score by a fixed epsilon
+ * (`+0.001`, far below 1ms) above the last-seen value turns "tied" into
+ * "correctly ordered by execution order" without needing a real UUID
+ * tie-break at all.
+ */
+const CONCURRENCY_CLAIM_SCRIPT = `
+local t = redis.call('TIME')
+local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
+local maxLifetimeMs = tonumber(ARGV[1])
+local maxConcurrent = tonumber(ARGV[2])
+local ttlSeconds = tonumber(ARGV[3])
+local member = ARGV[4]
+
+redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, now - maxLifetimeMs)
+
+local last = tonumber(redis.call('GET', KEYS[2]))
+local score = now
+if last ~= nil and score <= last then
+  score = last + 0.001
+end
+redis.call('SET', KEYS[2], score, 'PX', ttlSeconds * 1000)
+
+redis.call('ZADD', KEYS[1], score, member)
+redis.call('EXPIRE', KEYS[1], ttlSeconds)
+
+local rank = redis.call('ZRANK', KEYS[1], member)
+if rank == false or rank >= maxConcurrent then
+  redis.call('ZREM', KEYS[1], member)
+  return {0}
+end
+return {1}
 `;
 
 /**
@@ -211,6 +286,11 @@ export interface RedisRateLimiterDeps {
    * Defaults to 200ms; set to 0 to always consult Redis (no local caching).
    */
   unconfiguredPaceGraceMs?: number;
+  /**
+   * Bound on a single Redis await — see the class doc's "Fails DEGRADED,
+   * not open" section. Defaults to 1000ms.
+   */
+  redisCallTimeoutMs?: number;
 }
 
 function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -246,14 +326,32 @@ interface ConcurrencyClaim {
   callId: string;
 }
 
+/** A single Redis await exceeded `redisCallTimeoutMs` — treated identically to a rejected Redis call. */
+class RedisCallTimeoutError extends Error {
+  constructor(operation: string, timeoutMs: number) {
+    super(`Redis rate-limiter call "${operation}" timed out after ${timeoutMs}ms`);
+    this.name = 'RedisCallTimeoutError';
+  }
+}
+
 export class RedisRateLimiterAdapter implements RateLimiterPort {
   private readonly logger = new Logger(RedisRateLimiterAdapter.name);
   private readonly now: () => number;
   private readonly sleep: (ms: number, signal?: AbortSignal) => Promise<void>;
   private readonly concurrencyPollIntervalMs: number;
   private readonly unconfiguredPaceGraceMs: number;
+  private readonly redisCallTimeoutMs: number;
   private readonly paceKey: string;
   private readonly inflightKey: string;
+  private readonly lastScoreKey: string;
+  /**
+   * Per-process fallback used whenever Redis is unreachable or a call times
+   * out — see the class doc's "Fails DEGRADED, not open" section. This is
+   * the same `RateLimiter` class the pre-#2015 in-memory registry used;
+   * here it is composed privately rather than shared, so its state is
+   * scoped to exactly this adapter instance's degraded episodes.
+   */
+  private readonly insuranceLimiter: RateLimiter;
 
   private lastPolicy: ConnectionRateLimit | undefined;
   private localInFlight = 0;
@@ -262,6 +360,8 @@ export class RedisRateLimiterAdapter implements RateLimiterPort {
   private lastAcquiredAt: Date | null = null;
   /** See the class doc's "Bounded-staleness pacing fast path" section. */
   private localPaceOkUntil = 0;
+  private degraded = false;
+  private lastDegradedLogAt = 0;
 
   constructor(
     private readonly connectionId: string,
@@ -274,8 +374,11 @@ export class RedisRateLimiterAdapter implements RateLimiterPort {
       deps.concurrencyPollIntervalMs ?? DEFAULT_CONCURRENCY_POLL_INTERVAL_MS;
     this.unconfiguredPaceGraceMs =
       deps.unconfiguredPaceGraceMs ?? DEFAULT_UNCONFIGURED_PACE_GRACE_MS;
+    this.redisCallTimeoutMs = deps.redisCallTimeoutMs ?? DEFAULT_REDIS_CALL_TIMEOUT_MS;
     this.paceKey = `${PACE_KEY_PREFIX}${connectionId}`;
     this.inflightKey = `${INFLIGHT_KEY_PREFIX}${connectionId}`;
+    this.lastScoreKey = `${LAST_SCORE_KEY_PREFIX}${connectionId}`;
+    this.insuranceLimiter = new RateLimiter({}, { now: this.now });
   }
 
   /** Kept for parity with the in-memory `RateLimiter`'s registry contract — refreshes the `getStatus()` snapshot even before any `acquire()` lands. */
@@ -300,6 +403,12 @@ export class RedisRateLimiterAdapter implements RateLimiterPort {
     // window; only a genuinely cross-process push rides it out. See the
     // class doc's "Bounded-staleness pacing fast path" section.
     this.localPaceOkUntil = 0;
+    // Mirror the backoff into the insurance limiter SYNCHRONOUSLY, in
+    // addition to the Redis write below — a 429/503 observed during a Redis
+    // outage must not be silently dropped just because the write it would
+    // normally ride on cannot land. See the class doc's "Fails DEGRADED,
+    // not open" section.
+    this.insuranceLimiter.noteRetryAfter(delayMs);
     const warn = (error: unknown): void => {
       this.logger.warn(
         `Failed to propagate Retry-After for connection ${this.connectionId} — Redis unavailable, this process's own pacing is unaffected. ${(error as Error).message}`
@@ -309,7 +418,8 @@ export class RedisRateLimiterAdapter implements RateLimiterPort {
     // and a synchronous throw, so a client implementation that fails fast
     // can never escape this fire-and-forget call.
     try {
-      Promise.resolve(
+      this.withTimeout(
+        'noteRetryAfter',
         this.redisClient.eval(PACE_ADVANCE_SCRIPT, {
           keys: [this.paceKey],
           arguments: [String(delayMs), String(PACE_KEY_TTL_FLOOR_SECONDS)],
@@ -372,6 +482,7 @@ export class RedisRateLimiterAdapter implements RateLimiterPort {
           continue;
         }
 
+        this.noteRecoveredIfNeeded();
         this.localInFlight += 1;
         this.lastAcquiredAt = new Date(this.now());
         const admittedClaim = pendingClaim;
@@ -388,15 +499,70 @@ export class RedisRateLimiterAdapter implements RateLimiterPort {
         // instead of holding the slot for the full MAX_CALL_LIFETIME_MS.
         await this.rollbackConcurrency(pendingClaim.callId).catch(() => undefined);
       }
-      this.logger.warn(
-        `Redis rate limiter unavailable for connection ${this.connectionId} — failing open. ${(error as Error).message}`
-      );
-      return NOOP_RELEASE;
+      this.enterDegraded(error);
+      // Fail DEGRADED, not open — delegate THIS call to the per-process
+      // insurance limiter instead of admitting unconditionally. See the
+      // class doc's "Fails DEGRADED, not open" section.
+      const remaining = MAX_TOTAL_WAIT_MS - (this.now() - startedAt);
+      if (remaining <= 0) {
+        throw new RateLimitTimeoutError(this.now() - startedAt);
+      }
+      return this.insuranceLimiter.acquire(policy, priority, signal);
     } finally {
       this.localQueued = Math.max(0, this.localQueued - 1);
       if (priority === 'interactive') {
         this.localInteractiveWaiters = Math.max(0, this.localInteractiveWaiters - 1);
       }
+    }
+  }
+
+  /** Logs the transition into degraded mode at `error`, then at most once per `DEGRADED_LOG_INTERVAL_MS` while it persists. */
+  private enterDegraded(error: unknown): void {
+    const now = this.now();
+    if (!this.degraded) {
+      this.degraded = true;
+      this.lastDegradedLogAt = now;
+      this.logger.error(
+        `Redis rate limiter unavailable for connection ${this.connectionId} — falling back to per-process in-memory limiting (degraded, not unthrottled). ${(error as Error).message}`
+      );
+      return;
+    }
+    if (now - this.lastDegradedLogAt >= DEGRADED_LOG_INTERVAL_MS) {
+      this.lastDegradedLogAt = now;
+      this.logger.warn(
+        `Redis rate limiter for connection ${this.connectionId} still degraded. ${(error as Error).message}`
+      );
+    }
+  }
+
+  private noteRecoveredIfNeeded(): void {
+    if (this.degraded) {
+      this.degraded = false;
+      this.logger.log(
+        `Redis rate limiter for connection ${this.connectionId} recovered from degraded mode.`
+      );
+    }
+  }
+
+  /** Bounds a single Redis await — see the class doc's "Fails DEGRADED, not open" section for why this exists. */
+  private async withTimeout<T>(operation: string, promise: Promise<T>): Promise<T> {
+    // If the timeout wins the race below, the original Redis call may still
+    // settle later, out of band — attach a no-op handler so that late
+    // settlement never surfaces as an unhandled rejection.
+    promise.catch(() => undefined);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new RedisCallTimeoutError(operation, this.redisCallTimeoutMs));
+      }, this.redisCallTimeoutMs);
+      if (typeof timer.unref === 'function') {
+        timer.unref();
+      }
+    });
+    try {
+      return await Promise.race([promise, timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
 
@@ -462,30 +628,38 @@ export class RedisRateLimiterAdapter implements RateLimiterPort {
     requestsPerMinute: number | undefined
   ): Promise<{ admitted: boolean; waitMs: number }> {
     const intervalMs = requestsPerMinute !== undefined ? 60_000 / requestsPerMinute : 0;
-    const result = (await this.redisClient.eval(PACE_ADMIT_SCRIPT, {
-      keys: [this.paceKey],
-      arguments: [String(Math.round(intervalMs)), String(PACE_KEY_TTL_FLOOR_SECONDS)],
-    })) as [number, number];
+    const result = (await this.withTimeout(
+      'checkPace',
+      this.redisClient.eval(PACE_ADMIT_SCRIPT, {
+        keys: [this.paceKey],
+        arguments: [String(Math.round(intervalMs)), String(PACE_KEY_TTL_FLOOR_SECONDS)],
+      })
+    )) as [number, number];
     const [admitted, waitMs] = result;
     return { admitted: admitted === 1, waitMs };
   }
 
+  /** One atomic round trip — see `CONCURRENCY_CLAIM_SCRIPT`'s doc comment. */
   private async claimConcurrency(maxConcurrent: number): Promise<ConcurrencyClaim> {
-    const callId = `${this.now()}-${randomUUID()}`;
-    const nowMs = this.now();
-    await this.redisClient.zRemRangeByScore(this.inflightKey, 0, nowMs - MAX_CALL_LIFETIME_MS);
-    await this.redisClient.zAdd(this.inflightKey, { score: nowMs, value: callId });
-    await this.redisClient.expire(this.inflightKey, MAX_CALL_LIFETIME_SECONDS);
-    const rank = await this.redisClient.zRank(this.inflightKey, callId);
-    if (rank === null || rank >= maxConcurrent) {
-      await this.rollbackConcurrency(callId);
-      return { admitted: false, callId };
-    }
-    return { admitted: true, callId };
+    const callId = randomUUID();
+    const result = (await this.withTimeout(
+      'claimConcurrency',
+      this.redisClient.eval(CONCURRENCY_CLAIM_SCRIPT, {
+        keys: [this.inflightKey, this.lastScoreKey],
+        arguments: [
+          String(MAX_CALL_LIFETIME_MS),
+          String(maxConcurrent),
+          String(MAX_CALL_LIFETIME_SECONDS),
+          callId,
+        ],
+      })
+    )) as [number];
+    const [admitted] = result;
+    return { admitted: admitted === 1, callId };
   }
 
   private async rollbackConcurrency(callId: string): Promise<void> {
-    await this.redisClient.zRem(this.inflightKey, callId);
+    await this.withTimeout('rollbackConcurrency', this.redisClient.zRem(this.inflightKey, callId));
   }
 
   private buildRelease(claimId: string | null): RateLimitRelease {
@@ -495,11 +669,24 @@ export class RedisRateLimiterAdapter implements RateLimiterPort {
       released = true;
       this.localInFlight = Math.max(0, this.localInFlight - 1);
       if (claimId) {
-        this.redisClient.zRem(this.inflightKey, claimId).catch((error: unknown) => {
-          this.logger.warn(
-            `Failed to release Redis rate-limit slot for connection ${this.connectionId}; it will age out. ${(error as Error).message}`
-          );
-        });
+        this.withTimeout('release', this.redisClient.zRem(this.inflightKey, claimId))
+          .then((removed) => {
+            if (removed === 0) {
+              // The member was already gone — either evicted after exceeding
+              // MAX_CALL_LIFETIME_MS while still legitimately in flight, or
+              // double-released. Either way, the concurrency cap may have
+              // briefly admitted one extra caller; surface it rather than
+              // stay silent.
+              this.logger.warn(
+                `Redis rate-limit slot for connection ${this.connectionId} was already reclaimed before release.`
+              );
+            }
+          })
+          .catch((error: unknown) => {
+            this.logger.warn(
+              `Failed to release Redis rate-limit slot for connection ${this.connectionId}; it will age out. ${(error as Error).message}`
+            );
+          });
       }
     };
   }
