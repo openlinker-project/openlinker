@@ -40,6 +40,7 @@ import {
   SELLER_POLICIES_SERVICE_TOKEN,
   RESPONSIBLE_PRODUCER_SERVICE_TOKEN,
   DELIVERY_PRICE_LIST_SERVICE_TOKEN,
+  emptyOfferLifecycleCounts,
 } from '@openlinker/core/listings';
 import type {
   ICategoryResolutionService,
@@ -135,6 +136,7 @@ describe('ListingsController', () => {
     repository = {
       findById: jest.fn(),
       findMany: jest.fn(),
+      countByLifecycle: jest.fn().mockResolvedValue(emptyOfferLifecycleCounts()),
       countByConnectionAndVariants: jest.fn().mockResolvedValue(new Map<string, number>()),
       countListedVariantsByProducts: jest.fn().mockResolvedValue([]),
       findStaleMappedVariants: jest.fn().mockResolvedValue([]),
@@ -261,6 +263,7 @@ describe('ListingsController', () => {
           connectionId: undefined,
           internalId: undefined,
           search: undefined,
+          lifecycle: undefined,
         },
         { limit: 20, offset: 0 }
       );
@@ -282,9 +285,99 @@ describe('ListingsController', () => {
           connectionId: 'conn-1',
           internalId: 'ol_offer_variant123',
           search: '456',
+          lifecycle: undefined,
         },
         { limit: 10, offset: 5 }
       );
+    });
+
+    describe('lifecycle counts (#2026)', () => {
+      it('should carry a per-bucket count alongside the page', async () => {
+        repository.findMany.mockResolvedValue({ items: [], total: 97 });
+        repository.countByLifecycle.mockResolvedValue({
+          Active: 4,
+          Inactive: 1,
+          Draft: 2,
+          Ended: 0,
+          Unsynced: 90,
+        });
+
+        const result = await controller.listOfferMappings({});
+
+        expect(result.lifecycleCounts).toEqual({
+          Active: 4,
+          Inactive: 1,
+          Draft: 2,
+          Ended: 0,
+          Unsynced: 90,
+        });
+      });
+
+      // NOTE: "the counts sum to the total" is deliberately NOT asserted here.
+      // Both values are mocked at this seam, so any such assertion would only
+      // restate its own fixture - no production code participates. The invariant
+      // is a database property and is covered by
+      // `apps/api/test/integration/listings/offer-lifecycle-counts.int-spec.ts`.
+
+      it('should apply the same search and connection filters to the counts as to the list', async () => {
+        repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+        await controller.listOfferMappings({ connectionId: 'conn-1', search: 'terra' });
+
+        expect(repository.countByLifecycle).toHaveBeenCalledWith({
+          connectionId: 'conn-1',
+          internalId: undefined,
+          search: 'terra',
+        });
+      });
+
+      it('should narrow only the list by the selected tab, never the counts', async () => {
+        repository.findMany.mockResolvedValue({ items: [], total: 300 });
+
+        await controller.listOfferMappings({ lifecycle: 'Ended', search: 'terra' });
+
+        expect(repository.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({ lifecycle: 'Ended' }),
+          { limit: 20, offset: 0 }
+        );
+        // Forwarding it here would zero every other tab the moment one is clicked.
+        expect(repository.countByLifecycle).toHaveBeenCalledWith(
+          expect.not.objectContaining({ lifecycle: expect.anything() as unknown })
+        );
+      });
+
+      it('should report the selected bucket size as total so paging inside a tab works', async () => {
+        repository.findMany.mockResolvedValue({ items: [], total: 300 });
+        repository.countByLifecycle.mockResolvedValue({
+          ...emptyOfferLifecycleCounts(),
+          Ended: 300,
+          Active: 12,
+        });
+
+        const result = await controller.listOfferMappings({ lifecycle: 'Ended' });
+
+        expect(result.total).toBe(300);
+        // The other tabs stay live while Ended is selected.
+        expect(result.lifecycleCounts.Active).toBe(12);
+      });
+
+      it('should issue the list and the counts concurrently rather than back to back', async () => {
+        let listSettled = false;
+        repository.findMany.mockImplementation(async () => {
+          await Promise.resolve();
+          listSettled = true;
+          return { items: [], total: 0 };
+        });
+        repository.countByLifecycle.mockImplementation(() => {
+          // Reached before the list resolved: the two are not chained.
+          expect(listSettled).toBe(false);
+          return Promise.resolve(emptyOfferLifecycleCounts());
+        });
+
+        await controller.listOfferMappings({});
+
+        expect(repository.countByLifecycle).toHaveBeenCalledTimes(1);
+      });
     });
 
     it('should serialize dates as ISO 8601 strings', async () => {

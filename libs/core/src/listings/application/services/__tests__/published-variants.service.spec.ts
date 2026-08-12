@@ -14,6 +14,7 @@ describe('PublishedVariantsService', () => {
     offerRepo = {
       findById: jest.fn(),
       findMany: jest.fn(),
+      countByLifecycle: jest.fn(),
       countByConnectionAndVariants: jest.fn(),
       countListedVariantsByProducts: jest.fn(),
       findStaleMappedVariants: jest.fn(),

@@ -9,22 +9,33 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import type { SelectQueryBuilder } from 'typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
+import { Logger } from '@openlinker/shared/logging';
 import type { CoreEntityType } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { IdentifierMapping } from '@openlinker/core/identifier-mapping';
 import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 import { OfferCommercialSnapshotOrmEntity } from '../entities/offer-commercial-snapshot.orm-entity';
 import { OfferStatusSnapshotOrmEntity } from '../entities/offer-status-snapshot.orm-entity';
+import { UnfilterableOfferLifecycleException } from '../../../domain/exceptions/unfilterable-offer-lifecycle.exception';
 import type { OfferMappingRepositoryPort } from '../../../domain/ports/offer-mapping-repository.port';
 import {
-  deriveOfferLifecycle,
+  OFFER_VALIDATION_MESSAGES_KEY,
+  emptyOfferLifecycleCounts,
+  listSnapshotFactsForLifecycle,
   readValidationMessages,
+  resolveOfferLifecycle,
+} from '../../../domain/types/offer-lifecycle.types';
+import type {
+  OfferLifecycle,
+  OfferLifecycleCounts,
 } from '../../../domain/types/offer-lifecycle.types';
 import { deriveVariantLabel } from '../../../domain/types/offer-mapping.types';
 import type {
   OfferMappingChannelStatus,
   OfferMappingCommercial,
+  OfferMappingCountFilters,
   OfferMappingFilters,
   OfferMappingIdentity,
   OfferMappingListItem,
@@ -33,6 +44,7 @@ import type {
   ProductListingsCoverage,
   StaleMappedVariant,
 } from '../../../domain/types/offer-mapping.types';
+import { isOfferPublicationStatus } from '../../../domain/types/offer-status-read.types';
 import type { OfferPublicationStatus } from '../../../domain/types/offer-status-read.types';
 import type { OfferStatusSnapshotDetails } from '../../../domain/types/offer-status-snapshot.types';
 
@@ -60,7 +72,13 @@ interface OfferMappingListRawRow {
   variantEan: string | null;
   variantAttributes: Record<string, string> | null;
   variantIsStale: boolean | null;
-  publicationStatus: OfferPublicationStatus | null;
+  /**
+   * Deliberately `string | null`, not `OfferPublicationStatus | null`: the
+   * column is unconstrained `text`, so declaring the union here would be a
+   * type-level claim about the DATA the schema does not enforce. Narrowed
+   * through `readPublicationStatus` before anything classifies it.
+   */
+  publicationStatus: string | null;
   statusDetails: OfferStatusSnapshotDetails | null;
   lastStatusSyncedAt: Date | null;
   commercialPrice: string | null;
@@ -77,8 +95,41 @@ interface OfferMappingListRawRow {
  */
 const ENDED_PUBLICATION_STATUS = 'ended';
 
+/**
+ * Whether the status-snapshot LEFT join actually found a row (#2026). Mirrors
+ * the pair of null checks `toChannelStatus` makes, so a row the list renders
+ * as `Unsynced` is the same row this counts as `Unsynced`.
+ */
+const HAS_STATUS_SNAPSHOT_SQL =
+  '(oss."publicationStatus" IS NOT NULL AND oss."lastStatusSyncedAt" IS NOT NULL)';
+
+/**
+ * The one snapshot fact that is not a plain column: does the detail blob carry
+ * validator messages. A `CASE` rather than an `AND` chain because Postgres
+ * does not promise to short-circuit `AND`, and `jsonb_array_length` RAISES on
+ * a non-array - which would 500 the whole page over one malformed row (the
+ * same trap the search predicate's `jsonb_typeof` guard avoids). `CASE` does
+ * guarantee only the taken branch is evaluated, and the `ELSE` makes the
+ * expression total, so it is safe to GROUP BY and to negate.
+ */
+const HAS_VALIDATION_MESSAGES_SQL =
+  `(CASE WHEN jsonb_typeof(oss."statusDetails" -> '${OFFER_VALIDATION_MESSAGES_KEY}') = 'array' ` +
+  `THEN jsonb_array_length(oss."statusDetails" -> '${OFFER_VALIDATION_MESSAGES_KEY}') > 0 ` +
+  `ELSE false END)`;
+
+/** Raw shape of one `countByLifecycle` group (#2026). */
+interface OfferLifecycleCountRawRow {
+  /** Unconstrained `text` - see `OfferMappingListRawRow.publicationStatus`. */
+  publicationStatus: string | null;
+  hasStatusSnapshot: boolean;
+  hasValidationMessages: boolean;
+  count: string;
+}
+
 @Injectable()
 export class OfferMappingRepository implements OfferMappingRepositoryPort {
+  private readonly logger = new Logger(OfferMappingRepository.name);
+
   constructor(
     @InjectRepository(IdentifierMappingOrmEntity)
     private readonly repository: Repository<IdentifierMappingOrmEntity>
@@ -109,6 +160,136 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
     filters: OfferMappingFilters,
     pagination: OfferMappingPagination
   ): Promise<PaginatedOfferMappings> {
+    const qb = this.buildFilteredQuery(filters);
+
+    if (filters.lifecycle) {
+      this.applyLifecycleFilter(qb, filters.lifecycle);
+    }
+
+    // Counted before the projection/paging clauses are attached so the count
+    // is unambiguously the filtered total, independent of the raw select.
+    const total = await qb.getCount();
+
+    qb.select('mapping.id', 'id')
+      .addSelect('mapping.entityType', 'entityType')
+      .addSelect('mapping.internalId', 'internalId')
+      .addSelect('mapping.externalId', 'externalId')
+      .addSelect('mapping.platformType', 'platformType')
+      .addSelect('mapping.connectionId', 'connectionId')
+      .addSelect('mapping.context', 'context')
+      .addSelect('mapping.createdAt', 'createdAt')
+      .addSelect('mapping.updatedAt', 'updatedAt')
+      .addSelect('pv."productId"', 'productId')
+      .addSelect('pv."sku"', 'variantSku')
+      .addSelect('pv."ean"', 'variantEan')
+      .addSelect('pv."attributes"', 'variantAttributes')
+      .addSelect('pv."isStale"', 'variantIsStale')
+      .addSelect('p."name"', 'productName')
+      .addSelect('p."images"', 'productImages')
+      .addSelect('oss."publicationStatus"', 'publicationStatus')
+      .addSelect('oss."statusDetails"', 'statusDetails')
+      .addSelect('oss."lastStatusSyncedAt"', 'lastStatusSyncedAt')
+      .addSelect('ocs."price"', 'commercialPrice')
+      .addSelect('ocs."currency"', 'commercialCurrency')
+      .addSelect('ocs."availableQuantity"', 'commercialAvailableQuantity')
+      .addSelect('ocs."lastCommercialSyncedAt"', 'lastCommercialSyncedAt');
+
+    // `createdAt` alone is not unique, so a same-timestamp cluster could
+    // repeat or skip rows across pages; the id tiebreaker makes paging total.
+    qb.orderBy('mapping."createdAt"', 'DESC')
+      .addOrderBy('mapping."id"', 'DESC')
+      .offset(pagination.offset)
+      .limit(pagination.limit);
+
+    const rows = await qb.getRawMany<OfferMappingListRawRow>();
+    return { items: rows.map((row) => this.toListItem(row)), total };
+  }
+
+  async countByLifecycle(filters: OfferMappingCountFilters): Promise<OfferLifecycleCounts> {
+    // One aggregate pass over the join `findMany` already builds - far cheaper
+    // than five predicated counts or a second endpoint, and it reuses the same
+    // predicates so a tab count can never describe a different row set than
+    // the tab's own page.
+    //
+    // Grouped by the RAW snapshot facts, never by a bucket: the lifecycle rule
+    // stays in `resolveOfferLifecycle` and is applied to each group below.
+    // That is what keeps SQL and TypeScript from drifting - there is no second
+    // implementation of the rule to drift from.
+    const rows = await this.buildFilteredQuery(filters)
+      .select('oss."publicationStatus"', 'publicationStatus')
+      .addSelect(HAS_STATUS_SNAPSHOT_SQL, 'hasStatusSnapshot')
+      .addSelect(HAS_VALIDATION_MESSAGES_SQL, 'hasValidationMessages')
+      // DISTINCT to match what `findMany`'s `getCount()` compiles to
+      // (`COUNT(DISTINCT("mapping"."id"))`), not because today's joins can
+      // duplicate a row - they cannot, every one is unique-indexed on exactly
+      // its join key. `buildFilteredQuery` guarantees the two paths share their
+      // PREDICATES; it does not guarantee cardinality, so the day a 1:N join is
+      // added there the tab counts would silently inflate past the total while
+      // the list de-duplicated. Same count shape means that cannot happen.
+      .addSelect('COUNT(DISTINCT mapping.id)', 'count')
+      .groupBy('oss."publicationStatus"')
+      .addGroupBy(HAS_STATUS_SNAPSHOT_SQL)
+      .addGroupBy(HAS_VALIDATION_MESSAGES_SQL)
+      .getRawMany<OfferLifecycleCountRawRow>();
+
+    const counts = emptyOfferLifecycleCounts();
+    for (const row of rows) {
+      const publicationStatus = this.readPublicationStatus(row.publicationStatus);
+      const facts =
+        publicationStatus === null || !row.hasStatusSnapshot
+          ? null
+          : {
+              publicationStatus,
+              hasValidationMessages: row.hasValidationMessages,
+            };
+      // COUNT comes back as bigint (string) through the raw-query path.
+      counts[resolveOfferLifecycle(facts)] += Number(row.count);
+    }
+    return counts;
+  }
+
+  /**
+   * Narrow a persisted `publicationStatus` onto the closed neutral union.
+   *
+   * `offer_status_snapshots."publicationStatus"` is unconstrained `text`, so
+   * `resolveOfferLifecycle`'s exhaustive switch is total over the UNION but not
+   * over the COLUMN. Left untreated, an out-of-union value falls off the end of
+   * the switch as `undefined`: in the fold it lands on a stray `counts` key
+   * (`NaN`), disappears from all five buckets and serialises as
+   * `"undefined": null`; on the per-row path it produces a row on no tab. Both
+   * are silent under-counts that break the partition guarantee the whole design
+   * rests on.
+   *
+   * An unrecognised value is therefore folded into `Unsynced` - "no status we
+   * can read", which is honest and keeps the partition intact - and warn-logged
+   * so the condition is visible rather than merely survivable.
+   */
+  private readPublicationStatus(value: string | null): OfferPublicationStatus | null {
+    if (value === null) return null;
+    if (isOfferPublicationStatus(value)) return value;
+    this.logger.warn(
+      `offer_status_snapshots."publicationStatus" holds "${value}", which is outside ` +
+        'OfferPublicationStatusValues. Classifying the row as Unsynced. This needs a data ' +
+        'migration or a union change - see offer-status-read.types.ts.'
+    );
+    return null;
+  }
+
+  /**
+   * The join + filter shape shared by the list and its tab counts (#2025 /
+   * #2026). Extracted so neither can gain a predicate the other lacks: two
+   * copies of these clauses is exactly how a count starts disagreeing with the
+   * page it labels.
+   *
+   * Takes the wider `OfferMappingFilters` and deliberately never reads
+   * `lifecycle`: the bucket narrowing is the ONE clause the two callers must
+   * not share, so `findMany` attaches it afterwards via `applyLifecycleFilter`
+   * and `countByLifecycle` (whose `OfferMappingCountFilters` cannot carry one)
+   * never does.
+   */
+  private buildFilteredQuery(
+    filters: OfferMappingFilters
+  ): SelectQueryBuilder<IdentifierMappingOrmEntity> {
     const qb = this.repository.createQueryBuilder('mapping');
 
     // Cross-context read-model reporting joins onto the products context BY
@@ -189,43 +370,75 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       );
     }
 
-    // Counted before the projection/paging clauses are attached so the count
-    // is unambiguously the filtered total, independent of the raw select.
-    const total = await qb.getCount();
+    return qb;
+  }
 
-    qb.select('mapping.id', 'id')
-      .addSelect('mapping.entityType', 'entityType')
-      .addSelect('mapping.internalId', 'internalId')
-      .addSelect('mapping.externalId', 'externalId')
-      .addSelect('mapping.platformType', 'platformType')
-      .addSelect('mapping.connectionId', 'connectionId')
-      .addSelect('mapping.context', 'context')
-      .addSelect('mapping.createdAt', 'createdAt')
-      .addSelect('mapping.updatedAt', 'updatedAt')
-      .addSelect('pv."productId"', 'productId')
-      .addSelect('pv."sku"', 'variantSku')
-      .addSelect('pv."ean"', 'variantEan')
-      .addSelect('pv."attributes"', 'variantAttributes')
-      .addSelect('pv."isStale"', 'variantIsStale')
-      .addSelect('p."name"', 'productName')
-      .addSelect('p."images"', 'productImages')
-      .addSelect('oss."publicationStatus"', 'publicationStatus')
-      .addSelect('oss."statusDetails"', 'statusDetails')
-      .addSelect('oss."lastStatusSyncedAt"', 'lastStatusSyncedAt')
-      .addSelect('ocs."price"', 'commercialPrice')
-      .addSelect('ocs."currency"', 'commercialCurrency')
-      .addSelect('ocs."availableQuantity"', 'commercialAvailableQuantity')
-      .addSelect('ocs."lastCommercialSyncedAt"', 'lastCommercialSyncedAt');
+  /**
+   * Narrow the query to one lifecycle bucket (#2026).
+   *
+   * The predicate is GENERATED from `listSnapshotFactsForLifecycle`, which
+   * runs the TypeScript rule over the closed fact space - so reclassifying a
+   * publication status changes this WHERE clause with no SQL edit, and there
+   * is no hand-written second copy of the rule that could disagree with the
+   * per-row derivation.
+   */
+  private applyLifecycleFilter(
+    qb: SelectQueryBuilder<IdentifierMappingOrmEntity>,
+    lifecycle: OfferLifecycle
+  ): void {
+    // `Unsynced` is the complement of every snapshot fact - the absence of the
+    // joined row, which no fact combination can express. Branched on the bucket
+    // BY NAME rather than on "the rule yielded no facts", because an empty fact
+    // set means two different things: this bucket, OR a bucket that is not
+    // expressible from `OfferSnapshotFacts` at all. Conflating them would serve
+    // the Unsynced page for a future bucket keyed on variant staleness /
+    // snapshot age / a creation-record field - a wrong page, no error, no
+    // failing type-check, in a design where everything else fails loudly.
+    if (lifecycle === 'Unsynced') {
+      qb.andWhere(`NOT ${HAS_STATUS_SNAPSHOT_SQL}`);
+      return;
+    }
 
-    // `createdAt` alone is not unique, so a same-timestamp cluster could
-    // repeat or skip rows across pages; the id tiebreaker makes paging total.
-    qb.orderBy('mapping."createdAt"', 'DESC')
-      .addOrderBy('mapping."id"', 'DESC')
-      .offset(pagination.offset)
-      .limit(pagination.limit);
+    const facts = listSnapshotFactsForLifecycle(lifecycle);
+    if (facts.length === 0) {
+      throw new UnfilterableOfferLifecycleException(lifecycle);
+    }
 
-    const rows = await qb.getRawMany<OfferMappingListRawRow>();
-    return { items: rows.map((row) => this.toListItem(row)), total };
+    // A status whose BOTH message-presence values land in this bucket needs no
+    // jsonb inspection at all, so it collapses into a plain indexed `IN` - the
+    // Active and Ended tabs, i.e. the common case, never touch the blob.
+    const factsByStatus = new Map<OfferPublicationStatus, boolean[]>();
+    for (const { publicationStatus, hasValidationMessages } of facts) {
+      const seen = factsByStatus.get(publicationStatus) ?? [];
+      seen.push(hasValidationMessages);
+      factsByStatus.set(publicationStatus, seen);
+    }
+
+    const unconditionalStatuses: OfferPublicationStatus[] = [];
+    const terms: string[] = [];
+    const parameters: Record<string, unknown> = {};
+
+    for (const [publicationStatus, messagePresence] of factsByStatus) {
+      // Each fact combination is enumerated once, so more than one entry here
+      // means both `true` and `false` map to this bucket.
+      if (messagePresence.length > 1) {
+        unconditionalStatuses.push(publicationStatus);
+        continue;
+      }
+      const key = `lifecycleStatus${String(terms.length)}`;
+      parameters[key] = publicationStatus;
+      terms.push(
+        `(oss."publicationStatus" = :${key} AND ` +
+          `${messagePresence[0] ? '' : 'NOT '}${HAS_VALIDATION_MESSAGES_SQL})`
+      );
+    }
+
+    if (unconditionalStatuses.length > 0) {
+      parameters.lifecycleStatuses = unconditionalStatuses;
+      terms.push('oss."publicationStatus" IN (:...lifecycleStatuses)');
+    }
+
+    qb.andWhere(`${HAS_STATUS_SNAPSHOT_SQL} AND (${terms.join(' OR ')})`, parameters);
   }
 
   async countByConnectionAndVariants(
@@ -377,10 +590,15 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
   }
 
   private toChannelStatus(row: OfferMappingListRawRow): OfferMappingChannelStatus {
+    // Narrowed, not trusted: the column is unconstrained text, so an
+    // out-of-union value must not reach the exhaustive switch (see
+    // `readPublicationStatus`). It reads as Unsynced here for the same reason
+    // it does in the counts - one rule, one treatment of a value we cannot map.
+    const publicationStatus = this.readPublicationStatus(row.publicationStatus);
     // No snapshot row is the majority state on a large catalog (the scan is
     // hourly at 100 offers/tick), so it gets its own bucket rather than a
     // `null` that would leave the row on no lifecycle tab at all.
-    if (row.publicationStatus === null || row.lastStatusSyncedAt === null) {
+    if (publicationStatus === null || row.lastStatusSyncedAt === null) {
       return {
         publicationStatus: null,
         lifecycle: 'Unsynced',
@@ -388,10 +606,16 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
         lastStatusSyncedAt: null,
       };
     }
+    const validationMessages = readValidationMessages(row.statusDetails);
     return {
-      publicationStatus: row.publicationStatus,
-      lifecycle: deriveOfferLifecycle(row.publicationStatus, row.statusDetails),
-      validationMessages: readValidationMessages(row.statusDetails),
+      publicationStatus,
+      // Same function the tab counts fold their groups through (#2026), fed
+      // the same two facts - the list and its counts share one rule.
+      lifecycle: resolveOfferLifecycle({
+        publicationStatus,
+        hasValidationMessages: validationMessages.length > 0,
+      }),
+      validationMessages,
       lastStatusSyncedAt: row.lastStatusSyncedAt,
     };
   }

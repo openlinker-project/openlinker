@@ -44,6 +44,21 @@ export const OfferPublicationStatusValues = [
 export type OfferPublicationStatus = (typeof OfferPublicationStatusValues)[number];
 
 /**
+ * Narrow an arbitrary string onto the closed union.
+ *
+ * Needed because `offer_status_snapshots."publicationStatus"` is a plain `text`
+ * column with NO check constraint (see the persistence note above): TypeScript
+ * proves a `switch` over `OfferPublicationStatus` total, but it cannot prove the
+ * COLUMN only ever holds those five values. Any read path that classifies a
+ * persisted status must narrow through this guard rather than trusting the
+ * declared row type, or an out-of-union value silently falls off the end of an
+ * exhaustive switch as `undefined`.
+ */
+export function isOfferPublicationStatus(value: string): value is OfferPublicationStatus {
+  return (OfferPublicationStatusValues as readonly string[]).includes(value);
+}
+
+/**
  * Channel-side commercial observation carried alongside a status read (#2024).
  * Reuses `MarketplaceOfferPrice` (the same shape `OfferReader.getOffer`
  * returns) so a single price representation exists across both capabilities.

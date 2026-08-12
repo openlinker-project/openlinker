@@ -179,8 +179,10 @@ export class ListingsController {
       'Returns a paginated list of offer-to-variant mappings, each enriched in the same query with ' +
       'catalog identity (product name, variant, SKU, EAN, thumbnail), channel publication status ' +
       'plus its derived lifecycle bucket, and channel-side price/quantity with their freshness ' +
-      'timestamp. Supports filtering by connectionId and internalId, and a search spanning product ' +
-      'name, variant label, SKU, EAN and externalId.',
+      'timestamp. Supports filtering by connectionId, internalId and lifecycle bucket, and a ' +
+      'search spanning product name, variant label, SKU, EAN and externalId. Also returns ' +
+      '`lifecycleCounts` - one row count per bucket under the same filters minus the lifecycle ' +
+      'narrowing, so the tab bar stays live while a tab is selected.',
   })
   @ApiResponse({
     status: 200,
@@ -191,16 +193,24 @@ export class ListingsController {
   async listOfferMappings(
     @Query() query: ListOfferMappingsQueryDto
   ): Promise<PaginatedOfferMappingsResponseDto> {
-    const { connectionId, internalId, search, limit = 20, offset = 0 } = query;
+    const { connectionId, internalId, search, lifecycle, limit = 20, offset = 0 } = query;
 
-    const { items, total } = await this.offerMappingRepository.findMany(
-      { connectionId, internalId, search },
-      { limit, offset }
-    );
+    // Issued together, not sequentially: the counts are a second aggregate over
+    // the same join, so making the operator wait for two round-trips would be
+    // pure latency. `lifecycle` is deliberately NOT forwarded to the counts -
+    // they label every tab, not the selected one.
+    const [{ items, total }, lifecycleCounts] = await Promise.all([
+      this.offerMappingRepository.findMany(
+        { connectionId, internalId, search, lifecycle },
+        { limit, offset }
+      ),
+      this.offerMappingRepository.countByLifecycle({ connectionId, internalId, search }),
+    ]);
 
     return {
       items: items.map((m) => this.toListDto(m)),
       total,
+      lifecycleCounts,
       limit,
       offset,
     };
