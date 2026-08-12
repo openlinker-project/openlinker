@@ -736,7 +736,7 @@ describe('ListingsListPage', () => {
       expect(screen.getByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
 
       fireEvent.change(
-        screen.getByLabelText('Search listings by product name, SKU, EAN/GTIN or external ID'),
+        screen.getByLabelText('Search listings by product name, SKU, EAN or external ID'),
         { target: { value: 'brand new search term' } },
       );
 
@@ -822,6 +822,117 @@ describe('ListingsListPage', () => {
       // "taken offline" is Draft's defining case (a deliberately deactivated
       // offer), not Inactive's (validator-rejected) - it must not appear here.
       expect(screen.queryByText(/taken offline/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('toolbar rework (#2030)', () => {
+    const SECOND_CONNECTION = {
+      id: 'conn_1',
+      name: 'Main PrestaShop Store',
+      platformType: 'prestashop',
+      status: 'active',
+      config: {},
+      credentialsBacked: true,
+      adapterKey: 'prestashop.webservice.v1',
+      enabledCapabilities: ['ProductMaster'],
+      supportedCapabilities: ['ProductMaster'],
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+    };
+    const TWO_CONNECTIONS = [SECOND_CONNECTION, MISMATCHED_PLATFORM_CONNECTION];
+
+    it('renders the channel select with connection names, not raw ids or platform types, from one shared connections read', async () => {
+      const connectionsList = vi.fn().mockResolvedValue(TWO_CONNECTIONS);
+      const mockApi = createMockApiClient({
+        listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
+        connections: { list: connectionsList },
+      });
+
+      renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Doniczka ceramiczna Terra');
+      const select = screen.getByRole('combobox', { name: 'Filter by channel' });
+      const optionLabels = [...select.querySelectorAll('option')].map((o) => o.textContent);
+      expect(optionLabels).toEqual(['All channels', 'Main PrestaShop Store', 'Erli Demo']);
+      // Names only - never the raw connection id or its platformType string.
+      expect(screen.queryByText('conn_allegro_1')).not.toBeInTheDocument();
+      expect(screen.queryByText('prestashop')).not.toBeInTheDocument();
+      // The Connection column already reads `useConnectionsQuery()` once for the
+      // whole page (#1996) - the toolbar select must reuse that same result
+      // rather than firing a second connections request.
+      expect(connectionsList).toHaveBeenCalledTimes(1);
+    });
+
+    it('filters the request by the selected channel connection id', async () => {
+      const user = userEvent.setup();
+      const list = vi.fn().mockResolvedValue(sampleMappings);
+      const mockApi = createMockApiClient({
+        listings: { list },
+        connections: { list: vi.fn().mockResolvedValue(TWO_CONNECTIONS) },
+      });
+
+      renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Doniczka ceramiczna Terra');
+      const select = screen.getByRole('combobox', { name: 'Filter by channel' });
+      await user.selectOptions(select, 'conn_allegro_1');
+
+      await vi.waitFor(() => {
+        const [filters] = list.mock.calls.at(-1) ?? [];
+        expect((filters as { connectionId?: string } | undefined)?.connectionId).toBe(
+          'conn_allegro_1',
+        );
+      });
+      expect(select).toHaveValue('conn_allegro_1');
+    });
+
+    it('no longer renders the pre-#2030 raw connection-id text input', async () => {
+      const mockApi = createMockApiClient({
+        listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
+      });
+
+      renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Doniczka ceramiczna Terra');
+      expect(screen.queryByLabelText('Filter by connection ID')).not.toBeInTheDocument();
+      expect(screen.queryByPlaceholderText('Connection ID…')).not.toBeInTheDocument();
+    });
+
+    it('resets search, the channel filter and the lifecycle tab together when Clear is clicked, without a full reload', async () => {
+      const user = userEvent.setup();
+      const mockApi = createMockApiClient({
+        listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
+        connections: { list: vi.fn().mockResolvedValue(TWO_CONNECTIONS) },
+      });
+
+      renderWithProviders(<ListingsListPage />, {
+        apiClient: mockApi,
+        route: '/listings?search=terra&connectionId=conn_allegro_1&tab=draft',
+      });
+
+      await screen.findByText('Doniczka ceramiczna Terra');
+      expect(
+        screen.getByLabelText('Search listings by product name, SKU, EAN or external ID'),
+      ).toHaveValue('terra');
+      expect(screen.getByRole('combobox', { name: 'Filter by channel' })).toHaveValue(
+        'conn_allegro_1',
+      );
+      expect(screen.getByRole('tab', { name: /^Draft/ })).toHaveAttribute('aria-selected', 'true');
+
+      // A plain URL-state reset (react-router `setSearchParams`), never a full
+      // page reload - the table re-renders in place from the cleared params.
+      await user.click(screen.getByRole('button', { name: 'Clear' }));
+
+      await vi.waitFor(() => {
+        expect(screen.getByRole('tab', { name: /^Active/ })).toHaveAttribute(
+          'aria-selected',
+          'true',
+        );
+      });
+      expect(
+        screen.getByLabelText('Search listings by product name, SKU, EAN or external ID'),
+      ).toHaveValue('');
+      expect(screen.getByRole('combobox', { name: 'Filter by channel' })).toHaveValue('');
     });
   });
 });
