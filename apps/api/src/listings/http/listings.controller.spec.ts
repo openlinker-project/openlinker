@@ -110,6 +110,7 @@ describe('ListingsController', () => {
       countByConnectionAndVariants: jest.fn().mockResolvedValue(new Map<string, number>()),
       countListedVariantsByProducts: jest.fn().mockResolvedValue([]),
       findStaleMappedVariants: jest.fn().mockResolvedValue([]),
+      findRecentlyListedVariantIds: jest.fn().mockResolvedValue([]),
     };
     jobEnqueue = { enqueueJob: jest.fn() } as unknown as jest.Mocked<JobEnqueuePort>;
     offerCreationRecords = {

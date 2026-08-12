@@ -14,6 +14,7 @@ function buildRepoMock(): jest.Mocked<ShopProductMappingRepositoryPort> {
   return {
     countByConnectionAndVariants: jest.fn(),
     countListedVariantsByProducts: jest.fn(),
+    findRecentlyListedVariantIds: jest.fn(),
   };
 }
 

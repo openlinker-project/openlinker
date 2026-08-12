@@ -99,6 +99,7 @@ describe('ShipmentDispatchNotificationService', () => {
       findByIds: jest.fn(),
       updateFulfillmentState: jest.fn(),
       markItemResolutionFailure: jest.fn(),
+      getFailedSyncValueSummary: jest.fn(),
     };
 
     integrations = {

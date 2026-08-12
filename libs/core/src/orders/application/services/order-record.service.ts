@@ -16,6 +16,8 @@ import type { OrderSyncStatus, SyncAttempt } from '../../domain/types/order-sync
 import type { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import type {
+  FailedSyncValueSummary,
+  OrderHealthSummaryFilters,
   OrderRecordFilters,
   OrderRecordPagination,
   OrderRecordStatus,
@@ -314,6 +316,12 @@ export class OrderRecordService implements IOrderRecordService {
     // to any other column on the same row (e.g. a syncStatus update racing
     // in from OrderSyncService). Mirrors updateFulfillmentState's pattern.
     await this.repository.updateItemResolutionFailure(internalOrderId, input);
+  }
+
+  async getFailedSyncValueSummary(
+    filters: OrderHealthSummaryFilters
+  ): Promise<FailedSyncValueSummary> {
+    return this.repository.getFailedSyncValueSummary(filters);
   }
 
   /**

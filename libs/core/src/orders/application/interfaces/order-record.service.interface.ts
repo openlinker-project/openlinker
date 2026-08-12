@@ -11,6 +11,8 @@ import type { Order } from '../../domain/types/order.types';
 import type { OrderRecord, OrderSyncStatus } from '../../domain/entities/order-record.entity';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import type {
+  FailedSyncValueSummary,
+  OrderHealthSummaryFilters,
   OrderRecordFilters,
   OrderRecordPagination,
   OrderRecordStatus,
@@ -135,4 +137,14 @@ export interface IOrderRecordService {
     internalOrderId: string,
     input: { status: OrderRecordStatus; reason: string }
   ): Promise<void>;
+
+  /**
+   * "Value stuck in failed syncs" — the needs-attention aggregate (#1983).
+   * The cross-context surface `apps/api`'s analytics composition uses —
+   * repository ports are forbidden across context boundaries per
+   * architecture-overview.md § "Cross-context dependencies in core", so
+   * callers go through this service method instead of
+   * `OrderRecordRepositoryPort.getFailedSyncValueSummary` directly.
+   */
+  getFailedSyncValueSummary(filters: OrderHealthSummaryFilters): Promise<FailedSyncValueSummary>;
 }

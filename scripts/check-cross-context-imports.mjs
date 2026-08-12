@@ -427,6 +427,10 @@ const ALLOW_LIST = new Map([
     'apps/api/test/integration/order-column-sort.int-spec.ts',
     new Set(['OrderRecordRepositoryPort']),
   ],
+  [
+    'apps/api/test/integration/failed-sync-value-summary.int-spec.ts',
+    new Set(['OrderRecordRepositoryPort']),
+  ],
 
   // apps → products.{ProductRepositoryPort, ProductVariantRepositoryPort} — rewire via IProductsService
   ['apps/api/test/integration/products-read.int-spec.ts', new Set(['ProductRepositoryPort'])],

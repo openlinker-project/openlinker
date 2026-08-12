@@ -128,6 +128,7 @@ describe('ShipmentController', () => {
       findByIds: jest.fn().mockResolvedValue([]),
       updateFulfillmentState: jest.fn(),
       markItemResolutionFailure: jest.fn(),
+      getFailedSyncValueSummary: jest.fn(),
     };
     controller = new ShipmentController(
       query,

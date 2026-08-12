@@ -16,7 +16,11 @@ import type { CoreEntityType } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 import type { ShopProductMappingRepositoryPort } from '../../../domain/ports/shop-product-mapping-repository.port';
-import type { ProductListingsCoverage } from '../../../domain/types/offer-mapping.types';
+import type {
+  FindRecentlyListedVariantIdsOptions,
+  ProductListingsCoverage,
+  RecentlyListedVariant,
+} from '../../../domain/types/offer-mapping.types';
 
 const SHOP_PRODUCT_ENTITY_TYPE: CoreEntityType = CORE_ENTITY_TYPE.ShopProduct;
 
@@ -87,5 +91,31 @@ export class ShopProductMappingRepository implements ShopProductMappingRepositor
       platformType: row.platformType,
       listedVariants: Number(row.listedVariants),
     }));
+  }
+
+  async findRecentlyListedVariantIds(
+    options: FindRecentlyListedVariantIdsOptions
+  ): Promise<RecentlyListedVariant[]> {
+    const qb = this.repository
+      .createQueryBuilder('mapping')
+      .select('mapping.internalId', 'internalId')
+      .addSelect('pv."productId"', 'productId')
+      .addSelect('MAX(mapping.createdAt)', 'latestMappedAt')
+      // Read-model reporting join onto the products-context table by name -
+      // no cross-context ORM-entity import (mirrors OfferMappingRepository).
+      .innerJoin('product_variants', 'pv', 'pv."id" = mapping."internalId"')
+      .where('mapping.entityType = :entityType', { entityType: SHOP_PRODUCT_ENTITY_TYPE })
+      .andWhere('pv."isStale" IS NOT TRUE')
+      .groupBy('mapping.internalId')
+      .addGroupBy('pv."productId"')
+      .orderBy('"latestMappedAt"', 'DESC')
+      .limit(options.limit);
+
+    if (options.connectionId) {
+      qb.andWhere('mapping.connectionId = :connectionId', { connectionId: options.connectionId });
+    }
+
+    const rows = await qb.getRawMany<{ internalId: string; productId: string }>();
+    return rows.map((row) => ({ variantId: row.internalId, productId: row.productId }));
   }
 }

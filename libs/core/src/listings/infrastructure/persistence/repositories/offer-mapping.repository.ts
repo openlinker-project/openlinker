@@ -16,10 +16,12 @@ import { IdentifierMapping } from '@openlinker/core/identifier-mapping';
 import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 import type { OfferMappingRepositoryPort } from '../../../domain/ports/offer-mapping-repository.port';
 import type {
+  FindRecentlyListedVariantIdsOptions,
   OfferMappingFilters,
   OfferMappingPagination,
   PaginatedOfferMappings,
   ProductListingsCoverage,
+  RecentlyListedVariant,
   StaleMappedVariant,
 } from '../../../domain/types/offer-mapping.types';
 
@@ -212,6 +214,32 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       externalOfferId: row.externalOfferId,
       staleAt: row.staleAt,
     }));
+  }
+
+  async findRecentlyListedVariantIds(
+    options: FindRecentlyListedVariantIdsOptions
+  ): Promise<RecentlyListedVariant[]> {
+    const qb = this.repository
+      .createQueryBuilder('mapping')
+      .select('mapping.internalId', 'internalId')
+      .addSelect('pv."productId"', 'productId')
+      .addSelect('MAX(mapping.createdAt)', 'latestMappedAt')
+      // Read-model reporting join onto the products-context table by name -
+      // no cross-context ORM-entity import (mirrors countListedVariantsByProducts).
+      .innerJoin('product_variants', 'pv', 'pv."id" = mapping."internalId"')
+      .where('mapping.entityType = :entityType', { entityType: OFFER_ENTITY_TYPE })
+      .andWhere('pv."isStale" IS NOT TRUE')
+      .groupBy('mapping.internalId')
+      .addGroupBy('pv."productId"')
+      .orderBy('"latestMappedAt"', 'DESC')
+      .limit(options.limit);
+
+    if (options.connectionId) {
+      qb.andWhere('mapping.connectionId = :connectionId', { connectionId: options.connectionId });
+    }
+
+    const rows = await qb.getRawMany<{ internalId: string; productId: string }>();
+    return rows.map((row) => ({ variantId: row.internalId, productId: row.productId }));
   }
 
   private toDomain(entity: IdentifierMappingOrmEntity): IdentifierMapping {

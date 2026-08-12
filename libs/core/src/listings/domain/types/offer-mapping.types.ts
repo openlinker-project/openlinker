@@ -70,3 +70,24 @@ export interface StaleMappedVariant {
   externalOfferId: string;
   staleAt: Date;
 }
+
+/**
+ * Options for `findRecentlyListedVariantIds` (#1983 needs-attention aggregates).
+ * Shared by `OfferMappingRepositoryPort` and `ShopProductMappingRepositoryPort`
+ * so both listing kinds expose the identical candidate-pool read shape.
+ */
+export interface FindRecentlyListedVariantIdsOptions {
+  /** Scope to one connection; omit to enumerate across every connection. */
+  connectionId?: string;
+  /** Maximum number of distinct variants to return. */
+  limit: number;
+}
+
+/**
+ * One row of `findRecentlyListedVariantIds` — the variant id plus its parent
+ * product id, so a caller can build a deep-link without a second lookup.
+ */
+export interface RecentlyListedVariant {
+  variantId: string;
+  productId: string;
+}

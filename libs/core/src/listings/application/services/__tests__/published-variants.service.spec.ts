@@ -17,10 +17,12 @@ describe('PublishedVariantsService', () => {
       countByConnectionAndVariants: jest.fn(),
       countListedVariantsByProducts: jest.fn(),
       findStaleMappedVariants: jest.fn(),
+      findRecentlyListedVariantIds: jest.fn(),
     };
     shopRepo = {
       countByConnectionAndVariants: jest.fn(),
       countListedVariantsByProducts: jest.fn(),
+      findRecentlyListedVariantIds: jest.fn(),
     };
     service = new PublishedVariantsService(offerRepo, shopRepo);
   });

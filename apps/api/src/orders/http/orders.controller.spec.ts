@@ -68,6 +68,7 @@ describe('OrdersController', () => {
       updateSyncStatus: jest.fn(),
       findMany: jest.fn(),
       countByHealth: jest.fn(),
+      getFailedSyncValueSummary: jest.fn(),
       countBySla: jest.fn(),
       updateFulfillmentState: jest.fn(),
       updateItemResolutionFailure: jest.fn(),
