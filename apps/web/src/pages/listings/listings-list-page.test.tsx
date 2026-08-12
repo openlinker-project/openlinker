@@ -683,5 +683,108 @@ describe('ListingsListPage', () => {
       expect(screen.getAllByRole('tab')).toHaveLength(5);
       expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(5);
     });
+
+    it("keeps every tab's already-known count visible - no skeleton reappears - while a switched-to tab is still loading its own rows", async () => {
+      const user = userEvent.setup();
+      const list = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ...sampleMappings,
+          lifecycleCounts: { Active: 7, Inactive: 3, Draft: 2, Ended: 1, Unsynced: 0 },
+        })
+        // The Draft tab's own fetch never resolves in this test - it is the
+        // "still loading" window the skeleton must not reappear during.
+        .mockReturnValueOnce(new Promise(() => {}));
+      const mockApi = createMockApiClient({ listings: { list } });
+
+      const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Doniczka ceramiczna Terra');
+      expect(screen.getByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
+
+      await user.click(screen.getByRole('tab', { name: /^Draft/ }));
+
+      // The Draft tab's own request is now pending (a fresh query key with no
+      // cached data), which used to blank every badge - including the four
+      // that did not just change - back to skeleton.
+      expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(0);
+      expect(screen.getByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Inactive 3' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Draft 2' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Ended 1' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Unsynced 0' })).toBeInTheDocument();
+    });
+
+    it("separates a tab's label from its count badge in the accessible name", async () => {
+      const mockApi = createMockApiClient({
+        listings: {
+          list: vi.fn().mockResolvedValue({
+            ...sampleMappings,
+            lifecycleCounts: { Active: 7, Inactive: 3, Draft: 2, Ended: 1, Unsynced: 0 },
+          }),
+        },
+      });
+
+      renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Doniczka ceramiczna Terra');
+      // A missing separator collapses the JSX whitespace entirely, so the
+      // accessible name would read the run-on "Active7" instead of "Active 7".
+      expect(screen.getByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Inactive 3' })).toBeInTheDocument();
+    });
+
+    it('announces via a live region once the tab counts resolve from skeleton to real numbers', async () => {
+      const mockApi = createMockApiClient({
+        listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
+      });
+
+      renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      expect(screen.getByText('Loading listing counts…')).toBeInTheDocument();
+      await screen.findByText('Doniczka ceramiczna Terra');
+      expect(screen.getByText('Listing counts loaded.')).toBeInTheDocument();
+      expect(screen.queryByText('Loading listing counts…')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('lifecycle tab empty-state copy (#2042 review)', () => {
+    it("does not overclaim the Draft bucket will go live, and avoids a double negative", async () => {
+      const mockApi = createMockApiClient({
+        listings: { list: vi.fn().mockResolvedValue(emptyPage()) },
+      });
+
+      renderWithProviders(<ListingsListPage />, {
+        apiClient: mockApi,
+        route: '/listings?tab=draft',
+      });
+
+      expect(await screen.findByText('No draft listings')).toBeInTheDocument();
+      expect(
+        screen.getByText('Nothing here is currently live, and none of it has been rejected.'),
+      ).toBeInTheDocument();
+      // Draft carries offers an operator deliberately deactivated and will
+      // never relist - the copy must not promise a future "will go live".
+      expect(screen.queryByText(/without being live yet/)).not.toBeInTheDocument();
+    });
+
+    it("does not borrow Draft's definition into the Inactive tab's empty state", async () => {
+      const mockApi = createMockApiClient({
+        listings: { list: vi.fn().mockResolvedValue(emptyPage()) },
+      });
+
+      renderWithProviders(<ListingsListPage />, {
+        apiClient: mockApi,
+        route: '/listings?tab=inactive',
+      });
+
+      expect(await screen.findByText('No inactive listings')).toBeInTheDocument();
+      expect(
+        screen.getByText('Nothing here has been rejected by a channel validator.'),
+      ).toBeInTheDocument();
+      // "taken offline" is Draft's defining case (a deliberately deactivated
+      // offer), not Inactive's (validator-rejected) - it must not appear here.
+      expect(screen.queryByText(/taken offline/)).not.toBeInTheDocument();
+    });
   });
 });

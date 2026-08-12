@@ -1,4 +1,11 @@
-import { useCallback, useMemo, useState, type ReactElement, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -34,6 +41,7 @@ import { useDemoMode } from '../../features/system';
 import type {
   ListingsFilters,
   OfferLifecycle,
+  OfferLifecycleCounts,
   OfferMapping,
 } from '../../features/listings/api/listings.types';
 
@@ -82,15 +90,17 @@ const LIFECYCLE_TABS: readonly LifecycleTabDef[] = [
     lifecycle: 'Inactive',
     label: 'Inactive',
     emptyTitle: 'No inactive listings',
-    emptyMessage:
-      'Nothing here has been rejected by a channel validator, or otherwise taken offline.',
+    emptyMessage: 'Nothing here has been rejected by a channel validator.',
   },
   {
     key: 'draft',
     lifecycle: 'Draft',
     label: 'Draft',
     emptyTitle: 'No draft listings',
-    emptyMessage: 'Nothing here exists on a channel without being live yet.',
+    // Deliberately NOT "not live yet" - Draft also holds an offer an operator
+    // deliberately deactivated weeks ago and will never relist
+    // (offer-lifecycle.types.ts), so the copy must not promise a future state.
+    emptyMessage: 'Nothing here is currently live, and none of it has been rejected.',
   },
   {
     key: 'ended',
@@ -342,6 +352,22 @@ export function ListingsListPage(): ReactElement {
 
   const query = useListingsQuery(filters, pagination);
 
+  /**
+   * Held separately from `query.data` so a tab switch - a distinct query key,
+   * hence `query.isLoading` true for that fetch - does not blank every tab's
+   * count badge back to skeleton (#2029 round 1 review). The five buckets are
+   * unaffected by which tab is active (the backend excludes `lifecycle` from
+   * the counts aggregate), so the last-known value stays correct while the
+   * new tab's own rows load; only the very first-ever load has nothing to
+   * fall back on and shows the skeleton.
+   */
+  const [lifecycleCounts, setLifecycleCounts] = useState<OfferLifecycleCounts | null>(null);
+  useEffect(() => {
+    if (query.data) {
+      setLifecycleCounts(query.data.lifecycleCounts);
+    }
+  }, [query.data]);
+
   const platforms = usePlatforms();
   // One batched read for the whole page - the Connection column must never cost
   // a request per row (#1996).
@@ -528,20 +554,33 @@ export function ListingsListPage(): ReactElement {
         <TabsList aria-label="Listing lifecycle">
           {LIFECYCLE_TABS.map((def) => (
             <TabsTrigger key={def.key} value={def.key}>
-              {def.label}
+              {/* Explicit {' '} - not JSX whitespace, which collapses away
+                  entirely - so the accessible name reads "Active 7", not the
+                  run-on "Active7" (#2029 round 1 review). */}
+              {def.label}{' '}
               <span className="tabs__count">
                 {/* A count that snaps from 0 to its real value reads as a
                     bug (#2029 / mockup frame 04) - render a skeleton line
-                    instead of a placeholder zero while it's unknown. */}
-                {query.isLoading ? (
+                    instead of a placeholder zero while it's unknown. Once any
+                    counts have ever loaded, a tab switch keeps showing them
+                    (rather than reverting to skeleton) so switching tabs never
+                    blanks the four buckets that did not just change. */}
+                {lifecycleCounts === null && query.isLoading ? (
                   <span className="tabs__count-skeleton" aria-hidden="true" />
                 ) : (
-                  query.data?.lifecycleCounts?.[def.lifecycle] ?? '—'
+                  (lifecycleCounts ?? query.data?.lifecycleCounts)?.[def.lifecycle] ?? '—'
                 )}
               </span>
             </TabsTrigger>
           ))}
         </TabsList>
+        {/* Screen-reader-only counterpart to the skeleton-to-number transition
+            above: DataTableSkeleton uses the same role/aria-live pattern for
+            the row table, so the tab bar announces its own loading -> loaded
+            transition the same way (#2029 round 1 review). */}
+        <span className="sr-only" role="status" aria-live="polite">
+          {lifecycleCounts ? 'Listing counts loaded.' : 'Loading listing counts…'}
+        </span>
 
         <TabsContent value={tab}>
           {query.isLoading ? (

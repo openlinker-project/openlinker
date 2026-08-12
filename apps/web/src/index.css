@@ -5640,6 +5640,28 @@ a.kpi-card:focus-visible {
   outline: none;
 }
 
+/* ── Listings lifecycle tab bar: scroll, don't wrap, at phone widths
+   (#2029 / #2042 round 1) ───────────────────────────────────────────
+   Five buckets (the original four plus Unsynced) no longer fit unwrapped at
+   360px, so this bar scrolls horizontally instead of wrapping each trigger
+   onto two lines. Scoped to this page's own aria-label, not a shared rule -
+   the mapping tab bar's own mobile treatment (`aria-label='Mapping types'`,
+   above) targets the wrong element there and isn't a working reference. */
+@media (max-width: 640px) {
+  .tabs__list[aria-label='Listing lifecycle'] {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tabs__list[aria-label='Listing lifecycle']::-webkit-scrollbar {
+    display: none;
+  }
+  .tabs__list[aria-label='Listing lifecycle'] .tabs__trigger {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+}
+
 /*
  * ── Phase 5 primitives — SetupStepper ────────────────────────────────
  * Horizontal stepper used by multi-step setup wizards. The full list
