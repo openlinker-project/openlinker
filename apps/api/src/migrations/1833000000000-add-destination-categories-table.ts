@@ -13,7 +13,16 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
 export class AddDestinationCategoriesTable1833000000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
-    // Accelerates the `searchText LIKE '%…%'` predicate via gin_trgm_ops.
+    // Provisioned for the `searchText LIKE '%…%'` predicate via gin_trgm_ops.
+    //
+    // MEASURED, so the expectation stays honest: at ~20k rows (roughly one
+    // Allegro tree) the planner prefers a Seq Scan (cost 558) over this index
+    // (cost 1188) — it is only chosen with `enable_seqscan=off`. Real queries
+    // also filter by scope, which narrows further and favours the scan more. It
+    // is kept because the table holds EVERY scope's rows (each marketplace owner
+    // and each shop connection adds a tree), so the row count grows past the
+    // crossover with the installation; drop it if that never materialises.
+    //
     // Correctness does NOT depend on it — the repository deliberately uses LIKE
     // rather than the `%` similarity operator, which would error outright where
     // the extension is unavailable (e.g. the synchronize-built test schema).

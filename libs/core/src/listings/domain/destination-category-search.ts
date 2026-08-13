@@ -25,6 +25,12 @@
  * Letters that NFD does NOT decompose, because they are distinct letters rather
  * than a base letter plus a combining mark.
  *
+ * The list is ADDITIVE — it covers the letters the shipped destinations
+ * actually use, not every such letter in Unicode. Turkish `ı` (U+0131) and
+ * Icelandic `þ`/`ð` belong to the same class and are deliberately absent until
+ * a destination needs them; add them here rather than reaching for a
+ * transliteration dependency.
+ *
  * `ł` (U+0142) is the one that matters here and is easy to miss: `Odzież`
  * normalizes fine (`ż` is `z` + combining dot above), but `Artykuły` would keep
  * its `ł` forever, so an operator typing `artykuly` would get nothing — in a

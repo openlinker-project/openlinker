@@ -107,6 +107,13 @@ export class DestinationTaxonomyService implements IDestinationTaxonomyService {
     // enqueued twice, and a cycle would grow the frontier faster than
     // `pageLimit` drains it — so the run would never complete and the watermark
     // sweep would never fire.
+    //
+    // SCOPE: this guard is WITHIN A RUN. `enqueued` is seeded from the resumed
+    // `pending` list, not from nodes already expanded on earlier pages, so a
+    // node expanded in an earlier page can still be re-enqueued if a later page
+    // reaches it from a second parent. That holds for a strict tree (one parent
+    // per node, expanded once) and is bounded by the frontier-age guard;
+    // persisting the expanded set is the real fix, tracked as **#2061**.
     const pending: (string | null)[] = resumed ? [...new Set(resumed.pending)] : [null];
     const enqueued = new Set<string>(pending.filter((id): id is string => id !== null));
 
@@ -183,9 +190,13 @@ export class DestinationTaxonomyService implements IDestinationTaxonomyService {
    * `TaxonomyBorrower` only identifies a *borrower* (Erli); nothing declares
    * that an Allegro connection *owns* `'allegro'`. So an owning marketplace's
    * owner value comes from its `platformType`, validated against the closed
-   * `TaxonomyOwnerValues` set — a membership check that throws on an unlisted
-   * platform, so a new marketplace cannot silently write rows under a bogus
-   * owner (which would be a data migration to undo).
+   * `TaxonomyOwnerValues` set by the shared `resolveTaxonomyOwner` helper.
+   *
+   * That helper returns `null` for an unlisted platform rather than throwing —
+   * resolution then falls through to the `ProductPublisher` probe, and only the
+   * final throw below reports it (with a message naming the real cause). The
+   * net effect is what matters: a new marketplace cannot silently write rows
+   * under a bogus owner, which would be a data migration to undo.
    */
   private async resolveDestination(connectionId: string): Promise<{
     scope: TaxonomyScope;

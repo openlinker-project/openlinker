@@ -21,6 +21,9 @@
  */
 import {
   DESTINATION_CATEGORY_REPOSITORY_TOKEN,
+  DESTINATION_TAXONOMY_SERVICE_TOKEN,
+  TaxonomySourceUnavailableException,
+  type IDestinationTaxonomyService,
   type DestinationCategory,
   type DestinationCategorySearchHit,
   type DestinationCategoryUpsert,
@@ -33,6 +36,7 @@ import {
   resetTestHarness,
   teardownTestHarness,
 } from './setup';
+import { createTestConnection } from './helpers/test-connection.helper';
 
 /**
  * Structural handle for the repository this spec resolves out of the container.
@@ -66,12 +70,16 @@ const SHOP_SCOPE: TaxonomyScope = { taxonomyOwner: null, connectionId: SHOP_CONN
 describe('Destination taxonomy projection (#1979)', () => {
   let harness: IntegrationTestHarness;
   let repository: TaxonomyRepositoryHandle;
+  let service: IDestinationTaxonomyService;
 
   beforeAll(async () => {
     harness = await getTestHarness();
     repository = harness
       .getApp()
       .get<TaxonomyRepositoryHandle>(DESTINATION_CATEGORY_REPOSITORY_TOKEN);
+    service = harness
+      .getApp()
+      .get<IDestinationTaxonomyService>(DESTINATION_TAXONOMY_SERVICE_TOKEN);
   });
 
   afterEach(async () => {
@@ -290,6 +298,28 @@ describe('Destination taxonomy projection (#1979)', () => {
       await repository.deleteStaleBelow(ALLEGRO_SCOPE, new Date('2026-03-01T00:00:00Z'));
 
       await expect(repository.browse(SHOP_SCOPE, null)).resolves.toHaveLength(1);
+    });
+  });
+
+  describe('service wiring', () => {
+    // The repository cases above bypass the service, so nothing else proves the
+    // module actually resolves it — a missing provider or a mis-bound token
+    // would leave every unit test green.
+    it('should resolve IDestinationTaxonomyService from the container', () => {
+      expect(service).toBeDefined();
+      expect(typeof service.browse).toBe('function');
+      expect(typeof service.search).toBe('function');
+    });
+
+    it('should reject a connection with no taxonomy capability', async () => {
+      // A bare PrestaShop connection supports neither OfferManager nor
+      // ProductPublisher, so scope resolution has nothing to key on. Asserted
+      // end-to-end because the failure mode is a real operator misconfiguration.
+      const connection = await createTestConnection(harness.getDataSource());
+
+      await expect(service.resolveScope(connection.id)).rejects.toBeInstanceOf(
+        TaxonomySourceUnavailableException,
+      );
     });
   });
 });
