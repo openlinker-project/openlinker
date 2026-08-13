@@ -250,19 +250,22 @@ export class DestinationCategoryRepository implements DestinationCategoryReposit
     );
   }
 
-  async countObserved(scope: TaxonomyScope, runStartedAt: Date): Promise<number> {
+  async hasObserved(scope: TaxonomyScope, runStartedAt: Date): Promise<boolean> {
+    // `SELECT 1 … LIMIT 1`, not `COUNT(*)`: the caller needs one bit, and
+    // counting would scan the scope's whole row set to produce it.
     const rows = (await this.ormRepository.query(
       `
-        SELECT COUNT(*)::int AS count
+        SELECT 1
         FROM destination_categories
         WHERE $1::text IS NOT DISTINCT FROM "taxonomyOwner"
           AND $2::uuid IS NOT DISTINCT FROM "connectionId"
           AND "syncedAt" = $3
+        LIMIT 1
       `,
       [scope.taxonomyOwner, scope.connectionId, runStartedAt],
-    )) as { count: number }[];
+    )) as unknown[];
 
-    return rows[0]?.count ?? 0;
+    return rows.length > 0;
   }
 
   async deleteStaleBelow(scope: TaxonomyScope, syncedAt: Date): Promise<number> {

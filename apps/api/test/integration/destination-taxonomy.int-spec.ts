@@ -66,7 +66,7 @@ interface TaxonomyRepositoryHandle {
     externalIds: readonly string[],
     runStartedAt: Date,
   ): Promise<void>;
-  countObserved(scope: TaxonomyScope, runStartedAt: Date): Promise<number>;
+  hasObserved(scope: TaxonomyScope, runStartedAt: Date): Promise<boolean>;
 }
 
 
@@ -346,7 +346,7 @@ describe('Destination taxonomy projection (#1979)', () => {
       const runStartedAt = new Date('2026-08-13T10:00:00.123Z');
       await repository.upsertMany(ALLEGRO_SCOPE, [node('a', null, false)], runStartedAt);
 
-      await expect(repository.countObserved(ALLEGRO_SCOPE, runStartedAt)).resolves.toBe(1);
+      await expect(repository.hasObserved(ALLEGRO_SCOPE, runStartedAt)).resolves.toBe(true);
       await expect(
         repository.findExpandable(ALLEGRO_SCOPE, runStartedAt, 10),
       ).resolves.toEqual(['a']);

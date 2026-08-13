@@ -83,7 +83,7 @@ function buildService(options: {
     upsertMany: jest.fn().mockResolvedValue(0),
     findExpandable: jest.fn().mockResolvedValue([]),
     markExpanded: jest.fn().mockResolvedValue(undefined),
-    countObserved: jest.fn().mockResolvedValue(0),
+    hasObserved: jest.fn().mockResolvedValue(false),
     deleteStaleBelow: jest.fn().mockResolvedValue(0),
     ...options.repository,
   } as unknown as jest.Mocked<DestinationCategoryRepositoryPort>;
@@ -346,9 +346,9 @@ describe('DestinationTaxonomyService', () => {
           return Promise.resolve();
         },
 
-        countObserved: (_scope: TaxonomyScope, runStartedAt: Date): Promise<number> =>
+        hasObserved: (_scope: TaxonomyScope, runStartedAt: Date): Promise<boolean> =>
           Promise.resolve(
-            [...rows.values()].filter((row) => row.syncedAt === runStartedAt.getTime()).length,
+            [...rows.values()].some((row) => row.syncedAt === runStartedAt.getTime()),
           ),
       } as unknown as DestinationCategoryRepositoryPort;
     }
@@ -596,6 +596,34 @@ describe('DestinationTaxonomyService', () => {
       // The watermark is handed back untouched, so the holder's run continues.
       expect(result.nextRunStartedAt).toBe('2026-08-13T10:00:00.000Z');
       expect(repository.deleteStaleBelow).not.toHaveBeenCalled();
+    });
+
+    it('should not let a lock-release failure mask the run result', async () => {
+      // A bare `await release()` in the finally would replace the successful
+      // result with the Redis error, sending an operator to debug the wrong
+      // system. Mirrors the `orderCreateLock` precedent.
+      const { service, syncLock } = buildService({
+        adaptersByConnection: { [ALLEGRO_CONNECTION]: allegroWithTree() },
+        repository: inMemoryRepository(),
+      });
+      syncLock.release.mockRejectedValue(new Error('redis down'));
+
+      await expect(
+        service.syncTaxonomy(ALLEGRO_CONNECTION, { runStartedAt: null }),
+      ).resolves.toMatchObject({ completed: expect.any(Boolean) });
+    });
+
+    it('should not let a lock-release failure mask the run error', async () => {
+      const { service, syncLock } = buildService({
+        adaptersByConnection: { [ALLEGRO_CONNECTION]: allegroOfferManagerNoBrowse() },
+        repository: inMemoryRepository(),
+      });
+      syncLock.release.mockRejectedValue(new Error('redis down'));
+
+      // The REAL cause must survive, not the release failure.
+      await expect(
+        service.syncTaxonomy(ALLEGRO_CONNECTION, { runStartedAt: null }),
+      ).rejects.toBeInstanceOf(TaxonomySourceUnavailableException);
     });
 
     it('should release the scope lock even when the run throws', async () => {

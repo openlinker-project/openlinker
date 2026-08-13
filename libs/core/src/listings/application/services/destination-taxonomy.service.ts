@@ -131,7 +131,18 @@ export class DestinationTaxonomyService implements IDestinationTaxonomyService {
     try {
       return await this.runSync(connectionId, scope, openBrowse(), input);
     } finally {
-      await this.syncLock.release(lockKey, lockToken);
+      // Best-effort release — never let a release failure mask the run's result.
+      // A bare `await` here would replace a real `TaxonomySourceUnavailableException`
+      // (or a successful result) with a Redis error, sending the operator to debug
+      // the wrong system. Same shape as `orderCreateLock` / `shipmentDispatchLock`.
+      try {
+        await this.syncLock.release(lockKey, lockToken);
+      } catch (releaseError) {
+        this.logger.warn(
+          `Failed to release taxonomy sync lock ${lockKey}: ` +
+            `${releaseError instanceof Error ? releaseError.message : String(releaseError)}`,
+        );
+      }
     }
   }
 
@@ -182,9 +193,9 @@ export class DestinationTaxonomyService implements IDestinationTaxonomyService {
       // describes a run whose rows are missing entirely — a resumed watermark
       // whose rows were deleted, or a root browse that returned nothing because
       // the platform hiccuped. Sweeping on that reading deletes the whole scope.
-      const observed = await this.repository.countObserved(scope, runStartedAt);
+      const observed = await this.repository.hasObserved(scope, runStartedAt);
 
-      if (observed === 0) {
+      if (!observed) {
         this.logger.error(
           `Taxonomy run for connection ${connectionId} observed zero categories; ` +
             `skipping the staleness sweep so an empty or lost response cannot delete the scope. ` +
@@ -197,7 +208,7 @@ export class DestinationTaxonomyService implements IDestinationTaxonomyService {
 
       this.logger.log(
         `destination.taxonomy.sync completed (connection=${connectionId}, ` +
-          `scope=${this.describeScope(scope)}): observed=${observed}, removed=${removed}`,
+          `scope=${this.describeScope(scope)}): upserted=${upserted}, removed=${removed}`,
       );
     }
 

@@ -67,14 +67,18 @@ export interface DestinationCategoryRepositoryPort {
   ): Promise<void>;
 
   /**
-   * How many rows in scope this run has observed.
+   * Whether this run has observed ANY row in scope.
    *
    * Guards the sweep. "The frontier is empty" alone does NOT mean the run
    * finished its work — it also describes a run whose rows are missing entirely
    * (a resumed watermark whose rows were deleted, or a root browse that
    * returned nothing). Sweeping on that reading deletes the whole scope.
+   *
+   * A boolean, not a count: the caller only asks "did this run see anything",
+   * and answering it with `COUNT(*)` would scan every row in the scope on the
+   * completing tick to produce one bit.
    */
-  countObserved(scope: TaxonomyScope, runStartedAt: Date): Promise<number>;
+  hasObserved(scope: TaxonomyScope, runStartedAt: Date): Promise<boolean>;
 
   /**
    * Watermark sweep: rows the completing run did not observe are gone upstream.
