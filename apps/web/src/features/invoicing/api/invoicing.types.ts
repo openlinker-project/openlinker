@@ -14,6 +14,8 @@
  * @module apps/web/src/features/invoicing/api
  */
 
+import type { OrderSummary } from '../../../shared/types/order-summary.types';
+
 /** Backend invoice lifecycle statuses (no FE-derived `not-issued` — that is the
  *  absence of a row, modelled as `null` from the query). `issuing` (W1 #1214)
  *  is a live-lease in-flight state: an attempt holds the row and no second
@@ -77,28 +79,6 @@ export const DocumentTypeValues = [
   'prepayment',
 ] as const;
 export type DocumentType = (typeof DocumentTypeValues)[number];
-
-/**
- * Order-identity projection (#1995) mirroring the API's
- * `OrderSummaryProjectionDto` — backs the shared `OrderIdentityCell` (#1996).
- * `null` when no order record resolves for the row's `orderId`, or its
- * snapshot has no parseable items.
- */
-export interface OrderSummary {
-  /** Source-native order number from the order snapshot; null when absent. */
-  orderNumber: string | null;
-  /** The order's first line item's display name; null when unavailable. */
-  firstItemName: string | null;
-  /**
-   * The order's first line item's image URL, frozen at order-snapshot time
-   * (NOT the live product catalog image); null when the source never
-   * populated it — the common case today, since no adapter sets
-   * `OrderItem.imageUrl` on ingestion yet.
-   */
-  firstItemImageUrl: string | null;
-  /** The order's full item count (not the number of items projected here). */
-  itemCount: number;
-}
 
 /**
  * Exact field set of `InvoiceRecordResponseDto`. Dates are ISO strings;
