@@ -417,6 +417,44 @@ describe('AutoIssueTriggerService', () => {
       expect(syncJobs.schedule).not.toHaveBeenCalled();
       expect(errorSpy).not.toHaveBeenCalled();
     });
+
+    // Selection runs BEFORE the trigger model is read, so a primary on a
+    // `manual` connection turns auto-issue off for the whole install. That is a
+    // legitimate operator choice, but it must not be indistinguishable from
+    // "the trigger never fired".
+    it('should warn once when the chosen primary is manual while sibling candidates exist', async () => {
+      const connections = [
+        makeConnection('manual', {
+          id: 'conn-primary',
+          config: { invoicing: { triggerModel: 'manual', isPrimary: true } },
+        }),
+        makeConnection('auto-on-paid', { id: 'conn-sibling' }),
+      ];
+      connectionPort.list.mockResolvedValue(connections);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      const manualWarnings = warnSpy.mock.calls.filter(([message]) =>
+        message.includes('triggerModel=manual'),
+      );
+      expect(manualWarnings).toHaveLength(1);
+      expect(manualWarnings[0][0]).toContain('conn-primary');
+    });
+
+    it('should not warn about a manual connection when it is the only candidate', async () => {
+      // With one candidate there is no sibling being passed over, so the manual
+      // setting is simply the operator invoicing by hand — nothing to diagnose.
+      connectionPort.list.mockResolvedValue([makeConnection('manual', { id: 'only' })]);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      expect(
+        warnSpy.mock.calls.filter(([message]) => message.includes('triggerModel=manual')),
+      ).toHaveLength(0);
+    });
   });
 
   describe('selected-connection isolation + PII-safe catch (F9/D11)', () => {

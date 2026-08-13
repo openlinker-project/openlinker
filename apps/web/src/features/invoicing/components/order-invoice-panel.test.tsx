@@ -167,7 +167,72 @@ describe('OrderInvoicePanel — capability/toggle gate', () => {
     expect(screen.getByRole('option', { name: 'Alpha' })).toBeInTheDocument();
     expect(screen.getByText(/Automatic invoicing is off for this order/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /issue invoice/i })).toBeDisabled();
-    expect(screen.getByRole('link', { name: /set a primary/i })).toBeInTheDocument();
+    // The link has to land somewhere the flag can actually be set — a
+    // connection's own page — not on the list, which carries no such control.
+    expect(screen.getByRole('link', { name: /set a primary/i })).toHaveAttribute(
+      'href',
+      '/connections/conn_aaa',
+    );
+  });
+
+  it('keeps the lock warning after a pick even when NO connection is primary (#2047)', async () => {
+    // Picking clears the "auto-issue is off" warning, which is exactly the
+    // moment the operator most needs to be told the pick is one-way.
+    const user = userEvent.setup();
+    const a = { ...invoicingConnection, id: 'conn_aaa', name: 'Alpha' };
+    const b = { ...invoicingConnection, id: 'conn_zzz', name: 'Zeta' };
+    renderWithProviders(<OrderInvoicePanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([b, a]) },
+        invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+      }),
+      ...adminSession,
+    });
+    const picker = await screen.findByRole('combobox', { name: /issue on/i });
+    expect(screen.queryByText(/The order locks to whichever connection you pick/i)).toBeNull();
+
+    await user.selectOptions(picker, 'conn_zzz');
+
+    expect(screen.queryByText(/Automatic invoicing is off/i)).toBeNull();
+    expect(
+      screen.getByText(/The order locks to whichever connection you pick/i),
+    ).toBeInTheDocument();
+  });
+
+  it('names the other connections when one order carries documents on several (#2047)', async () => {
+    // The guard makes this unreachable for new documents, but rows that predate
+    // it exist — and the panel shows only the latest, so it must say so.
+    const a = { ...invoicingConnection, id: CONN_ID, name: 'Subiekt GT' };
+    const b = { ...invoicingConnection, id: 'conn_ksef', name: 'KSeF production' };
+    renderWithProviders(<OrderInvoicePanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([a, b]) },
+        invoicing: {
+          getForOrder: vi
+            .fn()
+            .mockResolvedValue(makeInvoice({ otherInvoicingConnectionIds: ['conn_ksef'] })),
+        },
+      }),
+      ...adminSession,
+    });
+
+    expect(
+      await screen.findByText(/documents on more than one connection/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/KSeF production/)).toBeInTheDocument();
+  });
+
+  it('stays silent about duplicates when the order has only one issuing connection', async () => {
+    renderWithProviders(<OrderInvoicePanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: { getForOrder: vi.fn().mockResolvedValue(makeInvoice()) },
+      }),
+      ...adminSession,
+    });
+
+    await screen.findByText(/Issued by/i);
+    expect(screen.queryByText(/documents on more than one connection/i)).toBeNull();
   });
 
   it('with >1 candidate and a configured primary: preselects + labels it, Issue enabled (#2047)', async () => {

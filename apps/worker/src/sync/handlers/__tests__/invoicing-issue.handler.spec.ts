@@ -69,6 +69,7 @@ describe('InvoicingIssueHandler', () => {
       getInvoice: jest.fn(),
       getInvoiceById: jest.fn(),
       getLatestInvoiceForOrder: jest.fn(),
+      listInvoiceConnectionIdsForOrder: jest.fn().mockResolvedValue([]),
       getLatestInvoicesForOrders: jest.fn(),
       listInvoices: jest.fn(),
       issueCorrection: jest.fn(),

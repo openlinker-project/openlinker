@@ -290,6 +290,7 @@ describe('InvoicingController', () => {
       getInvoiceById: jest.fn().mockResolvedValue(null),
       // #2047: the connection-agnostic read backing GET without a connectionId.
       getLatestInvoiceForOrder: jest.fn().mockResolvedValue(null),
+      listInvoiceConnectionIdsForOrder: jest.fn().mockResolvedValue([]),
       listInvoices: jest.fn(),
       applyRegulatoryClearance: jest.fn(),
     } as unknown as jest.Mocked<IInvoiceService>;
@@ -859,6 +860,41 @@ describe('InvoicingController', () => {
         NotFoundException,
       );
     });
+
+    // #2047: the panel renders only the latest record, so a pre-existing
+    // duplicate on another provider has to be named or it silently disappears.
+    it('reports OTHER connections holding a record for the order (connectionId omitted)', async () => {
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getLatestInvoiceForOrder.mockResolvedValue(makeInvoiceRecord());
+      // 'conn_1' is the returned record's own connection (see makeInvoiceRecord).
+      invoiceService.listInvoiceConnectionIdsForOrder.mockResolvedValue(['conn_1', 'conn_other']);
+
+      const result = await controller.getInvoiceForOrder('ol_order_1', {});
+
+      // The record's OWN connection is not "another" connection.
+      expect(result.otherInvoicingConnectionIds).toEqual(['conn_other']);
+    });
+
+    it('omits otherInvoicingConnectionIds entirely when only one connection holds a record', async () => {
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getLatestInvoiceForOrder.mockResolvedValue(makeInvoiceRecord());
+      invoiceService.listInvoiceConnectionIdsForOrder.mockResolvedValue(['conn_1']);
+
+      const result = await controller.getInvoiceForOrder('ol_order_1', {});
+
+      expect(result).not.toHaveProperty('otherInvoicingConnectionIds');
+    });
+
+    it('does NOT look for duplicates when the caller named a connection', async () => {
+      // A caller that named a connection asked about that connection; the
+      // cross-connection question is not theirs, and the extra read is not paid.
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getInvoice.mockResolvedValue(makeInvoiceRecord());
+
+      await controller.getInvoiceForOrder('ol_order_1', { connectionId: invoicingConn });
+
+      expect(invoiceService.listInvoiceConnectionIdsForOrder).not.toHaveBeenCalled();
+    });
   });
 
   // #2047: the write-path guard surfaces as a 409 naming the issuing connection.
@@ -1218,6 +1254,25 @@ describe('InvoicingController', () => {
         outcome: 'skipped',
         reason: expect.stringContaining('already in progress'),
       });
+    });
+
+    // #2047: a cross-connection block is a skip, and its ids belong to ANOTHER
+    // connection — so they go in `reason`, never in `invoiceId`, which the DTO
+    // documents as the record THIS batch's connection produced.
+    it('should report a cross-connection block as skipped WITHOUT claiming an invoiceId', async () => {
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getInvoice.mockResolvedValue(null);
+      invoiceService.issueInvoice.mockRejectedValue(
+        new OrderAlreadyInvoicedException('ol_order_1', 'conn_other', CONN, 'issued', 'rec-block'),
+      );
+
+      const res = await controller.bulkIssueInvoices({ connectionId: CONN, orderIds: ['ol_order_1'] });
+
+      expect(res.skipped).toBe(1);
+      expect(res.failed).toBe(0);
+      expect(res.results[0]).not.toHaveProperty('invoiceId');
+      expect(res.results[0].reason).toContain('conn_other');
+      expect(res.results[0].reason).toContain('rec-block');
     });
 
     it('should de-duplicate repeated order ids so an order is issued at most once', async () => {

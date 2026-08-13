@@ -847,6 +847,14 @@ export class InvoiceService implements IInvoiceService {
     return this.repo.findLatestByOrderId(orderId);
   }
 
+  async listInvoiceConnectionIdsForOrder(orderId: string): Promise<string[]> {
+    // Same newest-first read the #2047 guard uses, projected to distinct
+    // connections. An order holds a handful of rows at most, so de-duplicating
+    // in memory beats a second, DISTINCT-shaped repository method.
+    const records = await this.repo.findAllByOrderId(orderId);
+    return [...new Set(records.map((record) => record.connectionId))];
+  }
+
   async getLatestInvoicesForOrders(orderIds: string[]): Promise<InvoiceRecord[]> {
     return this.repo.findLatestByOrderIds(orderIds);
   }

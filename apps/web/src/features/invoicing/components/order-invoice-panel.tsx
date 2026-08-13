@@ -257,7 +257,10 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
   // nothing picked yet" state, which is exactly when auto-issue also does nothing.
   const showConnectionPicker = !invoice && invoicingConnections.length > 1;
   const requiresConnectionPick = showConnectionPicker && issuableConnection === null;
-  const hasPrimaryCandidate = invoicingConnections.some((c) => isPrimaryInvoicingConnection(c));
+  // Where "Set a primary" should land. `/connections` is a list with no such
+  // control on it; the setting lives on a connection's own page, so send the
+  // operator to a real candidate. Deterministic (candidates are id-sorted).
+  const setPrimaryTarget = invoicingConnections[0] ?? null;
 
   const connectionPicker = showConnectionPicker ? (
     <div className="order-invoice-panel__connection">
@@ -283,6 +286,13 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
       </Select>
     </div>
   ) : null;
+
+  // Names for the other connections holding a record for this order (#2047).
+  // Falls back to the raw id when OL no longer knows the connection — a
+  // duplicate on a since-deleted provider is still a duplicate worth naming.
+  const duplicateConnectionNames = (invoice?.otherInvoicingConnectionIds ?? []).map(
+    (id) => allConnections.find((c) => c.id === id)?.name ?? id,
+  );
 
   const showRegulatoryBadge = Boolean(invoice && invoice.regulatoryStatus !== 'not-applicable');
   // Connections a failed+rejected order could legitimately move to: every other
@@ -368,13 +378,45 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
         </div>
       ) : null}
 
-      {showConnectionPicker && !requiresConnectionPick && hasPrimaryCandidate ? (
+      {/* The lock warning is about the pick, not about the primary — it must
+          also show once the operator has picked on an install with NO primary,
+          which is exactly the moment the "auto-issue is off" warning above
+          disappears. Gating it on `hasPrimaryCandidate` used to leave that
+          moment with no lock warning at all. */}
+      {showConnectionPicker && !requiresConnectionPick ? (
         <p className="order-invoice-panel__notice">
           {t(
             'invoice.panel.lockWarning',
             'Not invoiced yet. The order locks to whichever connection you pick and this list disappears. Nothing is sent until you click Issue.',
           )}
         </p>
+      ) : null}
+
+      {/* Pre-existing cross-connection duplicate (#2047). The guard makes this
+          unreachable for newly issued documents, but rows that predate it still
+          exist and this panel now renders only the latest one — so say it out
+          loud rather than letting the older document disappear from the order. */}
+      {duplicateConnectionNames.length > 0 ? (
+        <div className="order-invoice-panel__body">
+          <Alert tone="warning">
+            <strong>
+              {t(
+                'invoice.panel.duplicateTitle',
+                'This order has documents on more than one connection.',
+              )}
+            </strong>{' '}
+            {t(
+              'invoice.panel.duplicateBody',
+              'One sale should have one invoice. Below is the most recent record; another exists on',
+            )}{' '}
+            {duplicateConnectionNames.join(', ')}
+            {'. '}
+            {t(
+              'invoice.panel.duplicateAdvice',
+              'Check both providers and correct whichever document should not have been issued.',
+            )}
+          </Alert>
+        </div>
       ) : null}
 
       {/* Invoice query error (not not-issued — must not masquerade as absent) */}
@@ -525,6 +567,16 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
           </div>
           {canRetryInvoice(invoice) && write.visible ? (
             <div className="order-invoice-panel__actions">
+              {/* The reassurance and the escape hatch answer different questions
+                  ("is Retry safe?" vs "can I move provider?"), so they are not
+                  alternatives — rendering only one meant an operator who had a
+                  second connection never saw why Retry was safe at all. */}
+              <span className="text-muted" style={{ fontSize: '11.5px' }}>
+                {t(
+                  'invoice.failed.retryHint',
+                  'Rejected — nothing was issued, so it is safe to retry once the cause is fixed.',
+                )}
+              </span>
               {switchCandidates.length > 0 && switchTargetId === null ? (
                 <Button
                   tone="secondary"
@@ -533,14 +585,7 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
                 >
                   {t('invoice.failed.switchOpen', 'Issue on a different connection')}
                 </Button>
-              ) : (
-                <span className="text-muted" style={{ fontSize: '11.5px' }}>
-                  {t(
-                    'invoice.failed.retryHint',
-                    'Rejected — nothing was issued, so it is safe to retry once the cause is fixed.',
-                  )}
-                </span>
-              )}
+              ) : null}
               <span className="spacer" />
               <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
                 <Button
@@ -684,8 +729,11 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
             disabled={issueMutation.isPending || write.demoReadOnly}
             className="order-invoice-panel__doc-type"
           />
-          {requiresConnectionPick ? (
-            <Link className="button button--secondary" to="/connections">
+          {requiresConnectionPick && setPrimaryTarget ? (
+            <Link
+              className="button button--secondary"
+              to={`/connections/${setPrimaryTarget.id}`}
+            >
               {t('invoice.panel.setPrimary', 'Set a primary')}
             </Link>
           ) : null}

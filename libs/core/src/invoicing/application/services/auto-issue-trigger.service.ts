@@ -104,6 +104,17 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
    */
   private readonly shippedViabilityWarned = new Set<string>();
 
+  /**
+   * #2047 one-time diagnosis: connection ids already warned about being the
+   * chosen primary while carrying a `manual` trigger model on an install that
+   * has OTHER invoicing candidates. Selection runs before the trigger model is
+   * read, so naming the primary on a `manual` connection turns auto-issue off
+   * for the WHOLE install even though a sibling is `auto-on-paid`. That is the
+   * operator's call to make, but without this line it is indistinguishable from
+   * "the trigger never fired". Warned ONCE per connection, not per order.
+   */
+  private readonly manualPrimaryWarned = new Set<string>();
+
   constructor(
     @Inject(CONNECTION_PORT_TOKEN)
     private readonly connectionPort: ConnectionPort,
@@ -159,6 +170,15 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
 
     const connection = connections.find((candidate) => candidate.id === selection.connectionId);
     if (connection === undefined) {
+      // Unreachable: `selection.connectionId` is always an id this method just
+      // read out of `connections`. Logged rather than returned silently because
+      // this method's whole contract is "at most one job, and never quietly
+      // none" — a silent return here would be indistinguishable from the
+      // legitimate `none` / `manual` skips while actually being a defect.
+      this.logger.error(
+        `Auto-issue skipped: selected connection ${selection.connectionId} vanished from the ` +
+          `candidate list it was chosen from. orderId=${order.id} sourceEventId=${sourceEventId ?? 'n/a'}`,
+      );
       return;
     }
 
@@ -168,6 +188,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     // surfacing as an order-ingestion failure).
     try {
       const triggerModel = parseTriggerModel(connection.config.invoicing?.triggerModel);
+      this.warnOnceIfManualPrimaryDisablesInstall(triggerModel, connection.id, connections.length);
 
       if (!this.qualifies(order, triggerModel, connection.id)) {
         return;
@@ -202,6 +223,37 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     } catch (error) {
       this.logIssuanceFailure(error, connection.id, order.id, sourceEventId);
     }
+  }
+
+  /**
+   * #2047 one-time viability warning, the `manual` counterpart of F7's
+   * `auto-on-shipped` one. Selection (which connection) happens BEFORE the
+   * trigger model (whether it auto-issues) is read, so a primary set on a
+   * `manual` connection silently turns auto-issue off for the entire install —
+   * a sibling `auto-on-paid` connection never gets a look. Warn ONCE per
+   * connection so the deliberate choice and the misconfiguration are
+   * distinguishable without flooding the log on every qualifying order.
+   * PII-clean: connection id + candidate count only.
+   */
+  private warnOnceIfManualPrimaryDisablesInstall(
+    triggerModel: InvoiceTriggerModel,
+    connectionId: string,
+    candidateCount: number,
+  ): void {
+    if (triggerModel !== 'manual' || candidateCount < 2) {
+      return;
+    }
+    if (this.manualPrimaryWarned.has(connectionId)) {
+      return;
+    }
+    this.manualPrimaryWarned.add(connectionId);
+    this.logger.warn(
+      `Primary invoicing connection ${connectionId} has triggerModel=manual, so NO connection ` +
+        `auto-issues on this install (${candidateCount} candidates). One sale is one invoice, so ` +
+        `the primary is resolved before the trigger model is read — a sibling connection set to ` +
+        `auto-on-paid is deliberately not consulted. Set the primary on the connection that should ` +
+        `auto-issue, or leave this one primary if manual issuing is intended.`,
+    );
   }
 
   /**

@@ -119,6 +119,20 @@ export interface IInvoiceService {
   getLatestInvoiceForOrder(orderId: string): Promise<InvoiceRecord | null>;
 
   /**
+   * Distinct invoicing connection ids that hold ANY `InvoiceRecord` for this
+   * order, in newest-record-first order (#2047). Projection read — NEVER queries
+   * the provider/adapter. Returns `[]` for an order with no records.
+   *
+   * More than one entry means one sale carries documents on several providers.
+   * The #2047 guard makes that unreachable going forward, but it says nothing
+   * about rows that already existed — and those are exactly the population that
+   * needs looking at. Without this read the order-detail panel, which now shows
+   * only the single latest record, would quietly hide the duplicate instead of
+   * naming it.
+   */
+  listInvoiceConnectionIdsForOrder(orderId: string): Promise<string[]>;
+
+  /**
    * Batch counterpart of {@link getLatestInvoiceForOrder} (#1713): the latest
    * `InvoiceRecord` for each of the given order ids, at most one per order.
    * Projection read — NEVER queries the provider/adapter. Backs the orders-list

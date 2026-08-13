@@ -677,11 +677,18 @@ export class InvoicingController {
         // batch — the document exists (or may exist), so one sale still has one
         // invoice. Report it as `skipped` with a neutral reason naming the
         // connection that holds it, exactly like the already-issued branch above.
+        //
+        // `invoiceId` is deliberately NOT set: the DTO documents it as the record
+        // this batch's connection issued, and the blocking record lives on a
+        // DIFFERENT one. A caller resolving it against the batch connection would
+        // look the id up in the wrong place, so the ids go in the neutral `reason`
+        // where they read as provenance rather than as this batch's output.
         return {
           orderId,
           outcome: 'skipped',
-          invoiceId: error.blockingInvoiceId,
-          reason: `An invoice for this order already exists on connection ${error.issuingConnectionId}.`,
+          reason:
+            `An invoice for this order already exists on connection ${error.issuingConnectionId} ` +
+            `(invoice ${error.blockingInvoiceId}, status ${error.blockingStatus}).`,
         };
       }
       if (error instanceof DuplicateInvoiceRecordException) {
@@ -1088,7 +1095,21 @@ export class InvoicingController {
     if (!invoice) {
       throw new NotFoundException(`No invoice for order: ${orderId}`);
     }
-    return this.toDto(invoice);
+    const dto = this.toDto(invoice);
+    // #2047: only the connection-agnostic branch can answer "does this order
+    // carry documents on more than one provider?", and only it needs to — a
+    // caller that named a connection asked about that connection. The extra read
+    // is one indexed lookup over the handful of rows an order holds, and the
+    // field is omitted entirely in the (overwhelmingly common) single-connection
+    // case, so the response shape only grows where it has something to report.
+    if (query.connectionId === undefined) {
+      const connectionIds = await this.invoiceService.listInvoiceConnectionIdsForOrder(orderId);
+      const others = connectionIds.filter((id) => id !== invoice.connectionId);
+      if (others.length > 0) {
+        dto.otherInvoicingConnectionIds = others;
+      }
+    }
+    return dto;
   }
 
   @Get('invoices')

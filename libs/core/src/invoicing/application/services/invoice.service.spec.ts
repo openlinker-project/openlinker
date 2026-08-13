@@ -790,6 +790,39 @@ describe('InvoiceService', () => {
     });
   });
 
+  // #2047: the panel renders only the LATEST record, so it needs a way to say
+  // "there is another document elsewhere" for rows that predate the guard.
+  describe('listInvoiceConnectionIdsForOrder (#2047)', () => {
+    it('should return the distinct connections holding a record, newest first', async () => {
+      repo.findAllByOrderId.mockResolvedValue([
+        makeRecord({ id: 'r1', connectionId: 'conn-b' }),
+        makeRecord({ id: 'r2', connectionId: 'conn-a' }),
+      ]);
+
+      expect(await service.listInvoiceConnectionIdsForOrder('order-1')).toEqual([
+        'conn-b',
+        'conn-a',
+      ]);
+    });
+
+    it('should collapse several records on one connection into a single entry', async () => {
+      // An original + its correction both live on the issuing connection; that is
+      // one provider, not two, and must not read as a cross-connection duplicate.
+      repo.findAllByOrderId.mockResolvedValue([
+        makeRecord({ id: 'kor', connectionId: 'conn-a' }),
+        makeRecord({ id: 'orig', connectionId: 'conn-a' }),
+      ]);
+
+      expect(await service.listInvoiceConnectionIdsForOrder('order-1')).toEqual(['conn-a']);
+    });
+
+    it('should return an empty list for an order with no records', async () => {
+      repo.findAllByOrderId.mockResolvedValue([]);
+
+      expect(await service.listInvoiceConnectionIdsForOrder('order-1')).toEqual([]);
+    });
+  });
+
   describe('fiscal-safety lease invariant (#1200)', () => {
     it('keeps the CAS lease strictly above the max supported provider timeout (enforced by construction, not by comment)', () => {
       // If this ever fails, an expired lease could be re-claimed while the

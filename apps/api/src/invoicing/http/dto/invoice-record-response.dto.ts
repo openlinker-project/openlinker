@@ -18,7 +18,7 @@
  *
  * @module apps/api/src/invoicing/http/dto
  */
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type {
   InvoiceFailureCode,
   InvoiceFailureMode,
@@ -113,6 +113,18 @@ export class InvoiceRecordResponseDto {
       "Order-identity projection (#1995) for the unified Order cell — null when no order record resolves for `orderId`, or its snapshot has no parseable items. Only populated on the list endpoint (`GET /invoices`); single-invoice reads pass null (not fetched there).",
   })
   orderSummary!: OrderSummaryProjectionDto | null;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'OTHER invoicing connections that also hold a record for this order (#2047). Populated ' +
+      'only by `GET /orders/:orderId/invoice` called WITHOUT `connectionId`, and only when the ' +
+      'list is non-empty — so its presence means one sale carries documents on more than one ' +
+      'provider. The one-invoice-per-order guard makes that unreachable for newly issued ' +
+      'documents, but rows that predate it still exist, and a read that returns only the latest ' +
+      'record would otherwise hide exactly the duplicates worth looking at.',
+  })
+  otherInvoicingConnectionIds?: string[];
 
   /**
    * @param orderSummary Batched order-identity projection (#1995), or `null`
