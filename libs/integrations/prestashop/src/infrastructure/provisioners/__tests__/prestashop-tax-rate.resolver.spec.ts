@@ -3,6 +3,7 @@
  *
  * @module libs/integrations/prestashop/src/infrastructure/provisioners
  */
+import { Logger } from '@openlinker/shared/logging';
 import { PrestashopTaxRateResolver } from '../prestashop-tax-rate.resolver';
 import type { PrestashopCountryResolver } from '../prestashop-country-resolver';
 import { PrestashopApiException } from '../../../domain/exceptions/prestashop-api.exception';
@@ -12,6 +13,7 @@ describe('PrestashopTaxRateResolver', () => {
   let httpClient: ReturnType<typeof createMockHttpClient>;
   let countryResolver: jest.Mocked<PrestashopCountryResolver>;
   let resolver: PrestashopTaxRateResolver;
+  let warn: jest.SpyInstance;
 
   beforeEach(() => {
     httpClient = createMockHttpClient();
@@ -19,6 +21,13 @@ describe('PrestashopTaxRateResolver', () => {
       resolveCountryId: jest.fn(),
     } as unknown as jest.Mocked<PrestashopCountryResolver>;
     resolver = new PrestashopTaxRateResolver(countryResolver);
+    // Several #2052 paths are deliberately non-blocking, so the warn is the
+    // only operator-visible trace they leave — assert it, don't just silence it.
+    warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
   });
 
   it('should resolve 0 when the product has no tax-rule group', async () => {
@@ -30,6 +39,59 @@ describe('PrestashopTaxRateResolver', () => {
 
     expect(resolution).toEqual({ kind: 'resolved', rate: 0 });
     expect(httpClient.listResources).not.toHaveBeenCalled();
+  });
+
+  it('should warn on the "No tax" path so a mis-configured product is still findable in the logs', async () => {
+    // The path is deliberately non-blocking, which makes the warn the ONLY
+    // trace an operator who did not mean to exempt the product ever gets.
+    httpClient.getResource.mockResolvedValueOnce({ id_tax_rules_group: '0' });
+
+    await resolver.resolveProductTaxRate('100', undefined, 'conn-1', httpClient);
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('PrestaShop "No tax"'));
+  });
+
+  // An explicit `0` is an answer; an ABSENT field is not. Collapsing the two was
+  // the surviving half of the #2052 defect — the product priced as untaxed AND
+  // the wrong answer entered the 5-minute cache.
+  it('should report a configuration unknown when the product read carries no tax-rule group field', async () => {
+    httpClient.getResource.mockResolvedValueOnce({});
+
+    const resolution = await resolver.resolveProductTaxRate('25', 'PL', 'conn-1', httpClient);
+
+    expect(resolution).toEqual({
+      kind: 'unknown',
+      reason: 'configuration',
+      evidence: 'products/25 carries no tax-rule group',
+    });
+    expect(httpClient.listResources).not.toHaveBeenCalled();
+  });
+
+  it('should report a configuration unknown when the tax-rule group is unparseable', async () => {
+    httpClient.getResource.mockResolvedValueOnce({ id_tax_rules_group: 'not-a-group' });
+
+    const resolution = await resolver.resolveProductTaxRate('25', 'PL', 'conn-1', httpClient);
+
+    expect(resolution).toEqual({
+      kind: 'unknown',
+      reason: 'configuration',
+      evidence: "products/25 reports an unusable tax-rule group 'not-a-group'",
+    });
+  });
+
+  it('should not cache a missing tax-rule group, so the operator fix takes effect at once', async () => {
+    countryResolver.resolveCountryId.mockResolvedValue(6);
+    httpClient.listResources.mockResolvedValue([{ id_tax: '7', id_country: '6', id_state: '0' }]);
+    httpClient.getResource
+      .mockResolvedValueOnce({}) // products/25 — field absent
+      .mockResolvedValueOnce({ id_tax_rules_group: '2' }) // operator assigned a group
+      .mockResolvedValueOnce({ rate: '23.000' });
+
+    const first = await resolver.resolveProductTaxRate('25', 'PL', 'conn-1', httpClient);
+    const second = await resolver.resolveProductTaxRate('25', 'PL', 'conn-1', httpClient);
+
+    expect(first.kind).toBe('unknown');
+    expect(second.kind === 'resolved' && second.rate).toBeCloseTo(0.23, 5);
   });
 
   it('should resolve the delivery-country rule and return its rate as a fraction', async () => {
@@ -90,6 +152,7 @@ describe('PrestashopTaxRateResolver', () => {
       kind: 'unknown',
       reason: 'transport',
       evidence: 'GET products/25 returned 503',
+      statusCode: 503,
     });
   });
 
@@ -221,5 +284,64 @@ describe('PrestashopTaxRateResolver', () => {
 
     expect(first.kind === 'unknown' && first.reason).toBe('transport');
     expect(second.kind === 'resolved' && second.rate).toBeCloseTo(0.23, 5);
+  });
+
+  // The other two reads on the chain used to throw raw, so a 503 there produced
+  // a generic PrestaShop error instead of the operator copy this resolver owns.
+  it('should report a transport unknown when the tax-rule listing fails', async () => {
+    httpClient.getResource.mockResolvedValueOnce({ id_tax_rules_group: '2' });
+    countryResolver.resolveCountryId.mockResolvedValueOnce(6);
+    httpClient.listResources.mockRejectedValueOnce(new PrestashopApiException('boom', 502));
+
+    const resolution = await resolver.resolveProductTaxRate('25', 'PL', 'conn-1', httpClient);
+
+    expect(resolution).toEqual({
+      kind: 'unknown',
+      reason: 'transport',
+      evidence: 'GET tax_rules?id_tax_rules_group=2 returned 502',
+      statusCode: 502,
+    });
+  });
+
+  it('should report a transport unknown when the tax record read fails', async () => {
+    httpClient.getResource
+      .mockResolvedValueOnce({ id_tax_rules_group: '2' })
+      .mockRejectedValueOnce(new PrestashopApiException('boom', 503));
+    countryResolver.resolveCountryId.mockResolvedValueOnce(6);
+    httpClient.listResources.mockResolvedValueOnce([{ id_tax: '7', id_country: '6', id_state: '0' }]);
+
+    const resolution = await resolver.resolveProductTaxRate('25', 'PL', 'conn-1', httpClient);
+
+    expect(resolution).toEqual({
+      kind: 'unknown',
+      reason: 'transport',
+      evidence: 'GET taxes/7 returned 503',
+      statusCode: 503,
+    });
+  });
+
+  // `evidence` is rendered to the operator, not logged, so an unbounded upstream
+  // error message must not flow into it verbatim.
+  it('should cap the error detail carried into the evidence clause', async () => {
+    httpClient.getResource.mockRejectedValueOnce(new Error('x'.repeat(500)));
+
+    const resolution = await resolver.resolveProductTaxRate('25', 'PL', 'conn-1', httpClient);
+
+    expect(resolution.kind === 'unknown' && resolution.evidence.length).toBeLessThan(140);
+    expect(resolution.kind === 'unknown' && resolution.evidence).toContain('…');
+  });
+
+  it('should warn when the delivery country cannot be resolved and the catch-all rule is used', async () => {
+    // Falling through to the catch-all silently picks a possibly different rate
+    // than the delivery country's — a pricing decision, so it warns (#2052).
+    countryResolver.resolveCountryId.mockRejectedValueOnce(new Error('country lookup failed'));
+    httpClient.getResource
+      .mockResolvedValueOnce({ id_tax_rules_group: '2' })
+      .mockResolvedValueOnce({ rate: '23.000' });
+    httpClient.listResources.mockResolvedValueOnce([{ id_tax: '7', id_country: '0', id_state: '0' }]);
+
+    await resolver.resolveProductTaxRate('25', 'PL', 'conn-1', httpClient);
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('using catch-all tax rule'));
   });
 });

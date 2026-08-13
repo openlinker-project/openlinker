@@ -34,9 +34,26 @@ export interface PrestashopTaxRateUnknown {
    * `tax rule 7 in group 2 carries no rate` or `GET products/25 returned 503`.
    * It is embedded verbatim in the exception message the frontend renders, so
    * it must stay short and name a record the operator can open in the shop's
-   * admin — never a stack trace or a raw response body.
+   * admin — never a stack trace or a raw response body. The resolver enforces
+   * the "short" half by capping any interpolated error text at
+   * {@link TAX_RATE_EVIDENCE_DETAIL_MAX}.
    */
   readonly evidence: string;
+  /**
+   * HTTP status of the failed read, when the platform reported one. Carried so
+   * the caller can re-raise a `PrestashopApiException` that still classifies
+   * (auth failure, rate limit) instead of an exception with a blank status.
+   * Only ever set for `reason: 'transport'`.
+   */
+  readonly statusCode?: number;
 }
+
+/**
+ * Cap on the free-text error detail interpolated into `evidence`. A transport
+ * failure with no HTTP status carries the raw `error.message`, which can be an
+ * arbitrarily long socket/parse error — and `evidence` is rendered to the
+ * operator, not logged.
+ */
+export const TAX_RATE_EVIDENCE_DETAIL_MAX = 80;
 
 export type PrestashopTaxRateResolution = PrestashopTaxRateResolved | PrestashopTaxRateUnknown;

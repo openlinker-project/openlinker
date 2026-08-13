@@ -13,12 +13,14 @@
  * the order's delivery country when resolvable (PS taxes on the delivery address
  * by default), else the catch-all (`id_country = 0`) rule, else the first rule.
  *
- * **"Untaxed" and "unknown" are different answers (#2052).** A product with no
- * tax-rule group resolves to `0` — `id_tax_rules_group = 0` is the "No tax"
+ * **"Untaxed" and "unknown" are different answers (#2052).** A product whose
+ * `id_tax_rules_group` is an explicit `0` resolves to `0` — that is the "No tax"
  * entry in PrestaShop's own product dropdown, i.e. a deliberate operator
  * statement, and blocking on it would refuse every intentionally exempt
- * product. Everything that means "the read did not tell me the rate" reports
- * `kind: 'unknown'` instead, because the caller pins a tax-EXCLUDED price and a
+ * product. An *absent* or unparseable group is a different thing entirely (the
+ * read did not state the product's tax status), so the three cases stay
+ * distinguishable. Everything that means "the read did not tell me the rate"
+ * reports `kind: 'unknown'`, because the caller pins a tax-EXCLUDED price and a
  * `0` it cannot trust silently mis-prices the order (#895 / ADR-014). Only a
  * resolved rate is cached: caching an unknown would keep the wrong answer alive
  * for the rest of the TTL and make an operator's fix look like it did nothing.
@@ -29,7 +31,11 @@ import { Logger } from '@openlinker/shared/logging';
 import { PrestashopApiException } from '../../domain/exceptions/prestashop-api.exception';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import type { PrestashopCountryResolver } from './prestashop-country-resolver';
-import type { PrestashopTaxRateResolution } from './prestashop-tax-rate.types';
+import type {
+  PrestashopTaxRateResolution,
+  PrestashopTaxRateUnknown,
+} from './prestashop-tax-rate.types';
+import { TAX_RATE_EVIDENCE_DETAIL_MAX } from './prestashop-tax-rate.types';
 
 interface PrestashopProductTaxRow {
   id_tax_rules_group?: string | number;
@@ -102,30 +108,48 @@ export class PrestashopTaxRateResolver {
     countryId: number | undefined,
     webserviceClient: IPrestashopWebserviceClient
   ): Promise<PrestashopTaxRateResolution> {
-    let groupId: number;
+    let product: PrestashopProductTaxRow | undefined;
     try {
-      const product = await webserviceClient.getResource<PrestashopProductTaxRow>(
+      product = await webserviceClient.getResource<PrestashopProductTaxRow>(
         'products',
         externalProductId
       );
-      groupId = this.toInt(product?.id_tax_rules_group);
     } catch (error) {
-      const detail =
-        error instanceof PrestashopApiException && error.statusCode !== undefined
-          ? `returned ${error.statusCode}`
-          : `failed (${error instanceof Error ? error.message : String(error)})`;
+      return this.transportUnknown(`products/${externalProductId}`, error, externalProductId);
+    }
+
+    const rawGroup = product?.id_tax_rules_group;
+    if (rawGroup === undefined || rawGroup === null || String(rawGroup).trim() === '') {
+      // The read succeeded and did not carry the field at all. That is NOT the
+      // "No tax" dropdown entry below — PrestaShop states that as an explicit
+      // `0` — it is a payload that cannot be priced with (a `display` filter, a
+      // partial response, schema drift). Collapsing the two was the surviving
+      // half of the #2052 defect: it priced gross as net AND cached the answer.
       this.logger.warn(
-        `Could not read the tax-rule group for product ${externalProductId}; reporting the rate ` +
-          `as unknown. GET products/${externalProductId} ${detail}`
+        `Tax rate unknown for product ${externalProductId}: products/${externalProductId} ` +
+          `carries no tax-rule group field.`
       );
       return {
         kind: 'unknown',
-        reason: 'transport',
-        evidence: `GET products/${externalProductId} ${detail}`,
+        reason: 'configuration',
+        evidence: `products/${externalProductId} carries no tax-rule group`,
       };
     }
 
-    if (!groupId) {
+    const groupId = Number.parseInt(String(rawGroup), 10);
+    if (!Number.isFinite(groupId) || groupId < 0) {
+      this.logger.warn(
+        `Tax rate unknown for product ${externalProductId}: products/${externalProductId} reports ` +
+          `an unusable tax-rule group '${String(rawGroup)}'.`
+      );
+      return {
+        kind: 'unknown',
+        reason: 'configuration',
+        evidence: `products/${externalProductId} reports an unusable tax-rule group '${this.cap(String(rawGroup))}'`,
+      };
+    }
+
+    if (groupId === 0) {
       // `id_tax_rules_group = 0` is the "No tax" entry in PrestaShop's product
       // dropdown — a deliberate exemption, NOT missing data, so it stays a
       // resolved 0 (#2052). Warned rather than silent so an operator who did
@@ -136,9 +160,19 @@ export class PrestashopTaxRateResolver {
       return { kind: 'resolved', rate: 0 };
     }
 
-    const rules = await webserviceClient.listResources<PrestashopTaxRuleRow>('tax_rules', {
-      custom: { id_tax_rules_group: groupId },
-    });
+    let rules: PrestashopTaxRuleRow[];
+    try {
+      rules = await webserviceClient.listResources<PrestashopTaxRuleRow>('tax_rules', {
+        custom: { id_tax_rules_group: groupId },
+      });
+    } catch (error) {
+      return this.transportUnknown(
+        `tax_rules?id_tax_rules_group=${groupId}`,
+        error,
+        externalProductId
+      );
+    }
+
     const rule = this.selectRule(rules, countryId);
     if (!rule || !rule.id_tax) {
       this.logger.warn(
@@ -147,7 +181,13 @@ export class PrestashopTaxRateResolver {
       return { kind: 'resolved', rate: 0 };
     }
 
-    const tax = await webserviceClient.getResource<PrestashopTaxRow>('taxes', rule.id_tax);
+    let tax: PrestashopTaxRow | undefined;
+    try {
+      tax = await webserviceClient.getResource<PrestashopTaxRow>('taxes', rule.id_tax);
+    } catch (error) {
+      return this.transportUnknown(`taxes/${rule.id_tax}`, error, externalProductId);
+    }
+
     const rawRate = tax?.rate;
     if (rawRate === undefined || rawRate === null || String(rawRate).trim() === '') {
       // The read succeeded and carries no `rate` field at all. Pre-#2052 this
@@ -173,10 +213,41 @@ export class PrestashopTaxRateResolver {
       return {
         kind: 'unknown',
         reason: 'configuration',
-        evidence: `tax rule ${rule.id_tax} in group ${groupId} reports an unusable rate '${String(rawRate)}'`,
+        evidence: `tax rule ${rule.id_tax} in group ${groupId} reports an unusable rate '${this.cap(String(rawRate))}'`,
       };
     }
     return { kind: 'resolved', rate: ratePercent / 100 };
+  }
+
+  /**
+   * Report a failed read as a transport unknown. Every read on the resolution
+   * chain goes through here — `products`, `tax_rules` and `taxes` alike — so a
+   * 503 on any of them produces the same operator-facing sentence and stays
+   * retryable, instead of escaping as a bare error the caller then wraps in its
+   * generic `Failed to create PrestaShop order:` prefix (#2052 review).
+   */
+  private transportUnknown(
+    read: string,
+    error: unknown,
+    externalProductId: string | number
+  ): PrestashopTaxRateUnknown {
+    const statusCode = error instanceof PrestashopApiException ? error.statusCode : undefined;
+    const detail =
+      statusCode !== undefined
+        ? `returned ${statusCode}`
+        : `failed (${this.cap(error instanceof Error ? error.message : String(error))})`;
+    const evidence = `GET ${read} ${detail}`;
+    this.logger.warn(
+      `Could not read the tax rate for product ${externalProductId}; reporting it as unknown. ${evidence}`
+    );
+    return { kind: 'unknown', reason: 'transport', evidence, statusCode };
+  }
+
+  /** Keep operator-facing evidence short — it is rendered, not logged. */
+  private cap(value: string): string {
+    return value.length > TAX_RATE_EVIDENCE_DETAIL_MAX
+      ? `${value.slice(0, TAX_RATE_EVIDENCE_DETAIL_MAX)}…`
+      : value;
   }
 
   /**

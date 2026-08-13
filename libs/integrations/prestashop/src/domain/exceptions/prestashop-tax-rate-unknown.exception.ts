@@ -17,10 +17,10 @@
  *
  * `message` is operator-facing interface copy, not a log line:
  * `OrderSyncService` stores it verbatim in `syncStatus[].error` and the
- * frontend renders that string in three places with no translation layer,
- * truncated to 60 characters in the jobs list and 160 in the order banner. The
- * first 60 characters therefore have to identify both the problem and the
- * product. Keep the leading clause intact when editing.
+ * frontend renders that string in three places with no translation layer. The
+ * tightest is the orders-list Status sub-line, CSS-clipped to ~40 characters,
+ * so the message LEADS with the product identity. Keep the leading clause
+ * intact when editing — see `taxRateUnknownError` for the budget table.
  *
  * @module libs/integrations/prestashop/src/domain/exceptions
  */
