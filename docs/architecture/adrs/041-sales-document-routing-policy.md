@@ -46,29 +46,67 @@ Gate preconditions, checked independently of the outcome:
 - the order is in a **tax-rate conflict** state - a channel-reported rate diverging from the master's (#2009, argument in #2054). The conflict blocks invoice issue *and* fiscal registration until an operator decides;
 - the existing per-connection trigger model says not to (`manual`; `batched` still rejected cleanly as not implemented).
 
-Every block logs and issues nothing - never a partial fan-out - reusing the service's existing PII-safe log envelope (`error.name`, connection id, order id, source event id).
+**Two of those three preconditions are inert until their prerequisites land, and an implementer must not read them as live.**
+
+- The tax-id precondition **cannot fire in the `operator-configured` first slice**. It shares decision 5's blocking prerequisite: no issuance caller wires `buyerTaxId`, so every auto-issued document is `type: 'private'`, `taxId: null`, and "carries no tax identifier" is true of *every* order. Until a buyer tax-id / buyer-type reaches the order contract, the precondition passes everything - it is recorded here so the gate has the right shape when the fact exists, not because it guards anything today. Wiring it against the current contract would block every auto-issue, which is why it is stated as inert rather than left ambiguous.
+- The tax-rate-conflict precondition **depends on #2057**. An unknown tax rate is today indistinguishable from a resolved zero (that is #2057's subject: a failed read returned the number `0`, which is also a legitimate exemption), so "a channel-reported rate diverging from the master's" is not computable and the gate would read "no conflict" on precisely the unknown-rate orders it exists to catch. #2057 is therefore a **prerequisite of this precondition**, in the same sense the tax-id contract change is a prerequisite of decision 5's engine - not a nice-to-have sequencing note.
+
+Every block issues nothing - never a partial fan-out - reusing the service's existing PII-safe log envelope (`error.name`, connection id, order id, source event id). A block is **never log-only**: it also persists a named reason (decision 11), because "OL silently declined to issue" is exactly as opaque to an operator as a wrong pick would be dangerous.
 
 **8. Periodic aggregation is a distinct terminal outcome, reserved in the routing return type only.** For regimes that aggregate, the routing result is "this order **enters an aggregation window**", not "a document was issued", so callers must not read the absence of a document id as failure. Reserved in the return type *only*, because the aggregate document is not representable today: `invoice_records.orderId` is non-nullable and single-valued, so one document covering N orders has no persistence, and the aggregate-to-orders relation is many-to-many. No new `sync_jobs` `outcome` value is needed either: on an aggregation outcome no job is enqueued, so there is no row to mis-read ([ADR-007](./007-syncjob-status-vs-outcome-split.md)); `JobOutcomeReasonValues` is the extension point if a future aggregation job reports its window.
 
 **9. Self-routing destinations bypass the policy nodes.** A destination that decides the document type itself is declared by an ADR-002-style capability guard (never derived from `platformType`); when it applies, routing skips matching, conflict resolution and threshold evaluation and dispatches directly, carrying no document kind of OL's choosing. This needs no port change: `IssueInvoiceCommand.documentType` is already optional and "the adapter may derive it when absent", with `InvoiceService` persisting `''` for that case. The resulting document **is still persisted as a record**, so invariant 3b remains enforceable on this branch - the destination is the decider, not an extra document.
 
-**10. The router's discriminator is its own neutral document *kind*, not `IssueInvoiceCommand.documentType`.** Which kind implies which capability to dispatch to (`Invoicing` vs the fiscalisation capability). Keeping them distinct is load-bearing rather than pedantic: #1902 and #1908 both state a fiscal receipt is **not** an `InvoicingPort` `DocumentType` and must not be modelled as one (different issuer, device dependency, legal basis), while ADR-026 §Decision 1 does place `receipt` inside the invoicing union - so keying routing on `documentType` would quietly re-model a receipt as an invoicing document.
+**10. The router's discriminator is its own neutral document *kind*, not `IssueInvoiceCommand.documentType`, and that kind is open-world.** Which kind implies which capability to dispatch to (`Invoicing` vs the fiscalisation capability). Keeping them distinct is load-bearing rather than pedantic: #1902 and #1908 both state a fiscal receipt is **not** an `InvoicingPort` `DocumentType` and must not be modelled as one (different issuer, device dependency, legal basis), while ADR-026 §Decision 1 does place `receipt` inside the invoicing union - so keying routing on `documentType` would quietly re-model a receipt as an invoicing document.
 
-**11. The exported surface.** Enough for an implementer to start after #2047, and enough to make decision 8's outcomes mechanical. The `unresolved` reason is persisted and shown to an operator, so it is an `as const` union per the engineering standards:
+The shape, stated so it cannot be settled by accident at implementation time:
 
 ```ts
 // @openlinker/core/sales-documents
-export const SALES_DOCUMENT_UNRESOLVED_REASON = [
-  'no-matching-rule', 'conflicting-rules-equal-priority', 'ambiguous-connection-no-primary',
-  'unsupported-document-kind-on-connection', 'net-priced-order',
+export const CoreSalesDocumentKindValues = ['invoice', 'fiscal-receipt'] as const;
+export type CoreSalesDocumentKind = (typeof CoreSalesDocumentKindValues)[number];
+
+/** Open string set: well-known values come from CoreSalesDocumentKindValues. */
+export type SalesDocumentKind = CoreSalesDocumentKind | string;
+```
+
+**Open-world, not a closed `invoice | receipt` union.** ADR-026 §Alternatives already rejected exactly that closed pair for `documentType` ("the document-type set varies unbounded by regime"), on the same open-world precedent as capability (#576) and `platformType` (#578). A closed kind here would re-adopt the rejected alternative in the one place widening is hardest - a two-value regime-specific pair sitting in the country-agnostic core, where a regime with a third originating document (a per-transaction register entry, a simplified invoice treated as its own document, an aggregate daily report) forces a core PR rather than an adapter. The well-known values stay a named `as const` array so validation, FE labels and the routing config all read one list.
+
+Two consequences of the open stance, both already load-bearing elsewhere in this ADR: because a kind can be a string core has never seen, **validity is a runtime check against the target, never a type check** - decision 7's `getSupportedDocumentTypes()` / capability-enabled gate is that check, mirroring how `IntegrationsService.getCapabilityAdapter` validates an open capability name against the adapter manifest, with `unsupported-document-kind-on-connection` as the `unresolved` reason. And the spelling `fiscal-receipt` deliberately differs from `DocumentTypeValues`' `'receipt'`: the two vocabularies are separate by decision, so a grep must never make them look interchangeable.
+
+**11. The exported surface, and one visibility contract for both block paths.** Enough for an implementer to start after #2047, and enough to make decision 8's outcomes mechanical. Every reason a document was not issued is persisted and shown to an operator, so each is an `as const` values array plus its derived union, following the shipped `DocumentTypeValues` / `InvoiceFailureModeValues` / `CoreCapabilityValues` convention:
+
+```ts
+// @openlinker/core/sales-documents
+export const SalesDocumentUnresolvedReasonValues = [
+  'no-matching-rule',
+  'conflicting-rules-equal-priority',
+  'ambiguous-connection-no-primary',
+  'unsupported-document-kind-on-connection',
+  'net-priced-order',
 ] as const;
+export type SalesDocumentUnresolvedReason = (typeof SalesDocumentUnresolvedReasonValues)[number];
+
+export const SalesDocumentGateBlockReasonValues = [
+  'unresolved-routing',
+  'missing-required-tax-id',
+  'tax-rate-conflict',
+  'trigger-model-manual',
+  'trigger-model-batched',
+] as const;
+export type SalesDocumentGateBlockReason = (typeof SalesDocumentGateBlockReasonValues)[number];
+
 export type SalesDocumentDecision =
   | { kind: 'route'; documentKind: SalesDocumentKind | null; connectionId: string } // null = self-routing destination
   | { kind: 'aggregate'; connectionId: string }
   | { kind: 'unresolved'; reason: SalesDocumentUnresolvedReason };
 ```
 
-An `unresolved` order must be operator-visible, not log-only: the repo precedent is #1689's `source_deleted` health bucket plus list badge plus a named ineligibility reason. Mechanics for that surfacing are the implementing issue's, not this ADR's.
+**Both unions carry the same visibility contract: persisted and operator-visible, never log-only.** A gate refusal is not a lesser signal than a routing `unresolved` - to the operator both read as "this order has no fiscal document and nothing told me why", and the two most interesting gate refusals (missing required tax id, tax-rate conflict) are missing-*input* conditions only a human can clear, which makes them the ones most worth surfacing. Leaving them log-only would be the silent-block cousin of the silence-and-pick-one that decision 6 forbids.
+
+They stay **two unions rather than one** because they answer different questions and are not interchangeable: `SalesDocumentUnresolvedReason` says *routing could not decide*, and is a value the router returns; `SalesDocumentGateBlockReason` says *routing decided (or explicitly did not) and issuance is still not allowed*, and is a value the gate produces about state outside the router's knowledge. Collapsing them would let a caller answer "was this a policy gap or an operator-fixable data gap?" only by string-matching. `'unresolved-routing'` is the one bridge value - the gate's record of having blocked on a router `unresolved`, whose own reason travels alongside it.
+
+The surfacing mechanics are the implementing issue's, not this ADR's; the repo precedent to follow is #1689's `source_deleted` - a dedicated health bucket, a list badge, and a named ineligibility reason that also excludes the order from bulk actions.
 
 ### Deferred, with reasons
 
@@ -91,7 +129,7 @@ flowchart TD
     DECS["Decision: target connection,<br/>OL supplies no document kind"]
     DEC["Decision: one documentKind<br/>+ one target connection"]
     GATE{"AutoIssueTriggerService gate<br/>preconditions (decision 7)"}
-    BLOCK["No job, PII-safe log<br/>(never a partial fan-out)"]
+    BLOCK["No job, persisted block reason<br/>+ PII-safe log (decision 11)"]
     OUT{"Outcome kind"}
     ISSUE["Enqueue exactly ONE document job<br/>invoice XOR receipt (decision 3a)"]
     AGG(["Order enters aggregation window<br/>no document, not a failure<br/>(decision 8, mechanics deferred)"])
