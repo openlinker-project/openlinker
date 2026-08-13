@@ -17,10 +17,10 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddSyncJobsConnectionJobTypeStatusUpdatedAtIndex1832000000008
+export class AddSyncJobsConnectionJobTypeStatusUpdatedAtIndex1832000000009
   implements MigrationInterface
 {
-  name = 'AddSyncJobsConnectionJobTypeStatusUpdatedAtIndex1832000000008';
+  name = 'AddSyncJobsConnectionJobTypeStatusUpdatedAtIndex1832000000009';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(

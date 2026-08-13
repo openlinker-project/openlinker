@@ -2,8 +2,9 @@
  * Analytics Trust Service Interface
  *
  * Defines the contract for reading the analytics data-trust snapshot: for
- * every OrderSource-capable connection, its freshness, coverage window, and
- * stalled status (#1982). Implemented by AnalyticsTrustService.
+ * every OrderSource-capable connection, its poll/order-ingestion freshness,
+ * connection age, and stalled status (#1982). Implemented by
+ * AnalyticsTrustService.
  *
  * @module libs/core/src/analytics-trust/application/services
  * @see {@link AnalyticsTrustService} for the implementation
