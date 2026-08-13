@@ -91,7 +91,8 @@ Names below are this ADR's proposal; #1908 may refine spelling, not shape.
      provider we have no commercial relationship with; spec §6.3.
    - **Deciding whether a given order legally requires a receipt**: never OL's decision. The seller
      and their accountant own the fiscal determination (spec §6.7, risk R5). Choosing *which*
-     document an order gets, once the obligation is known, is the sibling routing ADR (#2051); it
+     document an order gets, once the obligation is known, is the sibling
+     [ADR-039](./039-sales-document-routing-policy.md) (#2051); it
      selects among documents and does not determine anyone's legal obligation.
    - **Non-PL certification posture**: closed for Poland (#1906); Portugal is unresolved because
      the sources were access-blocked, not ambiguous. Advisory only - an adverse answer would
@@ -129,7 +130,7 @@ Names below are this ADR's proposal; #1908 may refine spelling, not shape.
 
 **Cons / trade-offs:**
 - A fourth document-ish capability alongside invoicing raises the "which port do I use?" question for
-  contributors; decision 1's four reasons are the answer, and the routing question is #2051's.
+  contributors; decision 1's four reasons are the answer, and the routing question is ADR-039's.
 - Deferring journal export and fiscal corrections means a regime that mandates either is not yet
   addressable, and we will learn that from the second adapter rather than from this design.
 - Modelling `in-doubt` as a non-retryable state pushes real work onto the operator surface (#1909),
@@ -146,7 +147,8 @@ closes.
   #1909 (status/link on the order), #1907 (integrator access - unresolved), #1906 (certification and
   counterparty - closed for PL), #2051 (sibling sales-document routing ADR), #2054 (per-line tax
   rate contract work)
-- Related ADRs: [ADR-002](./002-capability-ports-with-sub-capabilities.md) (sub-capability
+- Related ADRs: [ADR-039](./039-sales-document-routing-policy.md) (sibling - which document a given
+  order gets), [ADR-002](./002-capability-ports-with-sub-capabilities.md) (sub-capability
   composition), [ADR-026](./026-country-agnostic-invoicing-domain.md) (the invoicing domain this
   deliberately does not extend, plus the VAT-rate annex),
   [ADR-005](./005-postgres-authoritative-job-dedup.md) (durable dedup gate precedent),
