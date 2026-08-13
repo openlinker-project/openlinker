@@ -79,7 +79,7 @@ mechanics (bins, putaway, cycle counts, slotting), customer master beyond projec
 | **D15** | **Transition identity is `(internalOrderId, axis, causeType, causeId)` — all NOT NULL** | the `(…, originConnectionId, sourceEventId)` form leaves both NULL for every OL-origin fact, and Postgres NULLs don't conflict in a unique index, so pack / SLA / operator facts would dedup on nothing |
 | **D16** | **Relay obligations live in their own table**, one row per `(transition, target)`; the transition row stays a pure fact | the relay fans out to N participants with per-target outcomes; one `relayState` enum cannot say "2 of 3 done, one unsupported, one failed" — the exact error D10 and § 1 forbid |
 | **D17** | **Line attribution on shipments** (`shipment_lines`), no fulfilment-unit aggregate | [DECISION-oms-fulfilment-grain](./analysis/DECISION-oms-fulfilment-grain.md) — makes `shipped_quantity` derivable without re-graining dispatch, locks or FE |
-| **D18** | **Process variation is a named `OrderFlow`, assigned per order**, not a pile of per-connection booleans. A flow may disable only an enumerated list of named guards | Fluent puts `orderType` in the workflow identifier; Sterling uses process type. BaseLinker's unbounded configurability needed Status Groups + action groups just to stay manageable — see [ADR-041](../architecture/adrs/041-order-flows-as-named-operator-process-configuration.md) |
+| **D18** | **Pack policy is a validated per-connection config pair** (`verificationMode` + `dispatchGate`); stages stay global. The named-`OrderFlow` entity is **deferred** to the Wave-2 gate | a stress test disproved the entity's own containment claim (`packGrain` cannot be a resolved value), found its guard allowlist duplicated its axes, found no versioning, and found `orderType` has zero occurrences in `libs/core/src` — see [ADR-041](../architecture/adrs/041-order-flows-as-named-operator-process-configuration.md) |
 
 ---
 
@@ -433,10 +433,14 @@ a renewal flow.
 
 ### 6E. Dispatch gate
 
-`connection.config.requirePackVerification` (JSONB, default `false`), matching the
-`stockSafetyBuffer` / `pricingRule` precedent — no migration. Read via a pure
-`readRequirePackVerification(config)` coercer. Enforced at label generation, naming the unpacked
-lines. Later expressible as a rule.
+**See § 6K — the gate is `connection.config.dispatchGate` (`off | warn | block`), one half of the
+validated pack-policy pair.** It supersedes the earlier `requirePackVerification` boolean, which was
+defined here *and* per-flow in an earlier draft with no precedence rule between them.
+
+Enforced at label generation, naming the unpacked lines — and therefore **binding only where OL
+performs the dispatch**. For `ompFulfilled` (the default routing resolution) and `sourceBrokered`, OL
+generates no label and only observes the remote dispatch, so the gate is advisory and must be
+labelled as such. Later expressible as a rule.
 
 ### 6F. Authorization — corrected (D12)
 
@@ -767,80 +771,80 @@ gap today, independent of this plan, and it is tracked separately.
 
 ---
 
-## 6K. Flows — adapting to different warehouse processes
+## 6K. Pack policy — adapting to different warehouse processes
 
 **D18 / [ADR-041](../architecture/adrs/041-order-flows-as-named-operator-process-configuration.md).**
-Different clients — and different order types within one client — work differently. That variation is
-modelled as a **named flow**, not as independent settings.
+Different clients work differently. **A stress test rejected the named-`OrderFlow` entity** that
+originally sat here; what ships is the two axes with a real requirement, and stages stay **global**.
 
-### The entity
+### The config pair
 
-`order_flows` — operator-defined, seeded with one `Default` flow reproducing today's behaviour.
+Two keys on `Connection.config` (JSONB, no migration — the `stockSafetyBuffer` / `pricingRule`
+precedent), read by one pure coercer and **validated together**, because they are the one genuinely
+dependent pair:
 
-| Column | Notes |
+| Key | Values |
 |---|---|
-| `name`, `isDefault`, `isActive` | |
-| `verificationMode` | `none` · `manual` · `scan` · `scan-where-possible` |
+| `verificationMode` | `manual` · `scan` · `scan-where-possible` |
 | `dispatchGate` | `off` · `warn` · `block` |
-| `packingSlip` | `none` · `browser` · `print-server` |
-| `packGrain` | `single-order` · `multi-order-batch` |
-| `disabledGuards` | the enumerated allowlist, below |
 
-**`order_stages` gains `flowId`** — the stage pipeline *is* the core of a flow, so stages belong to
-one rather than existing globally (amends § 6A).
+§ 6E's `requirePackVerification` is **superseded by `dispatchGate`** — one enforcement point, one
+source of truth. (The earlier draft defined the gate twice, per-connection *and* per-flow, with no
+precedence rule.)
 
-### Assignment
+### `scan-where-possible`, and why it needs a timestamp
 
-`order_records.flowId`, **stamped at ingestion**, resolved by an `OrderFlowResolver` mirroring
-`FulfillmentRoutingService`'s shape: rules keyed on `(sourceConnectionId, sourceDeliveryMethodId,
-orderType?)`, returning `{ flowId, source: 'rule' | 'default' }`. Nullable, lazily resolved, so
-existing orders are unaffected and nothing needs configuring for the system to work.
+Scan verification resolves a barcode against `ProductVariant.ean`; a variant without one cannot be
+scanned. Under `scan-where-possible`, a line **carrying an EAN must be scanned**; a line without one
+may be ticked, and the UI distinguishes them.
 
-Stamped rather than resolved-on-read, deliberately: a flow change must not silently re-route work
-already in flight, and an auditor needs to know which process an order actually went through.
+But `ean` is mutable — the master sync can populate it later. An order ticked on Monday would become
+"a line that carried an EAN was not scanned" on Tuesday, on any recompute or audit query. So
+`order_pack_events` records **`scannableAtPackTime`**, mirroring why § 6B denormalises `sku`/`ean`/
+`name` onto `order_record_items`. Verification is judged against what was knowable when it happened.
 
-### `scan-where-possible` — the honest answer to missing EANs
+### The gate binds only where OL dispatches
 
-Scan verification resolves a barcode against `ProductVariant.ean`. A variant without one cannot be
-scanned. Under `scan-where-possible`, a line **that carries an EAN must be scanned**; a line without
-one may be ticked, and the UI says which is which. The dispatch gate then treats a tick as verified
-*only* for lines that were unscannable.
+`FulfillmentRoutingService` resolves `processorKind`, and its **default is `ompFulfilled`** — OL
+generates no label. For `ompFulfilled` and `sourceBrokered`, dispatch happens remotely and OL only
+observes it, so `block` is **unenforceable**.
 
-Without this, "fully verified" silently means "verified except the bits we couldn't check".
+Verification is therefore **advisory** on those routes, and **the UI must say so**. A gate that
+claims to block and silently does not is worse than no gate. This constraint is why `dispatchGate`
+cannot be validated in isolation from routing.
 
-### The named-guard allowlist
+### Deferred, with preconditions
 
-A flow may disable **only** these, by name:
+`order_flows`, `OrderFlowResolver`, `order_records.flowId`, `packGrain`, `packingSlip`,
+`disabledGuards` and `orderType` are deferred to the § 9 Wave-2 checkpoint, where the premise —
+several clients working measurably differently — is either observed or is not.
 
-| Guard | Effect when disabled |
-|---|---|
-| `requireScanVerification` | manual tick accepted for all lines |
-| `blockDispatchUntilPacked` | gate degrades to warn, or off |
-| `requireAllLinesPackedToAdvance` | short-pack auto-advances instead of holding |
-| `requirePackingSlipPrinted` | completion does not wait on a print |
+Why each was cut:
 
-**Not disableable, ever:** the canonical lifecycle axis and its precedence; the guardrails
-(idempotency, monotonicity, relay obligations); the identity constraints (§ 6J); the counter
-validation ladder (`packed ≤ ordered`, `shipped ≤ packed`, `delivered ≤ shipped`).
+- **`packGrain` is not a policy value.** The containment claim ("flow is a pure input to
+  `resolveFlowPolicy(flow, line, order)`") is disproved by its own signature: a multi-order batch has
+  no singular `order`. Batch packing needs a different screen, an ambiguity-resolution algorithm (one
+  scanned EAN matching lines on three orders), and a batch entity with claim/release semantics.
+- **The guard allowlist duplicated the axes.** `requireScanVerification` disabled ≡
+  `verificationMode: manual`; and `packingSlip: none` with `requirePackingSlipPrinted` enabled is
+  representable and means wait-forever.
+- **`orderType` has no referent** — zero occurrences in `libs/core/src`. It was Fluent's vocabulary
+  imported without an OL meaning, leaving the resolver key undecidable.
 
-A flow governs *how an operator moves through the work*. It never changes *what OL believes
-happened* — stage labels still map one-way onto the canonical axis.
+**If it returns, these are preconditions rather than follow-ups** — from how the platforms that
+actually ship configurable workflows handle config evolution:
 
-### Containing the test-matrix cost
+1. **Version it, and snapshot the resolved definition onto the order.** Fluent increments a workflow
+   version on commit and pins in-flight instances to the version they started on; Temporal's whole
+   versioning discipline exists to guarantee the same invariant. For a config this small the snapshot
+   is cheaper than retaining historical definitions, and it removes the dangling-order problem too.
+2. **Refuse destructive edits.** commercetools blocks deleting a referenced State (`ReferenceExists`)
+   and tells implementers to migrate first; Camunda requires an explicit mapping for every active
+   element and **rejects the whole migration** if one is missing.
+3. **Stamp the selection key at creation.** Every surveyed platform does; none re-evaluates mid-order.
 
-The obvious risk is N flows × every pack behaviour. Mitigate structurally: **flow is a pure input to
-one policy-resolution function**, not a branch through the pack service. `resolveFlowPolicy(flow,
-line, order)` is unit-tested per axis; the pack station is tested once against a resolved policy. No
-`if (flow.packGrain === …)` scattered through services.
-
-### Open
-
-**Is a flow assigned to the order, or chosen by the packer at the bench?** Assigned (above) is
-simpler, auditable and reportable. Bench-chosen is more flexible but means the flow is not a property
-of the order at all, which changes where it is stored and whether it can be reported on. Assigned is
-the recommendation; confirm against how the agency's clients actually work.
-
----
+The outcome every platform avoids, by different means, is the one the first draft would have
+produced: **an order sitting in a status the config no longer contains.**
 
 ## 7. Extensibility model
 
@@ -952,9 +956,10 @@ point — and the action contract must promise degrade-to-default.
 | Relay idempotency across a crash | int-spec: mark remote done, crash before `state='done'`, sweep | outbound carries the `(transitionId, targetConnectionId)` key; no duplicate mark-sent |
 | `shipped_quantity` derivation | unit + int-spec over `shipment_lines` × shipment status | the counter that had no source before option C |
 | Rollup under partial coverage | unit: 1 of 3 shipments delivered | must NOT report the order delivered — the latent `fulfillment-rollup.ts` bug |
-| **Flow policy resolution** | unit, **one case per axis**, not per flow combination | this is what keeps the flow matrix from multiplying: flow is an input to `resolveFlowPolicy`, never a branch in the pack service |
+| Pack-policy pair validation | unit, per invalid combination | the pair is validated together; an invalid combination must be rejected at connection save, not at the bench |
 | `scan-where-possible` | unit: mixed order, some lines with EAN, some without | EAN lines must require a scan; only unscannable lines accept a tick |
-| Flow assignment | int-spec: ingest with a matching rule, and without | stamped `flowId`, `source: 'rule' \| 'default'`, and a null-flow order still works |
+| **`scannableAtPackTime`** | int-spec: tick an EAN-less line, then populate the EAN via the master sync, then re-read | verification must stay valid — this is the retroactive-instability defect |
+| **Gate on a non-OL-dispatch route** | int-spec: `dispatchGate: block` on an `ompFulfilled` order | must not claim to block; the advisory path must be explicit in the response, not silently degraded |
 | Changeset replay | unit — same fixture drives preview and apply | proves D5's purity constraint holds |
 | Counter validation ladder | unit, one case per rung | each rung has an operator-readable message |
 | Pack-event idempotency (`clientEventId`) | int-spec — duplicate insert | unique-constraint behaviour |
@@ -979,7 +984,7 @@ justification rather than inheriting today's approval.
 |---|---|---|
 | [ADR-039](../architecture/adrs/039-order-lifecycle-derived-from-fact-ledger.md) | Canonical lifecycle as a derived projection over a fact ledger | Proposed |
 | [ADR-040](../architecture/adrs/040-order-changeset-proposed-then-confirmed.md) | Proposal record for remote-authority mutations (composition machinery deferred) | Accepted |
-| [ADR-041](../architecture/adrs/041-order-flows-as-named-operator-process-configuration.md) | Order flows as named operator-process configuration | Proposed |
+| [ADR-041](../architecture/adrs/041-order-flows-as-named-operator-process-configuration.md) | Pack policy as a validated per-connection config pair; flow entity deferred | Proposed |
 | — | `order_axis_transitions` as a third dedup layer (vs ADR-005, ADR-007) | to write |
 | — | Ledger-as-outbox vs fire-after-commit | to write |
 | — | `OrderAuthorityResolver` — per-(source, axis) coarse roles | to write |
