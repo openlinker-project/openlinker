@@ -86,6 +86,14 @@ export class OrderRecordResponseDto {
   })
   dispatchByAt!: string | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Instant the source reported this order cancelled (ISO 8601, #1984). null = never cancelled. ' +
+      'Set once and never cleared — a later re-poll of a cancelled order cannot change this timestamp.',
+  })
+  cancelledAt!: string | null;
+
   @ApiProperty({
     description:
       'True when `dispatchByAt` is an OL-side ESTIMATE rather than a marketplace-authoritative ' +
