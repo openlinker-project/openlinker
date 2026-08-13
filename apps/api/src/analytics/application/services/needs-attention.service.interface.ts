@@ -6,14 +6,9 @@
  *
  * @module apps/api/src/analytics/application/services
  */
-import type { CoverageGapItem, StockAtRiskItem } from '@openlinker/core/listings';
-import type { FailedSyncValueSummary } from '@openlinker/core/orders';
+import type { NeedsAttentionSummary } from './needs-attention.types';
 
-export interface NeedsAttentionSummary {
-  coverageGaps: CoverageGapItem[];
-  stockAtRisk: StockAtRiskItem[];
-  failedSyncValue: FailedSyncValueSummary;
-}
+export const NEEDS_ATTENTION_SERVICE_TOKEN = Symbol('INeedsAttentionService');
 
 export interface INeedsAttentionService {
   getSummary(): Promise<NeedsAttentionSummary>;

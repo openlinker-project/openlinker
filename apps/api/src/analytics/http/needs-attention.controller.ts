@@ -7,9 +7,12 @@
  *
  * @module apps/api/src/analytics/http
  */
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Inject } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { NeedsAttentionService } from '../application/services/needs-attention.service';
+import {
+  NEEDS_ATTENTION_SERVICE_TOKEN,
+  type INeedsAttentionService,
+} from '../application/services/needs-attention.service.interface';
 import {
   CoverageGapItemDto,
   FailedSyncValueSummaryDto,
@@ -21,7 +24,10 @@ import {
 @ApiTags('analytics')
 @Controller('analytics')
 export class NeedsAttentionController {
-  constructor(private readonly needsAttentionService: NeedsAttentionService) {}
+  constructor(
+    @Inject(NEEDS_ATTENTION_SERVICE_TOKEN)
+    private readonly needsAttentionService: INeedsAttentionService
+  ) {}
 
   @Get('needs-attention')
   @ApiOperation({

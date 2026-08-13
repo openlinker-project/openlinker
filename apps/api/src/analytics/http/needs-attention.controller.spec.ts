@@ -1,7 +1,7 @@
 /**
  * Needs Attention Controller — Unit Tests (#1983)
  */
-import type { NeedsAttentionSummary } from '../application/services/needs-attention.service.interface';
+import type { NeedsAttentionSummary } from '../application/services/needs-attention.types';
 import { NeedsAttentionController } from './needs-attention.controller';
 
 describe('NeedsAttentionController', () => {

@@ -24,10 +24,8 @@ import {
   type IStockAtRiskReadService,
 } from '@openlinker/core/listings';
 import { ORDER_RECORD_SERVICE_TOKEN, type IOrderRecordService } from '@openlinker/core/orders';
-import type {
-  INeedsAttentionService,
-  NeedsAttentionSummary,
-} from './needs-attention.service.interface';
+import type { INeedsAttentionService } from './needs-attention.service.interface';
+import type { NeedsAttentionSummary } from './needs-attention.types';
 
 // Per-aggregate page size — a compact "needs attention" list, not a paged
 // table (#1989 consumes this as a scannable summary section).

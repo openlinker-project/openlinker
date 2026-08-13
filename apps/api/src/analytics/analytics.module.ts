@@ -31,10 +31,17 @@ import { OrdersModule } from '@openlinker/core/orders';
 import { PosthogSettingsController } from './http/posthog-settings.controller';
 import { NeedsAttentionController } from './http/needs-attention.controller';
 import { NeedsAttentionService } from './application/services/needs-attention.service';
+import { NEEDS_ATTENTION_SERVICE_TOKEN } from './application/services/needs-attention.service.interface';
 
 @Module({
   imports: [CoreAnalyticsModule, ListingsModule, OrdersModule],
   controllers: [PosthogSettingsController, NeedsAttentionController],
-  providers: [NeedsAttentionService],
+  providers: [
+    NeedsAttentionService,
+    {
+      provide: NEEDS_ATTENTION_SERVICE_TOKEN,
+      useExisting: NeedsAttentionService,
+    },
+  ],
 })
 export class AnalyticsApiModule {}
