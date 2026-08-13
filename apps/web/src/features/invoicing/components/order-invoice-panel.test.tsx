@@ -167,11 +167,12 @@ describe('OrderInvoicePanel — capability/toggle gate', () => {
     expect(screen.getByRole('option', { name: 'Alpha' })).toBeInTheDocument();
     expect(screen.getByText(/Automatic invoicing is off for this order/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /issue invoice/i })).toBeDisabled();
-    // The link has to land somewhere the flag can actually be set — a
-    // connection's own page — not on the list, which carries no such control.
+    // The link has to land where the flag can actually be set: the connection
+    // EDIT form. Neither `/connections` (a list) nor the connection detail page
+    // (overview + roles only) carries the toggle.
     expect(screen.getByRole('link', { name: /set a primary/i })).toHaveAttribute(
       'href',
-      '/connections/conn_aaa',
+      '/connections/conn_aaa/edit',
     );
   });
 

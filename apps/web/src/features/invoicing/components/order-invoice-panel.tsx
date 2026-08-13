@@ -257,9 +257,10 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
   // nothing picked yet" state, which is exactly when auto-issue also does nothing.
   const showConnectionPicker = !invoice && invoicingConnections.length > 1;
   const requiresConnectionPick = showConnectionPicker && issuableConnection === null;
-  // Where "Set a primary" should land. `/connections` is a list with no such
-  // control on it; the setting lives on a connection's own page, so send the
-  // operator to a real candidate. Deterministic (candidates are id-sorted).
+  // Where "Set a primary" should land. NOT `/connections` (a list carrying no
+  // such control) and NOT the connection DETAIL page (overview + roles only) —
+  // the toggle lives on the EDIT form, so link straight there. Deterministic:
+  // candidates are id-sorted.
   const setPrimaryTarget = invoicingConnections[0] ?? null;
 
   const connectionPicker = showConnectionPicker ? (
@@ -732,7 +733,7 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
           {requiresConnectionPick && setPrimaryTarget ? (
             <Link
               className="button button--secondary"
-              to={`/connections/${setPrimaryTarget.id}`}
+              to={`/connections/${setPrimaryTarget.id}/edit`}
             >
               {t('invoice.panel.setPrimary', 'Set a primary')}
             </Link>
