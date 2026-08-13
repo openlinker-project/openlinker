@@ -28,14 +28,14 @@ describe('DestinationTaxonomySyncHandler', () => {
     upserted: 3,
     removed: 0,
     completed: true,
-    nextFrontier: null,
+    nextRunStartedAt: null,
   };
 
   const partialResult: TaxonomySyncResult = {
     upserted: 3,
     removed: 0,
     completed: false,
-    nextFrontier: { runStartedAt: '2026-08-13T10:00:00.000Z', pending: ['a', 'b'] },
+    nextRunStartedAt: '2026-08-13T10:00:00.000Z',
   };
 
   const createJob = (payload: Record<string, unknown>): SyncJobEntity =>
@@ -109,7 +109,9 @@ describe('DestinationTaxonomySyncHandler', () => {
     );
   });
 
-  it('should persist the next frontier when the run is incomplete', async () => {
+  it('should persist the run watermark as a SCALAR when the run is incomplete', async () => {
+    // The point of #2061: the cursor holds one value, not an id list, so the
+    // operator-facing Cursors page renders something meaningful.
     taxonomyService.syncTaxonomy.mockResolvedValue(partialResult);
 
     await handler.execute(createJob({ schemaVersion: 1, taxonomyOwner: 'allegro' }));
@@ -117,30 +119,41 @@ describe('DestinationTaxonomySyncHandler', () => {
     expect(cursors.advanceCursor).toHaveBeenCalledWith(
       'conn-1',
       'destination.taxonomy.frontier:owner:allegro',
-      JSON.stringify(partialResult.nextFrontier),
+      '2026-08-13T10:00:00.000Z',
     );
   });
 
-  it('should resume a stored frontier', async () => {
-    const stored = { runStartedAt: '2026-08-13T10:00:00.000Z', pending: ['x'] };
-    cursors.getCursor.mockResolvedValue(JSON.stringify(stored));
+  it('should resume a stored run watermark', async () => {
+    cursors.getCursor.mockResolvedValue('2026-08-13T10:00:00.000Z');
 
     await handler.execute(createJob({ schemaVersion: 1, taxonomyOwner: 'allegro' }));
 
     expect(taxonomyService.syncTaxonomy).toHaveBeenCalledWith('conn-1', {
-      frontier: stored,
+      runStartedAt: '2026-08-13T10:00:00.000Z',
       pageLimit: undefined,
     });
   });
 
-  it('should restart from the roots when the stored cursor is unparseable', async () => {
-    // Idempotent sync: restarting costs a walk, not correctness.
-    cursors.getCursor.mockResolvedValue('{not json');
+  it('should pass an empty cursor through as a fresh run', async () => {
+    cursors.getCursor.mockResolvedValue('');
 
     await handler.execute(createJob({ schemaVersion: 1, taxonomyOwner: 'allegro' }));
 
     expect(taxonomyService.syncTaxonomy).toHaveBeenCalledWith('conn-1', {
-      frontier: null,
+      runStartedAt: null,
+      pageLimit: undefined,
+    });
+  });
+
+  it('should hand a Wave 1 JSON frontier to the service rather than parsing it here', async () => {
+    // Validation lives in the core service — it is what has to act on the value
+    // (restart vs resume). The handler stays a transport for the cursor.
+    cursors.getCursor.mockResolvedValue('{"runStartedAt":"2026-08-13T10:00:00.000Z","pending":["x"]}');
+
+    await handler.execute(createJob({ schemaVersion: 1, taxonomyOwner: 'allegro' }));
+
+    expect(taxonomyService.syncTaxonomy).toHaveBeenCalledWith('conn-1', {
+      runStartedAt: '{"runStartedAt":"2026-08-13T10:00:00.000Z","pending":["x"]}',
       pageLimit: undefined,
     });
   });
