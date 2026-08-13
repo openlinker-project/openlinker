@@ -23,6 +23,7 @@ import type { IIntegrationsService } from '@openlinker/core/integrations';
 import { Logger } from '@openlinker/shared/logging';
 
 import { OfferCreationExecutionService } from '../offer-creation-execution.service';
+import type { IOfferStatusSyncService } from '../offer-status-sync.service.interface';
 import { OfferCreationRecord } from '../../../domain/entities/offer-creation-record.entity';
 import { MasterCatalogConnectionNotConfiguredException } from '../../../domain/exceptions/master-catalog-connection-not-configured.exception';
 import { OfferBuilderValidationException } from '../../../domain/exceptions/offer-builder-validation.exception';
@@ -33,6 +34,7 @@ import {
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   OFFER_STATUS_POLL_SERVICE_TOKEN,
+  OFFER_STATUS_SYNC_SERVICE_TOKEN,
 } from '../../../listings.tokens';
 import type { IOfferBuilderService } from '../../interfaces/offer-builder.service.interface';
 import type { IOfferStatusPollService } from '../../interfaces/offer-status-poll.service.interface';
@@ -51,6 +53,7 @@ describe('OfferCreationExecutionService', () => {
   let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
   let adapter: { createOffer: jest.Mock };
   let offerStatusPoll: jest.Mocked<IOfferStatusPollService>;
+  let offerStatusSync: jest.Mocked<Pick<IOfferStatusSyncService, 'recordObservedStatus'>>;
 
   const builtCommand: CreateOfferCommand = {
     internalVariantId: VARIANT_ID,
@@ -122,6 +125,9 @@ describe('OfferCreationExecutionService', () => {
       scheduleFirstPoll: jest.fn().mockResolvedValue(undefined),
       pollOnce: jest.fn(),
     };
+    offerStatusSync = {
+      recordObservedStatus: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -131,6 +137,7 @@ describe('OfferCreationExecutionService', () => {
         { provide: IDENTIFIER_MAPPING_SERVICE_TOKEN, useValue: identifierMapping },
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrationsService },
         { provide: OFFER_STATUS_POLL_SERVICE_TOKEN, useValue: offerStatusPoll },
+        { provide: OFFER_STATUS_SYNC_SERVICE_TOKEN, useValue: offerStatusSync },
       ],
     }).compile();
 
@@ -701,6 +708,100 @@ describe('OfferCreationExecutionService', () => {
       await service.executeCreation(baseInput);
 
       expect(records.updateClassificationReport).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('status snapshot on the create path (#2039)', () => {
+    it('persists the publication status the create response reported', async () => {
+      adapter.createOffer.mockResolvedValue({
+        externalOfferId: EXTERNAL_OFFER_ID,
+        status: 'active',
+        publicationStatus: 'active',
+      } satisfies CreateOfferResult);
+
+      await service.executeCreation(baseInput);
+
+      expect(offerStatusSync.recordObservedStatus).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        { externalOfferId: EXTERNAL_OFFER_ID, internalVariantId: VARIANT_ID },
+        { publicationStatus: 'active', validationMessages: [], observedAt: expect.any(Date) }
+      );
+    });
+
+    it('persists an ACTIVATING create too, so the majority path is not left without a row', async () => {
+      adapter.createOffer.mockResolvedValue({
+        externalOfferId: EXTERNAL_OFFER_ID,
+        status: 'validating',
+        publicationStatus: 'activating',
+      } satisfies CreateOfferResult);
+
+      await service.executeCreation(baseInput);
+
+      expect(offerStatusSync.recordObservedStatus).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        expect.anything(),
+        expect.objectContaining({ publicationStatus: 'activating' })
+      );
+    });
+
+    it('carries the reported validation messages onto the snapshot', async () => {
+      adapter.createOffer.mockResolvedValue({
+        externalOfferId: EXTERNAL_OFFER_ID,
+        status: 'draft',
+        publicationStatus: 'inactive',
+        validationErrors: [{ code: 'X', message: 'Missing parameter' }],
+      } satisfies CreateOfferResult);
+
+      await service.executeCreation(baseInput);
+
+      expect(offerStatusSync.recordObservedStatus).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        expect.anything(),
+        {
+          publicationStatus: 'inactive',
+          validationMessages: ['Missing parameter'],
+          observedAt: expect.any(Date),
+        }
+      );
+    });
+
+    it('writes nothing when the adapter reported no publication status', async () => {
+      adapter.createOffer.mockResolvedValue({
+        externalOfferId: EXTERNAL_OFFER_ID,
+        status: 'draft',
+      } satisfies CreateOfferResult);
+
+      await service.executeCreation(baseInput);
+
+      expect(offerStatusSync.recordObservedStatus).not.toHaveBeenCalled();
+    });
+
+    it('never lets a snapshot-write failure re-enter createOffer or fail the job', async () => {
+      adapter.createOffer.mockResolvedValue({
+        externalOfferId: EXTERNAL_OFFER_ID,
+        status: 'active',
+        publicationStatus: 'active',
+      } satisfies CreateOfferResult);
+      offerStatusSync.recordObservedStatus.mockRejectedValue(new Error('db down'));
+
+      const result = await service.executeCreation(baseInput);
+
+      expect(result.outcome).toBe('ok');
+      expect(adapter.createOffer).toHaveBeenCalledTimes(1);
+    });
+
+    it('still writes the snapshot when the poll enqueue fails', async () => {
+      adapter.createOffer.mockResolvedValue({
+        externalOfferId: EXTERNAL_OFFER_ID,
+        status: 'validating',
+        publicationStatus: 'activating',
+      } satisfies CreateOfferResult);
+      offerStatusPoll.scheduleFirstPoll.mockRejectedValue(new Error('stream down'));
+
+      const result = await service.executeCreation(baseInput);
+
+      expect(result.outcome).toBe('ok');
+      expect(offerStatusSync.recordObservedStatus).toHaveBeenCalledTimes(1);
     });
   });
 });

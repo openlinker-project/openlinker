@@ -28,9 +28,11 @@ export class OfferPublicationStatusResponseDto {
 
   @ApiProperty({
     enum: OfferPublicationStatusValues,
-    description: 'Live marketplace publication status as of the last sync',
+    nullable: true,
+    description:
+      'Live marketplace publication status as of the last sync. `null` when the offer is mapped but has never been read from the marketplace (#2039) — the row is still returned so the operator can trigger the manual refresh.',
   })
-  publicationStatus!: OfferPublicationStatus;
+  publicationStatus!: OfferPublicationStatus | null;
 
   @ApiPropertyOptional({
     type: [String],
@@ -38,8 +40,12 @@ export class OfferPublicationStatusResponseDto {
   })
   validationMessages?: string[];
 
-  @ApiProperty({ description: 'When the status was last read from the marketplace (ISO 8601)' })
-  lastStatusSyncedAt!: string;
+  @ApiProperty({
+    nullable: true,
+    description:
+      'When the status was last read from the marketplace (ISO 8601). `null` when it never was.',
+  })
+  lastStatusSyncedAt!: string | null;
 }
 
 /** Body for the manual single-offer refresh: the variant to key the snapshot to. */

@@ -64,3 +64,8 @@ export const SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN = Symbol('IShopProductMappingsS
 
 // Stale-variant offer pause (#1689)
 export const STALE_OFFER_PAUSE_SERVICE_TOKEN = Symbol('IStaleOfferPauseService');
+
+// Needs-attention aggregates — coverage gaps (#1983)
+export const COVERAGE_GAP_READ_SERVICE_TOKEN = Symbol('ICoverageGapReadService');
+// Needs-attention aggregates — stock at risk (#1983)
+export const STOCK_AT_RISK_READ_SERVICE_TOKEN = Symbol('IStockAtRiskReadService');
