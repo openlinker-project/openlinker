@@ -132,9 +132,13 @@ describe('Offer Lifecycle Counts API Integration (#2026)', () => {
   }
 
   async function listListings(query: string): Promise<ListingsPageBody> {
+    // `includeLifecycleCounts` defaults OFF (#2026 - callers that don't render
+    // a tab bar must not pay for the aggregate's second full scan), but every
+    // test in this suite is about `lifecycleCounts` itself, so the helper
+    // always requests it rather than repeating the flag at each call site.
     const response = await harness
       .getHttp()
-      .get(`/v1/listings?${query}`)
+      .get(`/v1/listings?${query}&includeLifecycleCounts=true`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
     return response.body as ListingsPageBody;
