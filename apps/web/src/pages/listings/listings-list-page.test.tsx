@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import type * as ReactRouterDom from 'react-router-dom';
@@ -427,6 +427,40 @@ describe('ListingsListPage', () => {
     expect(cta).toHaveAttribute('href', '/connections');
   });
 
+  it('should show the channel-connect empty state when connections exist but none support OfferManager (#2032 review round 2, finding 1)', async () => {
+    const mockApi = createMockApiClient({
+      listings: { list: vi.fn().mockResolvedValue(emptyPage()) },
+      connections: {
+        list: vi.fn().mockResolvedValue([
+          {
+            id: 'conn_prestashop_1',
+            name: 'PrestaShop Store',
+            platformType: 'prestashop',
+            status: 'active',
+            config: {},
+            credentialsBacked: true,
+            adapterKey: 'prestashop.webservice.v1',
+            // ProductMaster only - the /listings page can never render a row
+            // for this connection, so the generic "not synced yet" empty
+            // state must not be shown for it.
+            enabledCapabilities: ['ProductMaster'],
+            supportedCapabilities: ['ProductMaster'],
+            createdAt: '2026-01-01T00:00:00Z',
+            updatedAt: '2026-01-01T00:00:00Z',
+          },
+        ]),
+      },
+    });
+
+    renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+    expect(await screen.findByText('No channels connected yet')).toBeInTheDocument();
+    const cta = screen.getByRole('link', { name: 'Connect a channel' });
+    expect(cta).toHaveAttribute('href', '/connections');
+    // The channel select must not offer a connection that can never produce a row.
+    expect(screen.queryByRole('option', { name: 'PrestaShop Store' })).not.toBeInTheDocument();
+  });
+
   it('should show a Clear filters button that clears filters when filters are active', async () => {
     const user = userEvent.setup();
     const mockApi = createMockApiClient({
@@ -653,6 +687,42 @@ describe('ListingsListPage', () => {
         ([filters]) => (filters as { lifecycle?: string } | undefined)?.lifecycle === 'Ended'
       );
       expect(calledWithEnded).toBe(true);
+    });
+
+    it('shows a refetch indicator while a tab switch is in flight, and clears it once it resolves (#2032 review round 2, finding 2)', async () => {
+      const user = userEvent.setup();
+      let resolveSecondFetch: (value: PaginatedOfferMappings) => void = () => {};
+      const list = vi
+        .fn()
+        .mockResolvedValueOnce(sampleMappings)
+        .mockImplementationOnce(
+          () =>
+            new Promise<PaginatedOfferMappings>((resolve) => {
+              resolveSecondFetch = resolve;
+            }),
+        );
+      const mockApi = createMockApiClient({ listings: { list } });
+
+      renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Doniczka ceramiczna Terra');
+      expect(document.querySelector('.listings-refetch-indicator')).toBeNull();
+
+      await user.click(screen.getByRole('tab', { name: /^Draft/ }));
+
+      // `keepPreviousData` keeps the Active tab's rows on screen while the
+      // Draft tab's fetch is in flight - the indicator is the only signal
+      // that a new request is running.
+      await waitFor(() => {
+        expect(document.querySelector('.listings-refetch-indicator')).not.toBeNull();
+      });
+      expect(screen.getByText('Doniczka ceramiczna Terra')).toBeInTheDocument();
+
+      resolveSecondFetch(emptyPage());
+
+      await waitFor(() => {
+        expect(document.querySelector('.listings-refetch-indicator')).toBeNull();
+      });
     });
 
     it('falls back to the Active tab for an unrecognized ?tab param', async () => {

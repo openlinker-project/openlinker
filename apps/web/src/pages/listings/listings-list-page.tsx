@@ -1,3 +1,14 @@
+/**
+ * Listings List Page
+ *
+ * Operator-facing cockpit over offer-to-variant mappings (epic #2023, mockup
+ * #1965): a 6-column table with channel-side price/quantity, 5 lifecycle tabs
+ * (Active / Invalid / Draft / Ended / Unsynced) with live filter-aware counts,
+ * and a toolbar (search + channel select). Backed entirely by `GET /listings`
+ * (#2025/#2026) - no client-side filtering of a bucket's own page.
+ *
+ * @module apps/web/src/pages/listings
+ */
 import {
   useCallback,
   useMemo,
