@@ -27,10 +27,15 @@ OMS of record.
 > money. It does not physically ship. Every mutation it performs is a **proposal against a remote
 > authority that may decline it**, plus an **observation** of what that authority did.
 
+**And a sharper constraint, with a schema behind it:** OpenLinker **cannot change an order's
+composition.** The marketplace owns order identity, and `identifier_mappings` enforces that as a
+**bijection per connection** — one external id ↔ one internal id. Split needs 1→N, merge needs N→1;
+both indexes are load-bearing. OL can only *observe* composition and *attribute work* to it. See § 6J.
+
 | Instead of | Do this | Because |
 |---|---|---|
 | a stored order-status field | a derived projection over recorded facts | three systems report status; none can own it |
-| mutating the order | a changeset: proposed → confirmed/declined | the remote may decline; you need audit + preview |
+| mutating the order | a proposal record: proposed → confirmed/declined | the remote may decline; a refusal must be a first-class outcome, not a swallowed error |
 | a status enum per line | quantity counters | "3 of 5 shipped" is not a status |
 | one lifecycle enum | independent nullable timestamps | a carrier can report *delivered* before OL saw *shipped* |
 
@@ -59,17 +64,23 @@ mechanics (bins, putaway, cycle counts, slotting), customer master beyond projec
 
 ---
 
-## 3. The core abstraction: the changeset
+## 3. The core abstraction: the proposal record
 
-A change is `PENDING | REQUESTED → CONFIRMED | DECLINED | CANCELED`, carrying `requested_by` /
-`confirmed_by` / `declined_reason` and timestamps. Actions are append-only, `ordering`-sequenced,
-each with an `applied` boolean. Action types register into an open `{ validate, operation }`
-registry. **One replay function produces both the preview and the applied result.**
+**Narrowed after a stress test — see § 6J.** A change is
+`PENDING | REQUESTED → CONFIRMED | DECLINED | CANCELED`, carrying `requested_by` / `confirmed_by` /
+`declined_reason`, timestamps, and an `applied` boolean, with a **partial unique index** enforcing one
+open change per order (OL runs concurrent workers, so an application guard would be a race).
 
-`applied: boolean` generalises OL's existing at-most-once claims (`waybillRelayedAt`,
-`bulk_batch_advancements`). Two corrections to the reference implementation: enforce "one open
-change per order" with a **partial unique index** (OL runs concurrent workers), and **cap the
-replay window**.
+`applied` becomes the single at-most-once primitive, replacing the three hand-rolled claims
+(`waybillRelayedAt`, `isFirstDispatchTransition`, `cancelledAt` COALESCE).
+
+**Deferred:** the actions table, the action registry, and the replay function. Every mutation OL can
+actually perform is a **single action against a single reference**; `ordering`, replay and a
+polymorphic reference pair serve compositions that do not exist here. Revisit if partial cancellation
+turns out to be supported by Allegro or Erli — that would be the first genuine composition.
+
+**Dry-run moved out of this decision.** It belongs to the rules engine's condition evaluation (D4/D5),
+which delivers it independently.
 
 See [ADR-040](../architecture/adrs/040-order-changeset-proposed-then-confirmed.md).
 
@@ -160,12 +171,29 @@ sources, and the WooCommerce and PrestaShop processors — plus the two int-test
 are today two-branch `if/else`, so extending the union **compiles cleanly and mis-routes at
 runtime**; Erli would report a returned order as `sent`. See § 6 C1.
 
-15. `return_requests` + `return_request_lines`; `damaged_quantity` distinct from `received_quantity`
-16. Extend `OrderLifecycleEventTypeValues` (only after Step 0)
-17. Return → `CorrectionIssuer` mapper — the capability is already return-shaped
-18. Restock — the real gap: nothing writes master inventory upward today
-19. Disputes (a richer writable Allegro surface than returns)
-20. Plan-vs-execution split for refunds: OL records intent, observes execution
+15. **`Return` as its own aggregate** — own id, own status enum, `orderId`, `externalReturnId` (so a
+    marketplace-originated return round-trips), and transition timestamps. The status enum must carry
+    **`declined`** and **`cancelled`**: a declined return leaves the order exactly as it was, and that
+    has no order-status equivalent. Minimum set:
+    `requested | approved | received | closed | declined | cancelled`
+16. **`ReturnLine`** — points at the order line; carries `requestedQuantity`, **`receivedQuantity`**,
+    **`damagedQuantity`**, `reasonCode`, `reasonNote`. Four independent systems converge on the
+    quantity split (Medusa `received`/`damaged`; Shopify processable/processed/refundable/refunded;
+    commercetools BackInStock vs Unusable) — no single field says "3 came back, 1 is scrap"
+17. **Reason codes are their own vocabulary**, attached **per line**, not per return — the consensus
+    across BaseLinker, Shopify and Saleor. Never reuse order-status codes
+18. Extend `OrderLifecycleEventTypeValues` (only after Step 0)
+19. Return → `CorrectionIssuer` mapper — the capability is already return-shaped
+20. Restock — the real gap: nothing writes master inventory upward today. `damagedQuantity` is what
+    decides whether stock goes back on the shelf
+21. Disputes (a richer writable Allegro surface than returns)
+22. **Refund intent ≠ refund execution** — a claimed amount on the return, the executed movement
+    recorded where OL records money. Never one `refunded` boolean. BaseLinker states outright that its
+    own `setOrderReturnRefund` "doesn't issue an actual money refund"; Medusa and Saleor split the
+    same way
+
+**Deliberately out of the minimum model** (all additive later, none forces a reshape): exchanges,
+reverse-fulfilment logistics, restocking fees.
 
 ### Wave 5 — Allocation
 
@@ -436,6 +464,56 @@ The *second* double-count — the publish feedback loop — is real and is cover
 - **Exclusion constraint / CHECK over an aggregate.** Not expressible — a `CHECK` may not contain
   subqueries or aggregates, and `EXCLUDE` tests pairwise overlap, not a cross-table sum. Recorded so
   it is not re-litigated.
+
+---
+
+## 6J. Split and merge — disposition
+
+**OL does not split or merge orders, and cannot.** Recorded here so it is not re-litigated.
+
+### Why not
+
+`identifier_mappings` is a **bijection per connection**: `UNIQUE (entityType, platformType,
+connectionId, externalId)` and `UNIQUE (entityType, connectionId, internalId)`. Split needs 1→N,
+merge needs N→1. The second index is not incidental — it exists so one internal id can carry
+different external ids across *different* connections, which is what makes cross-destination routing
+work.
+
+Worked through concretely, each failure is worse than a constraint violation:
+
+- **Split** produces a child order that is permanently unmappable on its origin connection. A
+  marketplace cancellation of the original resolves to the parent, marks it cancelled, and **leaves
+  the child live and shippable**. The split manufactures a ship-a-cancelled-order bug.
+- **Merge** fails outright on the second index. Skip the remap and the loser order stays mapped, so
+  the next `syncOrderFromSource` refreshes its snapshot with the lines that moved away — the merge
+  un-merges itself on the next poll.
+
+Preview would not survive either: `internalOrderId` is minted as a **side effect of the mapping
+INSERT**, so previewing a new order would have to write.
+
+### What the prior art does instead
+
+Three different answers, tracking who each system's customer is. **Shopify splits the *fulfilment
+order*, never the commercial order** — the commercial order is the contract with the buyer and the
+anchor for tax, invoicing and the external id. **BaseLinker splits the commercial order** (new order
+id) because its unit of work *is* the order — but appears to record **no lineage back-pointer**, and
+every downstream breakage traces to that. **Sterling escalates**: split a line during scheduling, and
+create a subordinate order only when a genuine lifecycle boundary exists. **Medusa, commercetools and
+Vendure decline to model split/merge as an operation at all** — notably Medusa's 23 change-action
+types include neither.
+
+Sterling's ladder is the right fit, and OL sits on its first rung.
+
+### What OL does instead
+
+Option C from the grain decision: **line attribution on shipments**. `shipment_lines` keyed
+`(shipmentId, orderId, lineId)` — note the `orderId`, which is what keeps *consolidated shipping*
+(one parcel covering lines from two orders) open. That is the useful half of "merge" without touching
+identity, and it costs nothing to include now on a table already being backfilled lossily.
+
+**What is genuinely lost**, and should be stated to operators rather than discovered: two independent
+dispatch SLAs (`dispatchByAt` is one column), per-part destination routing (`processorKind` resolves
+once per order), and two invoices for two deliveries. None is expressible at any layer today.
 
 ---
 
