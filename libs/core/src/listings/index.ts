@@ -50,7 +50,6 @@ export type {
   DestinationCategoryLike,
   DestinationCategorySearchHit,
   DestinationCategoryUpsert,
-  TaxonomyFrontier,
   TaxonomyScope,
   TaxonomySyncInput,
   TaxonomySyncResult,

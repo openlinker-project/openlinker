@@ -60,6 +60,13 @@ interface TaxonomyRepositoryHandle {
     syncedAt: Date,
   ): Promise<number>;
   deleteStaleBelow(scope: TaxonomyScope, syncedAt: Date): Promise<number>;
+  findExpandable(scope: TaxonomyScope, runStartedAt: Date, limit: number): Promise<string[]>;
+  markExpanded(
+    scope: TaxonomyScope,
+    externalIds: readonly string[],
+    runStartedAt: Date,
+  ): Promise<void>;
+  hasObserved(scope: TaxonomyScope, runStartedAt: Date): Promise<boolean>;
 }
 
 
@@ -320,6 +327,112 @@ describe('Destination taxonomy projection (#1979)', () => {
       await expect(service.resolveScope(connection.id)).rejects.toBeInstanceOf(
         TaxonomySourceUnavailableException,
       );
+    });
+  });
+
+  describe('derived sync frontier (#2061)', () => {
+    const node = (
+      externalId: string,
+      parentId: string | null,
+      leaf: boolean | null,
+    ): DestinationCategoryUpsert => ({ externalId, name: `n-${externalId}`, parentId, leaf });
+
+    it('should match syncedAt = runStartedAt exactly across the Postgres round-trip', async () => {
+      // The linchpin of the whole derivation, and the one assumption a mocked
+      // repository cannot falsify: the frontier selects on timestamp EQUALITY,
+      // so any precision loss between the bound JS Date and the stored
+      // timestamptz would silently return an empty frontier — which reads as
+      // "run complete" and would authorise a sweep.
+      const runStartedAt = new Date('2026-08-13T10:00:00.123Z');
+      await repository.upsertMany(ALLEGRO_SCOPE, [node('a', null, false)], runStartedAt);
+
+      await expect(repository.hasObserved(ALLEGRO_SCOPE, runStartedAt)).resolves.toBe(true);
+      await expect(
+        repository.findExpandable(ALLEGRO_SCOPE, runStartedAt, 10),
+      ).resolves.toEqual(['a']);
+    });
+
+    it('should exclude leaves and already-expanded nodes from the frontier', async () => {
+      const runStartedAt = new Date('2026-08-13T11:00:00.000Z');
+      await repository.upsertMany(
+        ALLEGRO_SCOPE,
+        [node('branch', null, false), node('leaf', null, true), node('done', null, false)],
+        runStartedAt,
+      );
+      await repository.markExpanded(ALLEGRO_SCOPE, ['done'], runStartedAt);
+
+      await expect(
+        repository.findExpandable(ALLEGRO_SCOPE, runStartedAt, 10),
+      ).resolves.toEqual(['branch']);
+    });
+
+    it('should treat a shop node (leaf null) as expandable', async () => {
+      // A shop tree has no leaf concept (ADR-024), so `leaf IS NOT TRUE` must
+      // admit NULL or a shop's tree would never be walked past its roots.
+      const runStartedAt = new Date('2026-08-13T12:00:00.000Z');
+      await repository.upsertMany(SHOP_SCOPE, [node('s1', null, null)], runStartedAt);
+
+      await expect(repository.findExpandable(SHOP_SCOPE, runStartedAt, 10)).resolves.toEqual([
+        's1',
+      ]);
+    });
+
+    it('should NOT reset expandedAt when a node is re-upserted by a second parent', async () => {
+      // The invariant that makes the walk terminate. If the ON CONFLICT DO
+      // UPDATE list ever grows an "expandedAt" entry, this fails — which is the
+      // point, because the alternative is an infinite run in production.
+      const runStartedAt = new Date('2026-08-13T13:00:00.000Z');
+      await repository.upsertMany(ALLEGRO_SCOPE, [node('shared', 'a', false)], runStartedAt);
+      await repository.markExpanded(ALLEGRO_SCOPE, ['shared'], runStartedAt);
+
+      // Re-upserted as a child of a different parent, same run.
+      await repository.upsertMany(ALLEGRO_SCOPE, [node('shared', 'b', false)], runStartedAt);
+
+      await expect(repository.findExpandable(ALLEGRO_SCOPE, runStartedAt, 10)).resolves.toEqual(
+        [],
+      );
+    });
+
+    it('should re-admit a node expanded by an OLDER run', async () => {
+      // expandedAt is per-run, not permanent: the next run must walk the tree
+      // again or the projection would freeze after its first sync.
+      const firstRun = new Date('2026-08-13T14:00:00.000Z');
+      const secondRun = new Date('2026-08-13T15:00:00.000Z');
+      await repository.upsertMany(ALLEGRO_SCOPE, [node('a', null, false)], firstRun);
+      await repository.markExpanded(ALLEGRO_SCOPE, ['a'], firstRun);
+
+      await repository.upsertMany(ALLEGRO_SCOPE, [node('a', null, false)], secondRun);
+
+      await expect(repository.findExpandable(ALLEGRO_SCOPE, secondRun, 10)).resolves.toEqual([
+        'a',
+      ]);
+    });
+
+    it('should scope the frontier so one owner cannot see another tree', async () => {
+      const runStartedAt = new Date('2026-08-13T16:00:00.000Z');
+      await repository.upsertMany(ALLEGRO_SCOPE, [node('owned', null, false)], runStartedAt);
+      await repository.upsertMany(SHOP_SCOPE, [node('shopped', null, null)], runStartedAt);
+
+      await expect(
+        repository.findExpandable(ALLEGRO_SCOPE, runStartedAt, 10),
+      ).resolves.toEqual(['owned']);
+      await expect(repository.findExpandable(SHOP_SCOPE, runStartedAt, 10)).resolves.toEqual([
+        'shopped',
+      ]);
+    });
+
+    it('should bound the frontier by limit and order it deterministically', async () => {
+      const runStartedAt = new Date('2026-08-13T17:00:00.000Z');
+      await repository.upsertMany(
+        ALLEGRO_SCOPE,
+        [node('c', null, false), node('a', null, false), node('b', null, false)],
+        runStartedAt,
+      );
+
+      await expect(repository.findExpandable(ALLEGRO_SCOPE, runStartedAt, 2)).resolves.toEqual([
+        'a',
+        'b',
+      ]);
     });
   });
 });

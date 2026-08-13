@@ -85,6 +85,21 @@ export class DestinationCategoryOrmEntity {
   @Column({ type: 'timestamptz' })
   syncedAt!: Date;
 
+  /**
+   * Watermark of the run that expanded this node's children (#2061).
+   *
+   * This is what makes the sync frontier a QUERY rather than an id list carried
+   * on the connection cursor: a run's remaining work is "rows in scope carrying
+   * this run's `syncedAt`, not a leaf, not yet expanded by this run". Recording
+   * it on the row is also what bounds termination — a node reachable from two
+   * parents, or through a cycle, cannot re-enter the frontier on a later page.
+   *
+   * Infrastructure-only, like `searchText` above: sync bookkeeping is not
+   * read-model data, so it never reaches the domain entity.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  expandedAt!: Date | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 
