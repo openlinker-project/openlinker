@@ -12,6 +12,7 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { IProductsService, PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
+import { Logger } from '@openlinker/shared/logging';
 import type { OfferStatusSnapshot } from '../../domain/entities/offer-status-snapshot.entity';
 import { OfferMappingRepositoryPort } from '../../domain/ports/offer-mapping-repository.port';
 import { OfferStatusSnapshotRepositoryPort } from '../../domain/ports/offer-status-snapshot-repository.port';
@@ -31,6 +32,8 @@ const MAPPINGS_PER_VARIANT_LIMIT = 100;
 
 @Injectable()
 export class OfferStatusReadService implements IOfferStatusReadService {
+  private readonly logger = new Logger(OfferStatusReadService.name);
+
   constructor(
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly products: IProductsService,
@@ -113,13 +116,21 @@ export class OfferStatusReadService implements IOfferStatusReadService {
         )
       )
     );
-    return pages.flatMap((page) =>
-      page.items.map((mapping) => ({
+    return pages.flatMap((page) => {
+      // A variant carries one offer mapping per connection, so the cap is far
+      // above any real fan-out — say so if that ever stops being true, rather
+      // than silently truncating the operator's view.
+      if (page.total > MAPPINGS_PER_VARIANT_LIMIT) {
+        this.logger.warn(
+          `Variant has ${page.total} offer mappings, above the ${MAPPINGS_PER_VARIANT_LIMIT} read cap; the publication-status view is truncated`
+        );
+      }
+      return page.items.map((mapping) => ({
         connectionId: mapping.connectionId,
         externalId: mapping.externalId,
         internalId: mapping.internalId,
-      }))
-    );
+      }));
+    });
   }
 
   private toView(snapshot: OfferStatusSnapshot): OfferPublicationStatusView {

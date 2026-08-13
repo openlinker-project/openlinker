@@ -52,7 +52,9 @@ describe('OfferStatusSnapshotRepository', () => {
     const mockOrmRepo = {
       findOne: jest.fn(),
       save: jest.fn(),
-      query: jest.fn().mockResolvedValue(undefined),
+      // The upsert returns the post-write `lastStatusSyncedAt`; equal to the
+      // command's instant ⇒ the freshness guard accepted the observation.
+      query: jest.fn().mockResolvedValue([{ lastStatusSyncedAt: now }]),
       createQueryBuilder: jest.fn(),
     } as unknown as jest.Mocked<Repository<OfferStatusSnapshotOrmEntity>>;
 
@@ -119,8 +121,26 @@ describe('OfferStatusSnapshotRepository', () => {
         JSON.stringify({ validationMessages: ['gone'] }),
         now,
       ]);
+      expect(sql).toContain('RETURNING "lastStatusSyncedAt"');
       expect(result.snapshot.publicationStatus).toBe('ended');
       expect(result.previousStatus).toBeNull();
+      expect(result.applied).toBe(true);
+    });
+
+    it('reports applied=false when the guard kept a fresher stored observation', async () => {
+      const fresher = new Date(now.getTime() + 5_000);
+      ormRepository.query.mockResolvedValue([{ lastStatusSyncedAt: fresher }]);
+      ormRepository.findOne
+        .mockResolvedValueOnce(buildOrm({ publicationStatus: 'active' }))
+        .mockResolvedValueOnce(
+          buildOrm({ publicationStatus: 'active', lastStatusSyncedAt: fresher })
+        );
+
+      const result = await repository.upsert(command);
+
+      // The stored row wins, so the caller must not narrate `active → ended`.
+      expect(result.applied).toBe(false);
+      expect(result.snapshot.publicationStatus).toBe('active');
     });
 
     it('reports the status the row held before the write', async () => {

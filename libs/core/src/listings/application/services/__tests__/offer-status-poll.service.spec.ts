@@ -209,7 +209,7 @@ describe('OfferStatusPollService', () => {
       expect(statusSync.recordObservedStatus).toHaveBeenCalledWith(
         CONNECTION_ID,
         { externalOfferId: EXTERNAL_OFFER_ID, internalVariantId: 'ol_variant_x' },
-        { publicationStatus: 'active', validationMessages: [] },
+        { publicationStatus: 'active', validationMessages: [], observedAt: expect.any(Date) },
       );
       // No delayed re-read of what was just read.
       expect(scheduledRefreshCalls()).toHaveLength(0);

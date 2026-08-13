@@ -129,8 +129,13 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
     }
 
     let result: CreateOfferResult;
+    let observedAt: Date;
     try {
       result = await adapter.createOffer(command);
+      // When the create response carries a publication status, this is the
+      // instant it was observed — the snapshot's freshness guard compares
+      // observation instants, not write times.
+      observedAt = new Date();
     } catch (error) {
       if (error instanceof OfferCreateRejectedException) {
         const updated = await this.offerCreationRecords.updateStatus(
@@ -204,7 +209,7 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
     //
     // An adapter that learned nothing authoritative omits the field, and we
     // write nothing rather than guessing a status the operator would act on.
-    await this.recordObservedStatus(input, result);
+    await this.recordObservedStatus(input, result, observedAt);
 
     if (finalRecord.status === 'validating') {
       try {
@@ -247,7 +252,8 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
    */
   private async recordObservedStatus(
     input: ExecuteOfferCreationInput,
-    result: CreateOfferResult
+    result: CreateOfferResult,
+    observedAt: Date
   ): Promise<void> {
     if (result.publicationStatus === undefined) {
       return;
@@ -262,6 +268,7 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
         {
           publicationStatus: result.publicationStatus,
           validationMessages: (result.validationErrors ?? []).map((error) => error.message),
+          observedAt,
         }
       );
     } catch (err) {

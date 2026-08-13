@@ -101,6 +101,7 @@ describe('OfferStatusSyncService', () => {
           Promise.resolve({
             snapshot: makeSnapshot(cmd.externalOfferId, cmd.publicationStatus),
             previousStatus: null,
+            applied: true,
           })
         ),
     } as unknown as jest.Mocked<Pick<OfferStatusSnapshotRepositoryPort, 'upsert'>>;
@@ -160,6 +161,7 @@ describe('OfferStatusSyncService', () => {
     snapshots.upsert.mockResolvedValue({
       snapshot: makeSnapshot('111', 'ended'),
       previousStatus: 'active',
+      applied: true,
     });
 
     const result = await service.sync(CONNECTION_ID, { limit: 10 });
@@ -174,6 +176,7 @@ describe('OfferStatusSyncService', () => {
     snapshots.upsert.mockResolvedValue({
       snapshot: makeSnapshot('111', 'active'),
       previousStatus: null,
+      applied: true,
     });
 
     const result = await service.sync(CONNECTION_ID, { limit: 10 });
@@ -188,12 +191,44 @@ describe('OfferStatusSyncService', () => {
     snapshots.upsert.mockResolvedValue({
       snapshot: makeSnapshot('111', 'active'),
       previousStatus: 'active',
+      applied: true,
     });
 
     const result = await service.sync(CONNECTION_ID, { limit: 10 });
 
     expect(result.transitioned).toBe(0);
     expect(result.updated).toBe(1);
+  });
+
+  it('should not count an update or a transition when the freshness guard rejected the write', async () => {
+    integrations.getCapabilityAdapter.mockResolvedValue(statusReader(() => readResult('inactive')));
+    offerMappings.findMany.mockResolvedValue(page([makeMapping('111', 'ol_variant_a')], 1));
+    // A fresher observation is already stored: the row still reads `active`,
+    // so reporting "active → inactive" would narrate a write that never landed.
+    snapshots.upsert.mockResolvedValue({
+      snapshot: makeSnapshot('111', 'active'),
+      previousStatus: 'active',
+      applied: false,
+    });
+
+    const result = await service.sync(CONNECTION_ID, { limit: 10 });
+
+    expect(result.scanned).toBe(1);
+    expect(result.updated).toBe(0);
+    expect(result.transitioned).toBe(0);
+  });
+
+  it('should stamp the snapshot with the instant the marketplace was read', async () => {
+    integrations.getCapabilityAdapter.mockResolvedValue(statusReader(() => readResult('active')));
+    offerMappings.findMany.mockResolvedValue(page([makeMapping('111', 'ol_variant_a')], 1));
+
+    const before = Date.now();
+    await service.sync(CONNECTION_ID, { limit: 10 });
+    const after = Date.now();
+
+    const [command] = snapshots.upsert.mock.calls[0] as [UpsertOfferStatusSnapshotCommand];
+    expect(command.lastStatusSyncedAt.getTime()).toBeGreaterThanOrEqual(before);
+    expect(command.lastStatusSyncedAt.getTime()).toBeLessThanOrEqual(after);
   });
 
   it('should count notFound and not upsert when the marketplace reports the offer is gone', async () => {

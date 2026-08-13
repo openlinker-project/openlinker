@@ -77,13 +77,19 @@ export class OfferStatusSnapshotRepository implements OfferStatusSnapshotReposit
     const freshest = (column: string): string =>
       `"${column}" = CASE WHEN ${guard} THEN EXCLUDED."${column}" ELSE ${TABLE}."${column}" END`;
 
-    await this.ormRepository.query(
+    // `RETURNING` reports the post-write `lastStatusSyncedAt`, which is
+    // `GREATEST(stored, ours)` — so it equals the observation we passed in
+    // exactly when the guard accepted it. Read from the statement itself
+    // rather than from the read-back below, so a concurrent fresher write
+    // landing in between cannot make an applied write look rejected.
+    const written = (await this.ormRepository.query(
       `INSERT INTO ${TABLE} ("connectionId", "externalOfferId", "internalVariantId", "publicationStatus", "statusDetails", "lastStatusSyncedAt")
        VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT ("externalOfferId", "connectionId")
        DO UPDATE SET ${freshest('internalVariantId')}, ${freshest('publicationStatus')}, ${freshest('statusDetails')},
          "lastStatusSyncedAt" = GREATEST(${TABLE}."lastStatusSyncedAt", EXCLUDED."lastStatusSyncedAt"),
-         "updatedAt" = now()`,
+         "updatedAt" = now()
+       RETURNING "lastStatusSyncedAt"`,
       [
         command.connectionId,
         command.externalOfferId,
@@ -92,7 +98,9 @@ export class OfferStatusSnapshotRepository implements OfferStatusSnapshotReposit
         command.statusDetails === null ? null : JSON.stringify(command.statusDetails),
         command.lastStatusSyncedAt,
       ]
-    );
+    )) as Array<{ lastStatusSyncedAt: Date }> | undefined;
+
+    const persistedSyncedAt = written?.[0]?.lastStatusSyncedAt;
 
     const saved = await this.ormRepository.findOne({
       where: {
@@ -106,7 +114,10 @@ export class OfferStatusSnapshotRepository implements OfferStatusSnapshotReposit
         command.externalOfferId
       );
     }
-    return { snapshot: this.toDomain(saved), previousStatus };
+    const resolvedSyncedAt = persistedSyncedAt ?? saved.lastStatusSyncedAt;
+    const applied =
+      new Date(resolvedSyncedAt).getTime() === command.lastStatusSyncedAt.getTime();
+    return { snapshot: this.toDomain(saved), previousStatus, applied };
   }
 
   async countByConnectionAndStatus(

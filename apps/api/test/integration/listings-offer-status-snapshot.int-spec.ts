@@ -55,6 +55,7 @@ describe('Offer Status Snapshot Repository Integration', () => {
 
     expect(saved.snapshot.id).toBeDefined();
     expect(saved.previousStatus).toBeNull();
+    expect(saved.applied).toBe(true);
 
     const read = await repository.findByConnectionAndExternalOfferId(CONNECTION_ID, '7781562863');
     expect(read).not.toBeNull();
@@ -138,6 +139,9 @@ describe('Offer Status Snapshot Repository Integration', () => {
 
       expect(result.snapshot.publicationStatus).toBe('active');
       expect(result.snapshot.lastStatusSyncedAt.toISOString()).toBe(fresh.toISOString());
+      // The caller must be able to tell a rejected write from an applied one,
+      // or it counts an update and logs a transition that never happened.
+      expect(result.applied).toBe(false);
 
       const read = await repository.findByConnectionAndExternalOfferId(CONNECTION_ID, OFFER_ID);
       expect(read?.publicationStatus).toBe('active');
@@ -152,6 +156,7 @@ describe('Offer Status Snapshot Repository Integration', () => {
       expect(result.snapshot.publicationStatus).toBe('active');
       expect(result.snapshot.lastStatusSyncedAt.toISOString()).toBe(newer.toISOString());
       expect(result.previousStatus).toBe('activating');
+      expect(result.applied).toBe(true);
     });
 
     it('applies a same-instant rewrite, so a re-observation is never dropped', async () => {
@@ -161,6 +166,7 @@ describe('Offer Status Snapshot Repository Integration', () => {
       const result = await observe('active', sameInstant);
 
       expect(result.snapshot.publicationStatus).toBe('active');
+      expect(result.applied).toBe(true);
     });
   });
 });

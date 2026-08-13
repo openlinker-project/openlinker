@@ -24,6 +24,13 @@ import type { OfferPublicationStatus } from '../types/offer-status-read.types';
 export interface OfferStatusUpsertResult {
   snapshot: OfferStatusSnapshot;
   previousStatus: OfferPublicationStatus | null;
+  /**
+   * Whether the freshness guard accepted this observation (#2039). `false`
+   * means a fresher observation was already stored and the row's status was
+   * left as it was — so a caller must not count the write or narrate a
+   * transition it did not cause. Always `true` on a first insert.
+   */
+  applied: boolean;
 }
 
 export interface OfferStatusSnapshotRepositoryPort {
@@ -50,7 +57,8 @@ export interface OfferStatusSnapshotRepositoryPort {
    * untouched, and `lastStatusSyncedAt` itself only ever moves forward. A
    * same-instant rewrite still applies. The returned snapshot is therefore the
    * *persisted* row, which on a rejected write is the fresher stored one — not
-   * necessarily the command that was passed in.
+   * necessarily the command that was passed in, and `applied` reports which of
+   * the two it is.
    *
    * Implementations must also be safe under concurrent upserts of the same key.
    */

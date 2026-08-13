@@ -160,8 +160,12 @@ export class OfferStatusPollService implements IOfferStatusPollService {
 
     // Hit the marketplace. 404 → terminal failure; transport errors propagate.
     let result: OfferStatusReadResult;
+    let observedAt: Date;
     try {
       result = await adapter.getOfferStatus(input.externalOfferId);
+      // Stamp the snapshot with when the marketplace was read, not when the
+      // write happens — the freshness guard compares observation instants.
+      observedAt = new Date();
     } catch (err) {
       if (err instanceof OfferNotFoundOnMarketplaceException) {
         await this.markFailedAtomically(
@@ -206,7 +210,8 @@ export class OfferStatusPollService implements IOfferStatusPollService {
           input.connectionId,
           input.externalOfferId,
           record.internalVariantId,
-          result
+          result,
+          observedAt
         );
       }
 
@@ -338,7 +343,8 @@ export class OfferStatusPollService implements IOfferStatusPollService {
     connectionId: string,
     externalOfferId: string,
     internalVariantId: string,
-    observed: OfferStatusReadResult
+    observed: OfferStatusReadResult,
+    observedAt: Date
   ): Promise<void> {
     try {
       await this.offerStatusSync.recordObservedStatus(
@@ -347,6 +353,7 @@ export class OfferStatusPollService implements IOfferStatusPollService {
         {
           publicationStatus: observed.publicationStatus,
           validationMessages: observed.validationErrors.map((error) => error.message),
+          observedAt,
         }
       );
     } catch (err) {

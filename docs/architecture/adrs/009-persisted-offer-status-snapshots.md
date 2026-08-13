@@ -75,7 +75,13 @@ looked better-synced than a healthy one.
   call sites swallow-and-warn, with the hourly sync as the backstop.
 - **Multi-writer consequence**: see the amended § Consequences bullet — `upsert` becomes a freshness-guarded
   `INSERT … ON CONFLICT DO UPDATE`, proven by an integration test (a SQL guard cannot be exercised through a
-  mocked repository).
+  mocked repository). Because that guard can now *reject* a write, `OfferStatusUpsertResult` also reports
+  `applied`, read from the statement's own `RETURNING` so a concurrent write cannot skew it. The `previousStatus`
+  → observed-status comparison only describes a real transition when the write landed, so `OfferStatusSyncService`
+  gates its `updated` / `transitioned` counters and its transition log line on `applied`; otherwise a stale
+  observation would be reported as an `active → inactive` change while the row still read `active`. Every caller
+  also stamps `observedAt` with the instant the marketplace was actually read, so the guard orders observations
+  rather than writes.
 
 Erli remains uncovered by design: its create is an async 202 with no status, and its status *read* defaults
 unknown wire values to `inactive` — the hazard the review-#1063 scheduler gate suppresses until #992.

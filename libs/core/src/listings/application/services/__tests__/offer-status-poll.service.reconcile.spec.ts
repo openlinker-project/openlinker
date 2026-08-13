@@ -6,9 +6,9 @@
 import type { ConfigService } from '@nestjs/config';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { ISyncJobsService } from '@openlinker/core/sync';
-import type { OfferCreationRecordRepositoryPort } from '../../domain/ports/offer-creation-record-repository.port';
-import { OfferStatusPollService } from './offer-status-poll.service';
-import type { IOfferStatusSyncService } from './offer-status-sync.service.interface';
+import type { OfferCreationRecordRepositoryPort } from '../../../domain/ports/offer-creation-record-repository.port';
+import { OfferStatusPollService } from '../offer-status-poll.service';
+import type { IOfferStatusSyncService } from '../offer-status-sync.service.interface';
 
 const REFRESH_JOB_TYPE = 'marketplace.offer.refreshSnapshot';
 

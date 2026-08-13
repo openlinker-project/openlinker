@@ -724,7 +724,7 @@ describe('OfferCreationExecutionService', () => {
       expect(offerStatusSync.recordObservedStatus).toHaveBeenCalledWith(
         CONNECTION_ID,
         { externalOfferId: EXTERNAL_OFFER_ID, internalVariantId: VARIANT_ID },
-        { publicationStatus: 'active', validationMessages: [] }
+        { publicationStatus: 'active', validationMessages: [], observedAt: expect.any(Date) }
       );
     });
 
@@ -757,7 +757,11 @@ describe('OfferCreationExecutionService', () => {
       expect(offerStatusSync.recordObservedStatus).toHaveBeenCalledWith(
         CONNECTION_ID,
         expect.anything(),
-        { publicationStatus: 'inactive', validationMessages: ['Missing parameter'] }
+        {
+          publicationStatus: 'inactive',
+          validationMessages: ['Missing parameter'],
+          observedAt: expect.any(Date),
+        }
       );
     });
 
