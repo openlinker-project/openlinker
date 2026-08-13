@@ -68,11 +68,11 @@ mechanics (bins, putaway, cycle counts, slotting), customer master beyond projec
 | ~~D4~~ | ~~Rules engine = hand-rolled versioned condition AST~~ — **withdrawn.** Wave 3 ships SLA escalation as a **named core feature**; the engine is deferred behind a falsifiable premise | OL emits **three** event streams (one with no consumer); after Wave 2 the usable trigger surface is one stream with ≤6 cause types. Of BaseLinker's ten trigger categories OL can serve **one**. `AutoIssueTriggerService` already does hard-coded orchestration in ~150 lines — see § 5 Wave 3 |
 | ~~D5~~ | ~~Dry-run is the differentiator, and nearly free~~ — **withdrawn.** | it was justified as "preview and apply are one replay function" — but [ADR-040](../architecture/adrs/040-order-changeset-proposed-then-confirmed.md) **deferred the replay function**. The claim named a component that no longer exists, and a realistic condition needs 6–8 reads to assemble, so it is not pure either |
 | D6 | Returns is a **child aggregate**, not an axis | axis rows are one per order×axis; returns are N per order |
-| D7 | Reservations get their **own table**; never overload `inventory_items.reservedQuantity` | that column is a master mirror, rewritten on every sync |
+| D7 ~~*(Wave 5 cut; retained as reference)*~~ | Reservations get their **own table**; never overload `inventory_items.reservedQuantity` | that column is a master mirror, rewritten on every sync |
 | D8 | Invoice issuance is an **observed** event keyed on the KSeF-returned date | art. 106na — the legal issue date is assigned at transmission |
-| D9 | **Invert Medusa's concurrency model**: an atomic conditional UPDATE + CHECK constraint against an **OL-owned counter column** (`olReservedQuantity`), never the master mirror — see § 6I | Medusa has zero `FOR UPDATE`, zero CHECK constraints, read-then-write LWW; no surveyed OSS platform does better |
+| D9 ~~*(Wave 5 cut; retained as reference)*~~ | **Invert Medusa's concurrency model**: an atomic conditional UPDATE + CHECK constraint against an **OL-owned counter column** (`olReservedQuantity`), never the master mirror — see § 6I | Medusa has zero `FOR UPDATE`, zero CHECK constraints, read-then-write LWW; no surveyed OSS platform does better |
 | D10 | Lifecycle facts as **independent nullable timestamps**, not one enum | a single flag cannot carry both "did it happen" and "did we relay it" (#1947) |
-| **D11** | **`totalAvailable` keeps its current meaning (raw available). ATP is a NEW field.** | Redefining it is a silent semantic break across 6 consumers with zero compile errors — see § 6 C2 |
+| **D11** | **`totalAvailable` keeps its current meaning (raw available). ATP is a NEW field.** | Redefining it is a silent semantic break across **7** consumers (one, `erli-order-source.adapter.ts:634`, **outside core**) with zero compile errors — see § 6 C2 |
 | **D12** | **Backend authorization is `@Roles(...)`, not permissions.** Permissions drive UI visibility only | `frontend-architecture.md` § Access Control; `role.types.ts` doc comment — see § 6F |
 | **D13** | **SLA is NOT an input to the canonical projection.** `canonicalState` is a function of recorded facts only; `slaState` stays a separate derived-on-read field | `deriveSlaState(dispatchByAt, fulfillmentState, now)` takes a wall clock. A materialised column fed by `now` is uninvalidatable — an untouched order crosses its deadline and stays stale forever |
 | **D14** | **Shipping writes a fact to the ledger, not a column.** `OrderFulfillmentProjectionService` routes through `OrderAxisLedgerService`, which owns `canonicalState` recomputation | otherwise "the sole coordinating writer" is false on day one: `fulfillmentState` is written cross-context by an error-swallowing projection |
@@ -335,93 +335,200 @@ it does not exist.
 10. **Capability-gate outcomes are first-class log entries.** A silently-skipped action whose
     condition passed makes "why didn't my rule fire" answer the wrong question confidently.
 
-### Wave 4 — Post-sale
+### Wave 4 — Post-sale (**narrowed to a projection** after a stress test)
 
-**Step 0 (blocking, do first).** Convert all five `OrderLifecycleEventType` consumers to exhaustive
-handling with a `never` default — `order-lifecycle-relay.service.ts:122`, the Allegro and Erli order
-sources, and the WooCommerce and PrestaShop processors — plus the two int-test stub helpers. All five
-are today two-branch `if/else`, so extending the union **compiles cleanly and mis-routes at
-runtime**; Erli would report a returned order as `sent`. See § 6 C1.
+The original Wave 4 proposed two tables, a six-value lifecycle enum and a bespoke reason vocabulary
+on top of a marketplace surface that is **read + one rejection** on Allegro and a **read-only
+embedded array with no id and no status** on Erli. A stress test rejected it on the same grounds that
+cut ADR-040's action machinery and ADR-041's flow entity: entity ahead of requirement.
 
-15. **`Return` as its own aggregate** — own id, own status enum, `orderId`, `externalReturnId` (so a
-    marketplace-originated return round-trips), and transition timestamps. The status enum must carry
-    **`declined`** and **`cancelled`**: a declined return leaves the order exactly as it was, and that
-    has no order-status equivalent. Minimum set:
-    `requested | approved | received | closed | declined | cancelled`
-16. **`ReturnLine`** — carries `requestedQuantity`, **`receivedQuantity`**, **`damagedQuantity`**,
-    `reasonCode`, `reasonNote`. The quantity split is a four-system consensus (Medusa
-    `received`/`damaged`; Shopify processable/processed/refundable/refunded; commercetools
-    BackInStock vs Unusable) — no single field says "3 came back, 1 is scrap".
+**What ships:**
 
-    **Key it on the source's own reference, not on an order line.** Allegro's
-    `CustomerReturnItem` carries **`offerId`, not the checkout-form `lineItems[].id`** — so
-    attribution back to an ordered line requires joining on `offer.id`, and **that join is not
-    unique**: one checkout form can legitimately hold two lines for the same offer. Store
-    `(externalItemRef, quantity)` as authoritative and treat the link to an order line as a
-    **best-effort resolution that may be ambiguous**. An unresolvable attribution is an
-    operator-facing needs-attention state, not a silent guess.
+15. **`order_returns_projection`** — refreshed from the source snapshot on poll. Columns:
+    `internalOrderId`, `platform`, `externalReturnId | null`, **`rawStatus` (verbatim source
+    string)**, `lines: jsonb` of `{ externalItemRef, quantity, reasonRaw, resolvedOrderLineId | null }`,
+    `rawPayload`. No lifecycle enum, no `ReturnLine` table, no reason vocabulary.
 
-    **`ReturnLine` carries no status.** Allegro's rejection is whole-return
-    (`POST /order/customer-returns/{id}/rejection`), and there is no per-line status anywhere.
-17. **Reason codes are their own vocabulary**, per line, never reusing order-status codes. Allegro's
-    ~17 reason types are a **prose list, not a formal enum** in the spec — validate leniently.
-    Erli's are a different closed set.
-18. Extend `OrderLifecycleEventTypeValues` (only after Step 0)
-19. Return → `CorrectionIssuer` mapper — the capability is already return-shaped
-20. Restock — the real gap: nothing writes master inventory upward today. `damagedQuantity` is what
-    decides whether stock goes back on the shelf
-21. Disputes (a richer writable Allegro surface than returns)
-22. **Refund intent ≠ refund execution** — a claimed amount on the return, the executed movement
-    recorded where OL records money. Never one `refunded` boolean. BaseLinker states outright that its
-    own `setOrderReturnRefund` "doesn't issue an actual money refund"; Medusa and Saleor split the
-    same way
+    This **closes open question 6a in favour of verbatim projection.** Decomposing Allegro's
+    11-value "timeline" into facets means OL interprets four interleaved axes with no operator asking
+    for a report from the result.
+16. **One action: reject-refund**, routed through the existing ADR-040 `order_changes` proposal
+    record. It is exactly "a single action against a single reference" — the shape ADR-040 says is the
+    whole of OL's mutation surface. **Zero new tables.**
 
-**Deliberately out of the minimum model** (all additive later, none forces a reshape): exchanges,
-reverse-fulfilment logistics, restocking fees.
+**Why the rest was cut — each for a verified, not speculative, reason:**
 
-### Source-shape constraints the returns model must absorb
+- **A `Return.status` enum has one derivable value.** Of `requested | approved | received | closed |
+  declined | cancelled`, only `declined` maps to something OL observes (the one write). Allegro has no
+  create, so `requested` is not a state OL sees entered; **nothing in the surface produces
+  `approved`** — not-yet-rejected is not approval; `closed` maps to `FINISHED`, which means
+  *settlement*. An operator filtering "approved" gets zero rows forever, or rows OL fabricated.
+- **`damagedQuantity` is unobservable from every source in scope.** Neither platform reports
+  condition. It could only ever be operator-typed, in OL, on a screen Wave 4 would also have to build,
+  for a restock write that does not execute. And grading returned goods is **warehouse mechanics — a
+  declared permanent non-goal in § 1**.
+- **Erli breaks the aggregate's primary key.** No return id, read-only embedded array re-read every
+  poll, no ordering guarantee — so `Return.id` is a synthesised surrogate over an unstable natural
+  key, and `Return.status` is `unknown` for 100% of Erli rows. Persisting a mirror of a read-only
+  array is the anti-pattern the projection avoids.
+
+**Relocated or blocked, not deferred:**
+
+- **Step 0 (exhaustiveness) moves to Wave 2.** Five two-branch `if/else` consumers of
+  `OrderLifecycleEventType` that "compile cleanly and mis-route at runtime" is a **live latent bug**
+  independent of returns. Add the `never` defaults *without* adding a union member.
+- **Item 18 (`+= 'returned'`) is withdrawn until a target adapter can name a value it would write.**
+  Allegro's `RETURNED` requires all items returned *and* refunded — nothing to write for a partial
+  return, and OL cannot assert the refund half. Erli's `PATCH /orders/{id}/status` has no line
+  parameter. Every adapter would answer `unsupported`.
+- **Item 19 (`CorrectionIssuer` mapper) is BLOCKED, not deferred.** The ambiguity is on *both* sides.
+  `InvoiceLine` is `{ name, quantity, unitPriceGross, taxRate }` — **no line id, no sku, no
+  productId** — and `toInvoiceLine` collapses identity to `name?.trim() || sku || productId`. So two
+  order lines for the same offer produce **byte-identical snapshot lines**, and
+  `CorrectionLine.originalLineNumber` is *positional* into that snapshot. The ambiguity is benign only
+  while unit prices match; with a line-level promo the correction is silently wrong by the price
+  delta — on a **KSeF-transmitted legal document whose issue date is authority-assigned and therefore
+  not retractable (D8)**. (Second positional hazard: the mapper *conditionally* appends a shipping
+  line, so the index space shifts when shipping is zero.)
+
+  **Precondition: a stable line reference on `InvoiceLine` / `issuedLineSnapshot`.** That is an
+  invoicing-domain change, not a Wave 4 line item. Until then the operator issues the correction
+  manually, with the ambiguous case **shown rather than resolved**.
+- **Item 20 (restock) is not a returns feature.** `PrestashopInventoryMasterAdapter.adjustInventory`
+  **rejects** (`PrestashopNotSupportedException`, "not supported in MVP"); WooCommerce's own comment
+  admits a non-atomic read-modify-write race. And the OL-side shortcut is closed by **D7** — the
+  quantity column is a master mirror, rewritten every sync, so there is nothing durable to increment
+  until Wave 5's first OL-owned column. Its true content is "implement `adjustInventory` on
+  PrestaShop": a PrestaShop-integration issue, needing no `Return` aggregate to justify it.
+- **Item 21 (disputes) is deleted from the delivery list.** `PostPurchaseIssueStatus` (read) and
+  `ClaimStatusChangeRequest` (write) are **different enums**, so the write is not the inverse of the
+  read; and an issue references `offer { id, quantity }` — **offer-scoped, one offer per issue** — so
+  it is not order-grained and does not fit under a return aggregate at all. Open question 3 is still
+  open; an unanswered open question must not appear as a numbered work item.
+- **Item 22 collapses to one nullable observed field**, documented as inferred. `CustomerReturn.refund`
+  is a bank account with **no amount and no status**, so "intent" would have no source amount — OL
+  would invent the claimed figure and compare it to an execution it also inferred. Two layers, zero
+  measurements, is a discrepancy generator. (The BaseLinker/Medusa/Saleor precedent is from systems
+  that process the payment.)
+
+**The § 9 gate was also decorative and is replaced.** "The read-only Allegro surface is the binding
+constraint" locates the constraint on *Allegro's* side, which no amount of OL modelling relieves — it
+argues for a better read, not an OL-owned write model. The honest one-line summary is: *returns are
+surfaced read-only on order detail; OL owns no return state, because on both platforms in scope it
+observes one.*
+
+### Source-shape constraints the projection must absorb
+
+These survive the narrowing — they are constraints on the *source mapper*, which exists either way.
 
 - **Allegro's return `status` is not a state machine.** Its 11 values interleave four axes —
   logistics (`DISPATCHED`/`IN_TRANSIT`/`DELIVERED`), settlement (`FINISHED`/`FINISHED_APT`),
   commission (`COMMISSION_REFUND_CLAIMED`/`COMMISSION_REFUNDED`) and fulfilment-warehouse
-  (`WAREHOUSE_*`). The spec itself calls it a *"timeline"*. Projecting it verbatim is honest but hard
-  to filter; decomposing it into facets is usable but means OL is interpreting. **Decide explicitly
-  before Wave 4** — modelling it as a single state machine will mis-fire.
-- **Erli returns have no status at all** — they are a fact, not a workflow, embedded read-only on
-  `Order.returns[]` with no return id and no reject action. Any cross-platform `Return.status` carries
-  an unavoidable `unknown` for every Erli return.
+  (`WAREHOUSE_*`). The spec itself calls it a *"timeline"*. Carried **verbatim** as `rawStatus`.
+- **Erli returns have no status at all** — a fact, not a workflow, embedded read-only on
+  `Order.returns[]` with no return id and no reject action.
 - **Two adapter traps, both verified in the specs.** Erli's quantity field is misspelled
   **`quentity`** — an adapter reading `quantity` silently gets `undefined`. And its line reference is
   a **positional `index` into `Order.items[]`**, not an id, despite `items[].id` existing; resolve
   `index → items[index].externalId` at ingest and persist the resolved id, never the index.
+- **Allegro's `CustomerReturnItem` carries `offerId`, not the checkout-form line id** — so attribution
+  to an ordered line is a **best-effort resolution that may be ambiguous** (one checkout form can hold
+  two lines for the same offer). `resolvedOrderLineId` is nullable by design; an unresolvable
+  attribution is operator-facing, never a silent guess.
 - **Allegro customer-returns is `[BETA]`** (`application/vnd.allegro.beta.v1+json`), and its only
   write is the rejection. Read + reject is the whole surface — this is what caps Wave 4's ambition.
-- `CustomerReturn.refund` carries **no amount and no refund status** — only a bank account. Whether
-  money moved is inferable only from `status ∈ {FINISHED, FINISHED_APT}`. This is why refund intent
-  and refund execution must stay separate (item 22).
 
-### Wave 5 — Allocation
+### Wave 5 — Allocation (**cut as scoped** after a stress test)
 
-21. `inventory_reservations` ledger + `inventory_items.olReservedQuantity` counter — see § 6I
-22. **Add `availableToPromise` and `olReserved` to `VariantAvailability` (D11).** `totalAvailable`
-    keeps meaning raw available. Name the new field **`olReserved`, not `reserved`** — the sibling
-    `ProductStockAggregate.totalReserved` already means the *master mirror*, and two fields named
-    `reserved` meaning different things on sibling types is a trap. Migrate the six consumers to ATP
-    **explicitly, one at a time**
-23. `applyStockSafetyBuffer` consumes ATP — see § 6 C3 for the accepted trade-off, the required doc
-    updates, **and the feedback-loop hazard**
-24. Atomic reserve (D9) against `olReservedQuantity` — exact DDL and SQL in § 6I
-25. Reserve on ingestion; **close on OL's own dispatch event** (§ 6 C3a); expiry sweeper as a safety
-    net only. Plus the **reconciler** (`inventory.reservation.reconcile`) — the counter is
-    denormalised over a ledger and drift here silently oversells (§ 6I)
-26. Make `InventoryRepository.upsert`'s existing-row write **explicitly column-scoped** (§ 6I) — it
-    is column-scoped today only as an emergent property of TypeORM's `save()` diffing, which is too
-    thin a basis for an oversell guarantee
-27. Remove `reserveInventory` / `releaseInventory` from `InventoryMasterPort`. Safe (structural
-    excess is legal; zero non-spec call sites) but requires deleting two adapter specs and updating
-    `docs/capabilities.md:29` + the `engineering-standards.md` port snippets **in the same PR**
+**The headline fix does not apply to the default routing case.** § 6 C3a resolves the C3 feedback loop
+by closing a reservation on OL's own dispatch event. But `FulfillmentRoutingService` defaults to
+**`omp_fulfilled`** (`processorConnectionId` is null for it — "no rule"), where the OMP ships and OL
+only *reads status back*. § 6K already says the gate "binds only where OL dispatches"; C3a never
+carried that across.
+
+On the plan's own reference topology (PrestaShop master + Allegro source) the OMP that fulfils **is
+the master**: PrestaShop decrements its own stock, the next `MasterInventorySyncService` poll writes
+the lower `availableQuantity`, and `olReservedQuantity` is still held because no dispatch event
+reaches OL. Published stock becomes `master − olReserved − buffer` with `master` already reduced — a
+seller with 3 units and a buffer of 1 **publishes 0 after selling 1**, for the whole reservation TTL.
+The expiry sweeper becomes the *normal* close path, which § 6I explicitly forbids.
+
+That makes the feature **worse than shipping nothing in its default configuration.**
+
+Three further defects, each independently disqualifying as scoped:
+
+- **Reserve-on-ingestion is unimplementable at the point item 25 names.** `OrderIngestionService`
+  resolves item refs one at a time and, on any failure, persists `awaiting_mapping | source_deleted`
+  and **throws so the runner retries**. So there is no variant to reserve against for exactly the
+  orders in the oversell window; and `source_deleted` hits § 6I's `WHERE "isStale" = false` → zero
+  rows → a **permanent domain rejection of a real, paid order**.
+- **The retry loop double-reserves.** The partial unique index keys on `orderLineId`, and
+  `prestashop-order.mapper.ts:53` builds it as `String(row.id || index)`. If that value differs
+  between retries — index fallback, re-ordering, or the `||` bug on `row.id === 0` — the idempotency
+  key differs and the same line reserves twice. **Open question 6c is not "harmless today"**; it is a
+  live oversell bug on a code path that retries by design.
+- **The reconciler entrenches the drift that matters.** It is ledger-authoritative, so it fixes
+  counter drift and *confirms* ledger wrongness: a release that fails **before** the ledger write, a
+  double-reserve, or a consume that never fires all leave the ledger wrong and the correction rate at
+  **zero**. The proposed "non-zero correction rate is a defect signal" alert reads **green during the
+  incident it was built for.**
+
+**Also corrected:** ATP has **seven** consumers, not six — the seventh is
+`erli-order-source.adapter.ts:634`, **outside core**. A migration list assembled from an incomplete
+grep, for a change whose entire justification (C2) is that the wrong answer produces zero compile
+errors, is the failure C2 describes. Only the FE consumer is compile-protected.
+
+**And item 23 is a one-line no-op hiding a cross-context refactor.** `applyStockSafetyBuffer` is a
+pure two-argument function; the change lives at its **three call sites**, two of which
+(`offer-builder`, `product-publish-builder`) apply it to a caller-supplied `input.stock` re-hydrated
+from a **retry snapshot**. Making them consume ATP means changing stock provenance several layers up,
+or adding an inventory read inside a builder — a new `listings → inventory` runtime dependency at the
+point the codebase currently keeps pure.
+
+### What ships instead
+
+**Keep `stockSafetyBuffer`.** It already ships as the mitigation for precisely this risk, across all
+three publish paths, with a misconfiguration warning. Wave 5 replaces one tunable integer with a
+table, a counter with a CHECK, a partial unique index over an unstable line id, a lock-ordering rule,
+a raw-SQL transaction in a READ COMMITTED codebase, a sweeper, a reconciler with a false-green alert,
+a publish-pipeline refactor, seven consumer migrations and a published-contract removal.
+
+Two items are cheap, independently valuable, and unblock any future wave:
+
+21. **Make `InventoryRepository.upsert`'s existing-row write explicitly column-scoped** (§ 6I). It is
+    column-scoped today only as an emergent property of TypeORM's `save()` diffing — too thin a basis
+    for an oversell guarantee. **This is a live latent bug and should not wait for a gate.**
+22. **Fix open question 6c now** — the PrestaShop `String(row.id || index)` line id is already unsafe
+    for `shipment_lines` in Wave 2, independent of reservations.
+
+**Dropped in every scenario:** removing `reserveInventory` / `releaseInventory` from
+`InventoryMasterPort` (old item 27). It buys deleting two spec blocks and editing three docs, while
+inverting a promise the WooCommerce operator guide makes and shipping a published-contract change with
+no deprecation cycle. `docs/capabilities.md:29` already calls the surface "largely dormant" —
+**deprecate in place.**
+
+**Multi-location is latent but unguarded.** Verified: WooCommerce hardcodes `locationId: undefined`,
+PrestaShop ignores `_locationId`, and `inventory.service.ts` skips non-default locations. But
+`inventory_items.locationId` is nullable with partial unique indexes over it, and
+`findAvailabilityByVariantIds` **SUMs across every row for a variant with no location filter**. The
+day an adapter emits a non-null location, ATP sums N rows while a reserve `UPDATE … WHERE id = $1`
+takes one. A note in a document is not a mechanism: the minimum honest version **rejects at reserve
+time if a variant resolves to more than one non-stale row, loudly.**
+
+### The gate criterion was wrong, and is replaced
+
+§ 9 gated Wave 5 on "an actual oversell". That is trippable by a misconfiguration the codebase already
+warns about. The premise must be: **an oversell on a connection with a correctly configured non-zero
+`stockSafetyBuffer`** — i.e. the existing mitigation demonstrably failing.
+
+**If Wave 5 is revisited, it opens with the close-event question for `omp_fulfilled`, not with the
+concurrency mechanism.** If the answer is "there is no close event, only the sweeper", then
+reservations cannot feed published stock at all, and the wave becomes a much smaller thing: an
+operator-visible allocation view that does **not** touch `applyStockSafetyBuffer`. That version may be
+worth building. The version above is not.
 
 ---
+
 
 ## 6. Wave 2 in detail, and the three Critical corrections
 
@@ -562,7 +669,7 @@ Recommended: **fast path**, with that cost stated and accepted.
 
 **C1 — extending `OrderLifecycleEventTypeValues`.** Handled by Wave 4 Step 0 above.
 
-**C2 — ATP must be a new field, not a redefinition (D11).** Changing `totalAvailable` to mean ATP
+**C2 — ATP must be a new field, not a redefinition (D11).** *(Wave 5 is cut; C2 stands as the reason any future redefinition is unsafe — and note the consumer list was itself assembled from an incomplete grep, which is the failure C2 describes.)* Changing `totalAvailable` to mean ATP
 produces zero compile errors and no test failures while silently changing published marketplace
 quantities (`bulk-listing-submit.service.ts:655`), the operator-facing "stock at risk" panel — which
 surfaces that field **as `masterStock`** (`stock-at-risk-read.service.ts:84`) — and the
@@ -603,7 +710,18 @@ reasoning is traceable.)*
 
 ---
 
-## 6I. Reservation mechanism — D7/D9 resolved
+## 6I. Reservation mechanism — D7/D9 resolved (**retained as reference; Wave 5 is cut**)
+
+> **Status.** A stress test cut Wave 5 as scoped (§ 5). This section is kept because the mechanism
+> below is correct *as a mechanism* and would be the starting point if the wave returns — but it is
+> **not a delivery plan**, and it is the clearest instance of the disease this plan keeps finding:
+> worked out to the SQL, the deadlock ordering and the rejected alternatives, while the two questions
+> that decide whether it does anything useful — *what event closes a reservation under
+> `omp_fulfilled`* and *what happens to an order that cannot resolve its variants* — got one sentence
+> and zero respectively.
+>
+> If revisited, **open with the close-event question, not with the concurrency mechanism**, and treat
+> the single-location guard below as a required `CHECK`, not a note.
 
 D9's original phrasing (`SET reserved = reserved + $1 WHERE stocked - reserved >= $1`) was
 Medusa-shaped, borrowed from a schema where `reserved_quantity` is platform-owned. In OL it is not:
@@ -1050,11 +1168,18 @@ item now carries a **falsifiable premise**, and the gate is simply whether it ha
 |---|---|
 | Rules engine (§ 5 Wave 3) | a **second** customer requests a **third** automation that config cannot express |
 | `OrderFlow` entity (ADR-041) | **several clients working measurably differently** — not one client with two preferences |
-| Reservations / allocation (Wave 5) | an actual oversell, or a seller running stock thin enough that the sync window bites |
-| Returns (Wave 4) | an operator processing returns often enough that the read-only Allegro surface is the binding constraint |
+| Reservations / allocation (Wave 5) | an oversell **on a connection with a correctly configured non-zero `stockSafetyBuffer`** — i.e. the existing mitigation demonstrably failing |
+| Returns beyond the projection (Wave 4) | an operator **acting** on returns often enough that read-only surfacing is what blocks them — and, for the correction mapper, a stable line reference existing on `InvoiceLine` |
 
 None of these is a judgement call about value; each is a thing that either happened or did not. If
 none has been observed at the gate, the correct outcome is to ship nothing further and say so.
+
+**Two gates were rewritten because they were decorative.** Wave 5's original premise ("an actual
+oversell") is trippable by a misconfiguration the codebase already warns about, so it could fire
+without the existing mitigation ever having been tried. Wave 4's ("the read-only Allegro surface is
+the binding constraint") located the constraint on *Allegro's* side, where no OL modelling reaches —
+it argued for a better read, which the projection now delivers. A premise that the gated work cannot
+satisfy is falsifiability costume, not a gate.
 
 ---
 
