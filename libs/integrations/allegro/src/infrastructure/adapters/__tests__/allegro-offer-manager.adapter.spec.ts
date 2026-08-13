@@ -143,6 +143,47 @@ describe('AllegroOfferManagerAdapter', () => {
     );
   });
 
+  describe('getTaxonomyIdentity', () => {
+    const withEnvironment = (environment?: 'sandbox' | 'production') =>
+      new AllegroOfferManagerAdapter(
+        connectionId,
+        httpClient,
+        uploadHttpClient,
+        identifierMapping,
+        connection,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        DEFAULT_SELLER_DEFAULTS,
+        undefined,
+        environment
+      );
+
+    it('should return allegro:sandbox when the connection targets sandbox', () => {
+      expect(withEnvironment('sandbox').getTaxonomyIdentity()).toBe('allegro:sandbox');
+    });
+
+    it('should return allegro when the connection targets production', () => {
+      expect(withEnvironment('production').getTaxonomyIdentity()).toBe('allegro');
+    });
+
+    it('should default to allegro when no environment is supplied', () => {
+      // The param is optional only so existing construction sites keep
+      // compiling; production is the safe default because a sandbox connection
+      // always reaches the adapter through the factory, which passes it.
+      expect(withEnvironment().getTaxonomyIdentity()).toBe('allegro');
+    });
+
+    it('should resolve sandbox and production to different taxonomy scopes', () => {
+      // #2063 — collapsing these onto one scope is what let a sandbox sync
+      // overwrite, then sweep away, the production category tree.
+      expect(withEnvironment('sandbox').getTaxonomyIdentity()).not.toBe(
+        withEnvironment('production').getTaxonomyIdentity()
+      );
+    });
+  });
+
   describe('updateOfferQuantity', () => {
     beforeEach(() => {
       // Mock polling response for command status (SUCCESS by default)
