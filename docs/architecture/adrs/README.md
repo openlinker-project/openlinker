@@ -130,5 +130,6 @@ One pointer per section, identical format every time.
 | [ADR-038](./038-per-connection-outbound-rate-limiting.md) | Per-connection outbound rate limiting via a shared transport + ambient priority context | Proposed | 2026-07-30 |
 | [ADR-039](./039-order-lifecycle-derived-from-fact-ledger.md) | Order lifecycle as a derived projection over a per-axis fact ledger | Accepted | 2026-08-13 |
 | [ADR-040](./040-order-changeset-proposed-then-confirmed.md) | Order mutations as proposed-then-confirmed changes (proposal record; composition machinery deferred) | Accepted | 2026-08-13 |
+| [ADR-041](./041-order-flows-as-named-operator-process-configuration.md) | Order flows as named operator-process configuration | Proposed | 2026-08-13 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*

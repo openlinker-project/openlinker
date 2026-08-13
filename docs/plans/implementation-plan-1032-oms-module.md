@@ -79,6 +79,7 @@ mechanics (bins, putaway, cycle counts, slotting), customer master beyond projec
 | **D15** | **Transition identity is `(internalOrderId, axis, causeType, causeId)` — all NOT NULL** | the `(…, originConnectionId, sourceEventId)` form leaves both NULL for every OL-origin fact, and Postgres NULLs don't conflict in a unique index, so pack / SLA / operator facts would dedup on nothing |
 | **D16** | **Relay obligations live in their own table**, one row per `(transition, target)`; the transition row stays a pure fact | the relay fans out to N participants with per-target outcomes; one `relayState` enum cannot say "2 of 3 done, one unsupported, one failed" — the exact error D10 and § 1 forbid |
 | **D17** | **Line attribution on shipments** (`shipment_lines`), no fulfilment-unit aggregate | [DECISION-oms-fulfilment-grain](./analysis/DECISION-oms-fulfilment-grain.md) — makes `shipped_quantity` derivable without re-graining dispatch, locks or FE |
+| **D18** | **Process variation is a named `OrderFlow`, assigned per order**, not a pile of per-connection booleans. A flow may disable only an enumerated list of named guards | Fluent puts `orderType` in the workflow identifier; Sterling uses process type. BaseLinker's unbounded configurability needed Status Groups + action groups just to stay manageable — see [ADR-041](../architecture/adrs/041-order-flows-as-named-operator-process-configuration.md) |
 
 ---
 
@@ -766,6 +767,81 @@ gap today, independent of this plan, and it is tracked separately.
 
 ---
 
+## 6K. Flows — adapting to different warehouse processes
+
+**D18 / [ADR-041](../architecture/adrs/041-order-flows-as-named-operator-process-configuration.md).**
+Different clients — and different order types within one client — work differently. That variation is
+modelled as a **named flow**, not as independent settings.
+
+### The entity
+
+`order_flows` — operator-defined, seeded with one `Default` flow reproducing today's behaviour.
+
+| Column | Notes |
+|---|---|
+| `name`, `isDefault`, `isActive` | |
+| `verificationMode` | `none` · `manual` · `scan` · `scan-where-possible` |
+| `dispatchGate` | `off` · `warn` · `block` |
+| `packingSlip` | `none` · `browser` · `print-server` |
+| `packGrain` | `single-order` · `multi-order-batch` |
+| `disabledGuards` | the enumerated allowlist, below |
+
+**`order_stages` gains `flowId`** — the stage pipeline *is* the core of a flow, so stages belong to
+one rather than existing globally (amends § 6A).
+
+### Assignment
+
+`order_records.flowId`, **stamped at ingestion**, resolved by an `OrderFlowResolver` mirroring
+`FulfillmentRoutingService`'s shape: rules keyed on `(sourceConnectionId, sourceDeliveryMethodId,
+orderType?)`, returning `{ flowId, source: 'rule' | 'default' }`. Nullable, lazily resolved, so
+existing orders are unaffected and nothing needs configuring for the system to work.
+
+Stamped rather than resolved-on-read, deliberately: a flow change must not silently re-route work
+already in flight, and an auditor needs to know which process an order actually went through.
+
+### `scan-where-possible` — the honest answer to missing EANs
+
+Scan verification resolves a barcode against `ProductVariant.ean`. A variant without one cannot be
+scanned. Under `scan-where-possible`, a line **that carries an EAN must be scanned**; a line without
+one may be ticked, and the UI says which is which. The dispatch gate then treats a tick as verified
+*only* for lines that were unscannable.
+
+Without this, "fully verified" silently means "verified except the bits we couldn't check".
+
+### The named-guard allowlist
+
+A flow may disable **only** these, by name:
+
+| Guard | Effect when disabled |
+|---|---|
+| `requireScanVerification` | manual tick accepted for all lines |
+| `blockDispatchUntilPacked` | gate degrades to warn, or off |
+| `requireAllLinesPackedToAdvance` | short-pack auto-advances instead of holding |
+| `requirePackingSlipPrinted` | completion does not wait on a print |
+
+**Not disableable, ever:** the canonical lifecycle axis and its precedence; the guardrails
+(idempotency, monotonicity, relay obligations); the identity constraints (§ 6J); the counter
+validation ladder (`packed ≤ ordered`, `shipped ≤ packed`, `delivered ≤ shipped`).
+
+A flow governs *how an operator moves through the work*. It never changes *what OL believes
+happened* — stage labels still map one-way onto the canonical axis.
+
+### Containing the test-matrix cost
+
+The obvious risk is N flows × every pack behaviour. Mitigate structurally: **flow is a pure input to
+one policy-resolution function**, not a branch through the pack service. `resolveFlowPolicy(flow,
+line, order)` is unit-tested per axis; the pack station is tested once against a resolved policy. No
+`if (flow.packGrain === …)` scattered through services.
+
+### Open
+
+**Is a flow assigned to the order, or chosen by the packer at the bench?** Assigned (above) is
+simpler, auditable and reportable. Bench-chosen is more flexible but means the flow is not a property
+of the order at all, which changes where it is stored and whether it can be reported on. Assigned is
+the recommendation; confirm against how the agency's clients actually work.
+
+---
+
 ## 7. Extensibility model
 
 Three layers, with deliberately different answers. The decision that must be made **now** is layer 2.
@@ -876,6 +952,9 @@ point — and the action contract must promise degrade-to-default.
 | Relay idempotency across a crash | int-spec: mark remote done, crash before `state='done'`, sweep | outbound carries the `(transitionId, targetConnectionId)` key; no duplicate mark-sent |
 | `shipped_quantity` derivation | unit + int-spec over `shipment_lines` × shipment status | the counter that had no source before option C |
 | Rollup under partial coverage | unit: 1 of 3 shipments delivered | must NOT report the order delivered — the latent `fulfillment-rollup.ts` bug |
+| **Flow policy resolution** | unit, **one case per axis**, not per flow combination | this is what keeps the flow matrix from multiplying: flow is an input to `resolveFlowPolicy`, never a branch in the pack service |
+| `scan-where-possible` | unit: mixed order, some lines with EAN, some without | EAN lines must require a scan; only unscannable lines accept a tick |
+| Flow assignment | int-spec: ingest with a matching rule, and without | stamped `flowId`, `source: 'rule' \| 'default'`, and a null-flow order still works |
 | Changeset replay | unit — same fixture drives preview and apply | proves D5's purity constraint holds |
 | Counter validation ladder | unit, one case per rung | each rung has an operator-readable message |
 | Pack-event idempotency (`clientEventId`) | int-spec — duplicate insert | unique-constraint behaviour |
@@ -899,7 +978,8 @@ justification rather than inheriting today's approval.
 | # | Subject | State |
 |---|---|---|
 | [ADR-039](../architecture/adrs/039-order-lifecycle-derived-from-fact-ledger.md) | Canonical lifecycle as a derived projection over a fact ledger | Proposed |
-| [ADR-040](../architecture/adrs/040-order-changeset-proposed-then-confirmed.md) | Changeset model for remote-authority mutations | Proposed |
+| [ADR-040](../architecture/adrs/040-order-changeset-proposed-then-confirmed.md) | Proposal record for remote-authority mutations (composition machinery deferred) | Accepted |
+| [ADR-041](../architecture/adrs/041-order-flows-as-named-operator-process-configuration.md) | Order flows as named operator-process configuration | Proposed |
 | — | `order_axis_transitions` as a third dedup layer (vs ADR-005, ADR-007) | to write |
 | — | Ledger-as-outbox vs fire-after-commit | to write |
 | — | `OrderAuthorityResolver` — per-(source, axis) coarse roles | to write |
@@ -944,9 +1024,12 @@ back would need `forwardRef`. Prefer placing it in `orders`.
    on it. Fix the mapper, or have OL assign a reconciled surrogate line id. Allegro, Erli and
    WooCommerce all pass through stable platform ids — though WooCommerce reassigns them when an
    order is edited in wp-admin.
-7. **Packing slips at the station** — in scope or out?
-8. **Variants with no EAN** — manual tick, or scan the SKU?
-9. **Batch packing** — out of v1; the standard is to batch the *pick* and single-thread the *pack*.
+7. ~~**Packing slips**, **no-EAN variants**, **batch packing**~~ — **closed as questions, reopened as
+   defaults.** All three are now flow axes (§ 6K), so the question is no longer "which behaviour do we
+   build" but "what should the seeded `Default` flow say". Confirm with the agency: is their clients'
+   common case `scan-where-possible` + `block` + `single-order`, and do they print slips today?
+8. **Is a flow assigned to the order, or chosen by the packer at the bench?** Assigned is
+   recommended — simpler, auditable, reportable — but it is a real fork (§ 6K).
 
 ---
 
