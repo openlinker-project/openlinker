@@ -119,11 +119,16 @@ order from two locations, or a 3PL owning part of an order.
 1. **Backfill writes ledger events, not counters** — otherwise cancel/reissue double-counts permanently.
 2. **Fix `fulfillment-rollup.ts` precedence** in the same change; "any delivered ⇒ delivered" is wrong
    under partial coverage.
-3. **Verify `OrderItem.id` stability across re-ingestion** before keying anything on `lineId`. It is
-   assumed (`order-ingestion.service.ts:332`), not enforced. The plan already hedges by denormalising
-   `sku`/`ean`/`name` — keep that.
-4. **Check `orderSnapshot.items` survives PII redaction** under `OL_STORE_PII=false`, or those orders
-   have nothing to backfill from.
+3. **`OrderItem.id` stability — verified, and PrestaShop fails.** Allegro (`lineItem.id`), Erli and
+   WooCommerce pass through stable platform ids. **PrestaShop does not**:
+   `prestashop-order.mapper.ts:53` is `String(row.id || index)` — an array-index fallback that is
+   positional, plus `||` instead of `??` so a legitimate `row.id === 0` falls through too, and an
+   index-derived id can collide with a real `row.id`. Fix the mapper or assign an OL-side surrogate
+   before keying `shipment_lines` on it. Keep the denormalised `sku`/`ean`/`name` hedge regardless.
+4. **PII — verified, no constraint.** `orderSnapshot.items` survives `OL_STORE_PII=false`
+   **unconditionally**; only addresses (sanitised) and `customerEmail` (omitted) are gated. Backfill
+   is viable for every order. Coherent rather than leaky — SKU and product name are marketplace data,
+   not buyer data.
 5. **State the OMP limit** — `omp_fulfilled` routes stay whole-order, permanently, by contract.
 
 ---

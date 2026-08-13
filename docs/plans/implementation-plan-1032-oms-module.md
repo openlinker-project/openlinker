@@ -76,8 +76,15 @@ open change per order (OL runs concurrent workers, so an application guard would
 
 **Deferred:** the actions table, the action registry, and the replay function. Every mutation OL can
 actually perform is a **single action against a single reference**; `ordering`, replay and a
-polymorphic reference pair serve compositions that do not exist here. Revisit if partial cancellation
-turns out to be supported by Allegro or Erli — that would be the first genuine composition.
+polymorphic reference pair serve compositions that do not exist here.
+
+**The revisit condition has been checked and does not fire.** Neither Allegro nor Erli supports
+partial cancellation — verified by exhaustive path and schema enumeration of both OpenAPI specs, not
+by absence of documentation. Allegro has **no order-cancel endpoint at all** (cancellation is a
+buyer/system event the seller observes); `CheckoutFormLineItem` has no status or cancelled flag; and
+`RETURNED` is documented as requiring that the buyer returns **all** items and the seller refunds
+**all** of them. Erli's status write is `PATCH /orders/{id}/status` with no line parameter, and its
+items carry no per-item status. See § 6J.
 
 **Dry-run moved out of this decision.** It belongs to the rules engine's condition evaluation (D4/D5),
 which delivers it independently.
@@ -176,12 +183,24 @@ runtime**; Erli would report a returned order as `sent`. See § 6 C1.
     **`declined`** and **`cancelled`**: a declined return leaves the order exactly as it was, and that
     has no order-status equivalent. Minimum set:
     `requested | approved | received | closed | declined | cancelled`
-16. **`ReturnLine`** — points at the order line; carries `requestedQuantity`, **`receivedQuantity`**,
-    **`damagedQuantity`**, `reasonCode`, `reasonNote`. Four independent systems converge on the
-    quantity split (Medusa `received`/`damaged`; Shopify processable/processed/refundable/refunded;
-    commercetools BackInStock vs Unusable) — no single field says "3 came back, 1 is scrap"
-17. **Reason codes are their own vocabulary**, attached **per line**, not per return — the consensus
-    across BaseLinker, Shopify and Saleor. Never reuse order-status codes
+16. **`ReturnLine`** — carries `requestedQuantity`, **`receivedQuantity`**, **`damagedQuantity`**,
+    `reasonCode`, `reasonNote`. The quantity split is a four-system consensus (Medusa
+    `received`/`damaged`; Shopify processable/processed/refundable/refunded; commercetools
+    BackInStock vs Unusable) — no single field says "3 came back, 1 is scrap".
+
+    **Key it on the source's own reference, not on an order line.** Allegro's
+    `CustomerReturnItem` carries **`offerId`, not the checkout-form `lineItems[].id`** — so
+    attribution back to an ordered line requires joining on `offer.id`, and **that join is not
+    unique**: one checkout form can legitimately hold two lines for the same offer. Store
+    `(externalItemRef, quantity)` as authoritative and treat the link to an order line as a
+    **best-effort resolution that may be ambiguous**. An unresolvable attribution is an
+    operator-facing needs-attention state, not a silent guess.
+
+    **`ReturnLine` carries no status.** Allegro's rejection is whole-return
+    (`POST /order/customer-returns/{id}/rejection`), and there is no per-line status anywhere.
+17. **Reason codes are their own vocabulary**, per line, never reusing order-status codes. Allegro's
+    ~17 reason types are a **prose list, not a formal enum** in the spec — validate leniently.
+    Erli's are a different closed set.
 18. Extend `OrderLifecycleEventTypeValues` (only after Step 0)
 19. Return → `CorrectionIssuer` mapper — the capability is already return-shaped
 20. Restock — the real gap: nothing writes master inventory upward today. `damagedQuantity` is what
@@ -194,6 +213,27 @@ runtime**; Erli would report a returned order as `sent`. See § 6 C1.
 
 **Deliberately out of the minimum model** (all additive later, none forces a reshape): exchanges,
 reverse-fulfilment logistics, restocking fees.
+
+### Source-shape constraints the returns model must absorb
+
+- **Allegro's return `status` is not a state machine.** Its 11 values interleave four axes —
+  logistics (`DISPATCHED`/`IN_TRANSIT`/`DELIVERED`), settlement (`FINISHED`/`FINISHED_APT`),
+  commission (`COMMISSION_REFUND_CLAIMED`/`COMMISSION_REFUNDED`) and fulfilment-warehouse
+  (`WAREHOUSE_*`). The spec itself calls it a *"timeline"*. Projecting it verbatim is honest but hard
+  to filter; decomposing it into facets is usable but means OL is interpreting. **Decide explicitly
+  before Wave 4** — modelling it as a single state machine will mis-fire.
+- **Erli returns have no status at all** — they are a fact, not a workflow, embedded read-only on
+  `Order.returns[]` with no return id and no reject action. Any cross-platform `Return.status` carries
+  an unavoidable `unknown` for every Erli return.
+- **Two adapter traps, both verified in the specs.** Erli's quantity field is misspelled
+  **`quentity`** — an adapter reading `quantity` silently gets `undefined`. And its line reference is
+  a **positional `index` into `Order.items[]`**, not an id, despite `items[].id` existing; resolve
+  `index → items[index].externalId` at ingest and persist the resolved id, never the index.
+- **Allegro customer-returns is `[BETA]`** (`application/vnd.allegro.beta.v1+json`), and its only
+  write is the rejection. Read + reject is the whole surface — this is what caps Wave 4's ambition.
+- `CustomerReturn.refund` carries **no amount and no refund status** — only a bank account. Whether
+  money moved is inferable only from `status ∈ {FINISHED, FINISHED_APT}`. This is why refund intent
+  and refund execution must stay separate (item 22).
 
 ### Wave 5 — Allocation
 
@@ -515,6 +555,37 @@ identity, and it costs nothing to include now on a table already being backfille
 dispatch SLAs (`dispatchByAt` is one column), per-part destination routing (`processorKind` resolves
 once per order), and two invoices for two deliveries. None is expressible at any layer today.
 
+### Partial cancellation is not a marketplace concept
+
+Verified against both OpenAPI specs: **neither Allegro nor Erli supports cancelling part of an
+order.** Cancellation is a whole-order terminal state on both.
+
+What Allegro *does* offer is line-scoped **refunds** — `POST /payments/refunds` takes
+`RefundLineItem { id, type: AMOUNT | QUANTITY, quantity, value }`, with reasons including
+`PRODUCT_NOT_AVAILABLE` and `CANCELLED_BY_BUYER`. So a seller effects a de-facto partial cancellation
+by refunding the affected lines and shipping the rest. Commission-refund claims are likewise
+line+quantity scoped (`RefundClaimRequest { lineItem: { id }, quantity }`).
+
+**OL should model what the sources report, not invent a state none of them can express.** Whole-order
+cancellation, plus line-scoped returns and refunds. A first-class "partially cancelled" OL state would
+be unreportable by every source and settable only by inference.
+
+Note this does not reopen the actions-table decision: a refund of N lines is **one remote call
+carrying a line array**, not N independently-applied actions.
+
+### One unresolved tension
+
+Allegro's `OrderLineItem` (the *event* shape) allows `quantity: minimum: 0`, while
+`CheckoutFormLineItem` (the *order resource* shape) requires `minimum: 1`. Combined with the
+`BUYER_MODIFIED` event — documented in full as *"purchase modified by buyer"* — the spec neither
+supports nor excludes a per-line reduction arriving through the event journal.
+
+This matters because **OL currently detects no line-level change at all**: ingestion reads the prior
+record only for its status and never compares `orderSnapshot.items`, and persistence rewrites the
+snapshot wholesale. A line that shrinks or disappears between polls does so silently — no event, no
+log, no record-status change — and any dispatched shipment referencing it is left dangling. That is a
+gap today, independent of this plan, and it is tracked separately.
+
 ---
 
 ## 7. Extensibility model
@@ -675,7 +746,19 @@ back would need `forwardRef`. Prefer placing it in `orders`.
 4. **Legal vs marketplace return state** — when the statutory withdrawal clock and the Allegro return
    disagree, which does the operator's screen show?
 5. **COD reconciliation** — a batch-to-line join. Carrier API or bank-statement import?
-6. **Allegro customer-returns status enum** — pull from `swagger.yaml` before Wave 4.
+6. ~~**Allegro customer-returns status enum**~~ — **closed.** Pulled from `swagger.yaml`; the 11
+   values and every field are recorded in § 5 Wave 4. Note it is `[BETA]`.
+6a. **Does OL project Allegro's return status verbatim, or decompose it into facets?** It interleaves
+   four axes; verbatim is honest but unfilterable, decomposed is usable but interpretive.
+6b. **Is an unresolvable return-to-order-line attribution an operator-facing needs-attention state?**
+   Allegro returns key on `offerId`, and the join to an ordered line is not unique.
+6c. **`OrderItem.id` is unstable on PrestaShop** — `prestashop-order.mapper.ts:53` is
+   `String(row.id || index)`: an array-index fallback, plus `||` rather than `??` so a legitimate
+   `row.id === 0` also falls through, and an index-derived id can collide with a real `row.id`.
+   Harmless today (used only to build an error message) but **structural** if `shipment_lines` keys
+   on it. Fix the mapper, or have OL assign a reconciled surrogate line id. Allegro, Erli and
+   WooCommerce all pass through stable platform ids — though WooCommerce reassigns them when an
+   order is edited in wp-admin.
 7. **Packing slips at the station** — in scope or out?
 8. **Variants with no EAN** — manual tick, or scan the SKU?
 9. **Batch packing** — out of v1; the standard is to batch the *pick* and single-thread the *pack*.
