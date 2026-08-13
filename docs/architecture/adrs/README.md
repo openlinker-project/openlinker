@@ -131,3 +131,5 @@ One pointer per section, identical format every time.
 | [ADR-040](./040-fiscalisation-capability.md) | Fiscalisation as a capability distinct from invoicing | Proposed | 2026-08-13 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
+>
+> ***039 is reserved**, not free: the sales-document routing ADR is authored in #2051 / PR #2055 and claims that number when it lands. Allocate 041 for the next new ADR.*
