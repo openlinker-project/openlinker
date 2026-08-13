@@ -52,7 +52,7 @@ mechanics (bins, putaway, cycle counts, slotting), customer master beyond projec
 | D6 | Returns is a **child aggregate**, not an axis | axis rows are one per order×axis; returns are N per order |
 | D7 | Reservations get their **own table**; never overload `inventory_items.reservedQuantity` | that column is a master mirror, rewritten on every sync |
 | D8 | Invoice issuance is an **observed** event keyed on the KSeF-returned date | art. 106na — the legal issue date is assigned at transmission |
-| D9 | **Invert Medusa's concurrency model**: atomic conditional UPDATE + CHECK constraint | Medusa has zero `FOR UPDATE`, zero CHECK constraints, read-then-write LWW; no surveyed OSS platform does better |
+| D9 | **Invert Medusa's concurrency model**: an atomic conditional UPDATE + CHECK constraint against an **OL-owned counter column** (`olReservedQuantity`), never the master mirror — see § 6I | Medusa has zero `FOR UPDATE`, zero CHECK constraints, read-then-write LWW; no surveyed OSS platform does better |
 | D10 | Lifecycle facts as **independent nullable timestamps**, not one enum | a single flag cannot carry both "did it happen" and "did we relay it" (#1947) |
 | **D11** | **`totalAvailable` keeps its current meaning (raw available). ATP is a NEW field.** | Redefining it is a silent semantic break across 6 consumers with zero compile errors — see § 6 C2 |
 | **D12** | **Backend authorization is `@Roles(...)`, not permissions.** Permissions drive UI visibility only | `frontend-architecture.md` § Access Control; `role.types.ts` doc comment — see § 5F |
@@ -169,16 +169,21 @@ runtime**; Erli would report a returned order as `sent`. See § 6 C1.
 
 ### Wave 5 — Allocation
 
-21. `inventory_reservations` + a shortfall column
-22. **Add `availableToPromise` (and `reserved`) to `VariantAvailability` (D11).** `totalAvailable`
-    keeps meaning raw available. Precedent: `ProductStockAggregate` already keeps `totalAvailable`
-    and `totalReserved` distinct. Migrate the six consumers to ATP **explicitly, one at a time**
-23. `applyStockSafetyBuffer` consumes ATP — see § 6 C3 for the accepted trade-off and required
-    doc updates
-24. Atomic reserve (D9): `UPDATE … SET reserved = reserved + $1 WHERE stocked - reserved >= $1
-    RETURNING` plus `CHECK (reserved_quantity >= 0)`
-25. Reserve/release at three existing seams; expiry sweeper
-26. Remove `reserveInventory` / `releaseInventory` from `InventoryMasterPort`. Safe (structural
+21. `inventory_reservations` ledger + `inventory_items.olReservedQuantity` counter — see § 6I
+22. **Add `availableToPromise` and `olReserved` to `VariantAvailability` (D11).** `totalAvailable`
+    keeps meaning raw available. Name the new field **`olReserved`, not `reserved`** — the sibling
+    `ProductStockAggregate.totalReserved` already means the *master mirror*, and two fields named
+    `reserved` meaning different things on sibling types is a trap. Migrate the six consumers to ATP
+    **explicitly, one at a time**
+23. `applyStockSafetyBuffer` consumes ATP — see § 6 C3 for the accepted trade-off, the required doc
+    updates, **and the feedback-loop hazard**
+24. Atomic reserve (D9) against `olReservedQuantity` — exact DDL and SQL in § 6I
+25. Reserve/release at three existing seams; expiry sweeper. **Release must be driven by the
+    lifecycle event that also causes the master to decrement** (§ 6I), not an independent timer
+26. Make `InventoryRepository.upsert`'s existing-row write **explicitly column-scoped** (§ 6I) — it
+    is column-scoped today only as an emergent property of TypeORM's `save()` diffing, which is too
+    thin a basis for an oversell guarantee
+27. Remove `reserveInventory` / `releaseInventory` from `InventoryMasterPort`. Safe (structural
     excess is legal; zero non-spec call sites) but requires deleting two adapter specs and updating
     `docs/capabilities.md:29` + the `engineering-standards.md` port snippets **in the same PR**
 
@@ -301,22 +306,242 @@ surfaces that field **as `masterStock`** (`stock-at-risk-read.service.ts:84`) �
 invariant.
 
 **C3 — the buffer double-subtraction is accepted, and must be documented.** After Wave 5, published
-stock is `master − reserved − buffer`. This is *correct* — reservations cover known allocations,
+stock is `master − olReserved − buffer`. This is *correct* — reservations cover known allocations,
 the buffer covers unknown sync latency — but it is a behaviour change with no config change and no
 log line. Required in the same PR: update the `stock-safety-buffer.types.ts` header and
 `connection.types.ts:74` to say the input is ATP, and note in release notes that operators may want
 to reduce their configured buffer. Also re-check the at-risk threshold in
 `stock-at-risk-read.service.ts:90`, which will fire earlier.
 
+**C3a — the feedback loop is the real hazard, and it is not the same as C3.** Because item 23 feeds
+ATP into the published quantity, an OL reservation lowers what OL publishes. When that same order
+later lands at the master and the master decrements its own stock, the next sync lowers
+`availableQuantity` for the *same unit* — while the OL reservation is still `held`. The unit is
+deducted **twice** from published stock until the reservation closes.
+
+The mitigation is a hard requirement, not a nicety: a reservation's transition to `consumed` **must
+be driven by the same lifecycle event that causes the master to decrement** (order committed /
+fulfilled at source). The expiry sweeper is a safety net for abandoned reservations, never the
+normal close path. Where that coupling cannot be guaranteed for a given source, reservations for
+that source must be short-TTL only.
+
 ---
 
-## 7. Testing strategy
+## 6I. Reservation mechanism — D7/D9 resolved
+
+D9's original phrasing (`SET reserved = reserved + $1 WHERE stocked - reserved >= $1`) was
+Medusa-shaped, borrowed from a schema where `reserved_quantity` is platform-owned. In OL it is not:
+`master-inventory-sync.service.ts:306-317` writes `reservedQuantity` straight from the master every
+sync. **The mechanism is right; the column was wrong.** Keep the guarded `UPDATE … RETURNING`, move
+the counter to a column OL owns.
+
+### Schema
+
+```sql
+ALTER TABLE "inventory_items"
+  ADD COLUMN "olReservedQuantity" integer NOT NULL DEFAULT 0;
+ALTER TABLE "inventory_items"
+  ADD CONSTRAINT "CHK_inventory_items_ol_reserved_nonneg" CHECK ("olReservedQuantity" >= 0);
+```
+
+Deliberately **no** `CHECK (olReservedQuantity <= availableQuantity)`. The master may legitimately
+lower `availableQuantity` below an already-committed reservation set; such a constraint would make
+the *sync* fail rather than surface a shortfall. That case is what the shortfall path exists for.
+
+The `inventory_reservations` ledger carries `inventoryItemId` (FK, `ON DELETE RESTRICT` — a row with
+live reservations must not vanish; the stale path soft-marks rather than deletes), `orderRecordId`,
+`orderLineId`, `quantity`, `status` (`held | released | consumed`), `expiresAt`, timestamps, plus:
+
+```sql
+CREATE UNIQUE INDEX "UQ_inventory_reservations_active_line"
+  ON "inventory_reservations" ("orderLineId") WHERE "status" = 'held';
+```
+
+That partial unique index **is** the idempotency key — a retried reserve fails the insert instead of
+double-incrementing. Same idiom as the two partial unique indexes already on `inventory_items`.
+
+### Reserve — both statements in one transaction, lines sorted by `inventoryItemId`
+
+```sql
+UPDATE "inventory_items"
+   SET "olReservedQuantity" = "olReservedQuantity" + $2
+ WHERE "id" = $1
+   AND "isStale" = false
+   AND "availableQuantity" - "olReservedQuantity" >= $2
+RETURNING "availableQuantity" - "olReservedQuantity" AS remaining_atp;
+```
+
+Zero rows ⇒ insufficient ATP or a stale row ⇒ domain rejection, roll back the whole order's set.
+Copy the unwrap idiom from `invoice-numbering-series.repository.ts:283-288` (`manager.query()`
+returns `[rows, affected]` for a data-modifying statement with `RETURNING`).
+
+**Sorting by `inventoryItemId` is mandatory**, not stylistic: two multi-line orders touching the same
+variants in opposite order deadlock without it.
+
+Release and consume decrement identically via a `WITH released AS (UPDATE … WHERE status='held' …)`
+CTE, so a second release matches nothing and is idempotent. `GREATEST(0, …)` guards against a
+reconciler having already corrected the counter; the CHECK is the hard floor.
+
+### Master-sync race
+
+Both writes take a row lock on the same `inventory_items` row, so they serialise. Sync-first: the
+reserve's `WHERE` reads post-sync stock — correct. Reserve-first: the sync writes only
+`availableQuantity`, `reservedQuantity`, `locationId`, `isStale`, `updatedAt`, so the reservation
+survives; if the new availability is now below `olReservedQuantity`, ATP clamps to 0 and the gap is
+the shortfall.
+
+That safety currently holds **only as an emergent property** of TypeORM's `save()` diffing skipping
+undefined properties. Item 26 makes it explicit: replace the `existing` branch of
+`InventoryRepository.upsert` with a `createQueryBuilder().update().set({…})` naming exactly the five
+master-owned columns.
+
+### ATP read
+
+In `findAvailabilityByVariantIds` (keep the `isStale = false` filter and the `GROUP BY`):
+
+```sql
+COALESCE(SUM(inv."olReservedQuantity"), 0)                                        AS "olReserved",
+GREATEST(0, COALESCE(SUM(inv."availableQuantity" - inv."olReservedQuantity"), 0)) AS "availableToPromise"
+```
+
+`GREATEST` applies to the **sum**, not per row, so surplus at one location offsets a shortfall at
+another — consistent with `totalAvailable` already summing across locations. `findStockAggregatesByProductIds`
+keeps `totalReserved` meaning the master mirror and gains a parallel pair; **do not repoint it** (C2).
+
+### Does OL double-count the master's own reservations?
+
+**No.** `master-inventory-sync.service.ts:306-307` computes
+`availableQuantity = inventory.available ?? (quantity - reserved)` — on both branches it is already
+**net of master reservations**. `reservedQuantity` is stored purely as an informational mirror and is
+subtracted nowhere. So `availableQuantity - olReservedQuantity` counts each reservation exactly once.
+
+**Stated uncertainty:** that rests on every adapter's `inventory.available` being *net*. The
+`?? (quantity - reserved)` fallback shows the intent, but an adapter reporting a gross `available`
+alongside a non-zero `reserved` would silently over-promise. This is an adapter-contract assumption,
+not an enforced invariant — write it into the `InventoryMasterPort` docblock as part of this wave.
+
+The *second* double-count — the publish feedback loop — is real and is covered in § 6 C3a.
+
+### Rejected alternatives
+
+- **Ledger-only + advisory lock.** OL has no `pg_advisory_lock` anywhere; what exists is a Redis
+  `SyncLockPort`, documented in both its call sites as TTL-bounded and *not* a correctness guarantee.
+  Both existing uses have an idempotency backstop; oversell has none. It would also put Redis
+  availability on the order-accept path.
+- **`SERIALIZABLE`.** Correct, but OL's contention profile is its worst case — N marketplaces racing
+  one variant means near-total serialisation failure under exactly the burst being defended against,
+  and the whole codebase runs READ COMMITTED.
+- **`SELECT … FOR UPDATE`.** Correct and low deadlock risk against the sync, but two round trips per
+  line and it still needs a persisted counter. A fallback, not a win.
+- **Exclusion constraint / CHECK over an aggregate.** Not expressible — a `CHECK` may not contain
+  subqueries or aggregates, and `EXCLUDE` tests pairwise overlap, not a cross-table sum. Recorded so
+  it is not re-litigated.
+
+---
+
+## 7. Extensibility model
+
+Three layers, with deliberately different answers. The decision that must be made **now** is layer 2.
+
+### Layer 1 — Operator customisation (open, and the point)
+
+Operator-defined stages, the Wave-3 rules engine (versioned draft/published like `PromptTemplate`,
+with DB-enforced "exactly one published per scope" partial unique indexes), and per-connection
+`config` policy. This is the BaseLinker-parity axis.
+
+### Layer 2 — Plugin extensibility: **actions yes, states no**
+
+**Decision: the canonical state axis stays core-owned; plugins may contribute *actions*.**
+
+The prior art splits exactly on tenancy. Every hosted platform (Saleor, Shopify, Medusa) keeps state
+core-owned and lets third parties contribute only actions and data. Every self-hosted one (Vendure,
+Sylius, Spree) opened the state axis and then spent years managing it — Sylius retrofitted mandatory
+callback priorities, Solidus has standing RFCs about state-machine overriding. A plugin-added state
+is a permanent widening of every downstream `switch`.
+
+Decisive: **you can open the state axis later; you cannot close it.**
+
+Three boundaries copied from prior art:
+
+- **Plugins supply triggers and actions, never conditions** (Shopify Flow). The predicate language
+  stays core-owned — which is also what keeps D5's purity constraint intact, since a condition that
+  can call plugin code is no longer a pure function and dry-run dies with it.
+- **Enumerated named guards** (Vendure `configureDefaultOrderProcess`). Core decides *in advance*
+  which invariants an operator may switch off, by name. **That list is a product decision and must be
+  written before any code.**
+- **Degrade-to-default on failure** (Saleor, Shopify). A throwing plugin action must never leave a
+  half-applied transition. Vendure assigns its state *before* running `onTransitionEnd` and does not
+  catch it — that is the trap, and the changeset model (ADR-040) avoids it structurally, since an
+  action that throws is simply never marked `applied`.
+
+**Prefer one handler per extension point** (Medusa) over a merge-array (Vendure): it turns a silent
+ordering dependency into a loud startup failure. If multiple plugins must legitimately share a point,
+adopt explicit priorities from day one — Sylius's retrofit is the evidence.
+
+### Layer 3 — Not customisable
+
+Canonical lifecycle states, the guardrails (idempotency, monotonicity, authority), and the money
+non-goal. Stage labels map **one-way** onto the canonical axis and never feed the derivation.
+
+### What this costs to build
+
+A plugin **cannot** register an OMS action today. `HostServices` carries 14 registries, none of which
+accepts a unit of operator-invocable work; scheduler tasks (the closest analogue) are drained once at
+boot and can only enqueue a **closed core `JobType`**. The minimum additive change:
+
+1. **`OmsActionDescriptor` + `OmsActionRegistryService`** in core — framework-free types file plus a
+   `Map`-backed service keyed by `actionId`, exposing both `getAll()` (boot-time enumeration for the
+   operator UI) and `get(id)` (runtime execution). Descriptor carries `actionId`, adapter/platform
+   scope, a **mandatory** `requiredCapability`, a declared input schema (mirroring
+   `PromptTemplateVariable[]` so the UI renders inputs without core knowing the action), and an
+   `execute(connection, input, host)` that resolves its own port via `getCapabilityAdapter` so both
+   capability gates fire.
+2. **One `HostServices` field.** `HostServices` is not partial, so each of the four hand-rolled
+   plugin modules (Allegro, PrestaShop, WooCommerce, Erli) needs the same one-line addition.
+3. **A core caller** — nothing else in this repo registers into a registry with no consumer.
+4. **A fan-out cardinality ceiling** (below).
+
+### The two hazards this opens
+
+**Fan-out.** The #2019 rate limiter **paces requests; it does not cap fan-out**. Today nothing stops
+an unbounded fan-out *structurally* — what stops it is that no operator-authored artifact currently
+triggers an outbound write (attribute rules only shape a payload someone else already decided to
+send). **An OMS action would be the first artifact to cross that line**, so a per-invocation
+cardinality ceiling must exist before the first rule-triggered action ships.
+
+**Loops.** Unsolved in all prior art — nobody does static cycle detection. Shopify's only shipped
+mitigation is runtime throttling plus a visible `Rate limited` run status the operator can see and
+cancel. Treat loop safety as an **operator-facing observability** feature (causation-depth cap +
+visible throttled status), not purely an engineering guard.
+
+### An observation about OL's own conventions
+
+The open-world pattern (`platformType`, `supportedCapabilities`, `PromptTemplateChannel` as bare
+`string`) has been applied to **identity** axes — who and where — and never to **vocabulary** axes:
+`AttributeMappingRuleKind`, `PlaceValueSource` and `SchedulerTaskConfig.jobType` are all closed
+`as const`. An open action vocabulary would be the first of its kind here. That is a reason to decide
+it deliberately, not a reason against it — but the #1841 attribute-rule precedent is the **wrong** one
+to copy, since its closed vocabulary is exactly why plugins have zero involvement in it.
+`PromptTemplate` is the right template.
+
+Note finally that OL plugins run **in-process with full DI and TypeORM access**. Shopify pays for
+third-party in-request logic with a WASM sandbox and a fuel budget; OL cannot. "Trusted-but-third-party"
+must therefore mean genuinely trusted — code review plus the plugin list remaining a deliberate edit
+point — and the action contract must promise degrade-to-default.
+
+---
+
+## 8. Testing strategy
 
 | Subject | Level | Why |
 |---|---|---|
 | `derive-canonical-lifecycle` | unit, exhaustive precedence table | pure function; core domain logic target is 90%+ |
 | Monotonic rejection + ledger claim | unit (repository port faked) + **int-spec** | the conditional `UPDATE` is a DB behaviour, not a code path |
-| **D9 atomic reserve** | **int-spec with parallel attempts** | a concurrency guarantee cannot be proven by a unit test — this is the single most important test in the programme |
+| **D9 atomic reserve** | **int-spec, N=20 concurrent reserves of qty 1 against stock 10, over _separate connections_** | a concurrency guarantee cannot be proven by a unit test — and a shared TypeORM connection serialises at the driver and proves nothing. Assert exactly 10 succeed. The single most important test in the programme |
+| Sync does not stomp `olReservedQuantity` | int-spec driving the **real** `MasterInventorySyncService` | pins the column-scoped write; catches a future refactor back to whole-entity `save()` |
+| No double-count vs a non-zero master mirror | int-spec: `available=5, reserved=4, olReserved=2` ⇒ `totalAvailable=5`, ATP=3 | not 1, not −1 |
+| Multi-line deadlock freedom | int-spec: two 2-line orders over the same pair in opposite order | proves the sort-by-`inventoryItemId` acquisition order; assert zero `40P01` |
+| Shortfall clamp | int-spec: reserve 5, sync drops availability to 2 | UPDATE must succeed (no CHECK violation), ATP reads 0 |
 | Changeset replay | unit — same fixture drives preview and apply | proves D5's purity constraint holds |
 | Counter validation ladder | unit, one case per rung | each rung has an operator-readable message |
 | Pack-event idempotency (`clientEventId`) | int-spec — duplicate insert | unique-constraint behaviour |
@@ -327,7 +552,7 @@ New tables must be added to `tablesToTruncate` in the integration harness.
 
 ---
 
-## 8. Checkpoint
+## 9. Checkpoint
 
 **Treat the end of Wave 2 as a real gate.** At that point the Orders workspace and pack station
 exist, and the foundation is paid for by the bug it fixed. Waves 3–5 should each require fresh
@@ -335,7 +560,7 @@ justification rather than inheriting today's approval.
 
 ---
 
-## 9. ADRs
+## 10. ADRs
 
 | # | Subject | State |
 |---|---|---|
@@ -360,7 +585,7 @@ back would need `forwardRef`. Prefer placing it in `orders`.
 
 ---
 
-## 10. Open questions
+## 11. Open questions
 
 1. **Open-core / paid module** — raised, undecided. Tension: the best-corroborated PL demand signal
    is pricing flight from the incumbent, and scanning is the cheap half of pack verification. If
@@ -379,7 +604,7 @@ back would need `forwardRef`. Prefer placing it in `orders`.
 
 ---
 
-## 11. Risks
+## 12. Risks
 
 - Guardrails are non-optional and mostly absent; Wave 0 is not skippable
 - Station auth is the largest new security surface
@@ -393,12 +618,9 @@ back would need `forwardRef`. Prefer placing it in `orders`.
 
 ---
 
-## 12. Demand basis (recorded honestly)
+## 13. Demand basis
 
-A prospective agency asked for an OMS that shows the order, its status, and whether it is packed —
-and separately wants orchestration. That fires **#827**'s defer condition squarely (deferred for lack
-of demand; "is it packed" is its core, and the ask is broader than #827 as written, which excluded
-barcode scanning and per-operator accountability). It does **not** fire any of #1032's three un-defer
-triggers. The reopening of #1032 is a maintainer decision to make the OMS-positioning bet, consistent
-with the *STRATEGIC BET* posture recorded at Gate A on 2026-06-18 — not new evidence that the
-original triggers fired.
+Canonical record: [`product-spec-1032` § Gate D amendment](../specs/product-spec-1032-order-status-state-machine.md).
+In short — a prospective agency's request fires **#827**'s defer condition but **none** of #1032's
+three un-defer triggers; the reopening is a maintainer strategic-bet decision, not new trigger
+evidence. Do not restate the reasoning here; amend the spec.
