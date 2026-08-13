@@ -2,21 +2,27 @@
  * Refund Record Repository
  *
  * TypeORM implementation of `RefundRecordRepositoryPort`. Maps ORM ↔ domain
- * privately; callers receive domain entities only (#2036).
+ * privately; callers receive domain entities only (#2036). Converts the
+ * Postgres unique-violation on the idempotency dedup index into
+ * `DuplicateRefundRecordException` (never leaks `QueryFailedError`), mirroring
+ * `InvoiceRecordRepository.create`.
  *
  * @module infrastructure/persistence/repositories
  * @implements {RefundRecordRepositoryPort}
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Logger } from '@openlinker/shared/logging';
+import { QueryFailedError, Repository } from 'typeorm';
 
 import { RefundRecord } from '../../../domain/entities/refund-record.entity';
+import { DuplicateRefundRecordException } from '../../../domain/exceptions/duplicate-refund-record.exception';
 import type { RefundRecordRepositoryPort } from '../../../domain/ports/refund-record-repository.port';
-import type {
-  CreateRefundRecordInput,
-  RefundReason,
-  RefundSummary,
+import {
+  RefundReasonValues,
+  type CreateRefundRecordInput,
+  type RefundReason,
+  type RefundSummary,
 } from '../../../domain/types/refund-record.types';
 import { RefundRecordOrmEntity } from '../entities/refund-record.orm-entity';
 
@@ -29,6 +35,8 @@ interface RefundSummaryRawRow {
 
 @Injectable()
 export class RefundRecordRepository implements RefundRecordRepositoryPort {
+  private readonly logger = new Logger(RefundRecordRepository.name);
+
   constructor(
     @InjectRepository(RefundRecordOrmEntity)
     private readonly repository: Repository<RefundRecordOrmEntity>,
@@ -36,8 +44,19 @@ export class RefundRecordRepository implements RefundRecordRepositoryPort {
 
   async create(input: CreateRefundRecordInput): Promise<RefundRecord> {
     const entity = this.buildOrmEntity(input);
-    const saved = await this.repository.save(entity);
-    return this.toDomain(saved);
+    try {
+      const saved = await this.repository.save(entity);
+      return this.toDomain(saved);
+    } catch (error) {
+      if (
+        error instanceof QueryFailedError &&
+        error.message.includes('duplicate key') &&
+        input.idempotencyKey
+      ) {
+        throw new DuplicateRefundRecordException(input.internalOrderId, input.idempotencyKey);
+      }
+      throw error;
+    }
   }
 
   async findByOrderId(internalOrderId: string): Promise<RefundRecord[]> {
@@ -55,14 +74,15 @@ export class RefundRecordRepository implements RefundRecordRepositoryPort {
 
     // One aggregate query for the whole id set — the real batch a
     // cross-cutting analytics read needs, as opposed to an N-call fan-out.
-    // MIN(currency) is a documented simplification (see refund-record.types.ts):
-    // it assumes every refund against one order shares a currency, matching
-    // OrderTotals.currency being singular per order.
+    // `amount` is `numeric(12,2)` at the DB layer (no CAST needed) and
+    // `OrderRefundService.recordRefund` rejects a currency mismatch against
+    // an order's prior refunds, so MIN(currency) is safe rather than an
+    // unenforced assumption.
     const rawRows = await this.repository
       .createQueryBuilder('record')
       .select('record.internalOrderId', 'internalOrderId')
       .addSelect('COUNT(*)', 'count')
-      .addSelect('SUM(CAST(record.amount AS numeric))', 'totalAmount')
+      .addSelect('SUM(record.amount)', 'totalAmount')
       .addSelect('MIN(record.currency)', 'currency')
       .where('record.internalOrderId IN (:...internalOrderIds)', { internalOrderIds })
       .groupBy('record.internalOrderId')
@@ -87,7 +107,24 @@ export class RefundRecordRepository implements RefundRecordRepositoryPort {
     entity.reason = input.reason;
     entity.note = input.note;
     entity.recordedAt = input.recordedAt;
+    entity.idempotencyKey = input.idempotencyKey ?? null;
     return entity;
+  }
+
+  /**
+   * Typed, fail-safe read of the stored `reason` column (#2036). Mirrors
+   * `OrderRecord.paymentStatus`'s narrow-or-fallback pattern rather than a
+   * blind `as RefundReason` cast — a row written before a future reason was
+   * removed from `RefundReasonValues`, or inserted by a caller that bypassed
+   * the DTO validator, should degrade to `'other'` with a warning, not hand
+   * out a value outside the union.
+   */
+  private toRefundReason(rawReason: string): RefundReason {
+    if ((RefundReasonValues as readonly string[]).includes(rawReason)) {
+      return rawReason as RefundReason;
+    }
+    this.logger.warn(`Unrecognised refund reason "${rawReason}" — falling back to "other"`);
+    return 'other';
   }
 
   private toDomain(entity: RefundRecordOrmEntity): RefundRecord {
@@ -96,11 +133,12 @@ export class RefundRecordRepository implements RefundRecordRepositoryPort {
       entity.internalOrderId,
       entity.amount,
       entity.currency,
-      entity.reason as RefundReason,
+      this.toRefundReason(entity.reason),
       entity.note,
       entity.recordedAt,
       entity.createdAt,
       entity.updatedAt,
+      entity.idempotencyKey,
     );
   }
 }

@@ -45,4 +45,39 @@ describe('RefundRecord', () => {
 
     expect(refund.note).toBeNull();
   });
+
+  it('should default idempotencyKey to null when omitted', () => {
+    const now = new Date();
+    const refund = new RefundRecord(
+      'a1b2c3d4-0000-0000-0000-000000000002',
+      'ol_order_ghi789',
+      '5.00',
+      'PLN',
+      'other',
+      null,
+      now,
+      now,
+      now,
+    );
+
+    expect(refund.idempotencyKey).toBeNull();
+  });
+
+  it('should populate idempotencyKey when provided', () => {
+    const now = new Date();
+    const refund = new RefundRecord(
+      'a1b2c3d4-0000-0000-0000-000000000003',
+      'ol_order_ghi789',
+      '5.00',
+      'PLN',
+      'other',
+      null,
+      now,
+      now,
+      now,
+      'retry-key-1',
+    );
+
+    expect(refund.idempotencyKey).toBe('retry-key-1');
+  });
 });

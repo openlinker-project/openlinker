@@ -170,6 +170,8 @@ export { OrderDestinationNotRetryableException } from './domain/exceptions/order
 export { MissingSourceExternalIdException } from './domain/exceptions/missing-source-external-id.exception';
 export { OrderCreateContendedException } from './domain/exceptions/order-create-contended.exception';
 export { OrderSnapshotUnavailableError } from './domain/exceptions/order-snapshot-unavailable.error';
+export { DuplicateRefundRecordException } from './domain/exceptions/duplicate-refund-record.exception';
+export { RefundCurrencyMismatchException } from './domain/exceptions/refund-currency-mismatch.exception';
 
 // Typed-Order accessor for cross-context command composition (#1119).
 export { orderFromReadySnapshot } from './domain/order-from-ready-snapshot';

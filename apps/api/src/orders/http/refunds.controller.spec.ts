@@ -1,9 +1,14 @@
 import { Test } from '@nestjs/testing';
 import type { TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import type { IOrderRefundService, IOrderRecordService, OrderRecord, RefundRecord } from '@openlinker/core/orders';
-import { ORDER_REFUND_SERVICE_TOKEN, ORDER_RECORD_SERVICE_TOKEN } from '@openlinker/core/orders';
-import { RefundsController } from './refund.controller';
+import {
+  DuplicateRefundRecordException,
+  RefundCurrencyMismatchException,
+  ORDER_REFUND_SERVICE_TOKEN,
+  ORDER_RECORD_SERVICE_TOKEN,
+} from '@openlinker/core/orders';
+import { RefundsController } from './refunds.controller';
 import type { RecordRefundRequestDto } from './dto/record-refund-request.dto';
 
 describe('RefundsController', () => {
@@ -96,6 +101,45 @@ describe('RefundsController', () => {
 
       const passedInput = refundService.recordRefund.mock.calls[0][0];
       expect(passedInput.recordedAt).toBeInstanceOf(Date);
+    });
+
+    it('should pass idempotencyKey through, defaulting to null when omitted', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({} as OrderRecord);
+      refundService.recordRefund.mockResolvedValue(sampleRefund);
+
+      await controller.recordRefund('ol_order_abc123', { ...dto, idempotencyKey: 'retry-1' });
+
+      expect(refundService.recordRefund).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: 'retry-1' }),
+      );
+
+      await controller.recordRefund('ol_order_abc123', dto);
+
+      expect(refundService.recordRefund).toHaveBeenLastCalledWith(
+        expect.objectContaining({ idempotencyKey: null }),
+      );
+    });
+
+    it('should map DuplicateRefundRecordException to 409 Conflict', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({} as OrderRecord);
+      refundService.recordRefund.mockRejectedValue(
+        new DuplicateRefundRecordException('ol_order_abc123', 'retry-1'),
+      );
+
+      await expect(controller.recordRefund('ol_order_abc123', dto)).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
+    it('should map RefundCurrencyMismatchException to 409 Conflict', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({} as OrderRecord);
+      refundService.recordRefund.mockRejectedValue(
+        new RefundCurrencyMismatchException('ol_order_abc123', 'PLN', 'EUR'),
+      );
+
+      await expect(controller.recordRefund('ol_order_abc123', dto)).rejects.toThrow(
+        ConflictException,
+      );
     });
   });
 

@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import type { TestingModule } from '@nestjs/testing';
 
 import { RefundRecord } from '../../domain/entities/refund-record.entity';
+import { RefundCurrencyMismatchException } from '../../domain/exceptions/refund-currency-mismatch.exception';
 import type { RefundRecordRepositoryPort } from '../../domain/ports/refund-record-repository.port';
 import type { CreateRefundRecordInput } from '../../domain/types/refund-record.types';
 import { ORDER_REFUND_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
@@ -45,7 +46,7 @@ describe('OrderRefundService', () => {
   });
 
   describe('recordRefund', () => {
-    it('should delegate to the repository create method', async () => {
+    it('should delegate to the repository create method when no prior refund exists', async () => {
       const input: CreateRefundRecordInput = {
         internalOrderId: 'ol_order_abc123',
         amount: '49.99',
@@ -54,12 +55,47 @@ describe('OrderRefundService', () => {
         note: null,
         recordedAt: new Date('2026-01-15T10:00:00Z'),
       };
+      refundRepository.findByOrderId.mockResolvedValue([]);
       refundRepository.create.mockResolvedValue(sampleRefund);
 
       const result = await service.recordRefund(input);
 
       expect(refundRepository.create).toHaveBeenCalledWith(input);
       expect(result).toBe(sampleRefund);
+    });
+
+    it('should delegate to create when the currency matches a prior refund on the order', async () => {
+      const input: CreateRefundRecordInput = {
+        internalOrderId: 'ol_order_abc123',
+        amount: '10.00',
+        currency: 'PLN',
+        reason: 'defective',
+        note: null,
+        recordedAt: new Date('2026-01-15T10:00:00Z'),
+      };
+      refundRepository.findByOrderId.mockResolvedValue([sampleRefund]); // sampleRefund.currency === 'PLN'
+      refundRepository.create.mockResolvedValue(sampleRefund);
+
+      await service.recordRefund(input);
+
+      expect(refundRepository.create).toHaveBeenCalledWith(input);
+    });
+
+    it('should reject with RefundCurrencyMismatchException when the currency differs from a prior refund', async () => {
+      const input: CreateRefundRecordInput = {
+        internalOrderId: 'ol_order_abc123',
+        amount: '10.00',
+        currency: 'EUR',
+        reason: 'defective',
+        note: null,
+        recordedAt: new Date('2026-01-15T10:00:00Z'),
+      };
+      refundRepository.findByOrderId.mockResolvedValue([sampleRefund]); // sampleRefund.currency === 'PLN'
+
+      await expect(service.recordRefund(input)).rejects.toBeInstanceOf(
+        RefundCurrencyMismatchException,
+      );
+      expect(refundRepository.create).not.toHaveBeenCalled();
     });
   });
 

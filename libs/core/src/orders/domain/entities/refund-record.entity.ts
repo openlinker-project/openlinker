@@ -23,5 +23,6 @@ export class RefundRecord {
     public readonly recordedAt: Date,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
+    public readonly idempotencyKey: string | null = null,
   ) {}
 }

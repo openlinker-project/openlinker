@@ -6,7 +6,8 @@
  *
  * @module apps/api/src/orders/http/dto
  */
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
+import { RefundReason, RefundReasonValues } from '@openlinker/core/orders';
 
 export class RefundRecordResponseDto {
   @ApiProperty()
@@ -21,11 +22,11 @@ export class RefundRecordResponseDto {
   @ApiProperty()
   currency!: string;
 
-  @ApiProperty()
-  reason!: string;
+  @ApiProperty({ enum: RefundReasonValues })
+  reason!: RefundReason;
 
-  @ApiPropertyOptional({ nullable: true })
-  note: string | null = null;
+  @ApiProperty({ nullable: true })
+  note!: string | null;
 
   @ApiProperty()
   recordedAt!: Date;

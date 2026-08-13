@@ -110,4 +110,52 @@ describe('Refund Record CRUD Integration', () => {
       .send({ amount: '10.00', currency: 'PLN', reason: 'other' })
       .expect(404);
   });
+
+  it('should return 409 when a retried POST reuses the same idempotencyKey for the same order', async () => {
+    const order = await createTestOrderRecord(harness.getDataSource());
+    const http = harness.getHttp();
+    const token = await loginAsAdmin(http, harness.getDataSource());
+    const payload = {
+      amount: '10.00',
+      currency: 'PLN',
+      reason: 'defective',
+      idempotencyKey: 'retry-key-1',
+    };
+
+    await http
+      .post(`/v1/orders/${order.internalOrderId}/refunds`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(payload)
+      .expect(201);
+
+    await http
+      .post(`/v1/orders/${order.internalOrderId}/refunds`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(payload)
+      .expect(409);
+
+    const rows = await harness
+      .getDataSource()
+      .getRepository(RefundRecordOrmEntity)
+      .find({ where: { internalOrderId: order.internalOrderId } });
+    expect(rows).toHaveLength(1);
+  });
+
+  it('should return 409 when a second refund on the same order uses a different currency', async () => {
+    const order = await createTestOrderRecord(harness.getDataSource());
+    const http = harness.getHttp();
+    const token = await loginAsAdmin(http, harness.getDataSource());
+
+    await http
+      .post(`/v1/orders/${order.internalOrderId}/refunds`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ amount: '10.00', currency: 'PLN', reason: 'defective' })
+      .expect(201);
+
+    await http
+      .post(`/v1/orders/${order.internalOrderId}/refunds`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ amount: '5.00', currency: 'EUR', reason: 'other' })
+      .expect(409);
+  });
 });

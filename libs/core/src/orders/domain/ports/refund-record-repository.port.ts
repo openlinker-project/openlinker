@@ -13,8 +13,11 @@ import type { CreateRefundRecordInput, RefundSummary } from '../types/refund-rec
 
 export interface RefundRecordRepositoryPort {
   /**
-   * Persist a new refund record. No uniqueness constraint — multiple genuine
-   * partial refunds against one order are valid and expected.
+   * Persist a new refund record. No uniqueness constraint on the refund's
+   * *content* — multiple genuine partial refunds against one order are valid
+   * and expected. When `input.idempotencyKey` is set, a retried call with the
+   * same key against the same order throws `DuplicateRefundRecordException`
+   * (#2036) instead of inserting a second row.
    */
   create(input: CreateRefundRecordInput): Promise<RefundRecord>;
 

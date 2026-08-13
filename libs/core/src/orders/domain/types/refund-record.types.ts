@@ -27,11 +27,20 @@ export interface CreateRefundRecordInput {
   internalOrderId: string;
   /** Decimal string (e.g. "19.99") — see `CodToCollect` for the same convention. */
   amount: string;
-  /** ISO 4217, 3-letter. */
+  /** ISO 4217, 3-letter. Enforced to match every prior refund on the same order — see `OrderRefundService.recordRefund`. */
   currency: string;
   reason: RefundReason;
   note: string | null;
   recordedAt: Date;
+  /**
+   * Optional caller-supplied dedup key, scoped per `internalOrderId` (mirrors
+   * `InvoiceRecord`'s `(connectionId, idempotencyKey)` dedup guard). A retried
+   * write with the same key against the same order is rejected via
+   * `DuplicateRefundRecordException` rather than silently inserting a second
+   * row and inflating `RefundSummary.totalAmount`. `null`/omitted disables the
+   * guard for that write (e.g. a caller with no natural retry key).
+   */
+  idempotencyKey?: string | null;
 }
 
 /**
@@ -40,7 +49,7 @@ export interface CreateRefundRecordInput {
  */
 export interface RefundSummary {
   count: number;
-  /** Decimal string; sums assume every refund for the order shares one currency. */
+  /** Decimal string. Safe to sum as a single currency — `OrderRefundService.recordRefund` rejects a refund whose currency doesn't match the order's prior refunds. */
   totalAmount: string;
   currency: string;
 }

@@ -1,9 +1,10 @@
 import { Test } from '@nestjs/testing';
 import type { TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import type { Repository } from 'typeorm';
+import { QueryFailedError, type Repository } from 'typeorm';
 
 import { RefundRecordOrmEntity } from '../entities/refund-record.orm-entity';
+import { DuplicateRefundRecordException } from '../../../domain/exceptions/duplicate-refund-record.exception';
 import { RefundRecordRepository } from './refund-record.repository';
 import type { CreateRefundRecordInput } from '../../../domain/types/refund-record.types';
 
@@ -91,6 +92,44 @@ describe('RefundRecordRepository', () => {
       expect(result.id).toBe(savedOrmEntity.id);
       expect(result.internalOrderId).toBe(input.internalOrderId);
     });
+
+    it('should convert a unique-violation on the idempotency index into DuplicateRefundRecordException', async () => {
+      const input: CreateRefundRecordInput = {
+        internalOrderId: 'ol_order_abc123',
+        amount: '49.99',
+        currency: 'PLN',
+        reason: 'withdrawal',
+        note: null,
+        recordedAt: new Date('2026-01-15T10:00:00Z'),
+        idempotencyKey: 'retry-key-1',
+      };
+      ormRepository.save.mockRejectedValue(
+        new QueryFailedError(
+          '',
+          undefined,
+          new Error(
+            'duplicate key value violates unique constraint "UQ_refund_records_order_idempotency"',
+          ),
+        ),
+      );
+
+      await expect(repository.create(input)).rejects.toBeInstanceOf(DuplicateRefundRecordException);
+    });
+
+    it('should rethrow a non-duplicate query failure unchanged', async () => {
+      const input: CreateRefundRecordInput = {
+        internalOrderId: 'ol_order_abc123',
+        amount: '49.99',
+        currency: 'PLN',
+        reason: 'withdrawal',
+        note: null,
+        recordedAt: new Date('2026-01-15T10:00:00Z'),
+      };
+      const other = new QueryFailedError('', undefined, new Error('connection reset'));
+      ormRepository.save.mockRejectedValue(other);
+
+      await expect(repository.create(input)).rejects.toBe(other);
+    });
   });
 
   describe('findByOrderId', () => {
@@ -103,6 +142,46 @@ describe('RefundRecordRepository', () => {
         where: { internalOrderId: 'ol_order_abc123' },
         order: { recordedAt: 'DESC' },
       });
+    });
+
+    it('should fall back to "other" and warn when a row holds an unrecognised reason', async () => {
+      const row: Partial<RefundRecordOrmEntity> = {
+        id: 'a1b2c3d4-0000-0000-0000-000000000002',
+        internalOrderId: 'ol_order_abc123',
+        amount: '10.00',
+        currency: 'PLN',
+        reason: 'some_future_reason_not_in_the_union',
+        note: null,
+        recordedAt: new Date('2026-01-15T10:00:00Z'),
+        createdAt: new Date('2026-01-15T10:00:00Z'),
+        updatedAt: new Date('2026-01-15T10:00:00Z'),
+        idempotencyKey: null,
+      };
+      ormRepository.find.mockResolvedValue([row as RefundRecordOrmEntity]);
+
+      const [result] = await repository.findByOrderId('ol_order_abc123');
+
+      expect(result.reason).toBe('other');
+    });
+
+    it('should preserve a recognised reason unchanged', async () => {
+      const row: Partial<RefundRecordOrmEntity> = {
+        id: 'a1b2c3d4-0000-0000-0000-000000000003',
+        internalOrderId: 'ol_order_abc123',
+        amount: '10.00',
+        currency: 'PLN',
+        reason: 'defective',
+        note: null,
+        recordedAt: new Date('2026-01-15T10:00:00Z'),
+        createdAt: new Date('2026-01-15T10:00:00Z'),
+        updatedAt: new Date('2026-01-15T10:00:00Z'),
+        idempotencyKey: null,
+      };
+      ormRepository.find.mockResolvedValue([row as RefundRecordOrmEntity]);
+
+      const [result] = await repository.findByOrderId('ol_order_abc123');
+
+      expect(result.reason).toBe('defective');
     });
   });
 

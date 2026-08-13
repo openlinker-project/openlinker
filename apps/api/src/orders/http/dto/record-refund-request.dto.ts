@@ -38,4 +38,14 @@ export class RecordRefundRequestDto {
   @IsOptional()
   @IsISO8601()
   recordedAt?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Caller-supplied dedup key, scoped per order. A retried write with the same key ' +
+      'against the same order is rejected with 409 instead of inserting a second row.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  idempotencyKey?: string;
 }
