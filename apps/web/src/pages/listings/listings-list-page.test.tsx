@@ -178,7 +178,10 @@ describe('ListingsListPage', () => {
 
     renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
-    expect(screen.getByRole('status')).toBeInTheDocument();
+    // Two independent `role="status"` regions legitimately coexist during the
+    // very first load: the tab-count announcer and DataTableSkeleton's own
+    // status region for the row table - a singular query is ambiguous here.
+    expect(screen.getAllByRole('status').length).toBeGreaterThan(0);
   });
 
   it('should lead each row with the catalog product name, variant and identifiers', async () => {

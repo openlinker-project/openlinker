@@ -29,8 +29,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddIdentifierMappingsOfferCreatedIndex1832000000009 implements MigrationInterface {
-  name = 'AddIdentifierMappingsOfferCreatedIndex1832000000009';
+export class AddIdentifierMappingsOfferCreatedIndex1832000000011 implements MigrationInterface {
+  name = 'AddIdentifierMappingsOfferCreatedIndex1832000000011';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
