@@ -40,7 +40,9 @@ export class NeedsAttentionController {
 
     const dto = new NeedsAttentionResponseDto();
     dto.coverageGaps = summary.coverageGaps.map((item) => CoverageGapItemDto.fromDomain(item));
+    dto.coverageGapsTotalCount = summary.coverageGapsTotalCount;
     dto.stockAtRisk = summary.stockAtRisk.map((item) => StockAtRiskItemDto.fromDomain(item));
+    dto.stockAtRiskTotalCount = summary.stockAtRiskTotalCount;
     dto.failedSyncValue = FailedSyncValueSummaryDto.fromDomain(summary.failedSyncValue);
     return dto;
   }

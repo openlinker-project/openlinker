@@ -94,8 +94,18 @@ export class NeedsAttentionResponseDto {
   @ApiProperty({ type: [CoverageGapItemDto] })
   coverageGaps!: CoverageGapItemDto[];
 
+  @ApiProperty({
+    description: 'Total gap count before the page-size cap was applied — distinguishes "there are more" from "this is everything".',
+  })
+  coverageGapsTotalCount!: number;
+
   @ApiProperty({ type: [StockAtRiskItemDto] })
   stockAtRisk!: StockAtRiskItemDto[];
+
+  @ApiProperty({
+    description: 'Total at-risk count before the page-size cap was applied.',
+  })
+  stockAtRiskTotalCount!: number;
 
   @ApiProperty({ type: FailedSyncValueSummaryDto })
   failedSyncValue!: FailedSyncValueSummaryDto;

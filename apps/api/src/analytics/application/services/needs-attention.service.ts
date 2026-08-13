@@ -51,7 +51,9 @@ export class NeedsAttentionService implements INeedsAttentionService {
 
     return {
       coverageGaps: coverageGaps.items,
+      coverageGapsTotalCount: coverageGaps.totalCount,
       stockAtRisk: stockAtRisk.items,
+      stockAtRiskTotalCount: stockAtRisk.totalCount,
       failedSyncValue,
     };
   }

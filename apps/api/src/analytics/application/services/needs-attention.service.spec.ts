@@ -44,11 +44,13 @@ describe('NeedsAttentionService', () => {
     };
     coverageGapReadService.findCoverageGaps.mockResolvedValue({
       items: [coverageGapItem],
-      totalCount: 1,
+      // Deliberately distinct from items.length — asserts the composition
+      // actually forwards totalCount rather than re-deriving it from items.
+      totalCount: 7,
     });
     stockAtRiskReadService.findStockAtRisk.mockResolvedValue({
       items: [stockAtRiskItem],
-      totalCount: 1,
+      totalCount: 4,
     });
     orderRecordService.getFailedSyncValueSummary.mockResolvedValue(failedSyncValue);
 
@@ -56,7 +58,9 @@ describe('NeedsAttentionService', () => {
 
     expect(result).toEqual({
       coverageGaps: [coverageGapItem],
+      coverageGapsTotalCount: 7,
       stockAtRisk: [stockAtRiskItem],
+      stockAtRiskTotalCount: 4,
       failedSyncValue,
     });
     expect(orderRecordService.getFailedSyncValueSummary).toHaveBeenCalledWith({});

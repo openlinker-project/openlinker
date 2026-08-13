@@ -15,9 +15,11 @@ describe('NeedsAttentionController', () => {
           missingFromConnectionIds: ['conn-b'],
         },
       ],
+      coverageGapsTotalCount: 3,
       stockAtRisk: [
         { variantId: 'v2', productId: 'p2', connectionId: 'conn-a', masterStock: 0, stockSafetyBuffer: 5 },
       ],
+      stockAtRiskTotalCount: 6,
       failedSyncValue: {
         count: 2,
         totalValue: 500,
@@ -31,7 +33,9 @@ describe('NeedsAttentionController', () => {
     const result = await controller.getNeedsAttention();
 
     expect(result.coverageGaps).toEqual(summary.coverageGaps);
+    expect(result.coverageGapsTotalCount).toBe(3);
     expect(result.stockAtRisk).toEqual(summary.stockAtRisk);
+    expect(result.stockAtRiskTotalCount).toBe(6);
     expect(result.failedSyncValue).toEqual({
       count: 2,
       totalValue: 500,
