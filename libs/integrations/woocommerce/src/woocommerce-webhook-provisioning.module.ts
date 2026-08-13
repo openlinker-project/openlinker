@@ -31,7 +31,7 @@ import {
   IdentifierMappingModule,
 } from '@openlinker/core/identifier-mapping';
 import { RateLimitModule, HTTP_TRANSPORT_FACTORY_TOKEN } from '@openlinker/plugin-sdk';
-import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
+import { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { woocommerceAdapterManifest } from './woocommerce-plugin';
 import { WooCommerceWebhookProvisioningAdapter } from './infrastructure/adapters/woocommerce-webhook-provisioning.adapter';
 

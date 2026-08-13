@@ -3,7 +3,14 @@
  *
  * @module libs/shared/src/rate-limit
  */
-import { createRateLimiterRegistry } from '../rate-limiter-registry';
+import type { RedisClientType } from 'redis';
+import { createRateLimiterRegistry, createRedisRateLimiterRegistry } from '../rate-limiter-registry';
+import { RedisRateLimiterAdapter } from '../redis-rate-limiter.adapter';
+
+/** Never actually called in these tests — only construction/caching is exercised here. */
+function unusedRedisClient(): RedisClientType {
+  return {} as RedisClientType;
+}
 
 describe('createRateLimiterRegistry', () => {
   it('returns the same limiter instance for repeated get() calls on the same connection', () => {
@@ -79,5 +86,64 @@ describe('createRateLimiterRegistry', () => {
     registry.evict('conn-1');
 
     expect(registry.getStatus('conn-1')).toBeNull();
+  });
+});
+
+describe('createRedisRateLimiterRegistry', () => {
+  it('returns a RedisRateLimiterAdapter satisfying the same registry contract', () => {
+    const registry = createRedisRateLimiterRegistry(unusedRedisClient());
+
+    const limiter = registry.get('conn-1', { requestsPerMinute: 60 });
+
+    expect(limiter).toBeInstanceOf(RedisRateLimiterAdapter);
+  });
+
+  it('returns the same limiter instance for repeated get() calls on the same connection', () => {
+    const registry = createRedisRateLimiterRegistry(unusedRedisClient());
+
+    const first = registry.get('conn-1', {});
+    const second = registry.get('conn-1', {});
+
+    expect(first).toBe(second);
+  });
+
+  it('gives distinct connections distinct limiter instances', () => {
+    const registry = createRedisRateLimiterRegistry(unusedRedisClient());
+
+    expect(registry.get('conn-a', {})).not.toBe(registry.get('conn-b', {}));
+  });
+
+  it('getStatus reflects the policy applied via get() even before any acquire() call', () => {
+    const registry = createRedisRateLimiterRegistry(unusedRedisClient());
+
+    registry.get('conn-1', { requestsPerMinute: 120, maxConcurrent: 4 });
+
+    expect(registry.getStatus('conn-1')).toEqual({
+      requestsPerMinute: 120,
+      maxConcurrent: 4,
+      inFlight: 0,
+      queued: 0,
+      lastAcquiredAt: null,
+    });
+  });
+
+  it('evict() drops the local reference — a later get() builds a fresh instance', () => {
+    const registry = createRedisRateLimiterRegistry(unusedRedisClient());
+
+    const before = registry.get('conn-1', {});
+    registry.evict('conn-1');
+    const after = registry.get('conn-1', {});
+
+    expect(after).not.toBe(before);
+  });
+
+  it('clear() removes every cached limiter', () => {
+    const registry = createRedisRateLimiterRegistry(unusedRedisClient());
+
+    const before = registry.get('conn-1', {});
+    registry.clear();
+    const after = registry.get('conn-1', {});
+
+    expect(after).not.toBe(before);
   });
 });

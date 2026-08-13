@@ -15,6 +15,7 @@ import type {
   OrderHealthSummary,
   OrderHealthSummaryFilters,
   OrderRecordStatus,
+  FailedSyncValueSummary,
 } from '../types/order-record.types';
 import type { OrderSlaSummary } from '../types/order-sla.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
@@ -87,6 +88,14 @@ export interface OrderRecordRepositoryPort {
    * server clock.
    */
   countBySla(filters: OrderHealthSummaryFilters): Promise<OrderSlaSummary>;
+
+  /**
+   * "Value stuck in failed syncs" — the needs-attention aggregate (#1983).
+   * Same scope subset + `HAS_FAILED` / not-mapping / not-source-deleted
+   * partition as {@link countByHealth}'s `needsAttention` bucket, but reports
+   * the summed order value (and its oldest failure) rather than just a count.
+   */
+  getFailedSyncValueSummary(filters: OrderHealthSummaryFilters): Promise<FailedSyncValueSummary>;
 
   /**
    * Push a per-order fulfillment rollup (#1108) onto the order record. Called

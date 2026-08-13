@@ -31,7 +31,7 @@ describe('OfferStatusSyncService.refreshOne', () => {
       getOfferStatus: jest.fn().mockResolvedValue({ publicationStatus: 'active', validationErrors: [] }),
     };
     integrations.getCapabilityAdapter.mockResolvedValue(adapter);
-    snapshots.upsert.mockResolvedValue({ snapshot: {} as never, previousStatus: 'inactive' });
+    snapshots.upsert.mockResolvedValue({ snapshot: {} as never, previousStatus: 'inactive', applied: true });
 
     const result = await service.refreshOne('conn-1', target);
 

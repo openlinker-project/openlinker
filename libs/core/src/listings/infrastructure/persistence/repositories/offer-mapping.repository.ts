@@ -16,10 +16,12 @@ import { IdentifierMapping } from '@openlinker/core/identifier-mapping';
 import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 import type { OfferMappingRepositoryPort } from '../../../domain/ports/offer-mapping-repository.port';
 import type {
+  FindRecentlyListedVariantIdsOptions,
   OfferMappingFilters,
   OfferMappingPagination,
   PaginatedOfferMappings,
   ProductListingsCoverage,
+  RecentlyListedVariant,
   StaleMappedVariant,
 } from '../../../domain/types/offer-mapping.types';
 
@@ -211,6 +213,50 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       variantId: row.variantId,
       externalOfferId: row.externalOfferId,
       staleAt: row.staleAt,
+    }));
+  }
+
+  /**
+   * Backs the coverage-gap / stock-at-risk candidate pools (#1983). No
+   * supporting index covers this shape — `identifier_mappings` only carries
+   * `(entityType, platformType, connectionId, externalId)` and
+   * `(entityType, connectionId, internalId)`, neither of which serves an
+   * `entityType`-only filter grouped + ordered by `MAX(createdAt)`. Left as a
+   * full-partition scan deliberately: this is an on-demand operator read
+   * (the needs-attention panel), not a hot path — add a supporting index if
+   * it starts showing up in slow-query logs.
+   */
+  async findRecentlyListedVariantIds(
+    options: FindRecentlyListedVariantIdsOptions
+  ): Promise<RecentlyListedVariant[]> {
+    const qb = this.repository
+      .createQueryBuilder('mapping')
+      .select('mapping.internalId', 'internalId')
+      .addSelect('pv."productId"', 'productId')
+      .addSelect('MAX(mapping.createdAt)', 'latestMappedAt')
+      // Read-model reporting join onto the products-context table by name -
+      // no cross-context ORM-entity import (mirrors countListedVariantsByProducts).
+      .innerJoin('product_variants', 'pv', 'pv."id" = mapping."internalId"')
+      .where('mapping.entityType = :entityType', { entityType: OFFER_ENTITY_TYPE })
+      .andWhere('pv."isStale" IS NOT TRUE')
+      .groupBy('mapping.internalId')
+      .addGroupBy('pv."productId"')
+      .orderBy('"latestMappedAt"', 'DESC')
+      .limit(options.limit);
+
+    if (options.connectionId) {
+      qb.andWhere('mapping.connectionId = :connectionId', { connectionId: options.connectionId });
+    }
+
+    const rows = await qb.getRawMany<{
+      internalId: string;
+      productId: string;
+      latestMappedAt: Date;
+    }>();
+    return rows.map((row) => ({
+      variantId: row.internalId,
+      productId: row.productId,
+      latestMappedAt: new Date(row.latestMappedAt),
     }));
   }
 

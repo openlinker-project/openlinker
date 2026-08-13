@@ -36,7 +36,8 @@ const PULSING_STATUSES: ReadonlySet<OfferPublicationStatus> = new Set([
 ]);
 
 interface OfferPublicationStatusBadgeProps {
-  status: OfferPublicationStatus;
+  /** `null` = the offer is mapped but its status has never been read (#2039). */
+  status: OfferPublicationStatus | null;
   compact?: boolean;
 }
 
@@ -44,6 +45,16 @@ export function OfferPublicationStatusBadge({
   status,
   compact = false,
 }: OfferPublicationStatusBadgeProps): ReactElement {
+  // Absence is its own state, not a status: say so instead of picking a
+  // marketplace value the marketplace never reported.
+  if (status === null) {
+    return (
+      <StatusBadge tone="neutral" compact={compact} withDot>
+        Not synced yet
+      </StatusBadge>
+    );
+  }
+
   return (
     <StatusBadge
       tone={STATUS_TONE[status]}

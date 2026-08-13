@@ -19,6 +19,7 @@ import type {
   MarketplaceOfferRefreshSnapshotPayloadV1,
 } from '@openlinker/core/sync';
 import {
+  buildOfferRefreshSnapshotIdempotencyKey,
   SyncJobExecutionError,
   ISyncJobsService,
   SYNC_JOBS_SERVICE_TOKEN,
@@ -112,12 +113,22 @@ export class MarketplaceOfferRefreshSnapshotHandler implements SyncJobHandler {
       externalOfferId: payload.externalOfferId,
       internalVariantId: payload.internalVariantId,
       attempt: nextAttempt,
+      // Carry the chain's id forward (#2039) so every attempt keys off the same
+      // chain. Absent on a job enqueued before the field existed — the shared
+      // key builder then falls back to the legacy offer-id shape for that chain
+      // rather than stranding it.
+      ...(payload.reconcileId === undefined ? {} : { reconcileId: payload.reconcileId }),
     };
     await this.syncJobs.schedule({
       jobType: REFRESH_SNAPSHOT_JOB_TYPE,
       connectionId,
       payload: nextPayload as unknown as Record<string, unknown>,
-      idempotencyKey: `refreshSnapshot:${payload.externalOfferId}:${nextAttempt}`,
+      idempotencyKey: buildOfferRefreshSnapshotIdempotencyKey({
+        connectionId,
+        externalOfferId: payload.externalOfferId,
+        attempt: nextAttempt,
+        reconcileId: payload.reconcileId,
+      }),
       maxAttempts: RUNNER_RETRY_BUDGET,
       runAfter: new Date(Date.now() + delaySeconds * 1000),
     });
@@ -147,6 +158,10 @@ export class MarketplaceOfferRefreshSnapshotHandler implements SyncJobHandler {
       externalOfferId: payload.externalOfferId,
       internalVariantId: payload.internalVariantId,
       attempt: payload.attempt,
+      // Optional by design (#2039): validating it as required would dead-letter
+      // every chain already in flight across the deploy that adds it, and rungs
+      // run up to +20 min out.
+      ...(typeof payload.reconcileId === 'string' ? { reconcileId: payload.reconcileId } : {}),
     };
   }
 }
