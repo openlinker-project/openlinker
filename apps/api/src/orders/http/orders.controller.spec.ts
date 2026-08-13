@@ -72,6 +72,7 @@ describe('OrdersController', () => {
       countBySla: jest.fn(),
       updateFulfillmentState: jest.fn(),
       updateItemResolutionFailure: jest.fn(),
+      markCancelled: jest.fn(),
     };
 
     const mockRetryService: jest.Mocked<IOrderDestinationRetryService> = {
@@ -335,6 +336,31 @@ describe('OrdersController', () => {
 
       expect(result.items[0].dispatchByAt).toBe('2026-04-02T16:00:00.000Z');
       expect(result.items[1].dispatchByAt).toBeNull();
+    });
+
+    it('should serialize cancelledAt as an ISO string, or null when absent (#1984)', async () => {
+      const cancelledOrder = new OrderRecord(
+        'ol_order_cancelled',
+        null,
+        'conn-source-001',
+        null,
+        {},
+        [],
+        'ready',
+        new Date('2026-04-01T00:00:00Z'),
+        new Date('2026-04-01T00:00:00Z'),
+        [],
+        null,
+        null,
+        null,
+        new Date('2026-08-05T09:30:00Z')
+      );
+      repository.findMany.mockResolvedValue({ items: [cancelledOrder, mockOrder], total: 2 });
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(result.items[0].cancelledAt).toBe('2026-08-05T09:30:00.000Z');
+      expect(result.items[1].cancelledAt).toBeNull();
     });
 
     it('should derive dispatchByEstimated from the snapshot dispatch window (#1776)', async () => {

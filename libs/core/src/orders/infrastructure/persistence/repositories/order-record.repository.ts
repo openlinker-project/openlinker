@@ -150,6 +150,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       this.applySlaFilter(qb, filters.slaState);
     }
 
+    if (filters.cancelled !== undefined) {
+      // #1984 — queryable without parsing orderSnapshot. `undefined` means
+      // "don't filter"; both `true` and `false` are meaningful predicates.
+      qb.andWhere(filters.cancelled ? 'rec.cancelledAt IS NOT NULL' : 'rec.cancelledAt IS NULL');
+    }
+
     this.applySort(qb, filters.sort, filters.dir);
 
     const [entities, total] = await qb.getManyAndCount();
@@ -609,6 +615,24 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     );
   }
 
+  /**
+   * Durably record the instant this order was cancelled (#1984).
+   * First-write-wins via `COALESCE` — a redelivered cancel event or a later
+   * re-poll can never overwrite an already-recorded instant. Raw parameterized
+   * query (mirrors {@link updateSyncStatus}'s idiom) because
+   * `Repository.update()`'s partial-entity API cannot express a `COALESCE(...)`
+   * right-hand side without an unsafe string-interpolated function value.
+   * No-op (no throw, no rows affected) when the order row doesn't exist yet.
+   */
+  async markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void> {
+    await this.repository.query(
+      `UPDATE "order_records"
+       SET "cancelledAt" = COALESCE("cancelledAt", $1)
+       WHERE "internalOrderId" = $2`,
+      [cancelledAt, internalOrderId]
+    );
+  }
+
   async upsert(orderRecord: OrderRecord): Promise<OrderRecord> {
     const entity = this.toOrm(orderRecord);
     // TypeORM save() performs upsert on primary key (internalOrderId)
@@ -739,7 +763,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       syncAttempts,
       entity.dispatchByAt,
       (entity.fulfillmentState as FulfillmentRollupState | null) ?? null,
-      entity.mappingFailureReason ?? null
+      entity.mappingFailureReason ?? null,
+      entity.cancelledAt ?? null
     );
   }
 
@@ -773,6 +798,16 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.mappingFailureReason = orderRecord.mappingFailureReason;
     entity.dispatchByAt = orderRecord.dispatchByAt;
     entity.fulfillmentState = orderRecord.fulfillmentState;
+    // cancelledAt is deliberately NOT mapped here (#1984 follow-up). upsert()
+    // is a full-object save() with no per-order lock around it (two ingestion
+    // paths — webhook + reconciliation poll — legitimately race for the same
+    // order per docs/architecture-overview.md § "Webhook = trigger, poll =
+    // reconciliation backstop"), so writing this column here would let a
+    // stale in-memory read stomp a value {@link markCancelled} already
+    // committed concurrently. Leaving the ORM entity's `cancelledAt` property
+    // unset means TypeORM omits the column from the generated UPDATE
+    // entirely — the row's existing value survives untouched. `markCancelled`
+    // (COALESCE-based, atomic) is the single writer for this column.
     entity.createdAt = orderRecord.createdAt;
     entity.updatedAt = orderRecord.updatedAt;
     return entity;

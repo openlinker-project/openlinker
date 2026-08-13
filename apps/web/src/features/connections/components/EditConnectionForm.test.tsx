@@ -177,6 +177,39 @@ describe('EditConnectionForm', () => {
     });
   });
 
+  it('persists an explicit config.rateLimit: null when the operator reverts to the adapter default, even though the pre-submit refetch still returns the old value (#2016)', async () => {
+    // Reproduces the reported scenario: an Allegro connection with
+    // config.rateLimit set, reverted via the "Enable rate limiting" toggle,
+    // saved while the getById refetch races ahead of the not-yet-persisted
+    // change. Ships an explicit `null` (not an absent key) so the value
+    // survives the pre-submit `{ ...fresh.config, ...input.config }` merge.
+    const connectionWithRateLimit: Connection = {
+      ...sampleConnection,
+      config: { ...sampleConnection.config, rateLimit: { requestsPerMinute: 10, maxConcurrent: 11 } },
+    };
+    const updateFn = vi.fn().mockResolvedValue(connectionWithRateLimit);
+    const apiClient = createMockApiClient({
+      connections: {
+        update: updateFn,
+        // Refetch still reports the old rateLimit — nothing has persisted yet.
+        getById: vi.fn().mockResolvedValue(connectionWithRateLimit),
+      },
+    });
+
+    renderWithProviders(<EditConnectionForm connection={connectionWithRateLimit} />, { apiClient });
+
+    expect(screen.getByLabelText('Enable rate limiting')).toBeChecked();
+    fireEvent.click(screen.getByLabelText('Enable rate limiting'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => {
+      expect(updateFn).toHaveBeenCalled();
+    });
+    const [, submittedInput] = updateFn.mock.calls[0] as [string, { config: Record<string, unknown> }];
+    expect('rateLimit' in submittedInput.config).toBe(true);
+    expect(submittedInput.config.rateLimit).toBeNull();
+  });
+
   describe('structured PrestaShop inputs + raw JSON toggle', () => {
     it('renders Shop URL / Storefront URL / Shop ID inputs for a PrestaShop connection', () => {
       renderWithProviders(<EditConnectionForm connection={sampleConnection} />);

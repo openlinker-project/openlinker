@@ -122,4 +122,16 @@ export interface OrderRecordRepositoryPort {
     internalOrderId: string,
     input: { status: OrderRecordStatus; reason: string }
   ): Promise<void>;
+
+  /**
+   * Durably record the instant the source reported this order cancelled
+   * (#1984), directly from `handleSourceCancellation` — the one ingestion
+   * path that never calls `persistOrder`/`persistIncomingSnapshot`.
+   * First-write-wins (`COALESCE`): a redelivered cancel event or a later
+   * re-poll can never overwrite an already-recorded cancellation instant.
+   * No-op (no throw) when the order row doesn't exist yet — mirrors
+   * {@link updateFulfillmentState}'s residual-race tolerance (#1160: a cancel
+   * event racing ahead of the order's own create/sync job).
+   */
+  markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void>;
 }

@@ -129,6 +129,7 @@ describe('ShipmentController', () => {
       updateFulfillmentState: jest.fn(),
       markItemResolutionFailure: jest.fn(),
       getFailedSyncValueSummary: jest.fn(),
+      markCancelled: jest.fn(),
     };
     controller = new ShipmentController(
       query,

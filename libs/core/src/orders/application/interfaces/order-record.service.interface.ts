@@ -147,4 +147,14 @@ export interface IOrderRecordService {
    * `OrderRecordRepositoryPort.getFailedSyncValueSummary` directly.
    */
   getFailedSyncValueSummary(filters: OrderHealthSummaryFilters): Promise<FailedSyncValueSummary>;
+
+  /**
+   * Durably record the instant this order was cancelled (#1984). Called by
+   * `OrderIngestionService.handleSourceCancellation` — the one ingestion path
+   * that never calls `persistOrder`/`persistIncomingSnapshot`, and today
+   * writes nothing to the order record at all. First-write-wins: a redelivered
+   * cancel event or a later re-poll can never overwrite an already-recorded
+   * instant. No-op (no throw) when no record exists yet for `internalOrderId`.
+   */
+  markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void>;
 }

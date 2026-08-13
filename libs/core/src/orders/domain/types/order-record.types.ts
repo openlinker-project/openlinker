@@ -170,6 +170,13 @@ export interface OrderRecordFilters {
    */
   fulfillmentState?: FulfillmentRollupState;
   /**
+   * Cancellation filter (#1984). Maps directly to `cancelledAt IS [NOT] NULL`
+   * — `true` keeps only cancelled orders, `false` excludes them. Queryable
+   * without parsing `orderSnapshot`; not yet wired into any HTTP query param
+   * or FE control — that is the aggregate endpoints' job (#1987/#1988).
+   */
+  cancelled?: boolean;
+  /**
    * Result ordering (#927/#944/#1108). Maps to a SQL `ORDER BY` by
    * `OrderRecordRepository.applySort`. `dispatchBy` (ship-by deadline, NULLs
    * last) is the list's triage default; the JSONB-derived keys (`customer`,

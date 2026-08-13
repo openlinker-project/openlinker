@@ -143,3 +143,32 @@ describe('OrderRecord.dispatchByEstimated (#1776)', () => {
     expect(makeRecord({ dispatchTime: { estimated: 1 } }).dispatchByEstimated).toBe(false);
   });
 });
+
+describe('OrderRecord.isCancelled (#1984)', () => {
+  function makeRecordWithCancelledAt(cancelledAt: Date | null): OrderRecord {
+    return new OrderRecord(
+      'ol_order_1',
+      'ol_customer_1',
+      'conn-1',
+      null,
+      {},
+      [],
+      'ready',
+      new Date(),
+      new Date(),
+      [],
+      null,
+      null,
+      null,
+      cancelledAt,
+    );
+  }
+
+  it('returns false when cancelledAt is null', () => {
+    expect(makeRecordWithCancelledAt(null).isCancelled).toBe(false);
+  });
+
+  it('returns true when cancelledAt is set', () => {
+    expect(makeRecordWithCancelledAt(new Date('2026-08-01T00:00:00Z')).isCancelled).toBe(true);
+  });
+});
