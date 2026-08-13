@@ -144,6 +144,7 @@ export class IntegrationsService implements IIntegrationsService {
     capability: string;
     platformType?: string;
     lazy?: boolean;
+    includeAllStatuses?: boolean;
   }): Promise<
     Array<{
       connectionId: string;
@@ -153,12 +154,15 @@ export class IntegrationsService implements IIntegrationsService {
     }>
   > {
     this.logger.debug(
-      `Listing ${filters.capability} adapters${filters.platformType ? ` (platform: ${filters.platformType})` : ''}${filters.lazy ? ' (lazy adapter construction)' : ''}`
+      `Listing ${filters.capability} adapters${filters.platformType ? ` (platform: ${filters.platformType})` : ''}${filters.lazy ? ' (lazy adapter construction)' : ''}${filters.includeAllStatuses ? ' (all statuses)' : ''}`
     );
 
-    // List all active connections (filter by platformType if provided)
+    // List active connections by default (filter by platformType if
+    // provided) — `includeAllStatuses` opts a caller into also seeing
+    // disabled/error/needs_reauth connections, for reads that must report
+    // ON a broken connection rather than silently skip it.
     const connectionFilters = {
-      status: 'active' as const,
+      ...(!filters.includeAllStatuses && { status: 'active' as const }),
       ...(filters.platformType && { platformType: filters.platformType }),
     };
     const connections = await this.connectionPort.list(connectionFilters);

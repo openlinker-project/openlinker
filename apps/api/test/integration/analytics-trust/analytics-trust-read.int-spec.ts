@@ -42,6 +42,7 @@ interface ConnectionIngestionTrustTestEntry {
   connectionId: string;
   connectionName: string;
   platformType: string;
+  connectionStatus: string;
   status: string;
   lastPollAt: string | null;
   lastOrderIngestedAt: string | null;
@@ -313,7 +314,47 @@ describe('Analytics Trust Read API Integration', () => {
       expect(new Date(entry!.lastPollAt!).getTime()).toBe(recentTimestamp.getTime());
       expect(entry!.status).toBe('fresh');
       expect(entry!.expectedIntervalMs).toBeNull();
-      expect(entry!.staleAfterMs).toBeNull();
+      // Falls back to the floor rather than staying null — an unknown
+      // cadence must not mean "never stale."
+      expect(entry!.staleAfterMs).toBe(EXPECTED_STALE_AFTER_MS);
+    });
+
+    it('should classify a needs_reauth connection as disconnected, never omitting it from the snapshot (blocking finding: broken connections must not disappear)', async () => {
+      const http = harness.getHttp();
+      const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
+
+      const connection = await createTestConnection(dataSource, {
+        platformType: 'allegro',
+        adapterKey: 'allegro.publicapi.v1',
+        status: 'needs_reauth',
+        enabledCapabilities: ['OrderSource'],
+      });
+      // Even a recently-succeeded poll must not read 'fresh' once the
+      // connection itself is needs_reauth — the whole point of this status
+      // is that OL knows this connection is broken.
+      const job = await createTestSyncJob(dataSource, {
+        connectionId: connection.id,
+        jobType: 'marketplace.orders.poll',
+        status: 'succeeded',
+      });
+      const recentTimestamp = new Date(Date.now() - 2 * 60 * 1000);
+      await setSyncJobUpdatedAt(harness, job.id, recentTimestamp);
+
+      const response = await http
+        .get('/v1/analytics/trust')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      const body = response.body as AnalyticsTrustTestResponse;
+
+      const entry = body.connections.find((c) => c.connectionId === connection.id);
+      expect(entry).toBeDefined();
+      expect(entry!.connectionStatus).toBe('needs_reauth');
+      expect(entry!.status).toBe('disconnected');
+      // Still reported for operator context, not suppressed by the
+      // disconnected classification.
+      expect(new Date(entry!.lastPollAt!).getTime()).toBe(recentTimestamp.getTime());
+      expect(body.worstStatus).toBe('disconnected');
     });
 
     it('should return 401 without a token', async () => {

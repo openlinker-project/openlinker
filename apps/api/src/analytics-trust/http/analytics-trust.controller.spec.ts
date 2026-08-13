@@ -24,6 +24,7 @@ describe('AnalyticsTrustController', () => {
           connectionId: 'conn-1',
           connectionName: 'My Allegro Store',
           platformType: 'allegro',
+          connectionStatus: 'active',
           status: 'fresh',
           lastPollAt: new Date('2026-06-01T11:55:00.000Z'),
           lastOrderIngestedAt: new Date('2026-06-01T10:00:00.000Z'),
@@ -44,6 +45,7 @@ describe('AnalyticsTrustController', () => {
       connectionId: 'conn-1',
       connectionName: 'My Allegro Store',
       platformType: 'allegro',
+      connectionStatus: 'active',
       status: 'fresh',
       lastPollAt: '2026-06-01T11:55:00.000Z',
       lastOrderIngestedAt: '2026-06-01T10:00:00.000Z',
@@ -62,6 +64,7 @@ describe('AnalyticsTrustController', () => {
           connectionId: 'conn-2',
           connectionName: 'New Erli Connection',
           platformType: 'erli',
+          connectionStatus: 'active',
           status: 'never-ingested',
           lastPollAt: null,
           lastOrderIngestedAt: null,
@@ -89,6 +92,7 @@ describe('AnalyticsTrustController', () => {
           connectionId: 'conn-3',
           connectionName: 'Flaky Connection',
           platformType: 'allegro',
+          connectionStatus: 'active',
           status: 'unknown',
           lastPollAt: null,
           lastOrderIngestedAt: null,
@@ -104,6 +108,34 @@ describe('AnalyticsTrustController', () => {
 
     expect(result.connections[0].status).toBe('unknown');
     expect(result.worstStatus).toBe('unknown');
+  });
+
+  it('maps a disconnected (needs_reauth) connection and passes connectionStatus through', async () => {
+    const snapshot: AnalyticsTrustSnapshot = {
+      generatedAt: new Date('2026-06-01T12:00:00.000Z'),
+      worstStatus: 'disconnected',
+      connections: [
+        {
+          connectionId: 'conn-4',
+          connectionName: 'Expired Allegro Token',
+          platformType: 'allegro',
+          connectionStatus: 'needs_reauth',
+          status: 'disconnected',
+          lastPollAt: new Date('2026-05-25T00:00:00.000Z'),
+          lastOrderIngestedAt: new Date('2026-05-24T00:00:00.000Z'),
+          connectionCreatedAt: new Date('2026-01-01T00:00:00.000Z'),
+          expectedIntervalMs: 300_000,
+          staleAfterMs: 900_000,
+        },
+      ],
+    };
+    analyticsTrustService.getIngestionTrustSnapshot.mockResolvedValue(snapshot);
+
+    const result = await controller.getTrust();
+
+    expect(result.worstStatus).toBe('disconnected');
+    expect(result.connections[0].connectionStatus).toBe('needs_reauth');
+    expect(result.connections[0].status).toBe('disconnected');
   });
 
   it('returns an empty connections array when there are none', async () => {

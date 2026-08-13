@@ -17,7 +17,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { DataSource, EntityManager } from 'typeorm';
-import { Repository, QueryFailedError, Not } from 'typeorm';
+import { Repository, QueryFailedError, Not, IsNull } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { SyncJobOrmEntity } from '../entities/sync-job.orm-entity';
 import type { SyncJobRepositoryPort } from '../../../domain/ports/sync-job-repository.port';
@@ -345,22 +345,24 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
     jobType: JobType
   ): Promise<SyncJob | null> {
     const entity = await this.repository.findOne({
-      where: {
-        connectionId,
-        jobType,
-        status: 'succeeded',
-        // ADR-007: `status: 'succeeded'` is orchestration, `outcome` is the
-        // business result. Excludes a succeeded-but-business_failure job
-        // (e.g. `master.product.syncByExternalId` with `outcomeReason:
-        // 'master_deleted'`) from being reported as a "successful" run.
-        // `outcome` is always set for a succeeded job (ADR-007's atomic
-        // status/outcome flip) — `Not('business_failure')` also excludes a
-        // NULL outcome (SQL `!= x` on NULL is NULL, not true), which is the
-        // conservative direction if that invariant is ever violated: this
-        // read degrades to "not reported" rather than silently reporting
-        // an unvetted job as a successful ingestion tick.
-        outcome: Not('business_failure'),
-      },
+      // ADR-007: `status: 'succeeded'` is orchestration, `outcome` is the
+      // business result. Excludes a succeeded-but-business_failure job
+      // (e.g. `master.product.syncByExternalId` with `outcomeReason:
+      // 'master_deleted'`) from being reported as a "successful" run.
+      //
+      // `outcome` is NOT always set: `1790000000003-add-outcome-to-sync-jobs`
+      // added the column nullable with no backfill, so a succeeded job that
+      // predates ADR-007's atomic status/outcome flip carries NULL. A plain
+      // `outcome: Not('business_failure')` would exclude those rows too (SQL
+      // `!= x` on NULL is NULL, not true), reporting a false "never
+      // succeeded" for exactly the read this method exists to answer
+      // honestly. The two-branch OR below (array = OR across TypeORM
+      // `where` objects) explicitly admits both "known-not-business_failure"
+      // and "outcome was never recorded" as successful.
+      where: [
+        { connectionId, jobType, status: 'succeeded', outcome: Not('business_failure') },
+        { connectionId, jobType, status: 'succeeded', outcome: IsNull() },
+      ],
       // No two rows share a (connectionId, jobType, status) at the same
       // updatedAt in practice, but a deterministic tiebreaker (mirroring
       // requeueDeadJobsInGroup's own ordering) removes the ambiguity.

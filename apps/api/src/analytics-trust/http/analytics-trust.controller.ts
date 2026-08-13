@@ -34,9 +34,9 @@ export class AnalyticsTrustController {
   @ApiOperation({
     summary: 'Get the analytics data-trust snapshot',
     description:
-      'Reports, for every active OrderSource-capable connection, when its ingestion pipe last polled ' +
-      'successfully, when it last actually ingested an order, when the connection was created, and ' +
-      'whether the poll pipe appears stalled.',
+      'Reports, for every OrderSource-capable connection regardless of status, when its ingestion ' +
+      'pipe last polled successfully, when it last actually ingested an order, when the connection ' +
+      "was created, and whether it appears stalled or disconnected (e.g. needs_reauth).",
   })
   @ApiResponse({ status: 200, type: AnalyticsTrustResponseDto })
   async getTrust(): Promise<AnalyticsTrustResponseDto> {
@@ -53,6 +53,7 @@ export class AnalyticsTrustController {
       connectionDto.connectionId = entry.connectionId;
       connectionDto.connectionName = entry.connectionName;
       connectionDto.platformType = entry.platformType;
+      connectionDto.connectionStatus = entry.connectionStatus;
       connectionDto.status = entry.status;
       connectionDto.lastPollAt = entry.lastPollAt ? entry.lastPollAt.toISOString() : null;
       connectionDto.lastOrderIngestedAt = entry.lastOrderIngestedAt

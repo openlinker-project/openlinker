@@ -79,6 +79,7 @@ describe('AnalyticsTrustService', () => {
     expect(integrationsService.listCapabilityAdapters).toHaveBeenCalledWith({
       capability: 'OrderSource',
       lazy: true,
+      includeAllStatuses: true,
     });
   });
 
@@ -176,7 +177,7 @@ describe('AnalyticsTrustService', () => {
     expect(result.connections[0]).toMatchObject({ status: 'fresh', staleAfterMs: 30 * 60 * 1000 });
   });
 
-  it('marks expectedIntervalMs and staleAfterMs null when no scheduler task matches the connection platform', async () => {
+  it('marks expectedIntervalMs null and falls back staleAfterMs to the floor when no scheduler task matches the connection platform', async () => {
     const connection = makeConnection({ platformType: 'unknown-platform' });
     integrationsService.listCapabilityAdapters.mockResolvedValue([
       { connectionId: connection.id, connection, adapter: {}, metadata: {} as never },
@@ -188,7 +189,7 @@ describe('AnalyticsTrustService', () => {
 
     expect(result.connections[0]).toMatchObject({
       expectedIntervalMs: null,
-      staleAfterMs: null,
+      staleAfterMs: 30 * 60 * 1000,
       status: 'never-ingested',
     });
   });
@@ -200,7 +201,7 @@ describe('AnalyticsTrustService', () => {
     ]);
     // findEnabledPollTask already filters out a disabled task — the service
     // must treat that exactly like "no task registered", not like "cadence
-    // is 0". A recent poll must still read fresh with a null threshold.
+    // is 0". A recent poll must still read fresh, against the floor threshold.
     syncJobsService.findEnabledPollTask.mockReturnValue(null);
     const recentPoll = new Date(now.getTime() - 2 * 60 * 1000);
     mockJobsFor(connection.id, { id: 'job-1', updatedAt: recentPoll } as SyncJobEntity, null);
@@ -211,8 +212,24 @@ describe('AnalyticsTrustService', () => {
       status: 'fresh',
       lastPollAt: recentPoll,
       expectedIntervalMs: null,
-      staleAfterMs: null,
+      staleAfterMs: 30 * 60 * 1000,
     });
+  });
+
+  it('reports stalled (not fresh forever) when no scheduler task matches and the last poll is older than the floor threshold', async () => {
+    const connection = makeConnection({ platformType: 'unknown-platform' });
+    integrationsService.listCapabilityAdapters.mockResolvedValue([
+      { connectionId: connection.id, connection, adapter: {}, metadata: {} as never },
+    ]);
+    syncJobsService.findEnabledPollTask.mockReturnValue(null);
+    // Six months ago — with no fallback threshold this would incorrectly
+    // read 'fresh' forever (the original finding-2 bug).
+    const ancientPoll = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
+    mockJobsFor(connection.id, { id: 'job-1', updatedAt: ancientPoll } as SyncJobEntity, null);
+
+    const result = await service.getIngestionTrustSnapshot();
+
+    expect(result.connections[0]).toMatchObject({ status: 'stalled', staleAfterMs: 30 * 60 * 1000 });
   });
 
   it('reports a succeeded poll job even when no scheduler task is registered for the platform (finding 1)', async () => {
@@ -273,6 +290,80 @@ describe('AnalyticsTrustService', () => {
       lastPollAt: null,
       lastOrderIngestedAt: null,
     });
+  });
+
+  it('classifies a needs_reauth connection as disconnected, overriding an otherwise-fresh poll history (finding 1)', async () => {
+    const connection = makeConnection({ status: 'needs_reauth' });
+    integrationsService.listCapabilityAdapters.mockResolvedValue([
+      { connectionId: connection.id, connection, adapter: {}, metadata: {} as never },
+    ]);
+    syncJobsService.findEnabledPollTask.mockReturnValue(makeTask());
+    // A recent poll — if connection.status were ignored this would read
+    // 'fresh', exactly the false-green the review flagged.
+    const recentPoll = new Date(now.getTime() - 2 * 60 * 1000);
+    mockJobsFor(connection.id, { id: 'job-1', updatedAt: recentPoll } as SyncJobEntity, null);
+
+    const result = await service.getIngestionTrustSnapshot();
+
+    expect(result.connections[0]).toMatchObject({
+      status: 'disconnected',
+      connectionStatus: 'needs_reauth',
+      // Still reported for operator context, not suppressed.
+      lastPollAt: recentPoll,
+    });
+    expect(result.worstStatus).toBe('disconnected');
+  });
+
+  it('lists connections regardless of status', async () => {
+    integrationsService.listCapabilityAdapters.mockResolvedValue([]);
+
+    await service.getIngestionTrustSnapshot();
+
+    expect(integrationsService.listCapabilityAdapters).toHaveBeenCalledWith(
+      expect.objectContaining({ includeAllStatuses: true })
+    );
+  });
+
+  it('ranks disconnected worse than stalled but not as bad as unknown in the worstStatus roll-up', async () => {
+    const disconnectedConnection = makeConnection({ id: 'conn-disc', status: 'disabled' });
+    const stalledConnection = makeConnection({ id: 'conn-stalled' });
+    integrationsService.listCapabilityAdapters.mockResolvedValue([
+      {
+        connectionId: disconnectedConnection.id,
+        connection: disconnectedConnection,
+        adapter: {},
+        metadata: {} as never,
+      },
+      {
+        connectionId: stalledConnection.id,
+        connection: stalledConnection,
+        adapter: {},
+        metadata: {} as never,
+      },
+    ]);
+    syncJobsService.findEnabledPollTask.mockReturnValue(makeTask());
+    syncJobsService.findLastSucceededJob.mockImplementation((id, jobType) => {
+      if (jobType !== 'marketplace.orders.poll') return Promise.resolve(null);
+      const pollAt = new Date(now.getTime() - 60 * 60 * 1000);
+      return Promise.resolve({ id: `job-${id}`, updatedAt: pollAt } as SyncJobEntity);
+    });
+
+    const result = await service.getIngestionTrustSnapshot();
+
+    expect(result.worstStatus).toBe('disconnected');
+  });
+
+  it('reports connectionStatus as active for a healthy connection', async () => {
+    const connection = makeConnection();
+    integrationsService.listCapabilityAdapters.mockResolvedValue([
+      { connectionId: connection.id, connection, adapter: {}, metadata: {} as never },
+    ]);
+    syncJobsService.findEnabledPollTask.mockReturnValue(makeTask());
+    mockJobsFor(connection.id, null, null);
+
+    const result = await service.getIngestionTrustSnapshot();
+
+    expect(result.connections[0].connectionStatus).toBe('active');
   });
 
   it('reports connectionCreatedAt as the connection createdAt', async () => {

@@ -19,10 +19,13 @@ import type { ConnectionIngestionStatus } from '../types/connection-ingestion-tr
  *
  * - `null` last-success → `'never-ingested'` (distinguishable from a
  *   connection that ingested and then stalled — #1982 AC2).
- * - A `null` `staleAfterMs` means the cadence is unknown (no matching,
- *   *enabled* scheduler task registered for the connection's platform) —
+ * - A `null` `staleAfterMs` means the caller has no threshold at all —
  *   such a connection can never be classified `'stalled'`, only `'fresh'`
- *   once it has ingested at least once.
+ *   once it has ingested at least once. `AnalyticsTrustService` never
+ *   passes `null` in practice: when the cadence is unknown (no matching,
+ *   *enabled* scheduler task) it falls back to `MIN_STALE_THRESHOLD_MS`
+ *   rather than leaving the connection unstaleable forever. `null` stays
+ *   supported here for callers/tests that genuinely have no threshold.
  * - Otherwise `'stalled'` when the age of the last success exceeds
  *   `staleAfterMs`, else `'fresh'`.
  */
@@ -89,18 +92,22 @@ export function estimateCronIntervalMs(cronExpression: string, now: Date): numbe
 
 /**
  * Severity ordering for `ConnectionIngestionStatus`, worst-first-if-tied.
- * `'unknown'` outranks `'stalled'` — a build failure means the endpoint
- * cannot even vouch for "this looks broken," which is a worse trust
- * position than a confirmed-stalled read. `'never-ingested'` outranks
- * `'fresh'` since a caller reading the roll-up wants to know at least one
- * connection has no data yet, even though that's often benign (a
- * brand-new connection).
+ * `'unknown'` outranks everything else, including `'disconnected'` — a
+ * build failure means the endpoint cannot even vouch for "this looks
+ * broken," which is a worse trust position than a confirmed diagnosis.
+ * `'disconnected'` outranks `'stalled'` — a connection the platform itself
+ * has flagged unreachable (`needs_reauth`/`disabled`/`error`) is a
+ * confirmed, actionable failure, not a merely-inferred one from poll
+ * silence. `'never-ingested'` outranks `'fresh'` since a caller reading
+ * the roll-up wants to know at least one connection has no data yet, even
+ * though that's often benign (a brand-new connection).
  */
 const STATUS_SEVERITY: Record<ConnectionIngestionStatus, number> = {
   fresh: 0,
   'never-ingested': 1,
   stalled: 2,
-  unknown: 3,
+  disconnected: 3,
+  unknown: 4,
 };
 
 /**

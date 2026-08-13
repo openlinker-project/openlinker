@@ -87,6 +87,14 @@ describe('computeWorstStatus', () => {
     expect(computeWorstStatus(['stalled', 'unknown'])).toBe('unknown');
   });
 
+  it('ranks unknown as worse than disconnected', () => {
+    expect(computeWorstStatus(['disconnected', 'unknown'])).toBe('unknown');
+  });
+
+  it('ranks disconnected as worse than stalled', () => {
+    expect(computeWorstStatus(['stalled', 'disconnected'])).toBe('disconnected');
+  });
+
   it('ranks stalled as worse than never-ingested', () => {
     expect(computeWorstStatus(['never-ingested', 'stalled'])).toBe('stalled');
   });

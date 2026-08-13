@@ -11,6 +11,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { ConnectionIngestionStatusValues } from '@openlinker/core/analytics-trust';
 import { ConnectionIngestionStatus } from '@openlinker/core/analytics-trust';
+import { ConnectionStatusValues } from '@openlinker/core/identifier-mapping';
+import { ConnectionStatus } from '@openlinker/core/identifier-mapping';
 
 export class ConnectionIngestionTrustResponseDto {
   @ApiProperty({ description: 'Connection UUID' })
@@ -23,9 +25,19 @@ export class ConnectionIngestionTrustResponseDto {
   platformType!: string;
 
   @ApiProperty({
+    enum: ConnectionStatusValues,
+    description:
+      "This connection's own current status, carried through unchanged so a 'disconnected' " +
+      'status entry can tell the operator why (e.g. an expired Allegro token flipped it to ' +
+      "'needs_reauth').",
+  })
+  connectionStatus!: ConnectionStatus;
+
+  @ApiProperty({
     enum: ConnectionIngestionStatusValues,
     description:
-      'Derived from lastPollAt vs. staleAfterMs — pipe liveness, not data recency. ' +
+      "'disconnected' when connectionStatus is not 'active' — takes priority over poll history. " +
+      'Otherwise derived from lastPollAt vs. staleAfterMs — pipe liveness, not data recency. ' +
       "'never-ingested' = no succeeded marketplace.orders.poll job has ever run; 'stalled' = the last " +
       "succeeded poll job is older than this connection's staleness threshold; 'fresh' = otherwise; " +
       "'unknown' = this entry could not be computed (e.g. a transient error) — distinct from " +
@@ -69,7 +81,9 @@ export class ConnectionIngestionTrustResponseDto {
 
   @ApiProperty({
     nullable: true,
-    description: 'Staleness threshold (ms). Null when expectedIntervalMs is null.',
+    description:
+      'Staleness threshold (ms). Falls back to a floor value when expectedIntervalMs is null ' +
+      '(cadence unknown) rather than leaving the connection unstaleable forever.',
   })
   staleAfterMs!: number | null;
 }
@@ -89,7 +103,9 @@ export class AnalyticsTrustResponseDto {
   @ApiProperty({
     type: [ConnectionIngestionTrustResponseDto],
     description:
-      'One entry per active OrderSource-capable connection. Empty on a day-one instance.',
+      'One entry per OrderSource-capable connection, regardless of its status — a disabled or ' +
+      "needs_reauth connection is included with status 'disconnected', not omitted. Empty on a " +
+      'day-one instance.',
   })
   connections!: ConnectionIngestionTrustResponseDto[];
 }

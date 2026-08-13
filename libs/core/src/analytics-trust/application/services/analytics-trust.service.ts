@@ -22,6 +22,14 @@
  * the *staleness threshold*, and only from a currently-*enabled* task —
  * see `ISyncJobsService.findEnabledPollTask`.
  *
+ * Connections are enumerated regardless of `connection.status`
+ * (`includeAllStatuses: true`) — the single most common real ingestion
+ * death is an Allegro token flipping to `needs_reauth`, and a trust read
+ * that silently drops exactly the connections it exists to warn about
+ * would report green while ingestion is dead. A non-`'active'` connection
+ * is always classified `'disconnected'`, overriding whatever its poll
+ * history would otherwise say.
+ *
  * @module libs/core/src/analytics-trust/application/services
  * @implements {IAnalyticsTrustService}
  */
@@ -66,6 +74,7 @@ export class AnalyticsTrustService implements IAnalyticsTrustService {
     const entries = await this.integrationsService.listCapabilityAdapters({
       capability: ORDER_SOURCE_CAPABILITY,
       lazy: true,
+      includeAllStatuses: true,
     });
 
     const now = new Date();
@@ -102,16 +111,30 @@ export class AnalyticsTrustService implements IAnalyticsTrustService {
       const expectedIntervalMs = enabledTask
         ? estimateCronIntervalMs(enabledTask.cronExpression, now)
         : null;
+      // Falls back to MIN_STALE_THRESHOLD_MS rather than leaving the
+      // threshold null when the cadence is unknown — an unknown cadence is
+      // not the same fact as "no threshold should ever apply," and without
+      // this a webhook-first connection whose last poll succeeded months
+      // ago would read 'fresh' forever.
       const staleAfterMs =
         expectedIntervalMs !== null
           ? computeStaleAfterMs(expectedIntervalMs, STALE_THRESHOLD_MULTIPLIER, MIN_STALE_THRESHOLD_MS)
-          : null;
+          : MIN_STALE_THRESHOLD_MS;
+
+      // A connection the platform itself has flagged unreachable is never
+      // 'fresh' regardless of how recently it last polled — this overrides
+      // the poll-derived classification entirely.
+      const status =
+        connection.status === 'active'
+          ? classifyIngestionStatus(lastPollAt, staleAfterMs, now)
+          : 'disconnected';
 
       return {
         connectionId: connection.id,
         connectionName: connection.name,
         platformType: connection.platformType,
-        status: classifyIngestionStatus(lastPollAt, staleAfterMs, now),
+        connectionStatus: connection.status,
+        status,
         lastPollAt,
         lastOrderIngestedAt,
         connectionCreatedAt: connection.createdAt,
@@ -133,10 +156,13 @@ export class AnalyticsTrustService implements IAnalyticsTrustService {
       connectionId: connection.id,
       connectionName: connection.name,
       platformType: connection.platformType,
+      connectionStatus: connection.status,
       // 'unknown', never 'never-ingested' — a build failure is an
       // infrastructure fact, not a claim about the operator's data (a
       // transient repository error must not assert "this connection has
-      // never ingested anything").
+      // never ingested anything"). Outranks 'disconnected' too: the
+      // failure means this entry can't even vouch for connection.status
+      // being the right explanation.
       status: 'unknown',
       lastPollAt: null,
       lastOrderIngestedAt: null,

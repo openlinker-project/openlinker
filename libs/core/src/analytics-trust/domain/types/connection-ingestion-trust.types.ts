@@ -8,6 +8,7 @@
  *
  * @module libs/core/src/analytics-trust/domain/types
  */
+import type { ConnectionStatus } from '@openlinker/core/identifier-mapping';
 
 /**
  * Connection Ingestion Status Values
@@ -19,6 +20,7 @@ export const ConnectionIngestionStatusValues = [
   'never-ingested',
   'fresh',
   'stalled',
+  'disconnected',
   'unknown',
 ] as const;
 
@@ -33,6 +35,11 @@ export const ConnectionIngestionStatusValues = [
  *   expected polling cadence (or cadence is unknown).
  * - `'stalled'`: the last succeeded poll job is older than the connection's
  *   staleness threshold.
+ * - `'disconnected'`: the connection's own `status` is not `'active'` (e.g.
+ *   `needs_reauth` after an expired Allegro token, `disabled`, `error`) —
+ *   takes priority over whatever the poll history would otherwise say,
+ *   since a connection the platform itself has flagged as unreachable is
+ *   never `'fresh'` regardless of how recently it last polled.
  * - `'unknown'`: this connection's entry could not be computed (e.g. a
  *   transient repository error) — distinct from `'never-ingested'` on
  *   purpose, since the latter is a claim about the operator's data, not
@@ -72,7 +79,17 @@ export interface ConnectionIngestionTrust {
   connectionId: string;
   connectionName: string;
   platformType: string;
-  /** Derived from `lastPollAt` vs. `staleAfterMs` — pipe liveness, not data recency. */
+  /**
+   * The connection's own current status (`active | disabled | error |
+   * needs_reauth`), carried through unchanged so a `'disconnected'` status
+   * entry can tell the operator *why* — never derived from poll history.
+   */
+  connectionStatus: ConnectionStatus;
+  /**
+   * `'disconnected'` when `connectionStatus !== 'active'`; otherwise
+   * derived from `lastPollAt` vs. `staleAfterMs` — pipe liveness, not data
+   * recency.
+   */
   status: ConnectionIngestionStatus;
   /**
    * Completion time of the most recently succeeded `marketplace.orders.poll`
@@ -101,7 +118,14 @@ export interface ConnectionIngestionTrust {
   connectionCreatedAt: Date;
   /** Expected interval (ms) between poll ticks, derived from the connection's *enabled* registered poll cadence. Null when no matching, enabled scheduler task is registered. */
   expectedIntervalMs: number | null;
-  /** Staleness threshold (ms), see `computeStaleAfterMs`. Null when expectedIntervalMs is null. */
+  /**
+   * Staleness threshold (ms), see `computeStaleAfterMs`. Falls back to
+   * `MIN_STALE_THRESHOLD_MS` when `expectedIntervalMs` is null (cadence
+   * unknown), so an ancient `lastPollAt` on a connection with no known
+   * cadence still eventually reads `'stalled'` rather than `'fresh'`
+   * forever — never actually null in a value this service produces, kept
+   * nullable on the type for callers/tests that construct one directly.
+   */
   staleAfterMs: number | null;
 }
 
