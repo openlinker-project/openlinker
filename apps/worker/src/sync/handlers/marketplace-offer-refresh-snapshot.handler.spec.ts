@@ -5,7 +5,7 @@ import type { IOfferStatusSyncService } from '@openlinker/core/listings';
 import type { ISyncJobsService, SyncJob } from '@openlinker/core/sync';
 import { MarketplaceOfferRefreshSnapshotHandler } from './marketplace-offer-refresh-snapshot.handler';
 
-function makeJob(attempt: number): SyncJob {
+function makeJob(attempt: number, reconcileId?: string): SyncJob {
   return {
     id: 'job-1',
     connectionId: 'conn-1',
@@ -15,6 +15,7 @@ function makeJob(attempt: number): SyncJob {
       externalOfferId: '7781896308',
       internalVariantId: 'ol_variant_1',
       attempt,
+      ...(reconcileId === undefined ? {} : { reconcileId }),
     },
   } as unknown as SyncJob;
 }
@@ -53,16 +54,43 @@ describe('MarketplaceOfferRefreshSnapshotHandler', () => {
   it('should reschedule the next attempt while still inactive and attempts remain', async () => {
     offerStatusSync.refreshOne.mockResolvedValue('inactive');
 
-    await handler.execute(makeJob(1));
+    await handler.execute(makeJob(1, 'chain-a'));
 
     expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
     expect(syncJobs.schedule).toHaveBeenCalledWith(
       expect.objectContaining({
         jobType: 'marketplace.offer.refreshSnapshot',
-        idempotencyKey: 'refreshSnapshot:7781896308:2',
-        payload: expect.objectContaining({ attempt: 2 }),
+        idempotencyKey: 'refreshSnapshot:conn-1:chain-a:2',
+        payload: expect.objectContaining({ attempt: 2, reconcileId: 'chain-a' }),
       })
     );
+  });
+
+  it('should keep a pre-#2039 in-flight chain on its legacy key instead of dead-lettering it', async () => {
+    offerStatusSync.refreshOne.mockResolvedValue('inactive');
+
+    // No `reconcileId`: enqueued by a worker that predates the field, and rungs
+    // run up to +20 min out, so such a job really can survive a deploy.
+    await handler.execute(makeJob(1));
+
+    expect(syncJobs.schedule).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyKey: 'refreshSnapshot:7781896308:2',
+        payload: expect.not.objectContaining({ reconcileId: expect.anything() }),
+      })
+    );
+  });
+
+  it('should scope the key so two chains for the same offer never dedup against each other', async () => {
+    offerStatusSync.refreshOne.mockResolvedValue('inactive');
+
+    await handler.execute(makeJob(1, 'chain-a'));
+    await handler.execute(makeJob(1, 'chain-b'));
+
+    const keys = syncJobs.schedule.mock.calls.map(
+      ([input]) => (input as { idempotencyKey: string }).idempotencyKey
+    );
+    expect(new Set(keys).size).toBe(2);
   });
 
   it('should stop rescheduling after the final attempt', async () => {

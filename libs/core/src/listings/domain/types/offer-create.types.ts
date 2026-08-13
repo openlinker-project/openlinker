@@ -11,6 +11,7 @@
  */
 
 import type { OfferParameter } from './offer-parameter.types';
+import type { OfferPublicationStatus } from './offer-status-read.types';
 
 /**
  * Marketplace-neutral item condition (#1500).
@@ -305,4 +306,19 @@ export interface CreateOfferResult {
    * so the UI distinguishes a re-run from a fresh create. Omitted ⇒ fresh create.
    */
   alreadyExisted?: boolean;
+  /**
+   * The marketplace's own publication status, as reported by the create
+   * response (#2039). Set **only** when the platform returned an authoritative
+   * value; an adapter that learned nothing (e.g. an async "accepted" ack)
+   * omits it.
+   *
+   * Distinct from {@link CreateOfferResult.status} on purpose: `status` is the
+   * create-call vocabulary that drives `OfferCreationStatus`, while this is the
+   * steady-state observation persisted to `offer_status_snapshots`. Only the
+   * adapter can map its platform's raw value to the neutral union, so core
+   * never infers one from the other — presence of this field is exactly the
+   * signal "a snapshot may be written", absence means "leave the offer without
+   * a row rather than guess".
+   */
+  publicationStatus?: OfferPublicationStatus;
 }

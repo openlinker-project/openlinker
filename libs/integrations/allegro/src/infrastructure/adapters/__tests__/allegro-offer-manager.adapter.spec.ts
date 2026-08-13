@@ -1279,7 +1279,13 @@ describe('AllegroOfferManagerAdapter', () => {
 
       const result = await adapter.createOffer(baseCmd);
 
-      expect(result).toEqual({ externalOfferId: 'allegro-offer-1', status: 'draft' });
+      // `publicationStatus` mirrors what the response actually reported (#2039)
+      // — an explicit INACTIVE is Allegro's own answer, not an inferred default.
+      expect(result).toEqual({
+        externalOfferId: 'allegro-offer-1',
+        status: 'draft',
+        publicationStatus: 'inactive',
+      });
       const [path, body] = httpClient.post.mock.calls[0];
       expect(path).toBe('/sale/product-offers');
       expect(body).toMatchObject({
@@ -1307,6 +1313,41 @@ describe('AllegroOfferManagerAdapter', () => {
       expect(result.status).toBe('active');
       const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
       expect(body.publication).toEqual({ status: 'ACTIVE' });
+    });
+
+    it('reports the neutral publicationStatus when the create response carries one (#2039)', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({
+          id: 'allegro-offer-2b',
+          publication: { status: 'ACTIVE' },
+        })
+      );
+
+      const result = await adapter.createOffer({ ...baseCmd, publishImmediately: true });
+
+      expect(result.publicationStatus).toBe('active');
+    });
+
+    it('reports activating for an ACTIVATING create response (#2039)', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({
+          id: 'allegro-offer-2c',
+          publication: { status: 'ACTIVATING' },
+        })
+      );
+
+      const result = await adapter.createOffer({ ...baseCmd, publishImmediately: true });
+
+      expect(result.status).toBe('validating');
+      expect(result.publicationStatus).toBe('activating');
+    });
+
+    it('omits publicationStatus when the response carries none, rather than guessing inactive (#2039)', async () => {
+      httpClient.post.mockResolvedValue(mockHttpResponse({ id: 'allegro-offer-2d' }));
+
+      const result = await adapter.createOffer({ ...baseCmd, publishImmediately: true });
+
+      expect(result.publicationStatus).toBeUndefined();
     });
 
     it('returns validating when publishImmediately=true but response is INACTIVE with no validation errors', async () => {

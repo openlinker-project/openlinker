@@ -19,6 +19,7 @@ import type { ISyncJobsService } from '@openlinker/core/sync';
 import { OfferCreationRecord } from '../../../domain/entities/offer-creation-record.entity';
 import type { OfferCreationRecordRepositoryPort } from '../../../domain/ports/offer-creation-record-repository.port';
 import { OfferStatusPollService } from '../offer-status-poll.service';
+import type { IOfferStatusSyncService } from '../offer-status-sync.service.interface';
 
 const RECORD_ID = 'record-447';
 const EXTERNAL_OFFER_ID = '7781562863';
@@ -73,6 +74,7 @@ describe('OfferStatusPollService', () => {
   // Only the products-of-sync method the SUT actually calls — tight Pick<>
   // mock surface per #718 review.
   let syncJobs: jest.Mocked<Pick<ISyncJobsService, 'schedule'>>;
+  let statusSync: jest.Mocked<Pick<IOfferStatusSyncService, 'recordObservedStatus'>>;
   let configService: jest.Mocked<ConfigService>;
 
   beforeEach(() => {
@@ -118,10 +120,13 @@ describe('OfferStatusPollService', () => {
       }),
     } as unknown as jest.Mocked<ConfigService>;
 
+    statusSync = { recordObservedStatus: jest.fn().mockResolvedValue(undefined) };
+
     service = new OfferStatusPollService(
       integrations,
       records,
       syncJobs as unknown as ISyncJobsService,
+      statusSync as unknown as IOfferStatusSyncService,
       configService
     );
   });
@@ -167,6 +172,17 @@ describe('OfferStatusPollService', () => {
       };
     }
 
+    /** Scheduled jobs of one type — assertions stay job-type-specific (#2039). */
+    function scheduledCallsOfType(jobType: string): unknown[] {
+      return syncJobs.schedule.mock.calls.filter(
+        ([arg]) => (arg as { jobType: string }).jobType === jobType
+      );
+    }
+    const scheduledPollCalls = (): unknown[] =>
+      scheduledCallsOfType('marketplace.offer.pollCreationStatus');
+    const scheduledRefreshCalls = (): unknown[] =>
+      scheduledCallsOfType('marketplace.offer.refreshSnapshot');
+
     it('ACTIVE → record.status=active, outcome=ok, no re-enqueue', async () => {
       integrations.getCapabilityAdapter.mockResolvedValue(
         statusReader({ publicationStatus: 'active', validationErrors: [] }),
@@ -176,7 +192,51 @@ describe('OfferStatusPollService', () => {
 
       expect(result.outcome).toBe('ok');
       expect(records.updateStatus).toHaveBeenCalledWith(RECORD_ID, 'active', null);
-      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      // Narrowed to the poll job type (#2039): a blanket `not.toHaveBeenCalled`
+      // here pinned "the active terminal schedules nothing at all" as expected,
+      // which is the very gap this issue closes. Only the poll re-enqueue must
+      // be absent on a terminal state.
+      expect(scheduledPollCalls()).toHaveLength(0);
+    });
+
+    it('ACTIVE → persists the in-hand status as a snapshot instead of scheduling a re-read (#2039)', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader({ publicationStatus: 'active', validationErrors: [] }),
+      );
+
+      await service.pollOnce(pollInput());
+
+      expect(statusSync.recordObservedStatus).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        { externalOfferId: EXTERNAL_OFFER_ID, internalVariantId: 'ol_variant_x' },
+        { publicationStatus: 'active', validationMessages: [], observedAt: expect.any(Date) },
+      );
+      // No delayed re-read of what was just read.
+      expect(scheduledRefreshCalls()).toHaveLength(0);
+    });
+
+    it('ACTIVE → a failed snapshot write does not fail the poll iteration (#2039)', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader({ publicationStatus: 'active', validationErrors: [] }),
+      );
+      statusSync.recordObservedStatus.mockRejectedValue(new Error('db down'));
+
+      const result = await service.pollOnce(pollInput());
+
+      expect(result.outcome).toBe('ok');
+      expect(records.updateStatus).toHaveBeenCalledWith(RECORD_ID, 'active', null);
+    });
+
+    it('a clean inactive (draft) keeps its reconcile ladder and writes no snapshot itself', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader({ publicationStatus: 'inactive', validationErrors: [] }),
+      );
+      records.updateStatus.mockResolvedValue(makeRecord('draft'));
+
+      await service.pollOnce(pollInput());
+
+      expect(statusSync.recordObservedStatus).not.toHaveBeenCalled();
+      expect(scheduledRefreshCalls()).toHaveLength(1);
     });
 
     it('ACTIVATING → no record write, re-enqueues iteration 2 with backoff', async () => {

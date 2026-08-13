@@ -64,10 +64,12 @@ import {
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   OFFER_STATUS_POLL_SERVICE_TOKEN,
+  OFFER_STATUS_SYNC_SERVICE_TOKEN,
 } from '../../listings.tokens';
 import { IOfferBuilderService } from '../interfaces/offer-builder.service.interface';
 import type { IOfferCreationExecutionService } from '../interfaces/offer-creation-execution.service.interface';
 import { IOfferStatusPollService } from '../interfaces/offer-status-poll.service.interface';
+import { IOfferStatusSyncService } from './offer-status-sync.service.interface';
 
 @Injectable()
 export class OfferCreationExecutionService implements IOfferCreationExecutionService {
@@ -83,7 +85,9 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(OFFER_STATUS_POLL_SERVICE_TOKEN)
-    private readonly offerStatusPoll: IOfferStatusPollService
+    private readonly offerStatusPoll: IOfferStatusPollService,
+    @Inject(OFFER_STATUS_SYNC_SERVICE_TOKEN)
+    private readonly offerStatusSync: IOfferStatusSyncService
   ) {}
 
   async executeCreation(input: ExecuteOfferCreationInput): Promise<ExecuteOfferCreationResult> {
@@ -125,8 +129,13 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
     }
 
     let result: CreateOfferResult;
+    let observedAt: Date;
     try {
       result = await adapter.createOffer(command);
+      // When the create response carries a publication status, this is the
+      // instant it was observed — the snapshot's freshness guard compares
+      // observation instants, not write times.
+      observedAt = new Date();
     } catch (error) {
       if (error instanceof OfferCreateRejectedException) {
         const updated = await this.offerCreationRecords.updateStatus(
@@ -190,6 +199,18 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
       persistedErrors
     );
 
+    // Persist the marketplace's own publication status, when the create
+    // response reported one (#2039). Unconditional on the record status: every
+    // create terminal previously left `offer_status_snapshots` empty, so a
+    // freshly published offer had no live status until the hourly rolling scan
+    // reached it (~40 h worst case on a 4,000-offer catalog). Doing it here
+    // rather than inside the `validating` branch below also covers the case
+    // where `scheduleFirstPoll` fails and no poll ever runs.
+    //
+    // An adapter that learned nothing authoritative omits the field, and we
+    // write nothing rather than guessing a status the operator would act on.
+    await this.recordObservedStatus(input, result, observedAt);
+
     if (finalRecord.status === 'validating') {
       try {
         await this.offerStatusPoll.scheduleFirstPoll({
@@ -216,6 +237,46 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
     }
 
     return this.buildResult(finalRecord, input.connectionId);
+  }
+
+  /**
+   * Persist the create response's publication status into
+   * `offer_status_snapshots` (#2039).
+   *
+   * **Never throws.** By the time this runs the offer exists on the
+   * marketplace, and `loadOrCreateRecord` carries no terminal-state guard — a
+   * re-run of this job would call `adapter.createOffer` again, which Allegro
+   * does not deduplicate. So a throw here would trade a missing status row for
+   * a duplicate live offer. Same posture as the mapping-conflict handling, the
+   * poll scheduling and the Smart readback in this method.
+   */
+  private async recordObservedStatus(
+    input: ExecuteOfferCreationInput,
+    result: CreateOfferResult,
+    observedAt: Date
+  ): Promise<void> {
+    if (result.publicationStatus === undefined) {
+      return;
+    }
+    try {
+      await this.offerStatusSync.recordObservedStatus(
+        input.connectionId,
+        {
+          externalOfferId: result.externalOfferId,
+          internalVariantId: input.internalVariantId,
+        },
+        {
+          publicationStatus: result.publicationStatus,
+          validationMessages: (result.validationErrors ?? []).map((error) => error.message),
+          observedAt,
+        }
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Offer created but failed to persist its status snapshot — the hourly status sync will heal it. ` +
+          `externalOfferId=${result.externalOfferId} connectionId=${input.connectionId} error=${(err as Error).message}`
+      );
+    }
   }
 
   /**

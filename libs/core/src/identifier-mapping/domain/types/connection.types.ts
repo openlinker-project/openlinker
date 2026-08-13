@@ -100,10 +100,11 @@ export interface ConnectionConfig {
    *
    * **Scope: one bucket per connection, never per host** — the value means
    * "this connection's total outbound rate" no matter how many physical hosts
-   * the plugin talks to on its behalf. The one axis that divides it is
-   * `OL_WORKER_REPLICAS`, so the configured number stays the true aggregate.
-   * See ADR-038 § "The cap is per connection" for why hostname is not a quota
-   * axis.
+   * or processes (`apps/api`, `apps/worker`, any replica of either) act on
+   * its behalf — the registry is Redis-backed and shared across all of them
+   * (#2015), so the configured number is already the true aggregate; nothing
+   * divides it further. See ADR-038 § "The cap is per connection" for why
+   * hostname is not a quota axis.
    */
   rateLimit?: ConnectionRateLimit;
   [key: string]: unknown;

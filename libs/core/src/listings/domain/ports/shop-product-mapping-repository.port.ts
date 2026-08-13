@@ -11,7 +11,11 @@
  *
  * @module libs/core/src/listings/domain/ports
  */
-import type { ProductListingsCoverage } from '../types/offer-mapping.types';
+import type {
+  FindRecentlyListedVariantIdsOptions,
+  ProductListingsCoverage,
+  RecentlyListedVariant,
+} from '../types/offer-mapping.types';
 
 export interface ShopProductMappingRepositoryPort {
   /**
@@ -35,4 +39,14 @@ export interface ShopProductMappingRepositoryPort {
   countListedVariantsByProducts(
     productIds: readonly string[]
   ): Promise<readonly ProductListingsCoverage[]>;
+
+  /**
+   * Distinct variant ids with at least one ShopProduct mapping, ordered by
+   * most recent mapping activity, excluding `isStale` (#1689) variants (#1983
+   * needs-attention aggregates). Mirrors
+   * `OfferMappingRepositoryPort.findRecentlyListedVariantIds`.
+   */
+  findRecentlyListedVariantIds(
+    options: FindRecentlyListedVariantIdsOptions
+  ): Promise<RecentlyListedVariant[]>;
 }
