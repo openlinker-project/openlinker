@@ -8,6 +8,8 @@
  * @module apps/web/src/features/shipments/api
  */
 
+import type { OrderSummary } from '../../../shared/types/order-summary.types';
+
 /**
  * Maximum page size accepted by `GET /shipments` (backend `@Max(100)` on the
  * list query DTO). Requesting a higher `limit` returns HTTP 400. Keep in sync
@@ -95,28 +97,6 @@ export const SHIPPING_METHOD_LABEL: Record<ShippingMethod, string> = {
  * literal, so a wording change on the backend surfaces as one edit here.
  */
 export const REDACTED_ERROR_MESSAGE = 'Details hidden for this role.';
-
-/**
- * Order-identity projection (#1995) mirroring the API's
- * `OrderSummaryProjectionDto` — backs the shared `OrderIdentityCell` (#1996).
- * `null` when no order record resolves for the row's `orderId`, or its
- * snapshot has no parseable items.
- */
-export interface OrderSummary {
-  /** Source-native order number from the order snapshot; null when absent. */
-  orderNumber: string | null;
-  /** The order's first line item's display name; null when unavailable. */
-  firstItemName: string | null;
-  /**
-   * The order's first line item's image URL, frozen at order-snapshot time
-   * (NOT the live product catalog image); null when the source never
-   * populated it — the common case today, since no adapter sets
-   * `OrderItem.imageUrl` on ingestion yet.
-   */
-  firstItemImageUrl: string | null;
-  /** The order's full item count (not the number of items projected here). */
-  itemCount: number;
-}
 
 export interface Shipment {
   id: string;
