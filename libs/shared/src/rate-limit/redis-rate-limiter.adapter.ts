@@ -144,7 +144,14 @@ const PACE_KEY_TTL_FLOOR_SECONDS = 3600;
  * earlier draft's accidental equality made an integration test race its own
  * timeout (see `docs/lessons.md`). Set above the slowest known real outbound
  * call in this codebase — inFakt/KSeF issuance runs ~90s — so a legitimately
- * slow call does not have its slot silently reclaimed mid-flight.
+ * slow call does not have its slot silently reclaimed mid-flight. This is an
+ * OVER-admission bound too, not just a self-heal window: an adapter HTTP call
+ * that legitimately runs longer than this has its slot reclaimed while still
+ * in flight, which can transiently push admission one over `maxConcurrent`
+ * (surfaced by the "already reclaimed before release" warn in
+ * `buildRelease`). No adapter's HTTP client timeout in this codebase exceeds
+ * this value today; raising a client timeout above it would silently widen
+ * that gap.
  */
 const MAX_CALL_LIFETIME_MS = 300_000;
 const MAX_CALL_LIFETIME_SECONDS = MAX_CALL_LIFETIME_MS / 1_000;
@@ -449,6 +456,15 @@ export class RedisRateLimiterAdapter implements RateLimiterPort {
     // `MAX_CALL_LIFETIME_MS` — see that rollback for why a plain throw
     // must not skip it.
     let pendingClaim: ConcurrencyClaim | null = null;
+    // The callId for the claim CURRENTLY in flight to Redis, set BEFORE the
+    // `claimConcurrency` await rather than read back from its resolved
+    // result. If that await rejects (timeout or Redis error), the `ZADD` may
+    // have already landed server-side even though the caller never learns
+    // `admitted` — without this, the id is unrecoverable and the member
+    // leaks for the full `MAX_CALL_LIFETIME_MS`. Cleared once
+    // `claimConcurrency` returns successfully, since `pendingClaim.callId`
+    // is then the authoritative source.
+    let attemptedClaimId: string | null = null;
 
     try {
       while (true) {
@@ -457,8 +473,11 @@ export class RedisRateLimiterAdapter implements RateLimiterPort {
 
         pendingClaim = null;
         if (policy.maxConcurrent !== undefined) {
-          pendingClaim = await this.claimConcurrency(policy.maxConcurrent);
+          attemptedClaimId = randomUUID();
+          pendingClaim = await this.claimConcurrency(policy.maxConcurrent, attemptedClaimId);
+          attemptedClaimId = null;
           if (!pendingClaim.admitted) {
+            pendingClaim = null;
             await this.boundedSleep(this.pollDelayFor(priority), startedAt, signal);
             continue;
           }
@@ -493,11 +512,15 @@ export class RedisRateLimiterAdapter implements RateLimiterPort {
       if (error instanceof RateLimitAbortedError || error instanceof RateLimitTimeoutError) {
         throw error;
       }
-      if (pendingClaim) {
-        // Best-effort — if Redis is why we're here, this may fail too; the
-        // claim then self-heals via the inflight ZSET's staleness eviction
-        // instead of holding the slot for the full MAX_CALL_LIFETIME_MS.
-        await this.rollbackConcurrency(pendingClaim.callId).catch(() => undefined);
+      // Prefer the resolved claim's id; fall back to the id of a claim whose
+      // `claimConcurrency` await itself threw (see `attemptedClaimId`'s doc
+      // comment above) — either way, best-effort rollback. If Redis is why
+      // we're here, this may fail too; the claim then self-heals via the
+      // inflight ZSET's staleness eviction instead of holding the slot for
+      // the full MAX_CALL_LIFETIME_MS.
+      const rollbackId = pendingClaim?.callId ?? attemptedClaimId;
+      if (rollbackId) {
+        await this.rollbackConcurrency(rollbackId).catch(() => undefined);
       }
       this.enterDegraded(error);
       // Fail DEGRADED, not open — delegate THIS call to the per-process
@@ -507,7 +530,21 @@ export class RedisRateLimiterAdapter implements RateLimiterPort {
       if (remaining <= 0) {
         throw new RateLimitTimeoutError(this.now() - startedAt);
       }
-      return this.insuranceLimiter.acquire(policy, priority, signal);
+      // Track the delegated call in THIS instance's local counters too — the
+      // insurance limiter's own bookkeeping is invisible to `getStatus()`,
+      // and without this an operator's rate-limit panel would read 0
+      // in-flight / a stale `lastAcquiredAt` for the entire degraded episode,
+      // going quiet exactly when it is most likely being watched.
+      const release = await this.insuranceLimiter.acquire(policy, priority, signal);
+      this.localInFlight += 1;
+      this.lastAcquiredAt = new Date(this.now());
+      let released = false;
+      return (): void => {
+        if (released) return;
+        released = true;
+        this.localInFlight = Math.max(0, this.localInFlight - 1);
+        release();
+      };
     } finally {
       this.localQueued = Math.max(0, this.localQueued - 1);
       if (priority === 'interactive') {
@@ -639,9 +676,13 @@ export class RedisRateLimiterAdapter implements RateLimiterPort {
     return { admitted: admitted === 1, waitMs };
   }
 
-  /** One atomic round trip — see `CONCURRENCY_CLAIM_SCRIPT`'s doc comment. */
-  private async claimConcurrency(maxConcurrent: number): Promise<ConcurrencyClaim> {
-    const callId = randomUUID();
+  /**
+   * One atomic round trip — see `CONCURRENCY_CLAIM_SCRIPT`'s doc comment.
+   * `callId` is generated by the CALLER (`acquire`), not here — see
+   * `attemptedClaimId`'s doc comment for why the id must exist before this
+   * await, not be read back from its result.
+   */
+  private async claimConcurrency(maxConcurrent: number, callId: string): Promise<ConcurrencyClaim> {
     const result = (await this.withTimeout(
       'claimConcurrency',
       this.redisClient.eval(CONCURRENCY_CLAIM_SCRIPT, {

@@ -35,11 +35,11 @@
  * `rate-limiter-registry.ts`'s doc comment for why the in-memory factory
  * has no production caller here (it isn't dead: `RateLimiter` is still
  * composed inside `RedisRateLimiterAdapter` as its degraded-mode fallback).
- * This factory also resolves the `'REDIS_CLIENT'` string token from a
- * module it does not import - every host/plugin module that imports
- * `RateLimitModule` must also have `RedisConfigModule` somewhere in its
- * graph (true today for both `apps/api` and `apps/worker`), or Nest's DI
- * error at boot will not name this dependency explicitly.
+ * This factory resolves the `'REDIS_CLIENT'` token that `RedisConfigModule`
+ * provides - imported below (rather than merely documented as a required
+ * host-graph member) so the dependency is structural: `RedisConfigModule` is
+ * `@Global()`, so importing it here is a no-op if a host already imports it
+ * elsewhere, and provides the token directly for a host that doesn't.
  *
  * @module libs/plugin-sdk/src
  */
@@ -48,6 +48,7 @@ import { createRedisRateLimiterRegistry } from '@openlinker/shared/rate-limit';
 import type { RateLimiterRegistry } from '@openlinker/shared/rate-limit';
 import { HttpTransportFactory } from '@openlinker/shared/http';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
+import { RedisConfigModule } from '@openlinker/shared/redis';
 
 export const HTTP_TRANSPORT_FACTORY_TOKEN = Symbol('HttpTransportFactoryPort');
 export const RATE_LIMITER_REGISTRY_TOKEN = Symbol('RateLimiterRegistry');
@@ -62,6 +63,7 @@ type RedisClient = Parameters<typeof createRedisRateLimiterRegistry>[0];
 
 @Global()
 @Module({
+  imports: [RedisConfigModule],
   providers: [
     {
       provide: RATE_LIMITER_REGISTRY_TOKEN,
