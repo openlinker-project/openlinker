@@ -29,6 +29,7 @@ import type {
   OrderHealthSummaryFilters,
   OrderRecordSort,
   OrderRecordSortDirection,
+  FailedSyncValueSummary,
 } from '../../../domain/types/order-record.types';
 import type { SlaState, OrderSlaSummary } from '../../../domain/types/order-sla.types';
 import { SLA_AT_RISK_WINDOW_MS } from '../../../domain/types/order-sla.types';
@@ -237,6 +238,58 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     };
   }
 
+  async getFailedSyncValueSummary(
+    filters: OrderHealthSummaryFilters
+  ): Promise<FailedSyncValueSummary> {
+    const notMappingOrDeleted = OrderRecordRepository.NOT_MAPPING_OR_DELETED;
+    const stuckPredicate = `${notMappingOrDeleted} AND ${OrderRecordRepository.HAS_FAILED}`;
+
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select(`COUNT(*) FILTER (WHERE ${stuckPredicate})`, 'count')
+      .addSelect(
+        `COALESCE(SUM(${OrderRecordRepository.TOTAL_EXPR}) FILTER (WHERE ${stuckPredicate}), 0)`,
+        'total_value'
+      )
+      .addSelect(
+        `COUNT(DISTINCT (rec."orderSnapshot"#>>'{totals,currency}')) FILTER (WHERE ${stuckPredicate})`,
+        'currency_count'
+      )
+      .addSelect(
+        `MIN(${OrderRecordRepository.OLDEST_FAILED_ATTEMPT_AT_EXPR}) FILTER (WHERE ${stuckPredicate})`,
+        'oldest_failed_at'
+      );
+
+    if (filters.sourceConnectionId) {
+      qb.andWhere('rec.sourceConnectionId = :sourceConnectionId', {
+        sourceConnectionId: filters.sourceConnectionId,
+      });
+    }
+    if (filters.customerId) {
+      qb.andWhere('rec.customerId = :customerId', { customerId: filters.customerId });
+    }
+    if (filters.createdFrom) {
+      qb.andWhere('rec.createdAt >= :createdFrom', { createdFrom: filters.createdFrom });
+    }
+    if (filters.createdTo) {
+      qb.andWhere('rec.createdAt <= :createdTo', { createdTo: filters.createdTo });
+    }
+
+    const raw = await qb.getRawOne<{
+      count: string;
+      total_value: string;
+      currency_count: string;
+      oldest_failed_at: Date | null;
+    }>();
+
+    return {
+      count: Number(raw?.count ?? 0),
+      totalValue: Number(raw?.total_value ?? 0),
+      mixedCurrency: Number(raw?.currency_count ?? 0) > 1,
+      oldestFailedAt: raw?.oldest_failed_at ?? null,
+    };
+  }
+
   /**
    * Constant SQL fragments shared by `applyHealthFilter` and `countByHealth`
    * (no user input). `HAS_*` use `@>` containment — matches when `syncStatus[]`
@@ -255,6 +308,19 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     `NOT (${OrderRecordRepository.IS_MAPPING}) AND NOT (${OrderRecordRepository.IS_SOURCE_DELETED})`;
   private static readonly HAS_FAILED = `rec."syncStatus" @> '[{"status":"failed"}]'::jsonb`;
   private static readonly HAS_SYNCED = `rec."syncStatus" @> '[{"status":"synced"}]'::jsonb`;
+
+  /**
+   * Per-row earliest **failed sync attempt** timestamp, read from the
+   * append-only `syncAttempts` history rather than `rec."createdAt"` (the
+   * record's creation time, not a failure time) — `getFailedSyncValueSummary`'s
+   * `oldestFailedAt` promises "the oldest failure", so it must reflect when a
+   * sync attempt actually failed.
+   */
+  private static readonly OLDEST_FAILED_ATTEMPT_AT_EXPR = `(
+    SELECT MIN((attempt->>'attemptedAt')::timestamptz)
+    FROM jsonb_array_elements(rec."syncAttempts") AS attempt
+    WHERE attempt->>'status' = 'failed'
+  )`;
 
   /**
    * Triage-urgency ordinal for the `status` sort (#944): most-urgent first when

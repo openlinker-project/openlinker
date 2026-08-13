@@ -73,6 +73,10 @@ export type {
   ProductListingsCoverage,
   StaleMappedVariant,
 } from './domain/types/offer-mapping.types';
+export type { ICoverageGapReadService } from './application/services/coverage-gap-read.service.interface';
+export type { CoverageGapItem, CoverageGapsResult } from './domain/types/coverage-gap.types';
+export type { IStockAtRiskReadService } from './application/services/stock-at-risk-read.service.interface';
+export type { StockAtRiskItem, StockAtRiskResult } from './domain/types/stock-at-risk.types';
 export type {
   OfferDescriptionSectionItem,
   OfferDescriptionSection,
