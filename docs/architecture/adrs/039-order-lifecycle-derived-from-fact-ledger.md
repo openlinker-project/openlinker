@@ -1,8 +1,34 @@
 # ADR-039: Order lifecycle as a derived projection over a per-axis fact ledger
 
-- **Status**: Accepted
+- **Status**: **Proposed** (reverted from Accepted 2026-08-14 — see *Reverted* below)
 - **Date**: 2026-08-13
 - **Authors**: @piotrswierzy
+
+## Reverted to Proposed
+
+An adversarial stress test found the decision unsupported on three counts. Recorded here rather than
+in a superseding ADR because the decision was never implemented — nothing depends on it, so there is
+no history to preserve.
+
+1. **The rejected alternative is the one OL has shipped three times.** This ADR rejects "recompute on
+   read with no materialised column" because list filtering and sorting needs an indexable column.
+   But `canonicalState` reduces to a pure function of `fulfillmentState` and `cancelledAt` — two
+   columns already in the same row, already filtered and sorted in SQL via `FULFILLMENT_ORDINAL`,
+   `HEALTH_ORDINAL` and `applySlaFilter`. An expression index or a CASE does the job.
+2. **The vocabulary is never defined.** The plan specifies `UNIQUE (internalOrderId, axis, causeType,
+   causeId)` and `NOT NULL` for a table whose axis names and canonical-state values it never
+   enumerates. Downstream, `order_stages.canonicalState` would be operator-authored data keyed on an
+   undefined enum.
+3. **Two existing canonical vocabularies go unmentioned.** `OrderStatus` (persisted as
+   `order_state_mappings.olStatus`, the only outbound translation surface OL has) and the five-bucket
+   `OrderHealth` partition (whose comment declares itself "the single source of truth", encoded three
+   times, existing so the KPI cards sum to total). `canonicalState` is nullable with no backfill,
+   which reintroduces the uncounted-rows bug that partition exists to prevent.
+
+**Preconditions before this returns to Accepted:** the enumerated vocabularies; a stated relationship
+to `OrderStatus` / `order_state_mapping`; a stated relationship to the `OrderHealth` partition and the
+list badge; and a named producer in existing code for every `causeId` — including a `waybill` cause
+type, which the current table lacks and which the most load-bearing relay in the codebase needs.
 
 ## Context
 

@@ -3,12 +3,91 @@
 **Parent issue:** #1032 (reopened 2026-08-13)
 **Spec:** [`docs/specs/product-spec-1032-order-status-state-machine.md`](../specs/product-spec-1032-order-status-state-machine.md)
 **Readiness gate:** [`analysis/ANALYSIS-implementation-plan-1032-oms-module.md`](./analysis/ANALYSIS-implementation-plan-1032-oms-module.md)
-**Status:** plan of record. Waves are separately gated — see § 8 Checkpoint.
+**Status:** **NOT READY TO IMPLEMENT AS A SIX-WAVE PROGRAMME.** Eight adversarial stress tests were
+run against this plan — one per wave plus three against the cross-cutting ADRs. **All eight found
+disqualifying defects.** What survives is in § 0. The rest is retained as reference, clearly marked,
+because the research is sound even where the design is not.
 
 > Supersedes the scoping in #2064 (closed as duplicate of #1032).
-> [ADR-039](../architecture/adrs/039-order-lifecycle-derived-from-fact-ledger.md) and
-> [ADR-040](../architecture/adrs/040-order-changeset-proposed-then-confirmed.md) must move from
-> `Proposed` to `Accepted` **before** any Wave 0 code merges.
+> [ADR-040](../architecture/adrs/040-order-changeset-proposed-then-confirmed.md) is Accepted.
+> **[ADR-039](../architecture/adrs/039-order-lifecycle-derived-from-fact-ledger.md) is reverted to
+> `Proposed`** pending the four preconditions in § 0.
+
+---
+
+## 0. Stress-test outcome — what actually ships
+
+Eight passes, eight disqualifying findings, one recurring disease: **the mechanism is specified to
+the SQL while the premise that justifies it is unexamined.** Recorded honestly because the pattern is
+the most useful output of this exercise.
+
+| Section | Verdict | The finding that killed it |
+|---|---|---|
+| ADR-040 composition | narrowed | `identifier_mappings` is a bijection per connection; split ships a cancelled order |
+| ADR-041 flow entity | narrowed | containment claim disproved by its own signature; `orderType` has zero referents |
+| Wave 3 rules engine | **cut** | OL has one useful stream with ≤6 cause types; 1 of BaseLinker's 10 triggers servable |
+| Wave 4 returns aggregate | narrowed to a projection | 6-value enum with one derivable value; restock rejects on PrestaShop |
+| Wave 5 allocation | **cut** | `omp_fulfilled` is the default and OL never dispatches there → worse than shipping nothing |
+| **Wave 1 relay** | **cut** | the lost-cancel bug it exists to fix produces **zero obligation rows**; and it is #861 unannounced |
+| **Wave 0 ledger** | **cut** | the axis vocabulary is never defined; `canonicalState` is a pure function of two already-indexed columns |
+| **Wave 2 workbench** | **split; only 2a survives** | `shipped_quantity` is permanently 0 on the default routing kind; the station principal breaks `RolesGuard` |
+
+### What is actually worth building
+
+Five items. Each closes a **verified** defect, each is independently valuable, none needs a new
+architecture:
+
+1. **`WHERE cancelledAt IS NULL` in the provisioning path.** Closes the lost cancel — the one real
+   bug this whole programme was organised around. `order-record.orm-entity.ts:92` already names it
+   as the missing half (`#1987/#1988`), and `markCancelled` already stamps durably first-write-wins.
+   A predicate, not a table plus a sweep plus a stream.
+2. **Fix `prestashop-order.mapper.ts:53`** — `String(row.id || index)`. Use `??`, drop the index
+   fallback, fail loudly on a missing id. An index-derived id shares a namespace with real
+   `id_order_detail` values, so two physically distinct lines can collide **today**.
+3. **`InventoryRepository.upsert` column-scoping.** Column-scoped today only as an emergent property
+   of TypeORM's `save()` diffing — too thin a basis for an oversell guarantee. A live latent bug.
+4. **`order_records.packedAt` + `packedByUserId`, one endpoint, one toggle, one list column.** This
+   is the agency's actual ask — *"whether it's packaged"* — answered for **100% of orders including
+   `omp_fulfilled`**, which the seven-counter design does not manage. Zero new tables, no new
+   principal type, no hardware, no ADR.
+5. **A terminal-relay-failure signal.** A relay that fails forever currently produces `logger.error`
+   and a `succeeded` job. That is the one genuine gap the null hypothesis leaves, and it is a counter
+   column, not a distributed-systems programme.
+
+### What the ask actually needed
+
+> *"showcase the order, its status, if it's packaged"*
+
+- **the order** — already ships.
+- **its status** — already ships **four times over** (`OrderHealth`, `fulfillmentState`, `slaState`,
+  `syncStatus[]`). The honest deliverable is **subtraction**: pick one headline, demote the rest.
+  This plan proposed adding a fifth (`canonicalState`) and a sixth (`order_stages`).
+- **whether it's packaged** — the only genuinely absent fact, and it is **one boolean**.
+
+Everything above that boolean was justified by a *per-line* claim ("3 of 5 packed") nobody asked for,
+which § 6 F1 shows the system cannot answer for its own default routing kind.
+
+### If the larger programme returns, these are preconditions
+
+For the axis ledger (ADR-039), all four before it leaves `Proposed`:
+
+1. **The enumerated axis and canonical-state vocabularies.** The plan specifies
+   `UNIQUE (internalOrderId, axis, causeType, causeId)` and `NOT NULL` for a table whose value domain
+   it never states. `order_stages.canonicalState` would be operator-authored data keyed on an
+   undefined enum.
+2. **A stated relationship to `OrderStatus` / `order_state_mapping`** — the existing canonical enum,
+   persisted, validated, with a CRUD UI, and the *only* outbound translation surface OL has. If
+   `canonicalState ≠ OrderStatus` the stage chain terminates in a value no adapter can be told about;
+   if it equals it, D1's "never a stored contested scalar" is false on arrival.
+3. **A stated relationship to the `OrderHealth` partition** — five buckets whose own comment is "the
+   single source of truth", encoded three times, existing so the KPI cards sum to total. The plan
+   mentions `recordStatus`, `syncStatus` and `OrderHealth` **zero times** between them.
+4. **A named producer in existing code for every `causeId`.** `operator → {userId}:{clientRequestId}`
+   has no `clientRequestId` convention anywhere; `source-event` collapses to `conn:undefined` on the
+   paths where `sourceEventId` is null; and there is no cause type for the waybill backfill at all,
+   which is the single most load-bearing relay in the codebase.
+
+---
 
 ---
 
@@ -148,7 +227,22 @@ Binding on every wave. Derived from the readiness gate.
 
 ## 5. Waves
 
-### Wave 0 — Lifecycle foundation (no user-visible change)
+### Wave 0 — Lifecycle foundation (**CUT**; retained as reference)
+
+> **Cut by stress test.** Three disqualifying findings:
+> 1. **`canonicalState` is a pure function of two already-indexed columns** (`fulfillmentState`,
+>    `cancelledAt`). ADR-039 rejects "recompute on read" because filtering needs an indexable column —
+>    but OL has shipped that exact rejected pattern three times (`HEALTH_ORDINAL`,
+>    `FULFILLMENT_ORDINAL`, `applySlaFilter`). The materialised column buys nothing.
+> 2. **The ledger cannot hold the fact that justifies it.** The lost cancel has no internal order id —
+>    that *is* the bug — and the ledger is keyed `internalOrderId NOT NULL`.
+> 3. **Item 7 deletes a *releasable* claim and installs an *unreleasable* one, one wave early.**
+>    `claimWaybillRelay` is claim-then-release-on-failure; an append-only row has no release. Between
+>    Wave 0 and Wave 1 merging, a throwing relay strands the claim forever with no sweep — strictly
+>    worse than today.
+>
+> See § 0 for the four preconditions before this returns.
+
 
 Justified independently of the strategic bet: replaces three ad-hoc at-most-once claims with one
 primitive and closes a documented lost-cancel bug (a cancel arriving before the order's create job
@@ -204,7 +298,25 @@ until then the FE treats `canonicalState` as the headline and the other two as c
 meaning and keep driving the list badge and filters. Deprecating them is explicitly **deferred** —
 until then the FE treats `canonicalState` as the headline and the other two as contributing detail.
 
-### Wave 1 — Event path + durable relay
+### Wave 1 — Event path + durable relay (**CUT**; retained as reference)
+
+> **Cut by stress test.** Four disqualifying findings:
+> 1. **The lost-cancel bug it exists to fix produces zero obligation rows.** `order_relay_attempts`
+>    is keyed per resolved target; the code comment states the race exactly — a cancel arriving before
+>    provisioning *"finds no targets here"*. No targets → no rows → nothing for the sweep to re-drive.
+>    The sweep re-drives writes that were attempted and failed; this one was never attemptable.
+> 2. **It is #861 unannounced.** A `[PRODUCT-DESIGN]` issue whose stated output is its own ADR
+>    covering four projectors. `grep 861` over this plan returned **zero**.
+> 3. **The waybill backfill has no identity under D15.** It fires on a `trackingNumber` null→value
+>    transition *independent of status*, so the common case produces no transition at all — or
+>    collides on the unique index with the dispatch transition. Both branches lose the waybill,
+>    reproducing #1947's original defect. D15 has six cause types and none is `waybill`.
+> 4. **The mandatory idempotency key cannot be plumbed.** `OrderStatusWriteback.write(event)` takes
+>    one parameter, and neither Allegro's fulfillment PUT nor Erli's PATCH accepts an idempotency
+>    header. The idempotency that works is outcome-shaped (409⇒already-sent) and already shipped.
+>
+> Item 12 (Allegro 409 write-back) was **already shipped in #1947**, with specs.
+
 
 8. `events.order.lifecycle` stream + `OrderLifecycleToJobHandler` (clone `MasterDeletionToJobHandler`)
 9. **`order_relay_attempts` — the obligation table (D16).** One row per `(transitionId,
@@ -244,7 +356,32 @@ re-poll-proof rather than repaired. **The fix is the Wave-1 sweep.** Waves 0 and
 planned and gated as one unit; the "Wave 0 pays for itself independently" claim holds only for the
 consolidation of the three claims, not for the bug.
 
-### Wave 2 — Operator workbench (see § 6)
+### Wave 2 — Operator workbench (**SPLIT**; only 2a survives — see § 6)
+
+> **Split by stress test.** Three independently disqualifying findings, then a scale problem:
+> 1. **`shipped_quantity` / `delivered_quantity` are permanently 0 on the default routing kind.**
+>    `createBranchOneShipment` builds `omp_fulfilled` shipments from an order-grain snapshot carrying
+>    **nothing line-level**. An order shipped and delivered by PrestaShop reads "0 of 5 shipped".
+>    That is the exact failure D17 was adopted to fix.
+> 2. **`lineId` is not stable, and `??` does not make it stable.** The snapshot is rebuilt on every
+>    ingest; `shipment_lines.lineId` is a text key into a JSONB array with no FK. The plan's escape
+>    hatch — "an OL-side reconciled surrogate" — is a matching algorithm over re-polls, i.e. a design,
+>    not a prerequisite line item.
+> 3. **§ 6B's return counters reference a table this plan deleted.** `ReturnLine` was cut when Wave 4
+>    narrowed to a projection; `return_received_quantity` has no observation on either platform and is
+>    warehouse mechanics, a declared § 1 non-goal.
+>
+> **Scale:** 6 tables, ~17 endpoints (a ~9% increase in OL's entire API surface), and a second
+> frontend application with its own auth — in one wave. Three disjoint risk profiles, which is what
+> lets the pack station's unresolved auth question hide behind the counters' tractability.
+>
+> **Ships as 2a only:** the mapper fix, `order_record_items` with **three** counters (`ordered`,
+> `shipped`, `delivered`), `shipment_lines` **including** the branch-1 writer, and the
+> `fulfillment-rollup` precedence fix sized as its own PR (it changes a signature, its sole caller,
+> ~15 assertions, the **FE twin**, and a response DTO).
+> **2b (stages)** waits for a real canonical guard and a wireframe collapsing five status fields to at
+> most two. **2c (pack station)** is blocked on the § 6D ADR and a security review.
+
 
 Adopts **option C** from [DECISION-oms-fulfilment-grain](./analysis/DECISION-oms-fulfilment-grain.md) (D17):
 
@@ -566,7 +703,17 @@ Populated at ingestion from `orderSnapshot.items`; backfill required for open or
 **D2a — every counter now has a real source.** `packed_quantity` derives from `order_pack_events`;
 `shipped_quantity` and `delivered_quantity` derive from **`shipment_lines` joined to shipment status**
 (the gap option C closes — before it, those two had no derivable source and would have been exactly
-the free-floating integers D2a forbids); return counters derive from `ReturnLine`. No counter is
+the free-floating integers D2a forbids).
+
+**Two counters are CUT** (`return_requested_quantity`, `return_received_quantity`), and
+`written_off_quantity` with them. They derived from `ReturnLine`, which no longer exists — Wave 4
+narrowed to a projection. They cannot be rescued from `order_returns_projection`, because
+`resolvedOrderLineId` is **nullable by design** (Allegro's `CustomerReturnItem` carries `offerId`, not
+the line id), and "received" has **no observation on either platform** — it is warehouse mechanics, a
+declared § 1 non-goal. Under D2a they would be exactly the free-floating integers D2a forbids.
+
+**Wave 2a ships three counters: `ordered`, `shipped_quantity`, `delivered_quantity`.**
+`packed_quantity` moves to 2c with the pack station. No counter is
 written directly.
 
 ### 6C. Pack station
@@ -589,12 +736,27 @@ the bench.
 Two layers: a long-lived **device session**, plus a **per-order actor** resolved by PIN or badge scan
 and stamped on each pack event.
 
-**The device session is authorized by its own guard, not by permissions and not by the role ladder**
-(D12 — permissions are display-only). It is a distinct principal type with an explicit allowlist of
-endpoints: pack-event write, stage transition, and reading orders in packable stages. It reaches
-nothing else — no settings, no connections, no credentials, no other orders. Treat the allowlist as
-the security boundary and pin it with a spec, the way `write-guard-coverage.spec.ts` pins the role
-guards.
+> **CORRECTED — the original text here was a security hole.** It said the endpoint allowlist "is the
+> security boundary" and that a station token "reaches nothing else". **Both are false against the
+> actual guard stack.** `RolesGuard.canActivate` returns **`true`** when a route carries no `@Roles()`
+> decorator, and it is a global `APP_GUARD`. So the moment a station principal is placed on
+> `req.user` by anything satisfying `JwtAuthGuard`, it is authorized on **every undecorated route** —
+> including the customers controller (buyer PII), products, inventory, webhooks and cursors.
+>
+> **The invariant that must be specified and pinned: a station principal never appears on
+> `req.user`.** The station path is `@Public()` plus its own dedicated verifier, exactly the split
+> `mcp-transport.controller.ts` uses and `mcp-tokens.controller.ts` documents ("keeping the two auth
+> models in separate controllers"). § 6D previously said "copy the `mcp_tokens` pattern" but described
+> only its **storage** half; the load-bearing half is the auth-model separation.
+>
+> Two further hazards this section never named:
+> - **Shared credential at a shared bench.** A bearer token in a bench browser's storage is readable
+>   by anyone at the bench. The compensating control — "per-order actor resolved by PIN or badge" — is
+>   a **new credential type** with enrolment, rotation, lockout and a brute-force surface (4-digit
+>   PINs), none of which exists in `libs/core/src/users` and none of which is scoped here.
+> - **CSRF.** `CsrfGuard` is double-submit tied to the `ol_csrf` cookie set at login. A bearer-token
+>   station has no such cookie, so every station mutation must be explicitly outside the CSRF path,
+>   and that exclusion pinned.
 
 Copy the `mcp_tokens` *pattern* (opaque prefix + SHA-256 at rest + revoke + `lastUsedAt`) into a
 sibling table — **do not** extend MCP scopes; `McpTokenService` hardcodes its prefix, scope union and
@@ -641,7 +803,18 @@ Tap targets ≥ 44 px; scanner input is a keyboard-emulating device but assume n
 It renders **outside `AppShell`**, as a top-level sibling of `consentRoute` with its own
 `StationLayout` (the `/consent` precedent), and must satisfy `route-lazy.test.ts`.
 
-### 6H. Sequencing — Wave 2 can precede Wave 0
+### 6H. Sequencing — ~~Wave 2 can precede Wave 0~~ (**claim withdrawn**)
+
+> **The claim is false, though not for the reason § 6H examines.** The counters genuinely do not
+> depend on the axis ledger — that part checks out. But § 5 item 16, the *adopted* form of D17, says
+> the backfill **must write ledger events, not counters**, because "written as counters the
+> double-count is permanent" for cancel-and-reissue pairs. The ledger is Wave 0. So a fast-pathed
+> Wave 2 has nowhere to write the backfill and takes the one irreversible cost the grain decision
+> named as its non-negotiable adoption condition. § 6H lists four costs of the fast path and this is
+> not among them.
+>
+> Wave 2a avoids the problem only because it ships **no backfill** — the counters start from the
+> first post-migration shipment. That limitation must be stated to the operator, not discovered.
 
 6B + 6C have no hard dependency on the axis ledger; only the stage pipeline's `canonicalState`
 mapping does, and stages can ship bound to `fulfillmentState` / `cancelledAt` and be re-bound later.
