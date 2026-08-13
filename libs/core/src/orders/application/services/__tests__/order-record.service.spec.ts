@@ -421,11 +421,14 @@ describe('OrderRecordService', () => {
       service = new OrderRecordService(repository);
     });
 
-    it('does not send cancelledAt through the upsert() call for a cancelled order', async () => {
-      // upsert() must never carry cancelledAt — see the toOrm comment on
-      // OrderRecordRepository. The domain OrderRecord constructed here still
-      // defaults cancelledAt to null; markCancelled (asserted below) is the
-      // only writer.
+    it('never constructs the OrderRecord passed to upsert() with a non-null cancelledAt, even for a cancelled order', async () => {
+      // The domain OrderRecord built here always defaults cancelledAt to null
+      // (persistOrder never threads order.status into the constructor) —
+      // markCancelled (asserted in the next test) is the sole writer. This
+      // guards against a future regression where someone "helpfully" starts
+      // passing a derived cancelledAt into the constructor, which would let
+      // upsert()'s full-object save() race markCancelled's atomic COALESCE
+      // update — see the toOrm comment on OrderRecordRepository.
       const order = createMockOrder();
       order.status = 'cancelled';
       repository.upsert.mockResolvedValue({} as OrderRecord);
@@ -679,7 +682,7 @@ describe('OrderRecordService', () => {
       service = new OrderRecordService(repository);
     });
 
-    it('does not send cancelledAt through the upsert() call for a cancelled order', async () => {
+    it('never constructs the OrderRecord passed to upsert() with a non-null cancelledAt, even for a cancelled order', async () => {
       const incoming = createMockIncomingOrder();
       incoming.status = 'cancelled';
       repository.upsert.mockResolvedValue({} as OrderRecord);

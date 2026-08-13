@@ -479,8 +479,11 @@ export class OrderIngestionService implements IOrderIngestionService {
    * Resolves the existing internal order; if unknown (never ingested) there is
    * nothing to cancel. Applies the same destination-echo guard as ingestion
    * (ADR-017) so a re-read of an order OL itself created elsewhere doesn't
-   * propagate a spurious cancel. Returns an empty result set — a cancel is not
-   * an order-create, so there are no OrderSyncResults to report.
+   * propagate a spurious cancel. Also durably records the cancellation on the
+   * order record itself via `markCancelled` (#1984), best-effort and before
+   * the relay call — see the inline comment at the call site for why a DB
+   * failure there must never block the relay. Returns an empty result set —
+   * a cancel is not an order-create, so there are no OrderSyncResults to report.
    */
   private async handleSourceCancellation(
     connectionId: string,
