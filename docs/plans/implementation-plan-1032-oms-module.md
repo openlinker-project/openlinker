@@ -42,6 +42,19 @@ both indexes are load-bearing. OL can only *observe* composition and *attribute 
 **Permanent non-goals** (ADR-014, spec §6.1): payment capture/settlement, accounting/GL, warehouse
 mechanics (bins, putaway, cycle counts, slotting), customer master beyond projections.
 
+**Declared out of scope, with reasons** (previously just absent):
+
+- **Order editing / amendment** — structurally impossible, not deferred. See § 6J: OL cannot change
+  an order's composition.
+- **Partial cancellation as an OL state** — no source can report it (§ 6J). Line-scoped *refunds* and
+  *returns* are the honest expression.
+- **Multi-currency conversion** — `OrderTotals.currency` is carried through from the source and never
+  converted. OL reports the currency the buyer paid in; anything else is an accounting concern
+  (ADR-014).
+- **Ledger retention** — `order_axis_transitions` grows unboundedly. A retention policy (archive
+  transitions for terminal orders older than N months) is **required before Wave 3**, since the rules
+  engine multiplies transition volume. Not a Wave 0 blocker, but not indefinitely deferrable either.
+
 ---
 
 ## 2. Settled decisions
@@ -60,7 +73,12 @@ mechanics (bins, putaway, cycle counts, slotting), customer master beyond projec
 | D9 | **Invert Medusa's concurrency model**: an atomic conditional UPDATE + CHECK constraint against an **OL-owned counter column** (`olReservedQuantity`), never the master mirror — see § 6I | Medusa has zero `FOR UPDATE`, zero CHECK constraints, read-then-write LWW; no surveyed OSS platform does better |
 | D10 | Lifecycle facts as **independent nullable timestamps**, not one enum | a single flag cannot carry both "did it happen" and "did we relay it" (#1947) |
 | **D11** | **`totalAvailable` keeps its current meaning (raw available). ATP is a NEW field.** | Redefining it is a silent semantic break across 6 consumers with zero compile errors — see § 6 C2 |
-| **D12** | **Backend authorization is `@Roles(...)`, not permissions.** Permissions drive UI visibility only | `frontend-architecture.md` § Access Control; `role.types.ts` doc comment — see § 5F |
+| **D12** | **Backend authorization is `@Roles(...)`, not permissions.** Permissions drive UI visibility only | `frontend-architecture.md` § Access Control; `role.types.ts` doc comment — see § 6F |
+| **D13** | **SLA is NOT an input to the canonical projection.** `canonicalState` is a function of recorded facts only; `slaState` stays a separate derived-on-read field | `deriveSlaState(dispatchByAt, fulfillmentState, now)` takes a wall clock. A materialised column fed by `now` is uninvalidatable — an untouched order crosses its deadline and stays stale forever |
+| **D14** | **Shipping writes a fact to the ledger, not a column.** `OrderFulfillmentProjectionService` routes through `OrderAxisLedgerService`, which owns `canonicalState` recomputation | otherwise "the sole coordinating writer" is false on day one: `fulfillmentState` is written cross-context by an error-swallowing projection |
+| **D15** | **Transition identity is `(internalOrderId, axis, causeType, causeId)` — all NOT NULL** | the `(…, originConnectionId, sourceEventId)` form leaves both NULL for every OL-origin fact, and Postgres NULLs don't conflict in a unique index, so pack / SLA / operator facts would dedup on nothing |
+| **D16** | **Relay obligations live in their own table**, one row per `(transition, target)`; the transition row stays a pure fact | the relay fans out to N participants with per-target outcomes; one `relayState` enum cannot say "2 of 3 done, one unsupported, one failed" — the exact error D10 and § 1 forbid |
+| **D17** | **Line attribution on shipments** (`shipment_lines`), no fulfilment-unit aggregate | [DECISION-oms-fulfilment-grain](./analysis/DECISION-oms-fulfilment-grain.md) — makes `shipped_quantity` derivable without re-graining dispatch, locks or FE |
 
 ---
 
@@ -134,17 +152,49 @@ primitive and closes a documented lost-cancel bug (a cancel arriving before the 
 runs finds no targets and is silently lost — `order-ingestion.service.ts`).
 
 1. `order-lifecycle-state.types.ts` — axes, ordinals, canonical states, documented precedence
-2. `derive-canonical-lifecycle.ts` — pure projection, sibling of `order-sla.ts`; **consumes**
-   `deriveSlaState` and `deriveFulfillmentRollup` rather than re-deriving them
+2. `derive-canonical-lifecycle.ts` — pure projection, sibling of `order-sla.ts`. **Consumes
+   `deriveFulfillmentRollup` and the cancellation fact. It does NOT consume `deriveSlaState` (D13).**
 3. Migration: `order_axis_states`, `order_axis_transitions`, `order_records.canonicalState`
 4. `OrderAxisLedgerRepository` — conditional-claim + monotonic-UPDATE primitives
-5. `OrderAxisLedgerService` — the sole coordinating writer
-6. Re-route the three existing claim sites; delete `isFirst*Transition` **in the same commit**
+5. `OrderAxisLedgerService` — the sole coordinating writer, and the sole recomputer of `canonicalState`
+6. **Re-route `OrderFulfillmentProjectionService` through the ledger (D14)** — shipping records a
+   fulfilment *fact*; the ledger recomputes the column. Its existing error-swallowing becomes
+   acceptable, because the Wave-1 sweep re-derives what a swallowed failure dropped
+7. Re-route the three existing claim sites; delete `isFirst*Transition` **in the same commit**
    (they are today's only at-most-once guarantee; removing them early double-relays)
 
-Idempotency key: `(internalOrderId, axis, originConnectionId, sourceEventId)`. Scoping by
-`originConnectionId` is required — external event ids are only connection-unique, which is why
-`webhook_deliveries` keys on `(provider, connection_id, event_id)`.
+### Transition identity (D15)
+
+`UNIQUE (internalOrderId, axis, causeType, causeId)`, **both cause columns NOT NULL**.
+
+| `causeType` | `causeId` |
+|---|---|
+| `source-event` | `{originConnectionId}:{sourceEventId}` — external event ids are only connection-unique |
+| `shipment` | `{shipmentId}:{toStatus}` |
+| `pack` | `order_pack_events.id` |
+| `sla` | `{dispatchByAt-epoch}:{threshold}` — deterministic, so a re-tick is a no-op |
+| `operator` | `{userId}:{clientRequestId}` |
+| `invoice` | `invoice_records.id` |
+
+The earlier `(…, originConnectionId, sourceEventId)` form left both columns NULL for every OL-origin
+fact, and NULLs do not conflict in a Postgres unique index — so the programme's central guardrail
+would not have applied to the majority of Wave 2's traffic.
+
+### Why SLA leaves the projection (D13)
+
+`canonicalState` is materialised **solely** for SQL filter and sort, and a projection consuming `now`
+cannot be invalidated by any write — an untouched order crosses `dispatchByAt` and stays stale
+forever, so the one thing the column exists for is the one thing it would get wrong.
+
+`slaState` therefore stays exactly as it is today: derived on read from `dispatchByAt` +
+`fulfillmentState`, already exposed on the response DTO, already filterable. The orders list keeps
+two independent controls — lifecycle and SLA — which is what `order-sla.types.ts` already asserts
+("SLA is NOT a fifth health bucket"). No sweeper, no clock writer, no cache to invalidate.
+
+**API contract decision (W2).** `canonicalState` is **additive** on
+`order-record-response.dto.ts`; `fulfillmentState` and `slaState` keep their current enum-typed
+meaning and keep driving the list badge and filters. Deprecating them is explicitly **deferred** —
+until then the FE treats `canonicalState` as the headline and the other two as contributing detail.
 
 **API contract decision (W2).** `canonicalState` is **additive** on
 `order-record-response.dto.ts`; `fulfillmentState` and `slaState` keep their current enum-typed
@@ -153,15 +203,63 @@ until then the FE treats `canonicalState` as the headline and the other two as c
 
 ### Wave 1 — Event path + durable relay
 
-7. `events.order.lifecycle` stream + `OrderLifecycleToJobHandler` (clone `MasterDeletionToJobHandler`)
-8. **Ledger-as-outbox**: `order_axis_transitions.relayState` (`pending → done | unsupported | failed`)
-   plus a `relaySweep`. Master-deletion's at-most-once is tolerable there because `isStale` stays
-   authoritative and an hourly sweep re-reads it; an outbound obligation has no re-derivable backing
-   state, so a lost event is a lost notification
-9. ADR-028 amendment: cancellation → stock-restore becomes an event consumer
-10. Exploit Allegro's `checkoutForm.revision` / 409 CONFLICT for safe status write-back
+8. `events.order.lifecycle` stream + `OrderLifecycleToJobHandler` (clone `MasterDeletionToJobHandler`)
+9. **`order_relay_attempts` — the obligation table (D16).** One row per `(transitionId,
+   targetConnectionId)`:
+
+   ```
+   transitionId       text NOT NULL
+   targetConnectionId uuid NOT NULL
+   state              text NOT NULL   -- pending | done | unsupported | failed
+   attempts           int  NOT NULL DEFAULT 0
+   lastError          text NULL
+   nextAttemptAt      timestamptz NULL
+   leasedUntil        timestamptz NULL
+   UNIQUE (transitionId, targetConnectionId)
+   ```
+
+   The transition row goes back to being a pure **fact**; the obligation is separate and per-target,
+   which is what a fan-out to N participants actually is. `OrderWritebackUnsupportedReason` already
+   distinguishes structural (`no-capability` → terminal `unsupported`) from transient
+   (`adapter-unresolved` → retryable) — use it rather than inventing a second vocabulary.
+10. **The relay sweep**, closing the four failure windows explicitly:
+    - *commit then crash before publish* → sweep re-drives from `pending`
+    - *remote write succeeded, crash before marking done* → **the outbound call must carry an
+      idempotency key derived from `(transitionId, targetConnectionId)`**, or the sweep duplicates a
+      mark-sent or a cancel at the marketplace
+    - *permanent failure* → `attempts` + exponential `nextAttemptAt` + a terminal `failed` state that
+      stops the sweep and raises an operator-visible row. No infinite re-drive
+    - *sweep racing the stream consumer, or two sweep instances* → `leasedUntil` claimed with the
+      same conditional-UPDATE primitive Wave 0 builds
+11. ADR-028 amendment: cancellation → stock-restore becomes an event consumer
+12. Exploit Allegro's `checkoutForm.revision` / 409 CONFLICT for safe status write-back
+
+**Honest note on Wave 0's standalone justification.** Wave 0 alone *replaces* three ad-hoc claims but
+does not by itself fix the lost-cancel bug — today's relay fires after the shipment write, so a crash
+between them already loses it, and a durable claim taken before the relay makes that loss
+re-poll-proof rather than repaired. **The fix is the Wave-1 sweep.** Waves 0 and 1 should therefore be
+planned and gated as one unit; the "Wave 0 pays for itself independently" claim holds only for the
+consolidation of the three claims, not for the bug.
 
 ### Wave 2 — Operator workbench (see § 6)
+
+Adopts **option C** from [DECISION-oms-fulfilment-grain](./analysis/DECISION-oms-fulfilment-grain.md) (D17):
+
+13. **`shipment_lines`** — `(shipmentId, orderId, lineId, quantity)`, unique on the triple. The
+    `orderId` is deliberate: it is what keeps *consolidated shipping* (one parcel covering lines from
+    two orders) expressible, and it costs nothing on a table being created now
+14. **Prerequisite — fix `prestashop-order.mapper.ts:53`.** `String(row.id || index)` uses an
+    array-index fallback, `||` where `??` is meant, and can collide an index-derived id with a real
+    `row.id`. Harmless today (error-message only); **structural** once `shipment_lines` keys on it.
+    Fix the mapper or assign an OL-side reconciled surrogate — this blocks item 13
+15. **Fix `fulfillment-rollup.ts` precedence in the same change.** "Any `delivered` ⇒ `delivered`" is
+    correct for cancel-and-reissue and **wrong** under partial coverage, where one delivered shipment
+    of three would report the whole order delivered. It must compare covered quantities against
+    ordered quantities
+16. **Backfill writes ledger events, not counters.** Historical line scope is unrecoverable — no
+    column, no dispatch audit, no persisted `GenerateLabelCommand` — so the only backfill is
+    "one shipment covers all lines". Written as events it is compensable for the cancel-and-reissue
+    pairs it double-counts; written as counters the double-count is permanent
 
 ### Wave 3 — Orchestration
 
@@ -246,8 +344,9 @@ reverse-fulfilment logistics, restocking fees.
 23. `applyStockSafetyBuffer` consumes ATP — see § 6 C3 for the accepted trade-off, the required doc
     updates, **and the feedback-loop hazard**
 24. Atomic reserve (D9) against `olReservedQuantity` — exact DDL and SQL in § 6I
-25. Reserve/release at three existing seams; expiry sweeper. **Release must be driven by the
-    lifecycle event that also causes the master to decrement** (§ 6I), not an independent timer
+25. Reserve on ingestion; **close on OL's own dispatch event** (§ 6 C3a); expiry sweeper as a safety
+    net only. Plus the **reconciler** (`inventory.reservation.reconcile`) — the counter is
+    denormalised over a ledger and drift here silently oversells (§ 6I)
 26. Make `InventoryRepository.upsert`'s existing-row write **explicitly column-scoped** (§ 6I) — it
     is column-scoped today only as an emergent property of TypeORM's `save()` diffing, which is too
     thin a basis for an oversell guarantee
@@ -289,7 +388,12 @@ Validation ladder, each rung rejecting with an operator-readable message:
 `packed ≤ ordered` · `shipped ≤ packed` (when the gate is on) or `≤ ordered` · `delivered ≤ shipped`.
 
 Populated at ingestion from `orderSnapshot.items`; backfill required for open orders.
-**D2a: counters are derived from `order_pack_events` and shipment facts — never free-floating.**
+
+**D2a — every counter now has a real source.** `packed_quantity` derives from `order_pack_events`;
+`shipped_quantity` and `delivered_quantity` derive from **`shipment_lines` joined to shipment status**
+(the gap option C closes — before it, those two had no derivable source and would have been exactly
+the free-floating integers D2a forbids); return counters derive from `ReturnLine`. No counter is
+written directly.
 
 ### 6C. Pack station
 
@@ -308,8 +412,15 @@ the bench.
 
 ### 6D. Station authentication — highest-risk item
 
-Two layers: a long-lived **device session** scoped to warehouse permissions and packable-stage orders
-only, plus a **per-order actor** resolved by PIN or badge scan, stamped on each pack event.
+Two layers: a long-lived **device session**, plus a **per-order actor** resolved by PIN or badge scan
+and stamped on each pack event.
+
+**The device session is authorized by its own guard, not by permissions and not by the role ladder**
+(D12 — permissions are display-only). It is a distinct principal type with an explicit allowlist of
+endpoints: pack-event write, stage transition, and reading orders in packable stages. It reaches
+nothing else — no settings, no connections, no credentials, no other orders. Treat the allowlist as
+the security boundary and pin it with a spec, the way `write-guard-coverage.spec.ts` pins the role
+guards.
 
 Copy the `mcp_tokens` *pattern* (opaque prefix + SHA-256 at rest + revoke + `lastUsedAt`) into a
 sibling table — **do not** extend MCP scopes; `McpTokenService` hardcodes its prefix, scope union and
@@ -357,10 +468,24 @@ It renders **outside `AppShell`**, as a top-level sibling of `consentRoute` with
 6B + 6C have no hard dependency on the axis ledger; only the stage pipeline's `canonicalState`
 mapping does, and stages can ship bound to `fulfillmentState` / `cancelledAt` and be re-bound later.
 
-- **Fast path:** 6B → 6C → 6A → Wave 0/1 later. Visible value sooner; rework bounded to one column.
+- **Fast path:** 6B → 6C → 6A → Wave 0/1 later.
 - **Foundation first:** Wave 0 → 1 → 2. Cleaner; nothing user-visible for longer.
 
-Recommended: **fast path**.
+**The fast path's cost is not "one column" — that claim was wrong.** It is:
+
+1. a **throwaway guard** — 6A's invariant is "moving to a stage is legal iff the implied canonical
+   transition is legal". Without the canonical graph you ship either no guard (operators corrupt
+   sequencing on live data) or a second guard over `fulfillmentState`/`cancelledAt` that is discarded;
+2. a **migration of operator-authored data** — stage rows carry a persisted `canonicalState`, so
+   re-binding migrates customer rows, not a schema column;
+3. **6C's auto-advance and 6E's dispatch gate** move with the throwaway guard;
+4. a **UI and vocabulary migration** — the badge ships bound to `fulfillmentState`, then a second
+   headline field appears.
+
+Also a cross-wave dependency previously missed here: **Wave 5's `inventory_reservations.orderLineId`
+depends on Wave 2's `order_record_items`.**
+
+Recommended: **fast path**, with that cost stated and accepted.
 
 ### The three Critical corrections
 
@@ -387,11 +512,23 @@ later lands at the master and the master decrements its own stock, the next sync
 `availableQuantity` for the *same unit* — while the OL reservation is still `held`. The unit is
 deducted **twice** from published stock until the reservation closes.
 
-The mitigation is a hard requirement, not a nicety: a reservation's transition to `consumed` **must
-be driven by the same lifecycle event that causes the master to decrement** (order committed /
-fulfilled at source). The expiry sweeper is a safety net for abandoned reservations, never the
-normal close path. Where that coupling cannot be guaranteed for a given source, reservations for
-that source must be short-TTL only.
+**Resolved: close the reservation on OL's own dispatch, and bound the window.** The original mitigation
+("close on the event that causes the master to decrement") is unsatisfiable — OL observes no such
+event. Master stock arrives via `MasterInventorySyncService`, a poll that rewrites `availableQuantity`
+wholesale with no per-order causality. Nothing anywhere means "the master decremented for this order".
+
+What OL *does* observe is its own dispatch. So a reservation transitions to `consumed` when the
+shipment covering its line dispatches — an event that exists, is durable, and is already the trigger
+for the waybill relay. The double-count then lasts from dispatch until the next master sync, which is
+**bounded by the sync interval** rather than unbounded. That is a materially different risk from the
+original formulation and is acceptable; state the window in the release notes so an operator reading a
+briefly-low published quantity is not surprised.
+
+The expiry sweeper remains a safety net for abandoned reservations, never the normal close path.
+
+*(Superseded: the earlier text required closing on "the same lifecycle event that causes the master to
+decrement". No such event exists in OL, so the requirement could never be met. Recorded here so the
+reasoning is traceable.)*
 
 ---
 
@@ -422,11 +559,52 @@ live reservations must not vanish; the stale path soft-marks rather than deletes
 
 ```sql
 CREATE UNIQUE INDEX "UQ_inventory_reservations_active_line"
-  ON "inventory_reservations" ("orderLineId") WHERE "status" = 'held';
+  ON "inventory_reservations" ("orderRecordId", "orderLineId", "inventoryItemId")
+  WHERE "status" = 'held';
 ```
 
 That partial unique index **is** the idempotency key — a retried reserve fails the insert instead of
 double-incrementing. Same idiom as the two partial unique indexes already on `inventory_items`.
+
+**The key must carry `orderRecordId`.** `orderLineId` is the *source-supplied* `OrderItem.id`, unique
+only within an order — Allegro and PrestaShop line ids collide across orders trivially. Keyed on
+`orderLineId` alone, order B's reserve fails against order A's unrelated held row, the transaction
+rolls back, and the operator sees "insufficient stock" with stock plainly available. `inventoryItemId`
+is in the key so a line can hold reservations at more than one location once sourcing exists.
+
+### Location scope — explicitly single-location in v1
+
+ATP sums across locations while a reservation row names one `inventoryItemId`, so in principle a line
+could be promised stock the reserve path cannot take. **In practice this is latent, not live: no
+adapter emits a non-null `locationId`** (PrestaShop and WooCommerce both hardcode it), and the write
+path already skips non-default locations. Every row is single-location today.
+
+v1 is therefore explicitly single-location, and **multi-location reservations are blocked on a
+sourcing rule** — "which `inventoryItemId` do we reserve against?" — which does not exist anywhere in
+OL and is the first question an allocation wave must answer. Recorded as a prerequisite rather than
+discovered mid-wave.
+
+### Shortfall path
+
+When the master lowers `availableQuantity` below `olReservedQuantity`, the delta is a **shortfall**.
+It is a fact, not an error: the reserve UPDATE is not retro-actively invalid, and the CHECK
+deliberately does not forbid it (a constraint there would make the *sync* fail).
+
+Handling: ATP clamps to 0 on read; the affected order surfaces in the existing needs-attention
+bucket with a distinct reason; the stock-at-risk view shows the gap. **Nothing auto-cancels and
+nothing auto-releases** — an operator decides. This is the path § 6I referenced three times and never
+specified.
+
+### Reconciler
+
+`olReservedQuantity` is denormalised state over a ledger, so it can drift — from a partially-failed
+expiry sweep, a manual DB edit, or any bug. Unlike `fulfillmentState`, drift here silently oversells
+or silently blocks sales, so a reconciler is **not optional**:
+
+A scheduled `inventory.reservation.reconcile` job compares, per `inventoryItemId`,
+`SUM(quantity) WHERE status = 'held'` against `olReservedQuantity`; corrects the counter to the
+ledger (the ledger is authoritative); and logs every correction with the delta. A non-zero correction
+rate is a defect signal, not routine maintenance — alert on it.
 
 ### Reserve — both statements in one transaction, lines sorted by `inventoryItemId`
 
@@ -690,7 +868,14 @@ point — and the action contract must promise degrade-to-default.
 | Sync does not stomp `olReservedQuantity` | int-spec driving the **real** `MasterInventorySyncService` | pins the column-scoped write; catches a future refactor back to whole-entity `save()` |
 | No double-count vs a non-zero master mirror | int-spec: `available=5, reserved=4, olReserved=2` ⇒ `totalAvailable=5`, ATP=3 | not 1, not −1 |
 | Multi-line deadlock freedom | int-spec: two 2-line orders over the same pair in opposite order | proves the sort-by-`inventoryItemId` acquisition order; assert zero `40P01` |
-| Shortfall clamp | int-spec: reserve 5, sync drops availability to 2 | UPDATE must succeed (no CHECK violation), ATP reads 0 |
+| Shortfall clamp | int-spec: reserve 5, sync drops availability to 2 | UPDATE must succeed (no CHECK violation), ATP reads 0, order surfaces in needs-attention |
+| Reservation key scoping | int-spec: two **different orders** whose source line ids collide | order B must reserve successfully — this is the defect the `orderRecordId` key fixes |
+| Reconciler | int-spec: corrupt `olReservedQuantity` directly, run the job | counter converges to `SUM(held)`, correction logged |
+| Transition identity for OL-origin facts | int-spec: fire the same pack/SLA fact twice | exactly one transition row — proves the D15 NOT-NULL cause key |
+| Relay obligation fan-out | int-spec: 3 targets, one `no-capability`, one failing | three `order_relay_attempts` rows with distinct terminal states; sweep re-drives only the retryable one |
+| Relay idempotency across a crash | int-spec: mark remote done, crash before `state='done'`, sweep | outbound carries the `(transitionId, targetConnectionId)` key; no duplicate mark-sent |
+| `shipped_quantity` derivation | unit + int-spec over `shipment_lines` × shipment status | the counter that had no source before option C |
+| Rollup under partial coverage | unit: 1 of 3 shipments delivered | must NOT report the order delivered — the latent `fulfillment-rollup.ts` bug |
 | Changeset replay | unit — same fixture drives preview and apply | proves D5's purity constraint holds |
 | Counter validation ladder | unit, one case per rung | each rung has an operator-readable message |
 | Pack-event idempotency (`clientEventId`) | int-spec — duplicate insert | unique-constraint behaviour |
