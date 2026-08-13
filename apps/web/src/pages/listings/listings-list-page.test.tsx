@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import type * as ReactRouterDom from 'react-router-dom';
@@ -102,6 +102,46 @@ const sampleMappings: PaginatedOfferMappings = {
   lifecycleCounts: { ...ZERO_LIFECYCLE_COUNTS, Active: 2 },
 };
 
+// `createMockApiClient`'s own default connection (`sampleConnection`, shared
+// across the whole FE test suite) models a shop - ProductMaster /
+// InventoryMaster / OrderProcessorManager / OrderSource, deliberately no
+// OfferManager (mirrors a real PrestaShop-only install). `/listings` is
+// backed exclusively by OfferManager-capable connections (#2032 review round
+// 2, finding 1), so relying on that shared default here would make every
+// test in this file exercise the "no channels connected" empty state instead
+// of the page's real behaviour - exactly the failure this fixture fixes.
+// Mirrors the established per-feature-capability pattern already used for
+// invoicing tests (see test-utils.tsx's own note on Invoicing connections).
+const OFFER_MANAGER_CONNECTION = {
+  id: 'conn_allegro_1',
+  name: 'Allegro Store',
+  platformType: 'allegro',
+  status: 'active',
+  config: {},
+  credentialsBacked: true,
+  adapterKey: 'allegro.publicapi.v1',
+  enabledCapabilities: ['OfferManager'],
+  supportedCapabilities: ['OfferManager'],
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-01T00:00:00Z',
+};
+
+/**
+ * Thin wrapper over `createMockApiClient` that defaults `connections.list`
+ * to an `OfferManager`-capable connection instead of the shared
+ * shop-shaped default, so every test in this file exercises the page's real
+ * behaviour unless it explicitly overrides `connections` itself (in which
+ * case the override wins, same as `createMockApiClient`'s own merge order).
+ */
+function createListingsMockApiClient(
+  overrides: Parameters<typeof createMockApiClient>[0] = {},
+): ReturnType<typeof createMockApiClient> {
+  return createMockApiClient({
+    connections: { list: vi.fn().mockResolvedValue([OFFER_MANAGER_CONNECTION]) },
+    ...overrides,
+  });
+}
+
 function oneRow(overrides: Partial<OfferMapping>): PaginatedOfferMappings {
   return {
     ...sampleMappings,
@@ -130,7 +170,7 @@ describe('ListingsListPage', () => {
   afterEach(cleanup);
   afterEach(() => navigateMock.mockClear());
   it('should show loading state initially', () => {
-    const mockApi = createMockApiClient({
+    const mockApi = createListingsMockApiClient({
       listings: {
         list: vi.fn().mockReturnValue(new Promise(() => {})),
       },
@@ -142,7 +182,7 @@ describe('ListingsListPage', () => {
   });
 
   it('should lead each row with the catalog product name, variant and identifiers', async () => {
-    const mockApi = createMockApiClient({
+    const mockApi = createListingsMockApiClient({
       listings: {
         list: vi.fn().mockResolvedValue(sampleMappings),
       },
@@ -163,7 +203,7 @@ describe('ListingsListPage', () => {
   });
 
   it('should render the six redesigned column headers and drop the raw-ID ones', async () => {
-    const mockApi = createMockApiClient({
+    const mockApi = createListingsMockApiClient({
       listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
     });
 
@@ -184,7 +224,7 @@ describe('ListingsListPage', () => {
   });
 
   it('should render a channel pill carrying the platform for its dot colour', async () => {
-    const mockApi = createMockApiClient({
+    const mockApi = createListingsMockApiClient({
       listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
     });
 
@@ -197,14 +237,21 @@ describe('ListingsListPage', () => {
   it('should resolve the connection column from one batched read, not a per-row fetch', async () => {
     const connectionsList = vi.fn().mockResolvedValue([MISMATCHED_PLATFORM_CONNECTION]);
     const connectionGetById = vi.fn();
-    const mockApi = createMockApiClient({
+    const mockApi = createListingsMockApiClient({
       listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
       connections: { list: connectionsList, getById: connectionGetById },
     });
 
     const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
-    expect(await screen.findAllByText('Erli Demo')).toHaveLength(2);
+    await screen.findByText('Doniczka ceramiczna Terra');
+    // Scoped to the table, not the whole document: the fixture connection is
+    // `OfferManager`-capable, so it also renders as the sole channel-select
+    // option (#2030) - a whole-document query would ambiguously count that
+    // option's own text alongside the two row cells it is meant to check.
+    const table = container.querySelector('.listings-table');
+    if (!table) throw new Error('listings table did not render');
+    expect(within(table as HTMLElement).getAllByText('Erli Demo')).toHaveLength(2);
     expect(connectionGetById).not.toHaveBeenCalled();
     // The fixture's platformType ('erli') differs from its rows' ('allegro') -
     // the pill must follow the row.
@@ -213,7 +260,7 @@ describe('ListingsListPage', () => {
   });
 
   it('should date the channel price on the cell rather than repeating the Updated column', async () => {
-    const mockApi = createMockApiClient({
+    const mockApi = createListingsMockApiClient({
       listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
     });
 
@@ -234,7 +281,7 @@ describe('ListingsListPage', () => {
   });
 
   it('should flag the price as stale when its own reading is older than the visible status clock', async () => {
-    const mockApi = createMockApiClient({
+    const mockApi = createListingsMockApiClient({
       listings: {
         list: vi.fn().mockResolvedValue(
           oneRow({
@@ -266,7 +313,7 @@ describe('ListingsListPage', () => {
   });
 
   it('should badge a zero channel quantity as out of stock', async () => {
-    const mockApi = createMockApiClient({
+    const mockApi = createListingsMockApiClient({
       listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
     });
 
@@ -276,7 +323,7 @@ describe('ListingsListPage', () => {
   });
 
   it('should render an unreported price and quantity as absent, never as zero', async () => {
-    const mockApi = createMockApiClient({
+    const mockApi = createListingsMockApiClient({
       listings: {
         list: vi.fn().mockResolvedValue(
           oneRow({
@@ -302,7 +349,7 @@ describe('ListingsListPage', () => {
   });
 
   it('should say no reading was taken - not that the channel withheld one - when no snapshot exists', async () => {
-    const mockApi = createMockApiClient({
+    const mockApi = createListingsMockApiClient({
       listings: { list: vi.fn().mockResolvedValue(oneRow({ commercial: null })) },
     });
 
@@ -317,7 +364,7 @@ describe('ListingsListPage', () => {
   });
 
   it('should give a stale variant that still has channel stock a solid overselling treatment', async () => {
-    const mockApi = createMockApiClient({
+    const mockApi = createListingsMockApiClient({
       listings: {
         list: vi.fn().mockResolvedValue(
           oneRow({
@@ -345,7 +392,7 @@ describe('ListingsListPage', () => {
   });
 
   it('should mark an unsynced row without promising it will sync soon', async () => {
-    const mockApi = createMockApiClient({
+    const mockApi = createListingsMockApiClient({
       listings: {
         list: vi.fn().mockResolvedValue(
           oneRow({
@@ -367,7 +414,7 @@ describe('ListingsListPage', () => {
   });
 
   it('should report a mapping whose variant no longer resolves instead of blanking the cell', async () => {
-    const mockApi = createMockApiClient({
+    const mockApi = createListingsMockApiClient({
       listings: { list: vi.fn().mockResolvedValue(oneRow({ identity: null })) },
     });
 
@@ -387,7 +434,7 @@ describe('ListingsListPage', () => {
   });
 
   it('should show error state when fetch fails', async () => {
-    const mockApi = createMockApiClient({
+    const mockApi = createListingsMockApiClient({
       listings: {
         list: vi.fn().mockRejectedValue(new Error('Network error')),
       },
@@ -400,7 +447,7 @@ describe('ListingsListPage', () => {
   });
 
   it("should show the Active tab's own empty state when a connection exists but nothing is synced", async () => {
-    const mockApi = createMockApiClient({
+    const mockApi = createListingsMockApiClient({
       listings: {
         list: vi.fn().mockResolvedValue(emptyPage()),
       },
@@ -415,7 +462,7 @@ describe('ListingsListPage', () => {
   });
 
   it('should show a channel-connect empty state when no connections are configured', async () => {
-    const mockApi = createMockApiClient({
+    const mockApi = createListingsMockApiClient({
       listings: { list: vi.fn().mockResolvedValue(emptyPage()) },
       connections: { list: vi.fn().mockResolvedValue([]) },
     });
@@ -428,7 +475,7 @@ describe('ListingsListPage', () => {
   });
 
   it('should show the channel-connect empty state when connections exist but none support OfferManager (#2032 review round 2, finding 1)', async () => {
-    const mockApi = createMockApiClient({
+    const mockApi = createListingsMockApiClient({
       listings: { list: vi.fn().mockResolvedValue(emptyPage()) },
       connections: {
         list: vi.fn().mockResolvedValue([
@@ -463,7 +510,7 @@ describe('ListingsListPage', () => {
 
   it('should show a Clear filters button that clears filters when filters are active', async () => {
     const user = userEvent.setup();
-    const mockApi = createMockApiClient({
+    const mockApi = createListingsMockApiClient({
       listings: {
         list: vi.fn().mockResolvedValue(emptyPage()),
       },
@@ -483,7 +530,7 @@ describe('ListingsListPage', () => {
   });
 
   it('renders a single "Publish products" entry (no separate shop CTA) with no pre-filter', async () => {
-    const mockApi = createMockApiClient({
+    const mockApi = createListingsMockApiClient({
       listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
     });
 
@@ -498,7 +545,7 @@ describe('ListingsListPage', () => {
   });
 
   it('keeps the single unified entry even when a ProductPublisher (shop) connection exists', async () => {
-    const mockApi = createMockApiClient({
+    const mockApi = createListingsMockApiClient({
       listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
       connections: {
         list: vi.fn().mockResolvedValue([
@@ -529,7 +576,7 @@ describe('ListingsListPage', () => {
     it('should fold to cards leading with the listing head and a four-fact list', async () => {
       const viewport = mockMobileViewport();
       try {
-        const mockApi = createMockApiClient({
+        const mockApi = createListingsMockApiClient({
           listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
           connections: { list: vi.fn().mockResolvedValue([MISMATCHED_PLATFORM_CONNECTION]) },
         });
@@ -559,7 +606,7 @@ describe('ListingsListPage', () => {
       const viewport = mockMobileViewport();
       try {
         const user = userEvent.setup();
-        const mockApi = createMockApiClient({
+        const mockApi = createListingsMockApiClient({
           listings: { list: vi.fn().mockResolvedValue(oneRow({})) },
         });
 
@@ -598,7 +645,7 @@ describe('ListingsListPage', () => {
     };
 
     function demoApiClient(): ReturnType<typeof createMockApiClient> {
-      return createMockApiClient({
+      return createListingsMockApiClient({
         listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
         connections: {
           list: vi.fn().mockResolvedValue([
@@ -629,7 +676,7 @@ describe('ListingsListPage', () => {
     });
 
     it('keeps the existing hide-when-missing behaviour for an unauthorized non-demo viewer', async () => {
-      const mockApi = createMockApiClient({
+      const mockApi = createListingsMockApiClient({
         listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
         connections: {
           list: vi.fn().mockResolvedValue([
@@ -660,7 +707,7 @@ describe('ListingsListPage', () => {
   describe('lifecycle tabs (#2029)', () => {
     it('defaults to the Active tab and filters the request by lifecycle=Active', async () => {
       const list = vi.fn().mockResolvedValue(sampleMappings);
-      const mockApi = createMockApiClient({ listings: { list } });
+      const mockApi = createListingsMockApiClient({ listings: { list } });
 
       renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
@@ -674,7 +721,7 @@ describe('ListingsListPage', () => {
 
     it('reads a valid ?tab param, marks it active and filters the request by its lifecycle', async () => {
       const list = vi.fn().mockResolvedValue(emptyPage());
-      const mockApi = createMockApiClient({ listings: { list } });
+      const mockApi = createListingsMockApiClient({ listings: { list } });
 
       renderWithProviders(<ListingsListPage />, {
         apiClient: mockApi,
@@ -701,7 +748,7 @@ describe('ListingsListPage', () => {
               resolveSecondFetch = resolve;
             }),
         );
-      const mockApi = createMockApiClient({ listings: { list } });
+      const mockApi = createListingsMockApiClient({ listings: { list } });
 
       renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
@@ -726,7 +773,7 @@ describe('ListingsListPage', () => {
     });
 
     it('falls back to the Active tab for an unrecognized ?tab param', async () => {
-      const mockApi = createMockApiClient({
+      const mockApi = createListingsMockApiClient({
         listings: { list: vi.fn().mockResolvedValue(emptyPage()) },
       });
 
@@ -742,7 +789,7 @@ describe('ListingsListPage', () => {
     it('updates the ?tab URL param and resets pagination to page 1 when a tab is clicked', async () => {
       const user = userEvent.setup();
       const list = vi.fn().mockResolvedValue(emptyPage());
-      const mockApi = createMockApiClient({ listings: { list } });
+      const mockApi = createListingsMockApiClient({ listings: { list } });
 
       renderWithProviders(<ListingsListPage />, {
         apiClient: mockApi,
@@ -761,7 +808,7 @@ describe('ListingsListPage', () => {
     });
 
     it("renders each tab's own count from lifecycleCounts, not the active bucket's row count", async () => {
-      const mockApi = createMockApiClient({
+      const mockApi = createListingsMockApiClient({
         listings: {
           list: vi.fn().mockResolvedValue({
             ...sampleMappings,
@@ -781,7 +828,7 @@ describe('ListingsListPage', () => {
     });
 
     it('renders tab counts as skeleton placeholders while loading, never as a placeholder zero', () => {
-      const mockApi = createMockApiClient({
+      const mockApi = createListingsMockApiClient({
         listings: { list: vi.fn().mockReturnValue(new Promise(() => {})) },
       });
 
@@ -802,7 +849,7 @@ describe('ListingsListPage', () => {
         // The Draft tab's own fetch never resolves in this test - it is the
         // "still loading" window the skeleton must not reappear during.
         .mockReturnValueOnce(new Promise(() => {}));
-      const mockApi = createMockApiClient({ listings: { list } });
+      const mockApi = createListingsMockApiClient({ listings: { list } });
 
       const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
@@ -835,7 +882,7 @@ describe('ListingsListPage', () => {
         // NEXT successful fetch, so an error here would have left it stuck
         // forever). The fingerprint-gated ref must drop it immediately.
         .mockReturnValueOnce(new Promise(() => {}));
-      const mockApi = createMockApiClient({ listings: { list } });
+      const mockApi = createListingsMockApiClient({ listings: { list } });
 
       const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
@@ -860,7 +907,7 @@ describe('ListingsListPage', () => {
     });
 
     it("separates a tab's label from its count badge in the accessible name", async () => {
-      const mockApi = createMockApiClient({
+      const mockApi = createListingsMockApiClient({
         listings: {
           list: vi.fn().mockResolvedValue({
             ...sampleMappings,
@@ -879,7 +926,7 @@ describe('ListingsListPage', () => {
     });
 
     it('announces via a live region once the tab counts resolve from skeleton to real numbers', async () => {
-      const mockApi = createMockApiClient({
+      const mockApi = createListingsMockApiClient({
         listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
       });
 
@@ -894,7 +941,7 @@ describe('ListingsListPage', () => {
 
   describe('lifecycle tab empty-state copy (#2042 review)', () => {
     it("does not overclaim the Draft bucket will go live, and avoids a double negative", async () => {
-      const mockApi = createMockApiClient({
+      const mockApi = createListingsMockApiClient({
         listings: { list: vi.fn().mockResolvedValue(emptyPage()) },
       });
 
@@ -913,7 +960,7 @@ describe('ListingsListPage', () => {
     });
 
     it("does not borrow Draft's definition into the Invalid tab's empty state", async () => {
-      const mockApi = createMockApiClient({
+      const mockApi = createListingsMockApiClient({
         listings: { list: vi.fn().mockResolvedValue(emptyPage()) },
       });
 
@@ -950,7 +997,7 @@ describe('ListingsListPage', () => {
 
     it('renders the channel select with connection names for OfferManager-capable connections only, from one shared connections read', async () => {
       const connectionsList = vi.fn().mockResolvedValue(TWO_CONNECTIONS);
-      const mockApi = createMockApiClient({
+      const mockApi = createListingsMockApiClient({
         listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
         connections: { list: connectionsList },
       });
@@ -965,11 +1012,14 @@ describe('ListingsListPage', () => {
       // never produce a row here and must not be offered as a filter option
       // (it would deterministically empty the table forever if selected).
       // Only the OfferManager-capable MISMATCHED_PLATFORM_CONNECTION appears.
+      // This exact-equality check IS the "names only, never the raw id or
+      // platformType" assertion - a separate whole-document `queryByText`
+      // for those strings would be ambiguous by construction, since both
+      // `sampleMappings` rows resolve to this same connection and each
+      // legitimately shows its own id in the Connection column's `EntityLabel`
+      // (that display is correct there, just not inside this select).
       expect(optionLabels).toEqual(['All channels', 'Erli Demo']);
       expect(screen.queryByText('Main PrestaShop Store')).not.toBeInTheDocument();
-      // Names only - never the raw connection id or its platformType string.
-      expect(screen.queryByText('conn_allegro_1')).not.toBeInTheDocument();
-      expect(screen.queryByText('erli')).not.toBeInTheDocument();
       // The Connection column already reads `useConnectionsQuery()` once for the
       // whole page (#1996) - the toolbar select must reuse that same result
       // rather than firing a second connections request.
@@ -977,7 +1027,7 @@ describe('ListingsListPage', () => {
     });
 
     it('excludes a connection that lacks OfferManager even when it is otherwise active and named', async () => {
-      const mockApi = createMockApiClient({
+      const mockApi = createListingsMockApiClient({
         listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
         connections: { list: vi.fn().mockResolvedValue([SECOND_CONNECTION]) },
       });
@@ -993,7 +1043,7 @@ describe('ListingsListPage', () => {
     it('filters the request by the selected channel connection id', async () => {
       const user = userEvent.setup();
       const list = vi.fn().mockResolvedValue(sampleMappings);
-      const mockApi = createMockApiClient({
+      const mockApi = createListingsMockApiClient({
         listings: { list },
         connections: { list: vi.fn().mockResolvedValue(TWO_CONNECTIONS) },
       });
@@ -1014,7 +1064,7 @@ describe('ListingsListPage', () => {
     });
 
     it('no longer renders the pre-#2030 raw connection-id text input', async () => {
-      const mockApi = createMockApiClient({
+      const mockApi = createListingsMockApiClient({
         listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
       });
 
@@ -1027,7 +1077,7 @@ describe('ListingsListPage', () => {
 
     it('resets search, the channel filter and the lifecycle tab together when Clear is clicked, without a full reload', async () => {
       const user = userEvent.setup();
-      const mockApi = createMockApiClient({
+      const mockApi = createListingsMockApiClient({
         listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
         connections: { list: vi.fn().mockResolvedValue(TWO_CONNECTIONS) },
       });

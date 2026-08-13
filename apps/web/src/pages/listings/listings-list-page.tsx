@@ -12,6 +12,7 @@
 import {
   useCallback,
   useMemo,
+  useRef,
   useState,
   type ReactElement,
   type ReactNode,
@@ -52,6 +53,7 @@ import { useDemoMode } from '../../features/system';
 import type {
   ListingsFilters,
   OfferLifecycle,
+  OfferLifecycleCounts,
   OfferMapping,
 } from '../../features/listings/api/listings.types';
 
@@ -408,15 +410,44 @@ export function ListingsListPage(): ReactElement {
   const query = useListingsQuery(filters, pagination);
 
   /**
-   * `useListingsQuery`'s `placeholderData: keepPreviousData` (#2032 review
-   * thread 12.5) does what a hand-rolled ref+fingerprint used to: a tab/
-   * search/connection change is a distinct query key, so without it `data`
-   * (and `lifecycleCounts` with it) would blank on every one of them.
-   * TanStack itself resolves the case the old fingerprint dance was for -
-   * an errored refetch does not keep surfacing the previous, now-unverified
-   * counts - so no bespoke invalidation logic is needed here any more.
+   * `useListingsQuery`'s `placeholderData: keepPreviousData` keeps `query.data`
+   * (rows AND counts) populated with the PRIOR key's response while any new
+   * key's fetch is in flight - tab, search, or connection change alike. That
+   * is exactly right for the table (round-1 "blanking" fix): showing the
+   * previous rows for a moment during any transition beats a full-page
+   * skeleton on every keystroke.
+   *
+   * It is NOT right for `lifecycleCounts` on its own (round-2 fix; regression
+   * caught by CI): `keepPreviousData` cannot tell "just switched tabs" apart
+   * from "changed search/connection", but the two must be treated
+   * oppositely. The counts genuinely don't change across a lifecycle-only
+   * refetch (the backend computes every bucket regardless of which tab is
+   * selected), so keeping the OLD counts visible while a tab's own rows load
+   * is correct and was this page's very first requirement (#2029). But a
+   * search/connection change makes the PRIOR counts describe a filter set
+   * that no longer applies - keeping them visible, even briefly, is
+   * dishonest, and dropping to the skeleton immediately (not waiting for the
+   * new fetch, which may hang or error) is what a hand-rolled ref+fingerprint
+   * used to guarantee. `keepPreviousData` alone regressed exactly that case,
+   * so the fingerprint is restored here - scoped ONLY to `lifecycleCounts`,
+   * deliberately excluding `lifecycle` itself so a tab switch never trips it.
    */
-  const lifecycleCounts = query.data?.lifecycleCounts ?? null;
+  const lifecycleCountsRef = useRef<{ fingerprint: string; counts: OfferLifecycleCounts } | null>(
+    null,
+  );
+  const countsFingerprint = `${debouncedSearch}::${urlConnectionId}`;
+  if (query.data?.lifecycleCounts && !query.isPlaceholderData) {
+    lifecycleCountsRef.current = {
+      fingerprint: countsFingerprint,
+      counts: query.data.lifecycleCounts,
+    };
+  }
+  const lifecycleCounts =
+    query.data?.lifecycleCounts && !query.isPlaceholderData
+      ? query.data.lifecycleCounts
+      : lifecycleCountsRef.current?.fingerprint === countsFingerprint
+        ? lifecycleCountsRef.current.counts
+        : null;
 
   const platforms = usePlatforms();
   // One batched read for the whole page - the Connection column must never cost
@@ -652,14 +683,18 @@ export function ListingsListPage(): ReactElement {
                 {/* A count that snaps from 0 to its real value reads as a
                     bug (#2029 / mockup frame 04) - render a skeleton line
                     instead of a placeholder zero while it's unknown.
-                    `isPending` (no data at all yet), not `isLoading` (also
-                    true while placeholder data is showing during a
-                    tab/filter refetch, #2032 review thread 12.5) - a tab
-                    switch must keep showing the counts it already has. */}
-                {query.isPending ? (
+                    Gated on `lifecycleCounts === null`, not `query.isPending`
+                    (#2032 review round 2, regression caught by CI): the
+                    fingerprint above already decides whether the counts on
+                    hand are trustworthy for the CURRENT filters - a tab
+                    switch keeps showing them (fingerprint unchanged), a
+                    search/connection change drops to skeleton immediately
+                    even though `isPending` stays false (placeholder data is
+                    still present). */}
+                {lifecycleCounts === null ? (
                   <span className="tabs__count-skeleton" aria-hidden="true" />
                 ) : (
-                  (lifecycleCounts?.[def.lifecycle] ?? '—')
+                  (lifecycleCounts[def.lifecycle] ?? '—')
                 )}
               </span>
             </TabsTrigger>
@@ -668,9 +703,20 @@ export function ListingsListPage(): ReactElement {
         {/* Screen-reader-only counterpart to the skeleton-to-number transition
             above: DataTableSkeleton uses the same role/aria-live pattern for
             the row table, so the tab bar announces its own loading -> loaded
-            transition the same way (#2029 round 1 review). */}
+            transition the same way (#2029 round 1 review).
+            One shared `role="status"` region, not two (#2032 review round 2,
+            finding 2 fix, corrected post-CI): a second always-mounted
+            `role="status"` node - even rendering empty text when not
+            fetching - made every `getByRole('status')` query in this page's
+            own test suite ambiguous. The refetch message takes priority
+            while a fetch is in flight; otherwise this is the pre-existing
+            lifecycle-counts announcement. */}
         <span className="sr-only" role="status" aria-live="polite">
-          {lifecycleCounts ? 'Listing counts loaded.' : 'Loading listing counts…'}
+          {query.isFetching && !query.isPending
+            ? 'Refreshing listings…'
+            : lifecycleCounts
+              ? 'Listing counts loaded.'
+              : 'Loading listing counts…'}
         </span>
 
         {/* `placeholderData: keepPreviousData` (round-1 fix) stops the table
@@ -680,13 +726,11 @@ export function ListingsListPage(): ReactElement {
             an operator who types a search term and immediately scans the
             table could act on results that don't match what they just typed.
             `isFetching && !isPending`: excludes the very first load, which
-            the skeleton below already owns. */}
+            the skeleton below already owns. Visual-only (`aria-hidden`) - the
+            shared status region above carries the a11y announcement. */}
         {query.isFetching && !query.isPending ? (
           <span className="listings-refetch-indicator" aria-hidden="true" />
         ) : null}
-        <span className="sr-only" role="status" aria-live="polite">
-          {query.isFetching && !query.isPending ? 'Refreshing listings…' : ''}
-        </span>
 
         {/* Only the active tab's data is ever fetched (one lifecycle-filtered
             request, not five), so the other four render an empty, forceMount'd
