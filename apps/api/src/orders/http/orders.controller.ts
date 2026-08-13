@@ -324,6 +324,7 @@ export class OrdersController {
       createdAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
       updatedAt: order.updatedAt instanceof Date ? order.updatedAt.toISOString() : order.updatedAt,
       dispatchByAt: order.dispatchByAt ? order.dispatchByAt.toISOString() : null,
+      cancelledAt: order.cancelledAt ? order.cancelledAt.toISOString() : null,
       // Ship-by estimate flag (#1776): a typed, fail-safe read off the snapshot's
       // dispatch window. Erli marks its derived window `estimated: true`; Allegro
       // leaves it absent (authoritative). Narrowing lives on the entity getter.

@@ -101,6 +101,7 @@ describe('FulfillmentStatusSyncService', () => {
       findByIds: jest.fn(),
       updateFulfillmentState: jest.fn(),
       markItemResolutionFailure: jest.fn(),
+      markCancelled: jest.fn(),
     };
 
     routing = {

@@ -64,6 +64,16 @@ export class OrderRecord {
      * `null` for a `'ready'` record, or a historical row predating the column.
      */
     public readonly mappingFailureReason: string | null = null,
+    /**
+     * Instant the source reported this order cancelled (#1984). `null` = never
+     * cancelled (or a historical row the backfill migration could not derive a
+     * proxy timestamp for). Independent of `recordStatus` — an order can be
+     * `ready` (all items resolved) and cancelled at the same time. Set once
+     * and never cleared: `markCancelled` is the sole writer of this column
+     * and applies a first-write-wins (`COALESCE`) update, so the
+     * first-observed instant survives every later re-persist.
+     */
+    public readonly cancelledAt: Date | null = null,
   ) {}
 
   /**
@@ -157,5 +167,13 @@ export class OrderRecord {
       return false;
     }
     return (value as Partial<OrderDispatchWindow>).estimated === true;
+  }
+
+  /**
+   * True once the source has reported this order cancelled (#1984). Pure
+   * derivation of an already-loaded field (ADR-011): no I/O, no mutation.
+   */
+  get isCancelled(): boolean {
+    return this.cancelledAt !== null;
   }
 }
