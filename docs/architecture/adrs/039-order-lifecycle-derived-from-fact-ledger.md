@@ -1,6 +1,6 @@
 # ADR-039: Order lifecycle as a derived projection over a per-axis fact ledger
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-08-13
 - **Authors**: @piotrswierzy
 

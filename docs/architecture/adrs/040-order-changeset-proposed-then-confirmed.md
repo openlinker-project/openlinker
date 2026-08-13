@@ -1,6 +1,6 @@
 # ADR-040: Order mutations as proposed-then-confirmed changes
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-08-13
 - **Authors**: @piotrswierzy
 

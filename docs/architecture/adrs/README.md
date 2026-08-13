@@ -128,7 +128,7 @@ One pointer per section, identical format every time.
 | [ADR-036](./036-cross-context-read-model-joins.md) | Cross-context read-model joins by table name (server-side sort/filter across contexts) | Accepted | 2026-07-17 |
 | [ADR-037](./037-destination-taxonomy-read-model.md) | Destination taxonomy as a synced read model in `listings` (retires the platform-named Allegro category cache) | Proposed | 2026-07-30 |
 | [ADR-038](./038-per-connection-outbound-rate-limiting.md) | Per-connection outbound rate limiting via a shared transport + ambient priority context | Proposed | 2026-07-30 |
-| [ADR-039](./039-order-lifecycle-derived-from-fact-ledger.md) | Order lifecycle as a derived projection over a per-axis fact ledger | Proposed | 2026-08-13 |
-| [ADR-040](./040-order-changeset-proposed-then-confirmed.md) | Order mutations as proposed-then-confirmed changes (proposal record; composition machinery deferred) | Proposed | 2026-08-13 |
+| [ADR-039](./039-order-lifecycle-derived-from-fact-ledger.md) | Order lifecycle as a derived projection over a per-axis fact ledger | Accepted | 2026-08-13 |
+| [ADR-040](./040-order-changeset-proposed-then-confirmed.md) | Order mutations as proposed-then-confirmed changes (proposal record; composition machinery deferred) | Accepted | 2026-08-13 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
