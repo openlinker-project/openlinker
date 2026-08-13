@@ -399,6 +399,43 @@ describe('IntegrationsService', () => {
       expect(connectionPort.list).toHaveBeenCalledWith({ status: 'active' });
     });
 
+    it('should omit the status filter entirely when includeAllStatuses is set', async () => {
+      const needsReauthConnection = new Connection(
+        'connection-2',
+        'allegro',
+        'Needs Reauth Store',
+        'needs_reauth',
+        {},
+        'cred_2',
+        new Date(),
+        new Date(),
+        undefined,
+        ['OrderSource']
+      );
+
+      connectionPort.list.mockResolvedValue([needsReauthConnection]);
+
+      const metadata: AdapterMetadata = {
+        adapterKey: 'allegro.publicapi.v1',
+        platformType: 'allegro',
+        supportedCapabilities: ['OrderSource'],
+      };
+      adapterRegistry.getAdapterMetadata.mockResolvedValue(metadata);
+      factoryResolver.createCapabilityAdapter.mockResolvedValue(mockCapabilityAdapter);
+
+      const result = await service.listCapabilityAdapters<unknown>({
+        capability: 'OrderSource',
+        includeAllStatuses: true,
+        lazy: true,
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].connectionId).toBe('connection-2');
+      // No `status` key at all — not `status: undefined` — so a non-active
+      // connection is not filtered out by connectionPort.list.
+      expect(connectionPort.list).toHaveBeenCalledWith({});
+    });
+
     it('should skip connections with invalid adapter keys', async () => {
       const validConnection = new Connection(
         'connection-1',
