@@ -42,6 +42,7 @@ import { isCorrectionIssuer } from '../../domain/ports/capabilities/correction-i
 import { isDocumentNumberConsumer } from '../../domain/ports/capabilities/document-number-consumer.capability';
 import { DuplicateInvoiceRecordException } from '../../domain/exceptions/duplicate-invoice-record.exception';
 import { InvoiceRecordNotFoundException } from '../../domain/exceptions/invoice-record-not-found.exception';
+import { OrderAlreadyInvoicedException } from '../../domain/exceptions/order-already-invoiced.exception';
 import { MissingNumberingSeriesException } from '../../domain/exceptions/missing-numbering-series.exception';
 import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
 import type {
@@ -215,6 +216,13 @@ export class InvoiceService implements IInvoiceService {
   ) {}
 
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<InvoiceRecord> {
+    // (0) One-invoice-per-order guard (#2047). Runs BEFORE the idempotency gate
+    // and before any row is created, so a cross-connection second issuance
+    // creates nothing at all. It is the backstop that survives a mis-set primary,
+    // two tabs racing, or a hand-rolled API call — the auto-issue trigger's
+    // single-connection selection is the first line, not the only one.
+    await this.assertNotInvoicedElsewhere(cmd.orderId, cmd.connectionId);
+
     // (1) Idempotency read-gate. Only when a key is supplied (R1: keyless calls
     // are never deduplicated). An already-`issued` hit is returned verbatim — no
     // second provider document. A non-`issued` hit is resumed under the
@@ -263,6 +271,51 @@ export class InvoiceService implements IInvoiceService {
     }
 
     return this.issueWithAdapter(cmd, pending.id);
+  }
+
+  /**
+   * One-invoice-per-order guard (#2047). Throws
+   * {@link OrderAlreadyInvoicedException} when ANY record on a DIFFERENT
+   * connection blocks issuance (`InvoiceRecord.blocksIssuanceElsewhere`:
+   * `pending` / `issuing` / `issued`, or `failed` with a `failureMode` other than
+   * `rejected`).
+   *
+   * Records on the REQUESTED connection are deliberately ignored here — the
+   * per-connection lifecycle (idempotency read-gate + `resumeExisting` + the CAS
+   * claim) already owns retry/replay semantics there, and re-checking them here
+   * would break the idempotent replay of an already-`issued` row.
+   *
+   * A `failed` + `rejected` record elsewhere is NOT blocking: the provider
+   * refused the document and created nothing, so moving the order to another
+   * provider is fiscally safe (it does change the numbering series, which the
+   * operator confirms in the UI).
+   */
+  private async assertNotInvoicedElsewhere(
+    orderId: string,
+    requestedConnectionId: string,
+  ): Promise<void> {
+    const records = await this.repo.findAllByOrderId(orderId);
+    const blocking = records.find(
+      (record) =>
+        record.connectionId !== requestedConnectionId && record.blocksIssuanceElsewhere,
+    );
+    if (!blocking) {
+      return;
+    }
+
+    this.logger.warn(
+      `Refusing to issue a second document for order ${orderId} on connection ` +
+        `${requestedConnectionId}: invoice ${blocking.id} on connection ` +
+        `${blocking.connectionId} is ${blocking.status}` +
+        `${blocking.status === 'failed' ? ` (failureMode=${blocking.failureMode ?? 'unknown'})` : ''}`,
+    );
+    throw new OrderAlreadyInvoicedException(
+      orderId,
+      blocking.connectionId,
+      requestedConnectionId,
+      blocking.status,
+      blocking.id,
+    );
   }
 
   /**

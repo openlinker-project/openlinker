@@ -26,7 +26,7 @@ export function useIssueInvoiceMutation(): UseMutationResult<
       // Seed the cache so the panel flips to the returned status without waiting
       // on a refetch.
       queryClient.setQueryData(
-        invoicingQueryKeys.forOrder(input.orderId, input.connectionId),
+        invoicingQueryKeys.forOrder(input.orderId),
         record,
       );
       // Only invalidate (force a refetch) when the returned row is still
@@ -36,7 +36,7 @@ export function useIssueInvoiceMutation(): UseMutationResult<
       // fire a redundant GET on every successful issue (defeating the seed).
       if (record.status === 'pending') {
         await queryClient.invalidateQueries({
-          queryKey: invoicingQueryKeys.forOrder(input.orderId, input.connectionId),
+          queryKey: invoicingQueryKeys.forOrder(input.orderId),
         });
       }
     },

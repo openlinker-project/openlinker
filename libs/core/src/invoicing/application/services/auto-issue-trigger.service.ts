@@ -2,19 +2,29 @@
  * Auto-Issue Trigger Service (ADR-026 §3 — core policy composer, OL #1120)
  *
  * Core-resident policy that turns a qualifying order transition (paid / shipped)
- * into per-connection issuance jobs. It:
+ * into AT MOST ONE issuance job. It:
  *  1. Lists ACTIVE invoicing connections (D8) via `ConnectionPort`.
- *  2. Reads each connection's `config.invoicing.triggerModel` (`parseTriggerModel`).
- *  3. Evaluates the transition (level-evaluated, D3): `auto-on-paid` iff paid;
+ *  2. Resolves EXACTLY ONE of them (#2047) via `selectPrimaryInvoicingConnection`
+ *     over `config.invoicing.isPrimary` (`parseIsPrimaryInvoicing`). One sale is
+ *     one invoice: before #2047 this method fanned out over EVERY connection with
+ *     the `Invoicing` capability and its per-connection idempotency key
+ *     (`invoice:{connId}:{orderId}`) could not dedup across them, so an operator
+ *     running two providers got two real fiscal documents for one sale. With
+ *     several candidates and no unambiguous primary it now issues NOTHING and
+ *     logs an error — a missing invoice is fixable, a duplicate needs a
+ *     correction of a document that should never have existed.
+ *  3. Reads the selected connection's `config.invoicing.triggerModel`
+ *     (`parseTriggerModel`).
+ *  4. Evaluates the transition (level-evaluated, D3): `auto-on-paid` iff paid;
  *     `auto-on-shipped` iff `order.status === 'shipped'` (D6 + one-time viability
  *     log, F7); `manual` → skip; `batched` → log + skip (deferred, F-cleanly).
- *  4. Composes the `IssueInvoiceCommand` from the clean in-hand `Order` and
- *     enqueues one `invoicing.issue` job per match with a deterministic key
+ *  5. Composes the `IssueInvoiceCommand` from the clean in-hand `Order` and
+ *     enqueues the `invoicing.issue` job with a deterministic key
  *     `invoice:{connId}:{orderId}` composed ONCE and threaded into BOTH the
  *     `ScheduleJobInput.idempotencyKey` AND `payload.idempotencyKey` (F4).
  *
- * Each connection is isolated in its own try/catch; the catch logs a PII-SAFE
- * envelope only (F9 + D11): `error.name`, invoicing `connectionId`, `order.id`,
+ * The selected connection's work is isolated in a try/catch; the catch logs a
+ * PII-SAFE envelope only (F9 + D11): `error.name`, invoicing `connectionId`, `order.id`,
  * `sourceEventId` (when present) — never the raw error / message / payload.
  * `error.message` is added ONLY for the allow-listed deterministic, PII-clean
  * errors (`InvalidBuyerProfileError`, `UnsupportedPriceTreatmentError`,
@@ -46,6 +56,10 @@ import { Logger } from '@openlinker/shared/logging';
 import type { IAutoIssueTriggerService } from './auto-issue-trigger.service.interface';
 import type { InvoiceTriggerModel } from '../../domain/types/invoice-trigger.types';
 import { parseTriggerModel } from '../../domain/types/invoice-trigger.types';
+import {
+  parseIsPrimaryInvoicing,
+  selectPrimaryInvoicingConnection,
+} from '../../domain/types/invoicing-primary.types';
 import { normalizeShippingLineName } from '../../domain/types/shipping-line-label.types';
 import { toIssueInvoiceCommand } from '../mappers/order-to-issue-invoice-command.mapper';
 import { BatchedTriggerNotImplementedError } from '../../domain/exceptions/batched-trigger-not-implemented.error';
@@ -111,49 +125,82 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       connection.enabledCapabilities.includes(INVOICING_CAPABILITY),
     );
 
-    for (const connection of connections) {
-      // F9/D11: each connection is isolated — a compose/enqueue failure on one
-      // never aborts the others, and never escapes onOrderTransition (the
-      // OrderIngestionService catch swallows too, but defense in depth here keeps
-      // a single bad connection from skipping the rest).
-      try {
-        const triggerModel = parseTriggerModel(
-          connection.config.invoicing?.triggerModel,
-        );
+    // #2047: ONE order, ONE invoice. Resolve exactly one connection instead of
+    // fanning out — KSeF / inFakt / Subiekt are alternative routes for the same
+    // document, so issuing on each produced two real fiscal documents for one
+    // sale (the per-connection idempotency key could never dedup across them).
+    const selection = selectPrimaryInvoicingConnection(
+      connections.map((candidate) => ({
+        id: candidate.id,
+        isPrimary: parseIsPrimaryInvoicing(candidate.config.invoicing?.isPrimary),
+      })),
+    );
 
-        if (!this.qualifies(order, triggerModel, connection.id)) {
-          continue;
-        }
+    if (selection.kind === 'none') {
+      return;
+    }
+    if (selection.kind === 'ambiguous') {
+      // Deliberately silent-by-design at the domain level: issue NOTHING and log
+      // an error naming the ambiguity. An uninvoiced order is fixable by hand; two
+      // issued documents for one sale need a correction of a document that should
+      // never have existed. The order-detail panel surfaces this state to the
+      // operator ("Automatic invoicing is off for this order") so the decision is
+      // not visible only in a log.
+      this.logger.error(
+        `Auto-issue skipped: ${selection.candidateIds.length} active Invoicing connections and ` +
+          `no unambiguous primary (reason=${selection.reason}) — issuing nothing rather than ` +
+          `issuing more than one document. orderId=${order.id} ` +
+          `candidateConnectionIds=${selection.candidateIds.join(',')} ` +
+          `sourceEventId=${sourceEventId ?? 'n/a'}. ` +
+          `Set config.invoicing.isPrimary on exactly one connection.`,
+      );
+      return;
+    }
 
-        // F4: compose the deterministic key ONCE and thread it into BOTH the
-        // job-row idempotencyKey AND payload.idempotencyKey.
-        const idempotencyKey = `invoice:${connection.id}:${order.id}`;
-        // #1694: resolve the source connection's neutral platformType for the
-        // per-source numbering axis. Best-effort — a lookup failure leaves it
-        // absent (routing falls back past the source axis), never aborting issuance.
-        const sourcePlatformType = await this.resolveSourcePlatformType(sourceConnectionId);
-        const payload = this.composePayload(
-          order,
-          connection.id,
-          idempotencyKey,
-          triggerModel,
-          sourceConnectionId,
-          sourceEventId,
-          this.readShippingLineName(connection),
-          sourcePlatformType,
-        );
+    const connection = connections.find((candidate) => candidate.id === selection.connectionId);
+    if (connection === undefined) {
+      return;
+    }
 
-        await this.syncJobs.schedule({
-          jobType: 'invoicing.issue',
-          connectionId: connection.id,
-          payload: payload as unknown as Record<string, unknown>,
-          idempotencyKey,
-          maxAttempts: AUTO_ISSUE_RETRY_BUDGET,
-          runAfter: new Date(),
-        });
-      } catch (error) {
-        this.logIssuanceFailure(error, connection.id, order.id, sourceEventId);
+    // F9/D11: the selected connection's work is isolated — a compose/enqueue
+    // failure never escapes onOrderTransition (the OrderIngestionService catch
+    // swallows too, but defense in depth here keeps an invoicing fault from
+    // surfacing as an order-ingestion failure).
+    try {
+      const triggerModel = parseTriggerModel(connection.config.invoicing?.triggerModel);
+
+      if (!this.qualifies(order, triggerModel, connection.id)) {
+        return;
       }
+
+      // F4: compose the deterministic key ONCE and thread it into BOTH the
+      // job-row idempotencyKey AND payload.idempotencyKey.
+      const idempotencyKey = `invoice:${connection.id}:${order.id}`;
+      // #1694: resolve the source connection's neutral platformType for the
+      // per-source numbering axis. Best-effort — a lookup failure leaves it
+      // absent (routing falls back past the source axis), never aborting issuance.
+      const sourcePlatformType = await this.resolveSourcePlatformType(sourceConnectionId);
+      const payload = this.composePayload(
+        order,
+        connection.id,
+        idempotencyKey,
+        triggerModel,
+        sourceConnectionId,
+        sourceEventId,
+        this.readShippingLineName(connection),
+        sourcePlatformType,
+      );
+
+      await this.syncJobs.schedule({
+        jobType: 'invoicing.issue',
+        connectionId: connection.id,
+        payload: payload as unknown as Record<string, unknown>,
+        idempotencyKey,
+        maxAttempts: AUTO_ISSUE_RETRY_BUDGET,
+        runAfter: new Date(),
+      });
+    } catch (error) {
+      this.logIssuanceFailure(error, connection.id, order.id, sourceEventId);
     }
   }
 

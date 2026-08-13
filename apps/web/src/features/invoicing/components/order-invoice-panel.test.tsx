@@ -152,34 +152,187 @@ describe('OrderInvoicePanel — capability/toggle gate', () => {
     expect(await screen.findByRole('button', { name: /issue invoice/i })).toBeInTheDocument();
   });
 
-  it('with >1 candidate: requires an explicit connection pick — no auto-bound Issue, no GET fired', async () => {
+  it('with >1 candidate and NO primary: warns that auto-issue did nothing and disables Issue (#2047)', async () => {
     const a = { ...invoicingConnection, id: 'conn_aaa', name: 'Alpha' };
     const b = { ...invoicingConnection, id: 'conn_zzz', name: 'Zeta' };
-    const getForOrder = vi.fn().mockRejectedValue(notFound());
     renderWithProviders(<OrderInvoicePanel order={order} />, {
-      apiClient: createMockApiClient({ connections: { list: vi.fn().mockResolvedValue([b, a]) }, invoicing: { getForOrder } }),
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([b, a]) },
+        invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+      }),
+      ...adminSession,
     });
-    const picker = await screen.findByRole('combobox', { name: /invoicing connection/i });
+    const picker = await screen.findByRole('combobox', { name: /issue on/i });
     expect(picker).toHaveValue('');
     expect(screen.getByRole('option', { name: 'Alpha' })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Zeta' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /issue invoice|retry/i })).toBeNull();
-    expect(getForOrder).not.toHaveBeenCalled();
+    expect(screen.getByText(/Automatic invoicing is off for this order/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /issue invoice/i })).toBeDisabled();
+    expect(screen.getByRole('link', { name: /set a primary/i })).toBeInTheDocument();
   });
 
-  it('with >1 candidate: picking a connection binds the GET + Issue action to THAT connection', async () => {
+  it('with >1 candidate and a configured primary: preselects + labels it, Issue enabled (#2047)', async () => {
+    const a = { ...invoicingConnection, id: 'conn_aaa', name: 'Alpha' };
+    const b = {
+      ...invoicingConnection,
+      id: 'conn_zzz',
+      name: 'Zeta',
+      config: { invoicing: { isPrimary: true } },
+    };
+    renderWithProviders(<OrderInvoicePanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([b, a]) },
+        invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+      }),
+      ...adminSession,
+    });
+    const picker = await screen.findByRole('combobox', { name: /issue on/i });
+    expect(picker).toHaveValue('conn_zzz');
+    expect(screen.getByRole('option', { name: /Zeta - primary/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /issue invoice/i })).toBeEnabled();
+    expect(screen.queryByText(/Automatic invoicing is off/i)).toBeNull();
+  });
+
+  it('with >1 candidate: the picked connection is the one Issue targets', async () => {
     const user = userEvent.setup();
     const a = { ...invoicingConnection, id: 'conn_aaa', name: 'Alpha' };
     const b = { ...invoicingConnection, id: 'conn_zzz', name: 'Zeta' };
-    const getForOrder = vi.fn().mockRejectedValue(notFound());
+    const issue = vi.fn().mockResolvedValue(makeInvoice({ connectionId: 'conn_zzz' }));
     renderWithProviders(<OrderInvoicePanel order={order} />, {
-      apiClient: createMockApiClient({ connections: { list: vi.fn().mockResolvedValue([b, a]) }, invoicing: { getForOrder } }),
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([b, a]) },
+        invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()), issue },
+      }),
       ...adminSession,
     });
-    const picker = await screen.findByRole('combobox', { name: /invoicing connection/i });
+    const picker = await screen.findByRole('combobox', { name: /issue on/i });
     await user.selectOptions(picker, 'conn_zzz');
-    await waitFor(() => expect(getForOrder).toHaveBeenCalledWith(ORDER_ID, 'conn_zzz'));
-    expect(await screen.findByRole('button', { name: /issue invoice/i })).toBeEnabled();
+    await user.click(await screen.findByRole('button', { name: /issue invoice/i }));
+    await waitFor(() =>
+      expect(issue).toHaveBeenCalledWith(
+        expect.objectContaining({ connectionId: 'conn_zzz', orderId: ORDER_ID }),
+      ),
+    );
+  });
+
+  it('reads the invoice WITHOUT a connectionId, so >1 candidate no longer blocks the read (#2047)', async () => {
+    const a = { ...invoicingConnection, id: 'conn_aaa', name: 'Alpha' };
+    const b = { ...invoicingConnection, id: 'conn_zzz', name: 'Zeta' };
+    const getForOrder = vi.fn().mockRejectedValue(notFound());
+    renderWithProviders(<OrderInvoicePanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([b, a]) },
+        invoicing: { getForOrder },
+      }),
+      ...adminSession,
+    });
+    await screen.findByRole('combobox', { name: /issue on/i });
+    await waitFor(() => expect(getForOrder).toHaveBeenCalledWith(ORDER_ID));
+  });
+});
+
+// #2047: once a record exists the connection is a FACT. The picker that used to
+// sit above an issued invoice is what let one sale get two documents.
+describe('OrderInvoicePanel — connection lock (#2047)', () => {
+  const alpha = { ...invoicingConnection, id: 'conn_aaa', name: 'Alpha' };
+  const zeta = { ...invoicingConnection, id: 'conn_zzz', name: 'Zeta' };
+
+  function renderWithTwoConnections(
+    invoice: InvoiceRecord,
+    connections: Connection[] = [alpha, zeta],
+  ): ReturnType<typeof renderWithProviders> {
+    return renderWithProviders(<OrderInvoicePanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue(connections) },
+        invoicing: { getForOrder: vi.fn().mockResolvedValue(invoice) },
+      }),
+      ...adminSession,
+    });
+  }
+
+  it('renders NO connection picker and NO Issue button for an invoiced order, even with 2 candidates', async () => {
+    renderWithTwoConnections(makeInvoice({ connectionId: 'conn_aaa' }));
+
+    expect(await screen.findByText(/Issued by/i)).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /issue on/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /issue invoice/i })).toBeNull();
+  });
+
+  it('names the issuing connection read off the record, not an operator pick', async () => {
+    renderWithTwoConnections(makeInvoice({ connectionId: 'conn_zzz' }));
+
+    const lock = await screen.findByText(/Issued by/i);
+    expect(lock.parentElement?.textContent).toContain('Zeta');
+    expect(lock.parentElement?.textContent).not.toContain('Alpha');
+  });
+
+  it('says "Issuing on" while an attempt is in flight (the most dangerous window)', async () => {
+    renderWithTwoConnections(makeInvoice({ status: 'pending', connectionId: 'conn_aaa' }));
+
+    expect(await screen.findByText(/Issuing on/i)).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /issue on/i })).toBeNull();
+  });
+
+  it('says "Still assigned to" for an in-doubt failure and offers no provider change', async () => {
+    renderWithTwoConnections(
+      makeInvoice({ status: 'failed', failureMode: 'in-doubt', connectionId: 'conn_aaa' }),
+    );
+
+    expect(await screen.findByText(/Still assigned to/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /issue on a different connection/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^retry$/i })).toBeNull();
+  });
+
+  it('offers a guarded provider switch ONLY for a rejected failure', async () => {
+    const user = userEvent.setup();
+    const issue = vi.fn().mockResolvedValue(makeInvoice({ connectionId: 'conn_zzz' }));
+    renderWithProviders(<OrderInvoicePanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([alpha, zeta]) },
+        invoicing: {
+          getForOrder: vi.fn().mockResolvedValue(
+            makeInvoice({
+              status: 'failed',
+              failureMode: 'rejected',
+              failureCode: 'provider-rejected',
+              connectionId: 'conn_aaa',
+            }),
+          ),
+          issue,
+        },
+      }),
+      ...adminSession,
+    });
+
+    await user.click(
+      await screen.findByRole('button', { name: /issue on a different connection/i }),
+    );
+    expect(
+      screen.getByText(/You are moving this order to another provider/i),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /issue here/i }));
+
+    await waitFor(() =>
+      expect(issue).toHaveBeenCalledWith(expect.objectContaining({ connectionId: 'conn_zzz' })),
+    );
+  });
+
+  it('still renders the invoice when its connection is no longer usable, with actions off', async () => {
+    // The record names a disabled connection: the invoice is an accounting fact,
+    // but no other connection may be offered (that would be a second invoice).
+    const disabled = { ...alpha, status: 'disabled' as Connection['status'] };
+    renderWithTwoConnections(makeInvoice({ connectionId: 'conn_aaa' }), [disabled, zeta]);
+
+    expect(await screen.findByText(/Issued by/i)).toBeInTheDocument();
+    expect(screen.getByText('disconnected')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /issue on/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /issue invoice/i })).toBeNull();
+  });
+
+  it('renders the invoice even when OL knows no connection with that id at all', async () => {
+    renderWithTwoConnections(makeInvoice({ connectionId: 'conn_deleted' }), []);
+
+    const lock = await screen.findByText(/Issued by/i);
+    expect(lock.parentElement?.textContent).toContain('conn_deleted');
   });
 });
 

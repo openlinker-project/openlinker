@@ -19,6 +19,7 @@ import type { InvoiceNumberingSeriesRepositoryPort } from '../../domain/ports/in
 import type { InvoicingPort } from '../../domain/ports/invoicing.port';
 import { DuplicateInvoiceRecordException } from '../../domain/exceptions/duplicate-invoice-record.exception';
 import { MissingNumberingSeriesException } from '../../domain/exceptions/missing-numbering-series.exception';
+import { OrderAlreadyInvoicedException } from '../../domain/exceptions/order-already-invoiced.exception';
 import type {
   InvoiceLine,
   IssueCorrectionCommand,
@@ -185,6 +186,7 @@ describe('InvoiceService', () => {
       findByOrderId: jest.fn(),
       findBySeriesId: jest.fn(),
       findLatestByOrderId: jest.fn(),
+      findAllByOrderId: jest.fn(),
       findLatestByOrderIds: jest.fn(),
       findByProviderInvoiceId: jest.fn(),
       findByIdempotencyKey: jest.fn(),
@@ -196,6 +198,10 @@ describe('InvoiceService', () => {
       findPendingSubmission: jest.fn(),
       findStuckPending: jest.fn(),
     };
+    // Default: the order carries no record on any OTHER connection, so the
+    // one-invoice-per-order guard (#2047) is a no-op. Tests that exercise a
+    // cross-connection block override this per-case.
+    repo.findAllByOrderId.mockResolvedValue([]);
     // Default: every claim succeeds (returns a record with the live lease). Tests
     // that exercise a contended/lost claim override this per-case.
     repo.claimForIssue.mockImplementation((id: string) =>
@@ -695,6 +701,92 @@ describe('InvoiceService', () => {
       repo.findById.mockResolvedValue(null);
 
       expect(await service.getInvoiceById('missing')).toBeNull();
+    });
+  });
+
+  // #2047: one sale is one invoice. A record on ANOTHER connection blocks
+  // issuance unless it is a terminal `rejected` failure (nothing was created).
+  describe('one-invoice-per-order guard (#2047)', () => {
+    const OTHER_CONNECTION = 'conn-other';
+
+    function rival(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
+      return makeRecord({
+        id: 'rival-rec',
+        connectionId: OTHER_CONNECTION,
+        idempotencyKey: null,
+        ...overrides,
+      });
+    }
+
+    it.each([
+      ['pending', { status: 'pending' as const }],
+      ['issuing', { status: 'issuing' as const }],
+      ['issued', { status: 'issued' as const }],
+      ['failed in-doubt', { status: 'failed' as const, failureMode: 'in-doubt' as const }],
+      ['failed with no failureMode', { status: 'failed' as const, failureMode: null }],
+    ])(
+      'should refuse and create no record when the order has a %s record on another connection',
+      async (_label, overrides) => {
+        repo.findAllByOrderId.mockResolvedValue([rival(overrides)]);
+
+        await expect(service.issueInvoice(makeCmd())).rejects.toThrow(
+          OrderAlreadyInvoicedException,
+        );
+        expect(repo.create).not.toHaveBeenCalled();
+        expect(repo.findByIdempotencyKey).not.toHaveBeenCalled();
+        expect(adapter.issueInvoice).not.toHaveBeenCalled();
+      },
+    );
+
+    it('should name the blocking connection and invoice on the thrown exception', async () => {
+      repo.findAllByOrderId.mockResolvedValue([rival({ status: 'issued', id: 'blocking-1' })]);
+
+      const error = await service.issueInvoice(makeCmd()).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(OrderAlreadyInvoicedException);
+      const typed = error as OrderAlreadyInvoicedException;
+      expect(typed.issuingConnectionId).toBe(OTHER_CONNECTION);
+      expect(typed.requestedConnectionId).toBe(CONNECTION);
+      expect(typed.blockingInvoiceId).toBe('blocking-1');
+      expect(typed.blockingStatus).toBe('issued');
+    });
+
+    it('should still issue when the only record elsewhere is a terminal rejected failure', async () => {
+      repo.findAllByOrderId.mockResolvedValue([
+        rival({ status: 'failed', failureMode: 'rejected' }),
+      ]);
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord());
+      repo.updateOutcome.mockResolvedValue(makeRecord({ status: 'issued' }));
+      adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
+
+      await expect(service.issueInvoice(makeCmd())).resolves.toBeDefined();
+      expect(adapter.issueInvoice).toHaveBeenCalledTimes(1);
+    });
+
+    it('should ignore records on the REQUESTED connection so an issued replay stays idempotent', async () => {
+      // Same-connection records are owned by the per-connection lifecycle
+      // (read-gate + resumeExisting), not by this guard.
+      const existing = makeRecord({ status: 'issued' });
+      repo.findAllByOrderId.mockResolvedValue([existing]);
+      repo.findByIdempotencyKey.mockResolvedValue(existing);
+
+      await expect(service.issueInvoice(makeCmd())).resolves.toBe(existing);
+      expect(adapter.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('should block on a blocking record even when a newer non-blocking one exists elsewhere', async () => {
+      // findAllByOrderId is newest-first; the guard must scan the whole set, not
+      // only the latest row.
+      repo.findAllByOrderId.mockResolvedValue([
+        rival({ id: 'newer', status: 'failed', failureMode: 'rejected' }),
+        rival({ id: 'older', connectionId: 'conn-third', status: 'issued' }),
+      ]);
+
+      await expect(service.issueInvoice(makeCmd())).rejects.toThrow(
+        OrderAlreadyInvoicedException,
+      );
+      expect(repo.create).not.toHaveBeenCalled();
     });
   });
 

@@ -1,15 +1,29 @@
 /**
- * Order Invoice Panel (#757, redesign #1240 A1+A5)
+ * Order Invoice Panel (#757, redesign #1240 A1+A5, connection lock #2047)
  *
  * Redesigned dual-lifecycle panel for the invoicing lifecycle. States:
- *   not-issued  → Issue button + DocumentTypeSelect
+ *   not-issued  → Issue button + DocumentTypeSelect (+ picker when >1 candidate)
  *   pending     → pulsing badge, skeleton, no action
  *   issuing     → info pulse badge, locked notice, NO action
- *   issued      → KV block + provider extras slot
+ *   issued      → connection lock + KV block + provider extras slot
  *   failed      → error inline-alert (resolveFailureCopy) + Retry (only when canRetryInvoice)
  *   in-doubt    → warning inline-alert + Check/Mark-resolved, NO Retry
  *   needs-reauth → warning alert + Re-authenticate CTA
- *   multi       → connection picker (existing logic preserved)
+ *
+ * CONNECTION LOCK (#2047). One sale is one invoice, so the connection is only a
+ * choice while NO record exists:
+ *   - a record exists  → the connection is read off `invoice.connectionId` and
+ *     rendered as a read-only lock. No `Select`, so the panel can no longer be
+ *     talked into reading `(order, other connection)`, seeing a 404, rendering
+ *     "not issued", and offering to issue a SECOND document for one sale.
+ *   - no record        → the picker earns its place. The operator-set primary
+ *     (`config.invoicing.isPrimary`) is preselected; with several candidates and
+ *     no primary the panel says so, because auto-issue then issues NOTHING.
+ *   - `failed` + `rejected` is the ONE state where moving providers is fiscally
+ *     safe (the provider created nothing), so it is offered — behind an explicit
+ *     disclosure that names the consequence, never as a side effect of Retry.
+ *   - the record's connection may be gone/disabled: the invoice still renders
+ *     (an accounting fact) with actions disabled and NO alternative offered.
  *
  * Fiscal-safety rules:
  *   - NEVER render Retry for issuing/in-doubt/pending/issued
@@ -55,51 +69,35 @@ import { useOrderInvoiceQuery } from '../hooks/use-order-invoice-query';
 import { useIssueInvoiceMutation } from '../hooks/use-issue-invoice-mutation';
 import { resolveIssueErrorMessage, isMissingNumberingSeriesError } from '../lib/issue-error-message';
 import { deriveInvoiceDisplayStatus, canRetryInvoice, resolveFailureCopy } from '../lib/derive-invoice-display';
+import {
+  isPrimaryInvoicingConnection,
+  resolveIssuableConnection,
+  resolveIssuingConnection,
+  selectInvoicingCandidates,
+  selectReauthInvoicingConnections,
+} from '../lib/resolve-invoicing-connection';
 import { InvoiceStatusBadge } from './invoice-status-badge';
+import { InvoiceConnectionLock } from './invoice-connection-lock';
 import { RegulatoryStatusBadge } from './regulatory-status-badge';
 import { DocumentTypeSelect, DOCUMENT_TYPE_LABEL_FALLBACK } from './document-type-select';
 import { InvoicePdfLink } from './invoice-pdf-link';
 import { TimeDisplay } from '../../../shared/ui/time-display';
-
-const INVOICING_CAPABILITY = 'Invoicing';
 
 interface OrderInvoicePanelProps {
   order: OrderRecord;
 }
 
 /**
- * Resolve candidate invoicing connections: active + enabled-capability,
- * sorted by id (deterministic). Returns the full match list.
- */
-function selectInvoicingConnections(connections: readonly Connection[]): Connection[] {
-  return connections
-    .filter((c) => c.status === 'active' && c.enabledCapabilities.includes(INVOICING_CAPABILITY))
-    .slice()
-    .sort((a, b) => a.id.localeCompare(b.id));
-}
-
-/**
- * Resolve connections that need re-auth (needs_reauth or error) and have
- * Invoicing in supportedCapabilities. Shown when the active gate fails but
- * a connection is broken.
- */
-function selectReauthConnections(connections: readonly Connection[]): Connection[] {
-  return connections.filter(
-    (c) =>
-      (c.status === 'needs_reauth' || c.status === 'error') &&
-      c.supportedCapabilities.includes(INVOICING_CAPABILITY),
-  );
-}
-
-/**
  * Build the `KeyValueList` rows for the "issued" state — mirrors
- * `buildShipmentFieldItems` in `order-shipment-panel.tsx`. Preserves every
- * existing sub-component and i18n key verbatim; only the wrapping markup
- * changed from a bespoke `<dl>` to the shared primitive (#1449).
+ * `buildShipmentFieldItems` in `order-shipment-panel.tsx`.
+ *
+ * The former "Invoiced via … locked" row is gone (#2047): the fact was promoted
+ * into the `InvoiceConnectionLock` block above the fields. Stating it twice made
+ * it read like a setting, and its "locked" claim was contradicted by the picker
+ * that used to sit above it.
  */
 function buildInvoiceFieldItems(
   invoice: InvoiceRecord,
-  invoicingConnection: Connection | null,
   showRegulatoryBadge: boolean,
   t: (key: string, fallback: string) => string,
 ): KeyValueItem[] {
@@ -134,27 +132,15 @@ function buildInvoiceFieldItems(
     });
   }
 
-  items.push(
-    {
-      id: 'issued',
-      label: t('invoice.field.issued', 'Issued'),
-      value: invoice.issuedAt ? (
-        <TimeDisplay iso={invoice.issuedAt} format="datetime" className="mono-text" />
-      ) : (
-        <span className="text-muted">—</span>
-      ),
-    },
-    {
-      id: 'via',
-      label: t('invoice.field.via', 'Invoiced via'),
-      value: (
-        <>
-          {invoicingConnection?.name ?? invoice.connectionId}{' '}
-          <span className="text-muted">· {t('invoice.field.locked', 'locked')}</span>
-        </>
-      ),
-    },
-  );
+  items.push({
+    id: 'issued',
+    label: t('invoice.field.issued', 'Issued'),
+    value: invoice.issuedAt ? (
+      <TimeDisplay iso={invoice.issuedAt} format="datetime" className="mono-text" />
+    ) : (
+      <span className="text-muted">—</span>
+    ),
+  });
 
   return items;
 }
@@ -165,30 +151,41 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
   const connectionsQuery = useConnectionsQuery();
   const [documentType, setDocumentType] = useState<string>('invoice');
   const [pickedConnectionId, setPickedConnectionId] = useState<string | null>(null);
+  // Provider-switch disclosure (failed + rejected only). Holds the connection the
+  // operator is about to move the order to, or `null` while the disclosure is shut.
+  const [switchTargetId, setSwitchTargetId] = useState<string | null>(null);
 
   const allConnections = connectionsQuery.data ?? [];
 
   const invoicingConnections = useMemo(
-    () => selectInvoicingConnections(allConnections),
+    () => selectInvoicingCandidates(allConnections),
     [allConnections],
   );
 
   const reauthConnections = useMemo(
-    () => selectReauthConnections(allConnections),
+    () => selectReauthInvoicingConnections(allConnections),
     [allConnections],
   );
 
-  const invoicingConnection =
-    invoicingConnections.length === 1
-      ? invoicingConnections[0]
-      : (invoicingConnections.find((c) => c.id === pickedConnectionId) ?? null);
-  const invoicingConnectionId = invoicingConnection?.id ?? null;
-
-  const invoiceQuery = useOrderInvoiceQuery(order.internalOrderId, invoicingConnectionId);
+  // #2047: the read no longer needs a connection — one order has one invoice, so
+  // the panel asks "is this order invoiced anywhere?" and reads the connection off
+  // the answer.
+  const invoiceQuery = useOrderInvoiceQuery(order.internalOrderId);
   const issueMutation = useIssueInvoiceMutation();
 
   const demoMode = useDemoMode();
   const write = useWriteAccess('invoices:write', demoMode);
+
+  const invoice = invoiceQuery.data ?? null;
+  const displayStatus = deriveInvoiceDisplayStatus(invoice);
+
+  // The connection every action targets: read off the RECORD when one exists,
+  // otherwise the operator's pick / the lone candidate / the configured primary.
+  const lock = invoice ? resolveIssuingConnection(invoice, allConnections) : null;
+  const issuableConnection = invoice
+    ? null
+    : resolveIssuableConnection(invoicingConnections, pickedConnectionId);
+  const invoicingConnection = lock ? lock.connection : issuableConnection;
 
   // Per-provider plugin slots (resolved via platformType — ZERO literal strings here)
   const platform = usePlatform(invoicingConnection?.platformType);
@@ -212,83 +209,98 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
     );
   }
 
-  // needs-reauth gate: no active+enabled but a broken invoicing connection exists
-  if (invoicingConnections.length === 0 && reauthConnections.length > 0) {
-    const reauthConn = reauthConnections[0];
-    return (
-      <section className="detail-section order-invoice-panel">
-        <header className="order-invoice-panel__header">
-          <h3 className="detail-section__title">{t('invoice.panel.title', 'Invoice')}</h3>
-          <InvoiceStatusBadge status="not-issued" />
-        </header>
-        <div className="order-invoice-panel__body">
-          <Alert tone="warning">
-            <strong>
+  // With NO record the panel is about issuing, so the capability gates apply. With
+  // a record it always renders — the invoice is an accounting fact even when its
+  // connection is disabled, in error, or deleted (#2047), and no gate may hide it.
+  if (!invoice) {
+    // needs-reauth gate: no active+enabled but a broken invoicing connection exists
+    if (invoicingConnections.length === 0 && reauthConnections.length > 0) {
+      const reauthConn = reauthConnections[0];
+      return (
+        <section className="detail-section order-invoice-panel">
+          <header className="order-invoice-panel__header">
+            <h3 className="detail-section__title">{t('invoice.panel.title', 'Invoice')}</h3>
+            <InvoiceStatusBadge status="not-issued" />
+          </header>
+          <div className="order-invoice-panel__body">
+            <Alert tone="warning">
+              <strong>
+                {t(
+                  'invoice.panel.reauthTitle',
+                  'Connection needs to reconnect.',
+                )}
+              </strong>{' '}
               {t(
-                'invoice.panel.reauthTitle',
-                'Connection needs to reconnect.',
+                'invoice.panel.reauthBody',
+                'Its access expired, so invoices cannot be issued until you re-authenticate this connection.',
               )}
-            </strong>{' '}
-            {t(
-              'invoice.panel.reauthBody',
-              'Its access expired, so invoices cannot be issued until you re-authenticate this connection.',
-            )}
-          </Alert>
-        </div>
-        <div className="order-invoice-panel__actions">
-          <span className="spacer" />
-          <Link className="button button--primary" to={`/connections/${reauthConn.id}`}>
-            {t('invoice.panel.reauth', 'Re-authenticate')}
-          </Link>
-        </div>
-      </section>
-    );
+            </Alert>
+          </div>
+          <div className="order-invoice-panel__actions">
+            <span className="spacer" />
+            <Link className="button button--primary" to={`/connections/${reauthConn.id}`}>
+              {t('invoice.panel.reauth', 'Re-authenticate')}
+            </Link>
+          </div>
+        </section>
+      );
+    }
+
+    // Global capability gate: no active+enabled invoicing connection at all
+    if (invoicingConnections.length === 0) {
+      return null;
+    }
   }
 
-  // Global capability gate: no active+enabled invoicing connection at all
-  if (invoicingConnections.length === 0) {
-    return null;
-  }
+  // The picker is a CHOICE only for an order with no invoice and more than one
+  // candidate; `requiresConnectionPick` is the "several candidates, no primary,
+  // nothing picked yet" state, which is exactly when auto-issue also does nothing.
+  const showConnectionPicker = !invoice && invoicingConnections.length > 1;
+  const requiresConnectionPick = showConnectionPicker && issuableConnection === null;
+  const hasPrimaryCandidate = invoicingConnections.some((c) => isPrimaryInvoicingConnection(c));
 
-  const requiresConnectionPick = invoicingConnections.length > 1 && !invoicingConnection;
-
-  // Multi-connection picker
-  const connectionPicker =
-    invoicingConnections.length > 1 ? (
-      <div className="order-invoice-panel__connection">
-        <label className="order-invoice-panel__connection-label" htmlFor="invoice-connection">
-          {t('invoice.panel.connectionLabel', 'Invoicing connection')}
-        </label>
-        <Select
-          id="invoice-connection"
-          value={invoicingConnectionId ?? ''}
-          onChange={(event) => setPickedConnectionId(event.target.value || null)}
-          aria-label={t('invoice.panel.connectionLabel', 'Invoicing connection')}
-        >
-          <option value="">
-            {t('invoice.panel.connectionPlaceholder', 'Select a connection…')}
+  const connectionPicker = showConnectionPicker ? (
+    <div className="order-invoice-panel__connection">
+      <label className="order-invoice-panel__connection-label" htmlFor="invoice-connection">
+        {t('invoice.panel.issueOnLabel', 'Issue on')}
+      </label>
+      <Select
+        id="invoice-connection"
+        value={issuableConnection?.id ?? ''}
+        onChange={(event) => setPickedConnectionId(event.target.value || null)}
+        aria-label={t('invoice.panel.issueOnLabel', 'Issue on')}
+      >
+        <option value="">
+          {t('invoice.panel.connectionPlaceholder', 'Select a connection…')}
+        </option>
+        {invoicingConnections.map((c) => (
+          <option key={c.id} value={c.id}>
+            {isPrimaryInvoicingConnection(c)
+              ? `${c.name} - ${t('invoice.panel.primarySuffix', 'primary')}`
+              : c.name}
           </option>
-          {invoicingConnections.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </Select>
-      </div>
-    ) : null;
+        ))}
+      </Select>
+    </div>
+  ) : null;
 
-  // Derive display state
-  const invoice = invoiceQuery.data ?? null;
-  const displayStatus = deriveInvoiceDisplayStatus(invoice);
   const showRegulatoryBadge = Boolean(invoice && invoice.regulatoryStatus !== 'not-applicable');
+  // Connections a failed+rejected order could legitimately move to: every other
+  // candidate. Never offered in any other state — see the module docstring.
+  const switchCandidates =
+    invoice && canRetryInvoice(invoice)
+      ? invoicingConnections.filter((c) => c.id !== invoice.connectionId)
+      : [];
+  const switchTarget =
+    switchCandidates.find((c) => c.id === switchTargetId) ?? switchCandidates[0] ?? null;
 
-  const handleIssue = (): void => {
-    if (!invoicingConnection) return;
+  const issueOn = (connection: Connection): void => {
     setMissingNumbering(false);
     issueMutation.mutate(
-      { connectionId: invoicingConnection.id, orderId: order.internalOrderId, documentType },
+      { connectionId: connection.id, orderId: order.internalOrderId, documentType },
       {
         onSuccess: () => {
+          setSwitchTargetId(null);
           showToast({
             tone: 'success',
             title: t('invoice.action.issued', 'Invoice issued'),
@@ -307,6 +319,9 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
             title: t('invoice.action.issueFailed', 'Could not issue invoice'),
             description: resolveIssueErrorMessage(error, t),
           });
+          // A 409 means the server refused: the order is already issuing/issued
+          // here, or already invoiced on ANOTHER connection (#2047). Re-read so the
+          // panel shows the real record instead of the stale empty state.
           if (error instanceof ApiError && error.status === 409) {
             void invoiceQuery.refetch();
           }
@@ -314,6 +329,13 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
       },
     );
   };
+
+  const handleIssue = (): void => {
+    if (!invoicingConnection) return;
+    issueOn(invoicingConnection);
+  };
+
+  const invoiceSettled = !invoiceQuery.isError && !invoiceQuery.isLoading;
 
   return (
     <section className="detail-section order-invoice-panel">
@@ -330,16 +352,33 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
       {connectionPicker}
 
       {requiresConnectionPick ? (
+        <div className="order-invoice-panel__body">
+          <Alert tone="warning">
+            <strong>
+              {t(
+                'invoice.panel.noPrimaryTitle',
+                'Automatic invoicing is off for this order.',
+              )}
+            </strong>{' '}
+            {t(
+              'invoice.panel.noPrimaryBody',
+              'Several connections can issue invoices and none is marked primary, so OpenLinker issued nothing rather than issuing twice. Pick a connection above to issue this one by hand, or set a primary so it happens on its own.',
+            )}
+          </Alert>
+        </div>
+      ) : null}
+
+      {showConnectionPicker && !requiresConnectionPick && hasPrimaryCandidate ? (
         <p className="order-invoice-panel__notice">
           {t(
-            'invoice.panel.selectConnectionPrompt',
-            'Select the invoicing connection to view or issue this order invoice.',
+            'invoice.panel.lockWarning',
+            'Not invoiced yet. The order locks to whichever connection you pick and this list disappears. Nothing is sent until you click Issue.',
           )}
         </p>
       ) : null}
 
       {/* Invoice query error (not not-issued — must not masquerade as absent) */}
-      {!requiresConnectionPick && invoiceQuery.isError ? (
+      {invoiceQuery.isError ? (
         <Alert tone="error" className="order-invoice-panel__error">
           {t('invoice.query.error', 'Could not load the invoice status.')}{' '}
           <Button
@@ -375,12 +414,28 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
       ) : null}
 
       {/* Loading skeleton */}
-      {!requiresConnectionPick && !invoiceQuery.isError && invoiceQuery.isLoading ? (
+      {!invoiceQuery.isError && invoiceQuery.isLoading ? (
         <div className="order-invoice-panel__skeleton" aria-hidden="true" />
       ) : null}
 
+      {/* ── The connection lock: a fact for every state that HAS a record ── */}
+      {invoiceSettled && invoice && lock ? (
+        <div className="order-invoice-panel__body">
+          <InvoiceConnectionLock
+            status={displayStatus}
+            connectionName={lock.connection?.name ?? lock.connectionId}
+            tag={
+              lock.isStale
+                ? t('invoice.lock.tagDisconnected', 'disconnected')
+                : (lock.connection?.platformType ?? '')
+            }
+            isStale={lock.isStale}
+          />
+        </div>
+      ) : null}
+
       {/* ── Issuing: locked live-lease notice, NO action ── */}
-      {!requiresConnectionPick && !invoiceQuery.isError && !invoiceQuery.isLoading && displayStatus === 'issuing' ? (
+      {invoiceSettled && displayStatus === 'issuing' ? (
         <p className="order-invoice-panel__notice order-invoice-panel__notice--locked">
           {t(
             'invoice.issuing.body',
@@ -390,7 +445,7 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
       ) : null}
 
       {/* ── Pending: skeleton + notice, no action ── */}
-      {!requiresConnectionPick && !invoiceQuery.isError && !invoiceQuery.isLoading && displayStatus === 'pending' ? (
+      {invoiceSettled && displayStatus === 'pending' ? (
         <>
           <div className="order-invoice-panel__body">
             <div className="order-invoice-panel__skeleton" style={{ width: '60%' }} aria-hidden="true" />
@@ -406,21 +461,27 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
       ) : null}
 
       {/* ── Issued: read-only KV + provider slot ── */}
-      {!requiresConnectionPick && !invoiceQuery.isError && !invoiceQuery.isLoading && displayStatus === 'issued' && invoice ? (
+      {invoiceSettled && displayStatus === 'issued' && invoice ? (
         <div className="order-invoice-panel__body">
-          <KeyValueList
-            items={buildInvoiceFieldItems(invoice, invoicingConnection, showRegulatoryBadge, t)}
-          />
+          <KeyValueList items={buildInvoiceFieldItems(invoice, showRegulatoryBadge, t)} />
 
           {/* Provider extras slot (e.g. KSeF UPO, Subiekt KSeF status) */}
           {InvoiceDetailSection && invoicingConnection ? (
             <InvoiceDetailSection invoice={invoice} connection={invoicingConnection} />
           ) : null}
 
-          {/* Correction trigger — only when the provider supports the slot */}
+          {/* Correction trigger — only when the provider supports the slot. A
+              correction always goes to the ORIGINAL's connection and has no
+              picker, so a stale connection disables the action rather than
+              offering to correct via a different provider (that would be a
+              second document referring to nothing that provider knows about). */}
           {InvoiceCorrectionFlow && invoicingConnection ? (
             <div className="order-invoice-panel__correction">
-              <Button tone="secondary" onClick={() => setCorrectionOpen(true)}>
+              <Button
+                tone="secondary"
+                onClick={() => setCorrectionOpen(true)}
+                disabled={lock?.isStale ?? false}
+              >
                 {t('invoice.action.issueCorrection', 'Issue correction')}
               </Button>
               <Dialog open={correctionOpen} onOpenChange={setCorrectionOpen}>
@@ -439,11 +500,20 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
               </Dialog>
             </div>
           ) : null}
+
+          {lock?.isStale ? (
+            <p className="order-invoice-panel__notice">
+              {t(
+                'invoice.lock.reconnectHint',
+                'Reconnect this connection to act on this invoice again.',
+              )}
+            </p>
+          ) : null}
         </div>
       ) : null}
 
-      {/* ── Failed (rejected): directive error + Retry ── */}
-      {!requiresConnectionPick && !invoiceQuery.isError && !invoiceQuery.isLoading && displayStatus === 'failed' && invoice ? (
+      {/* ── Failed (rejected): directive error + Retry (+ explicit provider switch) ── */}
+      {invoiceSettled && displayStatus === 'failed' && invoice ? (
         <>
           <div className="order-invoice-panel__body">
             <div className="invoice-panel__inline-alert invoice-panel__inline-alert--error">
@@ -455,29 +525,98 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
           </div>
           {canRetryInvoice(invoice) && write.visible ? (
             <div className="order-invoice-panel__actions">
-              <span className="text-muted" style={{ fontSize: '11.5px' }}>
-                {t(
-                  'invoice.failed.retryHint',
-                  'Rejected — nothing was issued, so it is safe to retry once the cause is fixed.',
-                )}
-              </span>
+              {switchCandidates.length > 0 && switchTargetId === null ? (
+                <Button
+                  tone="secondary"
+                  className="button--sm"
+                  onClick={() => setSwitchTargetId(switchCandidates[0].id)}
+                >
+                  {t('invoice.failed.switchOpen', 'Issue on a different connection')}
+                </Button>
+              ) : (
+                <span className="text-muted" style={{ fontSize: '11.5px' }}>
+                  {t(
+                    'invoice.failed.retryHint',
+                    'Rejected — nothing was issued, so it is safe to retry once the cause is fixed.',
+                  )}
+                </span>
+              )}
               <span className="spacer" />
               <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
                 <Button
                   tone="secondary"
                   onClick={handleIssue}
-                  disabled={issueMutation.isPending || write.demoReadOnly}
+                  disabled={issueMutation.isPending || write.demoReadOnly || !invoicingConnection}
                 >
                   {t('invoice.action.retry', 'Retry')}
                 </Button>
               </ReadOnlyLock>
             </div>
           ) : null}
+
+          {/* Provider switch: possible, but never accidental. It states the
+              consequence (new numbering series + a new lock) before it acts. */}
+          {canRetryInvoice(invoice) && write.visible && switchTargetId !== null && switchTarget ? (
+            <div className="order-invoice-panel__body">
+              <Alert tone="warning">
+                <strong>
+                  {t(
+                    'invoice.failed.switchWarnTitle',
+                    'You are moving this order to another provider.',
+                  )}
+                </strong>{' '}
+                {t(
+                  'invoice.failed.switchWarnBody',
+                  'The current provider rejected it and issued nothing, so this is safe - but the order then locks to the new connection and its number comes from that provider series.',
+                )}
+              </Alert>
+              <div className="order-invoice-panel__actions">
+                <div className="order-invoice-panel__connection">
+                  <label
+                    className="order-invoice-panel__connection-label"
+                    htmlFor="invoice-switch-connection"
+                  >
+                    {t('invoice.failed.switchLabel', 'Move to')}
+                  </label>
+                  <Select
+                    id="invoice-switch-connection"
+                    value={switchTarget.id}
+                    onChange={(event) => setSwitchTargetId(event.target.value)}
+                    aria-label={t('invoice.failed.switchLabel', 'Move to')}
+                  >
+                    {switchCandidates.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <span className="spacer" />
+                <Button
+                  tone="secondary"
+                  className="button--sm"
+                  onClick={() => setSwitchTargetId(null)}
+                >
+                  {t('invoice.failed.switchCancel', 'Cancel')}
+                </Button>
+                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                  <Button
+                    tone="primary"
+                    className="button--sm"
+                    onClick={() => issueOn(switchTarget)}
+                    disabled={issueMutation.isPending || write.demoReadOnly}
+                  >
+                    {t('invoice.failed.switchConfirm', 'Issue here')}
+                  </Button>
+                </ReadOnlyLock>
+              </div>
+            </div>
+          ) : null}
         </>
       ) : null}
 
-      {/* ── In-doubt: warning + Check/Mark-resolved, NO Retry ── */}
-      {!requiresConnectionPick && !invoiceQuery.isError && !invoiceQuery.isLoading && displayStatus === 'in-doubt' && invoice ? (
+      {/* ── In-doubt: warning + Check/Mark-resolved, NO Retry, NO provider switch ── */}
+      {invoiceSettled && displayStatus === 'in-doubt' && invoice ? (
         <>
           <div className="order-invoice-panel__body">
             <div className="invoice-panel__inline-alert invoice-panel__inline-alert--warning">
@@ -489,7 +628,11 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
                     'We could not confirm whether this invoice was issued.',
                   )}
                 </strong>{' '}
-                {resolveFailureCopy(invoice, t)}
+                {resolveFailureCopy(invoice, t)}{' '}
+                {t(
+                  'invoice.inDoubt.noSwitch',
+                  'Do not move it to another provider until you know - that is how one sale ends up with two invoices.',
+                )}
               </div>
             </div>
           </div>
@@ -530,7 +673,7 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
       ) : null}
 
       {/* ── Not issued: DocumentTypeSelect (fills the row) + primary Issue ── */}
-      {!requiresConnectionPick && !invoiceQuery.isError && !invoiceQuery.isLoading && displayStatus === 'not-issued' && write.visible ? (
+      {invoiceSettled && displayStatus === 'not-issued' && write.visible ? (
         <div className="order-invoice-panel__actions order-invoice-panel__actions--issue">
           <DocumentTypeSelect
             value={documentType}
@@ -541,12 +684,23 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
             disabled={issueMutation.isPending || write.demoReadOnly}
             className="order-invoice-panel__doc-type"
           />
+          {requiresConnectionPick ? (
+            <Link className="button button--secondary" to="/connections">
+              {t('invoice.panel.setPrimary', 'Set a primary')}
+            </Link>
+          ) : null}
           <ReadOnlyLock
             active={write.demoReadOnly}
             message={DEMO_READ_ONLY_ACTION_MESSAGE}
             onLockedClick={() => captureDemoEvent('demo_invoice_issue_attempted', {})}
           >
-            <Button tone="primary" onClick={handleIssue} disabled={issueMutation.isPending || write.demoReadOnly}>
+            <Button
+              tone="primary"
+              onClick={handleIssue}
+              disabled={
+                issueMutation.isPending || write.demoReadOnly || invoicingConnection === null
+              }
+            >
               {t('invoice.action.issue', 'Issue invoice')}
             </Button>
           </ReadOnlyLock>

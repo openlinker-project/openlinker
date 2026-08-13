@@ -70,6 +70,18 @@ export interface IInvoiceService {
    * Closure tracked by GitHub issue #1200 (follow-up to #1118): neutral
    * `failureMode` discriminator + CAS/lease (`claimForIssue`) on
    * `InvoiceRecordRepositoryPort`.
+   *
+   * ONE INVOICE PER ORDER (#2047): before anything else — before the idempotency
+   * gate, before any row is created — the SVC refuses to issue when the order
+   * already carries a BLOCKING record on a DIFFERENT connection, throwing
+   * `OrderAlreadyInvoicedException` (409 at the HTTP boundary) and creating no
+   * row. Blocking is `InvoiceRecord.blocksIssuanceElsewhere`: `pending`,
+   * `issuing`, `issued`, or `failed` with any `failureMode` other than
+   * `rejected`. Only a terminal `rejected` failure elsewhere leaves another
+   * provider free — an `in-doubt` failure is precisely the case where a second
+   * issuance produces a real duplicate, so it blocks like `pending` does.
+   * Records on the REQUESTED connection are untouched by this guard; the
+   * per-connection retry/replay semantics above own those.
    */
   issueInvoice(cmd: IssueInvoiceCommand): Promise<InvoiceRecord>;
 

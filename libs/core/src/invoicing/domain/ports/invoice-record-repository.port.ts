@@ -44,6 +44,16 @@ export interface InvoiceRecordRepositoryPort {
   findLatestByOrderId(orderId: string): Promise<InvoiceRecord | null>;
 
   /**
+   * Every record held by an order, across ALL connections, newest-first
+   * (`createdAt` DESC, `id` DESC — same tiebreak as {@link findLatestByOrderId}).
+   * Backs the one-invoice-per-order guard (#2047), which must reason about the
+   * order's whole record set rather than only its newest row: a blocking record
+   * can sit on connection A while a newer, non-blocking row exists on B.
+   * Returns `[]` for an order with no records.
+   */
+  findAllByOrderId(orderId: string): Promise<InvoiceRecord[]>;
+
+  /**
    * Batch counterpart of {@link findLatestByOrderId} (#1713): the most-recently-
    * created record for each of the given order ids, at most one per order. Backs
    * the orders-list invoice projection, which needs one query for the whole page

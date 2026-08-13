@@ -23,6 +23,7 @@ import {
   InvoiceRecordNotFoundException,
   UnsupportedRegulatoryDocumentKindError,
   DuplicateInvoiceRecordException,
+  OrderAlreadyInvoicedException,
   BuyerProfile,
   PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
 } from '@openlinker/core/invoicing';
@@ -287,6 +288,8 @@ describe('InvoicingController', () => {
       issueCorrection: jest.fn(),
       getInvoice: jest.fn().mockResolvedValue(null),
       getInvoiceById: jest.fn().mockResolvedValue(null),
+      // #2047: the connection-agnostic read backing GET without a connectionId.
+      getLatestInvoiceForOrder: jest.fn().mockResolvedValue(null),
       listInvoices: jest.fn(),
       applyRegulatoryClearance: jest.fn(),
     } as unknown as jest.Mocked<IInvoiceService>;
@@ -793,9 +796,10 @@ describe('InvoicingController', () => {
   });
 
   describe('GET /orders/:orderId/invoice', () => {
-    // The invoicing connectionId is a REQUIRED query param (symmetric with POST):
-    // it is the connection the invoice was issued on, NOT the order's
-    // sourceConnectionId (a distinct marketplace capability).
+    // The invoicing connectionId is an OPTIONAL query param (#2047). Supplied, it
+    // keys the read exactly as POST wrote the row; omitted, the read spans
+    // connections. Either way it is never the order's sourceConnectionId (a
+    // distinct marketplace capability).
     const invoicingConn = 'conn_inv';
 
     it('404 when the order record does not exist', async () => {
@@ -834,6 +838,53 @@ describe('InvoicingController', () => {
       });
       expect(result).not.toHaveProperty('errorMessage');
       expect(result).not.toHaveProperty('idempotencyKey');
+    });
+
+    it('resolves the invoice ACROSS connections when connectionId is omitted (#2047)', async () => {
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getLatestInvoiceForOrder.mockResolvedValue(makeInvoiceRecord());
+
+      const result = await controller.getInvoiceForOrder('ol_order_1', {});
+
+      expect(invoiceService.getLatestInvoiceForOrder).toHaveBeenCalledWith('ol_order_1');
+      expect(invoiceService.getInvoice).not.toHaveBeenCalled();
+      expect(result).toHaveProperty('connectionId');
+    });
+
+    it('404 when no connection holds an invoice for the order (connectionId omitted)', async () => {
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getLatestInvoiceForOrder.mockResolvedValue(null);
+
+      await expect(controller.getInvoiceForOrder('ol_order_1', {})).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+  });
+
+  // #2047: the write-path guard surfaces as a 409 naming the issuing connection.
+  describe('POST /invoices — cross-connection guard (#2047)', () => {
+    it('maps OrderAlreadyInvoicedException to 409 naming the issuing connection', async () => {
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getInvoice.mockResolvedValue(null);
+      invoiceService.issueInvoice.mockRejectedValue(
+        new OrderAlreadyInvoicedException(
+          'ol_order_1',
+          'conn_other',
+          'conn_inv',
+          'issued',
+          'rec-block',
+        ),
+      );
+
+      const error = await controller
+        .issueInvoice({ orderId: 'ol_order_1', connectionId: 'conn_inv' })
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ConflictException);
+      const body = (error as ConflictException).getResponse() as Record<string, unknown>;
+      expect(body['error']).toBe('OrderAlreadyInvoicedException');
+      expect(body['issuingConnectionId']).toBe('conn_other');
+      expect(body['blockingInvoiceId']).toBe('rec-block');
     });
   });
 

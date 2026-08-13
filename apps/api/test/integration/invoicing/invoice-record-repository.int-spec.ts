@@ -418,4 +418,38 @@ describe('invoice_records persistence (integration)', () => {
       expect(await repository.findLatestByOrderIds([])).toEqual([]);
     });
   });
+
+  describe('findAllByOrderId — every record an order holds (#2047)', () => {
+    it('returns all connections rows newest-first so the guard can scan the whole set', async () => {
+      const repository = new InvoiceRecordRepository(repo);
+      await repo.save(
+        claimRow({
+          orderId: 'ol_guard_1',
+          connectionId: 'conn-a',
+          status: 'issued',
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        }),
+      );
+      await repo.save(
+        claimRow({
+          orderId: 'ol_guard_1',
+          connectionId: 'conn-b',
+          status: 'failed',
+          createdAt: new Date('2026-01-02T00:00:00.000Z'),
+        }),
+      );
+      // A different order must never leak into the result.
+      await repo.save(claimRow({ orderId: 'ol_guard_2', connectionId: 'conn-a' }));
+
+      const results = await repository.findAllByOrderId('ol_guard_1');
+
+      expect(results).toHaveLength(2);
+      expect(results.map((r) => r.connectionId)).toEqual(['conn-b', 'conn-a']);
+    });
+
+    it('returns [] for an order with no records', async () => {
+      const repository = new InvoiceRecordRepository(repo);
+      expect(await repository.findAllByOrderId('ol_guard_none')).toEqual([]);
+    });
+  });
 });
