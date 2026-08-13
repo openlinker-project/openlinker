@@ -436,8 +436,9 @@ export type StructuredConfigPatch = {
    * (#1810). Platform-neutral, rendered for every connection regardless of
    * `platformType` (unlike every other field in this type, which is
    * platform-specific). Each knob is a digit-string field (empty clears,
-   * mirrors `unmanagedStockQuantity`/`defaultCarrierId`); an all-empty
-   * result drops the key entirely rather than persisting `{}`.
+   * mirrors `unmanagedStockQuantity`/`defaultCarrierId`); an all-empty result
+   * persists an EXPLICIT `config.rateLimit: null` rather than deleting the
+   * key (#2016) — see `mergeStructuredIntoConfig`'s rateLimit clause for why.
    */
   rateLimit?: RateLimitFormValues | null;
 };
@@ -662,12 +663,21 @@ export function mergeStructuredIntoConfig(
       next.bankAccount = structured.infaktBankAccount;
     }
   }
-  // Outbound rate limit (#1810) — whole-object `config.rateLimit`, platform-
-  // neutral. `null` (or an all-empty result after pruning empty-string knobs)
-  // clears the key entirely rather than persisting `{}`.
+  // Outbound rate limit (#1810). Platform-neutral. `null` (or an all-empty
+  // result after pruning empty-string knobs) sets `config.rateLimit` to an
+  // EXPLICIT `null` (#2016) rather than deleting the key. This matters for
+  // the pre-submit merge in `EditConnectionForm.onSubmit`
+  // (`{ ...fresh.config, ...input.config }`): a shallow spread can only
+  // override a key present on the right side — deleting the key would let a
+  // stale, still-configured `rateLimit` from the pre-submit refetch survive
+  // an operator's "revert to adapter default / unlimited" edit. Every
+  // consumer already treats `null` the same as absent (`validateRateLimitConfig`
+  // early-returns on `null`; `RateLimitStatusService` / `HttpTransportFactory`
+  // fall through via `?? defaultRateLimit`), so persisting `null` instead of
+  // omitting the key changes nothing downstream.
   if (structured.rateLimit !== undefined) {
     if (structured.rateLimit === null) {
-      delete next.rateLimit;
+      next.rateLimit = null;
     } else {
       const pruned: Record<string, number> = {};
       if (structured.rateLimit.requestsPerMinute) {
@@ -676,11 +686,7 @@ export function mergeStructuredIntoConfig(
       if (structured.rateLimit.maxConcurrent) {
         pruned.maxConcurrent = Number.parseInt(structured.rateLimit.maxConcurrent, 10);
       }
-      if (Object.keys(pruned).length === 0) {
-        delete next.rateLimit;
-      } else {
-        next.rateLimit = pruned;
-      }
+      next.rateLimit = Object.keys(pruned).length === 0 ? null : pruned;
     }
   }
   // Platform-owned assembly pass (#1330): plugin field names on the patch are

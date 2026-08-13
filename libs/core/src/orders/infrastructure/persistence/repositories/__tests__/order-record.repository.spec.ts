@@ -256,6 +256,32 @@ describe('OrderRecordRepository', () => {
       const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
       expect(callArg.recordStatus).toBe('awaiting_mapping');
     });
+
+    it('should read cancelledAt back via toDomain when present on the ORM row', async () => {
+      const cancelledAt = new Date('2026-08-01T12:00:00Z');
+      const savedEntity = createOrmEntity();
+      savedEntity.cancelledAt = cancelledAt;
+      ormRepository.save.mockResolvedValue(savedEntity);
+
+      const result = await repository.upsert(createDomainEntity());
+
+      expect(result.cancelledAt).toBe(cancelledAt);
+    });
+
+    it('should NOT include cancelledAt in the entity passed to save() (#1984)', async () => {
+      // upsert() is a full-object save() with no per-order lock around it, so
+      // writing cancelledAt here would race with the atomic, COALESCE-based
+      // markCancelled() a concurrent cancel-event call may commit at the same
+      // time. Leaving the property unset lets TypeORM omit the column from
+      // the generated UPDATE entirely — markCancelled is the sole writer.
+      const domainEntity = createDomainEntity();
+      ormRepository.save.mockResolvedValue(createOrmEntity());
+
+      await repository.upsert(domainEntity);
+
+      const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
+      expect(callArg.cancelledAt).toBeUndefined();
+    });
   });
 
   describe('findMany', () => {
@@ -293,6 +319,36 @@ describe('OrderRecordRepository', () => {
       expect(andWhere).toHaveBeenCalledWith('rec.recordStatus = :recordStatus', {
         recordStatus: 'awaiting_mapping',
       });
+    });
+
+    it('should add cancelledAt IS NOT NULL when cancelled=true (#1984)', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        andWhere,
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+
+      await repository.findMany({ cancelled: true }, { limit: 20, offset: 0 });
+
+      expect(andWhere).toHaveBeenCalledWith('rec.cancelledAt IS NOT NULL');
+    });
+
+    it('should add cancelledAt IS NULL when cancelled=false (#1984)', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        andWhere,
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+
+      await repository.findMany({ cancelled: false }, { limit: 20, offset: 0 });
+
+      expect(andWhere).toHaveBeenCalledWith('rec.cancelledAt IS NULL');
     });
   });
 
@@ -334,6 +390,28 @@ describe('OrderRecordRepository', () => {
           newAttempt
         )
       ).rejects.toThrow(OrderRecordNotFoundException);
+    });
+  });
+
+  describe('markCancelled (#1984)', () => {
+    it('should issue a COALESCE update carrying the given instant and order id', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([[], 1]);
+      const cancelledAt = new Date('2026-08-11T09:00:00Z');
+
+      await repository.markCancelled('order-123', cancelledAt);
+
+      expect(ormRepository.query).toHaveBeenCalledWith(
+        expect.stringContaining('COALESCE("cancelledAt", $1)'),
+        [cancelledAt, 'order-123']
+      );
+    });
+
+    it('should not throw when no row matches the given order id', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([[], 0]);
+
+      await expect(
+        repository.markCancelled('non-existent-order', new Date())
+      ).resolves.toBeUndefined();
     });
   });
 });

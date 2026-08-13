@@ -31,6 +31,7 @@ describe('OrderRecordService', () => {
       upsert: jest.fn(),
       updateSyncStatus: jest.fn(),
       updateItemResolutionFailure: jest.fn(),
+      markCancelled: jest.fn(),
     } as unknown as jest.Mocked<OrderRecordRepositoryPort>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -414,6 +415,77 @@ describe('OrderRecordService', () => {
     });
   });
 
+  describe('persistOrder — cancellation recorded via markCancelled (#1984)', () => {
+    beforeEach(() => {
+      process.env.OL_STORE_PII = 'true';
+      service = new OrderRecordService(repository);
+    });
+
+    it('never constructs the OrderRecord passed to upsert() with a non-null cancelledAt, even for a cancelled order', async () => {
+      // The domain OrderRecord built here always defaults cancelledAt to null
+      // (persistOrder never threads order.status into the constructor) —
+      // markCancelled (asserted in the next test) is the sole writer. This
+      // guards against a future regression where someone "helpfully" starts
+      // passing a derived cancelledAt into the constructor, which would let
+      // upsert()'s full-object save() race markCancelled's atomic COALESCE
+      // update — see the toOrm comment on OrderRecordRepository.
+      const order = createMockOrder();
+      order.status = 'cancelled';
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.findById.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.cancelledAt).toBeNull();
+    });
+
+    it('calls markCancelled with (approximately) now for a cancelled order, AFTER upsert', async () => {
+      const order = createMockOrder();
+      order.status = 'cancelled';
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.findById.mockResolvedValue({} as OrderRecord);
+
+      const before = new Date();
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+      const after = new Date();
+
+      expect(repository.markCancelled).toHaveBeenCalledTimes(1);
+      const [calledId, calledAt] = repository.markCancelled.mock.calls[0];
+      expect(calledId).toBe(order.id);
+      expect(calledAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
+      expect(calledAt.getTime()).toBeLessThanOrEqual(after.getTime());
+      const upsertOrder = repository.upsert.mock.invocationCallOrder[0];
+      const markCancelledOrder = repository.markCancelled.mock.invocationCallOrder[0];
+      expect(upsertOrder).toBeLessThan(markCancelledOrder);
+    });
+
+    it('returns the re-fetched record so the caller sees the recorded cancellation', async () => {
+      const order = createMockOrder();
+      order.status = 'cancelled';
+      const refetched = { cancelledAt: new Date() } as unknown as OrderRecord;
+      repository.upsert.mockResolvedValue({ cancelledAt: null } as unknown as OrderRecord);
+      repository.findById.mockResolvedValue(refetched);
+
+      const result = await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      expect(result).toBe(refetched);
+    });
+
+    it('does not call markCancelled or re-fetch for a non-cancelled order', async () => {
+      const order = createMockOrder();
+      order.status = 'pending';
+      const saved = {} as OrderRecord;
+      repository.upsert.mockResolvedValue(saved);
+
+      const result = await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      expect(repository.markCancelled).not.toHaveBeenCalled();
+      expect(repository.findById).not.toHaveBeenCalled();
+      expect(result).toBe(saved);
+    });
+  });
+
   describe('persistIncomingSnapshot', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
@@ -604,6 +676,49 @@ describe('OrderRecordService', () => {
     });
   });
 
+  describe('persistIncomingSnapshot — cancellation recorded via markCancelled (#1984)', () => {
+    beforeEach(() => {
+      process.env.OL_STORE_PII = 'true';
+      service = new OrderRecordService(repository);
+    });
+
+    it('never constructs the OrderRecord passed to upsert() with a non-null cancelledAt, even for a cancelled order', async () => {
+      const incoming = createMockIncomingOrder();
+      incoming.status = 'cancelled';
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.findById.mockResolvedValue({} as OrderRecord);
+
+      await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null);
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.cancelledAt).toBeNull();
+    });
+
+    it('calls markCancelled AFTER upsert for a cancelled order whose items have not resolved yet', async () => {
+      const incoming = createMockIncomingOrder();
+      incoming.status = 'cancelled';
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.findById.mockResolvedValue({} as OrderRecord);
+
+      await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null);
+
+      expect(repository.markCancelled).toHaveBeenCalledWith('ol_order_abc', expect.any(Date));
+      const upsertOrder = repository.upsert.mock.invocationCallOrder[0];
+      const markCancelledOrder = repository.markCancelled.mock.invocationCallOrder[0];
+      expect(upsertOrder).toBeLessThan(markCancelledOrder);
+    });
+
+    it('does not call markCancelled for a non-cancelled order', async () => {
+      const incoming = createMockIncomingOrder();
+      incoming.status = 'pending';
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null);
+
+      expect(repository.markCancelled).not.toHaveBeenCalled();
+    });
+  });
+
   describe('updateSyncStatus', () => {
     const FROZEN_NOW = new Date('2026-04-30T11:22:33.000Z');
 
@@ -746,6 +861,17 @@ describe('OrderRecordService', () => {
         status: 'source_deleted',
         reason: 'variant ol_variant_b deleted at the master',
       });
+    });
+  });
+
+  describe('markCancelled (#1984)', () => {
+    it('delegates to the repository as a pure passthrough', async () => {
+      const internalOrderId = 'order-123';
+      const cancelledAt = new Date('2026-08-11T09:00:00Z');
+
+      await service.markCancelled(internalOrderId, cancelledAt);
+
+      expect(repository.markCancelled).toHaveBeenCalledWith(internalOrderId, cancelledAt);
     });
   });
 });

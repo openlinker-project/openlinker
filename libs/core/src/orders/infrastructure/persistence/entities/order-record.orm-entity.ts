@@ -86,6 +86,16 @@ export class OrderRecordOrmEntity {
   mappingFailureReason!: string | null;
 
   /**
+   * Instant the source reported this order cancelled (#1984). `null` = never
+   * cancelled (or a historical row the backfill migration could not derive a
+   * proxy timestamp for). Independent of `recordStatus`. Indexed for the
+   * future exclusion predicate (#1987/#1988: `WHERE "cancelledAt" IS NULL`).
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  @Index()
+  cancelledAt!: Date | null;
+
+  /**
    * Derived marketplace dispatch (ship-by) deadline (#927) — the `.to` of the
    * source dispatch window, denormalized from the snapshot so the orders list
    * can sort/filter on the SLA via an index without parsing JSONB. `null` when
