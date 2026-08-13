@@ -52,7 +52,11 @@ ADRs are **append-only**. Never edit an accepted ADR's body to change the decisi
 
 ### Length
 
-Aim for **under 500 words**. Exceed only when the "Alternatives considered" section genuinely needs more than three options to be honest. The discipline forces sharp decisions; a 2000-word ADR usually reads like a design doc and should live in `docs/plans/` instead.
+Aim for **under 1,500 words**, and keep every one of them load-bearing. The Decision section is what must stay sharp: one numbered decision per invariant, each stated so an implementer can check compliance. Length that comes from *citing what the code actually does today* is earning its place; length that re-narrates rules already documented elsewhere is not - point at them instead (CLAUDE.md forbids duplicating architectural explanations).
+
+An ADR that needs more is usually recording a decision with several genuinely independent invariants, or a "Deferred, with reasons" section that spares a future reader from re-litigating - both worth the words. What still belongs in `docs/plans/` is *implementation sequencing*: file lists, phase breakdowns, task-by-task steps.
+
+> The bar was "under 500 words" until 2026-08-13. No ADR merged after 026 met it (033 = 1,986; 038 = 2,454; 037 = 3,842), so it was replaced with the norm the record actually holds itself to rather than left on the books as a rule every author breaks.
 
 ### Linking
 
@@ -128,6 +132,6 @@ One pointer per section, identical format every time.
 | [ADR-036](./036-cross-context-read-model-joins.md) | Cross-context read-model joins by table name (server-side sort/filter across contexts) | Accepted | 2026-07-17 |
 | [ADR-037](./037-destination-taxonomy-read-model.md) | Destination taxonomy as a synced read model in `listings` (retires the platform-named Allegro category cache) | Proposed | 2026-07-30 |
 | [ADR-038](./038-per-connection-outbound-rate-limiting.md) | Per-connection outbound rate limiting via a shared transport + ambient priority context | Proposed | 2026-07-30 |
-| [ADR-039](./039-sales-document-routing-policy.md) | Sales-document routing policy - which document a given order gets | Proposed | 2026-08-13 |
+| [ADR-041](./041-sales-document-routing-policy.md) | Sales-document routing policy - which document type and which connection an order gets | Proposed | 2026-08-13 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
