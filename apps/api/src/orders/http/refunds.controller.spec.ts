@@ -44,6 +44,7 @@ describe('RefundsController', () => {
       updateFulfillmentState: jest.fn(),
       markCancelled: jest.fn(),
       markItemResolutionFailure: jest.fn(),
+      getFailedSyncValueSummary: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
