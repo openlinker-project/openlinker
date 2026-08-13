@@ -39,13 +39,23 @@ describe('Failed sync value summary (integration)', () => {
     await teardownTestHarness();
   });
 
-  it('sums the value of failed-sync orders and reports the oldest failure', async () => {
+  it('sums the value of failed-sync orders and reports the oldest failed attempt', async () => {
     const ds = harness.getDataSource();
+    // Record created well before its sync ever failed — oldestFailedAt must
+    // reflect the failed attempt's own timestamp, not this creation time.
     await createTestOrderRecord(ds, {
       sourceConnectionId: SOURCE_A,
       recordStatus: 'ready',
       orderSnapshot: { items: [], totals: { total: 100, currency: 'PLN' } },
       syncStatus: [{ destinationConnectionId: DEST, status: 'failed', error: 'x' }],
+      syncAttempts: [
+        {
+          destinationConnectionId: DEST,
+          status: 'failed',
+          attemptedAt: new Date('2026-03-01T00:00:00Z').toISOString(),
+          error: 'x',
+        },
+      ],
       createdAt: new Date('2026-01-01T00:00:00Z'),
     });
     await createTestOrderRecord(ds, {
@@ -53,6 +63,14 @@ describe('Failed sync value summary (integration)', () => {
       recordStatus: 'ready',
       orderSnapshot: { items: [], totals: { total: 250.5, currency: 'PLN' } },
       syncStatus: [{ destinationConnectionId: DEST, status: 'failed', error: 'x' }],
+      syncAttempts: [
+        {
+          destinationConnectionId: DEST,
+          status: 'failed',
+          attemptedAt: new Date('2026-02-01T00:00:00Z').toISOString(),
+          error: 'x',
+        },
+      ],
       createdAt: new Date('2026-02-01T00:00:00Z'),
     });
     // Ready + synced — not stuck, must not contribute to the sum.
@@ -68,7 +86,7 @@ describe('Failed sync value summary (integration)', () => {
     expect(summary.count).toBe(2);
     expect(summary.totalValue).toBeCloseTo(350.5);
     expect(summary.mixedCurrency).toBe(false);
-    expect(summary.oldestFailedAt?.toISOString()).toBe(new Date('2026-01-01T00:00:00Z').toISOString());
+    expect(summary.oldestFailedAt?.toISOString()).toBe(new Date('2026-02-01T00:00:00Z').toISOString());
   });
 
   it('excludes awaiting_mapping and source_deleted records, matching countByHealth precedence (#1689)', async () => {

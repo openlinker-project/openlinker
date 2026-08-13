@@ -104,9 +104,11 @@ export class StockAtRiskReadService implements IStockAtRiskReadService {
 
   /**
    * Every active connection with `OfferManager` or `ProductPublisher`
-   * enabled AND a configured, non-zero stock safety buffer. A buffer of `0`
-   * (unset/default) means the operator configured no protection — such a
-   * connection is skipped rather than flagged as "at risk of everything".
+   * enabled, carrying its configured stock safety buffer (0 when unset —
+   * per `checkRequiredToSell`'s `OUT_OF_STOCK` rule (#1842), zero master
+   * stock is unsellable regardless of buffer, so a buffer-0 connection is
+   * still included and reported "at risk" via `findAtRiskForConnection`'s
+   * `totalAvailable - buffer <= 0` check).
    */
   private async resolveBufferedConnections(): Promise<
     Array<{ connectionId: string; buffer: number }>
@@ -122,9 +124,7 @@ export class StockAtRiskReadService implements IStockAtRiskReadService {
     const byConnectionId = new Map<string, { connectionId: string; buffer: number }>();
     for (const entry of [...offerManagerAdapters, ...productPublisherAdapters]) {
       const buffer = readStockSafetyBuffer(entry.connection.config);
-      if (buffer > 0) {
-        byConnectionId.set(entry.connectionId, { connectionId: entry.connectionId, buffer });
-      }
+      byConnectionId.set(entry.connectionId, { connectionId: entry.connectionId, buffer });
     }
     return [...byConnectionId.values()];
   }

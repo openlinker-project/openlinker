@@ -93,6 +93,12 @@ export class ShopProductMappingRepository implements ShopProductMappingRepositor
     }));
   }
 
+  /**
+   * Backs the coverage-gap / stock-at-risk candidate pools (#1983). No
+   * supporting index covers this shape — see
+   * `OfferMappingRepository.findRecentlyListedVariantIds` for the same note;
+   * an on-demand operator read, not a hot path.
+   */
   async findRecentlyListedVariantIds(
     options: FindRecentlyListedVariantIdsOptions
   ): Promise<RecentlyListedVariant[]> {
@@ -109,13 +115,21 @@ export class ShopProductMappingRepository implements ShopProductMappingRepositor
       .groupBy('mapping.internalId')
       .addGroupBy('pv."productId"')
       .orderBy('"latestMappedAt"', 'DESC')
-      .take(options.limit);
+      .limit(options.limit);
 
     if (options.connectionId) {
       qb.andWhere('mapping.connectionId = :connectionId', { connectionId: options.connectionId });
     }
 
-    const rows = await qb.getRawMany<{ internalId: string; productId: string }>();
-    return rows.map((row) => ({ variantId: row.internalId, productId: row.productId }));
+    const rows = await qb.getRawMany<{
+      internalId: string;
+      productId: string;
+      latestMappedAt: Date;
+    }>();
+    return rows.map((row) => ({
+      variantId: row.internalId,
+      productId: row.productId,
+      latestMappedAt: new Date(row.latestMappedAt),
+    }));
   }
 }

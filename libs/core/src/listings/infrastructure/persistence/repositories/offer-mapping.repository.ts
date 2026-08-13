@@ -216,6 +216,16 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
     }));
   }
 
+  /**
+   * Backs the coverage-gap / stock-at-risk candidate pools (#1983). No
+   * supporting index covers this shape — `identifier_mappings` only carries
+   * `(entityType, platformType, connectionId, externalId)` and
+   * `(entityType, connectionId, internalId)`, neither of which serves an
+   * `entityType`-only filter grouped + ordered by `MAX(createdAt)`. Left as a
+   * full-partition scan deliberately: this is an on-demand operator read
+   * (the needs-attention panel), not a hot path — add a supporting index if
+   * it starts showing up in slow-query logs.
+   */
   async findRecentlyListedVariantIds(
     options: FindRecentlyListedVariantIdsOptions
   ): Promise<RecentlyListedVariant[]> {
@@ -232,14 +242,22 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       .groupBy('mapping.internalId')
       .addGroupBy('pv."productId"')
       .orderBy('"latestMappedAt"', 'DESC')
-      .take(options.limit);
+      .limit(options.limit);
 
     if (options.connectionId) {
       qb.andWhere('mapping.connectionId = :connectionId', { connectionId: options.connectionId });
     }
 
-    const rows = await qb.getRawMany<{ internalId: string; productId: string }>();
-    return rows.map((row) => ({ variantId: row.internalId, productId: row.productId }));
+    const rows = await qb.getRawMany<{
+      internalId: string;
+      productId: string;
+      latestMappedAt: Date;
+    }>();
+    return rows.map((row) => ({
+      variantId: row.internalId,
+      productId: row.productId,
+      latestMappedAt: new Date(row.latestMappedAt),
+    }));
   }
 
   private toDomain(entity: IdentifierMappingOrmEntity): IdentifierMapping {

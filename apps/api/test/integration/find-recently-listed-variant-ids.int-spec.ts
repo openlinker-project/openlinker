@@ -105,7 +105,9 @@ describe('Recently-listed variant ids (#1983)', () => {
 
       const rows = await offerMappingRepository.findRecentlyListedVariantIds({ limit: 20 });
 
-      expect(rows).toContainEqual({ variantId, productId });
+      expect(rows).toContainEqual(
+        expect.objectContaining({ variantId, productId, latestMappedAt: expect.any(Date) }),
+      );
     });
 
     it('excludes isStale (#1689) variants', async () => {
@@ -186,7 +188,9 @@ describe('Recently-listed variant ids (#1983)', () => {
 
       const rows = await shopProductMappingRepository.findRecentlyListedVariantIds({ limit: 20 });
 
-      expect(rows).toContainEqual({ variantId, productId });
+      expect(rows).toContainEqual(
+        expect.objectContaining({ variantId, productId, latestMappedAt: expect.any(Date) }),
+      );
     });
 
     it('excludes isStale (#1689) variants', async () => {

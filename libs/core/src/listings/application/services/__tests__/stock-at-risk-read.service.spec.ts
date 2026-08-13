@@ -64,19 +64,48 @@ describe('StockAtRiskReadService', () => {
     );
   }
 
-  it('should skip a connection with no configured stock safety buffer', async () => {
+  it('should still scan a connection with no configured stock safety buffer', async () => {
     connectionWithBuffer('conn-a', undefined);
+    offerRepo.findRecentlyListedVariantIds.mockResolvedValue([
+      { variantId: 'v1', productId: 'p1', latestMappedAt: new Date('2026-01-01T00:00:00Z') },
+    ]);
+    inventoryQueryService.getAvailabilityByVariantIds.mockResolvedValue([
+      { productVariantId: 'v1', totalAvailable: 50, locationCount: 1 },
+    ]);
 
     const result = await service.findStockAtRisk(20);
 
+    expect(offerRepo.findRecentlyListedVariantIds).toHaveBeenCalled();
     expect(result).toEqual({ items: [], totalCount: 0 });
-    expect(offerRepo.findRecentlyListedVariantIds).not.toHaveBeenCalled();
+  });
+
+  it('should report zero master stock on a connection with no configured buffer', async () => {
+    connectionWithBuffer('conn-a', undefined);
+    offerRepo.findRecentlyListedVariantIds.mockResolvedValue([
+      { variantId: 'v1', productId: 'p1', latestMappedAt: new Date('2026-01-01T00:00:00Z') },
+    ]);
+    inventoryQueryService.getAvailabilityByVariantIds.mockResolvedValue([
+      { productVariantId: 'v1', totalAvailable: 0, locationCount: 1 },
+    ]);
+
+    const result = await service.findStockAtRisk(20);
+
+    expect(result.totalCount).toBe(1);
+    expect(result.items).toEqual([
+      {
+        variantId: 'v1',
+        productId: 'p1',
+        connectionId: 'conn-a',
+        masterStock: 0,
+        stockSafetyBuffer: 0,
+      },
+    ]);
   });
 
   it('should report a variant at or below the buffer threshold', async () => {
     connectionWithBuffer('conn-a', 5);
     offerRepo.findRecentlyListedVariantIds.mockResolvedValue([
-      { variantId: 'v1', productId: 'p1' },
+      { variantId: 'v1', productId: 'p1', latestMappedAt: new Date('2026-01-01T00:00:00Z') },
     ]);
     inventoryQueryService.getAvailabilityByVariantIds.mockResolvedValue([
       { productVariantId: 'v1', totalAvailable: 5, locationCount: 1 },
@@ -99,7 +128,7 @@ describe('StockAtRiskReadService', () => {
   it('should not report a variant comfortably above the buffer threshold', async () => {
     connectionWithBuffer('conn-a', 5);
     offerRepo.findRecentlyListedVariantIds.mockResolvedValue([
-      { variantId: 'v1', productId: 'p1' },
+      { variantId: 'v1', productId: 'p1', latestMappedAt: new Date('2026-01-01T00:00:00Z') },
     ]);
     inventoryQueryService.getAvailabilityByVariantIds.mockResolvedValue([
       { productVariantId: 'v1', totalAvailable: 50, locationCount: 1 },

@@ -86,8 +86,12 @@ export interface FindRecentlyListedVariantIdsOptions {
 /**
  * One row of `findRecentlyListedVariantIds` — the variant id plus its parent
  * product id, so a caller can build a deep-link without a second lookup.
+ * `latestMappedAt` (the row's own `ORDER BY` key) lets a caller merging rows
+ * from both `OfferMappingRepositoryPort` and `ShopProductMappingRepositoryPort`
+ * re-sort by recency instead of trusting insertion order.
  */
 export interface RecentlyListedVariant {
   variantId: string;
   productId: string;
+  latestMappedAt: Date;
 }

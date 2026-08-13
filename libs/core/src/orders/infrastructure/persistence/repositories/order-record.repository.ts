@@ -249,7 +249,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         `COUNT(DISTINCT (rec."orderSnapshot"#>>'{totals,currency}')) FILTER (WHERE ${stuckPredicate})`,
         'currency_count'
       )
-      .addSelect(`MIN(rec."createdAt") FILTER (WHERE ${stuckPredicate})`, 'oldest_failed_at');
+      .addSelect(
+        `MIN(${OrderRecordRepository.OLDEST_FAILED_ATTEMPT_AT_EXPR}) FILTER (WHERE ${stuckPredicate})`,
+        'oldest_failed_at'
+      );
 
     if (filters.sourceConnectionId) {
       qb.andWhere('rec.sourceConnectionId = :sourceConnectionId', {
@@ -299,6 +302,19 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     `NOT (${OrderRecordRepository.IS_MAPPING}) AND NOT (${OrderRecordRepository.IS_SOURCE_DELETED})`;
   private static readonly HAS_FAILED = `rec."syncStatus" @> '[{"status":"failed"}]'::jsonb`;
   private static readonly HAS_SYNCED = `rec."syncStatus" @> '[{"status":"synced"}]'::jsonb`;
+
+  /**
+   * Per-row earliest **failed sync attempt** timestamp, read from the
+   * append-only `syncAttempts` history rather than `rec."createdAt"` (the
+   * record's creation time, not a failure time) — `getFailedSyncValueSummary`'s
+   * `oldestFailedAt` promises "the oldest failure", so it must reflect when a
+   * sync attempt actually failed.
+   */
+  private static readonly OLDEST_FAILED_ATTEMPT_AT_EXPR = `(
+    SELECT MIN((attempt->>'attemptedAt')::timestamptz)
+    FROM jsonb_array_elements(rec."syncAttempts") AS attempt
+    WHERE attempt->>'status' = 'failed'
+  )`;
 
   /**
    * Triage-urgency ordinal for the `status` sort (#944): most-urgent first when

@@ -5,11 +5,13 @@ import { CoverageGapReadService } from '../coverage-gap-read.service';
 import type { OfferMappingRepositoryPort } from '../../../domain/ports/offer-mapping-repository.port';
 import type { ShopProductMappingRepositoryPort } from '../../../domain/ports/shop-product-mapping-repository.port';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
+import type { IPublishedVariantsService } from '../published-variants.service.interface';
 
 describe('CoverageGapReadService', () => {
   let offerRepo: jest.Mocked<OfferMappingRepositoryPort>;
   let shopRepo: jest.Mocked<ShopProductMappingRepositoryPort>;
   let integrationsService: jest.Mocked<IIntegrationsService>;
+  let publishedVariantsService: jest.Mocked<IPublishedVariantsService>;
   let service: CoverageGapReadService;
 
   beforeEach(() => {
@@ -32,7 +34,15 @@ describe('CoverageGapReadService', () => {
       resolveAdapterMetadata: jest.fn(),
       listCapabilityAdapters: jest.fn().mockResolvedValue([]),
     };
-    service = new CoverageGapReadService(offerRepo, shopRepo, integrationsService);
+    publishedVariantsService = {
+      getPublishedVariantIds: jest.fn().mockResolvedValue([]),
+    };
+    service = new CoverageGapReadService(
+      offerRepo,
+      shopRepo,
+      integrationsService,
+      publishedVariantsService
+    );
   });
 
   function capableConnections(...connectionIds: string[]): void {
@@ -61,12 +71,11 @@ describe('CoverageGapReadService', () => {
   it('should report a variant listed on one capable connection but missing from another', async () => {
     capableConnections('conn-a', 'conn-b');
     offerRepo.findRecentlyListedVariantIds.mockResolvedValue([
-      { variantId: 'v1', productId: 'p1' },
+      { variantId: 'v1', productId: 'p1', latestMappedAt: new Date('2026-01-01T00:00:00Z') },
     ]);
-    offerRepo.countByConnectionAndVariants.mockImplementation((connectionId) =>
-      Promise.resolve(connectionId === 'conn-a' ? new Map([['v1', 1]]) : new Map())
+    publishedVariantsService.getPublishedVariantIds.mockImplementation((connectionId) =>
+      Promise.resolve(connectionId === 'conn-a' ? ['v1'] : [])
     );
-    shopRepo.countByConnectionAndVariants.mockResolvedValue(new Map());
 
     const result = await service.findCoverageGaps(20);
 
@@ -84,10 +93,9 @@ describe('CoverageGapReadService', () => {
   it('should not report a variant listed on every capable connection', async () => {
     capableConnections('conn-a', 'conn-b');
     offerRepo.findRecentlyListedVariantIds.mockResolvedValue([
-      { variantId: 'v1', productId: 'p1' },
+      { variantId: 'v1', productId: 'p1', latestMappedAt: new Date('2026-01-01T00:00:00Z') },
     ]);
-    offerRepo.countByConnectionAndVariants.mockResolvedValue(new Map([['v1', 1]]));
-    shopRepo.countByConnectionAndVariants.mockResolvedValue(new Map());
+    publishedVariantsService.getPublishedVariantIds.mockResolvedValue(['v1']);
 
     const result = await service.findCoverageGaps(20);
 
@@ -97,17 +105,36 @@ describe('CoverageGapReadService', () => {
   it('should cap output at the requested limit while reporting the true totalCount', async () => {
     capableConnections('conn-a', 'conn-b');
     offerRepo.findRecentlyListedVariantIds.mockResolvedValue([
-      { variantId: 'v1', productId: 'p1' },
-      { variantId: 'v2', productId: 'p2' },
+      { variantId: 'v1', productId: 'p1', latestMappedAt: new Date('2026-01-01T00:00:00Z') },
+      { variantId: 'v2', productId: 'p2', latestMappedAt: new Date('2026-01-02T00:00:00Z') },
     ]);
-    offerRepo.countByConnectionAndVariants.mockImplementation((connectionId) =>
-      Promise.resolve(connectionId === 'conn-a' ? new Map([['v1', 1], ['v2', 1]]) : new Map())
+    publishedVariantsService.getPublishedVariantIds.mockImplementation((connectionId) =>
+      Promise.resolve(connectionId === 'conn-a' ? ['v1', 'v2'] : [])
     );
-    shopRepo.countByConnectionAndVariants.mockResolvedValue(new Map());
 
     const result = await service.findCoverageGaps(1);
 
     expect(result.items).toHaveLength(1);
     expect(result.totalCount).toBe(2);
+  });
+
+  it('should re-sort merged offer/shop candidates by latestMappedAt rather than insertion order', async () => {
+    capableConnections('conn-a', 'conn-b');
+    // Offer row is older; shop row is more recent — insertion order alone
+    // (offers first) would wrongly favour the older offer row if the merge
+    // did not re-sort by recency.
+    offerRepo.findRecentlyListedVariantIds.mockResolvedValue([
+      { variantId: 'v-old', productId: 'p-old', latestMappedAt: new Date('2026-01-01T00:00:00Z') },
+    ]);
+    shopRepo.findRecentlyListedVariantIds.mockResolvedValue([
+      { variantId: 'v-new', productId: 'p-new', latestMappedAt: new Date('2026-06-01T00:00:00Z') },
+    ]);
+    publishedVariantsService.getPublishedVariantIds.mockImplementation((connectionId) =>
+      Promise.resolve(connectionId === 'conn-a' ? ['v-new'] : [])
+    );
+
+    const result = await service.findCoverageGaps(20);
+
+    expect(result.items.map((item) => item.variantId)).toContain('v-new');
   });
 });

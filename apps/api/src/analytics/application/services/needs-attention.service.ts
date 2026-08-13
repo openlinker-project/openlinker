@@ -20,10 +20,13 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   COVERAGE_GAP_READ_SERVICE_TOKEN,
   STOCK_AT_RISK_READ_SERVICE_TOKEN,
+  type CoverageGapsResult,
   type ICoverageGapReadService,
   type IStockAtRiskReadService,
+  type StockAtRiskResult,
 } from '@openlinker/core/listings';
 import { ORDER_RECORD_SERVICE_TOKEN, type IOrderRecordService } from '@openlinker/core/orders';
+import { Logger } from '@openlinker/shared/logging';
 import type { INeedsAttentionService } from './needs-attention.service.interface';
 import type { NeedsAttentionSummary } from './needs-attention.types';
 
@@ -31,8 +34,13 @@ import type { NeedsAttentionSummary } from './needs-attention.types';
 // table (#1989 consumes this as a scannable summary section).
 const DEFAULT_AGGREGATE_LIMIT = 20;
 
+const EMPTY_COVERAGE_GAPS: CoverageGapsResult = { items: [], totalCount: 0 };
+const EMPTY_STOCK_AT_RISK: StockAtRiskResult = { items: [], totalCount: 0 };
+
 @Injectable()
 export class NeedsAttentionService implements INeedsAttentionService {
+  private readonly logger = new Logger(NeedsAttentionService.name);
+
   constructor(
     @Inject(COVERAGE_GAP_READ_SERVICE_TOKEN)
     private readonly coverageGapReadService: ICoverageGapReadService,
@@ -43,10 +51,21 @@ export class NeedsAttentionService implements INeedsAttentionService {
   ) {}
 
   async getSummary(): Promise<NeedsAttentionSummary> {
+    // `allSettled`, not `all` — one aggregate failing (e.g. a transient DB
+    // hiccup on one query) must not 500 the whole panel when the other two
+    // sections are healthy. A failed section falls back to an empty result
+    // and is logged, rather than surfaced to the caller as a partial-content
+    // signal — the FE has no per-section degraded state to render today.
     const [coverageGaps, stockAtRisk, failedSyncValue] = await Promise.all([
-      this.coverageGapReadService.findCoverageGaps(DEFAULT_AGGREGATE_LIMIT),
-      this.stockAtRiskReadService.findStockAtRisk(DEFAULT_AGGREGATE_LIMIT),
-      this.orderRecordService.getFailedSyncValueSummary({}),
+      this.settleSection('coverageGaps', EMPTY_COVERAGE_GAPS, () =>
+        this.coverageGapReadService.findCoverageGaps(DEFAULT_AGGREGATE_LIMIT)
+      ),
+      this.settleSection('stockAtRisk', EMPTY_STOCK_AT_RISK, () =>
+        this.stockAtRiskReadService.findStockAtRisk(DEFAULT_AGGREGATE_LIMIT)
+      ),
+      this.settleSection('failedSyncValue', null, () =>
+        this.orderRecordService.getFailedSyncValueSummary({})
+      ),
     ]);
 
     return {
@@ -54,7 +73,27 @@ export class NeedsAttentionService implements INeedsAttentionService {
       coverageGapsTotalCount: coverageGaps.totalCount,
       stockAtRisk: stockAtRisk.items,
       stockAtRiskTotalCount: stockAtRisk.totalCount,
-      failedSyncValue,
+      failedSyncValue: failedSyncValue ?? {
+        count: 0,
+        totalValue: 0,
+        mixedCurrency: false,
+        oldestFailedAt: null,
+      },
     };
+  }
+
+  private async settleSection<T>(
+    section: string,
+    fallback: T,
+    read: () => Promise<T>
+  ): Promise<T> {
+    try {
+      return await read();
+    } catch (error) {
+      this.logger.warn(
+        `Needs-attention "${section}" aggregate failed; falling back to an empty section: ${(error as Error).message}`
+      );
+      return fallback;
+    }
   }
 }

@@ -22,7 +22,11 @@ export interface CoverageGapItem {
 /**
  * Bounded/paged result of the coverage-gaps read. `totalCount` is the number
  * of gap items found before the page-size cap was applied, so a caller can
- * tell "there are more" from "this is everything".
+ * tell "there are more" from "this is everything" — but only within the
+ * `MAX_COVERAGE_GAP_CANDIDATES` (500) most-recently-mapped variants
+ * considered as candidates. On a catalogue with more listed variants than
+ * that, `totalCount` silently caps at whatever gap count the top-500 pool
+ * produces; it is not the true count across the whole catalogue.
  */
 export interface CoverageGapsResult {
   items: CoverageGapItem[];
