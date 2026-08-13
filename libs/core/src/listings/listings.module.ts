@@ -50,6 +50,9 @@ import { SellerPoliciesService } from './application/services/seller-policies.se
 import { ResponsibleProducerService } from './application/services/responsible-producer.service';
 import { DeliveryPriceListService } from './application/services/delivery-price-list.service';
 import { ShopCategoryBrowseService } from './application/services/shop-category-browse.service';
+import { DestinationTaxonomyService } from './application/services/destination-taxonomy.service';
+import { DestinationCategoryRepository } from './infrastructure/persistence/repositories/destination-category.repository';
+import { DestinationCategoryOrmEntity } from './infrastructure/persistence/entities/destination-category.orm-entity';
 import { ShopAttributeReadService } from './application/services/shop-attribute-read.service';
 import { OfferCreationEnqueueService } from './application/services/offer-creation-enqueue.service';
 import { BulkListingSubmitService } from './application/services/bulk-listing-submit.service';
@@ -105,6 +108,8 @@ import {
   STALE_OFFER_PAUSE_SERVICE_TOKEN,
   COVERAGE_GAP_READ_SERVICE_TOKEN,
   STOCK_AT_RISK_READ_SERVICE_TOKEN,
+  DESTINATION_TAXONOMY_SERVICE_TOKEN,
+  DESTINATION_CATEGORY_REPOSITORY_TOKEN,
 } from './listings.tokens';
 
 // Re-export tokens for convenience
@@ -163,6 +168,7 @@ export {
       SellerPoliciesCacheOrmEntity,
       OfferStatusSnapshotOrmEntity,
       ShopProductStatusSnapshotOrmEntity,
+      DestinationCategoryOrmEntity,
     ]),
     IntegrationsModule,
     IdentifierMappingModule,
@@ -213,6 +219,8 @@ export {
     ResponsibleProducerService,
     DeliveryPriceListService,
     ShopCategoryBrowseService,
+    DestinationTaxonomyService,
+    DestinationCategoryRepository,
     ShopAttributeReadService,
     OfferStockRestoreService,
     ShopProductMappingRepository,
@@ -366,6 +374,14 @@ export {
       useExisting: ShopCategoryBrowseService,
     },
     {
+      provide: DESTINATION_TAXONOMY_SERVICE_TOKEN,
+      useExisting: DestinationTaxonomyService,
+    },
+    {
+      provide: DESTINATION_CATEGORY_REPOSITORY_TOKEN,
+      useExisting: DestinationCategoryRepository,
+    },
+    {
       provide: SHOP_ATTRIBUTE_READ_SERVICE_TOKEN,
       useExisting: ShopAttributeReadService,
     },
@@ -430,6 +446,8 @@ export {
     STALE_OFFER_PAUSE_SERVICE_TOKEN,
     COVERAGE_GAP_READ_SERVICE_TOKEN,
     STOCK_AT_RISK_READ_SERVICE_TOKEN,
+    DESTINATION_TAXONOMY_SERVICE_TOKEN,
+    DESTINATION_CATEGORY_REPOSITORY_TOKEN,
   ],
 })
 export class ListingsModule {}

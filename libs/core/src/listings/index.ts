@@ -41,6 +41,24 @@ export {
 } from './application/types/category-resolution.types';
 export type { TaxonomyOwner } from './domain/types/taxonomy-owner.types';
 export { TaxonomyOwnerValues } from './domain/types/taxonomy-owner.types';
+
+// Destination taxonomy read model (#1979, ADR-037). Contracts only — the
+// service CLASS stays on the `/services` sub-barrel (#337/#359).
+export { DestinationCategory } from './domain/entities/destination-category.entity';
+export type { DestinationCategoryRepositoryPort } from './domain/ports/destination-category-repository.port';
+export type {
+  DestinationCategoryLike,
+  DestinationCategorySearchHit,
+  DestinationCategoryUpsert,
+  TaxonomyFrontier,
+  TaxonomyScope,
+  TaxonomySyncInput,
+  TaxonomySyncResult,
+} from './domain/types/destination-category.types';
+export type { IDestinationTaxonomyService } from './application/interfaces/destination-taxonomy.service.interface';
+export { TaxonomySourceUnavailableException } from './domain/exceptions/taxonomy-source-unavailable.exception';
+export { normalizeCategorySearchText } from './domain/destination-category-search';
+export { resolveTaxonomyOwner } from './domain/resolve-taxonomy-owner';
 export type { IAttributeProjectionService } from './application/interfaces/attribute-projection.service.interface';
 export type {
   AttributeProjectionInput,
