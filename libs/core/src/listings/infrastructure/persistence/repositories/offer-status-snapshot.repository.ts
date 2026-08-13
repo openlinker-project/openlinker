@@ -39,31 +39,66 @@ export class OfferStatusSnapshotRepository implements OfferStatusSnapshotReposit
   }
 
   async upsert(command: UpsertOfferStatusSnapshotCommand): Promise<OfferStatusUpsertResult> {
-    // find-then-save (not atomic). Safe because the status-sync job is
-    // effectively single-writer per connection: the scheduler dedups
-    // concurrent runs via a per-minute idempotency key and advances the scan
-    // cursor sequentially. A same-key race would surface a unique-violation on
-    // the loser's INSERT, which the runner's retry then resolves via the
-    // update path on the next pass. The prior status is captured here (one
-    // read) so the service can detect a transition without a second query.
-    const existing = await this.ormRepository.findOne({
-      where: {
-        connectionId: command.connectionId,
-        externalOfferId: command.externalOfferId,
-      },
+    // Lock-then-upsert, NOT find-then-save (#2032 review round 2, finding 5):
+    // `refreshOne` is reachable from three independent triggers - the hourly
+    // scan, the delayed post-creation refresh
+    // (`marketplace-offer-refresh-snapshot.handler.ts`), and the operator
+    // "Refresh status" endpoint - exactly the race `OfferCommercialSnapshotRepository`
+    // was fixed for in this same PR, over the SAME `refreshOne`/`sync` call
+    // sites and the SAME `(connectionId, externalOfferId)` key. Find-then-save
+    // here was worse than a stale comment: on a never-before-synced offer -
+    // precisely a row sitting in the operator-facing `Unsynced` tab an
+    // operator is now likely to manually "Refresh status" on - a genuine
+    // concurrent first-INSERT race threw an uncaught unique-violation out of
+    // `sync()`'s per-page loop (no try/catch there, unlike the commercial
+    // write), aborting the whole scan-page job rather than just the one offer.
+    //
+    // A plain atomic `upsert()` (as used for the commercial table) would lose
+    // `previousStatus`, which the caller needs for transition-detection
+    // logging - Postgres' `INSERT ... ON CONFLICT ... RETURNING` only exposes
+    // the POST-update row. So this locks the row first: `pessimistic_write`
+    // on an EXISTING row serializes concurrent updates (the second racer
+    // waits, then reads the first's committed write as its own
+    // `previousStatus` - correct linearization). On a genuine concurrent
+    // first-INSERT (nothing to lock yet), `upsert()`'s own `ON CONFLICT DO
+    // UPDATE` still resolves the write atomically with no unique-violation;
+    // both racers may report `previousStatus: null` for what is, from either
+    // transaction's own view, a genuine first observation - a possible
+    // redundant "first observation" log line, never a thrown error or a lost
+    // write.
+    return this.ormRepository.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(OfferStatusSnapshotOrmEntity);
+      const existing = await repo
+        .createQueryBuilder('snapshot')
+        .setLock('pessimistic_write')
+        .where('snapshot.connectionId = :connectionId', { connectionId: command.connectionId })
+        .andWhere('snapshot.externalOfferId = :externalOfferId', {
+          externalOfferId: command.externalOfferId,
+        })
+        .getOne();
+      const previousStatus = existing?.publicationStatus ?? null;
+
+      await repo.upsert(
+        {
+          connectionId: command.connectionId,
+          externalOfferId: command.externalOfferId,
+          internalVariantId: command.internalVariantId,
+          publicationStatus: command.publicationStatus,
+          statusDetails: command.statusDetails,
+          lastStatusSyncedAt: command.lastStatusSyncedAt,
+          updatedAt: () => 'now()',
+        },
+        { conflictPaths: ['connectionId', 'externalOfferId'] }
+      );
+
+      const saved = await repo.findOneOrFail({
+        where: {
+          connectionId: command.connectionId,
+          externalOfferId: command.externalOfferId,
+        },
+      });
+      return { snapshot: this.toDomain(saved), previousStatus };
     });
-    const previousStatus = existing?.publicationStatus ?? null;
-
-    const entity = existing ?? new OfferStatusSnapshotOrmEntity();
-    entity.connectionId = command.connectionId;
-    entity.externalOfferId = command.externalOfferId;
-    entity.internalVariantId = command.internalVariantId;
-    entity.publicationStatus = command.publicationStatus;
-    entity.statusDetails = command.statusDetails;
-    entity.lastStatusSyncedAt = command.lastStatusSyncedAt;
-
-    const saved = await this.ormRepository.save(entity);
-    return { snapshot: this.toDomain(saved), previousStatus };
   }
 
   async countByConnectionAndStatus(

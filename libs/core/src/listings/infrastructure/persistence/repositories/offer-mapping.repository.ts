@@ -246,7 +246,7 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
 
     const searchTerm = filters.search?.trim();
     if (searchTerm) {
-      const escapedSearch = searchTerm.replace(/[\\%_]/g, '\\$&');
+      const escapedSearch = this.escapeIlikeTerm(searchTerm);
       qb.andWhere('mapping.externalId ILIKE :search', { search: `%${escapedSearch}%` });
     }
 
@@ -320,6 +320,19 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
    * can read", which is honest and keeps the partition intact - and warn-logged
    * so the condition is visible rather than merely survivable.
    */
+  /**
+   * Escape Postgres' ILIKE metacharacters in a user-supplied search term
+   * before it's wrapped in `%...%` (#2032 review round 2, finding 10 -
+   * extracted so the escaping rule has exactly one definition, not two
+   * copies that could silently drift). `\` is Postgres' default LIKE escape
+   * character, so it must be escaped alongside the wildcards: a term ENDING
+   * in `\` would otherwise escape the appended trailing `%` and silently
+   * make the suffix wildcard literal.
+   */
+  private escapeIlikeTerm(term: string): string {
+    return term.replace(/[\\%_]/g, '\\$&');
+  }
+
   private readPublicationStatus(value: string | null): OfferPublicationStatus | null {
     if (value === null) return null;
     if (isOfferPublicationStatus(value)) return value;
@@ -396,10 +409,7 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
 
     const searchTerm = filters.search?.trim();
     if (searchTerm) {
-      // `\` is Postgres' default LIKE escape character, so it must be escaped
-      // alongside the wildcards: a term ENDING in `\` would otherwise escape
-      // the appended trailing `%` and silently make the suffix wildcard literal.
-      const escapedSearch = searchTerm.replace(/[\\%_]/g, '\\$&');
+      const escapedSearch = this.escapeIlikeTerm(searchTerm);
       // `ean` and `gtin` are separate, independently-populated columns (each
       // master adapter fills whichever the platform exposes), so a barcode
       // search must cover both or a variant is unfindable by the code printed

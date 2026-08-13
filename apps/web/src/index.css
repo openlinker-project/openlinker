@@ -5611,6 +5611,27 @@ a.kpi-card:focus-visible {
   }
 }
 
+/* ── Listings background-refetch indicator (#2032 review round 2) ──────
+   `keepPreviousData` shows the prior filter's rows while a new fetch is in
+   flight - this is the only visible cue that a new request is running,
+   reusing the same pulse the StatusBadge tone dot already uses elsewhere so
+   "something live is happening" reads consistently across the page. */
+.listings-refetch-indicator {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: var(--space-2);
+  border-radius: 50%;
+  background: var(--accent-primary);
+  animation: status-badge-pulse 1.6s var(--ease-out) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .listings-refetch-indicator {
+    animation: none;
+  }
+}
+
 .tabs__trigger:hover {
   color: var(--text-primary);
   background: transparent;

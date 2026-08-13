@@ -552,11 +552,19 @@ export function ListingsListPage(): ReactElement {
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
 
+  // /listings is backed exclusively by OfferManager-capable connections (the
+  // channel <Select> below filters on the same capability) - a shop with only
+  // ProductMaster/ProductPublisher connections has zero of these and would
+  // otherwise fall through to the generic "not synced yet" empty state
+  // (#2032 review round 2, finding 1), which reads as a broken feature rather
+  // than "connect a marketplace to use this page".
+  const offerManagerConnections = (connectionsQuery.data ?? []).filter((connection) =>
+    connection.enabledCapabilities.includes('OfferManager'),
+  );
   // Distinct from the generic "connections exist but this bucket is empty"
   // case (#2029) - clearing filters can't help an operator with zero
   // connections configured, so it gets its own empty state + CTA.
-  const noConnectionsConfigured =
-    !connectionsQuery.isLoading && (connectionsQuery.data ?? []).length === 0;
+  const noConnectionsConfigured = !connectionsQuery.isLoading && offerManagerConnections.length === 0;
 
   const demoMode = useDemoMode();
   // The unified "Publish products" entry opens a picker first — visible
@@ -604,13 +612,11 @@ export function ListingsListPage(): ReactElement {
             }}
           >
             <option value="">All channels</option>
-            {(connectionsQuery.data ?? [])
-              .filter((connection) => connection.enabledCapabilities.includes('OfferManager'))
-              .map((connection) => (
-                <option key={connection.id} value={connection.id}>
-                  {connection.name}
-                </option>
-              ))}
+            {offerManagerConnections.map((connection) => (
+              <option key={connection.id} value={connection.id}>
+                {connection.name}
+              </option>
+            ))}
           </Select>
         </div>
         <Button tone="ghost" className="button--sm" onClick={clearFilters}>
@@ -654,6 +660,21 @@ export function ListingsListPage(): ReactElement {
             transition the same way (#2029 round 1 review). */}
         <span className="sr-only" role="status" aria-live="polite">
           {lifecycleCounts ? 'Listing counts loaded.' : 'Loading listing counts…'}
+        </span>
+
+        {/* `placeholderData: keepPreviousData` (round-1 fix) stops the table
+            from blanking on a tab/search/page change, but until now nothing
+            told the operator a NEW fetch was in flight while the PRIOR
+            filter's rows stayed on screen (#2032 review round 2, finding 2) -
+            an operator who types a search term and immediately scans the
+            table could act on results that don't match what they just typed.
+            `isFetching && !isPending`: excludes the very first load, which
+            the skeleton below already owns. */}
+        {query.isFetching && !query.isPending ? (
+          <span className="listings-refetch-indicator" aria-hidden="true" />
+        ) : null}
+        <span className="sr-only" role="status" aria-live="polite">
+          {query.isFetching && !query.isPending ? 'Refreshing listings…' : ''}
         </span>
 
         {/* Only the active tab's data is ever fetched (one lifecycle-filtered

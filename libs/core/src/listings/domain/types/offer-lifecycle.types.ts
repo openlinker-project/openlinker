@@ -213,6 +213,18 @@ export const OFFER_VALIDATION_MESSAGES_KEY = 'validationMessages' satisfies keyo
  * the SQL side reports `false` - a row landing on Draft's count but Invalid's
  * page - and `[...validationMessages]` downstream would silently explode a
  * string into one-character "messages".
+ *
+ * Residual gap, currently unreachable (#2032 review round 2, finding 8): the
+ * SQL side counts ANY non-empty jsonb array as "has messages"
+ * (`jsonb_array_length(...) > 0`, regardless of element type), while this
+ * side filters out non-string elements before measuring length - so a
+ * non-empty array of non-strings (e.g. `[123]`) would read `true` in SQL but
+ * `false` here. Unreachable today because the one writer
+ * (`OfferStatusSyncService`'s `validationErrors.map((error) => error.message)`)
+ * always produces `string[]`. Left as a documented residual rather than
+ * fixed, since closing it for real means computing `hasValidationMessages`
+ * independently of the string filter on both sides - a real behaviour
+ * change for a case no writer can currently produce.
  */
 export function readValidationMessages(
   statusDetails: OfferStatusSnapshotDetails | null

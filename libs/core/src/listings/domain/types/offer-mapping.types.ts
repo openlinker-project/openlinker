@@ -144,10 +144,11 @@ export interface OfferMappingCommercial {
  * One row of the `GET /listings` read model (#2025): the mapping itself plus
  * the three independently-nullable projections the redesigned page renders.
  *
- * Extends the mapping entity rather than nesting it so every pre-existing
- * consumer of `findMany` (offer stock restore, status sync, the content
- * publisher's variant walk) keeps reading `.externalId` / `.internalId`
- * unchanged.
+ * Extends the mapping entity rather than nesting it so the content
+ * publisher's variant walk - the one remaining `findMany` consumer outside
+ * the listings page itself, since offer stock restore and status sync moved
+ * to the narrower `findMappingPage` (#2032 review round 1, thread 11) - keeps
+ * reading `.externalId` / `.internalId` unchanged.
  */
 export interface OfferMappingListItem extends IdentifierMapping {
   identity: OfferMappingIdentity | null;
