@@ -41,10 +41,10 @@ export const inpostAdapterManifest: AdapterMetadata = {
   // webserver (#1815), which is both the throughput bottleneck and busy serving
   // customers. ShipX is a carrier platform whose quota OL has no documented
   // figure for, and `requestsPerMinute` is minimum-interval spacing (capacity
-  // ~1, no burst) divided again by OL_WORKER_REPLICAS — so a guessed 60 would
-  // put a hard 1 req/s ceiling on bulk dispatch (N<=25, sequential, on the
-  // interactive request path) and on the per-shipment status sweep, where today
-  // there is none. A real carrier-side limit is still respected reactively via
+  // ~1, no burst) — so a guessed 60 would put a hard 1 req/s ceiling on bulk
+  // dispatch (N<=25, sequential, on the interactive request path) and on the
+  // per-shipment status sweep, where today there is none. A real carrier-side
+  // limit is still respected reactively via
   // the transport's `Retry-After` feedback, and an operator who hits one sets
   // `config.rateLimit` explicitly. Add a default here only with a documented
   // ShipX quota to calibrate it against.
