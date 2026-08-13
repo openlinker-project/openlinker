@@ -73,6 +73,7 @@ describe('OfferStockRestoreService', () => {
     offerMappings = {
       findById: jest.fn(),
       findMany: jest.fn(),
+      findMappingPage: jest.fn().mockResolvedValue({ items: [], total: 0 }),
       countByConnectionAndVariants: jest.fn(),
     } as unknown as jest.Mocked<OfferMappingRepositoryPort>;
 
@@ -98,7 +99,7 @@ describe('OfferStockRestoreService', () => {
     orderRecordService.getOrderRecord.mockResolvedValue(
       orderRecord([{ variantId: VARIANT_A }, { variantId: VARIANT_B }])
     );
-    offerMappings.findMany
+    offerMappings.findMappingPage
       .mockResolvedValueOnce({ items: [mapping(VARIANT_A, OFFER_A)], total: 1 })
       .mockResolvedValueOnce({ items: [mapping(VARIANT_B, OFFER_B)], total: 1 });
     inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(
@@ -119,7 +120,7 @@ describe('OfferStockRestoreService', () => {
 
   it('should default a variant absent from the master read to 0 (master authoritative)', async () => {
     orderRecordService.getOrderRecord.mockResolvedValue(orderRecord([{ variantId: VARIANT_A }]));
-    offerMappings.findMany.mockResolvedValue({ items: [mapping(VARIANT_A, OFFER_A)], total: 1 });
+    offerMappings.findMappingPage.mockResolvedValue({ items: [mapping(VARIANT_A, OFFER_A)], total: 1 });
     inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([]);
 
     await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
@@ -141,7 +142,7 @@ describe('OfferStockRestoreService', () => {
     ).resolves.toBeUndefined();
 
     expect(orderRecordService.getOrderRecord).not.toHaveBeenCalled();
-    expect(offerMappings.findMany).not.toHaveBeenCalled();
+    expect(offerMappings.findMappingPage).not.toHaveBeenCalled();
     expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
   });
 
@@ -184,7 +185,7 @@ describe('OfferStockRestoreService', () => {
 
     await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
 
-    expect(offerMappings.findMany).not.toHaveBeenCalled();
+    expect(offerMappings.findMappingPage).not.toHaveBeenCalled();
     expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
   });
 
@@ -193,13 +194,13 @@ describe('OfferStockRestoreService', () => {
 
     await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
 
-    expect(offerMappings.findMany).not.toHaveBeenCalled();
+    expect(offerMappings.findMappingPage).not.toHaveBeenCalled();
     expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
   });
 
   it('should no-op when none of the order variants have an offer mapping', async () => {
     orderRecordService.getOrderRecord.mockResolvedValue(orderRecord([{ variantId: VARIANT_A }]));
-    offerMappings.findMany.mockResolvedValue({ items: [], total: 0 });
+    offerMappings.findMappingPage.mockResolvedValue({ items: [], total: 0 });
 
     await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
 

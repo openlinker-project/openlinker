@@ -145,6 +145,8 @@ describe('OfferStatusSyncService', () => {
       updated: 0,
       transitioned: 0,
       notFound: 0,
+      commercialUpdated: 0,
+      commercialFailed: 0,
       total: 0,
       nextOffset: 0,
     });

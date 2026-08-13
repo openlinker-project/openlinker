@@ -303,7 +303,7 @@ describe('OfferMappingRepository', () => {
         lastStatusSyncedAt: now,
       });
       expect(result.items[0].commercial).toEqual({
-        price: 100,
+        price: '100.00',
         currency: 'PLN',
         availableQuantity: 41,
         lastCommercialSyncedAt: now,
