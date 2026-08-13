@@ -44,8 +44,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddOfferCommercialSnapshotsTable1832000000010 implements MigrationInterface {
-  name = 'AddOfferCommercialSnapshotsTable1832000000010';
+export class AddOfferCommercialSnapshotsTable1833000000001 implements MigrationInterface {
+  name = 'AddOfferCommercialSnapshotsTable1833000000001';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

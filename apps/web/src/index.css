@@ -2895,6 +2895,19 @@ a.delivery-rider-banner__button:focus-visible {
   border-radius: var(--radius-xs);
 }
 
+/* `rowLinkDisplay="block"`. The default row link stays plain `inline`, which is
+   correct while it wraps plain text: its line box matches the row's height, so
+   the :focus-visible ring encloses it. A tall composite first cell (thumbnail +
+   name line + meta line) breaks that - the anchor's line box keeps its own
+   inline metrics, and the ring painted a thin band across the row's vertical
+   middle instead of around it (#2023). An atomic inline-level box makes the ring
+   one correctly-sized fragment. Opt-in per table so no existing consumer's ring
+   moves. */
+.data-table__row-link--block {
+  display: inline-flex;
+  width: 100%;
+}
+
 .data-table__header--sortable {
   cursor: pointer;
 }
@@ -17178,33 +17191,18 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .listings-table td:first-child {
   min-width: 28rem;
 }
-/* `inline-flex`, not `flex`: DataTable wraps the first cell in an INLINE <a>
-   whose focus ring is a box-shadow, and a block box inside an inline anchor
-   paints that ring around inline fragments wrapping an anonymous block - a
-   hairline or nothing. An atomic inline-level box keeps the ring as ONE
-   fragment (verified live - see the `:has()` rule below for the part this
-   alone doesn't fix). */
+/* `inline-flex`, not `flex`: DataTable wraps the first cell in an <a> whose
+   focus ring is a box-shadow, and a block box inside an inline anchor paints
+   that ring around inline fragments wrapping an anonymous block - a hairline or
+   nothing. An atomic inline-level box keeps the ring as ONE fragment (verified
+   live). Sizing that fragment to the row is the anchor's own job, handled by
+   the table's `rowLinkDisplay="block"` prop rather than by a listings rule. */
 .listing-cell {
   display: inline-flex;
   width: 100%;
   align-items: flex-start;
   gap: var(--space-3);
   min-width: 0;
-}
-/* A single fragment isn't a correctly-SIZED one: `.data-table__row-link`
-   itself stays `display: inline` (shared by every DataTable consumer, most
-   of which wrap plain text with no height mismatch), so its own line-box
-   height comes from its default inline metrics - shorter than this row's
-   real content, which includes a thumbnail. The :focus-visible ring lives
-   on that anchor, so it painted around the anchor's own shrunken line-box,
-   not the taller flex child inside it: a thin band crossing the row's
-   vertical middle instead of enclosing it (caught in manual QA, #2023).
-   Scoped to rows that wrap `.listing-cell` via `:has()` rather than
-   changing the shared rule, since every other table's row-link relies on
-   staying plain `inline` for its own (correctly-sized) text content. */
-.data-table__row-link:has(> .listing-cell) {
-  display: inline-flex;
-  width: 100%;
 }
 .listing-cell__body {
   display: grid;
@@ -17252,17 +17250,17 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   white-space: nowrap;
 }
 /* An external offer ID has no length contract - some adapters' ids run 40+
-   chars - and it led the meta line with no cap of its own, so it could eat
-   the entire line's width and push SKU/EAN off the edge of `.listing-cell__
-   meta`'s `overflow: hidden` with no ellipsis to show anything was cut. The
-   size/truncation behavior is shared with every meta field via the generic
-   `.listing-cell__meta span` rule below, so it truncates like the rest
-   rather than staying an unbounded exception; the full value is already one
+   chars - and it leads the meta line, so without a cap of its own it eats the
+   line's width and pushes SKU/EAN off the edge of `.listing-cell__meta`'s
+   `overflow: hidden`. The cap lives HERE, on the one field that needs it,
+   rather than on every meta span: a routine 20-char SKU was being ellipsed on
+   a wide desktop with room to spare (#2032 review). The full value stays one
    hover away via the span's own `title`. */
 .listing-cell__offerid {
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   color: var(--text-muted);
+  max-width: 16ch;
 }
 /* Weight is declared, not inherited: on the mobile card DataTable wraps the
    title in a 600-weight <strong>, which would otherwise make the identifier
@@ -17277,13 +17275,15 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   white-space: nowrap;
   overflow: hidden;
 }
-/* Applies to every meta field, including the offer ID above: an unusually
-   long value must show `…` rather than vanish past `.listing-cell__meta`'s
-   own `overflow: hidden` with no indication anything was cut. Each span also
-   carries its own `title` now that it can truncate. */
+/* Shrink-and-ellipsis for every meta field, but no fixed character cap: a
+   field only truncates when the line genuinely runs out of room (`flex: 0 1
+   auto` + `min-width: 0`), so a wide desktop shows a long SKU in full. An
+   unusually long value then shows `…` rather than vanishing past
+   `.listing-cell__meta`'s own `overflow: hidden` with no indication anything
+   was cut. Each span carries its own `title` since it can truncate. The offer
+   ID is the one field with a hard cap - see `.listing-cell__offerid` above. */
 .listing-cell__meta span {
   min-width: 0;
-  max-width: 16ch;
   flex: 0 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -11,6 +11,7 @@
  */
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -431,23 +432,32 @@ export function ListingsListPage(): ReactElement {
    * used to guarantee. `keepPreviousData` alone regressed exactly that case,
    * so the fingerprint is restored here - scoped ONLY to `lifecycleCounts`,
    * deliberately excluding `lifecycle` itself so a tab switch never trips it.
+   *
+   * The ref is written from an effect, never during render: a render body must
+   * stay side-effect-free, or a StrictMode double-invoke / a concurrent render
+   * React discards would both stamp it. Writing after commit is equivalent
+   * here, because the ref is only ever READ on a later, placeholder-serving
+   * render - the render that receives fresh counts uses them directly.
    */
   const lifecycleCountsRef = useRef<{ fingerprint: string; counts: OfferLifecycleCounts } | null>(
     null,
   );
   const countsFingerprint = `${debouncedSearch}::${urlConnectionId}`;
-  if (query.data?.lifecycleCounts && !query.isPlaceholderData) {
-    lifecycleCountsRef.current = {
-      fingerprint: countsFingerprint,
-      counts: query.data.lifecycleCounts,
-    };
-  }
+  const freshLifecycleCounts =
+    query.data?.lifecycleCounts && !query.isPlaceholderData ? query.data.lifecycleCounts : null;
+  useEffect(() => {
+    if (freshLifecycleCounts) {
+      lifecycleCountsRef.current = {
+        fingerprint: countsFingerprint,
+        counts: freshLifecycleCounts,
+      };
+    }
+  }, [countsFingerprint, freshLifecycleCounts]);
   const lifecycleCounts =
-    query.data?.lifecycleCounts && !query.isPlaceholderData
-      ? query.data.lifecycleCounts
-      : lifecycleCountsRef.current?.fingerprint === countsFingerprint
-        ? lifecycleCountsRef.current.counts
-        : null;
+    freshLifecycleCounts ??
+    (lifecycleCountsRef.current?.fingerprint === countsFingerprint
+      ? lifecycleCountsRef.current.counts
+      : null);
 
   const platforms = usePlatforms();
   // One batched read for the whole page - the Connection column must never cost
@@ -832,6 +842,11 @@ export function ListingsListPage(): ReactElement {
                 rows={query.data?.items ?? []}
                 rowKey={(m) => m.id}
                 rowHref={(m) => m.id}
+                // The Listing cell is a tall composite (thumbnail + name line +
+                // meta line), so the row link has to be a sized box or its
+                // focus ring paints across the row's middle instead of around
+                // it — see the prop's docblock.
+                rowLinkDisplay="block"
                 cardView={{
                   title: (m) => <ListingCell row={m} shape="card" activeLifecycle={activeTabDef.lifecycle} />,
                   // Channel / Connection / Price / Quantity as a two-column fact

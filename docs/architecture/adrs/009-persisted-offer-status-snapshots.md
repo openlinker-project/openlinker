@@ -104,7 +104,7 @@ continues, so a failed commercial write can never abort the pre-existing #816 st
 `nextOffset` cursor from advancing. Without that, one poison offer would wedge a connection's status sync
 indefinitely.
 
-**Migration path:** additive - `AddOfferCommercialSnapshotsTable1832000000010` adds the table + indexes
+**Migration path:** additive - `AddOfferCommercialSnapshotsTable1833000000001` adds the table + indexes
 (unique `(externalOfferId, connectionId)`, reverse-variant, and `lastCommercialSyncedAt` for stalest-first
 sweeps); no backfill, so rows fill at the sync's natural page rate. No existing behaviour changes.
 
