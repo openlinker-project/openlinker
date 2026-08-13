@@ -16,7 +16,10 @@ import {
   IMPORT_ORDER_STATE_ID,
   type OrderProcessorHarness,
 } from '../../../__tests__/mocks/prestashop-order-processor-manager.factory';
-import { PrestashopApiException } from '@openlinker/integrations-prestashop';
+import {
+  PrestashopApiException,
+  PrestashopTaxRateUnknownException,
+} from '@openlinker/integrations-prestashop';
 import type { OrderCreate } from '@openlinker/core/orders';
 import type { PrestashopOrder } from '../../mappers/prestashop.mapper.interface';
 
@@ -565,7 +568,10 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
 
       it('pins each line net via cart-scoped specific_prices before POST /orders, then cleans up', async () => {
         arrange();
-        (mockTaxRateResolver.resolveProductTaxRate as jest.Mock).mockResolvedValue(0.23);
+        (mockTaxRateResolver.resolveProductTaxRate as jest.Mock).mockResolvedValue({
+          kind: 'resolved',
+          rate: 0.23,
+        });
 
         await adapter.createOrder(
           createTestOrder({
@@ -656,6 +662,103 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
 
         // The order POST must NOT have happened.
         expect(createCalls().map((c) => c[0])).not.toContain('orders');
+      });
+
+      // #2052 — an unknown tax rate used to pin `net = gross`; PrestaShop then
+      // added its own VAT and the created order cost more than the buyer paid.
+      const grossOrder = (): OrderCreate =>
+        createTestOrder({
+          totals: {
+            subtotal: 109.97,
+            tax: 0,
+            shipping: 5.0,
+            total: 114.97,
+            currency: 'PLN',
+            taxTreatment: 'inclusive',
+          },
+        });
+
+      it('refuses to create the order when the tax rate is unknown for configuration reasons', async () => {
+        arrange();
+        (mockTaxRateResolver.resolveProductTaxRate as jest.Mock).mockResolvedValue({
+          kind: 'unknown',
+          reason: 'configuration',
+          evidence: 'tax rule 7 in group 2 carries no rate',
+        });
+
+        await expect(adapter.createOrder(grossOrder())).rejects.toThrow(
+          PrestashopTaxRateUnknownException
+        );
+
+        // Neither a pin nor the order itself may have been written.
+        expect(createCalls().map((c) => c[0])).not.toContain('specific_prices');
+        expect(mockOpenLinkerModuleClient.importOrder).not.toHaveBeenCalled();
+      });
+
+      // The message is interface copy: `OrderSyncService` stores it verbatim in
+      // `syncStatus[].error` and the jobs list truncates it at 60 characters, so
+      // the problem AND the product must fit inside that budget.
+      it('identifies the problem and the product within the first 60 characters', async () => {
+        arrange();
+        (mockTaxRateResolver.resolveProductTaxRate as jest.Mock).mockResolvedValue({
+          kind: 'unknown',
+          reason: 'configuration',
+          evidence: 'tax rule 7 in group 2 carries no rate',
+        });
+
+        const error = await adapter.createOrder(grossOrder()).then(
+          () => null,
+          (e: unknown) => e as Error
+        );
+
+        expect(error?.message).toBe(
+          'Tax rate unknown for PrestaShop product #100 (PROD-001-VAR-001): tax rule 7 in group 2 ' +
+            'carries no rate. Refusing to pin PLN 29.99 gross as net - no order was created. Fix the ' +
+            'tax rule in PrestaShop, then retry.'
+        );
+        expect(error?.message.slice(0, 60)).toBe(
+          'Tax rate unknown for PrestaShop product #100 (PROD-001-VAR-0'
+        );
+      });
+
+      it('reports a transport unknown as a retryable API error naming the failed read', async () => {
+        arrange();
+        (mockTaxRateResolver.resolveProductTaxRate as jest.Mock).mockResolvedValue({
+          kind: 'unknown',
+          reason: 'transport',
+          evidence: 'GET products/100 returned 503',
+        });
+
+        const error = await adapter.createOrder(grossOrder()).then(
+          () => null,
+          (e: unknown) => e as Error
+        );
+
+        // Class carries the retry decision: an API exception keeps its retries,
+        // `PrestashopTaxRateUnknownException` does not.
+        expect(error).toBeInstanceOf(PrestashopApiException);
+        expect(error).not.toBeInstanceOf(PrestashopTaxRateUnknownException);
+        expect(error?.message).toBe(
+          'Tax rate for PrestaShop product #100 (PROD-001-VAR-001) could not be read: GET ' +
+            'products/100 returned 503. No order was created; the sync job retries on its own.'
+        );
+        expect(mockOpenLinkerModuleClient.importOrder).not.toHaveBeenCalled();
+      });
+
+      // Regression guard for the deliberate non-change: a product PrestaShop
+      // genuinely reports as untaxed ("No tax") must price exactly as before.
+      it('prices a genuinely tax-exempt product (resolved 0) exactly as before', async () => {
+        arrange();
+        (mockTaxRateResolver.resolveProductTaxRate as jest.Mock).mockResolvedValue({
+          kind: 'resolved',
+          rate: 0,
+        });
+
+        await adapter.createOrder(grossOrder());
+
+        // rate 0 → net == gross, and the order is created normally.
+        expect(specificPriceFor('100')?.price).toBe((29.99).toFixed(6));
+        expect(mockOpenLinkerModuleClient.importOrder).toHaveBeenCalled();
       });
     });
 

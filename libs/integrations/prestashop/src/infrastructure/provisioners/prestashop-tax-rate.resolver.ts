@@ -12,13 +12,24 @@
  * product → `id_tax_rules_group` → `tax_rules` → `taxes`, selecting the rule for
  * the order's delivery country when resolvable (PS taxes on the delivery address
  * by default), else the catch-all (`id_country = 0`) rule, else the first rule.
- * A product with no tax-rule group (or an unresolvable rate) yields `0`.
+ *
+ * **"Untaxed" and "unknown" are different answers (#2052).** A product with no
+ * tax-rule group resolves to `0` — `id_tax_rules_group = 0` is the "No tax"
+ * entry in PrestaShop's own product dropdown, i.e. a deliberate operator
+ * statement, and blocking on it would refuse every intentionally exempt
+ * product. Everything that means "the read did not tell me the rate" reports
+ * `kind: 'unknown'` instead, because the caller pins a tax-EXCLUDED price and a
+ * `0` it cannot trust silently mis-prices the order (#895 / ADR-014). Only a
+ * resolved rate is cached: caching an unknown would keep the wrong answer alive
+ * for the rest of the TTL and make an operator's fix look like it did nothing.
  *
  * @module libs/integrations/prestashop/src/infrastructure/provisioners
  */
 import { Logger } from '@openlinker/shared/logging';
+import { PrestashopApiException } from '../../domain/exceptions/prestashop-api.exception';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import type { PrestashopCountryResolver } from './prestashop-country-resolver';
+import type { PrestashopTaxRateResolution } from './prestashop-tax-rate.types';
 
 interface PrestashopProductTaxRow {
   id_tax_rules_group?: string | number;
@@ -48,17 +59,21 @@ export class PrestashopTaxRateResolver {
   constructor(private readonly countryResolver: PrestashopCountryResolver) {}
 
   /**
-   * Resolve the effective tax rate (as a fraction, e.g. `0.23` for 23%) PS
-   * applies to `externalProductId` for an order delivered to
-   * `deliveryCountryIso`. Returns `0` when the product is untaxed or the rate
-   * cannot be resolved.
+   * Resolve the effective tax rate PS applies to `externalProductId` for an
+   * order delivered to `deliveryCountryIso`.
+   *
+   * Reports `{ kind: 'resolved', rate }` (a fraction, e.g. `0.23`) when the
+   * shop answered — including the legitimate `0` of a "No tax" product — and
+   * `{ kind: 'unknown', reason, evidence }` when it did not. Callers that
+   * convert gross to net MUST branch on `kind`; treating an unknown as `0`
+   * pins the gross price as net (the #2052 defect).
    */
   async resolveProductTaxRate(
     externalProductId: string | number,
     deliveryCountryIso: string | undefined,
     connectionId: string,
     webserviceClient: IPrestashopWebserviceClient
-  ): Promise<number> {
+  ): Promise<PrestashopTaxRateResolution> {
     const countryId = await this.resolveCountryIdSafe(
       deliveryCountryIso,
       connectionId,
@@ -68,19 +83,25 @@ export class PrestashopTaxRateResolver {
     const cacheKey = `${connectionId}:${externalProductId}:${countryId ?? 'none'}`;
     const cached = this.cache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-      return cached.rate;
+      return { kind: 'resolved', rate: cached.rate };
     }
 
-    const rate = await this.computeRate(externalProductId, countryId, webserviceClient);
-    this.cache.set(cacheKey, { rate, timestamp: Date.now() });
-    return rate;
+    const resolution = await this.computeRate(externalProductId, countryId, webserviceClient);
+    // Only a resolved rate enters the cache. An unknown is a condition an
+    // operator fixes in the shop's admin and then retries — a cached unknown
+    // would answer the retry from memory for up to the TTL and read as "the
+    // fix did not work".
+    if (resolution.kind === 'resolved') {
+      this.cache.set(cacheKey, { rate: resolution.rate, timestamp: Date.now() });
+    }
+    return resolution;
   }
 
   private async computeRate(
     externalProductId: string | number,
     countryId: number | undefined,
     webserviceClient: IPrestashopWebserviceClient
-  ): Promise<number> {
+  ): Promise<PrestashopTaxRateResolution> {
     let groupId: number;
     try {
       const product = await webserviceClient.getResource<PrestashopProductTaxRow>(
@@ -89,16 +110,30 @@ export class PrestashopTaxRateResolver {
       );
       groupId = this.toInt(product?.id_tax_rules_group);
     } catch (error) {
+      const detail =
+        error instanceof PrestashopApiException && error.statusCode !== undefined
+          ? `returned ${error.statusCode}`
+          : `failed (${error instanceof Error ? error.message : String(error)})`;
       this.logger.warn(
-        `Could not read tax-rule group for product ${externalProductId}; treating as untaxed. ` +
-          `${error instanceof Error ? error.message : String(error)}`
+        `Could not read the tax-rule group for product ${externalProductId}; reporting the rate ` +
+          `as unknown. GET products/${externalProductId} ${detail}`
       );
-      return 0;
+      return {
+        kind: 'unknown',
+        reason: 'transport',
+        evidence: `GET products/${externalProductId} ${detail}`,
+      };
     }
 
     if (!groupId) {
-      // 0 / missing → product carries no tax rule.
-      return 0;
+      // `id_tax_rules_group = 0` is the "No tax" entry in PrestaShop's product
+      // dropdown — a deliberate exemption, NOT missing data, so it stays a
+      // resolved 0 (#2052). Warned rather than silent so an operator who did
+      // not mean to exempt the product can still find it in the logs.
+      this.logger.warn(
+        `Product ${externalProductId} has no tax-rule group (PrestaShop "No tax"); pricing it as untaxed.`
+      );
+      return { kind: 'resolved', rate: 0 };
     }
 
     const rules = await webserviceClient.listResources<PrestashopTaxRuleRow>('tax_rules', {
@@ -109,15 +144,39 @@ export class PrestashopTaxRateResolver {
       this.logger.warn(
         `No usable tax rule for group ${groupId} (product ${externalProductId}); treating as untaxed.`
       );
-      return 0;
+      return { kind: 'resolved', rate: 0 };
     }
 
     const tax = await webserviceClient.getResource<PrestashopTaxRow>('taxes', rule.id_tax);
-    const ratePercent = Number.parseFloat(String(tax?.rate ?? '0'));
-    if (!Number.isFinite(ratePercent) || ratePercent < 0) {
-      return 0;
+    const rawRate = tax?.rate;
+    if (rawRate === undefined || rawRate === null || String(rawRate).trim() === '') {
+      // The read succeeded and carries no `rate` field at all. Pre-#2052 this
+      // was the worst of the zero paths: `String(undefined ?? '0')` parsed to a
+      // finite, non-negative 0 and flowed out as a SUCCESS.
+      this.logger.warn(
+        `Tax rate unknown for product ${externalProductId}: tax rule ${rule.id_tax} in group ` +
+          `${groupId} carries no rate.`
+      );
+      return {
+        kind: 'unknown',
+        reason: 'configuration',
+        evidence: `tax rule ${rule.id_tax} in group ${groupId} carries no rate`,
+      };
     }
-    return ratePercent / 100;
+
+    const ratePercent = Number.parseFloat(String(rawRate));
+    if (!Number.isFinite(ratePercent) || ratePercent < 0) {
+      this.logger.warn(
+        `Tax rate unknown for product ${externalProductId}: tax rule ${rule.id_tax} in group ` +
+          `${groupId} reports an unusable rate '${String(rawRate)}'.`
+      );
+      return {
+        kind: 'unknown',
+        reason: 'configuration',
+        evidence: `tax rule ${rule.id_tax} in group ${groupId} reports an unusable rate '${String(rawRate)}'`,
+      };
+    }
+    return { kind: 'resolved', rate: ratePercent / 100 };
   }
 
   /**
@@ -158,7 +217,10 @@ export class PrestashopTaxRateResolver {
         webserviceClient
       );
     } catch (error) {
-      this.logger.debug(
+      // Warn, not debug (#2052): falling through to the catch-all rule can
+      // silently pick a different rate than the delivery country's, which is a
+      // pricing decision the operator should be able to find in the logs.
+      this.logger.warn(
         `Could not resolve delivery country '${deliveryCountryIso}'; using catch-all tax rule. ` +
           `${error instanceof Error ? error.message : String(error)}`
       );

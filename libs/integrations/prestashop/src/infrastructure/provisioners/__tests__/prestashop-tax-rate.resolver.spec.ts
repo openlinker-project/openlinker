@@ -1,10 +1,11 @@
 /**
- * Unit tests for the PrestaShop tax-rate resolver (#895 / ADR-014).
+ * Unit tests for the PrestaShop tax-rate resolver (#895 / ADR-014, #2052).
  *
  * @module libs/integrations/prestashop/src/infrastructure/provisioners
  */
 import { PrestashopTaxRateResolver } from '../prestashop-tax-rate.resolver';
 import type { PrestashopCountryResolver } from '../prestashop-country-resolver';
+import { PrestashopApiException } from '../../../domain/exceptions/prestashop-api.exception';
 import { createMockHttpClient } from '../../../__tests__/mocks/mock-http-client.factory';
 
 describe('PrestashopTaxRateResolver', () => {
@@ -20,12 +21,14 @@ describe('PrestashopTaxRateResolver', () => {
     resolver = new PrestashopTaxRateResolver(countryResolver);
   });
 
-  it('should return 0 when the product has no tax-rule group', async () => {
+  it('should resolve 0 when the product has no tax-rule group', async () => {
+    // `id_tax_rules_group = 0` is PrestaShop's "No tax" dropdown entry — a
+    // deliberate exemption, so it stays a RESOLVED zero and never blocks (#2052).
     httpClient.getResource.mockResolvedValueOnce({ id_tax_rules_group: '0' });
 
-    const rate = await resolver.resolveProductTaxRate('100', undefined, 'conn-1', httpClient);
+    const resolution = await resolver.resolveProductTaxRate('100', undefined, 'conn-1', httpClient);
 
-    expect(rate).toBe(0);
+    expect(resolution).toEqual({ kind: 'resolved', rate: 0 });
     expect(httpClient.listResources).not.toHaveBeenCalled();
   });
 
@@ -39,9 +42,10 @@ describe('PrestashopTaxRateResolver', () => {
       { id_tax: '7', id_country: '6', id_state: '0' }, // PL
     ]);
 
-    const rate = await resolver.resolveProductTaxRate('100', 'PL', 'conn-1', httpClient);
+    const resolution = await resolver.resolveProductTaxRate('100', 'PL', 'conn-1', httpClient);
 
-    expect(rate).toBeCloseTo(0.23, 5);
+    expect(resolution.kind).toBe('resolved');
+    expect(resolution.kind === 'resolved' && resolution.rate).toBeCloseTo(0.23, 5);
     expect(httpClient.getResource).toHaveBeenCalledWith('taxes', '7');
   });
 
@@ -55,9 +59,9 @@ describe('PrestashopTaxRateResolver', () => {
       { id_tax: '7', id_country: '6', id_state: '0' },
     ]);
 
-    const rate = await resolver.resolveProductTaxRate('100', 'ZZ', 'conn-1', httpClient);
+    const resolution = await resolver.resolveProductTaxRate('100', 'ZZ', 'conn-1', httpClient);
 
-    expect(rate).toBeCloseTo(0.05, 5);
+    expect(resolution.kind === 'resolved' && resolution.rate).toBeCloseTo(0.05, 5);
     expect(httpClient.getResource).toHaveBeenCalledWith('taxes', '9');
   });
 
@@ -71,28 +75,103 @@ describe('PrestashopTaxRateResolver', () => {
       { id_tax: '7', id_country: '6', id_state: '0' }, // country-level row
     ]);
 
-    const rate = await resolver.resolveProductTaxRate('100', 'PL', 'conn-1', httpClient);
+    const resolution = await resolver.resolveProductTaxRate('100', 'PL', 'conn-1', httpClient);
 
-    expect(rate).toBeCloseTo(0.23, 5);
+    expect(resolution.kind === 'resolved' && resolution.rate).toBeCloseTo(0.23, 5);
     expect(httpClient.getResource).toHaveBeenCalledWith('taxes', '7');
   });
 
-  it('should return 0 when the product read fails', async () => {
-    httpClient.getResource.mockRejectedValueOnce(new Error('boom'));
+  it('should report a transport unknown (not 0) when the product read fails', async () => {
+    httpClient.getResource.mockRejectedValueOnce(new PrestashopApiException('boom', 503));
 
-    const rate = await resolver.resolveProductTaxRate('100', 'PL', 'conn-1', httpClient);
+    const resolution = await resolver.resolveProductTaxRate('25', 'PL', 'conn-1', httpClient);
 
-    expect(rate).toBe(0);
+    expect(resolution).toEqual({
+      kind: 'unknown',
+      reason: 'transport',
+      evidence: 'GET products/25 returned 503',
+    });
   });
 
-  it('should return 0 when the tax-rule group has no usable rules', async () => {
+  it('should report a transport unknown carrying the error text when the failure has no status code', async () => {
+    httpClient.getResource.mockRejectedValueOnce(new Error('socket hang up'));
+
+    const resolution = await resolver.resolveProductTaxRate('25', 'PL', 'conn-1', httpClient);
+
+    expect(resolution.kind).toBe('unknown');
+    expect(resolution.kind === 'unknown' && resolution.reason).toBe('transport');
+    expect(resolution.kind === 'unknown' && resolution.evidence).toContain('socket hang up');
+  });
+
+  it('should resolve 0 when the tax-rule group has no usable rules', async () => {
     httpClient.getResource.mockResolvedValueOnce({ id_tax_rules_group: '2' });
     countryResolver.resolveCountryId.mockResolvedValueOnce(6);
     httpClient.listResources.mockResolvedValueOnce([]);
 
-    const rate = await resolver.resolveProductTaxRate('100', 'PL', 'conn-1', httpClient);
+    const resolution = await resolver.resolveProductTaxRate('100', 'PL', 'conn-1', httpClient);
 
-    expect(rate).toBe(0);
+    expect(resolution).toEqual({ kind: 'resolved', rate: 0 });
+  });
+
+  // Previously untested: line 120 — `taxes/<id>` answers WITHOUT a `rate` field.
+  // Pre-#2052 `String(undefined ?? '0')` parsed to a finite, non-negative 0 and
+  // left the resolver as a success, which is why this was the worst of the five
+  // zero paths.
+  it('should report a configuration unknown when the tax record carries no rate field', async () => {
+    httpClient.getResource
+      .mockResolvedValueOnce({ id_tax_rules_group: '2' })
+      .mockResolvedValueOnce({}); // taxes/7 — no `rate` at all
+    countryResolver.resolveCountryId.mockResolvedValueOnce(6);
+    httpClient.listResources.mockResolvedValueOnce([{ id_tax: '7', id_country: '6', id_state: '0' }]);
+
+    const resolution = await resolver.resolveProductTaxRate('25', 'PL', 'conn-1', httpClient);
+
+    expect(resolution).toEqual({
+      kind: 'unknown',
+      reason: 'configuration',
+      evidence: 'tax rule 7 in group 2 carries no rate',
+    });
+  });
+
+  it('should report a configuration unknown when the tax rate is an empty string', async () => {
+    httpClient.getResource
+      .mockResolvedValueOnce({ id_tax_rules_group: '2' })
+      .mockResolvedValueOnce({ rate: '  ' });
+    countryResolver.resolveCountryId.mockResolvedValueOnce(6);
+    httpClient.listResources.mockResolvedValueOnce([{ id_tax: '7', id_country: '6', id_state: '0' }]);
+
+    const resolution = await resolver.resolveProductTaxRate('25', 'PL', 'conn-1', httpClient);
+
+    expect(resolution.kind === 'unknown' && resolution.reason).toBe('configuration');
+  });
+
+  // Previously untested: line 118 — the rate is present but unparseable.
+  it('should report a configuration unknown when the tax rate is not a finite number', async () => {
+    httpClient.getResource
+      .mockResolvedValueOnce({ id_tax_rules_group: '2' })
+      .mockResolvedValueOnce({ rate: 'not-a-number' });
+    countryResolver.resolveCountryId.mockResolvedValueOnce(6);
+    httpClient.listResources.mockResolvedValueOnce([{ id_tax: '7', id_country: '6', id_state: '0' }]);
+
+    const resolution = await resolver.resolveProductTaxRate('25', 'PL', 'conn-1', httpClient);
+
+    expect(resolution).toEqual({
+      kind: 'unknown',
+      reason: 'configuration',
+      evidence: "tax rule 7 in group 2 reports an unusable rate 'not-a-number'",
+    });
+  });
+
+  it('should report a configuration unknown when the tax rate is negative', async () => {
+    httpClient.getResource
+      .mockResolvedValueOnce({ id_tax_rules_group: '2' })
+      .mockResolvedValueOnce({ rate: '-5.000' });
+    countryResolver.resolveCountryId.mockResolvedValueOnce(6);
+    httpClient.listResources.mockResolvedValueOnce([{ id_tax: '7', id_country: '6', id_state: '0' }]);
+
+    const resolution = await resolver.resolveProductTaxRate('25', 'PL', 'conn-1', httpClient);
+
+    expect(resolution.kind === 'unknown' && resolution.reason).toBe('configuration');
   });
 
   it('should cache the resolved rate per product/country', async () => {
@@ -107,5 +186,40 @@ describe('PrestashopTaxRateResolver', () => {
 
     // products + taxes read once each (second call served from cache).
     expect(httpClient.getResource).toHaveBeenCalledTimes(2);
+  });
+
+  // The operator fixes the tax record and presses Retry. If the unknown had
+  // been cached, the retry would answer from memory for up to 5 minutes and
+  // read as "the fix did not work".
+  it('should not cache an unknown, so a retry re-reads the shop', async () => {
+    countryResolver.resolveCountryId.mockResolvedValue(6);
+    httpClient.listResources.mockResolvedValue([{ id_tax: '7', id_country: '6', id_state: '0' }]);
+    httpClient.getResource
+      .mockResolvedValueOnce({ id_tax_rules_group: '2' }) // products/25 (1st call)
+      .mockResolvedValueOnce({}) // taxes/7 — no rate → unknown
+      .mockResolvedValueOnce({ id_tax_rules_group: '2' }) // products/25 (2nd call)
+      .mockResolvedValueOnce({ rate: '23.000' }); // taxes/7 — operator fixed it
+
+    const first = await resolver.resolveProductTaxRate('25', 'PL', 'conn-1', httpClient);
+    const second = await resolver.resolveProductTaxRate('25', 'PL', 'conn-1', httpClient);
+
+    expect(first.kind).toBe('unknown');
+    expect(second.kind === 'resolved' && second.rate).toBeCloseTo(0.23, 5);
+    expect(httpClient.getResource).toHaveBeenCalledTimes(4);
+  });
+
+  it('should not cache a transport unknown either', async () => {
+    countryResolver.resolveCountryId.mockResolvedValue(6);
+    httpClient.listResources.mockResolvedValue([{ id_tax: '7', id_country: '6', id_state: '0' }]);
+    httpClient.getResource
+      .mockRejectedValueOnce(new PrestashopApiException('gateway', 503))
+      .mockResolvedValueOnce({ id_tax_rules_group: '2' })
+      .mockResolvedValueOnce({ rate: '23.000' });
+
+    const first = await resolver.resolveProductTaxRate('25', 'PL', 'conn-1', httpClient);
+    const second = await resolver.resolveProductTaxRate('25', 'PL', 'conn-1', httpClient);
+
+    expect(first.kind === 'unknown' && first.reason).toBe('transport');
+    expect(second.kind === 'resolved' && second.rate).toBeCloseTo(0.23, 5);
   });
 });
