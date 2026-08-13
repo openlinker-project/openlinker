@@ -1,0 +1,325 @@
+/**
+ * Destination Taxonomy Projection — integration tests (#1979, ADR-037)
+ *
+ * Exercises the projection against a real Postgres, because the three things
+ * most worth proving are all database behaviour that a unit test with a mocked
+ * repository cannot reach:
+ *
+ *  - the exactly-one-of-scope invariant, enforced by two PARTIAL unique indexes
+ *    (a plain composite unique would let NULLs duplicate rows);
+ *  - the upsert's `ON CONFLICT ... WHERE <predicate>` conflict target, which
+ *    fails at runtime if the index predicate and the statement disagree;
+ *  - `search`, whose whole point is finding a DEEP category from the root — the
+ *    thing the pre-#1979 level-scoped pickers could not do.
+ *
+ * Seeding goes through the repository rather than the ORM entity, which is what
+ * lets `listings` avoid adding an `orm-entities` sub-barrel (and so a new
+ * `libs/core/package.json` export) purely for tests. See `TaxonomyRepositoryHandle`
+ * for why the port type itself is not imported.
+ *
+ * @module apps/api/test/integration
+ */
+import {
+  DESTINATION_CATEGORY_REPOSITORY_TOKEN,
+  DESTINATION_TAXONOMY_SERVICE_TOKEN,
+  TaxonomySourceUnavailableException,
+  type IDestinationTaxonomyService,
+  type DestinationCategory,
+  type DestinationCategorySearchHit,
+  type DestinationCategoryUpsert,
+  type TaxonomyScope,
+} from '@openlinker/core/listings';
+
+import {
+  getTestHarness,
+  IntegrationTestHarness,
+  resetTestHarness,
+  teardownTestHarness,
+} from './setup';
+import { createTestConnection } from './helpers/test-connection.helper';
+
+/**
+ * Structural handle for the repository this spec resolves out of the container.
+ *
+ * `DestinationCategoryRepositoryPort` is deliberately NOT imported: a
+ * `*RepositoryPort` is an intra-context contract and importing one across
+ * contexts — `apps/api/test/**` included — is a deny shape enforced by
+ * `check-cross-context-imports`. The Symbol token is an allowed shape, so the
+ * spec binds to the token and declares the surface it uses.
+ */
+interface TaxonomyRepositoryHandle {
+  browse(scope: TaxonomyScope, parentId: string | null): Promise<DestinationCategory[]>;
+  search(
+    scope: TaxonomyScope,
+    query: string,
+    limit: number,
+  ): Promise<DestinationCategorySearchHit[]>;
+  upsertMany(
+    scope: TaxonomyScope,
+    nodes: readonly DestinationCategoryUpsert[],
+    syncedAt: Date,
+  ): Promise<number>;
+  deleteStaleBelow(scope: TaxonomyScope, syncedAt: Date): Promise<number>;
+}
+
+
+const ALLEGRO_SCOPE: TaxonomyScope = { taxonomyOwner: 'allegro', connectionId: null };
+const SHOP_CONNECTION_ID = '11111111-1111-4111-8111-111111111111';
+const SHOP_SCOPE: TaxonomyScope = { taxonomyOwner: null, connectionId: SHOP_CONNECTION_ID };
+
+describe('Destination taxonomy projection (#1979)', () => {
+  let harness: IntegrationTestHarness;
+  let repository: TaxonomyRepositoryHandle;
+  let service: IDestinationTaxonomyService;
+
+  beforeAll(async () => {
+    harness = await getTestHarness();
+    repository = harness
+      .getApp()
+      .get<TaxonomyRepositoryHandle>(DESTINATION_CATEGORY_REPOSITORY_TOKEN);
+    service = harness
+      .getApp()
+      .get<IDestinationTaxonomyService>(DESTINATION_TAXONOMY_SERVICE_TOKEN);
+  });
+
+  afterEach(async () => {
+    await resetTestHarness();
+  });
+
+  afterAll(async () => {
+    await teardownTestHarness();
+  });
+
+  const seedAllegroTree = async (syncedAt: Date): Promise<void> => {
+    await repository.upsertMany(
+      ALLEGRO_SCOPE,
+      [
+        { externalId: 'root-1', name: 'Odzież', parentId: null, leaf: false },
+        { externalId: 'child-1', name: 'Buty sportowe', parentId: 'root-1', leaf: true },
+        { externalId: 'root-2', name: 'Elektronika', parentId: null, leaf: true },
+      ],
+      syncedAt,
+    );
+  };
+
+  describe('scope keying', () => {
+    it('should store a marketplace tree once no matter how many times it is synced', async () => {
+      await seedAllegroTree(new Date('2026-01-01T00:00:00Z'));
+      // A second connection to the same marketplace syncs the SAME owner scope.
+      await seedAllegroTree(new Date('2026-01-02T00:00:00Z'));
+
+      const roots = await repository.browse(ALLEGRO_SCOPE, null);
+
+      expect(roots.map((category) => category.externalId).sort()).toEqual(['root-1', 'root-2']);
+    });
+
+    it('should keep an owner tree and a shop tree with colliding ids separate', async () => {
+      // Both scopes legitimately use the id "root-1"; the partial unique indexes
+      // must treat them as different rows, not a conflict.
+      await seedAllegroTree(new Date('2026-01-01T00:00:00Z'));
+      await repository.upsertMany(
+        SHOP_SCOPE,
+        [{ externalId: 'root-1', name: 'Shirts', parentId: null, leaf: null }],
+        new Date('2026-01-01T00:00:00Z'),
+      );
+
+      const ownerRoots = await repository.browse(ALLEGRO_SCOPE, null);
+      const shopRoots = await repository.browse(SHOP_SCOPE, null);
+
+      expect(ownerRoots.find((c) => c.externalId === 'root-1')?.name).toBe('Odzież');
+      expect(shopRoots.find((c) => c.externalId === 'root-1')?.name).toBe('Shirts');
+      expect(shopRoots).toHaveLength(1);
+    });
+
+    it('should preserve a null leaf flag for a shop node and a boolean for a marketplace node', async () => {
+      await seedAllegroTree(new Date('2026-01-01T00:00:00Z'));
+      await repository.upsertMany(
+        SHOP_SCOPE,
+        [{ externalId: 'shop-1', name: 'Shirts', parentId: null, leaf: null }],
+        new Date('2026-01-01T00:00:00Z'),
+      );
+
+      const [shopNode] = await repository.browse(SHOP_SCOPE, null);
+      const ownerNodes = await repository.browse(ALLEGRO_SCOPE, null);
+
+      expect(shopNode.leaf).toBeNull();
+      expect(ownerNodes.find((c) => c.externalId === 'root-2')?.leaf).toBe(true);
+    });
+  });
+
+  describe('upsert', () => {
+    it('should tolerate a duplicated externalId within one batch', async () => {
+      // Postgres rejects an ON CONFLICT that matches the same row twice in one
+      // statement, so an adapter returning a duplicate would crash the sync.
+      await expect(
+        repository.upsertMany(
+          ALLEGRO_SCOPE,
+          [
+            { externalId: 'dup', name: 'First', parentId: null, leaf: true },
+            { externalId: 'dup', name: 'Second', parentId: null, leaf: true },
+          ],
+          new Date('2026-01-01T00:00:00Z'),
+        ),
+      ).resolves.toBe(1);
+
+      const roots = await repository.browse(ALLEGRO_SCOPE, null);
+      expect(roots).toHaveLength(1);
+      expect(roots[0].name).toBe('Second');
+    });
+
+    it('should update an existing node in place rather than duplicating it', async () => {
+      await seedAllegroTree(new Date('2026-01-01T00:00:00Z'));
+
+      await repository.upsertMany(
+        ALLEGRO_SCOPE,
+        [{ externalId: 'root-1', name: 'Odzież i obuwie', parentId: null, leaf: false }],
+        new Date('2026-01-02T00:00:00Z'),
+      );
+
+      const roots = await repository.browse(ALLEGRO_SCOPE, null);
+      const renamed = roots.filter((category) => category.externalId === 'root-1');
+      expect(renamed).toHaveLength(1);
+      expect(renamed[0].name).toBe('Odzież i obuwie');
+    });
+
+    it('should re-derive the search text when a node is renamed', async () => {
+      await seedAllegroTree(new Date('2026-01-01T00:00:00Z'));
+      await repository.upsertMany(
+        ALLEGRO_SCOPE,
+        [{ externalId: 'child-1', name: 'Kurtki zimowe', parentId: 'root-1', leaf: true }],
+        new Date('2026-01-02T00:00:00Z'),
+      );
+
+      await expect(repository.search(ALLEGRO_SCOPE, 'kurtki', 20)).resolves.toHaveLength(1);
+      await expect(repository.search(ALLEGRO_SCOPE, 'sportowe', 20)).resolves.toHaveLength(0);
+    });
+  });
+
+  describe('browse', () => {
+    it('should return only the requested level', async () => {
+      await seedAllegroTree(new Date('2026-01-01T00:00:00Z'));
+
+      const children = await repository.browse(ALLEGRO_SCOPE, 'root-1');
+
+      expect(children.map((category) => category.externalId)).toEqual(['child-1']);
+    });
+  });
+
+  describe('search', () => {
+    it('should find a DEEP category from the root — the bug this model fixes', async () => {
+      // Pre-#1979 the pickers filtered only the currently-loaded level, so this
+      // returned nothing and an operator concluded the category did not exist.
+      await seedAllegroTree(new Date('2026-01-01T00:00:00Z'));
+
+      const hits = await repository.search(ALLEGRO_SCOPE, 'buty', 20);
+
+      expect(hits).toHaveLength(1);
+      expect(hits[0].category.externalId).toBe('child-1');
+    });
+
+    it('should match a diacritic-free query against an accented name', async () => {
+      await seedAllegroTree(new Date('2026-01-01T00:00:00Z'));
+
+      const hits = await repository.search(ALLEGRO_SCOPE, 'odziez', 20);
+
+      expect(hits.map((hit) => hit.category.externalId)).toEqual(['root-1']);
+    });
+
+    it('should return a root -> leaf breadcrumb for each hit', async () => {
+      await seedAllegroTree(new Date('2026-01-01T00:00:00Z'));
+
+      const [hit] = await repository.search(ALLEGRO_SCOPE, 'buty', 20);
+
+      expect(hit.path.map((segment) => segment.name)).toEqual(['Odzież', 'Buty sportowe']);
+    });
+
+    it('should not leak hits across scopes', async () => {
+      await seedAllegroTree(new Date('2026-01-01T00:00:00Z'));
+
+      await expect(repository.search(SHOP_SCOPE, 'buty', 20)).resolves.toEqual([]);
+    });
+
+    it('should treat a LIKE wildcard in the query as a literal', async () => {
+      // `%` is a bound parameter but still a LIKE metacharacter, so without
+      // escaping this would match every row in the scope.
+      await seedAllegroTree(new Date('2026-01-01T00:00:00Z'));
+
+      await expect(repository.search(ALLEGRO_SCOPE, '%', 20)).resolves.toEqual([]);
+      await expect(repository.search(ALLEGRO_SCOPE, 'b_ty', 20)).resolves.toEqual([]);
+    });
+
+    it('should honour the limit', async () => {
+      await seedAllegroTree(new Date('2026-01-01T00:00:00Z'));
+
+      await repository.upsertMany(
+        ALLEGRO_SCOPE,
+        [
+          { externalId: 'x1', name: 'Buty damskie', parentId: 'root-1', leaf: true },
+          { externalId: 'x2', name: 'Buty męskie', parentId: 'root-1', leaf: true },
+        ],
+        new Date('2026-01-01T00:00:00Z'),
+      );
+
+      const hits = await repository.search(ALLEGRO_SCOPE, 'buty', 2);
+
+      expect(hits).toHaveLength(2);
+    });
+  });
+
+  describe('watermark sweep', () => {
+    it('should delete only the rows a completing run did not observe', async () => {
+      await seedAllegroTree(new Date('2026-01-01T00:00:00Z'));
+
+      // A later run sees root-1 and child-1, but root-2 has been removed upstream.
+      const secondRun = new Date('2026-02-01T00:00:00Z');
+      await repository.upsertMany(
+        ALLEGRO_SCOPE,
+        [
+          { externalId: 'root-1', name: 'Odzież', parentId: null, leaf: false },
+          { externalId: 'child-1', name: 'Buty sportowe', parentId: 'root-1', leaf: true },
+        ],
+        secondRun,
+      );
+      const removed = await repository.deleteStaleBelow(ALLEGRO_SCOPE, secondRun);
+
+      const roots = await repository.browse(ALLEGRO_SCOPE, null);
+      expect(removed).toBe(1);
+      expect(roots.map((category) => category.externalId)).toEqual(['root-1']);
+    });
+
+    it('should not sweep another scope', async () => {
+      await repository.upsertMany(
+        SHOP_SCOPE,
+        [{ externalId: 'shop-1', name: 'Shirts', parentId: null, leaf: null }],
+        new Date('2026-01-01T00:00:00Z'),
+      );
+      await seedAllegroTree(new Date('2026-01-01T00:00:00Z'));
+
+      await repository.deleteStaleBelow(ALLEGRO_SCOPE, new Date('2026-03-01T00:00:00Z'));
+
+      await expect(repository.browse(SHOP_SCOPE, null)).resolves.toHaveLength(1);
+    });
+  });
+
+  describe('service wiring', () => {
+    // The repository cases above bypass the service, so nothing else proves the
+    // module actually resolves it — a missing provider or a mis-bound token
+    // would leave every unit test green.
+    it('should resolve IDestinationTaxonomyService from the container', () => {
+      expect(service).toBeDefined();
+      expect(typeof service.browse).toBe('function');
+      expect(typeof service.search).toBe('function');
+    });
+
+    it('should reject a connection with no taxonomy capability', async () => {
+      // A bare PrestaShop connection supports neither OfferManager nor
+      // ProductPublisher, so scope resolution has nothing to key on. Asserted
+      // end-to-end because the failure mode is a real operator misconfiguration.
+      const connection = await createTestConnection(harness.getDataSource());
+
+      await expect(service.resolveScope(connection.id)).rejects.toBeInstanceOf(
+        TaxonomySourceUnavailableException,
+      );
+    });
+  });
+});

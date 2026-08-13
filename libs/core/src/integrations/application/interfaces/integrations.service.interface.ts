@@ -78,11 +78,19 @@ export interface IIntegrationsService {
    * that consume only `.connection` (e.g. capability-scoped scheduler fan-out)
    * then pay zero adapter-construction cost. The narrowing semantics and the
    * returned connection set are identical in both modes (#1206).
+   *
+   * By default only `status: 'active'` connections are considered — the
+   * overwhelming majority of callers want an adapter they can actually
+   * dispatch to. Pass `includeAllStatuses: true` to also surface
+   * `disabled` / `error` / `needs_reauth` connections (e.g. a health/trust
+   * read that must report on a connection precisely BECAUSE it stopped
+   * working, not skip it).
    */
   listCapabilityAdapters<T>(filters: {
     capability: string;
     platformType?: string;
     lazy?: boolean;
+    includeAllStatuses?: boolean;
   }): Promise<
     Array<{
       connectionId: string;

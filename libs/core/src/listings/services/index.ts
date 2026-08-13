@@ -39,3 +39,4 @@ export { BulkShopPublishSubmitService } from '../application/services/bulk-shop-
 export { BulkShopPublishRetryService } from '../application/services/bulk-shop-publish-retry.service';
 export { ShopStatusSyncService } from '../application/services/shop-status-sync.service';
 export { StaleOfferPauseService } from '../application/services/stale-offer-pause.service';
+export { DestinationTaxonomyService } from '../application/services/destination-taxonomy.service';

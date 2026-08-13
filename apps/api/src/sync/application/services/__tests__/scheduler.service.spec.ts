@@ -101,6 +101,11 @@ describe('SchedulerService', () => {
         'OL_OFFLINE_RESUBMIT_CRON',
         'OL_PENDING_RECOVERY_CRON',
         'OL_STALE_OFFER_PAUSE_CRON',
+        // A cron key missing from this list falls through to `'true'`
+        // below, which CronJob rejects ("Unknown alias: tru") and which
+        // aborts onApplicationBootstrap for EVERY task — so a new
+        // scheduled task must register its cron key here.
+        'OL_TAXONOMY_SYNC_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';
@@ -173,6 +178,9 @@ describe('SchedulerService', () => {
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs.sort()).toEqual([
+        // Capability-scoped like the rest — it drains OfferManager /
+        // ProductPublisher connections and names no platform (#1979).
+        'destination-taxonomy-sync',
         'master-inventory-sync',
         'master-product-sync',
         'offline-resubmit',
@@ -395,6 +403,11 @@ describe('SchedulerService', () => {
         'OL_OFFLINE_RESUBMIT_CRON',
         'OL_PENDING_RECOVERY_CRON',
         'OL_STALE_OFFER_PAUSE_CRON',
+        // A cron key missing from this list falls through to `'true'`
+        // below, which CronJob rejects ("Unknown alias: tru") and which
+        // aborts onApplicationBootstrap for EVERY task — so a new
+        // scheduled task must register its cron key here.
+        'OL_TAXONOMY_SYNC_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';
@@ -479,6 +492,11 @@ describe('SchedulerService', () => {
         'OL_OFFLINE_RESUBMIT_CRON',
         'OL_PENDING_RECOVERY_CRON',
         'OL_STALE_OFFER_PAUSE_CRON',
+        // A cron key missing from this list falls through to `'true'`
+        // below, which CronJob rejects ("Unknown alias: tru") and which
+        // aborts onApplicationBootstrap for EVERY task — so a new
+        // scheduled task must register its cron key here.
+        'OL_TAXONOMY_SYNC_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';
@@ -547,6 +565,195 @@ describe('SchedulerService', () => {
 
       const key = task!.generateIdempotencyKey(createConnection('conn-offer-1'), '2026-07-27-17-00');
       expect(key).toBe('marketplace:conn-offer-1:offer:pauseStaleSweep:2026-07-27-17-00');
+    });
+  });
+
+  describe('destination-taxonomy-sync task (#1979, ADR-037)', () => {
+    const defaultConfigGet = (key: string, defaultValue?: unknown): unknown => {
+      const cronKeys = [
+        'OL_INVENTORY_SYNC_CRON',
+        'OL_PRODUCT_SYNC_CRON',
+        'OL_PICKUP_POINT_REFRESH_CRON',
+        'OL_REGULATORY_RECONCILE_CRON',
+        'OL_OFFLINE_RESUBMIT_CRON',
+        'OL_PENDING_RECOVERY_CRON',
+        'OL_STALE_OFFER_PAUSE_CRON',
+        'OL_TAXONOMY_SYNC_CRON',
+      ];
+      if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
+      return 'true';
+    };
+
+    const getRegisteredTask = (): SchedulerTaskConfig | undefined =>
+      (service as unknown as { tasks: SchedulerTaskConfig[] }).tasks.find(
+        (t) => t.taskId === 'destination-taxonomy-sync'
+      );
+
+    /** An adapter that browses its own marketplace taxonomy. */
+    const browsingAdapter = { fetchCategories: jest.fn() };
+    /** An adapter that borrows another owner's taxonomy (Erli -> allegro). */
+    const borrowingAdapter = { getBorrowedTaxonomy: () => 'allegro' };
+
+    beforeEach(() => {
+      configService.get.mockImplementation(defaultConfigGet);
+    });
+
+    it('registers the task by default', () => {
+      service.onApplicationBootstrap();
+
+      const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
+      expect(registeredJobs).toContain('destination-taxonomy-sync');
+    });
+
+    it('does not register the task when OL_TAXONOMY_SYNC_ENABLED is "false"', () => {
+      configService.get.mockImplementation((key: string, defaultValue?: unknown) => {
+        if (key === 'OL_TAXONOMY_SYNC_ENABLED') return 'false';
+        return defaultConfigGet(key, defaultValue);
+      });
+
+      service.onApplicationBootstrap();
+
+      const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
+      expect(registeredJobs).not.toContain('destination-taxonomy-sync');
+    });
+
+    it('elects ONE connection per taxonomy owner so a shared tree is not synced twice', async () => {
+      // The whole point of owner-keying: two Allegro connections share one tree.
+      const first = createConnection('conn-a', 'allegro');
+      const second = createConnection('conn-b', 'allegro');
+      integrationsService.listCapabilityAdapters.mockImplementation(
+        ({ capability }: { capability: string }) =>
+          Promise.resolve(
+            capability === 'OfferManager'
+              ? [
+                  { connectionId: 'conn-a', connection: first, adapter: {} as never, metadata: {} as never },
+                  { connectionId: 'conn-b', connection: second, adapter: {} as never, metadata: {} as never },
+                ]
+              : []
+          ) as never
+      );
+      integrationsService.getCapabilityAdapter.mockResolvedValue(browsingAdapter as never);
+      integrationsService.getAdapter.mockImplementation((connectionId: string) =>
+        Promise.resolve({
+          connection: createConnection(connectionId, 'allegro'),
+          metadata: {} as never,
+        })
+      );
+
+      service.onApplicationBootstrap();
+      const connections = await getRegisteredTask()!.connectionFilter!();
+
+      expect(connections).toEqual([first]);
+    });
+
+    it('keeps every shop connection, since each shop authors its own tree', async () => {
+      const shop = createConnection('conn-shop', 'woocommerce');
+      integrationsService.listCapabilityAdapters.mockImplementation(
+        ({ capability }: { capability: string }) =>
+          Promise.resolve(
+            capability === 'ProductPublisher'
+              ? [{ connectionId: 'conn-shop', connection: shop, adapter: {} as never, metadata: {} as never }]
+              : []
+          ) as never
+      );
+
+      service.onApplicationBootstrap();
+      const task = getRegisteredTask()!;
+      const connections = await task.connectionFilter!();
+
+      expect(connections).toEqual([shop]);
+      expect(task.generateIdempotencyKey(shop, '2026-07-27-17-00')).toBe(
+        'taxonomy:connection:conn-shop:sync:2026-07-27-17-00'
+      );
+      expect(task.generatePayload(shop)).toEqual({ schemaVersion: 1, taxonomyOwner: null });
+    });
+
+    it('keys a marketplace run by OWNER, so two connections cannot produce two runs', async () => {
+      const conn = createConnection('conn-a', 'allegro');
+      integrationsService.listCapabilityAdapters.mockImplementation(
+        ({ capability }: { capability: string }) =>
+          Promise.resolve(
+            capability === 'OfferManager'
+              ? [{ connectionId: 'conn-a', connection: conn, adapter: {} as never, metadata: {} as never }]
+              : []
+          ) as never
+      );
+      integrationsService.getCapabilityAdapter.mockResolvedValue(browsingAdapter as never);
+      integrationsService.getAdapter.mockResolvedValue({
+        connection: conn,
+        metadata: {} as never,
+      } as never);
+
+      service.onApplicationBootstrap();
+      const task = getRegisteredTask()!;
+      await task.connectionFilter!();
+
+      expect(task.generateIdempotencyKey(conn, '2026-07-27-17-00')).toBe(
+        'taxonomy:owner:allegro:sync:2026-07-27-17-00'
+      );
+      expect(task.generatePayload(conn)).toEqual({ schemaVersion: 1, taxonomyOwner: 'allegro' });
+    });
+
+    it('elects a borrowing connection under the OWNER it borrows from', async () => {
+      // An Erli-only operator still needs the Allegro tree (ADR-037).
+      const erli = createConnection('conn-erli', 'erli');
+      integrationsService.listCapabilityAdapters.mockImplementation(
+        ({ capability }: { capability: string }) =>
+          Promise.resolve(
+            capability === 'OfferManager'
+              ? [{ connectionId: 'conn-erli', connection: erli, adapter: {} as never, metadata: {} as never }]
+              : []
+          ) as never
+      );
+      integrationsService.getCapabilityAdapter.mockResolvedValue(borrowingAdapter as never);
+      // The shared resolver always resolves the connection (a borrower's owner
+      // does not depend on platformType, but one code path serves both cases).
+      integrationsService.getAdapter.mockResolvedValue({
+        connection: erli,
+        metadata: {} as never,
+      } as never);
+
+      service.onApplicationBootstrap();
+      const task = getRegisteredTask()!;
+      const connections = await task.connectionFilter!();
+
+      expect(connections).toEqual([erli]);
+      expect(task.generateIdempotencyKey(erli, '2026-07-27-17-00')).toBe(
+        'taxonomy:owner:allegro:sync:2026-07-27-17-00'
+      );
+    });
+
+    it('skips a marketplace whose platform is not a known taxonomy owner', async () => {
+      const ebay = createConnection('conn-ebay', 'ebay');
+      integrationsService.listCapabilityAdapters.mockImplementation(
+        ({ capability }: { capability: string }) =>
+          Promise.resolve(
+            capability === 'OfferManager'
+              ? [{ connectionId: 'conn-ebay', connection: ebay, adapter: {} as never, metadata: {} as never }]
+              : []
+          ) as never
+      );
+      integrationsService.getCapabilityAdapter.mockResolvedValue(browsingAdapter as never);
+      integrationsService.getAdapter.mockResolvedValue({
+        connection: ebay,
+        metadata: {} as never,
+      } as never);
+
+      service.onApplicationBootstrap();
+      const connections = await getRegisteredTask()!.connectionFilter!();
+
+      expect(connections).toEqual([]);
+    });
+
+    it('throws rather than emitting an undefined-owner key when the filter has not run', () => {
+      // A silent miss would collapse EVERY owner's job onto one key and drop
+      // all but one sync, so the failure must be loud.
+      service.onApplicationBootstrap();
+      const task = getRegisteredTask()!;
+
+      expect(() =>
+        task.generateIdempotencyKey(createConnection('conn-unknown', 'allegro'), '2026-07-27-17-00')
+      ).toThrow(/Taxonomy scope not resolved/);
     });
   });
 });
