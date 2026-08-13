@@ -19,7 +19,15 @@ import {
 @Index(['status', 'nextRunAt'])
 @Index(['lockedAt'])
 @Index(['connectionId', 'createdAt']) // Supports findRecentByConnectionId diagnostics query
-@Index(['connectionId', 'jobType', 'status', 'updatedAt']) // Supports findLastSucceededByConnectionAndJobType (#1982) — a render-blocking read, once per connection
+// Supports findLastSucceededByConnectionAndJobType (#1982) — a render-blocking read, once per connection.
+// Explicitly named to match the migration's index name — an unnamed decorator gets a
+// TypeORM-derived hash name, which would make a future migration:generate propose a duplicate.
+@Index('IDX_sync_jobs_connectionId_jobType_status_updatedAt', [
+  'connectionId',
+  'jobType',
+  'status',
+  'updatedAt',
+])
 export class SyncJobOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

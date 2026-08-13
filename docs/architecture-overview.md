@@ -301,6 +301,18 @@ The system is organized into the following core bounded contexts:
 - **Infakt** (Polish accounting SaaS), `@openlinker/integrations-infakt`, adapterKey `infakt.accounting.v1`, registry capability `Invoicing` (#1281). Infakt submits to KSeF on the seller's behalf rather than OL building FA(3) XML itself, so `InfaktInvoicingAdapter` implements `RegulatoryStatusReader` (poll the KSeF-relay clearance status Infakt reports) rather than `RegulatoryTransmitter`. It also implements `CorrectionIssuer`, `RegulatoryDocumentReader`, `RegulatoryResubmitter` (re-trigger transmission of an already-issued document — the operator "resend" action for a `rejected` clearance), `BankAccountsReader` / `BankAccountDefaultSetter`, plus the accounting-specific `PaymentStatusReader` / `PaymentMarker` and `InvoiceEmailSender` sub-capabilities. **Document creation is asynchronous on inFakt's side**: `issueInvoice`, `issueCorrection` and `markPaid` go through inFakt's `async/*.json` task endpoints, which return a task reference (`processing_code: 100`) rather than the document — so those adapter methods POST the task and then block on a bounded status poll (`async/{resource}/status/{ref}.json`) until it resolves, before hydrating the created document. That is why an inFakt adapter method can block for seconds; a poll timeout surfaces as `failureMode: 'in-doubt'` (the provider may still finish creating the document) rather than as a rejection (#1763).
 - **Subiekt nexo** (via Sfera bridge), `@openlinker/integrations-subiekt` — the first `InvoicingPort` adapter (#753), implementing `RegulatoryStatusReader`, `CorrectionIssuer`, `BankAccountsReader`, and `BankAccountDefaultSetter`.
 
+### 15. Analytics Trust
+
+- **Responsibility**: A read-only data-trust signal for the analytics UI — per `OrderSource`-capable connection, whether its ingestion pipe is live and whether its order data is recent, so an operator reading a revenue/order chart can tell "sales dropped" apart from "the poll died" (#1982). No entities, no persistence, no invariants of its own — a composition of two existing seams (`IIntegrationsService`, `ISyncJobsService`) plus two pure domain functions.
+- **Location**: `libs/core/src/analytics-trust/`.
+- **Distinct from `libs/core/src/analytics/`** (PostHog settings) — adjacent names, unrelated subject matter.
+- **`AnalyticsTrustService`** enumerates `OrderSource`-capable connections via `listCapabilityAdapters({ capability: 'OrderSource', lazy: true, includeAllStatuses: true })` — `includeAllStatuses` (opt-in, default off) is required here: the single most common real ingestion death is a token flipping a connection to `needs_reauth`, and the default `active`-only filter would silently drop exactly the connections this read exists to warn about. A connection whose own `status` isn't `'active'` is always classified `'disconnected'`, overriding whatever its poll history would otherwise say.
+- **Poll liveness vs. data recency are reported as two independent facts**, not one. `lastPollAt` (last succeeded `marketplace.orders.poll` job) is a pipe-liveness signal, thresholded against a staleness window; `lastOrderIngestedAt` (last succeeded `marketplace.order.sync` job, same connection) is the actual order-data-recency signal and is deliberately never thresholded — a low-volume connection can go days without a new order and still be healthy. Both job types are always looked up regardless of whether a poll scheduler task is registered for the platform, since a poll task can be legitimately disabled on a webhook-first platform (PrestaShop, WooCommerce) while the connection keeps ingesting fine.
+- **The staleness threshold is derived only from a currently-*enabled* scheduler task** (`ISyncJobsService.findEnabledPollTask`, mirroring `SchedulerService`'s own `enabledEnvVar`/`enabledDefault` runtime check) — never from mere task *registration*, since WooCommerce/Erli register their poll task unconditionally and gate only its execution. When no enabled task matches, the threshold falls back to a 30-minute floor rather than going unset, so an unknown-cadence connection can still eventually read `'stalled'`.
+- **`ConnectionIngestionStatus`** (`never-ingested | fresh | stalled | disconnected | unknown`) — `'unknown'` is a distinct degraded value for a per-connection build failure (never `'never-ingested'`, which would assert a false claim about the operator's data for what is really an infrastructure hiccup); `computeWorstStatus` rolls the per-connection statuses up to one `worstStatus` for the FE banner, ranked `fresh < never-ingested < stalled < disconnected < unknown`.
+- **Cross-context seam discipline**: the new context does not inject `SyncJobRepositoryPort` or the concrete `SchedulerTaskRegistryService` directly — it consumes both through the existing published `ISyncJobsService` interface (extended with `findLastSucceededJob` and `findEnabledPollTask`), keeping the cross-context contract to `I*Service` per the rule in § Cross-context dependencies in core.
+- **Interface**: `GET /analytics/trust` (`apps/api/src/analytics-trust/`), guarded by the global `JwtAuthGuard`.
+
 ---
 
 ## Capability Abstractions (Business Roles)
@@ -1318,6 +1330,8 @@ graph LR
   shipping --> identifier-mapping
   shipping --> sync
   mailer --> integrations
+  analytics-trust --> integrations
+  analytics-trust --> sync
 ```
 
 `identifier-mapping`, `integrations`, and `events` form the most-depended-upon "infrastructure spine" (each used by 5+ siblings). `users`, `webhooks`, and `mappings` have minimal outbound coupling.
