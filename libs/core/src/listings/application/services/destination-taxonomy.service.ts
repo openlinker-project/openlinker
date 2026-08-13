@@ -187,16 +187,17 @@ export class DestinationTaxonomyService implements IDestinationTaxonomyService {
    * Probe `OfferManager` then `ProductPublisher` to resolve BOTH the scope and
    * the browse function — capability-driven, never a `platformType` switch.
    *
-   * `TaxonomyBorrower` only identifies a *borrower* (Erli); nothing declares
-   * that an Allegro connection *owns* `'allegro'`. So an owning marketplace's
-   * owner value comes from its `platformType`, validated against the closed
-   * `TaxonomyOwnerValues` set by the shared `resolveTaxonomyOwner` helper.
+   * The owner value is DECLARED by the adapter — `TaxonomyBorrower` for a
+   * borrower (Erli), `TaxonomyIdentityProvider` for an owner (Allegro) — and
+   * resolved by the shared `resolveTaxonomyOwner` helper. It is never inferred
+   * from `platformType`, which cannot express an axis a platform splits its
+   * tree along (#2063).
    *
-   * That helper returns `null` for an unlisted platform rather than throwing —
-   * resolution then falls through to the `ProductPublisher` probe, and only the
-   * final throw below reports it (with a message naming the real cause). The
-   * net effect is what matters: a new marketplace cannot silently write rows
-   * under a bogus owner, which would be a data migration to undo.
+   * That helper returns `null` for an adapter declaring neither, rather than
+   * throwing — resolution then falls through to the `ProductPublisher` probe,
+   * and only the final throw below reports it (with a message naming the real
+   * cause). The net effect is what matters: a marketplace cannot silently write
+   * rows under a guessed owner, which would be a data migration to undo.
    */
   private async resolveDestination(connectionId: string): Promise<{
     scope: TaxonomyScope;
@@ -211,9 +212,8 @@ export class DestinationTaxonomyService implements IDestinationTaxonomyService {
     const offerManager = await this.tryGetAdapter<OfferManagerPort>(connectionId, 'OfferManager');
 
     if (offerManager) {
-      const { connection } = await this.integrationsService.getAdapter(connectionId);
       // Shared with the scheduler's election so the two cannot disagree.
-      const owningTaxonomy = resolveTaxonomyOwner(offerManager, connection.platformType);
+      const owningTaxonomy = resolveTaxonomyOwner(offerManager);
 
       if (owningTaxonomy !== null) {
         return {
@@ -244,15 +244,16 @@ export class DestinationTaxonomyService implements IDestinationTaxonomyService {
       };
     }
 
-    // Distinguish "cannot browse at all" from "browses a tree we have not
-    // vetted": the second is actionable (add the value to TaxonomyOwnerValues
-    // once confirmed it publishes one distinct tree), and reporting it as a
-    // missing capability would send the reader looking in the wrong place.
+    // Distinguish "cannot browse at all" from "browses a tree but does not say
+    // WHICH tree": the second is actionable (implement TaxonomyIdentityProvider
+    // on the adapter, adding a TaxonomyOwnerValues entry once confirmed it is
+    // one distinct tree), and reporting it as a missing capability would send
+    // the reader looking in the wrong place.
     throw new TaxonomySourceUnavailableException(
       connectionId,
       offerManager && isCategoryBrowser(offerManager)
-        ? 'the connection browses a marketplace taxonomy whose platform is not a known taxonomy owner — add it to TaxonomyOwnerValues after confirming it publishes one distinct tree'
-        : 'no CategoryBrowser, TaxonomyBorrower, or ShopCategoryBrowser capability',
+        ? 'the connection browses a marketplace taxonomy but declares no taxonomy identity — implement TaxonomyIdentityProvider on its adapter, adding a TaxonomyOwnerValues entry once confirmed it publishes one distinct tree'
+        : 'no CategoryBrowser, TaxonomyBorrower, TaxonomyIdentityProvider, or ShopCategoryBrowser capability',
     );
   }
 
@@ -261,13 +262,16 @@ export class DestinationTaxonomyService implements IDestinationTaxonomyService {
     adapter: OfferManagerPort,
   ): (parentId?: string) => Promise<DestinationCategoryUpsert[]> {
     if (!isCategoryBrowser(adapter)) {
-      // Reachable for a borrower whose own adapter cannot browse — e.g. an Erli
-      // connection with no catalogue credentials, since `ErliOfferManagerAdapter`
-      // assigns `fetchCategories` conditionally in its constructor (ADR-031).
-      // The owner's rows are still readable; only the refresh path is unavailable.
+      // Reachable for any connection that names a tree it cannot refresh. Today
+      // that is a borrower with no catalogue credentials — `ErliOfferManagerAdapter`
+      // assigns `fetchCategories` conditionally in its constructor (ADR-031) —
+      // but since #2063 an OWNER declaring `TaxonomyIdentityProvider` without
+      // `CategoryBrowser` lands here too, so the message leads with the general
+      // cause and mentions the borrower case only as the likely instance.
+      // Either way the tree's rows are still readable; only refresh is unavailable.
       throw new TaxonomySourceUnavailableException(
         connectionId,
-        'connection borrows a taxonomy but cannot browse it (no catalogue credentials)',
+        'connection names a taxonomy but cannot browse it (no CategoryBrowser capability — for a borrower, typically missing catalogue credentials)',
       );
     }
 

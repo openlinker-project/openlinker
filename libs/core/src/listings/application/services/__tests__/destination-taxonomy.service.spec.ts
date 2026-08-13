@@ -22,9 +22,19 @@ interface Adapters {
   ProductPublisher?: Record<string, unknown>;
 }
 
+/**
+ * An OWNING marketplace adapter. Since #2063 identity is declared, never
+ * inferred from `platformType` — so a fake that only browses resolves to `null`
+ * and is (correctly) treated as having no taxonomy source.
+ */
+function allegroOfferManager(
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return { fetchCategories: jest.fn(), getTaxonomyIdentity: () => 'allegro', ...extra };
+}
+
 function buildService(options: {
   adaptersByConnection: Record<string, Adapters>;
-  platformTypes?: Record<string, string>;
   repository?: Partial<DestinationCategoryRepositoryPort>;
 }): {
   service: DestinationTaxonomyService;
@@ -47,10 +57,7 @@ function buildService(options: {
     getCapabilityAdapter,
     getAdapter: jest.fn((connectionId: string) =>
       Promise.resolve({
-        connection: {
-          id: connectionId,
-          platformType: options.platformTypes?.[connectionId] ?? 'x',
-        },
+        connection: { id: connectionId, platformType: 'x' },
         metadata: {},
       }),
     ),
@@ -78,9 +85,8 @@ describe('DestinationTaxonomyService', () => {
     it('should resolve an owning marketplace to its platform taxonomy owner', async () => {
       const { service } = buildService({
         adaptersByConnection: {
-          [ALLEGRO_CONNECTION]: { OfferManager: { fetchCategories: jest.fn() } },
+          [ALLEGRO_CONNECTION]: { OfferManager: allegroOfferManager() },
         },
-        platformTypes: { [ALLEGRO_CONNECTION]: 'allegro' },
       });
 
       await expect(service.resolveScope(ALLEGRO_CONNECTION)).resolves.toEqual({
@@ -94,10 +100,9 @@ describe('DestinationTaxonomyService', () => {
       // stored once, not once per seller connection.
       const { service } = buildService({
         adaptersByConnection: {
-          [ALLEGRO_CONNECTION]: { OfferManager: { fetchCategories: jest.fn() } },
-          [ALLEGRO_CONNECTION_2]: { OfferManager: { fetchCategories: jest.fn() } },
+          [ALLEGRO_CONNECTION]: { OfferManager: allegroOfferManager() },
+          [ALLEGRO_CONNECTION_2]: { OfferManager: allegroOfferManager() },
         },
-        platformTypes: { [ALLEGRO_CONNECTION]: 'allegro', [ALLEGRO_CONNECTION_2]: 'allegro' },
       });
 
       expect(await service.resolveScope(ALLEGRO_CONNECTION)).toEqual(
@@ -133,14 +138,15 @@ describe('DestinationTaxonomyService', () => {
       });
     });
 
-    it('should throw when a browsing marketplace platform is not a known taxonomy owner', async () => {
-      // Guards the ADR's "one value per distinct tree" rule: writing rows under
-      // an unvetted owner would be a data migration to undo.
+    it('should throw when a browsing marketplace declares no taxonomy identity', async () => {
+      // Guards the ADR's "one value per distinct tree" rule. Before #2063 this
+      // adapter would have resolved from `platformType`; now an adapter that
+      // browses but names no tree writes nothing, because guessing the owner
+      // would be a data migration to undo.
       const { service } = buildService({
         adaptersByConnection: {
           'conn-ebay': { OfferManager: { fetchCategories: jest.fn() } },
         },
-        platformTypes: { 'conn-ebay': 'ebay' },
       });
 
       await expect(service.resolveScope('conn-ebay')).rejects.toBeInstanceOf(
@@ -159,9 +165,8 @@ describe('DestinationTaxonomyService', () => {
     it('should memoise the scope so repeated reads do not re-probe the registry', async () => {
       const { service, getCapabilityAdapter } = buildService({
         adaptersByConnection: {
-          [ALLEGRO_CONNECTION]: { OfferManager: { fetchCategories: jest.fn() } },
+          [ALLEGRO_CONNECTION]: { OfferManager: allegroOfferManager() },
         },
-        platformTypes: { [ALLEGRO_CONNECTION]: 'allegro' },
       });
 
       await service.resolveScope(ALLEGRO_CONNECTION);
@@ -192,8 +197,7 @@ describe('DestinationTaxonomyService', () => {
     it('should never call the live browse capability on a read', async () => {
       const fetchCategories = jest.fn();
       const { service } = buildService({
-        adaptersByConnection: { [ALLEGRO_CONNECTION]: { OfferManager: { fetchCategories } } },
-        platformTypes: { [ALLEGRO_CONNECTION]: 'allegro' },
+        adaptersByConnection: { [ALLEGRO_CONNECTION]: { OfferManager: allegroOfferManager({ fetchCategories }) } },
       });
 
       await service.browse(ALLEGRO_CONNECTION);
@@ -221,9 +225,8 @@ describe('DestinationTaxonomyService', () => {
       // `search` is agent-reachable in Wave 4, so the limit is untrusted input.
       const { service, repository } = buildService({
         adaptersByConnection: {
-          [ALLEGRO_CONNECTION]: { OfferManager: { fetchCategories: jest.fn() } },
+          [ALLEGRO_CONNECTION]: { OfferManager: allegroOfferManager() },
         },
-        platformTypes: { [ALLEGRO_CONNECTION]: 'allegro' },
       });
 
       await service.search(ALLEGRO_CONNECTION, 'buty', 10_000);
@@ -234,9 +237,8 @@ describe('DestinationTaxonomyService', () => {
     it('should default the search limit when none is supplied', async () => {
       const { service, repository } = buildService({
         adaptersByConnection: {
-          [ALLEGRO_CONNECTION]: { OfferManager: { fetchCategories: jest.fn() } },
+          [ALLEGRO_CONNECTION]: { OfferManager: allegroOfferManager() },
         },
-        platformTypes: { [ALLEGRO_CONNECTION]: 'allegro' },
       });
 
       await service.search(ALLEGRO_CONNECTION, 'buty');
@@ -257,18 +259,17 @@ describe('DestinationTaxonomyService', () => {
 
     function allegroWithTree(): Adapters {
       return {
-        OfferManager: {
+        OfferManager: allegroOfferManager({
           fetchCategories: jest.fn((parentId?: string) =>
             Promise.resolve(tree[parentId ?? 'root'] ?? []),
           ),
-        },
+        }),
       };
     }
 
     it('should walk the whole tree and sweep disappearance when it completes', async () => {
       const { service, repository } = buildService({
         adaptersByConnection: { [ALLEGRO_CONNECTION]: allegroWithTree() },
-        platformTypes: { [ALLEGRO_CONNECTION]: 'allegro' },
       });
 
       const result = await service.syncTaxonomy(ALLEGRO_CONNECTION, { frontier: null });
@@ -282,7 +283,6 @@ describe('DestinationTaxonomyService', () => {
       const adapters = allegroWithTree();
       const { service } = buildService({
         adaptersByConnection: { [ALLEGRO_CONNECTION]: adapters },
-        platformTypes: { [ALLEGRO_CONNECTION]: 'allegro' },
       });
 
       await service.syncTaxonomy(ALLEGRO_CONNECTION, { frontier: null });
@@ -297,7 +297,6 @@ describe('DestinationTaxonomyService', () => {
       // Sweeping mid-run would delete rows the run had not reached yet.
       const { service, repository } = buildService({
         adaptersByConnection: { [ALLEGRO_CONNECTION]: allegroWithTree() },
-        platformTypes: { [ALLEGRO_CONNECTION]: 'allegro' },
       });
 
       const result = await service.syncTaxonomy(ALLEGRO_CONNECTION, {
@@ -313,7 +312,6 @@ describe('DestinationTaxonomyService', () => {
     it('should reuse the original watermark when resuming so one run sweeps consistently', async () => {
       const { service, repository } = buildService({
         adaptersByConnection: { [ALLEGRO_CONNECTION]: allegroWithTree() },
-        platformTypes: { [ALLEGRO_CONNECTION]: 'allegro' },
       });
 
       // Must be recent: a frontier older than the max run age is deliberately
@@ -377,8 +375,7 @@ describe('DestinationTaxonomyService', () => {
         Promise.resolve(shared[parentId ?? 'root'] ?? []),
       );
       const { service } = buildService({
-        adaptersByConnection: { [ALLEGRO_CONNECTION]: { OfferManager: { fetchCategories } } },
-        platformTypes: { [ALLEGRO_CONNECTION]: 'allegro' },
+        adaptersByConnection: { [ALLEGRO_CONNECTION]: { OfferManager: allegroOfferManager({ fetchCategories }) } },
       });
 
       const result = await service.syncTaxonomy(ALLEGRO_CONNECTION, { frontier: null });
@@ -395,7 +392,6 @@ describe('DestinationTaxonomyService', () => {
       // which matches nothing — disappearance detection would silently stop.
       const { service, repository } = buildService({
         adaptersByConnection: { [ALLEGRO_CONNECTION]: allegroWithTree() },
-        platformTypes: { [ALLEGRO_CONNECTION]: 'allegro' },
       });
 
       const staleStartedAt = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();

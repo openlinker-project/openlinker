@@ -32,7 +32,25 @@
  * `categoryTreeId` that is NOT the marketplace id, and several marketplaces may
  * share one), and Amazon's browse nodes are per-`MarketplaceId` — those onboard
  * as `'ebay:EBAY_US'` / `'amazon:ATVPDKIKX0DER'`, never as `'ebay'`.
+ *
+ * The country axis is not the only one. `'allegro:sandbox'` exists because
+ * Allegro's required `environment` config resolves to a different API host, so a
+ * sandbox connection and a production connection publish genuinely different
+ * trees under one `platformType` (#2063). The shared-across-marketplaces
+ * evidence above covers the country axis ONLY — it says nothing about
+ * environment, and reading it as blanket "Allegro has one tree" is what let a
+ * sandbox connection overwrite production rows and then delete them on the
+ * watermark sweep.
+ *
+ * NOTE ON ENFORCEMENT (#2063): this set is a **compile-time vocabulary**, not a
+ * runtime allowlist. Until #2063 it doubled as a membership gate that
+ * `resolveTaxonomyOwner` tested `platformType` against; that inference is gone —
+ * an adapter now DECLARES its identity via `TaxonomyIdentityProvider` and is
+ * merely typed against this union. So nothing at runtime stops a wrong-but-typed
+ * value; the one-value-per-distinct-tree rule is upheld by review of what
+ * `getTaxonomyIdentity()` returns. Getting it wrong is a data migration of every
+ * `DestinationCategory` row, so weigh a new value here accordingly.
  */
-export const TaxonomyOwnerValues = ['allegro'] as const;
+export const TaxonomyOwnerValues = ['allegro', 'allegro:sandbox'] as const;
 
 export type TaxonomyOwner = (typeof TaxonomyOwnerValues)[number];

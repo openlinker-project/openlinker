@@ -365,6 +365,12 @@ export type { IShopAttributeReadService } from './application/interfaces/shop-at
 // names the owner taxonomy whose category/parameter ids it reuses verbatim.
 export type { TaxonomyBorrower } from './domain/ports/capabilities/taxonomy-borrower.capability';
 export { isTaxonomyBorrower } from './domain/ports/capabilities/taxonomy-borrower.capability';
+
+// Taxonomy-identity sub-capability (#2063): an OWNING marketplace declares which
+// distinct tree it reads/writes, because `platformType` cannot express an axis
+// the platform splits its tree along (Allegro sandbox vs production).
+export type { TaxonomyIdentityProvider } from './domain/ports/capabilities/taxonomy-identity-provider.capability';
+export { isTaxonomyIdentityProvider } from './domain/ports/capabilities/taxonomy-identity-provider.capability';
 export { PublishProductStatusValues, PublishTaxStatusValues } from './domain/types/product-publish.types';
 export type {
   PublishProductStatus,
