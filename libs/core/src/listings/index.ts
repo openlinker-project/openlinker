@@ -137,6 +137,7 @@ export type {
 export { AdapterCapabilityNotSupportedException } from './domain/exceptions/adapter-capability-not-supported.exception';
 export { BulkRetryMissingSnapshotException } from './domain/exceptions/bulk-retry-missing-snapshot.exception';
 export { NoFailedChildrenToRetryException } from './domain/exceptions/no-failed-children-to-retry.exception';
+export { OfferStatusSnapshotUpsertFailedError } from './domain/exceptions/offer-status-snapshot-upsert-failed.exception';
 export { OfferCreationInvariantException } from './domain/exceptions/offer-creation-invariant.exception';
 export type { IOfferBuilderService } from './application/interfaces/offer-builder.service.interface';
 export type { BuildCreateOfferCommandInput } from './application/types/offer-builder.types';
@@ -266,6 +267,7 @@ export type { OfferStatusReader } from './domain/ports/capabilities/offer-status
 export { isOfferStatusReader } from './domain/ports/capabilities/offer-status-reader.capability';
 export type {
   OfferPublicationStatus,
+  OfferPublicationStatusView,
   OfferStatusReadResult,
 } from './domain/types/offer-status-read.types';
 export { OfferPublicationStatusValues } from './domain/types/offer-status-read.types';
@@ -282,6 +284,8 @@ export type {
 } from './domain/ports/offer-status-snapshot-repository.port';
 export type {
   IOfferStatusSyncService,
+  OfferStatusObservation,
+  OfferStatusRefreshTarget,
   OfferStatusSyncOptions,
 } from './application/services/offer-status-sync.service.interface';
 export type { IOfferStatusReadService } from './application/services/offer-status-read.service.interface';

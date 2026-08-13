@@ -174,10 +174,15 @@ export interface OfferPublicationStatusResponse {
   connectionId: string;
   externalOfferId: string;
   internalVariantId: string;
-  publicationStatus: OfferPublicationStatus;
+  /**
+   * `null` when the offer is mapped but has never been read from the
+   * marketplace (#2039). The row is still returned in that case, so the
+   * per-offer manual refresh stays reachable.
+   */
+  publicationStatus: OfferPublicationStatus | null;
   validationMessages?: string[];
-  /** ISO 8601 timestamp of the last marketplace read. */
-  lastStatusSyncedAt: string;
+  /** ISO 8601 timestamp of the last marketplace read; `null` when never read. */
+  lastStatusSyncedAt: string | null;
 }
 
 /** Response of the manual single-offer refresh (#1760). */

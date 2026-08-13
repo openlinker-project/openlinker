@@ -14,6 +14,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
 
 import { OfferStatusSnapshotRepository } from './offer-status-snapshot.repository';
+import { OfferStatusSnapshotUpsertFailedError } from '../../../domain/exceptions/offer-status-snapshot-upsert-failed.exception';
 import { OfferStatusSnapshotOrmEntity } from '../entities/offer-status-snapshot.orm-entity';
 import type { UpsertOfferStatusSnapshotCommand } from '../../../domain/types/offer-status-snapshot.types';
 
@@ -51,6 +52,9 @@ describe('OfferStatusSnapshotRepository', () => {
     const mockOrmRepo = {
       findOne: jest.fn(),
       save: jest.fn(),
+      // The upsert returns the post-write `lastStatusSyncedAt`; equal to the
+      // command's instant ⇒ the freshness guard accepted the observation.
+      query: jest.fn().mockResolvedValue([{ lastStatusSyncedAt: now }]),
       createQueryBuilder: jest.fn(),
     } as unknown as jest.Mocked<Repository<OfferStatusSnapshotOrmEntity>>;
 
@@ -92,36 +96,81 @@ describe('OfferStatusSnapshotRepository', () => {
   });
 
   describe('upsert', () => {
-    it('inserts a new row when none exists for the key', async () => {
-      ormRepository.findOne.mockResolvedValue(null);
-      ormRepository.save.mockImplementation((entity) =>
-        Promise.resolve(buildOrm(entity as Partial<OfferStatusSnapshotOrmEntity>))
-      );
+    // The freshness guard itself lives in SQL, so it is asserted in
+    // `apps/api/test/integration/listings-offer-status-snapshot.int-spec.ts`
+    // against a real Postgres. These unit tests cover the surrounding
+    // contract: the statement shape, the bound parameters, `previousStatus`,
+    // and the read-back mapping.
+    it('issues a freshness-guarded ON CONFLICT upsert with bound parameters', async () => {
+      ormRepository.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(buildOrm({ publicationStatus: 'ended' }));
 
       const result = await repository.upsert(command);
 
-      expect(ormRepository.save).toHaveBeenCalledTimes(1);
-      const saved = ormRepository.save.mock.calls[0][0] as OfferStatusSnapshotOrmEntity;
-      expect(saved.id).toBeUndefined();
-      expect(saved.publicationStatus).toBe('ended');
-      expect(saved.statusDetails).toEqual({ validationMessages: ['gone'] });
+      expect(ormRepository.query).toHaveBeenCalledTimes(1);
+      const [sql, params] = ormRepository.query.mock.calls[0] as [string, unknown[]];
+      expect(sql).toContain('ON CONFLICT ("externalOfferId", "connectionId")');
+      expect(sql).toContain('"lastStatusSyncedAt" <= EXCLUDED."lastStatusSyncedAt"');
+      expect(sql).toContain('GREATEST');
+      expect(params).toEqual([
+        'conn-uuid',
+        '7781562863',
+        'ol_variant_123',
+        'ended',
+        JSON.stringify({ validationMessages: ['gone'] }),
+        now,
+      ]);
+      expect(sql).toContain('RETURNING "lastStatusSyncedAt"');
       expect(result.snapshot.publicationStatus).toBe('ended');
       expect(result.previousStatus).toBeNull();
+      expect(result.applied).toBe(true);
     });
 
-    it('updates the existing row in place when the key already exists', async () => {
-      ormRepository.findOne.mockResolvedValue(buildOrm({ publicationStatus: 'active' }));
-      ormRepository.save.mockImplementation((entity) =>
-        Promise.resolve(entity as OfferStatusSnapshotOrmEntity)
-      );
+    it('reports applied=false when the guard kept a fresher stored observation', async () => {
+      const fresher = new Date(now.getTime() + 5_000);
+      ormRepository.query.mockResolvedValue([{ lastStatusSyncedAt: fresher }]);
+      ormRepository.findOne
+        .mockResolvedValueOnce(buildOrm({ publicationStatus: 'active' }))
+        .mockResolvedValueOnce(
+          buildOrm({ publicationStatus: 'active', lastStatusSyncedAt: fresher })
+        );
 
       const result = await repository.upsert(command);
 
-      const saved = ormRepository.save.mock.calls[0][0] as OfferStatusSnapshotOrmEntity;
-      expect(saved.id).toBe('snap-uuid');
-      expect(saved.publicationStatus).toBe('ended');
-      expect(result.snapshot.publicationStatus).toBe('ended');
+      // The stored row wins, so the caller must not narrate `active → ended`.
+      expect(result.applied).toBe(false);
+      expect(result.snapshot.publicationStatus).toBe('active');
+    });
+
+    it('reports the status the row held before the write', async () => {
+      ormRepository.findOne
+        .mockResolvedValueOnce(buildOrm({ publicationStatus: 'active' }))
+        .mockResolvedValueOnce(buildOrm({ publicationStatus: 'ended' }));
+
+      const result = await repository.upsert(command);
+
       expect(result.previousStatus).toBe('active');
+      expect(result.snapshot.publicationStatus).toBe('ended');
+    });
+
+    it('binds a null statusDetails rather than the string "null"', async () => {
+      ormRepository.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(buildOrm({ statusDetails: null }));
+
+      await repository.upsert({ ...command, statusDetails: null });
+
+      const [, params] = ormRepository.query.mock.calls[0] as [string, unknown[]];
+      expect(params[4]).toBeNull();
+    });
+
+    it('raises a domain error when the written row cannot be read back', async () => {
+      ormRepository.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+
+      await expect(repository.upsert(command)).rejects.toThrow(
+        OfferStatusSnapshotUpsertFailedError
+      );
     });
   });
 
