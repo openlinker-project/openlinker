@@ -101,6 +101,7 @@ export {
   ShopProductPublishPayload,
   ShopProductStatusSyncPayloadV1,
 } from './domain/types/shop-job-payloads.types';
+export type { DestinationTaxonomySyncPayloadV1 } from './domain/types/taxonomy-job-payloads.types';
 export type {
   InvoicingIssuePayloadV1,
   InvoicingIssueBuyerV1,

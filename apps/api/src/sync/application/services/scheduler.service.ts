@@ -27,6 +27,8 @@ import {
   SCHEDULER_TASK_REGISTRY_TOKEN,
 } from '@openlinker/core/sync';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import type { OfferManagerPort } from '@openlinker/core/listings';
+import { resolveTaxonomyOwner } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
 
 /**
@@ -210,6 +212,9 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
     for (const descriptor of CORE_CAPABILITY_TASKS) {
       this.registerCapabilityTask(descriptor);
     }
+
+    // Registered bespoke rather than as a CORE_CAPABILITY_TASKS row (#1979).
+    this.registerDestinationTaxonomyTask();
 
     // Drain plugin-contributed tasks. Integration modules have already
     // populated the registry at `onModuleInit`; NestJS guarantees every
@@ -468,5 +473,137 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
       generateIdempotencyKey: (connection, timestamp) =>
         descriptor.idempotencyKey(connection.id, timestamp),
     });
+  }
+
+  /**
+   * Register the destination-taxonomy refresh (#1979, ADR-037).
+   *
+   * This one cannot be a `CORE_CAPABILITY_TASKS` row: the dedup subject is the
+   * taxonomy OWNER, but `CoreCapabilityTaskDescriptor.idempotencyKey` is
+   * synchronous over a `connectionId`, and resolving a connection to its owner
+   * needs an async adapter probe. Do not "tidy" this back into the loop — doing
+   * so silently restores a per-connection fan-out that syncs one shared
+   * marketplace tree once per connection.
+   *
+   * Two mechanisms, deliberately both: the filter ELECTS one connection per
+   * owner (which is what actually prevents the fan-out), and the owner-scoped
+   * idempotency key collapses same-minute duplicates (the ADR's stated
+   * invariant).
+   */
+  private registerDestinationTaxonomyTask(): void {
+    const enabled = this.configService.get<string>('OL_TAXONOMY_SYNC_ENABLED', 'true');
+    if (enabled === 'false') {
+      return;
+    }
+
+    const cronExpression = this.configService.get<string>(
+      'OL_TAXONOMY_SYNC_CRON',
+      // Offset minute, clear of the */15, */20, */30, :17 and 03:00 tasks.
+      '23 * * * *'
+    );
+
+    // Resolved once per tick by `connectionFilter`, then read by the payload and
+    // key builders. Those three callbacks are invoked separately by
+    // `executeTask` -> `enqueueJobForConnection` with no ordering guarantee, so
+    // a miss must be LOUD: an `undefined` owner inside the key would collapse
+    // every owner's job onto one key and drop all but one sync.
+    const scopeByConnectionId = new Map<string, string | null>();
+    const requireScope = (connectionId: string): string | null => {
+      if (!scopeByConnectionId.has(connectionId)) {
+        throw new Error(
+          `Taxonomy scope not resolved for connection ${connectionId} — connectionFilter must run first`
+        );
+      }
+      return scopeByConnectionId.get(connectionId) ?? null;
+    };
+
+    this.tasks.push({
+      taskId: 'destination-taxonomy-sync',
+      jobType: 'destination.taxonomy.sync',
+      cronExpression,
+      enabledEnvVar: 'OL_TAXONOMY_SYNC_ENABLED',
+      connectionFilter: async () => {
+        scopeByConnectionId.clear();
+
+        const marketplace = await this.integrationsService.listCapabilityAdapters<unknown>({
+          capability: 'OfferManager',
+          lazy: true,
+        });
+        const shops = await this.integrationsService.listCapabilityAdapters<unknown>({
+          capability: 'ProductPublisher',
+          lazy: true,
+        });
+
+        const elected: Connection[] = [];
+        const electedOwners = new Set<string>();
+
+        // Marketplaces: one shared tree per owner, so elect a single source
+        // connection. Sorted by id first so the election is deterministic
+        // across ticks rather than dependent on listing order.
+        const marketplaceConnections = (marketplace ?? [])
+          .map((entry) => entry.connection)
+          .sort((a, b) => a.id.localeCompare(b.id));
+
+        for (const connection of marketplaceConnections) {
+          const owner = await this.resolveOwnerForElection(connection.id);
+          if (owner === null || electedOwners.has(owner)) {
+            continue;
+          }
+          electedOwners.add(owner);
+          scopeByConnectionId.set(connection.id, owner);
+          elected.push(connection);
+        }
+
+        // Shops author their own tree, so every shop connection syncs its own.
+        for (const entry of shops ?? []) {
+          if (scopeByConnectionId.has(entry.connection.id)) {
+            continue;
+          }
+          scopeByConnectionId.set(entry.connection.id, null);
+          elected.push(entry.connection);
+        }
+
+        return elected;
+      },
+      generatePayload: (connection) => ({
+        schemaVersion: 1,
+        taxonomyOwner: requireScope(connection.id),
+      }),
+      generateIdempotencyKey: (connection, timestamp) => {
+        const owner = requireScope(connection.id);
+        return owner !== null
+          ? `taxonomy:owner:${owner}:sync:${timestamp}`
+          : `taxonomy:connection:${connection.id}:sync:${timestamp}`;
+      },
+    });
+  }
+
+  /**
+   * Resolve a marketplace connection to the taxonomy owner it reads, or `null`
+   * when it has no taxonomy source. Capability-driven: a borrower names its
+   * owner, an owning marketplace is identified by its `platformType` validated
+   * against the closed `TaxonomyOwnerValues` set (never a `platformType` switch).
+   */
+  private async resolveOwnerForElection(connectionId: string): Promise<string | null> {
+    try {
+      const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+        connectionId,
+        'OfferManager'
+      );
+
+      const { connection } = await this.integrationsService.getAdapter(connectionId);
+      // Shared with DestinationTaxonomyService so the election and the rows it
+      // produces can never key on different owners.
+      return resolveTaxonomyOwner(adapter, connection.platformType);
+    } catch (error) {
+      // A connection mid-reauth or with failing credentials simply doesn't get
+      // elected this tick; the next tick elects a different source.
+      this.logger.debug(
+        `Could not resolve taxonomy owner for connection ${connectionId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return null;
+    }
   }
 }
