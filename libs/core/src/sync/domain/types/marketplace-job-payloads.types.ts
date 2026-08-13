@@ -236,6 +236,23 @@ export interface MarketplaceOfferRefreshSnapshotPayloadV1 {
   internalVariantId: string;
   /** Reconcile attempt, 1-based. The handler bounds re-scheduling by this. */
   attempt: number;
+  /**
+   * Identifies ONE reconcile chain (#2039). Minted when attempt 1 is scheduled
+   * and carried through the handler's self-rescheduled follow-ups, so every
+   * attempt of a chain has a deterministic idempotency key while two different
+   * chains never collide.
+   *
+   * The pre-#2039 key was `refreshSnapshot:{externalOfferId}:{attempt}` against
+   * a **globally unique, TTL-less** `sync_jobs.idempotencyKey`, so one offer id
+   * could only ever receive one attempt-1 reconcile — across connections (an
+   * Erli `externalOfferId` is the internal variant id, shared by every Erli
+   * connection), across re-creates, and across retry waves.
+   *
+   * Optional on purpose: a job enqueued before this field existed can still be
+   * in flight (rungs run up to +20 min out), and the handler falls back to the
+   * legacy key shape for those rather than dead-lettering them.
+   */
+  reconcileId?: string;
 }
 
 /**
@@ -248,6 +265,30 @@ export const OFFER_REFRESH_SNAPSHOT_DELAYS_SECONDS = [120, 480, 1200] as const;
 
 /** Max reconcile attempts (#1760) — derived from the delay schedule length. */
 export const OFFER_REFRESH_SNAPSHOT_MAX_ATTEMPTS = OFFER_REFRESH_SNAPSHOT_DELAYS_SECONDS.length;
+
+/**
+ * Idempotency key for one reconcile attempt (#2039).
+ *
+ * Lives beside the payload it keys because the chain has **two** writers — the
+ * core poll service schedules attempt 1 and the worker handler self-schedules
+ * the follow-ups — and a per-writer copy of the format would silently break the
+ * chain's dedup the moment one side changed.
+ *
+ * `reconcileId` absent ⇒ the legacy `refreshSnapshot:{externalOfferId}:{attempt}`
+ * shape, so a job enqueued before the field existed keeps rescheduling under the
+ * key its own chain started with instead of dead-lettering mid-flight.
+ */
+export function buildOfferRefreshSnapshotIdempotencyKey(input: {
+  connectionId: string;
+  externalOfferId: string;
+  attempt: number;
+  reconcileId?: string;
+}): string {
+  if (input.reconcileId === undefined) {
+    return `refreshSnapshot:${input.externalOfferId}:${input.attempt}`;
+  }
+  return `refreshSnapshot:${input.connectionId}:${input.reconcileId}:${input.attempt}`;
+}
 
 /**
  * Payload for `marketplace.offer.stockRestore` jobs (#1146).

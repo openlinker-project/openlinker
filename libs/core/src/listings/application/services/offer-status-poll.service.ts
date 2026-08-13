@@ -19,6 +19,8 @@
  * @see {@link ISyncJobsService} for the cross-context scheduling seam (#718)
  */
 
+import { randomUUID } from 'node:crypto';
+
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
@@ -33,6 +35,7 @@ import {
   type OfferStatusReadResult,
 } from '@openlinker/core/listings';
 import {
+  buildOfferRefreshSnapshotIdempotencyKey,
   ISyncJobsService,
   type MarketplaceOfferPollCreationStatusPayloadV1,
   type MarketplaceOfferRefreshSnapshotPayloadV1,
@@ -41,13 +44,17 @@ import {
 } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
-import { OFFER_CREATION_RECORD_REPOSITORY_TOKEN } from '../../listings.tokens';
+import {
+  OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
+  OFFER_STATUS_SYNC_SERVICE_TOKEN,
+} from '../../listings.tokens';
 import { OfferCreationRecordRepositoryPort } from '../../domain/ports/offer-creation-record-repository.port';
 import type {
   OfferCreationError,
   OfferCreationStatus,
 } from '../../domain/types/offer-creation-record.types';
 import type { IOfferStatusPollService } from '../interfaces/offer-status-poll.service.interface';
+import { IOfferStatusSyncService } from './offer-status-sync.service.interface';
 import type {
   OfferPollCadenceConfig,
   PollOnceInput,
@@ -77,6 +84,8 @@ export class OfferStatusPollService implements IOfferStatusPollService {
     private readonly offerCreationRecords: OfferCreationRecordRepositoryPort,
     @Inject(SYNC_JOBS_SERVICE_TOKEN)
     private readonly syncJobs: ISyncJobsService,
+    @Inject(OFFER_STATUS_SYNC_SERVICE_TOKEN)
+    private readonly offerStatusSync: IOfferStatusSyncService,
     configService: ConfigService
   ) {
     this.cadence = {
@@ -151,8 +160,12 @@ export class OfferStatusPollService implements IOfferStatusPollService {
 
     // Hit the marketplace. 404 → terminal failure; transport errors propagate.
     let result: OfferStatusReadResult;
+    let observedAt: Date;
     try {
       result = await adapter.getOfferStatus(input.externalOfferId);
+      // Stamp the snapshot with when the marketplace was read, not when the
+      // write happens — the freshness guard compares observation instants.
+      observedAt = new Date();
     } catch (err) {
       if (err instanceof OfferNotFoundOnMarketplaceException) {
         await this.markFailedAtomically(
@@ -186,6 +199,19 @@ export class OfferStatusPollService implements IOfferStatusPollService {
           adapter,
           input.externalOfferId,
           input.offerCreationRecordId
+        );
+        // The live status is already in hand from `getOfferStatus` above, so
+        // persist it now (#2039). Before this, `validating → active` wrote no
+        // snapshot at all and the offer waited for the hourly scan — while the
+        // *draft* branch below did get a row, so the healthy offer looked less
+        // synced than the rejected one. Scheduling a delayed re-read here would
+        // only re-fetch what was just read.
+        await this.recordObservedStatus(
+          input.connectionId,
+          input.externalOfferId,
+          record.internalVariantId,
+          result,
+          observedAt
         );
       }
 
@@ -307,6 +333,37 @@ export class OfferStatusPollService implements IOfferStatusPollService {
   }
 
   /**
+   * Persist a status this iteration already read (#2039). Best-effort with the
+   * same posture as {@link OfferStatusPollService.scheduleSnapshotReconcile}: a
+   * snapshot write failure must not fail the poll iteration — the record is
+   * already terminal, the offer exists on the marketplace, and the hourly
+   * steady-state sync is the backstop.
+   */
+  private async recordObservedStatus(
+    connectionId: string,
+    externalOfferId: string,
+    internalVariantId: string,
+    observed: OfferStatusReadResult,
+    observedAt: Date
+  ): Promise<void> {
+    try {
+      await this.offerStatusSync.recordObservedStatus(
+        connectionId,
+        { externalOfferId, internalVariantId },
+        {
+          publicationStatus: observed.publicationStatus,
+          validationMessages: observed.validationErrors.map((error) => error.message),
+          observedAt,
+        }
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Failed to persist observed status for offer ${externalOfferId}: ${(err as Error).message}`
+      );
+    }
+  }
+
+  /**
    * Schedule the first post-terminal snapshot reconcile (#1760): a delayed
    * `marketplace.offer.refreshSnapshot` job that re-reads the live publication
    * status so a late Allegro activation surfaces on the operator view before
@@ -321,18 +378,32 @@ export class OfferStatusPollService implements IOfferStatusPollService {
   ): Promise<void> {
     const attempt = 1;
     const delaySeconds = OFFER_REFRESH_SNAPSHOT_DELAYS_SECONDS[attempt - 1];
+    // One id per reconcile chain (#2039). `sync_jobs.idempotencyKey` is globally
+    // unique with no TTL, so the pre-#2039 offer-id-scoped key let one offer
+    // receive only ever ONE attempt-1 reconcile: a second connection listing the
+    // same id, a re-create, or a retry wave found its schedule silently deduped
+    // against a long-dead job. At-most-one chain per terminalisation is already
+    // guaranteed upstream by the record state machine (`pollOnce` no-ops once the
+    // record leaves `validating`), so the key does not need to carry that duty.
+    const reconcileId = randomUUID();
     const payload: MarketplaceOfferRefreshSnapshotPayloadV1 = {
       schemaVersion: 1,
       externalOfferId,
       internalVariantId,
       attempt,
+      reconcileId,
     };
     try {
       await this.syncJobs.schedule({
         jobType: REFRESH_SNAPSHOT_JOB_TYPE,
         connectionId,
         payload: payload as unknown as Record<string, unknown>,
-        idempotencyKey: `refreshSnapshot:${externalOfferId}:${attempt}`,
+        idempotencyKey: buildOfferRefreshSnapshotIdempotencyKey({
+          connectionId,
+          externalOfferId,
+          attempt,
+          reconcileId,
+        }),
         maxAttempts: RUNNER_RETRY_BUDGET,
         runAfter: new Date(Date.now() + delaySeconds * 1000),
       });

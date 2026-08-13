@@ -166,6 +166,7 @@ describe('ShipmentDispatchService', () => {
       findByIds: jest.fn(),
       updateFulfillmentState: jest.fn(),
       markItemResolutionFailure: jest.fn(),
+      getFailedSyncValueSummary: jest.fn(),
       markCancelled: jest.fn(),
     };
     const fulfillmentProjection = { recompute: jest.fn() };

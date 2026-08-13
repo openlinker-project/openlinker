@@ -41,6 +41,24 @@ export {
 } from './application/types/category-resolution.types';
 export type { TaxonomyOwner } from './domain/types/taxonomy-owner.types';
 export { TaxonomyOwnerValues } from './domain/types/taxonomy-owner.types';
+
+// Destination taxonomy read model (#1979, ADR-037). Contracts only — the
+// service CLASS stays on the `/services` sub-barrel (#337/#359).
+export { DestinationCategory } from './domain/entities/destination-category.entity';
+export type { DestinationCategoryRepositoryPort } from './domain/ports/destination-category-repository.port';
+export type {
+  DestinationCategoryLike,
+  DestinationCategorySearchHit,
+  DestinationCategoryUpsert,
+  TaxonomyFrontier,
+  TaxonomyScope,
+  TaxonomySyncInput,
+  TaxonomySyncResult,
+} from './domain/types/destination-category.types';
+export type { IDestinationTaxonomyService } from './application/interfaces/destination-taxonomy.service.interface';
+export { TaxonomySourceUnavailableException } from './domain/exceptions/taxonomy-source-unavailable.exception';
+export { normalizeCategorySearchText } from './domain/destination-category-search';
+export { resolveTaxonomyOwner } from './domain/resolve-taxonomy-owner';
 export type { IAttributeProjectionService } from './application/interfaces/attribute-projection.service.interface';
 export type {
   AttributeProjectionInput,
@@ -97,6 +115,11 @@ export {
 } from './domain/types/offer-lifecycle.types';
 export type { OfferLifecycle, OfferLifecycleCounts } from './domain/types/offer-lifecycle.types';
 export { UnfilterableOfferLifecycleException } from './domain/exceptions/unfilterable-offer-lifecycle.exception';
+
+export type { ICoverageGapReadService } from './application/services/coverage-gap-read.service.interface';
+export type { CoverageGapItem, CoverageGapsResult } from './domain/types/coverage-gap.types';
+export type { IStockAtRiskReadService } from './application/services/stock-at-risk-read.service.interface';
+export type { StockAtRiskItem, StockAtRiskResult } from './domain/types/stock-at-risk.types';
 export type {
   OfferDescriptionSectionItem,
   OfferDescriptionSection,
@@ -157,6 +180,7 @@ export type {
 export { AdapterCapabilityNotSupportedException } from './domain/exceptions/adapter-capability-not-supported.exception';
 export { BulkRetryMissingSnapshotException } from './domain/exceptions/bulk-retry-missing-snapshot.exception';
 export { NoFailedChildrenToRetryException } from './domain/exceptions/no-failed-children-to-retry.exception';
+export { OfferStatusSnapshotUpsertFailedError } from './domain/exceptions/offer-status-snapshot-upsert-failed.exception';
 export { OfferCreationInvariantException } from './domain/exceptions/offer-creation-invariant.exception';
 export type { IOfferBuilderService } from './application/interfaces/offer-builder.service.interface';
 export type { BuildCreateOfferCommandInput } from './application/types/offer-builder.types';
@@ -286,6 +310,7 @@ export type { OfferStatusReader } from './domain/ports/capabilities/offer-status
 export { isOfferStatusReader } from './domain/ports/capabilities/offer-status-reader.capability';
 export type {
   OfferPublicationStatus,
+  OfferPublicationStatusView,
   OfferStatusReadResult,
   OfferCommercialObservation,
 } from './domain/types/offer-status-read.types';
@@ -309,6 +334,8 @@ export type {
 export type { OfferCommercialSnapshotRepositoryPort } from './domain/ports/offer-commercial-snapshot-repository.port';
 export type {
   IOfferStatusSyncService,
+  OfferStatusObservation,
+  OfferStatusRefreshTarget,
   OfferStatusSyncOptions,
 } from './application/services/offer-status-sync.service.interface';
 export type { IOfferStatusReadService } from './application/services/offer-status-read.service.interface';

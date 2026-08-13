@@ -111,8 +111,9 @@ describe('OfferStatusSyncService', () => {
     offerMappings = { findMappingPage: jest.fn() } as unknown as jest.Mocked<
       Pick<OfferMappingRepositoryPort, 'findMappingPage'>
     >;
-    // Default: every upsert is a first observation (previousStatus null).
-    // Transition tests override the resolved value per case.
+    // Default: every upsert is a first observation (previousStatus null) that
+    // the freshness guard accepts (#2039). Transition and stale-write tests
+    // override the resolved value per case.
     snapshots = {
       upsert: jest
         .fn()
@@ -120,6 +121,7 @@ describe('OfferStatusSyncService', () => {
           Promise.resolve({
             snapshot: makeSnapshot(cmd.externalOfferId, cmd.publicationStatus),
             previousStatus: null,
+            applied: true,
           })
         ),
     } as unknown as jest.Mocked<Pick<OfferStatusSnapshotRepositoryPort, 'upsert'>>;
@@ -185,6 +187,7 @@ describe('OfferStatusSyncService', () => {
     snapshots.upsert.mockResolvedValue({
       snapshot: makeSnapshot('111', 'ended'),
       previousStatus: 'active',
+      applied: true,
     });
 
     const result = await service.sync(CONNECTION_ID, { limit: 10 });
@@ -199,6 +202,7 @@ describe('OfferStatusSyncService', () => {
     snapshots.upsert.mockResolvedValue({
       snapshot: makeSnapshot('111', 'active'),
       previousStatus: null,
+      applied: true,
     });
 
     const result = await service.sync(CONNECTION_ID, { limit: 10 });
@@ -213,6 +217,7 @@ describe('OfferStatusSyncService', () => {
     snapshots.upsert.mockResolvedValue({
       snapshot: makeSnapshot('111', 'active'),
       previousStatus: 'active',
+      applied: true,
     });
 
     const result = await service.sync(CONNECTION_ID, { limit: 10 });
@@ -280,6 +285,7 @@ describe('OfferStatusSyncService', () => {
       snapshots.upsert.mockResolvedValue({
         snapshot: makeSnapshot('7781896308', 'active'),
         previousStatus: 'inactive',
+      applied: true,
       });
 
       const result = await service.refreshOne(CONNECTION_ID, target);
@@ -526,5 +532,92 @@ describe('OfferStatusSyncService', () => {
       expect(result).toBeNull();
       expect(commercialSnapshots.upsert).not.toHaveBeenCalled();
     });
+
+    it('does not upsert the commercial snapshot when the status write was discarded as stale', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader(() => ({
+          publicationStatus: 'active',
+          validationErrors: [],
+          commercial: { price: { amount: '15.50', currency: 'PLN' }, availableQuantity: 4 },
+        }))
+      );
+      snapshots.upsert.mockResolvedValue({
+        snapshot: makeSnapshot('333', 'active'),
+        previousStatus: 'active',
+        applied: false,
+      });
+
+      await service.refreshOne(CONNECTION_ID, {
+        externalOfferId: '333',
+        internalVariantId: 'ol_variant_c',
+      });
+
+      expect(commercialSnapshots.upsert).not.toHaveBeenCalled();
+    });
   });
+
+  describe('recordObservedStatus (#2039)', () => {
+    const target = { externalOfferId: '111', internalVariantId: 'ol_variant_1' };
+
+    it('should upsert a status the caller already observed, without reading the marketplace', async () => {
+      await service.recordObservedStatus(CONNECTION_ID, target, {
+        publicationStatus: 'active',
+        validationMessages: [],
+      });
+
+      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+      expect(snapshots.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionId: CONNECTION_ID,
+          externalOfferId: '111',
+          internalVariantId: 'ol_variant_1',
+          publicationStatus: 'active',
+          statusDetails: null,
+        }) as UpsertOfferStatusSnapshotCommand
+      );
+    });
+
+    it('should persist observed validation messages as status details', async () => {
+      await service.recordObservedStatus(CONNECTION_ID, target, {
+        publicationStatus: 'inactive',
+        validationMessages: ['Missing parameter'],
+      });
+
+      expect(snapshots.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          statusDetails: { validationMessages: ['Missing parameter'] },
+        }) as UpsertOfferStatusSnapshotCommand
+      );
+    });
+
+    it('should stamp the caller-supplied observation time so the freshness guard can order writes', async () => {
+      const observedAt = new Date('2026-08-12T10:00:00Z');
+
+      await service.recordObservedStatus(CONNECTION_ID, target, {
+        publicationStatus: 'activating',
+        observedAt,
+      });
+
+      expect(snapshots.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lastStatusSyncedAt: observedAt,
+        }) as UpsertOfferStatusSnapshotCommand
+      );
+    });
+
+    it('should report the write as not applied when the freshness guard discarded it', async () => {
+      snapshots.upsert.mockResolvedValue({
+        snapshot: makeSnapshot('111', 'active'),
+        previousStatus: 'active',
+        applied: false,
+      });
+
+      const applied = await service.recordObservedStatus(CONNECTION_ID, target, {
+        publicationStatus: 'active',
+      });
+
+      expect(applied).toBe(false);
+    });
+  });
+
 });

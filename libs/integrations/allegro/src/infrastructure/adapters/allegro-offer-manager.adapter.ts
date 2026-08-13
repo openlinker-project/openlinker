@@ -1568,6 +1568,15 @@ export class AllegroOfferManagerAdapter
     if (validationErrors.length > 0) {
       result.validationErrors = validationErrors;
     }
+    // Report Allegro's own publication status so core can persist a status
+    // snapshot without waiting for the hourly scan (#2039). Only when the
+    // response actually carried one: `mapAllegroPublicationStatus` defaults an
+    // absent value to `'inactive'`, which is the right *read-path* fallback but
+    // would be a guess here — and a guessed `inactive` reads as a rejected
+    // offer. Absent ⇒ omit the field ⇒ core writes no row.
+    if (response.publication?.status !== undefined) {
+      result.publicationStatus = this.mapAllegroPublicationStatus(response.publication.status);
+    }
     return result;
   }
 

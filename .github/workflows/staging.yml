@@ -1,0 +1,98 @@
+name: Build and up staging
+
+on:
+  workflow_dispatch:  # Manual trigger for testing
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types: 
+      - completed
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch'
+    environment: staging
+    runs-on: staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Env for app
+        uses: Infisical/secrets-action@v1.0.16
+        with:
+          method: "universal"
+          identity-id: ${{ secrets.INFISICAL_IDENTITY_ID }}
+          client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          domain: ${{ secrets.INFISICAL_DOMAIN }}
+          env-slug: ${{ secrets.INFISICAL_ENV_SLUG }}
+          project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
+          export-type: "file"
+          file-output-path: "/.env"
+
+      - name: Env for woocommerce
+        uses: Infisical/secrets-action@v1.0.16
+        with:
+          method: "universal"
+          identity-id: ${{ secrets.INFISICAL_IDENTITY_ID }}
+          client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          domain: ${{ secrets.INFISICAL_DOMAIN }}
+          env-slug: ${{ secrets.INFISICAL_ENV_SLUG }}
+          project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
+          export-type: "file"
+          file-output-path: "/.env.wc"
+          secret-path: "woocommerce"
+
+      - name: Env for prestashop
+        uses: Infisical/secrets-action@v1.0.16
+        with:
+          method: "universal"
+          identity-id: ${{ secrets.INFISICAL_IDENTITY_ID }}
+          client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          domain: ${{ secrets.INFISICAL_DOMAIN }}
+          env-slug: ${{ secrets.INFISICAL_ENV_SLUG }}
+          project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
+          export-type: "file"
+          file-output-path: "/.env.presta"
+          secret-path: "prestashop"
+
+      - name: Build web
+        run: docker build --build-arg VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }} -f apps/web/Dockerfile . --tag openlinker-web:latest --tag openlinker-web:${{ github.sha }}
+      - name: Build worker
+        run: docker build -f Dockerfile --target worker . --tag openlinker-worker:latest --tag openlinker-worker:${{ github.sha }}
+      - name: Build api
+        run: docker build -f Dockerfile --target production . --tag openlinker-api:latest --tag openlinker-api:${{ github.sha }}
+      - name: Build migrate
+        run: docker build -f Dockerfile --target base . --tag openlinker-migrate:latest --tag openlinker-migrate:${{ github.sha }}
+
+      - name: Sync prestashop module
+        run: rsync -avz --delete ./apps/prestashop-module/ ${{ secrets.PROJECT_DIR }}/data/prestashop_openlinker_module/
+
+      - name: Sync prestashop init scripts
+        run: rsync -avz --delete ./docker/prestashop/ ${{ secrets.PROJECT_DIR }}/data/prestashop
+
+      - name: Sync woocommerce init scripts
+        run: rsync -avz --delete ./docker/woocommerce/ ${{ secrets.PROJECT_DIR }}/data/woocommerce/
+
+      - name: Copy env
+        run: mv .env ${{ secrets.PROJECT_DIR }}/.env
+      - name: Copy env.wc
+        run: mv .env.wc ${{ secrets.PROJECT_DIR }}/.env.wc
+      - name: Copy env.presta
+        run: mv .env.presta ${{ secrets.PROJECT_DIR }}/.env.presta
+
+      - name: Restart with latest tags
+        working-directory: ${{ secrets.PROJECT_DIR }}
+        run: docker compose up -d
+
+      - name: Prune old images # save space on server
+        run: docker image prune -f

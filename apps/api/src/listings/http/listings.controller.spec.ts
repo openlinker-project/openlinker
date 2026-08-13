@@ -54,7 +54,6 @@ import type {
   OfferCreationRecordRepositoryPort,
   OfferMappingListItem,
   OfferMappingRepositoryPort,
-  OfferStatusSnapshot,
 } from '@openlinker/core/listings';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
@@ -141,6 +140,7 @@ describe('ListingsController', () => {
       countByConnectionAndVariants: jest.fn().mockResolvedValue(new Map<string, number>()),
       countListedVariantsByProducts: jest.fn().mockResolvedValue([]),
       findStaleMappedVariants: jest.fn().mockResolvedValue([]),
+      findRecentlyListedVariantIds: jest.fn().mockResolvedValue([]),
     };
     jobEnqueue = { enqueueJob: jest.fn() } as unknown as jest.Mocked<JobEnqueuePort>;
     offerCreationRecords = {
@@ -1450,7 +1450,7 @@ describe('ListingsController', () => {
   });
 
   describe('getProductOfferStatus (#1760)', () => {
-    it('maps snapshots to publication-status DTOs', async () => {
+    it('maps status views to publication-status DTOs', async () => {
       const syncedAt = new Date('2026-07-22T08:00:00Z');
       offerStatusRead.getPublicationStatusForProduct.mockResolvedValue([
         {
@@ -1458,9 +1458,9 @@ describe('ListingsController', () => {
           externalOfferId: '7781896308',
           internalVariantId: 'ol_variant_1',
           publicationStatus: 'active',
-          statusDetails: { validationMessages: ['note'] },
+          validationMessages: ['note'],
           lastStatusSyncedAt: syncedAt,
-        } as OfferStatusSnapshot,
+        },
       ]);
 
       const result = await controller.getProductOfferStatus('ol_product_1', 'conn-1');
@@ -1477,6 +1477,32 @@ describe('ListingsController', () => {
           publicationStatus: 'active',
           validationMessages: ['note'],
           lastStatusSyncedAt: syncedAt.toISOString(),
+        },
+      ]);
+    });
+
+    it('serialises an offer with no snapshot yet as nulls, not as an omitted row (#2039)', async () => {
+      offerStatusRead.getPublicationStatusForProduct.mockResolvedValue([
+        {
+          connectionId: 'conn-1',
+          externalOfferId: '7781896308',
+          internalVariantId: 'ol_variant_1',
+          publicationStatus: null,
+          validationMessages: [],
+          lastStatusSyncedAt: null,
+        },
+      ]);
+
+      const result = await controller.getProductOfferStatus('ol_product_1');
+
+      expect(result).toEqual([
+        {
+          connectionId: 'conn-1',
+          externalOfferId: '7781896308',
+          internalVariantId: 'ol_variant_1',
+          publicationStatus: null,
+          validationMessages: undefined,
+          lastStatusSyncedAt: null,
         },
       ]);
     });

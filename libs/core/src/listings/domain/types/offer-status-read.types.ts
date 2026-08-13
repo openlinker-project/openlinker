@@ -89,3 +89,26 @@ export interface OfferStatusReadResult {
    */
   commercial?: OfferCommercialObservation;
 }
+
+/**
+ * One row of the operator-facing per-product status read (#2039).
+ *
+ * Covers every offer OL knows is mapped to the product — **including offers
+ * with no snapshot yet**, which report `publicationStatus: null`. Previously
+ * this read returned snapshot rows only, so a product whose offers had never
+ * been synced rendered as an empty panel: the operator could not tell "no
+ * offers here" from "offers exist, status not read yet", and the per-offer
+ * manual refresh (the only mitigation for the latter) was unreachable because
+ * it is rendered per returned row.
+ */
+export interface OfferPublicationStatusView {
+  connectionId: string;
+  externalOfferId: string;
+  internalVariantId: string;
+  /** `null` when the offer has never been read from the marketplace. */
+  publicationStatus: OfferPublicationStatus | null;
+  /** Marketplace validation messages captured with the status. */
+  validationMessages: string[];
+  /** `null` when the offer has never been read from the marketplace. */
+  lastStatusSyncedAt: Date | null;
+}

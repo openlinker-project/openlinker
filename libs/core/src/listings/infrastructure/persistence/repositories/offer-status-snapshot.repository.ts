@@ -13,6 +13,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { OfferStatusSnapshot } from '../../../domain/entities/offer-status-snapshot.entity';
+import { OfferStatusSnapshotUpsertFailedError } from '../../../domain/exceptions/offer-status-snapshot-upsert-failed.exception';
 import type {
   OfferStatusSnapshotRepositoryPort,
   OfferStatusUpsertResult,
@@ -20,6 +21,9 @@ import type {
 import type { UpsertOfferStatusSnapshotCommand } from '../../../domain/types/offer-status-snapshot.types';
 import type { OfferPublicationStatus } from '../../../domain/types/offer-status-read.types';
 import { OfferStatusSnapshotOrmEntity } from '../entities/offer-status-snapshot.orm-entity';
+
+/** Physical table name, referenced by the guarded `ON CONFLICT` assignments. */
+const TABLE = 'offer_status_snapshots';
 
 @Injectable()
 export class OfferStatusSnapshotRepository implements OfferStatusSnapshotRepositoryPort {
@@ -39,66 +43,81 @@ export class OfferStatusSnapshotRepository implements OfferStatusSnapshotReposit
   }
 
   async upsert(command: UpsertOfferStatusSnapshotCommand): Promise<OfferStatusUpsertResult> {
-    // Lock-then-upsert, NOT find-then-save (#2032 review round 2, finding 5):
-    // `refreshOne` is reachable from three independent triggers - the hourly
-    // scan, the delayed post-creation refresh
-    // (`marketplace-offer-refresh-snapshot.handler.ts`), and the operator
-    // "Refresh status" endpoint - exactly the race `OfferCommercialSnapshotRepository`
-    // was fixed for in this same PR, over the SAME `refreshOne`/`sync` call
-    // sites and the SAME `(connectionId, externalOfferId)` key. Find-then-save
-    // here was worse than a stale comment: on a never-before-synced offer -
-    // precisely a row sitting in the operator-facing `Unsynced` tab an
-    // operator is now likely to manually "Refresh status" on - a genuine
-    // concurrent first-INSERT race threw an uncaught unique-violation out of
-    // `sync()`'s per-page loop (no try/catch there, unlike the commercial
-    // write), aborting the whole scan-page job rather than just the one offer.
-    //
-    // A plain atomic `upsert()` (as used for the commercial table) would lose
-    // `previousStatus`, which the caller needs for transition-detection
-    // logging - Postgres' `INSERT ... ON CONFLICT ... RETURNING` only exposes
-    // the POST-update row. So this locks the row first: `pessimistic_write`
-    // on an EXISTING row serializes concurrent updates (the second racer
-    // waits, then reads the first's committed write as its own
-    // `previousStatus` - correct linearization). On a genuine concurrent
-    // first-INSERT (nothing to lock yet), `upsert()`'s own `ON CONFLICT DO
-    // UPDATE` still resolves the write atomically with no unique-violation;
-    // both racers may report `previousStatus: null` for what is, from either
-    // transaction's own view, a genuine first observation - a possible
-    // redundant "first observation" log line, never a thrown error or a lost
-    // write.
-    return this.ormRepository.manager.transaction(async (manager) => {
-      const repo = manager.getRepository(OfferStatusSnapshotOrmEntity);
-      const existing = await repo
-        .createQueryBuilder('snapshot')
-        .setLock('pessimistic_write')
-        .where('snapshot.connectionId = :connectionId', { connectionId: command.connectionId })
-        .andWhere('snapshot.externalOfferId = :externalOfferId', {
-          externalOfferId: command.externalOfferId,
-        })
-        .getOne();
-      const previousStatus = existing?.publicationStatus ?? null;
-
-      await repo.upsert(
-        {
-          connectionId: command.connectionId,
-          externalOfferId: command.externalOfferId,
-          internalVariantId: command.internalVariantId,
-          publicationStatus: command.publicationStatus,
-          statusDetails: command.statusDetails,
-          lastStatusSyncedAt: command.lastStatusSyncedAt,
-          updatedAt: () => 'now()',
-        },
-        { conflictPaths: ['connectionId', 'externalOfferId'] }
-      );
-
-      const saved = await repo.findOneOrFail({
-        where: {
-          connectionId: command.connectionId,
-          externalOfferId: command.externalOfferId,
-        },
-      });
-      return { snapshot: this.toDomain(saved), previousStatus };
+    // The prior status is captured here (one read) so the service can detect a
+    // transition without a second query. It is deliberately NOT the basis of
+    // the write — see the guard below.
+    const existing = await this.ormRepository.findOne({
+      where: {
+        connectionId: command.connectionId,
+        externalOfferId: command.externalOfferId,
+      },
     });
+    const previousStatus = existing?.publicationStatus ?? null;
+
+    // Raw parameterized INSERT … ON CONFLICT DO UPDATE rather than
+    // find-then-save. Until #2039 this table had ONE writer (the hourly scan,
+    // serialised per connection by its own idempotency key + cursor), so a
+    // non-atomic read-modify-write was safe. It now has three deliberately
+    // decoupled writers — the scan, the single-offer refresh, and the create
+    // path (create response + the creation poller's `active` terminal) — and
+    // nothing orders them, so the assignment resolves by OBSERVATION FRESHNESS
+    // instead of arrival order (`docs/lessons.md`, #1916 precedent).
+    //
+    // Freshness, not status rank: `active → ended → active` is a legitimate
+    // sequence, so ranking the status values (as `webhook_deliveries` does for
+    // its monotonic lifecycle) would be wrong here. `<=` keeps a same-instant
+    // rewrite effective, and `GREATEST` makes the timestamp itself monotonic so
+    // a late-arriving stale observation cannot drag the row backwards.
+    //
+    // Column names are a fixed whitelist of entity fields (never user input);
+    // every value is a bound parameter. `QueryBuilder.insert()` is avoided on
+    // purpose: its lazy `require()` of InsertQueryBuilder can resolve to
+    // `undefined` under jest's per-file module sandbox (#1511).
+    const guard = `${TABLE}."lastStatusSyncedAt" <= EXCLUDED."lastStatusSyncedAt"`;
+    const freshest = (column: string): string =>
+      `"${column}" = CASE WHEN ${guard} THEN EXCLUDED."${column}" ELSE ${TABLE}."${column}" END`;
+
+    // `RETURNING` reports the post-write `lastStatusSyncedAt`, which is
+    // `GREATEST(stored, ours)` — so it equals the observation we passed in
+    // exactly when the guard accepted it. Read from the statement itself
+    // rather than from the read-back below, so a concurrent fresher write
+    // landing in between cannot make an applied write look rejected.
+    const written = (await this.ormRepository.query(
+      `INSERT INTO ${TABLE} ("connectionId", "externalOfferId", "internalVariantId", "publicationStatus", "statusDetails", "lastStatusSyncedAt")
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT ("externalOfferId", "connectionId")
+       DO UPDATE SET ${freshest('internalVariantId')}, ${freshest('publicationStatus')}, ${freshest('statusDetails')},
+         "lastStatusSyncedAt" = GREATEST(${TABLE}."lastStatusSyncedAt", EXCLUDED."lastStatusSyncedAt"),
+         "updatedAt" = now()
+       RETURNING "lastStatusSyncedAt"`,
+      [
+        command.connectionId,
+        command.externalOfferId,
+        command.internalVariantId,
+        command.publicationStatus,
+        command.statusDetails === null ? null : JSON.stringify(command.statusDetails),
+        command.lastStatusSyncedAt,
+      ]
+    )) as Array<{ lastStatusSyncedAt: Date }> | undefined;
+
+    const persistedSyncedAt = written?.[0]?.lastStatusSyncedAt;
+
+    const saved = await this.ormRepository.findOne({
+      where: {
+        connectionId: command.connectionId,
+        externalOfferId: command.externalOfferId,
+      },
+    });
+    if (!saved) {
+      throw new OfferStatusSnapshotUpsertFailedError(
+        command.connectionId,
+        command.externalOfferId
+      );
+    }
+    const resolvedSyncedAt = persistedSyncedAt ?? saved.lastStatusSyncedAt;
+    const applied =
+      new Date(resolvedSyncedAt).getTime() === command.lastStatusSyncedAt.getTime();
+    return { snapshot: this.toDomain(saved), previousStatus, applied };
   }
 
   async countByConnectionAndStatus(

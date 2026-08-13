@@ -62,6 +62,7 @@ describe('StaleOfferPauseService', () => {
       countByConnectionAndVariants: jest.fn(),
       countListedVariantsByProducts: jest.fn(),
       findStaleMappedVariants: jest.fn().mockResolvedValue([]),
+      findRecentlyListedVariantIds: jest.fn().mockResolvedValue([]),
     };
 
     jobQueue = {

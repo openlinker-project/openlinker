@@ -9,12 +9,14 @@
 import type { IdentifierMapping } from '@openlinker/core/identifier-mapping';
 import type { OfferLifecycleCounts } from '../types/offer-lifecycle.types';
 import type {
+  FindRecentlyListedVariantIdsOptions,
   OfferMappingCountFilters,
   OfferMappingFilters,
   OfferMappingPagination,
   PaginatedIdentifierMappings,
   PaginatedOfferMappings,
   ProductListingsCoverage,
+  RecentlyListedVariant,
   StaleMappedVariant,
 } from '../types/offer-mapping.types';
 
@@ -128,4 +130,15 @@ export interface OfferMappingRepositoryPort {
     connectionId: string,
     options: { limit: number; staleSince: Date }
   ): Promise<readonly StaleMappedVariant[]>;
+
+  /**
+   * Distinct variant ids with at least one Offer mapping, ordered by most
+   * recent mapping activity, excluding `isStale` (#1689) variants (#1983
+   * needs-attention aggregates — coverage-gap / stock-at-risk candidate pool).
+   * Scoped to one connection when `options.connectionId` is set; otherwise
+   * spans every connection. Capped at `options.limit`.
+   */
+  findRecentlyListedVariantIds(
+    options: FindRecentlyListedVariantIdsOptions
+  ): Promise<RecentlyListedVariant[]>;
 }

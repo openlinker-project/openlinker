@@ -1,9 +1,8 @@
 /**
  * Offer Status Snapshot Repository — Unit Tests
  *
- * Verifies the keyed read, the lock-then-upsert `upsert` (#2032 review round
- * 2, finding 5 - atomic, not find-then-save), domain mapping, and the
- * status-count aggregation. The TypeORM `Repository`/`EntityManager` are
+ * Verifies the keyed read, the insert/update branches of `upsert`, domain
+ * mapping, and the status-count aggregation. The TypeORM `Repository` is
  * mocked (mirrors `offer-creation-record.repository.spec.ts`); the real-DB
  * behaviour is exercised by the worker e2e int-spec.
  *
@@ -15,6 +14,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
 
 import { OfferStatusSnapshotRepository } from './offer-status-snapshot.repository';
+import { OfferStatusSnapshotUpsertFailedError } from '../../../domain/exceptions/offer-status-snapshot-upsert-failed.exception';
 import { OfferStatusSnapshotOrmEntity } from '../entities/offer-status-snapshot.orm-entity';
 import type { UpsertOfferStatusSnapshotCommand } from '../../../domain/types/offer-status-snapshot.types';
 
@@ -48,37 +48,14 @@ describe('OfferStatusSnapshotRepository', () => {
     lastStatusSyncedAt: now,
   };
 
-  /**
-   * A fake transactional `EntityManager.getRepository(...)` result: a lockable
-   * query builder (`existingRow`) plus `upsert`/`findOneOrFail` mocks. Handed
-   * to `manager.transaction`'s callback in place of a real transaction.
-   */
-  function buildTxRepo(existingRow: OfferStatusSnapshotOrmEntity | null): {
-    createQueryBuilder: jest.Mock;
-    upsert: jest.Mock;
-    findOneOrFail: jest.Mock;
-  } {
-    const qb = {
-      setLock: jest.fn().mockReturnThis(),
-      where: jest.fn().mockReturnThis(),
-      andWhere: jest.fn().mockReturnThis(),
-      getOne: jest.fn().mockResolvedValue(existingRow),
-    };
-    return {
-      createQueryBuilder: jest.fn().mockReturnValue(qb),
-      upsert: jest.fn().mockResolvedValue({} as never),
-      findOneOrFail: jest.fn(),
-    };
-  }
-
   beforeEach(async () => {
     const mockOrmRepo = {
       findOne: jest.fn(),
+      save: jest.fn(),
+      // The upsert returns the post-write `lastStatusSyncedAt`; equal to the
+      // command's instant ⇒ the freshness guard accepted the observation.
+      query: jest.fn().mockResolvedValue([{ lastStatusSyncedAt: now }]),
       createQueryBuilder: jest.fn(),
-      manager: {
-        transaction: jest.fn(),
-        getRepository: jest.fn(),
-      },
     } as unknown as jest.Mocked<Repository<OfferStatusSnapshotOrmEntity>>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -119,63 +96,81 @@ describe('OfferStatusSnapshotRepository', () => {
   });
 
   describe('upsert', () => {
-    /** Wires `ormRepository.manager.transaction` to run its callback against `txRepo`. */
-    function mockTransaction(txRepo: ReturnType<typeof buildTxRepo>): void {
-      (
-        ormRepository.manager as unknown as {
-          transaction: jest.Mock;
-          getRepository: jest.Mock;
-        }
-      ).transaction.mockImplementation((cb: (m: unknown) => unknown) =>
-        cb({ getRepository: jest.fn().mockReturnValue(txRepo) })
-      );
-    }
-
-    it('locks for update, then upserts atomically - inserting when none exists for the key', async () => {
-      const txRepo = buildTxRepo(null);
-      txRepo.findOneOrFail.mockResolvedValue(buildOrm({ publicationStatus: 'ended' }));
-      mockTransaction(txRepo);
+    // The freshness guard itself lives in SQL, so it is asserted in
+    // `apps/api/test/integration/listings-offer-status-snapshot.int-spec.ts`
+    // against a real Postgres. These unit tests cover the surrounding
+    // contract: the statement shape, the bound parameters, `previousStatus`,
+    // and the read-back mapping.
+    it('issues a freshness-guarded ON CONFLICT upsert with bound parameters', async () => {
+      ormRepository.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(buildOrm({ publicationStatus: 'ended' }));
 
       const result = await repository.upsert(command);
 
-      expect(txRepo.upsert).toHaveBeenCalledTimes(1);
-      const [row, options] = txRepo.upsert.mock.calls[0];
-      expect(options).toEqual({ conflictPaths: ['connectionId', 'externalOfferId'] });
-      expect(row).toMatchObject({
-        connectionId: 'conn-uuid',
-        externalOfferId: '7781562863',
-        publicationStatus: 'ended',
-        statusDetails: { validationMessages: ['gone'] },
-      });
-      expect(typeof (row as { updatedAt: () => string }).updatedAt).toBe('function');
+      expect(ormRepository.query).toHaveBeenCalledTimes(1);
+      const [sql, params] = ormRepository.query.mock.calls[0] as [string, unknown[]];
+      expect(sql).toContain('ON CONFLICT ("externalOfferId", "connectionId")');
+      expect(sql).toContain('"lastStatusSyncedAt" <= EXCLUDED."lastStatusSyncedAt"');
+      expect(sql).toContain('GREATEST');
+      expect(params).toEqual([
+        'conn-uuid',
+        '7781562863',
+        'ol_variant_123',
+        'ended',
+        JSON.stringify({ validationMessages: ['gone'] }),
+        now,
+      ]);
+      expect(sql).toContain('RETURNING "lastStatusSyncedAt"');
       expect(result.snapshot.publicationStatus).toBe('ended');
       expect(result.previousStatus).toBeNull();
+      expect(result.applied).toBe(true);
     });
 
-    it('locks the existing row before upserting, reporting its status as previousStatus', async () => {
-      const txRepo = buildTxRepo(buildOrm({ publicationStatus: 'active' }));
-      txRepo.findOneOrFail.mockResolvedValue(buildOrm({ publicationStatus: 'ended' }));
-      mockTransaction(txRepo);
+    it('reports applied=false when the guard kept a fresher stored observation', async () => {
+      const fresher = new Date(now.getTime() + 5_000);
+      ormRepository.query.mockResolvedValue([{ lastStatusSyncedAt: fresher }]);
+      ormRepository.findOne
+        .mockResolvedValueOnce(buildOrm({ publicationStatus: 'active' }))
+        .mockResolvedValueOnce(
+          buildOrm({ publicationStatus: 'active', lastStatusSyncedAt: fresher })
+        );
 
       const result = await repository.upsert(command);
 
-      expect(txRepo.upsert).toHaveBeenCalledTimes(1);
-      expect(result.snapshot.publicationStatus).toBe('ended');
-      expect(result.previousStatus).toBe('active');
+      // The stored row wins, so the caller must not narrate `active → ended`.
+      expect(result.applied).toBe(false);
+      expect(result.snapshot.publicationStatus).toBe('active');
     });
 
-    it('runs the lock read and the upsert inside the same transaction, never find-then-save', async () => {
-      const txRepo = buildTxRepo(null);
-      txRepo.findOneOrFail.mockResolvedValue(buildOrm({ publicationStatus: 'ended' }));
-      mockTransaction(txRepo);
+    it('reports the status the row held before the write', async () => {
+      ormRepository.findOne
+        .mockResolvedValueOnce(buildOrm({ publicationStatus: 'active' }))
+        .mockResolvedValueOnce(buildOrm({ publicationStatus: 'ended' }));
 
-      await repository.upsert(command);
+      const result = await repository.upsert(command);
 
-      expect(
-        (ormRepository.manager as unknown as { transaction: jest.Mock }).transaction
-      ).toHaveBeenCalledTimes(1);
-      const qb = txRepo.createQueryBuilder.mock.results[0].value as { setLock: jest.Mock };
-      expect(qb.setLock).toHaveBeenCalledWith('pessimistic_write');
+      expect(result.previousStatus).toBe('active');
+      expect(result.snapshot.publicationStatus).toBe('ended');
+    });
+
+    it('binds a null statusDetails rather than the string "null"', async () => {
+      ormRepository.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(buildOrm({ statusDetails: null }));
+
+      await repository.upsert({ ...command, statusDetails: null });
+
+      const [, params] = ormRepository.query.mock.calls[0] as [string, unknown[]];
+      expect(params[4]).toBeNull();
+    });
+
+    it('raises a domain error when the written row cannot be read back', async () => {
+      ormRepository.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+
+      await expect(repository.upsert(command)).rejects.toThrow(
+        OfferStatusSnapshotUpsertFailedError
+      );
     });
   });
 

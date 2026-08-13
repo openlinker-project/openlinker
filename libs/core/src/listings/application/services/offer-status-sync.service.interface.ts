@@ -25,6 +25,25 @@ export interface OfferStatusRefreshTarget {
   internalVariantId: string;
 }
 
+/**
+ * A publication status the caller has **already** observed (#2039) — from a
+ * create response or from a poll iteration's live read — handed to
+ * {@link IOfferStatusSyncService.recordObservedStatus} for persistence.
+ *
+ * Deliberately not `OfferStatusReadResult`: that shape belongs to the
+ * `OfferStatusReader` capability and carries platform validation *errors*,
+ * while a snapshot persists their messages. Keeping this separate lets a
+ * create-path caller (which has no `OfferStatusReader` read) supply an
+ * observation without pretending to be one.
+ */
+export interface OfferStatusObservation {
+  publicationStatus: OfferPublicationStatus;
+  /** Marketplace messages observed alongside the status. Omitted ⇒ none. */
+  validationMessages?: string[];
+  /** When the status was observed. Defaults to "now" at the write. */
+  observedAt?: Date;
+}
+
 export type { OfferStatusSyncResult };
 
 export interface IOfferStatusSyncService {
@@ -46,4 +65,28 @@ export interface IOfferStatusSyncService {
     connectionId: string,
     target: OfferStatusRefreshTarget
   ): Promise<OfferPublicationStatus | null>;
+
+  /**
+   * Persist a status the caller already observed (#2039), without re-reading
+   * the marketplace. Backs the create path (the create response reported the
+   * status) and the creation poller's `active` terminal (the poll just read
+   * it) — both previously left `offer_status_snapshots` empty, so a freshly
+   * published offer had no row until the hourly rolling scan reached it.
+   *
+   * Throws only on a persistence failure. Callers on the create/poll paths
+   * treat that as non-fatal: the offer already exists on the marketplace and
+   * the hourly sync is the backstop.
+   *
+   * Resolves `true` when the observation was persisted, `false` when the
+   * repository's freshness guard discarded it because a newer snapshot is
+   * already stored. Only a caller that writes a *second*, sibling row off the
+   * same observation needs this — `refreshOne` uses it to keep the commercial
+   * snapshot (#2024) from being advanced by an observation the status half
+   * just rejected. Create/poll-path callers ignore it.
+   */
+  recordObservedStatus(
+    connectionId: string,
+    target: OfferStatusRefreshTarget,
+    observation: OfferStatusObservation
+  ): Promise<boolean>;
 }

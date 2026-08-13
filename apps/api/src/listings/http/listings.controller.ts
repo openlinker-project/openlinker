@@ -66,7 +66,7 @@ import type {
   OfferCreationRecord,
   OfferManagerPort,
   OfferMappingListItem,
-  OfferStatusSnapshot,
+  OfferPublicationStatusView,
 } from '@openlinker/core/listings';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IIntegrationsService } from '@openlinker/core/integrations';
@@ -508,18 +508,18 @@ export class ListingsController {
   @ApiOperation({
     summary: 'Live marketplace publication status of a product’s offers',
     description:
-      'Reads the persisted offer_status_snapshots for every offer mapped to a variant of the product (#1760). Steady-state live status, distinct from the one-shot creation lifecycle.',
+      'Reads the persisted offer_status_snapshots for every offer mapped to a variant of the product (#1760). Steady-state live status, distinct from the one-shot creation lifecycle. An offer with no snapshot yet is returned with a null publicationStatus (#2039) rather than omitted.',
   })
   @ApiResponse({ status: 200, type: [OfferPublicationStatusResponseDto] })
   async getProductOfferStatus(
     @Param('productId') productId: string,
     @Query('connectionId') connectionId?: string
   ): Promise<OfferPublicationStatusResponseDto[]> {
-    const snapshots = await this.offerStatusRead.getPublicationStatusForProduct(
+    const views = await this.offerStatusRead.getPublicationStatusForProduct(
       productId,
       connectionId
     );
-    return snapshots.map((snapshot) => this.toOfferPublicationStatusDto(snapshot));
+    return views.map((view) => this.toOfferPublicationStatusDto(view));
   }
 
   @Roles('admin', 'operator')
@@ -1054,18 +1054,16 @@ export class ListingsController {
   }
 
   private toOfferPublicationStatusDto(
-    snapshot: OfferStatusSnapshot
+    view: OfferPublicationStatusView
   ): OfferPublicationStatusResponseDto {
     return {
-      connectionId: snapshot.connectionId,
-      externalOfferId: snapshot.externalOfferId,
-      internalVariantId: snapshot.internalVariantId,
-      publicationStatus: snapshot.publicationStatus,
-      validationMessages: snapshot.statusDetails?.validationMessages,
+      connectionId: view.connectionId,
+      externalOfferId: view.externalOfferId,
+      internalVariantId: view.internalVariantId,
+      publicationStatus: view.publicationStatus,
+      validationMessages: view.validationMessages.length > 0 ? view.validationMessages : undefined,
       lastStatusSyncedAt:
-        snapshot.lastStatusSyncedAt instanceof Date
-          ? snapshot.lastStatusSyncedAt.toISOString()
-          : snapshot.lastStatusSyncedAt,
+        view.lastStatusSyncedAt === null ? null : view.lastStatusSyncedAt.toISOString(),
     };
   }
 }

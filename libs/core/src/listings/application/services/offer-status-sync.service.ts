@@ -46,6 +46,7 @@ import {
 } from '../../listings.tokens';
 import type {
   IOfferStatusSyncService,
+  OfferStatusObservation,
   OfferStatusRefreshTarget,
   OfferStatusSyncOptions,
 } from './offer-status-sync.service.interface';
@@ -109,8 +110,13 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
       const internalVariantId = mapping.internalId;
 
       let status: OfferStatusReadResult;
+      let observedAt: Date;
       try {
         status = await adapter.getOfferStatus(externalOfferId);
+        // The freshness guard compares observation instants, so stamp the row
+        // with when the marketplace was actually read, not when we got around
+        // to writing it.
+        observedAt = new Date();
       } catch (error) {
         if (error instanceof OfferNotFoundOnMarketplaceException) {
           notFound += 1;
@@ -122,14 +128,24 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
         throw error;
       }
 
-      const { previousStatus } = await this.snapshots.upsert({
+      const { previousStatus, applied } = await this.snapshots.upsert({
         connectionId,
         externalOfferId,
         internalVariantId,
         publicationStatus: status.publicationStatus,
         statusDetails: this.toStatusDetails(status.validationErrors),
-        lastStatusSyncedAt: new Date(),
+        lastStatusSyncedAt: observedAt,
       });
+
+      // The table is multi-writer since #2039, so the freshness guard may have
+      // rejected this observation. Counting or narrating a transition then
+      // would report a write that did not happen.
+      if (!applied) {
+        this.logger.debug(
+          `Stale offer-status observation discarded (connection=${connectionId}, offerId=${externalOfferId}); a fresher snapshot is already stored`
+        );
+        continue;
+      }
       updated += 1;
 
       if (previousStatus !== null && previousStatus !== status.publicationStatus) {
@@ -192,8 +208,10 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
     }
 
     let status: OfferStatusReadResult;
+    let observedAt: Date;
     try {
       status = await adapter.getOfferStatus(target.externalOfferId);
+      observedAt = new Date();
     } catch (error) {
       if (error instanceof OfferNotFoundOnMarketplaceException) {
         this.logger.debug(
@@ -204,29 +222,60 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
       throw error;
     }
 
-    const { previousStatus } = await this.snapshots.upsert({
-      connectionId,
-      externalOfferId: target.externalOfferId,
-      internalVariantId: target.internalVariantId,
+    const applied = await this.recordObservedStatus(connectionId, target, {
       publicationStatus: status.publicationStatus,
-      statusDetails: this.toStatusDetails(status.validationErrors),
-      lastStatusSyncedAt: new Date(),
+      validationMessages: status.validationErrors.map((error) => error.message),
+      observedAt,
     });
 
-    if (previousStatus !== null && previousStatus !== status.publicationStatus) {
-      this.logger.log(
-        `Offer status transition on refresh (connection=${connectionId}, offerId=${target.externalOfferId}): ${previousStatus} → ${status.publicationStatus}`
+    // Gated on the status write actually landing: `recordObservedStatus`
+    // discards an observation older than the stored snapshot, and the
+    // commercial table has no freshness guard of its own (last write wins),
+    // so an ungated write here would let a stale read overwrite fresher
+    // price/quantity and re-stamp it as just-synced.
+    if (applied) {
+      await this.upsertCommercialSnapshot(
+        connectionId,
+        target.externalOfferId,
+        target.internalVariantId,
+        status
       );
     }
 
-    await this.upsertCommercialSnapshot(
-      connectionId,
-      target.externalOfferId,
-      target.internalVariantId,
-      status
-    );
-
     return status.publicationStatus;
+  }
+
+  async recordObservedStatus(
+    connectionId: string,
+    target: OfferStatusRefreshTarget,
+    observation: OfferStatusObservation
+  ): Promise<boolean> {
+    const { previousStatus, applied } = await this.snapshots.upsert({
+      connectionId,
+      externalOfferId: target.externalOfferId,
+      internalVariantId: target.internalVariantId,
+      publicationStatus: observation.publicationStatus,
+      statusDetails: this.toStatusDetails(
+        (observation.validationMessages ?? []).map((message) => ({ message }))
+      ),
+      lastStatusSyncedAt: observation.observedAt ?? new Date(),
+    });
+
+    // See `sync` above: a rejected write must not narrate a transition.
+    if (!applied) {
+      this.logger.debug(
+        `Stale offer-status observation discarded (connection=${connectionId}, offerId=${target.externalOfferId}); a fresher snapshot is already stored`
+      );
+      return false;
+    }
+
+    if (previousStatus !== null && previousStatus !== observation.publicationStatus) {
+      this.logger.log(
+        `Offer status transition (connection=${connectionId}, offerId=${target.externalOfferId}): ${previousStatus} → ${observation.publicationStatus}`
+      );
+    }
+
+    return true;
   }
 
   private toStatusDetails(

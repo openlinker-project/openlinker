@@ -50,6 +50,9 @@ import { SellerPoliciesService } from './application/services/seller-policies.se
 import { ResponsibleProducerService } from './application/services/responsible-producer.service';
 import { DeliveryPriceListService } from './application/services/delivery-price-list.service';
 import { ShopCategoryBrowseService } from './application/services/shop-category-browse.service';
+import { DestinationTaxonomyService } from './application/services/destination-taxonomy.service';
+import { DestinationCategoryRepository } from './infrastructure/persistence/repositories/destination-category.repository';
+import { DestinationCategoryOrmEntity } from './infrastructure/persistence/entities/destination-category.orm-entity';
 import { ShopAttributeReadService } from './application/services/shop-attribute-read.service';
 import { OfferCreationEnqueueService } from './application/services/offer-creation-enqueue.service';
 import { BulkListingSubmitService } from './application/services/bulk-listing-submit.service';
@@ -63,6 +66,8 @@ import { OfferStatusSnapshotRepository } from './infrastructure/persistence/repo
 import { OfferCommercialSnapshotOrmEntity } from './infrastructure/persistence/entities/offer-commercial-snapshot.orm-entity';
 import { OfferCommercialSnapshotRepository } from './infrastructure/persistence/repositories/offer-commercial-snapshot.repository';
 import { StaleOfferPauseService } from './application/services/stale-offer-pause.service';
+import { CoverageGapReadService } from './application/services/coverage-gap-read.service';
+import { StockAtRiskReadService } from './application/services/stock-at-risk-read.service';
 import {
   OFFER_LINKING_SERVICE_TOKEN,
   OFFER_MAPPING_SYNC_SERVICE_TOKEN,
@@ -104,6 +109,10 @@ import {
   PUBLISHED_VARIANTS_SERVICE_TOKEN,
   SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN,
   STALE_OFFER_PAUSE_SERVICE_TOKEN,
+  COVERAGE_GAP_READ_SERVICE_TOKEN,
+  STOCK_AT_RISK_READ_SERVICE_TOKEN,
+  DESTINATION_TAXONOMY_SERVICE_TOKEN,
+  DESTINATION_CATEGORY_REPOSITORY_TOKEN,
 } from './listings.tokens';
 
 // Re-export tokens for convenience
@@ -148,6 +157,8 @@ export {
   PUBLISHED_VARIANTS_SERVICE_TOKEN,
   SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN,
   STALE_OFFER_PAUSE_SERVICE_TOKEN,
+  COVERAGE_GAP_READ_SERVICE_TOKEN,
+  STOCK_AT_RISK_READ_SERVICE_TOKEN,
 } from './listings.tokens';
 
 @Module({
@@ -162,6 +173,7 @@ export {
       OfferStatusSnapshotOrmEntity,
       OfferCommercialSnapshotOrmEntity,
       ShopProductStatusSnapshotOrmEntity,
+      DestinationCategoryOrmEntity,
     ]),
     IntegrationsModule,
     IdentifierMappingModule,
@@ -213,12 +225,16 @@ export {
     ResponsibleProducerService,
     DeliveryPriceListService,
     ShopCategoryBrowseService,
+    DestinationTaxonomyService,
+    DestinationCategoryRepository,
     ShopAttributeReadService,
     OfferStockRestoreService,
     ShopProductMappingRepository,
     PublishedVariantsService,
     ShopProductMappingsService,
     StaleOfferPauseService,
+    CoverageGapReadService,
+    StockAtRiskReadService,
     {
       provide: OFFER_LINKING_SERVICE_TOKEN,
       useExisting: OfferLinkingService,
@@ -368,6 +384,14 @@ export {
       useExisting: ShopCategoryBrowseService,
     },
     {
+      provide: DESTINATION_TAXONOMY_SERVICE_TOKEN,
+      useExisting: DestinationTaxonomyService,
+    },
+    {
+      provide: DESTINATION_CATEGORY_REPOSITORY_TOKEN,
+      useExisting: DestinationCategoryRepository,
+    },
+    {
       provide: SHOP_ATTRIBUTE_READ_SERVICE_TOKEN,
       useExisting: ShopAttributeReadService,
     },
@@ -378,6 +402,14 @@ export {
     {
       provide: STALE_OFFER_PAUSE_SERVICE_TOKEN,
       useExisting: StaleOfferPauseService,
+    },
+    {
+      provide: COVERAGE_GAP_READ_SERVICE_TOKEN,
+      useExisting: CoverageGapReadService,
+    },
+    {
+      provide: STOCK_AT_RISK_READ_SERVICE_TOKEN,
+      useExisting: StockAtRiskReadService,
     },
   ],
   exports: [
@@ -422,6 +454,10 @@ export {
     PUBLISHED_VARIANTS_SERVICE_TOKEN,
     SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN,
     STALE_OFFER_PAUSE_SERVICE_TOKEN,
+    COVERAGE_GAP_READ_SERVICE_TOKEN,
+    STOCK_AT_RISK_READ_SERVICE_TOKEN,
+    DESTINATION_TAXONOMY_SERVICE_TOKEN,
+    DESTINATION_CATEGORY_REPOSITORY_TOKEN,
   ],
 })
 export class ListingsModule {}
