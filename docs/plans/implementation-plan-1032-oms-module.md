@@ -65,8 +65,8 @@ mechanics (bins, putaway, cycle counts, slotting), customer master beyond projec
 | D2 | **Per-line quantity counters** carry fulfilment/return progress; `partially_*` always derived | Medusa `order_item.*_quantity` + its validation ladder |
 | D2a | Counters are a projection over an append-only event ledger, **never free-floating** | Bagisto ships these counters without a ledger and has documented drift |
 | D3 | **Do not embed Medusa** — steal the model | spike: boots standalone, but 605 packages, a second ORM, a second DI container, and an unresolved Enterprise-Edition carve-out on the mandatory `framework`/`utils`/`types` tier |
-| D4 | Rules engine = hand-rolled **versioned condition AST** + the existing `sync_jobs` scheduler | capability-gating and durable delay are ours regardless |
-| D5 | **Dry-run is the differentiator**, and nearly free | preview and apply are one replay function. Requires purity: no I/O during evaluation |
+| ~~D4~~ | ~~Rules engine = hand-rolled versioned condition AST~~ — **withdrawn.** Wave 3 ships SLA escalation as a **named core feature**; the engine is deferred behind a falsifiable premise | OL emits **three** event streams (one with no consumer); after Wave 2 the usable trigger surface is one stream with ≤6 cause types. Of BaseLinker's ten trigger categories OL can serve **one**. `AutoIssueTriggerService` already does hard-coded orchestration in ~150 lines — see § 5 Wave 3 |
+| ~~D5~~ | ~~Dry-run is the differentiator, and nearly free~~ — **withdrawn.** | it was justified as "preview and apply are one replay function" — but [ADR-040](../architecture/adrs/040-order-changeset-proposed-then-confirmed.md) **deferred the replay function**. The claim named a component that no longer exists, and a realistic condition needs 6–8 reads to assemble, so it is not pure either |
 | D6 | Returns is a **child aggregate**, not an axis | axis rows are one per order×axis; returns are N per order |
 | D7 | Reservations get their **own table**; never overload `inventory_items.reservedQuantity` | that column is a master mirror, rewritten on every sync |
 | D8 | Invoice issuance is an **observed** event keyed on the KSeF-returned date | art. 106na — the legal issue date is assigned at transmission |
@@ -105,8 +105,10 @@ buyer/system event the seller observes); `CheckoutFormLineItem` has no status or
 **all** of them. Erli's status write is `PATCH /orders/{id}/status` with no line parameter, and its
 items carry no per-item status. See § 6J.
 
-**Dry-run moved out of this decision.** It belongs to the rules engine's condition evaluation (D4/D5),
-which delivers it independently.
+**Dry-run is not delivered by this plan at all.** An earlier draft moved it from here to the rules
+engine; the rules engine was then cut (§ 5 Wave 3), and the move had already broken it — the claim
+"preview and apply are one replay function" named the replay function this ADR defers. Recorded so
+the differentiator is not re-asserted a third time without a design behind it.
 
 See [ADR-040](../architecture/adrs/040-order-changeset-proposed-then-confirmed.md).
 
@@ -262,12 +264,76 @@ Adopts **option C** from [DECISION-oms-fulfilment-grain](./analysis/DECISION-oms
     "one shipment covers all lines". Written as events it is compensable for the cancel-and-reissue
     pairs it double-counts; written as counters the double-count is permanent
 
-### Wave 3 — Orchestration
+### Wave 3 — Orchestration (rules engine **cut**; two named features instead)
 
-11. Rules engine over **OL's own event surface** — parity on triggers you cannot emit is not parity
-12. Delayed actions via `SyncJobsService.schedule({ runAfter })`; guards re-evaluated **at resume**
-13. Dry-run + negative-evaluation logging (reuses the changeset replay)
-14. SLA: the product is *managing the dispatch declaration as a risk position*, not showing a number
+**A stress test cut the rules engine from the plan of record.** The plan's own warning — *"parity on
+triggers you cannot emit is not parity"* — turned out to indict it.
+
+17. **SLA escalation as a core feature.** One sweeper job type; per-connection thresholds in
+    `connection.config`; **notification only, no outbound marketplace write**. Note this reintroduces
+    the clock writer D13 declined for the *projection* — deliberately, and confined to a sweeper that
+    notifies rather than a column anything derives from.
+18. **Cancel propagation** — already delivered by Wave 1's `order_relay_attempts` + sweep. Not a rule.
+19. **Auto-advance on pack completion** — already in § 6C. Not a rule.
+
+That is the whole of Wave 3's novel content: **one cron and one notifier.**
+
+#### Why the engine was cut
+
+- **Its differentiator was already deleted.** Item 13 previously read "dry-run … reuses the changeset
+  replay" — and ADR-040 **deferred the replay function**. The sole § 8 test of the sole differentiator
+  tested a component the design had removed. Dry-run did not survive the move out of ADR-040; only
+  the word did.
+- **The evaluation context is I/O.** A realistic rule ("unshipped 48h after payment, Allegro
+  connection, all lines in stock, stage = To pack") needs 6–8 reads. The AST is pure only because
+  something else loads everything first — so the condition vocabulary is bounded by the loader, not
+  the AST, and preview-at-T differs from apply-at-T+1 unless the evaluated snapshot is persisted.
+- **D13 contradicted D5 two decisions apart.** D13 excludes SLA from the projection because it
+  consumes a wall clock; Wave 3 made SLA the headline rule subject.
+- **The headline rule had no trigger.** D13 explicitly refuses a clock writer, so nothing emits
+  "SLA breached".
+- **The trigger surface is one stream.** OL has **three** event streams today — one has no consumer,
+  two carry nothing an operator would rule on. After Wave 2 there is one useful stream carrying ≤6
+  cause types. Of BaseLinker's ten trigger categories OL can serve **one**; five it cannot serve at
+  all. `sync_jobs` lifecycle is column writes with no hook, and there is no in-process emitter.
+- **The loop cap is unimplementable as named.** § 12 requires a causation-depth cap for "rule loops
+  through marketplace round-trips" — but no correlation id survives the outbound boundary
+  (`order-ingestion.service.ts` states plainly that no `correlationId` exists), and D15 has no `rule`
+  `causeType`. The mitigation and the hazard are disjoint.
+- **The precedent already exists.** `AutoIssueTriggerService` is a shipped "when paid or shipped →
+  issue invoice" orchestration: ~150 lines of core service plus a four-value config enum, with
+  idempotency and PII-safe errors. It needed no engine.
+
+#### Deferred behind a falsifiable premise
+
+Mirroring [ADR-041](../architecture/adrs/041-order-flows-as-named-operator-process-configuration.md):
+**revisit when a second customer requests a third automation that config cannot express.** Until then
+it does not exist.
+
+**Preconditions if it returns** — not follow-ups:
+
+1. A `rule` `causeType` in D15, and an **attribution-free per-`(order, rule)` firing budget** in a
+   rolling window, replacing the unbuildable causation cap.
+2. A durable **firings table** before any delayed action — the idempotency key has no correct shape
+   without one (`rule:{ruleId}:{orderId}` can never fire twice; a nonce duplicates on every retry
+   wave). Cost is four tables, not two.
+3. **Rule version pinned at schedule time.** Otherwise editing a rule silently rewrites thousands of
+   in-flight delayed actions — the exact principle ADR-041 adopted as a precondition.
+4. Explicit `priority` with documented conflict resolution. Silence means the implementer picks
+   last-writer-wins, which is what generates Linnworks' "my rule didn't work" support article.
+5. `ReferenceExists`-style refusal on deleting a stage, connection or action a rule references —
+   the same dangling-reference defect that cut the flow entity.
+6. A **sized** fan-out ceiling with named breach behaviour.
+7. **Rules must not fire on backfilled or replayed transitions.** Wave 2 item 16 backfills by writing
+   ledger events; without this rule, a backfill emits thousands of transitions and the engine chases
+   every one at the marketplace. This is a scheduled day-one incident, not a hypothetical.
+8. A **cancel/reschedule primitive** for `sync_jobs` — today there is only
+   `requeueDeadByIdempotencyKey`, so a stale delayed action cannot be withdrawn, only no-opped at
+   resume while remaining indistinguishable from live work in job diagnostics.
+9. **Policy stays in `connection.config`; rules may only act.** § 6E's "later expressible as a rule"
+   would otherwise recreate the two-places-no-precedence defect § 6E exists to fix.
+10. **Capability-gate outcomes are first-class log entries.** A silently-skipped action whose
+    condition passed makes "why didn't my rule fire" answer the wrong question confidently.
 
 ### Wave 4 — Post-sale
 
@@ -852,9 +918,9 @@ Three layers, with deliberately different answers. The decision that must be mad
 
 ### Layer 1 — Operator customisation (open, and the point)
 
-Operator-defined stages, the Wave-3 rules engine (versioned draft/published like `PromptTemplate`,
-with DB-enforced "exactly one published per scope" partial unique indexes), and per-connection
-`config` policy. This is the BaseLinker-parity axis.
+Operator-defined stages and per-connection `config` policy (§ 6K). This is the BaseLinker-parity
+axis — narrower than an earlier draft claimed, since the rules engine that carried most of it was
+cut (§ 5 Wave 3).
 
 ### Layer 2 — Plugin extensibility: **actions yes, states no**
 
@@ -870,9 +936,11 @@ Decisive: **you can open the state axis later; you cannot close it.**
 
 Three boundaries copied from prior art:
 
-- **Plugins supply triggers and actions, never conditions** (Shopify Flow). The predicate language
-  stays core-owned — which is also what keeps D5's purity constraint intact, since a condition that
-  can call plugin code is no longer a pure function and dry-run dies with it.
+- **Plugins supply actions, never conditions** (Shopify Flow's boundary). The predicate language stays
+  core-owned. Note the earlier draft said "triggers **and** actions" — but § 7's own minimum change
+  adds only an *action* registry, `HostServices` has no event-publishing seam, and a plugin-supplied
+  trigger would determine the evaluation context's shape, which kills purity as surely as a plugin
+  condition would. The boundary was drawn on the wrong axis; actions are the whole of it.
 - **Enumerated named guards** (Vendure `configureDefaultOrderProcess`). Core decides *in advance*
   which invariants an operator may switch off, by name. **That list is a product decision and must be
   written before any code.**
@@ -960,7 +1028,7 @@ point — and the action contract must promise degrade-to-default.
 | `scan-where-possible` | unit: mixed order, some lines with EAN, some without | EAN lines must require a scan; only unscannable lines accept a tick |
 | **`scannableAtPackTime`** | int-spec: tick an EAN-less line, then populate the EAN via the master sync, then re-read | verification must stay valid — this is the retroactive-instability defect |
 | **Gate on a non-OL-dispatch route** | int-spec: `dispatchGate: block` on an `ompFulfilled` order | must not claim to block; the advisory path must be explicit in the response, not silently degraded |
-| Changeset replay | unit — same fixture drives preview and apply | proves D5's purity constraint holds |
+| SLA escalation sweeper | int-spec: threshold crossed, threshold not crossed, already-escalated | the whole of Wave 3's new behaviour; notification only, must never write outbound |
 | Counter validation ladder | unit, one case per rung | each rung has an operator-readable message |
 | Pack-event idempotency (`clientEventId`) | int-spec — duplicate insert | unique-constraint behaviour |
 | Wave 4 Step 0 exhaustiveness | compile-time (`never` default) + unit per adapter | the point is that the compiler starts catching it |
@@ -973,8 +1041,20 @@ New tables must be added to `tablesToTruncate` in the integration harness.
 ## 9. Checkpoint
 
 **Treat the end of Wave 2 as a real gate.** At that point the Orders workspace and pack station
-exist, and the foundation is paid for by the bug it fixed. Waves 3–5 should each require fresh
-justification rather than inheriting today's approval.
+exist, and the foundation is paid for by the bug it fixed.
+
+"Fresh justification" was too weak to fail — a gate with no criterion is decorative. Each deferred
+item now carries a **falsifiable premise**, and the gate is simply whether it has been observed:
+
+| Deferred | Premise that must be observed |
+|---|---|
+| Rules engine (§ 5 Wave 3) | a **second** customer requests a **third** automation that config cannot express |
+| `OrderFlow` entity (ADR-041) | **several clients working measurably differently** — not one client with two preferences |
+| Reservations / allocation (Wave 5) | an actual oversell, or a seller running stock thin enough that the sync window bites |
+| Returns (Wave 4) | an operator processing returns often enough that the read-only Allegro surface is the binding constraint |
+
+None of these is a judgement call about value; each is a thing that either happened or did not. If
+none has been observed at the gate, the correct outcome is to ship nothing further and say so.
 
 ---
 
@@ -992,7 +1072,7 @@ justification rather than inheriting today's approval.
 | — | `connections.orderAuthority` (Posture A/B) | to write |
 | — | **Late / out-of-order event policy** — no prior art in any surveyed platform | to write |
 | — | Pack-station authentication | to write (before Wave 2 6D) |
-| — | Rules engine: AST + capability-gated actions + purity constraint | to write |
+| — | ~~Rules engine: AST + capability-gated actions + purity constraint~~ — **not needed**; the engine is cut (§ 5 Wave 3) | withdrawn |
 | — | Returns as a child aggregate | to write |
 | — | ADR-028 amendment | to write |
 
@@ -1044,7 +1124,10 @@ back would need `forwardRef`. Prefer placing it in `orders`.
 - Station auth is the largest new security surface
 - Counter drift if 6B ships without the pack-event ledger (D2a)
 - Rule loops through marketplace round-trips need a causation-depth cap
-- Fan-out amplification: 5k orders × rules × actions against marketplace quota (#2019 limiter mitigates)
+- Fan-out amplification: 5k orders × actions against marketplace quota. **The #2019 limiter does not
+  mitigate this** — an earlier draft claimed it did. `MAX_TOTAL_WAIT_MS = 120_000` and `acquire()`
+  **throws** past it, so under amplification the limiter converts fan-out into mass job failure,
+  retries and a growing dead pile that then re-drives. Pacing is not capping
 - Delayed-action staleness — no incumbent publishes an answer
 - Stale-variant fail-open: rules must respect the #1689 guard
 - Backfill of `order_record_items` for open orders
