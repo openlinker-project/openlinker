@@ -141,8 +141,10 @@ export function createOrderProcessorManagerHarness(): OrderProcessorHarness {
   } as unknown as jest.Mocked<PrestashopCurrencyResolver>;
 
   const mockTaxRateResolver = {
-    // Default: untaxed (net == gross) so existing assertions are unaffected.
-    resolveProductTaxRate: jest.fn().mockResolvedValue(0),
+    // Default: a RESOLVED zero — a genuinely untaxed product (net == gross), so
+    // existing assertions are unaffected. Not an unknown: since #2052 those two
+    // answers are distinct and an unknown aborts the order.
+    resolveProductTaxRate: jest.fn().mockResolvedValue({ kind: 'resolved', rate: 0 }),
   } as unknown as PrestashopTaxRateResolver;
 
   const mockCustomerProjectionRepository = {
