@@ -32,7 +32,10 @@ describe('resolvePlatformLabel', () => {
   });
 
   it('falls back to the raw platformType when the plugin list is empty', () => {
-    // The state every render hits before the registry provider settles.
+    // Not a production state — the provider flattens a synchronous module
+    // constant, so no render ever sees an empty registry. Pinned because
+    // fixture-driven suites do pass one, and because the defensive contract is
+    // what lets every call site drop its own `?? platformType`.
     expect(resolvePlatformLabel([], 'allegro')).toBe('allegro');
   });
 
