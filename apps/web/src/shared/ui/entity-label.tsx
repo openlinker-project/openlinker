@@ -140,13 +140,15 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
           className="entity-label__copy"
           onClick={handleCopy}
           aria-label={copyButtonLabel}
-          // Mirrors the accessible name so a SIGHTED operator can also tell what
-          // "Copy" writes (#2091). The button label is two letters short of
-          // meaningless on a row whose visible identity is not the id being
-          // copied: `OrderIdentityCell` renders the order NUMBER and copies the
-          // internal id, and with `showId={false}` there is no `entity-label__id`
-          // chip beside it to make the target visible either.
-          title={copyButtonLabel}
+          // `title={id}`, NOT a mirror of `aria-label` (#2091). A sighted operator
+          // needs to know what "Copy" writes on a row whose visible identity is
+          // not the id being copied — `OrderIdentityCell` renders the order NUMBER
+          // and copies the internal id, and with `showId={false}` there is no
+          // `entity-label__id` chip beside it to make the target visible. Mirroring
+          // the accessible name would make `title` the accessible *description* of
+          // a control that already has that exact string as its name, so a screen
+          // reader announces it twice; the id adds information instead.
+          title={id}
         >
           {copied ? 'Copied' : 'Copy'}
         </button>

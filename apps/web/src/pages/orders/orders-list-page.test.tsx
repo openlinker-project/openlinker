@@ -1291,7 +1291,7 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
   });
 
   it('keeps the folded channel pill under the order name, with its registry label', async () => {
-    // The 768px fold is CSS-driven (`.orders-order-channel`, hidden ≥1024px) and
+    // The fold is CSS-driven (`.orders-order-channel`, hidden ≥1024px) and
     // #2094 owns relocating it — this pins that #2091 left the render branch and
     // its `→ dest +N` sibling in place, INSIDE the order cell's stack.
     const mockApi = mockCrossChannelApi();

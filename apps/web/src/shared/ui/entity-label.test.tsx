@@ -133,25 +133,30 @@ describe('EntityLabel', () => {
     const copy = screen.getByRole('button', {
       name: 'Copy internal order ID for order 6839-2911-4402',
     });
-    expect(copy).toHaveAttribute('title', 'Copy internal order ID for order 6839-2911-4402');
+    // The tooltip is the id itself, not a mirror of the accessible name: this row
+    // displays the order NUMBER and copies the internal id, and with
+    // `showId={false}` nothing else on the row shows the target. Mirroring the
+    // name would make `title` the accessible *description* of a control whose
+    // name is already that string, so a screen reader announces it twice.
+    expect(copy).toHaveAttribute('title', 'ol_order_abc123def456');
 
     fireEvent.click(copy);
 
-    // The title tracks the copied state alongside the accessible name — a stale
-    // "Copy …" tooltip over a button reading "Copied" is its own small lie.
+    // The name tracks the copied state; the title does not need to, because the
+    // id it shows has not changed.
     expect(
       await screen.findByRole('button', {
         name: 'Copied internal order ID for order 6839-2911-4402',
       }),
-    ).toHaveAttribute('title', 'Copied internal order ID for order 6839-2911-4402');
+    ).toHaveAttribute('title', 'ol_order_abc123def456');
   });
 
-  it('falls back to the spelled-out id for the copy button title when no label is supplied', () => {
+  it('titles the copy button with the id even when no copy label is supplied', () => {
     renderWithRouter(<EntityLabel id="ol_connection_abc123def456" name="Store" />);
 
     expect(screen.getByRole('button', { name: /Copy ol_connection/ })).toHaveAttribute(
       'title',
-      'Copy ol_connection_abc123def456',
+      'ol_connection_abc123def456',
     );
   });
 

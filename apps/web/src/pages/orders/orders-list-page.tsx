@@ -12,10 +12,9 @@
  *   `OrderIdentityCell` since #2091, so this page, Shipments and Invoices answer
  *   "which order is this row?" with one renderer instead of three (#1996) —
  *   surface customer + contents (parsed from `orderSnapshot`, with an email
- *   fallback when the source omits a buyer name — #939), the
- *   source→destination channel, one
- *   reconciled health `StatusBadge` (`deriveOrderHealth`, replacing the
- *   per-destination list and the blank "—"), a "Created" time, a **Ship-by**
+ *   fallback when the source omits a buyer name — #939), the source→destination
+ *   channel, one reconciled health `StatusBadge` (`deriveOrderHealth`, replacing
+ *   the per-destination list and the blank "—"), a "Created" time, a **Ship-by**
  *   SLA countdown (#927; server-sorted soonest-first, with a
  *   "breaching ≤24h / overdue" filter chip), a ghost Payment column (#928), and
  *   an inline Retry for failed rows;
