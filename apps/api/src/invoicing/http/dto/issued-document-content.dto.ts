@@ -109,11 +109,40 @@ export class IssuedDocumentContentDto {
   @ApiProperty({ nullable: true, description: 'ISO 8601 sale date; null when not provided.' })
   saleDate!: string | null;
 
+  /**
+   * Whether these `lines` are the array a CORRECTION will index (#2076).
+   *
+   * `documentContent` and `issuedLineSnapshot` are separate columns added by
+   * separate migrations (`1818000000001` then `1818000000003`), so an invoice
+   * issued between those deploys carries content but NO snapshot. For such a
+   * row `POST /invoices/:id/correct` cannot use the snapshot and rebuilds the
+   * original document from the ORDER'S CURRENT STATE instead — a different
+   * array, with the line-fidelity caveats documented on
+   * `OriginalDocumentSnapshot`.
+   *
+   * A correction UI that lets an operator pick a line MUST NOT present these
+   * lines as authoritative when this is false: the position they choose would
+   * index an array the server never sees. `true` means content and snapshot
+   * were written from the same array in the same `InvoiceService` call, so a
+   * picked 1-based position is exactly `originalLineNumber`.
+   */
+  @ApiProperty({
+    description:
+      'True when a correction will index exactly these lines (the issuance-time ' +
+      'line snapshot exists). False for invoices issued before that column, where ' +
+      'a correction rebuilds from the order\'s current state instead.',
+  })
+  linesIndexedByCorrection!: boolean;
+
   @ApiProperty({ type: PaymentDto, nullable: true })
   payment!: IssuedDocumentPayment | null;
 
-  static fromDomain(content: IssuedDocumentContent): IssuedDocumentContentDto {
+  static fromDomain(
+    content: IssuedDocumentContent,
+    linesIndexedByCorrection: boolean,
+  ): IssuedDocumentContentDto {
     const dto = new IssuedDocumentContentDto();
+    dto.linesIndexedByCorrection = linesIndexedByCorrection;
     dto.seller = content.seller;
     dto.buyer = content.buyer;
     dto.lines = content.lines;

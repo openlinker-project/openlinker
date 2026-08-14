@@ -21,6 +21,7 @@ import { Button } from '../../../shared/ui/button';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type { InvoiceCorrectionFlowProps } from '../../../shared/plugins/plugin.types';
 import {
+  CorrectionLinePicker,
   useIssueCorrectionMutation,
   type CorrectionLineInput,
 } from '../../../features/invoicing';
@@ -224,15 +225,11 @@ export function KsefInvoiceCorrectionFlow({
             {lines.map((row, i) => (
               <tr key={i}>
                 <td>
-                  <input
-                    type="number"
-                    className="input input--w-lp"
+                  <CorrectionLinePicker
+                    invoiceId={invoice.id}
                     value={row.originalLineNumber}
-                    onChange={(e) => updateLine(i, 'originalLineNumber', e.target.value)}
-                    placeholder="1"
-                    min={1}
-                    step={1}
-                    aria-label={`${t('ksef.correction.lineNum', 'Line number')} ${i + 1}`}
+                    onChange={(next) => updateLine(i, 'originalLineNumber', next)}
+                    ariaLabel={`${t('ksef.correction.lineNum', 'Line number')} ${i + 1}`}
                     disabled={isSubmitting}
                   />
                 </td>

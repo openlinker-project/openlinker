@@ -299,6 +299,48 @@ describe('InvoiceService', () => {
       );
     });
 
+    it('(a3b) #2076: documentContent.lines is index-aligned with issuedLineSnapshot.lines', async () => {
+      // The invariant the correction line picker rests on. The operator picks a
+      // row from `documentContent.lines` (served by GET /invoices/:id/content)
+      // and the 1-based position becomes `originalLineNumber`, which adapters
+      // index into `issuedLineSnapshot.lines`. If these two ever diverge in
+      // order or length, a correction silently targets the wrong line of a
+      // legally significant document. Today they are aligned only because both
+      // are built from `cmd.lines` in this one method — nothing else enforces
+      // it, which is why this test exists.
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issued' }));
+
+      // Two lines of the SAME product at different prices — the case that is
+      // unresolvable if the two arrays disagree.
+      const cmd = makeCmd({
+        lines: [
+          { name: 'Widget', quantity: 1, unitPriceGross: 100, taxRate: '23' },
+          { name: 'Widget', quantity: 1, unitPriceGross: 80, taxRate: '23' },
+          { name: 'Other', quantity: 2, unitPriceGross: 50, taxRate: '23' },
+        ],
+      });
+      await service.issueInvoice(cmd);
+
+      const patch = repo.updateOutcome.mock.calls[0]?.[1] as {
+        issuedLineSnapshot?: { lines: { name: string; quantity: number }[] };
+        documentContent?: { lines: { name: string; quantity: number; gross: number }[] } | null;
+      };
+
+      const snapshotLines = patch.issuedLineSnapshot?.lines ?? [];
+      const contentLines = patch.documentContent?.lines ?? [];
+
+      expect(contentLines).toHaveLength(snapshotLines.length);
+      snapshotLines.forEach((snapshotLine, i) => {
+        expect(contentLines[i]?.name).toBe(snapshotLine.name);
+        expect(contentLines[i]?.quantity).toBe(snapshotLine.quantity);
+      });
+      // Position 2 must be the 80.00 line in BOTH arrays, not the 100.00 one.
+      expect(contentLines[1]?.gross).toBe(80);
+    });
+
     it('(a2) backfills authoritative providerType + adapter-derived documentType onto the projection (keyless / no documentType)', async () => {
       repo.findByIdempotencyKey.mockResolvedValue(null);
       // Pending row created with providerType '' and documentType '' (caller

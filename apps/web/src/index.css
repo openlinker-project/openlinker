@@ -13758,6 +13758,21 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   margin-top: var(--space-3);
 }
 
+/* ── Correction line picker (#2076) ── */
+.correction-line-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+/* Shown only on the manual-entry fallback, where the operator has to verify the
+   line number against the issued document themselves. */
+.correction-line-picker__warning {
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  color: var(--status-warning-fg);
+  max-width: 22rem;
+}
+
 /* ─ Correction trigger in order invoice panel (issued state) ─ */
 .order-invoice-panel__correction {
   margin-top: var(--space-3);

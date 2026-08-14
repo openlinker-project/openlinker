@@ -10,7 +10,7 @@ import {
   renderWithProviders,
   sampleConnection,
 } from '../../../test/test-utils';
-import type { InvoiceRecord } from '../../../features/invoicing/api/invoicing.types';
+import type { InvoiceRecord } from '../../../features/invoicing';
 import { InfaktInvoiceCorrectionFlow } from './infakt-invoice-correction-flow';
 
 const infaktConnection = { ...sampleConnection, platformType: 'infakt' };
