@@ -37,6 +37,7 @@ import { ErliIntegrationModule } from '@openlinker/integrations-erli';
 import { KsefIntegrationModule } from '@openlinker/integrations-ksef';
 import { SubiektIntegrationModule } from '@openlinker/integrations-subiekt';
 import { InfaktIntegrationModule } from '@openlinker/integrations-infakt';
+import { FxIntegrationModule } from '@openlinker/integrations-fx';
 
 export const apiPlugins: PluginEntry[] = [
   PrestashopIntegrationModule,
@@ -52,4 +53,10 @@ export const apiPlugins: PluginEntry[] = [
   SubiektIntegrationModule,
   // #1281: Infakt accounting invoicing adapter (KSeF submitted via Infakt).
   InfaktIntegrationModule,
+  // #2123: reference exchange-rate providers (NBP, ECB). NOT a plugin - it
+  // registers no adapter manifest and exposes no capability; it appears here
+  // purely as a module-composition seam, exactly as AiIntegrationModule does.
+  // Registered API-side as well as worker-side so a future API restamp
+  // endpoint fails at boot rather than at runtime against an empty registry.
+  FxIntegrationModule,
 ];
