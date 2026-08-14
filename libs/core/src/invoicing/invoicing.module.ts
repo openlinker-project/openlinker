@@ -74,8 +74,10 @@ export {
     // ShippingModule). No cycle — integrations does not reference invoicing.
     IntegrationsModule,
     // AutoIssueTriggerService (OL #1120) injects CONNECTION_PORT_TOKEN
-    // (identifier-mapping) and SYNC_JOBS_SERVICE_TOKEN (sync). Neither module
-    // references invoicing → no DI cycle (verified at runtime by the boot gate:
+    // (identifier-mapping) and SYNC_JOBS_SERVICE_TOKEN (sync); InvoiceService
+    // additionally injects SYNC_LOCK_TOKEN (sync) for the per-order issuance
+    // lock (#2047). Neither module references invoicing → no DI cycle (verified
+    // at runtime by the boot gate:
     // apps/worker/test/integration/invoicing-auto-issue-boot.int-spec.ts).
     IdentifierMappingModule,
     SyncModule,

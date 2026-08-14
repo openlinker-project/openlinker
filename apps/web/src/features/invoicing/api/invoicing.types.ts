@@ -112,6 +112,14 @@ export interface InvoiceRecord {
    * fetched there).
    */
   orderSummary: OrderSummary | null;
+  /**
+   * OTHER invoicing connections that also hold a record for this order (#2047).
+   * Populated only by the connection-agnostic `GET /orders/:orderId/invoice`,
+   * and only when non-empty — so its mere presence means one sale carries
+   * documents on more than one provider. The panel renders a single latest
+   * record, so without this it would silently hide a pre-existing duplicate.
+   */
+  otherInvoicingConnectionIds?: string[];
 }
 
 /** `POST /invoices` request body. No `idempotencyKey` in v1 (the controller

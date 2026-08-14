@@ -39,6 +39,10 @@ import {
 } from '../setup';
 
 const CONNECTION_ID = '00000000-0000-0000-0000-000000000751';
+// `invoice_records.connection_id` is a real `uuid` column, so a readable
+// placeholder like 'conn-a' is rejected by Postgres before the assertion runs.
+const CONNECTION_A = '00000000-0000-0000-0000-00000000204a';
+const CONNECTION_B = '00000000-0000-0000-0000-00000000204b';
 
 let claimSeq = 0;
 
@@ -416,6 +420,40 @@ describe('invoice_records persistence (integration)', () => {
     it('returns [] for an empty input', async () => {
       const repository = new InvoiceRecordRepository(repo);
       expect(await repository.findLatestByOrderIds([])).toEqual([]);
+    });
+  });
+
+  describe('findAllByOrderId — every record an order holds (#2047)', () => {
+    it('returns all connections rows newest-first so the guard can scan the whole set', async () => {
+      const repository = new InvoiceRecordRepository(repo);
+      await repo.save(
+        claimRow({
+          orderId: 'ol_guard_1',
+          connectionId: CONNECTION_A,
+          status: 'issued',
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        }),
+      );
+      await repo.save(
+        claimRow({
+          orderId: 'ol_guard_1',
+          connectionId: CONNECTION_B,
+          status: 'failed',
+          createdAt: new Date('2026-01-02T00:00:00.000Z'),
+        }),
+      );
+      // A different order must never leak into the result.
+      await repo.save(claimRow({ orderId: 'ol_guard_2', connectionId: CONNECTION_A }));
+
+      const results = await repository.findAllByOrderId('ol_guard_1');
+
+      expect(results).toHaveLength(2);
+      expect(results.map((r) => r.connectionId)).toEqual([CONNECTION_B, CONNECTION_A]);
+    });
+
+    it('returns [] for an order with no records', async () => {
+      const repository = new InvoiceRecordRepository(repo);
+      expect(await repository.findAllByOrderId('ol_guard_none')).toEqual([]);
     });
   });
 });

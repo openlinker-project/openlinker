@@ -65,6 +65,15 @@ export interface ConnectionConfig {
   invoicing?: {
     triggerModel?: string;
     shippingLineName?: string;
+    /**
+     * Marks THIS connection as the one that auto-issues an order's invoice
+     * (#2047). One sale is one invoice, so when several connections have
+     * `Invoicing` enabled the auto-issue trigger honours exactly the primary and
+     * issues NOTHING when the primary is ambiguous (unset, or set on more than
+     * one). Read via `parseIsPrimaryInvoicing`; a missing value is `false`, which
+     * keeps a single-connection install behaving exactly as before.
+     */
+    isPrimary?: boolean;
   };
   /**
    * Per-connection stock safety buffer (#1844). Units of master stock held back

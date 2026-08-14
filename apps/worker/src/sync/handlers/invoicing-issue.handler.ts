@@ -35,6 +35,7 @@ import {
   INVOICE_SERVICE_TOKEN,
   BuyerProfile,
   BuyerTypeValues,
+  OrderAlreadyInvoicedException,
 } from '@openlinker/core/invoicing';
 import type { IssueInvoiceCommand } from '@openlinker/core/invoicing';
 import { Logger } from '@openlinker/shared/logging';
@@ -75,7 +76,21 @@ export class InvoicingIssueHandler implements SyncJobHandler {
       await this.invoiceService.issueInvoice(command);
       return { outcome: 'ok' };
     } catch (error) {
-      // ANY issueInvoice failure (transport/bridge-unreachable AND any provider
+      // #2047: the order is already invoiced on ANOTHER connection. A retry can
+      // never change that (the guard is a persisted-state read, not a transport
+      // fault), and the correct outcome is "nothing to do" — one sale already has
+      // one invoice. Terminal `business_failure` (ADR-007) so the runner does not
+      // burn the retry budget re-asserting a permanent condition. The log names
+      // ids + a neutral status only, never payload/buyer.
+      if (error instanceof OrderAlreadyInvoicedException) {
+        this.logger.warn(
+          `invoicing.issue skipped: orderId=${payload.orderId} is already invoiced on ` +
+            `connectionId=${error.issuingConnectionId} (invoice ${error.blockingInvoiceId}, ` +
+            `status ${error.blockingStatus}); requested connectionId=${payload.connectionId}`,
+        );
+        return { outcome: 'business_failure' };
+      }
+      // ANY OTHER issueInvoice failure (transport/bridge-unreachable AND any provider
       // error that escapes the SVC) is wrapped as retryable here — the deep
       // pre-validation above has already rejected statically-malformed payloads
       // as business_failure, and the SVC's `issued`-only exactly-once gate makes

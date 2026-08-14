@@ -70,6 +70,18 @@ export interface IInvoiceService {
    * Closure tracked by GitHub issue #1200 (follow-up to #1118): neutral
    * `failureMode` discriminator + CAS/lease (`claimForIssue`) on
    * `InvoiceRecordRepositoryPort`.
+   *
+   * ONE INVOICE PER ORDER (#2047): before anything else — before the idempotency
+   * gate, before any row is created — the SVC refuses to issue when the order
+   * already carries a BLOCKING record on a DIFFERENT connection, throwing
+   * `OrderAlreadyInvoicedException` (409 at the HTTP boundary) and creating no
+   * row. Blocking is `InvoiceRecord.blocksIssuanceElsewhere`: `pending`,
+   * `issuing`, `issued`, or `failed` with any `failureMode` other than
+   * `rejected`. Only a terminal `rejected` failure elsewhere leaves another
+   * provider free — an `in-doubt` failure is precisely the case where a second
+   * issuance produces a real duplicate, so it blocks like `pending` does.
+   * Records on the REQUESTED connection are untouched by this guard; the
+   * per-connection retry/replay semantics above own those.
    */
   issueInvoice(cmd: IssueInvoiceCommand): Promise<InvoiceRecord>;
 
@@ -105,6 +117,20 @@ export interface IInvoiceService {
    * when no record exists for the order. Backs the order-detail invoice projection.
    */
   getLatestInvoiceForOrder(orderId: string): Promise<InvoiceRecord | null>;
+
+  /**
+   * Distinct invoicing connection ids that hold ANY `InvoiceRecord` for this
+   * order, in newest-record-first order (#2047). Projection read — NEVER queries
+   * the provider/adapter. Returns `[]` for an order with no records.
+   *
+   * More than one entry means one sale carries documents on several providers.
+   * The #2047 guard makes that unreachable going forward, but it says nothing
+   * about rows that already existed — and those are exactly the population that
+   * needs looking at. Without this read the order-detail panel, which now shows
+   * only the single latest record, would quietly hide the duplicate instead of
+   * naming it.
+   */
+  listInvoiceConnectionIdsForOrder(orderId: string): Promise<string[]>;
 
   /**
    * Batch counterpart of {@link getLatestInvoiceForOrder} (#1713): the latest

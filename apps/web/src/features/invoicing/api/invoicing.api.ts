@@ -31,10 +31,13 @@ import type {
 } from './invoicing.types';
 
 export interface InvoicingApi {
-  /** `GET /orders/{orderId}/invoice?connectionId=…` — the single invoice
-   *  projection for an order + invoicing connection. 404 when no invoice row
-   *  exists (mapped to `not-issued` by the query hook). */
-  getForOrder: (orderId: string, connectionId: string) => Promise<InvoiceRecord>;
+  /** `GET /orders/{orderId}/invoice[?connectionId=…]` — the invoice projection
+   *  for an order. `connectionId` is OPTIONAL (#2047): omitted, the server
+   *  answers "is this order invoiced ANYWHERE?" and returns the record from
+   *  whichever connection holds it, which is what lets the panel lock itself to
+   *  the issuing connection. 404 when no invoice row exists (mapped to
+   *  `not-issued` by the query hook). */
+  getForOrder: (orderId: string, connectionId?: string) => Promise<InvoiceRecord>;
   /** `GET /invoices/{invoiceId}` — the single invoice by id (detail page, W2
    *  #1231). 404 when no invoice exists at this id. */
   getById: (invoiceId: string) => Promise<InvoiceRecord>;
@@ -123,10 +126,14 @@ function buildQuery(filters?: InvoiceFilters, pagination?: InvoicePagination): s
 export function createInvoicingApi(request: ApiRequest, requestBlob: ApiBlobRequest): InvoicingApi {
   return {
     getForOrder(orderId, connectionId): Promise<InvoiceRecord> {
-      const params = new URLSearchParams({ connectionId });
-      return request<InvoiceRecord>(
-        `/orders/${encodeURIComponent(orderId)}/invoice?${params.toString()}`,
-      );
+      // No `connectionId` -> no query string at all: the server then resolves the
+      // order's record across connections (#2047). Sending an empty value would be
+      // a 400 (the DTO validates it as a UUID when present).
+      const query =
+        connectionId === undefined || connectionId.length === 0
+          ? ''
+          : `?${new URLSearchParams({ connectionId }).toString()}`;
+      return request<InvoiceRecord>(`/orders/${encodeURIComponent(orderId)}/invoice${query}`);
     },
     getById(invoiceId): Promise<InvoiceRecord> {
       return request<InvoiceRecord>(`/invoices/${encodeURIComponent(invoiceId)}`);

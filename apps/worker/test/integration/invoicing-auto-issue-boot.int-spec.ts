@@ -15,7 +15,10 @@
 import { getTestHarness, teardownTestHarness } from './setup';
 import type { WorkerIntegrationTestHarness } from './setup';
 import { ORDER_INGESTION_SERVICE_TOKEN } from '@openlinker/core/orders';
-import { AUTO_ISSUE_TRIGGER_SERVICE_TOKEN } from '@openlinker/core/invoicing';
+import {
+  AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
+  INVOICE_SERVICE_TOKEN,
+} from '@openlinker/core/invoicing';
 import { InvoicingIssueHandler } from '../../src/sync/handlers/invoicing-issue.handler';
 import { SyncJobHandlerRegistry } from '../../src/sync/handlers/sync-job-handler.registry';
 
@@ -48,6 +51,16 @@ describe('Invoicing Auto-Issue — DI boot (HARD GATE, OL #1120)', () => {
     const trigger = harness.get(AUTO_ISSUE_TRIGGER_SERVICE_TOKEN);
     expect(trigger).toBeDefined();
     expect(typeof (trigger as { onOrderTransition?: unknown }).onOrderTransition).toBe('function');
+  });
+
+  it('the real container resolves InvoiceService with its per-order issuance lock (#2047)', () => {
+    // InvoiceService injects SYNC_LOCK_TOKEN for the per-order issuance lock.
+    // SyncModule is imported by InvoicingModule and exports the token, but only a
+    // real container boot proves the binding resolves — a unit suite passes a mock
+    // and would stay green against an unwired token.
+    const invoiceService = harness.get(INVOICE_SERVICE_TOKEN);
+    expect(invoiceService).toBeDefined();
+    expect(typeof (invoiceService as { issueInvoice?: unknown }).issueInvoice).toBe('function');
   });
 
   it('invoicing.issue is registered in the handler registry after onModuleInit', () => {
