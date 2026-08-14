@@ -93,6 +93,7 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
   }, [id]);
 
   const classes = ['entity-label', className].filter(Boolean).join(' ');
+  const copyButtonLabel = copied ? (copiedLabel ?? `Copied ${id}`) : (copyLabel ?? `Copy ${id}`);
   const resolvedName = name ?? null;
   // `?? undefined` rather than `?? id`: both consumers sit inside the
   // `resolvedName ?` branch below, so the third rung is unreachable — it exists
@@ -138,7 +139,14 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
           type="button"
           className="entity-label__copy"
           onClick={handleCopy}
-          aria-label={copied ? (copiedLabel ?? `Copied ${id}`) : (copyLabel ?? `Copy ${id}`)}
+          aria-label={copyButtonLabel}
+          // Mirrors the accessible name so a SIGHTED operator can also tell what
+          // "Copy" writes (#2091). The button label is two letters short of
+          // meaningless on a row whose visible identity is not the id being
+          // copied: `OrderIdentityCell` renders the order NUMBER and copies the
+          // internal id, and with `showId={false}` there is no `entity-label__id`
+          // chip beside it to make the target visible either.
+          title={copyButtonLabel}
         >
           {copied ? 'Copied' : 'Copy'}
         </button>

@@ -1223,6 +1223,11 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
 
   it('renders the mobile card title from the SAME cell as the desktop column', async () => {
     const viewport = mockMobileViewport();
+    // Asserting the Copy button EXISTS on the card is not asserting it works —
+    // and "works" is what the no-`rowHref` premise below buys (#2090 shipped a
+    // card whose Copy copied AND navigated away).
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
     try {
       const mockApi = createMockApiClient({
         orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
@@ -1239,6 +1244,13 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
       expect(cell).not.toBeNull();
       expect(cell.querySelector('.product-thumbnail')).not.toBeNull();
       expect(cell.querySelector('.entity-label__id')).toBeNull();
+      // The load-bearing premise, pinned rather than assumed: `DataTableCard`
+      // wraps `title` + `subtitle` in the row's `<Link>` only when a `rowHref`
+      // exists, and this page passes none. Adding one would nest this cell's own
+      // link and button inside an anchor — invalid, and the clicks would bubble to
+      // the card link, which is exactly the bug #2090 shipped. Every assertion
+      // below still passes on that broken shape, so this is the one that fails.
+      expect(title.closest('a')).toBeNull();
       // The card is not `rowHref`-linked (this page uses `expandable`), so the
       // cell's own link and Copy button are legal here — and they are the point:
       // the pre-#2091 card had its own hand-rolled `EntityLabel`.
@@ -1246,7 +1258,8 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
         'href',
         '/orders/ol_order_synced',
       );
-      expect(within(cell).getByRole('button', { name: /^Copy internal order ID/ })).toBeInTheDocument();
+      fireEvent.click(within(cell).getByRole('button', { name: /^Copy internal order ID/ }));
+      expect(writeText).toHaveBeenCalledWith('ol_order_synced');
       // The item name now belongs to the title, so the summary block must not
       // print it a second time twenty pixels lower.
       const card = container.querySelector('.data-table__card') as HTMLElement;

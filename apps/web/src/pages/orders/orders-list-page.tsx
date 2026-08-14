@@ -392,6 +392,13 @@ export function OrdersListPage(): ReactElement {
    * nameless leading line now renders the cell's "N line items" branch instead
    * of silently promoting a later item's name onto line 2.
    *
+   * The convergence is NEAR, not exact, and nobody should later treat the two
+   * counts as provably identical: `parseOrderSnapshot` drops any item failing
+   * `orderItemSchema` (`id: string`, `quantity: number`, `price: number` are all
+   * required) before this reads `items.length`, whereas `buildOrderSummary`
+   * counts the RAW array. A snapshot carrying a money-as-string `price` therefore
+   * reads lower here than on Shipments / Invoices for the same order.
+   *
    * `onNavigate` keeps the row-open demo-analytics event (#1788) that the
    * pre-#2091 `EntityLabel` carried at both call sites.
    */
@@ -1237,6 +1244,11 @@ export function OrdersListPage(): ReactElement {
             columns={columns}
             rows={query.data?.items ?? []}
             rowKey={(order) => order.internalOrderId}
+            // Top-aligns every cell in the row (#2091, `.orders-table td`). Row
+            // height here comes from the money column's four-item stack, so a
+            // middle-aligned Order cell sat below the top-aligned expander and
+            // beside a centred checkbox — three anchors in one row.
+            className="orders-table"
             stickyLeftColumns={2}
             footer={
               <BulkActionBar

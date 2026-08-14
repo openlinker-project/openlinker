@@ -32,6 +32,15 @@ describe('OrderIdentityCell', () => {
     );
   });
 
+  it('should expose the FULL internal id as the hover title on the id-fallback branch', () => {
+    // `shortenId` elides the middle of what line 1 renders, so without a title
+    // the full id is clipboard-only on exactly the rows that have no order number
+    // to fall back to — every Erli-sourced order (its mapper sets none).
+    renderWithProviders(<OrderIdentityCell orderId={ORDER_ID} orderNumber={null} itemCount={1} />);
+
+    expect(screen.getByRole('link', { name: SHORT_ORDER_ID })).toHaveAttribute('title', ORDER_ID);
+  });
+
   it('should fall back to the shortened internal id when the order number is only whitespace', () => {
     renderWithProviders(<OrderIdentityCell orderId={ORDER_ID} orderNumber="   " itemCount={1} />);
 

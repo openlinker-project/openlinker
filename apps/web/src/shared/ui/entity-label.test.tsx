@@ -109,6 +109,52 @@ describe('EntityLabel', () => {
     ).toBeInTheDocument();
   });
 
+  it('mirrors the copy button accessible name into a title so a sighted user sees it too (#2091)', async () => {
+    // The row's visible identity is not always the id Copy writes — an order row
+    // reads `ALG-882414` and copies `ol_order_…` — and with `showId={false}` no
+    // chip beside the button shows the target either. `aria-label` alone produces
+    // no tooltip, so the accessible name has to be mirrored.
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    renderWithRouter(
+      <EntityLabel
+        id="ol_order_abc123def456"
+        name="6839-2911-4402"
+        showId={false}
+        copyLabel="Copy internal order ID for order 6839-2911-4402"
+        copiedLabel="Copied internal order ID for order 6839-2911-4402"
+      />,
+    );
+
+    const copy = screen.getByRole('button', {
+      name: 'Copy internal order ID for order 6839-2911-4402',
+    });
+    expect(copy).toHaveAttribute('title', 'Copy internal order ID for order 6839-2911-4402');
+
+    fireEvent.click(copy);
+
+    // The title tracks the copied state alongside the accessible name — a stale
+    // "Copy …" tooltip over a button reading "Copied" is its own small lie.
+    expect(
+      await screen.findByRole('button', {
+        name: 'Copied internal order ID for order 6839-2911-4402',
+      }),
+    ).toHaveAttribute('title', 'Copied internal order ID for order 6839-2911-4402');
+  });
+
+  it('falls back to the spelled-out id for the copy button title when no label is supplied', () => {
+    renderWithRouter(<EntityLabel id="ol_connection_abc123def456" name="Store" />);
+
+    expect(screen.getByRole('button', { name: /Copy ol_connection/ })).toHaveAttribute(
+      'title',
+      'Copy ol_connection_abc123def456',
+    );
+  });
+
   it('copies the full ID to the clipboard when the copy button is pressed', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', {
