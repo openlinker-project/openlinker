@@ -6,15 +6,15 @@ authored as a six-wave implementation plan, then stress-tested and largely cut. 
 `analysis/` so nobody mistakes it for scheduled work. The work that survived is filed as issues —
 see § 0.
 **Spec:** [`docs/specs/product-spec-1032-order-status-state-machine.md`](../../specs/product-spec-1032-order-status-state-machine.md)
-**Readiness gate:** [`ANALYSIS-implementation-plan-1032-oms-module.md`](./ANALYSIS-implementation-plan-1032-oms-module.md)
+**Readiness gate:** [`READINESS-GATE-1032-oms-module.md`](./READINESS-GATE-1032-oms-module.md)
 **Status:** **NOT READY TO IMPLEMENT AS A SIX-WAVE PROGRAMME.** Eight adversarial stress tests were
 run against this plan — one per wave plus three against the cross-cutting ADRs. **All eight found
 disqualifying defects.** What survives is in § 0. The rest is retained as reference, clearly marked,
 because the research is sound even where the design is not.
 
 > Supersedes the scoping in #2064 (closed as duplicate of #1032).
-> [ADR-040](../../architecture/adrs/040-order-changeset-proposed-then-confirmed.md) is Accepted.
-> **[ADR-039](../../architecture/adrs/039-order-lifecycle-derived-from-fact-ledger.md) is reverted to
+> [ADR-044](../../architecture/adrs/044-order-changeset-proposed-then-confirmed.md) is Accepted.
+> **[ADR-043](../../architecture/adrs/043-order-lifecycle-derived-from-fact-ledger.md) is reverted to
 > `Proposed`** pending the four preconditions in § 0.
 
 ---
@@ -27,8 +27,8 @@ the most useful output of this exercise.
 
 | Section | Verdict | The finding that killed it |
 |---|---|---|
-| ADR-040 composition | narrowed | `identifier_mappings` is a bijection per connection; split ships a cancelled order |
-| ADR-041 flow entity | narrowed | containment claim disproved by its own signature; `orderType` has zero referents |
+| ADR-044 composition | narrowed | `identifier_mappings` is a bijection per connection; split ships a cancelled order |
+| ADR-045 flow entity | narrowed | containment claim disproved by its own signature; `orderType` has zero referents |
 | Wave 3 rules engine | **cut** | OL has one useful stream with ≤6 cause types; 1 of BaseLinker's 10 triggers servable |
 | Wave 4 returns aggregate | narrowed to a projection | 6-value enum with one derivable value; restock rejects on PrestaShop |
 | Wave 5 allocation | **cut** | `omp_fulfilled` is the default and OL never dispatches there → worse than shipping nothing |
@@ -73,7 +73,7 @@ which § 6 F1 shows the system cannot answer for its own default routing kind.
 
 ### If the larger programme returns, these are preconditions
 
-For the axis ledger (ADR-039), all four before it leaves `Proposed`:
+For the axis ledger (ADR-043), all four before it leaves `Proposed`:
 
 1. **The enumerated axis and canonical-state vocabularies.** The plan specifies
    `UNIQUE (internalOrderId, axis, causeType, causeId)` and `NOT NULL` for a table whose value domain
@@ -149,7 +149,7 @@ mechanics (bins, putaway, cycle counts, slotting), customer master beyond projec
 | D2a | Counters are a projection over an append-only event ledger, **never free-floating** | Bagisto ships these counters without a ledger and has documented drift |
 | D3 | **Do not embed Medusa** — steal the model | spike: boots standalone, but 605 packages, a second ORM, a second DI container, and an unresolved Enterprise-Edition carve-out on the mandatory `framework`/`utils`/`types` tier |
 | ~~D4~~ | ~~Rules engine = hand-rolled versioned condition AST~~ — **withdrawn.** Wave 3 ships SLA escalation as a **named core feature**; the engine is deferred behind a falsifiable premise | OL emits **three** event streams (one with no consumer); after Wave 2 the usable trigger surface is one stream with ≤6 cause types. Of BaseLinker's ten trigger categories OL can serve **one**. `AutoIssueTriggerService` already does hard-coded orchestration in ~150 lines — see § 5 Wave 3 |
-| ~~D5~~ | ~~Dry-run is the differentiator, and nearly free~~ — **withdrawn.** | it was justified as "preview and apply are one replay function" — but [ADR-040](../../architecture/adrs/040-order-changeset-proposed-then-confirmed.md) **deferred the replay function**. The claim named a component that no longer exists, and a realistic condition needs 6–8 reads to assemble, so it is not pure either |
+| ~~D5~~ | ~~Dry-run is the differentiator, and nearly free~~ — **withdrawn.** | it was justified as "preview and apply are one replay function" — but [ADR-044](../../architecture/adrs/044-order-changeset-proposed-then-confirmed.md) **deferred the replay function**. The claim named a component that no longer exists, and a realistic condition needs 6–8 reads to assemble, so it is not pure either |
 | D6 | Returns is a **child aggregate**, not an axis | axis rows are one per order×axis; returns are N per order |
 | D7 ~~*(Wave 5 cut; retained as reference)*~~ | Reservations get their **own table**; never overload `inventory_items.reservedQuantity` | that column is a master mirror, rewritten on every sync |
 | D8 | Invoice issuance is an **observed** event keyed on the KSeF-returned date | art. 106na — the legal issue date is assigned at transmission |
@@ -162,7 +162,7 @@ mechanics (bins, putaway, cycle counts, slotting), customer master beyond projec
 | **D15** | **Transition identity is `(internalOrderId, axis, causeType, causeId)` — all NOT NULL** | the `(…, originConnectionId, sourceEventId)` form leaves both NULL for every OL-origin fact, and Postgres NULLs don't conflict in a unique index, so pack / SLA / operator facts would dedup on nothing |
 | **D16** | **Relay obligations live in their own table**, one row per `(transition, target)`; the transition row stays a pure fact | the relay fans out to N participants with per-target outcomes; one `relayState` enum cannot say "2 of 3 done, one unsupported, one failed" — the exact error D10 and § 1 forbid |
 | **D17** | **Line attribution on shipments** (`shipment_lines`), no fulfilment-unit aggregate | [DECISION-oms-fulfilment-grain](./DECISION-oms-fulfilment-grain.md) — makes `shipped_quantity` derivable without re-graining dispatch, locks or FE |
-| **D18** | **Pack policy is a validated per-connection config pair** (`verificationMode` + `dispatchGate`); stages stay global. The named-`OrderFlow` entity is **deferred** to the Wave-2 gate | a stress test disproved the entity's own containment claim (`packGrain` cannot be a resolved value), found its guard allowlist duplicated its axes, found no versioning, and found `orderType` has zero occurrences in `libs/core/src` — see [ADR-041](../../architecture/adrs/041-order-flows-as-named-operator-process-configuration.md) |
+| **D18** | **Pack policy is a validated per-connection config pair** (`verificationMode` + `dispatchGate`); stages stay global. The named-`OrderFlow` entity is **deferred** to the Wave-2 gate | a stress test disproved the entity's own containment claim (`packGrain` cannot be a resolved value), found its guard allowlist duplicated its axes, found no versioning, and found `orderType` has zero occurrences in `libs/core/src` — see [ADR-045](../../architecture/adrs/045-pack-policy-per-connection-config.md) |
 
 ---
 
@@ -193,7 +193,7 @@ engine; the rules engine was then cut (§ 5 Wave 3), and the move had already br
 "preview and apply are one replay function" named the replay function this ADR defers. Recorded so
 the differentiator is not re-asserted a third time without a design behind it.
 
-See [ADR-040](../../architecture/adrs/040-order-changeset-proposed-then-confirmed.md).
+See [ADR-044](../../architecture/adrs/044-order-changeset-proposed-then-confirmed.md).
 
 ---
 
@@ -235,7 +235,7 @@ Binding on every wave. Derived from the readiness gate.
 
 > **Cut by stress test.** Three disqualifying findings:
 > 1. **`canonicalState` is a pure function of two already-indexed columns** (`fulfillmentState`,
->    `cancelledAt`). ADR-039 rejects "recompute on read" because filtering needs an indexable column —
+>    `cancelledAt`). ADR-043 rejects "recompute on read" because filtering needs an indexable column —
 >    but OL has shipped that exact rejected pattern three times (`HEALTH_ORDINAL`,
 >    `FULFILLMENT_ORDINAL`, `applySlaFilter`). The materialised column buys nothing.
 > 2. **The ledger cannot hold the fact that justifies it.** The lost cancel has no internal order id —
@@ -422,8 +422,8 @@ That is the whole of Wave 3's novel content: **one cron and one notifier.**
 #### Why the engine was cut
 
 - **Its differentiator was already deleted.** Item 13 previously read "dry-run … reuses the changeset
-  replay" — and ADR-040 **deferred the replay function**. The sole § 8 test of the sole differentiator
-  tested a component the design had removed. Dry-run did not survive the move out of ADR-040; only
+  replay" — and ADR-044 **deferred the replay function**. The sole § 8 test of the sole differentiator
+  tested a component the design had removed. Dry-run did not survive the move out of ADR-044; only
   the word did.
 - **The evaluation context is I/O.** A realistic rule ("unshipped 48h after payment, Allegro
   connection, all lines in stock, stage = To pack") needs 6–8 reads. The AST is pure only because
@@ -447,7 +447,7 @@ That is the whole of Wave 3's novel content: **one cron and one notifier.**
 
 #### Deferred behind a falsifiable premise
 
-Mirroring [ADR-041](../../architecture/adrs/041-order-flows-as-named-operator-process-configuration.md):
+Mirroring [ADR-045](../../architecture/adrs/045-pack-policy-per-connection-config.md):
 **revisit when a second customer requests a third automation that config cannot express.** Until then
 it does not exist.
 
@@ -459,7 +459,7 @@ it does not exist.
    without one (`rule:{ruleId}:{orderId}` can never fire twice; a nonce duplicates on every retry
    wave). Cost is four tables, not two.
 3. **Rule version pinned at schedule time.** Otherwise editing a rule silently rewrites thousands of
-   in-flight delayed actions — the exact principle ADR-041 adopted as a precondition.
+   in-flight delayed actions — the exact principle ADR-045 adopted as a precondition.
 4. Explicit `priority` with documented conflict resolution. Silence means the implementer picks
    last-writer-wins, which is what generates Linnworks' "my rule didn't work" support article.
 5. `ReferenceExists`-style refusal on deleting a stage, connection or action a rule references —
@@ -481,7 +481,7 @@ it does not exist.
 The original Wave 4 proposed two tables, a six-value lifecycle enum and a bespoke reason vocabulary
 on top of a marketplace surface that is **read + one rejection** on Allegro and a **read-only
 embedded array with no id and no status** on Erli. A stress test rejected it on the same grounds that
-cut ADR-040's action machinery and ADR-041's flow entity: entity ahead of requirement.
+cut ADR-044's action machinery and ADR-045's flow entity: entity ahead of requirement.
 
 **What ships:**
 
@@ -493,8 +493,8 @@ cut ADR-040's action machinery and ADR-041's flow entity: entity ahead of requir
     This **closes open question 6a in favour of verbatim projection.** Decomposing Allegro's
     11-value "timeline" into facets means OL interprets four interleaved axes with no operator asking
     for a report from the result.
-16. **One action: reject-refund**, routed through the existing ADR-040 `order_changes` proposal
-    record. It is exactly "a single action against a single reference" — the shape ADR-040 says is the
+16. **One action: reject-refund**, routed through the existing ADR-044 `order_changes` proposal
+    record. It is exactly "a single action against a single reference" — the shape ADR-044 says is the
     whole of OL's mutation surface. **Zero new tables.**
 
 **Why the rest was cut — each for a verified, not speculative, reason:**
@@ -720,7 +720,22 @@ declared § 1 non-goal. Under D2a they would be exactly the free-floating intege
 `packed_quantity` moves to 2c with the pack station. No counter is
 written directly.
 
-### 6C. Pack station
+### 6C. Pack station (**not scheduled** — see § 0 item 4 for what ships instead)
+
+> **Precedence, so nobody implements the wrong one.** § 0 item 4 is what ships: **one order-level
+> fact**, `order_records.packedAt` + `packedByUserId`, set by an operator *or* a WMS over the API —
+> zero new tables, no ADR (#2072). The `order_pack_events` ledger below is the **line-grain** design,
+> and it is **blocked on the pack-station principal decision (#2080)**, which is blocked in turn on
+> the `RolesGuard` fail-open default (#2079).
+>
+> The two are **not alternatives**: if line-grain ever ships, `packedAt` remains the single
+> order-level answer and is *derived* when the last line completes. The ledger is a detail layer
+> underneath one fact, never a rival to it. Nothing below supersedes § 0 item 4.
+>
+> Its `clientEventId` **UNIQUE** as written is also under-specified — global uniqueness with no stated
+> generator either swallows a legitimate second scan of a 2-unit line, or fails to dedup a hardware
+> double-fire. Likely `UNIQUE (stationId, clientEventId)` plus a same-line/same-station time-window
+> guard; #2080 decides.
 
 `order_pack_events` — append-only, the ledger behind `packed_quantity`. Columns: `orderId`,
 `lineId`, `quantity`, `actorUserId`, `method` (`scan | manual`), `clientEventId` **UNIQUE**,
@@ -1134,7 +1149,7 @@ gap today, independent of this plan, and it is tracked separately.
 
 ## 6K. Pack policy — adapting to different warehouse processes
 
-**D18 / [ADR-041](../../architecture/adrs/041-order-flows-as-named-operator-process-configuration.md).**
+**D18 / [ADR-045](../../architecture/adrs/045-pack-policy-per-connection-config.md).**
 Different clients work differently. **A stress test rejected the named-`OrderFlow` entity** that
 originally sat here; what ships is the two axes with a real requirement, and stages stay **global**.
 
@@ -1241,7 +1256,7 @@ Three boundaries copied from prior art:
   written before any code.**
 - **Degrade-to-default on failure** (Saleor, Shopify). A throwing plugin action must never leave a
   half-applied transition. Vendure assigns its state *before* running `onTransitionEnd` and does not
-  catch it — that is the trap, and the changeset model (ADR-040) avoids it structurally, since an
+  catch it — that is the trap, and the changeset model (ADR-044) avoids it structurally, since an
   action that throws is simply never marked `applied`.
 
 **Prefer one handler per extension point** (Medusa) over a merge-array (Vendure): it turns a silent
@@ -1344,7 +1359,7 @@ item now carries a **falsifiable premise**, and the gate is simply whether it ha
 | Deferred | Premise that must be observed |
 |---|---|
 | Rules engine (§ 5 Wave 3) | a **second** customer requests a **third** automation that config cannot express |
-| `OrderFlow` entity (ADR-041) | **several clients working measurably differently** — not one client with two preferences |
+| `OrderFlow` entity (ADR-045) | **several clients working measurably differently** — not one client with two preferences |
 | Reservations / allocation (Wave 5) | an oversell **on a connection with a correctly configured non-zero `stockSafetyBuffer`** — i.e. the existing mitigation demonstrably failing |
 | Returns beyond the projection (Wave 4) | an operator **acting** on returns often enough that read-only surfacing is what blocks them — and, for the correction mapper, a stable line reference existing on `InvoiceLine` |
 
@@ -1364,9 +1379,9 @@ satisfy is falsifiability costume, not a gate.
 
 | # | Subject | State |
 |---|---|---|
-| [ADR-039](../../architecture/adrs/039-order-lifecycle-derived-from-fact-ledger.md) | Canonical lifecycle as a derived projection over a fact ledger | Proposed |
-| [ADR-040](../../architecture/adrs/040-order-changeset-proposed-then-confirmed.md) | Proposal record for remote-authority mutations (composition machinery deferred) | Accepted |
-| [ADR-041](../../architecture/adrs/041-order-flows-as-named-operator-process-configuration.md) | Pack policy as a validated per-connection config pair; flow entity deferred | Proposed |
+| [ADR-043](../../architecture/adrs/043-order-lifecycle-derived-from-fact-ledger.md) | Canonical lifecycle as a derived projection over a fact ledger | Proposed |
+| [ADR-044](../../architecture/adrs/044-order-changeset-proposed-then-confirmed.md) | Proposal record for remote-authority mutations (composition machinery deferred) | Accepted |
+| [ADR-045](../../architecture/adrs/045-pack-policy-per-connection-config.md) | Pack policy as a validated per-connection config pair; flow entity deferred | Proposed |
 | — | `order_axis_transitions` as a third dedup layer (vs ADR-005, ADR-007) | to write |
 | — | Ledger-as-outbox vs fire-after-commit | to write |
 | — | ~~`OrderAuthorityResolver`~~ | **not written — closed by scope** |

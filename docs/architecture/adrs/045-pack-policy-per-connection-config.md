@@ -1,4 +1,4 @@
-# ADR-041: Pack policy as a validated per-connection config pair; the flow entity is deferred
+# ADR-045: Pack policy as a validated per-connection config pair (flow entity deferred)
 
 - **Status**: Proposed — **not scheduled.** The dispatch gate was cut with Wave 2 of the #1032
   programme, so no issue currently implements `verificationMode` / `dispatchGate`. The decision
@@ -72,5 +72,5 @@ Accepted until observed otherwise.
 ## References
 
 - Related issues: #1032, #827
-- Related ADRs: [ADR-039](./039-order-lifecycle-derived-from-fact-ledger.md), [ADR-012](./012-branch-1-fulfillment-modeling.md)
+- Related ADRs: [ADR-043](./043-order-lifecycle-derived-from-fact-ledger.md), [ADR-012](./012-branch-1-fulfillment-modeling.md)
 - Plan: [ANALYSIS-1032-oms-module](../../plans/analysis/ANALYSIS-1032-oms-module.md) § 6K

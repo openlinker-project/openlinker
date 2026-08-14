@@ -1,6 +1,8 @@
-# ADR-040: Order mutations as proposed-then-confirmed changes
+# ADR-044: Order mutations as proposed-then-confirmed changes
 
-- **Status**: Accepted
+- **Status**: **Proposed.** `order_changes` does not exist — zero occurrences of `order_changes` /
+  `OrderChange` in `libs/` or `apps/`. The table is net-new and additive; nothing may describe it as
+  existing until it ships.
 - **Date**: 2026-08-13
 - **Authors**: @piotrswierzy
 
@@ -83,6 +85,6 @@ delivered by the rules-engine purity constraint, independently.
 ## References
 
 - Related issues: #1032, #1947
-- Related ADRs: [ADR-039](./039-order-lifecycle-derived-from-fact-ledger.md), [ADR-014](./014-source-authoritative-order-pricing.md), [ADR-017](./017-cross-origin-order-reingestion-guard.md)
+- Related ADRs: [ADR-043](./043-order-lifecycle-derived-from-fact-ledger.md), [ADR-014](./014-source-authoritative-order-pricing.md), [ADR-017](./017-cross-origin-order-reingestion-guard.md)
 - Plan: [ANALYSIS-1032-oms-module](../../plans/analysis/ANALYSIS-1032-oms-module.md)
 - Grain decision: [DECISION-oms-fulfilment-grain](../../plans/analysis/DECISION-oms-fulfilment-grain.md)

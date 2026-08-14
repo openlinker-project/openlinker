@@ -1,14 +1,14 @@
-# ADR-039: Order lifecycle as a derived projection over a per-axis fact ledger
+# ADR-043: Order lifecycle as a derived projection over a per-axis fact ledger
 
-- **Status**: **Proposed** (reverted from Accepted 2026-08-14 — see *Reverted* below)
+- **Status**: **Proposed** — see *Why this is not Accepted* below
 - **Date**: 2026-08-13
 - **Authors**: @piotrswierzy
 
-## Reverted to Proposed
+## Why this is not Accepted
 
-An adversarial stress test found the decision unsupported on three counts. Recorded here rather than
-in a superseding ADR because the decision was never implemented — nothing depends on it, so there is
-no history to preserve.
+This ADR **never merged in an Accepted state**, so the append-only rule in the ADR README is not
+engaged and nothing is being rewritten — it is simply proposed and not adopted. An adversarial stress
+test found it unsupported on three counts before it landed:
 
 1. **The rejected alternative is the one OL has shipped three times.** This ADR rejects "recompute on
    read with no materialised column" because list filtering and sorting needs an indexable column.
@@ -92,5 +92,5 @@ lifecycle axes and are not folded in.
 ## References
 
 - Related issues: #1032, #1916, #1947
-- Related ADRs: [ADR-012](./012-branch-1-fulfillment-modeling.md), [ADR-027](./027-order-status-writeback-capability-and-relay.md), [ADR-040](./040-order-changeset-proposed-then-confirmed.md)
+- Related ADRs: [ADR-012](./012-branch-1-fulfillment-modeling.md), [ADR-027](./027-order-status-writeback-capability-and-relay.md), [ADR-044](./044-order-changeset-proposed-then-confirmed.md)
 - Plan: [ANALYSIS-1032-oms-module](../../plans/analysis/ANALYSIS-1032-oms-module.md)

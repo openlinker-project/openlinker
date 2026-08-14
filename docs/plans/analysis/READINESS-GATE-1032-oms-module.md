@@ -1,14 +1,17 @@
-# Readiness Analysis — implementation-plan-1032-oms-module
+# Readiness Gate — #1032 OMS programme
+
+> Ran against the six-wave plan **before** the stress tests that cut it. Retained as the record of
+> that gate; the outcome is in [`ANALYSIS-1032-oms-module.md`](./ANALYSIS-1032-oms-module.md) § 0.
 
 **Gate:** `/pre-implement` (read-only)
 **Date:** 2026-08-13
-**Target:** [`docs/plans/analysis/ANALYSIS-1032-oms-module.md`](./ANALYSIS-1032-oms-module.md), [ADR-039](../../architecture/adrs/039-order-lifecycle-derived-from-fact-ledger.md), [ADR-040](../../architecture/adrs/040-order-changeset-proposed-then-confirmed.md), PR #2066
+**Target:** [`docs/plans/analysis/ANALYSIS-1032-oms-module.md`](./ANALYSIS-1032-oms-module.md), [ADR-043](../../architecture/adrs/043-order-lifecycle-derived-from-fact-ledger.md), [ADR-044](../../architecture/adrs/044-order-changeset-proposed-then-confirmed.md), PR #2066
 
 ## Verdict: **NEEDS-REVISION** → *addressed 2026-08-13*
 
 > **Resolution.** Every Critical and Warning below was folded into the plan in the same PR
 > (D11/D12 added to § 2; § 4 Placement/naming/schema conventions added; Wave 4 Step 0 added;
-> § 6F authorization corrected; § 7 testing strategy added; ADR-039/040 trimmed to the template's
+> § 6F authorization corrected; § 7 testing strategy added; ADR-043/040 trimmed to the template's
 > word budget). A follow-up `/tech-review` additionally flagged that permissions are display-only in
 > this codebase — that is D12, and it was the one BLOCKING finding.
 
