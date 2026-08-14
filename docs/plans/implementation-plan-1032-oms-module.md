@@ -1365,7 +1365,7 @@ satisfy is falsifiability costume, not a gate.
 | [ADR-041](../architecture/adrs/041-order-flows-as-named-operator-process-configuration.md) | Pack policy as a validated per-connection config pair; flow entity deferred | Proposed |
 | — | `order_axis_transitions` as a third dedup layer (vs ADR-005, ADR-007) | to write |
 | — | Ledger-as-outbox vs fire-after-commit | to write |
-| — | `OrderAuthorityResolver` — per-(source, axis) coarse roles | to write |
+| — | ~~`OrderAuthorityResolver`~~ | **not written — closed by scope** |
 | — | Self-echo posture: origin exclusion + outbound write records | to write |
 | — | `connections.orderAuthority` (Posture A/B) | to write |
 | — | **Late / out-of-order event policy** — no prior art in any surveyed platform | to write |
@@ -1374,11 +1374,46 @@ satisfy is falsifiability costume, not a gate.
 | — | Returns as a child aggregate | to write |
 | — | ADR-028 amendment | to write |
 
-**`OrderAuthorityResolver` placement (W10).** `orders ↔ mappings` is already a package-level cycle,
-tolerated because the `mappings → orders` half is `import type` only. Placing the resolver in
-`mappings` passes the lint guard (symbol-shape, no cycle detection) **only** if it stays type-only
-plus `I*Service` + token. `orders.module.ts:32` already imports `MappingsModule`, so a value import
-back would need `forwardRef`. Prefer placing it in `orders`.
+**`OrderAuthorityResolver` — CLOSED BY SCOPE, not by design (2026-08-14).**
+
+The placement question below is moot: **the resolver is not built.** A deployment uses OL's order
+workbench **or** an external OMS, never both in parallel — a product constraint, not a runtime
+reconciliation problem. There is no precedence to resolve, no merge semantics, no per-axis authority
+role.
+
+Two supporting findings from the analysis that closed it:
+
+- **The tempting precedent does not transfer.** WooCommerce's inventory write-back is mutually
+  exclusive with `InventoryMaster` *per connection* — but that is two **capabilities on one
+  connection**, both adapter-served and resolved through `getCapabilityAdapter`. OL's own OMS is not
+  a connection capability; there is no connection to hang an exclusivity on. Copying the shape would
+  be cargo-culting a precedent whose mechanism does not apply.
+- **No enforcement is warranted, because the fact has no dependent behaviour.** `packedAt` (#2072) is
+  advisory operator metadata; nothing reads it to make a decision, since the dispatch gate was cut
+  with Wave 2. Two writers cannot corrupt anything. Building a guard here would be mechanism ahead of
+  requirement — the disease all eight stress tests found.
+
+**Precondition, recorded rather than built:** if a future feature makes an OL-owned fulfilment fact
+*gate* something (a dispatch block, an auto-status transition, an SLA calculation), authority becomes
+load-bearing and exclusivity must be designed **before** that feature ships. The natural enforcement
+point is then configuration-time, following BaseLinker's one real authority primitive — an API-only
+warehouse, i.e. exclusive ownership — not runtime arbitration, which BaseLinker never built for
+orders and which no surveyed platform offers.
+
+**Also relevant to the external-OMS posture:** integrating an external OMS needs *no new port*. It is
+an ordinary fulfilling destination — `OrderProcessorManagerPort.createOrder` +
+`FulfillmentStatusReader` + `OrderFulfillmentUpdater` / `OrderStatusWriteback`, routed `omp_fulfilled`
+per [ADR-012](../architecture/adrs/012-branch-1-fulfillment-modeling.md) — which is exactly what
+PrestaShop and WooCommerce already do. Ingesting *from* one is the mirror (`OrderSourcePort`). The
+market norm is that a product picks one posture (ChannelEngine = connector with a fixed state
+machine; Linnworks = lifecycle owner); OL supporting both is unusual and should be treated as a
+deliberate strategic position rather than an incidental capability.
+
+~~*Superseded placement note:*~~ `orders ↔ mappings` is already a package-level cycle, tolerated
+because the `mappings → orders` half is `import type` only. Placing a resolver in `mappings` would
+pass the lint guard only if type-only plus `I*Service` + token; `orders.module.ts:32` already imports
+`MappingsModule`, so a value import back would need `forwardRef`. Retained only in case the
+precondition above ever fires.
 
 ---
 
