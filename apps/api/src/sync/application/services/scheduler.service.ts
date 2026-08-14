@@ -27,7 +27,7 @@ import {
   SCHEDULER_TASK_REGISTRY_TOKEN,
 } from '@openlinker/core/sync';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import type { OfferManagerPort } from '@openlinker/core/listings';
+import type { OfferManagerPort, TaxonomyOwner } from '@openlinker/core/listings';
 import { resolveTaxonomyOwner } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -507,8 +507,8 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
     // `executeTask` -> `enqueueJobForConnection` with no ordering guarantee, so
     // a miss must be LOUD: an `undefined` owner inside the key would collapse
     // every owner's job onto one key and drop all but one sync.
-    const scopeByConnectionId = new Map<string, string | null>();
-    const requireScope = (connectionId: string): string | null => {
+    const scopeByConnectionId = new Map<string, TaxonomyOwner | null>();
+    const requireScope = (connectionId: string): TaxonomyOwner | null => {
       if (!scopeByConnectionId.has(connectionId)) {
         throw new Error(
           `Taxonomy scope not resolved for connection ${connectionId} — connectionFilter must run first`
@@ -580,21 +580,21 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
 
   /**
    * Resolve a marketplace connection to the taxonomy owner it reads, or `null`
-   * when it has no taxonomy source. Capability-driven: a borrower names its
-   * owner, an owning marketplace is identified by its `platformType` validated
-   * against the closed `TaxonomyOwnerValues` set (never a `platformType` switch).
+   * when it declares no taxonomy identity. Capability-driven: a borrower names
+   * the owner it reuses, an owner declares its own tree — never inferred from
+   * `platformType`, which cannot express an axis a platform splits its tree
+   * along (#2063).
    */
-  private async resolveOwnerForElection(connectionId: string): Promise<string | null> {
+  private async resolveOwnerForElection(connectionId: string): Promise<TaxonomyOwner | null> {
     try {
       const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
         connectionId,
         'OfferManager'
       );
 
-      const { connection } = await this.integrationsService.getAdapter(connectionId);
       // Shared with DestinationTaxonomyService so the election and the rows it
       // produces can never key on different owners.
-      return resolveTaxonomyOwner(adapter, connection.platformType);
+      return resolveTaxonomyOwner(adapter);
     } catch (error) {
       // A connection mid-reauth or with failing credentials simply doesn't get
       // elected this tick; the next tick elects a different source.

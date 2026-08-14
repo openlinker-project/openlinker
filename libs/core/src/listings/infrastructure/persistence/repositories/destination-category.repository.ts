@@ -184,6 +184,14 @@ export class DestinationCategoryRepository implements DestinationCategoryReposit
           ("taxonomyOwner", "connectionId", "externalId", "name", "parentId", "leaf", "searchText", "syncedAt")
         VALUES ${valueTuples.join(', ')}
         ON CONFLICT ${conflictTarget}
+        -- DO NOT add "expandedAt" to this SET list (#2061).
+        --
+        -- A node reachable from two parents is re-upserted when the SECOND
+        -- parent expands. Resetting its "expandedAt" here would put it back in
+        -- the frontier, where expanding it would re-upsert its children, whose
+        -- parents would reset again — the run would never terminate. Leaving it
+        -- untouched is what makes "expanded at most once per run" true across
+        -- pages, not just within one.
         DO UPDATE SET
           "name"       = EXCLUDED."name",
           "parentId"   = EXCLUDED."parentId",
@@ -196,6 +204,68 @@ export class DestinationCategoryRepository implements DestinationCategoryReposit
     );
 
     return deduped.length;
+  }
+
+  async findExpandable(
+    scope: TaxonomyScope,
+    runStartedAt: Date,
+    limit: number,
+  ): Promise<string[]> {
+    const rows = (await this.ormRepository.query(
+      `
+        SELECT "externalId"
+        FROM destination_categories
+        WHERE $1::text IS NOT DISTINCT FROM "taxonomyOwner"
+          AND $2::uuid IS NOT DISTINCT FROM "connectionId"
+          AND "syncedAt" = $3
+          AND "leaf" IS NOT TRUE
+          AND ("expandedAt" IS NULL OR "expandedAt" < $3)
+        ORDER BY "externalId"
+        LIMIT $4
+      `,
+      [scope.taxonomyOwner, scope.connectionId, runStartedAt, limit],
+    )) as { externalId: string }[];
+
+    return rows.map((row) => row.externalId);
+  }
+
+  async markExpanded(
+    scope: TaxonomyScope,
+    externalIds: readonly string[],
+    runStartedAt: Date,
+  ): Promise<void> {
+    if (externalIds.length === 0) {
+      return;
+    }
+
+    await this.ormRepository.query(
+      `
+        UPDATE destination_categories
+        SET "expandedAt" = $3, "updatedAt" = now()
+        WHERE $1::text IS NOT DISTINCT FROM "taxonomyOwner"
+          AND $2::uuid IS NOT DISTINCT FROM "connectionId"
+          AND "externalId" = ANY($4::text[])
+      `,
+      [scope.taxonomyOwner, scope.connectionId, runStartedAt, [...externalIds]],
+    );
+  }
+
+  async hasObserved(scope: TaxonomyScope, runStartedAt: Date): Promise<boolean> {
+    // `SELECT 1 … LIMIT 1`, not `COUNT(*)`: the caller needs one bit, and
+    // counting would scan the scope's whole row set to produce it.
+    const rows = (await this.ormRepository.query(
+      `
+        SELECT 1
+        FROM destination_categories
+        WHERE $1::text IS NOT DISTINCT FROM "taxonomyOwner"
+          AND $2::uuid IS NOT DISTINCT FROM "connectionId"
+          AND "syncedAt" = $3
+        LIMIT 1
+      `,
+      [scope.taxonomyOwner, scope.connectionId, runStartedAt],
+    )) as unknown[];
+
+    return rows.length > 0;
   }
 
   async deleteStaleBelow(scope: TaxonomyScope, syncedAt: Date): Promise<number> {

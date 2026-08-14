@@ -31,7 +31,6 @@ import {
   IDestinationTaxonomyService,
   DESTINATION_TAXONOMY_SERVICE_TOKEN,
 } from '@openlinker/core/listings';
-import type { TaxonomyFrontier } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -48,6 +47,10 @@ const CURSOR_KEY_PREFIX = 'destination.taxonomy.frontier';
  * portable across a re-election — that is bounded by the core service's
  * frontier-age guard, which restarts a stale run so the watermark sweep stays
  * effective (#2061 makes the run owner-portable). A connection-scoped (shop) run keeps its own suffix.
+ *
+ * The owner passed here MUST come from the same authority that scopes the
+ * sweep — `IDestinationTaxonomyService.resolveScope`, never the job payload.
+ * See `execute` for why (#2063).
  */
 function cursorKeyFor(taxonomyOwner: string | null, connectionId: string): string {
   return taxonomyOwner !== null
@@ -73,31 +76,59 @@ export class DestinationTaxonomySyncHandler implements SyncJobHandler {
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     const payload = this.getPayload(job);
-    const cursorKey = cursorKeyFor(payload.taxonomyOwner, job.connectionId);
-    const stored = await this.cursors.getCursor(job.connectionId, cursorKey);
-    const frontier = this.parseFrontier(stored);
-
-    this.logger.log(
-      `Executing destination.taxonomy.sync job ${job.id} for connection ${job.connectionId} ` +
-        `(owner=${payload.taxonomyOwner ?? 'connection-scoped'}, resuming=${String(frontier !== null)})`,
-    );
 
     try {
+      // Resolve the scope FIRST, and key the cursor off THAT — not off
+      // `payload.taxonomyOwner`, which is only what the scheduler resolved at
+      // enqueue time (#2063).
+      //
+      // Until #2063 the owner derived from `platformType` and was effectively
+      // immutable, so payload and resolution could not disagree. Now it derives
+      // from mutable connection config (Allegro's `environment`), so an operator
+      // flipping that between enqueue and execution — or a retry landing after
+      // the flip — would have the handler resume the OTHER scope's frontier:
+      // `syncTaxonomy` re-resolves the scope internally and sweeps it, so the
+      // run would complete early against a frontier it never built and then
+      // delete every row that truncated walk failed to re-stamp.
+      //
+      // Costs one extra capability resolution per job (memoised per connection
+      // inside the service, hourly per owner) to keep key and sweep on one
+      // authority.
+      const scope = await this.taxonomyService.resolveScope(job.connectionId);
+      const cursorKey = cursorKeyFor(scope.taxonomyOwner, job.connectionId);
+      const stored = await this.cursors.getCursor(job.connectionId, cursorKey);
+      // Scalar since #2061: the cursor holds only the run watermark, and the
+      // per-node progress is derived from the projection. Validation of the
+      // value (parseable, fresh enough) belongs to the core service, which is
+      // the thing that has to act on it.
+      const runStartedAt = stored !== null && stored.length > 0 ? stored : null;
+
+      this.logger.log(
+        `Executing destination.taxonomy.sync job ${job.id} for connection ${job.connectionId} ` +
+          `(owner=${scope.taxonomyOwner ?? 'connection-scoped'}, resuming=${String(runStartedAt !== null)})`,
+      );
+
+      if (payload.taxonomyOwner !== null && payload.taxonomyOwner !== scope.taxonomyOwner) {
+        // Not fatal — the resolved scope is authoritative and the run is correct
+        // under it — but it means the connection's identity moved after the
+        // scheduler elected it, which is worth seeing in the log.
+        this.logger.warn(
+          `Taxonomy owner changed since enqueue (job ${job.id}, connection ${job.connectionId}): ` +
+            `payload=${payload.taxonomyOwner}, resolved=${scope.taxonomyOwner ?? 'connection-scoped'}`,
+        );
+      }
+
       const result = await this.taxonomyService.syncTaxonomy(job.connectionId, {
-        frontier,
+        runStartedAt,
         pageLimit: payload.pageLimit,
       });
 
-      if (result.nextFrontier === null) {
+      if (result.nextRunStartedAt === null) {
         // Completed: clear the cursor so the next tick starts a fresh run with
         // a new watermark, rather than resuming an already-swept one.
         await this.cursors.advanceCursor(job.connectionId, cursorKey, '');
       } else {
-        await this.cursors.advanceCursor(
-          job.connectionId,
-          cursorKey,
-          JSON.stringify(result.nextFrontier),
-        );
+        await this.cursors.advanceCursor(job.connectionId, cursorKey, result.nextRunStartedAt);
       }
 
       this.logger.log(
@@ -138,27 +169,4 @@ export class DestinationTaxonomySyncHandler implements SyncJobHandler {
     };
   }
 
-  /**
-   * A corrupt or empty cursor degrades to a fresh full run rather than throwing
-   * — the sync is idempotent, so restarting costs a walk, not correctness.
-   */
-  private parseFrontier(stored: string | null): TaxonomyFrontier | null {
-    if (stored === null || stored.length === 0) {
-      return null;
-    }
-    try {
-      const parsed: unknown = JSON.parse(stored);
-      if (
-        parsed !== null &&
-        typeof parsed === 'object' &&
-        typeof (parsed as TaxonomyFrontier).runStartedAt === 'string' &&
-        Array.isArray((parsed as TaxonomyFrontier).pending)
-      ) {
-        return parsed as TaxonomyFrontier;
-      }
-    } catch {
-      this.logger.warn(`Unparseable taxonomy frontier cursor; restarting sync from the roots`);
-    }
-    return null;
-  }
 }

@@ -15,6 +15,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import { SYNC_LOCK_TOKEN } from '@openlinker/core/sync';
+import { SyncLockPort } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
 import { DESTINATION_CATEGORY_REPOSITORY_TOKEN } from '../../listings.tokens';
@@ -29,12 +31,12 @@ import { DestinationCategoryRepositoryPort } from '../../domain/ports/destinatio
 import type {
   DestinationCategorySearchHit,
   DestinationCategoryUpsert,
-  TaxonomyFrontier,
   TaxonomyScope,
   TaxonomySyncInput,
   TaxonomySyncResult,
 } from '../../domain/types/destination-category.types';
 import type { IDestinationTaxonomyService } from '../interfaces/destination-taxonomy.service.interface';
+import { TAXONOMY_SYNC_LOCK_TTL_MS, taxonomySyncLockKey } from './taxonomy-sync-lock';
 
 const SEARCH_LIMIT_DEFAULT = 20;
 /** `search` is agent-reachable in Wave 4, so an unbounded limit is untrusted input. */
@@ -43,15 +45,22 @@ const SYNC_PAGE_LIMIT_DEFAULT = 500;
 /**
  * A resumable run older than this is abandoned and restarted from the roots.
  *
- * Without it a stale frontier silently DISABLES disappearance detection: the
- * sweep deletes rows below the run's OWN `runStartedAt`, so resuming a run
- * started weeks ago matches nothing (every row is newer) and `deleteStaleBelow`
- * becomes a no-op while still reporting the run complete. A frontier can go
- * stale whenever the elected source connection changes — the cursor is written
- * per connection, but a marketplace run's real subject is the owner. Making the
- * run owner-portable (and the cursor scalar again) is tracked as **#2061**.
+ * **Its justification changed with #2061, and the new one is weaker.** Wave 1
+ * needed this for CORRECTNESS: the frontier lived on a per-connection cursor,
+ * so a re-election orphaned it, and resuming a stale one swept against a
+ * watermark that matched nothing — silently disabling disappearance detection
+ * while still reporting the run complete.
+ *
+ * Progress is now derived from the projection, so a resumed run keeps stamping
+ * its own consistent watermark and its sweep still means exactly "everything
+ * this run did not observe", at any age. What age costs now is FRESHNESS: a run
+ * resumed after days publishes a days-old tree.
+ *
+ * So the guard survives as a freshness policy, relaxed from 6h to 24h. Removing
+ * it entirely would let a run interrupted indefinitely — a connection disabled
+ * and re-enabled a month later — resume and complete against month-old data.
  */
-const MAX_FRONTIER_AGE_MS = 6 * 60 * 60 * 1000;
+const MAX_RUN_AGE_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class DestinationTaxonomyService implements IDestinationTaxonomyService {
@@ -70,6 +79,8 @@ export class DestinationTaxonomyService implements IDestinationTaxonomyService {
     private readonly integrationsService: IIntegrationsService,
     @Inject(DESTINATION_CATEGORY_REPOSITORY_TOKEN)
     private readonly repository: DestinationCategoryRepositoryPort,
+    @Inject(SYNC_LOCK_TOKEN)
+    private readonly syncLock: SyncLockPort,
   ) {}
 
   async browse(connectionId: string, parentId?: string): Promise<DestinationCategory[]> {
@@ -95,83 +106,121 @@ export class DestinationTaxonomyService implements IDestinationTaxonomyService {
     // resolution on a cache miss.
     const { scope, browse: openBrowse } = await this.resolveDestination(connectionId);
     this.scopeCache.set(connectionId, scope);
-    const browse = openBrowse();
 
-    const pageLimit = input.pageLimit ?? SYNC_PAGE_LIMIT_DEFAULT;
-    const resumed = this.usableFrontier(input.frontier, connectionId);
-    const runStartedAt = resumed?.runStartedAt ?? new Date().toISOString();
-    const syncedAt = new Date(runStartedAt);
+    // Serialize per SCOPE, so ADR-037's "at most one in-flight run per owner"
+    // is enforced rather than merely claimed. Keyed off the RESOLVED scope, the
+    // same authority the cursor key uses (#2063).
+    const lockKey = taxonomySyncLockKey(scope);
+    const lockToken = await this.syncLock.acquire(lockKey, TAXONOMY_SYNC_LOCK_TTL_MS);
 
-    // De-duplicated on resume as well as on push: a node reachable from two
-    // parents (legal in several marketplace taxonomies) would otherwise be
-    // enqueued twice, and a cycle would grow the frontier faster than
-    // `pageLimit` drains it — so the run would never complete and the watermark
-    // sweep would never fire.
-    //
-    // SCOPE: this guard is WITHIN A RUN. `enqueued` is seeded from the resumed
-    // `pending` list, not from nodes already expanded on earlier pages, so a
-    // node expanded in an earlier page can still be re-enqueued if a later page
-    // reaches it from a second parent. That holds for a strict tree (one parent
-    // per node, expanded once) and is bounded by the frontier-age guard;
-    // persisting the expanded set is the real fix, tracked as **#2061**.
-    const pending: (string | null)[] = resumed ? [...new Set(resumed.pending)] : [null];
-    const enqueued = new Set<string>(pending.filter((id): id is string => id !== null));
-
-    let upserted = 0;
-    let expanded = 0;
-
-    while (pending.length > 0 && expanded < pageLimit) {
-      const parentId = pending.shift() ?? null;
-      const children = await browse(parentId ?? undefined);
-      expanded += 1;
-
-      if (children.length === 0) {
-        continue;
-      }
-
-      upserted += await this.repository.upsertMany(scope, children, syncedAt);
-
-      for (const child of children) {
-        // A leaf-gated marketplace node has nothing below it. A shop node carries
-        // `leaf: null` (any node is a valid target) and is always expanded — a
-        // shop tree is small enough that walking it fully is cheap.
-        if (child.leaf === true || enqueued.has(child.externalId)) {
-          continue;
-        }
-        enqueued.add(child.externalId);
-        pending.push(child.externalId);
-      }
+    if (lockToken === null) {
+      // Another run holds this scope. Skipping is safe and lossless: progress
+      // lives in the projection now, so the holder is continuing the very run
+      // this tick would have joined.
+      this.logger.log(
+        `Taxonomy sync for connection ${connectionId} skipped: ${lockKey} already in progress`,
+      );
+      return {
+        nextRunStartedAt: input.runStartedAt,
+        upserted: 0,
+        removed: 0,
+        completed: false,
+      };
     }
 
-    const completed = pending.length === 0;
+    try {
+      return await this.runSync(connectionId, scope, openBrowse(), input);
+    } finally {
+      // Best-effort release — never let a release failure mask the run's result.
+      // A bare `await` here would replace a real `TaxonomySourceUnavailableException`
+      // (or a successful result) with a Redis error, sending the operator to debug
+      // the wrong system. Same shape as `orderCreateLock` / `shipmentDispatchLock`.
+      try {
+        await this.syncLock.release(lockKey, lockToken);
+      } catch (releaseError) {
+        this.logger.warn(
+          `Failed to release taxonomy sync lock ${lockKey}: ` +
+            `${releaseError instanceof Error ? releaseError.message : String(releaseError)}`,
+        );
+      }
+    }
+  }
+
+  private async runSync(
+    connectionId: string,
+    scope: TaxonomyScope,
+    browse: (parentId?: string) => Promise<DestinationCategoryUpsert[]>,
+    input: TaxonomySyncInput,
+  ): Promise<TaxonomySyncResult> {
+    // Floored at 1, not merely defaulted. `??` passes a literal 0 through, and a
+    // limit of 0 returns an empty frontier — which this loop reads as "run
+    // complete" and would let authorise a sweep of a tree it never walked. The
+    // worker handler already rejects a non-positive payload value, but this is a
+    // public interface method and the failure mode is silent data loss.
+    const pageLimit = Math.max(1, input.pageLimit ?? SYNC_PAGE_LIMIT_DEFAULT);
+    const resumedAt = this.usableRunStartedAt(input.runStartedAt, connectionId);
+    const runStartedAt = resumedAt ?? new Date();
+    let upserted = 0;
+
+    // The root level is synthetic — it owns no row, so nothing can record that
+    // it was browsed. That is why a fresh run is distinguishable only by the
+    // absent cursor, and why the roots are browsed here rather than derived.
+    if (resumedAt === null) {
+      upserted += await this.repository.upsertMany(scope, await browse(undefined), runStartedAt);
+    }
+
+    // The frontier is a QUERY now (#2061), not a list carried across ticks:
+    // rows this run observed, that can expand, that it has not expanded yet.
+    // Because expansion is recorded on the row, a node reachable from two
+    // parents — or through a cycle — cannot re-enter it on a later page, which
+    // is what makes termination inherent rather than guarded.
+    const expandable = await this.repository.findExpandable(scope, runStartedAt, pageLimit);
+
+    for (const parentId of expandable) {
+      const children = await browse(parentId);
+      upserted += await this.repository.upsertMany(scope, children, runStartedAt);
+      // AFTER the upsert, never before: a crash in between must leave this node
+      // unexpanded (retried next tick) rather than expanded-with-unstamped-
+      // children, whose children the completing sweep would then delete.
+      await this.repository.markExpanded(scope, [parentId], runStartedAt);
+    }
+
+    const completed = expandable.length === 0;
     let removed = 0;
 
     if (completed) {
-      removed = await this.repository.deleteStaleBelow(scope, syncedAt);
-    }
+      // An empty frontier is NOT sufficient authority to sweep. It also
+      // describes a run whose rows are missing entirely — a resumed watermark
+      // whose rows were deleted, or a root browse that returned nothing because
+      // the platform hiccuped. Sweeping on that reading deletes the whole scope.
+      const observed = await this.repository.hasObserved(scope, runStartedAt);
 
-    this.logger.log(
-      `destination.taxonomy.sync (connection=${connectionId}, scope=${this.describeScope(scope)}): ` +
-        `expanded=${expanded}, upserted=${upserted}, removed=${removed}, pending=${pending.length}, completed=${String(completed)}`,
-    );
+      if (!observed) {
+        this.logger.error(
+          `Taxonomy run for connection ${connectionId} observed zero categories; ` +
+            `skipping the staleness sweep so an empty or lost response cannot delete the scope. ` +
+            `Restarting from the roots on the next run.`,
+        );
+        return { nextRunStartedAt: null, upserted, removed: 0, completed: true };
+      }
 
-    if (!completed) {
-      // Visible non-termination signal: `deleteStaleBelow` only fires on a
-      // completing run, so a tree that outgrows `pageLimit` would never sweep
-      // and a removed category would linger as a resolvable mapping target.
-      this.logger.debug(
-        `Taxonomy sync for connection ${connectionId} did not drain: ${pending.length} parent(s) still pending`,
+      removed = await this.repository.deleteStaleBelow(scope, runStartedAt);
+
+      this.logger.log(
+        `destination.taxonomy.sync completed (connection=${connectionId}, ` +
+          `scope=${this.describeScope(scope)}): upserted=${upserted}, removed=${removed}`,
       );
     }
 
     return {
-      nextFrontier: completed ? null : ({ runStartedAt, pending } satisfies TaxonomyFrontier),
+      nextRunStartedAt: completed ? null : runStartedAt.toISOString(),
       upserted,
       removed,
       completed,
     };
   }
 
+  /** Which row set this connection reads/writes. Memoised per connection. */
   async resolveScope(connectionId: string): Promise<TaxonomyScope> {
     const cached = this.scopeCache.get(connectionId);
     if (cached) {
@@ -187,16 +236,17 @@ export class DestinationTaxonomyService implements IDestinationTaxonomyService {
    * Probe `OfferManager` then `ProductPublisher` to resolve BOTH the scope and
    * the browse function — capability-driven, never a `platformType` switch.
    *
-   * `TaxonomyBorrower` only identifies a *borrower* (Erli); nothing declares
-   * that an Allegro connection *owns* `'allegro'`. So an owning marketplace's
-   * owner value comes from its `platformType`, validated against the closed
-   * `TaxonomyOwnerValues` set by the shared `resolveTaxonomyOwner` helper.
+   * The owner value is DECLARED by the adapter — `TaxonomyBorrower` for a
+   * borrower (Erli), `TaxonomyIdentityProvider` for an owner (Allegro) — and
+   * resolved by the shared `resolveTaxonomyOwner` helper. It is never inferred
+   * from `platformType`, which cannot express an axis a platform splits its
+   * tree along (#2063).
    *
-   * That helper returns `null` for an unlisted platform rather than throwing —
-   * resolution then falls through to the `ProductPublisher` probe, and only the
-   * final throw below reports it (with a message naming the real cause). The
-   * net effect is what matters: a new marketplace cannot silently write rows
-   * under a bogus owner, which would be a data migration to undo.
+   * That helper returns `null` for an adapter declaring neither, rather than
+   * throwing — resolution then falls through to the `ProductPublisher` probe,
+   * and only the final throw below reports it (with a message naming the real
+   * cause). The net effect is what matters: a marketplace cannot silently write
+   * rows under a guessed owner, which would be a data migration to undo.
    */
   private async resolveDestination(connectionId: string): Promise<{
     scope: TaxonomyScope;
@@ -211,9 +261,8 @@ export class DestinationTaxonomyService implements IDestinationTaxonomyService {
     const offerManager = await this.tryGetAdapter<OfferManagerPort>(connectionId, 'OfferManager');
 
     if (offerManager) {
-      const { connection } = await this.integrationsService.getAdapter(connectionId);
       // Shared with the scheduler's election so the two cannot disagree.
-      const owningTaxonomy = resolveTaxonomyOwner(offerManager, connection.platformType);
+      const owningTaxonomy = resolveTaxonomyOwner(offerManager);
 
       if (owningTaxonomy !== null) {
         return {
@@ -244,15 +293,16 @@ export class DestinationTaxonomyService implements IDestinationTaxonomyService {
       };
     }
 
-    // Distinguish "cannot browse at all" from "browses a tree we have not
-    // vetted": the second is actionable (add the value to TaxonomyOwnerValues
-    // once confirmed it publishes one distinct tree), and reporting it as a
-    // missing capability would send the reader looking in the wrong place.
+    // Distinguish "cannot browse at all" from "browses a tree but does not say
+    // WHICH tree": the second is actionable (implement TaxonomyIdentityProvider
+    // on the adapter, adding a TaxonomyOwnerValues entry once confirmed it is
+    // one distinct tree), and reporting it as a missing capability would send
+    // the reader looking in the wrong place.
     throw new TaxonomySourceUnavailableException(
       connectionId,
       offerManager && isCategoryBrowser(offerManager)
-        ? 'the connection browses a marketplace taxonomy whose platform is not a known taxonomy owner — add it to TaxonomyOwnerValues after confirming it publishes one distinct tree'
-        : 'no CategoryBrowser, TaxonomyBorrower, or ShopCategoryBrowser capability',
+        ? 'the connection browses a marketplace taxonomy but declares no taxonomy identity — implement TaxonomyIdentityProvider on its adapter, adding a TaxonomyOwnerValues entry once confirmed it publishes one distinct tree'
+        : 'no CategoryBrowser, TaxonomyBorrower, TaxonomyIdentityProvider, or ShopCategoryBrowser capability',
     );
   }
 
@@ -261,13 +311,16 @@ export class DestinationTaxonomyService implements IDestinationTaxonomyService {
     adapter: OfferManagerPort,
   ): (parentId?: string) => Promise<DestinationCategoryUpsert[]> {
     if (!isCategoryBrowser(adapter)) {
-      // Reachable for a borrower whose own adapter cannot browse — e.g. an Erli
-      // connection with no catalogue credentials, since `ErliOfferManagerAdapter`
-      // assigns `fetchCategories` conditionally in its constructor (ADR-031).
-      // The owner's rows are still readable; only the refresh path is unavailable.
+      // Reachable for any connection that names a tree it cannot refresh. Today
+      // that is a borrower with no catalogue credentials — `ErliOfferManagerAdapter`
+      // assigns `fetchCategories` conditionally in its constructor (ADR-031) —
+      // but since #2063 an OWNER declaring `TaxonomyIdentityProvider` without
+      // `CategoryBrowser` lands here too, so the message leads with the general
+      // cause and mentions the borrower case only as the likely instance.
+      // Either way the tree's rows are still readable; only refresh is unavailable.
       throw new TaxonomySourceUnavailableException(
         connectionId,
-        'connection borrows a taxonomy but cannot browse it (no catalogue credentials)',
+        'connection names a taxonomy but cannot browse it (no CategoryBrowser capability — for a borrower, typically missing catalogue credentials)',
       );
     }
 
@@ -281,36 +334,37 @@ export class DestinationTaxonomyService implements IDestinationTaxonomyService {
   }
 
   /**
-   * Drop a resumable frontier that is unusable, so the run restarts cleanly
-   * rather than completing against a watermark that can no longer sweep.
+   * Resolve a stored run watermark, or `null` to start a fresh run.
+   *
+   * See `MAX_RUN_AGE_MS` for why this guard survives #2061 with a different
+   * justification (freshness, no longer correctness) and a relaxed limit.
    */
-  private usableFrontier(
-    frontier: TaxonomyFrontier | null,
-    connectionId: string,
-  ): TaxonomyFrontier | null {
-    if (frontier === null) {
+  private usableRunStartedAt(stored: string | null, connectionId: string): Date | null {
+    if (stored === null || stored.length === 0) {
       return null;
     }
 
-    const startedAt = Date.parse(frontier.runStartedAt);
+    const startedAt = Date.parse(stored);
     if (Number.isNaN(startedAt)) {
+      // Also the upgrade path from Wave 1: a stored JSON frontier does not parse
+      // as a timestamp, so the first run after deploy simply starts fresh.
       this.logger.warn(
-        `Discarding unparseable taxonomy frontier for connection ${connectionId}; restarting from the roots`,
+        `Unparseable taxonomy run watermark for connection ${connectionId}; restarting from the roots`,
       );
       return null;
     }
 
     const ageMs = Date.now() - startedAt;
-    if (ageMs > MAX_FRONTIER_AGE_MS) {
+    if (ageMs > MAX_RUN_AGE_MS) {
       this.logger.warn(
-        `Discarding taxonomy frontier for connection ${connectionId}: run started ${frontier.runStartedAt} ` +
-          `(${Math.round(ageMs / 3_600_000)}h ago) is past the ${MAX_FRONTIER_AGE_MS / 3_600_000}h limit. ` +
-          `Restarting so the watermark sweep stays effective.`,
+        `Discarding taxonomy run for connection ${connectionId}: started ${stored} ` +
+          `(${Math.round(ageMs / 3_600_000)}h ago) is past the ${MAX_RUN_AGE_MS / 3_600_000}h freshness limit. ` +
+          `Restarting so the published tree is not stale.`,
       );
       return null;
     }
 
-    return frontier;
+    return new Date(startedAt);
   }
 
   private async tryGetAdapter<T>(connectionId: string, capability: string): Promise<T | null> {

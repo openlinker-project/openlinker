@@ -589,10 +589,19 @@ describe('SchedulerService', () => {
         (t) => t.taskId === 'destination-taxonomy-sync'
       );
 
-    /** An adapter that browses its own marketplace taxonomy. */
-    const browsingAdapter = { fetchCategories: jest.fn() };
+    /**
+     * An adapter that browses its own marketplace taxonomy AND declares which
+     * tree that is. Since #2063 the declaration is what resolves the owner —
+     * browsing alone says nothing about identity.
+     */
+    const owningAdapter = {
+      fetchCategories: jest.fn(),
+      getTaxonomyIdentity: (): string => 'allegro',
+    };
+    /** Browses, but names no tree — resolves to `null` and is skipped. */
+    const undeclaredAdapter = { fetchCategories: jest.fn() };
     /** An adapter that borrows another owner's taxonomy (Erli -> allegro). */
-    const borrowingAdapter = { getBorrowedTaxonomy: () => 'allegro' };
+    const borrowingAdapter = { getBorrowedTaxonomy: (): string => 'allegro' };
 
     beforeEach(() => {
       configService.get.mockImplementation(defaultConfigGet);
@@ -632,7 +641,7 @@ describe('SchedulerService', () => {
               : []
           ) as never
       );
-      integrationsService.getCapabilityAdapter.mockResolvedValue(browsingAdapter as never);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(owningAdapter as never);
       integrationsService.getAdapter.mockImplementation((connectionId: string) =>
         Promise.resolve({
           connection: createConnection(connectionId, 'allegro'),
@@ -678,7 +687,7 @@ describe('SchedulerService', () => {
               : []
           ) as never
       );
-      integrationsService.getCapabilityAdapter.mockResolvedValue(browsingAdapter as never);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(owningAdapter as never);
       integrationsService.getAdapter.mockResolvedValue({
         connection: conn,
         metadata: {} as never,
@@ -723,7 +732,7 @@ describe('SchedulerService', () => {
       );
     });
 
-    it('skips a marketplace whose platform is not a known taxonomy owner', async () => {
+    it('skips a marketplace that browses but declares no taxonomy identity', async () => {
       const ebay = createConnection('conn-ebay', 'ebay');
       integrationsService.listCapabilityAdapters.mockImplementation(
         ({ capability }: { capability: string }) =>
@@ -733,7 +742,7 @@ describe('SchedulerService', () => {
               : []
           ) as never
       );
-      integrationsService.getCapabilityAdapter.mockResolvedValue(browsingAdapter as never);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(undeclaredAdapter as never);
       integrationsService.getAdapter.mockResolvedValue({
         connection: ebay,
         metadata: {} as never,

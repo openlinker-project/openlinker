@@ -21,7 +21,16 @@
  */
 export interface DestinationTaxonomySyncPayloadV1 {
   schemaVersion: 1;
-  /** `null` for a shop, whose taxonomy is keyed by the connection itself. */
+  /**
+   * `null` for a shop, whose taxonomy is keyed by the connection itself.
+   *
+   * ADVISORY ONLY — it records what the scheduler resolved when it elected this
+   * connection, and exists for the owner-scoped idempotency key plus logging.
+   * The handler re-resolves the scope and keys both the cursor and the watermark
+   * sweep off THAT, because the owner derives from mutable connection config
+   * since #2063 and can move between enqueue and execution. Do not reintroduce a
+   * dependency on this field for anything that scopes rows.
+   */
   taxonomyOwner: string | null;
   /** Max parent levels expanded per run; bounds a large first sync. */
   pageLimit?: number;
