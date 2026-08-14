@@ -101,6 +101,41 @@ function normalizeNip(taxId: string): string {
 }
 
 /**
+ * Normalises the neutral `IssueInvoiceCommand.currency` to inFakt's `currency`
+ * field (#2103).
+ *
+ * inFakt's `currency` DEFAULTS to the account currency when the field is absent
+ * or unusable, and the API answers 200/201 either way - so a dropped or
+ * malformed code is not a rejected request, it is a document booked in the wrong
+ * units with no error anywhere. Since inFakt relays to KSeF on the seller's
+ * behalf, that wrong document then clears the tax authority, which OL cannot
+ * quietly re-issue. Hence: uppercase the code, and refuse the write outright
+ * rather than let anything ambiguous reach the provider.
+ *
+ * Status 422 (a 4xx → `failureMode: 'rejected'`) is deliberate: the throw
+ * happens BEFORE the POST, so nothing crossed the provider boundary and core can
+ * safely surface a terminal business failure the operator can re-submit.
+ *
+ * The check is a shape check (three ASCII letters), not a closed allow-list of
+ * codes: inFakt owns which currencies the seller's account may settle in and
+ * rejects the rest itself, so an allow-list here would only add a second, staler
+ * gate. KSeF's own adapter does hold a closed list, but only because FA(3)'s
+ * `KodWaluty` is an XSD enum it must satisfy before submitting.
+ */
+function toInfaktCurrency(currency: string | null | undefined, context: string): string {
+  const normalized = (currency ?? '').trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(normalized)) {
+    throw new InfaktApiError(
+      `Infakt requires an ISO 4217 currency on ${context}, got "${currency ?? ''}" - refusing to ` +
+        `issue a document that Infakt would silently book in the account's default currency`,
+      422,
+      { currency: currency ?? null },
+    );
+  }
+  return normalized;
+}
+
+/**
  * Maps Infakt ksef_data.status → neutral RegulatoryStatus.
  *
  * `success` is the TERMINAL accepted state — it must map to `accepted`, not
@@ -465,6 +500,9 @@ export class InfaktInvoicingAdapter
 
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
     const { lines, documentType, idempotencyKey, orderId } = cmd;
+    // Resolved BEFORE the client upsert so a malformed currency costs no
+    // provider round-trip and cannot leave a freshly-created client behind.
+    const currency = toInfaktCurrency(cmd.currency, `invoice for order ${orderId}`);
     const clientId = await this.resolveClientId(cmd);
 
     const kind = documentType === 'proforma' ? 'proforma' : 'vat';
@@ -480,6 +518,11 @@ export class InfaktInvoicingAdapter
     const payload = {
       invoice: {
         kind,
+        // ISO 4217 settlement currency (#2103). Stamped explicitly and
+        // unconditionally - omitting it makes Infakt book the document in the
+        // account's default currency with no error, so a EUR order issued (and
+        // KSeF-cleared) as PLN. See `toInfaktCurrency` / `InfaktInvoice.currency`.
+        currency,
         // Per-connection setting (#1303) — see `this.paymentMethod` doc.
         payment_method: this.paymentMethod,
         // Infakt's invoices.json wants the NUMERIC client id, not the client
@@ -665,6 +708,17 @@ export class InfaktInvoicingAdapter
    * `getPaymentStatus` afterward if it needs OL's own projection updated -
    * this method only confirms the provider ACCEPTED the mark, not that its
    * processing has finished.
+   *
+   * NO currency is stamped here, deliberately (#2103). Unlike the two issue
+   * paths, this write carries no monetary value at all: neutral
+   * `MarkInvoicePaidCommand` is `{ externalInvoiceId, paidDate }`, and inFakt's
+   * `paid.json` accepts only `paid_date` (plus an `allow_correction` flag) - it
+   * settles the document in full, against the currency the document itself
+   * already carries. There is therefore no amount that could be mis-denominated,
+   * and adding a `currency` field here would be a second, drift-prone opinion
+   * about a document inFakt already owns. The unit spec pins the payload to
+   * exactly `paid_date` so a future partial-payment amount cannot be added
+   * without revisiting the currency question.
    */
   async markPaid(cmd: MarkInvoicePaidCommand): Promise<void> {
     await this.http.post(`async/invoices/${encodeURIComponent(cmd.externalInvoiceId)}/paid.json`, {
@@ -681,6 +735,30 @@ export class InfaktInvoicingAdapter
       `invoices/${encodeURIComponent(originalProviderInvoiceId)}.json`,
       { invoice_type: 'vat' },
     );
+
+    // A correction is denominated by the document it corrects, so the currency
+    // comes from the ORIGINAL as Infakt actually holds it (#2103) - not from the
+    // account default (what omitting the field would fall back to) and not from
+    // core, which carries no top-level currency on `IssueCorrectionCommand`. It
+    // must match `original.services`, from which the before/after rows below are
+    // built verbatim.
+    const currency = toInfaktCurrency(
+      original.currency,
+      `correction of invoice ${original.number ?? originalProviderInvoiceId}`,
+    );
+
+    // `originalDocument` is OL's own issuance-time snapshot of the same document
+    // (#1297). It is NOT used as the correction's currency - the provider's value
+    // is authoritative and is what the corrected amounts are expressed in - but a
+    // divergence means OL's fiscal projection disagrees with the provider about a
+    // document it already issued, which is worth surfacing rather than swallowing.
+    const snapshotCurrency = cmd.originalDocument?.currency?.trim().toUpperCase();
+    if (snapshotCurrency && snapshotCurrency !== currency) {
+      this.logger.warn(
+        `Infakt correction of ${originalProviderInvoiceId}: OL's issuance snapshot says ` +
+          `${snapshotCurrency} but Infakt holds ${currency}; correcting in ${currency} (the provider's own currency)`,
+      );
+    }
 
     // The operator's free-text reason cannot be forwarded to this provider
     // (see `correction_reason` on the payload below). Log the loss so it is
@@ -801,6 +879,10 @@ export class InfaktInvoicingAdapter
     // path rather than a genuine provider bug). See `createCorrectionAsync`.
     const payload: InfaktCorrectiveInvoiceRequest = {
       corrective_invoice: {
+        // Same explicit stamp as the issue path (#2103) - the corrected
+        // original's own currency, so a correction can never be booked in a
+        // different currency than the document it corrects.
+        currency,
         // Per-connection setting (#1303) — see `this.paymentMethod` doc.
         payment_method: this.paymentMethod,
         // Required by Infakt on every invoice, corrective included — verified

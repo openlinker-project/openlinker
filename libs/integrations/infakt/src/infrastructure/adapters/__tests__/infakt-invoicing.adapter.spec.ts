@@ -83,6 +83,8 @@ function invoiceFixture(overrides: Partial<InfaktInvoice> = {}): InfaktInvoice {
     number: 'FV/1/2026',
     kind: 'vat',
     status: 'sent',
+    // Present on every live read of both document resources (#2103).
+    currency: 'PLN',
     gross_price: 12300,
     net_price: 10000,
     tax_price: 2300,
@@ -495,6 +497,60 @@ describe('InfaktInvoicingAdapter', () => {
       );
     });
 
+    it('should stamp the command currency on the invoice payload (#2103)', async () => {
+      http.seed('POST', 'invoices.json', invoiceFixture({ currency: 'EUR' }));
+
+      await adapter.issueInvoice({ ...baseCmd, currency: 'EUR' });
+
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      expect(invoiceCall?.body).toMatchObject({
+        invoice: expect.objectContaining({ currency: 'EUR' }),
+      });
+    });
+
+    it('should never fall back to the account default currency for a non-PLN command (#2103)', async () => {
+      // The whole point of #2103: omitting `currency` makes Infakt book the
+      // document in the account's default (PLN) with no error anywhere, and
+      // Infakt relays it to KSeF. A EUR command must reach the wire as EUR.
+      http.seed('POST', 'invoices.json', invoiceFixture({ currency: 'EUR' }));
+
+      await adapter.issueInvoice({ ...baseCmd, currency: 'EUR' });
+
+      const invoice = (
+        http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json')?.body as {
+          invoice: Record<string, unknown>;
+        }
+      ).invoice;
+      expect(invoice).toHaveProperty('currency');
+      expect(invoice.currency).not.toBe('PLN');
+    });
+
+    it('should normalise a lower-case currency code to Infakt uppercase (#2103)', async () => {
+      http.seed('POST', 'invoices.json', invoiceFixture({ currency: 'EUR' }));
+
+      await adapter.issueInvoice({ ...baseCmd, currency: 'eur' });
+
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      expect(invoiceCall?.body).toMatchObject({
+        invoice: expect.objectContaining({ currency: 'EUR' }),
+      });
+    });
+
+    it.each([['', 'blank'], ['PLNN', 'over-long'], ['EU2', 'non-alphabetic']])(
+      'should reject a malformed currency (%s, %s) before any provider call (#2103)',
+      async (currency) => {
+        http.seed('POST', 'invoices.json', invoiceFixture());
+
+        // 422 -> failureMode 'rejected': nothing crossed the provider boundary,
+        // so the operator can safely re-submit. The alternative (dropping the
+        // field) is a silently mis-denominated, KSeF-cleared document.
+        await expect(adapter.issueInvoice({ ...baseCmd, currency })).rejects.toMatchObject({
+          statusCode: 422,
+        });
+        expect(http.calls).toHaveLength(0);
+      },
+    );
+
     it('should default an empty taxRate to the Polish standard VAT rate (regime-rate fallback)', async () => {
       // Core always leaves InvoiceLine.taxRate empty (documented contract:
       // "the provider adapter resolves the regime rate"). Verified live
@@ -870,6 +926,22 @@ describe('InfaktInvoicingAdapter', () => {
       });
     });
 
+    it('should carry no monetary value, hence no currency, on the mark-paid payload (#2103)', async () => {
+      // `paid.json` settles the document in full against the currency the
+      // document itself already carries - there is no amount here that could be
+      // mis-denominated. Pinned so a future partial-payment amount cannot be
+      // added without revisiting the currency question.
+      http.seed('POST', 'async/invoices/inv-uuid-1/paid.json', {});
+
+      await adapter.markPaid({
+        externalInvoiceId: 'inv-uuid-1',
+        paidDate: new Date('2026-07-08T12:34:56Z'),
+      });
+
+      const body = http.calls[0]?.body as { invoice: Record<string, unknown> };
+      expect(Object.keys(body.invoice)).toEqual(['paid_date']);
+    });
+
     it('should URL-encode the external invoice id', async () => {
       http.seed('POST', 'async/invoices/inv%2Fuuid/paid.json', {});
 
@@ -1046,6 +1118,72 @@ describe('InfaktInvoicingAdapter', () => {
           (c) => c.method === 'POST' && c.path === 'corrective_invoices/corr-uuid-1/send_to_ksef.json',
         ),
       ).toBe(true);
+    });
+
+    it('should denominate the correction in the corrected original currency (#2103)', async () => {
+      // A correction must be booked in the same currency as the document it
+      // corrects - and the before/after rows are built verbatim from that
+      // document's own services, so the provider's value is the only correct
+      // source. Omitting the field would fall back to the account default.
+      http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture({ currency: 'EUR' }));
+      http.seed('POST', 'async/corrective_invoices.json', asyncTaskFixture());
+      http.seed(
+        'GET',
+        'corrective_invoices/corr-uuid-1.json',
+        invoiceFixture({ uuid: 'corr-uuid-1', kind: 'correction', currency: 'EUR' }),
+      );
+      http.seed('POST', 'corrective_invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
+
+      await adapter.issueCorrection(baseCmd);
+
+      const call = http.calls.find(
+        (c) => c.method === 'POST' && c.path === 'async/corrective_invoices.json',
+      );
+      expect(call?.body).toMatchObject({
+        corrective_invoice: expect.objectContaining({ currency: 'EUR' }),
+      });
+    });
+
+    it("should warn but still use the provider's currency when OL's snapshot disagrees (#2103)", async () => {
+      http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture({ currency: 'EUR' }));
+      http.seed('POST', 'async/corrective_invoices.json', asyncTaskFixture());
+      http.seed(
+        'GET',
+        'corrective_invoices/corr-uuid-1.json',
+        invoiceFixture({ uuid: 'corr-uuid-1', kind: 'correction', currency: 'EUR' }),
+      );
+      http.seed('POST', 'corrective_invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
+
+      await adapter.issueCorrection({
+        ...baseCmd,
+        originalDocument: {
+          buyer: buyer({ nip: '1234567890' }),
+          currency: 'PLN',
+          documentType: 'invoice',
+          lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123, taxRate: '23' }],
+          clearanceReference: null,
+          documentNumber: 'FV/1/2026',
+          issueDate: '2026-07-01',
+        },
+      });
+
+      const call = http.calls.find(
+        (c) => c.method === 'POST' && c.path === 'async/corrective_invoices.json',
+      );
+      expect(call?.body).toMatchObject({
+        corrective_invoice: expect.objectContaining({ currency: 'EUR' }),
+      });
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('PLN'));
+    });
+
+    it('should refuse to correct a document whose currency Infakt does not report, before any POST (#2103)', async () => {
+      http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture({ currency: '' }));
+      http.seed('POST', 'async/corrective_invoices.json', asyncTaskFixture());
+
+      await expect(adapter.issueCorrection(baseCmd)).rejects.toMatchObject({ statusCode: 422 });
+      expect(
+        http.calls.some((c) => c.method === 'POST' && c.path === 'async/corrective_invoices.json'),
+      ).toBe(false);
     });
 
     it('should send corrected_invoice_uuid and a correction_reason SYMBOL, never the read-only correction_reason_symbol (#1763)', async () => {

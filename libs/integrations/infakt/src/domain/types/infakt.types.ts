@@ -52,6 +52,26 @@ export interface InfaktInvoice {
   number: string | null;
   kind: InfaktInvoiceKind;
   status: string;
+  /**
+   * ISO 4217 settlement currency of the document (#2103).
+   *
+   * A WRITABLE field on inFakt's invoice resource - "`currency` | string |
+   * Waluta (domyślnie PLN)" in inFakt's own API reference, with no `(readonly)`
+   * marker (unlike `net_price`/`gross_price`/`exchange_rates_data`, which carry
+   * one). Confirmed present on live reads of BOTH document resources
+   * (`GET /invoices.json` and `GET /corrective_invoices.json`, sandbox
+   * 2026-08-14) and selectable via `fields=`.
+   *
+   * Because the field DEFAULTS to the account currency when omitted, leaving it
+   * off the request booked every document in the account default no matter what
+   * the neutral `IssueInvoiceCommand.currency` said - silently, since inFakt
+   * answers 200/201 either way (#2103). It is therefore stamped explicitly on
+   * every write path, never omitted.
+   *
+   * inFakt owns the conversion itself: the rate is reported back on the
+   * read-only `exchange_rates_data` block, so OL never sends a rate.
+   */
+  currency: string;
   // Infakt's public API represents every monetary field as a PLAIN INTEGER
   // count of groszy (1 PLN = 100 grosze) — confirmed both live against the
   // real sandbox (a 349.00 PLN order landed as gross_price=348, i.e. 3.48 PLN,
@@ -173,6 +193,15 @@ export interface InfaktCorrectiveInvoiceServiceRequest {
 export interface InfaktCorrectiveInvoiceRequest {
   corrective_invoice: {
     payment_method: string;
+    /**
+     * ISO 4217 currency of the CORRECTION document (#2103). Required here for
+     * the same reason as on `async/invoices.json`: omitted, inFakt falls back to
+     * the account default, which would denominate a correction differently from
+     * the document it corrects. Taken from the corrected original's own
+     * `currency`, never from the account default or a caller-supplied value -
+     * see `InfaktInvoice.currency`.
+     */
+    currency: string;
     client_id: number | null;
     bank_account?: string;
     bank_name?: string;
