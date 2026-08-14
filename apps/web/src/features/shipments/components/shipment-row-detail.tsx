@@ -173,7 +173,7 @@ export function ShipmentRowDetail({
   // quotes the order id to carrier support — so justifying this field by triage
   // while showing it only on healthy rows would have been the wrong way round.
   const orderIdField = (
-    <div className="shipment-detail-grid__field" key="Order">
+    <div className="shipment-detail-grid__field">
       <span className="shipment-detail-grid__label">Order</span>
       <p className="shipment-detail-grid__value mono-text">
         <CopyableId

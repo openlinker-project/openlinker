@@ -9519,10 +9519,9 @@ a.kpi-card:focus-visible {
 }
 
 /* Frozen-pane budget (#2089). 1024px is the worst case by construction: the
- * sidebar becomes a persistent 240px grid column at exactly this width (:1047)
- * AND the tables that
- * host this cell un-hide their Connection column there, so content width is
- * 1024 - 240 - 64 = 720px. Shipments freezes Status + Order
+ * sidebar becomes a persistent 240px grid column at exactly this width (:1048)
+ * AND the tables hosting this cell un-hide their Connection column there, so
+ * content width is 1024 - 240 - 64 = 720px. Shipments freezes Status + Order
  * (`stickyLeftColumns={2}`), and on a triage page Status carries a 32ch error
  * string — at 250px the frozen cluster leaves under 100px of scrollable window
  * for every remaining column. Narrower only inside the frozen pane, and only
