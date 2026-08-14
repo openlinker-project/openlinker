@@ -54,7 +54,7 @@ export type { CommandPaletteProps, PaletteItem, PaletteGroup } from './command-p
 export { Dialog } from './dialog';
 export { ConfirmDialog } from './confirm-dialog';
 export { DropdownMenu } from './dropdown-menu';
-export { Popover } from './popover';
+export { Popover, PopoverTrigger, PopoverContent } from './popover';
 export { Tooltip } from './tooltip';
 
 // ── Data surfaces ──────────────────────────────────────────────────
