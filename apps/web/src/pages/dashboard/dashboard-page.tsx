@@ -448,7 +448,7 @@ export function DashboardPage(): ReactElement {
       {
         id: 'attempts',
         header: 'Attempts',
-        align: 'center',
+        align: 'right',
         cell: (job) => `${job.attempts}/${job.maxAttempts}`,
         hideBelow: 768,
       },

@@ -30,7 +30,7 @@ import { useMediaQuery } from './use-media-query';
 export type DataTableHideBreakpoint = 480 | 768 | 1024;
 
 export interface DataTableColumn<Row> {
-  align?: 'center' | 'left' | 'right';
+  align?: 'left' | 'right';
   cell: (row: Row) => ReactNode;
   header: ReactNode;
   hideBelow?: DataTableHideBreakpoint;
@@ -134,6 +134,22 @@ interface DataTableProps<Row> {
   manualSorting?: boolean;
   onSortChange?: OnChangeFn<SortingState>;
   rowHref?: (row: Row) => string;
+  /**
+   * How the first cell's navigation `<a>` participates in layout.
+   *
+   * `'inline'` (default) is right for the common case — the link wraps plain
+   * text, so its own inline metrics match the row's height and the
+   * `:focus-visible` box-shadow ring encloses it.
+   *
+   * `'block'` is required when the first cell renders a **tall composite**
+   * (thumbnail + a name line + a meta line, e.g. the listings identity cell).
+   * An inline anchor's line box takes its height from its own inline metrics,
+   * not from a block child, so the focus ring painted around a shrunken box
+   * crossing the row's vertical middle instead of enclosing it (#2023). This
+   * makes the anchor a full-width `inline-flex` box so the ring is one
+   * correctly-sized fragment.
+   */
+  rowLinkDisplay?: 'inline' | 'block';
   rowKey: (row: Row) => Key;
   rows: Row[];
   sort?: SortingState;
@@ -190,6 +206,7 @@ export function DataTable<Row>({
   manualSorting = false,
   onSortChange,
   rowHref,
+  rowLinkDisplay = 'inline',
   rowKey,
   rows,
   sort,
@@ -502,7 +519,14 @@ export function DataTable<Row>({
 
           const content =
             linkifyFirstCell && href && index === 0 ? (
-              <Link to={href} className="data-table__row-link">
+              <Link
+                to={href}
+                className={
+                  rowLinkDisplay === 'block'
+                    ? 'data-table__row-link data-table__row-link--block'
+                    : 'data-table__row-link'
+                }
+              >
                 {column.cell(row)}
               </Link>
             ) : (

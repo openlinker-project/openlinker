@@ -16,6 +16,98 @@
 export const KNOWN_MAPPING_ENTITY_TYPES = ['Product', 'ProductVariant', 'InventoryItem'] as const;
 export type KnownMappingEntityType = (typeof KNOWN_MAPPING_ENTITY_TYPES)[number];
 
+/**
+ * The lifecycle buckets a list row is partitioned into. FIVE values, not the
+ * four tabs of the #1965 mockup: `Unsynced` is a deliberate #2025 addition for
+ * a mapping no status has ever been read for.
+ *
+ * `Unsynced` is NOT a promise that the row will resolve shortly, and UI copy
+ * must never say so. A successful wizard create lands here (the creation poller
+ * reconciles only on timeout and draft, tracked as #2039), and on a connection
+ * whose status-sync task is not scheduled - Erli's is opt-in and default OFF -
+ * it is permanent. It also does not mean unlisted: the duplicate guard reads an
+ * absent snapshot as still-listed.
+ */
+export const OFFER_LIFECYCLE_VALUES = [
+  'Active',
+  'Invalid',
+  'Draft',
+  'Ended',
+  'Unsynced',
+] as const;
+export type OfferLifecycle = (typeof OFFER_LIFECYCLE_VALUES)[number];
+
+/**
+ * Per-bucket row counts backing the lifecycle tab bar (#2026 / #2029). Mirrors
+ * the backend `OfferLifecycleCountsResponseDto` verbatim - keyed by the same
+ * `OfferLifecycle` token the FE reads off each row's `channelStatus.lifecycle`,
+ * so there is no second naming to keep in sync.
+ */
+export type OfferLifecycleCounts = Record<OfferLifecycle, number>;
+
+/** Catalog identity of the variant a list row's mapping points at (#2025). */
+export interface OfferMappingIdentity {
+  productId: string;
+  /**
+   * `products.name` is NOT NULL behind a real FK, so null here means a corrupt
+   * row - report it rather than rendering a blank cell.
+   */
+  productName: string | null;
+  /** Null for a simple product's synthetic variant. */
+  variantLabel: string | null;
+  sku: string | null;
+  ean: string | null;
+  /** The owning product's first image; there is no dedicated thumbnail column. */
+  imageUrl: string | null;
+  /**
+   * The linked variant's master record is gone (#1689). Its offers should have
+   * been paused, but the quantity is not necessarily zero: on a connection with
+   * seller-frozen stock the pause is a documented no-op. `isStale` together
+   * with a non-zero `availableQuantity` is a live listing for a product that no
+   * longer exists - the overselling case, and worth louder treatment than an
+   * ordinary chip.
+   */
+  isStale: boolean;
+}
+
+/** Live channel publication state plus its derived lifecycle bucket (#2025). */
+export interface OfferMappingChannelStatus {
+  /** Null exactly when `lifecycle` is `Unsynced`. */
+  publicationStatus: OfferPublicationStatus | null;
+  lifecycle: OfferLifecycle;
+  /** Marketplace validator messages; empty when the validator raised none. */
+  validationMessages: string[];
+  /** Null exactly when `lifecycle` is `Unsynced`. */
+  lastStatusSyncedAt: string | null;
+}
+
+/**
+ * Channel-side price/quantity with their freshness stamp (#2024).
+ *
+ * Both values are what the CHANNEL reports: the price is already the output of
+ * the connection's `pricingRule` (#1843) and the quantity is already net of its
+ * `stockSafetyBuffer` (#1844). Surface them as "on channel", never as OL's own
+ * price/stock, or a correctly-configured buffer reads as a bug. A null is "not
+ * reported by the marketplace", never zero.
+ */
+export interface OfferMappingCommercial {
+  /**
+   * A decimal STRING (e.g. `"99.99"`), not a number (#2032 review thread 6) -
+   * the API keeps `numeric` precision intact across the wire; convert with
+   * `Number()` only at render time, right before `formatAmount`.
+   */
+  price: string | null;
+  currency: string | null;
+  availableQuantity: number | null;
+  /**
+   * Always present alongside the values - a both-null observation is never
+   * persisted. The scan is hourly at 100 offers/tick, so a row can legitimately
+   * be days old, which is why the age is surfaced with the values rather than
+   * left implicit.
+   */
+  lastCommercialSyncedAt: string;
+}
+
 export interface OfferMapping {
   id: string;
   entityType: string;
@@ -26,6 +118,22 @@ export interface OfferMapping {
   context: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Populated only by `GET /listings`. Null when `internalId` no longer
+   * resolves to a live variant. Absent on `GET /listings/:id`.
+   */
+  identity?: OfferMappingIdentity | null;
+  /**
+   * Populated on EVERY row of `GET /listings` - a mapping with no snapshot
+   * carries `lifecycle: 'Unsynced'` rather than a null projection. Absent (not
+   * null) on `GET /listings/:id`.
+   */
+  channelStatus?: OfferMappingChannelStatus;
+  /**
+   * Populated only by `GET /listings`. Null when no commercial observation has
+   * been persisted for the offer yet.
+   */
+  commercial?: OfferMappingCommercial | null;
   /**
    * Populated only by the detail endpoint (`GET /listings/:id`) for Offer-type
    * mappings that originated from an OL-initiated create. Always absent on
@@ -46,9 +154,26 @@ export interface OfferMapping {
 
 export interface ListingsFilters {
   connectionId?: string;
-  platformType?: string;
   internalId?: string;
+  /**
+   * Spans product name, variant label, product SKU, variant SKU, EAN, GTIN and
+   * the external offer ID (#2025).
+   */
   search?: string;
+  /**
+   * Restrict the page to one lifecycle bucket (#2026 / #2029) - server-side,
+   * so a tab pages through the whole catalog rather than filtering the
+   * returned page client-side. Does NOT affect `lifecycleCounts`.
+   */
+  lifecycle?: OfferLifecycle;
+  /**
+   * Compute `lifecycleCounts` alongside the page (#2032 review thread 3).
+   * Off by default - the aggregate is a second full scan over the same join,
+   * so a caller with no tab bar to feed (`variant-stock-table.tsx`,
+   * `product-row-detail.tsx`, `use-nav-counts.ts`) must not pay for it. Only
+   * `listings-list-page.tsx` sets this.
+   */
+  includeLifecycleCounts?: boolean;
 }
 
 export interface ListingsPagination {
@@ -59,6 +184,15 @@ export interface ListingsPagination {
 export interface PaginatedOfferMappings {
   items: OfferMapping[];
   total: number;
+  /**
+   * Row count per lifecycle bucket under the same search/connection/variant
+   * filters as the list, but never narrowed by `lifecycle` itself - otherwise
+   * selecting a tab would zero every other tab's badge (#2026 / #2029). The
+   * buckets partition the filtered set, so they sum to `total` for the same
+   * request without a `lifecycle` filter. Present only when the request set
+   * `includeLifecycleCounts` (#2032 review thread 3).
+   */
+  lifecycleCounts?: OfferLifecycleCounts;
   limit: number;
   offset: number;
 }

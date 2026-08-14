@@ -31,6 +31,7 @@ import type {
   OfferCreator,
   OfferStatusReader,
   OfferStatusReadResult,
+  OfferCommercialObservation,
   OfferPublicationStatus,
   OfferReader,
   OfferSmartClassificationReader,
@@ -666,6 +667,10 @@ export class AllegroOfferManagerAdapter
       throw err;
     }
 
+    // #2024: price + available quantity read off this SAME fetched offer
+    // (identical fields `getOffer` maps below) - no second per-offer call.
+    const commercial = this.toCommercialObservation(offer);
+
     const rawStatus = offer.publication?.status;
     if (!rawStatus) {
       // Allegro returned the offer but without a publication block. Treat as
@@ -680,7 +685,41 @@ export class AllegroOfferManagerAdapter
     const publicationStatus = this.mapAllegroPublicationStatus(rawStatus);
     const validationErrors = this.mapValidationErrors(offer.validation?.errors ?? []);
 
-    return { publicationStatus, validationErrors };
+    return { publicationStatus, validationErrors, commercial };
+  }
+
+  /**
+   * Read-only projection of price + available quantity off an already-fetched
+   * AllegroProductOffer (#2024). Each axis reports null independently when the
+   * response omits it - never fabricated as zero, since a persisted 0 is
+   * indistinguishable from a genuine sell-out (or a free item) at list scale.
+   * getOffer's stricter contract, which treats a missing price as a malformed
+   * payload, is unchanged; this read tolerates absence instead of throwing.
+   *
+   * The field guards match the Erli side's discipline because both read untyped
+   * wire JSON: an amount without a currency would persist unlabeled money (the
+   * service stores a real number next to a `null` currency), and
+   * `typeof x === 'number'` alone admits `Infinity`, which `JSON.parse` really
+   * does produce from a `1e999` literal. Allegro's amount arrives as a string,
+   * so it is finite-checked after coercion too - Postgres `numeric` accepts the
+   * literal `'NaN'`, which would then render as a real reading rather than as
+   * "not reported".
+   */
+  private toCommercialObservation(offer: AllegroProductOffer): OfferCommercialObservation {
+    const amount = offer.sellingMode?.price?.amount;
+    const currency = offer.sellingMode?.price?.currency;
+    const available = offer.stock?.available;
+    const hasUsablePrice =
+      typeof amount === 'string' &&
+      amount.length > 0 &&
+      Number.isFinite(Number(amount)) &&
+      typeof currency === 'string' &&
+      currency.length > 0;
+    return {
+      price: hasUsablePrice ? { amount, currency } : null,
+      availableQuantity:
+        typeof available === 'number' && Number.isFinite(available) ? available : null,
+    };
   }
 
   /**

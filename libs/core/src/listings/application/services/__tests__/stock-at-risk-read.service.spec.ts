@@ -18,7 +18,9 @@ describe('StockAtRiskReadService', () => {
     offerRepo = {
       findById: jest.fn(),
       findMany: jest.fn(),
+      findMappingPage: jest.fn(),
       countByConnectionAndVariants: jest.fn(),
+      countByLifecycle: jest.fn(),
       countListedVariantsByProducts: jest.fn(),
       findStaleMappedVariants: jest.fn(),
       findRecentlyListedVariantIds: jest.fn().mockResolvedValue([]),

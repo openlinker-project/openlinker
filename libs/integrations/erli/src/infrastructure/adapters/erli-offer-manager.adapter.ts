@@ -110,6 +110,7 @@ import {
   type DeliveryPriceListReader,
   type MarketplaceOffer,
   type OfferCategory,
+  type OfferCommercialObservation,
   type OfferCondition,
   type OfferCreator,
   type OfferDescriptionUpdate,
@@ -1098,24 +1099,52 @@ function readDeliveryPriceListParam(
  * change — additive-only per offer-status-read.types ADR-009 note). `'accepted'`
  * (stored but still propagating through Erli's ~20-min cache) → `'activating'`.
  * Unknown/absent → `'inactive'` (conservative; never claims live).
+ *
+ * `commercial` (#2024) is read off this SAME already-fetched `product` resource
+ * (the identical `price`/`stock` fields `toMarketplaceOffer` maps for `getOffer`)
+ * — no second `GET /products/{externalId}` call.
  */
 function mapErliStatusToReadResult(product: ErliProductResource): OfferStatusReadResult {
+  const commercial = toErliCommercialObservation(product);
   switch (product.status) {
     case 'active':
-      return { publicationStatus: 'active', validationErrors: [] };
+      return { publicationStatus: 'active', validationErrors: [], commercial };
     case 'accepted':
-      return { publicationStatus: 'activating', validationErrors: [] };
+      return { publicationStatus: 'activating', validationErrors: [], commercial };
     case 'rejected':
       return {
         publicationStatus: 'inactive',
         validationErrors: [
           { code: 'ERLI_REJECTED', message: product.statusReason ?? 'Erli rejected the offer.' },
         ],
+        commercial,
       };
     case 'inactive':
     default:
-      return { publicationStatus: 'inactive', validationErrors: [] };
+      return { publicationStatus: 'inactive', validationErrors: [], commercial };
   }
+}
+
+/**
+ * Read-only projection of price + available quantity off an already-fetched
+ * `ErliProductResource` (#2024). Each axis reports `null` independently when
+ * the read does not carry a usable number - never fabricated as zero, since a
+ * persisted `0.00` / `0` is indistinguishable from a free item or a genuine
+ * sell-out. The guards are `typeof` + `Number.isFinite` rather than
+ * `!== undefined` because the values come off untyped wire JSON: a JSON `null`
+ * would divide to `"0.00"`, and a non-numeric would yield `"NaN"`, which
+ * Postgres `numeric` accepts and stores silently. Money conversion mirrors
+ * `toMarketplaceOffer` (grosze integer → decimal string, PLN-only).
+ */
+function toErliCommercialObservation(product: ErliProductResource): OfferCommercialObservation {
+  const { price, stock } = product;
+  return {
+    price:
+      typeof price === 'number' && Number.isFinite(price)
+        ? { amount: (price / 100).toFixed(2), currency: ERLI_CURRENCY }
+        : null,
+    availableQuantity: typeof stock === 'number' && Number.isFinite(stock) ? stock : null,
+  };
 }
 
 /**

@@ -46,6 +46,44 @@ describe('ConnectionEntityLabel', () => {
     expect(link).toHaveAttribute('href', '/connections/ol_connection_abc');
   });
 
+  it('renders the caller-supplied name without fetching the connection', async () => {
+    const getById = vi.fn();
+    const api = createMockApiClient({ connections: { getById } });
+
+    renderWithProviders(
+      <ConnectionEntityLabel connectionId="ol_connection_abc" name="Warehouse EU" />,
+      { apiClient: api },
+    );
+
+    expect(await screen.findByRole('link', { name: 'Warehouse EU' })).toBeInTheDocument();
+    expect(getById).not.toHaveBeenCalled();
+  });
+
+  it('renders Unknown without fetching when the caller supplies name={null}', () => {
+    const getById = vi.fn();
+    const api = createMockApiClient({ connections: { getById } });
+
+    renderWithProviders(<ConnectionEntityLabel connectionId="ol_connection_abc" name={null} />, {
+      apiClient: api,
+    });
+
+    expect(screen.getByText('Unknown')).toBeInTheDocument();
+    expect(getById).not.toHaveBeenCalled();
+  });
+
+  it('shows a loading placeholder when the caller drives the loading flag', () => {
+    const getById = vi.fn();
+    const api = createMockApiClient({ connections: { getById } });
+
+    renderWithProviders(
+      <ConnectionEntityLabel connectionId="ol_connection_abc" name={null} loading />,
+      { apiClient: api },
+    );
+
+    expect(screen.getByText('…')).toHaveAttribute('aria-busy', 'true');
+    expect(getById).not.toHaveBeenCalled();
+  });
+
   it('falls back to Unknown when the API errors', async () => {
     const api = createMockApiClient({
       connections: {

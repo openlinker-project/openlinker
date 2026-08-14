@@ -23,6 +23,22 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## A supplementary write added inside an existing per-item sync loop must degrade, never abort
+
+**Context**: #2024 extends the existing #816 `marketplace.offer.statusSync` per-offer loop to also persist a commercial (price/quantity) observation, reusing the same fetched object rather than a second marketplace call.
+**Problem**: The first cut called the new write unguarded inside the loop. A single throw (an unvalidated marketplace-supplied string hitting a `numeric` column, a unique-constraint race with a concurrent `refreshOne`) aborted every remaining offer's **status** update for that page too, and skipped the `nextOffset` cursor advance — so the next tick re-read the same page, hit the same poison offer, and wedged that connection's status sync permanently. The repo already had this exact precedent (the Smart-classification readback, "must not fail the offer-creation job") and repeated the mistake anyway.
+**Rule**: When bolting a second, non-essential write onto an existing per-item loop, wrap it in its own try/catch that warn-logs and continues — never let it propagate into the loop's control flow. Verify with a test that asserts the *primary* write still happened and the cursor still advanced when the secondary write throws, not just that the secondary write's own effect is absent.
+**Applies to**: any application service that adds work inside `libs/core/src/**/application/services/*-sync.service.ts`'s per-item loop.
+**Source**: #2024 (found reviewing PR #2035).
+
+## Guard a numeric field from untyped wire JSON with `typeof` + `Number.isFinite`, never a bare `=== undefined` check
+
+**Context**: #2024's Erli adapter projected a marketplace price with `if (product.price === undefined) return null`.
+**Problem**: A JSON `null` (not `undefined`) slips past that guard, and `null / 100` evaluates to `0` — persisting a fabricated `"0.00"` price for an offer that is not actually free. There is no finite check either: a non-numeric value produces `NaN`, and Postgres `numeric` accepts the string `'NaN'` silently, so it stores rather than erroring. Separately, `typeof x === 'number'` alone still admits `Infinity` — reachable from `JSON.parse('{"a":1e999}')` — so an `Infinity` quantity would pass too.
+**Rule**: For a numeric value read off untyped wire JSON, guard with `typeof x === 'number' && Number.isFinite(x)`, and treat `null`/`undefined`/non-numeric/`NaN`/`Infinity` uniformly as "absent" rather than coercing to `0`. A sparse marketplace response must persist as "not reported," never as a fabricated zero — an operator cannot tell a real `0` apart from a missing read.
+**Applies to**: any adapter mapping a numeric field from a raw marketplace/shop API response, especially one persisted downstream.
+**Source**: #2024 (found reviewing PR #2035); the Allegro side of the same adapter pair needed the identical fix.
+
 ## Never copy another platform's `defaultRateLimit` figure — an uncalibrated manifest default is a silent throughput regression
 
 **Context**: Each #1810 Phase 5 adopter wires its HTTP client to `HostServices.http`, and may declare an `AdapterMetadata.defaultRateLimit` as the fallback when a connection has no explicit `config.rateLimit`.
