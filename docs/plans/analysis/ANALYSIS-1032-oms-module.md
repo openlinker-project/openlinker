@@ -170,11 +170,21 @@ mechanics (bins, putaway, cycle counts, slotting), customer master beyond projec
 
 **Narrowed after a stress test — see § 6J.** A change is
 `PENDING | REQUESTED → CONFIRMED | DECLINED | CANCELED`, carrying `requested_by` / `confirmed_by` /
-`declined_reason`, timestamps, and an `applied` boolean, with a **partial unique index** enforcing one
-open change per order (OL runs concurrent workers, so an application guard would be a race).
+`declined_reason`, timestamps, and an `applied` boolean, with a **partial unique index** scoped to
+`(orderId, targetRef)` — **not** to the order alone (OL runs concurrent workers, so an application
+guard would be a race).
 
-`applied` becomes the single at-most-once primitive, replacing the three hand-rolled claims
-(`waybillRelayedAt`, `isFirstDispatchTransition`, `cancelledAt` COALESCE).
+> **Two corrections from PR review.** (1) The index was originally scoped **per order**, and
+> `applied` was claimed to replace three hand-rolled at-most-once claims. Both fail together:
+> `Shipment.waybillRelayedAt` is **per shipment** (`UQ_shipments_branch_one_per_order_conn` is partial
+> on `(orderId, connectionId)`, and an order carries several shipments), so per-order uniqueness would
+> serialize an order's own shipments; and that marker is claimed *conditionally with
+> release-on-failure*, which a one-way boolean cannot express. **The consolidation claim is
+> withdrawn** — the shipping claims stay as they are. (2) A `REQUESTED` change that is never answered
+> had no terminal path, so under the index one hung remote call left the target **permanently
+> unmutable**. `EXPIRED` is now part of the state set, terminalised by the driving job reaching `dead`
+> ([ADR-007](../../architecture/adrs/007-syncjob-status-vs-outcome-split.md)). See
+> [ADR-044](../../architecture/adrs/044-order-changeset-proposed-then-confirmed.md).
 
 **Deferred:** the actions table, the action registry, and the replay function. Every mutation OL can
 actually perform is a **single action against a single reference**; `ordering`, replay and a
