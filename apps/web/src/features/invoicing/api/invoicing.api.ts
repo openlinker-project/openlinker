@@ -10,6 +10,7 @@
  *   - `POST /invoices/:invoiceId/correct` (correction — #1241)
  *   - `GET /invoices/:invoiceId/upo` (UPO blob — #1234)
  *   - `GET /invoices/:invoiceId/document?kind=source|rendered` (FA(3) doc — W3 #1231)
+ *   - `GET /invoices/:invoiceId/content` (issued-document content — #2076)
  *
  * @module apps/web/src/features/invoicing/api
  */
@@ -19,6 +20,7 @@ import type {
   InvoiceFilters,
   InvoicePagination,
   InvoiceRecord,
+  IssuedDocumentContent,
   IssueCorrectionInput,
   IssueInvoiceInput,
   PaginatedInvoices,
@@ -78,6 +80,18 @@ export interface InvoicingApi {
    * content type is provider-defined.
    */
   downloadDocument: (invoiceId: string, kind: 'source' | 'rendered') => Promise<Blob>;
+  /**
+   * `GET /invoices/{invoiceId}/content` — the issued-document content snapshot
+   * captured at issue time. Consumed by the correction line picker (#2076):
+   * its `lines` are index-aligned with the server-side `issuedLineSnapshot`
+   * that `originalLineNumber` addresses.
+   *
+   * **409 is an expected outcome**, not a failure to retry — the invoice
+   * carries no content snapshot (still pending, an adapter that captured none,
+   * or a row predating the column). Callers degrade rather than surface an
+   * error.
+   */
+  getContent: (invoiceId: string) => Promise<IssuedDocumentContent>;
 }
 
 interface ApiRequest {
@@ -116,6 +130,11 @@ export function createInvoicingApi(request: ApiRequest, requestBlob: ApiBlobRequ
     },
     getById(invoiceId): Promise<InvoiceRecord> {
       return request<InvoiceRecord>(`/invoices/${encodeURIComponent(invoiceId)}`);
+    },
+    getContent(invoiceId): Promise<IssuedDocumentContent> {
+      return request<IssuedDocumentContent>(
+        `/invoices/${encodeURIComponent(invoiceId)}/content`,
+      );
     },
     list(filters, pagination): Promise<PaginatedInvoices> {
       return request<PaginatedInvoices>(`/invoices${buildQuery(filters, pagination)}`);

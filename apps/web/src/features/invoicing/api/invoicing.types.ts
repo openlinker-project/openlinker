@@ -253,3 +253,49 @@ export interface IssueCorrectionInput {
   lines: CorrectionLineInput[];
   idempotencyKey?: string;
 }
+
+/**
+ * One line of the issued-document content snapshot (#2076).
+ *
+ * Mirrors the API's `LineDto`. **Positionally significant**: index `i` here is
+ * the same line as `issuedLineSnapshot.lines[i]` server-side, which is what
+ * `CorrectionLineInput.originalLineNumber` (1-based) addresses. Both are built
+ * from the same array in the same `InvoiceService` call — see the plan for
+ * #2076 for the two call sites that guarantee it.
+ *
+ * Note `unitNet` is NET while a correction's `newUnitPriceGross` is GROSS —
+ * never show one beside an input labelled the other.
+ */
+export interface IssuedDocumentLine {
+  name: string;
+  quantity: number;
+  /** NET unit price. Not the unit a correction asks for — see the type doc. */
+  unitNet: number;
+  /** Neutral tax-rate string code (e.g. `23`, `zw`). */
+  taxRate: string;
+  net: number;
+  tax: number;
+  /** GROSS line total (quantity × unit gross). */
+  gross: number;
+}
+
+/**
+ * `GET /invoices/:invoiceId/content` response (#2076 consumes the lines).
+ *
+ * Only the fields this feature reads are typed; the endpoint also returns
+ * seller / buyer / VAT breakdown / totals / payment, which no current consumer
+ * needs. Widen deliberately rather than by reflex.
+ */
+export interface IssuedDocumentContent {
+  lines: IssuedDocumentLine[];
+  /**
+   * True when a correction will index exactly these `lines` (#2076).
+   *
+   * `documentContent` and `issuedLineSnapshot` are separate server-side columns
+   * from separate migrations, so an invoice issued between those deploys has
+   * content but no snapshot — and a correction then rebuilds the original
+   * document from the order's CURRENT state, a different array. A picker MUST
+   * treat these lines as non-authoritative when this is false.
+   */
+  linesIndexedByCorrection: boolean;
+}

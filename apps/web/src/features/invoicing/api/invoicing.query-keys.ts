@@ -10,6 +10,7 @@ export const invoicingQueryKeys = {
   forOrder: (orderId: string, connectionId: string) =>
     ['invoicing', 'order', orderId, connectionId] as const,
   detail: (invoiceId: string) => ['invoicing', 'detail', invoiceId] as const,
+  content: (invoiceId: string) => ['invoicing', 'content', invoiceId] as const,
   list: (filters?: InvoiceFilters, pagination?: InvoicePagination) =>
     ['invoicing', 'list', filters ?? {}, pagination ?? {}] as const,
 };

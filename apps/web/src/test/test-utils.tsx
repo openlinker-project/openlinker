@@ -263,6 +263,16 @@ export function createMockApiClient(
       downloadDocument: vi
         .fn()
         .mockResolvedValue(new Blob([''], { type: 'text/html' })),
+      // #2076 — 409 default ("no content snapshot for this invoice"), mirroring
+      // the real endpoint's terminal 409 and the `getForOrder` 404 precedent
+      // above. This puts correction-flow tests on the picker's manual-entry
+      // FALLBACK deliberately rather than by accident; a test that wants the
+      // line picker overrides `invoicing.getContent` with real lines.
+      getContent: vi
+        .fn()
+        .mockRejectedValue(
+          new ApiError('No content snapshot', 409, { message: 'No content snapshot' }),
+        ),
       ...overrides.invoicing,
     } as ApiClient['invoicing'],
     orders: {
