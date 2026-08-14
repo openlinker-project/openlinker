@@ -25,7 +25,7 @@ import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { useMediaQuery } from '../../shared/ui/use-media-query';
 import { usePlatforms } from '../../shared/plugins';
-import { resolvePlatformLabel } from '../../features/mappings';
+import { findPlatformDisplayName, resolvePlatformLabel } from '../../features/mappings';
 import {
   deriveStockStatus,
   STOCK_STATUS_BADGE_TONE,
@@ -216,7 +216,15 @@ function VariantCoverage({
       ? listedConnections.map((connection) => {
           const soleOfPlatform =
             connections.filter((c) => c.platformType === connection.platformType).length === 1;
-          const label = soleOfPlatform ? platformLabel(connection.platformType) : connection.name;
+          // Same fallback as the other two renderings of this pill
+          // (`listings-coverage-pills.tsx`, `product-row-detail.tsx`): with no
+          // registered platform, the operator-authored connection name beats a
+          // lowercase slug. Before #2088 this one site disagreed with its two
+          // siblings, so the same variant read `My Shopify Store` on the products
+          // list and `shopify` on the product detail page.
+          const label = soleOfPlatform
+            ? (findPlatformDisplayName(platforms, connection) ?? connection.name)
+            : connection.name;
           return { key: connection.id, label, channel: connection.platformType };
         })
       : listings.map((listing) => ({

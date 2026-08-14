@@ -55,7 +55,27 @@ export function findPlatformDisplayName(
   return platforms.find((p) => p.platformType === platformType)?.displayName;
 }
 
-/** The lookup plus the app-wide fallback: the raw `platformType`. */
+/**
+ * The lookup plus the app-wide fallback: the raw `platformType`.
+ *
+ * **Why raw and not title-cased.** The dashboard used to capitalise its own
+ * fallback (`woocommerce` → `Woocommerce`), and #2088 deleted that rather than
+ * promoting it, deliberately. Title-casing a slug manufactures a plausible but
+ * WRONG brand name for exactly the platforms whose names are not one word —
+ * `Woocommerce`, `Bigcommerce`, `Prestashop` — so it reads as a product name
+ * while being incorrect. A raw slug reads as an unresolved identifier, which is
+ * what it is: the fallback only fires when no plugin declares the platform,
+ * i.e. a misconfiguration, and an ops surface should show that rather than
+ * disguise it. #2088's AC states it as "renders the raw string rather than
+ * blank".
+ *
+ * The cost, accepted: `amazon` and `shopify` had hand-written Title Case in the
+ * Orders list's deleted `CHANNEL_LABELS` map and now render raw. Neither has a
+ * backend adapter, so no shipped connection can reach it. A site that has a
+ * `Connection` in hand and wants something friendlier than a slug should use
+ * `findPlatformDisplayName(...) ?? connection.name` instead — the operator's own
+ * name for the destination beats both a slug and a mis-cased brand.
+ */
 export function resolvePlatformLabel(
   platforms: readonly PlatformLike[],
   platform: string | ConnectionLike,

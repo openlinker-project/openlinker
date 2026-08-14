@@ -911,6 +911,11 @@ export function OrdersListPage(): ReactElement {
     [
       locale,
       platformByConnection,
+      // `channelLabel` closes over the plugin registry as of #2088. The registry
+      // array is referentially stable (a provider-level memo over a module
+      // constant), so listing it costs no rebuild — but that invariant lives two
+      // files away, and a stale closure here would render stale channel labels.
+      platforms,
       retryMutation.isPending,
       retryMutation.variables,
       retryWrite.visible,
