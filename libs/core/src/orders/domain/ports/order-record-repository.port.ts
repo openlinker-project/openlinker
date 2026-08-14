@@ -50,6 +50,16 @@ export interface OrderRecordRepositoryPort {
    * zero matching rows is simply absent from the returned Map (mirrors
    * {@link findByIds}); callers treat a missing key as "no orders yet",
    * distinct from a present key whose value is merely old.
+   *
+   * Deliberately unfiltered by `recordStatus`: every row this connection has
+   * ever ingested — including `source_deleted` / `awaiting_mapping` /
+   * `failed` rows — reflects a real order that was placed, so it counts
+   * toward "how far back this connection's data goes". This is a
+   * coverage/freshness fact, not a revenue or health figure — unlike
+   * {@link getFailedSyncValueSummary}'s `NOT_MAPPING_OR_DELETED` gate, which
+   * exists to keep administrative buckets out of a *value* sum, no such gate
+   * applies here. Mirrors the already-documented decision to also include
+   * cancelled orders.
    */
   findEarliestPlacedAtByConnection(connectionIds: string[]): Promise<Map<string, Date>>;
 

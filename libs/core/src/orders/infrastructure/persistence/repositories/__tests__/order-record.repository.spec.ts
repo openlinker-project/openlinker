@@ -240,6 +240,24 @@ describe('OrderRecordRepository', () => {
       expect(result.has('conn-with-no-orders')).toBe(false);
       expect(result.size).toBe(0);
     });
+
+    it('should not filter by recordStatus — every row (source_deleted, awaiting_mapping, failed, cancelled) counts toward the earliest date', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere,
+        groupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.findEarliestPlacedAtByConnection(['conn-a']);
+
+      // This is a coverage/freshness fact, not a health or revenue figure —
+      // no NOT_MAPPING_OR_DELETED-style gate applies (#2083 review finding).
+      expect(andWhere).not.toHaveBeenCalled();
+    });
   });
 
   describe('upsert', () => {

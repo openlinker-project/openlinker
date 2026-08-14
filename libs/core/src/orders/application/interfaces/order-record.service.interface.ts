@@ -120,6 +120,10 @@ export interface IOrderRecordService {
    * callers go through this service method instead of
    * `OrderRecordRepositoryPort.findEarliestPlacedAtByConnection` directly.
    * A connection absent from the returned Map has zero ingested orders.
+   * Deliberately includes every `recordStatus` (including `source_deleted` /
+   * `awaiting_mapping` / `failed` / cancelled) — a coverage/freshness fact
+   * about the connection's oldest ingested order, not a health or revenue
+   * figure, so no administrative-bucket exclusion applies.
    */
   getEarliestOrderDateByConnection(connectionIds: string[]): Promise<Map<string, Date>>;
 

@@ -85,7 +85,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * Batch earliest-order-date lookup by source connection (#2083). One
    * `GROUP BY` aggregate query, not a per-connection fan-out — mirrors
    * `findByIds`'s "absent id = no match" convention for connections with
-   * zero rows.
+   * zero rows. Deliberately unfiltered by `recordStatus` — see the port's
+   * JSDoc for why no `NOT_MAPPING_OR_DELETED`-style gate applies here.
    */
   async findEarliestPlacedAtByConnection(connectionIds: string[]): Promise<Map<string, Date>> {
     if (connectionIds.length === 0) {
