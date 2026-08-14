@@ -271,18 +271,54 @@ describe('InvoicesListPage', () => {
           total: 1,
         }),
       );
-      renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+      const rendered = renderWithProviders(<InvoicesListPage />, {
+        apiClient: mockApi(list),
+        route: '/invoices',
+      });
 
+      const { container } = rendered;
       expect(await screen.findByText('Not yet issued')).toBeInTheDocument();
       expect(screen.queryByRole('table')).toBeNull();
-      // The order is the card's subtitle, as the shared cell — never a raw id.
-      expect(screen.getByRole('link', { name: '6839-2911-4402' })).toBeInTheDocument();
+      // Same facts as the desktop columns, never a raw id.
+      expect(screen.getByText(/6839-2911-4402/)).toBeInTheDocument();
       expect(
         screen.queryByText('ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9'),
       ).toBeNull();
+
+      // `DataTableCard` wraps title + subtitle in the row's `<Link>`, so the card
+      // renderers must be text-only: an `<a>` or `<button>` in there is invalid
+      // AND its click bubbles to the card link, so the control navigates instead
+      // of doing its job.
+      const cardMain = container.querySelector('.data-table__card-main');
+      expect(cardMain).not.toBeNull();
+      expect((cardMain as HTMLElement).querySelector('a, button')).toBeNull();
     } finally {
       viewport.restore();
     }
+  });
+
+  it('keeps the document number copyable when the provider pdf url is not http(s)', async () => {
+    // `InvoicePdfLink` renders an anchor only for a safe http(s) URL and nothing
+    // validates the scheme server-side, so branching on `pdfUrl` truthiness left a
+    // relative or garbage URL rendering inert plain text — the exact state the
+    // Copy fallback exists to remove.
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+
+    const list = vi.fn().mockResolvedValue(
+      makeEnvelope({
+        items: [
+          makeInvoice({ pdfUrl: 'javascript:alert(1)', providerInvoiceNumber: 'FV/2026/08/0042' }),
+        ],
+        total: 1,
+      }),
+    );
+    renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+    expect(
+      await screen.findByRole('button', { name: 'Copy document number FV/2026/08/0042' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /open invoice pdf/i })).toBeNull();
   });
 
   it('shows the connection loading state rather than Unknown on a cold load', async () => {

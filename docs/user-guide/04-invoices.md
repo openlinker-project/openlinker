@@ -34,7 +34,7 @@ Open **Invoices** in the sidebar (under **Operations**).
 | Column | Description |
 |---|---|
 | **Order** | The marketplace order number the invoice was issued for, linked to the order, over the first item name and a `+N` count. **Copy** writes the full internal order ID (`ol_order_*`) — the button says so. When the order can't be resolved the number falls back to a shortened internal ID, still linked. |
-| **Document type** | Two lines: the provider-assigned document number over the document type (`Invoice (faktura)`, `Receipt (paragon)`, `Correction (korekta)`, `Credit note (nota kredytowa)`, `Proforma`, `Prepayment`). The number links to the PDF when the provider ships one, and is copyable when it doesn't (KSeF and inFakt ship no PDF URL). A record that hasn't been issued yet has no number and no type, so it reads `—` over **Not yet issued**. |
+| **Document type** | Two lines: the provider-assigned document number over the document type (`Invoice (faktura)`, `Receipt (paragon)`, `Correction (korekta)`, `Credit note (nota kredytowa)`, `Proforma (faktura pro forma)`, `Prepayment (faktura zaliczkowa)`). The number links to the PDF when the provider ships one, and is copyable when it doesn't (KSeF and inFakt ship no PDF URL). A record that hasn't been issued yet has no number and no type, so it reads `—` over **Not yet issued**. |
 | **Status** | Derived display status — see **Invoice statuses** below |
 | **Regulatory** | Clearance status with the connected tax authority, when applicable |
 | **Clearance ref.** | The authority-assigned reference (e.g. KSeF number), once cleared |

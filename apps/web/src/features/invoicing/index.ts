@@ -7,8 +7,11 @@
  * components (status badges, PDF link), and the runtime value arrays used for
  * filter guards on the list page.
  *
- * `resolveIssueErrorMessage`, `DocumentTypeSelect`, and `DOCUMENT_TYPE_LABEL_FALLBACK`
- * stay internal (only used by the panel itself or tests that deep-import them).
+ * `resolveIssueErrorMessage` and `DocumentTypeSelect` stay internal (only used by
+ * the panel itself or tests that deep-import them). Its two label maps do NOT:
+ * the invoices list, the invoice detail page and `OrderInvoicePanel` all render a
+ * `documentType`, so `DOCUMENT_TYPE_LABEL_FALLBACK` / `DOCUMENT_TYPE_UNKNOWN_LABEL`
+ * are exported to keep that one map the single source of truth (#2090).
  *
  * Exception: `RegulatoryStatusBadge` and `regCardToneFor` are exported so
  * per-provider `invoiceDetailSection` slot components (KSeF, Subiekt,

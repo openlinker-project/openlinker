@@ -44,6 +44,8 @@ import { Select } from '../../shared/ui/select';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { CopyableId } from '../../shared/ui/copyable-id';
 import { EmptyValue } from '../../shared/ui/empty-value';
+import { isSafeHttpUrl } from '../../shared/lib/is-safe-http-url';
+import { shortenId } from '../../shared/ui/entity-label';
 import { useTranslation } from '../../shared/i18n';
 import {
   deriveInvoiceDisplayStatus,
@@ -152,12 +154,13 @@ export function InvoicesListPage(): ReactElement {
     return (
       <span className="invoice-document-cell">
         {r.providerInvoiceNumber ? (
-          // Still a PDF link when the provider gave us a URL. KSeF and inFakt
-          // both hard-null `pdfUrl`, and `InvoicePdfLink` degrades to plain text
-          // there — so the number, the string this workflow is organised around,
-          // was the one identifier on the row with no affordance at all. Copy is
-          // that affordance on the degraded path.
-          r.pdfUrl ? (
+          // `isSafeHttpUrl`, not `r.pdfUrl` truthiness: `InvoicePdfLink` renders an
+          // anchor only for an http(s) URL, and nothing validates the scheme
+          // server-side — so branching on truthiness left a relative or garbage
+          // URL rendering inert plain text, which is the very state this branch
+          // exists to remove. KSeF and inFakt hard-null `pdfUrl` outright, so the
+          // Copy path is the common one, not the exception.
+          r.pdfUrl !== null && isSafeHttpUrl(r.pdfUrl) ? (
             <InvoicePdfLink invoiceNumber={r.providerInvoiceNumber} pdfUrl={r.pdfUrl} />
           ) : (
             <CopyableId
@@ -175,6 +178,35 @@ export function InvoicesListPage(): ReactElement {
         </span>
       </span>
     );
+  };
+
+  // `DataTableCard` wraps `title` + `subtitle` in the row's `<Link>` whenever
+  // `rowHref` is set (`data-table.tsx`), and this page always sets it. So the CARD
+  // gets text-only renderers: putting the desktop cells there nested an `<a>` and
+  // two `<button>`s inside an anchor — invalid, and worse, the clicks bubbled to
+  // the card link, so the PDF number navigated to the invoice instead of opening
+  // the PDF and both Copy buttons copied AND navigated away. #2089 never hit this
+  // because Shipments uses `expandable` and passes no `rowHref`.
+  //
+  // Same facts, same single-sourced label — just no affordances, which the card
+  // does not need: the whole card already navigates to the document.
+  const renderDocumentCardTitle = (r: InvoiceRecord): ReactElement => (
+    <span className="invoice-document-cell">
+      {r.providerInvoiceNumber ? (
+        <span className="mono-text">{r.providerInvoiceNumber}</span>
+      ) : (
+        <EmptyValue />
+      )}
+      <span className="text-muted invoice-document-cell__type">{documentTypeLabel(r)}</span>
+    </span>
+  );
+
+  const renderOrderCardSubtitle = (r: InvoiceRecord): string => {
+    const number = r.orderSummary?.orderNumber?.trim();
+    // Never the raw 41-character id — the shortened form is the point of #2090.
+    const identity = number || shortenId(r.orderId);
+    const item = r.orderSummary?.firstItemName?.trim();
+    return item ? `${identity} · ${item}` : identity;
   };
 
   const renderOrderCell = (r: InvoiceRecord): ReactElement => (
@@ -566,10 +598,10 @@ export function InvoicesListPage(): ReactElement {
             rowKey={(r) => r.id}
             rowHref={(r) => `/invoices/${r.id}`}
             cardView={{
-              // Same two renderers as the desktop columns — the document is what
-              // titles an invoice card, the order is what qualifies it.
-              title: renderDocumentCell,
-              subtitle: renderOrderCell,
+              // Text-only, deliberately — see `renderDocumentCardTitle`. Same
+              // facts as the desktop columns, no nested interactive content.
+              title: renderDocumentCardTitle,
+              subtitle: renderOrderCardSubtitle,
               meta: (r) => <InvoiceStatusBadge status={deriveInvoiceDisplayStatus(r)} />,
             }}
           />
