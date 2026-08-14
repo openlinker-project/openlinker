@@ -281,6 +281,9 @@ describe('InvoicesListPage', () => {
       expect(screen.queryByRole('table')).toBeNull();
       // Same facts as the desktop columns, never a raw id.
       expect(screen.getByText(/6839-2911-4402/)).toBeInTheDocument();
+      // …and shortened by the SAME rule as the desktop cell: Allegro's
+      // `orderNumber` is a 36-character `checkoutFormId` handed to this page raw.
+      expect(screen.queryByText(/d1f4a2c3-9b8e-4f7a-a1b2-c3d4e5f60789/)).toBeNull();
       expect(
         screen.queryByText('ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9'),
       ).toBeNull();
@@ -319,6 +322,35 @@ describe('InvoicesListPage', () => {
       await screen.findByRole('button', { name: 'Copy document number FV/2026/08/0042' }),
     ).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /open invoice pdf/i })).toBeNull();
+  });
+
+  it('shortens a long order number on the mobile card, matching the desktop cell', async () => {
+    const viewport = mockMobileViewport();
+    try {
+      const list = vi.fn().mockResolvedValue(
+        makeEnvelope({
+          items: [
+            makeInvoice({
+              orderSummary: {
+                orderNumber: 'd1f4a2c3-9b8e-4f7a-a1b2-c3d4e5f60789',
+                firstItemName: null,
+                firstItemImageUrl: null,
+                itemCount: 1,
+              },
+            }),
+          ],
+          total: 1,
+        }),
+      );
+      renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+      // `formatOrderRef`'s head-tail form, the same shortening the desktop cell
+      // applies — the card reimplementing identity resolution is how it drifted.
+      expect(await screen.findByText('d1f4a2c3…f60789')).toBeInTheDocument();
+      expect(screen.queryByText('d1f4a2c3-9b8e-4f7a-a1b2-c3d4e5f60789')).toBeNull();
+    } finally {
+      viewport.restore();
+    }
   });
 
   it('shows the connection loading state rather than Unknown on a cold load', async () => {

@@ -8,10 +8,12 @@
  * filter guards on the list page.
  *
  * `resolveIssueErrorMessage` and `DocumentTypeSelect` stay internal (only used by
- * the panel itself or tests that deep-import them). Its two label maps do NOT:
- * the invoices list, the invoice detail page and `OrderInvoicePanel` all render a
- * `documentType`, so `DOCUMENT_TYPE_LABEL_FALLBACK` / `DOCUMENT_TYPE_UNKNOWN_LABEL`
- * are exported to keep that one map the single source of truth (#2090).
+ * the panel itself or tests that deep-import them). Its `documentType` labels do
+ * NOT: three surfaces render one — the invoices list, the invoice detail page and
+ * `OrderInvoicePanel` — so `DOCUMENT_TYPE_LABEL_FALLBACK` (the map) and
+ * `DOCUMENT_TYPE_UNKNOWN_LABEL` (the not-yet-issued string) are exported to keep
+ * that map the single source of truth (#2090). The detail page still reaches it by
+ * deep path; migrating that call site is a follow-up, not a blocker.
  *
  * Exception: `RegulatoryStatusBadge` and `regCardToneFor` are exported so
  * per-provider `invoiceDetailSection` slot components (KSeF, Subiekt,

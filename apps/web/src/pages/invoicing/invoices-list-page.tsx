@@ -18,8 +18,11 @@
  *   - Order column -> the shared `OrderIdentityCell`, fed from `orderSummary`
  *   - Connection column -> the shared `ConnectionCell` (no adornment), replacing
  *     an id hidden in a `title` attribute
- *   - Both cells rendered by ONE local function each, shared with `cardView`, so
- *     the mobile card cannot drift back to printing a raw order UUID
+ *   - One desktop renderer and one CARD renderer per identity fact. They cannot
+ *     be the same function: `DataTableCard` wraps title + subtitle in the row's
+ *     `<Link>` (this page sets `rowHref`), so the card's versions are text-only.
+ *     Both share the label helper and the same shortening, so neither can drift
+ *     back to printing a raw order UUID.
  *
  * Structural mirror: `pages/webhook-deliveries/webhook-deliveries-page.tsx`
  * (layout, pagination, DataTable + cardView, feedback states, setFilter/setOffset
@@ -66,7 +69,7 @@ import {
   DOCUMENT_TYPE_UNKNOWN_LABEL,
 } from '../../features/invoicing';
 import { ConnectionCell, useConnectionsQuery } from '../../features/connections';
-import { OrderIdentityCell } from '../../features/orders';
+import { OrderIdentityCell, formatOrderRef } from '../../features/orders';
 
 const PAGE_SIZE = 20;
 
@@ -133,11 +136,16 @@ export function InvoicesListPage(): ReactElement {
     [connections],
   );
 
-  // ONE renderer per identity fact, used by both the desktop column and the
-  // mobile card. The card used to headline `providerInvoiceNumber ?? r.orderId`,
-  // i.e. the raw 41-character UUID this issue exists to remove, on every row
-  // without a provider number — which is every pending / issuing / failed row.
-  // Functions rather than two matching call sites, mirroring #2089.
+  // Two renderers per identity fact: one for the desktop column, one text-only
+  // for the mobile card (see `renderDocumentCardTitle` for why they cannot be the
+  // same function). The card used to headline `providerInvoiceNumber ?? r.orderId`
+  // — the raw 41-character UUID this issue exists to remove — on every row without
+  // a provider number, i.e. every pending / issuing / failed row.
+  //
+  // What IS single-sourced across the pair: the document-type label
+  // (`documentTypeLabel`) and the order-number shortening (`formatOrderRef`,
+  // exported from `features/orders` for exactly this reason). Those are the two
+  // places the desktop and card renderings could silently disagree.
   const documentTypeLabel = (r: InvoiceRecord): string =>
     r.documentType
       ? t(
@@ -203,8 +211,10 @@ export function InvoicesListPage(): ReactElement {
 
   const renderOrderCardSubtitle = (r: InvoiceRecord): string => {
     const number = r.orderSummary?.orderNumber?.trim();
-    // Never the raw 41-character id — the shortened form is the point of #2090.
-    const identity = number || shortenId(r.orderId);
+    // `formatOrderRef` / `shortenId`, never a raw id: the desktop cell shortens
+    // both halves, and Allegro's `orderNumber` IS a 36-character `checkoutFormId`
+    // that `buildOrderSummary` hands this page raw.
+    const identity = number ? formatOrderRef(number) : shortenId(r.orderId);
     const item = r.orderSummary?.firstItemName?.trim();
     return item ? `${identity} · ${item}` : identity;
   };

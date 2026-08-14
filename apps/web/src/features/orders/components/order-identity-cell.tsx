@@ -179,6 +179,12 @@ const ORDER_REF_MAX_LENGTH = 18;
  * Shorten a long order reference to a `head…tail` form so line 1 reads as a
  * reference; short numbers (most shops) pass through untouched.
  *
+ * Exported since #2090: a surface that must render this identity as PLAIN TEXT
+ * (the invoices mobile card, whose title and subtitle sit inside the row's own
+ * `<Link>` and so cannot carry this cell's link and Copy button) needs the same
+ * shortening, or an Allegro-sourced row prints a 36-character UUID on the card
+ * while the desktop column shortens it.
+ *
  * Absorbed from the Orders page's own `formatOrderRef` (which #2091 deletes) so
  * all three lists shorten identically. It is not optional cosmetics: Allegro's
  * `orderNumber` IS its `checkoutFormId`, a 36-character UUID, and
@@ -189,7 +195,7 @@ const ORDER_REF_MAX_LENGTH = 18;
  * The marketplace itself is conveyed by each list's own Channel column, so no
  * channel prefix is added here.
  */
-function formatOrderRef(orderNumber: string): string {
+export function formatOrderRef(orderNumber: string): string {
   if (orderNumber.length <= ORDER_REF_MAX_LENGTH) return orderNumber;
   return `${orderNumber.slice(0, 8)}…${orderNumber.slice(-6)}`;
 }
