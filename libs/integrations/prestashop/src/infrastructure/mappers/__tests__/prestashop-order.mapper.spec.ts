@@ -7,6 +7,7 @@
  * @module libs/integrations/prestashop/src/infrastructure/mappers/__tests__
  */
 import { PrestashopOrderMapper } from '../prestashop-order.mapper';
+import { PrestashopParseException } from '../../../domain/exceptions/prestashop-parse.exception';
 import type { PrestashopOrder, PrestashopOrderRow } from '../prestashop.mapper.interface';
 import type { OrderCreate } from '@openlinker/core/orders';
 
@@ -247,6 +248,100 @@ describe('PrestashopOrderMapper', () => {
       const result = mapper.mapOrder(prestashopOrder, orderRows);
 
       expect(result.items[0].variantId).toBeUndefined();
+    });
+
+    // #2068 — the line id was `String(row.id || index)`, which fell back to the row's array
+    // POSITION. That id is persisted into the order snapshot, rendered to operators and used as a
+    // React row key, so a positional or colliding value is a live defect, not a cosmetic one.
+    describe('line id (#2068)', () => {
+      const orderFor = (): PrestashopOrder => ({
+        id: '42',
+        reference: 'ORDER-042',
+        current_state: '2',
+        total_paid: '10.00',
+        total_paid_tax_excl: '10.00',
+        total_paid_tax_incl: '10.00',
+        total_shipping: '0.00',
+        date_add: '2024-01-01 10:00:00',
+        date_upd: '2024-01-01 10:00:00',
+      });
+
+      const rowWith = (id: unknown): PrestashopOrderRow =>
+        ({
+          id,
+          id_order: '42',
+          product_id: '10',
+          product_attribute_id: '0',
+          product_quantity: '1',
+          product_price: '10.00',
+          product_reference: 'PROD-001',
+        }) as PrestashopOrderRow;
+
+      it('should use the row id when it is 0 rather than falling through to the index', () => {
+        // The 0-id row is deliberately NOT first: at position 0 the old `row.id || index`
+        // expression also yields "0", so a leading row is what makes this a real guard.
+        const rows = [rowWith('9'), rowWith(0)];
+
+        const result = mapper.mapOrder(orderFor(), rows);
+
+        // `||` treated a legitimate id of 0 as absent and substituted the index (1); `??` does not.
+        expect(result.items[1].id).toBe('0');
+      });
+
+      it('should not produce colliding ids when one row id is 0', () => {
+        // Under the old expression these both mapped to "1": row 0 kept its id, and row 1's
+        // falsy 0 fell through to its index of 1.
+        const rows = [rowWith('1'), rowWith(0)];
+
+        const result = mapper.mapOrder(orderFor(), rows);
+
+        expect(result.items.map((item) => item.id)).toEqual(['1', '0']);
+      });
+
+      it('should map the same payload to the same ids on a later poll', () => {
+        const rows = [rowWith('7'), rowWith('9')];
+
+        const first = mapper.mapOrder(orderFor(), rows);
+        // A later poll returns the same lines in a different order — ids must follow the row,
+        // not the position.
+        const reordered = [rowWith('9'), rowWith('7')];
+        const second = mapper.mapOrder(orderFor(), reordered);
+
+        expect(first.items.map((i) => i.id).sort()).toEqual(second.items.map((i) => i.id).sort());
+        expect(second.items.map((i) => i.id)).toEqual(['9', '7']);
+      });
+
+      it('should read the XML attribute id shape when the id is not a child element', () => {
+        const rows = [rowWith(undefined)];
+        (rows[0] as Record<string, unknown>)['@_id'] = 13;
+
+        const result = mapper.mapOrder(orderFor(), rows);
+
+        expect(result.items[0].id).toBe('13');
+      });
+
+      it('should throw when a row carries no id at all', () => {
+        const rows = [rowWith(undefined)];
+
+        expect(() => mapper.mapOrder(orderFor(), rows)).toThrow(PrestashopParseException);
+      });
+
+      it('should name the order and row position without serialising the row', () => {
+        const rows = [rowWith('1'), rowWith('')];
+
+        try {
+          mapper.mapOrder(orderFor(), rows);
+          throw new Error('expected mapOrder to throw');
+        } catch (error) {
+          const parseError = error as PrestashopParseException;
+          expect(parseError).toBeInstanceOf(PrestashopParseException);
+          expect(parseError.message).toContain('position 1');
+          expect(parseError.message).toContain('42');
+          // The row shape is `[key: string]: unknown` and this message reaches sync-job storage.
+          expect(parseError.message).not.toContain('PROD-001');
+          expect(parseError.responseBody).toBeUndefined();
+        }
+      });
     });
   });
 
