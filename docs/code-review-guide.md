@@ -247,6 +247,23 @@ A comprehensive code review should cover the following areas:
 - [ ] Transaction safety for multi-step operations
   - **Check**: Verify complex operations use transactions
 
+### Cross-context read-model joins (ADR-036)
+
+`scripts/check-cross-context-imports.mjs` walks TypeScript imports, not SQL string literals, so it
+**cannot** see these joins at all. ADR-036 names the reviewer as the only guard - if a diff adds a
+`leftJoin` with a raw table-name string, walk this list:
+
+- [ ] **The joined table belongs to another context.** A same-context table must be joined by its
+  ORM entity class instead, so a rename is a compile-time break. The escape hatch exists to protect
+  an import contract; where there is none it buys only the cost.
+- [ ] **The join is read-only and parameterized** - no write, no value interpolated into the SQL
+  string (bound parameters only).
+- [ ] **A filter/sort/pagination need justifies the join**, not display enrichment alone. Enrichment
+  for its own sake goes through the owning context's `I*Service`. Projecting display columns off a
+  join that a filter already justified is fine (ADR-036 amendment, #2025).
+- [ ] **The join is commented in place, citing ADR-036** and naming the columns it depends on -
+  that comment is the only signal a future reader gets before a silent runtime break.
+
 ## Issue Severity Levels
 
 ### 🔴 Blocking Issues

@@ -76,4 +76,12 @@ export interface OfferStatusSyncResult {
   total: number;
   /** Scan offset to persist for the next run (wraps to 0 at catalog end). */
   nextOffset: number;
+  /** Commercial snapshots written this run (#2024). */
+  commercialUpdated: number;
+  /**
+   * Commercial writes that threw and were swallowed (#2024). Non-zero next to a
+   * healthy `outcome: 'ok'` job is the signal that the price column is going
+   * blank for a systemic reason, not per-offer sparseness.
+   */
+  commercialFailed: number;
 }

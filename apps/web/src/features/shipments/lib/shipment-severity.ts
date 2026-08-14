@@ -9,29 +9,19 @@
  *
  * @module apps/web/src/features/shipments/lib
  */
+import { shortenId } from '../../../shared/ui/entity-label';
 import type { Shipment } from '../api/shipments.types';
 import { isPreWaybill } from './shipment-action-eligibility';
 
-const OL_ID_PATTERN = /^(ol_[a-z][a-z0-9-]*_)(.+)$/;
-
 /**
  * Truncates an order id for use as `EntityLabel`'s `name` (#1826 AC —
- * `EntityLabel` never truncates `name` itself, only its own `id` chip via a
- * private `shortenId`; with `showId={false}` and `name` set to the raw id,
- * the real component would render the full untruncated id as link text,
- * blowing out row density). Mirrors `shortenId`'s own prefix + first-4…last-2
- * algorithm exactly, so both id renderings look consistent.
+ * `EntityLabel` never truncates `name` itself, only its own `id` chip; with
+ * `showId={false}` and `name` set to the raw id, it would render the full
+ * untruncated id as link text, blowing out row density). This was a byte-copy
+ * of that algorithm while `shortenId` was private to `EntityLabel`; #2027
+ * exported it, so the copy is now an alias and the two cannot drift.
  */
-export function truncateOrderId(orderId: string): string {
-  const match = OL_ID_PATTERN.exec(orderId);
-  if (match) {
-    const [, prefix, rest] = match;
-    if (rest.length <= 6) return orderId;
-    return `${prefix}${rest.slice(0, 4)}…${rest.slice(-2)}`;
-  }
-  if (orderId.length <= 14) return orderId;
-  return `${orderId.slice(0, 8)}…${orderId.slice(-4)}`;
-}
+export const truncateOrderId = shortenId;
 
 export type ShipmentSeverity = 'Fix' | 'Finish' | 'Send' | 'View';
 

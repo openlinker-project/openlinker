@@ -26,6 +26,8 @@ describe('MarketplaceOfferStatusSyncHandler', () => {
     notFound: 0,
     total: 50,
     nextOffset: 10,
+    commercialUpdated: 1,
+    commercialFailed: 0,
   };
 
   beforeEach(() => {

@@ -58,12 +58,14 @@ import {
   IDeliveryPriceListService,
   OfferCreationRecordRepositoryPort,
   OfferMappingRepositoryPort,
+  sumOfferLifecycleCounts,
 } from '@openlinker/core/listings';
 import type {
   CategoryParameter,
   CategoryPathSegment,
   OfferCreationRecord,
   OfferManagerPort,
+  OfferMappingListItem,
   OfferPublicationStatusView,
 } from '@openlinker/core/listings';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
@@ -175,7 +177,16 @@ export class ListingsController {
   @ApiOperation({
     summary: 'List offer mappings',
     description:
-      'Returns a paginated list of offer-to-variant mappings. Supports filtering by connectionId, platformType, internalId, and search on externalId.',
+      'Returns a paginated list of offer-to-variant mappings, each enriched in the same query with ' +
+      'catalog identity (product name, variant, SKU, EAN, thumbnail), channel publication status ' +
+      'plus its derived lifecycle bucket, and channel-side price/quantity with their freshness ' +
+      'timestamp. Supports filtering by connectionId, internalId and lifecycle bucket, and a ' +
+      'search spanning product name, variant label, SKU, EAN and externalId. Set ' +
+      '`includeLifecycleCounts` to also get `lifecycleCounts` - one row count per bucket under ' +
+      'the same filters minus the lifecycle narrowing, so the tab bar stays live while a tab is ' +
+      'selected. Off by default (#2032 review thread 3): this endpoint also backs callers that ' +
+      'never render a tab bar (the product drawer, the nav badge probe), and the aggregate is a ' +
+      'second full scan they would otherwise pay for on every call.',
   })
   @ApiResponse({
     status: 200,
@@ -186,16 +197,51 @@ export class ListingsController {
   async listOfferMappings(
     @Query() query: ListOfferMappingsQueryDto
   ): Promise<PaginatedOfferMappingsResponseDto> {
-    const { connectionId, platformType, internalId, search, limit = 20, offset = 0 } = query;
+    const {
+      connectionId,
+      internalId,
+      search,
+      lifecycle,
+      includeLifecycleCounts,
+      limit = 20,
+      offset = 0,
+    } = query;
 
-    const { items, total } = await this.offerMappingRepository.findMany(
-      { connectionId, platformType, internalId, search },
-      { limit, offset }
-    );
+    if (!includeLifecycleCounts) {
+      const { items, total } = await this.offerMappingRepository.findMany(
+        { connectionId, internalId, search, lifecycle },
+        { limit, offset }
+      );
+      return { items: items.map((m) => this.toListDto(m)), total, limit, offset };
+    }
+
+    // Issued together, not sequentially: the counts are a second aggregate over
+    // the same join, so making the operator wait for two round-trips would be
+    // pure latency. `lifecycle` is deliberately NOT forwarded to the counts -
+    // they label every tab, not the selected one.
+    //
+    // `total` is DERIVED from `lifecycleCounts` rather than from a second
+    // `findMany`-owned `getCount()` (#2032 review thread 3) - the five buckets
+    // partition the filtered set (see `OfferLifecycleValues`'s docblock), so
+    // their sum is provably the same number a second `COUNT(DISTINCT)` over
+    // the identical join would return. `findMany` is told to skip its own
+    // count accordingly.
+    const [lifecycleCounts, { items }] = await Promise.all([
+      this.offerMappingRepository.countByLifecycle({ connectionId, internalId, search }),
+      this.offerMappingRepository.findMany(
+        { connectionId, internalId, search, lifecycle },
+        { limit, offset },
+        { skipTotal: true }
+      ),
+    ]);
+    const total = lifecycle
+      ? lifecycleCounts[lifecycle]
+      : sumOfferLifecycleCounts(lifecycleCounts);
 
     return {
-      items: items.map((m) => this.toDto(m)),
+      items: items.map((m) => this.toListDto(m)),
       total,
+      lifecycleCounts,
       limit,
       offset,
     };
@@ -952,6 +998,39 @@ export class ListingsController {
         mapping.createdAt instanceof Date ? mapping.createdAt.toISOString() : mapping.createdAt,
       updatedAt:
         mapping.updatedAt instanceof Date ? mapping.updatedAt.toISOString() : mapping.updatedAt,
+    };
+  }
+
+  private toListDto(item: OfferMappingListItem): OfferMappingResponseDto {
+    return {
+      ...this.toDto(item),
+      // Mapped field by field rather than passed through, so a field added to
+      // the domain projection cannot silently reach the wire.
+      identity: item.identity
+        ? {
+            productId: item.identity.productId,
+            productName: item.identity.productName,
+            variantLabel: item.identity.variantLabel,
+            sku: item.identity.sku,
+            ean: item.identity.ean,
+            imageUrl: item.identity.imageUrl,
+            isStale: item.identity.isStale,
+          }
+        : null,
+      channelStatus: {
+        publicationStatus: item.channelStatus.publicationStatus,
+        lifecycle: item.channelStatus.lifecycle,
+        validationMessages: [...item.channelStatus.validationMessages],
+        lastStatusSyncedAt: item.channelStatus.lastStatusSyncedAt?.toISOString() ?? null,
+      },
+      commercial: item.commercial
+        ? {
+            price: item.commercial.price,
+            currency: item.commercial.currency,
+            availableQuantity: item.commercial.availableQuantity,
+            lastCommercialSyncedAt: item.commercial.lastCommercialSyncedAt.toISOString(),
+          }
+        : null,
     };
   }
 
