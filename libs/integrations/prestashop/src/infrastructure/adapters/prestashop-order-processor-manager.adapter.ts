@@ -52,12 +52,14 @@ import {
   PrestashopResourceNotFoundException,
   PrestashopApiException,
   PrestashopProvisioningException,
+  PrestashopTaxRateUnknownException,
 } from '@openlinker/integrations-prestashop';
 import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
 import type { PrestashopCustomerProvisioner } from '../provisioners/prestashop-customer-provisioner';
 import type { PrestashopAddressProvisioner } from '../provisioners/prestashop-address-provisioner';
 import type { PrestashopCurrencyResolver } from '../provisioners/prestashop-currency-resolver';
 import type { PrestashopTaxRateResolver } from '../provisioners/prestashop-tax-rate.resolver';
+import type { PrestashopTaxRateUnknown } from '../provisioners/prestashop-tax-rate.types';
 import { allocateByLargestRemainder } from '@openlinker/shared/money';
 import { toPrestashopProductAttributeId } from '../mappers/prestashop-variant-id';
 import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
@@ -532,7 +534,12 @@ export class PrestashopOrderProcessorManagerAdapter
       if (
         error instanceof PrestashopResourceNotFoundException ||
         error instanceof PrestashopApiException ||
-        error instanceof PrestashopProvisioningException
+        error instanceof PrestashopProvisioningException ||
+        // Re-thrown unchanged so the operator-facing message reaches
+        // `syncStatus[].error` verbatim: the wrapping below would prepend 35
+        // characters and push the product identity out of every truncated
+        // surface that renders it (#2052 — see `taxRateUnknownError`).
+        error instanceof PrestashopTaxRateUnknownException
       ) {
         throw error;
       }
@@ -556,10 +563,14 @@ export class PrestashopOrderProcessorManagerAdapter
    * `specific_prices.price` is tax-EXCLUDED. When the source reports GROSS
    * prices (`taxTreatment` `inclusive`, or unset — the marketplace default) the
    * gross is converted to net using the destination product's own tax rate, so
-   * PS re-grosses it back to the buyer-paid amount. When the source reports NET
-   * (`exclusive`) the price is pinned as-is. The buyer-paid product subtotal is
-   * apportioned across lines with a largest-remainder allocation so the pinned
-   * lines sum exactly to the authoritative total under rounding.
+   * PS re-grosses it back to the buyer-paid amount. A rate the resolver cannot
+   * determine throws (#2052) — see {@link taxRateUnknownError}; pinning
+   * `net = gross` in that case lets PS add its own VAT on top and creates an
+   * order costing more than the buyer paid. When the source reports NET
+   * (`exclusive`) the price is pinned as-is and no rate is read at all. The
+   * buyer-paid product subtotal is apportioned across lines with a
+   * largest-remainder allocation so the pinned lines sum exactly to the
+   * authoritative total under rounding.
    *
    * Records created `specific_prices` ids into `createdIds` (for caller-side
    * cleanup). Per the createOrder invariant (ADR-014), a line that cannot be
@@ -618,12 +629,26 @@ export class PrestashopOrderProcessorManagerAdapter
       const grossUnit = lineGrossMinor[index] / 100 / item.quantity;
       let rate = 0;
       if (convertGrossToNet) {
-        rate = await this.taxRateResolver.resolveProductTaxRate(
+        const resolution = await this.taxRateResolver.resolveProductTaxRate(
           externalProductId,
           deliveryCountryIso,
           this.connection.id,
           this.httpClient
         );
+        if (resolution.kind === 'unknown') {
+          // Fail loudly (createOrder invariant, ADR-014 / #2052). Pinning
+          // `net = gross` here is what made PrestaShop add its own VAT on top
+          // and create an order costing more than the buyer paid — a wrong
+          // order is worse than no order, and no order was created yet.
+          throw this.taxRateUnknownError(
+            resolution,
+            order.totals.currency,
+            grossUnit,
+            externalProductId,
+            item.sku
+          );
+        }
+        rate = resolution.rate;
       }
       const netUnit = grossUnit / (1 + rate);
 
@@ -675,6 +700,68 @@ export class PrestashopOrderProcessorManagerAdapter
         );
       }
     }
+  }
+
+  /**
+   * Build the exception a caller gets when the destination tax rate is unknown
+   * and the buyer-paid gross must be converted to net (#2052).
+   *
+   * **The message is interface copy, not a log line.** `OrderSyncService`
+   * stores `exception.message` verbatim in `syncStatus[].error`, and the
+   * frontend renders that string in three places with no translation layer:
+   *
+   * | Surface | Budget |
+   * |---|---|
+   * | orders list, Status sub-line (`.orders-status-reason`) | CSS-clipped at 220 px, ~40 characters; full text only in `title=` |
+   * | order detail, failed-destination banner | 160 characters |
+   * | order detail, Activity timeline | none |
+   *
+   * The tightest of the three is the *triage* surface, so the product identity
+   * leads the sentence — an operator scanning the list has to know WHICH
+   * product before knowing what is wrong with it. The product NAME is
+   * deliberately left out in favour of the SKU and the PrestaShop product
+   * number: those are the two identifiers that lead to the right record in the
+   * shop's admin, and a name can eat the whole visible budget on its own.
+   * (The 60-character truncation in the jobs list is NOT one of these budgets:
+   * a per-destination create failure never reaches a sync job — see
+   * `OrderSyncService.syncOrder`, which re-throws only
+   * `OrderCreateContendedException`.)
+   *
+   * The exception CLASS carries the retry decision (see
+   * `PrestashopRetryClassifierAdapter`): a `configuration` unknown will not fix
+   * itself, so it raises the non-retryable
+   * `PrestashopTaxRateUnknownException`; a `transport` unknown is a failed call
+   * to PrestaShop and stays a retryable `PrestashopApiException`, carrying the
+   * status code the resolver saw so it still classifies downstream.
+   */
+  private taxRateUnknownError(
+    resolution: PrestashopTaxRateUnknown,
+    currency: string,
+    grossUnit: number,
+    externalProductId: string | number,
+    sku: string | undefined
+  ): Error {
+    const productLabel = sku
+      ? `PrestaShop product #${externalProductId} (${sku})`
+      : `PrestaShop product #${externalProductId}`;
+
+    if (resolution.reason === 'transport') {
+      return new PrestashopApiException(
+        `${productLabel}: tax rate could not be read - ${resolution.evidence}. ` +
+          `No order was created; the sync job retries on its own.`,
+        resolution.statusCode,
+        undefined,
+        this.connection.id
+      );
+    }
+
+    return new PrestashopTaxRateUnknownException(
+      `${productLabel}: tax rate unknown - ${resolution.evidence}. Refusing to pin ` +
+        `${currency} ${grossUnit.toFixed(2)} gross as net; no order was created. ` +
+        `Fix the tax configuration in PrestaShop, then retry.`,
+      externalProductId,
+      this.connection.id
+    );
   }
 
   /**

@@ -40,6 +40,7 @@ import {
   SELLER_POLICIES_SERVICE_TOKEN,
   RESPONSIBLE_PRODUCER_SERVICE_TOKEN,
   DELIVERY_PRICE_LIST_SERVICE_TOKEN,
+  emptyOfferLifecycleCounts,
 } from '@openlinker/core/listings';
 import type {
   ICategoryResolutionService,
@@ -51,6 +52,7 @@ import type {
   IResponsibleProducerService,
   IDeliveryPriceListService,
   OfferCreationRecordRepositoryPort,
+  OfferMappingListItem,
   OfferMappingRepositoryPort,
 } from '@openlinker/core/listings';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
@@ -90,6 +92,33 @@ describe('ListingsController', () => {
     new Date('2026-01-01T00:00:00Z')
   );
 
+  // The list read model (#2025): the mapping plus the three reporting-join
+  // projections. `findById` still yields the bare mapping.
+  const mockListItem: OfferMappingListItem = {
+    ...mockMapping,
+    identity: {
+      productId: 'ol_product_1',
+      productName: 'Doniczka ceramiczna Terra',
+      variantLabel: 'Limonka · 24 cm',
+      sku: 'TERRA-24-LIM',
+      ean: '5900000000138',
+      imageUrl: 'https://cdn.example/terra.jpg',
+      isStale: false,
+    },
+    channelStatus: {
+      publicationStatus: 'inactive',
+      lifecycle: 'Invalid',
+      validationMessages: ['Brak parametru: Marka'],
+      lastStatusSyncedAt: new Date('2026-01-02T00:00:00Z'),
+    },
+    commercial: {
+      price: '100.00',
+      currency: 'PLN',
+      availableQuantity: 41,
+      lastCommercialSyncedAt: new Date('2026-01-02T00:00:00Z'),
+    },
+  };
+
   const mockRecord = new OfferCreationRecord(
     'record-1',
     'ol_variant_abc123',
@@ -106,6 +135,8 @@ describe('ListingsController', () => {
     repository = {
       findById: jest.fn(),
       findMany: jest.fn(),
+      findMappingPage: jest.fn(),
+      countByLifecycle: jest.fn().mockResolvedValue(emptyOfferLifecycleCounts()),
       countByConnectionAndVariants: jest.fn().mockResolvedValue(new Map<string, number>()),
       countListedVariantsByProducts: jest.fn().mockResolvedValue([]),
       findStaleMappedVariants: jest.fn().mockResolvedValue([]),
@@ -220,7 +251,7 @@ describe('ListingsController', () => {
 
   describe('listOfferMappings', () => {
     it('should return paginated offer mappings with default pagination', async () => {
-      repository.findMany.mockResolvedValue({ items: [mockMapping], total: 1 });
+      repository.findMany.mockResolvedValue({ items: [mockListItem], total: 1 });
 
       const result = await controller.listOfferMappings({});
 
@@ -231,9 +262,9 @@ describe('ListingsController', () => {
       expect(repository.findMany).toHaveBeenCalledWith(
         {
           connectionId: undefined,
-          platformType: undefined,
           internalId: undefined,
           search: undefined,
+          lifecycle: undefined,
         },
         { limit: 20, offset: 0 }
       );
@@ -244,7 +275,6 @@ describe('ListingsController', () => {
 
       await controller.listOfferMappings({
         connectionId: 'conn-1',
-        platformType: 'allegro',
         internalId: 'ol_offer_variant123',
         search: '456',
         limit: 10,
@@ -254,21 +284,230 @@ describe('ListingsController', () => {
       expect(repository.findMany).toHaveBeenCalledWith(
         {
           connectionId: 'conn-1',
-          platformType: 'allegro',
           internalId: 'ol_offer_variant123',
           search: '456',
+          lifecycle: undefined,
         },
         { limit: 10, offset: 5 }
       );
     });
 
+    describe('lifecycle counts (#2026)', () => {
+      // All these tests set `includeLifecycleCounts: true` (#2032 review
+      // thread 3) - the counts aggregate is now OFF by default, since three
+      // other callers (product drawer, nav badge probe) share this endpoint
+      // and never render a tab bar to pay the second full scan for.
+
+      it('should carry a per-bucket count alongside the page', async () => {
+        repository.findMany.mockResolvedValue({ items: [], total: -1 });
+        repository.countByLifecycle.mockResolvedValue({
+          Active: 4,
+          Invalid: 1,
+          Draft: 2,
+          Ended: 0,
+          Unsynced: 90,
+        });
+
+        const result = await controller.listOfferMappings({ includeLifecycleCounts: true });
+
+        expect(result.lifecycleCounts).toEqual({
+          Active: 4,
+          Invalid: 1,
+          Draft: 2,
+          Ended: 0,
+          Unsynced: 90,
+        });
+      });
+
+      it('should not compute lifecycleCounts, or ask findMany to skip its own total, when not requested', async () => {
+        repository.findMany.mockResolvedValue({ items: [], total: 5 });
+
+        const result = await controller.listOfferMappings({});
+
+        expect(result.lifecycleCounts).toBeUndefined();
+        expect(result.total).toBe(5);
+        expect(repository.countByLifecycle).not.toHaveBeenCalled();
+        expect(repository.findMany).toHaveBeenCalledWith(
+          { connectionId: undefined, internalId: undefined, search: undefined, lifecycle: undefined },
+          { limit: 20, offset: 0 }
+        );
+      });
+
+      // NOTE: "the counts sum to the total" is deliberately NOT asserted here.
+      // Both values are mocked at this seam, so any such assertion would only
+      // restate its own fixture - no production code participates. The invariant
+      // is a database property and is covered by
+      // `apps/api/test/integration/listings/offer-lifecycle-counts.int-spec.ts`.
+
+      it('should apply the same search and connection filters to the counts as to the list', async () => {
+        repository.findMany.mockResolvedValue({ items: [], total: -1 });
+
+        await controller.listOfferMappings({
+          connectionId: 'conn-1',
+          search: 'terra',
+          includeLifecycleCounts: true,
+        });
+
+        expect(repository.countByLifecycle).toHaveBeenCalledWith({
+          connectionId: 'conn-1',
+          internalId: undefined,
+          search: 'terra',
+        });
+      });
+
+      it('should narrow only the list by the selected tab, never the counts', async () => {
+        repository.findMany.mockResolvedValue({ items: [], total: -1 });
+        repository.countByLifecycle.mockResolvedValue({
+          ...emptyOfferLifecycleCounts(),
+          Ended: 300,
+        });
+
+        await controller.listOfferMappings({
+          lifecycle: 'Ended',
+          search: 'terra',
+          includeLifecycleCounts: true,
+        });
+
+        // The third arg tells `findMany` to skip its own now-redundant
+        // `getCount()` - `total` is derived from `countByLifecycle` instead.
+        expect(repository.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({ lifecycle: 'Ended' }),
+          { limit: 20, offset: 0 },
+          { skipTotal: true }
+        );
+        // Forwarding it here would zero every other tab the moment one is clicked.
+        expect(repository.countByLifecycle).toHaveBeenCalledWith(
+          expect.not.objectContaining({ lifecycle: expect.anything() as unknown })
+        );
+      });
+
+      it('should report the selected bucket size as total so paging inside a tab works', async () => {
+        repository.findMany.mockResolvedValue({ items: [], total: -1 });
+        repository.countByLifecycle.mockResolvedValue({
+          ...emptyOfferLifecycleCounts(),
+          Ended: 300,
+          Active: 12,
+        });
+
+        const result = await controller.listOfferMappings({
+          lifecycle: 'Ended',
+          includeLifecycleCounts: true,
+        });
+
+        expect(result.total).toBe(300);
+        // The other tabs stay live while Ended is selected.
+        expect(result.lifecycleCounts?.Active).toBe(12);
+      });
+
+      it('should report the sum across every bucket as total when no tab is selected', async () => {
+        repository.findMany.mockResolvedValue({ items: [], total: -1 });
+        repository.countByLifecycle.mockResolvedValue({
+          Active: 4,
+          Invalid: 1,
+          Draft: 2,
+          Ended: 3,
+          Unsynced: 90,
+        });
+
+        const result = await controller.listOfferMappings({ includeLifecycleCounts: true });
+
+        expect(result.total).toBe(100);
+      });
+
+      it('should issue the list and the counts concurrently rather than back to back', async () => {
+        let listSettled = false;
+        repository.findMany.mockImplementation(async () => {
+          await Promise.resolve();
+          listSettled = true;
+          return { items: [], total: -1 };
+        });
+        repository.countByLifecycle.mockImplementation(() => {
+          // Reached before the list resolved: the two are not chained.
+          expect(listSettled).toBe(false);
+          return Promise.resolve(emptyOfferLifecycleCounts());
+        });
+
+        await controller.listOfferMappings({ includeLifecycleCounts: true });
+
+        expect(repository.countByLifecycle).toHaveBeenCalledTimes(1);
+      });
+    });
+
     it('should serialize dates as ISO 8601 strings', async () => {
-      repository.findMany.mockResolvedValue({ items: [mockMapping], total: 1 });
+      repository.findMany.mockResolvedValue({ items: [mockListItem], total: 1 });
 
       const result = await controller.listOfferMappings({});
 
       expect(result.items[0].createdAt).toBe('2026-01-01T00:00:00.000Z');
       expect(result.items[0].updatedAt).toBe('2026-01-01T00:00:00.000Z');
+    });
+
+    it('should expose identity, lifecycle and commercial data with its freshness stamp (#2025)', async () => {
+      repository.findMany.mockResolvedValue({ items: [mockListItem], total: 1 });
+
+      const result = await controller.listOfferMappings({});
+
+      expect(result.items[0].identity?.productName).toBe('Doniczka ceramiczna Terra');
+      expect(result.items[0].identity?.imageUrl).toBe('https://cdn.example/terra.jpg');
+      expect(result.items[0].channelStatus?.lifecycle).toBe('Invalid');
+      expect(result.items[0].channelStatus?.validationMessages).toEqual(['Brak parametru: Marka']);
+      expect(result.items[0].channelStatus?.lastStatusSyncedAt).toBe('2026-01-02T00:00:00.000Z');
+      expect(result.items[0].commercial?.price).toBe('100.00');
+      expect(result.items[0].commercial?.availableQuantity).toBe(41);
+      // ADR-009 (#2024): a price is never returned without its age.
+      expect(result.items[0].commercial?.lastCommercialSyncedAt).toBe('2026-01-02T00:00:00.000Z');
+      expect(result.items[0].identity?.isStale).toBe(false);
+    });
+
+    it('should null identity and commercial when their joins found nothing', async () => {
+      repository.findMany.mockResolvedValue({
+        items: [
+          {
+            ...mockMapping,
+            identity: null,
+            channelStatus: {
+              publicationStatus: null,
+              lifecycle: 'Unsynced',
+              validationMessages: [],
+              lastStatusSyncedAt: null,
+            },
+            commercial: null,
+          },
+        ],
+        total: 1,
+      });
+
+      const result = await controller.listOfferMappings({});
+
+      expect(result.items[0].identity).toBeNull();
+      expect(result.items[0].commercial).toBeNull();
+    });
+
+    it('should serialise the Unsynced bucket with null status fields (#2025)', async () => {
+      repository.findMany.mockResolvedValue({
+        items: [
+          {
+            ...mockListItem,
+            channelStatus: {
+              publicationStatus: null,
+              lifecycle: 'Unsynced',
+              validationMessages: [],
+              lastStatusSyncedAt: null,
+            },
+          },
+        ],
+        total: 1,
+      });
+
+      const result = await controller.listOfferMappings({});
+
+      // The exact wire shape FE-C (#2029) renders its fifth tab from.
+      expect(result.items[0].channelStatus).toEqual({
+        publicationStatus: null,
+        lifecycle: 'Unsynced',
+        validationMessages: [],
+        lastStatusSyncedAt: null,
+      });
     });
   });
 

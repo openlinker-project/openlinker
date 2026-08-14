@@ -23,6 +23,10 @@ export const OFFER_STATUS_POLL_SERVICE_TOKEN = Symbol('IOfferStatusPollService')
 export const OFFER_STATUS_SYNC_SERVICE_TOKEN = Symbol('IOfferStatusSyncService');
 export const OFFER_STATUS_READ_SERVICE_TOKEN = Symbol('IOfferStatusReadService');
 export const OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN = Symbol('OfferStatusSnapshotRepositoryPort');
+// Channel-side price/quantity snapshot (#2024)
+export const OFFER_COMMERCIAL_SNAPSHOT_REPOSITORY_TOKEN = Symbol(
+  'OfferCommercialSnapshotRepositoryPort'
+);
 export const SELLER_POLICIES_SERVICE_TOKEN = Symbol('ISellerPoliciesService');
 export const SELLER_POLICIES_CACHE_TOKEN = Symbol('SellerPoliciesCacheRepositoryPort');
 // Responsible-producer read (#1531)

@@ -23,6 +23,38 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## Claim an ADR number from the "Reserved numbers" note, not from the last row of the index table
+
+**Context**: #2066 authored three ADRs and numbered them 039/040/041 by reading the index table in `docs/architecture/adrs/README.md` and taking "last merged row + 1".
+**Problem**: The index lists only **merged** ADRs; several are normally in flight. All three numbers were taken — 041 was already merged, 039 was claimed by #2014 **and already referenced by name six times from `docs/plans/implementation-plan-order-cancellation-record-state.md` on `main`**, and 040 was claimed by #2050. Merging would have silently repointed a live link on `main` to the wrong ADR. Compounding it, the branch had also deleted `main`'s ADR-041 row *and* the "Reserved numbers" note itself — removing the warning against the exact mistake, then making it. That was the third numbering collision in two days.
+**Rule**: Before authoring an ADR, read `git show origin/main:docs/architecture/adrs/README.md | tail -12` — the last rows **and** the reserved-numbers note beneath them — and claim your number by adding it to that note in your PR. Never edit the README from a stale local copy; `git fetch origin main` first, because a stale copy silently drops other people's rows. When renumbering afterwards, **never blanket find-replace `ADR-0NN` across `docs/`** — other plans legitimately reference the real ADR at that number. Scope the replace to an explicit list of files your PR authored, then verify the untouched ones are byte-identical to `main`.
+**Applies to**: `docs/architecture/adrs/**`, and any doc that references an ADR by number.
+**Source**: #2066 (found in review). Mechanical enforcement tracked as #2082.
+
+## A new authenticated principal must never land on `req.user` — `RolesGuard` default-allows every route without `@Roles()`
+
+**Context**: #1032's planned pack station proposed a warehouse "device principal" placed on `req.user`, with an endpoint allowlist described in the design as "the security boundary".
+**Problem**: `RolesGuard.canActivate` returns **`true`** when a route carries no `@Roles()` decorator (`apps/api/src/auth/guards/roles.guard.ts`), and it is a global `APP_GUARD`. So any principal that satisfies `JwtAuthGuard` and reaches `req.user` is authorized on **every undecorated route** — including the customers controller (buyer PII), products, inventory, webhooks and cursors. The allowlist would have been decorative. This is currently latent, not exploitable, only because every principal in the system today is an OL user with a role.
+**Rule**: A non-user principal (device, station, WMS service identity, agent token) gets `@Public()` plus its own dedicated verifier, in its own controller — never `req.user`. This is the split MCP already uses (`mcp-transport.controller.ts` vs `mcp-tokens.controller.ts`, which documents it). Copying only the *storage* half of the `mcp_tokens` pattern (opaque prefix + SHA-256 + revoke) is not enough; the auth-model separation is the load-bearing half. Where a service identity genuinely suits an OL user, prefer a service-account user under the existing role ladder over a new principal type.
+**Applies to**: `apps/api/src/**/http/*.controller.ts`, `apps/api/src/auth/**`, any PR introducing a new authentication path.
+**Source**: #1032 planning (found in stress test); guard hardening tracked as #2079.
+
+## A supplementary write added inside an existing per-item sync loop must degrade, never abort
+
+**Context**: #2024 extends the existing #816 `marketplace.offer.statusSync` per-offer loop to also persist a commercial (price/quantity) observation, reusing the same fetched object rather than a second marketplace call.
+**Problem**: The first cut called the new write unguarded inside the loop. A single throw (an unvalidated marketplace-supplied string hitting a `numeric` column, a unique-constraint race with a concurrent `refreshOne`) aborted every remaining offer's **status** update for that page too, and skipped the `nextOffset` cursor advance — so the next tick re-read the same page, hit the same poison offer, and wedged that connection's status sync permanently. The repo already had this exact precedent (the Smart-classification readback, "must not fail the offer-creation job") and repeated the mistake anyway.
+**Rule**: When bolting a second, non-essential write onto an existing per-item loop, wrap it in its own try/catch that warn-logs and continues — never let it propagate into the loop's control flow. Verify with a test that asserts the *primary* write still happened and the cursor still advanced when the secondary write throws, not just that the secondary write's own effect is absent.
+**Applies to**: any application service that adds work inside `libs/core/src/**/application/services/*-sync.service.ts`'s per-item loop.
+**Source**: #2024 (found reviewing PR #2035).
+
+## Guard a numeric field from untyped wire JSON with `typeof` + `Number.isFinite`, never a bare `=== undefined` check
+
+**Context**: #2024's Erli adapter projected a marketplace price with `if (product.price === undefined) return null`.
+**Problem**: A JSON `null` (not `undefined`) slips past that guard, and `null / 100` evaluates to `0` — persisting a fabricated `"0.00"` price for an offer that is not actually free. There is no finite check either: a non-numeric value produces `NaN`, and Postgres `numeric` accepts the string `'NaN'` silently, so it stores rather than erroring. Separately, `typeof x === 'number'` alone still admits `Infinity` — reachable from `JSON.parse('{"a":1e999}')` — so an `Infinity` quantity would pass too.
+**Rule**: For a numeric value read off untyped wire JSON, guard with `typeof x === 'number' && Number.isFinite(x)`, and treat `null`/`undefined`/non-numeric/`NaN`/`Infinity` uniformly as "absent" rather than coercing to `0`. A sparse marketplace response must persist as "not reported," never as a fabricated zero — an operator cannot tell a real `0` apart from a missing read.
+**Applies to**: any adapter mapping a numeric field from a raw marketplace/shop API response, especially one persisted downstream.
+**Source**: #2024 (found reviewing PR #2035); the Allegro side of the same adapter pair needed the identical fix.
+
 ## Never copy another platform's `defaultRateLimit` figure — an uncalibrated manifest default is a silent throughput regression
 
 **Context**: Each #1810 Phase 5 adopter wires its HTTP client to `HostServices.http`, and may declare an `AdapterMetadata.defaultRateLimit` as the fallback when a connection has no explicit `config.rateLimit`.

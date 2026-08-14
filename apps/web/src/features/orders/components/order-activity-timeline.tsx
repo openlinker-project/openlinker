@@ -22,6 +22,7 @@ import {
   type SalesDocumentUnresolvedReasonValue,
 } from '../api/orders.types';
 import { invoicingBlockedBadge } from '../lib/order-row';
+import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 
 interface TimelineEvent {
   id: string;
@@ -75,6 +76,22 @@ const STATUS_PAST_TENSE: Record<OrderSyncStatusValue, string> = {
   syncing: 'syncing to',
   synced: 'synced to',
   failed: 'failed to sync to',
+};
+
+/**
+ * Badge tone → timeline tone (#2100). The timeline's dot vocabulary is narrower
+ * than `StatusBadgeTone`, so the mapping is explicit and total rather than a
+ * conditional that silently widens: `neutral` / `info` / `review` all read
+ * correctly as an ordinary `default` entry — a deliberate operator setting is not
+ * a failure and must not borrow a failure colour.
+ */
+const BLOCK_TONE_FOR_BADGE: Record<StatusBadgeTone, TimelineEvent['tone']> = {
+  error: 'error',
+  warning: 'warning',
+  success: 'success',
+  neutral: 'default',
+  info: 'default',
+  review: 'default',
 };
 
 const TONE_FOR_STATUS: Record<OrderSyncStatusValue, TimelineEvent['tone']> = {
@@ -216,9 +233,7 @@ function buildEvents(
       description: `${blocked.hint}${
         salesDocumentBlockDetail ? ` (${salesDocumentBlockDetail})` : ''
       }`,
-      // The badge's own tone, minus `neutral` — the timeline has no neutral dot,
-      // and a manual connection reads correctly as an ordinary `default` entry.
-      tone: blocked.tone === 'neutral' ? 'default' : blocked.tone,
+      tone: BLOCK_TONE_FOR_BADGE[blocked.tone],
     });
   }
 

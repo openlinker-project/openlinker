@@ -28,7 +28,7 @@
  *
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddOrderRecordSalesDocumentBlock1833000000005 implements MigrationInterface {
   name = 'AddOrderRecordSalesDocumentBlock1833000000005';

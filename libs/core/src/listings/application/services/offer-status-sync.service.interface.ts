@@ -76,10 +76,17 @@ export interface IOfferStatusSyncService {
    * Throws only on a persistence failure. Callers on the create/poll paths
    * treat that as non-fatal: the offer already exists on the marketplace and
    * the hourly sync is the backstop.
+   *
+   * Resolves `true` when the observation was persisted, `false` when the
+   * repository's freshness guard discarded it because a newer snapshot is
+   * already stored. Only a caller that writes a *second*, sibling row off the
+   * same observation needs this — `refreshOne` uses it to keep the commercial
+   * snapshot (#2024) from being advanced by an observation the status half
+   * just rejected. Create/poll-path callers ignore it.
    */
   recordObservedStatus(
     connectionId: string,
     target: OfferStatusRefreshTarget,
     observation: OfferStatusObservation
-  ): Promise<void>;
+  ): Promise<boolean>;
 }
