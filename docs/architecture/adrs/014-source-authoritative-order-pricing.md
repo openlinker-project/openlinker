@@ -77,8 +77,8 @@ Model source-authoritative pricing as a **core invariant**, implemented natively
 - Related issues: #895; future consumers #877 (WooCommerce `OrderProcessorManager`); #2054
   (per-line tax rate - the amendment below), #1290 (the KSeF symptom that named the follow-up),
   #2053 (make the adapter substitutions visible), #2057 (split unknown from resolved-zero in
-  `PrestashopTaxRateResolver` - prerequisite of any master rate read), #2009 / PR #2056 (own the
-  normative rate-rule annex on ADR-026)
+  `PrestashopTaxRateResolver` - the prerequisite this amendment named for any master rate read;
+  merged 2026-08-14), #2009 / PR #2056 (own the normative rate-rule annex on ADR-026)
 - Related ADRs: [ADR-002](./002-capability-ports-with-sub-capabilities.md) (capability vs.
   invariant distinction), [ADR-012](./012-branch-1-fulfillment-modeling.md) (order destination
   modeling), [ADR-026](./026-country-agnostic-invoicing-domain.md) (the invoicing contract that
@@ -207,7 +207,7 @@ one layer in:
 
 Two corollaries follow from the same rule. The field is a **string, never a `number` fraction**, so an
 unresolved rate is *absent* rather than a `0` that reads as a lawful exemption - the conflation
-`PrestashopTaxRateResolver` exhibits today (see Evidence) and that **#2057** is open to fix. And naming
+`PrestashopTaxRateResolver` carried until **#2057** (merged 2026-08-14) split the two apart. And naming
 the concrete admissible value set belongs to the ADR-026 rate annex (#2009 / PR #2056), not here; this
 section fixes the constraint the set must satisfy, the annex fixes the set.
 
@@ -248,12 +248,15 @@ section fixes the constraint the set must satisfy, the annex fixes the set.
   (`:193`); `PrestashopProductMasterAdapter` never receives it and `ProductMasterPort` exposes no
   rate. So this is **destination / `OrderProcessorManager` knowledge today** - the resolver's own
   header says exactly that - and exposing it as a master read is a new port method, not a rewiring of
-  an existing one. It would additionally need code semantics and honest unknown semantics: today it
-  returns a `number` fraction in which `0` means both untaxed and unresolvable - the conflation the
-  adopted rule forbids - so **#2057 (open) is a prerequisite of any master read**, since it is what
-  splits the two apart (`unknown` with `reason: 'transport' | 'configuration'`, never cached).
-  WooCommerce's `ProductMaster` reads no tax at all, and its `tax_class` is a class name rather than a
-  rate, so a second master would have to be built rather than exposed.
+  an existing one. It would additionally need code semantics and honest unknown semantics - and that
+  half is **no longer outstanding**: at `dec889afb` the resolver returned a `number` fraction in which
+  `0` meant both untaxed and unresolvable (the conflation the adopted rule forbids), and **#2057
+  (merged 2026-08-14, on this branch as of `a474145c8`)** replaced it with
+  `{ kind: 'resolved', rate } | { kind: 'unknown', reason: 'transport' | 'configuration', … }`, never
+  caching an unknown. So the prerequisite this section named is satisfied; what remains for a master
+  read is the new port method, not the semantics. WooCommerce's `ProductMaster` reads no tax at all,
+  and its `tax_class` is a class name rather than a rate, so a second master would have to be built
+  rather than exposed.
 
 **On the status line and on where this section lives.** ADR-014's `Status` metadata is deliberately
 **unchanged**. The [README](./README.md) taxonomy has no per-alternative value, and
