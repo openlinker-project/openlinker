@@ -35,6 +35,7 @@ import { ListingsController } from '../listings/http/listings.controller';
 import { BulkListingController } from '../listings/http/bulk-listing.controller';
 import { ShopPublishController } from '../listings/http/shop-publish.controller';
 import { BulkShopPublishController } from '../listings/http/bulk-shop-publish.controller';
+import { TaxonomyController } from '../listings/http/taxonomy.controller';
 import { ProductsController, VariantsController } from '../products/http/products.controller';
 import { InventoryController } from '../inventory/http/inventory.controller';
 import { ShipmentController } from '../shipping/http/shipment.controller';
@@ -67,6 +68,10 @@ const CONTROLLERS = [
   BulkListingController,
   ShopPublishController,
   BulkShopPublishController,
+  // Read-only today. Listed so a future write handler added without @Roles
+  // fails this invariant instead of silently granting viewer mutate access —
+  // the same reason Customers / Cursors / WebhookDelivery are covered (#2074).
+  TaxonomyController,
   ProductsController,
   VariantsController,
   InventoryController,
