@@ -125,6 +125,54 @@ A "catalogue-only Allegro *connection*" was considered and is not viable: the Al
 
 **The two must be accepted together**, since two of this ADR's decisions (owner-keyed projection, catalogue-only source) depend on the amendment, and the amendment has no purpose without them. Both remain `Proposed`; reviewing either alone will read as under-justified.
 
+## Amendment (Wave 1 implementation, #1979)
+
+Recorded in place following this repo's ADR convention (as ADR-031 does). Wave 1 resolved the two questions this ADR left open and revised one decision on evidence.
+
+- **`taxonomyOwner` granularity — resolved as `'allegro'`, unqualified.** The § Wave-1 blocker required verifying whether `.pl/.cz/.sk/.hu` publish one tree or several *before the first row is written*. Allegro's developer portal states the category tree and parameters are **shared across all its marketplaces** — one tree in several languages, with consistent identifiers. A region-qualified `'allegro:pl'` would therefore encode a distinction that does not exist. The rule this ADR sets (one value per distinct tree) is unchanged and still binds eBay (`categoryTreeId`) and Amazon (per-`MarketplaceId`). The evidence is recorded on `taxonomy-owner.types.ts` so it is not re-opened.
+
+  **Corrected by #2063 — that evidence covered the COUNTRY axis only.** Region is
+  not the only way a platform can split its tree, and Allegro splits along a
+  second one: every connection carries a required `environment` resolving to a
+  different API host, so a sandbox and a production connection publish
+  genuinely different trees under one `platformType`. Unqualified `'allegro'`
+  therefore did stand for two distinct trees — the exact failure this ADR's rule
+  forbids — and they overwrote each other's rows, after which the watermark
+  sweep deleted the loser's entire tree on every completing run.
+  `'allegro:sandbox'` is added alongside `'allegro'`. The unqualified-by-region
+  finding above still stands; what was wrong was reading it as blanket evidence
+  of a single Allegro tree. **The general lesson is that "one value per distinct
+  tree" must be checked against every axis the platform splits on, not just the
+  one the ADR happened to name.**
+
+- **`search` matching — `LIKE` over an application-normalized column, not `unaccent` + the `%` operator.** § Consequences left the strategy open. Two findings settled it. First, `unaccent(text)` is `STABLE`, not `IMMUTABLE`, so Postgres rejects it in an index expression; the documented workaround (an `IMMUTABLE` wrapper) lies to the planner and silently corrupts the index if the dictionary changes. Second — decisively — the integration harness builds its schema with `synchronize` and runs **no migrations**, so `pg_trgm` is absent there and the `%` operator would *error* rather than degrade. Normalizing in application code (`normalizeCategorySearchText`) into a persisted `searchText`, matched with `LIKE '%…%'` and accelerated by a GIN `gin_trgm_ops` index, keeps correctness independent of any extension and is unit-testable without a database. Note the folding needs an explicit map for letters NFD cannot decompose: `ł` is a distinct letter, not a base plus a combining mark, so without it `artykuly` would never match `Artykuły`. Cross-language search (`shoes` vs `Buty`) is out of reach for any lexical method and is a sync-time `Accept-Language` concern, tracked as **#2059**.
+
+- **Breadcrumb `path` — derived, as this ADR decided.** #1979's issue body assumed a materialized `path`. The reasoning in § Decision still holds (a resumable paged sync inserts children before their ancestors exist; a rename invalidates every descendant's), so Wave 1 derives it with one recursive CTE over the ≤`limit` matched rows. The cost is that a query cannot match on an ancestor's name; materializing later stays additive (a column plus a post-sync pass) and needs no data migration.
+
+- **Connection → owner resolution needed a rule this ADR did not state.** `TaxonomyBorrower` identifies only a *borrower*; nothing declares that an Allegro connection *owns* `'allegro'`. Resolution therefore probes `OfferManager` then `ProductPublisher` (the `resolveDestinationContext` precedent from #1488).
+
+  Wave 1 then took an owning marketplace's value from `platformType`, validated against `TaxonomyOwnerValues`. **#2063 replaced that with declaration.** Inference was the root cause of the sandbox/production collapse above: `platformType` is simply not expressive enough to name a tree, so no amount of validating it could have caught the case. An owner now declares its own identity via a new `TaxonomyIdentityProvider` sub-capability (`getTaxonomyIdentity(): TaxonomyOwner`), and an adapter declaring nothing resolves to `null` — the sync skips it rather than writing rows under a guessed owner, which would be a data migration to undo.
+
+  **A mutable owner also made one authority question load-bearing.** The sync job's payload carries the owner the scheduler resolved at enqueue time, and the worker handler keyed the resumable frontier's cursor off it — safe while the owner derived from immutable `platformType`. It is not safe now: `syncTaxonomy` re-resolves the scope internally and sweeps *that* scope, so a connection whose `environment` moved between enqueue and execution would resume the other scope's frontier, complete a run that never walked the tree it swept, and delete every row that truncated walk failed to re-stamp. The handler therefore derives the cursor key from `resolveScope` — the same authority that scopes the sweep — and `DestinationTaxonomySyncPayloadV1.taxonomyOwner` is documented as advisory (idempotency key + logging only). The rule generalises: **anything that scopes rows reads the resolution, never the payload.**
+
+  Two consequences worth stating. `TaxonomyOwnerValues` is now a **compile-time vocabulary, not a runtime allowlist** — the membership check is gone, so the one-value-per-tree rule is upheld by review of what adapters return. And `TaxonomyIdentityProvider` is deliberately **not** a generalisation of `TaxonomyBorrower`, despite the surface similarity: `TaxonomyBorrower` has an older consumer in `OfferBuilderService` (#1045 mapping-provenance reuse), so making an owner implement it would have rerouted every Allegro offer build onto the borrower branch of mapping resolution as an incidental side effect. The ADR's promise still holds — onboarding a marketplace costs one union value, one `getTaxonomyIdentity()`, and a sync source.
+
+- **"At most one in-flight run per owner" is weaker than this ADR states.** § Sequencing says the interim's per-owner invariant is "enforced by the idempotency key". The key includes a minute timestamp, so it collapses *same-tick* duplicates only — a run still going when the next tick fires is not prevented. The consequence is bounded (both runs write the same rows, the later watermark wins, the earlier run's sweep under-deletes) and self-heals on the next completing run. What actually prevents an N-connection fan-out is the scheduler **electing one source connection per owner**.
+
+  **Closed by #2061:** a per-scope `SyncLockPort` lock now serializes runs, so the claim is enforced rather than asserted. A tick that cannot acquire skips, which is lossless because progress is DB-derived — the holder is continuing the very run the skipping tick would have joined.
+
+- **The frontier is connection-keyed, so a re-election can strand it.** The cursor row is keyed `(connectionId, cursorKey)` and the elected source connection is recomputed every tick. Resuming a stale frontier would sweep against its own old `runStartedAt` — matching nothing, silently disabling disappearance detection while still reporting the run complete. Wave 1 guards this by **discarding a frontier older than 6h** and by suffixing the cursor key with the scope.
+
+  **Superseded by #2061.** Progress moved out of the cursor and into the projection: `destination_categories.expandedAt` records which run expanded a node, so the frontier is a QUERY ("rows in scope carrying this run's `syncedAt`, not a leaf, not yet expanded") and the cursor holds one scalar watermark. Three consequences worth recording, because each was previously a stopgap:
+
+  1. **The run is owner-portable.** Progress lives in the owner-keyed rows, so a re-elected source connection resumes instead of restarting.
+  2. **Termination is inherent, not guarded.** Expansion is recorded on the row, so a node reachable from two parents — or through a cycle — cannot re-enter the frontier on a later page. Wave 1's run-local `Set` only covered a single page. This rests on one invariant: the `ON CONFLICT DO UPDATE` in `upsertMany` must never assign `expandedAt`, or a re-upserted node re-enters the frontier forever. It is commented at the SQL and pinned by an int-spec.
+  3. **The age guard survives with a DIFFERENT justification.** Wave 1 needed it for correctness (a stale frontier swept against a watermark that matched nothing). A resumed run now keeps stamping its own consistent watermark, so the sweep is correct at any age; what age costs is *freshness*. It is therefore relaxed to 24h and re-documented as a freshness policy.
+
+  #2061 also closed a hazard Wave 1 shipped: **completion alone no longer authorises the sweep.** "The frontier is empty" also describes a run that observed nothing — an empty root response from a hiccuping platform, or a resumed watermark whose rows are gone — and sweeping on that reading deletes the entire scope. The sweep now additionally requires that the run observed at least one row in its scope.
+
+- **Cursor ownership moved to the worker handler.** The frontier cannot be persisted from `listings`: `ConnectionCursorRepositoryPort` is a `sync`-context repository port, and a cross-context repository-port import is a deny shape. The handler owns cursor I/O via `ISyncCursorsService`, which also leaves the core sync a pure function of the frontier it is handed.
+
 ## References
 
 - Related issues: #1937 (this epic), #1943 (`SyncJob.connectionId` nullability — prerequisite for the catalogue-source wave), #1488 (the blocked semantic half), #1834 (the shop-side neutral service), #1036
