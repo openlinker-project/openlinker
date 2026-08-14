@@ -133,9 +133,12 @@
                              rate table's freshness ride under the strip
   12 KPI pairing ........... every card is a PAIR: one figure answering "how much"
                              and one answering "how much of it can I trust".
-                             Revenue is qualified by net sales, never by a
-                             cancellation rate — GMV already excludes cancelled
-                             orders, so the rate would qualify nothing
+                             On Revenue the pair reads NET-FIRST (reversed 14 Aug
+                             2026): net sales is the headline, GMV qualifies it.
+                             Never a cancellation rate — both figures already
+                             exclude cancelled orders, so the rate would qualify
+                             nothing. Cost of the reversal: the headline is the
+                             blocked half, so v1 renders GMV alone (frame 14)
   13 Period-over-period .... REVERSES the scope note below. One delta per card, on
                              its OWN LINE under the figure and its caption, stating
                              its basis in words ("vs previous period"). Arrow
@@ -150,7 +153,9 @@
   15 Definitions on the card One ⓘ per card, in the eyebrow, covering BOTH figures —
                              a Popover on CLICK, never a hover Tooltip. Cards carry
                              the ABBREVIATIONS (GMV, AOV) and the ⓘ carries the
-                             expansion, the formula and the caveat. CONDITIONAL: if
+                             expansion, the formula and the caveat. Blocks inside a
+                             ⓘ follow the CARD's order, headline first — on Revenue
+                             that is Net sales, then GMV. CONDITIONAL: if
                              the strip ships without the popover, the captions must
                              revert to the expanded terms
 
@@ -1258,7 +1263,7 @@
   }
 
   /*   7. .kpi-card__headline — the label the big number needs once the card's own
-   *      label became a group name. "REVENUE" is the group; "GMV" is the metric, and
+   *      label became a group name. "REVENUE" is the group; "Net sales" is the metric, and
    *      the two are not the same word, so the metric cannot ride in the eyebrow. It
    *      is set in sentence case on purpose: the eyebrow above it is already caps, and
    *      a second caps line would leave the card with two headers and no hierarchy.
@@ -1621,8 +1626,8 @@
             <div class="panel__header">
               <h3 class="section-title">Top products</h3>
               <div class="segmented-control" role="radiogroup" aria-label="Rank products by">
-                <button class="segmented-control__option segmented-control__option--active" type="button" role="radio" aria-checked="true" tabindex="0">By revenue</button>
-                <button class="segmented-control__option" type="button" role="radio" aria-checked="false" tabindex="-1">By units</button>
+                <button class="segmented-control__option segmented-control__option--active" type="button" role="radio" aria-checked="true" tabindex="0" data-product-sort="net">By net sales</button>
+                <button class="segmented-control__option" type="button" role="radio" aria-checked="false" tabindex="-1" data-product-sort="units">By units</button>
               </div>
             </div>
             <div class="data-table__container">
@@ -1951,7 +1956,8 @@
   </section>
 
   <!-- ═══════════ FRAME 01b — The date filter, live ═══════════
-       One of the two interactive frames (03b is the other). Every other frame is a
+       One of the interactive frames — 03b (breakdown + definitions) and the Top products
+       ranking toggle in 06 are the others. Every other frame is a
        still, because a still cannot disagree with itself. This one exists because the
        contract above has ordering rules — what commits, when the highlight is
        re-derived — that read as pedantry on paper and are obvious in three clicks. -->
@@ -2158,8 +2164,13 @@
               the spec&rsquo;s split &mdash; GMV gross and before discounts, AOV net and after them &mdash;
               which is why the &#9432; on the Revenue card says so outright. Orders and Units are untouched
               by [G].</li>
-            <li>Sparkline (<code>shared/ui/sparkline.tsx</code>) only on the two figures with a per-channel
-              series.</li>
+            <li><b>Revenue reads net-first</b> (reversed 14 Aug): net sales is the headline, GMV the
+              qualifier, and the &#9432; states them in that order. GMV is the half that renders, so this is
+              the one card whose headline is blocked &mdash; ship it showing the qualifier alone rather than
+              promoting GMV back into the big slot, where it would read as money kept.</li>
+            <li>Sparkline (<code>shared/ui/sparkline.tsx</code>) only where a per-channel series exists. On
+              Revenue that series is GMV&rsquo;s, so the label says <i>GMV trend</i> &mdash; it now describes
+              the qualifier, not the figure above it. Net sales has no daily series at all.</li>
           </ol>
         </div>
         <span class="build-field__label build-field__label--blocked">Blocked</span>
@@ -2173,8 +2184,9 @@
               order snapshot, never a state</span></div>
             <div class="build-gaps__row"><span>Return rate, refunded value</span>
               <span class="build-gaps__cause">No return entity in the repo; spec &sect;8, out of scope</span></div>
-            <div class="build-gaps__row"><span>Net sales</span>
-              <span class="build-gaps__cause">Inherits the row above</span></div>
+            <div class="build-gaps__row"><span>Net sales &mdash; <b>and it is the Revenue headline</b></span>
+              <span class="build-gaps__cause">Inherits the row above. Also the money column of both tables
+              and the leading breakdown column, so this one gap empties four places</span></div>
             <div class="build-gaps__row"><span>Average daily orders</span>
               <span class="build-gaps__cause">Arithmetic, not missing data: divides by range length, needs
               <code>placedAt</code></span></div>
@@ -2386,8 +2398,8 @@
           <div class="panel__header">
             <h3 class="section-title">Top products</h3>
             <div class="segmented-control" role="radiogroup" aria-label="Rank products by">
-              <button class="segmented-control__option segmented-control__option--active" type="button" role="radio" aria-checked="true" tabindex="0">By revenue</button>
-              <button class="segmented-control__option" type="button" role="radio" aria-checked="false" tabindex="-1">By units</button>
+              <button class="segmented-control__option segmented-control__option--active" type="button" role="radio" aria-checked="true" tabindex="0" data-product-sort="net">By net sales</button>
+              <button class="segmented-control__option" type="button" role="radio" aria-checked="false" tabindex="-1" data-product-sort="units">By units</button>
             </div>
           </div>
           <div class="data-table__container">
@@ -2419,6 +2431,14 @@
               where a number in that column right-aligns.</li>
             <li>The label never leaves the accessibility tree (<code>opacity</code>, never
               <code>display: none</code>).</li>
+            <li><b>By net sales / By units is live here</b> (14 Aug) &mdash; click it. It changes the
+              <b>order only</b>: both figures stay visible in both states, because the operator is comparing
+              &bdquo;sells most money&ldquo; against &bdquo;sells most items&ldquo; and swapping one for the
+              other would answer half the question. The <code>&darr;</code> and <code>aria-sort</code> move
+              to the column the order is on; ranking is on the <b>reporting currency</b> only, so the split
+              state gets no second arrow over its EUR column. <b>On this dataset the ranking nearly
+              inverts</b> &mdash; the 88-unit mug outranks the 12-unit camera worth four times as much &mdash;
+              which is the same point the by-channel alert makes about units versus money.</li>
           </ol>
         </div>
         <span class="build-field__label build-field__label--watch">Watch out</span>
@@ -3001,7 +3021,7 @@
             <tr>
               <td><b>No return entity exists anywhere</b></td>
               <td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Blocking &mdash; new issue</span></td>
-              <td><b>The whole Returns &amp; refunds card is drawn against nothing.</b> No return, withdrawal or refund entity exists in <code>libs/core</code>; <code>refunded</code> is an unwritten member of the order-status enum and no refund amount is stored anywhere, so neither return rate nor refunded value is computable at any price &mdash; and Net sales inherits the gap, being net order value minus that figure. The spec files it under known gaps and &sect;8 out of scope. It is drawn anyway because PL&rsquo;s 14-day right of withdrawal makes returns a real cost the product is blind to. <b>Needs its own data-capture issue.</b> Until it lands, and until [C] is fixed, the six-card strip <b>degrades to four</b>: Revenue (no qualifier), Orders (no daily rate, blocked on the range), Order value, Units. That degraded shape is what #1990 ships first.</td>
+              <td><b>The whole Returns &amp; refunds card is drawn against nothing.</b> No return, withdrawal or refund entity exists in <code>libs/core</code>; <code>refunded</code> is an unwritten member of the order-status enum and no refund amount is stored anywhere, so neither return rate nor refunded value is computable at any price &mdash; and Net sales inherits the gap, being net order value minus that figure. The spec files it under known gaps and &sect;8 out of scope. It is drawn anyway because PL&rsquo;s 14-day right of withdrawal makes returns a real cost the product is blind to. <b>Needs its own data-capture issue &mdash; and since 14 Aug it is the page&rsquo;s widest gap, not a card-local one:</b> net sales is the Revenue <i>headline</i>, the money column of By channel and Top products, and the leading breakdown column, so one missing entity empties four places. Until it lands, and until [C] is fixed, the six-card strip <b>degrades to four</b>: Revenue (<b>headline empty, GMV alone under it</b> &mdash; do not promote GMV back into the big slot, that is the reading the reversal was made to stop), Orders (no daily rate, blocked on the range), Order value, Units; both tables lose their money column. That degraded shape is what #1990 ships first.</td>
             </tr>
             <tr>
               <td><b>FX: no conversion, and no order-day rate to convert with</b></td>
@@ -3011,7 +3031,7 @@
             <tr>
               <td>Money tables split by currency; only the strip converts</td>
               <td><span class="status-badge status-badge--neutral"><span class="status-badge__dot"></span>Decided</span></td>
-              <td>A per-table <code>In PLN</code> / <code>By currency</code> control was built and cut. <b>One place on the page converts &mdash; the strip &mdash; and everything below it stays in the money its market took.</b> That keeps a single conversion to audit rather than several views to reconcile, and it means #1990 does not have to keep a table's totals and its rows in the same currency mode. Splitting reaches the columns that carry amounts (<code>Revenue</code> becomes two) and nothing else: counts and unit shares are currency-free by construction.</td>
+              <td>A per-table <code>In PLN</code> / <code>By currency</code> control was built and cut. <b>One place on the page converts &mdash; the strip &mdash; and everything below it stays in the money its market took.</b> That keeps a single conversion to audit rather than several views to reconcile, and it means #1990 does not have to keep a table's totals and its rows in the same currency mode. Splitting reaches the columns that carry amounts (<code>Net sales</code> becomes two) and nothing else: counts and unit shares are currency-free by construction.</td>
             </tr>
             <tr>
               <td>The median cannot be derived from the channel rows</td>
@@ -3064,9 +3084,9 @@
               <td><b>Named as an addition, not smuggled in as a fix.</b> #2003 asks only for the <i>statement</i> that cancelled orders are excluded, and the spec&rsquo;s chosen Design&nbsp;1 leaves metric <b>A7</b> (cancellation rate / cancelled value) out of its coverage list. It gets a card because A7 is a rate <i>and</i> a value, and as a qualifier on the orders card its money figure had nowhere to go. The pair forces an asymmetry into the open, which the card&rsquo;s &#9432; states: a <b>partially</b> cancelled order is not a cancelled order for the rate, but its cancelled items <i>are</i> in the value &mdash; two figures, two denominators. Blocked on [C]: cancellation is a string inside the snapshot, never written as state, so nothing counts it and nothing sums it. If #1984/#1985 decline the scope, the card does not ship and the exclusion survives as the GMV caption.</td>
             </tr>
             <tr>
-              <td><b>Net sales on the revenue card</b></td>
-              <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Scope addition &mdash; blocked on returns</span></td>
-              <td>The Revenue card&rsquo;s qualifier is <b>GMV minus refunded value</b> &mdash; what was sold against what stayed sold. It costs something worth stating: the card gives up a qualifier that <i>would</i> have rendered (cancellation rate needs [C], a fixable column) for one that <b>cannot render at all</b> until a return entity exists. <b>Sequencing consequence for #1990:</b> until returns are captured, the Revenue card ships with its qualifier row empty, exactly as Returns&nbsp;&amp;&nbsp;refunds ships not at all. Both unblock on the same data-capture issue.</td>
+              <td><b>Net sales is the headline; GMV qualifies it</b></td>
+              <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Reversed 14 Aug &mdash; blocked on returns</span></td>
+              <td>The pair is unchanged &mdash; <b>GMV minus refunded value</b>, what was sold against what stayed sold &mdash; but the order is reversed: <b>net sales is now the big number and GMV the small one</b>, on the card and in every table and breakdown column that carries money. The reason is what an operator is actually asking: how much money stayed sold, not how much was rung up. It costs something worth stating twice over. <i>First</i>, the card gave up a qualifier that <b>would</b> have rendered (cancellation rate needs [C], a fixable column) for one that cannot render at all until a return entity exists. <i>Second</i>, that unrenderable figure is now the <b>headline</b>, so the strip&rsquo;s first card ships with its big slot empty and GMV alone underneath. <b>Sequencing consequence for #1990:</b> ship it that way. Promoting GMV back into the headline while returns are missing would put a gross figure where the reader reads &bdquo;money kept&ldquo;, which is precisely the misreading this reversal removes. Unblocks on the same data-capture issue as Returns&nbsp;&amp;&nbsp;refunds.</td>
             </tr>
             <tr>
               <td><b>Period-over-period deltas on all six cards</b></td>
@@ -3507,19 +3527,34 @@
      a euro figure. Units in `split` are per channel and per currency alike — a unit is
      a unit in any money, which is the same reason Units sits outside the strip's
      conversion note. */
+  /* `returned` / `returnedEur` are the per-product refunded value, added 14 Aug 2026 when
+     the table's money column became NET SALES. They are invented like every other figure
+     on this page, and unlike the rest they name something the platform cannot produce at
+     all — no return entity exists in `libs/core` — which is why every net-sales heading on
+     the page carries the † and the register files the gap once. Drawn anyway for the same
+     reason the Returns & refunds card is drawn: a table that quietly reported gross under a
+     net heading would be the exact misreading the reversal was made to prevent.
+
+     One product carries `returned: 0` on purpose. A product that was simply never sent
+     back is a real zero, not a gap — the same distinction `Not listed` vs `0` makes in the
+     channel columns (decision 7).
+
+     These do NOT sum to the refunded value on the strip, and must not be expected to: Top
+     products is the top six rows, not the catalogue. The figure that has to reconcile is
+     the strip's, and it comes from the channel rows. */
   var PRODUCTS = [
     { name: 'Aparat cyfrowy Canon PowerShot SX740 HS Lite Edition', sku: 'OL-CANON-SX740LE', photo: 212,
-      units: 12, revenue: 17988.00, split: { c1: 9, c2: 3, c3: null, c4: null }, trend: [1, 2, 1, 3, 2, 2, 1] },
+      units: 12, revenue: 17988.00, returned: 1499.00, split: { c1: 9, c2: 3, c3: null, c4: null }, trend: [1, 2, 1, 3, 2, 2, 1] },
     { name: 'Bosch Professional GSR 12V-15 Cordless Drill / Driver', sku: 'OL-BOSCH-GSR12V15', photo: 28,
-      units: 22, revenue: 10999.78, revenueEur: 549.90, split: { c1: 18, c2: 4, c3: 0, c4: 3 }, trend: [2, 3, 4, 3, 4, 3, 3] },
+      units: 22, revenue: 10999.78, returned: 499.99, revenueEur: 549.90, returnedEur: 54.99, split: { c1: 18, c2: 4, c3: 0, c4: 3 }, trend: [2, 3, 4, 3, 4, 3, 3] },
     { name: 'adidas Originals Adicolor Classics 3-Stripes Tee', sku: 'OL-ADIDAS-IA4845', photo: 258,
-      units: 64, revenue: 9536.00, revenueEur: 296.00, split: { c1: 41, c2: 18, c3: 5, c4: 8 }, trend: [6, 8, 9, 10, 11, 9, 11] },
+      units: 64, revenue: 9536.00, returned: 596.00, revenueEur: 296.00, returnedEur: 37.00, split: { c1: 41, c2: 18, c3: 5, c4: 8 }, trend: [6, 8, 9, 10, 11, 9, 11] },
     { name: 'Handmade Ceramic Mug — Linen Glaze 300ml', sku: 'OL-MUG-LIN-300', photo: 168,
-      units: 88, revenue: 4312.00, split: { c1: 62, c2: 26, c3: null, c4: null }, trend: [9, 11, 12, 14, 13, 15, 14] },
+      units: 88, revenue: 4312.00, returned: 98.00, split: { c1: 62, c2: 26, c3: null, c4: null }, trend: [9, 11, 12, 14, 13, 15, 14] },
     { name: 'Handmade Resin Ring with Pressed Botanicals', sku: 'OL-RING-RESIN', photo: null,
-      units: 41, revenue: 2829.00, split: { c1: 30, c2: 11, c3: 0, c4: null }, trend: [4, 5, 6, 7, 6, 6, 7] },
+      units: 41, revenue: 2829.00, returned: 0, split: { c1: 30, c2: 11, c3: 0, c4: null }, trend: [4, 5, 6, 7, 6, 6, 7] },
     { name: 'Natural Cold-Process Soap Bar 100g', sku: 'OL-SOAP-NATURAL', photo: 96,
-      units: 62, revenue: 1798.00, revenueEur: 138.00, split: { c1: 44, c2: 18, c3: null, c4: 12 }, trend: [7, 8, 9, 10, 9, 10, 9] }
+      units: 62, revenue: 1798.00, returned: 29.00, revenueEur: 138.00, returnedEur: 0, split: { c1: 44, c2: 18, c3: null, c4: 12 }, trend: [7, 8, 9, 10, 9, 10, 9] }
   ];
 
   /* ══════════════════ Trust header (new rule 1) ══════════════════ */
@@ -3816,6 +3851,14 @@
      The whole figure carries the gap marker. Comparing two windows needs a filterable
      order date, and `placedAt` is the same missing column that blocks the range filter
      at the top of the page — so every delta on this strip is drawn, not computed. */
+  /* One sentence, four places. Net sales is now the Revenue card's headline AND the money
+     column of both tables, so the same gap is marked on the strip, on By channel, on Top
+     products and on the currency breakdown. The text is shared because `renderDataOrder`
+     audits the finished page by marker TITLE: a second wording would file itself as a
+     second gap and the register would report the same missing entity twice. */
+  var NET_SALES_NEED = 'Needs refunded value, and no return or refund amount is stored ' +
+    'on any entity';
+
   var DELTA_GAP = 'Period-over-period needs a filterable order date; ' +
     'placedAt is not a column and OrderRecordFilters exposes only ingestion time ([C])';
 
@@ -3898,7 +3941,8 @@
      questions stacked on one card because there was nowhere else to put them. Six cards
      give each question its own card and each card a true pair:
 
-       Revenue ............ GMV, qualified by what stayed sold after refunds
+       Revenue ............ net sales — what stayed sold — qualified by the GMV it came
+                            from (REVERSED 14 Aug 2026; GMV led until then)
        Orders ............. how many, qualified by the daily rate that makes ranges
                             of different length comparable
        Order value ........ the mean, qualified by the median that exposes it
@@ -3913,6 +3957,14 @@
      first thing to fold back is Units, whose pair (units, units per order) is the one an
      operator asks for least often; that is a layout decision, and it should be taken on
      the real page rather than pre-empted here.
+
+     THE REVENUE PAIR READS NET-FIRST (14 Aug 2026). GMV was the headline for two rounds
+     and net sales the qualifier; the order is now the other way round, because the
+     question the page exists to answer first is how much money STAYED sold. What it costs
+     is stated on the card and in frame 14: net sales is the blocked half, so the first
+     card on the strip #1990 ships shows its qualifier and nothing above it. The sparkline
+     stays and its label moved to "GMV trend" — it is a GMV series, and there is no daily
+     series for net sales to draw.
 
      ABBREVIATIONS ON THE CARDS, EXPANSIONS IN THE ⓘ (reverses round 6). Round 6 argued
      that "AOV" appears nowhere in apps/web — grep: still zero hits — and therefore should
@@ -3982,11 +4034,14 @@
      horizontally, which put the footer total off screen from the rows it totals, and the
      footer IS the evidence (it restates the figure the cards show). A table whose claim
      and proof cannot be seen together fails at the only job it has. */
+  /* Net sales leads, because the columns follow the CARD order and the Revenue card now
+     leads with net sales (14 Aug 2026). The rule is worth more than the one swap it causes
+     here: the reader learns the strip first and reads the table with that order in mind. */
   var BREAKDOWN_COLUMNS = [
-    { label: 'GMV', get: function (t, c) { return money(t.revenue, c); } },
     { label: 'Net sales',
-      mark: 'Needs refunded value, and no return or refund amount is stored on any entity',
+      mark: NET_SALES_NEED,
       get: function (t, c) { return money(t.netSales, c); } },
+    { label: 'GMV', get: function (t, c) { return money(t.revenue, c); } },
     { label: 'AOV', get: function (t, c) { return money(t.aov, c); } },
     { label: 'Median order value', get: function (t, c) { return money(t.median, c); } },
     { label: 'Refunded value',
@@ -4069,37 +4124,53 @@
 
     var prev = totals.previous;
 
-    /* CARD 1 — REVENUE. The ⓘ carries the two exclusions an operator would otherwise
-       have to infer from two other cards: cancellations are already out of GMV (which is
-       why the Cancellations card qualifies nothing about this one), and refunds are NOT,
-       which is what Net sales underneath is for. */
+    /* CARD 1 — REVENUE. NET SALES IS THE HEADLINE AND GMV QUALIFIES IT (14 Aug 2026),
+       which reverses the pair: the question the card answers first is "how much money
+       stayed sold", and GMV underneath is what was rung up before refunds came back.
+       The ⓘ still carries the two exclusions an operator would otherwise have to infer
+       from two other cards — cancellations are already out of both figures (which is why
+       the Cancellations card qualifies nothing here), and refunds are out of the headline
+       but NOT out of GMV, which is the whole reason the pair is worth reading together.
+
+       THE COST OF THE REVERSAL, STATED PLAINLY: the headline is the figure that cannot be
+       computed today (no return or refund entity exists), so on the strip #1990 ships
+       first this card renders its qualifier and nothing else. That is a deliberate trade —
+       a gross figure sitting in the headline slot reads as money kept, which is the
+       misreading the pair existed to prevent — and frame 14 records it as the degraded
+       shape rather than leaving the dev to discover it. */
     cards.push(kpiCard({
       label: 'Revenue',
       info: infotip('About the Revenue figures', definitions([
+        { term: 'Net sales',
+          text: 'The value of product sales after discounts and after customer refunds, ' +
+                'excluding VAT.',
+          formula: 'Net order value (after discounts, excluding VAT) − Refunded value',
+          caveat: 'Net of VAT, unlike GMV below — the two figures on this card do not sit ' +
+                  'on the same tax basis. Shipping refunds, marketplace fees and operating ' +
+                  'costs are not deducted.' },
         { term: 'GMV (Gross Merchandise Value)',
           text: 'The total value of non-cancelled product items in orders placed during ' +
                 'the selected period, at gross selling prices including VAT, before ' +
                 'line-item discounts.',
           caveat: 'Fully cancelled orders and cancelled items from partially cancelled ' +
                   'orders are excluded. Returned and refunded items remain included. ' +
-                  'Shipping is excluded.' },
-        { term: 'Net sales',
-          text: 'The value of product sales after discounts and after customer refunds, ' +
-                'excluding VAT.',
-          formula: 'Net order value (after discounts, excluding VAT) − Refunded value',
-          caveat: 'Net of VAT, unlike GMV above — the two figures on this card do not sit ' +
-                  'on the same tax basis. Shipping refunds, marketplace fees and operating ' +
-                  'costs are not deducted.' }
+                  'Shipping is excluded.' }
       ])),
-      metric: 'GMV',
-      value: money(totals.revenue, code),
-      delta: delta(totals.revenue, prev.revenue),
-      trend: totals.revenueTrend, sparkLabel: 'Revenue trend, last 7 days',
-      qualifier: { label: 'Net sales' +
-                     blocked('Needs refunded value, and no return or refund amount is stored on any entity',
-                             'Net sales',
-                             'Falls out of Refunded value: net order value − Refunded value. No work of its own.'),
-                   value: money(totals.netSales, code) }
+      metric: 'Net sales' +
+        blocked(NET_SALES_NEED, 'Net sales',
+                'Falls out of Refunded value: net order value − Refunded value. No work of ' +
+                'its own — but it is now the card’s HEADLINE, so until it lands the ' +
+                'Revenue card ships showing GMV alone.'),
+      value: money(totals.netSales, code),
+      delta: delta(totals.netSales, prev.netSales),
+      /* The series is a GMV series and the label says so. Net sales has no daily series —
+         refunds are not recorded per day, or at all — so the sparkline now belongs to the
+         qualifier rather than to the headline it sits beside. Kept because the trend is
+         still the one thing on this card the data can actually produce; relabelled because
+         a line read as "net sales, last 7 days" would be a graphic asserting more than the
+         page knows. */
+      trend: totals.revenueTrend, sparkLabel: 'GMV trend, last 7 days',
+      qualifier: { label: 'GMV', value: money(totals.revenue, code) }
     }));
 
     /* CARD 2 — ORDERS. The daily rate is the qualifier because it is what makes two
@@ -4367,10 +4438,19 @@
     var unitTotal = rows.reduce(function (a, c) { return a + c.units; }, 0);
     var orderTotal = rows.reduce(function (a, c) { return a + c.orders; }, 0);
     var revTotal = rows.reduce(function (a, c) { return a + c.revenue; }, 0);
+    /* The money column is NET SALES, matching the headline of the Revenue card (14 Aug
+       2026). It is derived per row rather than typed, for the same reason the strip's
+       figure is: a hand-kept net column would drift from the refunded value the Returns
+       card states, and AC #1990 is exactly the requirement that the two agree.
+
+       `revTotal` stays GMV and is now used only for AOV, whose definition (net, after
+       discounts, average per order) is the spec's and did not change with the column. */
+    var netOf = function (c) { return c.revenue - c.returnedValue; };
+    var netTotal = rows.reduce(function (a, c) { return a + netOf(c); }, 0);
 
     var head = '<thead><tr>' +
       sortHeader('Channel') +
-      sortHeader('Revenue', 'right', null, true) +
+      sortHeader('Net sales' + blocked(NET_SALES_NEED, 'Net sales'), 'right', null, true) +
       sortHeader('Orders', 'right') +
       sortHeader('<abbr title="Average order value">AOV</abbr>', 'right', opts.tablet ? 1024 : null) +
       sortHeader('Units', 'right') +
@@ -4389,7 +4469,7 @@
           '<span><span class="trust-header__dot" style="background:' + c.hue + ';display:inline-block;margin-right:6px" aria-hidden="true"></span>' + esc(c.name) + '</span>' +
           marks +
         '</span></td>' +
-        '<td class="data-table__cell--right">' + money(c.revenue, c.currency) + '</td>' +
+        '<td class="data-table__cell--right">' + money(netOf(c), c.currency) + '</td>' +
         '<td class="data-table__cell--right">' + int(c.orders) + '</td>' +
         '<td class="data-table__cell--right' + (opts.tablet ? ' data-table__cell--hide-below-1024' : '') + '">' + money(c.aov, c.currency) + '</td>' +
         '<td class="data-table__cell--right">' + int(c.units) + '</td>' +
@@ -4406,13 +4486,13 @@
          stays in the currency the market actually took. The table is where the operator
          audits the strip: the strip states one converted number, this states the two it
          was made from, so the conversion can be checked rather than trusted. Their order
-         counts must add up to the strip's Orders card and their converted revenues to
-         its GMV — that pair of checks is AC #1990 for this state. */
+         counts must add up to the strip's Orders card and their converted net sales to
+         its headline figure — that pair of checks is AC #1990 for this state. */
       foot = '<tfoot>' + CURRENCIES_MULTI.map(function (code) {
         var t = TOTALS_BY_CURRENCY[code];
         return '<tr>' +
           '<td>Total &middot; ' + esc(code) + '</td>' +
-          '<td class="data-table__cell--right">' + money(t.revenue, code) + '</td>' +
+          '<td class="data-table__cell--right">' + money(t.netSales, code) + '</td>' +
           '<td class="data-table__cell--right">' + int(t.orders) + '</td>' +
           '<td class="data-table__cell--right' + aovHide + '">' + money(t.aov, code) + '</td>' +
           '<td class="data-table__cell--right">' + int(t.units) + '</td>' +
@@ -4426,7 +4506,7 @@
          conditional was the only reason this footer ever carried a badge. */
       foot = '<tfoot><tr>' +
         '<td>Total</td>' +
-        '<td class="data-table__cell--right">' + money(revTotal, 'PLN') + '</td>' +
+        '<td class="data-table__cell--right">' + money(netTotal, 'PLN') + '</td>' +
         '<td class="data-table__cell--right">' + int(orderTotal) + '</td>' +
         '<td class="data-table__cell--right' + aovHide + '">' + money(revTotal / orderTotal, 'PLN') + '</td>' +
         '<td class="data-table__cell--right">' + int(unitTotal) + '</td>' +
@@ -4460,22 +4540,48 @@
   }
 
   /* ══════════════════ Top products ══════════════════ */
-  function productTable(el, mode) {
+  /* RANK BY NET SALES OR BY UNITS, AND THE TOGGLE IS LIVE (14 Aug 2026). It used to be a
+     dead specimen — correct CSS, correct `role="radiogroup"`, no handler — and that was
+     defensible while it only promised a re-sort. It stopped being defensible once the money
+     column became net sales, because the two orders answer DIFFERENT questions and the page
+     already argues so three frames earlier ("Share is measured in units, not revenue"): on
+     this dataset ranking by units all but inverts the table. A mockup that states a thesis
+     about unit-vs-money comparability and then ships the control that demonstrates it as an
+     inert button is arguing with itself.
+
+     So the table re-renders rather than the rows being shuffled in place: the arrow, the
+     `aria-sort` and the radio state all have to move with the order, and re-rendering keeps
+     one code path producing all three instead of three DOM patches that can disagree. The
+     `<caption>` is authored in the static markup, so it is captured once and re-emitted —
+     the previous code appended to `el.innerHTML`, which is exactly the kind of thing that
+     silently duplicates a caption the second time it runs.
+
+     WHAT #1991 MUST TAKE FROM THIS: the control's job is the ORDER, never the columns. Both
+     figures stay visible in both states, because an operator comparing "sells most money"
+     against "sells most items" needs to see the pair, not swap one for the other. */
+  function productTable(el, mode, sort) {
     if (!el) return;
+    sort = sort || 'net';
     var split = mode === 'currency-split';
     var channels = split ? CHANNELS_MULTI : CHANNELS;
 
-    /* Revenue becomes two columns above one currency; the unit columns do not change,
+    /* Net sales becomes two columns above one currency; the unit columns do not change,
        because splitting money is a statement about a rate and counting items is not. */
+    var netMark = blocked(NET_SALES_NEED, 'Net sales');
+    /* The arrow marks the column the ORDER is on, so it moves with the toggle. In the split
+       state it is the PLN column that carries it: the rows are ranked once, on the reporting
+       currency, and a second arrow over EUR would claim a second ranking. */
+    var byNet = sort === 'net';
     var revenueHeads = split
-      ? sortHeader('Revenue &middot; PLN', 'right', null, true) + sortHeader('Revenue &middot; EUR', 'right')
-      : sortHeader('Revenue', 'right', null, true);
+      ? sortHeader('Net sales &middot; PLN' + netMark, 'right', null, byNet) +
+        sortHeader('Net sales &middot; EUR' + netMark, 'right')
+      : sortHeader('Net sales' + netMark, 'right', null, byNet);
 
     var head = '<thead><tr>' +
       '<th class="data-table__cell--sticky data-table__cell--sticky-edge">Product</th>' +
       '<th class="data-table__cell--hide-below-768">SKU</th>' +
       revenueHeads +
-      sortHeader('Units', 'right') +
+      sortHeader('Units', 'right', null, !byNet) +
       channels.map(function (c) { return '<th class="data-table__cell--right">' + esc(c.name.split(' — ')[0]) + '</th>'; }).join('') +
       '</tr></thead>';
 
@@ -4487,14 +4593,28 @@
       return channels.reduce(function (a, c) { return a + (p.split[c.id] || 0); }, 0);
     }
 
+    /* Net of the product's own refunded value, per currency and never across one: a euro
+       refund reduces the euro column, exactly as an amount is never converted twice. */
     function revenueCells(p) {
-      if (!split) return '<td class="data-table__cell--right">' + money(p.revenue, 'PLN') + '</td>';
-      return '<td class="data-table__cell--right">' + money(p.revenue, 'PLN') + '</td>' +
+      var pln = money(p.revenue - p.returned, 'PLN');
+      if (!split) return '<td class="data-table__cell--right">' + pln + '</td>';
+      return '<td class="data-table__cell--right">' + pln + '</td>' +
         '<td class="data-table__cell--right">' +
-          (p.revenueEur ? money(p.revenueEur, 'EUR') : emptyValue('Not sold in euros')) + '</td>';
+          (p.revenueEur ? money(p.revenueEur - (p.returnedEur || 0), 'EUR')
+                        : emptyValue('Not sold in euros')) + '</td>';
     }
 
-    var body = '<tbody>' + PRODUCTS.map(function (p) {
+    /* Ranked here rather than relying on the order PRODUCTS happens to be typed in. Money
+       ranks on the reporting currency only — a product's euro half is a different market, not
+       a bigger number — and units rank on the same summed split the Units column shows, so
+       the order can always be checked against the column it claims to be ordered by. */
+    var ranked = PRODUCTS.slice().sort(function (a, b) {
+      return byNet
+        ? (b.revenue - b.returned) - (a.revenue - a.returned)
+        : unitsOf(b) - unitsOf(a);
+    });
+
+    var body = '<tbody>' + ranked.map(function (p) {
       var cells = channels.map(function (c) {
         var v = p.split[c.id];
         if (v === null || v === undefined) {
@@ -4524,10 +4644,57 @@
       '</tr>';
     }).join('') + '</tbody>';
 
-    el.innerHTML = el.innerHTML + head + body;
+    /* The static markup authors the <caption>; it is captured on the first render and
+       re-emitted on every later one. Appending to `el.innerHTML` — which is what this line
+       used to do — would stack a second thead the first time the toggle was clicked. */
+    var entry = productTableEntry(el);
+    if (!entry) {
+      entry = { el: el, mode: mode, caption: el.innerHTML };
+      PRODUCT_TABLES.push(entry);
+    }
+    entry.sort = sort;
+    el.innerHTML = entry.caption + head + body;
   }
+
+  var PRODUCT_TABLES = [];
+  function productTableEntry(el) {
+    for (var i = 0; i < PRODUCT_TABLES.length; i++) {
+      if (PRODUCT_TABLES[i].el === el) return PRODUCT_TABLES[i];
+    }
+    return null;
+  }
+
   productTable(document.getElementById('full-product-table'));
   productTable(document.getElementById('product-table'));
+
+  /* The toggle, on the same delegated pattern as the breakdown button and the date presets.
+     The control finds ITS table through the shared `article.panel` rather than by id, so the
+     two copies of this section (the full page and frame 06) need no per-frame wiring — and a
+     third copy would work by being marked up the same way.
+
+     Radio state is written by hand on all three attributes because `SegmentedControl` is
+     a specimen here, not the real component: the shipped one owns `aria-checked` and the
+     roving `tabindex` itself (segmented-control.tsx), and a mockup that moved only the
+     highlight would model the look of the control without its keyboard contract. */
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-product-sort]');
+    if (!btn) return;
+    var panel = btn.closest('article.panel');
+    var table = panel && panel.querySelector('table.data-table');
+    if (!table) return;
+
+    var entry = productTableEntry(table);
+    productTable(table, entry ? entry.mode : undefined, btn.getAttribute('data-product-sort'));
+
+    Array.prototype.forEach.call(
+      btn.closest('.segmented-control').querySelectorAll('[data-product-sort]'),
+      function (b) {
+        var on = b === btn;
+        b.classList.toggle('segmented-control__option--active', on);
+        b.setAttribute('aria-checked', on ? 'true' : 'false');
+        b.setAttribute('tabindex', on ? '0' : '-1');
+      });
+  });
 
   var channelPanelEl = document.getElementById('channel-currency');
   if (channelPanelEl) {
@@ -4559,7 +4726,10 @@
         '</div>' +
         '<div class="data-table__card-detail">' +
           '<table class="specimen" style="font-size:12px">' +
-            '<tr><td>Revenue</td><td class="data-table__cell--right num">' + money(c.revenue, c.currency) + '</td></tr>' +
+            /* Same column as the table, same name: the card view is the table at narrow
+               width, so a card still reading "Revenue" would silently offer a second
+               basis to whoever only ever sees the phone. */
+            '<tr><td>Net sales</td><td class="data-table__cell--right num">' + money(c.revenue - c.returnedValue, c.currency) + '</td></tr>' +
             '<tr><td>Orders</td><td class="data-table__cell--right num">' + int(c.orders) + '</td></tr>' +
             '<tr><td>Units</td><td class="data-table__cell--right num">' + int(c.units) + '</td></tr>' +
             '<tr><td>Share (units)</td><td class="data-table__cell--right num">' + pct((c.units / unitTotal) * 100) + '</td></tr>' +
@@ -4590,7 +4760,10 @@
             '<span class="data-table__card-subtitle mono-text">' + esc(p.sku) + '</span>' +
           '</div>' +
           '<div class="data-table__card-meta" style="grid-column:1/-1">' +
-            '<span class="num">' + money(p.revenue, 'PLN') + '</span> · <span class="num">' + int(p.units) + ' units</span>' +
+            /* Unlabelled money on a card must be the SAME figure as the column it stands
+               in for — net sales, not GMV — or the phone quietly reports a bigger number
+               than the desk. */
+            '<span class="num">' + money(p.revenue - p.returned, 'PLN') + '</span> · <span class="num">' + int(p.units) + ' units</span>' +
           '</div>' +
         '</div>' +
         '<details' + (idx === 0 ? ' open' : '') + '>' +
@@ -4647,13 +4820,13 @@
      'Stated once, near the numbers it governs, because the exclusion is invisible otherwise. Required by AC.'],
     ['REVENUE / ORDERS / ORDER VALUE / UNITS / RETURNS & REFUNDS / CANCELLATIONS', 'KPI card labels',
      'Group names, not metric names — each card carries two figures, so the metric names itself under its own number.'],
-    ['GMV', 'KPI card metric, Revenue',
-     'Abbreviation alone, full name behind the ⓘ — honest because the definition is one click away. Reverts if the popover doesn’t ship.'],
+    ['Net sales', 'KPI card metric (the headline), Revenue',
+     'Plainest words for GMV minus refunds. Reversed 14 Aug: it leads the card, because the operator asks what stayed sold. Blocked figure, so it carries the †.'],
+    ['GMV', 'KPI card qualifier, Revenue',
+     'Abbreviation alone, full name behind the ⓘ — honest because the definition is one click away. Reverts if the popover doesn’t ship. It is the half that renders in v1.'],
     ['GMV (Gross Merchandise Value) · The total value of non-cancelled product items in orders placed during the selected period, after discounts and before refunds.',
      'Behind the ⓘ on the Revenue card',
-     'States what it is, then what it excludes — "gross" implies refunds are already gone. Opens on CLICK; a title attribute shows nothing on touch.'],
-    ['Net sales', 'KPI card qualifier, Revenue',
-     'Plainest words for GMV minus refunds. The qualifier row is a label-and-figure pair — a figure, not an operation.'],
+     'States what it is, then what it excludes — "gross" implies refunds are already gone. Opens on CLICK; a title attribute shows nothing on touch. Sits SECOND in the panel, under Net sales, following the card’s own order.'],
     ['Orders', 'KPI card metric, Orders',
      'Cancellation rule in the definition: a fully cancelled order is excluded, a PARTIALLY cancelled order still counts as one.'],
     ['Avg. daily orders', 'KPI card qualifier, Orders',
@@ -4676,8 +4849,12 @@
      'The noun stays the same both directions, so the control doesn’t appear to change subject. "Breakdown" alone is ambiguous on this page.'],
     ['Breakdown by currency', 'Heading of the opened table',
      'Says what is split and by what. Footer reads "Total · PLN", not "Total", so it isn’t read as a third market.'],
-    ['Revenue · PLN / Revenue · EUR', 'Top products column headers, more than one currency',
-     'Currency qualifies the metric in the header, not the cells, so two money columns don’t merge visually. EmptyValue, not zero, when unsold in euros.'],
+    ['Net sales · PLN / Net sales · EUR', 'Top products column headers, more than one currency',
+     'Currency qualifies the metric in the header, not the cells, so two money columns don’t merge visually. EmptyValue, not zero, when unsold in euros. Renamed 14 Aug with the card: one basis on the page, or the tables argue with the strip.'],
+    ['By net sales / By units', 'Top products ranking toggle — LIVE in this file, click it',
+     'Changes the ORDER, never the columns: both figures stay visible, because the two orders answer different questions. Arrow and aria-sort follow the order; ranking is on the reporting currency only.'],
+    ['Net sales', 'By-channel money column, and the same row on the mobile card',
+     'The table reports the figure the strip leads with — a column still reading "Revenue" would offer a second basis to whoever only reads the table. Header carries the †; refunded value is not stored anywhere.'],
     ['Updating for 7 Jul – 5 Aug', 'Recalculating badge',
      'Names the range being computed, so the dimmed figures are legibly stale rather than merely faded.'],
     ['Unable to load top products', 'Section ErrorState title',
