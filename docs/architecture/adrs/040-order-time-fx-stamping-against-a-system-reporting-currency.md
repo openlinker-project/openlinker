@@ -1,0 +1,239 @@
+# ADR-040: Order-time FX stamping against a system-wide reporting currency
+
+- **Status**: Proposed
+- **Date**: 2026-08-13
+- **Authors**: @norbert-kulus-blockydevs
+
+## Context
+
+An operator selling mostly in PLN may take an order denominated in another currency. The order
+analytics read model (#1985) denormalizes the order's *native* `currency` + `totalAmount` onto
+`order_records`, which makes per-currency aggregates queryable but leaves every cross-currency total
+unanswerable: summing 120 000 PLN and 8 400 EUR produces a number that means nothing.
+
+Converting at read time is not an option for a financial figure — the rate that applied when the
+order was placed is the only defensible one, and it must stay fixed no matter when the report runs or
+how many times the order is re-ingested. So the conversion is *stamped* at ingestion and never
+recomputed.
+
+That raises the question this ADR answers: **converted into what?** Three things were being
+conflated:
+
+| Level | What it is | Kind |
+|---|---|---|
+| Order | the currency the buyer paid in | **fact** |
+| Connection | the currency that shop prices products in (`config.currency`, #362) | **fact** |
+| Business | the currency we report in | **choice** |
+
+Deriving the reporting currency per connection derives a *choice* from *facts*, and it cannot deliver
+what this feature exists for: per-connection values produce an estate with no single total, and a
+value inferred from order history shifts silently as an order mix changes. The reporting currency is a
+property of the **reporting entity** — one system-level answer.
+
+*Terminology note:* an earlier draft called the target a **base** currency. In FX the *base* currency
+of a pair is the one being priced — precisely what the registry stores as `fromCurrency`, i.e. the
+order's **own** currency — so `baseTotalAmount` read as the native total, the opposite of its meaning.
+The analytics product spec already used *reporting currency*.
+
+## Decision
+
+1. **One system-level reporting-currency setting**, resolved `settings row → OL_REPORTING_CURRENCY →
+   'EUR'` — the singleton-row shape `ai_provider_active_setting` already establishes (a
+   `reporting_currency_setting` table keyed `id = 'singleton'`, an admin `GET`/`PUT`, no in-process
+   cache). The default converts, so it must announce itself: the resolved value is reported with the
+   rung that produced it, renders as `EUR (default)` until explicitly set, and every analytics figure
+   is labelled with its currency at the point of consumption.
+
+   `Connection.config.currency` (#362) keeps its meaning and readers — it is a genuine fact about a
+   shop — and is **explicitly not consulted** for reporting. There is no per-connection FX config.
+
+2. **The rate source is a function of the reporting currency**, not a separate setting: `PLN → NBP`,
+   `EUR → ECB`. One provider call per order that needs one. Because NBP quotes every table-A currency
+   against PLN and ECB quotes EUR against everything, each pair is then either a direct published
+   quote or a single documented inversion — no cross-rate pivot arises for either supported value.
+
+   The setting is therefore **validated at save time against provider coverage** and accepts `PLN` and
+   `EUR` only for now. The pivot path stays implemented (open for extension): a third reporting
+   currency needs a third provider and one entry in the same mapping, not a change to anything above.
+
+3. **Convert only when the order's currency differs from the reporting currency.** The equal case
+   writes `reportingTotalAmount = totals.total` with no rate lookup and no I/O. `reportingCurrency`,
+   not `exchangeRateId`, is the discriminator for "unstamped".
+
+4. **Rates live in a shared `exchange_rates` registry keyed `(source, from, to, rateDate)`**, not per
+   order — five hundred EUR orders on one day resolve to one row. The registry is append-only: the
+   port declares only `findByKey` and `insertIfAbsent`, pinned by a spec asserting no mutating ORM
+   operation is reachable plus an integration test asserting a second get-or-create leaves the row
+   byte-identical. No database-level guard ships (§ Consequences).
+
+   **Direction is a stated invariant, not an implementation detail**: `rate` is the number of `to`
+   units per one `from` unit. For the order stamp specifically, `from` is always the order's own
+   currency and `to` the reporting currency, so a stamp is always `total × rate`, never a division.
+   The registry itself is **consumer-neutral** — it stores published rates, not stamps — so a future
+   consumer with a different target stores its own `(from, to)` rows without violating the invariant.
+   A rate that had to be inverted or pivoted records how it was obtained, and its legs' document
+   references, so a derived figure stays auditable.
+
+5. **The reporting currency and the rate rule are resolved once, at the first stamp *attempt***, and
+   persisted on the order row (`fxIntendedCurrency`, `fxRule`) before any rate lookup; the retry job
+   and the reconcile sweep read that snapshot and never re-resolve. The stamped figure is therefore a
+   function of the order's **ingestion**, not of which write path happened to succeed. Without it, an
+   order that degraded to the retry path could stamp a different currency than the same order stamped
+   inline — making provider availability a silent input to a financial figure — and the reconcile
+   sweep, whose lag is unbounded by design, could reclassify an arbitrary slice of history after any
+   setting change.
+
+6. **The stamp is written by a narrow conditional UPDATE that fires only when the order carries no
+   stamp yet** (the `ShipmentRepository.claimWaybillRelay` shape: `IsNull()` in the WHERE,
+   `affected > 0` as the answer), never through the `persistOrder` upsert path, so re-ingestion cannot
+   move a reported figure. `persistOrder`'s returned record reflects the stamp via one conditional
+   re-read shared with the cancellation writer, taken only when a post-upsert write occurred (the
+   `recordCancellationIfNeeded` precedent).
+
+7. **A new leaf core context `libs/core/src/currency/`** owns the registry, the
+   `ExchangeRateProviderPort` contract, the provider registry, and the rule → rate-date derivation. It
+   depends on no sibling core context and performs **no outbound HTTP**. Every provider ships in
+   **`@openlinker/integrations-fx`** (`NbpExchangeRateAdapter`, `EcbExchangeRateAdapter`, and a
+   deterministic `FakeExchangeRateAdapter` for tests) — the same split as `AiCompletionPort` in core
+   versus every vendor adapter in `@openlinker/integrations-ai`, and *not* conditioned on whether a
+   source happens to require a credential today, so nothing moves packages if NBP or ECB adds a key.
+   `FxIntegrationModule` registers each adapter into the core provider registry at boot, exactly as
+   integration modules populate `AdapterRegistryService` (#570/#571). Providers are **not** capability
+   adapters — a published reference rate is a shared read, not a per-connection integration capability
+   — so there is no manifest entry and no `getCapabilityAdapter` path.
+
+8. **Changing the setting does not restate history.** Already-stamped orders keep their currency, so a
+   deployment that changes its mind carries two reporting-currency eras. The `PUT` reports how many
+   stamped rows exist so the choice is informed rather than silent, and restatement is a filed
+   follow-up (§ Migration path).
+
+## Non-goals
+
+- **Fiscal currency conversion.** This stamp must never produce the rate on a fiscal document — FA(3)
+  `KursWaluty` or a provider's equivalent (§ Consequences).
+- **Modelling the tax point.** `IssueInvoiceCommand.saleDate` is a supply date derived from
+  `order.placedAt`; it is not *obowiązek podatkowy*, which OL does not model.
+- **Changing which component owns the rate per invoicing provider** — already per-provider, unchanged.
+
+## Alternatives considered
+
+- **A connection-derived reporting currency** (explicit `config.fx.reportingCurrency` → `config.currency`
+  → dominant native currency from history → the order's own currency). Rejected: it derives a business
+  *choice* from channel *facts*, its history rung shifts silently, it gives `config.currency` a second
+  meaning, and per-connection values make a deployment-wide total impossible by construction — the
+  problem this feature exists to solve.
+- **Locking the setting after the first stamp.** Rejected: the default converts and nobody chose it, so
+  a lock makes an *unchosen* default permanent — a deployment that never opens the settings page takes
+  one foreign-currency order and is locked into a currency it was never asked about. A lock is coherent
+  only if the first stamp is gated behind an explicit choice, which contradicts having a default.
+- **Rate providers as plain `@Injectable` classes inside `libs/core`**, bounded by a rule that only a
+  credential-bearing provider ships as an integration package. Rejected: it splits two implementations
+  of one port across packages on an incidental property of someone else's auth policy, is not
+  enforceable by `check:invariants`, and introduces the first outbound HTTP call in `libs/core` — a
+  precedent the next "simple unauthenticated GET" would cite.
+- **An active-provider setting** (the AI precedent, where one vendor wins). Rejected: NBP and ECB must
+  be live simultaneously, since a fiscal consumer needs an NBP/PLN rate on a EUR-reporting deployment.
+  The `(source, …)` key already admits concurrent sources; only the code layering assumed one.
+- **The DESTINATION connection's currency.** Rejected: analytics reports what the buyer paid on a sales
+  channel, not what the fulfilling shop booked.
+- **Converting at read time.** Rejected: a different number every time the rate moves — the "quietly
+  wrong number" failure #1976 set out to eliminate.
+- **One rate row per order.** Rejected: multiplies identical rows by order volume and makes "which rate
+  did we use on 3 August" a `DISTINCT` scan instead of a unique-index read.
+
+## Consequences
+
+**Pros:**
+- A deployment-wide total is expressible, because there is one authoritative answer to "in what?".
+- Zero configuration for the common case — the default resolves with no settings step at all.
+- The equal-currency path costs nothing: no query, no HTTP call, no rate row.
+- A stamped order is reproducible: `exchangeRateId` joins to the exact rate, date, source and document
+  reference.
+- Coverage is validated once at save time, in front of the person choosing — not discovered one order
+  at a time as a terminal business failure in a job log.
+- The rule is persisted per stamp, so a second rule cannot make history ambiguous. This holds for any
+  rule mapping one instant to one published calendar day; a period-based rule (`month-average`) does
+  not fit the `(source, pair, date)` key and would need a `rateKind` column.
+
+**Cons / trade-offs:**
+- **A stamped figure must never reach a fiscal document.** It differs from a statutory conversion on
+  all three axes that define a rate, so no arithmetic recovers one from the other. **Date**: this stamp
+  anchors on `order.placedAt`; PL VAT (art. 31a ust. 1) anchors on the last business day preceding the
+  day the *tax obligation* arose (art. 19a) — delivery, or receipt of payment where the buyer paid
+  first. For a prepaid marketplace order the tax point is the payment instant, which no shipped OL
+  source persists (Allegro reads one and discards it), so placement is not merely a different date, it
+  is structurally never the tax point for OL's most common order shape. **Target**: always PLN
+  statutorily, versus whatever the reporting currency is. **Derivation**: a statutory rate must be a
+  directly published table-A quote, never an inverted or pivoted cross.
+
+  **Invoicing therefore computes its own rate and does not consume this stamp**; the two figures for
+  one order legitimately differ, deliberately. This bites hardest where it looks safest: on a
+  PLN-reporting deployment both figures come from NBP table A and differ *only* by date, so the rows
+  look interchangeable and are not. Rate ownership is per-provider — KSeF is the only path where OL
+  builds the document and would own the rate; inFakt and Subiekt nexo compute their own conversion
+  server-side and must not be handed one. FA(3) draws the same line itself: `KursWaluty`
+  (`schemat_fa3_v1-0e.xsd:3199`) is scoped to *dział VI ustawy*, while the separate `KursUmowny` /
+  `WalutaUmowna` pair (`:3490`) is scoped *"Nie dotyczy przypadków, o których mowa w dziale VI"* — the
+  only element a self-computed rate may occupy.
+- **One deployment, one reporting currency.** Two legal entities reporting differently cannot be
+  expressed. Accepted because OL has no tenancy concept, and a per-entity currency with no per-entity
+  boundary is fiction.
+- **The default converts.** `'EUR'` applies to a deployment that never opened the settings page, and a
+  PLN order then converts through an ECB-inverted quote — exact and auditable, but a UX choice rather
+  than a claim that EUR is right for anyone. Hence the `(default)` label, the env override, and the
+  per-figure currency label.
+- **Changing the setting splits history into eras** (§ Decision 8). Everything needed to restate is
+  retained (native currency, `placedAt`, the registry), so it stays computable; it is simply not built.
+- **Analytics must separate stamped from unstamped rows.** Stamped orders sum into one figure; rows
+  that are unstamped (provider outage, retry pending) or terminal (no `placedAt`, unsupported pair) do
+  not, so any figure must be paired with an unstamped count. **The consuming issues #1985 / #1987 /
+  #1988 currently group by the *native* currency and specify that "multiple currencies never sum into a
+  single figure"** — reconcilable under this model rather than contradictory, but reconciling those
+  acceptance criteria is a precondition for those issues, not for this one.
+- **Save-time validation is static and backward-looking.** It reads a shipped coverage list (which
+  drifts if a source delists a currency) and sees only currencies already ingested, so a channel
+  connected later can still introduce an uncoverable pair, falling back to the per-order terminal path.
+- **No database-level append-only guard.** A `BEFORE UPDATE` trigger was rejected on two repo-specific
+  grounds: no migration anywhere creates a trigger, rule or function, and — decisively — the
+  integration harness builds its schema with TypeORM `synchronize` and never runs a migration, so a
+  migration-only trigger would be absent in dev and CI and would first fire in production. A `REVOKE
+  UPDATE` is a no-op because the shipped configuration connects as a superuser. Revisit when the
+  harness runs migrations or the deployment adopts a non-superuser role.
+- The registry is a new persistence surface with an external dependency behind it. A provider outage
+  degrades to an unstamped order plus a retry job, never a failed ingestion — and because a dead retry
+  job would hold its idempotency key forever, a periodic reconcile reads the unstamped rows directly
+  rather than trusting the job to survive.
+- **The stamp is only as good as the order's placement timestamp.** Sources that supply one
+  (PrestaShop, Allegro, Erli) are unaffected. The WooCommerce order source maps `date_created_gmt` to
+  `createdAt` and never sets `placedAt`, though that is the same fact PrestaShop's `date_add →
+  placedAt` mapping already carries — the one-line adapter mapping ships with this change.
+- **The two providers publish on different calendars** (Polish working days versus TARGET) with
+  different cut-offs, so the rule yields a candidate day and each adapter absorbs its own publication
+  calendar via its walk-back-on-miss — a further reason both adapters live in one package.
+
+**Migration path (if applicable):**
+- Existing orders carry no stamp (`reportingCurrency IS NULL`). **No backfill of pre-feature orders
+  ships here** — the retry job covers orders that could not be stamped at ingestion, a different
+  thing. Historical rates are available from both providers, so a backfill remains possible later.
+- **Restating figures already stamped under a previous setting is a filed follow-up** (§ Decision 8).
+  Until it lands, changing the setting is a forward-only decision.
+
+## References
+
+- Related issues: #2049 (this work), #1976 (analytics epic), #1985 (order analytics read model),
+  #1987 / #1988 (the consuming queries), #362 (per-connection `config.currency`, unchanged)
+- Related PRs: #2050 (this ADR + the implementation plan)
+- Related ADRs: [ADR-007](./007-syncjob-status-vs-outcome-split.md) (status-vs-outcome split, applied
+  to the retry job), [ADR-011](./011-domain-entity-behavior.md) (pure read-only derivations on
+  entities), [ADR-026](./026-country-agnostic-invoicing-domain.md) (the country-agnostic posture this
+  ADR follows for the provider boundary). The order analytics read-model ADR proposed under #1985 is
+  the read model this stamp extends; it is referenced by issue number rather than by link because it
+  is not yet merged, and this ADR is intentionally mergeable without it.
+- Precedents followed: `ai_provider_active_setting` (singleton setting + resolution chain),
+  `@openlinker/integrations-ai` (port in core, every implementation in an integration package),
+  `AdapterRegistryService` (a core registry populated by integration modules at boot),
+  `ShipmentRepository.claimWaybillRelay` (conditional single-writer claim),
+  `InvoiceRecord.issuedLineSnapshot` (#1297 — the shape a fiscal rate should follow instead of
+  referencing a registry row).
+- Primary doc section: `docs/architecture-overview.md` § Currency (added by #2049)
+- Plan: [implementation-plan-2049-order-fx-rate-snapshot.md](../../plans/implementation-plan-2049-order-fx-rate-snapshot.md)

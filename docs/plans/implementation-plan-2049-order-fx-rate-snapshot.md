@@ -3,7 +3,7 @@
 **Date**: 2026-08-13
 **Status**: Ready for Review (two items unresolved — see § 5 and § 10)
 **Issue**: #2049
-**ADR**: [ADR-040](../architecture/adrs/040-order-time-fx-stamping-connection-derived-reporting-currency.md)
+**ADR**: [ADR-040](../architecture/adrs/040-order-time-fx-stamping-against-a-system-reporting-currency.md)
 **Estimated Effort**: 4–5 days (BE ~2.5 d, FE + Allegro OAuth thread ~1 d, tests ~1.5 d), ~30–35 files
 touched. For calibration: `implementation-plan-846-shipment-read-command-api.md:5` sizes "M (3–7 days)"
 for ~17 new files with no external provider and no decimal arithmetic; this has both, plus a migration,
@@ -32,7 +32,7 @@ occurrence maps 1:1 onto `reporting*` here.
 
 The reporting currency is derived from the order's **source connection** — there is no global settlement
 setting, and adding one was explicitly rejected. See
-[ADR-040](../architecture/adrs/040-order-time-fx-stamping-connection-derived-reporting-currency.md)
+[ADR-040](../architecture/adrs/040-order-time-fx-stamping-against-a-system-reporting-currency.md)
 for that decision and its alternatives.
 
 **Classification**: CORE (new bounded context + orders integration), with a thin Frontend slice, one
@@ -1001,7 +1001,7 @@ the ingestion caller — `OrderFxStampService` maps them to terminal-vs-retry an
 
 ## 7. Alternatives Considered
 
-Fully argued in [ADR-040](../architecture/adrs/040-order-time-fx-stamping-connection-derived-reporting-currency.md);
+Fully argued in [ADR-040](../architecture/adrs/040-order-time-fx-stamping-against-a-system-reporting-currency.md);
 summarised here.
 
 ### Alternative 1: a global reporting-currency setting
@@ -1309,7 +1309,7 @@ Inlined from #2049, with `base*` → `reporting*` and the three-rung ladder corr
 
 ## Related Documentation
 
-- [ADR-040 — Order-time FX stamping against a connection-derived reporting currency](../architecture/adrs/040-order-time-fx-stamping-connection-derived-reporting-currency.md)
+- [ADR-040 — Order-time FX stamping against a system-wide reporting currency](../architecture/adrs/040-order-time-fx-stamping-against-a-system-reporting-currency.md)
 - **Order analytics read model** — issue **#1985** (branch `origin/1985-order-analytics-read-model`).
   Referenced by issue number rather than by link: its ADR is not on `main`, so a relative link would
   land as a 404 if this branch merges first.
