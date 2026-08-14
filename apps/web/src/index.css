@@ -9417,7 +9417,13 @@ a.kpi-card:focus-visible {
   background: var(--bg-surface-muted);
   padding: 1px 6px;
   border-radius: var(--radius-xs);
-  max-width: 18ch;
+  /* 24ch is the widest string `shortenId()` can emit: the longest `ol_<entity>_`
+   * prefix in the system (`ol_inventoryitem_`, 17) plus 4 + ellipsis + 2. The
+   * previous 18ch was sized for a shortened bare UUID (13 chars) and clipped
+   * every `ol_<entity>_…` short form a SECOND time, appending a meaningless
+   * ellipsis to an already-elided id (#2087). A genuinely long raw value (a
+   * webhook URL, a tracking number) still ellipsises here as before. */
+  max-width: 24ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -9461,6 +9467,42 @@ a.kpi-card:focus-visible {
 .copyable-id:focus-within .copyable-id__copy {
   opacity: 1;
   transform: translateX(0);
+}
+
+/* ── OrderIdentityCell (#2087) ───────────────────────────────────────
+ * A thumbnail beside the same two-level stack `.orders-cell-stack` (:8894) and
+ * `.connection-cell__body` (below) already describe — what a person reads on
+ * top, the rest beneath. The thumbnail is what Orders lacks today and what
+ * Shipments and Invoices lack entirely.
+ *
+ * A column flex container with `align-items: flex-start` sizes each child to its
+ * own content, so a long order number or item title escapes the box once the
+ * column narrows; capping the children at the container width lets the ellipsis
+ * these primitives ALREADY declare (`.entity-label__name`,
+ * `.orders-items-preview`) actually fire, instead of introducing a character cap.
+ *
+ * No new colour, radius, shadow or spacing value: `--space-3` is the existing
+ * token, 2px matches the sibling stacks' inner gap, and 100% / `flex` are
+ * structural.
+ */
+.order-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.order-cell__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.order-cell__body > * {
+  max-width: 100%;
 }
 
 /* ── ConnectionCell (#2027) ──────────────────────────────────────────
