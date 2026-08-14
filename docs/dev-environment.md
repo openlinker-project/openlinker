@@ -9,7 +9,8 @@ This guide explains how to set up and use the local development environment for 
    pnpm dev:stack:up
    ```
 
-2. **Check health status:**
+2. **Check health status** (needs the API running — `pnpm start:dev:api`, since
+   `dev:stack:up` does not start the `api` container):
    ```bash
    pnpm dev:health
    ```
@@ -34,10 +35,25 @@ This guide explains how to set up and use the local development environment for 
 | phpMyAdmin | `http://localhost:8081` | Web-based MySQL administration tool (opt-in, `devtools` profile) |
 | PrestaShop | `http://localhost:8080` | PrestaShop e-commerce store |
 | WooCommerce MySQL | `localhost:3307` | Dedicated MySQL for WooCommerce (separate from PrestaShop) |
-| WooCommerce | `http://localhost:8082` | WooCommerce store (HPOS enabled) |
+| WooCommerce | `http://localhost:8082` | WooCommerce store (HPOS enabled), opt-in (`pnpm dev:stack:wc:up`) |
 | API | `http://localhost:3000` | OpenLinker API |
+| Web | `http://localhost:4173` | OpenLinker admin UI — Vite dev server (`pnpm start:dev:web`) |
 
 > **Port note:** PrestaShop uses **8080**, WooCommerce uses **8082** — different ports to avoid conflict.
+
+> **What `pnpm dev:stack:up` actually starts:** PostgreSQL, Redis, MySQL and
+> PrestaShop only. WooCommerce (+ its MySQL) is opt-in via `pnpm dev:stack:wc:up`,
+> phpMyAdmin via `pnpm dev:stack:devtools:up`. The API, worker and web UI are
+> normally run from the repo (`pnpm start:dev:api`, `pnpm start:dev:worker`,
+> `pnpm start:dev:web`) rather than as containers — `docker-compose.yml` defines
+> an `api` service, but `dev:stack:up` does not request it.
+
+> **Bind address and port overrides:** every published port binds to
+> `127.0.0.1` by default (`OL_BIND_ADDRESS`), so nothing is reachable from
+> outside the host unless you change it. Each host-side port is overridable via
+> `<SERVICE>_HOST_PORT` (`POSTGRES_HOST_PORT`, `PRESTASHOP_HOST_PORT`, …) and the
+> container/project name prefix via `COMPOSE_PROJECT_NAME`. See
+> [`.env.example`](../.env.example) for the full list and defaults.
 
 ## Default Credentials
 
@@ -60,12 +76,12 @@ This guide explains how to set up and use the local development environment for 
 - **Re-seed** (idempotent): `pnpm dev:stack:seed-woocommerce`
 - **HPOS**: enabled (High-Performance Order Storage — v1 requirement)
 - **Database**: `localhost:3307` (woocommerce / woocommerce)
-- **Seed data**: WC-SHIRT-001 (simple, stock 50), WC-JEANS-S (stock 30), WC-JEANS-M (stock 20)
+- **Seed data** (`docker/woocommerce/01-seed-wc-data.sh`): `WC-SHIRT-001` (simple, stock 50), the variable product `WC-JEANS` with variations `WC-JEANS-S` (stock 30) and `WC-JEANS-M` (stock 20), plus two orders (2x `WC-SHIRT-001`, processing; 1x `WC-JEANS-S`, completed). This script is the only source of seeded orders in the dev stack.
 
 ### PrestaShop
 - **URL**: `http://localhost:8080`
 - **Admin Panel**: `http://localhost:8080/admin-dev/`
-- **Admin Credentials**: Set in `docker-compose.yml` and seeded by the post-install scripts (see [Getting Started](./getting-started.md))
+- **Admin Credentials**: `demo@prestashop.com` / `prestashop_demo` (the `ADMIN_MAIL` / `ADMIN_PASSWD` defaults in `docker-compose.yml`, overridable via `.env` — see [Getting Started](./getting-started.md))
 - **Note**: PrestaShop's installer initially creates a randomized admin folder for security. The post-install wrapper (`docker/prestashop/post-install/10-rename-admin.sh`) renames it to the stable `/admin-dev/` path so dev URLs and bookmarks don't drift between fresh installs.
 - **Database**: 
   - **Host**: `mysql` (internal Docker network) or `localhost:3306` (external)
@@ -94,11 +110,14 @@ This guide explains how to set up and use the local development environment for 
 ### Start Services
 
 ```bash
-# Start all services (PostgreSQL, Redis, MySQL, PrestaShop)
+# Start the default stack (PostgreSQL, Redis, MySQL, PrestaShop)
 pnpm dev:stack:up
 
 # Or using docker compose directly
 docker compose up -d postgres redis mysql prestashop
+
+# WooCommerce + its own MySQL (not part of the default stack)
+pnpm dev:stack:wc:up
 ```
 
 phpMyAdmin is **not** part of the default stack — it sits behind the `devtools`
@@ -143,7 +162,7 @@ docker compose down
 docker volume rm \
   openlinker_postgres_data openlinker_redis_data openlinker_mysql_data \
   openlinker_prestashop_data openlinker_woocommerce_mysql_data \
-  openlinker_woocommerce_data openlinker_caddy_data openlinker_caddy_config
+  openlinker_woocommerce_data
 pnpm dev:stack:up
 ```
 
@@ -151,20 +170,31 @@ Adjust the `openlinker_` prefix if you set `COMPOSE_PROJECT_NAME`. See
 [`README.md` § Runtime requirements](../README.md#runtime-requirements) for the
 full note.
 
+> `docker volume rm` exits non-zero on a name it does not know, so drop any
+> volume you never created (WooCommerce is opt-in) rather than pasting the list
+> verbatim. Check what is actually there first with
+> `docker volume ls --filter name=openlinker_`.
+
 ### Reset Services
 
-To reset PrestaShop to a fresh installation with demo data:
+To reset PrestaShop to a fresh unattended install (which re-runs the post-install
+seed scripts — see [Fixtures](#fixtures)):
 
 ```bash
 # Stop services
 docker compose down
 
 # Remove volumes (⚠️ This deletes all data)
-docker volume rm openlinker-prestashop-data openlinker-mysql-data
+docker volume rm openlinker_prestashop-data openlinker_mysql-data
 
 # Start services again
 pnpm dev:stack:up
 ```
+
+> Compose qualifies a named volume as `<project>_<volume>`, so the default
+> project name `openlinker` plus the volume key `prestashop-data` gives
+> `openlinker_prestashop-data`. Adjust the prefix if you set
+> `COMPOSE_PROJECT_NAME`.
 
 ## Health Verification
 
@@ -182,9 +212,14 @@ endpoints live under that prefix.
    - Returns: `{ status: 'ok', version, api, services, timestamp }`
 
 2. **`GET /v1/health/dev-stack`** - Development stack (internal + external)
-   - Checks: PostgreSQL, Redis, PrestaShop
+   - Checks: PostgreSQL, Redis, PrestaShop, the background worker (via its Redis
+     heartbeat), plus every infrastructure-bearing connection (`ProductMaster` /
+     `InventoryMaster`, e.g. a connected WooCommerce store) probed through its
+     connection tester
    - Used by: Local development troubleshooting
-   - Returns: Detailed status for each service
+   - Returns: Detailed status per service + a `connections` array
+   - Public (no login required), but the per-connection `name` and diagnostic
+     `message` fields are returned only to an authenticated caller
 
 ### Using Health Checks
 
@@ -205,10 +240,20 @@ curl http://localhost:3000/v1/health/dev-stack
 ```json
 {
   "status": "ok",
-  "version": "0.1.0",
-  "api": "v1"
+  "version": "0.6.0",
+  "api": "v1",
+  "services": {
+    "postgres": { "status": "ok" },
+    "redis": { "status": "ok" }
+  },
+  "timestamp": "2026-08-14T10:30:00.000Z"
 }
 ```
+
+> `version` is the running product version, resolved as `OL_PRODUCT_VERSION`,
+> then `npm_package_version` (the root `package.json` version, under a
+> `pnpm`-run process), then `0.0.0-dev`. Read it from those rather than from the
+> literal above, which is only a snapshot of one release.
 
 **Dev Stack Health (`/v1/health/dev-stack`):**
 ```json
@@ -217,9 +262,11 @@ curl http://localhost:3000/v1/health/dev-stack
   "services": {
     "postgres": { "status": "ok" },
     "redis": { "status": "ok" },
-    "prestashop": { "status": "ok" }
+    "prestashop": { "status": "ok" },
+    "worker": { "status": "ok" }
   },
-  "timestamp": "2025-01-15T10:30:00.000Z"
+  "connections": [],
+  "timestamp": "2026-08-14T10:30:00.000Z"
 }
 ```
 
@@ -230,46 +277,54 @@ curl http://localhost:3000/v1/health/dev-stack
   "services": {
     "postgres": { "status": "ok" },
     "redis": { "status": "ok" },
-    "prestashop": { "status": "error", "message": "PrestaShop is unreachable" }
+    "prestashop": { "status": "error", "message": "PrestaShop is unreachable" },
+    "worker": { "status": "ok" }
   },
-  "timestamp": "2025-01-15T10:30:00.000Z"
+  "connections": [],
+  "timestamp": "2026-08-14T10:30:00.000Z"
 }
 ```
 
-> **Note**: PrestaShop is treated as an external dependency. If it's unreachable, the status is `degraded` (not `error`), allowing OpenLinker to continue operating.
+> **Note**: PrestaShop is treated as an external dependency. If it's unreachable, the status is `degraded` (not `error`), allowing OpenLinker to continue operating. The same applies to the worker and to infrastructure-bearing connections — an `error` or `warning` on any of them yields `degraded`, while only PostgreSQL or Redis failing yields `error`.
 
 ## PrestaShop Setup
 
 ### Initial Installation
 
-PrestaShop is configured to auto-install on first startup using environment variables in `docker-compose.yml`. The installation includes:
+PrestaShop is configured to auto-install on first startup (`PS_INSTALL_AUTO=1`) using environment variables in `docker-compose.yml`. The installation includes:
 
-- Demo data enabled (`PS_DEMO_MODE=1`)
-- Default language: English (US)
+- **PrestaShop's own demo fixtures are installed, then the demo *catalogue* is replaced.** The image's entrypoint calls the CLI installer with no `--fixtures` argument and the installer defaults that option to `1`, so the upstream demo data goes in on every first boot; the post-install seed then deletes every product that is not `OL-*` / `OP-*` and inserts six `OL-*` fixtures. See [Fixtures](#fixtures).
+- **`PS_DEMO_MODE: 0` has nothing to do with demo data.** It is PrestaShop's restricted "demo store" mode, and it is off because `1` blocks module installation. See [What `PS_DEMO_MODE` actually does](#what-ps_demo_mode-actually-does-and-why-it-is-0).
+- Installer locale: English (`PS_LANGUAGE=en`), country US (`PS_COUNTRY=US`) — the post-install scripts then switch the default currency to PLN and activate the PL country.
 - Admin folder: renamed to stable `/admin-dev/` by `docker/prestashop/post-install/10-rename-admin.sh` (PrestaShop's installer generates a random folder for security; the wrapper renames it to a known path so dev URLs are stable)
 
 ### Accessing PrestaShop
 
 1. **Frontend**: `http://localhost:8080`
-2. **Admin Panel**: `http://localhost:8080/admin-dev/login`
+2. **Admin Panel**: `http://localhost:8080/admin-dev/` (redirects to the login form)
 
 ### Post-Installation Security Step
 
-**Important**: After installation, you must delete the `/install` folder before accessing the admin panel:
+If the admin panel still shows the security warning about the `install` folder
+(or the URL still contains `/install`) once the unattended install has finished,
+remove the folder:
 
 ```bash
 docker compose exec prestashop rm -rf /var/www/html/install
 ```
 
-PrestaShop will show a security warning until this folder is deleted.
+> Seeing `/install` in the URL usually means the install simply hasn't finished
+> yet — the first boot takes 2-3 minutes. Watch it with
+> `docker compose logs -f prestashop` before removing anything.
 
 ### PrestaShop Webservice API Setup
 
-To use PrestaShop adapters (future work), you need to enable and configure the Webservice API:
+The PrestaShop adapters talk to the shop over the Webservice API, so it has to be
+enabled and given a key:
 
 1. **Log in to PrestaShop Admin Panel**
-   - Navigate to `http://localhost:8080/admin`
-   - Use the admin credentials set during installation
+   - Navigate to `http://localhost:8080/admin-dev/`
+   - Use the admin credentials above (`demo@prestashop.com` / `prestashop_demo`)
 
 2. **Enable Webservice**
    - Go to **Advanced Parameters** → **Webservice**
@@ -285,22 +340,32 @@ To use PrestaShop adapters (future work), you need to enable and configure the W
 4. **Store API Key**
    - Enter the generated key in the Connections UI when creating or editing the PrestaShop connection.
 
-### Verifying Demo Data
+### Verifying the Seeded Catalogue
 
-After PrestaShop installation, verify demo data is present:
+A correct first boot leaves exactly six `OL-*` products in the catalogue. A shop
+full of unfamiliar clothing and accessories means the post-install seed never ran
+and you are looking at PrestaShop's own installer fixtures; a completely empty
+catalogue means the seed wiped those fixtures and then failed before inserting its
+own. Either way the seed output is where the answer is. Verify:
 
 1. **Check Products**
    - Navigate to `http://localhost:8080`
-   - You should see sample products in the catalog
+   - You should see the six `OL-*` fixture products in the catalog
 
 2. **Check Admin Panel**
-   - Navigate to `http://localhost:8080/admin`
+   - Navigate to `http://localhost:8080/admin-dev/`
    - Go to **Catalog** → **Products**
-   - You should see multiple demo products with stock
+   - You should see six products whose references start with `OL-`
 
 3. **Check Stock Levels**
    - In admin panel, go to **Stock** → **Stock**
    - Verify products have non-zero stock levels
+
+If the catalogue is empty, re-run the seed and read its output:
+
+```bash
+pnpm dev:stack:seed-prestashop
+```
 
 ## Common Issues
 
@@ -340,7 +405,12 @@ After PrestaShop installation, verify demo data is present:
 1. Verify services are running: `docker compose ps`
 2. Check health: `pnpm dev:health`
 3. Verify environment variables in `apps/api/.env.local`
-4. Check network connectivity: `docker compose exec api ping postgres`
+4. Probe the datastores from inside their own containers (the dev stack does not
+   start the `api` container, so there is nothing to `exec` into there):
+   ```bash
+   docker compose exec postgres pg_isready -U postgres
+   docker compose exec redis redis-cli ping
+   ```
 
 ### PrestaShop Installation Problems
 
@@ -364,33 +434,126 @@ After PrestaShop installation, verify demo data is present:
 
 **Solution**:
 1. Verify container is running: `docker compose ps prestashop`
-2. Check port mapping: `docker compose ps` (should show `0.0.0.0:8080->80/tcp`)
+2. Check port mapping: `docker compose ps` (should show `127.0.0.1:8080->80/tcp` with the default loopback bind — `0.0.0.0` only if you set `OL_BIND_ADDRESS`)
 3. Wait for installation to complete (can take 2-3 minutes on first start)
 4. Check health: `pnpm dev:health`
 
 ## Fixtures
 
-### Demo Data
+### PrestaShop: upstream demo products go in, then six `OL-*` fixtures replace them
 
-PrestaShop is configured with demo data enabled (`PS_DEMO_MODE=1`). This provides:
+Two independent things happen on a first boot, and it pays to keep them apart:
 
-- Sample products with stock
-- Product categories
-- Product variants (if available in demo data)
-- Sample customers and orders
+1. **PrestaShop's unattended installer installs its own demo fixtures.** The
+   image's entrypoint calls the CLI installer without a `--fixtures` argument, and
+   the installer's own default for that option is `1`
+   (`install/classes/datas.php`); nothing in this repo turns it off. The upstream
+   fixture set carries roughly nineteen products, seven categories, two
+   manufacturers, two suppliers, a demo customer (`pub@prestashop.com`) with an
+   address, and five demo orders.
+2. **The post-install seed then replaces the demo *catalogue*.**
+   `docker/prestashop/post-install-lib/30-seed-test-products.php` deletes every
+   `ps_product` row whose `reference` does not start with `OL-` or `OP-`, and
+   inserts six `OL-*` fixtures in their place.
 
-### Resetting Demo Data
+So the six curated `OL-*` fixtures, not PrestaShop's sample catalogue, are this
+stack's intended demo data, and the upstream catalogue is deliberately wiped
+rather than kept. `PS_DEMO_MODE` is involved in neither step; see
+[What `PS_DEMO_MODE` actually does](#what-ps_demo_mode-actually-does-and-why-it-is-0).
 
-To reset to fresh demo data:
+The post-install scripts live in `docker/prestashop/post-install/` and the
+container entrypoint runs them in alphabetical order once the unattended install
+completes (all of them are idempotent, and `pnpm dev:stack:seed-prestashop`
+re-runs the same five wrappers on demand). Except for the admin rename, each
+`*.sh` is a thin wrapper that execs a PHP companion in
+`docker/prestashop/post-install-lib/`, and the companion is where the behaviour
+lives, so grep the `.php` file, not the `.sh`:
+
+| Script | Logic lives in | Effect |
+|---|---|---|
+| `10-rename-admin.sh` | itself (self-contained) | Renames the installer's randomized `/admin{hash}/` folder to the stable `/admin-dev/` |
+| `20-set-default-currency.sh` | `post-install-lib/20-set-default-currency.php` | Makes **PLN** the shop's default currency (EUR / USD stay active) |
+| `25-activate-country-pl.sh` | `post-install-lib/25-activate-country-pl.php` | Activates the **PL** country, so an order for a Polish buyer address can sync |
+| `30-seed-test-products.sh` | `post-install-lib/30-seed-test-products.php` | Wipes the upstream demo catalogue and seeds **six `OL-*` products** sourced from real Allegro listings (matrix below) |
+| `40-configure-container-network.sh` | `post-install-lib/40-configure-container-network.php` | Adds a shop-URL row for the `prestashop` compose hostname so the api/worker containers can reach the shop by service name |
+
+The six fixtures cover the variant x EAN-coverage matrix the sync,
+offer-creation and publish paths are exercised against:
+
+| Reference | Shape |
+|---|---|
+| `OL-BOSCH-GSR12V15` | simple, EAN13 |
+| `OL-MUG-LIN-300` | simple, no EAN |
+| `OL-ADIDAS-IA4845` | 3 size variants, every variant carries its own EAN |
+| `OL-SOAP-NATURAL` | 2 colour variants, only one carries an EAN (partial coverage) |
+| `OL-RING-RESIN` | 3 size variants, no EANs |
+| `OL-CANON-SX740LE` | simple, EAN13 + MPN, Polish-language copy |
+
+**Reference-prefix convention** enforced by `30-seed-test-products.php`:
+
+- `OL-*`: fixtures owned by the script; never wiped.
+- `OP-*`: "operator preserve". Give a hand-made test product an `OP-...`
+  reference and it survives a re-seed.
+- Anything else is treated as leftover upstream demo catalogue and deleted, but
+  only on a run that actually seeds. The script counts existing `OL-%` products
+  first and exits before the wipe once six are present, so
+  `pnpm dev:stack:seed-prestashop` against an already-seeded shop deletes nothing
+  and creates nothing.
+
+**What the wipe does not touch.** It deletes `ps_product` rows only, via
+`Product::deleteSelection` (the same cascade the admin's bulk-delete action uses,
+so a deleted product's combinations, stock rows and images go with it). Everything
+else the installer's fixtures created survives: categories, manufacturers,
+suppliers, CMS pages, and the demo customer, address and orders. A fresh dev shop
+therefore *does* have PrestaShop-side customers and orders; they are upstream
+fixture rows, not something OpenLinker seeds. The only orders OpenLinker's own
+tooling seeds are WooCommerce's (`docker/woocommerce/01-seed-wc-data.sh`).
+
+### What `PS_DEMO_MODE` actually does (and why it is `0`)
+
+`PS_DEMO_MODE` does not control demo *data*. In the pinned image
+(`prestashop/prestashop:9.0.2-2.0-classic-8.4`) its only effect is to flip
+`_PS_MODE_DEMO_` to `true` in `config/defines.inc.php`, which turns on
+PrestaShop's restricted **demo store** mode: module install/uninstall, shop-URL
+edits and employee password changes are all blocked. The `sed` that applies it
+sits *after* the install branch in the image's entrypoint, so it runs on every
+container start, not only on the first install.
+
+That is the reason this repo sets `PS_DEMO_MODE: 0`: the dev stack exists partly
+to install and test the OpenLinker PrestaShop module, and restricted demo mode
+makes that impossible (see
+[PrestaShop module testing guide](./prestashop-module-testing-guide.md)). Leave it
+at `0`.
+
+Flipping it to `1` buys no extra demo data: the upstream fixtures are installed
+regardless, and the seed wipes the demo products regardless.
+
+### Seeing PrestaShop's own sample catalogue instead
+
+There is no supported switch for this. The upstream demo products are installed
+on every first boot and then removed by `30-seed-test-products.php`, so keeping
+them means stopping that script from running, for example by removing the
+`./docker/prestashop/post-install` bind mount from the `prestashop` service in
+`docker-compose.yml` and recreating the shop from empty volumes. That also drops
+the admin-folder rename, the PLN default currency, the PL country activation and
+the container-network shop URL, so it is not a configuration this repo supports
+or tests.
+
+The two catalogues are not interchangeable anyway: the `OL-*` fixtures exist
+specifically to cover the variant and EAN combinations the sync, offer-creation
+and publish paths are exercised against, whereas upstream demo products show up
+unmapped in sync runs and product pickers.
+
+### Resetting the shop
 
 ```bash
 # Stop services
 docker compose down
 
 # Remove PrestaShop and MySQL volumes
-docker volume rm openlinker-prestashop-data openlinker-mysql-data
+docker volume rm openlinker_prestashop-data openlinker_mysql-data
 
-# Start services (PrestaShop will reinstall with demo data)
+# Start services (PrestaShop reinstalls and re-runs the post-install scripts)
 pnpm dev:stack:up
 ```
 
@@ -398,7 +561,12 @@ pnpm dev:stack:up
 
 ## Environment Variables
 
-> **Note**: PrestaShop credentials (shop URL, webservice API key, webhook secret) are
+Everything the compose stack reads is documented with its default in
+[`.env.example`](../.env.example) — copy it to `.env` to override ports
+(`*_HOST_PORT`), the bind address (`OL_BIND_ADDRESS`), the project/container name
+prefix (`COMPOSE_PROJECT_NAME`), or any of the throwaway dev credentials.
+
+> **Note**: PrestaShop connection settings (shop URL, webservice API key, webhook secret) are
 > configured through the Connections UI, not environment variables.
 > See [Getting Started](./getting-started.md) for the full setup walkthrough.
 
@@ -408,12 +576,14 @@ pnpm dev:stack:up
 
 - **API** depends on: PostgreSQL, Redis (must be healthy)
 - **PrestaShop** depends on: MySQL (must be healthy)
+- **WooCommerce** depends on: `woocommerce-mysql` (must be healthy)
+- **phpMyAdmin** depends on: MySQL (must be healthy)
 - **API** can boot even if PrestaShop is down (external dependency)
 
 ### Health Check Statuses
 
-- **`ok`**: All services (including PrestaShop) are healthy
-- **`degraded`**: Internal services (PostgreSQL, Redis) are healthy, but PrestaShop is unreachable
+- **`ok`**: All services (internal and external) are healthy
+- **`degraded`**: Internal services (PostgreSQL, Redis) are healthy, but an external dependency (PrestaShop, the worker, or an infrastructure-bearing connection) is unreachable or slow
 - **`error`**: One or more internal services (PostgreSQL or Redis) are down
 
 ### Getting Help
