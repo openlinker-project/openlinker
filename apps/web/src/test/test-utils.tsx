@@ -117,6 +117,13 @@ export function createMockApiClient(
         worstStatus: 'fresh',
         connections: [],
       }),
+      getNeedsAttention: vi.fn().mockResolvedValue({
+        coverageGaps: [],
+        coverageGapsTotalCount: 0,
+        stockAtRisk: [],
+        stockAtRiskTotalCount: 0,
+        failedSyncValue: { count: 0, totalValue: 0, mixedCurrency: false, oldestFailedAt: null },
+      }),
       ...overrides.analyticsTrust,
     } as ApiClient['analyticsTrust'],
     auth: {

@@ -2,9 +2,11 @@
  * Analytics Page
  *
  * The /analytics route shell (#1986): page scaffold, date-range control,
- * and the trust/data-coverage disclosure every other /analytics section
- * (#1989, #1990, #1991) will mount alongside. Ships zero revenue/order
- * metrics — see docs/plans/implementation-plan-analytics-page-shell.md.
+ * the trust/data-coverage disclosure, and the needs-attention section
+ * (#1989). Sections #1990/#1991 will mount alongside. Ships zero
+ * revenue/order metrics — see
+ * docs/plans/implementation-plan-analytics-page-shell.md and
+ * docs/plans/implementation-plan-analytics-needs-attention.md.
  *
  * @module apps/web/src/pages/analytics
  */
@@ -13,6 +15,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import {
   AnalyticsDateRangeToolbar,
   AnalyticsDegradationBanner,
+  AnalyticsNeedsAttention,
   AnalyticsTrustHeader,
   computePresetRange,
   useAnalyticsTrustQuery,
@@ -99,7 +102,9 @@ export function AnalyticsPage(): ReactElement {
                 </Link>
               }
             />
-          ) : null}
+          ) : (
+            <AnalyticsNeedsAttention />
+          )}
         </>
       ) : null}
     </section>

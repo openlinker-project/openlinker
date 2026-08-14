@@ -1,0 +1,147 @@
+import { describe, expect, it } from 'vitest';
+import {
+  deriveCoverageHeadline,
+  deriveFailedSyncHeadline,
+  deriveStockHeadline,
+} from './needs-attention-copy.lib';
+import type {
+  CoverageGapItem,
+  FailedSyncValueSummary,
+  StockAtRiskItem,
+} from '../api/needs-attention.types';
+
+const connectionName = (id: string): string => (id === 'conn-1' ? 'Allegro' : `Connection ${id}`);
+
+describe('deriveCoverageHeadline', () => {
+  it('should name the connection when every item is missing from the same single channel', () => {
+    const items: CoverageGapItem[] = [
+      { variantId: 'v1', productId: 'p1', listedOnConnectionIds: ['conn-2'], missingFromConnectionIds: ['conn-1'] },
+      { variantId: 'v2', productId: 'p1', listedOnConnectionIds: ['conn-2'], missingFromConnectionIds: ['conn-1'] },
+    ];
+
+    const result = deriveCoverageHeadline(items, 12, connectionName);
+
+    expect(result.headline).toBe('12 variants missing from Allegro');
+  });
+
+  it('should fall back to a connection-agnostic headline when items miss different channels', () => {
+    const items: CoverageGapItem[] = [
+      { variantId: 'v1', productId: 'p1', listedOnConnectionIds: ['conn-2'], missingFromConnectionIds: ['conn-1'] },
+      { variantId: 'v2', productId: 'p1', listedOnConnectionIds: ['conn-1'], missingFromConnectionIds: ['conn-3'] },
+    ];
+
+    const result = deriveCoverageHeadline(items, 2, connectionName);
+
+    expect(result.headline).toBe('2 variants have a listing gap on at least one channel');
+  });
+
+  it('should fall back to a connection-agnostic headline when an item misses more than one channel', () => {
+    const items: CoverageGapItem[] = [
+      {
+        variantId: 'v1',
+        productId: 'p1',
+        listedOnConnectionIds: [],
+        missingFromConnectionIds: ['conn-1', 'conn-2'],
+      },
+    ];
+
+    const result = deriveCoverageHeadline(items, 1, connectionName);
+
+    expect(result.headline).toBe('1 variant have a listing gap on at least one channel');
+  });
+
+  it('should use singular wording for a totalCount of 1 in the connection-named branch', () => {
+    const items: CoverageGapItem[] = [
+      { variantId: 'v1', productId: 'p1', listedOnConnectionIds: [], missingFromConnectionIds: ['conn-1'] },
+    ];
+
+    const result = deriveCoverageHeadline(items, 1, connectionName);
+
+    expect(result.headline).toBe('1 variant missing from Allegro');
+  });
+
+  it('should fall back to the ambiguous headline when the items array is empty but totalCount is positive', () => {
+    const result = deriveCoverageHeadline([], 5, connectionName);
+
+    expect(result.headline).toBe('5 variants have a listing gap on at least one channel');
+  });
+});
+
+describe('deriveStockHeadline', () => {
+  it('should name the connection and buffer when every item shares both', () => {
+    const items: StockAtRiskItem[] = [
+      { variantId: 'v1', productId: 'p1', connectionId: 'conn-1', masterStock: 1, stockSafetyBuffer: 2 },
+      { variantId: 'v2', productId: 'p1', connectionId: 'conn-1', masterStock: 0, stockSafetyBuffer: 2 },
+    ];
+
+    const result = deriveStockHeadline(items, 4, connectionName);
+
+    expect(result.headline).toBe('4 variants at or below the safety buffer on Allegro');
+    expect(result.sub).toContain('buffer 2');
+  });
+
+  it('should fall back to the ambiguous headline when connections differ', () => {
+    const items: StockAtRiskItem[] = [
+      { variantId: 'v1', productId: 'p1', connectionId: 'conn-1', masterStock: 1, stockSafetyBuffer: 2 },
+      { variantId: 'v2', productId: 'p1', connectionId: 'conn-2', masterStock: 1, stockSafetyBuffer: 2 },
+    ];
+
+    const result = deriveStockHeadline(items, 2, connectionName);
+
+    expect(result.headline).toBe("2 variants are at or below their channel's safety buffer");
+  });
+
+  it('should fall back to the ambiguous headline when buffers differ on the same connection', () => {
+    const items: StockAtRiskItem[] = [
+      { variantId: 'v1', productId: 'p1', connectionId: 'conn-1', masterStock: 1, stockSafetyBuffer: 1 },
+      { variantId: 'v2', productId: 'p1', connectionId: 'conn-1', masterStock: 1, stockSafetyBuffer: 2 },
+    ];
+
+    const result = deriveStockHeadline(items, 2, connectionName);
+
+    expect(result.headline).toBe("2 variants are at or below their channel's safety buffer");
+  });
+});
+
+describe('deriveFailedSyncHeadline', () => {
+  it('should render a currency-neutral total when currency is not mixed', () => {
+    const summary: FailedSyncValueSummary = {
+      count: 3,
+      totalValue: 1234.5,
+      mixedCurrency: false,
+      oldestFailedAt: '2026-08-01T00:00:00.000Z',
+    };
+
+    const result = deriveFailedSyncHeadline(summary);
+
+    expect(result.headline).toBe('1,234.50 of orders never reached a destination');
+    expect(result.sub).toBe('3 orders affected');
+  });
+
+  it('should omit a total value and state the currency mismatch when mixedCurrency is true', () => {
+    const summary: FailedSyncValueSummary = {
+      count: 5,
+      totalValue: 999,
+      mixedCurrency: true,
+      oldestFailedAt: null,
+    };
+
+    const result = deriveFailedSyncHeadline(summary);
+
+    expect(result.headline).toBe('5 orders across multiple currencies never reached a destination');
+    expect(result.headline).not.toContain('999');
+  });
+
+  it('should use singular order wording when count is 1', () => {
+    const summary: FailedSyncValueSummary = {
+      count: 1,
+      totalValue: 50,
+      mixedCurrency: false,
+      oldestFailedAt: null,
+    };
+
+    const result = deriveFailedSyncHeadline(summary);
+
+    expect(result.sub).toBe('1 order affected');
+  });
+});
