@@ -772,10 +772,31 @@ On narrow viewports the row becomes a card with a labelled fact list (`<dt>`/`<d
 is a tick on desktop becomes a labelled fact there, and the Shipment block keeps its chronological
 order.
 
-**Not adopted, and why:** a draggable status board. It affords moving an order between stages, but
-OL can only honour that for `ol_managed_carrier` orders — under the default `omp_fulfilled` routing
-the destination ships and OL merely observes, so the drop would either no-op or assert a status OL
-has no authority to write. Counts-by-state belong in the summary cards above the list instead.
+**Keep a status pill inside ~17 characters.** BaseLinker's status model carries three name lengths and
+reserves a 17-character "short name" explicitly for "space-limited areas like order tables". That is a
+borrowed budget, not a derived one, but it is calibrated against a table rendering the same kind of
+label at higher volume than ours.
+
+**Why packed earns a place in the row here, when the market leader omits it.** BaseLinker's order list
+has no packed column and no packed icon — packing state is visible only as whatever status an
+automatic action moved the order into. That works because its statuses are **operator-defined folders
+in a left sidebar with per-status counts**, so an operator simply creates a `Packed` folder and the
+folder *is* the signal. OL deliberately did not build operator-defined stages (#1032), so it has no
+substitute: without a row signal, packed state would be invisible while scanning. The omission
+upstream is not evidence the signal is unwanted — it is evidence their information architecture
+already carries it somewhere else.
+
+**Not adopted, and why:** a draggable status board.
+
+- **OL cannot honour the drop.** It could only apply for `ol_managed_carrier` orders — under the
+  default `omp_fulfilled` routing the destination ships and OL merely observes, so the drop would
+  either no-op or assert a status OL has no authority to write.
+- **It is also the wrong gesture for the work.** The market leader has no board either, and its
+  transitions are **bulk-select-and-act** (row checkboxes plus a toolbar action), **automated**
+  (action chains), or **scanner-driven** — even status *reordering* uses arrow buttons, not drag.
+  Drag-one-card-at-a-time is orthogonal to how order operators work at volume.
+
+Counts-by-state belong in the summary cards above the list instead.
 
 ## Page Patterns
 
