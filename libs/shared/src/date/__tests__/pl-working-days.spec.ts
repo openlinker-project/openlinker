@@ -110,10 +110,13 @@ describe('addWorkingDays', () => {
   });
 
   it('should classify the calendar day at Warsaw offset, not UTC', () => {
-    // 2026-06-19T23:30Z is Fri in UTC but already Sat 01:30 in Warsaw (CEST,
-    // +02:00). +1 working day from Saturday → Monday Jun 22 (Warsaw).
-    const result = addWorkingDays(new Date('2026-06-19T23:30:00.000Z'), 1);
-    expect(warsawDate(result)).toBe('2026-06-22');
+    // 2026-06-21T23:30Z is Sun in UTC but already Mon 01:30 in Warsaw (CEST,
+    // +02:00). +1 working day from Monday → Tue Jun 23 (Warsaw). The instant is
+    // chosen so the two anchorings DIVERGE: a UTC-anchored walk would start on
+    // Sunday and answer Mon Jun 22, so this case fails if the Warsaw anchoring
+    // is ever dropped.
+    const result = addWorkingDays(new Date('2026-06-21T23:30:00.000Z'), 1);
+    expect(warsawDate(result)).toBe('2026-06-23');
   });
 
   it('should preserve the Warsaw wall-clock time-of-day across a DST spring-forward', () => {
@@ -177,10 +180,28 @@ describe('previousWorkingDay', () => {
   });
 
   it('should classify the calendar day at Warsaw offset, not UTC', () => {
-    // 2026-06-21T23:30Z is Sun in UTC but already Mon 01:30 in Warsaw (CEST,
-    // +02:00). Walking back from Monday → Fri Jun 19 (Warsaw).
-    const result = previousWorkingDay(new Date('2026-06-21T23:30:00.000Z'));
+    // 2026-06-19T22:30Z is Fri in UTC but already Sat 00:30 in Warsaw (CEST,
+    // +02:00). Walking back from Saturday → Fri Jun 19 (Warsaw). The instant is
+    // chosen so the two anchorings DIVERGE: a UTC-anchored walk would start on
+    // Friday and answer Thu Jun 18, so this case fails if the Warsaw anchoring
+    // is ever dropped.
+    const result = previousWorkingDay(new Date('2026-06-19T22:30:00.000Z'));
     expect(warsawDate(result)).toBe('2026-06-19');
+  });
+
+  it('should recompute movable holidays when the walk crosses a year boundary', () => {
+    // Fri 2026-01-02 walks back past Nowy Rok (Thu Jan 1) into the previous
+    // year, so the holiday set is rebuilt for 2025 mid-walk.
+    const result = previousWorkingDay(new Date('2026-01-02T09:00:00.000Z'));
+    expect(warsawDate(result)).toBe('2025-12-31');
+  });
+
+  it('should skip the Wigilia and Christmas chain together with the weekend', () => {
+    // Mon 2025-12-29 walks back over Sun 12-28, Sat 12-27, and the three
+    // consecutive holidays 12-26, 12-25 and 12-24 (Wigilia) — the longest real
+    // run of non-working days in the Polish calendar — landing on Tue Dec 23.
+    const result = previousWorkingDay(new Date('2025-12-29T09:00:00.000Z'));
+    expect(warsawDate(result)).toBe('2025-12-23');
   });
 
   it('should preserve the Warsaw wall-clock time-of-day across a DST boundary', () => {
