@@ -9420,9 +9420,11 @@ a.kpi-card:focus-visible {
   /* 18ch was sized for a shortened bare UUID (13 chars) and clipped the longer
    * `ol_<entity>_…` short forms a SECOND time, appending a meaningless ellipsis
    * to an already-elided id (#2087). `shortenId()` emits `prefix + 7`, and the
-   * longest prefix `formatInternalId` can produce is `ol_shopproduct_` (15, from
-   * `CoreEntityTypeValues` + `ENTITY_TYPE_ID_PREFIX`), so the ceiling is 22
-   * characters. 26ch rather than 22ch because `box-sizing: border-box` (:498)
+   * longest prefix `formatInternalId` produces for a WELL-KNOWN entity type is
+   * `ol_shopproduct_` (15, from `CoreEntityTypeValues` + `ENTITY_TYPE_ID_PREFIX`;
+   * a plugin-registered type falls through to its own lowercased name and could
+   * exceed this), so the ceiling is 22 characters. 26ch rather than 22ch because
+   * `box-sizing: border-box` (:498)
    * makes this rule's own `padding: 1px 6px` count against `max-width` and
    * `--tracking-wide` adds 0.02em of advance per glyph. A genuinely long raw
    * value (a webhook URL, a tracking number) still ellipsises here as before. */

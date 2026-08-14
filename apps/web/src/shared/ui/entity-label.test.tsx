@@ -74,6 +74,41 @@ describe('EntityLabel', () => {
     expect(copy).toHaveAttribute('type', 'button');
   });
 
+  it('uses copyLabel and copiedLabel for the copy button accessible name when supplied', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    renderWithRouter(
+      <EntityLabel
+        id="ol_order_abc123def456"
+        name="6839-2911-4402"
+        copyLabel="Copy order ID 6839-2911-4402"
+        copiedLabel="Copied order ID 6839-2911-4402"
+      />,
+    );
+
+    const copy = screen.getByRole('button', { name: 'Copy order ID 6839-2911-4402' });
+    expect(screen.queryByRole('button', { name: /ol_order_abc/ })).toBeNull();
+
+    fireEvent.click(copy);
+
+    expect(writeText).toHaveBeenCalledWith('ol_order_abc123def456');
+    expect(
+      await screen.findByRole('button', { name: 'Copied order ID 6839-2911-4402' }),
+    ).toBeInTheDocument();
+  });
+
+  it('falls back to the spelled-out id for the copy button accessible name when no label is supplied', () => {
+    renderWithRouter(<EntityLabel id="ol_connection_abc123def456" name="Store" />);
+
+    expect(
+      screen.getByRole('button', { name: 'Copy ol_connection_abc123def456' }),
+    ).toBeInTheDocument();
+  });
+
   it('copies the full ID to the clipboard when the copy button is pressed', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', {

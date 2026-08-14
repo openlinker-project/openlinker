@@ -36,6 +36,14 @@
  * 3. **The copy button is not hover-gated**, unlike `.copyable-id__copy`. That
  *    is `EntityLabel`'s app-wide behaviour at every existing call site, not
  *    something this cell chooses; changing it is a shared-primitive decision.
+ * 4. **The cell owns order-reference shortening** (`formatOrderRef` below),
+ *    absorbed from the Orders page rather than left to each caller. The mockup
+ *    shows short shop numbers only, so it never faced Allegro's 36-character
+ *    `checkoutFormId`. A known limitation: the full order number is then
+ *    readable only through the copy button's accessible name, because Copy
+ *    writes the internal id and `EntityLabel`'s `title` follows the rendered
+ *    name. Overriding that title is a fourth prop on a shared primitive, so it
+ *    is deferred — no list shows a hover-readable full order number today.
  *
  * No page consumes it yet — #2089 (Shipments), #2090 (Invoices) and #2091
  * (Orders) wire it in, mirroring how #2027 delivered `ConnectionCell`.
@@ -96,14 +104,19 @@ export function OrderIdentityCell({
   // normalisation hides that from a `getByRole` assertion.
   const trimmedNumber = orderNumber?.trim() || null;
   const itemName = firstItemName?.trim() || null;
-  const displayName = trimmedNumber ?? shortenId(orderId);
+  const displayName = trimmedNumber ? formatOrderRef(trimmedNumber) : shortenId(orderId);
   const totalItems = typeof itemCount === 'number' && itemCount > 0 ? itemCount : 0;
   // `+N` counts what is NOT shown, so a single-item order renders no chip at
   // all — it must never read as though something is hidden.
   const moreCount = totalItems > 1 ? totalItems - 1 : 0;
   // Reading out a 41-character internal id per row is not an accessible name.
-  // With no number to quote, name the *kind* of id rather than spelling it.
-  const copySubject = trimmedNumber ? `order ID ${trimmedNumber}` : 'internal order ID';
+  // With no number to quote, name the *kind* of id and qualify it with the
+  // shortened form already on screen, so 50 rows do not all read identically.
+  // The FULL order number goes here when one exists — it is otherwise
+  // unrecoverable, since Copy writes the internal id.
+  const copySubject = trimmedNumber
+    ? `order ID ${trimmedNumber}`
+    : `internal order ID ${displayName}`;
   const classes = ['order-cell', className].filter(Boolean).join(' ');
 
   return (
@@ -131,7 +144,10 @@ export function OrderIdentityCell({
             {/* `title` because `+4` alone leaves an operator (and a screen
                 reader) to guess what is being counted — lines, not units. */}
             {moreCount > 0 ? (
-              <span className="orders-more-count" title={`${totalItems} line items in this order`}>
+              <span
+                className="orders-more-count"
+                title={`${moreCount} more line items (${totalItems} in this order)`}
+              >
                 +{moreCount}
               </span>
             ) : null}
@@ -139,10 +155,34 @@ export function OrderIdentityCell({
         ) : totalItems > 1 ? (
           /* Deviation 2 (see the file header): a known count with no name to
              attach it to reads as a sentence, never as a dangling `+N`. Keeps
-             the row's height stable across the named and unnamed cases. */
+             the row height equal across the multi-item named and unnamed cases
+             — a SINGLE unnamed item still renders no second line, deliberately,
+             since there is no count worth stating. */
           <span className="text-muted orders-cell-sub">{totalItems} line items</span>
         ) : null}
       </span>
     </span>
   );
+}
+
+/** Longest order number rendered verbatim before it reads as noise. */
+const ORDER_REF_MAX_LENGTH = 18;
+
+/**
+ * Shorten a long order reference to a `head…tail` form so line 1 reads as a
+ * reference; short numbers (most shops) pass through untouched.
+ *
+ * Absorbed from the Orders page's own `formatOrderRef` (which #2091 deletes) so
+ * all three lists shorten identically. It is not optional cosmetics: Allegro's
+ * `orderNumber` IS its `checkoutFormId`, a 36-character UUID, and
+ * `buildOrderSummary` (#1995) hands Shipments and Invoices that value raw. CSS
+ * ellipsis is not a substitute — it truncates from the right and drops the tail,
+ * which is the disambiguating half of a UUID.
+ *
+ * The marketplace itself is conveyed by each list's own Channel column, so no
+ * channel prefix is added here.
+ */
+function formatOrderRef(orderNumber: string): string {
+  if (orderNumber.length <= ORDER_REF_MAX_LENGTH) return orderNumber;
+  return `${orderNumber.slice(0, 8)}…${orderNumber.slice(-6)}`;
 }

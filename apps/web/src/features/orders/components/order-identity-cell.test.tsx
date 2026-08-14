@@ -45,7 +45,49 @@ describe('OrderIdentityCell', () => {
 
     // `textContent`, not the accessible name — the latter normalises whitespace
     // and would pass on an untrimmed render.
-    expect(screen.getByRole('link').textContent).toBe('6839-2911-4402');
+    const link = screen.getByRole('link');
+    expect(link.textContent).toBe('6839-2911-4402');
+    expect(link).toHaveAttribute('title', '6839-2911-4402');
+  });
+
+  it('should render the trimmed item name when the name carries surrounding space', () => {
+    renderWithProviders(
+      <OrderIdentityCell
+        orderId={ORDER_ID}
+        orderNumber="6839-2911-4402"
+        firstItemName="  Terra Wool Coat  "
+        itemCount={1}
+      />,
+    );
+
+    expect(screen.getByText('Terra Wool Coat')).toHaveAttribute('title', 'Terra Wool Coat');
+  });
+
+  it('should shorten a long order reference to a head-tail form', () => {
+    // Allegro's `orderNumber` IS its `checkoutFormId` — a 36-char UUID that
+    // `buildOrderSummary` hands Shipments and Invoices raw (#1995).
+    renderWithProviders(
+      <OrderIdentityCell
+        orderId={ORDER_ID}
+        orderNumber="d1f4a2c3-9b8e-4f7a-a1b2-c3d4e5f60789"
+        itemCount={1}
+      />,
+    );
+
+    expect(screen.getByRole('link', { name: 'd1f4a2c3…f60789' })).toBeInTheDocument();
+    // The full number stays recoverable through the copy button's name, since
+    // Copy itself writes the internal id.
+    expect(
+      screen.getByRole('button', { name: 'Copy order ID d1f4a2c3-9b8e-4f7a-a1b2-c3d4e5f60789' }),
+    ).toBeInTheDocument();
+  });
+
+  it('should render a short shop order number verbatim', () => {
+    renderWithProviders(
+      <OrderIdentityCell orderId={ORDER_ID} orderNumber="ORD-2026-000123" itemCount={1} />,
+    );
+
+    expect(screen.getByRole('link', { name: 'ORD-2026-000123' })).toBeInTheDocument();
   });
 
   it('should render the item thumbnail when the first item carries an image', () => {
@@ -113,7 +155,10 @@ describe('OrderIdentityCell', () => {
       />,
     );
 
-    expect(screen.getByText('+4')).toHaveAttribute('title', '5 line items in this order');
+    expect(screen.getByText('+4')).toHaveAttribute(
+      'title',
+      '4 more line items (5 in this order)',
+    );
   });
 
   it('should state the line-item count as a sentence when the first item name is unavailable', () => {
@@ -159,12 +204,14 @@ describe('OrderIdentityCell', () => {
 
     renderWithProviders(<OrderIdentityCell orderId={ORDER_ID} orderNumber={null} itemCount={1} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Copy internal order ID' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: `Copy internal order ID ${SHORT_ORDER_ID}` }),
+    );
 
     expect(writeText).toHaveBeenCalledTimes(1);
     expect(writeText).toHaveBeenCalledWith(ORDER_ID);
     expect(
-      await screen.findByRole('button', { name: 'Copied internal order ID' }),
+      await screen.findByRole('button', { name: `Copied internal order ID ${SHORT_ORDER_ID}` }),
     ).toBeInTheDocument();
   });
 
