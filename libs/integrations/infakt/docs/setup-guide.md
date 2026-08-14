@@ -282,6 +282,66 @@ Two operator-visible consequences:
   inFakt owns that rule and enforces it server-side, so an unsupported currency
   surfaces as an inFakt rejection at issuance rather than as an OL-side error.
 
+#### Documents issued before OL sent the currency
+
+**What was wrong.** Until #2103, OL never sent inFakt a `currency` at all. inFakt
+reads an absent field as "use the account's default currency" and answers success
+either way, so **every** document OL issued was booked in the account default no
+matter what the order's currency said: a EUR 811.37 order was issued as
+PLN 811.37, with no error, no log line and nothing on the document to tell it
+apart from a correct one. Because inFakt relays to KSeF on the seller's behalf,
+such a document may already have been filed with the tax authority.
+
+**How much of your data this touches.** For a PLN-denominated account selling in
+PLN only - the shipped assumption, and the only configuration exercised in
+testing before #2103 - nothing is wrong: the account default *was* the right
+currency, so those documents are correct as issued. The defect was found by code
+reading rather than from an operator report, so there is no known
+mis-denominated production document; that is an absence of evidence for this
+repository, **not** a guarantee about your deployment. If you have ever invoiced
+a non-default-currency order through inFakt, check.
+
+**How to check.** For records issued after #1297 the currency as issued is
+persisted on the invoice record, so the reconciliation is a single query - run it
+against the OL database, replacing `'PLN'` with your inFakt account's own default
+currency:
+
+```sql
+SELECT ir.id,
+       ir."orderId",
+       ir."documentNumber",
+       ir."issuedAt",
+       ir."issuedLineSnapshot"->>'currency'            AS issued_currency,
+       o."orderSnapshot"->'totals'->>'currency'        AS order_currency
+FROM invoice_records ir
+JOIN connections c ON c.id = ir."connectionId"
+LEFT JOIN order_records o ON o."internalOrderId" = ir."orderId"
+WHERE c."platformType" = 'infakt'
+  AND ir.status = 'issued'
+  AND COALESCE(
+        NULLIF(ir."issuedLineSnapshot"->>'currency', ''),
+        NULLIF(o."orderSnapshot"->'totals'->>'currency', '')
+      ) <> 'PLN'
+ORDER BY ir."issuedAt" DESC;
+```
+
+Every returned row is a document whose order was **not** in the account default,
+which before #2103 means it was booked in the account default anyway. Records
+issued before the `issuedLineSnapshot` column existed carry no currency of their
+own, so the query falls back to the order's current snapshot for those - which is
+the order's currency today, not necessarily its currency at issuance.
+
+**How to fix.** OL cannot repair these itself, and neither can an ordinary
+correction: inFakt denominates a correction in the currency of the document it
+corrects, so correcting a wrongly-PLN document produces another PLN document. A
+mis-denominated document has to be withdrawn and re-issued in the right currency
+on the accounting side. Take the query's output to whoever keeps the books -
+correcting a document that has already cleared the tax authority is their call,
+not OL's, and this guide is not legal or tax advice. Once the account default and
+the order currency agree again, re-issuing from OL is safe: the currency is now
+always stamped explicitly, and an ambiguous one is refused before anything
+reaches inFakt.
+
 ---
 
 ## Troubleshooting

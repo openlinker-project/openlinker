@@ -51,6 +51,9 @@ import {
 } from './invoice-issue-lock';
 import { MissingNumberingSeriesException } from '../../domain/exceptions/missing-numbering-series.exception';
 import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
+// Published so an adapter spec can pin its own pre-call refusal message against
+// the very markers this service matches on (#2103 review) — see the constant's doc.
+import { CURRENCY_REJECTION_MARKERS } from '../../domain/types/invoicing.types';
 import type {
   CorrectionLine,
   GetInvoiceByOrderQuery,
@@ -100,27 +103,6 @@ const MAX_FAILURE_REASON_LENGTH = 200;
  * matches the generic "tax id" the adapter surfaces in its rejection reason.
  */
 const TAX_ID_REJECTION_MARKERS = ['tax id', 'tax-id', 'taxid', 'tax identifier'] as const;
-
-/**
- * Substrings (case-insensitive) that mark a `rejected` failure as a settlement-
- * currency problem, so the operator is told to fix the ORDER's currency rather
- * than reading that "the provider rejected the request" — which is actively
- * misleading when the adapter refused the currency shape BEFORE any provider
- * call (#2103). Same structural-read pattern as the tax-id markers above, and
- * the same neutral-vocabulary constraint (ADR-026): "currency"/"ISO 4217" name
- * no country or tax system.
- *
- * Deliberately narrow phrases rather than the bare word `currency`, which would
- * also match an unrelated provider message that merely mentions a currency
- * (e.g. an amount-formatting rejection) and mis-route the operator's fix.
- */
-const CURRENCY_REJECTION_MARKERS = [
-  'iso 4217',
-  'invalid currency',
-  'unsupported currency',
-  'currency is required',
-  'currency code',
-] as const;
 
 /**
  * Lifetime of an `issuing` CAS lease (#1200). Bounds how long a crashed

@@ -21,6 +21,7 @@ import { resolve } from 'path';
 import type { LoggerPort } from '@openlinker/shared/logging';
 import {
   BuyerProfile,
+  CURRENCY_REJECTION_MARKERS,
   InvoiceRecord,
   UnsupportedRegulatoryDocumentKindError,
 } from '@openlinker/core/invoicing';
@@ -550,6 +551,26 @@ describe('InfaktInvoicingAdapter', () => {
         expect(http.calls).toHaveLength(0);
       },
     );
+
+    it('should phrase the refusal so core still classifies it as invalid-currency (#2103 review)', async () => {
+      // Core's `classifyFailureCode` resolves the operator-facing
+      // `invalid-currency` code by a structural substring read of the rejection
+      // reason (the same pattern the tax-id markers use). That makes the message
+      // thrown HERE part of the contract: reword it out of every marker and the
+      // operator silently drops back to "the provider rejected the request" -
+      // which is false, since nothing was sent. Asserted from the side that
+      // changes, against the published marker list rather than a copied string.
+      http.seed('POST', 'invoices.json', invoiceFixture());
+
+      const error = await adapter
+        .issueInvoice({ ...baseCmd, currency: '' })
+        .then(() => null)
+        .catch((e: unknown) => e as Error);
+
+      const haystack = (error?.message ?? '').toLowerCase();
+      expect(error).toBeInstanceOf(InfaktApiError);
+      expect(CURRENCY_REJECTION_MARKERS.some((marker) => haystack.includes(marker))).toBe(true);
+    });
 
     it('should default an empty taxRate to the Polish standard VAT rate (regime-rate fallback)', async () => {
       // Core always leaves InvoiceLine.taxRate empty (documented contract:

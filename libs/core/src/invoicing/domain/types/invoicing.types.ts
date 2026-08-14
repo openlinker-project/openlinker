@@ -98,6 +98,33 @@ export const InvoiceFailureCodeValues = [
 export type InvoiceFailureCode = (typeof InvoiceFailureCodeValues)[number];
 
 /**
+ * Substrings (case-insensitive) that mark a `rejected` failure as a settlement-
+ * currency problem, so `classifyFailureCode` can resolve `invalid-currency`
+ * instead of the generic `provider-rejected` — whose operator-facing copy
+ * asserts the PROVIDER rejected the request, which is untrue when an adapter
+ * refuses the currency shape BEFORE any provider call (#2103).
+ *
+ * Deliberately narrow phrases rather than the bare word `currency`, which would
+ * also match an unrelated provider message that merely mentions a currency
+ * (e.g. an amount-formatting rejection) and mis-route the operator's fix.
+ *
+ * PUBLISHED (unlike the sibling tax-id markers, which stay private to
+ * `InvoiceService`) because for this code BOTH ends of the structural read live
+ * in this repo: the phrase an adapter throws pre-call is OL-authored, so an
+ * adapter spec can assert its own message still matches one of these markers
+ * and a reword breaks the build rather than silently degrading the operator's
+ * failure reason (#2103 review). Neutral vocabulary only — "currency" and
+ * "ISO 4217" name no country or tax system (ADR-026).
+ */
+export const CURRENCY_REJECTION_MARKERS = [
+  'iso 4217',
+  'invalid currency',
+  'unsupported currency',
+  'currency is required',
+  'currency code',
+] as const;
+
+/**
  * Neutral Continuous-Transaction-Controls clearance lifecycle. The adapter maps
  * a regime's native states (KSeF, IT SDI, ES SII…) onto these. `not-applicable`
  * is the default for providers without regulatory transmission.
