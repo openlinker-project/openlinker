@@ -10,6 +10,20 @@
  *   - Checkbox selection + BulkActionBar + ConfirmDialog for batch retry
  *   - Result banner after batch retry
  *
+ * #2090 (epic #2086):
+ *   - `invoiceNumber` + `documentType` merged into one `Document type` column
+ *     (9 -> 8): the provider number over a LABELLED type, `Not yet issued` when
+ *     the record carries neither. The column deliberately has no `hideBelow` —
+ *     it hosts #2094's tablet fold of the connection.
+ *   - Order column -> the shared `OrderIdentityCell`, fed from `orderSummary`
+ *   - Connection column -> the shared `ConnectionCell` (no adornment), replacing
+ *     an id hidden in a `title` attribute
+ *   - One desktop renderer and one CARD renderer per identity fact. They cannot
+ *     be the same function: `DataTableCard` wraps title + subtitle in the row's
+ *     `<Link>` (this page sets `rowHref`), so the card's versions are text-only.
+ *     Both share the label helper and the same shortening, so neither can drift
+ *     back to printing a raw order UUID.
+ *
  * Structural mirror: `pages/webhook-deliveries/webhook-deliveries-page.tsx`
  * (layout, pagination, DataTable + cardView, feedback states, setFilter/setOffset
  * URL helpers). Enum-param reading + the date-range widen-to-UTC sub-pattern
@@ -18,7 +32,7 @@
  *
  * @module apps/web/src/pages/invoicing
  */
-import { useState, useCallback, type ReactElement } from 'react';
+import { useState, useCallback, useMemo, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -31,11 +45,15 @@ import { Button } from '../../shared/ui/button';
 import { Input } from '../../shared/ui/input';
 import { Select } from '../../shared/ui/select';
 import { TimeDisplay } from '../../shared/ui/time-display';
+import { CopyableId } from '../../shared/ui/copyable-id';
+import { EmptyValue } from '../../shared/ui/empty-value';
+import { isSafeHttpUrl } from '../../shared/lib/is-safe-http-url';
+import { shortenId } from '../../shared/ui/entity-label';
 import { useTranslation } from '../../shared/i18n';
-import { useRetryInvoicesMutation } from '../../features/invoicing/hooks/use-retry-invoices-mutation';
-import { useBulkIssueInvoicesMutation } from '../../features/invoicing/hooks/use-bulk-issue-invoices-mutation';
-import { deriveInvoiceDisplayStatus } from '../../features/invoicing/lib/derive-invoice-display';
 import {
+  deriveInvoiceDisplayStatus,
+  useBulkIssueInvoicesMutation,
+  useRetryInvoicesMutation,
   useInvoicesQuery,
   InvoiceStatusBadge,
   RegulatoryStatusBadge,
@@ -47,8 +65,11 @@ import {
   type InvoiceRecord,
   type InvoiceStatus,
   type RegulatoryStatus,
+  DOCUMENT_TYPE_LABEL_FALLBACK,
+  DOCUMENT_TYPE_UNKNOWN_LABEL,
 } from '../../features/invoicing';
-import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
+import { ConnectionCell, useConnectionsQuery } from '../../features/connections';
+import { OrderIdentityCell, formatOrderRef } from '../../features/orders';
 
 const PAGE_SIZE = 20;
 
@@ -105,7 +126,108 @@ export function InvoicesListPage(): ReactElement {
 
   const connectionsQuery = useConnectionsQuery();
   const connections = connectionsQuery.data ?? [];
-  const connectionMap = Object.fromEntries(connections.map((c) => [c.id, c.name]));
+  // `{ name, status }`, not just the name: that is `ConnectionCellFacts`, and
+  // supplying only part of it used to leave the cell's status note unresolved on
+  // exactly the batched path #1996 requires (#2027). A Map so a miss coalesces to
+  // `null` — `undefined` reads as "resolve it yourself" and reinstates a per-row
+  // fetch.
+  const connectionsById = useMemo(
+    () => new Map(connections.map((c) => [c.id, { name: c.name, status: c.status }])),
+    [connections],
+  );
+
+  // Two renderers per identity fact: one for the desktop column, one text-only
+  // for the mobile card (see `renderDocumentCardTitle` for why they cannot be the
+  // same function). The card used to headline `providerInvoiceNumber ?? r.orderId`
+  // — the raw 41-character UUID this issue exists to remove — on every row without
+  // a provider number, i.e. every pending / issuing / failed row.
+  //
+  // What IS single-sourced across the pair: the document-type label
+  // (`documentTypeLabel`) and the order-number shortening (`formatOrderRef`,
+  // exported from `features/orders` for exactly this reason). Those are the two
+  // places the desktop and card renderings could silently disagree.
+  const documentTypeLabel = (r: InvoiceRecord): string =>
+    r.documentType
+      ? t(
+          `invoice.documentType.${r.documentType}`,
+          DOCUMENT_TYPE_LABEL_FALLBACK[r.documentType] ?? r.documentType,
+        )
+      : // `''` is what `InvoiceService` writes on the pending row, and the failure
+        // patch never backfills it — so a raw render left the merged cell's only
+        // text blank on exactly the rows a triage filter selects.
+        t('invoice.documentType.unknown', DOCUMENT_TYPE_UNKNOWN_LABEL);
+
+  const renderDocumentCell = (r: InvoiceRecord): ReactElement => {
+    const label = documentTypeLabel(r);
+    return (
+      <span className="invoice-document-cell">
+        {r.providerInvoiceNumber ? (
+          // `isSafeHttpUrl`, not `r.pdfUrl` truthiness: `InvoicePdfLink` renders an
+          // anchor only for an http(s) URL, and nothing validates the scheme
+          // server-side — so branching on truthiness left a relative or garbage
+          // URL rendering inert plain text, which is the very state this branch
+          // exists to remove. KSeF and inFakt hard-null `pdfUrl` outright, so the
+          // Copy path is the common one, not the exception.
+          r.pdfUrl !== null && isSafeHttpUrl(r.pdfUrl) ? (
+            <InvoicePdfLink invoiceNumber={r.providerInvoiceNumber} pdfUrl={r.pdfUrl} />
+          ) : (
+            <CopyableId
+              id={r.providerInvoiceNumber}
+              copyLabel={t('invoice.copyNumber', `Copy document number ${r.providerInvoiceNumber}`)}
+            />
+          )
+        ) : (
+          // Not a receipt-only branch: every not-yet-issued record lands here, so
+          // line 2 has to carry a real word rather than an empty string.
+          <EmptyValue />
+        )}
+        <span className="text-muted invoice-document-cell__type" title={label}>
+          {label}
+        </span>
+      </span>
+    );
+  };
+
+  // `DataTableCard` wraps `title` + `subtitle` in the row's `<Link>` whenever
+  // `rowHref` is set (`data-table.tsx`), and this page always sets it. So the CARD
+  // gets text-only renderers: putting the desktop cells there nested an `<a>` and
+  // two `<button>`s inside an anchor — invalid, and worse, the clicks bubbled to
+  // the card link, so the PDF number navigated to the invoice instead of opening
+  // the PDF and both Copy buttons copied AND navigated away. #2089 never hit this
+  // because Shipments uses `expandable` and passes no `rowHref`.
+  //
+  // Same facts, same single-sourced label — just no affordances, which the card
+  // does not need: the whole card already navigates to the document.
+  const renderDocumentCardTitle = (r: InvoiceRecord): ReactElement => (
+    <span className="invoice-document-cell">
+      {r.providerInvoiceNumber ? (
+        <span className="mono-text">{r.providerInvoiceNumber}</span>
+      ) : (
+        <EmptyValue />
+      )}
+      <span className="text-muted invoice-document-cell__type">{documentTypeLabel(r)}</span>
+    </span>
+  );
+
+  const renderOrderCardSubtitle = (r: InvoiceRecord): string => {
+    const number = r.orderSummary?.orderNumber?.trim();
+    // `formatOrderRef` / `shortenId`, never a raw id: the desktop cell shortens
+    // both halves, and Allegro's `orderNumber` IS a 36-character `checkoutFormId`
+    // that `buildOrderSummary` hands this page raw.
+    const identity = number ? formatOrderRef(number) : shortenId(r.orderId);
+    const item = r.orderSummary?.firstItemName?.trim();
+    return item ? `${identity} · ${item}` : identity;
+  };
+
+  const renderOrderCell = (r: InvoiceRecord): ReactElement => (
+    <OrderIdentityCell
+      orderId={r.orderId}
+      orderNumber={r.orderSummary?.orderNumber}
+      firstItemName={r.orderSummary?.firstItemName}
+      firstItemImageUrl={r.orderSummary?.firstItemImageUrl}
+      itemCount={r.orderSummary?.itemCount}
+    />
+  );
 
   // Batch retry state
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -222,32 +344,24 @@ export function InvoicesListPage(): ReactElement {
     {
       id: 'orderId',
       header: t('invoice.column.orderId', 'Order'),
-      cell: (r) => (
-        <span className="mono-text" title={r.orderId}>
-          {r.orderId}
-        </span>
-      ),
-      accessor: (r) => r.orderId,
+      // Was the raw 41-character `orderId` in a `mono-text` span: no truncation,
+      // no Copy, no link. `orderSummary` has been on this response since #1995 /
+      // PR #2012 and was typed-but-unconsumed until now (#2090).
+      cell: renderOrderCell,
+      accessor: (r) => r.orderSummary?.orderNumber ?? r.orderId,
     },
     {
-      id: 'invoiceNumber',
-      header: t('invoice.column.invoiceNumber', 'Invoice no.'),
-      cell: (r) =>
-        r.providerInvoiceNumber ? (
-          <InvoicePdfLink invoiceNumber={r.providerInvoiceNumber} pdfUrl={r.pdfUrl} />
-        ) : (
-          <span className="text-muted">—</span>
-        ),
-    },
-    {
+      // `invoiceNumber` and `documentType` were two columns answering one
+      // question — *what document is this?* — in a nine-column budget (#2090).
+      // Merged: the number over the type, the number still a working PDF link.
+      //
+      // Deliberately NOT `hideBelow: 768` (which `documentType` carried): the
+      // merged column is the host for #2094's tablet fold of the Connection
+      // cell, so it cannot be the thing that disappears at that width.
       id: 'documentType',
       header: t('invoice.column.documentType', 'Document type'),
-      cell: (r) => (
-        <span className="mono-text" title={r.documentType}>
-          {r.documentType}
-        </span>
-      ),
-      hideBelow: 768,
+      cell: renderDocumentCell,
+      accessor: (r) => r.documentType,
     },
     {
       id: 'status',
@@ -279,10 +393,15 @@ export function InvoicesListPage(): ReactElement {
     {
       id: 'connection',
       header: t('invoice.column.connection', 'Connection'),
+      // The id used to live in a `title` attribute — invisible, unselectable and
+      // unreachable on touch. No adornment: an invoice's connection IS its
+      // issuing provider and the column header already says so (#2090).
       cell: (r) => (
-        <span className="text-muted" title={r.connectionId}>
-          {connectionMap[r.connectionId] ?? r.connectionId}
-        </span>
+        <ConnectionCell
+          connectionId={r.connectionId}
+          connection={connectionsById.get(r.connectionId) ?? null}
+          loading={connectionsQuery.isLoading}
+        />
       ),
       hideBelow: 1024,
     },
@@ -479,14 +598,20 @@ export function InvoicesListPage(): ReactElement {
       ) : (
         <>
           <DataTable
+            // Scopes the leading-checkbox alignment for the ~60px identity row —
+            // `DataTable` lands `className` on its container, so the rule is a
+            // descendant selector on this page's table only (see `index.css`).
+            className="invoices-table"
             caption={t('invoice.list.caption', 'Invoices')}
             columns={columns}
             rows={query.data?.items ?? []}
             rowKey={(r) => r.id}
             rowHref={(r) => `/invoices/${r.id}`}
             cardView={{
-              title: (r) => r.providerInvoiceNumber ?? r.orderId,
-              subtitle: (r) => r.documentType,
+              // Text-only, deliberately — see `renderDocumentCardTitle`. Same
+              // facts as the desktop columns, no nested interactive content.
+              title: renderDocumentCardTitle,
+              subtitle: renderOrderCardSubtitle,
               meta: (r) => <InvoiceStatusBadge status={deriveInvoiceDisplayStatus(r)} />,
             }}
           />

@@ -29,5 +29,5 @@ export type {
   PaginatedOrders,
 } from './api/orders.types';
 export { ConnectionDot } from './components/connection-dot';
-export { OrderIdentityCell } from './components/order-identity-cell';
+export { OrderIdentityCell, formatOrderRef } from './components/order-identity-cell';
 export type { OrderIdentityCellProps } from './components/order-identity-cell';
