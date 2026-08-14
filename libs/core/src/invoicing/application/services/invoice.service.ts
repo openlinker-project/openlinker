@@ -24,6 +24,7 @@ import {
   IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
 } from '@openlinker/core/integrations';
+import { type SyncLockPort, SYNC_LOCK_TOKEN } from '@openlinker/core/sync';
 
 import type { IInvoiceService } from './invoice.service.interface';
 import { InvoiceRecordRepositoryPort } from '../../domain/ports/invoice-record-repository.port';
@@ -42,6 +43,12 @@ import { isCorrectionIssuer } from '../../domain/ports/capabilities/correction-i
 import { isDocumentNumberConsumer } from '../../domain/ports/capabilities/document-number-consumer.capability';
 import { DuplicateInvoiceRecordException } from '../../domain/exceptions/duplicate-invoice-record.exception';
 import { InvoiceRecordNotFoundException } from '../../domain/exceptions/invoice-record-not-found.exception';
+import { OrderAlreadyInvoicedException } from '../../domain/exceptions/order-already-invoiced.exception';
+import { InvoiceIssueContendedException } from '../../domain/exceptions/invoice-issue-contended.exception';
+import {
+  INVOICE_ISSUE_LOCK_TTL_MS,
+  invoiceIssueLockKey,
+} from './invoice-issue-lock';
 import { MissingNumberingSeriesException } from '../../domain/exceptions/missing-numbering-series.exception';
 import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
 import type {
@@ -212,9 +219,105 @@ export class InvoiceService implements IInvoiceService {
     private readonly integrations: IIntegrationsService,
     @Inject(INVOICE_NUMBERING_SERIES_REPOSITORY_TOKEN)
     private readonly numberingRepo: InvoiceNumberingSeriesRepositoryPort,
+    @Inject(SYNC_LOCK_TOKEN)
+    private readonly issueLock: SyncLockPort,
   ) {}
 
+  /**
+   * Issue one originating document for an order, serialized per ORDER (#2047).
+   *
+   * The one-invoice-per-order guard is a read (`findAllByOrderId` -> `find`), so
+   * on its own it is read-then-act: two attempts on DIFFERENT connections for a
+   * not-yet-invoiced order both read `[]`, both pass, and — because the
+   * `(connectionId, idempotencyKey)` unique index cannot collide across
+   * connections — both create a row and cross the provider boundary. The lock
+   * closes that window; see {@link invoiceIssueLockKey} for why the key is per
+   * order rather than per (order, connection), and for why lock-TTL expiry is not
+   * a correctness cliff.
+   *
+   * Contended behaviour mirrors `ShipmentDispatchService.dispatch`, minus
+   * anything that could re-cross the provider boundary while a peer holds the
+   * lock:
+   * - **Lock held by a peer:** answer from persisted state only
+   *   ({@link issueContended}) — a truthful already-invoiced refusal, an
+   *   idempotent replay of an already-`issued` same-key row, else the retryable
+   *   {@link InvoiceIssueContendedException}.
+   * - **Lock acquired:** run the real issuance; release in `finally`.
+   *
+   * `issueCorrection` is deliberately NOT locked: a correction is a linked
+   * follow-up of an `issued` original, explicitly outside the at-most-one
+   * invariant (ADR-041 §3b), so it has no cross-connection exclusivity to
+   * enforce.
+   */
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<InvoiceRecord> {
+    const lockKey = invoiceIssueLockKey(cmd.orderId);
+    const token = await this.issueLock.acquire(lockKey, INVOICE_ISSUE_LOCK_TTL_MS);
+
+    if (!token) {
+      return this.issueContended(cmd);
+    }
+
+    try {
+      return await this.issueLocked(cmd);
+    } finally {
+      // Best-effort release — never let a release failure mask the issuance
+      // result (a real fiscal document may already exist at this point).
+      try {
+        await this.issueLock.release(lockKey, token);
+      } catch (releaseError) {
+        this.logger.warn(
+          `Failed to release invoice-issue lock ${lockKey}: ` +
+            `${releaseError instanceof Error ? releaseError.message : String(releaseError)}`,
+        );
+      }
+    }
+  }
+
+  /**
+   * Answer an issuance request whose per-order lock is held by a peer, using
+   * PERSISTED STATE ONLY — this path never reaches the `Invoicing` adapter, so it
+   * cannot be the second document.
+   *
+   * The checks run in the same order the locked path would, so a contended
+   * caller and an uncontended one cannot disagree about the same state:
+   *
+   *   1. the cross-connection guard (identical to step 0 below) — if the peer
+   *      already persisted its row, the honest answer is "already invoiced
+   *      there", not "contended";
+   *   2. an already-`issued` same-key row on the REQUESTED connection — returned
+   *      verbatim, preserving idempotent replay (a pure read; deliberately NOT
+   *      `resumeExisting`, which may re-cross the provider boundary);
+   *   3. otherwise the peer is mid-flight with nothing persisted yet, so raise
+   *      the retryable contended exception rather than proceed into the race.
+   */
+  private async issueContended(cmd: IssueInvoiceCommand): Promise<InvoiceRecord> {
+    await this.assertNotInvoicedElsewhere(cmd.orderId, cmd.connectionId);
+
+    const key = cmd.idempotencyKey;
+    if (key !== undefined) {
+      const existing = await this.repo.findByIdempotencyKey(cmd.connectionId, key);
+      if (existing?.status === 'issued') {
+        return existing;
+      }
+    }
+
+    this.logger.warn(
+      `Issuance for order ${cmd.orderId} is contended and no blocking record is persisted ` +
+        `yet; refusing to race a concurrent issuance on connection ${cmd.connectionId}`,
+    );
+    throw new InvoiceIssueContendedException(cmd.orderId);
+  }
+
+  private async issueLocked(cmd: IssueInvoiceCommand): Promise<InvoiceRecord> {
+    // (0) One-invoice-per-order guard (#2047). Runs BEFORE the idempotency gate
+    // and before any row is created, so a cross-connection second issuance
+    // creates nothing at all. It is the backstop that survives a mis-set primary,
+    // two tabs racing, or a hand-rolled API call — the auto-issue trigger's
+    // single-connection selection is the first line, not the only one. The "two
+    // tabs" case holds only BECAUSE the per-order lock above serializes the
+    // guard with the create that follows it.
+    await this.assertNotInvoicedElsewhere(cmd.orderId, cmd.connectionId);
+
     // (1) Idempotency read-gate. Only when a key is supplied (R1: keyless calls
     // are never deduplicated). An already-`issued` hit is returned verbatim — no
     // second provider document. A non-`issued` hit is resumed under the
@@ -263,6 +366,66 @@ export class InvoiceService implements IInvoiceService {
     }
 
     return this.issueWithAdapter(cmd, pending.id);
+  }
+
+  /**
+   * One-invoice-per-order guard (#2047). Throws
+   * {@link OrderAlreadyInvoicedException} when ANY record on a DIFFERENT
+   * connection blocks issuance (`InvoiceRecord.blocksIssuanceElsewhere`:
+   * `pending` / `issuing` / `issued`, or `failed` with a `failureMode` other than
+   * `rejected`).
+   *
+   * Records on the REQUESTED connection are deliberately ignored here — the
+   * per-connection lifecycle (idempotency read-gate + `resumeExisting` + the CAS
+   * claim) already owns retry/replay semantics there, and re-checking them here
+   * would break the idempotent replay of an already-`issued` row.
+   *
+   * A `failed` + `rejected` record elsewhere is NOT blocking: the provider
+   * refused the document and created nothing, so moving the order to another
+   * provider is fiscally safe (it does change the numbering series, which the
+   * operator confirms in the UI).
+   *
+   * **This check is a read, and is authoritative only under the per-order lock**
+   * that `issueInvoice` holds around it (see {@link invoiceIssueLockKey}). Called
+   * unlocked it would be read-then-act: two concurrent attempts on different
+   * connections would both observe no blocking record and both proceed. Every
+   * caller must therefore either hold the lock or, like {@link issueContended},
+   * be unable to reach the provider at all.
+   *
+   * Logged at `warn`, not `error`, deliberately: a refusal here is the guard
+   * WORKING — the expected outcome whenever an operator (or a stale tab) aims a
+   * second connection at an invoiced order. The signal is not left to the log
+   * either way: it is raised as {@link OrderAlreadyInvoicedException}, mapped to
+   * a 409 the FE renders against the real document. That is the opposite case to
+   * the auto-issue ambiguity, which logs at `error` because nothing is raised to
+   * a caller there — the install silently stops issuing.
+   */
+  private async assertNotInvoicedElsewhere(
+    orderId: string,
+    requestedConnectionId: string,
+  ): Promise<void> {
+    const records = await this.repo.findAllByOrderId(orderId);
+    const blocking = records.find(
+      (record) =>
+        record.connectionId !== requestedConnectionId && record.blocksIssuanceElsewhere,
+    );
+    if (!blocking) {
+      return;
+    }
+
+    this.logger.warn(
+      `Refusing to issue a second document for order ${orderId} on connection ` +
+        `${requestedConnectionId}: invoice ${blocking.id} on connection ` +
+        `${blocking.connectionId} is ${blocking.status}` +
+        `${blocking.status === 'failed' ? ` (failureMode=${blocking.failureMode ?? 'unknown'})` : ''}`,
+    );
+    throw new OrderAlreadyInvoicedException(
+      orderId,
+      blocking.connectionId,
+      requestedConnectionId,
+      blocking.status,
+      blocking.id,
+    );
   }
 
   /**
@@ -792,6 +955,14 @@ export class InvoiceService implements IInvoiceService {
 
   async getLatestInvoiceForOrder(orderId: string): Promise<InvoiceRecord | null> {
     return this.repo.findLatestByOrderId(orderId);
+  }
+
+  async listInvoiceConnectionIdsForOrder(orderId: string): Promise<string[]> {
+    // Same newest-first read the #2047 guard uses, projected to distinct
+    // connections. An order holds a handful of rows at most, so de-duplicating
+    // in memory beats a second, DISTINCT-shaped repository method.
+    const records = await this.repo.findAllByOrderId(orderId);
+    return [...new Set(records.map((record) => record.connectionId))];
   }
 
   async getLatestInvoicesForOrders(orderIds: string[]): Promise<InvoiceRecord[]> {

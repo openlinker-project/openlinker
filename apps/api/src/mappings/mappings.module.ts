@@ -12,6 +12,7 @@ import { MappingsModule as CoreMappingsModule } from '@openlinker/core/mappings'
 import { IntegrationsModule as CoreIntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { CategoriesModule } from '../categories/categories.module';
+import { ListingsModule as CoreListingsModule } from '@openlinker/core/listings/services';
 import { MappingsController } from './http/mappings.controller';
 import { MappingOptionsController } from './http/mapping-options.controller';
 import { FulfillmentRoutingController } from './http/fulfillment-routing.controller';
@@ -27,7 +28,17 @@ import { AttributeMappingRulesController } from './http/attribute-mapping-rules.
   //   calling getCapabilityAdapter (#479). CoreIntegrationsModule imports
   //   IdentifierMappingModule but does not re-export the token, so the
   //   import here is direct.
-  imports: [CoreMappingsModule, CoreIntegrationsModule, IdentifierMappingModule, CategoriesModule],
+  imports: [
+    CoreMappingsModule,
+    CoreIntegrationsModule,
+    IdentifierMappingModule,
+    // Still needed: `destination/categories` reads the master catalog through
+    // it. Every marketplace category read moved to the projection (#2074).
+    CategoriesModule,
+    // Provides DESTINATION_TAXONOMY_SERVICE_TOKEN for the repointed
+    // marketplace category + path reads.
+    CoreListingsModule,
+  ],
   controllers: [
     MappingsController,
     MappingOptionsController,

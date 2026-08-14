@@ -58,7 +58,7 @@ describe('useOrderInvoiceQuery', () => {
           .mockRejectedValue(new ApiError('No invoice for order', 404, { message: 'x' })),
       },
     });
-    const { result } = renderHook(() => useOrderInvoiceQuery('o1', 'c1'), {
+    const { result } = renderHook(() => useOrderInvoiceQuery('o1'), {
       wrapper: createWrapper(apiClient),
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -71,7 +71,7 @@ describe('useOrderInvoiceQuery', () => {
         getForOrder: vi.fn().mockRejectedValue(new ApiError('boom', 500, null)),
       },
     });
-    const { result } = renderHook(() => useOrderInvoiceQuery('o1', 'c1'), {
+    const { result } = renderHook(() => useOrderInvoiceQuery('o1'), {
       wrapper: createWrapper(apiClient),
     });
     await waitFor(() => expect(result.current.isError).toBe(true));
@@ -83,7 +83,7 @@ describe('useOrderInvoiceQuery', () => {
     try {
       const getForOrder = vi.fn().mockResolvedValue(invoice({ status: 'pending' }));
       const apiClient = createMockApiClient({ invoicing: { getForOrder } });
-      const { result } = renderHook(() => useOrderInvoiceQuery('o1', 'c1'), {
+      const { result } = renderHook(() => useOrderInvoiceQuery('o1'), {
         wrapper: createWrapper(apiClient),
       });
       await vi.waitFor(() => expect(result.current.data?.status).toBe('pending'));
@@ -103,7 +103,7 @@ describe('useOrderInvoiceQuery', () => {
     try {
       const getForOrder = vi.fn().mockResolvedValue(invoice({ status: 'issued' }));
       const apiClient = createMockApiClient({ invoicing: { getForOrder } });
-      const { result } = renderHook(() => useOrderInvoiceQuery('o1', 'c1'), {
+      const { result } = renderHook(() => useOrderInvoiceQuery('o1'), {
         wrapper: createWrapper(apiClient),
       });
       await vi.waitFor(() => expect(result.current.data?.status).toBe('issued'));
@@ -115,14 +115,25 @@ describe('useOrderInvoiceQuery', () => {
     }
   });
 
-  it('is disabled when connectionId is null', async () => {
+  it('is disabled when there is no orderId', async () => {
     const getForOrder = vi.fn();
     const apiClient = createMockApiClient({ invoicing: { getForOrder } });
-    const { result } = renderHook(() => useOrderInvoiceQuery('o1', null), {
+    const { result } = renderHook(() => useOrderInvoiceQuery(''), {
       wrapper: createWrapper(apiClient),
     });
     // Disabled query never fetches.
     await waitFor(() => expect(result.current.fetchStatus).toBe('idle'));
     expect(getForOrder).not.toHaveBeenCalled();
+  });
+
+  it('reads WITHOUT a connectionId so an invoice on any connection is found (#2047)', async () => {
+    const getForOrder = vi.fn().mockResolvedValue(invoice({ connectionId: 'conn_other' }));
+    const apiClient = createMockApiClient({ invoicing: { getForOrder } });
+    const { result } = renderHook(() => useOrderInvoiceQuery('o1'), {
+      wrapper: createWrapper(apiClient),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(getForOrder).toHaveBeenCalledWith('o1');
+    expect(result.current.data?.connectionId).toBe('conn_other');
   });
 });

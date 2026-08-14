@@ -13426,6 +13426,75 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   align-self: stretch;
 }
 
+/* ── Invoice connection lock (#2047) ──────────────────────────────────
+   States the issuing connection as order state, not as a setting: a lock
+   glyph + mono/caps eyebrow + the connection name, with a left severity
+   stripe following the lifecycle (settled / in-flight / unusable). It
+   replaces the connection `Select` that used to sit above an issued
+   invoice, so no new colors are introduced - only existing tokens. */
+.invoice-connection-lock {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: var(--space-3);
+  row-gap: var(--space-1);
+  align-items: center;
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--status-success);
+  border-radius: var(--radius-md);
+}
+.invoice-connection-lock--pending {
+  border-left-color: var(--status-warning);
+}
+.invoice-connection-lock--stale {
+  border-left-color: var(--border-strong);
+}
+.invoice-connection-lock__glyph {
+  font-size: 0.9375rem;
+  line-height: 1;
+  color: var(--status-success-fg);
+}
+.invoice-connection-lock--pending .invoice-connection-lock__glyph {
+  color: var(--status-warning-fg);
+}
+.invoice-connection-lock--stale .invoice-connection-lock__glyph {
+  color: var(--text-muted);
+}
+.invoice-connection-lock__eyebrow {
+  grid-column: 2;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.invoice-connection-lock__value {
+  grid-column: 2;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.invoice-connection-lock__tag {
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  padding: 1px 7px;
+}
+.invoice-connection-lock__hint {
+  grid-column: 2;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
 /* ── Regulatory section card (#1282) ──────────────────────────────────
    Tone wrapper a provider's `invoiceDetailSection` root class adopts
    (KSeF, Subiekt, inFakt) so the region reads at a glance — severity
@@ -13756,6 +13825,31 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 .infakt-correction__note {
   margin-top: var(--space-3);
+}
+
+/* ── Correction line picker (#2076) ── */
+.correction-line-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+/* The select must NOT inherit `.input--w-lp` (60px, sized for the old numeric
+   "Lp" field): a select adds `padding-right: var(--space-7)` for its chevron,
+   which at 60px leaves a ~0px content box and hides the very line label the
+   picker exists to show. Sized to fit "12. Product name — 2 × 1 234,50 zł"
+   and allowed to grow with its column. */
+.correction-line-picker__select {
+  min-width: 16rem;
+  width: 100%;
+  max-width: 28rem;
+}
+/* Shown only on the manual-entry fallback, where the operator has to verify the
+   line number against the issued document themselves. */
+.correction-line-picker__warning {
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  color: var(--status-warning-fg);
+  max-width: 22rem;
 }
 
 /* ─ Correction trigger in order invoice panel (issued state) ─ */

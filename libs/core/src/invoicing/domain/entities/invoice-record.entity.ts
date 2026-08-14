@@ -149,6 +149,28 @@ export class InvoiceRecord {
   }
 
   /**
+   * Pure derivation (#2047): does this record forbid issuing a SECOND document
+   * for the same order on a DIFFERENT connection? One sale is one invoice, so
+   * the only record that leaves another provider unblocked is one where the
+   * provider DEFINITELY created nothing — a terminal `rejected` failure.
+   *
+   * Blocks `pending` / `issuing` / `issued`, and `failed` with any
+   * `failureMode` other than `rejected` (absent / unknown included). That last
+   * arm is the fiscally dangerous one: an `in-doubt` failure means "we do not
+   * know whether a document exists at the provider", so issuing elsewhere is
+   * exactly how one sale ends up with two invoices. The `issuing` arm is
+   * lease-INDEPENDENT on purpose: an expired lease means the attempt crashed
+   * mid-flight, not that it created nothing (`claimForIssue` may re-claim it on
+   * ITS OWN connection, which does not double-issue; another connection would).
+   */
+  get blocksIssuanceElsewhere(): boolean {
+    if (this.status === 'failed') {
+      return this.failureMode !== 'rejected';
+    }
+    return this.status === 'pending' || this.status === 'issuing' || this.status === 'issued';
+  }
+
+  /**
    * Pure derivation (#1200): is this record's `issuing` claim still live at
    * `now`? A live claim means another attempt holds the in-flight slot and a
    * concurrent retry must NOT re-cross the provider boundary.

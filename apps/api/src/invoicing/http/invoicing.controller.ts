@@ -71,6 +71,8 @@ import {
   InvalidInvoiceLineError,
   UnsupportedPriceTreatmentError,
   DuplicateInvoiceRecordException,
+  OrderAlreadyInvoicedException,
+  InvoiceIssueContendedException,
   InvoiceRecordNotFoundException,
   MissingNumberingSeriesException,
   RegulatoryDocumentKindValues,
@@ -671,6 +673,38 @@ export class InvoicingController {
       const issued = await this.invoiceService.issueInvoice(command);
       return { orderId, outcome: 'issued', invoiceId: issued.id };
     } catch (error) {
+      if (error instanceof OrderAlreadyInvoicedException) {
+        // #2047: the order is invoiced on ANOTHER connection. Not a failure of this
+        // batch — the document exists (or may exist), so one sale still has one
+        // invoice. Report it as `skipped` with a neutral reason naming the
+        // connection that holds it, exactly like the already-issued branch above.
+        //
+        // `invoiceId` is deliberately NOT set: the DTO documents it as the record
+        // this batch's connection issued, and the blocking record lives on a
+        // DIFFERENT one. A caller resolving it against the batch connection would
+        // look the id up in the wrong place, so the ids go in the neutral `reason`
+        // where they read as provenance rather than as this batch's output.
+        return {
+          orderId,
+          outcome: 'skipped',
+          reason:
+            `An invoice for this order already exists on connection ${error.issuingConnectionId} ` +
+            `(invoice ${error.blockingInvoiceId}, status ${error.blockingStatus}).`,
+        };
+      }
+      if (error instanceof InvoiceIssueContendedException) {
+        // #2047: a concurrent issuance holds this order's lock and has persisted
+        // nothing yet. Nothing was issued BY THIS ATTEMPT and the peer is about
+        // to produce the document, so this is "already in progress", not a batch
+        // failure — same treatment as the duplicate-key race below, and
+        // deliberately NOT the `failed` + manual-review branch, which would
+        // point an operator at a non-problem.
+        return {
+          orderId,
+          outcome: 'skipped',
+          reason: 'Invoice issuance is already in progress; nothing was issued by this attempt.',
+        };
+      }
       if (error instanceof DuplicateInvoiceRecordException) {
         // Belt-and-suspenders. The primary dedup on the deterministic
         // `invoice:{connectionId}:{orderId}` key happens INSIDE
@@ -1039,12 +1073,14 @@ export class InvoicingController {
   @ApiOperation({
     summary: 'Get the invoice record for an order',
     description:
-      'Reads the InvoiceRecord projection keyed by (orderId, connectionId). The ' +
-      'invoicing `connectionId` is a REQUIRED query param — symmetric with how ' +
-      'POST /invoices writes the row. It is NOT derivable from the order: an ' +
-      'OrderRecord carries only its `sourceConnectionId` (the originating ' +
-      'marketplace), which is a distinct capability from the Invoicing connection ' +
-      'the invoice was issued on.',
+      'Reads the InvoiceRecord projection for an order. With `connectionId` it is ' +
+      'keyed by (orderId, connectionId) — symmetric with how POST /invoices writes ' +
+      'the row. WITHOUT it (#2047) it returns the order most recent record on ' +
+      'whichever connection holds it, which is how a caller asks "is this order ' +
+      'invoiced ANYWHERE?" — the question the order-detail panel needs answered to ' +
+      'lock itself to the issuing connection. The invoicing connection is never ' +
+      'derived from the order: an OrderRecord carries only its `sourceConnectionId` ' +
+      '(the originating marketplace), a distinct capability.',
   })
   @ApiResponse({ status: 200, description: 'Invoice record', type: InvoiceRecordResponseDto })
   @ApiResponse({ status: 404, description: 'Order or invoice not found' })
@@ -1059,17 +1095,35 @@ export class InvoicingController {
     }
     // The invoice projection is keyed (orderId, connectionId) where connectionId
     // is the INVOICING connection (the one POST stored), NOT the order's
-    // sourceConnectionId (the marketplace). The order record carries no
-    // invoicing-connection field, so the caller MUST supply it — same key POST
-    // wrote the row under.
-    const invoice = await this.invoiceService.getInvoice({
-      orderId,
-      connectionId: query.connectionId,
-    });
+    // sourceConnectionId (the marketplace). A caller that knows the connection
+    // keeps the exact pre-#2047 read; a caller that does not (the order-detail
+    // panel, which must render the lock BEFORE it knows the connection) omits it
+    // and gets the order's record from whichever connection holds it.
+    const invoice =
+      query.connectionId === undefined
+        ? await this.invoiceService.getLatestInvoiceForOrder(orderId)
+        : await this.invoiceService.getInvoice({
+            orderId,
+            connectionId: query.connectionId,
+          });
     if (!invoice) {
       throw new NotFoundException(`No invoice for order: ${orderId}`);
     }
-    return this.toDto(invoice);
+    const dto = this.toDto(invoice);
+    // #2047: only the connection-agnostic branch can answer "does this order
+    // carry documents on more than one provider?", and only it needs to — a
+    // caller that named a connection asked about that connection. The extra read
+    // is one indexed lookup over the handful of rows an order holds, and the
+    // field is omitted entirely in the (overwhelmingly common) single-connection
+    // case, so the response shape only grows where it has something to report.
+    if (query.connectionId === undefined) {
+      const connectionIds = await this.invoiceService.listInvoiceConnectionIdsForOrder(orderId);
+      const others = connectionIds.filter((id) => id !== invoice.connectionId);
+      if (others.length > 0) {
+        dto.otherInvoicingConnectionIds = others;
+      }
+    }
+    return dto;
   }
 
   @Get('invoices')
@@ -1274,6 +1328,32 @@ export class InvoicingController {
     if (error instanceof DuplicateInvoiceRecordException) {
       return new ConflictException('An invoice record with this idempotency key already exists');
     }
+    // #2047: the order is already invoiced on ANOTHER connection (or an in-doubt
+    // attempt there may have created a document). One sale is one invoice, so this
+    // is a 409, not a provider rejection. The body names the issuing connection +
+    // invoice so the FE can point the operator at the real document; the message is
+    // PII-clean (ids and a neutral status only).
+    if (error instanceof OrderAlreadyInvoicedException) {
+      return new ConflictException({
+        message: error.message,
+        error: 'OrderAlreadyInvoicedException',
+        issuingConnectionId: error.issuingConnectionId,
+        blockingInvoiceId: error.blockingInvoiceId,
+        blockingStatus: error.blockingStatus,
+      });
+    }
+    // #2047: a concurrent issuance holds the per-order lock and has persisted
+    // nothing yet, so there is no document to point at — only a timing accident.
+    // Also a 409, but RETRYABLE and carrying no connection/invoice ids (there are
+    // none to carry): `retryable: true` is what lets the FE offer "try again"
+    // rather than the already-invoiced branch's "open the existing document".
+    if (error instanceof InvoiceIssueContendedException) {
+      return new ConflictException({
+        message: error.message,
+        error: 'InvoiceIssueContendedException',
+        retryable: true,
+      });
+    }
     if (
       error instanceof InvalidBuyerProfileError ||
       error instanceof InvalidInvoiceLineError ||
@@ -1375,7 +1455,16 @@ export class InvoicingController {
         `No content snapshot is available for invoice ${invoiceId} (status ${record.status})`,
       );
     }
-    return IssuedDocumentContentDto.fromDomain(record.documentContent);
+    // #2076: `documentContent` and `issuedLineSnapshot` are separate columns
+    // from separate migrations, so a row issued between those deploys has
+    // content but no snapshot — and `issueCorrection` above then rebuilds the
+    // original document from the order's CURRENT state instead of indexing
+    // these lines. Report which it is, so a correction UI never lets an
+    // operator pick a position from an array the server will not index.
+    return IssuedDocumentContentDto.fromDomain(
+      record.documentContent,
+      record.issuedLineSnapshot != null,
+    );
   }
 
   @Get('invoices/:invoiceId/document')

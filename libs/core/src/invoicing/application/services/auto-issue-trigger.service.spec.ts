@@ -65,6 +65,7 @@ describe('AutoIssueTriggerService', () => {
   let syncJobs: jest.Mocked<ISyncJobsService>;
   let service: AutoIssueTriggerService;
   let warnSpy: jest.SpyInstance<void, [message: string]>;
+  let errorSpy: jest.SpyInstance<void, [message: string]>;
 
   beforeEach(() => {
     connectionPort = { list: jest.fn() };
@@ -83,6 +84,14 @@ describe('AutoIssueTriggerService', () => {
       .spyOn(
         (service as unknown as { logger: { warn: (m: string) => void } }).logger,
         'warn',
+      )
+      .mockImplementation(() => undefined) as jest.SpyInstance<void, [message: string]>;
+    // #2047: the ambiguous-primary refusal logs at ERROR (it is a
+    // misconfiguration that silently suppresses invoicing), not WARN.
+    errorSpy = jest
+      .spyOn(
+        (service as unknown as { logger: { error: (m: string) => void } }).logger,
+        'error',
       )
       .mockImplementation(() => undefined) as jest.SpyInstance<void, [message: string]>;
   });
@@ -156,10 +165,15 @@ describe('AutoIssueTriggerService', () => {
       expect(warnSpy.mock.calls[0][0]).toContain('BatchedTriggerNotImplementedError');
     });
 
-    it('unset/unrecognized triggerModel defaults to manual (no enqueue)', async () => {
+    // One connection per case: with two candidates and no primary the #2047
+    // selection would refuse for an unrelated reason, making the assertion pass
+    // without exercising the trigger-model default at all.
+    it.each([
+      ['unset', undefined],
+      ['unrecognized', 'nonsense'],
+    ])('%s triggerModel defaults to manual (no enqueue)', async (_label, model) => {
       connectionPort.list.mockResolvedValue([
-        makeConnection(undefined, { id: 'c-unset' }),
-        makeConnection('nonsense', { id: 'c-bad' }),
+        makeConnection(model, { id: 'c-default' }),
       ]);
       await service.onOrderTransition(
         makeOrder({ status: 'shipped', paymentStatus: 'paid' }),
@@ -318,42 +332,142 @@ describe('AutoIssueTriggerService', () => {
     });
   });
 
-  describe('per-connection isolation + PII-safe catch (F9/D11)', () => {
-    it('a connection whose composition throws InvalidBuyerProfileError is skipped; others still enqueue', async () => {
+  // #2047: one sale is one invoice. The trigger resolves EXACTLY ONE connection
+  // instead of fanning out over every Invoicing-capable one.
+  describe('single-connection selection (#2047)', () => {
+    function primary(id: string): Connection {
+      return makeConnection('auto-on-paid', {
+        id,
+        config: { invoicing: { triggerModel: 'auto-on-paid', isPrimary: true } },
+      });
+    }
+
+    it('should enqueue zero jobs and log an error when two connections exist and none is primary', async () => {
       connectionPort.list.mockResolvedValue([
-        // No address ⇒ InvalidBuyerProfileError from the mapper.
-        makeConnection('auto-on-paid', { id: 'bad' }),
-        makeConnection('auto-on-paid', { id: 'good' }),
+        makeConnection('auto-on-paid', { id: 'conn-a' }),
+        makeConnection('auto-on-paid', { id: 'conn-b' }),
       ]);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1', 'evt-1');
+
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      const logged = errorSpy.mock.calls[0][0];
+      expect(logged).toContain('no-primary');
+      expect(logged).toContain('conn-a');
+      expect(logged).toContain('conn-b');
+      expect(logged).toContain('order-1');
+    });
+
+    it('should enqueue exactly one job on the primary when two connections exist and one is primary', async () => {
+      connectionPort.list.mockResolvedValue([
+        makeConnection('auto-on-paid', { id: 'conn-a' }),
+        primary('conn-b'),
+      ]);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+
+      expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
+      expect(syncJobs.schedule.mock.calls[0][0].connectionId).toBe('conn-b');
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+
+    it('should enqueue zero jobs and log an error when more than one connection is primary', async () => {
+      connectionPort.list.mockResolvedValue([primary('conn-a'), primary('conn-b')]);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      expect(errorSpy.mock.calls[0][0]).toContain('multiple-primaries');
+    });
+
+    it('should keep issuing on the lone connection even when it is not marked primary', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid', { id: 'only' })]);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+
+      expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
+      expect(syncJobs.schedule.mock.calls[0][0].connectionId).toBe('only');
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+
+    it('should ignore a non-boolean isPrimary value when resolving the primary', async () => {
+      connectionPort.list.mockResolvedValue([
+        makeConnection('auto-on-paid', {
+          id: 'conn-a',
+          // The stored jsonb is untrusted: `isPrimary` is documented as a boolean
+          // but nothing stops a hand-edited config from holding a string.
+          config: { invoicing: { triggerModel: 'auto-on-paid', isPrimary: 'yes' } } as
+            unknown as Connection['config'],
+        }),
+        makeConnection('auto-on-paid', { id: 'conn-b' }),
+      ]);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      expect(errorSpy.mock.calls[0][0]).toContain('no-primary');
+    });
+
+    it('should not log an ambiguity error when no connection has the Invoicing capability', async () => {
+      connectionPort.list.mockResolvedValue([
+        makeConnection('auto-on-paid', { id: 'x', enabledCapabilities: [] }),
+      ]);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+
+    // Selection runs BEFORE the trigger model is read, so a primary on a
+    // `manual` connection turns auto-issue off for the whole install. That is a
+    // legitimate operator choice, but it must not be indistinguishable from
+    // "the trigger never fired".
+    it('should warn once when the chosen primary is manual while sibling candidates exist', async () => {
+      const connections = [
+        makeConnection('manual', {
+          id: 'conn-primary',
+          config: { invoicing: { triggerModel: 'manual', isPrimary: true } },
+        }),
+        makeConnection('auto-on-paid', { id: 'conn-sibling' }),
+      ];
+      connectionPort.list.mockResolvedValue(connections);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      const manualWarnings = warnSpy.mock.calls.filter(([message]) =>
+        message.includes('triggerModel=manual'),
+      );
+      expect(manualWarnings).toHaveLength(1);
+      expect(manualWarnings[0][0]).toContain('conn-primary');
+    });
+
+    it('should not warn about a manual connection when it is the only candidate', async () => {
+      // With one candidate there is no sibling being passed over, so the manual
+      // setting is simply the operator invoicing by hand — nothing to diagnose.
+      connectionPort.list.mockResolvedValue([makeConnection('manual', { id: 'only' })]);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      expect(
+        warnSpy.mock.calls.filter(([message]) => message.includes('triggerModel=manual')),
+      ).toHaveLength(0);
+    });
+  });
+
+  describe('selected-connection isolation + PII-safe catch (F9/D11)', () => {
+    it('a connection whose composition throws InvalidBuyerProfileError is skipped, and nothing escapes', async () => {
+      // No address ⇒ InvalidBuyerProfileError from the mapper.
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid', { id: 'bad' })]);
       const badOrder = makeOrder({ paymentStatus: 'paid' });
-      // Strip addresses only affects the mapper for ALL connections, so instead
-      // verify isolation by making one connection's compose throw via a net order
-      // is not possible per-connection; use a shared order missing address and
-      // assert BOTH are skipped + logged (the isolation guarantee: no throw escapes).
       const noAddr = { ...badOrder, billingAddress: undefined, shippingAddress: undefined };
       await expect(service.onOrderTransition(noAddr, 'src-1')).resolves.toBeUndefined();
       expect(syncJobs.schedule).not.toHaveBeenCalled();
       expect(warnSpy).toHaveBeenCalled();
-    });
-
-    it('one connection throwing does not stop a later connection from enqueuing', async () => {
-      // First connection: net-priced order is shared, so simulate a per-connection
-      // failure by having schedule reject for the first connection id only.
-      connectionPort.list.mockResolvedValue([
-        makeConnection('auto-on-paid', { id: 'first' }),
-        makeConnection('auto-on-paid', { id: 'second' }),
-      ]);
-      syncJobs.schedule.mockImplementation((input) => {
-        if (input.connectionId === 'first') {
-          return Promise.reject(new Error('boom'));
-        }
-        return Promise.resolve({} as never);
-      });
-      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
-      // second still got scheduled despite first throwing.
-      const ids = syncJobs.schedule.mock.calls.map((c) => c[0].connectionId);
-      expect(ids).toContain('first');
-      expect(ids).toContain('second');
     });
 
     it('the catch envelope contains error.name / connectionId / order.id / sourceEventId and NO correlationId key', async () => {

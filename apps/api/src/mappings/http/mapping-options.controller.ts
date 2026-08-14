@@ -70,6 +70,10 @@ import { MappingOptionResponseDto } from './dto/mapping-option-response.dto';
 import { AllegroCategoryResponseDto } from './dto/allegro-category-response.dto';
 import { CategoryPathNodeResponseDto } from './dto/category-path-node-response.dto';
 import { ICategoriesCacheService } from '../../categories/categories-cache.service.interface';
+import {
+  DESTINATION_TAXONOMY_SERVICE_TOKEN,
+  IDestinationTaxonomyService,
+} from '@openlinker/core/listings';
 import { CATEGORIES_CACHE_SERVICE_TOKEN } from '../../categories/categories.tokens';
 
 /**
@@ -92,8 +96,12 @@ export class MappingOptionsController {
   constructor(
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
+    // Still injected for `destination/categories` only — see the Categories
+    // section comment. Every marketplace read moved to the projection.
     @Inject(CATEGORIES_CACHE_SERVICE_TOKEN)
     private readonly categoriesCacheService: ICategoriesCacheService,
+    @Inject(DESTINATION_TAXONOMY_SERVICE_TOKEN)
+    private readonly taxonomyService: IDestinationTaxonomyService,
     @Inject(CONNECTION_PORT_TOKEN)
     private readonly connectionPort: ConnectionPort
   ) {}
@@ -174,10 +182,27 @@ export class MappingOptionsController {
     return this.resolveSourceOptions(connectionId, 'listPaymentMethods');
   }
 
-  // ── Categories (live, cached — different architecture from option lists) ─
+  // ── Categories ──────────────────────────────────────────────────────────
+  //
+  // The marketplace routes below read the neutral destination-taxonomy
+  // projection (#2074, ADR-037) — never the live platform.
+  //
+  // `destination/categories` deliberately does NOT: it resolves ProductMaster,
+  // and the projection models only marketplace-owner and shop-connection
+  // scopes, not a master catalog. Its DTO also carries `depth` / `active`,
+  // which the projection has no column for. Modelling that third taxonomy kind
+  // is what Wave 3 needs before `CategoriesCacheService` can be deleted.
+  //
+  // NOTE ON VOCABULARY: here `source` is the MARKETPLACE and `destination` is
+  // the master shop — the opposite of ADR-023's mapping direction. The routes
+  // are keyed on the marketplace connection (#1784).
 
   @Get('destination/categories')
-  @ApiOperation({ summary: 'List destination-platform categories (live, cached)' })
+  @ApiOperation({
+    summary: 'List destination-platform (master catalog) categories — live, uncached',
+    description:
+      'Resolves ProductMaster and calls the platform on every request. Deliberately not moved to the destination-taxonomy projection (#2074): that model covers marketplace-owner and shop-connection scopes, not a master catalog. The previous "cached" wording was wrong — there is no cache on this path.',
+  })
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, description: 'Array of platform categories' })
   async getDestinationCategories(@Param('connectionId') connectionId: string): Promise<unknown[]> {
@@ -185,7 +210,11 @@ export class MappingOptionsController {
   }
 
   @Get('source/categories')
-  @ApiOperation({ summary: 'Browse source-platform category tree (cached, 24h TTL)' })
+  @ApiOperation({
+    summary: 'Browse source-platform category tree (destination-taxonomy projection)',
+    description:
+      'Reads the synced projection, never the live platform (ADR-037). An empty array means the taxonomy has not synced for this connection yet, not that the platform has no categories.',
+  })
   @ApiParam({ name: 'connectionId', type: String })
   @ApiQuery({
     name: 'parentId',
@@ -198,11 +227,19 @@ export class MappingOptionsController {
     @Param('connectionId') connectionId: string,
     @Query('parentId') parentId?: string
   ): Promise<AllegroCategoryResponseDto[]> {
-    const categories = await this.categoriesCacheService.getAllegroCategories(
-      connectionId,
-      parentId
+    const categories = await this.taxonomyService.browse(connectionId, parentId);
+    return categories.map((c) =>
+      AllegroCategoryResponseDto.fromDomain({
+        id: c.externalId,
+        name: c.name,
+        parentId: c.parentId,
+        // `DestinationCategory.leaf` is nullable because a SHOP node has no leaf
+        // concept (ADR-024). This route is marketplace-scoped and the sync writes
+        // a boolean for every marketplace node, so the fallback is unreachable —
+        // it exists to satisfy the DTO's non-nullable `leaf`, not to guess.
+        leaf: c.leaf ?? false,
+      })
     );
-    return categories.map((c) => AllegroCategoryResponseDto.fromDomain(c));
   }
 
   @Get('source/categories/:categoryId/path')
@@ -216,7 +253,7 @@ export class MappingOptionsController {
     @Param('connectionId') connectionId: string,
     @Param('categoryId') categoryId: string
   ): Promise<CategoryPathNodeResponseDto[]> {
-    const path = await this.categoriesCacheService.getAllegroCategoryPath(connectionId, categoryId);
+    const path = await this.taxonomyService.path(connectionId, categoryId);
     return path.map((n) => CategoryPathNodeResponseDto.fromDomain(n));
   }
 

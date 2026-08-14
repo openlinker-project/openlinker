@@ -739,6 +739,65 @@ Recommended status vocabulary:
 
 Status should be consistent across orders, products, inventory, integrations, jobs, and automations.
 
+### Order-row signal placement (#2081)
+
+The orders list carries several signals per row. They are organised into **three semantic groups**
+(consolidated in #1713), each with one primary badge and subordinate detail beneath it:
+
+| Group | Primary | Subordinate |
+|---|---|---|
+| **Status** | order health | failure reason; **exceptions** (e.g. an open return) |
+| **Shipment** | fulfillment state | packed, ship-by SLA + countdown, delivery owner, carrier |
+| **Money** | total | payment, invoice clearance, created |
+
+Four rules govern anything added to a row:
+
+1. **Shipment reads as time.** Its stack is ordered by when things happen — *packed → shipped → due
+   → carrier* — so the column scans as a sequence rather than a list of unrelated facts. A new
+   shipment-related signal is inserted at its chronological position, not appended.
+2. **A workflow position is a tick; an exception is a badge.** Packed is binary and renders as a
+   tick, because the row already carries four distinct badge vocabularies and a fifth pill makes
+   them compete. Exceptions (returns) are badges, and they belong in the **Status** group where
+   failure reasons already live.
+3. **The list displays; the detail page acts.** Every row affordance is a link (`Generate label`,
+   `Issue invoice`), never an in-place mutation. Introducing in-place editing to this table is a new
+   interaction pattern and needs its own decision — it is not a styling choice.
+4. **Never extend the health vocabulary.** `OrderHealthValues` is a partition whose five values must
+   stay exhaustive and mutually exclusive so the KPI cards sum to the total. New signals sit *beside*
+   health, never inside it. And no signal may be frontend-only: `deriveOrderHealth` is a deliberate
+   twin of SQL in `OrderRecordRepository`, so anything the backend cannot also compute can never
+   become a server-side sort or filter.
+
+On narrow viewports the row becomes a card with a labelled fact list (`<dt>`/`<dd>`); a signal that
+is a tick on desktop becomes a labelled fact there, and the Shipment block keeps its chronological
+order.
+
+**Keep a status pill inside ~17 characters.** BaseLinker's status model carries three name lengths and
+reserves a 17-character "short name" explicitly for "space-limited areas like order tables". That is a
+borrowed budget, not a derived one, but it is calibrated against a table rendering the same kind of
+label at higher volume than ours.
+
+**Why packed earns a place in the row here, when the market leader omits it.** BaseLinker's order list
+has no packed column and no packed icon — packing state is visible only as whatever status an
+automatic action moved the order into. That works because its statuses are **operator-defined folders
+in a left sidebar with per-status counts**, so an operator simply creates a `Packed` folder and the
+folder *is* the signal. OL deliberately did not build operator-defined stages (#1032), so it has no
+substitute: without a row signal, packed state would be invisible while scanning. The omission
+upstream is not evidence the signal is unwanted — it is evidence their information architecture
+already carries it somewhere else.
+
+**Not adopted, and why:** a draggable status board.
+
+- **OL cannot honour the drop.** It could only apply for `ol_managed_carrier` orders — under the
+  default `omp_fulfilled` routing the destination ships and OL merely observes, so the drop would
+  either no-op or assert a status OL has no authority to write.
+- **It is also the wrong gesture for the work.** The market leader has no board either, and its
+  transitions are **bulk-select-and-act** (row checkboxes plus a toolbar action), **automated**
+  (action chains), or **scanner-driven** — even status *reordering* uses arrow buttons, not drag.
+  Drag-one-card-at-a-time is orthogonal to how order operators work at volume.
+
+Counts-by-state belong in the summary cards above the list instead.
+
 ## Page Patterns
 
 Standardize these patterns:

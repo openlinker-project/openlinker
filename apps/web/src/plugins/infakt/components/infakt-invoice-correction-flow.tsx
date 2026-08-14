@@ -23,6 +23,7 @@ import { Button } from '../../../shared/ui/button';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type { InvoiceCorrectionFlowProps } from '../../../shared/plugins/plugin.types';
 import {
+  CorrectionLinePicker,
   useIssueCorrectionMutation,
   type CorrectionLineInput,
 } from '../../../features/invoicing';
@@ -217,7 +218,7 @@ export function InfaktInvoiceCorrectionFlow({
                 {t('infakt.correction.col.newQty', 'New qty')}
               </th>
               <th className="infakt-correction__col-price">
-                {t('infakt.correction.col.newPrice', 'New price')}
+                {t('infakt.correction.col.newPrice', 'New gross')}
               </th>
               <th aria-label={t('infakt.correction.col.remove', 'Remove')} />
             </tr>
@@ -226,15 +227,11 @@ export function InfaktInvoiceCorrectionFlow({
             {lines.map((row, i) => (
               <tr key={i}>
                 <td>
-                  <input
-                    type="number"
-                    className="input input--w-lp"
+                  <CorrectionLinePicker
+                    invoiceId={invoice.id}
                     value={row.originalLineNumber}
-                    onChange={(e) => updateLine(i, 'originalLineNumber', e.target.value)}
-                    placeholder="1"
-                    min={1}
-                    step={1}
-                    aria-label={`${t('infakt.correction.lineNum', 'Line number')} ${i + 1}`}
+                    onChange={(next) => updateLine(i, 'originalLineNumber', next)}
+                    ariaLabel={`${t('infakt.correction.lineNum', 'Line number')} ${i + 1}`}
                     disabled={isSubmitting}
                   />
                 </td>
@@ -260,7 +257,7 @@ export function InfaktInvoiceCorrectionFlow({
                     placeholder="—"
                     min={0}
                     step="any"
-                    aria-label={`${t('infakt.correction.newPrice', 'New price, line')} ${i + 1}`}
+                    aria-label={`${t('infakt.correction.newPrice', 'New gross, line')} ${i + 1}`}
                     disabled={isSubmitting}
                   />
                 </td>

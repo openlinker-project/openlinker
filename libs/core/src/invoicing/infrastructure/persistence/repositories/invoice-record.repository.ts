@@ -94,6 +94,18 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     return entity ? this.toDomain(entity) : null;
   }
 
+  async findAllByOrderId(orderId: string): Promise<InvoiceRecord[]> {
+    // Newest-first with the same `id` tiebreak as `findLatestByOrderId`, so the
+    // #2047 guard reports a deterministic blocking row when an order somehow
+    // carries several. An order holds a handful of rows at most (original +
+    // corrections + failed attempts), so no pagination is warranted.
+    const entities = await this.repository.find({
+      where: { orderId },
+      order: { createdAt: 'DESC', id: 'DESC' },
+    });
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
   async findLatestByOrderIds(orderIds: string[]): Promise<InvoiceRecord[]> {
     if (orderIds.length === 0) {
       return [];

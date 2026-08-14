@@ -1,16 +1,24 @@
 /**
- * useOrderInvoiceQuery (#757)
+ * useOrderInvoiceQuery (#757, made connection-agnostic by #2047)
  *
- * Fetches the single invoice projection for an order + invoicing connection.
- * Returns `null` for the invoice-absent 404 ("not-issued" — plan §1.4) and
- * polls every 5s while the invoice is `pending`.
+ * Fetches THE invoice projection for an order — one sale has one invoice, so the
+ * read is not scoped by connection. Returns `null` for the invoice-absent 404
+ * ("not-issued" — plan §1.4) and polls every 5s while the invoice is `pending`
+ * or `issuing`.
+ *
+ * WHY NO `connectionId` (#2047): while this hook took one, the panel had to ask
+ * the operator for a connection first, and switching that picker asked "is there
+ * an invoice on THIS connection?" of an already-invoiced order. The 404 mapped to
+ * `null`, `null` rendered as "not issued" with an Issue button, and one sale could
+ * get two fiscal documents. The connection is now read OFF the returned record
+ * (`invoice.connectionId`), never chosen before the read.
  *
  * 404→null PRECONDITION (plan §1.4): the GET endpoint returns two distinct
- * 404s — `Order not found` (controller line 186) and `No invoice for order`
- * (line 198). This hook only ever runs for an order the order-detail page has
- * ALREADY resolved and 404-guarded, so the order-not-found 404 is unreachable
- * here and the only reachable 404 is invoice-absent. Mapping `404 → null` is
- * therefore safe (no message-substring sniffing).
+ * 404s — `Order not found` and `No invoice for order`. This hook only ever runs
+ * for an order the order-detail page has ALREADY resolved and 404-guarded, so the
+ * order-not-found 404 is unreachable here and the only reachable 404 is
+ * invoice-absent. Mapping `404 → null` is therefore safe (no message-substring
+ * sniffing).
  *
  * @module apps/web/src/features/invoicing/hooks
  */
@@ -22,22 +30,19 @@ import type { InvoiceRecord } from '../api/invoicing.types';
 
 const INVOICE_POLL_MS = 5000;
 
-export function useOrderInvoiceQuery(
-  orderId: string,
-  connectionId: string | null,
-): UseQueryResult<InvoiceRecord | null> {
+export function useOrderInvoiceQuery(orderId: string): UseQueryResult<InvoiceRecord | null> {
   const apiClient = useApiClient();
 
   return useQuery<InvoiceRecord | null>({
-    queryKey: invoicingQueryKeys.forOrder(orderId, connectionId ?? ''),
-    enabled: Boolean(orderId && connectionId),
+    queryKey: invoicingQueryKeys.forOrder(orderId),
+    enabled: Boolean(orderId),
     queryFn: async (): Promise<InvoiceRecord | null> => {
       // 404 → null (invoice-absent "not-issued"); see the 404 precondition in
       // the module docstring. Any other error propagates to the query's error
       // state so the panel can surface a retryable failure (not a false
       // not-issued).
       try {
-        return await apiClient.invoicing.getForOrder(orderId, connectionId ?? '');
+        return await apiClient.invoicing.getForOrder(orderId);
       } catch (error) {
         if (error instanceof ApiError && error.status === 404) {
           return null;

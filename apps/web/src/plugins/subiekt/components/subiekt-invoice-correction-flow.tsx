@@ -22,6 +22,7 @@ import { Button } from '../../../shared/ui/button';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type { InvoiceCorrectionFlowProps } from '../../../shared/plugins/plugin.types';
 import {
+  CorrectionLinePicker,
   useIssueCorrectionMutation,
   type CorrectionLineInput,
 } from '../../../features/invoicing';
@@ -192,7 +193,7 @@ export function SubiektInvoiceCorrectionFlow({
               <th>{t('subiekt.correction.col.lp', 'Lp')}</th>
               <th className="subiekt-correction__col-qty">{t('subiekt.correction.col.newQty', 'New qty')}</th>
               <th className="subiekt-correction__col-price">
-                {t('subiekt.correction.col.newPrice', 'New net')}
+                {t('subiekt.correction.col.newPrice', 'New gross')}
               </th>
               <th aria-label={t('subiekt.correction.col.remove', 'Remove')} />
             </tr>
@@ -201,15 +202,11 @@ export function SubiektInvoiceCorrectionFlow({
             {lines.map((row, i) => (
               <tr key={i}>
                 <td>
-                  <input
-                    type="number"
-                    className="input input--num input--w-lp"
+                  <CorrectionLinePicker
+                    invoiceId={invoice.id}
                     value={row.originalLineNumber}
-                    onChange={(e) => updateLine(i, 'originalLineNumber', e.target.value)}
-                    placeholder="1"
-                    min={1}
-                    step={1}
-                    aria-label={`${t('subiekt.correction.lineNum', 'Line number')} ${i + 1}`}
+                    onChange={(next) => updateLine(i, 'originalLineNumber', next)}
+                    ariaLabel={`${t('subiekt.correction.lineNum', 'Line number')} ${i + 1}`}
                     disabled={isSubmitting}
                   />
                 </td>
@@ -235,7 +232,7 @@ export function SubiektInvoiceCorrectionFlow({
                     placeholder="—"
                     min={0}
                     step="any"
-                    aria-label={`${t('subiekt.correction.newPrice', 'New net, line')} ${i + 1}`}
+                    aria-label={`${t('subiekt.correction.newPrice', 'New gross, line')} ${i + 1}`}
                     disabled={isSubmitting}
                   />
                 </td>
