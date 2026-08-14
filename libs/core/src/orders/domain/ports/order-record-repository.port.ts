@@ -42,7 +42,15 @@ export interface OrderRecordRepositoryPort {
 
   /**
    * Upsert order record (create or update)
-   * Uses internalOrderId as the primary key
+   * Uses internalOrderId as the primary key.
+   *
+   * Writes only the columns the ingestion path owns. The two columns written
+   * out-of-band by a narrow, atomic UPDATE - `fulfillmentState` (#2101,
+   * {@link updateFulfillmentState}) and `cancelledAt` (#1984,
+   * {@link markCancelled}) - are NOT part of the write set, so a re-ingestion
+   * of the same order cannot reset them. The returned record therefore reports
+   * both as `null` whatever the row holds; re-read via {@link findById} when
+   * their live value matters.
    */
   upsert(orderRecord: OrderRecord): Promise<OrderRecord>;
 
@@ -102,6 +110,8 @@ export interface OrderRecordRepositoryPort {
    * from the shipping context after a shipment-status change (best-effort
    * projection). Idempotent absolute-set; a missing order row is a no-op (never
    * throws) so it can't fail the shipment operation.
+   *
+   * Sole writer of the column - {@link upsert} deliberately omits it (#2101).
    */
   updateFulfillmentState(
     internalOrderId: string,

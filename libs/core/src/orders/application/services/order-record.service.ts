@@ -125,6 +125,11 @@ export class OrderRecordService implements IOrderRecordService {
     // Initial sync status: pending for all destinations (will be updated as sync progresses)
     const syncStatus: OrderSyncStatus[] = [];
 
+    // `fulfillmentState` is intentionally left at its constructor default:
+    // it is a rollup over the order's shipments, not a source-payload field,
+    // and the upsert excludes the column so a re-ingestion can't reset the
+    // value the shipping context wrote out-of-band (#2101). Same for
+    // `cancelledAt` (#1984), recorded below via `recordCancellationIfNeeded`.
     const orderRecord = new OrderRecord(
       order.id,
       order.customerId || null,
