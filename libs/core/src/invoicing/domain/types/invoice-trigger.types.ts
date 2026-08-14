@@ -15,6 +15,8 @@
  *
  * @module libs/core/src/invoicing/domain/types
  */
+import type { SalesDocumentGateBlockReason } from '@openlinker/core/sales-documents';
+
 export const InvoiceTriggerModelValues = [
   'manual',
   'auto-on-paid',
@@ -36,3 +38,23 @@ export function parseTriggerModel(value: unknown): InvoiceTriggerModel {
     ? (value as InvoiceTriggerModel)
     : 'manual';
 }
+
+/**
+ * Outcome of evaluating a trigger model against ONE order transition (#2100).
+ *
+ * The three arms exist because "did not enqueue" is not one state, and #2100's
+ * whole point is that the operator can tell them apart:
+ *
+ * - `proceed` — the transition qualifies; compose and enqueue.
+ * - `waiting` — an `auto-on-*` model whose condition is not met YET. Level-
+ *   evaluated (D3): an unpaid order is not blocked, it is waiting, and the next
+ *   transition re-evaluates it. Persisting a reason here would put a permanent
+ *   badge on every order that is merely early in its lifecycle.
+ * - `blocked` — issuance will not happen on this connection until an operator (or
+ *   a future OL release, for `batched`) changes something. Carries the neutral
+ *   `SalesDocumentGateBlockReason` that gets persisted and rendered.
+ */
+export type TriggerGateOutcome =
+  | { kind: 'proceed' }
+  | { kind: 'waiting' }
+  | { kind: 'blocked'; reason: SalesDocumentGateBlockReason };

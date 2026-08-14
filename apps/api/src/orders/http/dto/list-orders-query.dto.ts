@@ -14,8 +14,9 @@ import {
   Min,
   Max,
   IsDateString,
+  IsBoolean,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   OrderSyncStatusFilterValues,
@@ -134,6 +135,21 @@ export class ListOrdersQueryDto {
   @IsOptional()
   @IsEnum(FulfillmentRollupStateValues)
   fulfillmentState?: FulfillmentRollupState;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Sales-document block filter (#2100): true keeps only orders OpenLinker declined to ' +
+      'invoice, false excludes them, omitted does not filter. An INDEPENDENT axis that ' +
+      'composes with `health` rather than competing with it — "synced AND invoicing blocked" ' +
+      'is the most common shape of the problem.',
+  })
+  @IsOptional()
+  // Query params arrive as strings; only the literal 'true'/'false' are accepted so a
+  // stray value can't silently collapse to `false` and hide blocked orders.
+  @Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : undefined))
+  @IsBoolean()
+  salesDocumentBlocked?: boolean;
 
   @ApiPropertyOptional({ default: 0, minimum: 0, description: 'Number of items to skip' })
   @IsOptional()

@@ -14,6 +14,10 @@ import type {
   PaymentStatus,
 } from '../api/order-snapshot.schema';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
+import type {
+  SalesDocumentGateBlockReasonValue,
+  SalesDocumentUnresolvedReasonValue,
+} from '../api/orders.types';
 
 /** First named item + how many further lines the order carries. */
 export interface ItemsSummary {
@@ -105,5 +109,101 @@ function invoiceBadgeBase(invoice: ParsedOrderInvoice): {
     case 'not-applicable':
     default:
       return { label: 'Issued', tone: 'success' };
+  }
+}
+
+// ── Sales-document block badge (#2100) ──────────────────────────────────────
+
+export interface InvoicingBlockedBadge {
+  label: string;
+  tone: StatusBadgeTone;
+  /** One-line cause for the row's `title` tooltip. */
+  hint: string;
+  /**
+   * Whether the row should still offer "Issue invoice" alongside the badge.
+   * True only for `trigger-model-manual`, where issuing by hand IS the
+   * configured workflow rather than a workaround.
+   */
+  keepIssueAction: boolean;
+}
+
+/**
+ * Collapse a persisted sales-document block into the row badge (#2100).
+ *
+ * Keys on the ROUTING reason when one travelled alongside the gate's
+ * `'unresolved-routing'` bridge value (ADR-041 §107): "routing was unresolved"
+ * is not something an operator can act on, "no primary invoicing connection" is.
+ *
+ * A deliberate sibling of {@link invoiceBadge} rather than a branch inside it —
+ * that function takes a `ParsedOrderInvoice`, and a blocked order has no invoice
+ * record at all.
+ *
+ * Returns `null` for an unblocked order and for any value this build does not
+ * recognise, so a reason added to the backend later renders as "no badge"
+ * instead of an unlabelled pill. (`scripts/check-sales-document-reason-mirror.mjs`
+ * is what stops that from happening silently; this is the safety net.)
+ */
+export function invoicingBlockedBadge(
+  reason: SalesDocumentGateBlockReasonValue | null | undefined,
+  unresolvedReason?: SalesDocumentUnresolvedReasonValue | null,
+): InvoicingBlockedBadge | null {
+  if (!reason) return null;
+
+  if (reason === 'unresolved-routing') {
+    if (unresolvedReason === 'ambiguous-connection-no-primary') {
+      return {
+        label: 'No primary',
+        tone: 'error',
+        hint: 'Several connections can invoice and none is set to issue automatically.',
+        keepIssueAction: false,
+      };
+    }
+    // Any other routing reason belongs to the #1908 router, which does not exist
+    // yet. Report the honest generic rather than inventing copy for a state no
+    // code path can currently produce.
+    return {
+      label: 'Not routed',
+      tone: 'error',
+      hint: 'OpenLinker could not decide where to issue this document.',
+      keepIssueAction: false,
+    };
+  }
+
+  switch (reason) {
+    case 'trigger-model-manual':
+      // Neutral on purpose: a deliberate operator setting is not a fault. The
+      // fact is still recorded so the row is honest about why nothing happened.
+      return {
+        label: 'Manual only',
+        tone: 'neutral',
+        hint: 'This connection issues invoices by hand.',
+        keepIssueAction: true,
+      };
+    case 'trigger-model-batched':
+      return {
+        label: 'Batched',
+        tone: 'warning',
+        hint: "Batched invoicing isn't available yet, so this order is waiting.",
+        keepIssueAction: false,
+      };
+    case 'missing-required-tax-id':
+      // Declared by ADR-041 but never written today (no buyer tax id exists on
+      // the order contract). Copy ships so the badge is right the day it does.
+      return {
+        label: 'Tax ID missing',
+        tone: 'error',
+        hint: 'This order needs a buyer tax ID before it can be invoiced.',
+        keepIssueAction: false,
+      };
+    case 'tax-rate-conflict':
+      // Declared but never written today — blocked on #2057.
+      return {
+        label: 'Tax rate conflict',
+        tone: 'error',
+        hint: "The channel's tax rate disagrees with the master catalogue.",
+        keepIssueAction: false,
+      };
+    default:
+      return null;
   }
 }

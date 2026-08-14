@@ -454,6 +454,9 @@ export function OrderDetailPage(): ReactElement {
           syncAttempts={order.syncAttempts}
           sourceConnectionId={order.sourceConnectionId}
           mappingFailureReason={order.mappingFailureReason}
+          salesDocumentBlockReason={order.salesDocumentBlockReason}
+          salesDocumentUnresolvedReason={order.salesDocumentUnresolvedReason}
+          salesDocumentBlockDetail={order.salesDocumentBlockDetail}
         />
       </section>
 

@@ -23,10 +23,14 @@
  *     `invoice:{connId}:{orderId}` composed ONCE and threaded into BOTH the
  *     `ScheduleJobInput.idempotencyKey` AND `payload.idempotencyKey` (F4).
  *
- * Every non-issuing exit (ambiguous selection, `manual`, `batched`) is currently
- * LOG-ONLY. ADR-041 §54/§105 require it to also persist a named, operator-visible
- * reason — deferred to **#2100**, whose comment at the `ambiguous` branch explains
- * why the log alone is insufficient.
+ * Every non-issuing exit that represents a BLOCK (ambiguous selection, `manual`,
+ * `batched`) is REPORTED to the caller as a `SalesDocumentBlock` alongside — never
+ * instead of — its existing log line (#2100, ADR-041 §54/§105: a block is never
+ * log-only). Reporting rather than persisting is what keeps the F3 one-way edge
+ * below intact: the caller already lives in the orders context and owns the write.
+ * Exits that are NOT blocks report `null`: no invoicing connection exists at all,
+ * or an `auto-on-*` model whose condition is simply not met yet (level-evaluated,
+ * D3 — an unpaid order is waiting, not blocked).
  *
  * The selected connection's work is isolated in a try/catch; the catch logs a
  * PII-SAFE envelope only (F9 + D11): `error.name`, invoicing `connectionId`, `order.id`,
@@ -56,10 +60,16 @@ import type { Order } from '@openlinker/core/orders';
 // without pulling in `OrdersModule`. Using the main barrel would close a CJS
 // cycle (OrdersModule imports InvoicingModule which provides this service).
 import { PAYMENT_STATUS } from '@openlinker/core/orders/types';
+// Dependency-free leaf (#2100) — no module, no service, so value-importing it
+// here cannot close a cycle the way the main orders barrel would.
+import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
 
 import type { IAutoIssueTriggerService } from './auto-issue-trigger.service.interface';
-import type { InvoiceTriggerModel } from '../../domain/types/invoice-trigger.types';
+import type {
+  InvoiceTriggerModel,
+  TriggerGateOutcome,
+} from '../../domain/types/invoice-trigger.types';
 import { parseTriggerModel } from '../../domain/types/invoice-trigger.types';
 import {
   parseIsPrimaryInvoicing,
@@ -131,7 +141,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     order: Order,
     sourceConnectionId: string,
     sourceEventId?: string,
-  ): Promise<void> {
+  ): Promise<SalesDocumentBlock | null> {
     // D8: only ACTIVE invoicing connections receive issuance jobs. The
     // scheduler's `status: 'active'` filter already excludes disabled/error/
     // needs_reauth connections.
@@ -153,26 +163,22 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     );
 
     if (selection.kind === 'none') {
-      return;
+      // NOT a block: no connection can invoice at all, so there is nothing for an
+      // operator to unblock on THIS order. Reporting a reason here would badge
+      // every order on an install that simply does not do invoicing.
+      return null;
     }
     if (selection.kind === 'ambiguous') {
       // Deliberately silent-by-design at the domain level: issue NOTHING and log
       // an error naming the ambiguity. An uninvoiced order is fixable by hand; two
       // issued documents for one sale need a correction of a document that should
-      // never have existed. The order-detail panel surfaces this state to the
-      // operator ("Automatic invoicing is off for this order") so the decision is
-      // not visible only in a log.
+      // never have existed.
       //
-      // DEFERRED — #2100: ADR-041 §54/§105 require a block to also PERSIST a named
-      // reason ('ambiguous-connection-no-primary'), never log-only. This exit (and
-      // the `manual` / `batched` ones below) is still log-only, so an install where
-      // auto-issue silently stopped for EVERY order is normal-looking on the orders
-      // and invoices lists — the panel's client-side re-derivation only helps an
-      // operator who already opened that one order. #2100 lands decision 11's first
-      // slice: the two reason unions in a `sales-documents` concern plus #1689's
-      // `source_deleted` surfacing treatment (health bucket + list badge + bulk-action
-      // exclusion). No `sync_jobs.outcomeReason` can carry it — these exits enqueue
-      // no job, so there is no row.
+      // #2100 (ADR-041 §54/§105): the error log below is kept and a named reason is
+      // reported ON TOP of it, because a log alone leaves an install where
+      // auto-issue silently stopped for EVERY order looking normal on the orders and
+      // invoices lists. No `sync_jobs.outcomeReason` can carry it — this exit
+      // enqueues no job, so there is no row; the order is the only home.
       this.logger.error(
         `Auto-issue skipped: ${selection.candidateIds.length} active Invoicing connections and ` +
           `no unambiguous primary (reason=${selection.reason}) — issuing nothing rather than ` +
@@ -181,7 +187,18 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           `sourceEventId=${sourceEventId ?? 'n/a'}. ` +
           `Set config.invoicing.isPrimary on exactly one connection.`,
       );
-      return;
+      // PII-free detail: a count and the neutral selection reason only. It reaches
+      // an operator screen verbatim, so it must never carry buyer data.
+      return {
+        // ADR-041 §107: the GATE records that it blocked on an unresolved routing
+        // decision; the routing reason itself travels alongside. Ambiguity is a
+        // routing-vocabulary fact, so it cannot be the gate reason directly.
+        reason: 'unresolved-routing',
+        unresolvedReason: 'ambiguous-connection-no-primary',
+        detail: `${selection.candidateIds.length} invoicing connections, ${
+          selection.reason === 'no-primary' ? 'none marked primary' : 'more than one marked primary'
+        }`,
+      };
     }
 
     const connection = connections.find((candidate) => candidate.id === selection.connectionId);
@@ -195,7 +212,9 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         `Auto-issue skipped: selected connection ${selection.connectionId} vanished from the ` +
           `candidate list it was chosen from. orderId=${order.id} sourceEventId=${sourceEventId ?? 'n/a'}`,
       );
-      return;
+      // NOT a block: this is a defect, not an operator-fixable state. Naming a
+      // reason on the order would tell the operator to fix something they cannot.
+      return null;
     }
 
     // F9/D11: the selected connection's work is isolated — a compose/enqueue
@@ -206,8 +225,12 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       const triggerModel = parseTriggerModel(connection.config.invoicing?.triggerModel);
       this.warnOnceIfManualPrimaryDisablesInstall(triggerModel, connection.id, connections.length);
 
-      if (!this.qualifies(order, triggerModel, connection.id)) {
-        return;
+      const gate = this.evaluateGate(order, triggerModel, connection.id);
+      if (gate.kind === 'waiting') {
+        return null;
+      }
+      if (gate.kind === 'blocked') {
+        return { reason: gate.reason };
       }
 
       // F4: compose the deterministic key ONCE and thread it into BOTH the
@@ -236,8 +259,23 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         maxAttempts: AUTO_ISSUE_RETRY_BUDGET,
         runAfter: new Date(),
       });
+      // Enqueued: report NO block, which is what clears a previously persisted
+      // reason once the operator has fixed the configuration (the caller writes
+      // `null`). This is the level-triggered half of the clear-on-success rule.
+      return null;
     } catch (error) {
       this.logIssuanceFailure(error, connection.id, order.id, sourceEventId);
+      if (error instanceof BatchedTriggerNotImplementedError) {
+        // The one error that IS an operator-visible block rather than a fault:
+        // OpenLinker cannot group this order into a batch yet, and no retry will
+        // change that until the feature ships or the operator picks another model.
+        return { reason: 'trigger-model-batched' };
+      }
+      // Any other compose/enqueue failure is transient or a defect — already
+      // logged, retried on the next transition, and not something an operator
+      // fixes on this order. Reporting it as a block would badge the order with a
+      // cause it cannot act on.
+      return null;
     }
   }
 
@@ -297,25 +335,30 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
 
   /**
    * Decide whether the trigger model qualifies for THIS transition
-   * (level-evaluated, D3): `auto-on-paid` iff paid; `auto-on-shipped` iff
-   * `order.status === 'shipped'`; `manual` → false; `batched` → throws
-   * `BatchedTriggerNotImplementedError`. For `auto-on-shipped` on a non-shipped
-   * order it emits the F7/D6 one-time viability warning (keyed by `connectionId`)
-   * so a source that never surfaces `'shipped'` is operator-diagnosable.
+   * (level-evaluated, D3), separating "not yet" from "not without a human"
+   * (#2100): `auto-on-paid` / `auto-on-shipped` `proceed` when their condition
+   * holds and `waiting` otherwise; `manual` is `blocked`; `batched` throws
+   * `BatchedTriggerNotImplementedError`, which the caller's PII-safe catch maps to
+   * a `trigger-model-batched` block. For `auto-on-shipped` on a non-shipped order
+   * it emits the F7/D6 one-time viability warning (keyed by `connectionId`) so a
+   * source that never surfaces `'shipped'` is operator-diagnosable.
    */
-  private qualifies(
+  private evaluateGate(
     order: Order,
     triggerModel: InvoiceTriggerModel,
     connectionId: string,
-  ): boolean {
+  ): TriggerGateOutcome {
     switch (triggerModel) {
       case 'auto-on-paid':
-        // D3 level-evaluated: qualifies iff the order is currently paid.
-        return order.paymentStatus === PAYMENT_STATUS.Paid;
+        // D3 level-evaluated: qualifies iff the order is currently paid. An unpaid
+        // order is `waiting`, never `blocked` — the next transition re-evaluates it.
+        return order.paymentStatus === PAYMENT_STATUS.Paid
+          ? { kind: 'proceed' }
+          : { kind: 'waiting' };
       case 'auto-on-shipped':
         // D6: honored only where the source surfaces 'shipped' inbound.
         if (order.status === 'shipped') {
-          return true;
+          return { kind: 'proceed' };
         }
         // F7: a non-`shipped` order on an `auto-on-shipped` connection is the
         // signal that the source may never emit `'shipped'`. Warn ONCE per
@@ -328,11 +371,22 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
               `If the source never surfaces 'shipped' inbound, this connection will never auto-issue (D6).`,
           );
         }
-        return false;
+        // `waiting`, not `blocked`, even though the F7 warning above suspects the
+        // source may never emit 'shipped': from THIS order's point of view the
+        // condition is simply unmet, and the misconfiguration it hints at is a
+        // connection-level fact the one-time warning already carries.
+        return { kind: 'waiting' };
       case 'manual':
-        return false;
+        // A deliberate operator setting, not a fault — but still a block: no
+        // invoice will ever be issued for this order without a human acting.
+        // ADR-041 lists it in `SalesDocumentGateBlockReasonValues`, so the fact is
+        // recorded; rendering keeps it quiet (neutral tone, alongside the
+        // "Issue invoice" affordance rather than in place of it).
+        return { kind: 'blocked', reason: 'trigger-model-manual' };
       case 'batched':
         // Deferred to a future issue — rejected cleanly, never silently ignored.
+        // Still thrown rather than returned so the existing PII-safe catch keeps
+        // logging it; the catch maps it to `trigger-model-batched`.
         throw new BatchedTriggerNotImplementedError(
           `Batched trigger model is not implemented (order ${order.id})`,
         );

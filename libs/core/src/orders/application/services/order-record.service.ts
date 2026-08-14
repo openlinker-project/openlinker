@@ -24,6 +24,7 @@ import type {
   PaginatedOrderRecords,
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
+import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import { getPiiConfig } from '@openlinker/shared/config';
 import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
 
@@ -367,6 +368,20 @@ export class OrderRecordService implements IOrderRecordService {
    */
   async markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void> {
     await this.repository.markCancelled(internalOrderId, cancelledAt);
+  }
+
+  /**
+   * Record or clear the sales-document block (#2100). Thin pass-through to the
+   * repository's narrow absolute-set — see
+   * {@link OrderRecordRepositoryPort.updateSalesDocumentBlock}. `null` clears,
+   * and is the ordinary path: the auto-issue gate is level-evaluated, so this is
+   * called on every transition with the current answer.
+   */
+  async markSalesDocumentBlock(
+    internalOrderId: string,
+    block: SalesDocumentBlock | null
+  ): Promise<void> {
+    await this.repository.updateSalesDocumentBlock(internalOrderId, block);
   }
 
   /**

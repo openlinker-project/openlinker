@@ -111,6 +111,7 @@ export class OrdersController {
       dueBefore,
       slaState,
       fulfillmentState,
+      salesDocumentBlocked,
       limit = 20,
       offset = 0,
     } = query;
@@ -129,6 +130,7 @@ export class OrdersController {
         dueBefore: dueBefore ? new Date(dueBefore) : undefined,
         slaState,
         fulfillmentState,
+        salesDocumentBlocked,
       },
       { limit, offset }
     );
@@ -321,6 +323,9 @@ export class OrdersController {
       syncAttempts: order.syncAttempts.map((a) => this.toSyncAttemptDto(a)),
       recordStatus: order.recordStatus,
       mappingFailureReason: order.mappingFailureReason,
+      salesDocumentBlockReason: order.salesDocumentBlockReason,
+      salesDocumentUnresolvedReason: order.salesDocumentUnresolvedReason,
+      salesDocumentBlockDetail: order.salesDocumentBlockDetail,
       createdAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
       updatedAt: order.updatedAt instanceof Date ? order.updatedAt.toISOString() : order.updatedAt,
       dispatchByAt: order.dispatchByAt ? order.dispatchByAt.toISOString() : null,

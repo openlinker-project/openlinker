@@ -32,6 +32,7 @@ describe('OrderRecordService', () => {
       updateSyncStatus: jest.fn(),
       updateItemResolutionFailure: jest.fn(),
       markCancelled: jest.fn(),
+      updateSalesDocumentBlock: jest.fn(),
     } as unknown as jest.Mocked<OrderRecordRepositoryPort>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -872,6 +873,42 @@ describe('OrderRecordService', () => {
       await service.markCancelled(internalOrderId, cancelledAt);
 
       expect(repository.markCancelled).toHaveBeenCalledWith(internalOrderId, cancelledAt);
+    });
+  });
+
+  describe('markSalesDocumentBlock (#2100)', () => {
+    it('should pass the reported block straight through to the repository', async () => {
+      const block = {
+        reason: 'unresolved-routing',
+        unresolvedReason: 'ambiguous-connection-no-primary',
+        detail: '2 invoicing connections, none marked primary',
+      } as const;
+
+      await service.markSalesDocumentBlock('ol_order_abc', block);
+
+      expect(repository.updateSalesDocumentBlock).toHaveBeenCalledWith('ol_order_abc', block);
+    });
+
+    it('should pass null through — the clear is the ordinary path, not an edge case', async () => {
+      await service.markSalesDocumentBlock('ol_order_abc', null);
+
+      expect(repository.updateSalesDocumentBlock).toHaveBeenCalledWith('ol_order_abc', null);
+    });
+
+    it('should not accumulate: repeated calls with the same reason are plain absolute-sets', async () => {
+      const block = { reason: 'trigger-model-manual' } as const;
+
+      await service.markSalesDocumentBlock('ol_order_abc', block);
+      await service.markSalesDocumentBlock('ol_order_abc', block);
+      await service.markSalesDocumentBlock('ol_order_abc', block);
+
+      // The gate is level-evaluated and fires on EVERY transition, so this method
+      // is called repeatedly for one order. It must stay an absolute-set (one row,
+      // one state) rather than anything append-shaped.
+      expect(repository.updateSalesDocumentBlock).toHaveBeenCalledTimes(3);
+      for (const call of repository.updateSalesDocumentBlock.mock.calls) {
+        expect(call).toEqual(['ol_order_abc', block]);
+      }
     });
   });
 });

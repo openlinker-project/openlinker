@@ -447,7 +447,32 @@ export class InvoicingController {
     } catch (error) {
       throw this.toHttpException(error);
     }
+    await this.clearSalesDocumentBlock(dto.orderId);
     return this.toDto(issued);
+  }
+
+  /**
+   * Clear a persisted auto-issue block after a MANUAL issuance succeeded (#2100).
+   *
+   * The auto path needs no equivalent: the gate is level-evaluated, so the same
+   * transition that enqueues the job reports `null` and `OrderIngestionService`
+   * writes the clear. The manual path has no such transition — an operator who
+   * sets a primary and then issues by hand would otherwise leave "No primary"
+   * badged on an order that now carries an invoice.
+   *
+   * Best-effort: an invoice really was issued, so a failure to tidy the badge must
+   * never turn a 201 into a 500. The next order transition re-decides it anyway.
+   */
+  private async clearSalesDocumentBlock(orderId: string): Promise<void> {
+    try {
+      await this.orders.markSalesDocumentBlock(orderId, null);
+    } catch (error) {
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.warn(
+        `Failed to clear the sales-document block after issuing (swallowed): ` +
+          `error=${errorName} orderId=${orderId}`,
+      );
+    }
   }
 
   @Roles('admin')
@@ -671,6 +696,7 @@ export class InvoicingController {
         source: await this.resolveSourcePlatformType(record.sourceConnectionId),
       });
       const issued = await this.invoiceService.issueInvoice(command);
+      await this.clearSalesDocumentBlock(orderId);
       return { orderId, outcome: 'issued', invoiceId: issued.id };
     } catch (error) {
       if (error instanceof OrderAlreadyInvoicedException) {

@@ -18,7 +18,10 @@ import {
   SYNC_ATTEMPTS_PER_DESTINATION_CAP,
   type OrderSyncStatusValue,
   type SyncAttempt,
+  type SalesDocumentGateBlockReasonValue,
+  type SalesDocumentUnresolvedReasonValue,
 } from '../api/orders.types';
+import { invoicingBlockedBadge } from '../lib/order-row';
 
 interface TimelineEvent {
   id: string;
@@ -55,6 +58,16 @@ interface OrderActivityTimelineProps {
    * alongside `recordStatus = 'awaiting_mapping' | 'source_deleted'`.
    */
   mappingFailureReason?: string | null;
+  /**
+   * Why OpenLinker issued no fiscal document (#2100). Narrated as its own
+   * timeline entry rather than folded into "Order received" the way
+   * `mappingFailureReason` is — an invoicing block is not an ingestion-time fact.
+   */
+  salesDocumentBlockReason?: SalesDocumentGateBlockReasonValue | null;
+  /** Routing reason paired with a `'unresolved-routing'` block (ADR-041 §107). */
+  salesDocumentUnresolvedReason?: SalesDocumentUnresolvedReasonValue | null;
+  /** PII-free elaboration the backend supplied. */
+  salesDocumentBlockDetail?: string | null;
 }
 
 const STATUS_PAST_TENSE: Record<OrderSyncStatusValue, string> = {
@@ -77,6 +90,9 @@ function buildEvents(
   syncAttempts: SyncAttempt[],
   sourceConnectionId: string,
   mappingFailureReason?: string | null,
+  salesDocumentBlockReason?: SalesDocumentGateBlockReasonValue | null,
+  salesDocumentUnresolvedReason?: SalesDocumentUnresolvedReasonValue | null,
+  salesDocumentBlockDetail?: string | null,
 ): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
@@ -186,6 +202,26 @@ function buildEvents(
     });
   });
 
+  // #2100 — appended last and DELIBERATELY UNDATED (`timestamp: null`): the block
+  // is a current-state fact re-decided on every transition, not a historical
+  // event, and no instant is persisted for it. Dating it with `createdAt` or
+  // `updatedAt` would assert a moment the data does not support.
+  const blocked = invoicingBlockedBadge(salesDocumentBlockReason, salesDocumentUnresolvedReason);
+  if (blocked) {
+    events.push({
+      id: 'invoicing-blocked',
+      timestamp: null,
+      title: 'No invoice issued',
+      by: 'system · invoicing',
+      description: `${blocked.hint}${
+        salesDocumentBlockDetail ? ` (${salesDocumentBlockDetail})` : ''
+      }`,
+      // The badge's own tone, minus `neutral` — the timeline has no neutral dot,
+      // and a manual connection reads correctly as an ordinary `default` entry.
+      tone: blocked.tone === 'neutral' ? 'default' : blocked.tone,
+    });
+  }
+
   return events;
 }
 
@@ -202,11 +238,32 @@ export function OrderActivityTimeline({
   syncAttempts,
   sourceConnectionId,
   mappingFailureReason,
+  salesDocumentBlockReason,
+  salesDocumentUnresolvedReason,
+  salesDocumentBlockDetail,
 }: OrderActivityTimelineProps): ReactElement {
   const events = useMemo(
     () =>
-      buildEvents(createdAt, recordStatus, syncAttempts, sourceConnectionId, mappingFailureReason),
-    [createdAt, recordStatus, syncAttempts, sourceConnectionId, mappingFailureReason],
+      buildEvents(
+        createdAt,
+        recordStatus,
+        syncAttempts,
+        sourceConnectionId,
+        mappingFailureReason,
+        salesDocumentBlockReason,
+        salesDocumentUnresolvedReason,
+        salesDocumentBlockDetail,
+      ),
+    [
+      createdAt,
+      recordStatus,
+      syncAttempts,
+      sourceConnectionId,
+      mappingFailureReason,
+      salesDocumentBlockReason,
+      salesDocumentUnresolvedReason,
+      salesDocumentBlockDetail,
+    ],
   );
 
   if (events.length === 0) {

@@ -639,4 +639,102 @@ describe('OrderInvoicePanel — write-access gating (#1613, mirrors #1615)', () 
     });
     expect(await screen.findByRole('button', { name: /issue invoice/i })).toBeEnabled();
   });
+
+  describe('persisted block reason (#2100)', () => {
+    it('reads the backend reason instead of re-deriving, on an install with ONE connection', async () => {
+      // The decisive case: a single candidate means the client-side derivation
+      // reports no ambiguity at all, so before #2100 this order looked normal.
+      // The backend recorded a manual block, and that is what must show.
+      renderWithProviders(
+        <OrderInvoicePanel
+          order={{ ...order, salesDocumentBlockReason: 'trigger-model-manual' }}
+        />,
+        {
+          apiClient: createMockApiClient({
+            connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+            invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+          }),
+          ...adminSession,
+        },
+      );
+
+      expect(
+        await screen.findByText(/This connection invoices by hand/i),
+      ).toBeInTheDocument();
+      // Quiet, not alarming — and no "Set a primary" remediation, which would be
+      // the wrong fix for a deliberate setting.
+      expect(screen.queryByRole('link', { name: /set a primary/i })).not.toBeInTheDocument();
+    });
+
+    it('renders the no-primary reason with its detail and the Set-a-primary remediation', async () => {
+      const a = { ...invoicingConnection, id: 'conn_aaa', name: 'Alpha' };
+      const b = { ...invoicingConnection, id: 'conn_zzz', name: 'Zeta' };
+      renderWithProviders(
+        <OrderInvoicePanel
+          order={{
+            ...order,
+            salesDocumentBlockReason: 'unresolved-routing',
+            salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+            salesDocumentBlockDetail: '2 invoicing connections, none marked primary',
+          }}
+        />,
+        {
+          apiClient: createMockApiClient({
+            connections: { list: vi.fn().mockResolvedValue([b, a]) },
+            invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+          }),
+          ...adminSession,
+        },
+      );
+
+      expect(
+        await screen.findByText(/Not invoiced: no primary connection/i),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/2 invoicing connections, none marked primary/),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /set a primary/i })).toHaveAttribute(
+        'href',
+        '/connections/conn_aaa/edit',
+      );
+    });
+
+    it('states the batched limitation without offering Set a primary', async () => {
+      renderWithProviders(
+        <OrderInvoicePanel
+          order={{ ...order, salesDocumentBlockReason: 'trigger-model-batched' }}
+        />,
+        {
+          apiClient: createMockApiClient({
+            connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+            invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+          }),
+          ...adminSession,
+        },
+      );
+
+      expect(
+        await screen.findByText(/batched invoicing is not available yet/i),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /set a primary/i })).not.toBeInTheDocument();
+    });
+
+    it('shows no block message once the order carries an invoice', async () => {
+      renderWithProviders(
+        <OrderInvoicePanel
+          order={{ ...order, salesDocumentBlockReason: 'trigger-model-manual' }}
+        />,
+        {
+          apiClient: createMockApiClient({
+            connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+            invoicing: { getForOrder: vi.fn().mockResolvedValue(makeInvoice()) },
+          }),
+          ...adminSession,
+        },
+      );
+
+      await screen.findByText('FV/2026/06/001');
+      expect(screen.queryByText(/This connection invoices by hand/i)).toBeNull();
+    });
+  });
 });

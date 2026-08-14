@@ -459,7 +459,21 @@ export class OrderIngestionService implements IOrderIngestionService {
     // `error.name` + `connectionId` + `order.id` + `sourceEventId` — never the raw
     // error/message or any payload/buyer field.
     try {
-      await this.autoIssueTrigger.onOrderTransition(order, connectionId, sourceEventId);
+      const block = await this.autoIssueTrigger.onOrderTransition(
+        order,
+        connectionId,
+        sourceEventId
+      );
+      // #2100 (ADR-041 §54/§105): a block is never log-only. The trigger REPORTS
+      // the reason and this service — which owns the order record — writes it,
+      // which is what keeps the trigger's one-way edge (F3) intact.
+      //
+      // `block` is written through even when it is `null`, and that is the point:
+      // the gate is level-evaluated, so `null` is the answer "nothing is blocking
+      // this order any more" and is the ONLY thing that clears a reason persisted
+      // by an earlier transition. Skipping the null write would make the badge
+      // permanent.
+      await this.orderRecordService.markSalesDocumentBlock(order.id, block);
     } catch (error) {
       // F9/D11: issuance is best-effort relative to order sync. SWALLOW — never
       // re-throw — so an enqueue/compose failure can never block the order
@@ -469,6 +483,10 @@ export class OrderIngestionService implements IOrderIngestionService {
       this.logger.warn(
         `Auto-issue trigger failed (swallowed): error=${errorName} connectionId=${connectionId} orderId=${order.id} sourceEventId=${sourceEventId ?? 'n/a'}`
       );
+      // NOTE: the block write shares this catch on purpose. If persisting the
+      // reason fails, the order pipeline must still succeed — the reason is
+      // re-decided and rewritten on the next transition, so a lost write
+      // self-heals; a thrown one would not.
     }
 
     return results;

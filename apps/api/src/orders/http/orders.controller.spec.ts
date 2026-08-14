@@ -73,6 +73,7 @@ describe('OrdersController', () => {
       updateFulfillmentState: jest.fn(),
       updateItemResolutionFailure: jest.fn(),
       markCancelled: jest.fn(),
+      updateSalesDocumentBlock: jest.fn(),
     };
 
     const mockRetryService: jest.Mocked<IOrderDestinationRetryService> = {
@@ -504,6 +505,7 @@ describe('OrdersController', () => {
         needsAttention: 1,
         synced: 1,
         awaitingDispatch: 9,
+        salesDocumentBlocked: 0,
       });
 
       const result = await controller.statusSummary({});
@@ -521,6 +523,7 @@ describe('OrdersController', () => {
         needsAttention: 0,
         synced: 0,
         awaitingDispatch: 0,
+        salesDocumentBlocked: 0,
       });
 
       await controller.statusSummary({

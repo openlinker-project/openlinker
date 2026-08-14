@@ -34,6 +34,11 @@ import type {
 import type { SlaState, OrderSlaSummary } from '../../../domain/types/order-sla.types';
 import { SLA_AT_RISK_WINDOW_MS } from '../../../domain/types/order-sla.types';
 import type { FulfillmentRollupState } from '../../../domain/types/order-fulfillment.types';
+import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
+import {
+  isSalesDocumentGateBlockReason,
+  isSalesDocumentUnresolvedReason,
+} from '@openlinker/core/sales-documents';
 
 @Injectable()
 export class OrderRecordRepository implements OrderRecordRepositoryPort {
@@ -156,6 +161,17 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       qb.andWhere(filters.cancelled ? 'rec.cancelledAt IS NOT NULL' : 'rec.cancelledAt IS NULL');
     }
 
+    if (filters.salesDocumentBlocked !== undefined) {
+      // #2100 — an independent axis, deliberately ANDed with `health` rather than
+      // folded into it: "synced AND invoicing blocked" is the most common shape of
+      // the problem this issue exists to surface.
+      qb.andWhere(
+        filters.salesDocumentBlocked
+          ? OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED
+          : `NOT (${OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED})`,
+      );
+    }
+
     this.applySort(qb, filters.sort, filters.dir);
 
     const [entities, total] = await qb.getManyAndCount();
@@ -202,6 +218,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .addSelect(
         `COUNT(*) FILTER (WHERE ${notMappingOrDeleted} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND NOT (${OrderRecordRepository.HAS_SYNCED}))`,
         'awaiting_dispatch'
+      )
+      // #2100 — ORTHOGONAL to the five buckets above, not a sixth partition
+      // member: this predicate deliberately carries no `notMappingOrDeleted`
+      // guard, so a blocked order is counted here AND in whichever health bucket
+      // it belongs to. `total` still equals the sum of the five.
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED})`,
+        'sales_document_blocked'
       );
 
     if (filters.sourceConnectionId) {
@@ -226,6 +250,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       needs_attention: string;
       synced: string;
       awaiting_dispatch: string;
+      sales_document_blocked: string;
     }>();
 
     return {
@@ -235,6 +260,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       needsAttention: Number(raw?.needs_attention ?? 0),
       synced: Number(raw?.synced ?? 0),
       awaitingDispatch: Number(raw?.awaiting_dispatch ?? 0),
+      salesDocumentBlocked: Number(raw?.sales_document_blocked ?? 0),
     };
   }
 
@@ -308,6 +334,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     `NOT (${OrderRecordRepository.IS_MAPPING}) AND NOT (${OrderRecordRepository.IS_SOURCE_DELETED})`;
   private static readonly HAS_FAILED = `rec."syncStatus" @> '[{"status":"failed"}]'::jsonb`;
   private static readonly HAS_SYNCED = `rec."syncStatus" @> '[{"status":"synced"}]'::jsonb`;
+  /**
+   * #2100 — NOT part of the health partition. Deliberately kept out of the
+   * `IS_*` bucket set above so it can never be pasted into `applyHealthFilter`
+   * or `countByHealth`'s FILTER clauses by mistake: an invoicing block is
+   * orthogonal to sync health and is counted alongside the five, never among
+   * them. Uses the indexed `salesDocumentBlockReason` column.
+   */
+  private static readonly IS_SALES_DOCUMENT_BLOCKED = `rec."salesDocumentBlockReason" IS NOT NULL`;
 
   /**
    * Per-row earliest **failed sync attempt** timestamp, read from the
@@ -633,6 +667,30 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     );
   }
 
+  /**
+   * Set or clear the sales-document block (#2100). Narrow absolute-set on the two
+   * `salesDocumentBlock*` columns only — no read-modify-write, so it can't race a
+   * concurrent write to any other column on the same row (mirrors
+   * {@link updateItemResolutionFailure}).
+   *
+   * Unlike {@link markCancelled}, this is deliberately last-write-wins rather than
+   * first-write-wins: the gate re-decides on every transition, so the NEWEST answer
+   * is the truthful one and an older reason must not survive it.
+   */
+  async updateSalesDocumentBlock(
+    internalOrderId: string,
+    block: SalesDocumentBlock | null
+  ): Promise<void> {
+    await this.repository.update(
+      { internalOrderId },
+      {
+        salesDocumentBlockReason: block?.reason ?? null,
+        salesDocumentUnresolvedReason: block?.unresolvedReason ?? null,
+        salesDocumentBlockDetail: block?.detail ?? null,
+      }
+    );
+  }
+
   async upsert(orderRecord: OrderRecord): Promise<OrderRecord> {
     const entity = this.toOrm(orderRecord);
     // TypeORM save() performs upsert on primary key (internalOrderId)
@@ -764,7 +822,18 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.dispatchByAt,
       (entity.fulfillmentState as FulfillmentRollupState | null) ?? null,
       entity.mappingFailureReason ?? null,
-      entity.cancelledAt ?? null
+      entity.cancelledAt ?? null,
+      // Coerced through the guard rather than cast: the column is a plain
+      // `varchar`, so a value written by an older/newer release (or by hand)
+      // must degrade to "no block" instead of reaching the UI as an unknown
+      // literal the badge mapper has no label for.
+      isSalesDocumentGateBlockReason(entity.salesDocumentBlockReason)
+        ? entity.salesDocumentBlockReason
+        : null,
+      isSalesDocumentUnresolvedReason(entity.salesDocumentUnresolvedReason)
+        ? entity.salesDocumentUnresolvedReason
+        : null,
+      entity.salesDocumentBlockDetail ?? null
     );
   }
 
@@ -808,6 +877,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // unset means TypeORM omits the column from the generated UPDATE
     // entirely — the row's existing value survives untouched. `markCancelled`
     // (COALESCE-based, atomic) is the single writer for this column.
+    //
+    // salesDocumentBlockReason / salesDocumentBlockDetail are omitted for the same
+    // reason (#2100), with one of its own: `persistOrder` runs BEFORE the
+    // auto-issue gate on every ingestion, so round-tripping these here would null
+    // the columns and then immediately re-set them — a visible flicker for any
+    // concurrent read, and a stomp risk against a reason a peer transition just
+    // wrote. {@link updateSalesDocumentBlock} is the single writer.
     entity.createdAt = orderRecord.createdAt;
     entity.updatedAt = orderRecord.updatedAt;
     return entity;

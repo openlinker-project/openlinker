@@ -228,4 +228,150 @@ describe('Order health summary (integration)', () => {
     );
     expect(awaitingMapping.total).toBe(1);
   });
+
+  describe('sales-document block count + filter (#2100)', () => {
+    it('counts blocked orders ORTHOGONALLY — the five health buckets still sum to the total', async () => {
+      await seedCanonicalSet(); // 7 records, one of them `synced`
+      const ds = harness.getDataSource();
+      // Block the SYNCED order. This is the whole point of the orthogonality: an
+      // order can be perfectly synced AND carry an invoicing block, so a sixth
+      // health bucket would have had to either double-count it or steal it from
+      // `synced` and hide its real sync state.
+      const synced = await repository.findMany({ health: 'synced' }, { limit: 1, offset: 0 });
+      await ds.query(
+        `UPDATE "order_records" SET "salesDocumentBlockReason" = $1, "salesDocumentUnresolvedReason" = $2 WHERE "internalOrderId" = $3`,
+        [
+          'unresolved-routing',
+          'ambiguous-connection-no-primary',
+          synced.items[0].internalOrderId,
+        ],
+      );
+
+      const summary = await repository.countByHealth({});
+
+      expect(summary.salesDocumentBlocked).toBe(1);
+      // Still counted as `synced` — not moved, not duplicated.
+      expect(summary.synced).toBe(1);
+      expect(summary.total).toBe(7);
+      expect(
+        summary.sourceDeleted +
+          summary.awaitingMapping +
+          summary.needsAttention +
+          summary.synced +
+          summary.awaitingDispatch,
+      ).toBe(summary.total);
+    });
+
+    it('findMany composes the block filter with a health filter', async () => {
+      await seedCanonicalSet();
+      const ds = harness.getDataSource();
+      const synced = await repository.findMany({ health: 'synced' }, { limit: 1, offset: 0 });
+      await ds.query(
+        `UPDATE "order_records" SET "salesDocumentBlockReason" = $1 WHERE "internalOrderId" = $2`,
+        ['trigger-model-manual', synced.items[0].internalOrderId],
+      );
+
+      const blocked = await repository.findMany(
+        { salesDocumentBlocked: true },
+        { limit: 50, offset: 0 },
+      );
+      expect(blocked.total).toBe(1);
+      expect(blocked.items[0].salesDocumentBlockReason).toBe('trigger-model-manual');
+
+      // The two axes AND together — "synced AND invoicing blocked" is the shape an
+      // operator actually asks for.
+      const syncedAndBlocked = await repository.findMany(
+        { health: 'synced', salesDocumentBlocked: true },
+        { limit: 50, offset: 0 },
+      );
+      expect(syncedAndBlocked.total).toBe(1);
+
+      const notBlocked = await repository.findMany(
+        { salesDocumentBlocked: false },
+        { limit: 50, offset: 0 },
+      );
+      expect(notBlocked.total).toBe(6);
+    });
+
+    it('reads back an unrecognised stored reason as null rather than leaking it', async () => {
+      const ds = harness.getDataSource();
+      const seeded = await createTestOrderRecord(ds, {
+        sourceConnectionId: SOURCE_A,
+        recordStatus: 'ready',
+        syncStatus: [],
+      });
+      // The column is a plain varchar with no check constraint, so a value from a
+      // newer release (or a hand edit) can land here. It must degrade to "no
+      // block" instead of reaching the UI as a literal the badge cannot label.
+      await ds.query(
+        `UPDATE "order_records" SET "salesDocumentBlockReason" = $1 WHERE "internalOrderId" = $2`,
+        ['some-future-reason', seeded.internalOrderId],
+      );
+
+      const found = await repository.findById(seeded.internalOrderId);
+
+      expect(found?.salesDocumentBlockReason).toBeNull();
+      // The FILTER still matches it — the row genuinely has a stored reason, and
+      // hiding it from the count would under-report a real problem.
+      const summary = await repository.countByHealth({});
+      expect(summary.salesDocumentBlocked).toBe(1);
+    });
+
+    it('updateSalesDocumentBlock sets and clears without touching other columns', async () => {
+      const ds = harness.getDataSource();
+      const seeded = await createTestOrderRecord(ds, {
+        sourceConnectionId: SOURCE_A,
+        recordStatus: 'awaiting_mapping',
+        mappingFailureReason: 'unresolved item ref',
+        syncStatus: [{ destinationConnectionId: DEST, status: 'failed', error: 'x' }],
+      });
+
+      await repository.updateSalesDocumentBlock(seeded.internalOrderId, {
+        reason: 'unresolved-routing',
+        unresolvedReason: 'ambiguous-connection-no-primary',
+        detail: '2 invoicing connections, none marked primary',
+      });
+
+      let found = await repository.findById(seeded.internalOrderId);
+      expect(found?.salesDocumentBlockReason).toBe('unresolved-routing');
+      expect(found?.salesDocumentUnresolvedReason).toBe('ambiguous-connection-no-primary');
+      expect(found?.salesDocumentBlockDetail).toBe(
+        '2 invoicing connections, none marked primary',
+      );
+      // Narrow absolute-set: the unrelated columns on the same row are untouched.
+      expect(found?.recordStatus).toBe('awaiting_mapping');
+      expect(found?.mappingFailureReason).toBe('unresolved item ref');
+
+      // `null` clears all three — the level-triggered clear, and the ordinary path.
+      await repository.updateSalesDocumentBlock(seeded.internalOrderId, null);
+
+      found = await repository.findById(seeded.internalOrderId);
+      expect(found?.salesDocumentBlockReason).toBeNull();
+      expect(found?.salesDocumentUnresolvedReason).toBeNull();
+      expect(found?.salesDocumentBlockDetail).toBeNull();
+      expect(found?.recordStatus).toBe('awaiting_mapping');
+    });
+
+    it('upsert does NOT clear a block written by updateSalesDocumentBlock', async () => {
+      const ds = harness.getDataSource();
+      const seeded = await createTestOrderRecord(ds, {
+        sourceConnectionId: SOURCE_A,
+        recordStatus: 'ready',
+        syncStatus: [],
+      });
+      await repository.updateSalesDocumentBlock(seeded.internalOrderId, {
+        reason: 'trigger-model-manual',
+      });
+
+      const record = await repository.findById(seeded.internalOrderId);
+      expect(record).not.toBeNull();
+      // A re-ingestion re-persists the whole record. Because `toOrm` deliberately
+      // omits these columns (the `cancelledAt` precedent), the save cannot stomp a
+      // reason a concurrent transition just wrote.
+      await repository.upsert(record!);
+
+      const after = await repository.findById(seeded.internalOrderId);
+      expect(after?.salesDocumentBlockReason).toBe('trigger-model-manual');
+    });
+  });
 });

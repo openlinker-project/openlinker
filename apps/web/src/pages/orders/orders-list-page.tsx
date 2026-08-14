@@ -53,8 +53,14 @@ import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
 import { useDemoMode } from '../../features/system';
 import { captureDemoEvent } from '../../features/demo';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
+import type { ParsedOrderInvoice } from '../../features/orders/api/order-snapshot.schema';
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
-import { itemsSummary, paymentBadge, invoiceBadge } from '../../features/orders/lib/order-row';
+import {
+  itemsSummary,
+  paymentBadge,
+  invoiceBadge,
+  invoicingBlockedBadge,
+} from '../../features/orders/lib/order-row';
 import { deriveDeliveryOutcome, hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
 import { DeliveryOutcomeChip } from '../../features/orders/components/delivery-chip';
 import { resolveDeliveryOwner } from '../../features/orders/lib/delivery-owner';
@@ -276,6 +282,10 @@ export function OrdersListPage(): ReactElement {
   const slaState = isSlaState(rawSla) ? rawSla : undefined;
   const rawFulfillment = searchParams.get('fulfillmentState');
   const fulfillmentState = isFulfillmentState(rawFulfillment) ? rawFulfillment : undefined;
+  // #2100 — an independent axis, so it lives in its own param and composes with
+  // `health` rather than replacing it. Present-only toggle: the URL never carries
+  // `invoicing=false`, so the filter is either "blocked only" or absent.
+  const invoicingBlocked = searchParams.get('invoicing') === 'blocked';
   const offset = Number(searchParams.get('offset') ?? '0');
 
   // "Breaching soon / overdue" cutoff — stable per toggle (not recomputed each
@@ -297,6 +307,10 @@ export function OrdersListPage(): ReactElement {
     dueBefore,
     slaState,
     fulfillmentState,
+    // Present-only (#2100): `true` when the chip is on, `undefined` otherwise —
+    // never `false`, which would mean "hide blocked orders" and is not something
+    // the UI offers.
+    salesDocumentBlocked: invoicingBlocked ? true : undefined,
   };
   const pagination = { limit: PAGE_SIZE, offset };
 
@@ -388,6 +402,24 @@ export function OrdersListPage(): ReactElement {
     (order: OrderRecord): ReturnType<typeof parseOrderSnapshot> =>
       parsedByOrder.get(order.internalOrderId) ?? parseOrderSnapshot(order.orderSnapshot),
     [parsedByOrder],
+  );
+
+  /**
+   * Row badge for a persisted sales-document block (#2100), shared by the desktop
+   * table and the mobile card.
+   *
+   * Suppressed whenever the order already carries an invoice. The backend clears
+   * the reason on the next transition and on a manual issue, but neither is
+   * instantaneous — and a "No primary" badge next to an issued invoice is worse
+   * than no badge at all, so the render refuses the contradiction outright rather
+   * than trusting the write to have landed first.
+   */
+  const blockedBadgeFor = useCallback(
+    (order: OrderRecord, invoice: ParsedOrderInvoice | null | undefined) =>
+      invoice
+        ? null
+        : invoicingBlockedBadge(order.salesDocumentBlockReason, order.salesDocumentUnresolvedReason),
+    [],
   );
 
   // Whether ANY connection exposes the Invoicing capability (#1713). When none
@@ -861,6 +893,7 @@ export function OrdersListPage(): ReactElement {
           const parsed = parsedFor(order);
           const pay = paymentBadge(parsed.paymentStatus);
           const inv = parsed.invoice ? invoiceBadge(parsed.invoice) : null;
+          const blocked = blockedBadgeFor(order, parsed.invoice);
           return (
             <span className="orders-cell-stack orders-cell-stack--end">
               {parsed.totals ? (
@@ -878,11 +911,36 @@ export function OrdersListPage(): ReactElement {
               {/* Invoice: the clearance-status pill when an invoice exists; else
                   the "Issue invoice" action deep-linking to the order's invoicing
                   section — but only when some connection can actually issue an
-                  invoice (#1713). No invoicing capability ⇒ em dash. */}
+                  invoice (#1713). No invoicing capability ⇒ em dash.
+                  #2100 adds a fourth state between those two: a persisted block
+                  reason. It OUTRANKS the CTA, because an order OpenLinker has
+                  already refused is not an order waiting for a click — the CTA
+                  alone made every cause look identical. `trigger-model-manual` is
+                  the exception (`keepIssueAction`): there the click IS the
+                  configured workflow, so badge and CTA sit together. */}
               {inv ? (
                 <StatusBadge tone={inv.tone} withDot compact>
                   {inv.label}
                 </StatusBadge>
+              ) : blocked ? (
+                <>
+                  <span title={blocked.hint}>
+                    <StatusBadge tone={blocked.tone} withDot compact>
+                      {blocked.label}
+                    </StatusBadge>
+                  </span>
+                  {blocked.keepIssueAction && hasInvoicingCapability ? (
+                    <Link
+                      className="orders-row-cta"
+                      to={`/orders/${order.internalOrderId}#invoicing`}
+                    >
+                      <span className="orders-row-cta__plus" aria-hidden="true">
+                        +
+                      </span>{' '}
+                      Issue invoice
+                    </Link>
+                  ) : null}
+                </>
               ) : hasInvoicingCapability ? (
                 <Link
                   className="orders-row-cta"
@@ -926,6 +984,8 @@ export function OrdersListPage(): ReactElement {
       // Per-page snapshot cache + invoicing-capability gate (#1713).
       parsedFor,
       hasInvoicingCapability,
+      // Sales-document block badge (#2100).
+      blockedBadgeFor,
     ],
   );
 
@@ -987,6 +1047,25 @@ export function OrdersListPage(): ReactElement {
       } else {
         p.set('due', 'breaching');
       }
+      p.delete('offset');
+      return p;
+    });
+  }
+
+  /** #2100 — mirrors `toggleBreaching`: an independent, present-only chip filter. */
+  function toggleInvoicingBlocked(): void {
+    captureDemoEvent('demo_orders_filtered', {
+      filter: 'invoicing_blocked',
+      value: String(!invoicingBlocked),
+    });
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (invoicingBlocked) {
+        p.delete('invoicing');
+      } else {
+        p.set('invoicing', 'blocked');
+      }
+      // Any filter change invalidates the current page offset.
       p.delete('offset');
       return p;
     });
@@ -1159,6 +1238,21 @@ export function OrdersListPage(): ReactElement {
         <Chip tone="warning" active={breaching} onClick={toggleBreaching}>
           Ship-by ≤ 24h / overdue
         </Chip>
+        {/*
+          #2100 — an independent filter, NOT a sixth health segment: an invoicing
+          block is orthogonal to sync health (a blocked order is usually also
+          `synced`), and the KPI segments above are a partition whose counts sum
+          to the total. Rendered only when the API reports at least one, so an
+          install that never hits this state sees no extra control.
+        */}
+        {summary?.salesDocumentBlocked ? (
+          <Chip tone="error" active={invoicingBlocked} onClick={toggleInvoicingBlocked}>
+            Invoicing blocked{' '}
+            <span className="tabular" style={{ opacity: 0.7 }}>
+              {summary.salesDocumentBlocked}
+            </span>
+          </Chip>
+        ) : null}
         {/* SLA KPI affordance (#1108) — at-a-glance overdue / at-risk counts. */}
         {slaSummary && (slaSummary.overdue > 0 || slaSummary.atRisk > 0) && (
           <span className="ds-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
@@ -1349,6 +1443,7 @@ export function OrdersListPage(): ReactElement {
                   cancelled: parsed.status === 'cancelled',
                 });
                 const inv = parsed.invoice ? invoiceBadge(parsed.invoice) : null;
+                const blocked = blockedBadgeFor(order, parsed.invoice);
                 const fulfillment = fulfillmentBadge(order.fulfillmentState);
                 // "Generate label" only when there's a live OL carrier route
                 // (#1799), same gate as the desktop cell — otherwise the passive
@@ -1393,10 +1488,31 @@ export function OrdersListPage(): ReactElement {
                       <div>
                         <dt>Invoice</dt>
                         <dd>
+                          {/* Deliberate parallel render path to the desktop `money`
+                              cell — the #2100 block state must appear in both. */}
                           {inv ? (
                             <StatusBadge tone={inv.tone} withDot compact>
                               {inv.label}
                             </StatusBadge>
+                          ) : blocked ? (
+                            <span className="ds-row" style={{ gap: 'var(--space-2)' }}>
+                              <span title={blocked.hint}>
+                                <StatusBadge tone={blocked.tone} withDot compact>
+                                  {blocked.label}
+                                </StatusBadge>
+                              </span>
+                              {blocked.keepIssueAction && hasInvoicingCapability ? (
+                                <Link
+                                  className="orders-row-cta"
+                                  to={`/orders/${order.internalOrderId}#invoicing`}
+                                >
+                                  <span className="orders-row-cta__plus" aria-hidden="true">
+                                    +
+                                  </span>{' '}
+                                  Issue invoice
+                                </Link>
+                              ) : null}
+                            </span>
                           ) : hasInvoicingCapability ? (
                             <Link
                               className="orders-row-cta"

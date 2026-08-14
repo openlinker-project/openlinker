@@ -104,6 +104,7 @@ describe('OrderIngestionService', () => {
       findByIds: jest.fn(),
       markItemResolutionFailure: jest.fn().mockResolvedValue(undefined),
       markCancelled: jest.fn().mockResolvedValue(undefined),
+      markSalesDocumentBlock: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
     customerIdentityResolver = {
@@ -122,7 +123,7 @@ describe('OrderIngestionService', () => {
       relay: jest.fn().mockResolvedValue({ targets: [] }),
     } as unknown as jest.Mocked<IOrderLifecycleRelayService>;
     autoIssueTrigger = {
-      onOrderTransition: jest.fn().mockResolvedValue(undefined),
+      onOrderTransition: jest.fn().mockResolvedValue(null),
     } as unknown as jest.Mocked<IAutoIssueTriggerService>;
 
     service = new OrderIngestionService(
@@ -203,6 +204,51 @@ describe('OrderIngestionService', () => {
 
       expect(results).toEqual([]);
       expect(autoIssueTrigger.onOrderTransition).not.toHaveBeenCalled();
+    });
+
+    // #2100 (ADR-041 decision 11): the trigger REPORTS a block, this service WRITES
+    // it. That split is what keeps the trigger's one-way edge (F3) intact.
+    it('persists the block reason the trigger reported', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      autoIssueTrigger.onOrderTransition.mockResolvedValueOnce({
+        reason: 'unresolved-routing',
+        unresolvedReason: 'ambiguous-connection-no-primary',
+        detail: '2 invoicing connections, none marked primary',
+      });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-9');
+
+      expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith('ol_order_test', {
+        reason: 'unresolved-routing',
+        unresolvedReason: 'ambiguous-connection-no-primary',
+        detail: '2 invoicing connections, none marked primary',
+      });
+    });
+
+    it('writes null through when nothing is blocking — this is the level-triggered clear', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      autoIssueTrigger.onOrderTransition.mockResolvedValueOnce(null);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-10');
+
+      // Skipping the null write would make a once-persisted badge permanent.
+      expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith('ol_order_test', null);
+    });
+
+    it('swallows a failed block write — the order pipeline still succeeds', async () => {
+      const warnSpy = jest
+        .spyOn((service as unknown as { logger: { warn: (m: string) => void } }).logger, 'warn')
+        .mockImplementation(() => undefined);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      autoIssueTrigger.onOrderTransition.mockResolvedValueOnce({ reason: 'trigger-model-manual' });
+      orderRecordService.markSalesDocumentBlock.mockRejectedValueOnce(new Error('db down'));
+
+      const results = await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-11');
+
+      // A lost write self-heals on the next transition; a thrown one would not.
+      expect(results).toEqual([]);
+      expect(warnSpy).toHaveBeenCalled();
+      warnSpy.mockRestore();
     });
   });
 

@@ -902,6 +902,151 @@ describe('OrdersListPage', () => {
     expect(within(row).getByRole('link', { name: /generate label/i })).toBeInTheDocument();
   });
 
+  describe('sales-document block badge + filter (#2100)', () => {
+    const invoicingConnection: Connection = {
+      ...sampleConnection,
+      id: 'conn_invoicing_1',
+      name: 'KSeF',
+      enabledCapabilities: ['Invoicing'],
+    };
+
+    function blockedOrder(overrides: Partial<OrderRecord>): OrderRecord {
+      return { ...syncedOrder, fulfillmentState: 'not-shipped', ...overrides };
+    }
+
+    it('should replace the "Issue invoice" CTA with the block badge', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi.fn().mockResolvedValue(
+            paginated([
+              blockedOrder({
+                salesDocumentBlockReason: 'unresolved-routing',
+                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+              }),
+            ]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+
+      expect(within(row).getByText('No primary')).toBeInTheDocument();
+      // The CTA must be GONE: an order OpenLinker already refused is not an order
+      // waiting for a click, and the CTA alone made every cause look identical.
+      expect(within(row).queryByRole('link', { name: /issue invoice/i })).not.toBeInTheDocument();
+    });
+
+    it('should keep the "Issue invoice" CTA alongside a manual-only badge', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi
+            .fn()
+            .mockResolvedValue(
+              paginated([blockedOrder({ salesDocumentBlockReason: 'trigger-model-manual' })]),
+            ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+
+      expect(within(row).getByText('Manual only')).toBeInTheDocument();
+      // Issuing by hand IS the configured workflow here, so the affordance stays.
+      expect(within(row).getByRole('link', { name: /issue invoice/i })).toBeInTheDocument();
+    });
+
+    it('should suppress the badge when the order already carries an invoice', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi.fn().mockResolvedValue(
+            paginated([
+              blockedOrder({
+                salesDocumentBlockReason: 'unresolved-routing',
+                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+                orderSnapshot: {
+                  ...syncedOrder.orderSnapshot,
+                  invoice: {
+                    invoiceId: 'inv-1',
+                    status: 'issued',
+                    regulatoryStatus: 'not-applicable',
+                  },
+                },
+              }),
+            ]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+
+      // "No primary" next to an issued invoice is worse than no badge at all, so
+      // the render refuses the contradiction rather than trusting the clear to
+      // have landed already.
+      expect(within(row).queryByText('No primary')).not.toBeInTheDocument();
+      expect(within(row).getByText('Issued')).toBeInTheDocument();
+    });
+
+    it('should offer a counted filter chip and pass the filter to the API', async () => {
+      const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+      const statusSummary = vi.fn().mockResolvedValue({
+        total: 3,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 3,
+        awaitingDispatch: 0,
+        salesDocumentBlocked: 2,
+      });
+      const mockApi = createMockApiClient({ orders: { list, statusSummary } });
+
+      renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      const chip = await screen.findByRole('button', { name: /invoicing blocked/i });
+      expect(chip).toHaveTextContent('2');
+
+      const before = list.mock.calls.length;
+      await userEvent.setup().click(chip);
+
+      await vi.waitFor(() => {
+        expect(list.mock.calls.length).toBeGreaterThan(before);
+      });
+      const [filters] = list.mock.calls[list.mock.calls.length - 1];
+      expect(filters).toMatchObject({ salesDocumentBlocked: true });
+    });
+
+    it('should hide the chip when nothing is blocked', async () => {
+      const statusSummary = vi.fn().mockResolvedValue({
+        total: 1,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 1,
+        awaitingDispatch: 0,
+        salesDocumentBlocked: 0,
+      });
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])), statusSummary },
+      });
+
+      renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      // An install that never hits this state gets no extra control.
+      expect(screen.queryByRole('button', { name: /invoicing blocked/i })).not.toBeInTheDocument();
+    });
+  });
+
   it('should NOT offer "Generate label" for a not-shipped shop-fulfilled order with no OL carrier route (#1799)', async () => {
     const shopFulfilled: OrderRecord = {
       ...syncedOrder,
