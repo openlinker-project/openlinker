@@ -61,13 +61,18 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
 async function seedInvoicingConnection(
   harness: WorkerIntegrationTestHarness,
   triggerModel: InvoiceTriggerModel,
+  options: { isPrimary?: boolean } = {},
 ): Promise<string> {
   const conn = await createTestConnection(harness.getDataSource(), {
     platformType: 'subiekt',
     name: `Invoicing (${triggerModel})`,
     status: 'active',
     adapterKey: 'subiekt.bridge.v1',
-    config: { invoicing: { triggerModel } },
+    // #2047: `isPrimary` resolves WHICH connection auto-issues once several are
+    // eligible; a single-connection install ignores it entirely.
+    config: {
+      invoicing: { triggerModel, ...(options.isPrimary === true ? { isPrimary: true } : {}) },
+    },
     enabledCapabilities: ['Invoicing'],
   });
   return conn.id;
@@ -173,10 +178,16 @@ describe('Invoicing Auto-Issue Integration (OL #1120)', () => {
     });
   });
 
-  describe('per-connection isolation', () => {
-    it('only the connections whose trigger model matches enqueue (manual + auto-on-shipped present, order is paid only)', async () => {
-      const autoPaid = await seedInvoicingConnection(harness, 'auto-on-paid');
-      await seedInvoicingConnection(harness, 'auto-on-shipped');
+  // #2047: one sale is one invoice, so several eligible Invoicing connections no
+  // longer fan out — exactly one primary auto-issues, and an unresolved primary
+  // issues NOTHING (an uninvoiced order is fixable by hand; two documents for
+  // one sale need a correction of a document that should never have existed).
+  describe('primary-connection lock (#2047)', () => {
+    it('the primary connection is the only one that enqueues, even when siblings would also qualify', async () => {
+      const autoPaid = await seedInvoicingConnection(harness, 'auto-on-paid', { isPrimary: true });
+      // A second connection whose trigger model ALSO matches a paid order —
+      // pre-#2047 this fanned out into two real fiscal documents.
+      await seedInvoicingConnection(harness, 'auto-on-paid');
       await seedInvoicingConnection(harness, 'manual');
 
       await trigger.onOrderTransition(
@@ -187,6 +198,31 @@ describe('Invoicing Auto-Issue Integration (OL #1120)', () => {
       const jobs = await invoicingJobs(harness);
       expect(jobs).toHaveLength(1);
       expect(jobs[0].connectionId).toBe(autoPaid);
+      expect(jobs[0].idempotencyKey).toBe(`invoice:${autoPaid}:order-mixed`);
+    });
+
+    it('several eligible connections with no primary enqueue NOTHING', async () => {
+      await seedInvoicingConnection(harness, 'auto-on-paid');
+      await seedInvoicingConnection(harness, 'auto-on-shipped');
+
+      await trigger.onOrderTransition(
+        makeOrder({ id: 'order-ambiguous', status: 'processing', paymentStatus: 'paid' }),
+        'src-conn-1',
+      );
+
+      expect(await invoicingJobs(harness)).toHaveLength(0);
+    });
+
+    it('a primary set on a manual connection turns auto-issue off for the whole install', async () => {
+      await seedInvoicingConnection(harness, 'manual', { isPrimary: true });
+      await seedInvoicingConnection(harness, 'auto-on-paid');
+
+      await trigger.onOrderTransition(
+        makeOrder({ id: 'order-manual-primary', status: 'processing', paymentStatus: 'paid' }),
+        'src-conn-1',
+      );
+
+      expect(await invoicingJobs(harness)).toHaveLength(0);
     });
   });
 });

@@ -273,7 +273,39 @@ describe('GET /orders/:orderId/invoice (integration)', () => {
       .expect(404);
   });
 
-  it('requires the connectionId query param (400 when absent)', async () => {
+  // #2047 made `connectionId` optional: a caller that must render the lock
+  // BEFORE it knows the issuing connection asks "is this order invoiced
+  // ANYWHERE?" and gets the newest record on whichever connection holds it.
+  it('omitting connectionId returns the order newest record and reports the other connections (#2047)', async () => {
+    const http = harness.getHttp();
+    const ds = harness.getDataSource();
+    const token = await loginAsAdmin(http, ds);
+    const order = await createTestOrderRecord(ds, { sourceConnectionId: SOURCE_CONN });
+
+    // Two invoicing connections hold a record for the same order — the shape
+    // the lock exists to warn about. Seeded in order so the second row wins the
+    // (createdAt DESC, id DESC) tiebreak.
+    await seedInvoice(ds, {
+      connectionId: CONN_A,
+      orderId: order.internalOrderId,
+      status: 'issued',
+    });
+    await seedInvoice(ds, {
+      connectionId: INVOICING_CONN,
+      orderId: order.internalOrderId,
+      status: 'issued',
+    });
+
+    const found = await http
+      .get(`/v1/orders/${order.internalOrderId}/invoice`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(found.body.orderId).toBe(order.internalOrderId);
+    expect(found.body.connectionId).toBe(INVOICING_CONN);
+    expect(found.body.otherInvoicingConnectionIds).toEqual([CONN_A]);
+  });
+
+  it('404 when the order carries no invoice on any connection (connectionId absent)', async () => {
     const http = harness.getHttp();
     const ds = harness.getDataSource();
     const token = await loginAsAdmin(http, ds);
@@ -282,7 +314,7 @@ describe('GET /orders/:orderId/invoice (integration)', () => {
     await http
       .get(`/v1/orders/${order.internalOrderId}/invoice`)
       .set('Authorization', `Bearer ${token}`)
-      .expect(400);
+      .expect(404);
   });
 
   it('404 when the order does not exist', async () => {
