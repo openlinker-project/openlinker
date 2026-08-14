@@ -63,11 +63,15 @@
       `subtotal` and GROSS in `total` — and `total` is the field revenue reads. The
       destination-side fallback (prestashop-order-processor-manager.adapter.ts:586)
       confirms it: `taxTreatment !== 'exclusive'` means "treat as gross".
-      → [G] is a LATENT risk, not a live breakage. The honest marker is therefore
-      DECLARED vs ASSUMED, not GROSS vs NET, and the table totals conditionally
-      (frame 04) and degrades when a net source appears (frame 05). Drawing only
-      the degraded state would ship a page that refuses to answer a question it
-      can currently answer correctly.
+      → [G] is a LATENT risk, not a live breakage — and since 14 Aug it is no longer
+      a risk THIS page carries. Decision 3 was reversed: a tax basis stopped being a
+      property of each SOURCE, because the rate rides on the order line, supplied by
+      the ProductMaster per (product, delivery country); OpenLinker never computes
+      one (#2054). So everything this correction originally proposed as the remedy is
+      WITHDRAWN — the DECLARED vs ASSUMED marker, the conditional total, the degraded
+      state — and the table always totals; frame 05 keeps the record of why. What
+      survives is the FINDING: `total` is gross while the spec says PrestaShop prices
+      net, which is a spec correction #1984/#1985 still owe (findings table, frame 13).
 
    2. NET NORMALISATION IS NOT BUILDABLE. Allegro and Erli both report `tax: 0` —
       Allegro does not decompose VAT, and the tax RATE is deliberately absent from
@@ -75,7 +79,10 @@
       "normalise then compare" treatment, is out — not inconvenient, impossible.
       → Comparability is carried by UNITS instead. `Orders` and `Units` are
       untouched by [G], so `Share (units)` is a true channel mix. The spec already
-      catalogues this as B6. Revenue stays per-row, as reported.
+      catalogues this as B6. What does NOT follow from this any more is "revenue
+      per row, as reported": that was the pre-14-Aug reading, and decision 3 replaced
+      it with ONE basis carried on the order line. The impossibility above is exactly
+      why the rate has to ARRIVE from the master — it cannot be reconstructed here.
 
    3. THE DATE RANGE CANNOT MEAN WHAT IT SHOULD. `placedAt` — when the buyer
       actually ordered — lives only inside orderSnapshot (JSONB), has no column and
@@ -569,6 +576,16 @@
     padding-left: var(--space-3);
   }
 
+  /* Below 720px the stated widths stop helping and start forcing scroll: 9rem + 11rem is
+     most of a phone before the reasoning column gets a pixel. The table keeps its own
+     scroll container either way (the page itself must never scroll sideways), but with
+     the widths released it needs far less of it. */
+  @media (max-width: 720px) {
+    .gap-table th:first-child, .gap-table td:first-child { width: auto; min-width: 0; }
+    .gap-table--status td:nth-child(2) { width: auto; }
+    #microcopy-rows td:first-child { width: auto; min-width: 0; }
+  }
+
   @media (max-width: 720px) {
     .gap-legend--card { grid-template-columns: minmax(0, 1fr); gap: var(--space-1) 0; }
     .gap-legend--card .build-field__label { padding-top: var(--space-2); }
@@ -676,7 +693,46 @@
     font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500;
     letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted);
   }
-  .gap-table td:first-child { white-space: nowrap; }
+  /* THE FIRST COLUMN WRAPS (14 Aug). It was `white-space: nowrap`, and that one
+     declaration cost the reader the whole table: on "What this mockup surfaced" the
+     longest finding set the column to 738 of 1222 px and pushed `Note` — the column
+     carrying the actual reasoning — into 203 px of horizontal scroll, where a reader
+     has to drag to read every row. A title on two lines is cheap; a reason nobody
+     reaches is the table failing at its only job.
+
+     `width` on the cell is a hint to the auto layout, not a command, which is what we
+     want: the column takes about a quarter and gives the rest back, and `min-width`
+     stops it collapsing to one word per line on a narrow screen. `overflow-wrap` is
+     for the identifiers — `prestashop-order-processor-manager.adapter.ts` has no space
+     to break at, so without it a single filename re-creates the same overflow. */
+  .gap-table th:first-child, .gap-table td:first-child { width: 24%; min-width: 9rem; }
+  .gap-table td:first-child { overflow-wrap: anywhere; }
+  /* A status column shrinks to its badge and the badge stays on one line — two or three
+     words wrapped mid-phrase read as two badges. Opt-in per table (`--status`), NOT on
+     every second column: in the frame 14 register the second column is a full sentence,
+     and blanket-nowrapping it squeezed the third column to 109 px — the same failure as
+     the one above, one column to the right. */
+  .gap-table .status-badge { white-space: nowrap; }
+  /* One badge reads "Scope addition — contradicts the scope note", and while it could not
+     wrap it held the column at 358 px on its own. So in a status column a badge may take
+     two lines, and the column is given a fixed 11rem to do it in.
+
+     `width: 1%` was tried first and is the wrong tool once the badge wraps: it shrinks the
+     column to the longest WORD, which broke short badges onto three cramped lines. A stated
+     width is what lets the long badge break at its em dash — where a reader would break it
+     anyway — while ~180 px goes back to the column carrying the reasoning. */
+  .gap-table--status td:nth-child(2) { width: 11rem; }
+  .gap-table--status td:nth-child(2) .status-badge {
+    white-space: normal; text-align: left;
+  }
+
+  /* The microcopy table (frame 12) has the same shape and the same problem at a
+     smaller scale: its first column is quoted UI copy, so it is the one column whose
+     text must never be paraphrased — but nothing says it has to be 466 px wide while
+     the "why" beside it is squeezed. Scoped to that table by its tbody id, because
+     every other `.specimen` on the page is a small three-row specimen that is already
+     proportioned correctly. */
+  #microcopy-rows td:first-child { width: 26%; min-width: 10rem; overflow-wrap: anywhere; }
 
   /* ══════════════════ 4. APP PRIMITIVES — transcribed from index.css ══════════════════ */
 
@@ -2928,7 +2984,7 @@
 
       <div class="app-frame">
         <h3 class="section-title" style="margin-bottom: var(--space-3)">Element &rarr; primitive</h3>
-        <table class="gap-table">
+        <table class="gap-table gap-table--status">
           <thead><tr><th>Element</th><th>Status</th><th>Where</th></tr></thead>
           <tbody>
             <tr><td>Page frame</td><td><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Exists</span></td><td><code>PageLayout</code> &mdash; <code>shared/ui/page-layout.tsx</code></td></tr>
@@ -2965,7 +3021,7 @@
 
       <div class="app-frame">
         <h3 class="section-title" style="margin-bottom: var(--space-3)">What this mockup surfaced</h3>
-        <table class="gap-table">
+        <table class="gap-table gap-table--status">
           <thead><tr><th>Finding</th><th>Size</th><th>Note</th></tr></thead>
           <tbody>
             <tr>
@@ -3309,7 +3365,9 @@
      Products and prices come from the dev-stack seed
      (docker/prestashop/post-install-lib/30-seed-test-products.php — "real product
      data sourced from Allegro listings"). Channel names are what an operator types
-     into `connection.name`. `basis` is DECLARED vs ASSUMED, per correction 1.
+     into `connection.name`. There is deliberately NO `basis` field: the tax basis left
+     this dataset on 14 Aug together with the Tax column, because it belongs to the
+     order line rather than to the channel (decision 3, reversed).
 
      `previous` is the SAME range shifted back one window — the comparison basis for
      the period-over-period deltas on the strip. It is per channel rather than a typed
@@ -3359,8 +3417,10 @@
      see — beside the split one, and so no existing frame silently changes meaning.
 
      Shop DE reuses the WooCommerce hue already in the token block (line 182); the
-     name is not new either, it is the same storefront frame 05 uses to demonstrate a
-     net-basis source. */
+     name is not new either, it is the storefront frame 05 USED to demonstrate a
+     net-basis source, before that frame was withdrawn on 14 Aug. The name is kept
+     because a reader who meets Shop DE in the record and again here should meet the
+     same storefront — it no longer carries any claim about a tax basis. */
   var CHANNELS_MULTI = CHANNELS.concat([
     { id: 'c4', name: 'Shop DE', platform: 'woocommerce', hue: 'var(--channel-woocommerce)',
       revenue: 3120.00, currency: 'EUR',
