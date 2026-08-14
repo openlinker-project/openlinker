@@ -6,11 +6,14 @@
  * configuration value (a currency id); this resolver reads that id, then reads
  * `/currencies/{id}` for its `iso_code`.
  *
- * The result is a per-connection constant (a shop rarely changes its default
- * currency), so it is cached once per connection with a 24h TTL — mirroring the
- * companion `PrestashopFeatureResolver` / `PrestashopCurrencyResolver`. The
- * master sync resolves the adapter per product, so this resolver must be held on
- * the process-singleton factory for its cache to survive across product jobs.
+ * A RESOLVED result is a per-connection constant (a shop rarely changes its
+ * default currency), so it is cached once per connection with a 24h TTL —
+ * mirroring the companion `PrestashopFeatureResolver` /
+ * `PrestashopCurrencyResolver`. An UNRESOLVED result is cached for 60s only, so
+ * neither a read blip nor a missing `PS_CURRENCY_DEFAULT` survives the operator
+ * fixing it (see `UNRESOLVED_CACHE_TTL_MS`). The master sync resolves the adapter
+ * per product, so this resolver must be held on the process-singleton factory for
+ * its cache to survive across product jobs.
  *
  * Robust by design: any failure (missing/malformed config, ambiguous result,
  * WS error) returns `null` and never throws into product sync — the mapper then
@@ -20,10 +23,7 @@
  */
 import { Logger } from '@openlinker/shared/logging';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
-import type {
-  PrestashopConfiguration,
-  PrestashopCurrency,
-} from './prestashop-provisioner.types';
+import type { PrestashopConfiguration, PrestashopCurrency } from './prestashop-provisioner.types';
 import type { PrestashopShopCurrencyResolution } from './prestashop-shop-currency.types';
 
 /** The PrestaShop configuration key holding the shop's default currency id. */
@@ -36,13 +36,15 @@ const DEFAULT_CURRENCY_CONFIG_KEY = 'PS_CURRENCY_DEFAULT';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Short TTL (60s) for a transient-failure `null`. A network blip / 5xx during
- * the first product sync must NOT pin `currency: null` for the whole 24h TTL —
- * the next sync re-attempts within a minute. A *definitive* resolution (a real
- * ISO, or a genuinely absent `PS_CURRENCY_DEFAULT`) still caches for the full
- * `CACHE_TTL_MS`.
+ * Short TTL (60s) for ANY unresolved (`null`) answer — a transient read failure
+ * and a definitive absence alike. A network blip / 5xx during the first product
+ * sync must not pin `currency: null` for the whole 24h TTL, and neither must a
+ * missing `PS_CURRENCY_DEFAULT`: since #2102 a second consumer turns the same
+ * `null` into an order REFUSAL whose message tells the operator to configure the
+ * default currency and retry, and a 24h negative entry would keep refusing for a
+ * day after they did. Only a resolved ISO caches for the full `CACHE_TTL_MS`.
  */
-const FAILURE_CACHE_TTL_MS = 60 * 1000;
+const UNRESOLVED_CACHE_TTL_MS = 60 * 1000;
 
 interface CacheEntry {
   /** Resolved default ISO, or `null` when resolution failed / was absent. */
@@ -54,7 +56,7 @@ interface CacheEntry {
    * not get a different answer just because it arrived within the TTL.
    */
   transient: boolean;
-  /** Per-entry TTL; short for transient failures, full for definitive results. */
+  /** Per-entry TTL; short for any unresolved answer, full for a resolved ISO. */
   ttlMs: number;
   timestamp: number;
 }
@@ -105,7 +107,9 @@ export class PrestashopShopCurrencyResolver {
     this.cache.set(connectionId, {
       iso,
       transient,
-      ttlMs: transient ? FAILURE_CACHE_TTL_MS : CACHE_TTL_MS,
+      // `transient` still carries the RETRY decision (#2102); the TTL keys on the
+      // answer being unresolved at all, so no negative entry outlives a fix.
+      ttlMs: iso === null ? UNRESOLVED_CACHE_TTL_MS : CACHE_TTL_MS,
       timestamp: Date.now(),
     });
     return { iso, transient };
@@ -142,7 +146,9 @@ export class PrestashopShopCurrencyResolver {
           `No ${DEFAULT_CURRENCY_CONFIG_KEY} configured in PrestaShop (connection: ${connectionId}); ` +
             `product currency stays null`
         );
-        // Definitive absence — cache for the full TTL.
+        // Definitive absence (not a blip), so a retry of the same read is
+        // pointless — but it is still cached on the SHORT TTL, because the
+        // operator can fix it in the back office at any moment.
         return { iso: null, transient: false };
       }
 
@@ -153,7 +159,8 @@ export class PrestashopShopCurrencyResolver {
           `Default currency ${currencyId} has no iso_code in PrestaShop (connection: ${connectionId}); ` +
             `product currency stays null`
         );
-        // Definitive (malformed data, not a transient blip) — full TTL.
+        // Definitive (malformed data, not a transient blip) — same short TTL as
+        // the branch above, for the same reason.
         return { iso: null, transient: false };
       }
 

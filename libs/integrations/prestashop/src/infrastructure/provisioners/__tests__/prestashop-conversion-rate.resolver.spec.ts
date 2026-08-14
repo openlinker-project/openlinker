@@ -94,7 +94,9 @@ describe('PrestashopConversionRateResolver', () => {
         return Promise.resolve([{ id: '3', iso_code: 'EUR', conversion_rate: 4.25 }]);
       });
 
-      await expect(resolver.resolveConversionRate('EUR', CONNECTION_ID, client)).resolves.toBe(4.25);
+      await expect(resolver.resolveConversionRate('EUR', CONNECTION_ID, client)).resolves.toBe(
+        4.25
+      );
     });
 
     it('should re-read the rate on every call (a shop rate is a moving figure)', async () => {
@@ -169,6 +171,28 @@ describe('PrestashopConversionRateResolver', () => {
       await expect(resolver.resolveConversionRate('EUR', CONNECTION_ID, client)).rejects.toThrow(
         /not configured in the shop/
       );
+    });
+  });
+
+  describe('a refusal is not pinned by the default-currency cache', () => {
+    it('should resolve once the operator configures the shop default currency', async () => {
+      // First attempt: the shop states no default currency, so the refusal tells
+      // the operator to set it and retry. The default-currency read is cached, so
+      // that instruction is only honest if the negative entry expires quickly.
+      client.listResources.mockImplementationOnce(() => Promise.resolve([]));
+      await expect(
+        resolver.resolveConversionRate('EUR', CONNECTION_ID, client)
+      ).rejects.toBeInstanceOf(PrestashopConversionRateUnknownException);
+
+      const past = Date.now();
+      jest.spyOn(Date, 'now').mockReturnValue(past + 61 * 1000);
+      try {
+        await expect(resolver.resolveConversionRate('EUR', CONNECTION_ID, client)).resolves.toBe(
+          4.3157
+        );
+      } finally {
+        (Date.now as jest.Mock).mockRestore();
+      }
     });
   });
 

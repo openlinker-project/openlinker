@@ -31,19 +31,24 @@
  * `PrestashopConversionRateUnknownException`, while a failed READ stays a
  * retryable `PrestashopApiException` carrying the status code it saw.
  *
- * **Scope note.** The shipped destination-order path creates orders through the
- * OL module's `importorder` endpoint (ADR-016 / #905), where PrestaShop's own
- * `validateOrder` stamps `conversion_rate` from the cart's currency - so this
- * resolver is not on that path. It exists for the raw-webservice order body
- * `PrestashopOrderMapper.mapOrderCreate` builds, which is the surface that
- * carried the hardcoded `1.0` and now requires a resolved rate from its caller.
+ * **Scope note - this resolver has no production caller today.** Its only
+ * consumer is the raw-webservice order body `PrestashopOrderMapper.mapOrderCreate`
+ * builds, and that mapper has no runtime call site either: the shipped
+ * destination-order path creates orders through the OL module's `importorder`
+ * endpoint (ADR-016 / #905), where PrestaShop's own `validateOrder` stamps
+ * `conversion_rate` from the cart's currency - which is the same
+ * `currencies.conversion_rate` figure this class reads. So the hardcoded `1.0`
+ * this replaces was never reachable in production, and nothing about the shipped
+ * path changes: it is a correctness fix on the raw-webservice surface only.
+ * ADR-016 records removing that surface as planned work that has not landed.
  *
  * **Nothing is cached here.** A shop's per-currency rate is a moving figure an
  * operator (or a PrestaShop cron) updates, and serving a stale rate would
  * mis-value a real order - so only the shop's DEFAULT-currency ISO is cached,
  * inside the `PrestashopShopCurrencyResolver` this delegates to. That resolver
  * must be a process-singleton for its cache to survive the per-adapter
- * instances the factory creates.
+ * instances the factory creates, and it caches an UNRESOLVED default currency on
+ * a short TTL so a refusal below cannot outlive the operator's fix.
  *
  * @module libs/integrations/prestashop/src/infrastructure/provisioners
  */
@@ -51,6 +56,7 @@ import { Logger } from '@openlinker/shared/logging';
 import { PrestashopApiException } from '../../domain/exceptions/prestashop-api.exception';
 import { PrestashopConversionRateUnknownException } from '../../domain/exceptions/prestashop-conversion-rate-unknown.exception';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
+import { readPrestashopCurrencyByIso } from './prestashop-currency-read';
 import type { PrestashopCurrency } from './prestashop-provisioner.types';
 import type { PrestashopShopCurrencyResolver } from './prestashop-shop-currency.resolver';
 
@@ -88,7 +94,11 @@ export class PrestashopConversionRateResolver {
       );
     }
 
-    const shopDefaultIso = await this.resolveShopDefaultIso(orderIso, connectionId, webserviceClient);
+    const shopDefaultIso = await this.resolveShopDefaultIso(
+      orderIso,
+      connectionId,
+      webserviceClient
+    );
 
     if (orderIso === shopDefaultIso) {
       // The order is priced in the shop's own default currency, so the two are
@@ -138,13 +148,9 @@ export class PrestashopConversionRateResolver {
     webserviceClient: IPrestashopWebserviceClient
   ): Promise<PrestashopCurrency | undefined> {
     try {
-      const currencies = await webserviceClient.listResources<PrestashopCurrency>(
-        'currencies',
-        { custom: { iso_code: orderIso } },
-        1,
-        0
-      );
-      return currencies?.[0];
+      // Shared read (`prestashop-currency-read`), so the ISO filter shape lives
+      // in one place rather than here AND in `PrestashopCurrencyResolver`.
+      return await readPrestashopCurrencyByIso(webserviceClient, orderIso);
     } catch (error) {
       const statusCode = error instanceof PrestashopApiException ? error.statusCode : undefined;
       const detail =

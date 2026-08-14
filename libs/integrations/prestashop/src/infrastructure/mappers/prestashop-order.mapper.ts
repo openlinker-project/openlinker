@@ -163,6 +163,16 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
    * `conversionRate` must be resolved against the destination shop's default
    * currency by `PrestashopConversionRateResolver` (#2102) - see the note at the
    * `conversion_rate` assignment below for why the mapper refuses to default it.
+   *
+   * **No production call site.** This builds the RAW-WEBSERVICE order body
+   * (`POST /orders`), which the shipped destination-order path no longer uses:
+   * `PrestashopOrderProcessorManagerAdapter` creates the cart via
+   * `mapCartCreate` and then the order through the OL module's `importorder`
+   * endpoint, where PrestaShop's own `validateOrder` stamps `conversion_rate`
+   * from the cart currency (ADR-016 / #905). ADR-016 lists removing this method
+   * as planned work that has not landed; until it does, the #2102 fix keeps the
+   * surface correct for anything that revives it, and changes nothing on the
+   * shipped path.
    */
   mapOrderCreate(
     orderCreate: OrderCreate,
@@ -267,10 +277,15 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
      * 1.0 that quietly writes a wrong financial document.
      */
     if (!Number.isFinite(conversionRate) || conversionRate <= 0) {
+      // The message LEADS with the currency, per the contract stated in
+      // `PrestashopConversionRateUnknownException`'s header: `OrderSyncService`
+      // stores it verbatim in `syncStatus[].error` and the orders-list Status
+      // sub-line clips at ~40 characters, so the currency has to be inside that
+      // budget for the operator to know WHAT could not be converted.
       throw new PrestashopConversionRateUnknownException(
-        `Refusing to build a PrestaShop order with an unusable currency conversion rate ` +
-          `'${String(conversionRate)}' (order currency ${orderCreate.totals.currency}). ` +
-          `Resolve it from PrestaShop before creating the order.`,
+        `${orderCreate.totals.currency}: unusable conversion rate ` +
+          `'${String(conversionRate)}' to the shop's default currency. No order was ` +
+          `created. Resolve the rate from PrestaShop, then retry.`,
         orderCreate.totals.currency,
         undefined
       );

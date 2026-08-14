@@ -648,7 +648,14 @@ describe('PrestashopOrderMapper', () => {
       it('should throw when the rate could not be resolved to a finite number', () => {
         expect(() => build(Number.NaN)).toThrow(PrestashopConversionRateUnknownException);
         // Never a silent fallback to parity - the whole point of #2102.
-        expect(() => build(Number.NaN)).toThrow(/unusable currency conversion rate/);
+        expect(() => build(Number.NaN)).toThrow(/unusable conversion rate/);
+      });
+
+      it('should lead the refusal message with the order currency', () => {
+        // The exception's own contract: the message is rendered verbatim in the
+        // orders-list Status sub-line, clipped at ~40 characters, so the pair
+        // that cannot be converted has to come first.
+        expect(() => build(0)).toThrow(/^EUR: unusable conversion rate/);
       });
     });
   });

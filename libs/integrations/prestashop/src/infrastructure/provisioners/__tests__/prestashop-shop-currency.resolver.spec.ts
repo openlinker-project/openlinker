@@ -162,17 +162,32 @@ describe('PrestashopShopCurrencyResolver', () => {
     });
   });
 
-  it('should cache a definitive absence for the full TTL (no short-TTL retry)', async () => {
+  it('should re-read an absent PS_CURRENCY_DEFAULT after the short TTL (#2102)', async () => {
+    // A missing default currency used to cache for the full 24h TTL. Since #2102
+    // the same `null` also drives an order REFUSAL telling the operator to
+    // configure the currency and retry, so the negative entry must not outlive
+    // the fix — any unresolved answer gets the short TTL.
     client.listResources.mockResolvedValueOnce([]);
-    const first = await resolver.resolveDefaultCurrencyIso('conn-1', client);
-    expect(first).toBeNull();
+    expect(await resolver.resolveDefaultCurrencyIso('conn-1', client)).toBeNull();
 
-    // Past the failure TTL but well within the 24h definitive TTL: no refetch.
     const past = Date.now();
     jest.spyOn(Date, 'now').mockReturnValue(past + 61 * 1000);
     try {
-      const second = await resolver.resolveDefaultCurrencyIso('conn-1', client);
-      expect(second).toBeNull();
+      // The operator configured it in the meantime: the next call sees it.
+      expect(await resolver.resolveDefaultCurrencyIso('conn-1', client)).toBe('PLN');
+    } finally {
+      (Date.now as jest.Mock).mockRestore();
+    }
+    expect(client.listResources).toHaveBeenCalledTimes(2);
+  });
+
+  it('should cache a RESOLVED ISO past the short TTL (only nulls expire fast)', async () => {
+    expect(await resolver.resolveDefaultCurrencyIso('conn-1', client)).toBe('PLN');
+
+    const past = Date.now();
+    jest.spyOn(Date, 'now').mockReturnValue(past + 61 * 1000);
+    try {
+      expect(await resolver.resolveDefaultCurrencyIso('conn-1', client)).toBe('PLN');
     } finally {
       (Date.now as jest.Mock).mockRestore();
     }

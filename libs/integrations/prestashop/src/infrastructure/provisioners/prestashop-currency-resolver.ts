@@ -4,11 +4,19 @@
  * Resolves ISO 4217 currency codes to PrestaShop currency IDs.
  * Caches results per connection to reduce API calls.
  *
+ * KNOWN GAP (not addressed here): an unresolvable ISO silently falls back to
+ * `DEFAULT_CURRENCY_ID = 1` and caches that answer for the full TTL, so a
+ * currency the destination shop does not carry books the order in currency 1
+ * instead of failing. That is the opposite of the refuse-never-default rule
+ * `PrestashopConversionRateResolver` follows for the same row's
+ * `conversion_rate` (#2102). Changing it changes live order-creation behaviour,
+ * so it is tracked separately rather than folded into #2102.
+ *
  * @module libs/integrations/prestashop/src/infrastructure/provisioners
  */
 import { Injectable, Logger } from '@nestjs/common';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
-import type { PrestashopCurrency } from './prestashop-provisioner.types';
+import { readPrestashopCurrencyByIso } from './prestashop-currency-read';
 
 /**
  * Cache entry with timestamp for TTL
@@ -72,18 +80,13 @@ export class PrestashopCurrencyResolver {
     }
 
     try {
-      // Query PrestaShop currencies
-      // Note: PrestashopWebserviceClient must generate filter[iso_code]=[PLN]&display=[id] format
-      const currencies = await webserviceClient.listResources<PrestashopCurrency>(
-        'currencies',
-        {
-          custom: { iso_code: normalizedIso },
-        },
-        1, // limit
-        0 // offset
-      );
+      // Query PrestaShop currencies through the shared ISO read
+      // (`prestashop-currency-read`), which is also what
+      // `PrestashopConversionRateResolver` uses for the same row's
+      // `conversion_rate` (#2102) — the filter shape lives in one place.
+      const currency = await readPrestashopCurrencyByIso(webserviceClient, normalizedIso);
 
-      if (!currencies || currencies.length === 0) {
+      if (!currency) {
         this.logger.warn(
           `Currency not found in PrestaShop: ${normalizedIso} (connection: ${connectionId}), using default currency ID: ${DEFAULT_CURRENCY_ID}`
         );
@@ -95,8 +98,7 @@ export class PrestashopCurrencyResolver {
         return DEFAULT_CURRENCY_ID;
       }
 
-      // Extract currency ID from first result
-      const currency = currencies[0];
+      // Extract currency ID from the matched row
       const currencyId = Number.parseInt(currency.id, 10);
 
       if (Number.isNaN(currencyId)) {
