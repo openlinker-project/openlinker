@@ -9,9 +9,10 @@
  * Line 1 leads with the marketplace-facing order number, because that is the
  * string a buyer quotes and a seller searches for — shortened to a `head…tail`
  * form past 18 characters (see `formatOrderRef`) — and falls back to a shortened
- * internal id only when the number is absent (every Shipments and Invoices row
- * hits that branch today). Copy always writes the **full** internal id — the
- * shortened string exists to be read, not to be pasted into a support ticket.
+ * internal id only when the number is absent — which, of the four order sources,
+ * is only Erli (its mapper sets no `orderNumber`). Copy always writes the
+ * **full** internal id, and says so; the shortened string on line 1 exists to be
+ * read, not to be pasted into a support ticket.
  *
  * Props are flat and source-agnostic rather than an `OrderSummary` object:
  * Orders feeds them from `parseOrderSnapshot()` while Shipments and Invoices
@@ -40,11 +41,10 @@
  * 4. **The cell owns order-reference shortening** (`formatOrderRef` below),
  *    absorbed from the Orders page rather than left to each caller. The mockup
  *    shows short shop numbers only, so it never faced Allegro's 36-character
- *    `checkoutFormId`. A known limitation: the full order number is then
- *    readable only through the copy button's accessible name, because Copy
- *    writes the internal id and `EntityLabel`'s `title` follows the rendered
- *    name. Overriding that title is a fourth prop on a shared primitive, so it
- *    is deferred — no list shows a hover-readable full order number today.
+ *    `checkoutFormId` — which IS Allegro's `orderNumber`, so the shortening is
+ *    load-bearing rather than cosmetic. The full number stays reachable: it is
+ *    the `nameTitle` on line 1 (hover) and names the copy button (screen
+ *    reader). Copy itself writes the internal id, per this issue's AC.
  *
  * No page consumes it yet — #2089 (Shipments), #2090 (Invoices) and #2091
  * (Orders) wire it in, mirroring how #2027 delivered `ConnectionCell`.
@@ -114,22 +114,25 @@ export function OrderIdentityCell({
   // counted — lines, not units — so the chip states both facts on hover.
   const moreLabel = `more line item${moreCount === 1 ? '' : 's'}`;
   const moreCountTitle = `${moreCount} ${moreLabel} (${totalItems} in this order)`;
-  // Reading out a 41-character internal id per row is not an accessible name.
-  // With no number to quote, name the *kind* of id and qualify it with the
-  // shortened form already on screen, so 50 rows do not all read identically.
-  // The FULL order number goes here when one exists — it is otherwise
-  // unrecoverable, since Copy writes the internal id.
+  // Copy writes the INTERNAL id, so the button must say so. Naming it after the
+  // order number (as this cell first did) made it assert one identifier while
+  // delivering another — an operator pasting into a marketplace search would get
+  // an `ol_order_…` string the marketplace never issued. The row is still named,
+  // so a button list distinguishes rows: reading out a bare 41-character id per
+  // row is not an accessible name either.
   const copySubject = trimmedNumber
-    ? `order ID ${trimmedNumber}`
+    ? `internal order ID for order ${trimmedNumber}`
     : `internal order ID ${displayName}`;
   const classes = ['order-cell', className].filter(Boolean).join(' ');
 
   return (
     <span className={classes}>
       {/* Decorative by default (`alt=''` ⇒ aria-hidden): the item name is
-          already text on line 2, and the order number is the row's label. Its
-          initial-glyph fallback covers the image-less case, which is every row
-          today — no adapter populates `OrderItem.imageUrl` on ingestion yet. */}
+          already text on line 2, and the order number is the row's label. The
+          initial-glyph fallback covers the image-less case, which is most rows:
+          only the WooCommerce order source populates `OrderItem.imageUrl` on
+          ingestion (`woocommerce-order-source.adapter.ts`) — Allegro omits it
+          deliberately, PrestaShop and Erli never set it. */}
       <ProductThumbnail name={itemName ?? displayName} src={firstItemImageUrl} size="sm" />
       <span className="order-cell__body">
         <EntityLabel
@@ -138,6 +141,10 @@ export function OrderIdentityCell({
           showId={false}
           copyLabel={`Copy ${copySubject}`}
           copiedLabel={`Copied ${copySubject}`}
+          // `formatOrderRef` may have shortened line 1; without this the tooltip
+          // would show the shortened form and the full number would be
+          // unreachable to a sighted user (#2089).
+          nameTitle={trimmedNumber ?? undefined}
           to={`/orders/${orderId}`}
           onNavigate={onNavigate}
         />

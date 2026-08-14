@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { EntityLabel } from './entity-label';
+import { EntityLabel, shortenId } from './entity-label';
 
 function renderWithRouter(ui: React.ReactElement): ReturnType<typeof render> {
   return render(<MemoryRouter>{ui}</MemoryRouter>);
@@ -158,5 +158,36 @@ describe('EntityLabel', () => {
     fireEvent.click(screen.getByRole('button', { name: /Copy ol_order/ }));
 
     expect(onNavigate).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * `shortenId` algorithm coverage, moved here from
+ * `features/shipments/lib/shipment-severity.test.ts` when #2089 retired the
+ * `truncateOrderId` alias. These four branches were the ONLY tests of the
+ * algorithm; `OrderIdentityCell` (#2087) now depends on it on three lists, so
+ * they follow the function rather than the deleted alias.
+ */
+describe('shortenId', () => {
+  it('should keep the ol_ prefix and elide the middle of a full internal order id', () => {
+    expect(shortenId('ol_order_a3f24b09c4d1486789abcdef01234567')).toBe('ol_order_a3f2…67');
+  });
+
+  it('should leave a short ol_ id untouched when its suffix is 6 characters or fewer', () => {
+    expect(shortenId('ol_order_123456')).toBe('ol_order_123456');
+    expect(shortenId('ol_order_1')).toBe('ol_order_1');
+  });
+
+  it('should truncate a 7-character ol_ suffix - the boundary just past the keep-whole limit', () => {
+    expect(shortenId('ol_order_1234567')).toBe('ol_order_1234…67');
+  });
+
+  it('should leave a non-OL id of 14 characters or fewer untouched', () => {
+    expect(shortenId('12345678901234')).toBe('12345678901234');
+    expect(shortenId('ORD-42')).toBe('ORD-42');
+  });
+
+  it('should elide the middle of a non-OL id longer than 14 characters', () => {
+    expect(shortenId('123456789012345')).toBe('12345678…2345');
   });
 });

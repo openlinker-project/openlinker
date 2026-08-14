@@ -29,6 +29,15 @@ interface EntityLabelProps extends Omit<ComponentPropsWithoutRef<'span'>, 'id'> 
   copyLabel?: string;
   /** Accessible name once the copy succeeded. Defaults to `Copied {id}`. */
   copiedLabel?: string;
+  /**
+   * `title` on the rendered name, overriding the default (the name itself).
+   *
+   * For a caller that SHORTENS what it passes as `name`: the default would then
+   * tooltip the shortened form, leaving the full value unreachable to a sighted
+   * user. `OrderIdentityCell` passes the full order number, because Allegro's
+   * order number is a 36-character id that its own cell must shorten (#2089).
+   */
+  nameTitle?: string;
   to?: string;
   /**
    * Fired when the inner name link is clicked (navigation), never when the
@@ -47,6 +56,7 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
     showCopy = true,
     copyLabel,
     copiedLabel,
+    nameTitle,
     to,
     onNavigate,
     className = '',
@@ -84,6 +94,11 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
 
   const classes = ['entity-label', className].filter(Boolean).join(' ');
   const resolvedName = name ?? null;
+  // `?? undefined` rather than `?? id`: both consumers sit inside the
+  // `resolvedName ?` branch below, so the third rung is unreachable — it exists
+  // only because `title` takes `string | undefined`, and defaulting an
+  // unreachable rung to the raw id would read as a behaviour somebody relies on.
+  const resolvedTitle = nameTitle ?? resolvedName ?? undefined;
 
   const nameNode = loading ? (
     <span className="entity-label__name entity-label__name--loading" aria-busy="true">
@@ -95,12 +110,12 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
         to={to}
         className="entity-label__name entity-label__name--link"
         onClick={onNavigate}
-        title={resolvedName}
+        title={resolvedTitle}
       >
         {resolvedName}
       </Link>
     ) : (
-      <span className="entity-label__name" title={resolvedName}>
+      <span className="entity-label__name" title={resolvedTitle}>
         {resolvedName}
       </span>
     )
