@@ -19,6 +19,16 @@ interface EntityLabelProps extends Omit<ComponentPropsWithoutRef<'span'>, 'id'> 
    * same id never grows two copy controls (#2027).
    */
   showCopy?: boolean;
+  /**
+   * Accessible name of the built-in copy button. Defaults to `Copy {id}`, which
+   * a screen reader spells out character by character — 32 hex digits on every
+   * row of a table. A caller that can resolve the id to something human should
+   * pass it ("Copy order ID 6839-2911-4402"), mirroring `CopyableId`'s
+   * `copyLabel` (#1996). Kept optional so no existing call site changes.
+   */
+  copyLabel?: string;
+  /** Accessible name once the copy succeeded. Defaults to `Copied {id}`. */
+  copiedLabel?: string;
   to?: string;
   /**
    * Fired when the inner name link is clicked (navigation), never when the
@@ -35,6 +45,8 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
     name,
     showId = true,
     showCopy = true,
+    copyLabel,
+    copiedLabel,
     to,
     onNavigate,
     className = '',
@@ -111,7 +123,7 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
           type="button"
           className="entity-label__copy"
           onClick={handleCopy}
-          aria-label={copied ? `Copied ${id}` : `Copy ${id}`}
+          aria-label={copied ? (copiedLabel ?? `Copied ${id}`) : (copyLabel ?? `Copy ${id}`)}
         >
           {copied ? 'Copied' : 'Copy'}
         </button>

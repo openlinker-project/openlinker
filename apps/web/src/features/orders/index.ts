@@ -16,6 +16,10 @@
  * — both this feature's `ShipmentActionButtons` and the `/shipments`
  * accordion import them from there, so neither barrel depends on the other
  * for that policy.
+ *
+ * `OrderIdentityCell` (#2087) is exported for the same reason `ConnectionDot`
+ * is: the Shipments and Invoices lists render an order's identity and orders is
+ * the feature that owns what an order identity looks like (#1996).
  */
 export { ordersQueryKeys } from './api/orders.query-keys';
 export type {
@@ -25,3 +29,5 @@ export type {
   PaginatedOrders,
 } from './api/orders.types';
 export { ConnectionDot } from './components/connection-dot';
+export { OrderIdentityCell } from './components/order-identity-cell';
+export type { OrderIdentityCellProps } from './components/order-identity-cell';
