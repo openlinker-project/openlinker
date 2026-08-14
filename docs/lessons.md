@@ -23,6 +23,22 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## Claim an ADR number from the "Reserved numbers" note, not from the last row of the index table
+
+**Context**: #2066 authored three ADRs and numbered them 039/040/041 by reading the index table in `docs/architecture/adrs/README.md` and taking "last merged row + 1".
+**Problem**: The index lists only **merged** ADRs; several are normally in flight. All three numbers were taken — 041 was already merged, 039 was claimed by #2014 **and already referenced by name six times from `docs/plans/implementation-plan-order-cancellation-record-state.md` on `main`**, and 040 was claimed by #2050. Merging would have silently repointed a live link on `main` to the wrong ADR. Compounding it, the branch had also deleted `main`'s ADR-041 row *and* the "Reserved numbers" note itself — removing the warning against the exact mistake, then making it. That was the third numbering collision in two days.
+**Rule**: Before authoring an ADR, read `git show origin/main:docs/architecture/adrs/README.md | tail -12` — the last rows **and** the reserved-numbers note beneath them — and claim your number by adding it to that note in your PR. Never edit the README from a stale local copy; `git fetch origin main` first, because a stale copy silently drops other people's rows. When renumbering afterwards, **never blanket find-replace `ADR-0NN` across `docs/`** — other plans legitimately reference the real ADR at that number. Scope the replace to an explicit list of files your PR authored, then verify the untouched ones are byte-identical to `main`.
+**Applies to**: `docs/architecture/adrs/**`, and any doc that references an ADR by number.
+**Source**: #2066 (found in review). Mechanical enforcement tracked as #2082.
+
+## A new authenticated principal must never land on `req.user` — `RolesGuard` default-allows every route without `@Roles()`
+
+**Context**: #1032's planned pack station proposed a warehouse "device principal" placed on `req.user`, with an endpoint allowlist described in the design as "the security boundary".
+**Problem**: `RolesGuard.canActivate` returns **`true`** when a route carries no `@Roles()` decorator (`apps/api/src/auth/guards/roles.guard.ts`), and it is a global `APP_GUARD`. So any principal that satisfies `JwtAuthGuard` and reaches `req.user` is authorized on **every undecorated route** — including the customers controller (buyer PII), products, inventory, webhooks and cursors. The allowlist would have been decorative. This is currently latent, not exploitable, only because every principal in the system today is an OL user with a role.
+**Rule**: A non-user principal (device, station, WMS service identity, agent token) gets `@Public()` plus its own dedicated verifier, in its own controller — never `req.user`. This is the split MCP already uses (`mcp-transport.controller.ts` vs `mcp-tokens.controller.ts`, which documents it). Copying only the *storage* half of the `mcp_tokens` pattern (opaque prefix + SHA-256 + revoke) is not enough; the auth-model separation is the load-bearing half. Where a service identity genuinely suits an OL user, prefer a service-account user under the existing role ladder over a new principal type.
+**Applies to**: `apps/api/src/**/http/*.controller.ts`, `apps/api/src/auth/**`, any PR introducing a new authentication path.
+**Source**: #1032 planning (found in stress test); guard hardening tracked as #2079.
+
 ## A supplementary write added inside an existing per-item sync loop must degrade, never abort
 
 **Context**: #2024 extends the existing #816 `marketplace.offer.statusSync` per-offer loop to also persist a commercial (price/quantity) observation, reusing the same fetched object rather than a second marketplace call.
