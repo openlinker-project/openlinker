@@ -22,11 +22,22 @@
  *
  * @module apps/web/src/features/listings/components/bulk
  */
-import { useMemo, useState, type ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { Button, Input } from '../../../../shared/ui';
 import { ErrorState, LoadingState } from '../../../../shared/ui/feedback-state';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../../../shared/ui/dialog';
-import { useAllegroCategoriesQuery } from '../../../mappings';
+import {
+  CategorySearchResults,
+  type CategorySearchResultHit,
+} from '../../../../shared/ui/category-search-results';
+import { useDebouncedValue } from '../../../../shared/hooks/use-debounced-value';
+import {
+  useAllegroCategoriesQuery,
+  useCategorySearchQuery,
+  isSearchableCategoryQuery,
+  toCategorySearchResultHits,
+  isTaxonomyUnsynced,
+} from '../../../mappings';
 
 interface Crumb {
   id: string;
@@ -101,14 +112,18 @@ function BulkCategoryChooseBody({
 
   const parentId = breadcrumb.length > 0 ? breadcrumb[breadcrumb.length - 1].id : undefined;
   const categoriesQuery = useAllegroCategoriesQuery(connectionId, parentId, true);
-
   const nodes = categoriesQuery.data ?? [];
-  const query = search.trim().toLowerCase();
-  const visible = useMemo(
-    () => (query === '' ? nodes : nodes.filter((n) => n.name.toLowerCase().includes(query))),
-    [nodes, query],
-  );
 
+  // Whole-tree search (#2075). Before this, the input was labelled "Search
+  // categories" but filtered only the CURRENT level, so searching from the
+  // root reported `No categories match "…"` for a category two levels down —
+  // a false statement, not merely a missing feature.
+  const debouncedSearch = useDebouncedValue(search, 250);
+  const isSearching = isSearchableCategoryQuery(debouncedSearch);
+  const searchQuery = useCategorySearchQuery(connectionId, debouncedSearch, true);
+
+  // The breadcrumb is deliberately NOT cleared while searching, so clearing the
+  // query returns the operator to the level they left (issue AC).
   function drillInto(node: Crumb): void {
     setBreadcrumb((prev) => [...prev, node]);
     setSearch('');
@@ -128,6 +143,34 @@ function BulkCategoryChooseBody({
     onSelect(node.id, [...breadcrumb.map((c) => c.name), node.name]);
     onClose();
   }
+
+  /**
+   * A search hit is not under the current breadcrumb, so its display path must
+   * come from the hit's OWN path. Deriving it from `breadcrumb` here would
+   * stamp the chip with a trail the category does not have.
+   */
+  function pickHit(hit: CategorySearchResultHit): void {
+    onSelect(
+      hit.id,
+      hit.path.map((node) => node.name),
+    );
+    onClose();
+  }
+
+  const searchHits = toCategorySearchResultHits(searchQuery.data);
+
+  // A synced scope always has roots, and this body remounts at root on every
+  // open — so "at root with nothing in it" is the honest signal for a taxonomy
+  // that has never synced. Anywhere else, the tree demonstrably has content and
+  // an empty result really is "no matches". A FAILED browse is excluded inside
+  // the helper: it also leaves zero nodes, and calling that "never synced"
+  // would be a fresh false claim about the operator's catalogue.
+  const taxonomyNeverSynced = isTaxonomyUnsynced({
+    atRoot: breadcrumb.length === 0,
+    browsedNodeCount: nodes.length,
+    isBrowseLoading: categoriesQuery.isLoading,
+    browseError: categoriesQuery.error,
+  });
 
   return (
     <>
@@ -153,11 +196,16 @@ function BulkCategoryChooseBody({
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search categories..."
-          aria-label="Search categories"
+          placeholder="Search all categories..."
+          aria-label="Search all categories"
         />
       </div>
 
+      {/* The breadcrumb describes the drill-down position, which a flat result
+          list does not have — hiding it while searching keeps it from reading
+          as the results' location. It is preserved, not reset, so clearing the
+          query restores the level. */}
+      {isSearching ? null : (
       <nav className="bulk-editor__catpick-crumbs" aria-label="Category path">
         <button
           type="button"
@@ -186,9 +234,24 @@ function BulkCategoryChooseBody({
           </span>
         ))}
       </nav>
+      )}
 
       <div className="bulk-editor__catpick-list">
-        {categoriesQuery.isLoading ? (
+        {isSearching ? (
+          <CategorySearchResults
+            hits={searchHits}
+            isLoading={searchQuery.isLoading}
+            error={searchQuery.error}
+            onRetry={() => void searchQuery.refetch()}
+            onSelect={pickHit}
+            // An offer must sit on a leaf, so a non-leaf hit is shown but not
+            // selectable rather than hidden.
+            canSelect={(hit) => hit.leaf}
+            selectedId={selectedId}
+            emptyReason={taxonomyNeverSynced ? 'not-synced' : 'no-matches'}
+            query={debouncedSearch}
+          />
+        ) : categoriesQuery.isLoading ? (
           <LoadingState liveRegion="off" title="Loading categories" message="Fetching categories..." />
         ) : categoriesQuery.error ? (
           <ErrorState
@@ -196,15 +259,15 @@ function BulkCategoryChooseBody({
             message={categoriesQuery.error.message}
             action={<Button onClick={() => void categoriesQuery.refetch()}>Retry</Button>}
           />
-        ) : visible.length === 0 ? (
+        ) : nodes.length === 0 ? (
           <div className="bulk-editor__catpick-empty">
-            {query === ''
-              ? 'This level has no subcategories. Step back and pick a different branch.'
-              : `No categories match "${search.trim()}".`}
+            {breadcrumb.length === 0
+              ? 'No categories synced yet for this destination. Search will work once the first sync completes.'
+              : 'This level has no subcategories. Step back and pick a different branch.'}
           </div>
         ) : (
           <ul className="bulk-editor__catpick-items" role="list">
-            {visible.map((node) => {
+            {nodes.map((node) => {
               const isCurrent = node.leaf && node.id === selectedId;
               return (
                 <li

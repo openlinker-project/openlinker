@@ -21,10 +21,21 @@
  *
  * @module apps/web/src/features/listings/components/bulk
  */
-import { useMemo, useState, type ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { Button, Input } from '../../../../shared/ui';
 import { ErrorState, LoadingState } from '../../../../shared/ui/feedback-state';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../../../shared/ui/dialog';
+import {
+  CategorySearchResults,
+  type CategorySearchResultHit,
+} from '../../../../shared/ui/category-search-results';
+import { useDebouncedValue } from '../../../../shared/hooks/use-debounced-value';
+import {
+  useCategorySearchQuery,
+  isSearchableCategoryQuery,
+  toCategorySearchResultHits,
+  isTaxonomyUnsynced,
+} from '../../../mappings';
 import { useShopCategoriesQuery } from '../../hooks/use-shop-categories-query';
 
 interface Crumb {
@@ -90,11 +101,28 @@ function ShopCategoryPickerBody({
   const categoriesQuery = useShopCategoriesQuery(connectionId, parentId, true);
 
   const nodes = categoriesQuery.data ?? [];
-  const query = search.trim().toLowerCase();
-  const visible = useMemo(
-    () => (query === '' ? nodes : nodes.filter((n) => n.name.toLowerCase().includes(query))),
-    [nodes, query],
-  );
+
+  // Whole-tree search (#2075). The previous input filtered only the loaded
+  // level — honestly labelled, unlike the marketplace sibling, but still unable
+  // to answer "where is Kurtki?" from the root.
+  const debouncedSearch = useDebouncedValue(search, 250);
+  const isSearching = isSearchableCategoryQuery(debouncedSearch);
+  // The same neutral route the marketplace picker uses: scope resolves from the
+  // connection, so a shop connection searches its own connection-keyed rows
+  // (ADR-037) with no shop-specific client here.
+  const searchQuery = useCategorySearchQuery(connectionId, debouncedSearch, true);
+
+  const searchHits = toCategorySearchResultHits(searchQuery.data);
+
+  // See the marketplace sibling: a failed browse is excluded inside the helper,
+  // so a transient error reads as "no matches" rather than the stronger and
+  // possibly false "never synced".
+  const taxonomyNeverSynced = isTaxonomyUnsynced({
+    atRoot: breadcrumb.length === 0,
+    browsedNodeCount: nodes.length,
+    isBrowseLoading: categoriesQuery.isLoading,
+    browseError: categoriesQuery.error,
+  });
 
   function drillInto(node: Crumb): void {
     setBreadcrumb((prev) => [...prev, node]);
@@ -113,6 +141,19 @@ function ShopCategoryPickerBody({
 
   function pick(node: { id: string; name: string }): void {
     onSelect(node.id, [...breadcrumb.map((c) => c.name), node.name]);
+    onClose();
+  }
+
+  /**
+   * A search hit is not under the current breadcrumb — its path must come from
+   * the hit itself, or the caller stamps the product with a category trail that
+   * does not exist.
+   */
+  function pickHit(hit: CategorySearchResultHit): void {
+    onSelect(
+      hit.id,
+      hit.path.map((node) => node.name),
+    );
     onClose();
   }
 
@@ -141,11 +182,12 @@ function ShopCategoryPickerBody({
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Filter this level..."
-          aria-label="Filter categories in this level"
+          placeholder="Search all categories..."
+          aria-label="Search all categories"
         />
       </div>
 
+      {isSearching ? null : (
       <nav className="bulk-editor__catpick-crumbs" aria-label="Category path">
         <button
           type="button"
@@ -174,9 +216,25 @@ function ShopCategoryPickerBody({
           </span>
         ))}
       </nav>
+      )}
 
       <div className="bulk-editor__catpick-list">
-        {categoriesQuery.isLoading ? (
+        {isSearching ? (
+          <CategorySearchResults
+            hits={searchHits}
+            isLoading={searchQuery.isLoading}
+            error={searchQuery.error}
+            onRetry={() => void searchQuery.refetch()}
+            onSelect={pickHit}
+            // A shop product may sit in ANY node, so every hit is selectable —
+            // the one behavioural difference from the marketplace picker
+            // (ADR-024).
+            canSelect={() => true}
+            selectedId={selectedId}
+            emptyReason={taxonomyNeverSynced ? 'not-synced' : 'no-matches'}
+            query={debouncedSearch}
+          />
+        ) : categoriesQuery.isLoading ? (
           <LoadingState liveRegion="off" title="Loading categories" message="Fetching categories..." />
         ) : categoriesQuery.error ? (
           <ErrorState
@@ -184,17 +242,15 @@ function ShopCategoryPickerBody({
             message={categoriesQuery.error.message}
             action={<Button onClick={() => void categoriesQuery.refetch()}>Retry</Button>}
           />
-        ) : visible.length === 0 ? (
+        ) : nodes.length === 0 ? (
           <div className="bulk-editor__catpick-empty">
-            {query === ''
-              ? breadcrumb.length === 0
-                ? 'This shop has no categories yet.'
-                : 'This category has no subcategories. Select it, or step back to a different branch.'
-              : `No categories match "${search.trim()}".`}
+            {breadcrumb.length === 0
+              ? 'This shop has no categories yet.'
+              : 'This category has no subcategories. Select it, or step back to a different branch.'}
           </div>
         ) : (
           <ul className="bulk-editor__catpick-items" role="list">
-            {visible.map((node) => {
+            {nodes.map((node) => {
               const isCurrent = node.id === selectedId;
               return (
                 <li
