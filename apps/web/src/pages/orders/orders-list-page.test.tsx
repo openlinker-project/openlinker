@@ -420,6 +420,32 @@ describe('OrdersListPage', () => {
     expect(pill?.textContent).toBe('Allegro');
   });
 
+  it.each([
+    ['erli', 'Erli'],
+    ['woocommerce', 'WooCommerce'],
+  ])(
+    'should resolve the %s channel-pill from the plugin registry, not a local map',
+    async (platformType, expectedLabel) => {
+      // The deleted `CHANNEL_LABELS` map (#2088) covered only allegro /
+      // prestashop / amazon / shopify, so these two rendered raw and lowercase
+      // here while rendering correctly two pages over. The test above passes on
+      // either implementation because `allegro` was in that map — these two are
+      // what actually pin the registry as the single source of the label.
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+        connections: {
+          list: vi.fn().mockResolvedValue([{ ...sampleConnection, platformType }]),
+        },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const pill = container.querySelector(`.channel-pill[data-channel="${platformType}"]`);
+      expect(pill?.textContent).toBe(expectedLabel);
+    },
+  );
+
   it('should fall back to the internalOrderId when the snapshot has no orderNumber', async () => {
     const orderWithoutNumber: OrderRecord = {
       ...syncedOrder,
