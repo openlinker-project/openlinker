@@ -23,7 +23,8 @@
   the line range it came from. NO new primitive is required — an acceptance
   criterion of #2003 — with ONE named exception, the period-over-period delta,
   which the handover files as a scope addition rather than absorbing it silently.
-  Exactly ELEVEN new CSS rules are invented; they are isolated in section 5.
+  Exactly TWELVE new CSS rules are invented; they are isolated in section 5. (Eleven until
+  14 Aug, when the net-first reversal added 11b — the card whose HEADLINE alone is unbuilt.)
 
   How to read it
   ──────────────
@@ -179,7 +180,9 @@
 
   ── WHAT THIS COSTS, SAID ONCE AND PLAINLY ──────────────────────────────────
   `KpiCard` needs FIVE new props: `qualifiers` (rule 4), `metric` (rule 7), `delta`
-  (rule 9), an `info` slot in the label row (rule 10) and `planned` (rule 11). The
+  (rule 9), an `info` slot in the label row (rule 10) and `planned` (rules 11 / 11b —
+  `true | 'half'`, not a boolean: a card can have both figures unbuilt or only its
+  headline, and the two look different on purpose). The
   "no new primitive" criterion still holds in the sense that matters — no new
   component — but the card it lands on is no longer the card that shipped, and
   #1990 should cost it rather than discover it mid-implementation. `DataTable`
@@ -1460,6 +1463,29 @@
   }
   .kpi-card--planned .kpi-card__value,
   .kpi-card--planned .kpi-card__qualifier-value { color: var(--text-secondary); }
+  /*  11b. .kpi-card--planned-half — the shape the Revenue card actually ships in, added
+   *      14 Aug when net sales became its HEADLINE. Rule 11 above covers a card where
+   *      BOTH figures are a data order; this is the case it does not cover and the
+   *      reversal created: the top half cannot be produced (no refund amount is stored
+   *      anywhere) while the bottom half is a real measurement (GMV computes today).
+   *
+   *      NO DASHED BORDER, and that is the whole distinction. A dashed card says "nothing
+   *      here is a reading"; on this card something is, and dashing it would tell the
+   *      operator to distrust the one figure they can trust. What it borrows from rule 11
+   *      is the `Data order` tag — the status belongs in the eyebrow where the reader
+   *      already looks — and what it adds is that the headline slot renders `EmptyValue`
+   *      (—, the page's existing marker for a figure that is genuinely absent) rather
+   *      than a sample number, because a sample in the big slot IS the misreading.
+   *
+   *      Why not promote GMV into the empty slot for v1: a gross figure in the headline
+   *      slot reads as money kept, which is the exact misreading the net-first reversal
+   *      was made to remove. The slot stays empty until the data exists. */
+  .kpi-card--planned-half .kpi-card__value { color: var(--text-muted); }
+  /* `EmptyValue` carries `.text-muted`, which is 13px — right in a table cell, wrong in a
+     slot sized for a four-figure amount, where a 13px dash reads as a missing ELEMENT
+     rather than a missing NUMBER. The dash inherits the figure's size so the slot keeps
+     its height and says what it is: a number belongs here and there isn't one yet. */
+  .kpi-card--planned-half .kpi-card__value .text-muted { font-size: inherit; }
   .kpi-card__planned-tag {
     flex-shrink: 0;
     font-family: var(--font-mono); font-size: 0.625rem; font-weight: 600;
@@ -2198,6 +2224,11 @@
         <section class="status-strip status-strip--analytics" id="kpi-strip"></section>
       </div>
 
+      <div class="app-frame">
+        <span class="device-tag">The same card as #1990 ships it &mdash; net sales has no data yet</span>
+        <div id="kpi-card-v1"></div>
+      </div>
+
       <div class="gap-legend gap-legend--card">
         <span class="build-field__label">Build</span>
         <div class="build-field__body">
@@ -2223,7 +2254,12 @@
             <li><b>Revenue reads net-first</b> (reversed 14 Aug): net sales is the headline, GMV the
               qualifier, and the &#9432; states them in that order. GMV is the half that renders, so this is
               the one card whose headline is blocked &mdash; ship it showing the qualifier alone rather than
-              promoting GMV back into the big slot, where it would read as money kept.</li>
+              promoting GMV back into the big slot, where it would read as money kept. <b>That state is
+              drawn, not just described:</b> the second frame above is it. Headline is
+              <code>EmptyValue</code> at the figure&rsquo;s own size, no delta, and the <code>Data order</code>
+              tag takes the sparkline slot &mdash; but the border stays <b>solid</b> and the qualifier renders
+              normally, because GMV is a real measurement (new rule 11b, distinct from rule 11&rsquo;s dashed
+              card where BOTH figures are unbuilt).</li>
             <li>Sparkline (<code>shared/ui/sparkline.tsx</code>) only where a per-channel series exists. On
               Revenue that series is GMV&rsquo;s, so the label says <i>GMV trend</i> &mdash; it now describes
               the qualifier, not the figure above it. Net sales has no daily series at all.</li>
@@ -3013,6 +3049,11 @@
             <tr><td>KPI delta</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 9</span></td><td><code>.kpi-card__delta</code> &mdash; the period-over-period change, on <b>its own line</b> under the figure and its caption. <b>Not in the label row</b>, where the sparkline lives: a trend line and a delta answer the same question and side by side read as one compound claim. The own line carries the visible basis (<code>.kpi-card__delta-basis</code>, &bdquo;vs previous period&ldquo;). Two rules that must not collapse into one: the <b>arrow follows the number</b> but the <b>colour follows the meaning</b> (hence <code>--good</code>/<code>--bad</code>, not <code>--up</code>/<code>--down</code> &mdash; a falling return rate is a down arrow in green), and a <b>rate moves in points, not percent</b>. Glyph is <code>aria-hidden</code> with a full sentence in <code>.sr-only</code>. Component change: <code>KpiCard</code> gains <code>delta</code>. <b>Scope addition</b> &mdash; see the findings table.</td></tr>
             <tr><td>Per-card definition</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 10</span></td><td><code>.infotip</code> + <code>.infotip-popover</code> + <code>.infotip-def*</code> &mdash; one <code>&#9432;</code> per card, in the <b>eyebrow</b>, opened by <b>click</b>, covering <b>both</b> figures (on a caption it would imply the other needs no definition). This is the one marker built rather than stood in with <code>title</code>, because <code>title</code> shows nothing on touch and the operator who does not know what GMV counts is the one who must not be told nothing. Panel is <b>structured, not prose</b>: term, definition, formula in <code>&lt;code&gt;</code>, caveat. Behaviour: one open at a time, click-outside closes, <b>Escape closes and returns focus to the trigger</b>, <code>aria-expanded</code> moves with the panel. Radix <code>Popover</code>, <b>never</b> <code>Tooltip</code>, and let it do <b>collision detection</b> &mdash; this file hard-codes <code>.infotip--end</code> because a static file cannot measure. Component change: <code>KpiCard</code> gains an <code>info</code> slot.</td></tr>
             <tr><td>Card with no readable figure</td><td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 11</span></td><td><code>.kpi-card--planned</code> + <code>.kpi-card__planned-tag</code> &mdash; for the two cards where <b>both</b> figures are blocked (Returns &amp; refunds, Cancellations). <b>The figures stay drawn:</b> an unavailable figure a seller needs is a requirement, not an omission, and a requirement drawn to scale is what a backend issue can be written against. The card declares its status instead &mdash; a <b>dashed</b> border (the one treatment nothing else uses, so it cannot read as a severity tone), a <code>Data order</code> tag in the eyebrow slot the sparkline would have taken, and muted figures. Every &dagger; resolves to a row in <b>frame&nbsp;14</b>, generated from the same strings, so a card cannot claim a gap the backlog does not list. Component change: <code>KpiCard</code> gains a <code>planned</code> flag.</td></tr>
+            <tr>
+              <td>Card whose <b>headline alone</b> is unbuilt</td>
+              <td><span class="status-badge status-badge--review"><span class="status-badge__dot"></span>New rule 11b &mdash; added 14 Aug</span></td>
+              <td><code>.kpi-card--planned-half</code> &mdash; the case rule 11 does not cover, created by the net-first reversal: on <b>Revenue</b> the headline (net sales) cannot be produced while the qualifier under it (GMV) is a real measurement today. <b>This is the shape #1990 ships</b>, and it is drawn in frame 03 under the target strip rather than left as a sentence for each developer to render from imagination. Headline is <code>EmptyValue</code> raised to the figure&rsquo;s own font size &mdash; at 13px a dash reads as a missing element rather than a missing number; no delta (a delta of an uncomputable figure is uncomputable twice, and all six are blocked on <code>placedAt</code> anyway); the <code>Data order</code> tag takes the sparkline slot even though GMV <i>has</i> a series, because status outranks trend on a card whose top half is a requirement. <b>No dashed border</b>, and that is the whole difference from rule 11: dashing it would tell the operator to distrust the one figure they can trust. Component change: <code>planned</code> becomes <code>true | 'half'</code> rather than a boolean.</td>
+            </tr>
             <tr><td>Right-aligned table cells</td><td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Was broken</span></td><td><code>.data-table__cell--right</code> (specificity 0,1,0) loses to <code>.data-table th, .data-table td</code> (0,1,1) whatever the source order, so every money and count column here rendered left-aligned. Fixed in place with a type selector on the helper. <b>The same bug is live in the product:</b> <code>index.css:2770</code> declares the bare class and <code>index.css:2797</code> sets <code>text-align: left</code> on <code>th, td</code> &mdash; orders, products, sync jobs, connection diagnostics, bulk batch progress and the dashboard all render left today. Same one-line fix, but <b>its own issue, not #1990</b>: it predates this epic and touches six pages.</td></tr>
             <tr><td><code>pages/analytics/</code></td><td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Does not exist</span></td><td>Every path in this file&rsquo;s captions is <b>proposed</b>, not existing. The route, the folder and the nav entry are all #1986.</td></tr>
           </tbody>
@@ -3773,14 +3814,21 @@
      is spoken for by the sparkline, and two claims about change side by side read as one. */
   function kpiCard(o) {
     var quals = o.qualifiers || (o.qualifier ? [o.qualifier] : []);
+    /* `planned` has two values, not one boolean, because the strip now has two kinds of
+       unbuilt card: `true` = both figures are a data order (rule 11, dashed), `'half'` =
+       only the headline is (rule 11b, NOT dashed, because the qualifier under it is a real
+       measurement). Both take the `Data order` tag; only the first takes the border. */
+    var halfPlanned = o.planned === 'half';
     return '<div class="kpi-card' + (o.tone ? ' kpi-card--' + o.tone : '') +
-        (o.planned ? ' kpi-card--planned' : '') + '">' +
+        (o.planned ? (halfPlanned ? ' kpi-card--planned-half' : ' kpi-card--planned') : '') + '">' +
       '<div class="kpi-card__label">' +
         '<span class="kpi-card__label-text">' + esc(o.label) +
           (o.info || '') +
         '</span>' +
-        /* The tag takes the slot the sparkline would have used, and the two can never
-           collide: a card with no readable figure has no series to draw either. */
+        /* The tag takes the slot the sparkline would have used. On a fully planned card the
+           two can never collide — a card with no readable figure has no series to draw. On a
+           half-planned one they COULD (GMV has a series), and the tag wins: a reader deciding
+           whether to trust this card needs its status before it needs its trend. */
         (o.planned
           ? '<span class="kpi-card__planned-tag">Data order</span>'
           : (o.trend ? sparkline(o.trend, o.sparkTone || 'neutral', 72, 20, o.sparkLabel) : '')) +
@@ -4171,6 +4219,28 @@
       '</div>';
   }
 
+  /* The Revenue card's two definitions, hoisted out of the card because TWO cards render
+     them now: the strip's own, and the v1 shape below it. Pasted verbatim from
+     docs/specs/metrics-analytics-dashboard.md and NOT to be paraphrased here — the repo
+     rule is that the spec and every pasted copy stay in agreement, and one copy is easier
+     to keep honest than two. Order follows the card: headline first. */
+  var REVENUE_DEFINITIONS = [
+    { term: 'Net sales',
+      text: 'The value of product sales after discounts and after customer refunds, ' +
+            'excluding VAT.',
+      formula: 'Net order value (after discounts, excluding VAT) − Refunded value',
+      caveat: 'Net of VAT, unlike GMV below — the two figures on this card do not sit ' +
+              'on the same tax basis. Shipping refunds, marketplace fees and operating ' +
+              'costs are not deducted.' },
+    { term: 'GMV (Gross Merchandise Value)',
+      text: 'The total value of non-cancelled product items in orders placed during ' +
+            'the selected period, at gross selling prices including VAT, before ' +
+            'line-item discounts.',
+      caveat: 'Fully cancelled orders and cancelled items from partially cancelled ' +
+              'orders are excluded. Returned and refunded items remain included. ' +
+              'Shipping is excluded.' }
+  ];
+
   /* One strip, two shapes. `opts.converted` is the whole switch: absent, the page is
      the single-currency instance most operators run; present, the seller also takes
      euros and every money figure is stated in the reporting currency. Same six cards
@@ -4200,22 +4270,7 @@
        shape rather than leaving the dev to discover it. */
     cards.push(kpiCard({
       label: 'Revenue',
-      info: infotip('About the Revenue figures', definitions([
-        { term: 'Net sales',
-          text: 'The value of product sales after discounts and after customer refunds, ' +
-                'excluding VAT.',
-          formula: 'Net order value (after discounts, excluding VAT) − Refunded value',
-          caveat: 'Net of VAT, unlike GMV below — the two figures on this card do not sit ' +
-                  'on the same tax basis. Shipping refunds, marketplace fees and operating ' +
-                  'costs are not deducted.' },
-        { term: 'GMV (Gross Merchandise Value)',
-          text: 'The total value of non-cancelled product items in orders placed during ' +
-                'the selected period, at gross selling prices including VAT, before ' +
-                'line-item discounts.',
-          caveat: 'Fully cancelled orders and cancelled items from partially cancelled ' +
-                  'orders are excluded. Returned and refunded items remain included. ' +
-                  'Shipping is excluded.' }
-      ])),
+      info: infotip('About the Revenue figures', definitions(REVENUE_DEFINITIONS)),
       metric: 'Net sales' +
         blocked(NET_SALES_NEED, 'Net sales',
                 'Falls out of Refunded value: net order value − Refunded value. No work of ' +
@@ -4402,6 +4457,37 @@
     var el = document.getElementById(id);
     if (el) el.innerHTML = kpiStrip();
   });
+
+  /* THE REVENUE CARD AS #1990 ACTUALLY SHIPS IT (added 14 Aug). Every strip above draws
+     the target state, with a sample number in each slot; this draws the ONE state that
+     exists on day one, and it is here because "the headline is blocked" was a sentence in
+     three build cards and a shape in none of them. A sentence a developer has to render
+     from imagination gets rendered differently by each developer — most likely by putting
+     GMV in the big slot, which is precisely what the reversal removed.
+
+     Three deliberate differences from the card above, all consequences of the same gap:
+       · the headline is `EmptyValue` (—), the page's own marker for a figure that is
+         genuinely absent, not a zero and not a sample;
+       · there is no delta, because a delta of an uncomputable figure is uncomputable
+         twice over (and every delta on this strip is blocked on `placedAt` anyway);
+       · the sparkline gives its slot to the `Data order` tag, though GMV does have a
+         series — status outranks trend on a card whose top half is a requirement.
+     The qualifier renders normally and the border stays solid: GMV is a real measurement
+     and dashing the card would tell the operator to distrust the one figure they can
+     trust. That is rule 11b, and the reason it is not rule 11. */
+  var v1El = document.getElementById('kpi-card-v1');
+  if (v1El) {
+    v1El.innerHTML = '<section class="status-strip status-strip--analytics">' +
+      kpiCard({
+        label: 'Revenue',
+        info: infotip('About the Revenue figures', definitions(REVENUE_DEFINITIONS)),
+        planned: 'half',
+        metric: 'Net sales' + blocked(NET_SALES_NEED, 'Net sales'),
+        value: emptyValue('Not computable until refunds are captured'),
+        qualifier: { label: 'GMV', value: money(TOTALS.revenue, REPORTING_CURRENCY) }
+      }) +
+    '</section>';
+  }
 
   /* The converted strip carries its own footnote and the table behind it. Rendered as
      one unit rather than two, because the note is only ever true of the strip it sits
