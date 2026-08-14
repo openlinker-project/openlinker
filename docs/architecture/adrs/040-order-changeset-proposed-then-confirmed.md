@@ -84,5 +84,5 @@ delivered by the rules-engine purity constraint, independently.
 
 - Related issues: #1032, #1947
 - Related ADRs: [ADR-039](./039-order-lifecycle-derived-from-fact-ledger.md), [ADR-014](./014-source-authoritative-order-pricing.md), [ADR-017](./017-cross-origin-order-reingestion-guard.md)
-- Plan: [implementation-plan-1032-oms-module](../../plans/implementation-plan-1032-oms-module.md)
+- Plan: [ANALYSIS-1032-oms-module](../../plans/analysis/ANALYSIS-1032-oms-module.md)
 - Grain decision: [DECISION-oms-fulfilment-grain](../../plans/analysis/DECISION-oms-fulfilment-grain.md)

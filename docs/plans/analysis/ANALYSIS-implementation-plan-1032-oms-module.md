@@ -2,7 +2,7 @@
 
 **Gate:** `/pre-implement` (read-only)
 **Date:** 2026-08-13
-**Target:** [`docs/plans/implementation-plan-1032-oms-module.md`](../implementation-plan-1032-oms-module.md), [ADR-039](../../architecture/adrs/039-order-lifecycle-derived-from-fact-ledger.md), [ADR-040](../../architecture/adrs/040-order-changeset-proposed-then-confirmed.md), PR #2066
+**Target:** [`docs/plans/analysis/ANALYSIS-1032-oms-module.md`](./ANALYSIS-1032-oms-module.md), [ADR-039](../../architecture/adrs/039-order-lifecycle-derived-from-fact-ledger.md), [ADR-040](../../architecture/adrs/040-order-changeset-proposed-then-confirmed.md), PR #2066
 
 ## Verdict: **NEEDS-REVISION** → *addressed 2026-08-13*
 

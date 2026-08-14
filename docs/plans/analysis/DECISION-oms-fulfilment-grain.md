@@ -2,7 +2,7 @@
 
 **Question:** does OpenLinker separate the *unit of purchase* from the *unit of work*, and if so, at what cost?
 **Status:** **ADOPTED** as D17 in
-[`implementation-plan-1032-oms-module.md`](../implementation-plan-1032-oms-module.md) — Wave 2
+[`ANALYSIS-1032-oms-module.md`](./ANALYSIS-1032-oms-module.md) — Wave 2
 items 13–16, with `shipment_lines` keyed `(shipmentId, orderId, lineId)`, the PrestaShop mapper fix
 as a prerequisite, the `fulfillment-rollup.ts` precedence fix in the same change, and backfill written
 as ledger events.

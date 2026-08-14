@@ -3,7 +3,7 @@
 **Status:** **Gate D REVERSED to BUILD (2026-08-13)** — see § Gate D amendment at the foot of this
 document. The DEFER record below is retained verbatim as the reasoning that held until then; do not
 read the banner history as current. Plan of record:
-[`implementation-plan-1032-oms-module.md`](../plans/implementation-plan-1032-oms-module.md).
+[`ANALYSIS-1032-oms-module.md`](../plans/analysis/ANALYSIS-1032-oms-module.md).
 
 **Superseded status line (2026-06-18):** phase D complete — **Gate D = DEFER** (2026-06-18). North-star documented; heavy build deferred pending the un-defer trigger (§ Gate D). No heavy implementation issues spawned. A small standalone subset (enrich order-health with shipment + SLA-overdue) is tracked separately, not as a #1032 child. **Rechecked 2026-06-22 (external demand signal): DEFER held — fires no un-defer trigger; a narrow, base-serving Posture-A status/cancellation round-trip was carved out as a separate refinement (#1157), which is a *foundation for*, not an un-deferral of, this bet.**
 **Parent issue:** [#1032](https://github.com/openlinker-project/openlinker/issues/1032)
@@ -499,7 +499,7 @@ Two senior-seat reviews (Head of Engineering/CTO + CPO) read the full spec. **Bo
 ## Gate D amendment (2026-08-13) — DEFER reversed to BUILD
 
 **Decision: BUILD, scoped as a full OMS module.** Plan of record:
-[`implementation-plan-1032-oms-module.md`](../plans/implementation-plan-1032-oms-module.md).
+[`ANALYSIS-1032-oms-module.md`](../plans/analysis/ANALYSIS-1032-oms-module.md).
 
 ### Demand basis — stated honestly
 

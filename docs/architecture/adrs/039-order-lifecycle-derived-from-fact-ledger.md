@@ -93,4 +93,4 @@ lifecycle axes and are not folded in.
 
 - Related issues: #1032, #1916, #1947
 - Related ADRs: [ADR-012](./012-branch-1-fulfillment-modeling.md), [ADR-027](./027-order-status-writeback-capability-and-relay.md), [ADR-040](./040-order-changeset-proposed-then-confirmed.md)
-- Plan: [implementation-plan-1032-oms-module](../../plans/implementation-plan-1032-oms-module.md)
+- Plan: [ANALYSIS-1032-oms-module](../../plans/analysis/ANALYSIS-1032-oms-module.md)

@@ -1,16 +1,20 @@
-# Implementation Plan — #1032 OMS module
+# Research Record — #1032 OMS module (superseded programme)
 
-**Parent issue:** #1032 (reopened 2026-08-13)
-**Spec:** [`docs/specs/product-spec-1032-order-status-state-machine.md`](../specs/product-spec-1032-order-status-state-machine.md)
-**Readiness gate:** [`analysis/ANALYSIS-implementation-plan-1032-oms-module.md`](./analysis/ANALYSIS-implementation-plan-1032-oms-module.md)
+**Parent issue:** #1032
+**Nature of this document:** a **research and analysis record**, not a plan of record. It was
+authored as a six-wave implementation plan, then stress-tested and largely cut. It lives under
+`analysis/` so nobody mistakes it for scheduled work. The work that survived is filed as issues —
+see § 0.
+**Spec:** [`docs/specs/product-spec-1032-order-status-state-machine.md`](../../specs/product-spec-1032-order-status-state-machine.md)
+**Readiness gate:** [`ANALYSIS-implementation-plan-1032-oms-module.md`](./ANALYSIS-implementation-plan-1032-oms-module.md)
 **Status:** **NOT READY TO IMPLEMENT AS A SIX-WAVE PROGRAMME.** Eight adversarial stress tests were
 run against this plan — one per wave plus three against the cross-cutting ADRs. **All eight found
 disqualifying defects.** What survives is in § 0. The rest is retained as reference, clearly marked,
 because the research is sound even where the design is not.
 
 > Supersedes the scoping in #2064 (closed as duplicate of #1032).
-> [ADR-040](../architecture/adrs/040-order-changeset-proposed-then-confirmed.md) is Accepted.
-> **[ADR-039](../architecture/adrs/039-order-lifecycle-derived-from-fact-ledger.md) is reverted to
+> [ADR-040](../../architecture/adrs/040-order-changeset-proposed-then-confirmed.md) is Accepted.
+> **[ADR-039](../../architecture/adrs/039-order-lifecycle-derived-from-fact-ledger.md) is reverted to
 > `Proposed`** pending the four preconditions in § 0.
 
 ---
@@ -145,7 +149,7 @@ mechanics (bins, putaway, cycle counts, slotting), customer master beyond projec
 | D2a | Counters are a projection over an append-only event ledger, **never free-floating** | Bagisto ships these counters without a ledger and has documented drift |
 | D3 | **Do not embed Medusa** — steal the model | spike: boots standalone, but 605 packages, a second ORM, a second DI container, and an unresolved Enterprise-Edition carve-out on the mandatory `framework`/`utils`/`types` tier |
 | ~~D4~~ | ~~Rules engine = hand-rolled versioned condition AST~~ — **withdrawn.** Wave 3 ships SLA escalation as a **named core feature**; the engine is deferred behind a falsifiable premise | OL emits **three** event streams (one with no consumer); after Wave 2 the usable trigger surface is one stream with ≤6 cause types. Of BaseLinker's ten trigger categories OL can serve **one**. `AutoIssueTriggerService` already does hard-coded orchestration in ~150 lines — see § 5 Wave 3 |
-| ~~D5~~ | ~~Dry-run is the differentiator, and nearly free~~ — **withdrawn.** | it was justified as "preview and apply are one replay function" — but [ADR-040](../architecture/adrs/040-order-changeset-proposed-then-confirmed.md) **deferred the replay function**. The claim named a component that no longer exists, and a realistic condition needs 6–8 reads to assemble, so it is not pure either |
+| ~~D5~~ | ~~Dry-run is the differentiator, and nearly free~~ — **withdrawn.** | it was justified as "preview and apply are one replay function" — but [ADR-040](../../architecture/adrs/040-order-changeset-proposed-then-confirmed.md) **deferred the replay function**. The claim named a component that no longer exists, and a realistic condition needs 6–8 reads to assemble, so it is not pure either |
 | D6 | Returns is a **child aggregate**, not an axis | axis rows are one per order×axis; returns are N per order |
 | D7 ~~*(Wave 5 cut; retained as reference)*~~ | Reservations get their **own table**; never overload `inventory_items.reservedQuantity` | that column is a master mirror, rewritten on every sync |
 | D8 | Invoice issuance is an **observed** event keyed on the KSeF-returned date | art. 106na — the legal issue date is assigned at transmission |
@@ -157,8 +161,8 @@ mechanics (bins, putaway, cycle counts, slotting), customer master beyond projec
 | **D14** | **Shipping writes a fact to the ledger, not a column.** `OrderFulfillmentProjectionService` routes through `OrderAxisLedgerService`, which owns `canonicalState` recomputation | otherwise "the sole coordinating writer" is false on day one: `fulfillmentState` is written cross-context by an error-swallowing projection |
 | **D15** | **Transition identity is `(internalOrderId, axis, causeType, causeId)` — all NOT NULL** | the `(…, originConnectionId, sourceEventId)` form leaves both NULL for every OL-origin fact, and Postgres NULLs don't conflict in a unique index, so pack / SLA / operator facts would dedup on nothing |
 | **D16** | **Relay obligations live in their own table**, one row per `(transition, target)`; the transition row stays a pure fact | the relay fans out to N participants with per-target outcomes; one `relayState` enum cannot say "2 of 3 done, one unsupported, one failed" — the exact error D10 and § 1 forbid |
-| **D17** | **Line attribution on shipments** (`shipment_lines`), no fulfilment-unit aggregate | [DECISION-oms-fulfilment-grain](./analysis/DECISION-oms-fulfilment-grain.md) — makes `shipped_quantity` derivable without re-graining dispatch, locks or FE |
-| **D18** | **Pack policy is a validated per-connection config pair** (`verificationMode` + `dispatchGate`); stages stay global. The named-`OrderFlow` entity is **deferred** to the Wave-2 gate | a stress test disproved the entity's own containment claim (`packGrain` cannot be a resolved value), found its guard allowlist duplicated its axes, found no versioning, and found `orderType` has zero occurrences in `libs/core/src` — see [ADR-041](../architecture/adrs/041-order-flows-as-named-operator-process-configuration.md) |
+| **D17** | **Line attribution on shipments** (`shipment_lines`), no fulfilment-unit aggregate | [DECISION-oms-fulfilment-grain](./DECISION-oms-fulfilment-grain.md) — makes `shipped_quantity` derivable without re-graining dispatch, locks or FE |
+| **D18** | **Pack policy is a validated per-connection config pair** (`verificationMode` + `dispatchGate`); stages stay global. The named-`OrderFlow` entity is **deferred** to the Wave-2 gate | a stress test disproved the entity's own containment claim (`packGrain` cannot be a resolved value), found its guard allowlist duplicated its axes, found no versioning, and found `orderType` has zero occurrences in `libs/core/src` — see [ADR-041](../../architecture/adrs/041-order-flows-as-named-operator-process-configuration.md) |
 
 ---
 
@@ -189,7 +193,7 @@ engine; the rules engine was then cut (§ 5 Wave 3), and the move had already br
 "preview and apply are one replay function" named the replay function this ADR defers. Recorded so
 the differentiator is not re-asserted a third time without a design behind it.
 
-See [ADR-040](../architecture/adrs/040-order-changeset-proposed-then-confirmed.md).
+See [ADR-040](../../architecture/adrs/040-order-changeset-proposed-then-confirmed.md).
 
 ---
 
@@ -383,7 +387,7 @@ consolidation of the three claims, not for the bug.
 > most two. **2c (pack station)** is blocked on the § 6D ADR and a security review.
 
 
-Adopts **option C** from [DECISION-oms-fulfilment-grain](./analysis/DECISION-oms-fulfilment-grain.md) (D17):
+Adopts **option C** from [DECISION-oms-fulfilment-grain](./DECISION-oms-fulfilment-grain.md) (D17):
 
 13. **`shipment_lines`** — `(shipmentId, orderId, lineId, quantity)`, unique on the triple. The
     `orderId` is deliberate: it is what keeps *consolidated shipping* (one parcel covering lines from
@@ -443,7 +447,7 @@ That is the whole of Wave 3's novel content: **one cron and one notifier.**
 
 #### Deferred behind a falsifiable premise
 
-Mirroring [ADR-041](../architecture/adrs/041-order-flows-as-named-operator-process-configuration.md):
+Mirroring [ADR-041](../../architecture/adrs/041-order-flows-as-named-operator-process-configuration.md):
 **revisit when a second customer requests a third automation that config cannot express.** Until then
 it does not exist.
 
@@ -1130,7 +1134,7 @@ gap today, independent of this plan, and it is tracked separately.
 
 ## 6K. Pack policy — adapting to different warehouse processes
 
-**D18 / [ADR-041](../architecture/adrs/041-order-flows-as-named-operator-process-configuration.md).**
+**D18 / [ADR-041](../../architecture/adrs/041-order-flows-as-named-operator-process-configuration.md).**
 Different clients work differently. **A stress test rejected the named-`OrderFlow` entity** that
 originally sat here; what ships is the two axes with a real requirement, and stages stay **global**.
 
@@ -1360,9 +1364,9 @@ satisfy is falsifiability costume, not a gate.
 
 | # | Subject | State |
 |---|---|---|
-| [ADR-039](../architecture/adrs/039-order-lifecycle-derived-from-fact-ledger.md) | Canonical lifecycle as a derived projection over a fact ledger | Proposed |
-| [ADR-040](../architecture/adrs/040-order-changeset-proposed-then-confirmed.md) | Proposal record for remote-authority mutations (composition machinery deferred) | Accepted |
-| [ADR-041](../architecture/adrs/041-order-flows-as-named-operator-process-configuration.md) | Pack policy as a validated per-connection config pair; flow entity deferred | Proposed |
+| [ADR-039](../../architecture/adrs/039-order-lifecycle-derived-from-fact-ledger.md) | Canonical lifecycle as a derived projection over a fact ledger | Proposed |
+| [ADR-040](../../architecture/adrs/040-order-changeset-proposed-then-confirmed.md) | Proposal record for remote-authority mutations (composition machinery deferred) | Accepted |
+| [ADR-041](../../architecture/adrs/041-order-flows-as-named-operator-process-configuration.md) | Pack policy as a validated per-connection config pair; flow entity deferred | Proposed |
 | — | `order_axis_transitions` as a third dedup layer (vs ADR-005, ADR-007) | to write |
 | — | Ledger-as-outbox vs fire-after-commit | to write |
 | — | ~~`OrderAuthorityResolver`~~ | **not written — closed by scope** |
@@ -1403,7 +1407,7 @@ orders and which no surveyed platform offers.
 **Also relevant to the external-OMS posture:** integrating an external OMS needs *no new port*. It is
 an ordinary fulfilling destination — `OrderProcessorManagerPort.createOrder` +
 `FulfillmentStatusReader` + `OrderFulfillmentUpdater` / `OrderStatusWriteback`, routed `omp_fulfilled`
-per [ADR-012](../architecture/adrs/012-branch-1-fulfillment-modeling.md) — which is exactly what
+per [ADR-012](../../architecture/adrs/012-branch-1-fulfillment-modeling.md) — which is exactly what
 PrestaShop and WooCommerce already do. Ingesting *from* one is the mirror (`OrderSourcePort`). The
 market norm is that a product picks one posture (ChannelEngine = connector with a fixed state
 machine; Linnworks = lifecycle owner); OL supporting both is unusual and should be treated as a
