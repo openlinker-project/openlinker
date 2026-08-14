@@ -17556,7 +17556,10 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   min-height: 44px;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  /* Matches `.bulk-editor__catpick-item`, the tree row this list SWAPS WITH in
+     the same modal slot — a differing radius would visibly change the corners
+     mid-interaction as the operator types. */
+  border-radius: var(--radius-sm);
   background: var(--bg-surface);
 }
 

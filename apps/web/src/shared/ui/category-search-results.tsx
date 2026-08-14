@@ -26,7 +26,7 @@
  *
  * @module apps/web/src/shared/ui
  */
-import type { ReactElement } from 'react';
+import { forwardRef } from 'react';
 import { Button } from './button';
 import { LoadingState, ErrorState, EmptyState } from './feedback-state';
 
@@ -68,128 +68,140 @@ export interface CategorySearchResultsProps {
   /** Echoed in the no-matches copy so the operator sees what was searched. */
   query: string;
   disabled?: boolean;
+  /** Merged onto the list root, never replacing the base class. */
+  className?: string;
 }
 
-export function CategorySearchResults({
-  hits,
-  isLoading,
-  error,
-  onRetry,
-  onSelect,
-  canSelect,
-  selectedId = null,
-  emptyReason,
-  query,
-  disabled = false,
-}: CategorySearchResultsProps): ReactElement {
-  if (isLoading) {
+export const CategorySearchResults = forwardRef<HTMLUListElement, CategorySearchResultsProps>(
+  function CategorySearchResults(
+    {
+      hits,
+      isLoading,
+      error,
+      onRetry,
+      onSelect,
+      canSelect,
+      selectedId = null,
+      emptyReason,
+      query,
+      disabled = false,
+      className = '',
+    },
+    ref
+  ) {
+    if (isLoading) {
+      return (
+        <LoadingState
+          liveRegion="off"
+          title="Searching categories"
+          message="Searching the whole tree…"
+        />
+      );
+    }
+
+    if (error) {
+      return (
+        <ErrorState
+          title="Unable to search categories"
+          message={error.message}
+          action={<Button onClick={onRetry}>Retry</Button>}
+        />
+      );
+    }
+
+    const results = hits ?? [];
+
+    if (results.length === 0) {
+      return emptyReason === 'not-synced' ? (
+        <EmptyState
+          liveRegion="off"
+          title="No categories synced yet"
+          message="This destination's category tree has not been synced. Search will work once the first sync completes."
+        />
+      ) : (
+        <EmptyState
+          liveRegion="off"
+          title="No matching categories"
+          message={`Nothing in this tree matches "${query.trim()}". Try a shorter or differently-spelled term.`}
+        />
+      );
+    }
+
     return (
-      <LoadingState
-        liveRegion="off"
-        title="Searching categories"
-        message="Searching the whole tree…"
-      />
-    );
-  }
+      <>
+        {/* Results arrive asynchronously as the operator types and replace the
+            tree in place, so without this a screen-reader user gets no signal
+            that anything happened. The drill-down path does not need it — there
+            the user initiated a navigation and focus moves — which is why the
+            feedback states above keep `liveRegion="off"`. */}
+        <p className="sr-only" role="status" aria-live="polite">
+          {`${results.length} ${results.length === 1 ? 'category' : 'categories'} found`}
+        </p>
+        <ul
+          ref={ref}
+          className={['category-search-results', className].filter(Boolean).join(' ')}
+          role="list"
+        >
+          {results.map((hit) => {
+            const selectable = canSelect(hit);
+            const isCurrent = hit.id === selectedId;
+            // Ancestors only — the hit's own name is already the row heading, so
+            // repeating it in the trail below would read as a duplicate.
+            const ancestors = hit.path.slice(0, -1);
 
-  if (error) {
-    return (
-      <ErrorState
-        title="Unable to search categories"
-        message={error.message}
-        action={<Button onClick={onRetry}>Retry</Button>}
-      />
-    );
-  }
+            return (
+              <li
+                key={hit.id}
+                className={[
+                  'category-search-results__item',
+                  isCurrent ? 'category-search-results__item--current' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              >
+                <span className="category-search-results__label">
+                  <b className="category-search-results__name">{hit.name}</b>
+                  {ancestors.length > 0 ? (
+                    <small className="category-search-results__path">
+                      {ancestors.map((node, i) => (
+                        <span key={node.id}>
+                          {i > 0 ? (
+                            <span className="category-search-results__sep" aria-hidden="true">
+                              {' › '}
+                            </span>
+                          ) : null}
+                          {node.name}
+                        </span>
+                      ))}
+                    </small>
+                  ) : (
+                    <small className="category-search-results__path">Top level</small>
+                  )}
+                </span>
 
-  const results = hits ?? [];
-
-  if (results.length === 0) {
-    return emptyReason === 'not-synced' ? (
-      <EmptyState
-        liveRegion="off"
-        title="No categories synced yet"
-        message="This destination's category tree has not been synced. Search will work once the first sync completes."
-      />
-    ) : (
-      <EmptyState
-        liveRegion="off"
-        title="No matching categories"
-        message={`Nothing in this tree matches "${query.trim()}". Try a shorter or differently-spelled term.`}
-      />
-    );
-  }
-
-  return (
-    <>
-      {/* Results arrive asynchronously as the operator types and replace the
-          tree in place, so without this a screen-reader user gets no signal
-          that anything happened. The drill-down path does not need it — there
-          the user initiated a navigation and focus moves — which is why the
-          feedback states above keep `liveRegion="off"`. */}
-      <p className="sr-only" role="status" aria-live="polite">
-        {`${results.length} ${results.length === 1 ? 'category' : 'categories'} found`}
-      </p>
-      <ul className="category-search-results" role="list">
-        {results.map((hit) => {
-          const selectable = canSelect(hit);
-          const isCurrent = hit.id === selectedId;
-          // Ancestors only — the hit's own name is already the row heading, so
-          // repeating it in the trail below would read as a duplicate.
-          const ancestors = hit.path.slice(0, -1);
-
-          return (
-            <li
-              key={hit.id}
-              className={[
-                'category-search-results__item',
-                isCurrent ? 'category-search-results__item--current' : '',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-            >
-              <span className="category-search-results__label">
-                <b className="category-search-results__name">{hit.name}</b>
-                {ancestors.length > 0 ? (
-                  <small className="category-search-results__path">
-                    {ancestors.map((node, i) => (
-                      <span key={node.id}>
-                        {i > 0 ? (
-                          <span className="category-search-results__sep" aria-hidden="true">
-                            {' › '}
-                          </span>
-                        ) : null}
-                        {node.name}
-                      </span>
-                    ))}
-                  </small>
+                {selectable ? (
+                  <Button
+                    tone={isCurrent ? 'secondary' : 'primary'}
+                    type="button"
+                    className="button--sm"
+                    aria-pressed={isCurrent}
+                    aria-label={`Select ${hit.name}`}
+                    disabled={disabled}
+                    onClick={() => onSelect(hit)}
+                  >
+                    {isCurrent ? 'Selected' : 'Select'}
+                  </Button>
                 ) : (
-                  <small className="category-search-results__path">Top level</small>
+                  // A non-leaf marketplace hit is a real match but not a valid
+                  // destination. Saying so beats hiding the row, which would look
+                  // like the search missed it.
+                  <span className="category-search-results__unselectable">Not selectable</span>
                 )}
-              </span>
-
-              {selectable ? (
-                <Button
-                  tone={isCurrent ? 'secondary' : 'primary'}
-                  type="button"
-                  className="button--sm"
-                  aria-pressed={isCurrent}
-                  aria-label={`Select ${hit.name}`}
-                  disabled={disabled}
-                  onClick={() => onSelect(hit)}
-                >
-                  {isCurrent ? 'Selected' : 'Select'}
-                </Button>
-              ) : (
-                // A non-leaf marketplace hit is a real match but not a valid
-                // destination. Saying so beats hiding the row, which would look
-                // like the search missed it.
-                <span className="category-search-results__unselectable">Not selectable</span>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </>
-  );
-}
+              </li>
+            );
+          })}
+        </ul>
+      </>
+    );
+  }
+);
