@@ -59,6 +59,7 @@ import type {
   InfaktCorrectiveInvoiceRequest,
   InfaktCorrectiveInvoiceServiceRequest,
   InfaktInvoice,
+  InfaktInvoiceRequest,
   InfaktKsefStatus,
   InfaktListResponse,
   InfaktSendToKsefResponse,
@@ -515,7 +516,11 @@ export class InfaktInvoicingAdapter
       unit_net_price: toGroszy(grossToNet(l.unitPriceGross, l.taxRate)),
     }));
 
-    const payload = {
+    // Typed against the WRITE shape, not the response shape (#2103 review): with
+    // `InfaktInvoiceRequest.currency` required, dropping the field from this
+    // literal again is a type error rather than a silently mis-denominated
+    // document. Mirrors the correction path's `InfaktCorrectiveInvoiceRequest`.
+    const payload: InfaktInvoiceRequest = {
       invoice: {
         kind,
         // ISO 4217 settlement currency (#2103). Stamped explicitly and

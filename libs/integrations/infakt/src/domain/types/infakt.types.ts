@@ -164,6 +164,60 @@ export interface InfaktListResponse<T> {
 }
 
 /**
+ * One service (line) row on a `POST invoices.json` request.
+ *
+ * Deliberately a WRITE-side type rather than a reuse of {@link
+ * InfaktInvoiceService}: the read shape carries provider-computed totals
+ * (`net_price`/`tax_price`/`gross_price`) and correction bookkeeping
+ * (`correction`/`group`) that must NOT be sent on a create.
+ *
+ * `unit_net_price` is a plain integer count of groszy, the same minor-unit
+ * convention as everywhere else in this API — see `toGroszy`.
+ */
+export interface InfaktInvoiceServiceRequest {
+  name: string;
+  tax_symbol: string;
+  quantity: number;
+  unit: string;
+  unit_net_price: number;
+}
+
+/**
+ * Body of a `POST invoices.json` request, under its `invoice` wrapper key.
+ *
+ * The REQUEST shape is kept distinct from the {@link InfaktInvoice} RESPONSE
+ * shape on purpose (#2103 review). Sharing one interface for both had a
+ * concrete cost: the whole of #2103 was `currency` being absent from the
+ * outbound request while nothing — no compiler, no test, no provider response —
+ * objected, because the request was an untyped inline object literal. Declaring
+ * `currency` REQUIRED here means a future refactor of that literal fails
+ * type-check instead of silently re-booking every document in the account's
+ * default currency. The correction path already had this protection via
+ * {@link InfaktCorrectiveInvoiceRequest}; this is the issue path catching up.
+ *
+ * Only fields OL actually sends are modelled — inFakt defaults or derives the
+ * rest (dates, totals, `vat_exchange_date_kind`, `exchange_rates_data`).
+ */
+export interface InfaktInvoiceRequest {
+  invoice: {
+    kind: InfaktInvoiceKind;
+    /**
+     * ISO 4217 settlement currency (#2103). REQUIRED, never optional: omitting
+     * the field is exactly what inFakt reads as "use the account default", and
+     * it answers 200/201 either way — see {@link InfaktInvoice.currency}.
+     */
+    currency: string;
+    payment_method: string;
+    /** Numeric client id — inFakt silently ignores `client_uuid` here. */
+    client_id: number;
+    services: InfaktInvoiceServiceRequest[];
+    bank_account?: string;
+    bank_name?: string;
+    external_id?: string;
+  };
+}
+
+/**
  * One "before"/"after" service row on a POST /async/corrective_invoices.json
  * request. Rows come in pairs per `group`: `correction: false` (original
  * values) then `correction: true` (corrected values).
