@@ -124,7 +124,13 @@ function makeInvoiceRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecor
   } as InvoiceRecord;
 }
 
-function recordWithContent(content: IssuedDocumentContent | null): InvoiceRecord {
+function recordWithContent(
+  content: IssuedDocumentContent | null,
+  // #2076: the issuance-time line snapshot. Defaults to null, which is the
+  // LEGACY shape (content written before the snapshot column existed) — so a
+  // caller that wants the modern both-present shape must say so explicitly.
+  issuedLineSnapshot: unknown = null,
+): InvoiceRecord {
   const issuedAt = new Date('2026-04-01T12:00:00Z');
   const r = new InvoiceRecordClass(
     'rec-inv-1',
@@ -147,6 +153,7 @@ function recordWithContent(content: IssuedDocumentContent | null): InvoiceRecord
     null, null, null, null, false,
     content,
   );
+  (r as unknown as { issuedLineSnapshot: unknown }).issuedLineSnapshot = issuedLineSnapshot;
   return r as unknown as InvoiceRecord;
 }
 
@@ -1400,6 +1407,31 @@ describe('InvoicingController', () => {
       expect(dto.totals).toEqual({ net: 100, tax: 23, gross: 123 });
       expect(dto.lines).toHaveLength(1);
       expect(dto.taxBreakdown).toEqual([{ rate: '23', net: 100, tax: 23, gross: 123 }]);
+    });
+
+    it('#2076: reports linesIndexedByCorrection=true when the line snapshot exists', async () => {
+      // The modern shape: content and snapshot were written from the same array
+      // in the same InvoiceService call, so a correction indexes exactly these
+      // lines. This is what authorises the FE to offer a line picker.
+      invoiceService.getInvoiceById.mockResolvedValue(
+        recordWithContent(SAMPLE_CONTENT, { buyer: {}, currency: 'PLN', lines: SAMPLE_CONTENT.lines }),
+      );
+
+      const dto = await controller.getContent('rec-inv-1');
+
+      expect(dto.linesIndexedByCorrection).toBe(true);
+    });
+
+    it('#2076: reports linesIndexedByCorrection=false for content with no line snapshot', async () => {
+      // An invoice issued between the documentContent and issuedLineSnapshot
+      // migrations. `issueCorrection` rebuilds the original document from the
+      // ORDER instead, so these lines are NOT the array it indexes — a picker
+      // built on them would silently mis-target a legally significant document.
+      invoiceService.getInvoiceById.mockResolvedValue(recordWithContent(SAMPLE_CONTENT));
+
+      const dto = await controller.getContent('rec-inv-1');
+
+      expect(dto.linesIndexedByCorrection).toBe(false);
     });
 
     it('should 404 when the invoice id is unknown', async () => {

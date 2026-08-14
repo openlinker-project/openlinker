@@ -6,7 +6,7 @@
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../../test/test-utils';
-import type { InvoiceRecord } from '../../../features/invoicing/api/invoicing.types';
+import type { InvoiceRecord } from '../../../features/invoicing';
 import { InfaktInvoiceDetailSection } from './infakt-invoice-detail-section';
 
 const infaktConnection = { ...sampleConnection, platformType: 'infakt' };

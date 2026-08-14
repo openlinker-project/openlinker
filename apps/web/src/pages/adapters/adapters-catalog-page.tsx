@@ -45,7 +45,6 @@ const COLUMNS: DataTableColumn<AdapterSummary>[] = [
   {
     id: 'version',
     header: 'Version',
-    align: 'right',
     cell: (adapter) => (
       <span className="mono-text">{adapter.version ?? '—'}</span>
     ),

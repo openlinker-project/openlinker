@@ -1082,6 +1082,71 @@ describe('ErliOfferManagerAdapter', () => {
       await expect(adapter.getOfferStatus('evil/../x')).rejects.toBeInstanceOf(ErliConfigException);
       expect(httpClient.get).not.toHaveBeenCalled();
     });
+
+    it('should carry commercial (price + availableQuantity) off the same fetched product (#2024)', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        status: 200,
+        // Erli represents money as an integer in grosze (minor units), PLN-only.
+        data: { status: 'active', price: 3490, stock: 16 },
+      });
+
+      const result = await adapter.getOfferStatus(VALID_ID);
+
+      expect(httpClient.get).toHaveBeenCalledTimes(1);
+      expect(result.commercial).toEqual({
+        price: { amount: '34.90', currency: 'PLN' },
+        availableQuantity: 16,
+      });
+    });
+
+    it('should report availableQuantity as null when stock is absent (#2024)', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        status: 200,
+        data: { status: 'active', price: 1000 },
+      });
+
+      const result = await adapter.getOfferStatus(VALID_ID);
+
+      expect(result.commercial).toEqual({
+        price: { amount: '10.00', currency: 'PLN' },
+        availableQuantity: null,
+      });
+    });
+
+    it('should report price as null but keep the quantity when the product carries no price (#2024)', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        status: 200,
+        data: { status: 'active', stock: 4 },
+      });
+
+      const result = await adapter.getOfferStatus(VALID_ID);
+
+      expect(result.commercial).toEqual({ price: null, availableQuantity: 4 });
+    });
+
+    it('should report price as null rather than 0.00 when the wire carries an explicit null (#2024)', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        status: 200,
+        // Untyped wire JSON: `price: null` would divide to a fabricated "0.00".
+        data: { status: 'active', price: null, stock: 2 },
+      });
+
+      const result = await adapter.getOfferStatus(VALID_ID);
+
+      expect(result.commercial).toEqual({ price: null, availableQuantity: 2 });
+    });
+
+    it('should report price as null rather than "NaN" for a non-finite price (#2024)', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        status: 200,
+        // Postgres `numeric` accepts 'NaN', so an unguarded toFixed would store it silently.
+        data: { status: 'active', price: Number.NaN, stock: 2 },
+      });
+
+      const result = await adapter.getOfferStatus(VALID_ID);
+
+      expect(result.commercial).toEqual({ price: null, availableQuantity: 2 });
+    });
   });
 
   describe('getOffer (#464 — OfferReader)', () => {

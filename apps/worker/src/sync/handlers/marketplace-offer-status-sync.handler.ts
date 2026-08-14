@@ -56,7 +56,7 @@ export class MarketplaceOfferStatusSyncHandler implements SyncJobHandler {
       });
 
       this.logger.log(
-        `marketplace.offer.statusSync completed (connection=${job.connectionId}): scanned=${result.scanned}, updated=${result.updated}, transitioned=${result.transitioned}, notFound=${result.notFound}, nextOffset=${result.nextOffset}/${result.total}`
+        `marketplace.offer.statusSync completed (connection=${job.connectionId}): scanned=${result.scanned}, updated=${result.updated}, transitioned=${result.transitioned}, notFound=${result.notFound}, commercialUpdated=${result.commercialUpdated}, commercialFailed=${result.commercialFailed}, nextOffset=${result.nextOffset}/${result.total}`
       );
 
       await this.cursorRepository.set(job.connectionId, cursorKey, String(result.nextOffset));

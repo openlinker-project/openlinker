@@ -128,5 +128,13 @@ One pointer per section, identical format every time.
 | [ADR-036](./036-cross-context-read-model-joins.md) | Cross-context read-model joins by table name (server-side sort/filter across contexts) | Accepted | 2026-07-17 |
 | [ADR-037](./037-destination-taxonomy-read-model.md) | Destination taxonomy as a synced read model in `listings` (retires the platform-named Allegro category cache) | Proposed | 2026-07-30 |
 | [ADR-038](./038-per-connection-outbound-rate-limiting.md) | Per-connection outbound rate limiting via a shared transport + ambient priority context | Proposed | 2026-07-30 |
+| [ADR-040](./040-order-time-fx-stamping-against-a-system-reporting-currency.md) | Order-time FX stamping against a system-wide reporting currency | Proposed | 2026-08-13 |
+| [ADR-041](./041-sales-document-routing-policy.md) | Sales-document routing policy - which document type and which connection an order gets | Proposed | 2026-08-13 |
+| [ADR-042](./042-fiscalization-capability.md) | Fiscalization as a capability distinct from invoicing | Proposed | 2026-08-13 |
+| [ADR-043](./043-order-lifecycle-derived-from-fact-ledger.md) | Order lifecycle as a derived projection over a per-axis fact ledger | Proposed | 2026-08-14 |
+| [ADR-044](./044-order-changeset-proposed-then-confirmed.md) | Order mutations as proposed-then-confirmed changes (proposal record; composition machinery deferred) | Proposed | 2026-08-14 |
+| [ADR-045](./045-pack-policy-per-connection-config.md) | Pack policy as a validated per-connection config pair (flow entity deferred) | Proposed — not scheduled | 2026-08-14 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
+
+> *Reserved numbers: **039** is claimed by #2014 (order analytics read model — already referenced by name from `docs/plans/implementation-plan-order-cancellation-record-state.md` on `main`), and **042** by #2056 (fiscalisation capability). **043 / 044 / 045** are no longer reserved — #2066 carries their rows above. **040** is no longer reserved — #2050 carries its row above. Each open PR adds its own row when it merges, so the gaps are deliberate, not lost numbers. A number stays reserved until its PR merges or closes; if one is abandoned, reuse the number rather than leaving it dark. Nothing currently guards ADR numbering mechanically — tracked as #2082.*

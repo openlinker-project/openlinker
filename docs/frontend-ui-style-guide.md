@@ -507,14 +507,16 @@ FE-002 expanded the primitive layer in `apps/web/src/shared/ui`. Every primitive
 
 ### Tables
 
-- `DataTable` — wraps `@tanstack/react-table` for sort/filter/column state. Dense rows (36 px default), row-click navigation, integrated empty state, status badge cells. Pairs with `@tanstack/react-virtual` when row count ≥ 500. `hideBelow` (per-column, breakpoint-gated hiding) and `expandable` (a per-row accordion detail panel, opened via a leading toggle, `#1620`) are two independent, composable strategies for keeping a wide table usable at narrower widths — `hideBelow` drops non-essential columns outright below a breakpoint, `expandable` keeps every column queryable but moves non-essential fields into a click-to-open detail row instead of hiding them. A table can use either, both, or neither; the orders list (`#1620`) uses `expandable` with no `hideBelow` columns, relying on the table's own horizontal scroll at tablet width for anything that doesn't fit. `expandable` is not currently supported together with `virtualize` on the same table — see the `DataTableExpandable` JSDoc in `data-table.tsx`.
+- `DataTable` — wraps `@tanstack/react-table` for sort/filter/column state. Dense rows (36 px default), row-click navigation, integrated empty state, status badge cells. `align` is **`'left' | 'right'` only** — the `.data-table__cell--center` rule was deleted in #2023 once it proved consumerless (its two former call sites, the dashboard *Attempts* and failed-orders *Items* counts, are numeric and moved to `'right'`), and `'center'` was dropped from the type with it: a member that type-checks, stamps a class nothing matches, and then renders *left* declares the opposite of what it does. Re-adding it means re-adding the CSS in the same change. `rowLinkDisplay` (`'inline'` default | `'block'`) controls how the first cell's navigation `<a>` participates in layout — pass `'block'` when that cell renders a tall composite, or the `:focus-visible` ring sizes itself from the anchor's own inline metrics and paints across the row's middle (see § Density & Row Heights, listings carve-out). Pairs with `@tanstack/react-virtual` when row count ≥ 500. `hideBelow` (per-column, breakpoint-gated hiding) and `expandable` (a per-row accordion detail panel, opened via a leading toggle, `#1620`) are two independent, composable strategies for keeping a wide table usable at narrower widths — `hideBelow` drops non-essential columns outright below a breakpoint, `expandable` keeps every column queryable but moves non-essential fields into a click-to-open detail row instead of hiding them. A table can use either, both, or neither; the orders list (`#1620`) uses `expandable` with no `hideBelow` columns, relying on the table's own horizontal scroll at tablet width for anything that doesn't fit. `expandable` is not currently supported together with `virtualize` on the same table — see the `DataTableExpandable` JSDoc in `data-table.tsx`.
 
 ### Status & data surfaces
 
 - `StatusBadge` — tones: `success` / `warning` / `error` / `info` / `review` / `neutral`. Dot + text; never color alone.
 - `MetricCard` — label + value + hint + optional sparkline. Severity-tinted via `--kpi--error` / `--kpi--warning` modifiers when the metric carries operational alarm.
 - `KeyValueList` — definition list with `120px auto` grid, monospace values where appropriate, inline copy-to-clipboard buttons on hover.
-- `EntityLabel` — **name-first resolver** that takes an internal UUID + entity type and renders human name + monospace ID + copy button. Consumes `useConnectionsQuery` / `useCustomersQuery` / etc. Used on every list row and detail heading where an internal UUID would otherwise leak.
+- `EntityLabel` — **name-first resolver** that takes an internal UUID + entity type and renders human name + monospace ID + copy button. Consumes `useConnectionsQuery` / `useCustomersQuery` / etc. Used on every list row and detail heading where an internal UUID would otherwise leak. `showCopy` (default `true`) suppresses the built-in copy button for a composite that pairs the label with its own copy affordance, so one id never grows two copy controls (#2027). The id-shortening rule is exported as `shortenId(id)` from `shared/ui` so such a composite reuses the exact algorithm instead of growing a second one.
+- `CopyableId` — monospace id + copy button. `copyLabel` / `copiedLabel` override the copy button's accessible name, which otherwise defaults to `Copy {id}` and is read out as a spelled-out UUID; a caller that can resolve the id to something human should pass it (`"Copy connection ID for Erli Demo"`, #1996).
+- `ConnectionCell` (`features/connections`) — the standard table cell for a connection reference: platform pill + resolved name + shortened, copyable id, driven by **one batched `useConnectionsQuery` for the whole page**. Never resolve a connection per row (#1996/#2027). Its `connection` prop distinguishes `undefined` (still loading) from `null` (resolved, not found) — coalesce with `?? null` at the call site or a per-row fetch is silently reinstated.
 - `ProductThumbnail` — 24 px (`sm`) / 32 px (`md`) square with a 6 px radius over `--bg-surface-muted`. Renders the product image (`loading="lazy"`, `decoding="async"`) when `src` is provided, otherwise a monospace first-letter placeholder derived from `name`; falls back to the placeholder on image load error. `alt=""` by default so it stays decorative next to an adjacent name label (`aria-hidden` set on the wrapper); callers pass an explicit `alt` when the thumbnail is the sole label. **Always render a `ProductThumbnail` when a product appears in a list/row** — the placeholder keeps row heights stable while images load and doubles as a visual affordance that the row is a product.
 - `RawPayloadPanel` — JSON viewer: header with title + byte count + copy button + collapse; syntax-highlighted body (mono font, 12 px, 18 px line-height). Replaces every bare `<pre>` block.
 - `Timeline` — vertical timeline with dot + time column + body. Used on order detail, job detail, connection activity.
@@ -610,6 +612,7 @@ Defaults (FE-002):
 | Surface | Row height | Notes |
 |---|---|---|
 | `DataTable` rows | `36 px` | Dense-but-readable. Hover highlights whole row. |
+| Listings identity row | auto, ~60 px | The one documented `DataTable` exception (#2023) — 32 px thumbnail + name/badges line + meta line + optional validator message. See the carve-out below. |
 | Nav items | `28 px` | 6 px vertical padding, icon + label + optional count. |
 | Toolbar / filter chip | `28 px` | Same height as nav items for alignment. |
 | Button `sm` | `28 px` | Default for toolbar buttons, table actions. |
@@ -619,6 +622,13 @@ Defaults (FE-002):
 | Status banner | auto, ~64 px | Icon + title + message + actions. |
 
 Never introduce a row height that isn't on this list without updating the guide first. Variability across surfaces is the primary way a cockpit feels amateur.
+
+**Documented carve-out — the listings identity row (#2023).** `/listings` is a *cockpit* row, not a label row: a `ProductThumbnail size="md"` (32 px) sits beside a two-line stack (name + lifecycle badges, then a `SKU · EAN · offer-ID` meta line), plus an optional validator-message line when the marketplace rejected the offer. That is provably taller than the `36 px` default, and the first column carries a `min-width: 28rem` floor so the stack never wraps into a third line. It stays on the `DataTable` primitive (unlike the picker rows below, which aren't `DataTable` at all) and it keeps the density posture — nothing decorative is added, every line is a fact an operator scans for — it just takes its height from content instead of the table default. **This carve-out is for the listings identity cell specifically; a new table wanting a tall row needs its own entry here, not a silent reuse.**
+
+Two mechanical consequences worth knowing before copying the pattern:
+
+- The row link must be `rowLinkDisplay="block"` (see the `DataTable` catalog entry). An inline anchor sizes its focus ring from its own line-box metrics, so around a tall composite the ring paints a band across the row's middle instead of enclosing it.
+- Only the unbounded field gets a hard character cap. Capping *every* meta field ellipses a routine 20-char SKU on a wide desktop; `flex: 0 1 auto` + `min-width: 0` already truncates each field under real pressure.
 
 **Selection-list rows are governed separately.** Multi-select picker rows inside a modal (e.g. the offer-creation product picker, `.offer-product-picker__prow-main` / `.offer-product-picker__vrow`, #1754/#1779) are *not* `DataTable` rows and are intentionally taller than 36 px: the whole-product checkbox carries a ≥ 44 px tap target (touch parity with the full-width variant-row hit area) and each row pairs a thumbnail with two text lines. They inherit the density posture but pick their own height from content + the tap-target floor rather than the table default; don't force them onto the `36 px` row.
 
@@ -728,6 +738,65 @@ Recommended status vocabulary:
 - conflicted
 
 Status should be consistent across orders, products, inventory, integrations, jobs, and automations.
+
+### Order-row signal placement (#2081)
+
+The orders list carries several signals per row. They are organised into **three semantic groups**
+(consolidated in #1713), each with one primary badge and subordinate detail beneath it:
+
+| Group | Primary | Subordinate |
+|---|---|---|
+| **Status** | order health | failure reason; **exceptions** (e.g. an open return) |
+| **Shipment** | fulfillment state | packed, ship-by SLA + countdown, delivery owner, carrier |
+| **Money** | total | payment, invoice clearance, created |
+
+Four rules govern anything added to a row:
+
+1. **Shipment reads as time.** Its stack is ordered by when things happen — *packed → shipped → due
+   → carrier* — so the column scans as a sequence rather than a list of unrelated facts. A new
+   shipment-related signal is inserted at its chronological position, not appended.
+2. **A workflow position is a tick; an exception is a badge.** Packed is binary and renders as a
+   tick, because the row already carries four distinct badge vocabularies and a fifth pill makes
+   them compete. Exceptions (returns) are badges, and they belong in the **Status** group where
+   failure reasons already live.
+3. **The list displays; the detail page acts.** Every row affordance is a link (`Generate label`,
+   `Issue invoice`), never an in-place mutation. Introducing in-place editing to this table is a new
+   interaction pattern and needs its own decision — it is not a styling choice.
+4. **Never extend the health vocabulary.** `OrderHealthValues` is a partition whose five values must
+   stay exhaustive and mutually exclusive so the KPI cards sum to the total. New signals sit *beside*
+   health, never inside it. And no signal may be frontend-only: `deriveOrderHealth` is a deliberate
+   twin of SQL in `OrderRecordRepository`, so anything the backend cannot also compute can never
+   become a server-side sort or filter.
+
+On narrow viewports the row becomes a card with a labelled fact list (`<dt>`/`<dd>`); a signal that
+is a tick on desktop becomes a labelled fact there, and the Shipment block keeps its chronological
+order.
+
+**Keep a status pill inside ~17 characters.** BaseLinker's status model carries three name lengths and
+reserves a 17-character "short name" explicitly for "space-limited areas like order tables". That is a
+borrowed budget, not a derived one, but it is calibrated against a table rendering the same kind of
+label at higher volume than ours.
+
+**Why packed earns a place in the row here, when the market leader omits it.** BaseLinker's order list
+has no packed column and no packed icon — packing state is visible only as whatever status an
+automatic action moved the order into. That works because its statuses are **operator-defined folders
+in a left sidebar with per-status counts**, so an operator simply creates a `Packed` folder and the
+folder *is* the signal. OL deliberately did not build operator-defined stages (#1032), so it has no
+substitute: without a row signal, packed state would be invisible while scanning. The omission
+upstream is not evidence the signal is unwanted — it is evidence their information architecture
+already carries it somewhere else.
+
+**Not adopted, and why:** a draggable status board.
+
+- **OL cannot honour the drop.** It could only apply for `ol_managed_carrier` orders — under the
+  default `omp_fulfilled` routing the destination ships and OL merely observes, so the drop would
+  either no-op or assert a status OL has no authority to write.
+- **It is also the wrong gesture for the work.** The market leader has no board either, and its
+  transitions are **bulk-select-and-act** (row checkboxes plus a toolbar action), **automated**
+  (action chains), or **scanner-driven** — even status *reordering* uses arrow buttons, not drag.
+  Drag-one-card-at-a-time is orthogonal to how order operators work at volume.
+
+Counts-by-state belong in the summary cards above the list instead.
 
 ## Page Patterns
 

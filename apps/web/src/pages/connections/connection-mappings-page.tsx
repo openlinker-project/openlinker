@@ -43,8 +43,7 @@ import {
 } from '../../features/mappings/hooks/use-order-state-mappings';
 import { useRoutingRulesQuery } from '../../features/mappings/hooks/use-routing-rules';
 import { useMappingOptions } from '../../features/mappings/hooks/use-mapping-options';
-import { resolvePlatformLabel } from '../../features/mappings/lib/platform-label';
-import { DELIVERY_MAPPING_DEEP_LINK_PARAMS } from '../../features/mappings';
+import { DELIVERY_MAPPING_DEEP_LINK_PARAMS, resolvePlatformLabel } from '../../features/mappings';
 import { usePlatforms } from '../../shared/plugins';
 import {
   OL_ORDER_STATUS_OPTIONS,

@@ -72,6 +72,21 @@ join across contexts wherever convenient — most cross-context reads still belo
 - A sibling context renaming its table or a column referenced this way is a silent runtime break,
   not a compile-time one. Each join is commented with what it depends on for exactly this reason.
 
+**Amendment (#2025) - projecting from a join this ADR already sanctioned:**
+- The scope above is "same-query sort/filter/pagination", with display enrichment routed to the
+  `I*Service` seam. #2025's `GET /listings` read needs the `product_variants` / `products` join for
+  its multi-field search regardless, and then *also* projects display columns (name, images, sku,
+  ean, gtin) off it. **Once a join is sanctioned by a filter/sort need, projecting from it is
+  preferred over a second composition pass** - a second round trip would cost an extra query per
+  page to re-fetch rows the database has already joined, with no boundary benefit, since the join
+  itself is what this ADR chose to accept. This does NOT sanction a join whose *only* purpose is
+  display enrichment; that still goes through `I*Service`.
+- **The hatch is for CROSS-context tables only.** #2025 initially joined two same-context tables
+  (`offer_status_snapshots`, `offer_commercial_snapshots` - both owned by `listings`, the same
+  context as the repository) by raw name, which bought the silent-rename cost below with none of the
+  benefit, since there is no import contract to protect. Same-context joins pass the ORM entity
+  class, so a rename stays a compile-time break.
+
 **Migration path (if applicable):**
 - If join cost becomes a measured performance problem, revisit the "denormalize" alternative above
   with real numbers instead of pre-optimizing now.

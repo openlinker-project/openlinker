@@ -9,3 +9,5 @@
  * @module libs/core/src/orders/orm-entities
  */
 export { OrderRecordOrmEntity } from './infrastructure/persistence/entities/order-record.orm-entity';
+// Consumer: apps/api/test/integration/orders/refund-record-crud.int-spec.ts (#2036).
+export { RefundRecordOrmEntity } from './infrastructure/persistence/entities/refund-record.orm-entity';

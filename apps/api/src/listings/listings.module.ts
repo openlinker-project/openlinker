@@ -15,6 +15,7 @@ import { ListingsController } from './http/listings.controller';
 import { BulkListingController } from './http/bulk-listing.controller';
 import { ShopPublishController } from './http/shop-publish.controller';
 import { BulkShopPublishController } from './http/bulk-shop-publish.controller';
+import { TaxonomyController } from './http/taxonomy.controller';
 
 @Module({
   // CoreIntegrationsModule supplies INTEGRATIONS_SERVICE_TOKEN, which the
@@ -28,6 +29,7 @@ import { BulkShopPublishController } from './http/bulk-shop-publish.controller';
     BulkListingController,
     ShopPublishController,
     BulkShopPublishController,
+    TaxonomyController,
   ],
 })
 export class ListingsApiModule {}

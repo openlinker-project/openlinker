@@ -7,17 +7,30 @@ interface ConnectionEntityLabelProps {
   className?: string;
   connectionId: string;
   linkToDetail?: boolean;
+  /**
+   * Caller-resolved name. `undefined` means "resolve it yourself" (the
+   * detail-page convention); passing a value - including `null` for a
+   * connection that could not be resolved - suppresses the per-row fetch so a
+   * list page can serve every row from one batched read (#1996).
+   */
+  name?: string | null;
+  loading?: boolean;
   showId?: boolean;
+  showCopy?: boolean;
 }
 
 export function ConnectionEntityLabel({
   className,
   connectionId,
   linkToDetail = true,
+  name,
+  loading,
   showId = true,
+  showCopy = true,
 }: ConnectionEntityLabelProps): ReactElement | null {
   const location = useLocation();
-  const query = useConnectionQuery(connectionId);
+  const nameSupplied = name !== undefined;
+  const query = useConnectionQuery(connectionId, { enabled: !nameSupplied });
 
   if (!connectionId) return null;
 
@@ -28,9 +41,10 @@ export function ConnectionEntityLabel({
   return (
     <EntityLabel
       id={connectionId}
-      name={query.data?.name}
-      loading={query.isLoading}
+      name={nameSupplied ? name : query.data?.name}
+      loading={loading ?? (!nameSupplied && query.isLoading)}
       showId={showId}
+      showCopy={showCopy}
       to={shouldLink ? targetPath : undefined}
       className={className}
     />

@@ -2767,13 +2767,9 @@ a.delivery-rider-banner__button:focus-visible {
   box-shadow: var(--shadow-focus);
 }
 
-.data-table__cell--right {
+.data-table .data-table__cell--right {
   text-align: right;
   font-variant-numeric: tabular-nums;
-}
-
-.data-table__cell--center {
-  text-align: center;
 }
 
 .data-table__empty-cell {
@@ -2897,6 +2893,19 @@ a.delivery-rider-banner__button:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus);
   border-radius: var(--radius-xs);
+}
+
+/* `rowLinkDisplay="block"`. The default row link stays plain `inline`, which is
+   correct while it wraps plain text: its line box matches the row's height, so
+   the :focus-visible ring encloses it. A tall composite first cell (thumbnail +
+   name line + meta line) breaks that - the anchor's line box keeps its own
+   inline metrics, and the ring painted a thin band across the row's vertical
+   middle instead of around it (#2023). An atomic inline-level box makes the ring
+   one correctly-sized fragment. Opt-in per table so no existing consumer's ring
+   moves. */
+.data-table__row-link--block {
+  display: inline-flex;
+  width: 100%;
 }
 
 .data-table__header--sortable {
@@ -5598,6 +5607,54 @@ a.kpi-card:focus-visible {
   color: var(--accent-primary-soft-strong);
 }
 
+/* ── Lifecycle tab count skeleton (#2029) ──────────────────────────────
+   Reuses the shimmer keyframe already defined for `.data-table-skeleton__bar`
+   so a loading count never snaps from a skeleton straight to a real number
+   using two different animation curves. */
+.tabs__count-skeleton {
+  display: inline-block;
+  width: 14px;
+  height: 0.625rem;
+  border-radius: var(--radius-xs);
+  background-color: var(--bg-surface-muted);
+  background-image: linear-gradient(
+    90deg,
+    var(--bg-surface-muted) 0%,
+    var(--bg-surface-hover) 50%,
+    var(--bg-surface-muted) 100%
+  );
+  background-size: 200% 100%;
+  animation: data-table-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabs__count-skeleton {
+    animation: none;
+    background-image: none;
+  }
+}
+
+/* ── Listings background-refetch indicator (#2032 review round 2) ──────
+   `keepPreviousData` shows the prior filter's rows while a new fetch is in
+   flight - this is the only visible cue that a new request is running,
+   reusing the same pulse the StatusBadge tone dot already uses elsewhere so
+   "something live is happening" reads consistently across the page. */
+.listings-refetch-indicator {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: var(--space-2);
+  border-radius: 50%;
+  background: var(--accent-primary);
+  animation: status-badge-pulse 1.6s var(--ease-out) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .listings-refetch-indicator {
+    animation: none;
+  }
+}
+
 .tabs__trigger:hover {
   color: var(--text-primary);
   background: transparent;
@@ -5625,6 +5682,28 @@ a.kpi-card:focus-visible {
 
 .tabs__content:focus-visible {
   outline: none;
+}
+
+/* ── Listings lifecycle tab bar: scroll, don't wrap, at phone widths
+   (#2029 / #2042 round 1) ───────────────────────────────────────────
+   Five buckets (the original four plus Unsynced) no longer fit unwrapped at
+   360px, so this bar scrolls horizontally instead of wrapping each trigger
+   onto two lines. Scoped to this page's own aria-label, not a shared rule -
+   the mapping tab bar's own mobile treatment (`aria-label='Mapping types'`,
+   above) targets the wrong element there and isn't a working reference. */
+@media (max-width: 640px) {
+  .tabs__list[aria-label='Listing lifecycle'] {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tabs__list[aria-label='Listing lifecycle']::-webkit-scrollbar {
+    display: none;
+  }
+  .tabs__list[aria-label='Listing lifecycle'] .tabs__trigger {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
 }
 
 /*
@@ -9274,6 +9353,10 @@ a.kpi-card:focus-visible {
 .channel-pill[data-channel='prestashop']::before { background: var(--channel-prestashop); }
 .channel-pill[data-channel='amazon']::before     { background: var(--channel-amazon); }
 .channel-pill[data-channel='shopify']::before    { background: var(--channel-shopify); }
+/* Erli and WooCommerce had their hues defined but never wired, so both rendered
+   the grey fallback dot on every surface using the pill (#2028). */
+.channel-pill[data-channel='erli']::before        { background: var(--channel-erli); }
+.channel-pill[data-channel='woocommerce']::before { background: var(--channel-woocommerce); }
 
 /* ── Patterns: entity label (thumb + name + sub-id) ──────────────── */
 .entity-label { display: inline-flex; align-items: center; gap: var(--space-2); }
@@ -9378,6 +9461,111 @@ a.kpi-card:focus-visible {
 .copyable-id:focus-within .copyable-id__copy {
   opacity: 1;
   transform: translateX(0);
+}
+
+/* ── ConnectionCell (#2027) ──────────────────────────────────────────
+ * Two-line composition: adornment + name link on line 1, shortened id with
+ * hover-Copy plus an attention-only status note on line 2. The 220px cap
+ * matches the neighbouring stacked cells (.orders-items-line :8852,
+ * .orders-carrier :8922) - without it the cell is content-sized inside an
+ * auto-layout table, so a long connection name widens the column instead of
+ * firing the children's own ellipsis.
+ *
+ * Gaps are raw px throughout: 2px and 6px have no token at this density, and
+ * mixing them with var(--space-*) inside one block reads as an accident.
+ */
+.connection-cell {
+  display: inline-flex;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.connection-cell__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  min-width: 0;
+  max-width: 220px;
+}
+
+.connection-cell__body > * {
+  max-width: 100%;
+}
+
+.connection-cell__line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.connection-cell__adornment {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+.connection-cell__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* The shortened id is the disambiguator an operator scans, so it never absorbs
+ * the line's width deficit - the status note is the accessory that truncates. */
+.connection-cell__meta > .copyable-id {
+  flex: none;
+}
+
+.connection-cell__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.connection-cell__status-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* No base background: every status supplies its own below, so a fourth one
+ * added later renders no dot at all rather than a silent grey one that reads
+ * as a deliberate tone. The TS side is already exhaustive (STATUS_NOTES is a
+ * Record over every non-active ConnectionStatus), so the two fail together. */
+.connection-cell__status-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: var(--radius-pill);
+}
+
+/* The -fg family, not the raw hue: --status-warning is ~2.5:1 on white, under
+ * the 3:1 WCAG 1.4.11 non-text minimum, so a 6px amber dot vanishes in light
+ * theme. */
+.connection-cell__status--disabled .connection-cell__status-dot {
+  background: var(--status-disabled-fg);
+}
+
+.connection-cell__status--error {
+  color: var(--status-error-fg);
+}
+
+.connection-cell__status--error .connection-cell__status-dot {
+  background: var(--status-error-fg);
+}
+
+.connection-cell__status--needs_reauth {
+  color: var(--status-warning-fg);
+}
+
+.connection-cell__status--needs_reauth .connection-cell__status-dot {
+  background: var(--status-warning-fg);
 }
 
 /* ── Structured error list (#775) ───────────────────────────────────
@@ -13639,6 +13827,31 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   margin-top: var(--space-3);
 }
 
+/* ── Correction line picker (#2076) ── */
+.correction-line-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+/* The select must NOT inherit `.input--w-lp` (60px, sized for the old numeric
+   "Lp" field): a select adds `padding-right: var(--space-7)` for its chevron,
+   which at 60px leaves a ~0px content box and hides the very line label the
+   picker exists to show. Sized to fit "12. Product name — 2 × 1 234,50 zł"
+   and allowed to grow with its column. */
+.correction-line-picker__select {
+  min-width: 16rem;
+  width: 100%;
+  max-width: 28rem;
+}
+/* Shown only on the manual-entry fallback, where the operator has to verify the
+   line number against the issued document themselves. */
+.correction-line-picker__warning {
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  color: var(--status-warning-fg);
+  max-width: 22rem;
+}
+
 /* ─ Correction trigger in order invoice panel (issued state) ─ */
 .order-invoice-panel__correction {
   margin-top: var(--space-3);
@@ -17031,4 +17244,285 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   margin: 0;
   font-size: 0.75rem;
   color: var(--text-muted);
+}
+
+/* ── Listings toolbar wrap opt-in (#2030) ────────────────────────────────────
+   `.toolbar` / `.toolbar__group` stay `nowrap` by default (see the comment on
+   `.orders-toolbar` below) because most toolbars fit their controls on one
+   row. This page's toolbar (search + channel select + Clear) doesn't at
+   tablet/phone widths, so it opts in the same way `.orders-toolbar` does:
+   wrap the toolbar itself, and wrap its `.toolbar__group` child so the
+   search/select pair inside it can also drop onto their own lines rather
+   than being squeezed into a single nowrap row. */
+.listings-toolbar {
+  flex-wrap: wrap;
+}
+.listings-toolbar .toolbar__group {
+  flex-wrap: wrap;
+}
+/* `.toolbar`'s base `justify-content: space-between` only right-anchors Clear
+   while it shares a line with `.toolbar__group`. The moment the row above
+   wraps, Clear becomes the lone item on its own line, and `space-between`
+   degrades to `flex-start` per the flexbox spec - stranding it at the LEFT
+   edge instead. `.orders-toolbar` never hit this because it has no separate
+   Clear sibling (all its controls sit inside one `.toolbar__group`). `margin
+   -left: auto` absorbs the leftover space itself, so Clear stays right-
+   anchored whether it's sharing a line or wrapped onto its own. */
+.listings-toolbar > .button {
+  margin-left: auto;
+}
+
+/* ── Listings table row anatomy (#2028) ──────────────────────────────────────
+   Transcribed from the #1965 mockup: a listing row leads with the catalog
+   product name, groups its three identifiers on a second line, and keeps the
+   two commercial columns mono + tabular so they scan as columns. */
+/* The identity column carries four facts, so it gets the width to keep them on
+   two lines; below this the row grows to four and the ~36px density budget is
+   gone. Scoped to this table's own container class - the mockup hung it off
+   `.data-table td:first-child`, which in the app would reach every other
+   DataTable. */
+.listings-table th:first-child,
+.listings-table td:first-child {
+  min-width: 28rem;
+}
+/* `inline-flex`, not `flex`: DataTable wraps the first cell in an <a> whose
+   focus ring is a box-shadow, and a block box inside an inline anchor paints
+   that ring around inline fragments wrapping an anonymous block - a hairline or
+   nothing. An atomic inline-level box keeps the ring as ONE fragment (verified
+   live). Sizing that fragment to the row is the anchor's own job, handled by
+   the table's `rowLinkDisplay="block"` prop rather than by a listings rule. */
+.listing-cell {
+  display: inline-flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.listing-cell__body {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.listing-cell__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+/* Shrink only when the row genuinely runs out of room (a long name next to a
+   badge), never at a fixed character cap - a truncated name with empty space
+   beside it reads as a bug. */
+/* Inherits from the row link / card title rather than declaring its own colour,
+   so DataTable's own `:hover .data-table__row-link` accent reaches it without a
+   listings rule keying off a DataTable-internal modifier. */
+.listing-cell__name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: inherit;
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.listing-cell__name--missing {
+  font-weight: 500;
+  font-style: italic;
+  color: var(--text-muted);
+}
+.listing-cell__variant,
+.listing-cell__badge {
+  flex: 0 0 auto;
+}
+.listing-cell__variant {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  padding: 1px 6px;
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  white-space: nowrap;
+}
+/* An external offer ID has no length contract - some adapters' ids run 40+
+   chars - and it leads the meta line, so without a cap of its own it eats the
+   line's width and pushes SKU/EAN off the edge of `.listing-cell__meta`'s
+   `overflow: hidden`. The cap lives HERE, on the one field that needs it,
+   rather than on every meta span: a routine 20-char SKU was being ellipsed on
+   a wide desktop with room to spare (#2032 review). The full value stays one
+   hover away via the span's own `title`. */
+.listing-cell__offerid {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  max-width: 16ch;
+}
+/* Weight is declared, not inherited: on the mobile card DataTable wraps the
+   title in a 600-weight <strong>, which would otherwise make the identifier
+   line and the validator message read as headings. */
+.listing-cell__meta {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+/* Shrink-and-ellipsis for every meta field, but no fixed character cap: a
+   field only truncates when the line genuinely runs out of room (`flex: 0 1
+   auto` + `min-width: 0`), so a wide desktop shows a long SKU in full. An
+   unusually long value then shows `…` rather than vanishing past
+   `.listing-cell__meta`'s own `overflow: hidden` with no indication anything
+   was cut. Each span carries its own `title` since it can truncate. The offer
+   ID is the one field with a hard cap - see `.listing-cell__offerid` above. */
+.listing-cell__meta span {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.listing-cell__meta span + span::before {
+  content: '·';
+  margin-right: var(--space-2);
+  color: var(--border-strong);
+}
+.listing-cell__meta em {
+  font-style: normal;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+/* The validator's own words, verbatim - this is the one place the marketplace
+   speaks directly to the seller, so it is not paraphrased. Also carries the
+   overselling warning for a stale variant that still reports channel stock. */
+.listing-cell__reason {
+  font-size: 0.6875rem;
+  font-weight: 400;
+  color: var(--status-error-strong);
+  max-width: 46ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Mobile card head (#1965 frame 05): at 360px the name is what the card is
+   about, so nothing next to it may hold a fixed width and nothing may clip. */
+.listing-cell--card .listing-cell__head {
+  flex-wrap: wrap;
+}
+.listing-cell--card .listing-cell__name {
+  flex: 1 1 auto;
+  overflow: visible;
+  white-space: normal;
+}
+.listing-cell--card .listing-cell__meta {
+  flex-wrap: wrap;
+  overflow: visible;
+  white-space: normal;
+}
+.listing-cell--card .listing-cell__reason {
+  max-width: none;
+  overflow: visible;
+  white-space: normal;
+}
+
+/* Whose number this column carries. Price and quantity are the channel's, not
+   OL's, and Updated is when OL last READ the channel, not when the listing
+   changed - the note says so in the header rather than in a tooltip nobody
+   opens (#1843 / #1844 / ADR-009). */
+.listings-col-head {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+.listings-col-head--right {
+  align-items: flex-end;
+}
+.listings-col-head__note {
+  font-size: 0.625rem;
+  font-weight: 400;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  /* Nothing else in the system goes below 10px, and at 10px + caps tracking
+     this must not be allowed to wrap into the row beneath. */
+  white-space: nowrap;
+}
+
+.price-cell {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+.price-cell__value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* #2032 review thread 7: a commercial reading whose own clock has drifted
+   from the visible "Updated" (status) clock earns a visible flag, not just a
+   tooltip. */
+.price-cell__stale {
+  margin-top: 1px;
+}
+
+.qty-cell {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.qty-cell__value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.time-cell {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* Mobile card fold (#1965 frame 05): the four columns the fold drops, as a
+   two-column fact list under the listing head. */
+.listings-card-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3) var(--space-4);
+  margin: 0;
+  padding: var(--space-3);
+  background: var(--bg-surface-muted);
+  border-radius: var(--radius-md);
+}
+.listings-card-facts > div {
+  min-width: 0;
+}
+.listings-card-facts dt {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+.listings-card-facts dd {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+/* Right-aligned in the table because they are columns; left-aligned here
+   because a card fact reads left-to-right under its label. */
+.listings-card-facts .price-cell,
+.listings-card-facts .qty-cell {
+  align-items: flex-start;
+}
+.listings-card-messages {
+  margin: 0;
+  padding-left: var(--space-4);
+  font-size: 0.75rem;
+  color: var(--status-error-strong);
 }
