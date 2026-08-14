@@ -128,5 +128,8 @@ One pointer per section, identical format every time.
 | [ADR-036](./036-cross-context-read-model-joins.md) | Cross-context read-model joins by table name (server-side sort/filter across contexts) | Accepted | 2026-07-17 |
 | [ADR-037](./037-destination-taxonomy-read-model.md) | Destination taxonomy as a synced read model in `listings` (retires the platform-named Allegro category cache) | Proposed | 2026-07-30 |
 | [ADR-038](./038-per-connection-outbound-rate-limiting.md) | Per-connection outbound rate limiting via a shared transport + ambient priority context | Proposed | 2026-07-30 |
+| [ADR-041](./041-sales-document-routing-policy.md) | Sales-document routing policy - which document type and which connection an order gets | Proposed | 2026-08-13 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
+
+> *Reserved numbers: **039** is claimed by #2014 (order analytics read model — already referenced by name from `docs/plans/implementation-plan-order-cancellation-record-state.md` on `main`), **040** by #2050 (order-time FX stamping), and **042** by #2056 (fiscalisation capability). Each of those PRs adds its own row when it merges, so the gap above is deliberate, not a lost number. A number stays reserved until its PR merges or closes; if one is abandoned, reuse the number rather than leaving it dark. Nothing currently guards ADR numbering mechanically — a `check-adr-numbering.mjs` invariant would, and is tracked separately.*
