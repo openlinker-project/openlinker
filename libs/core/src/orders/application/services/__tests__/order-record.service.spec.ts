@@ -499,29 +499,29 @@ describe('OrderRecordService', () => {
       service = new OrderRecordService(repository, fxStamp);
     });
 
-    it('never constructs the OrderRecord passed to upsert() with a non-null cancelledAt, even for a cancelled order', async () => {
+    it('never constructs the OrderRecord passed to upsertWithLineItems() with a non-null cancelledAt, even for a cancelled order', async () => {
       // The domain OrderRecord built here always defaults cancelledAt to null
       // (persistOrder never threads order.status into the constructor) —
       // markCancelled (asserted in the next test) is the sole writer. This
       // guards against a future regression where someone "helpfully" starts
       // passing a derived cancelledAt into the constructor, which would let
-      // upsert()'s full-object save() race markCancelled's atomic COALESCE
-      // update — see the toOrm comment on OrderRecordRepository.
+      // upsertWithLineItems()'s full-object save() race markCancelled's atomic
+      // COALESCE update — see the toOrm comment on OrderRecordRepository.
       const order = createMockOrder();
       order.status = 'cancelled';
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
       repository.findById.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.cancelledAt).toBeNull();
     });
 
-    it('calls markCancelled with (approximately) now for a cancelled order, AFTER upsert', async () => {
+    it('calls markCancelled with (approximately) now for a cancelled order, AFTER upsertWithLineItems', async () => {
       const order = createMockOrder();
       order.status = 'cancelled';
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
       repository.findById.mockResolvedValue({} as OrderRecord);
 
       const before = new Date();
@@ -533,7 +533,7 @@ describe('OrderRecordService', () => {
       expect(calledId).toBe(order.id);
       expect(calledAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
       expect(calledAt.getTime()).toBeLessThanOrEqual(after.getTime());
-      const upsertOrder = repository.upsert.mock.invocationCallOrder[0];
+      const upsertOrder = repository.upsertWithLineItems.mock.invocationCallOrder[0];
       const markCancelledOrder = repository.markCancelled.mock.invocationCallOrder[0];
       expect(upsertOrder).toBeLessThan(markCancelledOrder);
     });
@@ -542,7 +542,7 @@ describe('OrderRecordService', () => {
       const order = createMockOrder();
       order.status = 'cancelled';
       const refetched = { cancelledAt: new Date() } as unknown as OrderRecord;
-      repository.upsert.mockResolvedValue({ cancelledAt: null } as unknown as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({ cancelledAt: null } as unknown as OrderRecord);
       repository.findById.mockResolvedValue(refetched);
 
       const result = await service.persistOrder(order, 'source-connection-123', 'event-456');
@@ -554,7 +554,7 @@ describe('OrderRecordService', () => {
       const order = createMockOrder();
       order.status = 'pending';
       const saved = {} as OrderRecord;
-      repository.upsert.mockResolvedValue(saved);
+      repository.upsertWithLineItems.mockResolvedValue(saved);
 
       const result = await service.persistOrder(order, 'source-connection-123', 'event-456');
 
