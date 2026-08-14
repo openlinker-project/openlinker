@@ -11,12 +11,13 @@ import { OrdersModule as CoreOrdersModule } from '@openlinker/core/orders';
 import { InvoicingModule as CoreInvoicingModule } from '@openlinker/core/invoicing';
 import { MappingsModule as CoreMappingsModule } from '@openlinker/core/mappings';
 import { OrdersController } from './http/orders.controller';
+import { RefundsController } from './http/refunds.controller';
 
 @Module({
   // CoreMappingsModule (#1791) provides FULFILLMENT_ROUTING_SERVICE_TOKEN —
   // the orders controller resolves the delivery-routing-resolution
   // projection off the same service the shipping dispatch seam (#835) uses.
   imports: [CoreOrdersModule, CoreInvoicingModule, CoreMappingsModule],
-  controllers: [OrdersController],
+  controllers: [OrdersController, RefundsController],
 })
 export class OrdersModule {}
