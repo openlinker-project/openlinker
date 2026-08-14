@@ -224,3 +224,38 @@ export function addWorkingDays(from: Date, days: number): Date {
     second: civil.second,
   });
 }
+
+/**
+ * Walk back from `from` to the nearest preceding Polish working day and return a
+ * new `Date`, preserving the source instant's Europe/Warsaw wall-clock
+ * time-of-day. Weekends and Polish public holidays are skipped. The source
+ * instant itself is never counted (the walk starts from the previous day), so a
+ * working-day input always moves at least one calendar day back.
+ */
+export function previousWorkingDay(from: Date): Date {
+  const civil = toWarsawCivil(from);
+  // Iterate on a date-only UTC proxy whose UTC parts mirror the Warsaw civil
+  // date; weekday + holiday classification reads directly off those parts.
+  const cursor = new Date(Date.UTC(civil.year, civil.month - 1, civil.day));
+  for (;;) {
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+    const dow = cursor.getUTCDay();
+    if (dow === 0 || dow === 6) {
+      continue;
+    }
+    if (
+      isPlPublicHolidayYmd(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, cursor.getUTCDate())
+    ) {
+      continue;
+    }
+    break;
+  }
+  return warsawCivilToInstant({
+    year: cursor.getUTCFullYear(),
+    month: cursor.getUTCMonth() + 1,
+    day: cursor.getUTCDate(),
+    hour: civil.hour,
+    minute: civil.minute,
+    second: civil.second,
+  });
+}

@@ -2,8 +2,8 @@
  * Unit tests for Polish working-day arithmetic.
  *
  * Anchored at Europe/Warsaw civil dates. Cases cover: weekend skip, fixed-date
- * holiday skip, computus-derived holiday skip (Corpus Christi), and a DST
- * boundary (spring-forward) case.
+ * holiday skip, computus-derived holiday skip (Corpus Christi), a DST boundary
+ * (spring-forward) case, and the same classes of skip walked backwards.
  *
  * @module date
  */
@@ -12,6 +12,7 @@ import {
   easterSunday,
   isPlPublicHoliday,
   isPlWorkingDay,
+  previousWorkingDay,
 } from '../pl-working-days';
 
 /** Warsaw civil `YYYY-MM-DD` for an instant (asserts calendar day, not time). */
@@ -134,5 +135,66 @@ describe('addWorkingDays', () => {
     const from = new Date('2026-06-16T09:59:00.000Z');
     expect(addWorkingDays(from, 0).getTime()).toBe(from.getTime());
     expect(addWorkingDays(from, -3).getTime()).toBe(from.getTime());
+  });
+});
+
+describe('previousWorkingDay', () => {
+  it('should return the previous calendar day when the input is mid-week', () => {
+    // Wed 2026-06-17 → Tue 2026-06-16 (both plain working days).
+    const result = previousWorkingDay(new Date('2026-06-17T09:00:00.000Z'));
+    expect(warsawDate(result)).toBe('2026-06-16');
+  });
+
+  it('should return the previous Friday when the input is a Monday', () => {
+    // Mon 2026-06-22 → skip Sun/Sat → Fri 2026-06-19.
+    const result = previousWorkingDay(new Date('2026-06-22T09:00:00.000Z'));
+    expect(warsawDate(result)).toBe('2026-06-19');
+  });
+
+  it('should return Friday when the input is a Saturday', () => {
+    // Sat 2026-06-20 → Fri 2026-06-19.
+    const result = previousWorkingDay(new Date('2026-06-20T09:00:00.000Z'));
+    expect(warsawDate(result)).toBe('2026-06-19');
+  });
+
+  it('should return Friday when the input is a Sunday', () => {
+    // Sun 2026-06-21 → skip Sat → Fri 2026-06-19.
+    const result = previousWorkingDay(new Date('2026-06-21T09:00:00.000Z'));
+    expect(warsawDate(result)).toBe('2026-06-19');
+  });
+
+  it('should walk back past a computus-derived holiday (Corpus Christi)', () => {
+    // Corpus Christi 2026 = Thu Jun 4. Fri Jun 5 → Thu Jun 4 skipped → Wed Jun 3.
+    const result = previousWorkingDay(new Date('2026-06-05T09:00:00.000Z'));
+    expect(warsawDate(result)).toBe('2026-06-03');
+  });
+
+  it('should walk back over several days when a holiday is adjacent to a weekend', () => {
+    // Mon 2026-05-04 → Sun May 3 (Constitution Day + weekend), Sat May 2, and
+    // Fri May 1 (Labour Day) are all non-working → Thu 2026-04-30.
+    const result = previousWorkingDay(new Date('2026-05-04T09:00:00.000Z'));
+    expect(warsawDate(result)).toBe('2026-04-30');
+  });
+
+  it('should classify the calendar day at Warsaw offset, not UTC', () => {
+    // 2026-06-21T23:30Z is Sun in UTC but already Mon 01:30 in Warsaw (CEST,
+    // +02:00). Walking back from Monday → Fri Jun 19 (Warsaw).
+    const result = previousWorkingDay(new Date('2026-06-21T23:30:00.000Z'));
+    expect(warsawDate(result)).toBe('2026-06-19');
+  });
+
+  it('should preserve the Warsaw wall-clock time-of-day across a DST boundary', () => {
+    // DST 2026 spring-forward: 2026-03-29 02:00 → 03:00 CEST. Start Mon Mar 30
+    // 12:00 Warsaw (10:00Z, CEST +02:00). Walking back → Fri Mar 27, which is in
+    // CET (+01:00), so 12:00 Warsaw == 11:00Z. Wall time stays 12:00.
+    const result = previousWorkingDay(new Date('2026-03-30T10:00:00.000Z'));
+    expect(warsawDate(result)).toBe('2026-03-27');
+    const warsawTime = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Warsaw',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).format(result);
+    expect(warsawTime).toBe('12:00');
   });
 });
