@@ -292,6 +292,7 @@ describe('InvoicingController', () => {
     } as unknown as jest.Mocked<IInvoiceService>;
     orders = {
       getOrderRecord: jest.fn(),
+      findByIds: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
     const mockIntegrations = {
@@ -886,6 +887,57 @@ describe('InvoicingController', () => {
         limit: 20,
         offset: 0,
       });
+    });
+
+    it('should populate orderSummary (#1995) from a single batched order read, deduped by orderId', async () => {
+      invoiceService.listInvoices.mockResolvedValue({
+        items: [
+          makeInvoiceRecord({ id: 'inv_1', orderId: 'ol_order_1' }),
+          makeInvoiceRecord({ id: 'inv_2', orderId: 'ol_order_1' }), // same order → deduped
+          makeInvoiceRecord({ id: 'inv_3', orderId: 'ol_order_2' }),
+        ],
+        total: 3,
+      });
+      orders.findByIds.mockResolvedValue([
+        {
+          internalOrderId: 'ol_order_1',
+          orderSnapshot: {
+            orderNumber: 'ORD-001',
+            items: [{ name: 'Terra Wool Coat', imageUrl: null }],
+          },
+        } as unknown as OrderRecord,
+      ]);
+
+      const result = await controller.listInvoices({ limit: 20, offset: 0 });
+
+      expect(orders.findByIds).toHaveBeenCalledTimes(1);
+      expect(orders.findByIds).toHaveBeenCalledWith(['ol_order_1', 'ol_order_2']);
+      expect(result.items[0].orderSummary).toEqual({
+        orderNumber: 'ORD-001',
+        firstItemName: 'Terra Wool Coat',
+        firstItemImageUrl: null,
+        itemCount: 1,
+      });
+      expect(result.items[1].orderSummary).toEqual(result.items[0].orderSummary);
+      expect(result.items[2].orderSummary).toBeNull();
+    });
+
+    it('should degrade orderSummary to null (not throw) when the batch order read fails', async () => {
+      invoiceService.listInvoices.mockResolvedValue({
+        items: [makeInvoiceRecord({ orderId: 'ol_order_x' })],
+        total: 1,
+      });
+      orders.findByIds.mockRejectedValue(new Error('db blip'));
+
+      const result = await controller.listInvoices({ limit: 20, offset: 0 });
+
+      expect(result.items[0].orderSummary).toBeNull();
+    });
+
+    it('should not call findByIds at all for an empty page', async () => {
+      invoiceService.listInvoices.mockResolvedValue({ items: [], total: 0 });
+      await controller.listInvoices({});
+      expect(orders.findByIds).not.toHaveBeenCalled();
     });
   });
 

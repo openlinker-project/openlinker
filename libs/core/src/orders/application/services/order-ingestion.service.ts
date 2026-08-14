@@ -479,8 +479,11 @@ export class OrderIngestionService implements IOrderIngestionService {
    * Resolves the existing internal order; if unknown (never ingested) there is
    * nothing to cancel. Applies the same destination-echo guard as ingestion
    * (ADR-017) so a re-read of an order OL itself created elsewhere doesn't
-   * propagate a spurious cancel. Returns an empty result set — a cancel is not
-   * an order-create, so there are no OrderSyncResults to report.
+   * propagate a spurious cancel. Also durably records the cancellation on the
+   * order record itself via `markCancelled` (#1984), best-effort and before
+   * the relay call — see the inline comment at the call site for why a DB
+   * failure there must never block the relay. Returns an empty result set —
+   * a cancel is not an order-create, so there are no OrderSyncResults to report.
    */
   private async handleSourceCancellation(
     connectionId: string,
@@ -509,6 +512,26 @@ export class OrderIngestionService implements IOrderIngestionService {
           `${existing.sourceConnectionId}`
       );
       return [];
+    }
+
+    // Durably record the cancellation on the order record itself (#1984) —
+    // previously this handler only relayed to destinations and returned,
+    // leaving no queryable trace of the cancellation on the order record.
+    // Attempted BEFORE the relay call so the record write isn't skipped if
+    // the relay itself throws; first-write-wins, so a redelivered cancel
+    // event is a harmless no-op. Swallowed (logged, not rethrown): the
+    // pre-existing relay-to-destinations behaviour must not regress because
+    // of this new, best-effort write — a transient DB error here must not
+    // prevent the cancel from reaching the destination shop.
+    try {
+      await this.orderRecordService.markCancelled(internalOrderId, new Date());
+    } catch (error) {
+      this.logger.error(
+        `Failed to record cancellation on order record ${internalOrderId} — proceeding with the ` +
+          `destination relay regardless; the record will remain queryable as non-cancelled until a ` +
+          `future re-poll or retry observes the cancellation again`,
+        (error as Error).stack
+      );
     }
 
     const result = await this.orderLifecycleRelay.relay({

@@ -21,6 +21,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { Logger } from '@openlinker/shared/logging';
+import type { FetchLike } from '@openlinker/shared/http';
 import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
 import type { DpdError401, DpdErrorItem, DpdErrors } from '../../domain/types/dpd-rest.types';
 import { DpdUnauthorizedException } from '../../domain/exceptions/dpd-unauthorized.exception';
@@ -65,15 +66,26 @@ export class DpdHttpClient implements IDpdHttpClient {
   private readonly logger = new Logger(DpdHttpClient.name);
   private readonly retryConfig: RetryConfig;
   private readonly authorizationHeader: string;
+  private readonly fetchImpl: FetchLike;
 
+  /**
+   * `fetchImpl` is **required**, deliberately (mirrors AllegroHttpClient /
+   * KsefHttpClient, #1810 follow-up). An optional `fetchImpl ?? globalThis.fetch`
+   * default would satisfy the type checker but reintroduce an unmetered escape
+   * hatch the moment a caller forgets to pass one — silently bypassing the
+   * connection-bound rate limiter. The adapter factory always injects one;
+   * only tests need to pass a fake explicitly.
+   */
   constructor(
     private readonly baseUrl: string,
     private readonly auth: DpdHttpAuth,
-    retryConfig?: Partial<RetryConfig>,
+    retryConfig: Partial<RetryConfig> | undefined,
+    fetchImpl: FetchLike,
   ) {
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
     const token = Buffer.from(`${auth.login}:${auth.password}`, 'utf8').toString('base64');
     this.authorizationHeader = `Basic ${token}`;
+    this.fetchImpl = fetchImpl;
   }
 
   async request<T>(options: DpdRequestOptions): Promise<T> {
@@ -141,7 +153,7 @@ export class DpdHttpClient implements IDpdHttpClient {
     }
 
     try {
-      return await fetch(url, {
+      return await this.fetchImpl(url, {
         method: options.method,
         headers,
         body: options.body === undefined ? undefined : JSON.stringify(options.body),

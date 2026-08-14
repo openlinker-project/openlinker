@@ -68,7 +68,12 @@ import {
   OrderNotDispatchablePaymentStatusException,
   ShipmentDispatchContendedException,
 } from '@openlinker/core/shipping';
-import { type IOrderRecordService, ORDER_RECORD_SERVICE_TOKEN } from '@openlinker/core/orders';
+import {
+  type IOrderRecordService,
+  ORDER_RECORD_SERVICE_TOKEN,
+  buildOrderSummary,
+  type OrderSummary,
+} from '@openlinker/core/orders';
 import { ROLE_PERMISSIONS } from '@openlinker/core/users';
 import { Logger } from '@openlinker/shared/logging';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
@@ -129,15 +134,17 @@ export class ShipmentController {
 
     const canWrite = this.hasShipmentsWrite(user);
     const page = await this.query.list(filters, { limit, offset });
-    const customerByOrder = await this.resolveCustomerIds(page.items.map((s) => s.orderId));
+    const orderContext = await this.resolveOrderContext(page.items.map((s) => s.orderId));
     return {
-      items: page.items.map((shipment) =>
-        ShipmentResponseDto.fromDomain(
+      items: page.items.map((shipment) => {
+        const context = orderContext.get(shipment.orderId);
+        return ShipmentResponseDto.fromDomain(
           shipment,
-          customerByOrder.get(shipment.orderId) ?? null,
+          context?.customerId ?? null,
           canWrite,
-        ),
-      ),
+          context?.orderSummary ?? null,
+        );
+      }),
       total: page.total,
       limit,
       offset,
@@ -166,6 +173,7 @@ export class ShipmentController {
       shipment,
       await this.resolveCustomerId(shipment.orderId),
       this.hasShipmentsWrite(user),
+      null,
     );
   }
 
@@ -185,6 +193,7 @@ export class ShipmentController {
       shipment,
       await this.resolveCustomerId(shipment.orderId),
       this.hasShipmentsWrite(user),
+      null,
     );
   }
 
@@ -347,7 +356,7 @@ export class ShipmentController {
     try {
       const shipment = await this.cancellation.cancel(id);
       // `@Roles('admin', 'operator')`-gated — the caller holds `shipments:write`.
-      return ShipmentResponseDto.fromDomain(shipment, null, true);
+      return ShipmentResponseDto.fromDomain(shipment, null, true, null);
     } catch (error) {
       throw this.toHttpException(error, true);
     }
@@ -425,20 +434,42 @@ export class ShipmentController {
   }
 
   /**
-   * Batch-resolve customer ids for a page of shipments. Dedupes order ids so a
-   * page with N shipments across M distinct orders costs M lookups, not N.
-   * NOTE: no batch read exists on `IOrderRecordService` yet — this is M single
-   * `getOrderRecord` calls; a `findByIds` batch is a tracked follow-up.
+   * Batch-resolve per-order context (customerId + #1995 orderSummary) for a
+   * page of shipments. A SINGLE `IOrderRecordService.findByIds` call scoped to
+   * the page's deduplicated order ids — deliberately NOT a `Promise.all` fan-out
+   * of single reads (that shape used to live here; see the #1995 issue body's
+   * "anti-pattern" callout). Degrades to an empty map (every row's context
+   * `undefined`) on a batch-read failure — a broken enrichment must never take
+   * down the primary shipments read, mirroring `resolveCustomerId`'s per-row
+   * degrade-to-null.
    */
-  private async resolveCustomerIds(orderIds: string[]): Promise<Map<string, string | null>> {
+  private async resolveOrderContext(
+    orderIds: string[],
+  ): Promise<Map<string, { customerId: string | null; orderSummary: OrderSummary | null }>> {
     const distinct = [...new Set(orderIds)];
-    const entries = await Promise.all(
-      distinct.map(async (orderId): Promise<[string, string | null]> => [
-        orderId,
-        await this.resolveCustomerId(orderId),
-      ]),
+    if (distinct.length === 0) {
+      return new Map();
+    }
+    let records: Awaited<ReturnType<IOrderRecordService['findByIds']>> = [];
+    try {
+      records = await this.orders.findByIds(distinct);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Failed to batch-resolve orders for shipments list: ${message}`);
+    }
+    const recordByOrderId = new Map(records.map((record) => [record.internalOrderId, record]));
+    return new Map(
+      distinct.map((orderId) => {
+        const record = recordByOrderId.get(orderId);
+        return [
+          orderId,
+          {
+            customerId: record?.customerId ?? null,
+            orderSummary: buildOrderSummary(record),
+          },
+        ];
+      }),
     );
-    return new Map(entries);
   }
 
   /**

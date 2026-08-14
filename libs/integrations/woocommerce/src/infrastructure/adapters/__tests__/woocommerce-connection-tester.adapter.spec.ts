@@ -10,6 +10,7 @@
  */
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { WooCommerceConnectionTesterAdapter } from '../woocommerce-connection-tester.adapter';
 
 const SITE_URL = 'https://myshop.com';
@@ -44,8 +45,21 @@ function stubFetch(status: number, ok = status >= 200 && status < 300): void {
   } as Response);
 }
 
+// `http.forConnection(...)` hands back a fetchImpl that delegates to
+// `global.fetch` — whatever `stubFetch` spies on — so the
+// connection-bound-transport seam (#1810) doesn't disturb this spec's
+// existing fetch-stub assertions.
+const http: jest.Mocked<HttpTransportFactoryPort> = {
+  forConnection: jest
+    .fn()
+    .mockReturnValue(
+      (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => global.fetch(...args),
+    ),
+  evict: jest.fn(),
+};
+
 describe('WooCommerceConnectionTesterAdapter', () => {
-  const adapter = new WooCommerceConnectionTesterAdapter();
+  const adapter = new WooCommerceConnectionTesterAdapter(http);
 
   it('should return success when products endpoint responds 200', async () => {
     stubFetch(200);

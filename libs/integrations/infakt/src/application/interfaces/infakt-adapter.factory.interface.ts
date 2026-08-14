@@ -10,6 +10,7 @@
  * @module libs/integrations/infakt/src/application/interfaces
  */
 import type { LoggerPort } from '@openlinker/shared/logging';
+import type { FetchLike } from '@openlinker/shared/http';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { InfaktInvoicingAdapter } from '../../infrastructure/adapters/infakt-invoicing.adapter';
@@ -19,5 +20,6 @@ export interface IInfaktAdapterFactory {
     connection: Connection,
     credentialsResolver: CredentialsResolverPort,
     logger: LoggerPort,
+    fetchImpl: FetchLike,
   ): Promise<InfaktInvoicingAdapter>;
 }

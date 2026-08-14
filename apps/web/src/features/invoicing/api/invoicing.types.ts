@@ -14,6 +14,8 @@
  * @module apps/web/src/features/invoicing/api
  */
 
+import type { OrderSummary } from '../../../shared/types/order-summary.types';
+
 /** Backend invoice lifecycle statuses (no FE-derived `not-issued` — that is the
  *  absence of a row, modelled as `null` from the query). `issuing` (W1 #1214)
  *  is a live-lease in-flight state: an attempt holds the row and no second
@@ -104,6 +106,12 @@ export interface InvoiceRecord {
   issuedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Batched order-identity projection (#1995). Only populated by `GET
+   * /invoices` (the list endpoint) — single-invoice reads carry `null` (not
+   * fetched there).
+   */
+  orderSummary: OrderSummary | null;
 }
 
 /** `POST /invoices` request body. No `idempotencyKey` in v1 (the controller

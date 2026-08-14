@@ -90,6 +90,22 @@ export interface OrderHealthSummary {
 }
 
 /**
+ * "Value stuck in failed syncs" — the needs-attention aggregate (#1983) over
+ * the same `HAS_FAILED` bucket `countByHealth` already partitions on. Reports
+ * both the count and the summed order value so an operator can judge urgency
+ * by money, not just by ticket count. `mixedCurrency` is `true` when the
+ * failed orders span more than one currency — the sum is currency-naive in
+ * that case, and the caller should say so rather than presenting a single
+ * misleadingly-precise total.
+ */
+export interface FailedSyncValueSummary {
+  count: number;
+  totalValue: number;
+  mixedCurrency: boolean;
+  oldestFailedAt: Date | null;
+}
+
+/**
  * Filter scope for the health-summary count (#929). A deliberate subset of
  * `OrderRecordFilters` — it intentionally omits `health` (and the sync-status /
  * destination JSONB filters) so the aggregate can't be self-filtered into a
@@ -153,6 +169,13 @@ export interface OrderRecordFilters {
    * `not-shipped` filter also matches rows with no stored value.
    */
   fulfillmentState?: FulfillmentRollupState;
+  /**
+   * Cancellation filter (#1984). Maps directly to `cancelledAt IS [NOT] NULL`
+   * — `true` keeps only cancelled orders, `false` excludes them. Queryable
+   * without parsing `orderSnapshot`; not yet wired into any HTTP query param
+   * or FE control — that is the aggregate endpoints' job (#1987/#1988).
+   */
+  cancelled?: boolean;
   /**
    * Result ordering (#927/#944/#1108). Maps to a SQL `ORDER BY` by
    * `OrderRecordRepository.applySort`. `dispatchBy` (ship-by deadline, NULLs

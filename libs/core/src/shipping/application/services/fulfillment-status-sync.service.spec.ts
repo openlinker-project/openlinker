@@ -98,8 +98,11 @@ describe('FulfillmentStatusSyncService', () => {
       persistIncomingSnapshot: jest.fn(),
       getOrderRecord: jest.fn(),
       findMany: jest.fn(),
+      findByIds: jest.fn(),
       updateFulfillmentState: jest.fn(),
       markItemResolutionFailure: jest.fn(),
+      getFailedSyncValueSummary: jest.fn(),
+      markCancelled: jest.fn(),
     };
 
     routing = {

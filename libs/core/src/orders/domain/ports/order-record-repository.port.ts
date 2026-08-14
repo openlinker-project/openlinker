@@ -16,6 +16,7 @@ import type {
   OrderHealthSummary,
   OrderHealthSummaryFilters,
   OrderRecordStatus,
+  FailedSyncValueSummary,
 } from '../types/order-record.types';
 import type { OrderSlaSummary } from '../types/order-sla.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
@@ -26,6 +27,19 @@ export interface OrderRecordRepositoryPort {
    * Find order record by internal order ID
    */
   findById(internalOrderId: string): Promise<OrderRecord | null>;
+
+  /**
+   * Batch-find order records by internal order ID (#1995).
+   *
+   * A single query scoped to the given id set — the real batch a cross-context
+   * list join (Shipments, Invoices) needs, as opposed to a de-duplicated
+   * `Promise.all` fan-out over {@link findById}. Ids with no matching row are
+   * silently omitted from the result (never throws, never pads with nulls);
+   * callers join back onto their own rows via a `Map` keyed by
+   * `internalOrderId`. Returns `[]` immediately for an empty `internalOrderIds`
+   * input, without issuing a query.
+   */
+  findByIds(internalOrderIds: string[]): Promise<OrderRecord[]>;
 
   /**
    * Upsert order record (create or update)
@@ -90,6 +104,14 @@ export interface OrderRecordRepositoryPort {
   countBySla(filters: OrderHealthSummaryFilters): Promise<OrderSlaSummary>;
 
   /**
+   * "Value stuck in failed syncs" — the needs-attention aggregate (#1983).
+   * Same scope subset + `HAS_FAILED` / not-mapping / not-source-deleted
+   * partition as {@link countByHealth}'s `needsAttention` bucket, but reports
+   * the summed order value (and its oldest failure) rather than just a count.
+   */
+  getFailedSyncValueSummary(filters: OrderHealthSummaryFilters): Promise<FailedSyncValueSummary>;
+
+  /**
    * Push a per-order fulfillment rollup (#1108) onto the order record. Called
    * from the shipping context after a shipment-status change (best-effort
    * projection). Idempotent absolute-set; a missing order row is a no-op (never
@@ -114,4 +136,16 @@ export interface OrderRecordRepositoryPort {
     internalOrderId: string,
     input: { status: OrderRecordStatus; reason: string }
   ): Promise<void>;
+
+  /**
+   * Durably record the instant the source reported this order cancelled
+   * (#1984), directly from `handleSourceCancellation` — the one ingestion
+   * path that never calls `persistOrder`/`persistIncomingSnapshot`.
+   * First-write-wins (`COALESCE`): a redelivered cancel event or a later
+   * re-poll can never overwrite an already-recorded cancellation instant.
+   * No-op (no throw) when the order row doesn't exist yet — mirrors
+   * {@link updateFulfillmentState}'s residual-race tolerance (#1160: a cancel
+   * event racing ahead of the order's own create/sync job).
+   */
+  markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void>;
 }

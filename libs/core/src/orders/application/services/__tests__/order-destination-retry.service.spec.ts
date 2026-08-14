@@ -53,6 +53,7 @@ describe('OrderDestinationRetryService', () => {
   beforeEach(() => {
     orderRepo = {
       findById: jest.fn(),
+      findByIds: jest.fn(),
       findMany: jest.fn(),
       upsert: jest.fn(),
       updateSyncStatus: jest.fn(),
@@ -64,6 +65,7 @@ describe('OrderDestinationRetryService', () => {
       persistIncomingSnapshot: jest.fn(),
       getOrderRecord: jest.fn(),
       findMany: jest.fn(),
+      findByIds: jest.fn(),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
     identifierMapping = {

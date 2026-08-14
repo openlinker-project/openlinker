@@ -163,8 +163,11 @@ describe('ShipmentDispatchService', () => {
       updateSyncStatus: jest.fn(),
       getOrderRecord: jest.fn().mockResolvedValue(null),
       findMany: jest.fn(),
+      findByIds: jest.fn(),
       updateFulfillmentState: jest.fn(),
       markItemResolutionFailure: jest.fn(),
+      getFailedSyncValueSummary: jest.fn(),
+      markCancelled: jest.fn(),
     };
     const fulfillmentProjection = { recompute: jest.fn() };
     // Uncontended by default (#1917): every pre-existing test asserts the

@@ -92,6 +92,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     providerCode: null,
     createdAt: '2026-05-28T10:00:00.000Z',
     updatedAt: '2026-05-28T11:00:00.000Z',
+    orderSummary: null,
     ...overrides,
   };
 }

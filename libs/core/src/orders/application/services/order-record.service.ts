@@ -16,6 +16,8 @@ import type { OrderSyncStatus, SyncAttempt } from '../../domain/types/order-sync
 import type { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import type {
+  FailedSyncValueSummary,
+  OrderHealthSummaryFilters,
   OrderRecordFilters,
   OrderRecordPagination,
   OrderRecordStatus,
@@ -152,7 +154,8 @@ export class OrderRecordService implements IOrderRecordService {
     // transaction — replaces the prior line-item set for this order so a
     // re-ingested order with a changed item list never leaves stale rows.
     const lineItems = deriveOrderLineItems(order, sourceConnectionId);
-    return this.repository.upsertWithLineItems(orderRecord, lineItems);
+    const saved = await this.repository.upsertWithLineItems(orderRecord, lineItems);
+    return this.recordCancellationIfNeeded(order.id, order.status === 'cancelled', now, saved);
   }
 
   async persistIncomingSnapshot(
@@ -226,7 +229,13 @@ export class OrderRecordService implements IOrderRecordService {
       this.deriveDispatchByAt(incoming.dispatchTime)
     );
 
-    return this.repository.upsert(orderRecord);
+    const saved = await this.repository.upsert(orderRecord);
+    return this.recordCancellationIfNeeded(
+      internalOrderId,
+      incoming.status === 'cancelled',
+      now,
+      saved
+    );
   }
 
   /**
@@ -255,6 +264,35 @@ export class OrderRecordService implements IOrderRecordService {
     }
     const parsed = new Date(to);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  /**
+   * Durably record a cancellation observed by the ordinary ingestion path
+   * (#1984) — the case where a source's order feed reports
+   * `status: 'cancelled'` directly, rather than via the dedicated
+   * `handleSourceCancellation` cancel-event path. Called AFTER `upsert()`
+   * (never before): `upsert()` never touches `cancelledAt` (see the `toOrm`
+   * comment in `OrderRecordRepository`), so this is the only writer, using
+   * the same atomic, first-write-wins `markCancelled` the cancel-event path
+   * uses — no read-before-write race between concurrent ingestion calls for
+   * the same order (webhook + reconciliation poll can legitimately overlap).
+   *
+   * `upsert()`'s returned record never reflects `cancelledAt` (the column
+   * was never sent to the database in that statement), so a re-fetch is
+   * needed to return an accurate record when a cancellation was recorded;
+   * the extra read is paid only on this rare path, not on every persist.
+   */
+  private async recordCancellationIfNeeded(
+    internalOrderId: string,
+    isCancelled: boolean,
+    cancelledAt: Date,
+    saved: OrderRecord
+  ): Promise<OrderRecord> {
+    if (!isCancelled) {
+      return saved;
+    }
+    await this.repository.markCancelled(internalOrderId, cancelledAt);
+    return (await this.repository.findById(internalOrderId)) ?? saved;
   }
 
   /**
@@ -309,6 +347,10 @@ export class OrderRecordService implements IOrderRecordService {
     return this.repository.findMany(filters, pagination);
   }
 
+  async findByIds(internalOrderIds: string[]): Promise<OrderRecord[]> {
+    return this.repository.findByIds(internalOrderIds);
+  }
+
   async updateFulfillmentState(
     internalOrderId: string,
     fulfillmentState: FulfillmentRollupState
@@ -325,6 +367,21 @@ export class OrderRecordService implements IOrderRecordService {
     // to any other column on the same row (e.g. a syncStatus update racing
     // in from OrderSyncService). Mirrors updateFulfillmentState's pattern.
     await this.repository.updateItemResolutionFailure(internalOrderId, input);
+  }
+
+  async getFailedSyncValueSummary(
+    filters: OrderHealthSummaryFilters
+  ): Promise<FailedSyncValueSummary> {
+    return this.repository.getFailedSyncValueSummary(filters);
+  }
+
+  /**
+   * Durably record the instant this order was cancelled (#1984). Thin
+   * pass-through to the repository's first-write-wins absolute-set — see
+   * {@link OrderRecordRepositoryPort.markCancelled}.
+   */
+  async markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void> {
+    await this.repository.markCancelled(internalOrderId, cancelledAt);
   }
 
   /**

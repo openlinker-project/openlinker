@@ -305,6 +305,44 @@ describe('editConnectionSchema — unmanagedStockQuantity (WooCommerce, #969 §7
   );
 });
 
+describe('mergeStructuredIntoConfig — rateLimit (#1810, #2016)', () => {
+  it('writes the pruned object when at least one knob is set', () => {
+    const result = mergeStructuredIntoConfig(
+      {},
+      { rateLimit: { requestsPerMinute: '60', maxConcurrent: '' } },
+    );
+    expect(result).toEqual({ rateLimit: { requestsPerMinute: 60 } });
+  });
+
+  it('writes an EXPLICIT null (not a deleted key) when both knobs are cleared (#2016)', () => {
+    const base = { rateLimit: { requestsPerMinute: 60, maxConcurrent: 4 } };
+    const result = mergeStructuredIntoConfig(base, {
+      rateLimit: { requestsPerMinute: '', maxConcurrent: '' },
+    });
+    // The key must stay PRESENT with value null — a deleted key would let a
+    // stale `fresh.config.rateLimit` survive EditConnectionForm's pre-submit
+    // `{ ...fresh.config, ...input.config }` merge (#2016).
+    expect('rateLimit' in result).toBe(true);
+    expect(result.rateLimit).toBeNull();
+  });
+
+  it('writes an EXPLICIT null when the patch clears rateLimit to null directly', () => {
+    const base = { rateLimit: { requestsPerMinute: 60 } };
+    const result = mergeStructuredIntoConfig(base, { rateLimit: null });
+    expect('rateLimit' in result).toBe(true);
+    expect(result.rateLimit).toBeNull();
+  });
+
+  it('leaves rateLimit untouched when the patch omits it', () => {
+    const base = { rateLimit: { requestsPerMinute: 60 } };
+    const result = mergeStructuredIntoConfig(base, { baseUrl: 'https://shop.example.com' });
+    expect(result).toEqual({
+      rateLimit: { requestsPerMinute: 60 },
+      baseUrl: 'https://shop.example.com',
+    });
+  });
+});
+
 describe('mergeStructuredIntoConfig — inpostPsModuleType (#767/#1155)', () => {
   it("writes 'official_inpost' to config", () => {
     const result = mergeStructuredIntoConfig({}, { inpostPsModuleType: 'official_inpost' });

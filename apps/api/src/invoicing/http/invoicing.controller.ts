@@ -103,8 +103,9 @@ import {
   IOrderRecordService,
   orderFromReadySnapshot,
   OrderSnapshotUnavailableError,
+  buildOrderSummary,
 } from '@openlinker/core/orders';
-import type { Order, OrderRecord } from '@openlinker/core/orders';
+import type { Order, OrderRecord, OrderSummary } from '@openlinker/core/orders';
 import {
   CONNECTION_PORT_TOKEN,
   ConnectionPort,
@@ -114,6 +115,7 @@ import { IssueCorrectionRequestDto } from './dto/issue-correction-request.dto';
 import { GetInvoiceForOrderQueryDto } from './dto/get-invoice-for-order-query.dto';
 import { ListInvoicesQueryDto } from './dto/list-invoices-query.dto';
 import { InvoiceRecordResponseDto } from './dto/invoice-record-response.dto';
+import { OrderSummaryProjectionDto } from '../../orders/http/dto/order-summary-projection.dto';
 import { IssuedDocumentContentDto } from './dto/issued-document-content.dto';
 import { PaginatedInvoicesResponseDto } from './dto/paginated-invoices-response.dto';
 import { RetryInvoicesRequestDto } from './dto/retry-invoices-request.dto';
@@ -1098,12 +1100,43 @@ export class InvoicingController {
       taxId: query.taxId,
     };
     const page = await this.invoiceService.listInvoices(filter, { limit, offset });
+    const orderSummaryByOrderId = await this.resolveOrderSummaries(
+      page.items.map((record) => record.orderId),
+    );
     return {
-      items: page.items.map((record) => this.toDto(record)),
+      items: page.items.map((record) =>
+        this.toDto(record, orderSummaryByOrderId.get(record.orderId) ?? null),
+      ),
       total: page.total,
       limit,
       offset,
     };
+  }
+
+  /**
+   * Batch-resolve #1995's `orderSummary` projection for a page of invoices. A
+   * SINGLE `IOrderRecordService.findByIds` call scoped to the page's
+   * deduplicated order ids — never a per-order fan-out (mirrors the shipping
+   * context's `ShipmentController.resolveOrderContext`). Degrades to an empty
+   * map (every row's summary `null`) on a batch-read failure — a broken
+   * enrichment must never take down the primary invoices read.
+   */
+  private async resolveOrderSummaries(orderIds: string[]): Promise<Map<string, OrderSummary | null>> {
+    const distinct = [...new Set(orderIds)];
+    if (distinct.length === 0) {
+      return new Map();
+    }
+    let records: Awaited<ReturnType<IOrderRecordService['findByIds']>> = [];
+    try {
+      records = await this.orders.findByIds(distinct);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Failed to batch-resolve orders for invoices list: ${message}`);
+    }
+    const recordByOrderId = new Map(records.map((record) => [record.internalOrderId, record]));
+    return new Map(
+      distinct.map((orderId) => [orderId, buildOrderSummary(recordByOrderId.get(orderId))]),
+    );
   }
 
   /**
@@ -1291,8 +1324,12 @@ export class InvoicingController {
   /**
    * Explicit field projection (mirrors customers `toDto`): never spreads the
    * entity, and DELIBERATELY omits `idempotencyKey` + `errorMessage`.
+   *
+   * @param orderSummary Batched order-identity projection (#1995). Defaults to
+   *   `null` — every call site except `listInvoices` is a single-record
+   *   read/write with no batched order context to hand it.
    */
-  private toDto(record: InvoiceRecord): InvoiceRecordResponseDto {
+  private toDto(record: InvoiceRecord, orderSummary: OrderSummary | null = null): InvoiceRecordResponseDto {
     return {
       id: record.id,
       connectionId: record.connectionId,
@@ -1312,6 +1349,7 @@ export class InvoicingController {
       issuedAt: record.issuedAt ? record.issuedAt.toISOString() : null,
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
+      orderSummary: orderSummary ? OrderSummaryProjectionDto.fromSummary(orderSummary) : null,
     };
   }
 
@@ -1478,7 +1516,7 @@ export class InvoicingController {
     if (!record) {
       throw new NotFoundException(`Invoice not found: ${invoiceId}`);
     }
-    return InvoiceRecordResponseDto.fromDomain(record);
+    return InvoiceRecordResponseDto.fromDomain(record, null);
   }
 
   /**

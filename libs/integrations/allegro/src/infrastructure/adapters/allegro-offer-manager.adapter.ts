@@ -58,6 +58,8 @@ import type {
   SafetyAttachmentUploader,
   SafetyAttachmentUploadInput,
   SafetyAttachmentUploadResult,
+  TaxonomyIdentityProvider,
+  TaxonomyOwner,
 } from '@openlinker/core/listings';
 import {
   OfferCreateRejectedException,
@@ -65,6 +67,7 @@ import {
   OfferNotFoundOnMarketplaceException,
 } from '@openlinker/core/listings';
 import type { AllegroSellerDefaultsConfig } from '../../domain/types/allegro-seller-defaults.types';
+import type { AllegroEnvironment } from '../../domain/types/allegro-config.types';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import {
   resolveAllegroProductCardByEan,
@@ -272,7 +275,8 @@ export class AllegroOfferManagerAdapter
     OfferReader,
     SellerPoliciesReader,
     ResponsibleProducerReader,
-    SafetyAttachmentUploader
+    SafetyAttachmentUploader,
+    TaxonomyIdentityProvider
 {
   private readonly logger = new Logger(AllegroOfferManagerAdapter.name);
 
@@ -317,7 +321,17 @@ export class AllegroOfferManagerAdapter
      * `getAllegroWebBaseUrl` in the adapter factory. When undefined, `getOffer`
      * omits `marketplaceUrl` from its result.
      */
-    private readonly storefrontBaseUrl?: string
+    private readonly storefrontBaseUrl?: string,
+    /**
+     * Which Allegro API host this connection talks to. Resolved by
+     * `AllegroAdapterFactory` from the required, already-validated
+     * `config.environment` — deliberately NOT re-parsed from `_connection`
+     * here, which would put config-shape knowledge in two places.
+     *
+     * Optional with a `'production'` default only so the 13 existing spec
+     * construction sites keep compiling; the factory always passes it.
+     */
+    private readonly environment: AllegroEnvironment = 'production'
   ) {
     this.quantityPollConfig = {
       maxAttempts: quantityPollConfig?.maxAttempts ?? 5,
@@ -327,6 +341,24 @@ export class AllegroOfferManagerAdapter
     };
     this.catParamsTtlSec = catParamsTtlSec ?? DEFAULT_CAT_PARAMS_TTL_SEC;
     void _connection;
+  }
+
+  /**
+   * Declare WHICH Allegro category tree this connection reads and writes
+   * (`TaxonomyIdentityProvider`, ADR-037 / #2063).
+   *
+   * Sandbox is a genuinely different tree, not a different view of one: it is a
+   * different API host with independently-seeded category data, so sharing the
+   * `'allegro'` scope let a sandbox and a production connection overwrite each
+   * other's rows — and the watermark sweep then deleted the loser's whole tree
+   * on every completing run.
+   *
+   * Region is deliberately NOT part of the identity: Allegro publishes one tree
+   * across .pl/.cz/.sk/.hu with consistent identifiers (see
+   * `taxonomy-owner.types.ts`), so `'allegro:pl'` would be a false distinction.
+   */
+  getTaxonomyIdentity(): TaxonomyOwner {
+    return this.environment === 'sandbox' ? 'allegro:sandbox' : 'allegro';
   }
 
   /**
@@ -1528,6 +1560,15 @@ export class AllegroOfferManagerAdapter
     };
     if (validationErrors.length > 0) {
       result.validationErrors = validationErrors;
+    }
+    // Report Allegro's own publication status so core can persist a status
+    // snapshot without waiting for the hourly scan (#2039). Only when the
+    // response actually carried one: `mapAllegroPublicationStatus` defaults an
+    // absent value to `'inactive'`, which is the right *read-path* fallback but
+    // would be a guess here — and a guessed `inactive` reads as a rejected
+    // offer. Absent ⇒ omit the field ⇒ core writes no row.
+    if (response.publication?.status !== undefined) {
+      result.publicationStatus = this.mapAllegroPublicationStatus(response.publication.status);
     }
     return result;
   }

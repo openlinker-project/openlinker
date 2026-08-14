@@ -8,6 +8,11 @@
  * (the snapshot is authoritative), with a last-synced time and a per-offer
  * manual refresh that force-reads the live marketplace status.
  *
+ * A mapped offer with no snapshot yet is listed too, as `Not synced yet` with a
+ * `Check status` action (#2039) — previously it was excluded from the read, so
+ * the panel fell through to an empty state and the manual refresh, which is
+ * rendered per offer row, could not be reached for the offers that needed it.
+ *
  * @module apps/web/src/features/listings/components
  */
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -69,10 +74,12 @@ export function OfferPublicationStatusPanel({
 
   const offers = query.data ?? [];
   if (offers.length === 0) {
+    // Now genuinely "no offers", not "no status": an offer that exists without
+    // a snapshot comes back with a null status and renders a row below (#2039).
     return (
       <EmptyState
-        title="No live status yet"
-        message="This product's offers haven't been synced from the marketplace yet."
+        title="No offers on marketplaces"
+        message="This product isn't listed on any marketplace connection yet."
       />
     );
   }
@@ -92,14 +99,24 @@ export function OfferPublicationStatusPanel({
               <span className="offer-publication-status__id mono-text">{offer.externalOfferId}</span>
               <span className="sync-freshness">
                 <span className="sync-freshness__dot" aria-hidden="true" />
-                Synced <TimeDisplay iso={offer.lastStatusSyncedAt} format="relative" />
+                {offer.lastStatusSyncedAt === null ? (
+                  'Never synced'
+                ) : (
+                  <>
+                    Synced <TimeDisplay iso={offer.lastStatusSyncedAt} format="relative" />
+                  </>
+                )}
               </span>
               <Button
                 tone="ghost"
                 disabled={refresh.isPending}
                 onClick={() => refresh.mutate(offer)}
               >
-                {isRefreshing ? 'Refreshing…' : 'Refresh'}
+                {isRefreshing
+                  ? 'Refreshing…'
+                  : offer.publicationStatus === null
+                    ? 'Check status'
+                    : 'Refresh'}
               </Button>
             </li>
           );

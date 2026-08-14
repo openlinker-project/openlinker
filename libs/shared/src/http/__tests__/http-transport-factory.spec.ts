@@ -55,6 +55,24 @@ describe('HttpTransportFactory', () => {
     expect(registry.getStatus('conn-1')?.inFlight).toBe(0);
   });
 
+  it('resolves globalThis.fetch per call when no fetchImpl is injected', async () => {
+    const factory = new HttpTransportFactory({ registry });
+    const boundFetch = factory.forConnection({ id: 'conn-1' });
+
+    // Swapped AFTER construction — the factory is a boot-time singleton, so a
+    // reference captured in the constructor would escape to the real network.
+    const originalFetch = globalThis.fetch;
+    const response = new Response(null, { status: 200 });
+    const stub = jest.fn().mockResolvedValue(response);
+    globalThis.fetch = stub as unknown as typeof fetch;
+    try {
+      await expect(boundFetch('https://example.com')).resolves.toBe(response);
+      expect(stub).toHaveBeenCalledWith('https://example.com', undefined);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('releases the slot even when the underlying fetch throws', async () => {
     const fetchImpl = jest.fn().mockRejectedValue(new Error('network down'));
     const factory = new HttpTransportFactory({ registry, fetchImpl });
@@ -152,7 +170,7 @@ describe('HttpTransportFactory', () => {
     expect(registry.getStatus('conn-1')?.maxConcurrent).toBe(1);
   });
 
-  it('divides the configured cap across OL_WORKER_REPLICAS', async () => {
+  it('divides the configured cap when constructed with an explicit replicas count', async () => {
     const response = new Response(null, { status: 200 });
     const fetchImpl = jest.fn().mockResolvedValue(response);
     const factory = new HttpTransportFactory({ registry, fetchImpl, replicas: 4 });
@@ -162,7 +180,11 @@ describe('HttpTransportFactory', () => {
 
     await boundFetch('https://example.com');
 
-    // 4 replicas dividing a cap of 4 leaves each replica a cap of 1.
+    // 4 replicas dividing a cap of 4 leaves each replica a cap of 1. The DI
+    // wiring in `libs/plugin-sdk/src/rate-limit.module.ts` no longer passes
+    // `replicas` (#2015 — the registry is Redis-shared already), but the
+    // option itself still works for a caller that constructs its own
+    // `HttpTransportFactory` directly.
     expect(registry.getStatus('conn-1')?.maxConcurrent).toBe(1);
   });
 

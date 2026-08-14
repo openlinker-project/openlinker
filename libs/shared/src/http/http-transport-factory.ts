@@ -1,12 +1,18 @@
 /**
  * Http Transport Factory
  *
- * Resolves a connection's live `config.rateLimit`, divides it across
- * `OL_WORKER_REPLICAS` (static division, #1810), and wraps the underlying
+ * Resolves a connection's live `config.rateLimit` and wraps the underlying
  * transport so every call acquires a rate-limit slot first and releases it
  * in a `finally`. A `429`/`503` response's `Retry-After` header feeds back
  * into the limiter's pacing — this is a pass-through wrapper, not a retry
  * engine, so the response itself is returned to the caller unmodified.
+ *
+ * `replicas` (optional constructor dep, divides the policy — #1810) is kept
+ * for callers that still want static division, but the DI wiring
+ * (`libs/plugin-sdk/src/rate-limit.module.ts`) no longer passes it: since
+ * #2015 the registry is Redis-backed and already shared across every
+ * process/replica, so dividing further would only shrink the operator's
+ * configured cap.
  *
  * @module libs/shared/src/http
  */
@@ -95,11 +101,15 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
   constructor(deps: HttpTransportFactoryDeps) {
     this.registry = deps.registry;
     this.replicas = deps.replicas && deps.replicas > 0 ? deps.replicas : 1;
-    // Bound: an unbound `globalThis.fetch` reference throws "Illegal
-    // invocation" when later invoked without its `globalThis` receiver in a
-    // browser realm. Node/undici tolerate the unbound form, but this package
-    // is nominally environment-neutral (tech-review finding on #1957).
-    this.baseFetch = deps.fetchImpl ?? globalThis.fetch.bind(globalThis);
+    // Late-bound: the default transport resolves `globalThis.fetch` on every
+    // call, not once at construction. The factory is a `@Global()` singleton
+    // built at app boot, so capturing the reference eagerly would make a later
+    // `global.fetch` swap (how integration tests stub an adapter's outbound
+    // call) silently bypassed — the call would escape to the real network.
+    // Invoking it as a method of `globalThis` also keeps the receiver correct,
+    // which an unbound reference loses ("Illegal invocation" in a browser
+    // realm; Node/undici tolerate it, but this package is environment-neutral).
+    this.baseFetch = deps.fetchImpl ?? ((input, init) => globalThis.fetch(input, init));
   }
 
   forConnection(

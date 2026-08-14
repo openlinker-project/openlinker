@@ -101,7 +101,9 @@ describe('OrderIngestionService', () => {
       updateSyncStatus: jest.fn().mockResolvedValue(undefined),
       getOrderRecord: jest.fn(),
       findMany: jest.fn(),
+      findByIds: jest.fn(),
       markItemResolutionFailure: jest.fn().mockResolvedValue(undefined),
+      markCancelled: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
     customerIdentityResolver = {
@@ -1147,6 +1149,80 @@ describe('OrderIngestionService', () => {
       await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
 
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('dest-conn-1=rejected'));
+    });
+  });
+
+  describe('syncOrderFromSource – inbound cancellation durably recorded on the record (#1984)', () => {
+    const externalOrderId = 'checkout-cancel-1984';
+
+    it('marks the order record cancelled BEFORE relaying to destinations', async () => {
+      identifierMapping.getInternalId.mockResolvedValue('ol_order_cancel');
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+      } as unknown as OrderRecord);
+      orderLifecycleRelay.relay.mockResolvedValue({
+        targets: [{ connectionId: 'dest-conn-1', outcome: 'applied' }],
+      });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderRecordService.markCancelled).toHaveBeenCalledWith(
+        'ol_order_cancel',
+        expect.any(Date)
+      );
+      const markCancelledOrder =
+        orderRecordService.markCancelled.mock.invocationCallOrder[0];
+      const relayOrder = orderLifecycleRelay.relay.mock.invocationCallOrder[0];
+      expect(markCancelledOrder).toBeLessThan(relayOrder);
+    });
+
+    it('does NOT mark the record cancelled when the order was never ingested (no internal mapping)', async () => {
+      identifierMapping.getInternalId.mockResolvedValue(null);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderRecordService.markCancelled).not.toHaveBeenCalled();
+    });
+
+    it('does NOT mark the record cancelled on a destination-echo cancel', async () => {
+      identifierMapping.getInternalId.mockResolvedValue('ol_order_cancel');
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: 'allegro-connection',
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderRecordService.markCancelled).not.toHaveBeenCalled();
+    });
+
+    it('still relays to destinations when markCancelled throws (the write is best-effort, never blocking)', async () => {
+      identifierMapping.getInternalId.mockResolvedValue('ol_order_cancel');
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+      } as unknown as OrderRecord);
+      orderRecordService.markCancelled.mockRejectedValueOnce(new Error('db unavailable'));
+      orderLifecycleRelay.relay.mockResolvedValue({
+        targets: [{ connectionId: 'dest-conn-1', outcome: 'applied' }],
+      });
+      const errorSpy = jest.spyOn(service['logger'], 'error').mockImplementation();
+
+      const result = await service.syncOrderFromSource(
+        connectionId,
+        externalOrderId,
+        'evt-1',
+        'cancelled'
+      );
+
+      expect(result).toEqual([]);
+      expect(orderLifecycleRelay.relay).toHaveBeenCalledWith({
+        internalOrderId: 'ol_order_cancel',
+        originConnectionId: connectionId,
+        event: { type: 'cancelled' },
+      });
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to record cancellation'),
+        expect.anything()
+      );
     });
   });
 });

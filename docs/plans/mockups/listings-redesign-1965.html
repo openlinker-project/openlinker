@@ -1,0 +1,1694 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>#1965 — Listings redesign (human-readable columns + lifecycle tabs) · UI Mockups</title>
+<!--
+  ══════════════════════════════════════════════════════════════════════════
+  Standalone, framework-free mockup for the /listings redesign (issue #1965).
+  Tokens and component CSS are transcribed from apps/web/src/index.css so this
+  reads as the same product, not a lookalike. No new colour, radius, shadow or
+  spacing value is introduced anywhere in this file.
+
+  The table is DATA-DRIVEN (see LISTINGS[] near the bottom): tabs, counts,
+  multi-field search and the channel filter all compute from one array, so the
+  interaction here behaves the way the real page would rather than being faked
+  with static rows.
+
+  ── THREE CORRECTIONS TO THE ISSUE ───────────────────────────────────────
+  All three were verified against the codebase and each one changes scope.
+
+  1. "Needs attention — the linkedProductId-missing condition is already
+     computable today" is FALSE. An OfferMapping row is written ONLY when the
+     offer successfully links to a variant: offer-mapping-sync.service.ts:89-119
+     persists inside the `result.status === 'linked'` branch and everything else
+     falls to `skipped += 1` with no row written. An offer that doesn't match
+     the catalog never appears on this page at all. `linkedProductId === null`
+     is therefore only reachable as an orphaned mapping after a variant is hard
+     deleted — not the common "unmatched offer" case the issue imagines.
+
+  2. "offer_status_snapshots is product-keyed and would need N+1 calls" is
+     FALSE. The table carries a UNIQUE key on (externalOfferId, connectionId)
+     — offer-status-snapshot.orm-entity.ts:28-30 — which is exactly the key of
+     a listings row, plus IDX_offer_status_snapshots_connection_status whose
+     own comment reads "supports per-connection status aggregation (dashboards
+     / filters)". It is a plain LEFT JOIN. Only the READ SERVICE
+     (OfferStatusReadService) is product-keyed; the table is not.
+
+  3. "Tabs has no built-in count-badge support" is FALSE. `.tabs__count` exists
+     at index.css:5578+ and already ships in pages/users/users-page.tsx:430.
+
+  Net effect: the real data gap is TWO columns, not six. Price and quantity are
+  the only fields that exist solely behind a live marketplace call
+  (GET /listings/:id/offer, Cache-Control 30s). They carry a † marker here.
+
+  ── DECISIONS TAKEN WITH THE PM, OVERRIDING THE ISSUE ────────────────────
+  a. The Listing column leads with the PRODUCT name from the catalog, not the
+     offer/listing title, followed by external offer id, variant, SKU and EAN.
+  b. The "Needs attention" tab is dropped. Validator-rejected offers live in
+     the `Inactive` tab carrying a REJECTED badge and the validator's own
+     message.
+  c. Price and quantity stay visible, marked as needing materialisation.
+
+  ── WHY THESE FOUR TABS DON'T OVERLAP ────────────────────────────────────
+  All four buckets derive from ONE source: the offer_status_snapshots row
+  joined on (externalOfferId, connectionId). `inactive` splits into two
+  business states on the presence of validation errors, exactly as the
+  creation poller already branches (offer-status-poll.service.ts:227-241):
+
+    active     → publicationStatus 'active' (+ transient activating/inactivating)
+    inactive   → publicationStatus 'inactive' WITH statusDetails.validationMessages
+                 (the marketplace validator rejected it)
+    draft      → publicationStatus 'inactive' WITHOUT validation messages
+                 (the offer exists on the channel but is not live)
+    ended      → publicationStatus 'ended'
+
+  Because the four conditions partition a single enum + one boolean, the tabs
+  are disjoint and the counts sum to the filtered total — unlike the issue's
+  original non-exclusive design, which was a consequence of the (now dropped)
+  Needs attention tab.
+
+  ⚠ DO NOT source the Draft tab from OfferCreationRecord.status. An earlier
+  revision of this mockup did, on the issue's own assumption that "Draft =
+  created in OL, not yet published to the channel". That is unsafe: the poller
+  maps BOTH clean-`inactive` AND `ended` to OFFER_CREATION_STATUS.Draft
+  (offer-status-poll.service.ts:238-241), so a creation-record-keyed Draft tab
+  would swallow ended offers and break disjointness against Ended. The
+  snapshot's publicationStatus is the only field that separates the two.
+  Corrected 31 Jul 2026; see the correction comment on issue #1965.
+
+  Sample data is a ceramic-planter catalogue built out from the real Erli row
+  in the PM's screenshot (Doniczka ceramiczna Terra, EAN 5900000000138,
+  100.00 PLN, qty 41) so the mockup cross-references something real.
+  ══════════════════════════════════════════════════════════════════════════
+-->
+<style>
+  /* ══════════════════ 1. TOKENS — verbatim from apps/web/src/index.css ══════════════════ */
+  :root {
+    --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+      'Segoe UI', sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+      'Liberation Mono', monospace;
+
+    --bg-canvas: oklch(99% 0.003 80);
+    --bg-shell: oklch(97.5% 0.004 80);
+    --bg-surface: #ffffff;
+    --bg-surface-elevated: oklch(99% 0.003 80);
+    --bg-muted: oklch(96% 0.005 80);
+    --bg-surface-muted: oklch(96% 0.005 80);
+    --bg-surface-hover: oklch(93% 0.006 80);
+    --bg-strong: oklch(93% 0.006 80);
+
+    --border-subtle: oklch(93.5% 0.006 80);
+    --border-default: oklch(88% 0.008 80);
+    --border-strong: oklch(78% 0.010 80);
+    --border-focus: oklch(68% 0.18 50);
+
+    --text-primary: oklch(20% 0.012 80);
+    --text-secondary: oklch(38% 0.010 80);
+    --text-muted: oklch(52% 0.008 80);
+    --text-disabled: oklch(70% 0.005 80);
+    --text-on-primary: oklch(18% 0.012 50);
+    --text-inverse: oklch(96% 0.005 80);
+    --text-link: oklch(50% 0.14 250);
+
+    --accent-primary: oklch(68% 0.18 50);
+    --accent-primary-hover: oklch(62% 0.19 50);
+    --accent-primary-active: oklch(56% 0.20 50);
+    --accent-primary-soft: oklch(96% 0.04 60);
+    --accent-primary-soft-strong: oklch(40% 0.16 50);
+    --accent-primary-border: oklch(85% 0.10 55);
+    --accent-focus: oklch(68% 0.18 50);
+    --accent-ring: oklch(68% 0.18 50 / 0.30);
+
+    --status-success: oklch(54% 0.14 150);
+    --status-success-soft: oklch(96% 0.04 150);
+    --status-success-border: oklch(85% 0.08 150);
+    --status-success-fg: oklch(36% 0.12 150);
+    --status-success-strong: oklch(36% 0.12 150);
+
+    --status-warning: oklch(72% 0.16 85);
+    --status-warning-soft: oklch(96% 0.05 85);
+    --status-warning-border: oklch(85% 0.10 85);
+    --status-warning-fg: oklch(42% 0.12 80);
+    --status-warning-strong: oklch(42% 0.12 80);
+
+    --status-error: oklch(58% 0.20 25);
+    --status-error-soft: oklch(96% 0.04 25);
+    --status-error-border: oklch(85% 0.10 25);
+    --status-error-fg: oklch(42% 0.16 25);
+    --status-error-strong: oklch(42% 0.16 25);
+
+    --status-info: oklch(56% 0.14 245);
+    --status-info-soft: oklch(96% 0.03 245);
+    --status-info-border: oklch(85% 0.08 245);
+    --status-info-fg: oklch(40% 0.12 245);
+    --status-info-strong: oklch(40% 0.12 245);
+
+    --status-review: oklch(58% 0.16 290);
+    --status-review-soft: oklch(96% 0.04 290);
+    --status-review-border: oklch(85% 0.08 290);
+    --status-review-fg: oklch(42% 0.14 290);
+    --status-review-strong: oklch(42% 0.14 290);
+
+    --status-disabled: oklch(55% 0.008 80);
+    --status-disabled-soft: oklch(95% 0.005 80);
+    --status-disabled-border: oklch(85% 0.008 80);
+    --status-disabled-fg: oklch(38% 0.010 80);
+    --status-disabled-strong: oklch(38% 0.010 80);
+
+    /* Channel brand hues (#1752) — identity, never health. */
+    --channel-allegro: oklch(70% 0.18 35);
+    --channel-prestashop: oklch(60% 0.18 250);
+    --channel-erli: oklch(66% 0.17 320);
+    --channel-woocommerce: oklch(64% 0.16 150);
+    --channel-amazon: oklch(72% 0.16 75);
+    --channel-shopify: oklch(64% 0.16 150);
+
+    --shadow-soft: 0 1px 2px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.06);
+    --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+    --shadow-sm: 0 1px 2px rgb(15 18 26 / 0.04), 0 1px 3px rgb(15 18 26 / 0.06);
+    --shadow-md: 0 2px 4px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.08);
+    --shadow-lg: 0 6px 12px rgb(15 18 26 / 0.06), 0 16px 32px rgb(15 18 26 / 0.10);
+    --shadow-focus: 0 0 0 3px var(--accent-ring);
+    --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.6);
+    --button-primary-bg-hover: oklch(62% 0.19 50);
+
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.5rem;
+    --space-6: 2rem;
+    --space-7: 3rem;
+    --space-8: 4rem;
+
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 10px;
+    --radius-xl: 14px;
+    --radius-pill: 9999px;
+
+    --duration-fast: 120ms;
+    --duration-normal: 180ms;
+    --duration-slow: 280ms;
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+    --tracking-tight: -0.012em;
+    --tracking-normal: 0;
+    --tracking-wide: 0.02em;
+    --tracking-caps: 0.08em;
+
+    color-scheme: light;
+  }
+
+  /* Dark theme. The app resolves light/dark in a FOUC guard in index.html and
+     stamps html[data-theme]; the boot script at the bottom of this file mirrors
+     that, so only one dark block is needed here (no duplicated media-query
+     copy) and the viewer's OS preference is still honoured. */
+  html[data-theme='dark'] {
+    color-scheme: dark;
+    --button-primary-bg-hover: oklch(78% 0.18 50);
+
+    --bg-canvas: oklch(14% 0.005 270);
+    --bg-shell: oklch(16% 0.006 270);
+    --bg-surface: oklch(19% 0.007 270);
+    --bg-surface-elevated: oklch(22% 0.008 270);
+    --bg-muted: oklch(24% 0.009 270);
+    --bg-surface-muted: oklch(24% 0.009 270);
+    --bg-surface-hover: oklch(28% 0.010 270);
+    --bg-strong: oklch(28% 0.010 270);
+
+    --border-subtle: oklch(24% 0.010 270);
+    --border-default: oklch(30% 0.012 270);
+    --border-strong: oklch(42% 0.014 270);
+    --border-focus: oklch(72% 0.18 50);
+
+    --text-primary: oklch(96% 0.006 270);
+    --text-secondary: oklch(78% 0.010 270);
+    --text-muted: oklch(60% 0.012 270);
+    --text-disabled: oklch(42% 0.012 270);
+    --text-on-primary: oklch(16% 0.012 50);
+    --text-inverse: oklch(20% 0.012 80);
+    --text-link: oklch(76% 0.14 245);
+
+    --accent-primary: oklch(72% 0.18 50);
+    --accent-primary-hover: oklch(78% 0.18 50);
+    --accent-primary-active: oklch(84% 0.16 50);
+    --accent-primary-soft: oklch(28% 0.08 50);
+    --accent-primary-soft-strong: oklch(86% 0.14 60);
+    --accent-primary-border: oklch(40% 0.14 55);
+    --accent-focus: oklch(72% 0.18 50);
+    --accent-ring: oklch(72% 0.18 50 / 0.40);
+
+    --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150);
+    --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+    --status-success-strong: oklch(86% 0.14 150);
+    --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85);
+    --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+    --status-warning-strong: oklch(88% 0.14 85);
+    --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25);
+    --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25);
+    --status-error-strong: oklch(86% 0.14 25);
+    --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245);
+    --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+    --status-info-strong: oklch(86% 0.12 245);
+    --status-review: oklch(74% 0.14 290); --status-review-soft: oklch(28% 0.06 290);
+    --status-review-border: oklch(38% 0.10 290); --status-review-fg: oklch(88% 0.12 290);
+    --status-review-strong: oklch(88% 0.12 290);
+    --status-disabled: oklch(65% 0.010 270); --status-disabled-soft: oklch(24% 0.010 270);
+    --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
+    --status-disabled-strong: oklch(82% 0.010 270);
+
+    --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+    --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+    --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+    --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  }
+
+  /* ══════════════════ 2. BASE ══════════════════ */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg-canvas);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+  .mono-text { font-family: var(--font-mono); letter-spacing: -0.01em; overflow-wrap: anywhere; }
+  .tabular { font-variant-numeric: tabular-nums; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+
+  /* ══════════════════ 3. MOCKUP SCAFFOLD (not part of the app) ══════════════════ */
+  .controls {
+    position: sticky; top: 0; z-index: 50; display: flex; gap: var(--space-2);
+    align-items: center; justify-content: flex-end;
+    padding: var(--space-3) var(--space-5);
+    background: color-mix(in oklab, var(--bg-shell) 88%, transparent);
+    backdrop-filter: blur(8px); border-bottom: 1px solid var(--border-subtle);
+  }
+  .controls__label {
+    margin-right: auto; font-family: var(--font-mono); font-size: 0.6875rem;
+    letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    color: var(--text-muted); font-weight: 600;
+  }
+  .toggle-btn {
+    border: 1px solid var(--border-default); background: var(--bg-surface);
+    color: var(--text-secondary); border-radius: var(--radius-md);
+    padding: 5px 10px; font-size: 0.75rem; cursor: pointer; font-family: var(--font-sans);
+  }
+  .toggle-btn:hover { background: var(--bg-surface-hover); }
+  .toggle-btn:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+
+  .sheet { max-width: 1320px; margin: 0 auto; padding: var(--space-6) var(--space-5) var(--space-8); }
+  .sheet__title {
+    font-size: 26px; line-height: 32px; font-weight: 700;
+    letter-spacing: var(--tracking-tight); margin: 0 0 var(--space-1); text-wrap: balance;
+  }
+  .sheet__sub { color: var(--text-secondary); margin: 0 0 var(--space-4); max-width: 76ch; }
+  .sheet__note {
+    display: flex; gap: var(--space-3); align-items: flex-start;
+    font-size: 0.78125rem; color: var(--text-secondary); line-height: 1.6;
+    background: var(--bg-surface-muted); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md); padding: var(--space-3) var(--space-4);
+    margin: 0 0 var(--space-6);
+  }
+  .sheet__note b { color: var(--text-primary); font-weight: 600; }
+  .sheet__note code { font-family: var(--font-mono); font-size: 0.75em; }
+  .sheet__note svg { width: 16px; height: 16px; flex: 0 0 auto; color: var(--accent-primary); margin-top: 2px; }
+
+  .viewport-frame { margin: 0 0 var(--space-7); }
+  .viewport-frame__label {
+    display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap;
+    margin: 0 0 var(--space-3); padding-bottom: var(--space-2);
+    border-bottom: 1px dashed var(--border-default);
+  }
+  .viewport-frame__label .eyebrow-mono {
+    font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600;
+    letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    color: var(--accent-primary-hover);
+  }
+  .viewport-frame__label b { font-size: 0.875rem; font-weight: 600; color: var(--text-primary); }
+  .viewport-frame__label span.caption { font-size: 0.75rem; color: var(--text-muted); }
+  .viewport-frame__scroll {
+    overflow-x: auto; padding: var(--space-4);
+    background: var(--bg-shell); border-radius: var(--radius-xl);
+  }
+  .frame-grid { display: grid; gap: var(--space-4); }
+  @media (min-width: 900px) { .frame-grid--2 { grid-template-columns: 1fr 1fr; } }
+
+  /* The † gap marker — a mockup annotation, never shipped. */
+  .gap-mark {
+    font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600;
+    color: var(--status-warning-fg); cursor: help; vertical-align: super;
+    line-height: 1; margin-left: 2px;
+  }
+  .gap-legend {
+    display: flex; gap: var(--space-2); align-items: flex-start;
+    margin-top: var(--space-3); font-size: 0.75rem; color: var(--text-muted); line-height: 1.6;
+  }
+  .gap-legend .gap-mark { cursor: default; }
+
+  .gap-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+  .gap-table th, .gap-table td {
+    text-align: left; padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--border-subtle); vertical-align: top;
+  }
+  .gap-table thead th {
+    font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500;
+    letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    color: var(--text-muted); border-top: 0;
+  }
+  .gap-table code { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); }
+  .gap-table__wrap {
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+    background: var(--bg-surface); box-shadow: var(--shadow-xs); overflow-x: auto;
+  }
+
+  /* ══════════════════ 4. APP PRIMITIVES — transcribed from index.css ══════════════════ */
+
+  /* Page shell */
+  .app-frame {
+    background: var(--bg-canvas); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg); padding: var(--space-5);
+    box-shadow: var(--shadow-xs); min-width: 0;
+  }
+  .page-header { display: grid; gap: 0.45rem; }
+  .page-header--split { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+  .page-header__actions { justify-items: end; }
+  .eyebrow {
+    margin: 0; font-size: 0.76rem; font-weight: 700; letter-spacing: var(--tracking-caps);
+    text-transform: uppercase; color: var(--accent-primary-hover);
+  }
+  .page-title { margin: 0; color: var(--text-primary); font-size: 1.5rem; font-weight: 700; letter-spacing: var(--tracking-tight); }
+  .page-description { margin: 0; color: var(--text-secondary); font-size: 0.875rem; max-width: 68ch; }
+
+  /* Button */
+  .button {
+    display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+    height: 2rem; padding: 0 var(--space-4); border-radius: var(--radius-md);
+    border: 1px solid var(--accent-primary-border); background: var(--accent-primary);
+    color: var(--text-on-primary); font-family: var(--font-sans); font-size: 0.8125rem;
+    font-weight: 500; line-height: 1; cursor: pointer; white-space: nowrap;
+    box-shadow: var(--shadow-xs), var(--shadow-inset-top);
+    transition: background var(--duration-fast) var(--ease-standard);
+  }
+  .button:hover { background: var(--button-primary-bg-hover); }
+  .button:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+  .button--secondary {
+    background: var(--bg-surface); border-color: var(--border-default);
+    color: var(--text-primary); box-shadow: var(--shadow-xs);
+  }
+  .button--secondary:hover { background: var(--bg-surface-hover); }
+  .button--ghost { background: transparent; border-color: transparent; color: var(--text-secondary); box-shadow: none; }
+  .button--ghost:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+  .button--sm { height: 1.75rem; padding: 0 var(--space-3); font-size: 0.75rem; }
+
+  /* Controls */
+  .control {
+    width: 100%; height: 2rem; border: 1px solid var(--border-default);
+    border-radius: var(--radius-md); padding: 0 var(--space-3);
+    background: var(--bg-surface); color: var(--text-primary);
+    font-family: var(--font-sans); font-size: 0.8125rem; line-height: 1.5;
+    box-shadow: var(--shadow-xs);
+  }
+  .control::placeholder { color: var(--text-disabled); }
+  .control:hover { border-color: var(--border-strong); }
+  .control:focus { outline: none; box-shadow: var(--shadow-focus); border-color: var(--border-focus); }
+  .control--select {
+    appearance: none; padding-right: var(--space-7); cursor: pointer;
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%),
+      linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
+    background-position: calc(100% - 14px) calc(50% - 2px), calc(100% - 8px) calc(50% - 2px);
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+  }
+
+  /* Toolbar */
+  .toolbar {
+    display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
+    padding: var(--space-3) var(--space-4); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md); background: var(--bg-shell);
+  }
+  .toolbar--compact { gap: var(--space-2); }
+  .toolbar .control { width: 17.5rem; max-width: 17.5rem; }
+  .toolbar .control--search { width: 22rem; max-width: 22rem; }
+  .toolbar__spacer { margin-left: auto; }
+  @media (max-width: 640px) { .toolbar .control, .toolbar .control--search { width: 100%; max-width: 100%; } }
+
+  /* Tabs */
+  .tabs { display: flex; flex-direction: column; gap: 16px; }
+  .tabs__list {
+    display: inline-flex; gap: 0; border: none;
+    border-bottom: 1px solid var(--border-subtle); width: 100%; align-self: stretch;
+    overflow-x: auto;
+  }
+  .tabs__trigger {
+    display: inline-flex; align-items: center; gap: var(--space-2);
+    padding: var(--space-2) var(--space-3); margin-bottom: -1px;
+    font-family: var(--font-sans); font-size: 0.8125rem; font-weight: 500;
+    color: var(--text-secondary); background: transparent; border: none;
+    border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap;
+  }
+  .tabs__trigger:hover { color: var(--text-primary); border-bottom-color: var(--border-default); }
+  .tabs__trigger[data-state='active'] {
+    color: var(--text-primary); border-bottom-color: var(--accent-primary); font-weight: 600;
+  }
+  .tabs__trigger:focus-visible { outline: 2px solid var(--accent-focus); outline-offset: 2px; }
+  .tabs__count {
+    min-width: 1.125rem; padding: 1px 6px; font-family: var(--font-mono);
+    font-size: 0.625rem; font-weight: 500; color: var(--text-muted);
+    background: var(--bg-surface-muted); border-radius: var(--radius-pill);
+    font-variant-numeric: tabular-nums; text-align: center;
+  }
+  .tabs__trigger[data-state='active'] .tabs__count {
+    background: var(--accent-primary-soft); color: var(--accent-primary-soft-strong);
+  }
+  .tabs__content { display: flex; flex-direction: column; gap: 16px; }
+
+  /* DataTable */
+  .data-table__container {
+    overflow-x: auto; border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: var(--shadow-xs);
+  }
+  .data-table { width: auto; min-width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+  .data-table th, .data-table td {
+    padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-subtle);
+    text-align: left; vertical-align: middle; font-size: 0.8125rem; line-height: 1.4;
+  }
+  .data-table thead th {
+    color: var(--text-muted); font-family: var(--font-mono); font-size: 0.6875rem;
+    font-weight: 500; letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    background: var(--bg-shell); border-top: 0; white-space: nowrap;
+  }
+  /* Specificity deliberately raised above the base `.data-table td` rule.
+     In the app today `.data-table__cell--right` (0,1,0 — index.css:2770) loses
+     to `.data-table th, .data-table td { text-align: left }` (0,1,1 —
+     index.css:2797) on BOTH specificity and source order, so every column
+     declaring `align: 'right'` renders left-aligned. 14 columns are affected.
+     Flagged as a follow-up; the mockup shows the intended behaviour. */
+  .data-table th.data-table__cell--right,
+  .data-table td.data-table__cell--right { text-align: right; font-variant-numeric: tabular-nums; }
+  .data-table__row--linked { cursor: pointer; }
+  .data-table__row--linked:hover { background: color-mix(in oklab, var(--bg-shell) 60%, transparent); }
+  .data-table__row-link { color: var(--text-primary); text-decoration: none; font-weight: 500; }
+  .data-table__row--linked:hover .data-table__row-link { color: var(--accent-primary); }
+  .data-table__row-link:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-xs); }
+  .data-table__stack { display: grid; gap: 2px; }
+
+  /* StatusBadge */
+  .status-badge {
+    display: inline-flex; align-items: center; gap: var(--space-2);
+    padding: 2px var(--space-2); border: 1px solid var(--status-disabled-border);
+    border-radius: var(--radius-sm); background: var(--status-disabled-soft);
+    color: var(--status-disabled-fg); font-family: var(--font-mono); font-size: 0.6875rem;
+    font-weight: 500; line-height: 1.5; letter-spacing: var(--tracking-wide);
+    text-transform: uppercase; white-space: nowrap;
+  }
+  .status-badge--compact { padding: 1px var(--space-2); font-size: 0.625rem; }
+  .status-badge__dot {
+    width: 0.375rem; height: 0.375rem; border-radius: 999px;
+    background: currentColor; opacity: 0.75; flex-shrink: 0;
+  }
+  .status-badge--success { border-color: var(--status-success-border); background: var(--status-success-soft); color: var(--status-success-fg); }
+  .status-badge--warning { border-color: var(--status-warning-border); background: var(--status-warning-soft); color: var(--status-warning-fg); }
+  .status-badge--error   { border-color: var(--status-error-border);   background: var(--status-error-soft);   color: var(--status-error-fg); }
+  .status-badge--info    { border-color: var(--status-info-border);    background: var(--status-info-soft);    color: var(--status-info-fg); }
+  .status-badge--review  { border-color: var(--status-review-border);  background: var(--status-review-soft);  color: var(--status-review-fg); }
+  .status-badge--pulse .status-badge__dot { animation: status-badge-pulse 1.6s var(--ease-out) infinite; }
+  @keyframes status-badge-pulse {
+    0%   { box-shadow: 0 0 0 0 currentColor; opacity: 0.95; }
+    70%  { box-shadow: 0 0 0 6px transparent; opacity: 0.55; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+
+  /* Channel pill. NOTE the erli/woocommerce selectors below do NOT exist in
+     index.css today (only allegro/prestashop/amazon/shopify do, :9242-9245),
+     even though the --channel-erli / --channel-woocommerce vars are defined at
+     :288-293. Adding the two missing selectors is a one-line fix, flagged in
+     the follow-ups section at the bottom of this page. */
+  .channel-pill {
+    display: inline-flex; align-items: center; gap: var(--space-1);
+    padding: 2px var(--space-2); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-pill); background: var(--bg-surface-muted);
+    color: var(--text-secondary); font-family: var(--font-mono);
+    font-size: 0.6875rem; white-space: nowrap;
+  }
+  .channel-pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
+  .channel-pill[data-channel='allegro']::before     { background: var(--channel-allegro); }
+  .channel-pill[data-channel='prestashop']::before  { background: var(--channel-prestashop); }
+  .channel-pill[data-channel='amazon']::before      { background: var(--channel-amazon); }
+  .channel-pill[data-channel='shopify']::before     { background: var(--channel-shopify); }
+  .channel-pill[data-channel='erli']::before        { background: var(--channel-erli); }
+  .channel-pill[data-channel='woocommerce']::before { background: var(--channel-woocommerce); }
+
+  /* EntityLabel */
+  .entity-label { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
+  .entity-label__name {
+    font-weight: 500; color: var(--text-primary); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .entity-label__name--link { color: var(--accent-primary); text-decoration: none; }
+  .entity-label__name--link:hover { text-decoration: underline; }
+  .entity-label__id {
+    font-family: var(--font-mono); font-size: 11.5px; color: var(--text-muted);
+    background: var(--bg-surface-muted); border: 1px solid var(--border-subtle);
+    padding: 1px 6px; border-radius: 4px; white-space: nowrap;
+  }
+  .entity-label__copy {
+    border: none; background: transparent; padding: 2px 4px; color: var(--text-muted);
+    font-family: var(--font-mono); font-size: 11px; border-radius: 4px; cursor: pointer;
+    opacity: 0; transform: translateX(-4px);
+    transition: opacity var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);
+  }
+  .data-table tbody tr:hover .entity-label__copy,
+  .entity-label:hover .entity-label__copy,
+  .entity-label__copy:focus-visible { opacity: 1; transform: translateX(0); }
+  .entity-label__copy:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+  .entity-label__copy:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+  .entity-label__copy[data-copied='true'] { opacity: 1; transform: translateX(0); color: var(--status-success-fg); }
+
+  /* ProductThumbnail */
+  .product-thumbnail {
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+    border: 1px solid var(--border-subtle); border-radius: 0.375rem;
+    background: var(--bg-surface-muted); overflow: hidden;
+    font-family: var(--font-mono); color: var(--text-muted);
+    text-transform: uppercase; line-height: 1; user-select: none;
+  }
+  .product-thumbnail--sm { width: 1.5rem; height: 1.5rem; font-size: 0.6875rem; }
+  .product-thumbnail--md { width: 2rem; height: 2rem; font-size: 0.8125rem; }
+
+  /* State cards */
+  .state-card {
+    border: 1px solid var(--border-default); border-radius: 0.5rem;
+    background: var(--bg-surface); box-shadow: var(--shadow-soft);
+    padding: 1rem; display: grid; gap: 0.75rem; text-align: left;
+  }
+  .state-card__header { display: grid; gap: 0.4rem; }
+  .state-card__title { margin: 0; font-size: 1.0625rem; font-weight: 600; letter-spacing: var(--tracking-tight); color: var(--text-primary); }
+  .state-card__message { margin: 0; color: var(--text-secondary); font-size: 0.875rem; }
+  .state-card__actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+  .state-card--error { border-color: var(--status-error-border); background: var(--status-error-soft); }
+  .state-card--error .state-card__message { color: var(--status-error-fg); }
+
+  /* Pagination */
+  .pagination { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+  .pagination__actions { display: flex; gap: 0.5rem; }
+  .text-muted { color: var(--text-muted); font-size: 0.8125rem; }
+
+  /* ══════════════════ 5. LISTINGS-SPECIFIC CELLS (new in #1965) ══════════════════ */
+
+  /* The Listing cell: thumbnail + a two-line identity stack. Product name leads;
+     the offer id, variant, SKU and EAN are secondary. */
+  /* The identity column carries four facts, so it gets the width to keep them
+     on two lines. Below this the row would grow to four lines and break the
+     36px-ish density the cockpit tables are budgeted at. */
+  .data-table th:first-child, .data-table td:first-child { min-width: 28rem; }
+  .listing-cell { display: flex; align-items: flex-start; gap: var(--space-3); min-width: 0; }
+  .listing-cell__body { display: grid; gap: 1px; min-width: 0; }
+  .listing-cell__head { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+  /* Shrink only when the row genuinely runs out of room (a long name next to a
+     badge), never at a fixed character cap — a truncated name with empty space
+     beside it reads as a bug. */
+  .listing-cell__name {
+    font-size: 0.8125rem; font-weight: 600; color: var(--text-primary);
+    text-decoration: none; min-width: 0; flex: 0 1 auto;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .listing-cell__variant, .listing-cell__offerid, .listing-cell__head .status-badge { flex: 0 0 auto; }
+  .data-table__row--linked:hover .listing-cell__name { color: var(--accent-primary); }
+  .listing-cell__name:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-xs); }
+  .listing-cell__variant {
+    font-size: 0.75rem; color: var(--text-secondary);
+    padding: 1px 6px; background: var(--bg-surface-muted);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-xs);
+    white-space: nowrap;
+  }
+  .listing-cell__offerid { font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text-muted); }
+  .listing-cell__meta {
+    font-size: 0.75rem; color: var(--text-muted);
+    display: flex; gap: var(--space-2); align-items: center;
+    white-space: nowrap; overflow: hidden;
+  }
+  .listing-cell__meta span { white-space: nowrap; }
+  .listing-cell__meta span + span::before { content: '·'; margin-right: var(--space-2); color: var(--border-strong); }
+  .listing-cell__meta em { font-style: normal; font-family: var(--font-mono); color: var(--text-secondary); }
+  /* The validator's own words, verbatim — this is the one place the marketplace
+     speaks directly to the seller, so it is not paraphrased. */
+  .listing-cell__reason {
+    font-size: 0.6875rem; color: var(--status-error-strong);
+    max-width: 46ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* Same two-level shape as the Listing and Quantity cells: what a person
+     reads on top, the identifier beneath. Matches the app's existing cell-stack
+     convention (`.orders-cell-stack` index.css:8783,
+     `.products-cell-stack` :15950 — both identical to this). */
+  .conn-cell { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+
+  /* CopyableId — transcribed verbatim from index.css:9291-9349. The app already
+     ships this exact primitive for "an id with no human name of its own"; the
+     name above it is a plain EntityLabel with showId={false}. */
+  .copyable-id { display: inline-flex; align-items: center; gap: var(--space-2); }
+  .copyable-id__value {
+    font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: var(--tracking-wide);
+    color: var(--text-secondary); background: var(--bg-surface-muted);
+    padding: 1px 6px; border-radius: var(--radius-xs);
+    max-width: 18ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .copyable-id__copy {
+    display: inline-flex; align-items: center; padding: 1px 6px;
+    font-family: var(--font-mono); font-size: 0.625rem; letter-spacing: var(--tracking-wide);
+    color: var(--text-muted); background: transparent;
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-xs); cursor: pointer;
+    opacity: 0; transform: translateX(-4px);
+    transition:
+      opacity var(--duration-fast) var(--ease-out),
+      transform var(--duration-fast) var(--ease-out),
+      color var(--duration-fast) var(--ease-out),
+      border-color var(--duration-fast) var(--ease-out);
+  }
+  .copyable-id__copy:hover { color: var(--text-primary); border-color: var(--border-default); }
+  .copyable-id__copy:focus-visible {
+    outline: none; box-shadow: var(--shadow-focus); opacity: 1; transform: translateX(0);
+  }
+  .data-table tbody tr:hover .copyable-id__copy,
+  .copyable-id:hover .copyable-id__copy,
+  .copyable-id:focus-within .copyable-id__copy { opacity: 1; transform: translateX(0); }
+  .copyable-id__copy[data-copied='true'] {
+    opacity: 1; transform: translateX(0); color: var(--status-success-fg);
+  }
+
+  /* The number keeps the same weight and colour at every value, zero included,
+     so the column still reads as one column of figures. The out-of-stock
+     signal sits under it rather than recolouring the digit — same shape as the
+     Listing cell: primary value first, qualifier beneath. */
+  .qty-cell { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+  .qty-cell__value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  /* The card view is a left-aligned definition list, so the same cell flips its
+     stack to the left edge — otherwise the digit floats right of the badge. */
+  .data-card .qty-cell { align-items: flex-start; }
+  .price-cell { font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .time-cell { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; }
+
+  /* Skeleton */
+  .skeleton {
+    display: block; border-radius: var(--radius-xs);
+    background: linear-gradient(90deg, var(--bg-surface-muted) 25%, var(--bg-surface-hover) 37%, var(--bg-surface-muted) 63%);
+    background-size: 400% 100%; animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  }
+  @keyframes skeleton-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+  .skeleton--thumb { width: 2rem; height: 2rem; border-radius: 0.375rem; }
+  .skeleton--line { height: 0.6875rem; }
+
+  /* Card view (≤767px table-to-cards fold, per the style guide parity matrix) */
+  .card-list { display: grid; gap: var(--space-3); }
+  .data-card {
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+    background: var(--bg-surface); box-shadow: var(--shadow-xs);
+    padding: var(--space-3) var(--space-4); display: grid; gap: var(--space-3);
+  }
+  .data-card__head { display: flex; gap: var(--space-3); align-items: flex-start; }
+  .data-card__facts {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2) var(--space-4);
+    border-top: 1px solid var(--border-subtle); padding-top: var(--space-3);
+  }
+  .data-card__fact { display: grid; gap: 2px; }
+  .data-card__fact dt {
+    font-family: var(--font-mono); font-size: 0.625rem; letter-spacing: var(--tracking-caps);
+    text-transform: uppercase; color: var(--text-muted);
+  }
+  .data-card__fact dd { margin: 0; font-size: 0.8125rem; color: var(--text-primary); }
+  /* Device scaffolds. The widths are the style guide's own breakpoints
+     (§ Responsive) — 360 is the mobile capture width, 768 the tablet floor —
+     not new design values. Each frame is a fixed-width box inside the 1320px
+     sheet, so no @media fires on it: what these show is the intended layout at
+     that width, not proof that a breakpoint works. */
+  .phone-frame { max-width: 360px; margin: 0 auto; }
+
+  /* Four lifecycle tabs at 360px come to 359px against 326px of room, so by
+     default the last one ("Ended") sits behind a horizontal scroll — which the
+     style guide reserves for a table's own overflow (§ Responsive). Stepping the
+     trigger padding and the label/count gap down one token each frees ~48px and
+     all four fit, with no new spacing value.
+
+     The app does ship a scroll-with-right-edge-fade treatment for a cramped tab
+     bar (index.css:16775-16787, #1784 S14) — deliberately not reused here. That
+     pattern earns its scroll because the mapping tab count is open-ended; the
+     offer lifecycle has exactly four states and always will, so fitting them
+     beats teaching the operator to scroll for one of the four. */
+  .phone-frame .tabs__trigger {
+    padding-left: var(--space-2); padding-right: var(--space-2); gap: var(--space-1);
+  }
+  .tablet-frame { max-width: 768px; margin: 0 auto; }
+
+  .empty-slot { display: grid; gap: var(--space-4); }
+</style>
+</head>
+<body>
+
+<div class="controls">
+  <span class="controls__label">#1965 · Listings redesign</span>
+  <button class="toggle-btn" type="button" id="theme-toggle">Toggle theme</button>
+</div>
+
+<main class="sheet">
+  <h1 class="sheet__title">Listings — human-readable rows and lifecycle tabs</h1>
+  <p class="sheet__sub">
+    Interactive mockup for issue #1965. The tabs, search, channel filter and counts below are live —
+    they compute from one data array, so the behaviour matches what the real page would do.
+    Every colour, radius and spacing value is transcribed from <code>apps/web/src/index.css</code>.
+  </p>
+
+  <div class="sheet__note">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+      <circle cx="8" cy="8" r="6.5" /><path d="M8 7.5v3.5M8 5.2v.6" stroke-linecap="round" />
+    </svg>
+    <div>
+      <b>Three claims in the issue are wrong, and they shrink the work.</b>
+      The <code>linkedProductId</code>-missing condition is not computable — an unmatched offer never
+      becomes a row at all (<code>offer-mapping-sync.service.ts:89-119</code>).
+      <code>offer_status_snapshots</code> is <b>not</b> product-keyed — it is unique on
+      <code>(externalOfferId, connectionId)</code>, a plain join
+      (<code>offer-status-snapshot.orm-entity.ts:28-30</code>).
+      And <code>.tabs__count</code> already exists (<code>index.css:5578+</code>).
+      The real gap is <b>two columns, not six</b> — see the last section.
+    </div>
+  </div>
+
+  <!-- ═══════════ FRAME 1 — the page, fully interactive ═══════════ -->
+  <section class="viewport-frame" id="frame-desktop">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">01 · Desktop</span>
+      <b>The page — try it</b>
+      <span class="caption">1440 × 900 · switch tabs, type in search, pick a channel, hover a row to reveal Copy</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="app-frame">
+
+        <header class="page-header page-header--split" style="margin-bottom: var(--space-4);">
+          <div>
+            <p class="eyebrow">Operations</p>
+            <h2 class="page-title">Listings</h2>
+            <p class="page-description">
+              Everything you sell on connected channels, and what state it is in right now.
+            </p>
+          </div>
+          <div class="page-header__actions">
+            <button class="button" type="button">Publish products</button>
+          </div>
+        </header>
+
+        <div class="toolbar toolbar--compact" style="margin-bottom: var(--space-4);">
+          <label class="sr-only" for="f-search">Search listings</label>
+          <input class="control control--search" id="f-search" type="search"
+                 placeholder="Product name, SKU, EAN or external ID" autocomplete="off" />
+
+          <label class="sr-only" for="f-conn">Filter by connection ID</label>
+          <input class="control" id="f-conn" type="search" placeholder="Connection ID…" autocomplete="off" />
+
+          <label class="sr-only" for="f-channel">Filter by channel</label>
+          <select class="control control--select" id="f-channel">
+            <option value="">All channels</option>
+            <option value="c-erli">Erli Demo</option>
+            <option value="c-allegro">Allegro PL — sklep główny</option>
+            <option value="c-woo">WooCommerce — outlet</option>
+          </select>
+
+          <span class="toolbar__spacer"></span>
+          <button class="button button--ghost button--sm" type="button" id="f-clear">Clear</button>
+        </div>
+
+        <div class="tabs">
+          <div class="tabs__list" role="tablist" aria-label="Listing lifecycle">
+            <button class="tabs__trigger" type="button" role="tab" data-tab="active" data-state="active"
+                    aria-selected="true" id="tab-active" aria-controls="panel-listings">
+              Active <span class="tabs__count" data-count="active">0</span>
+            </button>
+            <button class="tabs__trigger" type="button" role="tab" data-tab="inactive" data-state="inactive"
+                    aria-selected="false" id="tab-inactive" aria-controls="panel-listings">
+              Inactive <span class="tabs__count" data-count="inactive">0</span>
+            </button>
+            <button class="tabs__trigger" type="button" role="tab" data-tab="draft" data-state="inactive"
+                    aria-selected="false" id="tab-draft" aria-controls="panel-listings">
+              Draft <span class="tabs__count" data-count="draft">0</span>
+            </button>
+            <button class="tabs__trigger" type="button" role="tab" data-tab="ended" data-state="inactive"
+                    aria-selected="false" id="tab-ended" aria-controls="panel-listings">
+              Ended <span class="tabs__count" data-count="ended">0</span>
+            </button>
+          </div>
+
+          <div class="tabs__content" role="tabpanel" id="panel-listings" aria-labelledby="tab-active">
+            <div class="data-table__container">
+              <table class="data-table">
+                <caption class="sr-only">Listings</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Listing</th>
+                    <th scope="col">Channel</th>
+                    <th scope="col">Connection</th>
+                    <th scope="col" class="data-table__cell--right">
+                      Price<span class="gap-mark" title="Needs materialising in GET /listings — today only on the live per-row fetch">†</span>
+                    </th>
+                    <th scope="col" class="data-table__cell--right">
+                      Quantity<span class="gap-mark" title="Needs materialising in GET /listings — today only on the live per-row fetch">†</span>
+                    </th>
+                    <th scope="col">Updated</th>
+                  </tr>
+                </thead>
+                <tbody id="rows"></tbody>
+              </table>
+            </div>
+
+            <div class="pagination">
+              <span class="text-muted" id="page-summary">Showing 0 of 0</span>
+              <div class="pagination__actions">
+                <button class="button button--secondary button--sm" type="button" disabled>Previous</button>
+                <button class="button button--secondary button--sm" type="button" disabled>Next</button>
+              </div>
+            </div>
+
+            <p class="gap-legend">
+              <span class="gap-mark">†</span>
+              <span>
+                Price and quantity are the only two fields that do not exist on <code>GET /listings</code> today.
+                They are readable per row via <code>GET /listings/:id/offer</code>, which is a live marketplace call —
+                twenty rows would mean twenty API calls against the seller's rate limit. Materialising both into the
+                list read model is the one backend change this redesign depends on.
+              </span>
+            </p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 2 — anatomy ═══════════ -->
+  <section class="viewport-frame">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">02 · Anatomy</span>
+      <b>What each row says, and why</b>
+      <span class="caption">the same six columns, annotated</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="app-frame">
+        <div class="gap-table__wrap">
+          <table class="gap-table">
+            <thead>
+              <tr><th scope="col">Column</th><th scope="col">Shows</th><th scope="col">Reasoning</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><b>Listing</b></td>
+                <td>Thumbnail · <b>product name</b> · variant<br />
+                    external offer id · <code>SKU</code> · <code>EAN</code> on the second line</td>
+                <td>Leads with the catalog product name rather than the marketplace offer title, so a row
+                    matches what the seller calls the thing. The three identifiers group together on the
+                    second line — an offer id is an identifier, not part of the product's name. All of it
+                    joins from <code>product_variants</code>/<code>products</code> on
+                    <code>internalId</code>, which <em>is</em> the variant id.</td>
+              </tr>
+              <tr>
+                <td><b>Channel</b></td>
+                <td>Brand-coloured pill</td>
+                <td>Identity, never health — the channel hue is separate from every status colour on the page.</td>
+              </tr>
+              <tr>
+                <td><b>Connection</b></td>
+                <td>Two lines: connection name, then shortened id + Copy on hover</td>
+                <td>Replaces today's bare UUID. Two sellers can run two Allegro accounts, so the name alone
+                    is not always enough — the id stays, just demoted to its own line so the three
+                    elements stop competing. Composed from primitives that already exist:
+                    <code>&lt;EntityLabel showId={false}&gt;</code> on top,
+                    <code>&lt;CopyableId&gt;</code> beneath, wrapped in the cell-stack the orders and
+                    products lists already use.
+                    <br /><br /><b>Owned by #1996, not by this issue.</b> The same two-line cell now serves
+                    Products, Customers, Shipments and Invoices as the shared
+                    <code>ConnectionCell</code>, so the implementation here must import it rather than
+                    re-author it. The name is a link to <code>/connections/:id</code>. The Channel column
+                    above stays separate on this page, so no <code>adornment</code> is passed —
+                    a connection implies its channel, but a column of pills scans faster than pills buried
+                    inside two-line cells.</td>
+              </tr>
+              <tr>
+                <td><b>Price</b> <span class="gap-mark">†</span></td>
+                <td>Monospace, tabular</td>
+                <td>Tabular figures so the column scans as a column.</td>
+              </tr>
+              <tr>
+                <td><b>Quantity</b> <span class="gap-mark">†</span></td>
+                <td>Channel-side <code>available_quantity</code>; <code>OUT OF STOCK</code> at 0</td>
+                <td>Deliberately not <code>product.stock</code> — what the channel thinks it has is what
+                    decides whether it sells.</td>
+              </tr>
+              <tr>
+                <td><b>Updated</b></td>
+                <td><code>lastStatusSyncedAt</code>, via <code>&lt;TimeDisplay&gt;</code></td>
+                <td>Corrects the issue, which assumed <code>OfferMapping.updatedAt</code>. The snapshot's
+                    own timestamp says when the channel state was last read, which is the question the
+                    column actually answers — and it is already available.
+                    Formatting is the project-wide one: <code>formatDateTime</code>
+                    (<code>shared/format/format-date.ts</code>) —
+                    <code>dateStyle: 'medium'</code> + <code>timeStyle: 'short'</code>, which in pl-PL
+                    reads <b>30 lip 2026, 16:05</b>. The year stays: a listings table spans months, so a
+                    year-less date is ambiguous the moment a row crosses into January. Machine-readable
+                    value on the <code>datetime</code> attribute, never invented per page.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="gap-legend" style="margin-top: var(--space-4);">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" style="width:14px;height:14px;flex:0 0 auto;margin-top:2px;color:var(--accent-primary)">
+            <circle cx="8" cy="8" r="6.5" /><path d="M8 7.5v3.5M8 5.2v.6" stroke-linecap="round" />
+          </svg>
+          <span>
+            <b style="color:var(--text-primary)">No status column.</b> The tab already states the lifecycle,
+            so a badge on every row would repeat it. A badge appears only when a row <em>departs</em> from its
+            tab's nominal state — <code>ACTIVATING</code> mid-transition, <code>REJECTED</code> when the
+            marketplace validator refused it.
+          </span>
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 3 — empty states ═══════════ -->
+  <section class="viewport-frame">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">03 · Empty</span>
+      <b>Nothing to show</b>
+      <span class="caption">an empty screen is an invitation to act, so each one names the next move</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="frame-grid frame-grid--2">
+        <div class="app-frame">
+          <p class="eyebrow" style="margin-bottom:var(--space-3)">No connections</p>
+          <div class="state-card">
+            <div class="state-card__header">
+              <h2 class="state-card__title">No channels connected yet</h2>
+              <p class="state-card__message">Listings are published to connected sales channels.</p>
+            </div>
+            <div class="state-card__actions">
+              <button class="button" type="button">Connect a channel</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="app-frame">
+          <p class="eyebrow" style="margin-bottom:var(--space-3)">Filtered, no results</p>
+          <div class="state-card">
+            <div class="state-card__header">
+              <h2 class="state-card__title">No listings match these filters</h2>
+              <p class="state-card__message">Try different filters or show all listings.</p>
+            </div>
+            <div class="state-card__actions">
+              <button class="button button--secondary" type="button">Clear filters</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="app-frame">
+          <p class="eyebrow" style="margin-bottom:var(--space-3)">Draft / Inactive / Ended, empty</p>
+          <div class="state-card">
+            <div class="state-card__header">
+              <h2 class="state-card__title">No listings here yet</h2>
+              <p class="state-card__message">Nothing is in this state right now.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="app-frame">
+          <p class="eyebrow" style="margin-bottom:var(--space-3)">Query failed</p>
+          <div class="state-card state-card--error">
+            <div class="state-card__header">
+              <h2 class="state-card__title">Unable to load listings</h2>
+              <p class="state-card__message">The request timed out. Your listings are unaffected.</p>
+            </div>
+            <div class="state-card__actions">
+              <button class="button button--secondary" type="button">Retry</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 4 — loading ═══════════ -->
+  <section class="viewport-frame">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">04 · Loading</span>
+      <b>First paint</b>
+      <span class="caption">tab counts are skeletons too — a count that snaps from 0 to 128 reads as a bug</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="app-frame">
+        <div class="tabs">
+          <div class="tabs__list" aria-hidden="true">
+            <span class="tabs__trigger" data-state="active">Active <span class="tabs__count"><span class="skeleton skeleton--line" style="width:14px;display:inline-block;vertical-align:-1px"></span></span></span>
+            <span class="tabs__trigger" data-state="inactive">Inactive <span class="tabs__count"><span class="skeleton skeleton--line" style="width:14px;display:inline-block;vertical-align:-1px"></span></span></span>
+            <span class="tabs__trigger" data-state="inactive">Draft <span class="tabs__count"><span class="skeleton skeleton--line" style="width:14px;display:inline-block;vertical-align:-1px"></span></span></span>
+            <span class="tabs__trigger" data-state="inactive">Ended <span class="tabs__count"><span class="skeleton skeleton--line" style="width:14px;display:inline-block;vertical-align:-1px"></span></span></span>
+          </div>
+          <div class="tabs__content">
+            <div class="data-table__container">
+              <table class="data-table">
+                <caption class="sr-only">Loading listings</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Listing</th><th scope="col">Channel</th><th scope="col">Connection</th>
+                    <th scope="col" class="data-table__cell--right">Price</th>
+                    <th scope="col" class="data-table__cell--right">Quantity</th>
+                    <th scope="col">Updated</th>
+                  </tr>
+                </thead>
+                <tbody id="skeleton-rows"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 5 — mobile ═══════════ -->
+  <section class="viewport-frame" id="frame-mobile">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">05 · Mobile</span>
+      <b>≤ 767 px — table folds to cards</b>
+      <span class="caption">360 × 812 · per the responsive parity matrix; no horizontal scroll</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="phone-frame">
+        <div class="app-frame" style="padding: var(--space-4);">
+          <header class="page-header" style="margin-bottom: var(--space-3);">
+            <p class="eyebrow">Operations</p>
+            <h2 class="page-title" style="font-size:1.25rem">Listings</h2>
+          </header>
+
+          <div class="toolbar toolbar--compact" style="margin-bottom: var(--space-3);">
+            <input class="control control--search" type="search" placeholder="Product name, SKU, EAN or external ID" aria-label="Search listings" />
+          </div>
+
+          <div class="tabs">
+            <div class="tabs__list" aria-hidden="true">
+              <span class="tabs__trigger" data-state="active">Active <span class="tabs__count">7</span></span>
+              <span class="tabs__trigger" data-state="inactive">Inactive <span class="tabs__count">3</span></span>
+              <span class="tabs__trigger" data-state="inactive">Draft <span class="tabs__count">2</span></span>
+              <span class="tabs__trigger" data-state="inactive">Ended <span class="tabs__count">2</span></span>
+            </div>
+            <div class="tabs__content">
+              <div class="card-list" id="cards"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 6 — tablet ═══════════
+       Deliberately placed after Mobile, not after Desktop: this frame's claim is
+       a negation of the one above it — at 768 the table does NOT fold to cards —
+       and that only reads once you have just seen the fold. -->
+  <section class="viewport-frame" id="frame-tablet">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">06 · Tablet</span>
+      <b>768–1023 px — full table, scrolled in its container</b>
+      <span class="caption">768 × 1024 · six columns keep their widths and the container scrolls, rather than crushing them</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="tablet-frame">
+        <div class="app-frame">
+
+          <header class="page-header page-header--split" style="margin-bottom: var(--space-4);">
+            <div>
+              <p class="eyebrow">Operations</p>
+              <h2 class="page-title">Listings</h2>
+              <p class="page-description">
+                Everything you sell on connected channels, and what state it is in right now.
+              </p>
+            </div>
+            <div class="page-header__actions">
+              <button class="button" type="button">Publish products</button>
+            </div>
+          </header>
+
+          <!-- All four controls survive at 768 and wrap to a second row on their
+               own — search (22rem) + connection id (17.5rem) fill the first, the
+               channel select and Clear fall to the second. Mobile drops two of
+               them; tablet keeps every one. -->
+          <div class="toolbar toolbar--compact" style="margin-bottom: var(--space-4);">
+            <input class="control control--search" type="search"
+                   placeholder="Product name, SKU, EAN or external ID" aria-label="Search listings" />
+            <input class="control" type="search" placeholder="Connection ID…" aria-label="Filter by connection ID" />
+            <select class="control control--select" aria-label="Filter by channel">
+              <option value="">All channels</option>
+            </select>
+            <span class="toolbar__spacer"></span>
+            <button class="button button--ghost button--sm" type="button">Clear</button>
+          </div>
+
+          <div class="tabs">
+            <!-- Static, like frame 05: aria-hidden spans, never buttons.
+                 These count spans deliberately carry NO data-count / data-tab —
+                 render() resolves both with a singular querySelector, so adding
+                 them here would silently hijack the desktop frame's live counts. -->
+            <div class="tabs__list" aria-hidden="true">
+              <span class="tabs__trigger" data-state="active">Active <span class="tabs__count" data-tablet-count="active">0</span></span>
+              <span class="tabs__trigger" data-state="inactive">Inactive <span class="tabs__count" data-tablet-count="inactive">0</span></span>
+              <span class="tabs__trigger" data-state="inactive">Draft <span class="tabs__count" data-tablet-count="draft">0</span></span>
+              <span class="tabs__trigger" data-state="inactive">Ended <span class="tabs__count" data-tablet-count="ended">0</span></span>
+            </div>
+
+            <div class="tabs__content">
+              <div class="data-table__container">
+                <table class="data-table">
+                  <caption class="sr-only">Listings</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Listing</th>
+                      <th scope="col">Channel</th>
+                      <th scope="col">Connection</th>
+                      <th scope="col" class="data-table__cell--right">
+                        Price<span class="gap-mark" title="Needs materialising in GET /listings — today only on the live per-row fetch">†</span>
+                      </th>
+                      <th scope="col" class="data-table__cell--right">
+                        Quantity<span class="gap-mark" title="Needs materialising in GET /listings — today only on the live per-row fetch">†</span>
+                      </th>
+                      <th scope="col">Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tablet-rows"></tbody>
+                </table>
+              </div>
+
+              <div class="pagination">
+                <span class="text-muted">Showing 1–7 of 7</span>
+                <div class="pagination__actions">
+                  <button class="button button--secondary button--sm" type="button" disabled>Previous</button>
+                  <button class="button button--secondary button--sm" type="button" disabled>Next</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 7 — what the backend must add ═══════════ -->
+  <section class="viewport-frame">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">07 · Handover</span>
+      <b>What is already there, and what is not</b>
+      <span class="caption">every claim below was checked against the code</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="app-frame">
+        <div class="gap-table__wrap">
+          <table class="gap-table">
+            <thead>
+              <tr>
+                <th scope="col">Field</th><th scope="col">Source</th><th scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Product name, variant, SKU, EAN, thumbnail</td>
+                <td><code>product_variants</code> / <code>products</code> via <code>internalId</code></td>
+                <td><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span>Available</span></td>
+              </tr>
+              <tr>
+                <td>Publication status, <code>lastStatusSyncedAt</code>, validator messages</td>
+                <td><code>offer_status_snapshots</code>, unique on <code>(externalOfferId, connectionId)</code></td>
+                <td><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span>Available</span></td>
+              </tr>
+              <tr>
+                <td>Draft vs Inactive split</td>
+                <td>Presence of <code>statusDetails.validationMessages</code> on the same snapshot row — <b>not</b> <code>OfferCreationRecord.status</code>, which maps both clean <code>inactive</code> and <code>ended</code> to <code>Draft</code></td>
+                <td><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span>Available</span></td>
+              </tr>
+              <tr>
+                <td>Connection name</td>
+                <td><code>useConnectionsQuery</code></td>
+                <td><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span>Available</span></td>
+              </tr>
+              <tr>
+                <td><b>Price, <code>availableQuantity</code></b></td>
+                <td>Only <code>GET /listings/:id/offer</code> — live marketplace call, 30 s cache</td>
+                <td><span class="status-badge status-badge--error status-badge--compact"><span class="status-badge__dot"></span>Blocked</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 style="font-size:1.0625rem;font-weight:600;letter-spacing:var(--tracking-tight);margin:var(--space-5) 0 var(--space-2)">
+          Four follow-ups this mockup surfaced
+        </h3>
+        <div class="gap-table__wrap">
+          <table class="gap-table">
+            <tbody>
+              <tr>
+                <td style="width:1%"><span class="status-badge status-badge--error status-badge--compact"><span class="status-badge__dot"></span>Blocking</span></td>
+                <td><b>Materialise price + quantity on <code>GET /listings</code>.</b>
+                    The single backend change this redesign needs.</td>
+              </tr>
+              <tr>
+                <td><span class="status-badge status-badge--warning status-badge--compact"><span class="status-badge__dot"></span>Product gap</span></td>
+                <td><b>Unmatched offers are invisible in OpenLinker.</b>
+                    <code>offer-mapping-sync</code> discards them without writing a row
+                    (<code>no_deterministic_match</code>, <code>ambiguous_ean</code>, <code>ambiguous_sku</code>…),
+                    so a seller has nowhere to see that an offer on Allegro isn't matching the catalog.
+                    This is the real problem the issue was reaching for with its <code>linkedProductId</code>
+                    assumption — worth its own issue.</td>
+              </tr>
+              <tr>
+                <td><span class="status-badge status-badge--warning status-badge--compact"><span class="status-badge__dot"></span>App-wide</span></td>
+                <td><b>Numeric columns are not actually right-aligned anywhere shared.</b>
+                    The convention is right-aligned mono + tabular — declared 14 times as
+                    <code>align: 'right'</code>, documented in <code>.claude/rules/ui-components.md:182</code>,
+                    and canonical in <code>patterns-section.tsx</code>. But
+                    <code>.data-table__cell--right</code> (<code>index.css:2770</code>, specificity 0,1,0)
+                    loses to <code>.data-table th, .data-table td { text-align: left }</code>
+                    (<code>index.css:2797</code>, 0,1,1) on both specificity <em>and</em> source order, so the
+                    class is dead. Orders and Products each wrote their own
+                    <code>--end</code> stack class to work around it; Sync&nbsp;jobs, adapters catalog,
+                    connection diagnostics and dashboard did not, and render left today.
+                    One-line fix: <code>.data-table td.data-table__cell--right</code>.
+                    <b>This mockup assumes the fix</b> — its Price column relies on the shared rule.</td>
+              </tr>
+              <tr>
+                <td><span class="status-badge status-badge--info status-badge--compact"><span class="status-badge__dot"></span>One line</span></td>
+                <td><b><code>.channel-pill</code> has no selector for Erli or WooCommerce.</b>
+                    <code>--channel-erli</code> and <code>--channel-woocommerce</code> are defined
+                    (<code>index.css:288-293</code>) but unwired (<code>:9242-9245</code>), so both render a
+                    grey dot today. This mockup shows them correct.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+  /* Theme: mirror the app's FOUC guard — respect the OS preference unless a
+     theme has already been stamped on <html> (the app's own guard, or an
+     artifact host's theme toggle, both get here first). */
+  (function () {
+    var root = document.documentElement;
+    if (!root.getAttribute('data-theme')) {
+      var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      root.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+    }
+    document.getElementById('theme-toggle').addEventListener('click', function () {
+      root.setAttribute('data-theme', root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+    });
+  })();
+
+  /* ── Sample catalogue ──────────────────────────────────────────────────
+     Built out from the real Erli row in the PM's screenshot (Doniczka
+     ceramiczna Terra, EAN 5900000000138, 100.00 PLN, qty 41).
+
+     `tab` is the resolved lifecycle bucket:
+       active   → publicationStatus 'active' (plus the transient 'activating')
+       inactive → publicationStatus 'inactive' WITH validation messages;
+                  `reason` carries the validator's first message
+       draft    → publicationStatus 'inactive' WITHOUT validation messages
+                  (on the channel, not live — NOT OfferCreationRecord.status,
+                  see the ⚠ note in the header comment)
+       ended    → publicationStatus 'ended'
+  */
+  var CONNECTIONS = {
+    'c-erli':    { name: 'Erli Demo',                   id: 'aa966882-3c17-4f0b-9d21-70b1f2c84cfb', channel: 'erli' },
+    'c-allegro': { name: 'Allegro PL — sklep główny',   id: '3f1c9a04-88de-4d52-b7a3-2e6c11d9ab74', channel: 'allegro' },
+    'c-woo':     { name: 'WooCommerce — outlet',        id: 'd25e7b60-14aa-49c8-8f31-9c04ee7a5d18', channel: 'woocommerce' }
+  };
+
+  var LISTINGS = [
+    { tab:'active', name:'Doniczka ceramiczna Terra', variant:'Terakota 24 cm', offerId:'14829301',
+      sku:'TERRA-24-TER', ean:'5900000000138', conn:'c-erli', price:'100,00 PLN', qty:41, updated:'21 lip 2026, 02:10' },
+    { tab:'active', name:'Doniczka ceramiczna Terra', variant:'Grafit 24 cm', offerId:'14829344',
+      sku:'TERRA-24-GRA', ean:'5900000000145', conn:'c-allegro', price:'109,00 PLN', qty:12, updated:'21 lip 2026, 02:08' },
+    { tab:'active', name:'Osłonka Nordic', variant:'Biały mat 18 cm', offerId:'15003877',
+      sku:'NORD-18-WHT', ean:'5900000000212', conn:'c-allegro', price:'59,00 PLN', qty:0, updated:'21 lip 2026, 01:54' },
+    { tab:'active', name:'Podstawka pod doniczkę Sienna', variant:'20 cm', offerId:'14771120',
+      sku:'SIEN-20', ean:'5900000000309', conn:'c-allegro', price:'24,50 PLN', qty:88, updated:'21 lip 2026, 01:47' },
+    { tab:'active', name:'Doniczka wisząca Loft', variant:'Czarny 22 cm', offerId:'15112044',
+      sku:'LOFT-22-BLK', ean:'5900000000415', conn:'c-erli', price:'134,00 PLN', qty:7, updated:'21 lip 2026, 02:11' },
+    { tab:'active', name:'Zestaw doniczek Bloom', variant:'3 szt.', offerId:'15140988',
+      sku:'BLOOM-SET-3', ean:'5900000000507', conn:'c-allegro', price:'189,00 PLN', qty:23,
+      updated:'21 lip 2026, 02:12', badge:{ tone:'info', text:'Activating', pulse:true } },
+    { tab:'active', name:'Konewka stalowa Harvest', variant:'1,5 l', offerId:'WC-2201',
+      sku:'HARV-15', ean:'5900000000613', conn:'c-woo', price:'79,00 PLN', qty:15, updated:'21 lip 2026, 00:31' },
+
+    { tab:'inactive', name:'Osłonka Nordic', variant:'Szałwia 18 cm', offerId:'15003901',
+      sku:'NORD-18-SAG', ean:'5900000000229', conn:'c-allegro', price:'59,00 PLN', qty:4, updated:'20 lip 2026, 23:12',
+      badge:{ tone:'error', text:'Rejected' }, reason:'Brak wymaganego parametru: Materiał' },
+    { tab:'inactive', name:'Doniczka betonowa Brut', variant:'30 cm', offerId:'15121350',
+      sku:'BRUT-30', ean:'5900000000711', conn:'c-allegro', price:'219,00 PLN', qty:2, updated:'20 lip 2026, 22:40',
+      badge:{ tone:'error', text:'Rejected' }, reason:'Zdjęcie główne poniżej wymaganej rozdzielczości 1600×1600 px' },
+    { tab:'inactive', name:'Skrzynka balkonowa Terra', variant:'60 cm', offerId:'14930022',
+      sku:'TERRA-BOX-60', ean:'5900000000818', conn:'c-erli', price:'89,00 PLN', qty:30, updated:'19 lip 2026, 18:05' },
+
+    { tab:'draft', name:'Donica ogrodowa Monolith', variant:'45 cm', offerId:'—',
+      sku:'MONO-45', ean:'5900000000924', conn:'c-allegro', price:'349,00 PLN', qty:5, updated:'21 lip 2026, 09:22' },
+    { tab:'draft', name:'Zestaw narzędzi Root', variant:'5 szt.', offerId:'—',
+      sku:'ROOT-SET-5', ean:'5900000001020', conn:'c-allegro', price:'129,00 PLN', qty:18, updated:'21 lip 2026, 09:20' },
+
+    { tab:'ended', name:'Doniczka ceramiczna Terra', variant:'Limonka 24 cm', offerId:'14620877',
+      sku:'TERRA-24-LIM', ean:'5900000001129', conn:'c-allegro', price:'99,00 PLN', qty:0, updated:'2 lip 2026, 12:00' },
+    { tab:'ended', name:'Osłonka Nordic', variant:'Miedź 18 cm', offerId:'14588120',
+      sku:'NORD-18-CPR', ean:'5900000001235', conn:'c-erli', price:'72,00 PLN', qty:0, updated:'28 cze 2026, 08:15' }
+  ];
+
+  var TAB_EMPTY = {
+    active:   { title: 'No listings here yet', message: 'Nothing is live on a connected channel right now.' },
+    inactive: { title: 'No listings here yet', message: 'Nothing is paused or rejected right now.' },
+    draft:    { title: 'No listings here yet', message: 'Nothing is waiting to be published.' },
+    ended:    { title: 'No listings here yet', message: 'Nothing has ended yet.' }
+  };
+
+  var state = { tab: 'active', search: '', conn: '', channel: '' };
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+    });
+  }
+  /* Faithful port of the private shortenId in shared/ui/entity-label.tsx:98-109 —
+     BOTH branches. This file only ever shortens connection UUIDs, which take the
+     second branch, so the OL-native branch is unused here. It is included anyway
+     because #1996 exports this helper for real and its mockup implements both: two
+     mockups showing two different versions of one shipped function is a trap for
+     whoever implements from them. */
+  /* The plugin registry's displayName per platformType — what usePlatforms()
+     exposes and resolvePlatformLabel() reads. Aligned with #1996: a channel label
+     NEVER prints the raw platformType. This page used to render `allegro` /
+     `erli` / `woocommerce` verbatim, which is the exact defect #1996 removes by
+     deleting the four-entry CHANNEL_LABELS map and going through the registry. */
+  var PLATFORM_LABEL = {
+    allegro: 'Allegro', prestashop: 'PrestaShop', erli: 'Erli',
+    woocommerce: 'WooCommerce', amazon: 'Amazon', shopify: 'Shopify'
+  };
+  function platformLabel(pt) { return PLATFORM_LABEL[pt] || pt; }
+
+  var OL_ID_PATTERN = /^(ol_[a-z][a-z0-9-]*_)(.+)$/;
+  function shortenId(id) {
+    var m = OL_ID_PATTERN.exec(id);
+    if (m) {
+      if (m[2].length <= 6) return id;
+      return m[1] + m[2].slice(0, 5) + '…' + m[2].slice(-2);
+    }
+    return id.length > 14 ? id.slice(0, 8) + '…' + id.slice(-4) : id;
+  }
+  function initial(name) { return name.trim().charAt(0).toUpperCase(); }
+
+  /* Multi-field search — product name, SKU, EAN, external offer id. */
+  function matchesSearch(row, q) {
+    if (!q) return true;
+    var hay = [row.name, row.variant, row.sku, row.ean, row.offerId].join(' ').toLowerCase();
+    return hay.indexOf(q.toLowerCase()) !== -1;
+  }
+  function matchesFilters(row) {
+    if (!matchesSearch(row, state.search)) return false;
+    if (state.channel && row.conn !== state.channel) return false;
+    if (state.conn && CONNECTIONS[row.conn].id.toLowerCase().indexOf(state.conn.toLowerCase()) !== 0) return false;
+    return true;
+  }
+
+  function badgeHtml(b) {
+    if (!b) return '';
+    return '<span class="status-badge status-badge--' + b.tone + ' status-badge--compact' +
+           (b.pulse ? ' status-badge--pulse' : '') + '">' +
+           '<span class="status-badge__dot" aria-hidden="true"></span>' + esc(b.text) + '</span>';
+  }
+
+  function listingCell(row) {
+    return '' +
+      '<div class="listing-cell">' +
+        '<span class="product-thumbnail product-thumbnail--md" aria-hidden="true">' + esc(initial(row.name)) + '</span>' +
+        '<span class="listing-cell__body">' +
+          '<span class="listing-cell__head">' +
+            '<a class="listing-cell__name" href="#" title="' + esc(row.name) + '">' + esc(row.name) + '</a>' +
+            '<span class="listing-cell__variant">' + esc(row.variant) + '</span>' +
+            badgeHtml(row.badge) +
+          '</span>' +
+          /* All three identifiers sit together on the second line — the offer id
+             is an identifier like SKU and EAN, not part of the product's name. */
+          '<span class="listing-cell__meta">' +
+            '<span class="listing-cell__offerid">' + esc(row.offerId) + '</span>' +
+            '<span>SKU: <em>' + esc(row.sku) + '</em></span>' +
+            '<span>EAN: <em>' + esc(row.ean) + '</em></span>' +
+          '</span>' +
+          (row.reason ? '<span class="listing-cell__reason" title="' + esc(row.reason) + '">' + esc(row.reason) + '</span>' : '') +
+        '</span>' +
+      '</div>';
+  }
+
+  function connCell(row) {
+    var c = CONNECTIONS[row.conn];
+    /* Two lines, composed from two primitives the app already has:
+       EntityLabel with showId={false} on top, CopyableId beneath. Nothing new
+       is invented here — the name and the id simply stop competing for one line.
+
+       ⚠ THIS CELL IS NO LONGER OWNED BY #1965. It became the shared
+       `ConnectionCell` (features/connections/components/) in #1996, which applies
+       the same two-line composition to five other lists. This mockup keeps its own
+       copy so the page still renders standalone, but the implementation must IMPORT
+       the shared component rather than re-author it — otherwise the Listings
+       redesign lands a seventh variant of the thing #1996 exists to collapse.
+
+       Aligned with #1996: the name is a LINK to /connections/:id (it was plain text
+       here before). The Channel column stays separate on this page — see the
+       anatomy frame's reasoning — so no `adornment` is passed. */
+    return '' +
+      '<span class="conn-cell">' +
+        '<span class="entity-label">' +
+          '<a class="entity-label__name entity-label__name--link" href="#" ' +
+            'aria-label="Open connection ' + esc(c.name) + '">' + esc(c.name) + '</a>' +
+        '</span>' +
+        '<span class="copyable-id">' +
+          '<code class="copyable-id__value">' + esc(shortenId(c.id)) + '</code>' +
+          '<button class="copyable-id__copy" type="button" data-copy="' + esc(c.id) + '" ' +
+            'aria-label="Copy connection ID for ' + esc(c.name) + '">Copy</button>' +
+        '</span>' +
+      '</span>';
+  }
+
+  /* The app formats every timestamp through one helper —
+     `toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })`
+     (shared/format/format-date.ts), rendered inside a semantic <time> by
+     TimeDisplay. In pl-PL that resolves to `30 lip 2026, 16:05`. The strings in
+     this mockup are that exact output; the machine-readable value goes on the
+     datetime attribute, as it does in the app. */
+  var MONTHS_PL = ['sty','lut','mar','kwi','maj','cze','lip','sie','wrz','paź','lis','gru'];
+  function timeCell(label) {
+    /* pl-PL drops the leading zero on the day but keeps it on the hour —
+       `2 lip 2026, 08:15`, not `02 lip`. The day is padded back only for the
+       machine-readable attribute. */
+    var m = /^(\d{1,2}) (\S+) (\d{4}), (\d{2}):(\d{2})$/.exec(label);
+    var iso = m
+      ? m[3] + '-' + String(MONTHS_PL.indexOf(m[2]) + 1).padStart(2, '0') +
+        '-' + m[1].padStart(2, '0') + 'T' + m[4] + ':' + m[5]
+      : '';
+    return '<time class="time-cell" datetime="' + esc(iso) + '">' + esc(label) + '</time>';
+  }
+
+  function qtyCell(row) {
+    return '<span class="qty-cell">' +
+      '<span class="qty-cell__value">' + row.qty + '</span>' +
+      (row.qty === 0
+        ? '<span class="status-badge status-badge--error status-badge--compact">' +
+          '<span class="status-badge__dot" aria-hidden="true"></span>Out of stock</span>'
+        : '') +
+    '</span>';
+  }
+
+  function render() {
+    var counts = { active: 0, inactive: 0, draft: 0, ended: 0 };
+    LISTINGS.forEach(function (row) { if (matchesFilters(row)) counts[row.tab] += 1; });
+    Object.keys(counts).forEach(function (k) {
+      document.querySelector('[data-count="' + k + '"]').textContent = counts[k];
+    });
+
+    document.querySelectorAll('.tabs__trigger[data-tab]').forEach(function (btn) {
+      var on = btn.dataset.tab === state.tab;
+      btn.dataset.state = on ? 'active' : 'inactive';
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+
+    var rows = LISTINGS.filter(function (r) { return r.tab === state.tab && matchesFilters(r); });
+    var tbody = document.getElementById('rows');
+    var filtering = state.search || state.conn || state.channel;
+
+    if (!rows.length) {
+      var empty = filtering
+        ? { title: 'No listings match these filters', message: 'Try different filters or show all listings.' }
+        : TAB_EMPTY[state.tab];
+      tbody.innerHTML =
+        '<tr><td colspan="6" style="padding: var(--space-4)">' +
+          '<div class="state-card">' +
+            '<div class="state-card__header">' +
+              '<h3 class="state-card__title">' + esc(empty.title) + '</h3>' +
+              '<p class="state-card__message">' + esc(empty.message) + '</p>' +
+            '</div>' +
+            (filtering ? '<div class="state-card__actions"><button class="button button--secondary" type="button" data-clear>Clear filters</button></div>' : '') +
+          '</div>' +
+        '</td></tr>';
+    } else {
+      tbody.innerHTML = rows.map(function (row) {
+        var c = CONNECTIONS[row.conn];
+        return '<tr class="data-table__row--linked">' +
+          '<td>' + listingCell(row) + '</td>' +
+          '<td><span class="channel-pill" data-channel="' + c.channel + '">' + esc(platformLabel(c.channel)) + '</span></td>' +
+          '<td>' + connCell(row) + '</td>' +
+          '<td class="data-table__cell--right"><span class="price-cell">' + esc(row.price) + '</span></td>' +
+          '<td class="data-table__cell--right">' + qtyCell(row) + '</td>' +
+          '<td>' + timeCell(row.updated) + '</td>' +
+        '</tr>';
+      }).join('');
+    }
+
+    var total = counts[state.tab];
+    document.getElementById('page-summary').textContent =
+      rows.length ? 'Showing 1–' + rows.length + ' of ' + total : 'Showing 0 of 0';
+  }
+
+  /* Filters */
+  document.getElementById('f-search').addEventListener('input', function (e) { state.search = e.target.value.trim(); render(); });
+  document.getElementById('f-conn').addEventListener('input', function (e) { state.conn = e.target.value.trim(); render(); });
+  document.getElementById('f-channel').addEventListener('change', function (e) { state.channel = e.target.value; render(); });
+
+  function clearFilters() {
+    state = { tab: 'active', search: '', conn: '', channel: '' };
+    document.getElementById('f-search').value = '';
+    document.getElementById('f-conn').value = '';
+    document.getElementById('f-channel').value = '';
+    render();
+  }
+  document.getElementById('f-clear').addEventListener('click', clearFilters);
+
+  document.querySelectorAll('.tabs__trigger[data-tab]').forEach(function (btn) {
+    btn.addEventListener('click', function () { state.tab = btn.dataset.tab; render(); });
+  });
+
+  /* Copy — mirrors CopyableId: confirm, then reset after 1500 ms. */
+  document.addEventListener('click', function (e) {
+    /* The connection name stands in for a router Link (#1996's ConnectionCell links
+       to /connections/:id). Jumping to the top of the page would misrepresent it. */
+    var placeholderLink = e.target.closest('a[href="#"]');
+    if (placeholderLink) { e.preventDefault(); return; }
+
+    var clear = e.target.closest('[data-clear]');
+    if (clear) { clearFilters(); return; }
+
+    var btn = e.target.closest('[data-copy]');
+    if (!btn) return;
+    e.preventDefault();
+    var done = function () {
+      btn.textContent = 'Copied';
+      btn.dataset.copied = 'true';
+      setTimeout(function () { btn.textContent = 'Copy'; delete btn.dataset.copied; }, 1500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(btn.dataset.copy).then(done, done);
+    } else { done(); }
+  });
+
+  /* Skeleton rows */
+  (function () {
+    var widths = ['58%', '72%', '46%', '64%', '52%'];
+    document.getElementById('skeleton-rows').innerHTML = widths.map(function (w) {
+      return '<tr>' +
+        '<td><div class="listing-cell">' +
+          '<span class="skeleton skeleton--thumb"></span>' +
+          '<span class="listing-cell__body" style="flex:1;min-width:180px">' +
+            '<span class="skeleton skeleton--line" style="width:' + w + '"></span>' +
+            '<span class="skeleton skeleton--line" style="width:38%;margin-top:4px"></span>' +
+          '</span></div></td>' +
+        '<td><span class="skeleton skeleton--line" style="width:56px"></span></td>' +
+        '<td><span class="conn-cell">' +
+          '<span class="skeleton skeleton--line" style="width:120px"></span>' +
+          '<span class="skeleton skeleton--line" style="width:72px"></span>' +
+        '</span></td>' +
+        '<td class="data-table__cell--right"><span class="skeleton skeleton--line" style="width:64px;margin-left:auto"></span></td>' +
+        '<td class="data-table__cell--right"><span class="skeleton skeleton--line" style="width:28px;margin-left:auto"></span></td>' +
+        '<td><span class="skeleton skeleton--line" style="width:76px"></span></td>' +
+      '</tr>';
+    }).join('');
+  })();
+
+  /* Mobile cards */
+  (function () {
+    var picks = LISTINGS.filter(function (r) { return r.tab === 'active'; }).slice(0, 3);
+    document.getElementById('cards').innerHTML = picks.map(function (row) {
+      var c = CONNECTIONS[row.conn];
+      return '<article class="data-card">' +
+        '<div class="data-card__head">' +
+          '<span class="product-thumbnail product-thumbnail--md" aria-hidden="true">' + esc(initial(row.name)) + '</span>' +
+          '<span class="listing-cell__body">' +
+            '<span class="listing-cell__head">' +
+              '<a class="listing-cell__name" href="#">' + esc(row.name) + '</a>' + badgeHtml(row.badge) +
+            '</span>' +
+            '<span class="listing-cell__meta"><span>' + esc(row.variant) + '</span><span>SKU: <em>' + esc(row.sku) + '</em></span></span>' +
+          '</span>' +
+        '</div>' +
+        '<dl class="data-card__facts">' +
+          '<div class="data-card__fact"><dt>Channel</dt><dd><span class="channel-pill" data-channel="' + c.channel + '">' + esc(platformLabel(c.channel)) + '</span></dd></div>' +
+          '<div class="data-card__fact"><dt>Connection</dt><dd style="font-size:0.75rem">' + esc(c.name) + '</dd></div>' +
+          '<div class="data-card__fact"><dt>Price †</dt><dd class="price-cell">' + esc(row.price) + '</dd></div>' +
+          '<div class="data-card__fact"><dt>Quantity †</dt><dd>' + qtyCell(row) + '</dd></div>' +
+        '</dl>' +
+      '</article>';
+    }).join('');
+  })();
+
+  /* Tablet rows — same cell helpers and the same LISTINGS[] the desktop frame
+     renders from, so the two can never drift. Static in the sense that nothing
+     rewrites it after load; it is not hand-written markup. */
+  (function () {
+    var counts = { active: 0, inactive: 0, draft: 0, ended: 0 };
+    LISTINGS.forEach(function (row) { counts[row.tab] += 1; });
+    Object.keys(counts).forEach(function (k) {
+      document.querySelector('[data-tablet-count="' + k + '"]').textContent = counts[k];
+    });
+
+    document.getElementById('tablet-rows').innerHTML = LISTINGS
+      .filter(function (r) { return r.tab === 'active'; })
+      .map(function (row) {
+        var c = CONNECTIONS[row.conn];
+        return '<tr class="data-table__row--linked">' +
+          '<td>' + listingCell(row) + '</td>' +
+          '<td><span class="channel-pill" data-channel="' + c.channel + '">' + esc(platformLabel(c.channel)) + '</span></td>' +
+          '<td>' + connCell(row) + '</td>' +
+          '<td class="data-table__cell--right"><span class="price-cell">' + esc(row.price) + '</span></td>' +
+          '<td class="data-table__cell--right">' + qtyCell(row) + '</td>' +
+          '<td>' + timeCell(row.updated) + '</td>' +
+        '</tr>';
+      }).join('');
+  })();
+
+  render();
+</script>
+</body>
+</html>

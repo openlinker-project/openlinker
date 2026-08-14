@@ -87,6 +87,7 @@ export { OfferDescriptionToneValues } from './domain/types/marketplace-job-paylo
 export {
   OFFER_REFRESH_SNAPSHOT_DELAYS_SECONDS,
   OFFER_REFRESH_SNAPSHOT_MAX_ATTEMPTS,
+  buildOfferRefreshSnapshotIdempotencyKey,
 } from './domain/types/marketplace-job-payloads.types';
 export {
   MasterProductSyncByExternalIdPayloadV1,
@@ -100,6 +101,7 @@ export {
   ShopProductPublishPayload,
   ShopProductStatusSyncPayloadV1,
 } from './domain/types/shop-job-payloads.types';
+export type { DestinationTaxonomySyncPayloadV1 } from './domain/types/taxonomy-job-payloads.types';
 export type {
   InvoicingIssuePayloadV1,
   InvoicingIssueBuyerV1,

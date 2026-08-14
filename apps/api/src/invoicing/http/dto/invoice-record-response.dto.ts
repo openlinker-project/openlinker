@@ -32,6 +32,8 @@ import {
   RegulatoryStatus,
   RegulatoryStatusValues,
 } from '@openlinker/core/invoicing';
+import type { OrderSummary } from '@openlinker/core/orders';
+import { OrderSummaryProjectionDto } from '../../../orders/http/dto/order-summary-projection.dto';
 
 export class InvoiceRecordResponseDto {
   @ApiProperty({ description: 'Internal invoice record id' })
@@ -104,7 +106,23 @@ export class InvoiceRecordResponseDto {
   @ApiProperty({ description: 'Record last-update time (ISO 8601)' })
   updatedAt!: string;
 
-  static fromDomain(record: InvoiceRecord): InvoiceRecordResponseDto {
+  @ApiProperty({
+    nullable: true,
+    type: OrderSummaryProjectionDto,
+    description:
+      "Order-identity projection (#1995) for the unified Order cell — null when no order record resolves for `orderId`, or its snapshot has no parseable items. Only populated on the list endpoint (`GET /invoices`); single-invoice reads pass null (not fetched there).",
+  })
+  orderSummary!: OrderSummaryProjectionDto | null;
+
+  /**
+   * @param orderSummary Batched order-identity projection (#1995), or `null`
+   *   when not resolved for this call site. Required (not defaulted) so a
+   *   future read path can't silently omit it.
+   */
+  static fromDomain(
+    record: InvoiceRecord,
+    orderSummary: OrderSummary | null,
+  ): InvoiceRecordResponseDto {
     const dto = new InvoiceRecordResponseDto();
     dto.id = record.id;
     dto.connectionId = record.connectionId;
@@ -123,6 +141,7 @@ export class InvoiceRecordResponseDto {
     dto.issuedAt = record.issuedAt ? record.issuedAt.toISOString() : null;
     dto.createdAt = record.createdAt.toISOString();
     dto.updatedAt = record.updatedAt.toISOString();
+    dto.orderSummary = orderSummary ? OrderSummaryProjectionDto.fromSummary(orderSummary) : null;
     return dto;
   }
 }

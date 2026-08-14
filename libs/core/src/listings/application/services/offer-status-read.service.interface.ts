@@ -9,16 +9,22 @@
  *
  * @module libs/core/src/listings/application/services
  */
-import type { OfferStatusSnapshot } from '../../domain/entities/offer-status-snapshot.entity';
+import type { OfferPublicationStatusView } from '../../domain/types/offer-status-read.types';
 
 export interface IOfferStatusReadService {
   /**
-   * Return the live publication-status snapshots for every offer mapped to a
-   * variant of `productId`, optionally scoped to a single connection. Products
-   * with no synced offers yield `[]` (rather than a fabricated status).
+   * Return one row per offer mapped to a variant of `productId`, optionally
+   * scoped to a single connection, carrying its snapshot when one exists.
+   *
+   * An offer that has never been read reports `publicationStatus: null` rather
+   * than being omitted (#2039) — otherwise "this product has no offers" and
+   * "its offers have no status yet" were the same empty response, and the
+   * per-offer manual refresh that fixes the second case was unreachable.
+   * `[]` therefore means the product genuinely has no mapped offers and no
+   * snapshot history.
    */
   getPublicationStatusForProduct(
     productId: string,
     connectionId?: string
-  ): Promise<OfferStatusSnapshot[]>;
+  ): Promise<OfferPublicationStatusView[]>;
 }

@@ -26,6 +26,7 @@ import type {
 } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { InfaktHttpClient, INFAKT_DEFAULT_BASE_URL } from '../http/infakt-http-client';
 import { InfaktApiError } from '../../domain/exceptions/infakt-api.error';
 import type { InfaktCredentials, InfaktConnectionConfig } from '../../domain/types/infakt-connection.types';
@@ -34,6 +35,8 @@ const INFAKT_CONNECTION_PROBE_PATH = 'clients.json';
 
 export class InfaktConnectionTesterAdapter implements ConnectionTesterPort {
   private readonly logger = new Logger(InfaktConnectionTesterAdapter.name);
+
+  constructor(private readonly http: HttpTransportFactoryPort) {}
 
   async test(
     connection: Connection,
@@ -51,9 +54,15 @@ export class InfaktConnectionTesterAdapter implements ConnectionTesterPort {
 
       const credentials = await credentialsResolver.get<InfaktCredentials>(connection.credentialsRef);
       const config = (connection.config ?? {}) as InfaktConnectionConfig;
+      // Connection-bound outbound transport (#1810) — a "Test connection"
+      // click is operator-triggered and can be repeated in quick succession;
+      // it must go through the same rate limiter as every other Infakt call
+      // site, not a bare globalThis.fetch.
+      const fetchImpl = this.http.forConnection(connection);
       const client = new InfaktHttpClient(
         { apiKey: credentials.apiKey, baseUrl: config.baseUrl ?? INFAKT_DEFAULT_BASE_URL },
         this.logger,
+        fetchImpl,
       );
 
       await client.get(INFAKT_CONNECTION_PROBE_PATH, { limit: '1' });

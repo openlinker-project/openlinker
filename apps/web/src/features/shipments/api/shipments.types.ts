@@ -8,6 +8,8 @@
  * @module apps/web/src/features/shipments/api
  */
 
+import type { OrderSummary } from '../../../shared/types/order-summary.types';
+
 /**
  * Maximum page size accepted by `GET /shipments` (backend `@Max(100)` on the
  * list query DTO). Requesting a higher `limit` returns HTTP 400. Keep in sync
@@ -139,6 +141,12 @@ export interface Shipment {
   errorMessage: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Batched order-identity projection (#1995). Only populated by `GET
+   * /shipments` (the list endpoint) — single-shipment reads carry `null`
+   * (not fetched there).
+   */
+  orderSummary: OrderSummary | null;
 }
 
 /**

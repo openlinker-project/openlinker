@@ -24,6 +24,13 @@ import type { OfferPublicationStatus } from '../types/offer-status-read.types';
 export interface OfferStatusUpsertResult {
   snapshot: OfferStatusSnapshot;
   previousStatus: OfferPublicationStatus | null;
+  /**
+   * Whether the freshness guard accepted this observation (#2039). `false`
+   * means a fresher observation was already stored and the row's status was
+   * left as it was — so a caller must not count the write or narrate a
+   * transition it did not cause. Always `true` on a first insert.
+   */
+  applied: boolean;
 }
 
 export interface OfferStatusSnapshotRepositoryPort {
@@ -38,11 +45,22 @@ export interface OfferStatusSnapshotRepositoryPort {
 
   /**
    * Insert a new snapshot or update the existing `(connectionId,
-   * externalOfferId)` row, always refreshing `lastStatusSyncedAt`. Returns the
-   * persisted snapshot plus the row's previous publication status (`null` on
-   * first insert) so callers detect transitions without a second read.
-   * Implementations must be safe under concurrent upserts of the same key
-   * (unique-constraint races resolve to an update on retry).
+   * externalOfferId)` row. Returns the persisted snapshot plus the row's
+   * previous publication status (`null` on first insert) so callers detect
+   * transitions without a second read.
+   *
+   * **Freshness-guarded (#2039).** The table has several deliberately
+   * decoupled writers — the hourly scan, the single-offer refresh, and the
+   * create path — and nothing orders them, so an implementation MUST resolve a
+   * conflict by observation freshness rather than arrival order: an observation
+   * older than the stored `lastStatusSyncedAt` leaves the row's status
+   * untouched, and `lastStatusSyncedAt` itself only ever moves forward. A
+   * same-instant rewrite still applies. The returned snapshot is therefore the
+   * *persisted* row, which on a rejected write is the fresher stored one — not
+   * necessarily the command that was passed in, and `applied` reports which of
+   * the two it is.
+   *
+   * Implementations must also be safe under concurrent upserts of the same key.
    */
   upsert(command: UpsertOfferStatusSnapshotCommand): Promise<OfferStatusUpsertResult>;
 

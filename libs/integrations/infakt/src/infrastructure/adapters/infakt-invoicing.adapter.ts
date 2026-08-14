@@ -297,6 +297,26 @@ function isCorrectionRecord(documentType: string): boolean {
  * is 15 minutes (`SyncJobRunner.STUCK_JOB_TIMEOUT_MINUTES`), and the HTTP path
  * (`POST /v1/invoices/{id}/correct`) is an operator-initiated synchronous
  * request with no shorter server-side budget.
+ *
+ * **Interaction with per-connection rate limiting (#1810).** Every status read
+ * below now goes through the connection-bound transport, whose wait counts
+ * against this wall-clock deadline — so throttling eats poll attempts rather
+ * than extending the budget. Two consequences worth knowing before tuning
+ * either number:
+ *
+ * - An operator-configured `config.rateLimit.requestsPerMinute` low enough that
+ *   its minimum-interval spacing exceeds ~2s starves this loop, and the
+ *   limiter's own `MAX_TOTAL_WAIT_MS` (120s) is 4x this deadline — a single
+ *   queued acquisition can blow the whole budget. Infakt deliberately ships no
+ *   manifest default (see `infaktAdapterManifest`), so this is inert until an
+ *   operator opts in; an aggressive cap here trades throughput for
+ *   `in-doubt` fiscal documents, which is the wrong trade.
+ * - Even with NO cap configured, a 429/503 carrying `Retry-After` now delays
+ *   subsequent reads: the transport records it and the limiter honours
+ *   `nextAvailableAt` unconditionally, not only when an RPM policy is set. This
+ *   is the desired reactive behaviour (`InfaktHttpClient` has no retry logic of
+ *   its own), but it means the deadline can be consumed by the provider's own
+ *   backpressure.
  */
 const CORRECTION_ASYNC_POLL_INTERVAL_MS = 2000;
 const CORRECTION_ASYNC_POLL_TIMEOUT_MS = 30000;

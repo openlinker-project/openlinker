@@ -20,8 +20,13 @@ export { RateLimitTimeoutError, RateLimitAbortedError } from './rate-limiter.err
 export type { RateLimiterPort } from './rate-limiter.port';
 export { RateLimiter, MAX_TOTAL_WAIT_MS } from './rate-limiter';
 export type { RateLimiterDeps } from './rate-limiter';
-export { createRateLimiterRegistry } from './rate-limiter-registry';
+export {
+  createRateLimiterRegistry,
+  createRedisRateLimiterRegistry,
+} from './rate-limiter-registry';
 export type { RateLimiterRegistry } from './rate-limiter-registry';
+export { RedisRateLimiterAdapter } from './redis-rate-limiter.adapter';
+export type { RedisRateLimiterDeps } from './redis-rate-limiter.adapter';
 export {
   runWithPriority,
   getCurrentPriority,

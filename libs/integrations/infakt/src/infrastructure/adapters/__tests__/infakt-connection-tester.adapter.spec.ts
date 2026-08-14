@@ -9,6 +9,7 @@
  */
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { InfaktConnectionTesterAdapter } from '../infakt-connection-tester.adapter';
 
 function connection(overrides: Partial<Connection> = {}): Connection {
@@ -52,8 +53,12 @@ describe('InfaktConnectionTesterAdapter', () => {
   let fetchMock: jest.Mock;
 
   beforeEach(() => {
-    tester = new InfaktConnectionTesterAdapter();
     fetchMock = jest.fn();
+    const http: jest.Mocked<HttpTransportFactoryPort> = {
+      forConnection: jest.fn().mockReturnValue(fetchMock),
+      evict: jest.fn(),
+    };
+    tester = new InfaktConnectionTesterAdapter(http);
     global.fetch = fetchMock as unknown as typeof fetch;
   });
 

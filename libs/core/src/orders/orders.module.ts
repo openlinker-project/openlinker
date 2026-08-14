@@ -18,6 +18,9 @@ import { OrderRecordRepository } from './infrastructure/persistence/repositories
 import { OrderLineItemRepository } from './infrastructure/persistence/repositories/order-line-item.repository';
 import { OrderRecordOrmEntity } from './infrastructure/persistence/entities/order-record.orm-entity';
 import { OrderLineItemOrmEntity } from './infrastructure/persistence/entities/order-line-item.orm-entity';
+import { OrderRefundService } from './application/services/order-refund.service';
+import { RefundRecordRepository } from './infrastructure/persistence/repositories/refund-record.repository';
+import { RefundRecordOrmEntity } from './infrastructure/persistence/entities/refund-record.orm-entity';
 import {
   ORDER_SYNC_SERVICE_TOKEN,
   ORDER_INGESTION_SERVICE_TOKEN,
@@ -27,6 +30,8 @@ import {
   ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
   ORDER_LINE_ITEM_REPOSITORY_TOKEN,
+  ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
+  ORDER_REFUND_SERVICE_TOKEN,
 } from './orders.tokens';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
@@ -41,7 +46,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([OrderRecordOrmEntity, OrderLineItemOrmEntity]),
+    TypeOrmModule.forFeature([OrderRecordOrmEntity, OrderLineItemOrmEntity, RefundRecordOrmEntity]),
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN and ADAPTER_FACTORY_RESOLVER_TOKEN
     IdentifierMappingModule, // Required for IDENTIFIER_MAPPING_SERVICE_TOKEN
     SyncModule, // Required for cursor repository, job queue, and locks
@@ -64,6 +69,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderLifecycleRelayService,
     OrderRecordRepository,
     OrderLineItemRepository,
+    OrderRefundService,
+    RefundRecordRepository,
     // Then provide token bindings using useExisting
     {
       provide: ORDER_SYNC_SERVICE_TOKEN,
@@ -97,16 +104,25 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       provide: ORDER_LINE_ITEM_REPOSITORY_TOKEN,
       useExisting: OrderLineItemRepository,
     },
+    {
+      provide: ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
+      useExisting: RefundRecordRepository,
+    },
+    {
+      provide: ORDER_REFUND_SERVICE_TOKEN,
+      useExisting: OrderRefundService,
+    },
   ],
   exports: [
     OrderRecordService, // Export service class for direct injection
+    OrderRefundService, // Export service class for direct injection
     ORDER_SYNC_SERVICE_TOKEN,
     ORDER_INGESTION_SERVICE_TOKEN,
     ORDER_RECORD_REPOSITORY_TOKEN,
     ORDER_RECORD_SERVICE_TOKEN,
     ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
     ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
+    ORDER_REFUND_SERVICE_TOKEN,
   ],
 })
 export class OrdersModule {}
-

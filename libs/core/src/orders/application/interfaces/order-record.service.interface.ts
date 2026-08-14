@@ -11,6 +11,8 @@ import type { Order } from '../../domain/types/order.types';
 import type { OrderRecord, OrderSyncStatus } from '../../domain/entities/order-record.entity';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import type {
+  FailedSyncValueSummary,
+  OrderHealthSummaryFilters,
   OrderRecordFilters,
   OrderRecordPagination,
   OrderRecordStatus,
@@ -99,6 +101,18 @@ export interface IOrderRecordService {
   ): Promise<PaginatedOrderRecords>;
 
   /**
+   * Batch-find order records by internal order ID (#1995). The cross-context
+   * surface for a page-scoped join (e.g. the Shipments/Invoices lists'
+   * `orderSummary` projection) — repository ports are forbidden across context
+   * boundaries per architecture-overview.md § "Cross-context dependencies in
+   * core", so callers go through this service method instead of
+   * `OrderRecordRepositoryPort.findByIds` directly. Ids with no matching
+   * record are simply absent from the result. Delegates to
+   * `OrderRecordRepositoryPort.findByIds`.
+   */
+  findByIds(internalOrderIds: string[]): Promise<OrderRecord[]>;
+
+  /**
    * Push a per-order fulfillment rollup (#1108) onto the order record. The
    * cross-context surface the shipping context calls after a shipment-status
    * change (`shipping → orders`, via this service — never the repository port).
@@ -123,4 +137,24 @@ export interface IOrderRecordService {
     internalOrderId: string,
     input: { status: OrderRecordStatus; reason: string }
   ): Promise<void>;
+
+  /**
+   * "Value stuck in failed syncs" — the needs-attention aggregate (#1983).
+   * The cross-context surface `apps/api`'s analytics composition uses —
+   * repository ports are forbidden across context boundaries per
+   * architecture-overview.md § "Cross-context dependencies in core", so
+   * callers go through this service method instead of
+   * `OrderRecordRepositoryPort.getFailedSyncValueSummary` directly.
+   */
+  getFailedSyncValueSummary(filters: OrderHealthSummaryFilters): Promise<FailedSyncValueSummary>;
+
+  /**
+   * Durably record the instant this order was cancelled (#1984). Called by
+   * `OrderIngestionService.handleSourceCancellation` — the one ingestion path
+   * that never calls `persistOrder`/`persistIncomingSnapshot`, and today
+   * writes nothing to the order record at all. First-write-wins: a redelivered
+   * cancel event or a later re-poll can never overwrite an already-recorded
+   * instant. No-op (no throw) when no record exists yet for `internalOrderId`.
+   */
+  markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void>;
 }

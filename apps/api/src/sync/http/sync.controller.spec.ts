@@ -64,6 +64,7 @@ describe('SyncController', () => {
     requeueDeadJobsInGroup: jest.fn(),
     heartbeat: jest.fn(),
     requeueWithoutPenalty: jest.fn(),
+    findLastSucceededByConnectionAndJobType: jest.fn(),
   };
 
   const mockRetryService = {
