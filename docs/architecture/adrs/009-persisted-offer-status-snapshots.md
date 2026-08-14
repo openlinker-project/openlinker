@@ -52,6 +52,62 @@ The snapshot table shipped write-only — populated by the hourly `marketplace.o
 
 This does not change the storage decision or the disjoint-tables invariant; it adds the missing read half and a targeted freshness path on top of the same table.
 
+## Amendment (#2024, 2026-08-11): channel-side commercial snapshots ride the same status read
+
+The listings redesign needs each mapped offer's **live channel-side price and available quantity**, at list
+scale, without spending a second marketplace call per offer per tick. #2024 adds a second listings-owned
+table, `offer_commercial_snapshots` (one row per `(connectionId, externalOfferId)`, carrying
+`internalVariantId`, nullable `price` / `currency` / `availableQuantity`, and `lastCommercialSyncedAt`),
+written by the same `marketplace.offer.statusSync` pass and by the same `refreshOne` path (#1760).
+
+**The data is carried on the status read** - `OfferStatusReadResult` gains an optional `commercial` field
+that adapters populate off the response they already fetched - rather than by calling `OfferReader.getOffer`
+alongside it. Three independent reasons:
+
+1. **`getOffer` really would cost a second HTTP call.** Allegro's `getOfferStatus` and `getOffer` both route
+   through the same private `fetchProductOfferById`, and Erli's both route through `fetchErliProduct`, with
+   no memoization on either helper. Each invocation is its own GET, so calling both is +1 request per offer
+   per tick - exactly what #2024 rules out.
+2. **Calling `getOffer` *instead* would be worse.** `MarketplaceOffer.status` is a deliberate raw-string
+   passthrough (Allegro emits uppercase native, Erli its own vocabulary), while
+   `offer_status_snapshots.publicationStatus` persists the closed neutral union this ADR established.
+   Swapping the call would force per-platform status mapping into a core service (a CORE/Integration
+   boundary violation) or corrupt the snapshot column.
+3. **It would silently drop a side effect.** Erli's `getOfferStatus` writes the frozen-stock cache flag
+   (#1066); `getOffer` does not. `getOffer` is not a superset of `getOfferStatus`.
+
+The **disjoint-tables invariant still holds**, and is in fact the reason for a new table rather than extra
+columns on `offer_status_snapshots`: the steady-state sync and the creation poller (#447) continue to write
+tables neither one else touches, and the commercial write is a third disjoint target with a single writer.
+The `OfferStatusReader` method signature is unchanged, so there is no manifest change, no `dispatchCapability`
+entry, and every existing or third-party implementer still compiles - a reader that never populates
+`commercial` behaves exactly as it did before.
+
+Two nullability rules follow from the table being *observational*:
+
+- **Every column of the observation is independently nullable, and `null` never means zero.** A sparse
+  marketplace response persists "not reported", because a stored `0` is indistinguishable from a genuine
+  sell-out at list scale, and a stored `0.00` from a free item. Price and quantity are nullable separately so
+  a good reading on one axis is never discarded because the other was missing. The row (and its freshness
+  stamp) is written whenever the observation carries **at least one** axis; an observation carrying neither is
+  **not written at all**, because the upsert overwrites every column - writing one would blank a
+  previously-good row while simultaneously stamping it as freshly synced. Leaving the prior row untouched lets
+  `lastCommercialSyncedAt` age honestly, which is the signal a read surface must expose alongside the values:
+  a price with no age is a price an operator will act on.
+- **The values are what the marketplace reports, not what OL intended to publish** - already net of the
+  connection's `stockSafetyBuffer` (#1844) and already the output of its `pricingRule` (#1843). A constant
+  delta against master is correct configuration, not a sync defect, and operator-facing surfaces must read
+  "on channel".
+
+Finally, the commercial write is **strictly supplementary**: it is wrapped in a catch that warn-logs and
+continues, so a failed commercial write can never abort the pre-existing #816 status pass nor prevent its
+`nextOffset` cursor from advancing. Without that, one poison offer would wedge a connection's status sync
+indefinitely.
+
+**Migration path:** additive - `AddOfferCommercialSnapshotsTable1833000000003` adds the table + indexes
+(unique `(externalOfferId, connectionId)`, reverse-variant, and `lastCommercialSyncedAt` for stalest-first
+sweeps); no backfill, so rows fill at the sync's natural page rate. No existing behaviour changes.
+
 ## Amendment (#2039, 2026-08-12): the create path writes the snapshot it already knows
 
 #1760 made the snapshot the authoritative operator-facing status, but nothing on the **create** path ever wrote
@@ -104,7 +160,7 @@ Two adjacent defects in the #1760 machinery close with it:
 
 ## References
 
-- Related PRs: #816, #1760
-- Related issues: #816, #447, #464, #391, #400, #1520, #1760, #2039
+- Related PRs: #816, #1760, #2035, #2044
+- Related issues: #816, #447, #464, #391, #400, #1520, #1760, #2024, #2039
 - Related ADRs: [ADR-007](./007-syncjob-status-vs-outcome-split.md)
 - Primary doc section: [docs/architecture-overview.md](../../architecture-overview.md) § Listings (Offers)

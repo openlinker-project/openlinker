@@ -206,7 +206,7 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
   ): Promise<Map<string, string>> {
     const result = new Map<string, string>();
     for (const variantId of variantIds) {
-      const page = await this.offerMappings.findMany(
+      const page = await this.offerMappings.findMappingPage(
         { connectionId, internalId: variantId },
         { limit: OFFER_MAPPING_PAGE_LIMIT, offset: 0 },
       );
