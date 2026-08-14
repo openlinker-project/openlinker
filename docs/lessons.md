@@ -23,6 +23,14 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## A column written by a narrow out-of-band UPDATE must be excluded from the full-row upsert's write set
+
+**Context**: `order_records` carries denormalized columns that no ingestion payload supplies and that a different context pushes in with a narrow `UPDATE` - `fulfillmentState` (a rollup over the order's shipments, written by `updateFulfillmentState`) and `cancelledAt` (written by `markCancelled`). `OrderRecordRepository.upsert` is a full-object TypeORM `save()`.
+**Problem**: `toOrm` mapped `fulfillmentState` unconditionally while `persistOrder` never populated it (it is the 12th constructor argument and only 11 were passed), so every re-ingestion - a poll re-read, a webhook-triggered sync, a manual re-sync - wrote `null` over a committed `'dispatched'`. A dispatched order silently reappeared as not-shipped in the ship-by SLA buckets and the not-shipped list filter. The same class of defect had already been fixed for `cancelledAt` in the same method (#1984) and the exclusion comment sat three lines below the offending assignment.
+**Rule**: When a column has a dedicated out-of-band writer, that writer must be its **only** writer: leave the ORM entity property unset in `toOrm` so TypeORM omits the column from the generated statement, and say so in a comment next to the columns that *are* mapped. Do not "fix" it by reading the row first and carrying the value onto the new instance - an unlocked upsert racing the out-of-band UPDATE still loses a value that commits between the read and the save. Pin it with a unit test asserting the property is `undefined` on the entity handed to `save()` **and** an integration test proving the committed value survives a second persist (a mocked spec cannot prove TypeORM really omits the column). Note the consequence: the record returned by the upsert reports such a column as `null` whatever the row holds, so a caller needing its live value must re-read.
+**Applies to**: any repository whose `upsert`/`save` coexists with a narrow `UPDATE` writer on the same table - today `libs/core/src/orders/infrastructure/persistence/repositories/order-record.repository.ts` (`fulfillmentState`, `cancelledAt`).
+**Source**: #2101 (surfaced reviewing #2050 / ADR-040, which adopts the narrow-conditional-UPDATE shape for its own columns); the `cancelledAt` precedent is #1984.
+
 ## A supplementary write added inside an existing per-item sync loop must degrade, never abort
 
 **Context**: #2024 extends the existing #816 `marketplace.offer.statusSync` per-offer loop to also persist a commercial (price/quantity) observation, reusing the same fetched object rather than a second marketplace call.

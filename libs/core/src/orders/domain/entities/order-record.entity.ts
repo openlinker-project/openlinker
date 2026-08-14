@@ -56,6 +56,11 @@ export class OrderRecord {
      * `updateFulfillmentState`. `null` ≡ `not-shipped` (no backfill needed).
      * Lets the orders list show/filter "has this shipped?" without reaching
      * into the shipping context.
+     *
+     * Never sourced from an ingestion payload: no order source reports a
+     * fulfillment state, and `updateFulfillmentState` is the column's sole
+     * writer, so the ingestion path leaves this field at its `null` default
+     * and the upsert excludes the column entirely (#2101).
      */
     public readonly fulfillmentState: FulfillmentRollupState | null = null,
     /**
