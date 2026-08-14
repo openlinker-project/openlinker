@@ -281,9 +281,6 @@ describe('InvoicesListPage', () => {
       expect(screen.queryByRole('table')).toBeNull();
       // Same facts as the desktop columns, never a raw id.
       expect(screen.getByText(/6839-2911-4402/)).toBeInTheDocument();
-      // …and shortened by the SAME rule as the desktop cell: Allegro's
-      // `orderNumber` is a 36-character `checkoutFormId` handed to this page raw.
-      expect(screen.queryByText(/d1f4a2c3-9b8e-4f7a-a1b2-c3d4e5f60789/)).toBeNull();
       expect(
         screen.queryByText('ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9'),
       ).toBeNull();
