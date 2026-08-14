@@ -62,6 +62,7 @@ export * from './domain/ports/invoice-number-gap-note-repository.port';
 export * from './domain/exceptions/invoice-record-not-found.exception';
 export * from './domain/exceptions/duplicate-invoice-record.exception';
 export * from './domain/exceptions/order-already-invoiced.exception';
+export * from './domain/exceptions/invoice-issue-contended.exception';
 export * from './domain/exceptions/missing-numbering-series.exception';
 export * from './domain/exceptions/duplicate-document-number.exception';
 export * from './domain/exceptions/document-number-too-long.exception';

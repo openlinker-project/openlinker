@@ -23,6 +23,11 @@
  *     `invoice:{connId}:{orderId}` composed ONCE and threaded into BOTH the
  *     `ScheduleJobInput.idempotencyKey` AND `payload.idempotencyKey` (F4).
  *
+ * Every non-issuing exit (ambiguous selection, `manual`, `batched`) is currently
+ * LOG-ONLY. ADR-041 §54/§105 require it to also persist a named, operator-visible
+ * reason — deferred to **#2100**, whose comment at the `ambiguous` branch explains
+ * why the log alone is insufficient.
+ *
  * The selected connection's work is isolated in a try/catch; the catch logs a
  * PII-SAFE envelope only (F9 + D11): `error.name`, invoicing `connectionId`, `order.id`,
  * `sourceEventId` (when present) — never the raw error / message / payload.
@@ -157,6 +162,17 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       // never have existed. The order-detail panel surfaces this state to the
       // operator ("Automatic invoicing is off for this order") so the decision is
       // not visible only in a log.
+      //
+      // DEFERRED — #2100: ADR-041 §54/§105 require a block to also PERSIST a named
+      // reason ('ambiguous-connection-no-primary'), never log-only. This exit (and
+      // the `manual` / `batched` ones below) is still log-only, so an install where
+      // auto-issue silently stopped for EVERY order is normal-looking on the orders
+      // and invoices lists — the panel's client-side re-derivation only helps an
+      // operator who already opened that one order. #2100 lands decision 11's first
+      // slice: the two reason unions in a `sales-documents` concern plus #1689's
+      // `source_deleted` surfacing treatment (health bucket + list badge + bulk-action
+      // exclusion). No `sync_jobs.outcomeReason` can carry it — these exits enqueue
+      // no job, so there is no row.
       this.logger.error(
         `Auto-issue skipped: ${selection.candidateIds.length} active Invoicing connections and ` +
           `no unambiguous primary (reason=${selection.reason}) — issuing nothing rather than ` +

@@ -14,10 +14,32 @@
  *
  * @module apps/web/src/features/invoicing/lib
  */
-import type { Connection } from '../../connections';
 import type { InvoiceRecord } from '../api/invoicing.types';
 
 const INVOICING_CAPABILITY = 'Invoicing';
+
+/**
+ * The connection fields these helpers actually read — a STRUCTURAL type, not the
+ * `connections` feature's `Connection`.
+ *
+ * Declared locally so this module needs no `features/invoicing` →
+ * `features/connections` import: the frontend's dependency rule is
+ * `app → pages → features → shared`, which says nothing about sibling features,
+ * and a cross-feature type import is the kind of edge that quietly becomes a
+ * cycle. `Connection` structurally satisfies it, so callers pass one unchanged.
+ *
+ * Every helper that hands a connection BACK is generic over `T extends
+ * InvoicingConnectionLike`, so the caller gets its own concrete type back (the
+ * panel still reads `connection.name` off a real `Connection`) — narrowing the
+ * input contract costs the caller no fidelity on the way out.
+ */
+export interface InvoicingConnectionLike {
+  id: string;
+  status: string;
+  enabledCapabilities: readonly string[];
+  supportedCapabilities: readonly string[];
+  config: Record<string, unknown>;
+}
 
 /**
  * Is this connection the operator-designated primary
@@ -26,7 +48,7 @@ const INVOICING_CAPABILITY = 'Invoicing';
  * `'true'`, how a hand-edited JSON config arrives) counts. The backend is
  * authoritative — this read only drives preselection and the "primary" label.
  */
-export function isPrimaryInvoicingConnection(connection: Connection): boolean {
+export function isPrimaryInvoicingConnection(connection: InvoicingConnectionLike): boolean {
   const invoicing = connection.config['invoicing'];
   if (invoicing === null || typeof invoicing !== 'object') {
     return false;
@@ -39,7 +61,9 @@ export function isPrimaryInvoicingConnection(connection: Connection): boolean {
  * Connections that could issue an invoice right now: active + `Invoicing`
  * enabled, sorted by id so the order is deterministic across renders.
  */
-export function selectInvoicingCandidates(connections: readonly Connection[]): Connection[] {
+export function selectInvoicingCandidates<T extends InvoicingConnectionLike>(
+  connections: readonly T[],
+): T[] {
   return connections
     .filter((c) => c.status === 'active' && c.enabledCapabilities.includes(INVOICING_CAPABILITY))
     .slice()
@@ -50,9 +74,9 @@ export function selectInvoicingCandidates(connections: readonly Connection[]): C
  * Connections that cannot issue right now but could after a reconnect —
  * `needs_reauth` / `error` with `Invoicing` in their supported capabilities.
  */
-export function selectReauthInvoicingConnections(
-  connections: readonly Connection[],
-): Connection[] {
+export function selectReauthInvoicingConnections<T extends InvoicingConnectionLike>(
+  connections: readonly T[],
+): T[] {
   return connections.filter(
     (c) =>
       (c.status === 'needs_reauth' || c.status === 'error') &&
@@ -61,9 +85,9 @@ export function selectReauthInvoicingConnections(
 }
 
 /** The connection an existing invoice is locked to, and whether it is still usable. */
-export interface IssuingConnectionResolution {
+export interface IssuingConnectionResolution<T extends InvoicingConnectionLike> {
   /** The full connection when OL still knows it; `null` when it was deleted. */
-  connection: Connection | null;
+  connection: T | null;
   /**
    * The record's `connectionId` — always present, so the panel can name the
    * connection by id when the connection itself is gone.
@@ -84,10 +108,10 @@ export interface IssuingConnectionResolution {
  * disabled or capability-revoked connection is still named rather than shown as
  * a bare id.
  */
-export function resolveIssuingConnection(
+export function resolveIssuingConnection<T extends InvoicingConnectionLike>(
   invoice: InvoiceRecord,
-  connections: readonly Connection[],
-): IssuingConnectionResolution {
+  connections: readonly T[],
+): IssuingConnectionResolution<T> {
   const connection = connections.find((c) => c.id === invoice.connectionId) ?? null;
   const isUsable =
     connection !== null &&
@@ -102,10 +126,10 @@ export function resolveIssuingConnection(
  * `null` when several candidates exist, none is primary, and nothing was picked
  * — the one state where the panel must ask.
  */
-export function resolveIssuableConnection(
-  candidates: readonly Connection[],
+export function resolveIssuableConnection<T extends InvoicingConnectionLike>(
+  candidates: readonly T[],
   pickedConnectionId: string | null,
-): Connection | null {
+): T | null {
   if (pickedConnectionId !== null) {
     return candidates.find((c) => c.id === pickedConnectionId) ?? null;
   }

@@ -72,6 +72,7 @@ import {
   UnsupportedPriceTreatmentError,
   DuplicateInvoiceRecordException,
   OrderAlreadyInvoicedException,
+  InvoiceIssueContendedException,
   InvoiceRecordNotFoundException,
   MissingNumberingSeriesException,
   RegulatoryDocumentKindValues,
@@ -689,6 +690,19 @@ export class InvoicingController {
           reason:
             `An invoice for this order already exists on connection ${error.issuingConnectionId} ` +
             `(invoice ${error.blockingInvoiceId}, status ${error.blockingStatus}).`,
+        };
+      }
+      if (error instanceof InvoiceIssueContendedException) {
+        // #2047: a concurrent issuance holds this order's lock and has persisted
+        // nothing yet. Nothing was issued BY THIS ATTEMPT and the peer is about
+        // to produce the document, so this is "already in progress", not a batch
+        // failure — same treatment as the duplicate-key race below, and
+        // deliberately NOT the `failed` + manual-review branch, which would
+        // point an operator at a non-problem.
+        return {
+          orderId,
+          outcome: 'skipped',
+          reason: 'Invoice issuance is already in progress; nothing was issued by this attempt.',
         };
       }
       if (error instanceof DuplicateInvoiceRecordException) {
@@ -1326,6 +1340,18 @@ export class InvoicingController {
         issuingConnectionId: error.issuingConnectionId,
         blockingInvoiceId: error.blockingInvoiceId,
         blockingStatus: error.blockingStatus,
+      });
+    }
+    // #2047: a concurrent issuance holds the per-order lock and has persisted
+    // nothing yet, so there is no document to point at — only a timing accident.
+    // Also a 409, but RETRYABLE and carrying no connection/invoice ids (there are
+    // none to carry): `retryable: true` is what lets the FE offer "try again"
+    // rather than the already-invoiced branch's "open the existing document".
+    if (error instanceof InvoiceIssueContendedException) {
+      return new ConflictException({
+        message: error.message,
+        error: 'InvoiceIssueContendedException',
+        retryable: true,
       });
     }
     if (
