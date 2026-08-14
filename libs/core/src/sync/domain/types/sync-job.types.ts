@@ -56,6 +56,11 @@ export const JobTypeValues = [
   // Crash-recovery sweep for invoices stuck mid-issuance (#1703).
   'invoicing.pendingRecovery.sweep',
 
+  // Destination taxonomy projection refresh (core-owned; #1979, ADR-037).
+  // Connection-scoped as an interim scaffold — the real subject is a taxonomy
+  // owner, pending #1943 (`SyncJob.connectionId` nullability).
+  'destination.taxonomy.sync',
+
   // Internal orchestration (core-owned policies; executed by worker)
   'inventory.propagateToMarketplaces',
 
