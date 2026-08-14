@@ -76,6 +76,11 @@ const harness = createIntegrationTestHarness({
     // No ORM/migration FK; truncate explicitly so each invoicing case (incl.
     // the (connectionId, idempotencyKey) dedup assertion) starts clean.
     'invoice_records',
+    // refund_records (#2036) — order-scoped refund-capture projection. No
+    // ORM/migration FK to order_records (plain indexed text column, matching
+    // the invoice_records precedent); truncate explicitly so each refund case
+    // starts clean.
+    'refund_records',
     // destination_categories (#1979) — the taxonomy projection. Marketplace
     // rows are owner-keyed with NO connectionId, so nothing cascades from
     // connections; truncate explicitly or an owner tree leaks between cases.
