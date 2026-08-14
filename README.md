@@ -319,7 +319,7 @@ The dev stack starts PostgreSQL, Redis, MySQL, PrestaShop, and WooCommerce in co
 >
 > Two changes combine into a **one-time data reset** of your local dev/demo stack:
 >
-> 1. **Every named volume was renamed** `_data` → `-data` (e.g. `postgres_data` → `postgres-data`). Docker qualifies volumes as `<project>_<name>`, so your existing `openlinker_postgres_data` is *orphaned* and Compose creates an empty `openlinker-postgres-data`.
+> 1. **Every named volume was renamed** `_data` → `-data` (e.g. `postgres_data` → `postgres-data`). Docker qualifies volumes as `<project>_<name>`, so your existing `openlinker_postgres_data` is *orphaned* and Compose creates an empty `openlinker_postgres-data`.
 > 2. **PostgreSQL moved 16 → 17.** PG17 refuses to start against a PG16 data directory (`database files are incompatible with server`), so preserving the old volume by hand would not work either.
 >
 > The next `pnpm dev:stack:up` / `pnpm demo:up` therefore starts with an **empty database, silently** — your configured connections, encrypted credentials, seeded PrestaShop catalog, and WooCommerce setup are still on disk in the orphaned volumes, just invisible. Re-seed from scratch and reclaim the disk:
