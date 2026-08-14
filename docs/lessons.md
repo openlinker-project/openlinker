@@ -23,6 +23,14 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## Interactive content in a `DataTable` `cardView.title` / `subtitle` is legal only while the table sets no `rowHref` — and assert `title.closest('a')` is null, because a rendered-and-present assertion passes on the broken shape
+
+**Context**: Epic #2086 moved a shared, interactive identity cell (a name `<Link>` plus a Copy `<button>`) into the mobile card of three lists. `DataTableCard` wraps `title` + `subtitle` in the row's own `<Link>` **only when `rowHref` is set** (`apps/web/src/shared/ui/data-table.tsx`), so the same renderer is safe on one page and broken on the next.
+**Problem**: #2090 (Invoices, which sets `rowHref`) shipped the desktop renderers straight onto the card. That nested an `<a>` and two `<button>`s inside an anchor — invalid HTML, and worse, the clicks bubbled to the card link: the PDF number navigated to the invoice instead of opening the PDF, and both Copy buttons copied **and** navigated away. Every test still passed, because the assertions were all "the link/button renders" — which is true inside a wrapping anchor. #2091 (Orders) then justified hosting the cell verbatim on the premise that the page passes no `rowHref`, with nothing pinning that premise: adding one later would reproduce the bug with a green suite. `rowHref` churned inside this very epic (#1826 dropped it from Shipments in favour of `expandable`).
+**Rule**: Before putting a link, button, or any click handler in `cardView.title` / `subtitle`, check the same `DataTable` call for `rowHref`. If it is set, the card gets text-only renderers (share the label/format helpers so the two cannot drift). If it is not, pin the premise: assert `title.closest('a')` is null in the card test, and make the affordance a **works** assertion — click Copy and assert `writeText` received the value — never merely `toBeInTheDocument()`. See also *An "authenticates" assertion is not a "works" assertion* below.
+**Applies to**: `apps/web/src/pages/**/*-page.tsx` passing `cardView` to `DataTable`, and their `*.test.tsx`.
+**Source**: #2090 (bug shipped), corrected and pinned in #2091 review.
+
 ## Claim an ADR number from the "Reserved numbers" note, not from the last row of the index table
 
 **Context**: #2066 authored three ADRs and numbered them 039/040/041 by reading the index table in `docs/architecture/adrs/README.md` and taking "last merged row + 1".

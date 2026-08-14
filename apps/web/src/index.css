@@ -9563,6 +9563,23 @@ a.kpi-card:focus-visible {
   vertical-align: top;
 }
 
+/* Every cell in an Orders row is a stack, so the row is anchored at the top
+ * (#2091). `.data-table td` is `vertical-align: middle` (:2798), and the row
+ * height here is set by the MONEY column, which stacks four items on nearly
+ * every row (total, payment badge, invoice badge or the "Issue invoice" CTA,
+ * created) — 70-85px against the identity cell's ~37px. At that height the Order
+ * cell centres while #2089's global rule top-aligns the leading expander and the
+ * select checkbox centres in a third place: three vertical anchors in one row.
+ *
+ * Table-wide rather than `.invoices-table`'s `td:first-child` (:9562): that
+ * selector targets the CHECKBOX, which is Invoices' first cell because it has no
+ * `expandable`. Here the first cell is the expander, which #2089 already
+ * top-aligns, so the same selector would be a no-op — and it would still leave
+ * the identity cell centred against it. */
+.orders-table td {
+  vertical-align: top;
+}
+
 /* Frozen-pane budget (#2089). 1024px is the worst case by construction: the
  * sidebar becomes a persistent 240px grid column at exactly this width (:1048)
  * AND the tables hosting this cell un-hide their Connection column there, so
@@ -9571,9 +9588,20 @@ a.kpi-card:focus-visible {
  * string — at 250px the frozen cluster leaves under 100px of scrollable window
  * for every remaining column. Narrower only inside the frozen pane, and only
  * below the desktop anchor: an unfrozen instance of this cell has the whole row
- * to grow into. */
+ * to grow into.
+ *
+ * Scoped to the page it was MEASURED for since #2091. Keyed on
+ * `.data-table__sticky-col` alone it silently caught Orders too, which freezes
+ * `stickyLeftColumns={2}` WITH `expandable` — a frozen pane of expander +
+ * checkbox + Order, nothing like Shipments' 32ch Status cluster. Worse, the cap
+ * could not even take effect there: the identity cell's two siblings inside
+ * `.orders-cell-stack` are uncapped (`.orders-order-channel` renders a pill plus
+ * `→ WooCommerce +2` at ~200px, `.orders-row-retry` is `white-space: nowrap`),
+ * so the column sized past 11rem and line 1 ellipsised beside empty space. A
+ * per-page geometry budget has to be opted into per page, not inherited by
+ * whichever table freezes a column next. */
 @media (max-width: 1279px) {
-  .data-table__sticky-col .order-cell__body {
+  .shipments-table .data-table__sticky-col .order-cell__body {
     max-width: 11rem;
   }
 }
@@ -9582,8 +9610,13 @@ a.kpi-card:focus-visible {
  * (weight 600). Line 1 pins its own 500 via `.entity-label__name`, so without
  * this the item name would render BOLDER than the order number it qualifies —
  * inverting the hierarchy on exactly the surface where the two-line cell is the
- * card's title. `.orders-cell-sub` is never emphasis. */
-.orders-cell-sub {
+ * card's title. `.orders-cell-sub` is never emphasis.
+ *
+ * `.orders-more-count` needs it for the same reason and pins no weight of its own
+ * (:8943), so without this the `+N` chip renders 600 on the card and 400 in the
+ * desktop column — one cell, two weights. */
+.orders-cell-sub,
+.orders-more-count {
   font-weight: 400;
 }
 

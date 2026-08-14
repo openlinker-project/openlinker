@@ -109,6 +109,59 @@ describe('EntityLabel', () => {
     ).toBeInTheDocument();
   });
 
+  it('titles the copy button with the id a sighted user cannot otherwise see (#2091)', async () => {
+    // The row's visible identity is not always the id Copy writes — an order row
+    // reads `ALG-882414` and copies `ol_order_…` — and with `showId={false}` no
+    // chip beside the button shows the target either. `aria-label` alone produces
+    // no tooltip, so the button needs a `title`; it carries the id rather than a
+    // copy of the accessible name, so the tooltip states what lands on the
+    // clipboard instead of repeating what a screen reader already announces.
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    renderWithRouter(
+      <EntityLabel
+        id="ol_order_abc123def456"
+        name="6839-2911-4402"
+        showId={false}
+        copyLabel="Copy internal order ID for order 6839-2911-4402"
+        copiedLabel="Copied internal order ID for order 6839-2911-4402"
+      />,
+    );
+
+    const copy = screen.getByRole('button', {
+      name: 'Copy internal order ID for order 6839-2911-4402',
+    });
+    // The tooltip is the id itself, not a mirror of the accessible name: this row
+    // displays the order NUMBER and copies the internal id, and with
+    // `showId={false}` nothing else on the row shows the target. Mirroring the
+    // name would make `title` the accessible *description* of a control whose
+    // name is already that string, so a screen reader announces it twice.
+    expect(copy).toHaveAttribute('title', 'ol_order_abc123def456');
+
+    fireEvent.click(copy);
+
+    // The name tracks the copied state; the title does not need to, because the
+    // id it shows has not changed.
+    expect(
+      await screen.findByRole('button', {
+        name: 'Copied internal order ID for order 6839-2911-4402',
+      }),
+    ).toHaveAttribute('title', 'ol_order_abc123def456');
+  });
+
+  it('titles the copy button with the id even when no copy label is supplied', () => {
+    renderWithRouter(<EntityLabel id="ol_connection_abc123def456" name="Store" />);
+
+    expect(screen.getByRole('button', { name: /Copy ol_connection/ })).toHaveAttribute(
+      'title',
+      'ol_connection_abc123def456',
+    );
+  });
+
   it('copies the full ID to the clipboard when the copy button is pressed', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', {

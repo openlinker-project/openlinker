@@ -93,6 +93,7 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
   }, [id]);
 
   const classes = ['entity-label', className].filter(Boolean).join(' ');
+  const copyButtonLabel = copied ? (copiedLabel ?? `Copied ${id}`) : (copyLabel ?? `Copy ${id}`);
   const resolvedName = name ?? null;
   // `?? undefined` rather than `?? id`: both consumers sit inside the
   // `resolvedName ?` branch below, so the third rung is unreachable — it exists
@@ -138,7 +139,16 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
           type="button"
           className="entity-label__copy"
           onClick={handleCopy}
-          aria-label={copied ? (copiedLabel ?? `Copied ${id}`) : (copyLabel ?? `Copy ${id}`)}
+          aria-label={copyButtonLabel}
+          // `title={id}`, NOT a mirror of `aria-label` (#2091). A sighted operator
+          // needs to know what "Copy" writes on a row whose visible identity is
+          // not the id being copied — `OrderIdentityCell` renders the order NUMBER
+          // and copies the internal id, and with `showId={false}` there is no
+          // `entity-label__id` chip beside it to make the target visible. Mirroring
+          // the accessible name would make `title` the accessible *description* of
+          // a control that already has that exact string as its name, so a screen
+          // reader announces it twice; the id adds information instead.
+          title={id}
         >
           {copied ? 'Copied' : 'Copy'}
         </button>

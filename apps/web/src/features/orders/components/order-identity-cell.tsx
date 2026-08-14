@@ -143,8 +143,11 @@ export function OrderIdentityCell({
           copiedLabel={`Copied ${copySubject}`}
           // `formatOrderRef` may have shortened line 1; without this the tooltip
           // would show the shortened form and the full number would be
-          // unreachable to a sighted user (#2089).
-          nameTitle={trimmedNumber ?? undefined}
+          // unreachable to a sighted user (#2089). On the id-fallback branch
+          // (every Erli-sourced order) the same argument applies to the id:
+          // `shortenId` elides its middle, so `?? orderId` keeps the full value
+          // hoverable instead of clipboard-only (#2091).
+          nameTitle={trimmedNumber ?? orderId}
           to={`/orders/${orderId}`}
           onNavigate={onNavigate}
         />

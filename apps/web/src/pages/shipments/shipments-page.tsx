@@ -576,6 +576,12 @@ export function ShipmentsPage(): ReactElement {
             rowKey={(s) => s.id}
             sort={sort}
             onSortChange={setSort}
+            // Opts this table into the 11rem frozen-pane cap for
+            // `.order-cell__body` (#2089, re-scoped by #2091). The budget was
+            // measured against THIS page's frozen cluster — Status carrying a
+            // 32ch error string beside Order — so it is opted into per page
+            // rather than applying to whichever table freezes a column next.
+            className="shipments-table"
             // Frozen anchor = Status + Order (#1905) — mirrors /orders, which
             // freezes select + order, i.e. the row's identity. The auto
             // expander column is frozen alongside them.
