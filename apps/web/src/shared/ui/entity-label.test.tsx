@@ -54,6 +54,20 @@ describe('EntityLabel', () => {
     expect(screen.queryByText(/ol_conn/)).toBeNull();
   });
 
+  it('hides the copy button when showCopy={false}', () => {
+    renderWithRouter(<EntityLabel id="ol_connection_abc123" name="Store" showCopy={false} />);
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.getByText('Store')).toBeInTheDocument();
+  });
+
+  it('exposes the full name as a title on the non-link name', () => {
+    renderWithRouter(<EntityLabel id="ol_connection_abc" name="Warehouse EU - Warszawa" />);
+    expect(screen.getByText('Warehouse EU - Warszawa')).toHaveAttribute(
+      'title',
+      'Warehouse EU - Warszawa',
+    );
+  });
+
   it('renders the copy control as an explicit type=button', () => {
     renderWithRouter(<EntityLabel id="ol_connection_abc" name="Store" />);
     const copy = screen.getByRole('button', { name: /Copy ol_connection/ });

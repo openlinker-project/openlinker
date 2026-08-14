@@ -50,7 +50,6 @@ export type {
   DestinationCategoryLike,
   DestinationCategorySearchHit,
   DestinationCategoryUpsert,
-  TaxonomyFrontier,
   TaxonomyScope,
   TaxonomySyncInput,
   TaxonomySyncResult,
@@ -86,11 +85,36 @@ export type { IPublishedVariantsService } from './application/services/published
 export type { IShopProductMappingsService } from './application/services/shop-product-mappings.service.interface';
 export type {
   OfferMappingFilters,
+  OfferMappingCountFilters,
   OfferMappingPagination,
+  OfferMappingIdentity,
+  OfferMappingChannelStatus,
+  OfferMappingCommercial,
+  OfferMappingListItem,
   PaginatedOfferMappings,
   ProductListingsCoverage,
   StaleMappedVariant,
 } from './domain/types/offer-mapping.types';
+export { deriveVariantLabel } from './domain/types/offer-mapping.types';
+
+// Offer lifecycle (#2025) — the five disjoint buckets the redesigned listings
+// page partitions on, plus the pure derivation off a status snapshot.
+// `sumOfferLifecycleCounts` is now published: `listings.controller.ts` derives
+// `total` from it whenever `includeLifecycleCounts` is set, instead of running
+// a second, provably-redundant `getCount()` (#2032 review thread 3) — its
+// first production caller. `OfferSnapshotFacts` stays unpublished: it has no
+// consumer outside its defining module.
+export {
+  OfferLifecycleValues,
+  deriveOfferLifecycle,
+  resolveOfferLifecycle,
+  listSnapshotFactsForLifecycle,
+  emptyOfferLifecycleCounts,
+  sumOfferLifecycleCounts,
+} from './domain/types/offer-lifecycle.types';
+export type { OfferLifecycle, OfferLifecycleCounts } from './domain/types/offer-lifecycle.types';
+export { UnfilterableOfferLifecycleException } from './domain/exceptions/unfilterable-offer-lifecycle.exception';
+
 export type { ICoverageGapReadService } from './application/services/coverage-gap-read.service.interface';
 export type { CoverageGapItem, CoverageGapsResult } from './domain/types/coverage-gap.types';
 export type { IStockAtRiskReadService } from './application/services/stock-at-risk-read.service.interface';
@@ -287,6 +311,7 @@ export type {
   OfferPublicationStatus,
   OfferPublicationStatusView,
   OfferStatusReadResult,
+  OfferCommercialObservation,
 } from './domain/types/offer-status-read.types';
 export { OfferPublicationStatusValues } from './domain/types/offer-status-read.types';
 export { OfferStatusSnapshot } from './domain/entities/offer-status-snapshot.entity';
@@ -300,6 +325,12 @@ export type {
   OfferStatusSnapshotRepositoryPort,
   OfferStatusUpsertResult,
 } from './domain/ports/offer-status-snapshot-repository.port';
+export { OfferCommercialSnapshot } from './domain/entities/offer-commercial-snapshot.entity';
+export type {
+  OfferCommercialSnapshotProps,
+  UpsertOfferCommercialSnapshotCommand,
+} from './domain/types/offer-commercial-snapshot.types';
+export type { OfferCommercialSnapshotRepositoryPort } from './domain/ports/offer-commercial-snapshot-repository.port';
 export type {
   IOfferStatusSyncService,
   OfferStatusObservation,

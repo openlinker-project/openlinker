@@ -31,7 +31,6 @@ import {
   IDestinationTaxonomyService,
   DESTINATION_TAXONOMY_SERVICE_TOKEN,
 } from '@openlinker/core/listings';
-import type { TaxonomyFrontier } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -98,11 +97,15 @@ export class DestinationTaxonomySyncHandler implements SyncJobHandler {
       const scope = await this.taxonomyService.resolveScope(job.connectionId);
       const cursorKey = cursorKeyFor(scope.taxonomyOwner, job.connectionId);
       const stored = await this.cursors.getCursor(job.connectionId, cursorKey);
-      const frontier = this.parseFrontier(stored);
+      // Scalar since #2061: the cursor holds only the run watermark, and the
+      // per-node progress is derived from the projection. Validation of the
+      // value (parseable, fresh enough) belongs to the core service, which is
+      // the thing that has to act on it.
+      const runStartedAt = stored !== null && stored.length > 0 ? stored : null;
 
       this.logger.log(
         `Executing destination.taxonomy.sync job ${job.id} for connection ${job.connectionId} ` +
-          `(owner=${scope.taxonomyOwner ?? 'connection-scoped'}, resuming=${String(frontier !== null)})`,
+          `(owner=${scope.taxonomyOwner ?? 'connection-scoped'}, resuming=${String(runStartedAt !== null)})`,
       );
 
       if (payload.taxonomyOwner !== null && payload.taxonomyOwner !== scope.taxonomyOwner) {
@@ -116,20 +119,16 @@ export class DestinationTaxonomySyncHandler implements SyncJobHandler {
       }
 
       const result = await this.taxonomyService.syncTaxonomy(job.connectionId, {
-        frontier,
+        runStartedAt,
         pageLimit: payload.pageLimit,
       });
 
-      if (result.nextFrontier === null) {
+      if (result.nextRunStartedAt === null) {
         // Completed: clear the cursor so the next tick starts a fresh run with
         // a new watermark, rather than resuming an already-swept one.
         await this.cursors.advanceCursor(job.connectionId, cursorKey, '');
       } else {
-        await this.cursors.advanceCursor(
-          job.connectionId,
-          cursorKey,
-          JSON.stringify(result.nextFrontier),
-        );
+        await this.cursors.advanceCursor(job.connectionId, cursorKey, result.nextRunStartedAt);
       }
 
       this.logger.log(
@@ -170,27 +169,4 @@ export class DestinationTaxonomySyncHandler implements SyncJobHandler {
     };
   }
 
-  /**
-   * A corrupt or empty cursor degrades to a fresh full run rather than throwing
-   * — the sync is idempotent, so restarting costs a walk, not correctness.
-   */
-  private parseFrontier(stored: string | null): TaxonomyFrontier | null {
-    if (stored === null || stored.length === 0) {
-      return null;
-    }
-    try {
-      const parsed: unknown = JSON.parse(stored);
-      if (
-        parsed !== null &&
-        typeof parsed === 'object' &&
-        typeof (parsed as TaxonomyFrontier).runStartedAt === 'string' &&
-        Array.isArray((parsed as TaxonomyFrontier).pending)
-      ) {
-        return parsed as TaxonomyFrontier;
-      }
-    } catch {
-      this.logger.warn(`Unparseable taxonomy frontier cursor; restarting sync from the roots`);
-    }
-    return null;
-  }
 }

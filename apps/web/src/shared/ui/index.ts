@@ -67,7 +67,7 @@ export { MetricCard } from './metric-card';
 export { KpiCard } from './kpi-card';
 
 // ── Identity / labels ──────────────────────────────────────────────
-export { EntityLabel } from './entity-label';
+export { EntityLabel, shortenId } from './entity-label';
 export { ProductThumbnail } from './product-thumbnail';
 export { CopyableId } from './copyable-id';
 export { DensityToggle, useDensity } from './density-toggle';

@@ -56,7 +56,7 @@ const COLUMNS: DataTableColumn<OrderRecord>[] = [
     id: 'items',
     header: 'Items',
     cell: (order) => snapshotItemCount(order.orderSnapshot),
-    align: 'center',
+    align: 'right',
     hideBelow: 480,
   },
   {

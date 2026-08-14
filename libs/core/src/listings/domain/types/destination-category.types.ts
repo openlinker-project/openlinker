@@ -69,29 +69,32 @@ export interface DestinationCategoryLike {
   syncedAt: Date;
 }
 
-/** Resumable breadth-first sync progress, persisted by the worker handler. */
-export interface TaxonomyFrontier {
-  /**
-   * Watermark for the whole run, held across ticks so a multi-tick sync sweeps
-   * disappearance against ONE consistent value rather than a moving one.
-   */
-  runStartedAt: string;
-  /** Parent ids still to expand; `null` is the synthetic root level. */
-  pending: (string | null)[];
-}
-
 export interface TaxonomySyncInput {
-  /** `null` starts a fresh run; a stored frontier resumes one. */
-  frontier: TaxonomyFrontier | null;
+  /**
+   * Watermark of the run to continue, or `null` to start a fresh one.
+   *
+   * This is the WHOLE of the persisted progress since #2061 — the per-node
+   * detail ("which parents still need expanding") is derived by querying the
+   * projection for rows carrying this watermark that are not yet expanded. The
+   * cursor is therefore scalar again, like every other cursor in the repo.
+   *
+   * The root level is synthetic (it owns no row), so `null` is not merely an
+   * optimisation: it is how a run knows it still has to browse the roots.
+   */
+  runStartedAt: string | null;
   /** Max nodes expanded this run. Bounds a thousands-of-nodes first sync. */
   pageLimit?: number;
 }
 
 export interface TaxonomySyncResult {
   /** `null` once the run completed — the handler clears the stored cursor. */
-  nextFrontier: TaxonomyFrontier | null;
+  nextRunStartedAt: string | null;
   upserted: number;
-  /** Rows below the watermark, deleted only on the completing run. */
+  /**
+   * Rows below the watermark, deleted only on a completing run that actually
+   * OBSERVED something. A run that saw zero rows in its scope does not sweep —
+   * see `DestinationTaxonomyService` for why that guard is load-bearing.
+   */
   removed: number;
   completed: boolean;
 }

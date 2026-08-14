@@ -39,6 +39,48 @@ export interface DestinationCategoryRepositoryPort {
   ): Promise<number>;
 
   /**
+   * The sync frontier, derived rather than carried (#2061): externalIds in
+   * scope that this run has observed (`syncedAt = runStartedAt`), can expand
+   * (`leaf IS NOT TRUE`), and has not expanded yet.
+   *
+   * Ordered for reproducibility, not correctness — every returned row must
+   * eventually be expanded, so page order cannot change the outcome.
+   */
+  findExpandable(
+    scope: TaxonomyScope,
+    runStartedAt: Date,
+    limit: number,
+  ): Promise<string[]>;
+
+  /**
+   * Record that this run expanded these nodes' children.
+   *
+   * Called only AFTER the children are upserted: a crash in between must leave
+   * the parent unexpanded (retried next tick), never expanded-with-unstamped-
+   * children — which would record the work as done while its children sit below
+   * the watermark, so the completing sweep would delete them.
+   */
+  markExpanded(
+    scope: TaxonomyScope,
+    externalIds: readonly string[],
+    runStartedAt: Date,
+  ): Promise<void>;
+
+  /**
+   * Whether this run has observed ANY row in scope.
+   *
+   * Guards the sweep. "The frontier is empty" alone does NOT mean the run
+   * finished its work — it also describes a run whose rows are missing entirely
+   * (a resumed watermark whose rows were deleted, or a root browse that
+   * returned nothing). Sweeping on that reading deletes the whole scope.
+   *
+   * A boolean, not a count: the caller only asks "did this run see anything",
+   * and answering it with `COUNT(*)` would scan every row in the scope on the
+   * completing tick to produce one bit.
+   */
+  hasObserved(scope: TaxonomyScope, runStartedAt: Date): Promise<boolean>;
+
+  /**
    * Watermark sweep: rows the completing run did not observe are gone upstream.
    * Deleting them is what makes a mapping to a removed category fail loudly
    * instead of resolving to a stale node (ADR-037).

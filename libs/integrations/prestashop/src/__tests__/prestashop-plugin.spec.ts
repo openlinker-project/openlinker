@@ -214,9 +214,11 @@ describe('createPrestashopPlugin → register(host)', () => {
     host: HostServices;
     configRegistry: { register: jest.Mock };
     credentialsRegistry: { register: jest.Mock };
+    retryClassifierRegistry: { register: jest.Mock };
   } {
     const configRegistry = { register: jest.fn() };
     const credentialsRegistry = { register: jest.fn() };
+    const retryClassifierRegistry = { register: jest.fn() };
     const host = {
       identifierMapping: {} as IdentifierMappingPort,
       credentialsResolver: {} as CredentialsResolverPort,
@@ -235,9 +237,10 @@ describe('createPrestashopPlugin → register(host)', () => {
       webhookEventTranslatorRegistry: { register: jest.fn() },
       connectionConfigShapeValidatorRegistry: configRegistry,
       connectionCredentialsShapeValidatorRegistry: credentialsRegistry,
+      retryClassifierRegistry,
       schedulerTaskRegistry: { register: jest.fn() },
     } as unknown as HostServices;
-    return { host, configRegistry, credentialsRegistry };
+    return { host, configRegistry, credentialsRegistry, retryClassifierRegistry };
   }
 
   it('registers the config-shape validator at adapterKey prestashop.webservice.v1', () => {
@@ -257,6 +260,19 @@ describe('createPrestashopPlugin → register(host)', () => {
     expect(credentialsRegistry.register).toHaveBeenCalledWith(
       'prestashop.webservice.v1',
       expect.objectContaining({ validate: expect.any(Function) }),
+    );
+  });
+
+  // #2052 — the package registered no retry classifier at all, so every
+  // PrestaShop failure was retryable and a tax-configuration error burned five
+  // attempts with backoff before an operator saw it.
+  it('registers the retry classifier at adapterKey prestashop.webservice.v1', () => {
+    const { host, retryClassifierRegistry } = makeRegisterHost();
+    createPrestashopPlugin(makeDeps()).register?.(host);
+
+    expect(retryClassifierRegistry.register).toHaveBeenCalledWith(
+      'prestashop.webservice.v1',
+      expect.objectContaining({ isNonRetryable: expect.any(Function) }),
     );
   });
 });
