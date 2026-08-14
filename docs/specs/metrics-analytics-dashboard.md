@@ -35,6 +35,12 @@ Every other figure uses its metric name verbatim.
 - All amounts converted to a single currency (PLN/EUR) at the exchange rate from the day preceding the order (agreed on the call).
 - An order is assigned to a period based on the **order placement date** (not the payment/shipment date).
 - **Net Order Value (NOV)** – the sum of the net value after line-item discounts (excluding shipping) of orders placed in the period, excluding cancelled orders. This is the base figure for Net Sales, AOV and Median Order Value.
+- **Partially cancelled orders** (added 2026-08-14, after the call — not part of the originally
+  agreed text) – an order in which some but not all line items were cancelled is **not** a cancelled
+  order. It counts as one order in Number of Orders, and its surviving line items count normally in
+  GMV, Units Sold and every figure derived from them. Its **cancelled** line items are excluded from
+  GMV and Units Sold. Wherever a metric below says "excluding cancelled orders", it means orders
+  cancelled in full; line-item-level cancellations are handled by this rule.
 
 ## List of metrics:
 
@@ -141,3 +147,10 @@ We divide by **calendar** days, not business days.
 **Formula:** `SUM(net value of orders placed in the period with cancelled status)`
 
 **Source:** Orders API – order value for cancelled records; VAT deducted by country of delivery. Cohort by order placement date, consistent with Cancellation Rate.
+
+**Scope note (decided 2026-08-14):** this figure covers **fully** cancelled orders only, so that it
+describes the same set of orders as Cancellation Rate. The consequence is deliberate and worth
+stating, because it looks like a bug from the outside: the value of individual line items cancelled
+out of an order that still shipped is reported **nowhere** — it drops out of GMV under the
+partially-cancelled rule above, and it does not enter Cancellations Value. Reporting it needs a
+separate figure, not a widening of this one.

@@ -99,9 +99,20 @@
       break the layout" (#1991) is actually satisfied.
 
   ── FIFTEEN DESIGN DECISIONS THIS FILE SETTLES ──────────────────────────────
-   1 [G] treatment ......... Share by UNITS; revenue as-reported, per row
+   1 [G] treatment ......... Share by UNITS; revenue on ONE basis, computed by
+                             OpenLinker — never as-reported, per row
    2 Date basis ............ `placedAt`, gap marked †
-   3 Revenue total ......... conditional: totals when bases agree, degrades when not
+   3 Revenue total ......... REVERSED 14 Aug 2026. Revenue always totals: the spec
+                             puts VAT on OpenLinker (calculated by country of
+                             delivery), so a tax basis is a fact the product owns,
+                             not a property of the source it must inherit. The
+                             earlier conditional — total when bases agree, degrade
+                             when not — is withdrawn with frame 05. The residual
+                             problem moves to #1983, it does not disappear:
+                             Allegro and Erli report `tax: 0` and PrestaShop
+                             declares nothing, so #1983 needs VAT rate tables per
+                             delivery country and a rule for the orders whose
+                             delivery country is unknown
    4 `pending` ............. two distinct states: recalculating, and backfilling
    5 Resolved attention .... either/or. All clear = ONE line naming the checks;
                              otherwise only the open items, no resolved rows
@@ -1337,7 +1348,7 @@
    *      the other figure needs no explanation. The body is therefore structured rather
    *      than prose: a term, its definition, optionally the arithmetic, optionally the
    *      caveat that makes the figure honest. The formula is set as `<code>` because
-   *      "GMV ÷ Orders" is the shortest true answer to "where does this come from", and
+   *      "Units ÷ Orders" is the shortest true answer to "where does this come from", and
    *      a reader scanning for it must not have to find it inside a sentence.
    *
    *      Absolute over the trigger, `z-index` above the card's own ::before accent,
@@ -1485,7 +1496,7 @@
     <a href="#frame-kpi">03 KPI</a>
     <a href="#frame-kpi-currencies">03b Two currencies</a>
     <a href="#frame-channel-a">04 By channel</a>
-    <a href="#frame-channel-b">05 Degraded basis</a>
+    <a href="#frame-channel-b">05 Withdrawn</a>
     <a href="#frame-products">06 Top products</a>
     <a href="#frame-tablet">07 Tablet</a>
     <a href="#frame-mobile">08 Mobile</a>
@@ -1588,17 +1599,15 @@
             </div>
             <div class="alert alert--info" role="note">
               <div class="alert__content">
-                <span class="alert__title">Revenue is totalled; one channel did not state its tax basis</span>
+                <span class="alert__title">Share is measured in units, not revenue</span>
                 <div class="alert__description">
                   <p>
-                    <span class="alert__count">1</span> of 3 channels reports amounts without declaring whether
-                    tax is included. OpenLinker treats an unstated basis as gross, which matches every shipped
-                    source today. Share is measured in units, which is comparable regardless.
+                    Revenue totals across every channel: OpenLinker states one tax basis of its own,
+                    calculating VAT by country of delivery rather than inheriting whatever a source reports.
+                    Share still counts units, because a unit means the same thing in every market and a
+                    converted amount does not.
                   </p>
                 </div>
-              </div>
-              <div class="alert__actions">
-                <button class="button button--secondary button--sm" type="button">What this means</button>
               </div>
             </div>
           </article>
@@ -1633,8 +1642,8 @@
               <span class="build-gaps__cause">#1989 &middot; ships now, depends on nothing</span></div>
             <div class="build-gaps__row"><span><b>03</b> &middot; KPI strip</span>
               <span class="build-gaps__cause">#1990 &middot; 6 of 12 figures blocked</span></div>
-            <div class="build-gaps__row"><span><b>04&ndash;05</b> &middot; By channel</span>
-              <span class="build-gaps__cause">#1990 &middot; 05 is the degraded half</span></div>
+            <div class="build-gaps__row"><span><b>04</b> &middot; By channel</span>
+              <span class="build-gaps__cause">#1990 &middot; ships now &middot; 05 withdrawn 14 Aug</span></div>
             <div class="build-gaps__row"><span><b>06</b> &middot; Top products</span>
               <span class="build-gaps__cause">#1991 &middot; ships now</span></div>
             <div class="build-gaps__row"><span><b>07&ndash;09</b> &middot; Tablet, mobile, states</span>
@@ -2140,9 +2149,11 @@
               (&bdquo;vs previous period&ldquo;) &mdash; not only for screen readers.</li>
             <li>Rates move in <b>points</b>, never percent. Colour follows meaning: a falling return rate is
               a green down arrow.</li>
-            <li>GMV and AOV inherit decision 3 &mdash; they render only while every channel reports the same
-              tax basis, and the note under GMV says how many merely <b>assumed</b> it. Orders and Units are
-              untouched by [G].</li>
+            <li>GMV and AOV render unconditionally (decision 3, reversed 14 Aug): VAT is OpenLinker&rsquo;s
+              to calculate, so no card waits on what a source declared. What GMV and AOV <b>do</b> inherit is
+              the spec&rsquo;s split &mdash; GMV gross and before discounts, AOV net and after them &mdash;
+              which is why the &#9432; on the Revenue card says so outright. Orders and Units are untouched
+              by [G].</li>
             <li>Sparkline (<code>shared/ui/sparkline.tsx</code>) only on the two figures with a per-channel
               series.</li>
           </ol>
@@ -2257,17 +2268,15 @@
           </div>
           <div class="alert alert--info" role="note">
             <div class="alert__content">
-              <span class="alert__title">Revenue is totalled; one channel did not state its tax basis</span>
+              <span class="alert__title">Share is measured in units, not revenue</span>
               <div class="alert__description">
                 <p>
-                  <span class="alert__count">1</span> of 3 channels reports amounts without declaring
-                  whether tax is included. OpenLinker treats an unstated basis as gross, which matches
-                  every shipped source today. Share is measured in units, which is comparable regardless.
+                  Revenue totals across every channel: OpenLinker states one tax basis of its own,
+                  calculating VAT by country of delivery rather than inheriting whatever a source
+                  reports. Share still counts units, because a unit means the same thing in every
+                  market and a converted amount does not.
                 </p>
               </div>
-            </div>
-            <div class="alert__actions">
-              <button class="button button--secondary button--sm" type="button">What this means</button>
             </div>
           </div>
         </article>
@@ -2276,79 +2285,73 @@
       <div class="gap-legend gap-legend--card">
         <span class="build-field__label">Build</span>
         <div class="build-field__body">
-          Decision 1 and 3, together. The spec named gross-vs-net [G] the most dangerous item in the epic,
-          and it is right about the danger &mdash; but a grep of the adapters shows nothing reports net
-          today: only Allegro and Erli declare a basis, both <code>'inclusive'</code>, and PrestaShop&rsquo;s
-          total is <code>total_paid_tax_incl</code>. So the table totals revenue here, and marks the one
-          channel whose basis is assumed rather than asserted.
+          Decision 1 and 3, together, as settled on 14 Aug. The spec named gross-vs-net [G] the most
+          dangerous item in the epic and it is right about the danger &mdash; but the danger is answered by
+          owning the arithmetic, not by disclosing someone else&rsquo;s: <b>OpenLinker calculates VAT by
+          country of delivery</b>, so every row on this table is already on one basis and the Tax column that
+          used to qualify them is gone. What the adapters report is now an input, not a verdict: Allegro and
+          Erli send <code>tax: 0</code>, PrestaShop sends <code>total_paid_tax_incl</code> and declares
+          nothing, and #1983 has to turn all three into the same figure.
         </div>
         <span class="build-field__label">Rules</span>
         <div class="build-field__body">
           <ol>
-            <li>Never derive Share from revenue. <b>Share (units)</b> stays comparable whatever happens to
-              the tax basis later &mdash; which is why the column is labelled in the header rather than
-              left to be inferred.</li>
-            <li>Frame 05 is this same table once a net source arrives.</li>
+            <li>Never derive Share from revenue. <b>Share (units)</b> is comparable across markets and
+              currencies without a rate or a rate&rsquo;s date &mdash; which is why the column is labelled in
+              the header rather than left to be inferred.</li>
+            <li>Frame 05 held the degraded twin of this table and is withdrawn; the per-currency twin is in
+              frame 03b.</li>
           </ol>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ═══════════ FRAME 05 — By channel, bases mixed ═══════════ -->
+  <!-- ═══════════ FRAME 05 — By channel, bases mixed — WITHDRAWN ═══════════ -->
   <section class="viewport-frame" id="frame-channel-b">
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">05 &middot; By channel &mdash; state B</span>
-      <b>A net source arrives, and the total refuses</b>
-      <span class="caption">feeds #1990 &middot; the degraded half of decision 3 &middot; plus the mixed-currency cell</span>
-      <span class="dep dep--blocked">Not reachable today</span>
+      <b>Withdrawn: the total no longer refuses, because the basis is ours</b>
+      <span class="caption">was: the degraded half of decision 3 &middot; reversed 14 Aug 2026</span>
+      <span class="dep dep--blocked">Withdrawn &middot; kept as a record</span>
     </div>
     <div class="viewport-frame__scroll">
-      <div class="app-frame">
-        <article class="panel panel--dense">
-          <div class="panel__header">
-            <h3 class="section-title">By channel</h3>
-            <span class="text-muted">7 Jul &ndash; 5 Aug 2026 &middot; cancelled orders excluded</span>
-          </div>
-          <div class="data-table__container">
-            <table class="data-table" id="channel-table-b">
-              <caption class="sr-only">Sales by channel where tax bases differ</caption>
-            </table>
-          </div>
-          <div class="alert alert--warning" role="note">
-            <div class="alert__content">
-              <span class="alert__title">Revenue cannot be totalled for this range</span>
-              <div class="alert__description">
-                <p>
-                  <span class="alert__count">1</span> channel reports amounts excluding tax while the
-                  others include it. Adding them would overstate the tax-inclusive channels by roughly
-                  the VAT rate, so no total is shown. Orders, units and share are unaffected.
-                </p>
-              </div>
-            </div>
-            <div class="alert__actions">
-              <button class="button button--secondary button--sm" type="button">Review tax bases</button>
-            </div>
-          </div>
-        </article>
-      </div>
-
       <div class="gap-legend gap-legend--card">
         <span class="build-field__label">Build</span>
         <div class="build-field__body">
-          Mixed tax basis removes the total; mixed currency does not. They look like the same refusal and
-          are not. A net source and a gross source cannot be added at all &mdash; the sum would overstate
-          the gross channels by roughly the VAT rate &mdash; so the total goes away and explains itself
-          once, below the table. Two currencies can each be added perfectly well; what is missing is a
-          rate, and a rate can be obtained and disclosed. So currency <b>converts</b> and tax basis
-          <b>degrades</b>: the page declares one reporting currency and prints the method under the figure
-          (decision 11, frame 03b). A tax basis has no equivalent &mdash; there is nothing to look up,
-          because Allegro and Erli report <code>tax: 0</code>.
+          <b>Nothing. This frame is not to be implemented.</b> It drew the by-channel table refusing to
+          total revenue when one source reported net and the others gross. That state cannot arise under
+          the settled model: the metric spec puts VAT on OpenLinker &mdash; <i>&bdquo;VAT calculated by
+          country of delivery&ldquo;</i> &mdash; so the tax basis is something the product computes for
+          every channel alike, not something each source declares and the page reconciles. With one basis
+          there is nothing to mix, so the total always renders and the Tax column is gone from frame 04.
+        </div>
+        <span class="build-field__label">Rules</span>
+        <div class="build-field__body">
+          The frame is kept rather than deleted because the argument it settled is still worth reading, and
+          because a reader who finds the mixed-basis reasoning quoted elsewhere should be able to see that
+          it was considered and reversed, not overlooked. What survives it:
+          <ol>
+            <li><b>Mixed currency and mixed tax basis are still different problems</b>, and the distinction
+              outlives this frame. Two currencies can each be added perfectly well; what is missing is a
+              rate, and a rate can be obtained and disclosed &mdash; so currency <b>converts</b>, and the
+              page prints the method under the figure (decision 11, frame 03b). The old symmetry
+              &bdquo;basis degrades&ldquo; is what has gone.</li>
+            <li><b>Share stays in units</b> regardless (frame 04, rule 1). That rule was written to survive
+              a mixed basis and it survives its removal too.</li>
+            <li>Neither condition ever escalated to a page banner, and that line still holds: frame 11
+              draws it.</li>
+          </ol>
         </div>
         <span class="build-field__label build-field__label--watch">Watch out</span>
         <div class="build-field__body build-field__body--watch">
-          Neither condition escalates to a page banner. Both are normal and permanent, and a banner that is
-          always on stops being read. Frame 11 draws the line.
+          <b>The problem moved, it did not vanish &mdash; and it landed on #1983.</b> Allegro and Erli
+          report <code>tax: 0</code> and PrestaShop declares no basis at all, so &bdquo;OpenLinker
+          calculates VAT&ldquo; is a request for machinery that does not exist: VAT rate tables per
+          delivery country, a rate valid on the order date rather than today, and a decision for orders
+          whose delivery country is missing or ambiguous. Until #1983 carries all three, a build reading
+          only this file will reinvent the <code>Gross?</code> badge on its own &mdash; which is why the
+          reversal is written here and in the handover rather than left as a silent deletion.
         </div>
       </div>
     </div>
@@ -2793,11 +2796,6 @@
             <td>Figures are true and rising. Correct-but-incomplete is not degraded.</td>
           </tr>
           <tr>
-            <td>Revenue cannot be totalled (mixed tax basis)</td>
-            <td><span class="status-badge status-badge--neutral"><span class="status-badge__dot"></span>Inline note</span></td>
-            <td>A permanent, normal property of the data, not an incident. A banner that is always on stops being read; the note sits with the table it qualifies.</td>
-          </tr>
-          <tr>
             <td>The range contains more than one currency</td>
             <td><span class="status-badge status-badge--neutral"><span class="status-badge__dot"></span>Not a degradation</span></td>
             <td>Deliberately not in the rows above. Two currencies are not a fault and nothing is withheld &mdash; money is stated in one declared reporting currency, with the rate and its date on the card (decision 11, frame&nbsp;03b). Marking it as degraded would tell an operator selling in two markets that their page is broken.</td>
@@ -2971,6 +2969,11 @@
               <td>v1 reports a <i>fact</i>, not an alarm: a variant whose published quantity is already 0 because master stock is at or below the connection&rsquo;s <code>stockSafetyBuffer</code> (#1844), under <code>max(0, masterStock &minus; buffer)</code>. That needs no threshold, which is why frame&nbsp;02 carries no gap marker. A true low-stock <i>warning</i> &mdash; &bdquo;running out soon&ldquo; rather than &bdquo;unavailable now&ldquo; &mdash; would need an operator-set <code>reorderPoint</code> per variant, which no entity carries. v2.</td>
             </tr>
             <tr>
+              <td><b>Tax basis is OpenLinker&rsquo;s to calculate &mdash; decision 3 reversed, and #1983 inherits the work</b></td>
+              <td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Blocking &mdash; new scope on #1983</span></td>
+              <td>Read this row before concluding the page overlooked gross-vs-net [G]. It did not: the earlier package made the tax basis a property of each <i>source</i> and had the by-channel total refuse itself when sources disagreed. <b>On 14 Aug that was reversed</b> in favour of the metric spec (<code>docs/specs/metrics-analytics-dashboard.md</code>), which puts the arithmetic on us &mdash; <i>&bdquo;VAT calculated by country of delivery&ldquo;</i>. Revenue therefore always totals, and the <code>Gross?</code> badge, the Tax column, the &bdquo;n of m channels assumed gross&ldquo; note and the mixed-basis alert are all gone; frame 05 is withdrawn and kept as the record. <b>What #1983 now owes, and did not before:</b> VAT rate tables per delivery country; a rate valid on the order date, not on the report date; a rule for sources that report <code>tax: 0</code> (Allegro, Erli) or declare nothing (PrestaShop); and a decision for orders whose delivery country is missing. None of that exists in the repo. Ship the page without it and every money figure is a gross figure wearing a net label &mdash; the exact misreading decision 3 was written to prevent.</td>
+            </tr>
+            <tr>
               <td><b>Wording departs from #1989 and the spec, deliberately</b></td>
               <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Decision</span></td>
               <td>Spec &sect;4 E1, &sect;7 S4 and #1989 all say &bdquo;<b>fast movers</b>&ldquo;; this package says &bdquo;variants&ldquo;. E1 is flagged <code>&#128993; [L] for velocity + &#128994; for the stock read</code>, and &sect;6 takes only the green half into v1 (&bdquo;mappings + inventory + sync only&ldquo;) &mdash; so #1983 computes <code>masterStock &minus; stockSafetyBuffer</code> and never learns how fast anything sells. The same applies to coverage: #1989 quotes &bdquo;12 variants <b>sell</b> on Allegro&ldquo;, while #1983 ranks by mapping presence and lists &bdquo;sales-weighting the coverage gaps&ldquo; as out of scope. <b>Paste the strings from frame&nbsp;12, not from the issue bodies</b> &mdash; a variant that is mapped but never sold would otherwise be announced as selling.</td>
@@ -2983,7 +2986,7 @@
             <tr>
               <td><b>No return entity exists anywhere</b></td>
               <td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Blocking &mdash; new issue</span></td>
-              <td><b>The whole Returns &amp; refunds card is drawn against nothing.</b> No return, withdrawal or refund entity exists in <code>libs/core</code>; <code>refunded</code> is an unwritten member of the order-status enum and no refund amount is stored anywhere, so neither return rate nor refunded value is computable at any price &mdash; and Net sales inherits the gap, being GMV minus that figure. The spec files it under known gaps and &sect;8 out of scope. It is drawn anyway because PL&rsquo;s 14-day right of withdrawal makes returns a real cost the product is blind to. <b>Needs its own data-capture issue.</b> Until it lands, and until [C] is fixed, the six-card strip <b>degrades to four</b>: Revenue (no qualifier), Orders (no daily rate, blocked on the range), Order value, Units. That degraded shape is what #1990 ships first.</td>
+              <td><b>The whole Returns &amp; refunds card is drawn against nothing.</b> No return, withdrawal or refund entity exists in <code>libs/core</code>; <code>refunded</code> is an unwritten member of the order-status enum and no refund amount is stored anywhere, so neither return rate nor refunded value is computable at any price &mdash; and Net sales inherits the gap, being net order value minus that figure. The spec files it under known gaps and &sect;8 out of scope. It is drawn anyway because PL&rsquo;s 14-day right of withdrawal makes returns a real cost the product is blind to. <b>Needs its own data-capture issue.</b> Until it lands, and until [C] is fixed, the six-card strip <b>degrades to four</b>: Revenue (no qualifier), Orders (no daily rate, blocked on the range), Order value, Units. That degraded shape is what #1990 ships first.</td>
             </tr>
             <tr>
               <td><b>FX: no conversion, and no order-day rate to convert with</b></td>
@@ -3066,9 +3069,9 @@
               <td>&bdquo;AOV&ldquo; appears nowhere in <code>apps/web</code> (grep: zero hits), so an unexplained abbreviation would teach the operator analyst vocabulary the product does not speak. With one &#9432; per card carrying the expansion, the formula and the caveat, it is the operator&rsquo;s own shorthand instead &mdash; and it is what keeps a caption to one line in a 3-column grid. <b>The condition is load-bearing: if #1990 ships the strip without the definition popover, the captions must revert to the expanded terms.</b></td>
             </tr>
             <tr>
-              <td>The tax-basis count was typed, and was wrong</td>
+              <td>The tax-basis count was typed, was wrong, and is now gone entirely</td>
               <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Small, but instructive</span></td>
-              <td>Three strings said &bdquo;two channels did not state their tax basis&rdquo; while the dataset had exactly one &mdash; matching the repo, where only PrestaShop fails to declare. The KPI card now <b>derives</b> the count instead of carrying it as prose. Worth carrying into #1990: alert copy has to be built from the same query as the figure it qualifies, or it drifts the first time a connection is added.</td>
+              <td>Three strings said &bdquo;two channels did not state their tax basis&rdquo; while the dataset had exactly one. The fix was to <b>derive</b> the count from the same query as the figure; the 14 Aug reversal of decision 3 then deleted the count, the badge and the alert together, because OpenLinker now calculates VAT itself (frame 05). <b>The lesson survives the copy it was learned on and is the reason to carry it into #1990:</b> qualifier text has to be built from the same query as the figure it qualifies, or it drifts the first time a connection is added &mdash; and the cheapest qualifier is the one a product decision removes the need for.</td>
             </tr>
             <tr>
               <td>Card view vs. the style guide</td>
@@ -3283,7 +3286,7 @@
      where all four arrows point the same way tests nothing. */
   var CHANNELS = [
     { id: 'c1', name: 'Allegro — main', platform: 'allegro', hue: 'var(--channel-allegro)',
-      revenue: 31400.00, currency: 'PLN', basis: 'gross', declared: true,
+      revenue: 31400.00, currency: 'PLN',
       orders: 268, units: 445, aov: 117.16,
       cancelledOrders: 16, cancelledValue: 1840.00,
       returnedUnits: 27, returnedValue: 2690.00,
@@ -3293,7 +3296,7 @@
       trend: [18, 22, 19, 26, 31, 29, 34],
       from: '12 Dec 2025', synced: '14:29', state: 'ok' },
     { id: 'c2', name: 'Sklep główny', platform: 'prestashop', hue: 'var(--channel-prestashop)',
-      revenue: 14900.00, currency: 'PLN', basis: 'gross', declared: false,
+      revenue: 14900.00, currency: 'PLN',
       orders: 121, units: 198, aov: 123.14,
       cancelledOrders: 6, cancelledValue: 690.00,
       returnedUnits: 9, returnedValue: 1010.00,
@@ -3303,7 +3306,7 @@
       trend: [11, 12, 10, 14, 13, 15, 16],
       from: '12 Dec 2025', synced: '14:31', state: 'ok' },
     { id: 'c3', name: 'Erli', platform: 'erli', hue: 'var(--channel-erli)',
-      revenue: 1910.00, currency: 'PLN', basis: 'gross', declared: true,
+      revenue: 1910.00, currency: 'PLN',
       orders: 23, units: 46, aov: 83.04,
       cancelledOrders: 2, cancelledValue: 210.00,
       returnedUnits: 3, returnedValue: 214.00,
@@ -3325,7 +3328,7 @@
      net-basis source. */
   var CHANNELS_MULTI = CHANNELS.concat([
     { id: 'c4', name: 'Shop DE', platform: 'woocommerce', hue: 'var(--channel-woocommerce)',
-      revenue: 3120.00, currency: 'EUR', basis: 'gross', declared: true,
+      revenue: 3120.00, currency: 'EUR',
       orders: 21, units: 34, aov: 148.57,
       cancelledOrders: 1, cancelledValue: 132.00,
       returnedUnits: 2, returnedValue: 160.00,
@@ -3418,8 +3421,6 @@
        Revenue card cannot disagree with the Returns & refunds card it borrows its
        subtrahend from (AC #1990). */
     t.netSales = t.revenue - t.returnedValue;
-    t.channelCount = channels.length;
-    t.assumedBasis = channels.filter(function (c) { return !c.declared; }).length;
     t.cancellationRate = t.cancelledOrders / (t.orders + t.cancelledOrders);
     t.returnRate = t.returnedUnits / t.units;
     /* ROUND 7: two ratios the six-card strip needs, and neither may be typed by hand —
@@ -3445,7 +3446,7 @@
   function previousTotalsFor(channels, raw) {
     return totalsFor(channels.map(function (c) {
       return {
-        currency: c.currency, declared: c.declared, trend: c.trend,
+        currency: c.currency, trend: c.trend,
         revenue: c.previous.revenue, orders: c.previous.orders, units: c.previous.units,
         cancelledOrders: c.previous.cancelledOrders,
         cancelledValue: c.previous.cancelledValue,
@@ -3913,12 +3914,6 @@
      Sparklines only on the two cards whose main figure has a per-channel series behind
      it. A trend line drawn beside a rate the data cannot produce would be a graphic
      asserting more than the page knows. */
-  function grossBasisNote(t) {
-    return t.assumedBasis
-      ? t.assumedBasis + ' of ' + t.channelCount + ' channels assumed gross'
-      : '';
-  }
-
   /* ROUND 7 REWROTE THIS LINE, AND THE REWRITE IS A DOWNGRADE ON PURPOSE. Round 6 stated
      the rate itself ("1 EUR = 4.3300"), which is a single number and therefore a claim the
      page cannot honestly make: each order converts at the rate of ITS OWN order date, so
@@ -3948,8 +3943,8 @@
                 'in the system.' },
         { term: 'Which rate applies',
           text: 'Each order is converted using the daily NBP average exchange rate ' +
-                'applicable on its order date. Refunds and cancellations use the original ' +
-                'order’s exchange rate.',
+                'published for the day preceding its order date. Refunds and cancellations ' +
+                'use the original order’s exchange rate.',
           caveat: 'If NBP does not publish a rate for a given day, the most recently ' +
                   'published rate is used. Exchange rates are synchronized once daily.' }
       ]));
@@ -4068,23 +4063,27 @@
       info: infotip('About the Revenue figures', definitions([
         { term: 'GMV (Gross Merchandise Value)',
           text: 'The total value of non-cancelled product items in orders placed during ' +
-                'the selected period, after discounts and before refunds.',
+                'the selected period, at gross selling prices including VAT, before ' +
+                'line-item discounts.',
           caveat: 'Fully cancelled orders and cancelled items from partially cancelled ' +
-                  'orders are excluded. Returned and refunded items remain included.' },
+                  'orders are excluded. Returned and refunded items remain included. ' +
+                  'Shipping is excluded.' },
         { term: 'Net sales',
-          text: 'The value of product sales remaining after customer refunds.',
-          formula: 'GMV − Refunded value',
-          caveat: 'Shipping refunds, marketplace fees and operating costs are not deducted.' }
+          text: 'The value of product sales after discounts and after customer refunds, ' +
+                'excluding VAT.',
+          formula: 'Net order value (after discounts, excluding VAT) − Refunded value',
+          caveat: 'Net of VAT, unlike GMV above — the two figures on this card do not sit ' +
+                  'on the same tax basis. Shipping refunds, marketplace fees and operating ' +
+                  'costs are not deducted.' }
       ])),
       metric: 'GMV',
       value: money(totals.revenue, code),
       delta: delta(totals.revenue, prev.revenue),
       trend: totals.revenueTrend, sparkLabel: 'Revenue trend, last 7 days',
-      description: grossBasisNote(totals),
       qualifier: { label: 'Net sales' +
                      blocked('Needs refunded value, and no return or refund amount is stored on any entity',
                              'Net sales',
-                             'Falls out of Refunded value: GMV − Refunded value. No work of its own.'),
+                             'Falls out of Refunded value: net order value − Refunded value. No work of its own.'),
                    value: money(totals.netSales, code) }
     }));
 
@@ -4103,7 +4102,10 @@
         { term: 'Average daily orders',
           text: 'The average number of non-cancelled orders placed per calendar day ' +
                 'during the selected period.',
-          formula: 'Orders ÷ calendar days in the period' }
+          formula: 'Orders ÷ calendar days in the period',
+          caveat: 'Calendar days, not business days. For a period still running, the ' +
+                  'divisor counts only the days up to and including today — dividing an ' +
+                  'unfinished month by 30 or 31 would understate the rate.' }
       ])),
       metric: 'Orders',
       value: int(totals.orders),
@@ -4125,17 +4127,21 @@
       label: 'Order value',
       info: infotip('About the Order value figures', definitions([
         { term: 'AOV (Average Order Value)',
-          text: 'The average GMV generated by a single non-cancelled order during the ' +
-                'selected period.',
-          formula: 'GMV ÷ Orders',
+          text: 'The average net order value, after discounts and before refunds, of a ' +
+                'single non-cancelled order during the selected period.',
+          formula: 'Net order value (after discounts, excluding VAT) ÷ Orders',
           caveat: 'AOV is calculated per order, not per customer. For partially cancelled ' +
-                  'orders, only the value of non-cancelled items is included.' },
+                  'orders, only the value of non-cancelled items is included. AOV does not ' +
+                  'multiply back to Net sales: an order that was later refunded is counted ' +
+                  'here at its full original value, so AOV × Orders exceeds Net sales by ' +
+                  'exactly the Refunded value.' },
         { term: 'Median order value',
           text: 'The middle order value after all non-cancelled orders are arranged from ' +
                 'the lowest to the highest value.',
-          caveat: 'Half of the orders have a lower value and half have a higher value. ' +
-                  'The median helps identify whether AOV is being inflated by a small ' +
-                  'number of unusually high-value orders.' }
+          caveat: 'Ranked on the same set of orders and the same value field as AOV, so ' +
+                  'the two are comparable. Half of the orders have a lower value and half ' +
+                  'have a higher value. The median helps identify whether AOV is being ' +
+                  'inflated by a small number of unusually high-value orders.' }
       ]), { align: 'end' }),
       metric: 'AOV',
       value: money(totals.aov, code),
@@ -4170,23 +4176,29 @@
       label: 'Returns & refunds',
       info: infotip('About the Returns & refunds figures', definitions([
         { term: 'Return rate',
-          text: 'The percentage of fulfilled units from orders placed during the selected ' +
-                'period that were later returned by customers.',
-          formula: 'Returned units ÷ Fulfilled units × 100%',
-          caveat: 'Because returns can occur after the original sale, results for recent ' +
-                  'periods may be incomplete while the return window is still open.' },
+          text: 'The percentage of non-cancelled orders placed during the selected period ' +
+                'for which at least one refund was issued.',
+          formula: 'Orders with at least one refund ÷ Orders × 100%',
+          caveat: 'Counted per order, not per unit: an order counts once no matter how ' +
+                  'many of its items came back. What counts is the refund being issued — ' +
+                  'not the return request, nor the goods physically arriving. Because ' +
+                  'returns can occur after the original sale, results for recent periods ' +
+                  'may be incomplete while the return window is still open.' },
         { term: 'Refunded value',
-          text: 'The total product amount refunded to customers for orders placed during ' +
-                'the selected period.',
-          caveat: 'Partial and full product refunds are included. Shipping refunds are ' +
-                  'excluded. This is the amount deducted from GMV when calculating Net sales.' }
+          text: 'The total product amount refunded to customers, excluding VAT, for orders ' +
+                'placed during the selected period.',
+          caveat: 'Completed refunds only, partial and full alike. Shipping refunds are ' +
+                  'excluded. Converted at the original order’s exchange rate. This is the ' +
+                  'amount deducted when calculating Net sales.' }
       ])),
       planned: true,
       metric: 'Return rate' +
         blocked('No return entity exists anywhere in the repo; the spec lists returns under known gaps',
                 'Return rate',
-                'A return record per returned unit, linked to the order line and dated. ' +
-                'Capture first — this is not a reporting gap.'),
+                'A return record per returned unit, linked to the order line and dated, ' +
+                'carrying the date the refund was ISSUED — the rate counts distinct ' +
+                'orders off those records, not units. Capture first — this is not a ' +
+                'reporting gap.'),
       value: pct(totals.returnRate * 100),
       delta: delta(totals.returnRate, prev.returnRate, { pp: true, invert: true }),
       qualifier: { label: 'Refunded value' +
@@ -4210,13 +4222,16 @@
           text: 'The percentage of all orders placed during the selected period that were ' +
                 'fully cancelled.',
           formula: 'Fully cancelled orders ÷ All placed orders × 100%',
-          caveat: 'Partially cancelled orders are not counted as cancelled orders, but the ' +
-                  'value of their cancelled items is included in Cancelled value.' },
+          caveat: 'The denominator includes cancelled orders — unlike every other figure ' +
+                  'on the strip, which excludes them. Partially cancelled orders are not ' +
+                  'counted as cancelled.' },
         { term: 'Cancelled value',
-          text: 'The total value of product items removed from fully or partially cancelled ' +
-                'orders placed during the selected period.',
-          caveat: 'The value is calculated after discounts and uses the same tax basis as ' +
-                  'GMV. Cancelled value is excluded from GMV.' }
+          text: 'The total net value of orders placed during the selected period that were ' +
+                'cancelled in full before shipment.',
+          caveat: 'Both figures on this card describe the same set of orders: fully ' +
+                  'cancelled ones. Items cancelled out of an order that still shipped are ' +
+                  'not counted here — they simply drop out of GMV. Value is after ' +
+                  'discounts and excludes VAT.' }
       ]), { align: 'end' }),
       planned: true,
       metric: 'Cancellation rate' +
@@ -4305,11 +4320,13 @@
   });
 
   /* ══════════════════ By-channel table ══════════════════ */
-  function basisBadge(ch) {
-    if (ch.basis === 'net') return badge('review', 'Net', { compact: true, title: 'Source declares tax-exclusive amounts' });
-    if (ch.declared) return badge('neutral', 'Gross', { compact: true, title: 'Source declares tax-inclusive amounts' });
-    return badge('warning', 'Gross?', { compact: true, title: 'Source did not state a tax basis; OpenLinker assumes gross' });
-  }
+  /* THE TAX COLUMN IS GONE, AND ITS ABSENCE IS THE DECISION (14 Aug 2026). It used to
+     carry Gross / Net / Gross? per row, because the basis was whatever each source
+     declared. Under the metric spec OpenLinker calculates VAT itself, by country of
+     delivery, so every row is on one basis and a column repeating the same word on
+     every line would only invite the reader to look for a difference that cannot
+     exist. What the adapters send is now an input to #1983, not something the table
+     reports. See frame 05 for the reversed decision and what it hands #1983. */
 
   function sortHeader(text, align, hideBelow, active) {
     var cls = [];
@@ -4331,12 +4348,6 @@
     if (!el) return;
     opts = opts || {};
     var rows = mode === 'currency-split' ? CHANNELS_MULTI.slice() : CHANNELS.slice();
-    if (mode === 'mixed') {
-      rows = rows.concat([{ id: 'c4', name: 'Shop DE (net)', platform: 'prestashop',
-        hue: 'var(--channel-woocommerce)', revenue: 9100.00, currency: 'PLN', basis: 'net', declared: true,
-        orders: 74, units: 96, aov: 122.97, trend: [5, 6, 7, 6, 8, 7, 9],
-        from: '2 Feb 2026', synced: '14:30', state: 'ok' }]);
-    }
     var unitTotal = rows.reduce(function (a, c) { return a + c.units; }, 0);
     var orderTotal = rows.reduce(function (a, c) { return a + c.orders; }, 0);
     var revTotal = rows.reduce(function (a, c) { return a + c.revenue; }, 0);
@@ -4344,7 +4355,6 @@
     var head = '<thead><tr>' +
       sortHeader('Channel') +
       sortHeader('Revenue', 'right', null, true) +
-      '<th>Tax</th>' +
       sortHeader('Orders', 'right') +
       sortHeader('<abbr title="Average order value">AOV</abbr>', 'right', opts.tablet ? 1024 : null) +
       sortHeader('Units', 'right') +
@@ -4364,7 +4374,6 @@
           marks +
         '</span></td>' +
         '<td class="data-table__cell--right">' + money(c.revenue, c.currency) + '</td>' +
-        '<td>' + basisBadge(c) + '</td>' +
         '<td class="data-table__cell--right">' + int(c.orders) + '</td>' +
         '<td class="data-table__cell--right' + (opts.tablet ? ' data-table__cell--hide-below-1024' : '') + '">' + money(c.aov, c.currency) + '</td>' +
         '<td class="data-table__cell--right">' + int(c.units) + '</td>' +
@@ -4388,10 +4397,6 @@
         return '<tr>' +
           '<td>Total &middot; ' + esc(code) + '</td>' +
           '<td class="data-table__cell--right">' + money(t.revenue, code) + '</td>' +
-          '<td>' + (t.assumedBasis
-            ? badge('warning', 'Mixed', { compact: true,
-                title: 'One channel did not state its tax basis; the subtotal assumes gross for it' })
-            : badge('neutral', 'Gross', { compact: true })) + '</td>' +
           '<td class="data-table__cell--right">' + int(t.orders) + '</td>' +
           '<td class="data-table__cell--right' + aovHide + '">' + money(t.aov, code) + '</td>' +
           '<td class="data-table__cell--right">' + int(t.units) + '</td>' +
@@ -4400,30 +4405,14 @@
         '</tr>';
       }).join('') + '</tfoot>';
     } else {
-      var totalRevenueCell = mode === 'mixed'
-        ? '<td class="data-table__cell--right">' + emptyValue('Revenue cannot be totalled: channels report on different tax bases') + '</td>'
-        : '<td class="data-table__cell--right">' + money(revTotal, 'PLN') + '</td>';
-
+      /* The total always renders now. It used to be conditional on every channel
+         agreeing about tax, which is the reversal frame 05 records — and the
+         conditional was the only reason this footer ever carried a badge. */
       foot = '<tfoot><tr>' +
         '<td>Total</td>' +
-        totalRevenueCell +
-        /* Derived, like the per-currency footer already does it. Typed as a flat
-           "Gross" it contradicted the alert directly below the table — and once the
-           currency control existed, switching modes flipped the same total between
-           Gross? and Gross, which is a tax fact and cannot depend on a currency view. */
-        /* Both undeclared-basis and genuinely-different-bases read "Mixed": a total is
-           only ever as trustworthy as its weakest component, and "Gross?" on a sum asked
-           the reader to decide what the question mark applied to. The tooltip still
-           separates the two cases — same word, different reason. */
-        '<td>' + (mode === 'mixed'
-          ? badge('warning', 'Mixed', { compact: true, dot: true,
-              title: 'Channels report on different tax bases; these figures cannot be totalled' })
-          : (rows.some(function (c) { return !c.declared; })
-              ? badge('warning', 'Mixed', { compact: true,
-                  title: 'One channel did not state its tax basis; the total assumes gross for it' })
-              : badge('neutral', 'Gross', { compact: true }))) + '</td>' +
+        '<td class="data-table__cell--right">' + money(revTotal, 'PLN') + '</td>' +
         '<td class="data-table__cell--right">' + int(orderTotal) + '</td>' +
-        '<td class="data-table__cell--right' + aovHide + '">' + (mode === 'mixed' ? emptyValue('Average order value cannot be totalled') : money(revTotal / orderTotal, 'PLN')) + '</td>' +
+        '<td class="data-table__cell--right' + aovHide + '">' + money(revTotal / orderTotal, 'PLN') + '</td>' +
         '<td class="data-table__cell--right">' + int(unitTotal) + '</td>' +
         '<td class="data-table__cell--right">100.0%</td>' +
         '<td class="' + (opts.tablet ? 'data-table__cell--hide-below-1024' : '') + '"></td>' +
@@ -4435,7 +4424,6 @@
 
   channelTable(document.getElementById('full-channel-table'), 'aligned');
   channelTable(document.getElementById('channel-table-a'), 'aligned');
-  channelTable(document.getElementById('channel-table-b'), 'mixed');
   channelTable(document.getElementById('channel-table-tablet'), 'aligned', { tablet: true });
 
   /* Both tables in the multi-currency state are split, with no control offering to
@@ -4549,7 +4537,6 @@
             '<span class="data-table__card-subtitle">' + esc(c.from) + ' → now · synced ' + esc(c.synced) + '</span>' +
           '</div>' +
           '<div class="data-table__card-meta" style="grid-column:1/-1">' +
-            basisBadge(c) +
             (c.shortHistory ? '<span class="chip chip--info">6d only</span>' : '') +
             (c.state === 'backfilling' ? badge('info', 'Backfilling', { pulse: true }) : '') +
           '</div>' +
@@ -4601,7 +4588,7 @@
   /* ══════════════════ Loading skeleton ══════════════════ */
   var skeletonEl = document.getElementById('skeleton-table');
   if (skeletonEl) {
-    var cols = 8, rws = 4;
+    var cols = 7, rws = 4;
     var sHead = '<thead><tr>';
     for (var i = 0; i < cols; i++) sHead += '<th><span class="data-table-skeleton__bar data-table-skeleton__bar--header"></span></th>';
     sHead += '</tr></thead><tbody>';
@@ -4628,10 +4615,8 @@
      'Names the channel and the moment. "Sync failed" would describe the system; this describes the consequence.'],
     ['It carries 64% of units in this range, so every figure below is understated. This is an ingestion gap, not a drop in sales.', 'Page banner, second line',
      'The last sentence is the whole point of the trust header — it pre-empts the single most dangerous misreading on the page.'],
-    ['Revenue is totalled; one channel did not state its tax basis', 'Note under by-channel, bases aligned',
-     'Discloses the assumption while still answering the question. An unstated basis is treated as gross, matching every shipped source.'],
-    ['Revenue cannot be totalled for this range', 'Note under by-channel, bases mixed',
-     'States the refusal before the reason. "Cannot", not "will not" — a property of the data, not a policy.'],
+    ['Share is measured in units, not revenue', 'Note under by-channel',
+     'Replaces two tax-basis strings withdrawn on 14 Aug (decision 3 reversed, frame 05). Names what the share column measures rather than disclosing an assumption OpenLinker no longer makes.'],
     ['Total · PLN / Total · EUR', 'By-channel footer, more than one currency',
      'Per-currency subtotals, no grand total beneath — the total sits one row up, in reporting currency, so conversion is verifiable.'],
     ['Share is measured in units, which is comparable regardless.', 'Note under by-channel',
@@ -4658,7 +4643,7 @@
     ['Avg. daily orders', 'KPI card qualifier, Orders',
      'Abbreviated only here (one line, 3 cols). Divides by CALENDAR days, not days with an order — carries the gap marker.'],
     ['AOV', 'KPI card metric, Order value',
-     'See GMV: abbreviation on the card, "Average Order Value" and the formula (GMV ÷ Orders) behind the ⓘ.'],
+     'See GMV: abbreviation on the card, "Average Order Value" and the formula (net order value ÷ Orders) behind the ⓘ.'],
     ['Median order value', 'KPI card qualifier, Order value',
      'Named in full, not "Median:". At 10–100 orders/day one order skews the mean; the ⓘ blocks a misread as rounded AOV.'],
     ['Units per order', 'KPI card qualifier, Units',
