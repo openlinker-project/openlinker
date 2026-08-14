@@ -1,7 +1,9 @@
 /**
- * Shipment Severity + Order-Id Truncation (#1826)
+ * Shipment Severity (#1826)
  *
- * Pure view-model helpers for the `/shipments` Action column and Order column.
+ * Pure view-model helpers for the `/shipments` Action column. The order-id
+ * truncation that shared this file was an alias of `shortenId` and went with the
+ * hand-rolled Order cell it served (#2089).
  * They started life inline in `pages/shipments/shipments-page.tsx`; they are
  * pure functions of a `Shipment` with no React or router dependency, so they
  * belong in the owning feature's `lib` where they can be unit-tested directly
@@ -9,19 +11,8 @@
  *
  * @module apps/web/src/features/shipments/lib
  */
-import { shortenId } from '../../../shared/ui/entity-label';
 import type { Shipment } from '../api/shipments.types';
 import { isPreWaybill } from './shipment-action-eligibility';
-
-/**
- * Truncates an order id for use as `EntityLabel`'s `name` (#1826 AC —
- * `EntityLabel` never truncates `name` itself, only its own `id` chip; with
- * `showId={false}` and `name` set to the raw id, it would render the full
- * untruncated id as link text, blowing out row density). This was a byte-copy
- * of that algorithm while `shortenId` was private to `EntityLabel`; #2027
- * exported it, so the copy is now an alias and the two cannot drift.
- */
-export const truncateOrderId = shortenId;
 
 export type ShipmentSeverity = 'Fix' | 'Finish' | 'Send' | 'View';
 

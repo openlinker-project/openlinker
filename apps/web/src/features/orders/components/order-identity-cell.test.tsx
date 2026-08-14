@@ -74,11 +74,12 @@ describe('OrderIdentityCell', () => {
       />,
     );
 
-    expect(screen.getByRole('link', { name: 'd1f4a2c3…f60789' })).toBeInTheDocument();
-    // The full number stays recoverable through the copy button's name, since
-    // Copy itself writes the internal id.
+    const link = screen.getByRole('link', { name: 'd1f4a2c3…f60789' });
+    // The full number stays readable on hover and in the copy button's name —
+    // Copy itself writes the internal id, so the number is otherwise lost.
+    expect(link).toHaveAttribute('title', 'd1f4a2c3-9b8e-4f7a-a1b2-c3d4e5f60789');
     expect(
-      screen.getByRole('button', { name: 'Copy order ID d1f4a2c3-9b8e-4f7a-a1b2-c3d4e5f60789' }),
+      screen.getByRole('button', { name: 'Copy internal order ID for order d1f4a2c3-9b8e-4f7a-a1b2-c3d4e5f60789' }),
     ).toBeInTheDocument();
   });
 
@@ -266,15 +267,18 @@ describe('OrderIdentityCell', () => {
     ).toBeInTheDocument();
   });
 
-  it('should name the copy button after the order number when one is present', () => {
+  it('should name the copy button after what it copies, qualified by the order number', () => {
     renderWithProviders(
       <OrderIdentityCell orderId={ORDER_ID} orderNumber="6839-2911-4402" itemCount={1} />,
     );
 
-    // Never the spelled-out 41-character id (#1996).
+    // Copy writes the INTERNAL id, so the name must say so — naming it `Copy
+    // order ID 6839-2911-4402` asserted one identifier while delivering another.
+    // The order number still qualifies it, so 50 rows do not read identically.
     expect(
-      screen.getByRole('button', { name: 'Copy order ID 6839-2911-4402' }),
+      screen.getByRole('button', { name: 'Copy internal order ID for order 6839-2911-4402' }),
     ).toBeInTheDocument();
+    // Never the spelled-out 41-character id (#1996).
     expect(screen.queryByRole('button', { name: `Copy ${ORDER_ID}` })).toBeNull();
   });
 
@@ -292,7 +296,9 @@ describe('OrderIdentityCell', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Copy order ID 6839-2911-4402' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Copy internal order ID for order 6839-2911-4402' }),
+    );
     expect(onNavigate).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('link', { name: '6839-2911-4402' }));
