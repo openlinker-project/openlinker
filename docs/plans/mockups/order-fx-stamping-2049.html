@@ -2643,15 +2643,32 @@
     </div>
   </div>
 
-  <div class="alert alert--error">
+  <div class="alert alert--success">
     <div class="alert__content">
-      <p class="alert__title">Resolve this before Phase 1b, not during it</p>
+      <p class="alert__title">No open blocker — an earlier version of this page said otherwise, and was wrong</p>
       <p class="alert__description">
-        ECB's daily XML feed carries only the latest day, so it cannot serve a <code>prev-business-day</code> rule. The
-        historical/SDMX endpoint's response shape and its non-publication-day behaviour (404 vs empty series vs nearest
-        prior day) need the same treatment the NBP section already got. <b>This is not deferrable:</b> EUR is the
-        <i>default</i> reporting currency, so the ECB adapter is on the path of every deployment that never opens the
-        settings page — not just an opt-in one. Every other phase is unblocked.
+        ECB's historical endpoint was treated here as an unresolved Phase 1b blocker. That came from PR #2050's
+        <i>description</i>, which described an earlier draft rather than what merged: the plan's
+        <code>ECB reference rates</code> subsection in <code>main</code> is verified against the live API, and an
+        independent re-verification reproduced every claim in it. Every phase is unblocked, and the ordering below is
+        pure dependency rather than risk.
+      </p>
+    </div>
+  </div>
+
+  <div style="height:12px"></div>
+
+  <div class="alert alert--warning">
+    <div class="alert__content">
+      <p class="alert__title">The re-verification did surface a latent bug, now recorded on #2123</p>
+      <p class="alert__description">
+        <code>includeHistory=true</code> combined with <code>lastNObservations=1</code> injects a <b>phantom row</b> —
+        <code>ACTION=Delete</code>, an empty <code>OBS_VALUE</code> and an unrelated historical date — so an adapter
+        reading "the last row" would get an empty rate and a nonsense date. Alongside seven other additions: a 4xx body
+        may be HTML rather than JSON, the empty-<code>200</code> response is zero bytes in <i>every</i> format, the
+        maximum non-publication run is 4 days, and <b>ECB publishes no document identifier at all</b> — its
+        <code>header.id</code> is a fresh UUID per request — so the audit reference has to be a re-executable locator
+        OpenLinker constructs, which is a design gap to state rather than paper over.
       </p>
     </div>
   </div>
