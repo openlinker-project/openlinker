@@ -71,7 +71,6 @@ controller, and one Infrastructure migration.
 - `previousWorkingDay` added to `libs/shared/src/date/pl-working-days.ts`.
 - `OL_REPORTING_CURRENCY` in `apps/api/.env.example`, `apps/worker/.env.example` and the root
   `./.env.example`, plus a `docker-compose.demo.yml` passthrough.
-- `placedAt` mapping in the WooCommerce order-source adapter (one line — see § 5 open question 4).
 - `CurrencySettingsController` added to `CONTROLLERS` in
   `apps/api/src/auth/write-guard-coverage.spec.ts`.
 
@@ -79,11 +78,14 @@ controller, and one Infrastructure migration.
 
 - **Backfilling historical orders.** Pre-existing rows keep `reportingCurrency IS NULL`.
 - **Restating orders already stamped under a previous setting.** Distinct from the backfill above: the
-  data is retained and computable, but the job is a filed follow-up (ADR-040 § Decision 8 /
+  data is retained and computable, but the job is filed as **#2096** (ADR-040 § Decision 8 /
   § Migration path). What ships here is the honesty rail — the `PUT` reports how many stamped rows
   exist, so the operator sees the era split before accepting it.
-- **A third reporting currency.** The setting accepts `PLN` and `EUR` only; the pivot path stays
-  implemented so a third is additive (a third provider + one mapping entry).
+- **A third reporting currency.** The setting accepts `PLN` and `EUR` only — those are the two currencies
+  the shipped providers quote against — so the reporting currency is effectively a two-value set at launch.
+  The pivot path stays implemented so a third is additive (a third provider + one mapping entry), but this
+  is a real limitation to state rather than a temporary omission: an operator who wants GBP cannot have it
+  yet. Recorded in ADR-040 § Consequences.
 - **The analytics queries themselves** (#1987 / #1988). This ships the columns they read. Their
   acceptance criteria currently group by the *native* currency — see § 5 open question 1.
 - **A second rate rule.** The rule is persisted per stamp so a second is additive; none is built now.
@@ -95,6 +97,11 @@ controller, and one Infrastructure migration.
   reporting currency is system-level. `Connection.config.currency` (#362) keeps its existing meaning
   and is not consulted here.
 - **Caching the resolved reporting currency.** See § 5 Assumptions.
+- **The WooCommerce `placedAt` mapping.** One line, and the data is there, but it moves invoicing's
+  `saleDate` from empty to the placement date — a fiscal field, with a possible tax-period shift for a
+  future invoice on an existing order. Kept as a separate change with its own invoicing review; see § 5
+  open question 4 for the full analysis. **Consequence accepted here**: a foreign-currency WooCommerce
+  order stays terminal-unstamped, including in the demo.
 - **Line-item-level conversion.** Only the order total is stamped; `order_line_items` (#1985) keeps
   native prices.
 - **Emitting FA(3) `KursWaluty`.** See § 5 Documentation gaps.
@@ -410,17 +417,33 @@ table.
 
 3. **RESOLVED — restatement.** Not built here, and the ADR says so plainly rather than leaving it implied:
    changing the setting is forward-only, the `PUT` reports how many stamped rows exist so the era split is
-   accepted knowingly, and the restatement job is a filed follow-up. Rejected alternative:
+   accepted knowingly, and the restatement job is filed as **#2096**. Rejected alternative:
    lock-after-first-stamp, which would make an unchosen converting default permanent.
 
-4. **RESOLVED — WooCommerce `placedAt` is now in scope.** `woocommerce-order-source.adapter.ts:178` sets
-   only `createdAt: normGmt(order.date_created_gmt, order.date_created)`, while
+4. **RESOLVED as a deliberate split — the WooCommerce `placedAt` mapping stays OUT of this PR.** The data
+   is there and unmapped: `woocommerce-order-source.adapter.ts:178` sets only
+   `createdAt: normGmt(order.date_created_gmt, order.date_created)`, while
    `prestashop-order-source.adapter.ts:233-249` maps `date_add → placedAt` with the comment *"PrestaShop
-   `date_add` is when the customer placed the order"*. WC's `date_created` is the same fact, so this is a
-   one-line mapping, not missing data. Doing it here (Phase 4) turns "every foreign-currency WC order is
-   permanently unstampable" from a shipped caveat into a non-issue. It does move invoicing's `saleDate` for
-   WC orders — from `undefined` to the correct value — which is a fix, not a regression; call it out in the
-   PR body so the invoicing owner sees it.
+   `date_add` is when the customer placed the order"*, and WC's `date_created` is the same fact. So it is a
+   one-line change, not missing data — and it would make every foreign-currency WooCommerce order stampable.
+
+   **It is still deferred, on a fiscal argument rather than a technical one.** `saleDate` is set **only**
+   when `placedAt` is present (`order-to-issue-invoice-command.mapper.ts:108-115` — *"When `placedAt` is
+   absent the field stays undefined; `createdAt` is OL's ingestion clock, not the sale date, and must never
+   substitute (#1525)"*). So today a WooCommerce invoice carries **no `saleDate` at all** and the provider
+   substitutes its own date. The change is therefore **empty → populated**, not A → B:
+   - *Already-issued documents are safe.* `InvoiceRecord` is a persisted projection and `issuedLineSnapshot`
+     (#1297) exists precisely so nothing re-derives from live order state.
+   - *The real exposure* is a WooCommerce order placed in month N and invoiced in month N+1 **after** the
+     mapping lands: `saleDate` moves from the provider's substituted date to the placement date, which can
+     put the invoice in a **different VAT period**. More correct, and a visible change in fiscal output.
+
+   That is an invoicing decision with its own blast radius, so it gets its own change and its own review by
+   the invoicing owner. **Accepted cost in the meantime**: a foreign-currency WooCommerce order is
+   terminal-unstamped, which is an honest documented state rather than a crash — including in the demo,
+   whose two seeded WooCommerce orders run in WC's install default (USD, since `woocommerce_currency` is set
+   nowhere in the tree) and will therefore surface as unstamped with a non-zero unstamped count. The demo
+   consequence is spelled out in step 15.
 
 5. **RESOLVED — `fxRule` two-era.** Superseded by the first-attempt intent snapshot (step 11): the rule and
    the reporting currency are both pinned at the first stamp *attempt*, so retry and sweep cannot disagree
@@ -1054,7 +1077,7 @@ which is strictly more durable and one fewer place to keep in sync.
     - **Acceptance**: the sweep's predicate is asserted in the handler spec; a row with
       `fxStampedAt` set and `reportingCurrency IS NULL` (terminal) is **not** selected.
 
-### Phase 4 — API settings surface, frontend, env, and the WooCommerce `placedAt` fix
+### Phase 4 — API settings surface, frontend, env
 
 14. **Settings API + settings-page tile**
     - **Files**: `apps/api/src/currency/currency.module.ts`,
@@ -1084,11 +1107,9 @@ which is strictly more durable and one fewer place to keep in sync.
       impossible from the UI and 422s from a direct call; the coverage warning blocks submit until
       acknowledged.
 
-15. **Env + demo passthrough + the WooCommerce `placedAt` mapping**
+15. **Env + demo passthrough**
     - **Files**: `apps/api/.env.example`, `apps/worker/.env.example`, the root `./.env.example`,
-      `docker-compose.demo.yml`,
-      `libs/integrations/woocommerce/src/infrastructure/adapters/woocommerce-order-source.adapter.ts`
-      (+ its spec)
+      `docker-compose.demo.yml`
     - **`.env.example` is two files, and the worker one is load-bearing.** `apps/api/.env.example` is the
       dev file (insert a `# --- Reporting currency ---` block after `# --- Order sync routing ---`,
       matching the surrounding 80-col comment style with a commented-out default). The root
@@ -1099,24 +1120,27 @@ which is strictly more durable and one fewer place to keep in sync.
       is ever written.
     - **Demo default is `PLN`, at the compose layer only**: `OL_REPORTING_CURRENCY: '${OL_REPORTING_CURRENCY:-PLN}'`
       in the demo `api` service env. That matches the demo's `PS_CURRENCY_DEFAULT` without asserting a
-      product-wide PLN. Note the consequence for the demo: its two seeded WooCommerce orders run in WC's
-      install default (`woocommerce_currency` is set nowhere in the tree, so USD), which with the
-      `placedAt` fix below become genuinely converted USD→PLN orders — so the demo shows a populated
-      `reportingTotalAmount` with **no order seeder needed**. (There is no OL-side order seeder at all:
-      zero `INSERT INTO order_records` repo-wide, and `docker-compose.yml:229` sets `PS_DEMO_MODE: 0`, so
-      PrestaShop's own fixtures are not installed either.)
-    - **WooCommerce `placedAt`**: `woocommerce-order-source.adapter.ts:178` currently sets only
-      `createdAt: normGmt(order.date_created_gmt, order.date_created)`. Add
-      `placedAt: normGmt(order.date_created_gmt, order.date_created)` alongside it — WC's `date_created` is
-      the same fact `prestashop-order-source.adapter.ts:233-249` maps as `date_add → placedAt`, with the
-      comment *"PrestaShop `date_add` is when the customer placed the order"*. One line; it makes every
-      WooCommerce order stampable and removes the shipped caveat.
-    - **Call out the invoicing side-effect in the PR body**: this also moves invoicing's `saleDate` for WC
-      orders from `undefined` to the correct value. That is a fix (#1525's rule is that `createdAt` must
-      never substitute for the sale date), but the invoicing owner should see it rather than discover it.
-    - **Acceptance**: a foreign-currency WooCommerce order ingests with a non-null `placedAt` and stamps
-      (previously terminal); `OL_REPORTING_CURRENCY` appears in all three `.env.example` files and is
-      passed through by the demo compose.
+      product-wide PLN.
+    - **The demo will show the unstamped path, not a conversion — say so rather than discovering it.**
+      There is no OL-side order seeder at all (zero `INSERT INTO order_records` repo-wide, and
+      `docker-compose.yml:229` sets `PS_DEMO_MODE: 0`, so PrestaShop's own fixtures are not installed
+      either). The only order-creating seeder is `docker/woocommerce/01-seed-wc-data.sh`, which creates two
+      orders **inside WooCommerce** — in WC's install default currency (USD; `woocommerce_currency` is set
+      nowhere in the tree). With the `placedAt` mapping deferred (§ 5 open question 4) those two orders
+      ingest as **terminal-unstamped**, so the demo's first FX-visible artefact is a non-zero unstamped
+      count rather than a populated `reportingTotalAmount`.
+
+      Two ways to make the demo show a real conversion, **both out of scope here**: land the WooCommerce
+      `placedAt` mapping (its own change), or add foreign-currency PrestaShop orders to the demo seed —
+      PrestaShop emits `placedAt`, and its demo shop already has EUR and USD active
+      (`docker/prestashop/post-install-lib/20-set-default-currency.php` promotes PLN to default and leaves
+      the other two active), so it needs order creation only. A seeder doing that must pin `date_add` to
+      fixed historical dates and ship the matching `exchange_rates` rows as a data-only seed migration
+      (precedent: `1831000000002-seed-woocommerce-prompt-template.ts`), because the rate that matters is
+      the one for `resolveRateDate(placedAt, …)` — not "today's" — so a live NBP call at seed time would be
+      both non-deterministic and insufficient.
+    - **Acceptance**: `OL_REPORTING_CURRENCY` appears in all three `.env.example` files and is passed
+      through by the demo compose; the demo's unstamped count is visible rather than silent.
 
 ### Phase 5 — Documentation
 
@@ -1316,7 +1340,7 @@ breaks analytics when skipped"), which optional-with-a-default answers: skipping
 **Rejected**: the default converts and nobody chose it, so a lock makes an *unchosen* default permanent.
 A deployment that never opens the settings page takes one foreign-currency order and is locked into a
 currency it was never asked about. Shipped instead: forward-only changes, with the stamped-row count
-reported on the `PUT` so the era split is accepted knowingly, and restatement filed as a follow-up.
+reported on the `PUT` so the era split is accepted knowingly, and restatement filed as **#2096**.
 
 ### Alternative 1c: provider adapters inside `libs/core`, split by whether they need a credential
 **Rejected**: it keys package placement on someone else's auth policy, is not expressible in
@@ -1447,8 +1471,8 @@ path.)
   the snapshot is a precondition of the simplification rather than an alternative to it.
 - **An operator changes the setting mid-life.** Already-stamped orders keep their currency, so the
   deployment carries two eras. *Mitigation*: forward-only by design (ADR-040 § Decision 8), the `PUT`
-  reports the stamped-row count so the split is accepted knowingly, and restatement is filed. **Not**
-  mitigated: no restatement path exists yet.
+  reports the stamped-row count so the split is accepted knowingly, and restatement is filed as **#2096**.
+  **Not** mitigated: no restatement path exists yet.
 - **The `EUR` default converts on a deployment that never opened the settings page.** A PL operator's PLN
   orders would be stamped through an ECB-inverted quote — exact and auditable, but not what they would
   have chosen. *Mitigation*: the `(default)` label, `OL_REPORTING_CURRENCY`, the per-figure currency
@@ -1467,7 +1491,7 @@ path.)
 | Two concurrent first attempts on one order | `claimFxIntentIfAbsent`'s `IsNull()` means one wins; the loser re-reads and adopts the winner's intent |
 | Coverage gap at save time (an ingested currency the target cannot reach) | warns, returns the uncoverable set, requires `acknowledgeCoverageGaps` — never blocks |
 | A channel added *after* the save introduces an uncoverable currency | falls back to the per-order terminal path; save-time validation is backward-looking by construction |
-| `placedAt` absent | `resolveRateDate` → `null` ⇒ **terminal**: warn, `fxStampedAt` set, no other column, no retry job. Never a `RangeError` out of `Intl`. **No longer reachable from WooCommerce** once step 15's one-line mapping lands |
+| `placedAt` absent (**every WooCommerce order**, § 5 Q4) | `resolveRateDate` → `null` ⇒ **terminal**: warn, `fxStampedAt` set, no other column, no retry job. Never a `RangeError` out of `Intl` |
 | `placedAt` present but an Invalid Date | same terminal path — `order-ingestion.service.ts:638` has no `Number.isNaN` guard, so this reaches the stamp service |
 | Order placed 23:30 UTC Sunday | Warsaw is UTC+1/+2, so this is already **Monday** 00:30/01:30 in Warsaw ⇒ rate date = the **previous Friday**. (The earlier draft's "00:30 UTC" case was backwards: 00:30 UTC Monday is 01:30/02:30 the *same* Monday and shifts nothing.) |
 | Monday order | rate date = Friday |
@@ -1501,10 +1525,9 @@ path.)
   behaviour change for a mixed-currency estate (orders that previously carried no reporting figure now
   carry one), which is the point of the feature — but it is additive: no existing column or read is
   altered.
-- ⚠️ **The WooCommerce `placedAt` mapping (step 15) changes existing behaviour outside this feature**:
-  invoicing's `saleDate` for WC orders moves from `undefined` to the order's creation instant. That is a
-  fix per #1525's rule, not a regression, but it is the one non-additive edit in this PR and belongs in
-  the PR body.
+- ✅ **Every edit in this PR is additive.** The one candidate that was not — the WooCommerce `placedAt`
+  mapping, which would move invoicing's `saleDate` from empty to the placement date — is deliberately out
+  of scope (§ 5 open question 4), so no existing fiscal output changes.
 
 ---
 
@@ -1543,7 +1566,6 @@ lint+type-check-only gate is fine for code — but see step 9 for why it is not 
 | Settings controller | 400 / 422 mapping (mirror `ai-provider-settings.controller.ts`'s `withDomainExceptionMapping`); the response carries `source`, `supportedCurrencies`, the coverage set and the stamped-row count | `apps/api/src/currency/http/__tests__/currency-settings.controller.spec.ts` |
 | Write-guard coverage | `CurrencySettingsController` is present in `CONTROLLERS` | the existing `apps/api/src/auth/write-guard-coverage.spec.ts` |
 | FE settings tile | renders `EUR (default)` when `source !== 'setting'` and the bare code otherwise; the coverage warning blocks submit until acknowledged | `apps/web/src/features/currency-settings/components/__tests__/currency-settings-tile.test.tsx` |
-| WooCommerce `placedAt` | a feed order maps `date_created_gmt` onto **both** `createdAt` and `placedAt` | the existing `woocommerce-order-source.adapter.spec.ts` |
 
 **What is deliberately NOT a unit test**: "two concurrent `insertIfAbsent` calls resolve to a single
 row". Every one of the 23 `*.repository.spec.ts` files in `libs/core` mocks `Repository<T>` — 14 via
@@ -1653,8 +1675,9 @@ refresh, since it carries the criteria someone implements against.
 - [ ] `OL_REPORTING_CURRENCY` is documented in `apps/api/.env.example`, `apps/worker/.env.example` and the
       root `./.env.example`, and passed through by `docker-compose.demo.yml`.
 - [ ] `CurrencySettingsController` is registered in `write-guard-coverage.spec.ts`'s `CONTROLLERS`.
-- [ ] The WooCommerce order source populates `placedAt` from `date_created_gmt`, so a foreign-currency WC
-      order stamps instead of being terminal.
+- [ ] The WooCommerce `placedAt` mapping is **not** in this PR, and the ADR records why (§ 5 Q4): a
+      foreign-currency WooCommerce order stays terminal-unstamped, and no existing invoice's `saleDate`
+      changes.
 - [ ] `libs/core/src/currency/` imports no sibling core context (verified by grep **and**
       `pnpm check:invariants`).
 - [ ] The migration's 13-digit prefix sorts after every migration on `main` and in every dir in

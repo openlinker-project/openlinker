@@ -96,7 +96,8 @@ is the one being priced — what the registry stores as `fromCurrency`, i.e. the
 
 8. **Changing the setting does not restate history.** Already-stamped orders keep their currency, so a
    deployment that changes its mind carries two reporting-currency eras. The `PUT` reports how many
-   stamped rows exist, so the choice is informed rather than silent; restatement is a filed follow-up.
+   stamped rows exist, so the choice is informed rather than silent; restatement is filed as **#2096**
+   (§ Migration path).
 
 ## Non-goals
 
@@ -169,8 +170,14 @@ is the one being priced — what the registry stores as `fromCurrency`, i.e. the
   PLN order then converts through an ECB-inverted quote — exact and auditable, but a UX choice rather
   than a claim that EUR suits anyone. Hence the `(default)` label, the env override, and the per-figure
   currency label.
+- **The reporting currency is effectively a two-value set at launch.** Save-time validation accepts only
+  `PLN` and `EUR`, because those are the two currencies the shipped providers quote against — an operator
+  who wants GBP cannot have it until a third provider is added. That follows from provider coverage rather
+  than from the model, and the pivot path stays implemented so the addition is additive, but it is a real
+  limitation and not a temporary omission.
 - **Changing the setting splits history into eras** (§ Decision 8). Everything needed to restate is
-  retained (native currency, `placedAt`, the registry), so it stays computable; it is simply not built.
+  retained (native currency, `placedAt`, the registry), so it stays computable; it is simply not built —
+  filed as **#2096**.
 - **Analytics must separate stamped from unstamped rows.** Stamped orders sum into one figure; unstamped
   (provider outage, retry pending) and terminal rows (no `placedAt`, unsupported pair) do not, so any
   figure must be paired with an unstamped count. **The consuming issues #1985 / #1987 / #1988 currently
@@ -188,10 +195,25 @@ is the one being priced — what the registry stores as `fromCurrency`, i.e. the
 - The registry is a new persistence surface with an external dependency behind it. A provider outage
   degrades to an unstamped order plus a retry job, never a failed ingestion — and because a dead retry job
   would hold its idempotency key forever, a periodic reconcile reads the unstamped rows directly.
-- **The stamp is only as good as the order's placement timestamp.** Sources supplying one (PrestaShop,
-  Allegro, Erli) are unaffected; the WooCommerce order source maps `date_created_gmt` to `createdAt` and
-  never sets `placedAt`, though that is the same fact PrestaShop's `date_add → placedAt` mapping carries —
-  a one-line adapter mapping, shipping here.
+- **The stamp is only as good as the order's placement timestamp, and one shipped source does not supply
+  one.** Sources that do (PrestaShop, Allegro, Erli) are unaffected. The WooCommerce order source maps
+  `date_created_gmt` onto `createdAt` and never sets `placedAt`, so a foreign-currency WooCommerce order
+  cannot resolve a rate date and is recorded **unstamped** — deliberately as a *terminal* condition, so it
+  neither throws inside ingestion nor retries forever.
+
+  The data is not missing: WC's `date_created` is the same fact PrestaShop's `date_add → placedAt` mapping
+  carries, so this is a one-line adapter change. It is **still tracked separately**, and the reason is
+  fiscal rather than technical: `saleDate` is set only when `placedAt` is present
+  (`order-to-issue-invoice-command.mapper.ts:108-115`), so today a WooCommerce invoice carries **no**
+  `saleDate` and the provider substitutes its own date. Populating `placedAt` therefore moves that field
+  from empty to the placement date — which is more correct, and which can move an invoice into a different
+  tax period when the order was placed in an earlier month than it is invoiced. Already-issued documents
+  are unaffected (`InvoiceRecord` is a persisted projection, and `issuedLineSnapshot` (#1297) exists so
+  nothing re-derives from live order state), but a *future* invoice for an *existing* WooCommerce order
+  would change. That is an invoicing decision with its own review, not an FX one.
+
+  Note also that no source supplies a *payment* timestamp — Allegro reads one and discards it — which is
+  why this ADR anchors on placement and says so rather than claiming the rate of the day the buyer paid.
 - **The two providers publish on different calendars** (Polish working days versus TARGET) and cut-offs, so
   the rule yields a candidate day and each adapter absorbs its own calendar via walk-back-on-miss — a
   further reason both live in one package.
@@ -200,8 +222,9 @@ is the one being priced — what the registry stores as `fromCurrency`, i.e. the
 - Existing orders carry no stamp (`reportingCurrency IS NULL`). **No backfill of pre-feature orders ships
   here** — the retry job covers orders that could not be stamped at ingestion, a different thing.
   Historical rates are available from both providers, so a backfill remains possible later.
-- **Restating figures already stamped under a previous setting is a filed follow-up** (§ Decision 8).
-  Until it lands, changing the setting is forward-only.
+- **Restating figures already stamped under a previous setting is [#2096](https://github.com/openlinker-project/openlinker/issues/2096)**
+  (§ Decision 8). Until it lands, changing the setting is forward-only, and the `PUT` reports the
+  stamped-row count so the era split is accepted rather than discovered.
 
 ## References
 
@@ -219,5 +242,7 @@ is the one being priced — what the registry stores as `fromCurrency`, i.e. the
   `ShipmentRepository.claimWaybillRelay` (conditional single-writer claim),
   `InvoiceRecord.issuedLineSnapshot` (#1297 — the shape a fiscal rate should follow instead of
   referencing a registry row).
-- Primary doc section: `docs/architecture-overview.md` § Currency (added by #2049)
+- Follow-up: **#2096** (restate already-stamped orders when the reporting currency changes)
+- Primary doc section: a `docs/architecture-overview.md` § Currency section is **to be added by the #2049
+  implementation PR**; it does not exist yet, so this reference is forward-looking rather than a citation.
 - Plan: [implementation-plan-2049-order-fx-rate-snapshot.md](../../plans/implementation-plan-2049-order-fx-rate-snapshot.md)
