@@ -9510,7 +9510,7 @@ a.kpi-card:focus-visible {
    * (`width: auto`, :2699), so line 1's ellipsis can never fire and a 30-char
    * shop order ref widens the Order column and scrolls the whole table. 250px
    * matches `.orders-items-line`, which already governs line 2 of this same
-   * cell, and mirrors why `.connection-cell__body` caps at 220px (:9536). */
+   * cell, and mirrors why `.connection-cell__body` caps at 220px (:9538). */
   max-width: 250px;
 }
 

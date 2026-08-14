@@ -90,6 +90,25 @@ describe('OrderIdentityCell', () => {
     expect(screen.getByRole('link', { name: 'ORD-2026-000123' })).toBeInTheDocument();
   });
 
+  it('should render an order number of exactly the threshold length verbatim', () => {
+    // 18 chars. Pins the threshold itself, so #2091 cannot silently shorten
+    // differently once it deletes the Orders page's own copy of this rule.
+    renderWithProviders(
+      <OrderIdentityCell orderId={ORDER_ID} orderNumber="ORD-2026-000123456" itemCount={1} />,
+    );
+
+    expect(screen.getByRole('link', { name: 'ORD-2026-000123456' })).toBeInTheDocument();
+  });
+
+  it('should shorten an order number one character past the threshold', () => {
+    // 19 chars ⇒ head 8 + ellipsis + tail 6.
+    renderWithProviders(
+      <OrderIdentityCell orderId={ORDER_ID} orderNumber="ORD-2026-0001234567" itemCount={1} />,
+    );
+
+    expect(screen.getByRole('link', { name: 'ORD-2026…234567' })).toBeInTheDocument();
+  });
+
   it('should render the item thumbnail when the first item carries an image', () => {
     const { container } = renderWithProviders(
       <OrderIdentityCell
@@ -159,6 +178,38 @@ describe('OrderIdentityCell', () => {
       'title',
       '4 more line items (5 in this order)',
     );
+  });
+
+  it('should keep the +N tooltip singular when exactly one item is hidden', () => {
+    renderWithProviders(
+      <OrderIdentityCell
+        orderId={ORDER_ID}
+        orderNumber="6839-2911-4402"
+        firstItemName="Terra Wool Coat"
+        itemCount={2}
+      />,
+    );
+
+    expect(screen.getByText('+1')).toHaveAttribute(
+      'title',
+      '1 more line item (2 in this order)',
+    );
+  });
+
+  it('should render the item name with no chip when the item count is unknown', () => {
+    // Shipments and Invoices feed a nullable `orderSummary` (#1995), so a null
+    // count is a real production input, not a defensive branch.
+    const { container } = renderWithProviders(
+      <OrderIdentityCell
+        orderId={ORDER_ID}
+        orderNumber="6839-2911-4402"
+        firstItemName="Terra Wool Coat"
+        itemCount={null}
+      />,
+    );
+
+    expect(screen.getByText('Terra Wool Coat')).toBeInTheDocument();
+    expect(container.querySelector('.orders-more-count')).toBeNull();
   });
 
   it('should state the line-item count as a sentence when the first item name is unavailable', () => {

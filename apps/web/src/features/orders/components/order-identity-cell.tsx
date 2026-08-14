@@ -7,7 +7,8 @@
  * `.connection-cell__body`) — what a person reads on top, the rest beneath.
  *
  * Line 1 leads with the marketplace-facing order number, because that is the
- * string a buyer quotes and a seller searches for, and falls back to a shortened
+ * string a buyer quotes and a seller searches for — shortened to a `head…tail`
+ * form past 18 characters (see `formatOrderRef`) — and falls back to a shortened
  * internal id only when the number is absent (every Shipments and Invoices row
  * hits that branch today). Copy always writes the **full** internal id — the
  * shortened string exists to be read, not to be pasted into a support ticket.
@@ -18,7 +19,7 @@
  * holding `orderSummary === null` still renders the id-only branch without
  * synthesising an object of nulls.
  *
- * Three recorded deviations from the mockup's frame 02, so no later reviewer
+ * Four recorded deviations from the mockup's frame 02, so no later reviewer
  * "fixes" them back:
  *
  * 1. **Frame 02's sixth state (`–`) is unreachable from production.** The mockup
@@ -109,6 +110,10 @@ export function OrderIdentityCell({
   // `+N` counts what is NOT shown, so a single-item order renders no chip at
   // all — it must never read as though something is hidden.
   const moreCount = totalItems > 1 ? totalItems - 1 : 0;
+  // `+4` alone leaves an operator (and a screen reader) to guess what is being
+  // counted — lines, not units — so the chip states both facts on hover.
+  const moreLabel = `more line item${moreCount === 1 ? '' : 's'}`;
+  const moreCountTitle = `${moreCount} ${moreLabel} (${totalItems} in this order)`;
   // Reading out a 41-character internal id per row is not an accessible name.
   // With no number to quote, name the *kind* of id and qualify it with the
   // shortened form already on screen, so 50 rows do not all read identically.
@@ -141,13 +146,8 @@ export function OrderIdentityCell({
             <span className="text-muted orders-cell-sub orders-items-preview" title={itemName}>
               {itemName}
             </span>
-            {/* `title` because `+4` alone leaves an operator (and a screen
-                reader) to guess what is being counted — lines, not units. */}
             {moreCount > 0 ? (
-              <span
-                className="orders-more-count"
-                title={`${moreCount} more line items (${totalItems} in this order)`}
-              >
+              <span className="orders-more-count" title={moreCountTitle}>
                 +{moreCount}
               </span>
             ) : null}
