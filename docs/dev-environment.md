@@ -120,10 +120,6 @@ docker compose up -d postgres redis mysql prestashop
 pnpm dev:stack:wc:up
 ```
 
-WooCommerce is **not** part of the default stack either — `dev:stack:up` starts
-only the four services listed above. Bring it up with `pnpm dev:stack:wc:up`
-before using anything in the WooCommerce section of this document.
-
 phpMyAdmin is **not** part of the default stack — it sits behind the `devtools`
 Compose profile. Opt in with `pnpm dev:stack:devtools:up`. Do not add
 `phpmyadmin` to the plain `docker compose up` list above: naming a profiled
@@ -166,13 +162,18 @@ docker compose down
 docker volume rm \
   openlinker_postgres_data openlinker_redis_data openlinker_mysql_data \
   openlinker_prestashop_data openlinker_woocommerce_mysql_data \
-  openlinker_woocommerce_data openlinker_caddy_data openlinker_caddy_config
+  openlinker_woocommerce_data
 pnpm dev:stack:up
 ```
 
 Adjust the `openlinker_` prefix if you set `COMPOSE_PROJECT_NAME`. See
 [`README.md` § Runtime requirements](../README.md#runtime-requirements) for the
 full note.
+
+> `docker volume rm` exits non-zero on a name it does not know, so drop any
+> volume you never created (WooCommerce is opt-in) rather than pasting the list
+> verbatim. Check what is actually there first with
+> `docker volume ls --filter name=openlinker_`.
 
 ### Reset Services
 
@@ -249,6 +250,11 @@ curl http://localhost:3000/v1/health/dev-stack
 }
 ```
 
+> `version` is the running product version, resolved as `OL_PRODUCT_VERSION`,
+> then `npm_package_version` (the root `package.json` version, under a
+> `pnpm`-run process), then `0.0.0-dev`. Read it from those rather than from the
+> literal above, which is only a snapshot of one release.
+
 **Dev Stack Health (`/v1/health/dev-stack`):**
 ```json
 {
@@ -287,14 +293,15 @@ curl http://localhost:3000/v1/health/dev-stack
 
 PrestaShop is configured to auto-install on first startup (`PS_INSTALL_AUTO=1`) using environment variables in `docker-compose.yml`. The installation includes:
 
-- **PrestaShop demo data disabled** (`PS_DEMO_MODE: 0`) — the shop comes up with **no** upstream demo catalogue. What you do get is the `OL-*` fixture set written by the post-install scripts; see [Fixtures](#fixtures) for the full list and for how to turn PrestaShop's own demo data on.
+- **PrestaShop's own demo fixtures are installed, then the demo *catalogue* is replaced.** The image's entrypoint calls the CLI installer with no `--fixtures` argument and the installer defaults that option to `1`, so the upstream demo data goes in on every first boot; the post-install seed then deletes every product that is not `OL-*` / `OP-*` and inserts six `OL-*` fixtures. See [Fixtures](#fixtures).
+- **`PS_DEMO_MODE: 0` has nothing to do with demo data.** It is PrestaShop's restricted "demo store" mode, and it is off because `1` blocks module installation. See [What `PS_DEMO_MODE` actually does](#what-ps_demo_mode-actually-does-and-why-it-is-0).
 - Installer locale: English (`PS_LANGUAGE=en`), country US (`PS_COUNTRY=US`) — the post-install scripts then switch the default currency to PLN and activate the PL country.
 - Admin folder: renamed to stable `/admin-dev/` by `docker/prestashop/post-install/10-rename-admin.sh` (PrestaShop's installer generates a random folder for security; the wrapper renames it to a known path so dev URLs are stable)
 
 ### Accessing PrestaShop
 
 1. **Frontend**: `http://localhost:8080`
-2. **Admin Panel**: `http://localhost:8080/admin-dev/login`
+2. **Admin Panel**: `http://localhost:8080/admin-dev/` (redirects to the login form)
 
 ### Post-Installation Security Step
 
@@ -335,8 +342,11 @@ enabled and given a key:
 
 ### Verifying the Seeded Catalogue
 
-An empty shop after `pnpm dev:stack:up` means the post-install seed did not run —
-not that demo data is missing (there is none by design). Verify:
+A correct first boot leaves exactly six `OL-*` products in the catalogue. A shop
+full of unfamiliar clothing and accessories means the post-install seed never ran
+and you are looking at PrestaShop's own installer fixtures; a completely empty
+catalogue means the seed wiped those fixtures and then failed before inserting its
+own. Either way the seed output is where the answer is. Verify:
 
 1. **Check Products**
    - Navigate to `http://localhost:8080`
@@ -395,7 +405,12 @@ pnpm dev:stack:seed-prestashop
 1. Verify services are running: `docker compose ps`
 2. Check health: `pnpm dev:health`
 3. Verify environment variables in `apps/api/.env.local`
-4. Check network connectivity: `docker compose exec api ping postgres`
+4. Probe the datastores from inside their own containers (the dev stack does not
+   start the `api` container, so there is nothing to `exec` into there):
+   ```bash
+   docker compose exec postgres pg_isready -U postgres
+   docker compose exec redis redis-cli ping
+   ```
 
 ### PrestaShop Installation Problems
 
@@ -425,57 +440,109 @@ pnpm dev:stack:seed-prestashop
 
 ## Fixtures
 
-### PrestaShop: demo data is OFF, `OL-*` fixtures are ON
+### PrestaShop: upstream demo products go in, then six `OL-*` fixtures replace them
 
-`docker-compose.yml` sets `PS_DEMO_MODE: 0`, so **PrestaShop's own demo catalogue
-is never installed**. An empty-looking shop right after the installer finishes is
-expected. What the dev shop actually gets is written by the post-install scripts in
-`docker/prestashop/post-install/`, which the container entrypoint runs in
-alphabetical order once the unattended install completes (all of them are
-idempotent, and `pnpm dev:stack:seed-prestashop` re-runs them on demand):
+Two independent things happen on a first boot, and it pays to keep them apart:
 
-| Script | Effect |
+1. **PrestaShop's unattended installer installs its own demo fixtures.** The
+   image's entrypoint calls the CLI installer without a `--fixtures` argument, and
+   the installer's own default for that option is `1`
+   (`install/classes/datas.php`); nothing in this repo turns it off. The upstream
+   fixture set carries roughly nineteen products, seven categories, two
+   manufacturers, two suppliers, a demo customer (`pub@prestashop.com`) with an
+   address, and five demo orders.
+2. **The post-install seed then replaces the demo *catalogue*.**
+   `docker/prestashop/post-install-lib/30-seed-test-products.php` deletes every
+   `ps_product` row whose `reference` does not start with `OL-` or `OP-`, and
+   inserts six `OL-*` fixtures in their place.
+
+So the six curated `OL-*` fixtures, not PrestaShop's sample catalogue, are this
+stack's intended demo data, and the upstream catalogue is deliberately wiped
+rather than kept. `PS_DEMO_MODE` is involved in neither step; see
+[What `PS_DEMO_MODE` actually does](#what-ps_demo_mode-actually-does-and-why-it-is-0).
+
+The post-install scripts live in `docker/prestashop/post-install/` and the
+container entrypoint runs them in alphabetical order once the unattended install
+completes (all of them are idempotent, and `pnpm dev:stack:seed-prestashop`
+re-runs the same five wrappers on demand). Except for the admin rename, each
+`*.sh` is a thin wrapper that execs a PHP companion in
+`docker/prestashop/post-install-lib/`, and the companion is where the behaviour
+lives, so grep the `.php` file, not the `.sh`:
+
+| Script | Logic lives in | Effect |
+|---|---|---|
+| `10-rename-admin.sh` | itself (self-contained) | Renames the installer's randomized `/admin{hash}/` folder to the stable `/admin-dev/` |
+| `20-set-default-currency.sh` | `post-install-lib/20-set-default-currency.php` | Makes **PLN** the shop's default currency (EUR / USD stay active) |
+| `25-activate-country-pl.sh` | `post-install-lib/25-activate-country-pl.php` | Activates the **PL** country, so an order for a Polish buyer address can sync |
+| `30-seed-test-products.sh` | `post-install-lib/30-seed-test-products.php` | Wipes the upstream demo catalogue and seeds **six `OL-*` products** sourced from real Allegro listings (matrix below) |
+| `40-configure-container-network.sh` | `post-install-lib/40-configure-container-network.php` | Adds a shop-URL row for the `prestashop` compose hostname so the api/worker containers can reach the shop by service name |
+
+The six fixtures cover the variant x EAN-coverage matrix the sync,
+offer-creation and publish paths are exercised against:
+
+| Reference | Shape |
 |---|---|
-| `10-rename-admin.sh` | Renames the installer's randomized `/admin{hash}/` folder to the stable `/admin-dev/` |
-| `20-set-default-currency.sh` | Makes **PLN** the shop's default currency (EUR / USD stay active) |
-| `25-activate-country-pl.sh` | Activates the **PL** country, so an order for a Polish buyer address can sync |
-| `30-seed-test-products.sh` | Seeds **six `OL-*` products** sourced from real Allegro listings, covering the variant x EAN-coverage matrix the sync paths are exercised against (simple + EAN, simple without EAN, variant with full EAN coverage, variant with partial coverage, variant without EAN) |
-| `40-configure-container-network.sh` | Adds a shop-URL row for the `prestashop` compose hostname so the api/worker containers can reach the shop by service name |
+| `OL-BOSCH-GSR12V15` | simple, EAN13 |
+| `OL-MUG-LIN-300` | simple, no EAN |
+| `OL-ADIDAS-IA4845` | 3 size variants, every variant carries its own EAN |
+| `OL-SOAP-NATURAL` | 2 colour variants, only one carries an EAN (partial coverage) |
+| `OL-RING-RESIN` | 3 size variants, no EANs |
+| `OL-CANON-SX740LE` | simple, EAN13 + MPN, Polish-language copy |
 
-**Reference-prefix convention** enforced by `30-seed-test-products.sh`:
+**Reference-prefix convention** enforced by `30-seed-test-products.php`:
 
-- `OL-*` — fixtures owned by the script; never wiped.
-- `OP-*` — "operator preserve". Give a hand-made test product an `OP-...`
-  reference and it survives re-seeds.
-- Anything else is treated as leftover demo catalogue and **deleted** when the
-  seed runs.
+- `OL-*`: fixtures owned by the script; never wiped.
+- `OP-*`: "operator preserve". Give a hand-made test product an `OP-...`
+  reference and it survives a re-seed.
+- Anything else is treated as leftover upstream demo catalogue and deleted, but
+  only on a run that actually seeds. The script counts existing `OL-%` products
+  first and exits before the wipe once six are present, so
+  `pnpm dev:stack:seed-prestashop` against an already-seeded shop deletes nothing
+  and creates nothing.
 
-There are **no seeded PrestaShop customers or orders**. The dev stack's only
-seeded orders come from WooCommerce (`docker/woocommerce/01-seed-wc-data.sh`).
+**What the wipe does not touch.** It deletes `ps_product` rows only, via
+`Product::deleteSelection` (the same cascade the admin's bulk-delete action uses,
+so a deleted product's combinations, stock rows and images go with it). Everything
+else the installer's fixtures created survives: categories, manufacturers,
+suppliers, CMS pages, and the demo customer, address and orders. A fresh dev shop
+therefore *does* have PrestaShop-side customers and orders; they are upstream
+fixture rows, not something OpenLinker seeds. The only orders OpenLinker's own
+tooling seeds are WooCommerce's (`docker/woocommerce/01-seed-wc-data.sh`).
 
-### Enabling PrestaShop demo data (and why it is off)
+### What `PS_DEMO_MODE` actually does (and why it is `0`)
 
-The flag is only read during the unattended install, so turning it on means
-setting `PS_DEMO_MODE: 1` on the `prestashop` service in `docker-compose.yml`
-**and** recreating the shop from empty volumes:
+`PS_DEMO_MODE` does not control demo *data*. In the pinned image
+(`prestashop/prestashop:9.0.2-2.0-classic-8.4`) its only effect is to flip
+`_PS_MODE_DEMO_` to `true` in `config/defines.inc.php`, which turns on
+PrestaShop's restricted **demo store** mode: module install/uninstall, shop-URL
+edits and employee password changes are all blocked. The `sed` that applies it
+sits *after* the install branch in the image's entrypoint, so it runs on every
+container start, not only on the first install.
 
-```bash
-docker compose down
-docker volume rm openlinker_prestashop-data openlinker_mysql-data
-pnpm dev:stack:up
-```
+That is the reason this repo sets `PS_DEMO_MODE: 0`: the dev stack exists partly
+to install and test the OpenLinker PrestaShop module, and restricted demo mode
+makes that impossible (see
+[PrestaShop module testing guide](./prestashop-module-testing-guide.md)). Leave it
+at `0`.
 
-**Trade-off — read this first.** `30-seed-test-products.sh` runs *after* the
-installer and deletes every product whose reference does not start with `OL-` or
-`OP-`, so the demo catalogue is wiped on the same first boot: flipping the flag on
-its own changes nothing you can see. Actually keeping demo data also means
-stopping that script from running (for example by removing the
-`./docker/prestashop/post-install` bind mount from the `prestashop` service),
-which is not a configuration this repo supports or tests. The two catalogues are
-not interchangeable either — the `OL-*` fixtures exist specifically to cover the
-variant and EAN combinations the sync, offer-creation and publish paths are
-exercised against, and demo products show up unmapped in sync runs and product
-pickers. Keep `PS_DEMO_MODE: 0` unless you have a concrete reason not to.
+Flipping it to `1` buys no extra demo data: the upstream fixtures are installed
+regardless, and the seed wipes the demo products regardless.
+
+### Seeing PrestaShop's own sample catalogue instead
+
+There is no supported switch for this. The upstream demo products are installed
+on every first boot and then removed by `30-seed-test-products.php`, so keeping
+them means stopping that script from running, for example by removing the
+`./docker/prestashop/post-install` bind mount from the `prestashop` service in
+`docker-compose.yml` and recreating the shop from empty volumes. That also drops
+the admin-folder rename, the PLN default currency, the PL country activation and
+the container-network shop URL, so it is not a configuration this repo supports
+or tests.
+
+The two catalogues are not interchangeable anyway: the `OL-*` fixtures exist
+specifically to cover the variant and EAN combinations the sync, offer-creation
+and publish paths are exercised against, whereas upstream demo products show up
+unmapped in sync runs and product pickers.
 
 ### Resetting the shop
 
