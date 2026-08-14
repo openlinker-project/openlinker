@@ -128,8 +128,8 @@ One pointer per section, identical format every time.
 | [ADR-036](./036-cross-context-read-model-joins.md) | Cross-context read-model joins by table name (server-side sort/filter across contexts) | Accepted | 2026-07-17 |
 | [ADR-037](./037-destination-taxonomy-read-model.md) | Destination taxonomy as a synced read model in `listings` (retires the platform-named Allegro category cache) | Proposed | 2026-07-30 |
 | [ADR-038](./038-per-connection-outbound-rate-limiting.md) | Per-connection outbound rate limiting via a shared transport + ambient priority context | Proposed | 2026-07-30 |
-| [ADR-040](./040-fiscalisation-capability.md) | Fiscalisation as a capability distinct from invoicing | Proposed | 2026-08-13 |
+| [ADR-042](./042-fiscalisation-capability.md) | Fiscalisation as a capability distinct from invoicing | Proposed | 2026-08-13 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
 >
-> ***039 is reserved**, not free: the sales-document routing ADR is authored in #2051 / PR #2055 and claims that number when it lands. Allocate 041 for the next new ADR.*
+> ***039, 040 and 041 are reserved**, not free — each is claimed by an open PR authored off the same base and will land under that number: **039** the order analytics read model (#1985 / PR #2014, already referenced by filename on `main`), **040** order-time FX stamping (PR #2050), **041** the sales-document routing policy (#2051 / PR #2055). With 042 taken by the fiscalisation ADR listed above, **allocate 043 for the next new ADR** — and check this note against the open PR list first, because two PRs claiming one number merge cleanly when their filenames differ, and `pnpm check:invariants` does not catch it.*

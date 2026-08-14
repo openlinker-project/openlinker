@@ -1,4 +1,4 @@
-# ADR-040: Fiscalisation as a capability distinct from invoicing
+# ADR-042: Fiscalisation as a capability distinct from invoicing
 
 - **Status**: Proposed
 - **Date**: 2026-08-13

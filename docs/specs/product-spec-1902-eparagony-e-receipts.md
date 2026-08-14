@@ -2,7 +2,7 @@
 
 **Status:** phase A complete; phase B complete; phase C complete (Gate C = A+E, 2026-07-29); phase D complete; Gate D = YES (build); phase E complete — ready for implementation
 **Parent issue:** [#1902](https://github.com/openlinker-project/openlinker/issues/1902)
-**ADR:** [ADR-040 — Fiscalisation as a capability distinct from invoicing](../architecture/adrs/040-fiscalisation-capability.md)
+**ADR:** [ADR-042 — Fiscalisation as a capability distinct from invoicing](../architecture/adrs/042-fiscalisation-capability.md)
 **Started:** 2026-07-28
 **Last updated:** 2026-07-28
 **Workflow:** [`docs/contributors/refinement-workflow.md`](../contributors/refinement-workflow.md)
