@@ -21,6 +21,7 @@ import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { CustomersModule } from '@openlinker/core/customers';
 import { ContentModule } from '@openlinker/core/content';
 import { InvoicingModule } from '@openlinker/core/invoicing';
+import { FiscalizationModule } from '@openlinker/core/fiscalization';
 import { AiModule as CoreAiModule } from '@openlinker/core/ai';
 import { AnalyticsModule as CoreAnalyticsModule } from '@openlinker/core/analytics';
 import { MailerModule as CoreMailerModule } from '@openlinker/core/mailer';
@@ -39,6 +40,7 @@ import { AiApiModule } from './ai/ai.module';
 import { ContentApiModule } from './content/content.module';
 import { ShippingApiModule } from './shipping/shipping.module';
 import { InvoicingApiModule } from './invoicing/invoicing.module';
+import { FiscalizationApiModule } from './fiscalization/fiscalization.module';
 import { UsersApiModule } from './users/users.module';
 import { SystemModule } from './system/system.module';
 import { McpModule } from './mcp/mcp.module';
@@ -75,6 +77,7 @@ import { RequestPriorityModule } from './http/request-priority.module';
     MappingsApiModule,
     ContentModule, // Product content draft buffer + reconcile + publish (#338)
     InvoicingModule, // Invoicing domain foundation — port + record + repo (#751, ADR-026)
+    FiscalizationModule, // Fiscalization domain foundation — port + record + repo (#1908, ADR-042)
     CoreAiModule, // Editable prompt-template storage + render service (#341)
     AiApiModule, // REST surface for prompt templates (#341)
     CoreMailerModule, // DB-backed mailer/SMTP settings resolution (#1643)
@@ -86,6 +89,7 @@ import { RequestPriorityModule } from './http/request-priority.module';
     ShippingApiModule, // Shipment read + command HTTP API (#846); imports core ShippingModule (#763/#835)
     UsersApiModule, // User management: list, approve/reject pending, role + status ops (#1125)
     InvoicingApiModule, // Invoicing issue/read HTTP API (#1119); UPO download endpoint (#1224, epic #1142 C15)
+    FiscalizationApiModule, // Fiscal registration trigger + read + reconcile HTTP API (#1908, ADR-042)
     SystemModule, // Server-driven runtime config (demoMode) via GET /system/config (#1127)
     McpModule, // MCP Resource-Server auth (PATs) + Streamable-HTTP ingress (#1486, ADR-034)
   ],

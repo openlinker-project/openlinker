@@ -34,6 +34,9 @@ export const CORE_CAPABILITY_VALUES = [
   'CategoryProvisioner',
   // Invoicing (ADR-026).
   'Invoicing',
+  // Fiscalization (ADR-042) - registering a completed sale with a provider that
+  // performs or brokers its fiscal registration. Distinct from 'Invoicing'.
+  'Fiscalization',
 ] as const;
 
 /**

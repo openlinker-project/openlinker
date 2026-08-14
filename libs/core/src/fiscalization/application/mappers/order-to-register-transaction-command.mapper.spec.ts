@@ -1,0 +1,211 @@
+/**
+ * Order -> RegisterTransactionCommand mapper - unit tests
+ *
+ * @module libs/core/src/fiscalization/application/mappers
+ */
+import type { Order } from '@openlinker/core/orders';
+
+import { toRegisterTransactionCommand } from './order-to-register-transaction-command.mapper';
+import { InvalidFiscalLineError } from './errors/invalid-fiscal-line.error';
+import { UnsupportedFiscalPriceTreatmentError } from './errors/unsupported-fiscal-price-treatment.error';
+
+const NOW = new Date('2026-08-14T09:00:00.000Z');
+
+function order(overrides: Partial<Order> = {}): Order {
+  return {
+    id: 'ol_order_1',
+    status: 'new',
+    items: [
+      { id: 'i1', productId: 'ol_product_1', quantity: 2, price: 24.6, name: 'Widget', sku: 'W-1' },
+    ],
+    totals: { subtotal: 49.2, tax: 9.2, shipping: 0, total: 49.2, currency: 'PLN' },
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...overrides,
+  } as Order;
+}
+
+describe('toRegisterTransactionCommand', () => {
+  it('should compose a command from the order snapshot', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: order(),
+      connectionId: 'conn-1',
+      idempotencyKey: 'fiscal:conn-1:ol_order_1',
+    });
+
+    expect(cmd.connectionId).toBe('conn-1');
+    expect(cmd.orderId).toBe('ol_order_1');
+    expect(cmd.idempotencyKey).toBe('fiscal:conn-1:ol_order_1');
+    expect(cmd.currency).toBe('PLN');
+    expect(cmd.totalGross).toBe(49.2);
+    expect(cmd.lines).toEqual([
+      { name: 'Widget', quantity: 2, unitPriceGross: 24.6, taxRate: '', sku: 'W-1' },
+    ]);
+  });
+
+  it('should never name a tax rate of its own', () => {
+    // ADR-042 decision 8 (negative half, settled): fiscalization transmits
+    // amounts it must not recompute and never infers or defaults a rate. An
+    // empty code means "OL resolved none", NOT "the rate is zero".
+    const cmd = toRegisterTransactionCommand({
+      order: order(),
+      connectionId: 'conn-1',
+      idempotencyKey: 'k',
+    });
+    expect(cmd.lines.every((line) => line.taxRate === '')).toBe(true);
+  });
+
+  it('should append a gross shipping line so the registered total matches what the buyer paid', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: order({
+        totals: { subtotal: 49.2, tax: 9.2, shipping: 12.5, total: 61.7, currency: 'PLN' },
+      }),
+      connectionId: 'conn-1',
+      idempotencyKey: 'k',
+    });
+
+    expect(cmd.lines).toHaveLength(2);
+    expect(cmd.lines[1]).toEqual({
+      name: 'Shipping',
+      quantity: 1,
+      unitPriceGross: 12.5,
+      taxRate: '',
+      sku: null,
+    });
+  });
+
+  it('should honour a caller-supplied shipping line label', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: order({
+        totals: { subtotal: 10, tax: 0, shipping: 5, total: 15, currency: 'PLN' },
+      }),
+      connectionId: 'conn-1',
+      idempotencyKey: 'k',
+      shippingLineName: 'Dostawa',
+    });
+    expect(cmd.lines[1]?.name).toBe('Dostawa');
+  });
+
+  it('should emit no shipping line when the buyer paid nothing for shipping', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: order(),
+      connectionId: 'conn-1',
+      idempotencyKey: 'k',
+    });
+    expect(cmd.lines).toHaveLength(1);
+  });
+
+  it('should fall back to sku then productId for a line with no source label', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: order({
+        items: [
+          { id: 'i1', productId: 'ol_product_1', quantity: 1, price: 5, sku: 'SKU-1' },
+          { id: 'i2', productId: 'ol_product_2', quantity: 1, price: 5 },
+        ],
+      }),
+      connectionId: 'conn-1',
+      idempotencyKey: 'k',
+    });
+    expect(cmd.lines.map((line) => line.name)).toEqual(['SKU-1', 'ol_product_2']);
+  });
+
+  it('should carry the SOURCE placement time, not OL`s ingestion clock', () => {
+    const placedAt = new Date('2026-08-01T07:30:00.000Z');
+    const cmd = toRegisterTransactionCommand({
+      order: order({ placedAt }),
+      connectionId: 'conn-1',
+      idempotencyKey: 'k',
+    });
+    expect(cmd.occurredAt).toBe(placedAt);
+  });
+
+  it('should leave occurredAt absent when the source reported no placement time', () => {
+    // `createdAt` is when OL ingested the order, not when the sale happened, so
+    // substituting it would misdate the registration.
+    const cmd = toRegisterTransactionCommand({
+      order: order(),
+      connectionId: 'conn-1',
+      idempotencyKey: 'k',
+    });
+    expect(cmd.occurredAt).toBeUndefined();
+  });
+
+  it('should reject a net-priced order rather than register net amounts as gross', () => {
+    expect(() =>
+      toRegisterTransactionCommand({
+        order: order({
+          totals: {
+            subtotal: 40,
+            tax: 9.2,
+            shipping: 0,
+            total: 40,
+            currency: 'PLN',
+            taxTreatment: 'exclusive',
+          },
+        }),
+        connectionId: 'conn-1',
+        idempotencyKey: 'k',
+      }),
+    ).toThrow(UnsupportedFiscalPriceTreatmentError);
+  });
+
+  it('should accept an order whose treatment is absent (the documented gross assumption)', () => {
+    expect(() =>
+      toRegisterTransactionCommand({
+        order: order(),
+        connectionId: 'conn-1',
+        idempotencyKey: 'k',
+      }),
+    ).not.toThrow();
+  });
+
+  it('should reject an item whose quantity is not a positive finite number', () => {
+    expect(() =>
+      toRegisterTransactionCommand({
+        order: order({
+          items: [{ id: 'i1', productId: 'ol_product_1', quantity: 0, price: 5 }],
+        }),
+        connectionId: 'conn-1',
+        idempotencyKey: 'k',
+      }),
+    ).toThrow(InvalidFiscalLineError);
+  });
+
+  it('should cite only the order id when rejecting a line (PII-clean)', () => {
+    try {
+      toRegisterTransactionCommand({
+        order: order({
+          items: [
+            { id: 'i1', productId: 'ol_product_1', quantity: -1, price: 5, name: 'Jan Kowalski' },
+          ],
+        }),
+        connectionId: 'conn-1',
+        idempotencyKey: 'k',
+      });
+      fail('expected InvalidFiscalLineError');
+    } catch (error) {
+      expect((error as Error).message).toContain('ol_order_1');
+      expect((error as Error).message).not.toContain('Jan Kowalski');
+    }
+  });
+
+  it('should derive a delivery target when the snapshot carries one', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: order({ customerEmail: 'buyer@example.test' }),
+      connectionId: 'conn-1',
+      idempotencyKey: 'k',
+    });
+    expect(cmd.recipient).toEqual({ email: 'buyer@example.test', phone: null });
+  });
+
+  it('should omit the delivery target entirely under a hash-only PII configuration', () => {
+    // Not an error: an adapter whose provider returns the artefact inline needs
+    // no target at all.
+    const cmd = toRegisterTransactionCommand({
+      order: order(),
+      connectionId: 'conn-1',
+      idempotencyKey: 'k',
+    });
+    expect(cmd.recipient).toBeUndefined();
+  });
+});
