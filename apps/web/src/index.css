@@ -11820,12 +11820,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   gap: var(--space-2);
 }
 
-.shipments-page__provider {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
 /* Action-column severity label (#1826) — plain, non-interactive text riding
    alongside the row's real control (the `expandable` toggle). Deliberately
    NO chip/border/dot/background — that styling would read as a second

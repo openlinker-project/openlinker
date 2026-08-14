@@ -26,7 +26,6 @@ import { Button } from '../../shared/ui/button';
 import { Select } from '../../shared/ui/select';
 import { Input } from '../../shared/ui/input';
 import { TimeDisplay } from '../../shared/ui/time-display';
-import { EntityLabel } from '../../shared/ui/entity-label';
 import { usePermission } from '../../shared/auth/use-permission';
 import { ShipmentStatusBadge } from '../../features/shipments/components/shipment-status-badge';
 import { ProcessorBadge } from '../../features/shipments/components/processor-badge';
@@ -35,14 +34,14 @@ import { ShipmentRowDetail } from '../../features/shipments/components/shipment-
 import { groupFailedShipmentsByCause } from '../../features/shipments/lib/group-failed-shipments-by-cause';
 import { useShipmentsQuery } from '../../features/shipments/hooks/use-shipments-query';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
+import { ConnectionCell } from '../../features/connections';
 import { CustomerEntityLabel } from '../../features/customers/components/CustomerEntityLabel';
-import { ConnectionDot } from '../../features/orders';
+import { ConnectionDot, OrderIdentityCell } from '../../features/orders';
 // Pure view-model helpers + the wire-mirrored redaction constant live in the
 // owning feature (they're unit-tested there); the page only composes them.
 import {
   REDACTED_ERROR_MESSAGE,
   ShipmentSeverityLabel,
-  truncateOrderId,
 } from '../../features/shipments';
 import type { Shipment, ShipmentFilters, ShipmentStatus, ShippingMethod } from '../../features/shipments/api/shipments.types';
 import {
@@ -176,6 +175,27 @@ export function ShipmentsPage(): ReactElement {
   const query = useShipmentsQuery(filters, pagination);
   const connectionsQuery = useConnectionsQuery();
   const connections = connectionsQuery.data ?? [];
+  // One batched read, indexed once — `ConnectionCell` must never fetch per row
+  // (#1996). `.get()` returns `undefined` on a miss, which the cell reads as
+  // "resolve it yourself", so every lookup coalesces to `null`.
+  const connectionsById = useMemo(
+    () => new Map(connections.map((c) => [c.id, c])),
+    [connections],
+  );
+
+  // ONE renderer for the desktop Order column and the mobile card title. The
+  // two used to be separate hand-rolled `EntityLabel`s that nothing kept in
+  // sync — the specific drift the shared cell exists to kill (#2089), so this is
+  // a function, not two call sites that happen to match today.
+  const renderOrderCell = (s: Shipment): ReactElement => (
+    <OrderIdentityCell
+      orderId={s.orderId}
+      orderNumber={s.orderSummary?.orderNumber}
+      firstItemName={s.orderSummary?.firstItemName}
+      firstItemImageUrl={s.orderSummary?.firstItemImageUrl}
+      itemCount={s.orderSummary?.itemCount}
+    />
+  );
   const failedCauseGroups = useMemo(
     () => groupFailedShipmentsByCause(query.data?.items ?? []),
     [query.data],
@@ -288,19 +308,11 @@ export function ShipmentsPage(): ReactElement {
       // horizontally-scrolled row read "failed - sender postcode invalid" with
       // no way to tell which order it belonged to.
       //
-      // `name={s.orderId}` (#1826 fix): without a `name`, EntityLabel renders
-      // an unlinked "Unknown" + a shortened, non-clickable id chip — there was
-      // no way to navigate to the order from this column. Passing the id as
-      // its own name makes the id itself the clickable link; `showId={false}`
-      // drops the now-redundant duplicate id chip.
-      cell: (s) => (
-        <EntityLabel
-          id={s.orderId}
-          name={truncateOrderId(s.orderId)}
-          to={`/orders/${s.orderId}`}
-          showId={false}
-        />
-      ),
+      // `OrderIdentityCell` (#2087) replaced a hand-rolled `EntityLabel` that
+      // showed a truncated id and nothing else — no thumbnail, no item name, no
+      // `+N`. The data has been on the response since #1995 / PR #2012 and was
+      // typed-but-unconsumed until now.
+      cell: renderOrderCell,
     },
     {
       id: 'action',
@@ -361,21 +373,27 @@ export function ShipmentsPage(): ReactElement {
       id: 'connectionId',
       header: 'Connection',
       cell: (s): ReactElement => {
-        const connection = connections.find((c) => c.id === s.connectionId);
+        const connection = connectionsById.get(s.connectionId) ?? null;
         return (
-          <span className="shipments-page__provider">
-            {/* `aria-hidden` — the adjacent visible name span already carries
-                the accessible name; `ConnectionDot` would otherwise announce
-                it a second time via its own `sr-only` span + `title`. */}
-            <span aria-hidden="true">
-              <ConnectionDot
-                name={connection?.name ?? null}
-                platformType={connection?.platformType}
-                variant={s.shippingMethod === 'omp' ? 'shop' : 'carrier'}
-              />
-            </span>
-            <span>{connection?.name ?? 'Unknown'}</span>
-          </span>
+          <ConnectionCell
+            connectionId={s.connectionId}
+            connection={connection}
+            loading={connectionsQuery.isLoading}
+            // The glyph this column already showed, kept as the shared cell's
+            // adornment rather than bolted on as a second cell shape.
+            // `aria-hidden` — `ConnectionCell`'s own name link carries the
+            // accessible name; `ConnectionDot` would otherwise announce it a
+            // second time via its `sr-only` span + `title`.
+            adornment={
+              <span aria-hidden="true">
+                <ConnectionDot
+                  name={connection?.name ?? null}
+                  platformType={connection?.platformType}
+                  variant={s.shippingMethod === 'omp' ? 'shop' : 'carrier'}
+                />
+              </span>
+            }
+          />
         );
       },
       hideBelow: 1024,
@@ -581,14 +599,7 @@ export function ShipmentsPage(): ReactElement {
               // the order (it previously fell back to the order EntityLabel
               // only when `customerId` was absent). Now unconditional, same
               // as the desktop Order column.
-              title: (s) => (
-                <EntityLabel
-                  id={s.orderId}
-                  name={truncateOrderId(s.orderId)}
-                  to={`/orders/${s.orderId}`}
-                  showId={false}
-                />
-              ),
+              title: renderOrderCell,
               subtitle: (s) =>
                 s.customerId ? <CustomerEntityLabel customerId={s.customerId} showId={false} /> : null,
               meta: (s) => <ShipmentStatusCell shipment={s} canWrite={canWrite} />,
