@@ -32,6 +32,7 @@ import { PrestashopAdapterFactory } from './application/prestashop-adapter.facto
 import { PrestashopConnectionTesterAdapter } from './infrastructure/adapters/prestashop-connection-tester.adapter';
 import { PrestashopConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/prestashop-connection-config-shape-validator.adapter';
 import { PrestashopWebhookEventTranslatorAdapter } from './infrastructure/adapters/prestashop-webhook-event-translator.adapter';
+import { PrestashopRetryClassifierAdapter } from './infrastructure/adapters/prestashop-retry-classifier.adapter';
 import { PrestashopConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/prestashop-connection-credentials-shape-validator.adapter';
 import { buildPrestashopSchedulerTasks } from './infrastructure/scheduler/prestashop-scheduler-tasks';
 import type { PrestashopCustomerProvisioner } from './infrastructure/provisioners/prestashop-customer-provisioner';
@@ -114,6 +115,13 @@ export function createPrestashopPlugin(deps: CreatePrestashopPluginDeps): Adapte
       host.webhookEventTranslatorRegistry.register(
         'prestashop.webservice.v1',
         new PrestashopWebhookEventTranslatorAdapter(),
+      );
+      // Retry classification (#581 / #2052) — the package registered none
+      // before, so a PrestaShop tax-configuration error was retried five times
+      // with backoff before an operator saw it.
+      host.retryClassifierRegistry.register(
+        'prestashop.webservice.v1',
+        new PrestashopRetryClassifierAdapter(),
       );
       host.connectionConfigShapeValidatorRegistry.register(
         'prestashop.webservice.v1',

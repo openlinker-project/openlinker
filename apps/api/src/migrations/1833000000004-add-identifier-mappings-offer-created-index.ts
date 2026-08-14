@@ -25,16 +25,22 @@
  * `identifier_mappings` is shared by every `CoreEntityType`, and only the
  * Offer rows are paged by this ordering.
  *
+ * Renumbered from 1833000000002 to 1833000000004: #2036 landed
+ * `CreateRefundRecords1833000000002` in parallel, so the two shared a
+ * timestamp and TypeORM's ordering between them was undefined. `CREATE INDEX`
+ * is `IF NOT EXISTS` so an environment that already applied the old
+ * `...1833000000002` name re-runs the renamed migration without failing.
+ *
  * @module apps/api/src/migrations
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddIdentifierMappingsOfferCreatedIndex1833000000002 implements MigrationInterface {
-  name = 'AddIdentifierMappingsOfferCreatedIndex1833000000002';
+export class AddIdentifierMappingsOfferCreatedIndex1833000000004 implements MigrationInterface {
+  name = 'AddIdentifierMappingsOfferCreatedIndex1833000000004';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
-      CREATE INDEX "IDX_identifier_mappings_offer_created"
+      CREATE INDEX IF NOT EXISTS "IDX_identifier_mappings_offer_created"
         ON "identifier_mappings" ("connectionId", "createdAt" DESC, "id" DESC)
         WHERE "entityType" = 'Offer'
     `);
