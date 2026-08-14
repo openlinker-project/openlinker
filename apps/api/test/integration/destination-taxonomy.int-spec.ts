@@ -28,6 +28,7 @@ import {
   type DestinationCategorySearchHit,
   type DestinationCategoryUpsert,
   type TaxonomyScope,
+  type CategoryPathSegment,
 } from '@openlinker/core/listings';
 
 import {
@@ -67,6 +68,7 @@ interface TaxonomyRepositoryHandle {
     runStartedAt: Date,
   ): Promise<void>;
   hasObserved(scope: TaxonomyScope, runStartedAt: Date): Promise<boolean>;
+  findPath(scope: TaxonomyScope, externalId: string): Promise<CategoryPathSegment[]>;
 }
 
 
@@ -434,5 +436,75 @@ describe('Destination taxonomy projection (#1979)', () => {
         'b',
       ]);
     });
+  });
+  describe('breadcrumb reads (#2074)', () => {
+    const node = (
+      externalId: string,
+      parentId: string | null,
+      name: string,
+    ): DestinationCategoryUpsert => ({ externalId, name, parentId, leaf: parentId !== null });
+
+    it('should derive a root-to-leaf breadcrumb for a nested node', async () => {
+      const syncedAt = new Date('2026-08-14T09:00:00.000Z');
+      await repository.upsertMany(
+        ALLEGRO_SCOPE,
+        [node('root', null, 'Electronics'), node('mid', 'root', 'Phones'), node('leaf', 'mid', 'Smartphones')],
+        syncedAt,
+      );
+
+      await expect(repository.findPath(ALLEGRO_SCOPE, 'leaf')).resolves.toEqual([
+        { id: 'root', name: 'Electronics' },
+        { id: 'mid', name: 'Phones' },
+        { id: 'leaf', name: 'Smartphones' },
+      ]);
+    });
+
+    it('should return a single segment for a root node', async () => {
+      const syncedAt = new Date('2026-08-14T09:10:00.000Z');
+      await repository.upsertMany(ALLEGRO_SCOPE, [node('solo', null, 'Books')], syncedAt);
+
+      await expect(repository.findPath(ALLEGRO_SCOPE, 'solo')).resolves.toEqual([
+        { id: 'solo', name: 'Books' },
+      ]);
+    });
+
+    it('should return an empty path for an unknown id rather than throwing', async () => {
+      // A caller cannot distinguish "unknown id" from "not walked yet", so the
+      // repository must not force it to. #2075 renders the empty state.
+      await expect(repository.findPath(ALLEGRO_SCOPE, 'never-synced')).resolves.toEqual([]);
+    });
+
+    it('should not cross scopes when resolving a breadcrumb', async () => {
+      const syncedAt = new Date('2026-08-14T09:20:00.000Z');
+      await repository.upsertMany(ALLEGRO_SCOPE, [node('shared', null, 'Owner tree')], syncedAt);
+
+      await expect(repository.findPath(SHOP_SCOPE, 'shared')).resolves.toEqual([]);
+    });
+
+    it('should terminate on a cyclic parentId instead of recursing forever', async () => {
+      // Reachable, not hypothetical: the upsert reassigns `parentId` on conflict
+      // and re-parenting is a documented normal case, so two individually-valid
+      // observations across a paged sync (A under B, then B under A after the
+      // platform reorganizes) leave a cycle. #2061's `expandedAt` guard
+      // terminates the SYNC; nothing protected this READ. With no
+      // statement_timeout configured, an unbounded walk pins a pooled connection
+      // indefinitely — so this asserts termination, not a specific path.
+      const syncedAt = new Date('2026-08-14T09:30:00.000Z');
+      await repository.upsertMany(
+        ALLEGRO_SCOPE,
+        [
+          { externalId: 'cyc-a', name: 'A', parentId: 'cyc-b', leaf: false },
+          { externalId: 'cyc-b', name: 'B', parentId: 'cyc-a', leaf: false },
+        ],
+        syncedAt,
+      );
+
+      const path = await repository.findPath(ALLEGRO_SCOPE, 'cyc-a');
+
+      // 65 = the seed row at depth 0 plus depths 1..64 admitted by `depth < 64`.
+      // The exact number is incidental; what this pins is that it is FINITE.
+      expect(path.length).toBeGreaterThan(0);
+      expect(path.length).toBeLessThanOrEqual(65);
+    }, 20_000);
   });
 });

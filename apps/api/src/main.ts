@@ -19,6 +19,7 @@ import { APP_INFO_SERVICE_TOKEN } from './app-info/app-info.module';
 import type { IAppInfoService } from './app-info/app-info.service.interface';
 import { API_VERSION } from './app-info/app-info.types';
 import { CapabilityNotSupportedFilter } from './common/filters/capability-not-supported.filter';
+import { TaxonomySourceUnavailableFilter } from './common/filters/taxonomy-source-unavailable.filter';
 import { ConnectionExceptionFilter } from './common/filters/connection-exception.filter';
 
 async function bootstrap(): Promise<void> {
@@ -81,7 +82,11 @@ async function bootstrap(): Promise<void> {
   // Map capability + connection-lifecycle domain errors to accurate HTTP
   // statuses instead of the default 500 (#1087). Filters catch disjoint
   // exception types, so registration order is irrelevant.
-  app.useGlobalFilters(new CapabilityNotSupportedFilter(), new ConnectionExceptionFilter());
+  app.useGlobalFilters(
+    new CapabilityNotSupportedFilter(),
+    new ConnectionExceptionFilter(),
+    new TaxonomySourceUnavailableFilter(),
+  );
 
   // HTTP API URI versioning (#1133 / ADR-029 Axis 3) — every route is served
   // under `/v1` by default. The inbound `/webhooks` ingress opts out via

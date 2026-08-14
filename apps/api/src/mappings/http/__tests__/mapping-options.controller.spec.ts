@@ -33,6 +33,10 @@ import type {
 } from '@openlinker/core/orders';
 
 import { CATEGORIES_CACHE_SERVICE_TOKEN } from '../../../categories/categories.tokens';
+import {
+  DESTINATION_TAXONOMY_SERVICE_TOKEN,
+  type IDestinationTaxonomyService,
+} from '@openlinker/core/listings';
 import type { ICategoriesCacheService } from '../../../categories/categories-cache.service.interface';
 import { MappingOptionsController } from '../mapping-options.controller';
 
@@ -40,6 +44,7 @@ describe('MappingOptionsController', () => {
   let controller: MappingOptionsController;
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let categoriesCache: jest.Mocked<ICategoriesCacheService>;
+  let taxonomyService: jest.Mocked<IDestinationTaxonomyService>;
   let connectionPort: jest.Mocked<ConnectionPort>;
 
   const ALLEGRO_CONNECTION_ID = 'conn-allegro-1';
@@ -146,6 +151,12 @@ describe('MappingOptionsController', () => {
       getAllegroCategories: jest.fn(),
       getAllegroCategoryPath: jest.fn(),
     } as unknown as jest.Mocked<ICategoriesCacheService>;
+    taxonomyService = {
+      browse: jest.fn().mockResolvedValue([]),
+      search: jest.fn().mockResolvedValue([]),
+      path: jest.fn().mockResolvedValue([]),
+      syncTaxonomy: jest.fn(),
+    } as unknown as jest.Mocked<IDestinationTaxonomyService>;
     connectionPort = {
       get: jest.fn(),
       list: jest.fn(),
@@ -165,6 +176,10 @@ describe('MappingOptionsController', () => {
       providers: [
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrationsService },
         { provide: CATEGORIES_CACHE_SERVICE_TOKEN, useValue: categoriesCache },
+        // The marketplace category routes read the projection since #2074. This
+        // suite covers the option-list routes, which never touch it — the
+        // provider is here only to satisfy construction.
+        { provide: DESTINATION_TAXONOMY_SERVICE_TOKEN, useValue: taxonomyService },
         { provide: CONNECTION_PORT_TOKEN, useValue: connectionPort },
       ],
     }).compile();
@@ -382,41 +397,11 @@ describe('MappingOptionsController', () => {
     });
   });
 
-  describe('categories', () => {
-    it('getDestinationCategories delegates to categoriesCacheService.getPrestashopCategories', async () => {
-      const stubCategories = [{ id: '1', name: 'Cat', parentId: null, depth: 0, active: true }];
-      categoriesCache.getPrestashopCategories.mockResolvedValueOnce(stubCategories as never);
-
-      const result = await controller.getDestinationCategories(ALLEGRO_CONNECTION_ID);
-
-      expect(categoriesCache.getPrestashopCategories).toHaveBeenCalledWith(ALLEGRO_CONNECTION_ID);
-      expect(result).toEqual(stubCategories);
-    });
-
-    it('getSourceCategories delegates to categoriesCacheService.getAllegroCategories with parentId', async () => {
-      categoriesCache.getAllegroCategories.mockResolvedValueOnce([]);
-
-      await controller.getSourceCategories(ALLEGRO_CONNECTION_ID, 'parent-42');
-
-      expect(categoriesCache.getAllegroCategories).toHaveBeenCalledWith(
-        ALLEGRO_CONNECTION_ID,
-        'parent-42'
-      );
-    });
-
-    it('getSourceCategoryPath delegates to categoriesCacheService.getAllegroCategoryPath and maps nodes', async () => {
-      categoriesCache.getAllegroCategoryPath.mockResolvedValueOnce([
-        { id: '1', name: 'Electronics' },
-        { id: '10', name: 'Phones' },
-      ]);
-
-      const result = await controller.getSourceCategoryPath(ALLEGRO_CONNECTION_ID, '10');
-
-      expect(categoriesCache.getAllegroCategoryPath).toHaveBeenCalledWith(ALLEGRO_CONNECTION_ID, '10');
-      expect(result).toEqual([
-        { id: '1', name: 'Electronics' },
-        { id: '10', name: 'Phones' },
-      ]);
-    });
-  });
+  // The `categories` describe that lived here asserted delegation to
+  // `CategoriesCacheService` for all three routes. #2074 repointed the two
+  // MARKETPLACE routes at the destination-taxonomy projection, so those
+  // assertions described behaviour that is deliberately gone. All three routes —
+  // including `destination/categories`, which is deliberately NOT repointed —
+  // are now covered in `../mapping-options.controller.categories.spec.ts`, which
+  // also pins that the legacy cache is no longer called for the marketplace tree.
 });

@@ -7,6 +7,7 @@
  * @module libs/core/src/listings/domain/ports
  */
 import type { DestinationCategory } from '../entities/destination-category.entity';
+import type { CategoryPathSegment } from '../types/category.types';
 import type {
   DestinationCategorySearchHit,
   DestinationCategoryUpsert,
@@ -65,6 +66,17 @@ export interface DestinationCategoryRepositoryPort {
     externalIds: readonly string[],
     runStartedAt: Date,
   ): Promise<void>;
+
+  /**
+   * Root -> leaf breadcrumb for one node, derived by the same recursive CTE
+   * that `search` uses for its hits (#2074).
+   *
+   * Returns `[]` for an id this scope has never synced — the same
+   * "not synced yet" posture `browse` has, and never an error, because a
+   * caller cannot distinguish "unknown id" from "not walked yet" and should
+   * not have to.
+   */
+  findPath(scope: TaxonomyScope, externalId: string): Promise<CategoryPathSegment[]>;
 
   /**
    * Whether this run has observed ANY row in scope.
