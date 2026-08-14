@@ -1,6 +1,12 @@
 # Product Spec — #1032 OL-owned order status state machine
 
-**Status:** phase D complete — **Gate D = DEFER** (2026-06-18). North-star documented; heavy build deferred pending the un-defer trigger (§ Gate D). No heavy implementation issues spawned. A small standalone subset (enrich order-health with shipment + SLA-overdue) is tracked separately, not as a #1032 child. **Rechecked 2026-06-22 (external demand signal): DEFER held — fires no un-defer trigger; a narrow, base-serving Posture-A status/cancellation round-trip was carved out as a separate refinement (#1157), which is a *foundation for*, not an un-deferral of, this bet.**
+**Status:** **Gate D reversed to BUILD (2026-08-13), then NARROWED (2026-08-14)** — the full-module
+programme was stress-tested and largely cut; see § Gate D outcome at the foot of this
+document. The DEFER record below is retained verbatim as the reasoning that held until then; do not
+read the banner history as current. Plan of record:
+[`ANALYSIS-1032-oms-module.md`](../plans/analysis/ANALYSIS-1032-oms-module.md).
+
+**Superseded status line (2026-06-18):** phase D complete — **Gate D = DEFER** (2026-06-18). North-star documented; heavy build deferred pending the un-defer trigger (§ Gate D). No heavy implementation issues spawned. A small standalone subset (enrich order-health with shipment + SLA-overdue) is tracked separately, not as a #1032 child. **Rechecked 2026-06-22 (external demand signal): DEFER held — fires no un-defer trigger; a narrow, base-serving Posture-A status/cancellation round-trip was carved out as a separate refinement (#1157), which is a *foundation for*, not an un-deferral of, this bet.**
 **Parent issue:** [#1032](https://github.com/openlinker-project/openlinker/issues/1032)
 **Started:** 2026-06-18
 **Last updated:** 2026-06-22
@@ -487,3 +493,104 @@ Two senior-seat reviews (Head of Engineering/CTO + CPO) read the full spec. **Bo
 - **2026-06-18 (Phase C)** — Maintainer asked for the effort-independent end-state. Concluded via the *authority principle* that the correct end-state is a single **axis-partitioned, per-order-authority-adaptive canonical order-lifecycle model** (Shape 2 generalised; Shape 4 = a per-order config of it; payments external always; guarded core).
 - **2026-06-18 (Phase C adversarial review)** — Two reviews. **Architecture:** spine sound, but "orthogonal axes / no conflict", "guarded-monotonic single value", and "Shape 4 = dial turned up" are each refuted; N-destination reconciliation matches no incumbent. Corrected end-state = eventually-consistent axes + named cross-axis reconciliation owner + per-axis monotonic + distinct non-monotonic cancel/return axis + lossy derived display + single-origin scope + SOR-ness as a discrete gated commitment. **Product/strategy: DEFER** — scope creep justified by architectural completeness not user need; no named user; wrong pre-revenue priority; status is invisible plumbing; "no matter the effort" is the solo-OSS stall trap; #827-consistency demands a fortiori defer. **Product Lead reconciliation:** adopt corrected end-state as documented north-star; gate the heavy build; ship at most the reconciled read-model slice until demand surfaces.
 - **2026-06-22 (recheck)** — Re-ran `/refine-product` on the back of an external demand signal (an evaluator independently raised the status-sync + cancellation gap; see #1032 comment). **Verdict: DEFER held** — the signal fires none of the three un-defer triggers (evaluator interest, not a deploying seller; single shop, not 2+ destinations; has-a-shop, not no-shop). The recheck did, however, validate a **narrower, base-serving capability** the heavy spec under-credited: a **Posture-A status & cancellation round-trip** for the shop-primary base OL already serves (shop-fulfilled → source mark-sent/tracking; inbound cancel → destination; origin cancel → other participant; topology-agnostic incl. shop→shop). Carved out as a **separate** refinement — **#1157** + spec [`product-spec-1157-order-status-roundtrip.md`](./product-spec-1157-order-status-roundtrip.md) + [ADR-027](../architecture/adrs/027-order-status-writeback-capability-and-relay.md) — explicitly *not* written into this deferred spec (it owns no canonical status; folding it in would mislabel a deferred bet as in-build). It is a **foundation for** this bet: its `OrderStatusWriteback` capability (event-as-data) and relay guardrails (idempotency / self-echo / monotonic) are exactly the seam + primitives this issue's state machine would later drive. The inbound-cancel correctness bug #1132 folds into #1157's Slice 1.
+- **2026-08-13 (Gate D amendment — REVERSED to BUILD)** — See § Gate D amendment below.
+- **2026-08-14 (Gate D outcome — BUILD narrowed)** — eight stress tests, eight disqualifying
+  findings; the module is not built. See § Gate D outcome below.
+
+---
+
+## Gate D amendment (2026-08-13, superseded 2026-08-14)
+
+> **Superseded by the 2026-08-14 outcome below.** The 2026-08-13 reversal decided BUILD, scoped as a
+> full OMS module. The resulting six-wave programme was then stress-tested and **largely cut**. The
+> 2026-08-13 reasoning is retained verbatim underneath because the demand basis and the primary-source
+> corrections remain accurate and useful; the *decision* it records no longer stands.
+
+## Gate D outcome (2026-08-14) — BUILD **narrowed**, not a module
+
+**Decision: build the surviving parts; do not build an OMS module.** The six-wave programme was
+stress-tested with eight adversarial passes and **all eight found disqualifying defects**. Record:
+[`ANALYSIS-1032-oms-module.md`](../plans/analysis/ANALYSIS-1032-oms-module.md); scope statement and
+children on #1032.
+
+**What was cut, and why** (each verified against code, not argued):
+
+- **Waves 0 and 1** — `canonicalState` is a pure function of two already-indexed columns; the axis
+  vocabulary is never enumerated; and the relay obligation table produces **zero rows** for the
+  lost-cancel bug it exists to fix. So the claim below that "Waves 0–1 are justified independently of
+  the bet" is **withdrawn** — the lost cancel is real, but it is closed by a `WHERE cancelledAt IS
+  NULL` predicate (#2069), not by a ledger.
+- **Wave 2** — split; only per-line counters (2a) are buildable, and `shipped_quantity` is
+  permanently 0 on the default routing kind without a branch-1 writer. The pack station is blocked on
+  a principal decision (#2080).
+- **Waves 3 and 5** — cut outright. Wave 5 would make published stock *worse* on the default routing
+  kind.
+- **Wave 4** — narrowed to a read-only projection (#2078).
+- **Dry-run is withdrawn.** Point 2 below claims the changeset model "yields dry-run as a
+  by-product"; [ADR-044](../architecture/adrs/044-order-changeset-proposed-then-confirmed.md) states
+  it does not belong to that ADR, and the composition machinery that would have produced it is
+  deferred.
+- **[ADR-043](../architecture/adrs/043-order-lifecycle-derived-from-fact-ledger.md) is Proposed, not
+  adopted** — point 1 below leans on it as settled; it is not.
+
+**The Wave-2 gate described further down still holds in spirit** — nothing further is built until a
+falsifiable premise is observed — but it now applies to the narrowed items, not to Waves 3–5.
+
+### The 2026-08-13 reasoning (retained; decision superseded)
+
+### Demand basis — stated honestly
+
+A prospective **agency** asked for an OMS that showcases the order, its status and whether it has
+been packed, and separately wants orchestration. Assessed against § Gate D's three un-defer triggers:
+
+| Trigger | Fired? |
+|---|---|
+| 1. A live deployment with 2+ destinations per order reporting reconciliation pain | **No** |
+| 2. A seller incurring marketplace late-shipment penalties asking OL to enforce SLA | **No** |
+| 3. A concrete no-shop / WMS-fulfilled seller | **No** |
+
+**None fired.** The reversal is therefore a maintainer decision to make the OMS-positioning bet —
+consistent with the *STRATEGIC BET* posture recorded at Gate A (2026-06-18) — and not new evidence
+that the deferring conditions changed. This is recorded plainly so a future reader is not misled
+into thinking the triggers were met.
+
+The signal *does* squarely fire **#827**'s defer condition: #827 was deferred for lack of demand,
+and "can staff confirm it is packed" is its core. #827's own out-of-scope list excluded barcode
+scanning and per-operator accountability, both of which the agency asked for — so the workbench wave
+is broader than #827 as written.
+
+### What changed in the design since 2026-06-18
+
+Seven research streams (competitor anatomy; PL demand + OSS landscape; orchestration architecture;
+returns/allocation readiness; rules-engine design; Allegro/PL primary-source verification; a Medusa
+entity-level spike plus an OSS state-machine comparison) changed three substantive conclusions:
+
+1. **The end-state is sharper than "guarded canonical axis".** The canonical lifecycle is a *derived
+   projection over a per-axis fact ledger*, never a stored contested scalar — [ADR-043](../architecture/adrs/043-order-lifecycle-derived-from-fact-ledger.md).
+   This adopts, rather than overrides, the Phase C adversarial review's refutations.
+2. **A changeset model was missing from the original spec.** Every OL order mutation is a proposal to
+   a remote authority that may decline it — [ADR-044](../architecture/adrs/044-order-changeset-proposed-then-confirmed.md).
+   It also yields dry-run, the one differentiator no surveyed competitor offers, as a by-product.
+3. **Waves 0–1 are justified independently of the bet.** They replace three ad-hoc at-most-once
+   claims with one primitive and close a documented lost-cancel bug. This is the part of the DEFER
+   reasoning that no longer holds regardless of demand.
+
+### What the CTO/CPO objections still cost
+
+The Phase D review's core objection — that OL would take on a permanent 24/7 correctness liability
+a small pre-revenue team must underwrite — is **not** retired by any of this research. It is accepted,
+with one mitigation: the plan makes **the end of Wave 2 an explicit gate**, after which Waves 3–5
+each require fresh justification rather than inheriting this decision.
+
+### Primary-source corrections carried into the plan
+
+- Allegro's fulfillment enum is larger than assumed — it also carries `READY_FOR_PICKUP`,
+  `SUSPENDED`, `RETURNED`; the seller-writable subset is narrower than the observable set.
+- Allegro exposes `checkoutForm.revision` with a 409 on mismatch, so status write-back can be made
+  safe rather than last-write-wins.
+- Dispatch quality is dominated by the **negative** measure (`Wysyłka w terminie`, to −460 from
+  26 August), not the +160 positive one. The declared dispatch time is a risk position.
+- The Smart! "waybills for ≥50% of parcels" requirement is **not published** on any current
+  Allegro-owned page. Do not design against it.
+- Allegro customer returns permit **read + reject-refund only** — an OMS cannot drive a return to
+  completion there, which caps Wave 4's ambition.
