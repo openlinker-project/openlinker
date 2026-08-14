@@ -39,10 +39,7 @@ import { CustomerEntityLabel } from '../../features/customers/components/Custome
 import { ConnectionDot, OrderIdentityCell } from '../../features/orders';
 // Pure view-model helpers + the wire-mirrored redaction constant live in the
 // owning feature (they're unit-tested there); the page only composes them.
-import {
-  REDACTED_ERROR_MESSAGE,
-  ShipmentSeverityLabel,
-} from '../../features/shipments';
+import { REDACTED_ERROR_MESSAGE, ShipmentSeverityLabel } from '../../features/shipments';
 import type { Shipment, ShipmentFilters, ShipmentStatus, ShippingMethod } from '../../features/shipments/api/shipments.types';
 import {
   SHIPMENT_STATUS_VALUES,

@@ -445,6 +445,27 @@ describe('ShipmentRowDetail — non-failed facts grid (#1905)', () => {
     expect(screen.queryByText('Provider')).not.toBeInTheDocument();
     expect(screen.queryByText('Method')).not.toBeInTheDocument();
   });
+
+  it('should still render the copyable order id on a failed row (#2089)', () => {
+    // A failed row is exactly where an operator quotes the order id to carrier
+    // support, and the failure block replaces the facts grid — so the field has
+    // to live in both grids, not only the healthy one.
+    renderWithProviders(
+      <ShipmentRowDetail
+        shipment={makeShipment({ orderId: 'ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9' })}
+        canWrite
+        canReviewConnection
+      />,
+      { apiClient },
+    );
+
+    expect(screen.getByText('Carrier rejection')).toBeInTheDocument();
+    expect(screen.getByText('Order')).toBeInTheDocument();
+    expect(screen.getByText('ol_order_a4f3…c9')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Copy internal order ID ol_order_a4f3…c9' }),
+    ).toBeInTheDocument();
+  });
 });
 
 describe('ShipmentRowDetail — omp/branch-1', () => {
