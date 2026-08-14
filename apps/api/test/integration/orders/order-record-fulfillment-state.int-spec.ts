@@ -13,12 +13,10 @@
  * @module apps/api/test/integration/orders
  */
 import {
-  ORDER_RECORD_REPOSITORY_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
   deriveSlaState,
   type IOrderRecordService,
   type Order,
-  type OrderRecordRepositoryPort,
 } from '@openlinker/core/orders';
 import { OrderRecordOrmEntity } from '@openlinker/core/orders/orm-entities';
 import {
@@ -64,12 +62,10 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
 describe('Order record fulfillment state survives re-ingestion (#2101)', () => {
   let harness: IntegrationTestHarness;
   let orderRecordService: IOrderRecordService;
-  let repository: OrderRecordRepositoryPort;
 
   beforeAll(async () => {
     harness = await getTestHarness();
     orderRecordService = harness.getApp().get<IOrderRecordService>(ORDER_RECORD_SERVICE_TOKEN);
-    repository = harness.getApp().get<OrderRecordRepositoryPort>(ORDER_RECORD_REPOSITORY_TOKEN);
   });
 
   afterEach(async () => {
@@ -142,17 +138,17 @@ describe('Order record fulfillment state survives re-ingestion (#2101)', () => {
       'evt-2'
     );
 
-    const notShipped = await repository.findMany({ fulfillmentState: 'not-shipped' }, PAGE);
+    const notShipped = await orderRecordService.findMany({ fulfillmentState: 'not-shipped' }, PAGE);
     expect(notShipped.items.map((o) => o.internalOrderId)).not.toContain(order.id);
 
-    const overdue = await repository.findMany({ slaState: 'overdue' }, PAGE);
+    const overdue = await orderRecordService.findMany({ slaState: 'overdue' }, PAGE);
     expect(overdue.items.map((o) => o.internalOrderId)).not.toContain(order.id);
 
-    const dispatched = await repository.findMany({ fulfillmentState: 'dispatched' }, PAGE);
+    const dispatched = await orderRecordService.findMany({ fulfillmentState: 'dispatched' }, PAGE);
     expect(dispatched.items.map((o) => o.internalOrderId)).toContain(order.id);
 
     // The domain derivation the API response mapper uses agrees with the SQL.
-    const found = await repository.findById(order.id);
+    const found = await orderRecordService.getOrderRecord(order.id);
     expect(deriveSlaState(found!.dispatchByAt, found!.fulfillmentState, new Date())).toBe('none');
   });
 });
