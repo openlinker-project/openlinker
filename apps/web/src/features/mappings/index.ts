@@ -15,6 +15,9 @@ export { useMappingOptions } from './hooks/use-mapping-options';
 export { useRoutingRulesQuery } from './hooks/use-routing-rules';
 // Delivery-mapping fix-it deep link (#1794) — built by the orders delivery
 // rider, parsed by the connection-mappings page.
+// Second cross-feature consumer as of #2028 (the listings channel pill), so the
+// resolver joins the barrel rather than being reached for by deep path.
+export { resolvePlatformLabel } from './lib/platform-label';
 export {
   DELIVERY_MAPPING_DEEP_LINK_PARAMS,
   DELIVERY_MAPPING_TAB,
