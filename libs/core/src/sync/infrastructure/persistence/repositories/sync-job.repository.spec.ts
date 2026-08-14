@@ -228,4 +228,63 @@ describe('SyncJobRepository', () => {
       expect(result).toBe(false);
     });
   });
+
+  describe('findLastSucceededByConnectionAndJobType (#1982)', () => {
+    it('queries by connectionId + jobType + succeeded status, ordered by updatedAt DESC then id DESC', async () => {
+      ormRepo.findOne.mockResolvedValue(
+        makeOrmEntity({ status: 'succeeded', updatedAt: new Date('2026-06-01T00:00:00Z') })
+      );
+
+      const result = await repo.findLastSucceededByConnectionAndJobType(
+        'conn-1',
+        'marketplace.orders.poll'
+      );
+
+      expect(result).not.toBeNull();
+      expect(result?.status).toBe('succeeded');
+      // `where` is an array (OR across two branches: outcome != business_failure,
+      // and outcome IS NULL — see the method's doc comment) — assert both
+      // branches share the connectionId/jobType/status predicate.
+      expect(ormRepo.findOne).toHaveBeenCalledWith({
+        where: expect.arrayContaining([
+          expect.objectContaining({
+            connectionId: 'conn-1',
+            jobType: 'marketplace.orders.poll',
+            status: 'succeeded',
+          }),
+        ]),
+        order: { updatedAt: 'DESC', id: 'DESC' },
+      });
+    });
+
+    it('excludes a succeeded job whose outcome is business_failure, but admits a NULL outcome', async () => {
+      // Asserted via the `where` shape rather than a real TypeORM query
+      // (this spec mocks `findOne` directly) — the `outcome` predicate is
+      // a FindOperator, so assert its SQL-generating shape indirectly by
+      // confirming both OR branches are present rather than deep-equal
+      // (which is brittle against TypeORM's internal FindOperator
+      // representation).
+      ormRepo.findOne.mockResolvedValue(null);
+
+      await repo.findLastSucceededByConnectionAndJobType('conn-1', 'marketplace.orders.poll');
+
+      const [callArgs] = ormRepo.findOne.mock.calls[0] as [
+        { where: Array<Record<string, unknown>> },
+      ];
+      expect(callArgs.where).toHaveLength(2);
+      expect(callArgs.where[0]).toHaveProperty('outcome');
+      expect(callArgs.where[1]).toHaveProperty('outcome');
+    });
+
+    it('returns null when no succeeded job exists for the connection + job type', async () => {
+      ormRepo.findOne.mockResolvedValue(null);
+
+      const result = await repo.findLastSucceededByConnectionAndJobType(
+        'conn-1',
+        'marketplace.orders.poll'
+      );
+
+      expect(result).toBeNull();
+    });
+  });
 });

@@ -76,6 +76,10 @@ const harness = createIntegrationTestHarness({
     // No ORM/migration FK; truncate explicitly so each invoicing case (incl.
     // the (connectionId, idempotencyKey) dedup assertion) starts clean.
     'invoice_records',
+    // destination_categories (#1979) — the taxonomy projection. Marketplace
+    // rows are owner-keyed with NO connectionId, so nothing cascades from
+    // connections; truncate explicitly or an owner tree leaks between cases.
+    'destination_categories',
     // product_content_field FKs to both products + connections, so it goes
     // before them.
     'product_content_field',
@@ -160,6 +164,7 @@ const harness = createIntegrationTestHarness({
     OL_REGULATORY_RECONCILE_ENABLED: 'false',
     OL_OFFLINE_RESUBMIT_ENABLED: 'false',
     OL_PENDING_RECOVERY_ENABLED: 'false',
+    OL_TAXONOMY_SYNC_ENABLED: 'false',
 
     // Integration tests seed users explicitly via loginAsAdmin / seedUser
     // helpers. Letting BootstrapAdminService also insert a default `admin`
