@@ -2,7 +2,7 @@
 
 **Status:** phase A complete; phase B complete; phase C complete (Gate C = A+E, 2026-07-29); phase D complete; Gate D = YES (build); phase E complete — ready for implementation
 **Parent issue:** [#1902](https://github.com/openlinker-project/openlinker/issues/1902)
-**ADR:** [ADR-042 — Fiscalisation as a capability distinct from invoicing](../architecture/adrs/042-fiscalisation-capability.md)
+**ADR:** [ADR-042 — Fiscalization as a capability distinct from invoicing](../architecture/adrs/042-fiscalization-capability.md)
 **Started:** 2026-07-28
 **Last updated:** 2026-07-28
 **Workflow:** [`docs/contributors/refinement-workflow.md`](../contributors/refinement-workflow.md)
@@ -174,9 +174,9 @@ The framing constraint holds for every shape: OL never issues a receipt. Every o
 
 > **Superseded 2026-07-29** — the maintainer asked whether the seam should be internationally general, not PL-neutral. A second deep-research pass (below) materially changes the answer to E. See §4a.
 
-### 4a. International fiscalisation — second research pass (2026-07-29)
+### 4a. International fiscalization — second research pass (2026-07-29)
 
-**Question asked:** is a generalised, cross-country fiscalisation port a sound abstraction to design now from a Polish-only first implementation?
+**Question asked:** is a generalised, cross-country fiscalization port a sound abstraction to design now from a Polish-only first implementation?
 
 **Answer: yes — and we should not invent the contract, because two vendors have already published it.**
 
@@ -201,7 +201,7 @@ Second leak: export/audit is irreducibly country-shaped (DSFinV-K for DE, DEP7 f
 
 ## 5. Product specification
 
-> **Phase D complete.** Chosen shape: **A + E** — build the eparagony.pl connector, on integrator commercial terms, as **adapter #1 behind a general fiscalisation capability** whose decomposition is taken from the fiskaltrust/efsta published contract rather than inferred from Poland.
+> **Phase D complete.** Chosen shape: **A + E** — build the eparagony.pl connector, on integrator commercial terms, as **adapter #1 behind a general fiscalization capability** whose decomposition is taken from the fiskaltrust/efsta published contract rather than inferred from Poland.
 
 Persona shorthand below: **"the seller"** = register-obliged PL online seller (§4-excluded category), per §2.
 
@@ -209,7 +209,7 @@ Persona shorthand below: **"the seller"** = register-obliged PL online seller (�
 
 **US-1 — Receipt without re-keying.**
 *As the seller, I want an order in OpenLinker to produce a fiscal e-receipt automatically, so that I stop re-entering order lines into my printer software.*
-- Given a connected fiscalisation provider and an order that requires a receipt, the receipt is issued without the operator opening another system.
+- Given a connected fiscalization provider and an order that requires a receipt, the receipt is issued without the operator opening another system.
 - The operator can tell, from the order, that a receipt was requested — including while it is still in flight.
 - If the order does not require a receipt, nothing is issued and nothing is shown.
 
@@ -222,17 +222,17 @@ Persona shorthand below: **"the seller"** = register-obliged PL online seller (�
 **US-3 — Failures are visible and safe to retry.**
 *As the seller, I want a failed receipt to be obvious and safely retryable, so that I never register the same sale twice.*
 - A failure is surfaced on the order with an actionable reason, not silently swallowed.
-- Retrying never produces a second fiscal registration of the same sale. **A double-fiscalisation is a legal event for the seller, not a data-quality issue** — this AC is the highest-severity one in this spec.
+- Retrying never produces a second fiscal registration of the same sale. **A double-fiscalization is a legal event for the seller, not a data-quality issue** — this AC is the highest-severity one in this spec.
 - An unresolved failure never blocks the rest of order processing.
 
 **US-4 — Connect once, in configuration.**
-*As the seller (non-technical, printer configured by a `serwisant`), I want to connect our fiscalisation account to OpenLinker as a setup step, so that enabling this is configuration and not a project.*
+*As the seller (non-technical, printer configured by a `serwisant`), I want to connect our fiscalization account to OpenLinker as a setup step, so that enabling this is configuration and not a project.*
 - The account is connected from the connection UI, in line with every other OL integration.
 - The operator is told plainly what they must have in place first (fiscal printer online, vendor printer-control software running, `serwisant` configuration done).
 - A misconfigured or unreachable setup is diagnosable from OL — the operator can tell *which* precondition is missing.
 
 **US-5 — A second provider is an adapter, not a fork.**
-*As a maintainer or OSS adopter, I want a second fiscalisation provider to be addable as an adapter, so that OpenLinker is not welded to one Polish vendor or to Poland.*
+*As a maintainer or OSS adopter, I want a second fiscalization provider to be addable as an adapter, so that OpenLinker is not welded to one Polish vendor or to Poland.*
 - Adding a provider does not require changing order handling or any core domain code.
 - No vendor name and no country assumption (notably "there is a fiscal printer") appears in the shared contract.
 - The contract accommodates the four observed trust-anchor classes without naming them: certified device, security module, certified software + hash chain, remote authority endpoint.
@@ -333,7 +333,7 @@ The persona is legally defined and most PL e-commerce is *exempt* (courier COD p
 |---|---|---|---|
 | [#1906](https://github.com/openlinker-project/openlinker/issues/1906) | Close certification-liability + counterparty questions | S | **BLOCKING** — spike. R1 is potentially invalidating; must close before code ships |
 | [#1907](https://github.com/openlinker-project/openlinker/issues/1907) | Secure integrator-class listing + API/sandbox access | S | **BLOCKING** — non-engineering. Worth 60–120 zł/mo per seller |
-| [#1908](https://github.com/openlinker-project/openlinker/issues/1908) | Fiscalisation capability + eparagony adapter (register) | M | Core. `/plan` first — new capability port |
+| [#1908](https://github.com/openlinker-project/openlinker/issues/1908) | Fiscalization capability + eparagony adapter (register) | M | Core. `/plan` first — new capability port |
 | [#1909](https://github.com/openlinker-project/openlinker/issues/1909) | Receipt status + link on the order | S | The parity bar; push-only fails US-2 |
 | [#1910](https://github.com/openlinker-project/openlinker/issues/1910) | Device/peripheral sub-capability | M | Required for PL. `/plan` first |
 | [#1911](https://github.com/openlinker-project/openlinker/issues/1911) | Connection setup + preconditions UI | S | |
@@ -346,7 +346,7 @@ Two deep-research passes back this spec. Both had material errors worth knowing 
 
 - **Pass 1 (2026-07-28)** — PL legal + vendor baseline. Produced a **false negative**: adversarially "refuted" that eparagony.pl integrates IdoSell/AtomStore; the live integrations page lists both. Also under-counted their integrations (~60, not "20+").
 - **Phase A correction (2026-07-28)** — targeted legal research overturned this spec's own Phase A draft *and* the Gate A briefing on COD. See decision log.
-- **Pass 2 (2026-07-29)** — international fiscalisation. Answered the abstraction question well; **left the regime inventory essentially unanswered** (only IT and CZ verified) and left R1 on circumstantial evidence only.
+- **Pass 2 (2026-07-29)** — international fiscalization. Answered the abstraction question well; **left the regime inventory essentially unanswered** (only IT and CZ verified) and left R1 on circumstantial evidence only.
 
 **Standing lesson:** primary sources settled every question that mattered here — the Dz.U. PDF, the KIS interpretacja, the live vendor pages, the fiskaltrust repo. Verify against those before acting on a synthesised finding.
 

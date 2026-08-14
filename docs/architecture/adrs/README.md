@@ -129,7 +129,7 @@ One pointer per section, identical format every time.
 | [ADR-037](./037-destination-taxonomy-read-model.md) | Destination taxonomy as a synced read model in `listings` (retires the platform-named Allegro category cache) | Proposed | 2026-07-30 |
 | [ADR-038](./038-per-connection-outbound-rate-limiting.md) | Per-connection outbound rate limiting via a shared transport + ambient priority context | Proposed | 2026-07-30 |
 | [ADR-041](./041-sales-document-routing-policy.md) | Sales-document routing policy - which document type and which connection an order gets | Proposed | 2026-08-13 |
-| [ADR-042](./042-fiscalisation-capability.md) | Fiscalisation as a capability distinct from invoicing | Proposed | 2026-08-13 |
+| [ADR-042](./042-fiscalization-capability.md) | Fiscalization as a capability distinct from invoicing | Proposed | 2026-08-13 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
 

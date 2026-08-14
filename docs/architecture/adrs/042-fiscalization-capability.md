@@ -1,4 +1,4 @@
-# ADR-042: Fiscalisation as a capability distinct from invoicing
+# ADR-042: Fiscalization as a capability distinct from invoicing
 
 - **Status**: Proposed
 - **Date**: 2026-08-13
@@ -6,7 +6,7 @@
 
 ## Context
 
-#1908 introduces a **fiscalisation capability** (eparagony.pl as adapter #1) so that an OpenLinker
+#1908 introduces a **fiscalization capability** (eparagony.pl as adapter #1) so that an OpenLinker
 order can produce a Polish fiscal e-receipt without the operator re-keying lines into printer
 software. The framing constraint: **OpenLinker can never issue a fiscal receipt.** Issuance is
 reserved to a registering device whose type carries a *potwierdzenie Prezesa Głównego Urzędu Miar*,
@@ -22,7 +22,7 @@ seller-facing compliance claim should be made on it without a professional opini
 stated out-of-scope).
 
 **What adapter #1 actually is.** eparagony.pl (Platforma Detalistów sp. z o.o.) is a private e-receipt
-**distribution hub**, not a fiscaliser and not the state HUB paragonowy: it requires
+**distribution hub**, not a fiscalizer and not the state HUB paragonowy: it requires
 vendor-proprietary software driving a physical online fiscal printer. Adapter #1 therefore sits in
 front of a device **somebody else operates** — the capability hands the sale to a provider that
 performs or brokers the fiscal registration, never performs it. Note also that most Polish
@@ -46,15 +46,17 @@ capability port touches the plugin contract and more than one bounded context, w
 
 ## Decision
 
-Names below are this ADR's proposal; #1908 may refine spelling, not shape. **Code identifiers, the
-capability value and the context path use the `-ization` spelling** (`'Fiscalization'`,
-`libs/core/src/fiscalization/`, `FiscalizationPort`), matching the repository's identifier convention
-(`normalize`, `serialize`, `synchronize`, `Authorization`) rather than #1902's prose. The capability
-value is wire-visible in `connections.enabledCapabilities` and gated by a strict `@IsIn` DTO, so it
-is a breaking change to revisit once a connection exists; docs, spec and issue titles keep
-`-isation` without consequence.
+Names below are this ADR's proposal; #1908 may refine spelling, not shape. **`-ization` is the
+spelling everywhere** — code identifiers, the capability value, the context path
+(`'Fiscalization'`, `libs/core/src/fiscalization/`, `FiscalizationPort`) *and* prose across the
+docs, matching the repository's overwhelming house style (`normalize` 464 : 40, `authorize`
+244 : 3, and every shipped identifier). #1902's spec and the GitHub issue titles were written
+`-isation`; the spec was normalised with this ADR, and the issue titles are left alone because
+renaming them would break inbound links for no gain. Settling it here matters most for the
+capability value, which is wire-visible in `connections.enabledCapabilities` and gated by a strict
+`@IsIn` DTO — once a connection exists, changing it is a breaking change.
 
-1. **Fiscalisation is its own capability port, not a `DocumentType` on `InvoicingPort`.**
+1. **Fiscalization is its own capability port, not a `DocumentType` on `InvoicingPort`.**
    `FiscalizationPort` lives in a new `libs/core/src/fiscalization/` context, resolved per connection
    through `IntegrationsService` like every other capability. `Fiscalization` joins the **closed**
    `CoreCapabilityValues` list rather than riding the open-world string escape (#576), because the
@@ -138,7 +140,7 @@ is a breaking change to revisit once a connection exists; docs, spec and issue t
    evidence.
 7. **An indeterminate outcome is first-class and is never auto-retried.** A transport failure after
    which the sale MAY already be registered resolves by locating the registration at the provider or
-   by an operator decision, never by a blind resend. Fiscalisation declares its **own**
+   by an operator decision, never by a blind resend. Fiscalization declares its **own**
    `FiscalRegistrationFailureModeValues = ['rejected', 'in-doubt']` - invoicing's shape mirrored by
    design rather than imported, so the two taxonomies diverge as their regimes do (decision 1's whole
    premise) instead of one silently inheriting the other's extensions. Two artefacts come from
@@ -149,7 +151,7 @@ is a breaking change to revisit once a connection exists; docs, spec and issue t
    provider id - a `FiscalRegistrationLocator` sub-capability (`locateByQuery(criteria)`, mirroring
    ADR-035's `RegulatoryRecordLocator`), scoped to #1908 alongside the base port. A provider exposing
    no such query gets manual operator handling, never a blind resubmit.
-8. **Tax calculation is out of scope, and fiscalisation never computes a rate of its own** - stated
+8. **Tax calculation is out of scope, and fiscalization never computes a rate of its own** - stated
    here because a fiscal registration transmits amounts it must not recompute. That negative half is
    settled and holds whatever else is decided. The *positive* half - **the VAT rate arrives from the
    ProductMaster together with the product, and OpenLinker never infers or defaults it** - is
@@ -158,7 +160,7 @@ is a breaking change to revisit once a connection exists; docs, spec and issue t
    [ADR-014](./014-source-authoritative-order-pricing.md) ("Alternatives considered"), proposed in
    **#2058, which is open and may be refused** - its own framing says refuting the argument is a
    legitimate outcome. Contract work is #2054. Under the rule as proposed, a missing rate or an
-   unresolved tax-rate conflict blocks fiscalisation as a business failure with an operator-facing
+   unresolved tax-rate conflict blocks fiscalization as a business failure with an operator-facing
    reason, exactly as it blocks invoice issue; if #2058 is refused, the rate reaches the fiscal
    command by some other route, and only the blocking behaviour above is re-opened, not this ADR.
 9. **Explicitly deferred** (recorded so a reader knows each was decided, not overlooked):
@@ -195,7 +197,7 @@ is a breaking change to revisit once a connection exists; docs, spec and issue t
      ours either way, so this ADR is not blocked by that answer. The implementation plan for #1908
      *is* blocked by it, and is therefore not part of this change.
 10. **No degraded / offline mode ships in v1, and this is a decision rather than an omission.**
-    Every POS-side fiscalisation stack has one - efsta returns an empty fiscal tag marked `#OFFLINE`
+    Every POS-side fiscalization stack has one - efsta returns an empty fiscal tag marked `#OFFLINE`
     after a configurable window plus a `UserMessage` the POS must display, fiskaltrust circuit-breaks
     into late-signing where lateness is a legally-recognised flag rather than an error, Lightspeed
     prints *Sicherungseinrichtung ausgefallen*, D365 offers `Postpone` with a backup connector - so a
@@ -244,7 +246,7 @@ is a breaking change to revisit once a connection exists; docs, spec and issue t
     meaningless for them; its result is an **opaque, country-schema'd file** core stores and hands
     over without parsing (the same posture as invoicing's `RegulatoryDocumentReader` blob, #1224);
     it is **scheduled or operator-initiated** on a reporting cadence, so it is a sync-job type rather
-    than a step of the fiscalisation flow; and providers in regimes with no export duty have nothing
+    than a step of the fiscalization flow; and providers in regimes with no export duty have nothing
     to return, so a base-port method would force a no-op implementation on every one of them - the
     exact situation [ADR-002](./002-capability-ports-with-sub-capabilities.md) sub-capabilities exist
     to avoid.
@@ -346,4 +348,4 @@ broker-fronted device; #1910 is the contract seam a future device-exposing provi
 - Primary source: product spec [#1902](../../specs/product-spec-1902-eparagony-e-receipts.md) §4a
   (fiskaltrust / efsta contract research), §5 US-5, §6 (out of scope), §8 R1
 - Primary doc section: [docs/architecture-overview.md](../../architecture-overview.md)
-  § Core Bounded Contexts, 16. Fiscalisation
+  § Core Bounded Contexts, 16. Fiscalization
