@@ -68,6 +68,14 @@ const harness = createIntegrationTestHarness({
     // status. No ORM/migration FK to connections, so nothing cascades; truncate
     // explicitly so the Erli offers-status reconciliation case (#991) starts clean.
     'offer_status_snapshots',
+    // offer_commercial_snapshots (#2024) — connection-scoped channel-side price
+    // + quantity, written by the same status-sync pass. No ORM/migration FK to
+    // connections, so nothing cascades; truncate explicitly. No spec writes to
+    // it today (the Erli vertical slice drives the sync, but its fixtures carry
+    // no price/stock, so every observation is both-null and skipped) - listed
+    // ahead of the first spec that does, since a table with no FK is invisible
+    // to the cascade closure and would leak silently.
+    'offer_commercial_snapshots',
     // listing_creation_records (#1042) — variant- + connection-scoped shop
     // publish attempts. No ORM/migration FK, so nothing cascades from
     // connections; truncate explicitly so each shop-publish case starts clean.
@@ -76,6 +84,11 @@ const harness = createIntegrationTestHarness({
     // No ORM/migration FK; truncate explicitly so each invoicing case (incl.
     // the (connectionId, idempotencyKey) dedup assertion) starts clean.
     'invoice_records',
+    // refund_records (#2036) — order-scoped refund-capture projection. No
+    // ORM/migration FK to order_records (plain indexed text column, matching
+    // the invoice_records precedent); truncate explicitly so each refund case
+    // starts clean.
+    'refund_records',
     // destination_categories (#1979) — the taxonomy projection. Marketplace
     // rows are owner-keyed with NO connectionId, so nothing cascades from
     // connections; truncate explicitly or an owner tree leaks between cases.
