@@ -25,8 +25,16 @@ export {
   RegulatoryStatusBadge,
   REGULATORY_STATUS_LABEL_FALLBACK,
 } from './components/regulatory-status-badge';
-export { regCardToneFor, type RegCardTone } from './lib/derive-invoice-display';
+export {
+  deriveInvoiceDisplayStatus,
+  regCardToneFor,
+  type RegCardTone,
+} from './lib/derive-invoice-display';
 export { InvoicePdfLink } from './components/invoice-pdf-link';
+export {
+  DOCUMENT_TYPE_LABEL_FALLBACK,
+  DOCUMENT_TYPE_UNKNOWN_LABEL,
+} from './components/document-type-select';
 export { useOrderInvoiceQuery } from './hooks/use-order-invoice-query';
 export { useInvoiceQuery } from './hooks/use-invoice-query';
 export { useIssueInvoiceMutation } from './hooks/use-issue-invoice-mutation';

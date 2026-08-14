@@ -16,7 +16,7 @@ If no active invoicing connection exists, the **Invoice** panel on an order's de
 
 Open **Invoices** in the sidebar (under **Operations**).
 
-<!-- screenshot: invoices list showing filter row (status, regulatory, connection, tax ID, date range), the data table with Order/Invoice no./Document type/Status/Regulatory/Clearance ref./Connection columns -->
+<!-- screenshot: invoices list showing filter row (status, regulatory, connection, tax ID, date range), the data table with Order/Document type/Status/Regulatory/Clearance ref./Connection/Issued columns. NOTE: the PNG below still shows the pre-#2090 nine-column layout with a separate "Invoice no." column — reshoot on the epic's visual pass. -->
 ![Invoices list](./images/04-invoices.png)
 
 ### Filters
@@ -33,13 +33,12 @@ Open **Invoices** in the sidebar (under **Operations**).
 
 | Column | Description |
 |---|---|
-| **Order** | Internal order ID (`ol_order_*`) the invoice was issued for |
-| **Invoice no.** | Provider-assigned invoice number, linked to the PDF when available |
-| **Document type** | e.g. `invoice`, `receipt`, `credit-note`, `corrected`, `proforma`, `prepayment` |
+| **Order** | The marketplace order number the invoice was issued for, linked to the order, over the first item name and a `+N` count. **Copy** writes the full internal order ID (`ol_order_*`) — the button says so. When the order can't be resolved the number falls back to a shortened internal ID, still linked. |
+| **Document type** | Two lines: the provider-assigned document number over the document type (`Invoice (faktura)`, `Receipt (paragon)`, `Correction (korekta)`, `Credit note (nota kredytowa)`, `Proforma`, `Prepayment`). The number links to the PDF when the provider ships one, and is copyable when it doesn't (KSeF and inFakt ship no PDF URL). A record that hasn't been issued yet has no number and no type, so it reads `—` over **Not yet issued**. |
 | **Status** | Derived display status — see **Invoice statuses** below |
 | **Regulatory** | Clearance status with the connected tax authority, when applicable |
 | **Clearance ref.** | The authority-assigned reference (e.g. KSeF number), once cleared |
-| **Connection** | Which invoicing connection issued the document |
+| **Connection** | Which invoicing connection issued the document: its name (linked) over a shortened, copyable connection ID, plus a status note when the connection needs attention. Hidden below 1024 px. |
 | **Issued** | Date the document was issued |
 
 ### Invoice statuses

@@ -9521,18 +9521,46 @@ a.kpi-card:focus-visible {
 /* Merged Document-type cell (#2090). Two columns answering one question became
  * one two-line cell: the document number (a PDF link) over the document type.
  * Same two-level shape as the identity cells above, without a thumbnail — there
- * is no product to picture. No cap: both lines are short, bounded strings
- * (`FV/2026/08/0042`, `Invoice`), so nothing here can widen a column. */
+ * is no product to picture.
+ *
+ * Capped like its siblings, and for the same reason: neither line is actually
+ * bounded. `providerInvoiceNumber` is a `text` column filled from an
+ * operator-authored numbering pattern or from whatever the provider assigns
+ * (`FS/MAGAZYN-1/2026/08/000042` is a routine PL series), and `documentType` is
+ * open-world at the boundary. In an auto-layout `.data-table` a flex column with
+ * `align-items: flex-start` sizes to content, so without a cap no child's
+ * ellipsis can fire and one long series widens the column. 220px matches
+ * `.connection-cell__body`. */
 .invoice-document-cell {
   display: flex;
   flex-direction: column;
   gap: 2px;
   align-items: flex-start;
   min-width: 0;
+  max-width: 220px;
+}
+
+.invoice-document-cell > * {
+  max-width: 100%;
 }
 
 .invoice-document-cell__type {
   font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The row's leading checkbox is the primary control on a list whose main action
+ * is "select rows -> Retry selected". `.data-table td` is `vertical-align:
+ * middle` (:2798), so at the ~60px identity-row height a 13px checkbox centres
+ * opposite the GAP between the two identity lines instead of the identity it
+ * selects — the same geometry #2089 fixed for its leading expander, but that rule
+ * is keyed on `.data-table__row--expandable` and this table has no expander. A
+ * column of misaligned boxes at 60px pitch is how an operator mis-ticks the
+ * neighbouring row. */
+.invoices-table td:first-child {
+  vertical-align: top;
 }
 
 /* Frozen-pane budget (#2089). 1024px is the worst case by construction: the

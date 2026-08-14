@@ -8,11 +8,17 @@
  *   - rowHref is `/invoices/:id` (was `/orders/:orderId`)
  *   - taxId filter drives the query
  *   - BulkActionBar appears on row selection
+ *
+ * New #2090 assertions: the merged `Document type` column (numbered, receipt,
+ * not-yet-issued and copy-instead-of-link branches, plus the `hideBelow`
+ * absence #2094 depends on), the two shared identity cells, mobile-card parity
+ * with the desktop columns, and one connections request per page.
  */
-import { cleanup, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
+import { mockMobileViewport } from '../../test/viewport';
 import { InvoicesListPage } from './invoices-list-page';
 import type { InvoicingApi } from '../../features/invoicing/api/invoicing.api';
 import type { InvoiceRecord, PaginatedInvoices } from '../../features/invoicing/api/invoicing.types';
@@ -75,7 +81,12 @@ function mockApi(
 }
 
 describe('InvoicesListPage', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    // Two tests stub `navigator` for the clipboard; inline cleanup would leak the
+    // stub into every later test in the file if the assertion threw first.
+    vi.unstubAllGlobals();
+  });
 
   it('renders the loading skeleton while the list query is pending', () => {
     const list = vi.fn().mockReturnValue(new Promise<PaginatedInvoices>(() => undefined));
@@ -149,17 +160,144 @@ describe('InvoicesListPage', () => {
       route: '/invoices',
     });
 
-    await screen.findByRole('link', { name: /open invoice pdf/i });
+    // The accessible name carries the number, so 20 rows are 20 distinct links.
+    await screen.findByRole('link', { name: 'Open invoice PDF for FV/2026/001 (opens in new tab)' });
     const cell = container.querySelector('.invoice-document-cell');
     expect(cell).not.toBeNull();
-    // Number on line 1 (still the PDF anchor), type on line 2.
+    // Number on line 1 (still the PDF anchor), LABELLED type on line 2 — the raw
+    // slug `invoice` is what the sibling detail page never showed.
     expect(within(cell as HTMLElement).getByText('FV/2026/001')).toBeInTheDocument();
-    expect(within(cell as HTMLElement).getByText('invoice')).toBeInTheDocument();
+    expect(within(cell as HTMLElement).getByText('Invoice (faktura)')).toBeInTheDocument();
+    expect(within(cell as HTMLElement).queryByText('invoice')).toBeNull();
 
     // The separate "Invoice no." column is gone; the list is 8 columns wide.
     const headers = container.querySelectorAll('thead th');
     expect(headers).toHaveLength(8);
     expect(screen.queryByText('Invoice no.')).toBeNull();
+
+    // The merged column must survive 768px — it hosts #2094's tablet fold, so it
+    // cannot be the thing that disappears there. Connection keeps its 1024 gate.
+    expect(headers[2]?.className).not.toContain('data-table__cell--hide-below-768');
+    expect(headers[6]?.className).toContain('data-table__cell--hide-below-1024');
+  });
+
+  it('labels every document type the providers can issue, not just invoice and receipt', async () => {
+    // Subiekt issues credit-note, KSeF and inFakt issue corrected, inFakt also
+    // proforma. Before #2090 all four read as the raw slug on three surfaces.
+    const list = vi.fn().mockResolvedValue(
+      makeEnvelope({
+        items: [
+          makeInvoice({ id: 'inv_c', documentType: 'corrected', providerInvoiceNumber: 'KOR/1' }),
+          makeInvoice({ id: 'inv_n', documentType: 'credit-note', providerInvoiceNumber: 'NK/1' }),
+        ],
+        total: 2,
+      }),
+    );
+    renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+    expect(await screen.findByText('Correction (korekta)')).toBeInTheDocument();
+    expect(screen.getByText('Credit note (nota kredytowa)')).toBeInTheDocument();
+    expect(screen.queryByText('corrected')).toBeNull();
+    expect(screen.queryByText('credit-note')).toBeNull();
+  });
+
+  it('says "Not yet issued" rather than rendering a blank cell for a failed record', async () => {
+    // `InvoiceService` writes `documentType: ''` on the pending row and the
+    // failure patch never backfills it, and both production issuance paths omit
+    // the type — so a raw render left the merged cell's ONLY text empty on every
+    // row a triage filter selects.
+    const list = vi.fn().mockResolvedValue(
+      makeEnvelope({
+        items: [
+          makeInvoice({ status: 'failed', documentType: '', providerInvoiceNumber: null }),
+        ],
+        total: 1,
+      }),
+    );
+    const { container } = renderWithProviders(<InvoicesListPage />, {
+      apiClient: mockApi(list),
+      route: '/invoices',
+    });
+
+    const cell = (await screen.findByText('Not yet issued')).closest('.invoice-document-cell');
+    expect(cell).not.toBeNull();
+    // The dash is an `EmptyValue`, so a screen reader hears a word.
+    expect(within(cell as HTMLElement).getByLabelText('No value')).toBeInTheDocument();
+    expect(container.querySelector('.invoice-document-cell')?.textContent).not.toBe('—');
+  });
+
+  it('makes the document number copyable when the provider ships no PDF url', async () => {
+    // KSeF and inFakt both hard-null `pdfUrl`, so line 1 was inert text — the one
+    // identifier on the row with no affordance at all, on a page organised around
+    // reconciling by document number.
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+
+    const list = vi.fn().mockResolvedValue(
+      makeEnvelope({
+        items: [makeInvoice({ pdfUrl: null, providerInvoiceNumber: 'FV/2026/08/0042' })],
+        total: 1,
+      }),
+    );
+    renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Copy document number FV/2026/08/0042' }),
+    );
+    expect(writeText).toHaveBeenCalledWith('FV/2026/08/0042');
+    expect(screen.queryByRole('link', { name: /open invoice pdf/i })).toBeNull();
+  });
+
+  it('renders the mobile card from the same two renderers as the desktop columns', async () => {
+    // The card used to headline `providerInvoiceNumber ?? r.orderId`, i.e. the raw
+    // 41-character UUID this issue exists to remove, on every not-yet-issued row.
+    const viewport = mockMobileViewport();
+    try {
+      const list = vi.fn().mockResolvedValue(
+        makeEnvelope({
+          items: [
+            makeInvoice({
+              orderId: 'ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9',
+              providerInvoiceNumber: null,
+              documentType: '',
+              orderSummary: {
+                orderNumber: '6839-2911-4402',
+                firstItemName: 'Terra Wool Coat',
+                firstItemImageUrl: null,
+                itemCount: 1,
+              },
+            }),
+          ],
+          total: 1,
+        }),
+      );
+      renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+      expect(await screen.findByText('Not yet issued')).toBeInTheDocument();
+      expect(screen.queryByRole('table')).toBeNull();
+      // The order is the card's subtitle, as the shared cell — never a raw id.
+      expect(screen.getByRole('link', { name: '6839-2911-4402' })).toBeInTheDocument();
+      expect(
+        screen.queryByText('ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9'),
+      ).toBeNull();
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it('shows the connection loading state rather than Unknown on a cold load', async () => {
+    const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [makeInvoice()], total: 1 }));
+    const { container } = renderWithProviders(<InvoicesListPage />, {
+      apiClient: createMockApiClient({
+        invoicing: { list },
+        connections: { list: vi.fn().mockReturnValue(new Promise(() => {})) },
+      }),
+      route: '/invoices',
+    });
+
+    await screen.findByText('Invoice (faktura)');
+    expect(container.querySelector('.connection-cell [aria-busy="true"]')).not.toBeNull();
+    expect(screen.queryByText('Unknown')).toBeNull();
   });
 
   it('renders the em dash over the document type for a receipt with no provider number', async () => {
@@ -175,9 +313,9 @@ describe('InvoicesListPage', () => {
       route: '/invoices',
     });
 
-    await screen.findByText('receipt');
+    await screen.findByText('Receipt (paragon)');
     const cell = container.querySelector('.invoice-document-cell') as HTMLElement;
-    expect(within(cell).getByText('—')).toBeInTheDocument();
+    expect(within(cell).getByLabelText('No value')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /open invoice pdf/i })).toBeNull();
   });
 
@@ -247,10 +385,9 @@ describe('InvoicesListPage', () => {
     const copy = await screen.findByRole('button', {
       name: 'Copy internal order ID for order 6839-2911-4402',
     });
-    copy.click();
+    fireEvent.click(copy);
 
     expect(writeText).toHaveBeenCalledWith('ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9');
-    vi.unstubAllGlobals();
   });
 
   it('links the shortened internal order id when no order summary resolves', async () => {

@@ -10,6 +10,17 @@
  *   - Checkbox selection + BulkActionBar + ConfirmDialog for batch retry
  *   - Result banner after batch retry
  *
+ * #2090 (epic #2086):
+ *   - `invoiceNumber` + `documentType` merged into one `Document type` column
+ *     (9 -> 8): the provider number over a LABELLED type, `Not yet issued` when
+ *     the record carries neither. The column deliberately has no `hideBelow` —
+ *     it hosts #2094's tablet fold of the connection.
+ *   - Order column -> the shared `OrderIdentityCell`, fed from `orderSummary`
+ *   - Connection column -> the shared `ConnectionCell` (no adornment), replacing
+ *     an id hidden in a `title` attribute
+ *   - Both cells rendered by ONE local function each, shared with `cardView`, so
+ *     the mobile card cannot drift back to printing a raw order UUID
+ *
  * Structural mirror: `pages/webhook-deliveries/webhook-deliveries-page.tsx`
  * (layout, pagination, DataTable + cardView, feedback states, setFilter/setOffset
  * URL helpers). Enum-param reading + the date-range widen-to-UTC sub-pattern
@@ -31,11 +42,13 @@ import { Button } from '../../shared/ui/button';
 import { Input } from '../../shared/ui/input';
 import { Select } from '../../shared/ui/select';
 import { TimeDisplay } from '../../shared/ui/time-display';
+import { CopyableId } from '../../shared/ui/copyable-id';
+import { EmptyValue } from '../../shared/ui/empty-value';
 import { useTranslation } from '../../shared/i18n';
-import { useRetryInvoicesMutation } from '../../features/invoicing/hooks/use-retry-invoices-mutation';
-import { useBulkIssueInvoicesMutation } from '../../features/invoicing/hooks/use-bulk-issue-invoices-mutation';
-import { deriveInvoiceDisplayStatus } from '../../features/invoicing/lib/derive-invoice-display';
 import {
+  deriveInvoiceDisplayStatus,
+  useBulkIssueInvoicesMutation,
+  useRetryInvoicesMutation,
   useInvoicesQuery,
   InvoiceStatusBadge,
   RegulatoryStatusBadge,
@@ -47,9 +60,10 @@ import {
   type InvoiceRecord,
   type InvoiceStatus,
   type RegulatoryStatus,
+  DOCUMENT_TYPE_LABEL_FALLBACK,
+  DOCUMENT_TYPE_UNKNOWN_LABEL,
 } from '../../features/invoicing';
-import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
-import { ConnectionCell } from '../../features/connections';
+import { ConnectionCell, useConnectionsQuery } from '../../features/connections';
 import { OrderIdentityCell } from '../../features/orders';
 
 const PAGE_SIZE = 20;
@@ -115,6 +129,62 @@ export function InvoicesListPage(): ReactElement {
   const connectionsById = useMemo(
     () => new Map(connections.map((c) => [c.id, { name: c.name, status: c.status }])),
     [connections],
+  );
+
+  // ONE renderer per identity fact, used by both the desktop column and the
+  // mobile card. The card used to headline `providerInvoiceNumber ?? r.orderId`,
+  // i.e. the raw 41-character UUID this issue exists to remove, on every row
+  // without a provider number — which is every pending / issuing / failed row.
+  // Functions rather than two matching call sites, mirroring #2089.
+  const documentTypeLabel = (r: InvoiceRecord): string =>
+    r.documentType
+      ? t(
+          `invoice.documentType.${r.documentType}`,
+          DOCUMENT_TYPE_LABEL_FALLBACK[r.documentType] ?? r.documentType,
+        )
+      : // `''` is what `InvoiceService` writes on the pending row, and the failure
+        // patch never backfills it — so a raw render left the merged cell's only
+        // text blank on exactly the rows a triage filter selects.
+        t('invoice.documentType.unknown', DOCUMENT_TYPE_UNKNOWN_LABEL);
+
+  const renderDocumentCell = (r: InvoiceRecord): ReactElement => {
+    const label = documentTypeLabel(r);
+    return (
+      <span className="invoice-document-cell">
+        {r.providerInvoiceNumber ? (
+          // Still a PDF link when the provider gave us a URL. KSeF and inFakt
+          // both hard-null `pdfUrl`, and `InvoicePdfLink` degrades to plain text
+          // there — so the number, the string this workflow is organised around,
+          // was the one identifier on the row with no affordance at all. Copy is
+          // that affordance on the degraded path.
+          r.pdfUrl ? (
+            <InvoicePdfLink invoiceNumber={r.providerInvoiceNumber} pdfUrl={r.pdfUrl} />
+          ) : (
+            <CopyableId
+              id={r.providerInvoiceNumber}
+              copyLabel={t('invoice.copyNumber', `Copy document number ${r.providerInvoiceNumber}`)}
+            />
+          )
+        ) : (
+          // Not a receipt-only branch: every not-yet-issued record lands here, so
+          // line 2 has to carry a real word rather than an empty string.
+          <EmptyValue />
+        )}
+        <span className="text-muted invoice-document-cell__type" title={label}>
+          {label}
+        </span>
+      </span>
+    );
+  };
+
+  const renderOrderCell = (r: InvoiceRecord): ReactElement => (
+    <OrderIdentityCell
+      orderId={r.orderId}
+      orderNumber={r.orderSummary?.orderNumber}
+      firstItemName={r.orderSummary?.firstItemName}
+      firstItemImageUrl={r.orderSummary?.firstItemImageUrl}
+      itemCount={r.orderSummary?.itemCount}
+    />
   );
 
   // Batch retry state
@@ -235,15 +305,7 @@ export function InvoicesListPage(): ReactElement {
       // Was the raw 41-character `orderId` in a `mono-text` span: no truncation,
       // no Copy, no link. `orderSummary` has been on this response since #1995 /
       // PR #2012 and was typed-but-unconsumed until now (#2090).
-      cell: (r) => (
-        <OrderIdentityCell
-          orderId={r.orderId}
-          orderNumber={r.orderSummary?.orderNumber}
-          firstItemName={r.orderSummary?.firstItemName}
-          firstItemImageUrl={r.orderSummary?.firstItemImageUrl}
-          itemCount={r.orderSummary?.itemCount}
-        />
-      ),
+      cell: renderOrderCell,
       accessor: (r) => r.orderSummary?.orderNumber ?? r.orderId,
     },
     {
@@ -256,20 +318,7 @@ export function InvoicesListPage(): ReactElement {
       // cell, so it cannot be the thing that disappears at that width.
       id: 'documentType',
       header: t('invoice.column.documentType', 'Document type'),
-      cell: (r) => (
-        <span className="invoice-document-cell">
-          {r.providerInvoiceNumber ? (
-            <InvoicePdfLink invoiceNumber={r.providerInvoiceNumber} pdfUrl={r.pdfUrl} />
-          ) : (
-            // A receipt carries no provider number — an expected shape, not an
-            // error state, so the type on line 2 still identifies the document.
-            <span className="text-muted">—</span>
-          )}
-          <span className="text-muted invoice-document-cell__type" title={r.documentType}>
-            {r.documentType}
-          </span>
-        </span>
-      ),
+      cell: renderDocumentCell,
       accessor: (r) => r.documentType,
     },
     {
@@ -507,14 +556,20 @@ export function InvoicesListPage(): ReactElement {
       ) : (
         <>
           <DataTable
+            // Scopes the leading-checkbox alignment for the ~60px identity row —
+            // `DataTable` lands `className` on its container, so the rule is a
+            // descendant selector on this page's table only (see `index.css`).
+            className="invoices-table"
             caption={t('invoice.list.caption', 'Invoices')}
             columns={columns}
             rows={query.data?.items ?? []}
             rowKey={(r) => r.id}
             rowHref={(r) => `/invoices/${r.id}`}
             cardView={{
-              title: (r) => r.providerInvoiceNumber ?? r.orderId,
-              subtitle: (r) => r.documentType,
+              // Same two renderers as the desktop columns — the document is what
+              // titles an invoice card, the order is what qualifies it.
+              title: renderDocumentCell,
+              subtitle: renderOrderCell,
               meta: (r) => <InvoiceStatusBadge status={deriveInvoiceDisplayStatus(r)} />,
             }}
           />
