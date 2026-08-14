@@ -99,7 +99,7 @@ controller, and one Infrastructure migration.
 - **Caching the resolved reporting currency.** See § 5 Assumptions.
 - **The WooCommerce `placedAt` mapping.** One line, and the data is there, but it moves invoicing's
   `saleDate` from empty to the placement date — a fiscal field, with a possible tax-period shift for a
-  future invoice on an existing order. Kept as a separate change with its own invoicing review; see § 5
+  future invoice on an existing order. Filed as **#2097** with its own invoicing review; see § 5
   open question 4 for the full analysis. **Consequence accepted here**: a foreign-currency WooCommerce
   order stays terminal-unstamped, including in the demo.
 - **Line-item-level conversion.** Only the order total is stamped; `order_line_items` (#1985) keeps
@@ -439,7 +439,7 @@ table.
      put the invoice in a **different VAT period**. More correct, and a visible change in fiscal output.
 
    That is an invoicing decision with its own blast radius, so it gets its own change and its own review by
-   the invoicing owner. **Accepted cost in the meantime**: a foreign-currency WooCommerce order is
+   the invoicing owner — filed as **#2097**. **Accepted cost in the meantime**: a foreign-currency WooCommerce order is
    terminal-unstamped, which is an honest documented state rather than a crash — including in the demo,
    whose two seeded WooCommerce orders run in WC's install default (USD, since `woocommerce_currency` is set
    nowhere in the tree) and will therefore surface as unstamped with a non-zero unstamped count. The demo
@@ -1130,8 +1130,8 @@ which is strictly more durable and one fewer place to keep in sync.
       ingest as **terminal-unstamped**, so the demo's first FX-visible artefact is a non-zero unstamped
       count rather than a populated `reportingTotalAmount`.
 
-      Two ways to make the demo show a real conversion, **both out of scope here**: land the WooCommerce
-      `placedAt` mapping (its own change), or add foreign-currency PrestaShop orders to the demo seed —
+      Two ways to make the demo show a real conversion, **both out of scope here**: land #2097 (the WooCommerce
+      `placedAt` mapping), or add foreign-currency PrestaShop orders to the demo seed —
       PrestaShop emits `placedAt`, and its demo shop already has EUR and USD active
       (`docker/prestashop/post-install-lib/20-set-default-currency.php` promotes PLN to default and leaves
       the other two active), so it needs order creation only. A seeder doing that must pin `date_add` to
@@ -1675,7 +1675,7 @@ refresh, since it carries the criteria someone implements against.
 - [ ] `OL_REPORTING_CURRENCY` is documented in `apps/api/.env.example`, `apps/worker/.env.example` and the
       root `./.env.example`, and passed through by `docker-compose.demo.yml`.
 - [ ] `CurrencySettingsController` is registered in `write-guard-coverage.spec.ts`'s `CONTROLLERS`.
-- [ ] The WooCommerce `placedAt` mapping is **not** in this PR, and the ADR records why (§ 5 Q4): a
+- [ ] The WooCommerce `placedAt` mapping is **not** in this PR (filed as #2097), and the ADR records why: a
       foreign-currency WooCommerce order stays terminal-unstamped, and no existing invoice's `saleDate`
       changes.
 - [ ] `libs/core/src/currency/` imports no sibling core context (verified by grep **and**

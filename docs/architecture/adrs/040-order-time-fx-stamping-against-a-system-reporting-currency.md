@@ -210,7 +210,7 @@ is the one being priced — what the registry stores as `fromCurrency`, i.e. the
   tax period when the order was placed in an earlier month than it is invoiced. Already-issued documents
   are unaffected (`InvoiceRecord` is a persisted projection, and `issuedLineSnapshot` (#1297) exists so
   nothing re-derives from live order state), but a *future* invoice for an *existing* WooCommerce order
-  would change. That is an invoicing decision with its own review, not an FX one.
+  would change. That is an invoicing decision with its own review, not an FX one — filed as **#2097**.
 
   Note also that no source supplies a *payment* timestamp — Allegro reads one and discards it — which is
   why this ADR anchors on placement and says so rather than claiming the rate of the day the buyer paid.
@@ -242,7 +242,8 @@ is the one being priced — what the registry stores as `fromCurrency`, i.e. the
   `ShipmentRepository.claimWaybillRelay` (conditional single-writer claim),
   `InvoiceRecord.issuedLineSnapshot` (#1297 — the shape a fiscal rate should follow instead of
   referencing a registry row).
-- Follow-up: **#2096** (restate already-stamped orders when the reporting currency changes)
+- Follow-ups: **#2096** (restate already-stamped orders when the reporting currency changes),
+  **#2097** (populate `placedAt` on the WooCommerce order source)
 - Primary doc section: a `docs/architecture-overview.md` § Currency section is **to be added by the #2049
   implementation PR**; it does not exist yet, so this reference is forward-looking rather than a citation.
 - Plan: [implementation-plan-2049-order-fx-rate-snapshot.md](../../plans/implementation-plan-2049-order-fx-rate-snapshot.md)
