@@ -14,12 +14,13 @@
  * by default), else the catch-all (`id_country = 0`) rule, else the first rule.
  *
  * **"Untaxed" and "unknown" are different answers (#2052).** A product whose
- * `id_tax_rules_group` is an explicit `0` resolves to `0` — that is the "No tax"
- * entry in PrestaShop's own product dropdown, i.e. a deliberate operator
- * statement, and blocking on it would refuse every intentionally exempt
- * product. An *absent* or unparseable group is a different thing entirely (the
- * read did not state the product's tax status), so the three cases stay
- * distinguishable. Everything that means "the read did not tell me the rate"
+ * `id_tax_rules_group` reads `0` resolves to `0` — that is the "No tax" entry in
+ * PrestaShop's own product dropdown, i.e. a deliberate operator statement, and
+ * blocking on it would refuse every intentionally exempt product. A *missing*
+ * field reads the same way, because PrestaShop's webservice omits a zero-valued
+ * `id_*` field instead of emitting `0`. An *unparseable* group is a different
+ * thing entirely (the read did not state the product's tax status). Everything
+ * that means "the read did not tell me the rate"
  * reports `kind: 'unknown'`, because the caller pins a tax-EXCLUDED price and a
  * `0` it cannot trust silently mis-prices the order (#895 / ADR-014). Only a
  * resolved rate is cached: caching an unknown would keep the wrong answer alive
@@ -119,24 +120,10 @@ export class PrestashopTaxRateResolver {
     }
 
     const rawGroup = product?.id_tax_rules_group;
-    if (rawGroup === undefined || rawGroup === null || String(rawGroup).trim() === '') {
-      // The read succeeded and did not carry the field at all. That is NOT the
-      // "No tax" dropdown entry below — PrestaShop states that as an explicit
-      // `0` — it is a payload that cannot be priced with (a `display` filter, a
-      // partial response, schema drift). Collapsing the two was the surviving
-      // half of the #2052 defect: it priced gross as net AND cached the answer.
-      this.logger.warn(
-        `Tax rate unknown for product ${externalProductId}: products/${externalProductId} ` +
-          `carries no tax-rule group field.`
-      );
-      return {
-        kind: 'unknown',
-        reason: 'configuration',
-        evidence: `products/${externalProductId} carries no tax-rule group`,
-      };
-    }
+    const groupAbsent =
+      rawGroup === undefined || rawGroup === null || String(rawGroup).trim() === '';
 
-    const groupId = Number.parseInt(String(rawGroup), 10);
+    const groupId = groupAbsent ? 0 : Number.parseInt(String(rawGroup), 10);
     if (!Number.isFinite(groupId) || groupId < 0) {
       this.logger.warn(
         `Tax rate unknown for product ${externalProductId}: products/${externalProductId} reports ` +
@@ -154,6 +141,16 @@ export class PrestashopTaxRateResolver {
       // dropdown — a deliberate exemption, NOT missing data, so it stays a
       // resolved 0 (#2052). Warned rather than silent so an operator who did
       // not mean to exempt the product can still find it in the logs.
+      //
+      // An ABSENT field lands here too, because PrestaShop's webservice OMITS a
+      // zero-valued `id_*` field rather than emitting `0`: a real `GET
+      // /products/{id}` on a "No tax" product carries no `id_tax_rules_group`
+      // at all (alongside the equally-absent `id_manufacturer` /
+      // `id_supplier`), while a non-zero `id_category_default` is present.
+      // Reporting absence as `unknown` therefore blocked EVERY intentionally
+      // exempt product — the opposite of what #2052 set out to protect. The
+      // genuinely unpriceable readings stay `unknown`: an unusable group value,
+      // a rate field the shop answered without, and any transport failure.
       this.logger.warn(
         `Product ${externalProductId} has no tax-rule group (PrestaShop "No tax"); pricing it as untaxed.`
       );

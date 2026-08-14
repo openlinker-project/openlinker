@@ -51,19 +51,17 @@ describe('PrestashopTaxRateResolver', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('PrestaShop "No tax"'));
   });
 
-  // An explicit `0` is an answer; an ABSENT field is not. Collapsing the two was
-  // the surviving half of the #2052 defect — the product priced as untaxed AND
-  // the wrong answer entered the 5-minute cache.
-  it('should report a configuration unknown when the product read carries no tax-rule group field', async () => {
+  // A MISSING field reads as the same "No tax" answer, because PrestaShop's
+  // webservice omits a zero-valued `id_*` field rather than emitting `0` — a
+  // real `GET /products/{id}` on an exempt product carries no
+  // `id_tax_rules_group` at all. Reporting that as `unknown` blocked every
+  // intentionally exempt product, which is the opposite of #2052's intent.
+  it('should resolve 0 when the product read omits the tax-rule group field (PrestaShop omits zero ids)', async () => {
     httpClient.getResource.mockResolvedValueOnce({});
 
     const resolution = await resolver.resolveProductTaxRate('25', 'PL', 'conn-1', httpClient);
 
-    expect(resolution).toEqual({
-      kind: 'unknown',
-      reason: 'configuration',
-      evidence: 'products/25 carries no tax-rule group',
-    });
+    expect(resolution).toEqual({ kind: 'resolved', rate: 0 });
     expect(httpClient.listResources).not.toHaveBeenCalled();
   });
 
@@ -79,11 +77,11 @@ describe('PrestashopTaxRateResolver', () => {
     });
   });
 
-  it('should not cache a missing tax-rule group, so the operator fix takes effect at once', async () => {
+  it('should not cache an unusable tax-rule group, so the operator fix takes effect at once', async () => {
     countryResolver.resolveCountryId.mockResolvedValue(6);
     httpClient.listResources.mockResolvedValue([{ id_tax: '7', id_country: '6', id_state: '0' }]);
     httpClient.getResource
-      .mockResolvedValueOnce({}) // products/25 — field absent
+      .mockResolvedValueOnce({ id_tax_rules_group: 'not-a-group' }) // products/25 — unpriceable
       .mockResolvedValueOnce({ id_tax_rules_group: '2' }) // operator assigned a group
       .mockResolvedValueOnce({ rate: '23.000' });
 
