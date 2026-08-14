@@ -7,6 +7,7 @@
  */
 export {
   addWorkingDays,
+  previousWorkingDay,
   isPlPublicHoliday,
   isPlWorkingDay,
   easterSunday,
