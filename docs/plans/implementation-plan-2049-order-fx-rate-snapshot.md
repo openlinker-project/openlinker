@@ -63,9 +63,10 @@ controller, and one Infrastructure migration.
 - System reporting-currency setting: singleton `reporting_currency_setting` row, service with the
   three-rung resolution chain, admin `GET`/`PUT`, **save-time provider-coverage validation**, and a
   settings-page tile rendering `EUR (default)` until explicitly set.
-- Source selection by reporting currency (`PLN → NBP`, `EUR → ECB`), non-publication-day handling
-  driven by the existing Polish working-day calendar in `@openlinker/shared/date`, plus ECB's own
-  calendar absorbed by its adapter.
+- Source selection by reporting currency (`PLN → NBP`, `EUR → ECB`), with a **calendar-neutral**
+  rate-date rule: each adapter resolves the actual published day itself — NBP via the existing Polish
+  working-day calendar in `@openlinker/shared/date` plus its 404 walk-back, ECB via
+  `lastNObservations=1` in a single request (§ 4).
 - A retry sync job **plus** a periodic reconcile sweep for orders that could not be stamped inline.
 - One TypeORM migration, with a manual `up`/`down`/`up` acceptance run.
 - `previousWorkingDay` added to `libs/shared/src/date/pl-working-days.ts`.
@@ -259,22 +260,78 @@ new edge on its own. Assert by grep in review.
 
 ### ECB reference rates
 
+**Verified against the live API on 2026-08-14** (every claim below was reproduced with a curl; the
+outputs are recorded in the PR discussion).
+
+- **Host**: `https://data-api.ecb.europa.eu/service/data/EXR/D.{CUR}.EUR.SP00.A`. The legacy
+  `sdw-wsrest.ecb.europa.eu` host that most third-party documentation cites **no longer resolves**
+  (DNS failure), so any example written against it is dead.
+- **Authentication**: none. Public. No advertised rate-limit headers; `cache-control: max-age=30`.
 - **Direction**: ECB quotes `EUR → X` only — the mirror image of NBP. So `X → EUR` is a single
-  inversion, and `EUR → X` is direct.
-- **Authentication**: none. Public.
-- **Calendar**: TARGET working days, **not** Polish ones, and a different cut-off (~16:00 CET). The
-  two calendars therefore disagree — e.g. 3 May and 15 August are Polish holidays on which ECB
-  publishes, and Good Friday / Easter Monday are TARGET holidays. This is why `resolveRateDate`
-  produces a **candidate** day per the rule and each adapter absorbs its own publication calendar via
-  its walk-back-on-miss, rather than the shared Polish calendar being treated as authoritative for
-  both.
-- **⚠️ NOT VERIFIED IN THIS PLAN — a research item before Phase 1b.** ECB's daily XML feed carries
-  only the latest day, which is unusable for a `prev-business-day` rule that must fetch a specific
-  past date. The historical / SDMX endpoint, its response shape, its date-parameter semantics and its
-  behaviour on a non-publication day all need the same treatment the NBP section above received
-  (including whether a missing date 404s, returns an empty series, or returns the nearest prior day —
-  the last of which would make the walk-back unnecessary but must not be *assumed*). Do not implement
-  `EcbExchangeRateAdapter` against a guess.
+  inversion and `EUR → X` is direct. There is **no EUR/EUR identity series** (`D.EUR.EUR.SP00.A` is a
+  404), which is fine because the same-currency short-circuit precedes any provider call (step 11).
+- **The daily XML feed is unusable**, as suspected: `eurofxref-daily.xml` carries exactly one day.
+- **`endPeriod` + `lastNObservations=1` is the read, and it removes the walk-back entirely.** The API
+  itself resolves "the last publication on or before this date":
+  `?endPeriod=2026-08-08&lastNObservations=1&format=csvdata&detail=dataonly` (a Saturday) answers with
+  `TIME_PERIOD=2026-08-07`. One request, no loop, and no calendar knowledge inside the adapter. It
+  handles clusters a walk-back-by-one gets wrong — Good Friday `2026-04-03` and Easter Monday
+  `2026-04-06` both resolve to `2026-04-02`, and `2026-01-01` resolves to `2025-12-31` across the year
+  boundary. `TIME_PERIOD` is the **actual** rate date and is what gets persisted as `rateDate`, exactly
+  as the NBP adapter treats `effectiveDate`.
+- **A non-publication day is HTTP `200` with a ZERO-BYTE body, not a 404** — the opposite of NBP. An
+  adapter written on the NBP shape would treat it as success-with-no-data and hand an empty string to
+  its parser. Pin it in a spec.
+- **An unknown currency IS a real `404`**, with an RFC-7807-shaped JSON body
+  (`{"title":"Not Found","status":404,"detail":"No Series was returned for the query: …"}`). So
+  `supports()` has a clean discriminator, and it is a **different** signal from the empty `200`:
+  404 ⇒ unsupported pair, empty 200 ⇒ no observation at or before that date. Both terminal, different
+  reasons.
+- **A FUTURE `endPeriod` silently returns a stale rate.** `?endPeriod=2026-12-24&lastNObservations=1`
+  answered `2026-08-13` — four months old, HTTP 200, no signal of any kind. This is what makes step 2's
+  `min(resolved, todayInWarsaw)` clamp load-bearing rather than defensive.
+- **Decimal places vary per currency**, unlike NBP's fixed 4: `PLN` 4, `GBP` 5, `JPY` 2, `HUF` 2 — and
+  the series metadata carries its own `DECIMALS` column. `numeric(18,8)` holds all of them so storage is
+  unaffected, but see the § 8 rounding note for what a 2-dp quote does to the error bound.
+- **Multi-currency batching works**: `D.PLN+USD+GBP+JPY.EUR.SP00.A?…&lastNObservations=1` returns all
+  four series in one response. Not needed per-order; it is what would make a restatement wave (#2096)
+  cheap.
+- `detail=dataonly` trims the response from 32 columns to 8. `format=jsondata` also exists; CSV is
+  simpler here and unambiguous.
+- **Reference time is 14:15 CET**, not the ~16:00 often quoted — from the series metadata
+  (`"ECB reference exchange rate, Polish zloty/Euro, 2.15 pm (C.E.T.)"`). Irrelevant to
+  `prev-business-day`; a future `same-day` rule would need it.
+- **Not verified**: how far back the daily series runs. It demonstrably covers `2025-12-31`, and EUR
+  reference rates begin 1999-01-04. Irrelevant to stamping at ingestion; a backfill or restatement wave
+  should confirm rather than assume.
+
+**⚠️ The research invalidated the plan's shared-calendar rate-date rule — see the next subsection.**
+
+### The rate-date rule is calendar-neutral; each adapter resolves the published day
+
+The pre-research design had `resolveRateDate` derive the candidate day from the **Polish** working-day
+calendar for every source, treating each provider's walk-back as defence only. For ECB that produces a
+**silently stale rate**, because the two calendars genuinely diverge and ECB publishes on Polish-only
+holidays. Verified twice: `2026-06-04` (Corpus Christi, a Thursday) → published, `4.2368`; `2026-01-06`
+(Epiphany, a Tuesday) → published, `4.2105`.
+
+The concrete failure, for an order placed **Friday 2026-06-05** under `prev-business-day`:
+
+| Day | ECB rate | |
+|---|---|---|
+| Wed 2026-06-03 | 4.2383 | what the **PL calendar** resolves to, having skipped Thursday |
+| Thu 2026-06-04 | 4.2368 | **correct** — ECB's last publication before Friday |
+| Fri 2026-06-05 | 4.2338 | the order's own day |
+
+Off by 0.0015 PLN per EUR (~0.035%), never throws, and wrong the same way on every PL-only holiday.
+
+**So the rule is calendar-neutral**: `resolveRateDate(placedAt, rule)` yields the *previous calendar
+day* (clamped to today-in-Warsaw), and each adapter resolves the actual published day its own way —
+`NbpExchangeRateAdapter` keeps the Polish working-day calendar plus its 404 walk-back, so its common
+case stays one request; `EcbExchangeRateAdapter` passes the candidate as `endPeriod` with
+`lastNObservations=1` and needs no calendar at all. This **deletes** the "one shared `isPlWorkingDay`
+helper serves both sources" assumption rather than working around it. `previousWorkingDay` (step 0) is
+still added and still used — by the NBP adapter, not by the shared rule.
 
 ### Direction is an invariant, not a convention
 
@@ -532,7 +589,8 @@ which is strictly more durable and one fewer place to keep in sync.
 
 ### Phase 0 — Shared calendar
 
-0. **`previousWorkingDay` in `@openlinker/shared/date`**
+0. **`previousWorkingDay` in `@openlinker/shared/date`** — consumed by the **NBP adapter**, not by the
+   shared rate-date rule (§ 4: the rule is calendar-neutral)
    - **Files**: `libs/shared/src/date/pl-working-days.ts`, `libs/shared/src/date/index.ts`
      (+ `libs/shared/src/date/__tests__/`)
    - **Action**: add `previousWorkingDay(from: Date): Date` beside `addWorkingDays` (`:201`), reusing
@@ -592,16 +650,21 @@ which is strictly more durable and one fewer place to keep in sync.
        `incoming.placedAt ? new Date(incoming.placedAt) : undefined`, with no `Number.isNaN`
        check — unlike `deriveDispatchByAt`, `order-record.service.ts:243-250`, which has one) makes
        100% of foreign-currency WC orders throw and die after 10 retries.
-     - For `prev-business-day`: `previousWorkingDay(placedAt)` (step 0), then format in
-       `Europe/Warsaw` via `Intl.DateTimeFormat` (no new dependency). The calendar owns weekends
-       **and** Polish public holidays; the provider's HTTP walk-back is defence against unexpected
-       non-publication only, not the holiday oracle.
-     - **Clamp**: `min(resolved, todayInWarsaw)`. A source clock running fast (or a source that
-       reports a future `date_add`) must not resolve a rate date NBP has not published.
-   - **Acceptance**: see § 9 — mid-week, Monday, **Saturday**, **Sunday**, the 23:30 UTC Sunday roll,
-     a Europe/Warsaw DST-transition day, a holiday cluster, `undefined`, an Invalid Date, and the
-     future-date clamp.
-   - **Dependencies**: steps 0, 1.
+     - For `prev-business-day`: the **previous calendar day**, formatted in `Europe/Warsaw` via
+       `Intl.DateTimeFormat` (no new dependency). **Deliberately calendar-NEUTRAL** — it does *not*
+       call `previousWorkingDay`, and it knows about neither weekends nor any country's holidays. Each
+       adapter resolves the actual published day from this candidate: NBP applies the Polish
+       working-day calendar plus its 404 walk-back, ECB passes it as `endPeriod` with
+       `lastNObservations=1`. See § 4 for why — with a shared Polish calendar the ECB path silently
+       returns a rate one or more days stale on every Polish-only holiday, verified against the live
+       API (4.2383 instead of 4.2368 for an order placed Friday 2026-06-05).
+     - **Clamp**: `min(candidate, todayInWarsaw)`. Load-bearing, not defensive: a future `endPeriod`
+       makes ECB return a **months-stale** rate with HTTP 200 and no error signal (§ 4).
+   - **Acceptance**: see § 9 — mid-week; Monday → Sunday (the candidate is a *calendar* day, so this is
+     now the correct expectation and the adapter's job to resolve further); the 23:30 UTC Sunday roll; a
+     Europe/Warsaw DST-transition day; `undefined`; an Invalid Date; and the future-date clamp. **No
+     holiday cases here** — they moved to the adapter specs, where the calendar now lives.
+   - **Dependencies**: step 1. (Step 0's `previousWorkingDay` is consumed by the NBP adapter, not here.)
 
 3a. **Provider port + provider registry (core, no HTTP)**
    - **Files**: `libs/core/src/currency/domain/ports/exchange-rate-provider.port.ts`,
@@ -652,17 +715,22 @@ which is strictly more durable and one fewer place to keep in sync.
      `./dist`, single `"."` export, `@openlinker/core` + `@openlinker/shared` in `dependencies`, peer
      `@nestjs/common`. `FakeExchangeRateAdapter` mirrors `FakeAiCompletionAdapter`'s role: deterministic,
      used by the int-spec so no tier ever makes a live call.
-   - **`NbpExchangeRateAdapter`**: injected `FetchLike` + timeout, GETs
+   - **`NbpExchangeRateAdapter`**: injected `FetchLike` + timeout. **Owns the Polish working-day
+     calendar** — it applies `previousWorkingDay` (step 0) to the calendar candidate it is handed, so its
+     common case stays one request rather than a weekend walk-back. GETs
      `.../rates/a/{code}/{date}/?format=json`, walks back up to 7 days on 404, inverts for `PLN → X`,
      pivots through PLN for `X → Y` per the divide order in § 4. Persists the `effectiveDate` the API
      actually answered with, the `no` as `sourceRef`, and a `derivation`
      (`{ kind, legs: [{ pair, ref, effectiveDate }] }`) so an inverted or pivoted `rate` — which appears
      in no published table — stays auditable. Rate arithmetic uses `number` + the house `round2`-style
      rounding; the stored `rate` is the 8-dp string.
-   - **`EcbExchangeRateAdapter`**: same shape, `pivotCurrency = 'EUR'`, TARGET calendar absorbed by its
-     own walk-back. **Blocked on the § 4 research item** — the daily XML feed carries only the latest
-     day, so the historical endpoint's shape and its non-publication-day behaviour must be established
-     first. Do not implement against a guess.
+   - **`EcbExchangeRateAdapter`**: `pivotCurrency = 'EUR'`, and **no walk-back loop at all** — one GET to
+     `data-api.ecb.europa.eu/service/data/EXR/D.{CUR}.EUR.SP00.A?endPeriod={candidate}&lastNObservations=1&format=csvdata&detail=dataonly`,
+     which the API resolves to the last publication on or before the candidate. Persist the returned
+     `TIME_PERIOD` as `rateDate` and the series key as `sourceRef`. Two distinct terminal signals to
+     handle, and they are **not** the NBP shape: a `404` (with an RFC-7807 JSON body) is an unsupported
+     pair, while a **`200` with a zero-byte body** means no observation at or before that date. Research
+     complete — see § 4 for the full verified matrix.
    - **`FxIntegrationModule`**: `imports: [CurrencyModule]`, provides each adapter plus a
      `FX_FETCH_TOKEN` default factory (the single `eslint-disable` site, § 3), and in `onModuleInit`
      calls `registry.register(...)` per adapter. No manifest, no `adapterRegistry.register`, no
@@ -1450,6 +1518,12 @@ path.)
   typical PLN rate of ~3.5 that is a **relative** error of ~1.4e-9, so the rounded cent is only at
   risk above roughly `0.005 / 1.4e-9 ≈ 3.6 M` units of the source currency. Comfortably outside any
   realistic order.
+  **ECB's per-currency precision changes the bound.** NBP publishes `mid` to a fixed 4 dp; ECB's
+  `DECIMALS` varies by series — `GBP` 5, `PLN` 4, but `JPY` and `HUF` only **2** (verified, § 4). A 2-dp
+  quote carries ~100× the relative error of a 4-dp one, so on a `JPY → EUR` stamp the rounded cent is at
+  risk at an ordinary order size rather than a fantastical one. Same conclusion as the pivot case below:
+  the full-precision rate and its `derivation` are stored, so any figure can be recomputed and audited.
+
   **A PLN-pivoted cross is materially worse.** NBP publishes `mid` to **4** decimal places, so each
   leg carries a relative error of order 1e-5 (0.5e-4 against a mid of O(1)–O(5)); dividing two legs
   compounds to roughly 2e-5–1e-4 depending on the mids' magnitudes. At 2.5e-5 the cent is at risk
@@ -1544,10 +1618,11 @@ lint+type-check-only gate is fine for code — but see step 9 for why it is not 
 | Subject | Cases | File |
 |---|---|---|
 | `previousWorkingDay` | Monday→Friday, Saturday→Friday, Sunday→Friday, holiday cluster, DST-transition day | `libs/shared/src/date/__tests__/pl-working-days.spec.ts` |
-| `resolveRateDate` | mid-week; **Monday**; **Saturday**; **Sunday** (the two cases the branch exists for); a **Europe/Warsaw DST-transition** day; **23:30 UTC Sunday** → previous Friday; `undefined` `placedAt` → `null`; Invalid Date → `null`; future `placedAt` → clamped to today-in-Warsaw | `libs/core/src/currency/domain/__tests__/rate-date-resolution.spec.ts` |
+| `resolveRateDate` | returns the **previous calendar day**, so Monday → Sunday and Saturday → Friday (no calendar logic — that is the adapter's job, § 4); a **Europe/Warsaw DST-transition** day; the 23:30 UTC Sunday roll; `undefined` `placedAt` → `null`; Invalid Date → `null`; future `placedAt` → clamped to today-in-Warsaw. **Asserts it never calls `previousWorkingDay`** | `libs/core/src/currency/domain/__tests__/rate-date-resolution.spec.ts` |
 | `resolveRateSource` | `PLN → 'nbp'`; `EUR → 'ecb'`; an unsupported code throws | `libs/core/src/currency/domain/__tests__/rate-source-resolution.spec.ts` |
 | NBP adapter | direct; inverted; **cross-rate with an exact expected value** (EUR mid 4.2500 / USD mid 3.9000 → `1.08974359`); 404 walk-back; exhausted walk-back → `RateUnsupportedPairError`; **400** → terminal; 503 → transient; timeout → transient; `supports()` false; **pivot legs with different `effectiveDate`s → raise** | `libs/integrations/fx/src/infrastructure/adapters/__tests__/nbp-exchange-rate.adapter.spec.ts` |
-| ECB adapter | the same matrix, plus its own calendar's non-publication day and the EUR-pivot direction. **Blocked on the § 4 research item** — write the cases once the historical endpoint's shape is established, not against a guess | `.../__tests__/ecb-exchange-rate.adapter.spec.ts` |
+| ECB adapter | direct (`EUR → X`); inverted (`X → EUR`); a non-publication `endPeriod` resolves to the prior publication via `lastNObservations=1` in **one** request (Saturday `2026-08-08` → `2026-08-07`); the Easter cluster (`2026-04-06` → `2026-04-02`) and the year boundary (`2026-01-01` → `2025-12-31`); **an empty `200` body → terminal, distinctly from** a `404` → `RateUnsupportedPairError`; a 503 → transient; timeout → transient; the returned `TIME_PERIOD` (not the requested day) is persisted as `rateDate`; a 2-dp quote (`JPY`) parses without loss | `.../__tests__/ecb-exchange-rate.adapter.spec.ts` |
+| NBP adapter owns the PL calendar | given a **calendar** candidate that is a Sunday, it queries the preceding Friday rather than walking back three times; a PL-only holiday (Corpus Christi `2026-06-04`) is skipped by the calendar, which is correct for NBP and **wrong for ECB** (§ 4) | `.../__tests__/nbp-exchange-rate.adapter.spec.ts` |
 | Provider registry | duplicate `register` throws; unknown `get` throws the **terminal** error; empty until an integration module registers; **both adapters registered simultaneously** | `libs/core/src/currency/infrastructure/adapters/__tests__/exchange-rate-provider-registry.service.spec.ts` |
 | `CurrencyRateService` | identity; registry hit performs **no** provider fetch; `DuplicateExchangeRateError` → re-select winner; `RateUnsupportedPairError` propagates; an **unregistered source** surfaces as terminal | `.../application/services/__tests__/currency-rate.service.spec.ts` |
 | `ExchangeRateRepository.insertIfAbsent` | PG `23505` → `DuplicateExchangeRateError`; any other error propagates unchanged | `.../repositories/__tests__/exchange-rate.repository.spec.ts` |
@@ -1714,9 +1789,10 @@ refresh, since it carries the criteria someone implements against.
       engineering-standards edit is needed.
 - [x] File structure matches standards
 - [ ] **Plan is execution-ready except for two items, one of them a hard prerequisite.**
-      (1) § 4's **ECB historical-endpoint research is a blocker for Phase 1b only** — the daily XML feed
-      carries just the latest day, so `EcbExchangeRateAdapter` cannot be written against a guess. Phases
-      0, 1 (minus 3b's ECB half), 2, 3 and the NBP adapter are unblocked.
+      (1) ~~ECB endpoint research~~ — **DONE** (verified against the live API 2026-08-14, § 4). It
+      cleared the Phase 1b blocker *and* found a real defect in the pre-research rate-date rule: a shared
+      Polish calendar makes the ECB path silently stale on every Polish-only holiday, so the rule is now
+      calendar-neutral and each adapter resolves the published day. Every phase is unblocked.
       (2) § 5 open question 1 (#1985/#1987/#1988 group by the *native* currency) is a product
       precondition for **those** issues, not for this one; the proposed AC edit and its owner are named
       there.
