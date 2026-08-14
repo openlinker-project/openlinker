@@ -187,7 +187,7 @@ is a breaking change to revisit once a connection exists; docs, spec and issue t
    - **Deciding whether a given order legally requires a receipt**: never OL's decision. The seller
      and their accountant own the fiscal determination (spec §6.7, risk R5). Choosing *which*
      document an order gets, once the obligation is known, is the sibling sales-document routing
-     decision (#2051); it selects among documents and does not determine anyone's legal obligation.
+     decision ([ADR-041](./041-sales-document-routing-policy.md)); it selects among documents and does not determine anyone's legal obligation.
    - **Non-PL certification posture**: closed for Poland (#1906); Portugal is unresolved because
      the sources were access-blocked, not ambiguous. Advisory only - an adverse answer would
      constrain generalising into PT, not the PL v1.
@@ -294,7 +294,7 @@ is a breaking change to revisit once a connection exists; docs, spec and issue t
 **Cons / trade-offs:**
 - A second document-producing capability alongside invoicing raises the "which port do I use?"
   question for contributors; decision 1's four reasons are the answer, and the routing question is
-  #2051's.
+  [ADR-041](./041-sales-document-routing-policy.md)'s.
 - Not shipping fiscal corrections means a regime that mandates them is not yet addressable, and we
   will learn that from the second adapter rather than from this design. Journal export is the same
   gap but a *scoped* one: decision 11 already names the sub-capability and its shape, so the first
@@ -308,7 +308,7 @@ regime only until 31 Dec 2026. So in the one market this work targets, roughly f
 same order can need **both** a fiscal registration and a KSeF clearance. That is not an argument for
 merging the contexts - it is the argument for exactly this shape: two ports, two records, and a
 single adapter free to implement both where one provider covers both. Which document(s) a given order
-actually gets stays #2051's routing decision, not this ADR's.
+actually gets stays [ADR-041](./041-sales-document-routing-policy.md)'s routing decision, not this ADR's.
 
 **Migration path:** nothing exists yet, so there is no data migration. #1908 ships the context, the
 base port, the neutral command/result, the `FiscalRegistrationLocator` sub-capability and the
@@ -329,8 +329,8 @@ broker-fronted device; #1910 is the contract seam a future device-exposing provi
 
 - Related issues: #1902 (parent), #1908 (capability + adapter), #1910 (device sub-capability),
   #1909 (status/link on the order), #1911 (connection UI), #1907 (integrator access - unresolved),
-  #1906 (certification and counterparty - closed for PL), #2051 (sibling sales-document routing
-  ADR), #2054 (per-line tax rate contract work), #2058 (the ADR-014 reversal decision 8 is pending
+  #1906 (certification and counterparty - closed for PL), #2051 (sibling sales-document routing,
+  now [ADR-041](./041-sales-document-routing-policy.md)), #2054 (per-line tax rate contract work), #2058 (the ADR-014 reversal decision 8 is pending
   on - open, may be refused)
 - Related ADRs: [ADR-002](./002-capability-ports-with-sub-capabilities.md) (sub-capability
   composition), [ADR-026](./026-country-agnostic-invoicing-domain.md) (the invoicing domain this
@@ -340,9 +340,10 @@ broker-fronted device; #1910 is the contract seam a future device-exposing provi
   [ADR-035](./035-ctc-offline-degraded-mode-issuance-lifecycle.md) (the indeterminate-outcome
   lifecycle decision 7 mirrors, and the degraded-mode precedent decision 10 deliberately does not
   follow), [ADR-005](./005-postgres-authoritative-job-dedup.md) (durable dedup-gate precedent, with
-  its delete-on-failure step deliberately not adopted). The sibling sales-document routing ADR is
-  #2051, linked once it lands.
+  its delete-on-failure step deliberately not adopted).
+  [ADR-041](./041-sales-document-routing-policy.md) (the sibling sales-document routing decision -
+  which document type and which connection an order gets).
 - Primary source: product spec [#1902](../../specs/product-spec-1902-eparagony-e-receipts.md) §4a
   (fiskaltrust / efsta contract research), §5 US-5, §6 (out of scope), §8 R1
 - Primary doc section: [docs/architecture-overview.md](../../architecture-overview.md)
-  § Core Bounded Contexts, 15. Fiscalisation
+  § Core Bounded Contexts, 16. Fiscalisation

@@ -122,6 +122,14 @@ export {
 } from './domain/types/order-fulfillment.types';
 export { deriveSlaState } from './domain/order-sla';
 
+// Refund record capture (#2036).
+export {
+  RefundReason,
+  RefundReasonValues,
+  RefundSummary,
+  CreateRefundRecordInput,
+} from './domain/types/refund-record.types';
+
 // Services
 export { IOrderSyncService, OrderSyncRequest, OrderSyncResult } from './application/interfaces/order-sync.service.interface';
 export {
@@ -142,10 +150,13 @@ export type {
   OrderLifecycleRelayResult,
   OrderLifecycleRelayTargetResult,
 } from './application/interfaces/order-lifecycle-relay.service.interface';
+export type { IOrderRefundService } from './application/interfaces/order-refund.service.interface';
+export { OrderRefundService } from './application/services/order-refund.service';
 export * from './orders.tokens';
 
 // Domain entities
 export { OrderRecord } from './domain/entities/order-record.entity';
+export { RefundRecord } from './domain/entities/refund-record.entity';
 export {
   OrderSyncStatus,
   SyncAttempt,
@@ -160,6 +171,8 @@ export { OrderDestinationNotRetryableException } from './domain/exceptions/order
 export { MissingSourceExternalIdException } from './domain/exceptions/missing-source-external-id.exception';
 export { OrderCreateContendedException } from './domain/exceptions/order-create-contended.exception';
 export { OrderSnapshotUnavailableError } from './domain/exceptions/order-snapshot-unavailable.error';
+export { DuplicateRefundRecordException } from './domain/exceptions/duplicate-refund-record.exception';
+export { RefundCurrencyMismatchException } from './domain/exceptions/refund-currency-mismatch.exception';
 
 // Typed-Order accessor for cross-context command composition (#1119).
 export { orderFromReadySnapshot } from './domain/order-from-ready-snapshot';

@@ -33,6 +33,7 @@ import { MasterProductSyncAllHandler } from './master-product-sync-all.handler';
 import { PickupPointRefreshHandler } from './pickup-point-refresh.handler';
 import { ShopProductPublishHandler } from './shop-product-publish.handler';
 import { ShopProductStatusSyncHandler } from './shop-product-status-sync.handler';
+import { DestinationTaxonomySyncHandler } from './destination-taxonomy-sync.handler';
 import { InvoicingIssueHandler } from './invoicing-issue.handler';
 import { RegulatoryStatusReconcileHandler } from './regulatory-status-reconcile.handler';
 import { OfflineResubmitHandler } from './offline-resubmit.handler';
@@ -67,6 +68,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly pickupPointRefreshHandler: PickupPointRefreshHandler,
     private readonly shopProductPublishHandler: ShopProductPublishHandler,
     private readonly shopProductStatusSyncHandler: ShopProductStatusSyncHandler,
+    private readonly destinationTaxonomySyncHandler: DestinationTaxonomySyncHandler,
     private readonly invoicingIssueHandler: InvoicingIssueHandler,
     private readonly regulatoryStatusReconcileHandler: RegulatoryStatusReconcileHandler,
     private readonly offlineResubmitHandler: OfflineResubmitHandler,
@@ -159,6 +161,11 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'shop.product.statusSync',
       this.shopProductStatusSyncHandler,
+    );
+    // Register destination-taxonomy projection refresh (#1979, ADR-037)
+    this.handlerRegistry.register(
+      'destination.taxonomy.sync',
+      this.destinationTaxonomySyncHandler,
     );
 
     // Register invoicing issue handler (OL #1120 — auto-issue trigger)

@@ -62,6 +62,10 @@ export const PUBLISHED_VARIANTS_SERVICE_TOKEN = Symbol('IPublishedVariantsServic
 // Shop-side products cockpit coverage pills (#1838 follow-up fix)
 export const SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN = Symbol('IShopProductMappingsService');
 
+// Destination taxonomy read model (#1979, ADR-037)
+export const DESTINATION_TAXONOMY_SERVICE_TOKEN = Symbol('IDestinationTaxonomyService');
+export const DESTINATION_CATEGORY_REPOSITORY_TOKEN = Symbol('DestinationCategoryRepositoryPort');
+
 // Stale-variant offer pause (#1689)
 export const STALE_OFFER_PAUSE_SERVICE_TOKEN = Symbol('IStaleOfferPauseService');
 

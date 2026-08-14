@@ -44,6 +44,7 @@ import { SystemModule } from './system/system.module';
 import { McpModule } from './mcp/mcp.module';
 import { MailerApiModule } from './mailer/mailer.module';
 import { AnalyticsApiModule } from './analytics/analytics.module';
+import { AnalyticsTrustApiModule } from './analytics-trust/analytics-trust.module';
 import { RequestPriorityModule } from './http/request-priority.module';
 
 @Module({
@@ -80,6 +81,7 @@ import { RequestPriorityModule } from './http/request-priority.module';
     MailerApiModule, // Admin REST surface for mailer/SMTP settings (#1643)
     CoreAnalyticsModule, // DB-backed PostHog analytics settings resolution (#1685)
     AnalyticsApiModule, // Admin REST surface for PostHog analytics settings (#1685)
+    AnalyticsTrustApiModule, // GET /analytics/trust — data-trust snapshot for the /analytics page (#1982)
     ContentApiModule, // REST surface for product content editor + AI suggest (#339 + #342)
     ShippingApiModule, // Shipment read + command HTTP API (#846); imports core ShippingModule (#763/#835)
     UsersApiModule, // User management: list, approve/reject pending, role + status ops (#1125)
