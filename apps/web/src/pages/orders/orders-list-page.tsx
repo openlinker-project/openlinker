@@ -80,15 +80,10 @@ import {
   FulfillmentRollupStateValues,
 } from '../../features/orders/api/orders.types';
 import { useConnectionsQuery } from '../../features/connections';
+import { resolvePlatformLabel } from '../../features/mappings';
+import { usePlatforms } from '../../shared/plugins';
 
 const PAGE_SIZE = 20;
-
-const CHANNEL_LABELS: Record<string, string> = {
-  allegro: 'Allegro',
-  prestashop: 'PrestaShop',
-  amazon: 'Amazon',
-  shopify: 'Shopify',
-};
 
 /**
  * Status segments — partition the order set (#929). The "All" card carries the
@@ -347,8 +342,13 @@ export function OrdersListPage(): ReactElement {
     return map;
   }, [connectionsQuery.data]);
 
+  // Registry-resolved, never a local map: the four-entry `CHANNEL_LABELS` this
+  // replaced (#2088) had no row for `erli` or `woocommerce`, so both rendered
+  // raw and lowercase here while rendering correctly two pages over.
+  const platforms = usePlatforms();
+
   const channelLabel = (platform: string | undefined): string | undefined =>
-    platform ? (CHANNEL_LABELS[platform] ?? platform) : undefined;
+    platform ? resolvePlatformLabel(platforms, platform) : undefined;
 
   // Resolve a connectionId to a human channel label (never undefined) for the
   // bulk-dispatch per-row source pill.

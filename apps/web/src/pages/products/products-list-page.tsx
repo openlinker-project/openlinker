@@ -45,6 +45,7 @@ import { CheckboxCell } from '../../shared/ui/checkbox-cell';
 import { useMediaQuery } from '../../shared/ui/use-media-query';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { usePlatforms } from '../../shared/plugins';
+import { resolvePlatformLabel } from '../../features/mappings';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import { useProductsQuery } from '../../features/products/hooks/use-products-query';
@@ -282,8 +283,7 @@ export function ProductsListPage(): ReactElement {
   }, [connectionsQuery.data]);
 
   const platformLabel = useCallback(
-    (platformType: string): string =>
-      platforms.find((p) => p.platformType === platformType)?.displayName ?? platformType,
+    (platformType: string): string => resolvePlatformLabel(platforms, platformType),
     [platforms],
   );
 
@@ -552,8 +552,7 @@ export function ProductsListPage(): ReactElement {
 
   const soleConnectionName =
     publishDestinations.length === 1
-      ? (platforms.find((p) => p.platformType === publishDestinations[0]!.connection.platformType)
-          ?.displayName ?? publishDestinations[0]!.connection.platformType)
+      ? resolvePlatformLabel(platforms, publishDestinations[0]!.connection)
       : null;
 
   const atCap = selectedIds.size >= BULK_SELECTION_CAP;
