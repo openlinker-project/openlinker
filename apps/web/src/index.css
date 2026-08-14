@@ -9417,13 +9417,16 @@ a.kpi-card:focus-visible {
   background: var(--bg-surface-muted);
   padding: 1px 6px;
   border-radius: var(--radius-xs);
-  /* 24ch is the widest string `shortenId()` can emit: the longest `ol_<entity>_`
-   * prefix in the system (`ol_inventoryitem_`, 17) plus 4 + ellipsis + 2. The
-   * previous 18ch was sized for a shortened bare UUID (13 chars) and clipped
-   * every `ol_<entity>_…` short form a SECOND time, appending a meaningless
-   * ellipsis to an already-elided id (#2087). A genuinely long raw value (a
-   * webhook URL, a tracking number) still ellipsises here as before. */
-  max-width: 24ch;
+  /* 18ch was sized for a shortened bare UUID (13 chars) and clipped the longer
+   * `ol_<entity>_…` short forms a SECOND time, appending a meaningless ellipsis
+   * to an already-elided id (#2087). `shortenId()` emits `prefix + 7`, and the
+   * longest prefix `formatInternalId` can produce is `ol_shopproduct_` (15, from
+   * `CoreEntityTypeValues` + `ENTITY_TYPE_ID_PREFIX`), so the ceiling is 22
+   * characters. 26ch rather than 22ch because `box-sizing: border-box` (:498)
+   * makes this rule's own `padding: 1px 6px` count against `max-width` and
+   * `--tracking-wide` adds 0.02em of advance per glyph. A genuinely long raw
+   * value (a webhook URL, a tracking number) still ellipsises here as before. */
+  max-width: 26ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -9499,6 +9502,14 @@ a.kpi-card:focus-visible {
   align-items: flex-start;
   min-width: 0;
   flex: 1 1 auto;
+  /* The mockup omits this cap, but its own specimen tables are auto-layout too,
+   * so it never exercised the failure: `max-width: 100%` below resolves against
+   * a container whose width is content-derived inside `.data-table`
+   * (`width: auto`, :2699), so line 1's ellipsis can never fire and a 30-char
+   * shop order ref widens the Order column and scrolls the whole table. 250px
+   * matches `.orders-items-line`, which already governs line 2 of this same
+   * cell, and mirrors why `.connection-cell__body` caps at 220px (:9536). */
+  max-width: 250px;
 }
 
 .order-cell__body > * {

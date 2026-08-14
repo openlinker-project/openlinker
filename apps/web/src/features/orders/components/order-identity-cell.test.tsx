@@ -32,10 +32,20 @@ describe('OrderIdentityCell', () => {
     );
   });
 
-  it('should treat a blank order number as absent', () => {
+  it('should fall back to the shortened internal id when the order number is only whitespace', () => {
     renderWithProviders(<OrderIdentityCell orderId={ORDER_ID} orderNumber="   " itemCount={1} />);
 
     expect(screen.getByRole('link', { name: SHORT_ORDER_ID })).toBeInTheDocument();
+  });
+
+  it('should render the trimmed order number when the number carries surrounding space', () => {
+    renderWithProviders(
+      <OrderIdentityCell orderId={ORDER_ID} orderNumber="  6839-2911-4402  " itemCount={1} />,
+    );
+
+    // `textContent`, not the accessible name — the latter normalises whitespace
+    // and would pass on an untrimmed render.
+    expect(screen.getByRole('link').textContent).toBe('6839-2911-4402');
   });
 
   it('should render the item thumbnail when the first item carries an image', () => {
@@ -69,6 +79,16 @@ describe('OrderIdentityCell', () => {
     expect(thumbnail).toHaveTextContent('T');
   });
 
+  it('should take the thumbnail glyph from the display name when the item has no name either', () => {
+    // The commonest production state: no adapter populates `firstItemImageUrl`
+    // and `firstItemName` is nullable, so Shipments and Invoices rows land here.
+    const { container } = renderWithProviders(
+      <OrderIdentityCell orderId={ORDER_ID} orderNumber="6839-2911-4402" itemCount={1} />,
+    );
+
+    expect(container.querySelector('.product-thumbnail')).toHaveTextContent('6');
+  });
+
   it('should render no +N chip when the order has exactly one item', () => {
     renderWithProviders(
       <OrderIdentityCell
@@ -93,10 +113,10 @@ describe('OrderIdentityCell', () => {
       />,
     );
 
-    expect(screen.getByText('+4')).toBeInTheDocument();
+    expect(screen.getByText('+4')).toHaveAttribute('title', '5 line items in this order');
   });
 
-  it('should render no second line when the first item name is unavailable', () => {
+  it('should state the line-item count as a sentence when the first item name is unavailable', () => {
     const { container } = renderWithProviders(
       <OrderIdentityCell
         orderId={ORDER_ID}
@@ -106,32 +126,61 @@ describe('OrderIdentityCell', () => {
       />,
     );
 
-    expect(container.querySelector('.orders-items-line')).toBeNull();
-    expect(screen.queryByText('+2')).toBeNull();
+    expect(screen.getByText('3 line items')).toBeInTheDocument();
+    // Never a dangling `+N` with nothing to attach it to.
+    expect(container.querySelector('.orders-more-count')).toBeNull();
   });
 
-  it('should render an empty-value placeholder when no order resolves', () => {
-    renderWithProviders(<OrderIdentityCell orderId="" orderNumber="6839-2911-4402" />);
+  it('should render no second line when the order has a single unnamed item', () => {
+    const { container } = renderWithProviders(
+      <OrderIdentityCell
+        orderId={ORDER_ID}
+        orderNumber="6839-2911-4402"
+        firstItemName={null}
+        itemCount={1}
+      />,
+    );
+
+    expect(container.querySelector('.orders-items-line')).toBeNull();
+    expect(container.querySelector('.orders-cell-sub')).toBeNull();
+  });
+
+  it('should render an empty-value placeholder when there is no order id to resolve', () => {
+    renderWithProviders(<OrderIdentityCell orderId="" />);
 
     expect(screen.getByLabelText('No value')).toBeInTheDocument();
     expect(screen.queryByRole('link')).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
   });
 
-  it('should copy the full internal order id, never the shortened form', async () => {
+  it('should copy the full internal order id when the shortened form is the one displayed', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('navigator', { clipboard: { writeText } });
 
     renderWithProviders(<OrderIdentityCell orderId={ORDER_ID} orderNumber={null} itemCount={1} />);
 
-    fireEvent.click(screen.getByRole('button', { name: `Copy ${ORDER_ID}` }));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy internal order ID' }));
 
+    expect(writeText).toHaveBeenCalledTimes(1);
     expect(writeText).toHaveBeenCalledWith(ORDER_ID);
-    expect(writeText).not.toHaveBeenCalledWith(SHORT_ORDER_ID);
-    expect(await screen.findByRole('button', { name: `Copied ${ORDER_ID}` })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: 'Copied internal order ID' }),
+    ).toBeInTheDocument();
   });
 
-  it('should fire onNavigate on the name link but not on Copy', () => {
+  it('should name the copy button after the order number when one is present', () => {
+    renderWithProviders(
+      <OrderIdentityCell orderId={ORDER_ID} orderNumber="6839-2911-4402" itemCount={1} />,
+    );
+
+    // Never the spelled-out 41-character id (#1996).
+    expect(
+      screen.getByRole('button', { name: 'Copy order ID 6839-2911-4402' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: `Copy ${ORDER_ID}` })).toBeNull();
+  });
+
+  it('should fire onNavigate when the name link is clicked but not when Copy is clicked', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('navigator', { clipboard: { writeText } });
     const onNavigate = vi.fn();
@@ -145,7 +194,7 @@ describe('OrderIdentityCell', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: `Copy ${ORDER_ID}` }));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy order ID 6839-2911-4402' }));
     expect(onNavigate).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('link', { name: '6839-2911-4402' }));

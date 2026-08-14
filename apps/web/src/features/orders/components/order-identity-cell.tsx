@@ -18,6 +18,25 @@
  * holding `orderSummary === null` still renders the id-only branch without
  * synthesising an object of nulls.
  *
+ * Three recorded deviations from the mockup's frame 02, so no later reviewer
+ * "fixes" them back:
+ *
+ * 1. **Frame 02's sixth state (`–`) is unreachable from production.** The mockup
+ *    keys it on `orderSummary === null`, but `buildOrderSummary` returns null
+ *    both for "no order record" AND for "the snapshot carries no parseable
+ *    items", so a dash there would hide a live order. This cell keys the dash on
+ *    a missing `orderId` instead and renders the id-only link for a null
+ *    summary. A genuinely unresolvable order (an invoice pointing at an order OL
+ *    can no longer resolve) has no signal yet — `EntityLabel`'s `name={null}`
+ *    "Unknown" branch is where it belongs, and #2090 owns that decision.
+ * 2. **An unnamed multi-item order states its count as a sentence**, not as a
+ *    bare `+N`. The mockup gates all of line 2 on the item name, which silently
+ *    drops a known item count on exactly the rows an operator triages
+ *    (`awaiting_mapping` / `source_deleted` snapshots carry lines with no name).
+ * 3. **The copy button is not hover-gated**, unlike `.copyable-id__copy`. That
+ *    is `EntityLabel`'s app-wide behaviour at every existing call site, not
+ *    something this cell chooses; changing it is a shared-primitive decision.
+ *
  * No page consumes it yet — #2089 (Shipments), #2090 (Invoices) and #2091
  * (Orders) wire it in, mirroring how #2027 delivered `ConnectionCell`.
  *
@@ -41,13 +60,20 @@ export interface OrderIdentityCellProps {
   /** The order's first line item's image URL, frozen at order-snapshot time. */
   firstItemImageUrl?: string | null;
   /**
-   * The order's FULL item count, not the number of items projected here. Drives
-   * the `+N` chip, so `2` renders `+1`.
+   * The order's FULL line-item count (`items.length`), not the number of items
+   * projected here and not a unit total — `2` renders `+1`.
+   *
+   * **Migration note for #2091:** the Orders page derives its `+N` today from
+   * `itemsSummary()`, which filters to items that *have a name* before counting
+   * the rest. Feed `parsed.items.length` instead, matching what
+   * `buildOrderSummary` sends to Shipments and Invoices (#1995) — otherwise the
+   * same chip means two different things on the same page, which is exactly the
+   * divergence #1996 exists to end.
    */
   itemCount?: number | null;
   /**
    * Fired on name-link navigation only, never on Copy. Exists because the
-   * Orders list captures a demo-analytics event when a row is opened (#1786),
+   * Orders list captures a demo-analytics event when a row is opened (#1788),
    * and that call site must survive the migration to this cell.
    */
   onNavigate?: () => void;
@@ -65,11 +91,19 @@ export function OrderIdentityCell({
 }: OrderIdentityCellProps): ReactElement {
   if (!orderId) return <EmptyValue />;
 
-  const displayName = orderNumber?.trim() ? orderNumber : shortenId(orderId);
-  const itemName = firstItemName?.trim() ? firstItemName : null;
+  // Trim what is RENDERED, not just what is tested: a padded order number would
+  // otherwise reach the DOM and the `title` verbatim, and accessible-name
+  // normalisation hides that from a `getByRole` assertion.
+  const trimmedNumber = orderNumber?.trim() || null;
+  const itemName = firstItemName?.trim() || null;
+  const displayName = trimmedNumber ?? shortenId(orderId);
+  const totalItems = typeof itemCount === 'number' && itemCount > 0 ? itemCount : 0;
   // `+N` counts what is NOT shown, so a single-item order renders no chip at
   // all — it must never read as though something is hidden.
-  const moreCount = typeof itemCount === 'number' && itemCount > 1 ? itemCount - 1 : 0;
+  const moreCount = totalItems > 1 ? totalItems - 1 : 0;
+  // Reading out a 41-character internal id per row is not an accessible name.
+  // With no number to quote, name the *kind* of id rather than spelling it.
+  const copySubject = trimmedNumber ? `order ID ${trimmedNumber}` : 'internal order ID';
   const classes = ['order-cell', className].filter(Boolean).join(' ');
 
   return (
@@ -84,18 +118,29 @@ export function OrderIdentityCell({
           id={orderId}
           name={displayName}
           showId={false}
+          copyLabel={`Copy ${copySubject}`}
+          copiedLabel={`Copied ${copySubject}`}
           to={`/orders/${orderId}`}
           onNavigate={onNavigate}
         />
-        {/* No item name ⇒ no second line at all. A bare `+2` beside nothing
-            states a quantity of an unnamed thing, which reads as a defect. */}
         {itemName ? (
           <span className="orders-items-line">
             <span className="text-muted orders-cell-sub orders-items-preview" title={itemName}>
               {itemName}
             </span>
-            {moreCount > 0 ? <span className="orders-more-count">+{moreCount}</span> : null}
+            {/* `title` because `+4` alone leaves an operator (and a screen
+                reader) to guess what is being counted — lines, not units. */}
+            {moreCount > 0 ? (
+              <span className="orders-more-count" title={`${totalItems} line items in this order`}>
+                +{moreCount}
+              </span>
+            ) : null}
           </span>
+        ) : totalItems > 1 ? (
+          /* Deviation 2 (see the file header): a known count with no name to
+             attach it to reads as a sentence, never as a dangling `+N`. Keeps
+             the row's height stable across the named and unnamed cases. */
+          <span className="text-muted orders-cell-sub">{totalItems} line items</span>
         ) : null}
       </span>
     </span>
