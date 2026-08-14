@@ -74,6 +74,13 @@ export type InvoiceFailureMode = (typeof InvoiceFailureModeValues)[number];
  *
  *   - `buyer-tax-id-invalid`: a TERMINAL `rejected` failure caused by an invalid
  *     buyer tax identifier — the operator can fix the buyer data and re-issue.
+ *   - `invalid-currency`: a TERMINAL `rejected` failure caused by the document's
+ *     settlement currency — missing, malformed, or one the provider will not
+ *     settle in. Operator-fixable on the source order, so it earns its own code
+ *     rather than collapsing into `provider-rejected`, whose copy asserts the
+ *     PROVIDER rejected the request (untrue when an adapter refuses the shape
+ *     before any provider call, as #2103 does). Currency and ISO 4217 are
+ *     country-agnostic vocabulary, so this stays ADR-026-clean.
  *   - `provider-rejected`: any other TERMINAL `rejected` failure (safe to
  *     re-attempt once the underlying input is corrected).
  *   - `transport-timeout`: an `in-doubt` transport failure — the document MAY
@@ -83,6 +90,7 @@ export type InvoiceFailureMode = (typeof InvoiceFailureModeValues)[number];
  */
 export const InvoiceFailureCodeValues = [
   'buyer-tax-id-invalid',
+  'invalid-currency',
   'provider-rejected',
   'transport-timeout',
   'provider-error',

@@ -269,11 +269,15 @@ itself.
 Two operator-visible consequences:
 
 - An order whose currency is not a well-formed ISO 4217 code is refused before
-  anything reaches inFakt (a terminal business failure naming the offending value),
-  rather than being booked in the account's default currency. Omitting the field is
-  what inFakt treats as "use the account default", and it answers success either
-  way - so a refusal is the only way to avoid a silently mis-denominated document
-  that inFakt then relays to KSeF.
+  anything reaches inFakt, rather than being booked in the account's default
+  currency. Omitting the field is what inFakt treats as "use the account default",
+  and it answers success either way - so a refusal is the only way to avoid a
+  silently mis-denominated document that inFakt then relays to KSeF. The refusal is
+  a terminal business failure the operator can re-submit: the invoice reads
+  **Failed** and its reason names the currency ("The settlement currency is missing,
+  malformed, or not accepted for this document. Fix the currency on the order and
+  re-issue."). The offending value itself is **not** shown in the UI - reasons are
+  fixed, PII-free strings by design - and appears only in the API server log.
 - The seller's inFakt account must actually be allowed to settle in that currency.
   inFakt owns that rule and enforces it server-side, so an unsupported currency
   surfaces as an inFakt rejection at issuance rather than as an OL-side error.
@@ -288,7 +292,7 @@ Two operator-visible consequences:
 | Webhook deliveries return 401 | `X-Infakt-Signature` (HMAC-SHA256 hex of the raw body) doesn't match the secret OL resolved | Copy the secret from inFakt's webhook-details view and set `OPENLINKER_WEBHOOK_SECRET__INFAKT__<CONNECTION_ID_UPPERCASE>` (or `OPENLINKER_WEBHOOK_SECRET__INFAKT`); do **not** use the `secret/rotate` endpoint for inFakt (it generates a random secret inFakt doesn't know). See [Webhook configuration](#2-webhook-configuration). |
 | Webhook subscription never activates | The verification-ping echo didn't reach inFakt (host unreachable, TLS issue, or the connection ID in the URL is wrong) | Confirm the URL path matches `POST /webhooks/infakt/{connectionId}` exactly and the host is publicly reachable from inFakt's servers. |
 | Invoice stays `submitted` forever, never reaches `accepted` | KSeF itself rejected the document after inFakt submitted it, or (less likely, since OL's `sendToKsef` call would normally fail outright at issuance time if this were disabled) KSeF integration is off in inFakt's account settings | Check inFakt's own invoice/KSeF status in its dashboard first — `ksef_data.status: error` there means inFakt attempted submission and KSeF rejected it (fix the underlying document data and re-issue). If `getClearanceStatus()` keeps returning `not-applicable` with no `ksef_data` at all, confirm KSeF integration is enabled in inFakt's account settings (the [Prerequisites](#prerequisites) requirement). |
-| Issuance fails with "Infakt requires an ISO 4217 currency" | The order's currency is blank or not a three-letter code, so OL refuses to issue rather than let inFakt book the document in the account default | Fix the currency on the source order (it is echoed from the order totals) and re-issue. Nothing was created at inFakt, so re-issuing is safe. |
+| Invoice fails with "The settlement currency is missing, malformed, or not accepted for this document" | The order's currency is blank or not a three-letter code, so OL refuses to issue rather than let inFakt book the document in the account default | Fix the currency on the source order (it is echoed from the order totals) and re-issue. Nothing was created at inFakt, so re-issuing is safe. The offending value is in the API server log (`Infakt requires an ISO 4217 currency on ... , got "..."`), not in the UI. |
 | inFakt rejects a non-PLN invoice at issuance (422) | The seller's inFakt account is not configured to settle in that currency, or inFakt wants additional foreign-currency fields (e.g. an exchange-date kind) for it | Enable the currency in inFakt's own account settings and re-issue. The rejection is terminal and nothing was created, so the operator can re-submit. |
 | Rate limiting / `429` from inFakt | Sandbox and low-tier plans enforce API rate limits | Space out bulk issuance; inFakt's retry classifier (`InfaktRetryClassifierAdapter`) already treats `429` as retryable in the worker's job runner. |
 

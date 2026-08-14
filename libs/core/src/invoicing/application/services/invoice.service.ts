@@ -102,6 +102,27 @@ const MAX_FAILURE_REASON_LENGTH = 200;
 const TAX_ID_REJECTION_MARKERS = ['tax id', 'tax-id', 'taxid', 'tax identifier'] as const;
 
 /**
+ * Substrings (case-insensitive) that mark a `rejected` failure as a settlement-
+ * currency problem, so the operator is told to fix the ORDER's currency rather
+ * than reading that "the provider rejected the request" — which is actively
+ * misleading when the adapter refused the currency shape BEFORE any provider
+ * call (#2103). Same structural-read pattern as the tax-id markers above, and
+ * the same neutral-vocabulary constraint (ADR-026): "currency"/"ISO 4217" name
+ * no country or tax system.
+ *
+ * Deliberately narrow phrases rather than the bare word `currency`, which would
+ * also match an unrelated provider message that merely mentions a currency
+ * (e.g. an amount-formatting rejection) and mis-route the operator's fix.
+ */
+const CURRENCY_REJECTION_MARKERS = [
+  'iso 4217',
+  'invalid currency',
+  'unsupported currency',
+  'currency is required',
+  'currency code',
+] as const;
+
+/**
  * Lifetime of an `issuing` CAS lease (#1200). Bounds how long a crashed
  * mid-call attempt can block same-key retries before the slot becomes
  * re-claimable.
@@ -751,9 +772,13 @@ export class InvoiceService implements IInvoiceService {
    * classified {@link InvoiceFailureMode} plus a STRUCTURAL read of the adapter
    * throwable's `reason`/message — never value-importing an adapter error class.
    *
-   *   - `rejected` (TERMINAL): a tax-identifier rejection → `buyer-tax-id-invalid`
-   *     (operator-fixable); anything else → `provider-rejected`.
+   *   - `rejected` (TERMINAL): a tax-identifier rejection → `buyer-tax-id-invalid`;
+   *     a settlement-currency rejection → `invalid-currency` (both operator-
+   *     fixable on the source order); anything else → `provider-rejected`.
    *   - `in-doubt` (transient/indeterminate transport): `transport-timeout`.
+   *
+   * Tax id is checked first purely for determinism — a message naming both is
+   * routed to the buyer-data fix, which is the more specific remedy.
    *
    * The mode is the source of truth for re-attemptability; the code is the FE-
    * facing cause refinement. An unrecognised mode can never reach here (the only
@@ -777,9 +802,13 @@ export class InvoiceService implements IInvoiceService {
           ? error.message
           : '';
     const haystack = reasonText.toLowerCase();
-    return TAX_ID_REJECTION_MARKERS.some((marker) => haystack.includes(marker))
-      ? 'buyer-tax-id-invalid'
-      : 'provider-rejected';
+    if (TAX_ID_REJECTION_MARKERS.some((marker) => haystack.includes(marker))) {
+      return 'buyer-tax-id-invalid';
+    }
+    if (CURRENCY_REJECTION_MARKERS.some((marker) => haystack.includes(marker))) {
+      return 'invalid-currency';
+    }
+    return 'provider-rejected';
   }
 
   /**
@@ -791,6 +820,11 @@ export class InvoiceService implements IInvoiceService {
   private deriveFailureReason(failureCode: InvoiceFailureCode): string {
     const reasons: Record<InvoiceFailureCode, string> = {
       'buyer-tax-id-invalid': 'The buyer tax identifier was rejected as invalid.',
+      // Wording covers BOTH the adapter's pre-call shape refusal and a genuine
+      // provider-side currency rejection, so it can never claim the provider saw
+      // a request it did not.
+      'invalid-currency':
+        'The settlement currency is missing, malformed, or not accepted for this document. Fix the currency on the order and re-issue.',
       'provider-rejected': 'The invoicing provider rejected the request.',
       'transport-timeout':
         'The invoicing request timed out; the document may or may not have been created.',
