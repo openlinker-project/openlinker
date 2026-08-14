@@ -62,6 +62,15 @@ export interface InfaktInvoice {
    * (`GET /invoices.json` and `GET /corrective_invoices.json`, sandbox
    * 2026-08-14) and selectable via `fields=`.
    *
+   * WRITE path verified live too (sandbox 2026-08-14): a `currency: 'EUR'`
+   * invoice returned `201` with `currency: "EUR"`, `gross_price: 81137` and
+   * `amount_in_words: "osiemset jedenaście EUR 37/100"` - denominated in EUR on
+   * the document itself, not reinterpreted as the account default. The same run
+   * showed inFakt populating `vat_exchange_date_kind` ("vat") server-side, so
+   * that field is NOT a required input for a foreign-currency VAT invoice.
+   * `exchange_rates_data` stayed absent while the document was `draft`, so the
+   * applied rate is still unobserved.
+   *
    * Because the field DEFAULTS to the account currency when omitted, leaving it
    * off the request booked every document in the account default no matter what
    * the neutral `IssueInvoiceCommand.currency` said - silently, since inFakt

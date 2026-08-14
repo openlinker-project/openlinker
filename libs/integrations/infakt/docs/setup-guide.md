@@ -261,7 +261,10 @@ The order's settlement currency is sent explicitly on every issued document as
 inFakt's invoice-level `currency` field, and a correction is always denominated in
 the currency inFakt holds for the document it corrects. inFakt performs the
 conversion itself and reports the rate back on its read-only `exchange_rates_data`
-block, so OL never sends an exchange rate.
+block, so OL never sends an exchange rate. Verified live against the sandbox
+(2026-08-14): a EUR invoice issues with `currency: "EUR"` and its amount stated in
+EUR on the document, and inFakt fills in the foreign-currency exchange-date kind
+itself.
 
 Two operator-visible consequences:
 
