@@ -106,6 +106,7 @@ describe('ConnectionController', () => {
       requeueDeadJobsInGroup: jest.fn(),
       heartbeat: jest.fn(),
       requeueWithoutPenalty: jest.fn(),
+      findLastSucceededByConnectionAndJobType: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

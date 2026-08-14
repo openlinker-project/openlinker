@@ -44,6 +44,7 @@ import { MasterProductSyncAllHandler } from './handlers/master-product-sync-all.
 import { PickupPointRefreshHandler } from './handlers/pickup-point-refresh.handler';
 import { ShopProductPublishHandler } from './handlers/shop-product-publish.handler';
 import { ShopProductStatusSyncHandler } from './handlers/shop-product-status-sync.handler';
+import { DestinationTaxonomySyncHandler } from './handlers/destination-taxonomy-sync.handler';
 import { InvoicingIssueHandler } from './handlers/invoicing-issue.handler';
 import { RegulatoryStatusReconcileHandler } from './handlers/regulatory-status-reconcile.handler';
 import { OfflineResubmitHandler } from './handlers/offline-resubmit.handler';
@@ -92,6 +93,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     PickupPointRefreshHandler,
     ShopProductPublishHandler,
     ShopProductStatusSyncHandler,
+    DestinationTaxonomySyncHandler,
     InvoicingIssueHandler,
     RegulatoryStatusReconcileHandler,
     OfflineResubmitHandler,

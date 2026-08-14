@@ -15,9 +15,12 @@
  *   service wraps
  */
 import { Inject, Injectable } from '@nestjs/common';
-import { SYNC_JOB_REPOSITORY_TOKEN } from '../../sync.tokens';
+import { SYNC_JOB_REPOSITORY_TOKEN, SCHEDULER_TASK_REGISTRY_TOKEN } from '../../sync.tokens';
 import { SyncJobRepositoryPort } from '../../domain/ports/sync-job-repository.port';
 import type { SyncJob } from '../../domain/entities/sync-job.entity';
+import type { JobType } from '../../domain/types/sync-job.types';
+import type { SchedulerTaskConfig } from '../../domain/types/scheduler-task.types';
+import { SchedulerTaskRegistryService } from '../../infrastructure/adapters/scheduler-task-registry.service';
 import type { ISyncJobsService } from './sync-jobs.service.interface';
 import type { ScheduleJobInput } from './sync-jobs.types';
 
@@ -25,7 +28,9 @@ import type { ScheduleJobInput } from './sync-jobs.types';
 export class SyncJobsService implements ISyncJobsService {
   constructor(
     @Inject(SYNC_JOB_REPOSITORY_TOKEN)
-    private readonly syncJobRepository: SyncJobRepositoryPort
+    private readonly syncJobRepository: SyncJobRepositoryPort,
+    @Inject(SCHEDULER_TASK_REGISTRY_TOKEN)
+    private readonly schedulerTaskRegistry: SchedulerTaskRegistryService
   ) {}
 
   async schedule(input: ScheduleJobInput): Promise<SyncJob> {
@@ -56,5 +61,35 @@ export class SyncJobsService implements ISyncJobsService {
     // (returns false), leaving the record `pending` (still claimable) rather than
     // misbehaving - safe, but the coupling must be kept in lock-step.
     return this.syncJobRepository.requeueDeadByIdempotencyKey(idempotencyKey);
+  }
+
+  async findLastSucceededJob(connectionId: string, jobType: JobType): Promise<SyncJob | null> {
+    return this.syncJobRepository.findLastSucceededByConnectionAndJobType(connectionId, jobType);
+  }
+
+  findEnabledPollTask(platformType: string, jobType: JobType): SchedulerTaskConfig | null {
+    return (
+      this.schedulerTaskRegistry
+        .getAll()
+        .find(
+          (task) =>
+            task.jobType === jobType &&
+            task.platformType === platformType &&
+            this.isTaskEnabled(task)
+        ) ?? null
+    );
+  }
+
+  // Mirrors SchedulerService's own runtime enablement check (`enabledEnvVar`
+  // literally 'false' disables; unset falls back to `enabledDefault`, which
+  // itself defaults to enabled) — a task that is registered but disabled
+  // must not be treated as a live cadence source by any caller.
+  private isTaskEnabled(task: SchedulerTaskConfig): boolean {
+    if (!task.enabledEnvVar) {
+      return true;
+    }
+    const fallback = task.enabledDefault === false ? 'false' : 'true';
+    const raw = process.env[task.enabledEnvVar] ?? fallback;
+    return raw !== 'false';
   }
 }

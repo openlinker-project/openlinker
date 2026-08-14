@@ -140,7 +140,11 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
       // operator hasn't configured them yet — adapter throws
       // `OfferCreateRejectedException` on the first offer attempt.
       config.sellerDefaults,
-      storefrontBaseUrl
+      storefrontBaseUrl,
+      // #2063 — sandbox and production publish different category trees, so the
+      // adapter declares a distinct `TaxonomyOwner` per environment. Validated
+      // required above, so it is always a concrete value here.
+      config.environment
     );
     const orderSourceAdapter = new AllegroOrderSourceAdapter(connection.id, httpClient, connection);
 
