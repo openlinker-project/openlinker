@@ -645,11 +645,13 @@ Mechanics that differ from the listings carve-out, and why:
 - **Every leading control needs `vertical-align: top` — and so does the identity cell, if anything else on the row is taller.** `.data-table td` is `middle`, so at ~60 px a 24 px expander or a 13 px checkbox centres opposite the gap between the two identity lines rather than the identity it belongs to. Alignment only, never a `padding-top` nudge: the cell already inherits the table's vertical padding, so top-aligning lands the control on line 1 at every row height, while a padding tuned for one height misaligns the other tables.
 
   What differs per table is *scope*, and the epic ended up with three shapes because the row height is not always set by the identity cell:
-  - **Shipments** — `.data-table__row--expandable .data-table__expand-cell` (global; the identity cell is the tallest thing on the row, so `middle` and `top` coincide for it).
+  - **Shipments** — `.data-table__row--expandable .data-table__expand-cell` (global). The identity cell is the tallest thing on a *normal* row, so `middle` and `top` coincide for it — but on a **failed** row `ShipmentStatusCell` stacks badge + error message + error time (~3 lines) and sets the height instead, so the identity centres against it. Applying the heuristic below to that row says "align the whole table"; it is a known, unfixed exception rather than a counter-example to the rule.
   - **Invoices** — `.invoices-table td:first-child` (no `expandable`, so the first cell is the checkbox).
   - **Orders** — `.orders-table td` (all cells). Its money column stacks four items, ~70-85 px against the identity's ~37 px, so top-aligning the *controls* alone would still leave the identity centred and the row reading at three different heights. Every cell on that page is a stack, so `top` is right for all of them.
 
-  Pick by asking what sets the row height. If it is the identity cell, align the leading control. If it is another column, align the whole row.
+  Pick by asking what sets the row height. If it is the identity cell, align the leading control. If it is another column, align the whole row. **If the table has no leading control and every cell is single-line, do nothing** — Customers is that case, and reaching "nothing to do" by elimination is correct, not an oversight.
+
+  One mechanical trap when you write the rule: `DataTable` hardcodes the `<table>` class and puts the caller's `className` on the **container** div, so a page-scoped rule is a *descendant* match (`.orders-table td`) and ties on specificity with `.data-table td { vertical-align: middle }`. It wins by source order alone. Author it **after** that rule in `index.css`, or it silently loses.
 - **Hosting one of these cells in a card `title` slot** (the mobile branch) puts it inside `<strong>`, so the meta line must not inherit the emphasis — `.orders-cell-sub, .orders-more-count` pin `font-weight: 400` (the `+N` chip inherits the emphasis too).
 
 Known gap: `DataTableSkeleton` still renders `36 px` rows, so a table with these cells grows on load. It predates this epic (listings ships the same mismatch) and is not owned by any of the five sub-issues.

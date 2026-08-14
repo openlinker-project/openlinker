@@ -109,11 +109,13 @@ describe('EntityLabel', () => {
     ).toBeInTheDocument();
   });
 
-  it('mirrors the copy button accessible name into a title so a sighted user sees it too (#2091)', async () => {
+  it('titles the copy button with the id a sighted user cannot otherwise see (#2091)', async () => {
     // The row's visible identity is not always the id Copy writes — an order row
     // reads `ALG-882414` and copies `ol_order_…` — and with `showId={false}` no
     // chip beside the button shows the target either. `aria-label` alone produces
-    // no tooltip, so the accessible name has to be mirrored.
+    // no tooltip, so the button needs a `title`; it carries the id rather than a
+    // copy of the accessible name, so the tooltip states what lands on the
+    // clipboard instead of repeating what a screen reader already announces.
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', {
       value: { writeText },
