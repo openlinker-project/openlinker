@@ -957,21 +957,29 @@ which is strictly more durable and one fewer place to keep in sync.
      and #1985's own `1832000000008-add-order-analytics-read-model.ts:26-29`. `CREATE TABLE` is
      mixed in the repo (`1830000000000:31` guards, `1831000000004:26` does not); guard it, matching
      the more recent of the two.
-   - **Why `1834000000000`** (re-verified 2026-08-14): the invariant that matters is
-     `scripts/check-migration-timestamps.mjs`' rule 4 — a migration not yet on `origin/main` must have a
-     timestamp **strictly greater than every migration that is**. `origin/main`'s tail is now
-     **`1833000000001-add-destination-category-expanded-at.ts`** (with `1833000000000-add-destination-categories-table.ts`
-     ahead of it), and the one plugin dir listed in `scripts/plugin-migration-dirs.json`
-     (`libs/integrations/allegro/src/migrations`) is still at `1767900000000`. So `1834000000000` clears
-     `main` by one synthetic slot.
+   - **Why `1834000000000`** (re-verified 2026-08-14, after the second main merge): the invariant that
+     matters is `scripts/check-migration-timestamps.mjs`' rule 4 — a migration not yet on `origin/main`
+     must have a timestamp **strictly greater than every migration that is**. `origin/main`'s tail is now
+     **`1833000000003-add-offer-commercial-snapshots-table.ts`** (#2032 having landed), and the one plugin
+     dir listed in `scripts/plugin-migration-dirs.json` (`libs/integrations/allegro/src/migrations`) is
+     still at `1767900000000`. So `1834000000000` still clears `main`, now by one synthetic slot rather
+     than three.
 
-     Two stale justifications to discard: `1833000000000` is **no longer free** (it landed on `main` as
-     `-add-destination-categories-table`, not merely "a slot unmerged branches will reach for"), and
-     `1832000000008` remains claimed three ways — `-add-order-record-cancelled-at` (on `main`),
-     `-add-order-analytics-read-model` (`origin/1985-…`) and `-add-offer-commercial-snapshots-table`
-     (`origin/2024-…`) — so both unmerged branches must still re-prefix, and they will now reach past
-     `1833000000001`. **Re-check the tail at rebase time rather than trusting this line**: `main` has
-     moved twice during this plan's life, and this branch is currently behind it.
+     **`main` currently carries a duplicate prefix**: `1833000000002` is claimed by *both*
+     `-add-identifier-mappings-offer-created-index.ts` and `-create-refund-records.ts`. Rule 4 only
+     compares an unmerged migration against `main`, so a pair that merged separately can collide without
+     the invariant firing — the same class of gap as the ADR-numbering one (#2082) and worth its own
+     check. It does not affect this migration's number, but do not treat "the highest prefix on `main`" as
+     implying "each prefix on `main` is unique".
+
+     Stale justifications discarded: `1833000000000` is **not free** (it landed as
+     `-add-destination-categories-table`), and `1832000000008` remains claimed three ways —
+     `-add-order-record-cancelled-at` (on `main`), `-add-order-analytics-read-model` (`origin/1985-…`) and
+     `-add-offer-commercial-snapshots-table`, which has since merged as `1833000000003`. So #1985 must
+     still re-prefix, and it will now have to reach past `1833000000003`.
+
+     **Re-check the tail at rebase time rather than trusting this line.** `main` has moved three times
+     during this plan's life.
    - **Acceptance (automated)**: `pnpm --filter @openlinker/api migration:show` lists it; the
      13-digit prefix and the class suffix match (`scripts/check-migration-timestamps.mjs` rules 1–3).
    - **Acceptance (manual, REQUIRED, and paste the output in the PR)**:
@@ -1505,8 +1513,9 @@ path.)
   params to the `OrderRecord` constructor, and a migration in the same range (#1985's is
   `1832000000008-add-order-analytics-read-model.ts`, which adds `placedAt`, `currency`,
   `taxTreatment`, `totalAmount`). *Mitigation*: additive changes appended at the end of both lists;
-  whichever merges second rebases. This migration is `1834000000000`, clear of the three-way claim on
-  `1832000000008` and of the `1833000000000` slot both unmerged branches will reach for (step 9).
+  whichever merges second rebases. This migration is `1834000000000`, which clears `main`'s current tail
+  (`1833000000003`, step 9) — but `main` has moved three times during this plan's life, so re-verify at
+  rebase rather than trusting the number.
   **A bonus once #1985 lands**: `listDistinctNativeCurrencies` collapses to
   `SELECT DISTINCT "currency" FROM "order_records"`. Deliberately not depended on.
 - **Ingestion latency on the first foreign-currency order of a day.** One NBP round trip inside
