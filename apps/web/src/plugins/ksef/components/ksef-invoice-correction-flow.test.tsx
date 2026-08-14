@@ -175,7 +175,7 @@ describe('KsefInvoiceCorrectionFlow', () => {
     fireEvent.change(lineInput, { target: { value: '1' } });
     const qtyInput = await screen.findByLabelText(/New qty, line 1/i);
     fireEvent.change(qtyInput, { target: { value: '0' } });
-    const priceInput = await screen.findByLabelText(/New price, line 1/i);
+    const priceInput = await screen.findByLabelText(/New gross, line 1/i);
     fireEvent.change(priceInput, { target: { value: '34.84' } });
 
     // Submit
@@ -226,6 +226,47 @@ describe('KsefInvoiceCorrectionFlow', () => {
         { lines: { originalLineNumber: number }[] },
       ];
       expect(call[1].lines).toHaveLength(1);
+      expect(call[1].lines[0].originalLineNumber).toBe(2);
+    });
+  });
+
+  it('#2076: submits the picked lines 1-based position as originalLineNumber', async () => {
+    const issueCorrection = vi.fn().mockResolvedValue(makeInvoice({ id: 'ol_invoice_picked' }));
+    // Two lines of the SAME product at different prices — unresolvable when the
+    // operator types a number blind, which is the #2076 defect.
+    const getContent = vi.fn().mockResolvedValue({
+      linesIndexedByCorrection: true,
+      lines: [
+        { name: 'Widget', quantity: 1, unitNet: 81.3, taxRate: '23', net: 81.3, tax: 18.7, gross: 100 },
+        { name: 'Widget', quantity: 1, unitNet: 65.04, taxRate: '23', net: 65.04, tax: 14.96, gross: 80 },
+      ],
+    });
+
+    renderWithProviders(
+      <KsefInvoiceCorrectionFlow
+        invoice={makeInvoice()}
+        connection={ksefConnection}
+        onClose={vi.fn()}
+        onCorrectionIssued={vi.fn()}
+      />,
+      { apiClient: createMockApiClient({ invoicing: { issueCorrection, getContent } }) },
+    );
+
+    // Await the options: while loading, the control is a live number input
+    // under the same accessible name.
+    await screen.findByRole('option', { name: /2\. Widget/ });
+    fireEvent.change(screen.getByLabelText(/Line number 1/i), { target: { value: '2' } });
+    // A delta is required per line, so give it one.
+    fireEvent.change(await screen.findByLabelText(/New qty, line 1/i), { target: { value: '0' } });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Issue KOR/i }));
+
+    await waitFor(() => {
+      const call = issueCorrection.mock.calls[0] as [
+        string,
+        { lines: { originalLineNumber: number }[] },
+      ];
+      // The position the operator saw and chose — not a number they had to know.
       expect(call[1].lines[0].originalLineNumber).toBe(2);
     });
   });

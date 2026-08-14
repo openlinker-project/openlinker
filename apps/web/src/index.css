@@ -13764,6 +13764,16 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   flex-direction: column;
   gap: var(--space-1);
 }
+/* The select must NOT inherit `.input--w-lp` (60px, sized for the old numeric
+   "Lp" field): a select adds `padding-right: var(--space-7)` for its chevron,
+   which at 60px leaves a ~0px content box and hides the very line label the
+   picker exists to show. Sized to fit "12. Product name — 2 × 1 234,50 zł"
+   and allowed to grow with its column. */
+.correction-line-picker__select {
+  min-width: 16rem;
+  width: 100%;
+  max-width: 28rem;
+}
 /* Shown only on the manual-entry fallback, where the operator has to verify the
    line number against the issued document themselves. */
 .correction-line-picker__warning {

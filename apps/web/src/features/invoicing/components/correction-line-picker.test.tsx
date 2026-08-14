@@ -54,7 +54,10 @@ describe('CorrectionLinePicker', () => {
     fireEvent.change(screen.getByLabelText('Line number 1'), { target: { value: '2' } });
 
     // 1-based position of the chosen row — what `originalLineNumber` addresses.
-    expect(onChange).toHaveBeenCalledWith('2', expect.objectContaining({ name: 'Second' }));
+    // The picked line is deliberately NOT handed back: prefilling a price from
+    // a rounded `gross` would be lossy and would submit a price delta the
+    // operator never asked for.
+    expect(onChange).toHaveBeenCalledWith('2');
   });
 
   it('renders one option per line, labelled with its position and unit gross', async () => {
@@ -103,7 +106,7 @@ describe('CorrectionLinePicker', () => {
     expect(await screen.findByRole('option', { name: '2. Same — 1 × 80.00' })).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Line number 1'), { target: { value: '2' } });
-    expect(onChange).toHaveBeenCalledWith('2', expect.objectContaining({ gross: 80 }));
+    expect(onChange).toHaveBeenCalledWith('2');
   });
 
   it('falls back to manual entry with a warning when the invoice has no content snapshot', async () => {
@@ -146,7 +149,7 @@ describe('CorrectionLinePicker', () => {
       { apiClient: createMockApiClient({ invoicing: { getContent } }) },
     );
 
-    await screen.findByText(/predates line snapshots/i);
+    await screen.findByText(/cannot be matched to the stored copy/i);
     expect(screen.getByLabelText('Line number 1')).toHaveAttribute('type', 'number');
     expect(screen.queryByRole('option', { name: /Alpha/ })).not.toBeInTheDocument();
   });

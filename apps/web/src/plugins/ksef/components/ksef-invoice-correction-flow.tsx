@@ -216,7 +216,7 @@ export function KsefInvoiceCorrectionFlow({
                 {t('ksef.correction.col.newQty', 'New qty')}
               </th>
               <th className="ksef-correction__col-price">
-                {t('ksef.correction.col.newPrice', 'New price')}
+                {t('ksef.correction.col.newPrice', 'New gross')}
               </th>
               <th aria-label={t('ksef.correction.col.remove', 'Remove')} />
             </tr>
@@ -255,7 +255,7 @@ export function KsefInvoiceCorrectionFlow({
                     placeholder="—"
                     min={0}
                     step="any"
-                    aria-label={`${t('ksef.correction.newPrice', 'New price, line')} ${i + 1}`}
+                    aria-label={`${t('ksef.correction.newPrice', 'New gross, line')} ${i + 1}`}
                     disabled={isSubmitting}
                   />
                 </td>

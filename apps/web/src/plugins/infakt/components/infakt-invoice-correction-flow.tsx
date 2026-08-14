@@ -218,7 +218,7 @@ export function InfaktInvoiceCorrectionFlow({
                 {t('infakt.correction.col.newQty', 'New qty')}
               </th>
               <th className="infakt-correction__col-price">
-                {t('infakt.correction.col.newPrice', 'New price')}
+                {t('infakt.correction.col.newPrice', 'New gross')}
               </th>
               <th aria-label={t('infakt.correction.col.remove', 'Remove')} />
             </tr>
@@ -257,7 +257,7 @@ export function InfaktInvoiceCorrectionFlow({
                     placeholder="—"
                     min={0}
                     step="any"
-                    aria-label={`${t('infakt.correction.newPrice', 'New price, line')} ${i + 1}`}
+                    aria-label={`${t('infakt.correction.newPrice', 'New gross, line')} ${i + 1}`}
                     disabled={isSubmitting}
                   />
                 </td>

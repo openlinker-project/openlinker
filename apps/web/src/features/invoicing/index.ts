@@ -32,7 +32,6 @@ export { useInvoiceQuery } from './hooks/use-invoice-query';
 export { useIssueInvoiceMutation } from './hooks/use-issue-invoice-mutation';
 export {
   CorrectionLinePicker,
-  unitGrossOf,
   type CorrectionLinePickerProps,
 } from './components/correction-line-picker';
 export {

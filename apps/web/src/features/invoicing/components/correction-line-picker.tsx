@@ -30,9 +30,9 @@
  *
  * @module apps/web/src/features/invoicing/components
  */
-import { useEffect, useId, type ReactElement } from 'react';
+import { useEffect, useId, useRef, useState, type ReactElement } from 'react';
 import { Select } from '../../../shared/ui/select';
-import { useTranslation } from '../../../shared/i18n';
+import { useNumberFormat, useTranslation } from '../../../shared/i18n';
 import type { IssuedDocumentLine } from '../api/invoicing.types';
 import { useInvoiceContentQuery } from '../hooks/use-invoice-content-query';
 
@@ -42,11 +42,16 @@ export interface CorrectionLinePickerProps {
   /** Current 1-based line number, as a string (the flows keep form rows as strings). */
   value: string;
   /**
-   * Called with the chosen 1-based line number. `line` is the picked line when
-   * it came from the content snapshot, so a caller can prefill from it; it is
-   * `undefined` on the manual-entry fallback.
+   * Called with the chosen 1-based line number, or `''` when a previously
+   * entered number turns out not to exist on this invoice.
+   *
+   * Deliberately does NOT hand back the picked line: prefilling
+   * `newUnitPriceGross` from it would be lossy (`gross` is already rounded, so
+   * `gross / quantity` need not equal the issued unit price) and would submit a
+   * price delta on a correction where the operator only meant to change
+   * quantity. The figures are shown in the option label instead.
    */
-  onChange: (lineNumber: string, line?: IssuedDocumentLine) => void;
+  onChange: (lineNumber: string) => void;
   disabled?: boolean;
   /** Accessible name — flows number their rows, so the caller supplies context. */
   ariaLabel: string;
@@ -67,10 +72,14 @@ export function unitGrossOf(line: IssuedDocumentLine): number | undefined {
  * what the API returns, beside a gross-labelled input invites the same class of
  * error this component exists to remove.
  */
-function describeLine(line: IssuedDocumentLine, position: number): string {
+function describeLine(
+  line: IssuedDocumentLine,
+  position: number,
+  formatMoney: (value: number) => string,
+): string {
   const qty = Number.isFinite(line.quantity) ? line.quantity : '?';
   const unitGross = unitGrossOf(line);
-  const unit = unitGross === undefined ? '?' : unitGross.toFixed(2);
+  const unit = unitGross === undefined ? '?' : formatMoney(unitGross);
   return `${position}. ${line.name} — ${qty} × ${unit}`;
 }
 
@@ -82,10 +91,22 @@ export function CorrectionLinePicker({
   ariaLabel,
 }: CorrectionLinePickerProps): ReactElement {
   const { t } = useTranslation();
+  const numberFormat = useNumberFormat({ minimumFractionDigits: 2, maximumFractionDigits: 2 });
   // Per-instance id: every flow supports "Add line", so N pickers mount with
   // the SAME invoiceId. Keying the warning off invoiceId would emit N identical
   // DOM ids and point every row's aria-describedby at the first one.
   const warningId = useId();
+  const [clearedValue, setClearedValue] = useState<string | null>(null);
+
+  // Every call site passes a fresh inline arrow, so `onChange` changes identity
+  // on every render. Holding it in a ref keeps it out of the effect's deps: the
+  // effect must run when the LINES or the VALUE change, never merely because
+  // the parent re-rendered. Without this the clear below re-runs constantly and
+  // depends for its termination on the parent accepting an empty write.
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  });
   const { query, contentUnavailable, fetchFailed, linesAreAuthoritative } =
     useInvoiceContentQuery(invoiceId);
   const lines = query.data?.lines;
@@ -103,9 +124,14 @@ export function CorrectionLinePicker({
     if (!pickableLines || value === '') return;
     const index = parseInt(value, 10) - 1;
     if (Number.isNaN(index) || !pickableLines[index]) {
-      onChange('');
+      // Say what happened. Clearing wordlessly also drops the row from the
+      // payload (every flow filters rows whose line number is blank), so the
+      // operator would otherwise see only a generic "at least one line is
+      // required" with no hint that their number was rejected.
+      setClearedValue(value);
+      onChangeRef.current('');
     }
-  }, [pickableLines, value, onChange]);
+  }, [pickableLines, value]);
 
   // Manual entry covers three states, each with its OWN copy — conflating them
   // would tell the operator something false. Deliberately NOT a disabled
@@ -130,7 +156,7 @@ export function CorrectionLinePicker({
           !query.isLoading && lines
           ? t(
               'invoicing.correction.linesNotAuthoritative',
-              'This invoice predates line snapshots, so its lines cannot be matched reliably — enter the line number from the issued document.',
+              'This invoice’s lines cannot be matched to the stored copy a correction uses — enter the line number from the issued document.',
             )
           : null;
 
@@ -158,26 +184,35 @@ export function CorrectionLinePicker({
   }
 
   return (
-    <Select
-      className="input--w-lp"
-      value={value}
-      onChange={(e) => {
-        const next = e.target.value;
-        const index = parseInt(next, 10) - 1;
-        onChange(next, Number.isNaN(index) ? undefined : pickableLines[index]);
-      }}
-      aria-label={ariaLabel}
-      disabled={disabled}
-    >
-      <option value="">{t('invoicing.correction.selectLine', 'Select a line…')}</option>
-      {pickableLines.map((line, i) => (
-        // Position is the identity here: two lines of the same product are
-        // legitimately distinct rows, so index is the correct React key AND the
-        // value the server addresses.
-        <option key={i} value={String(i + 1)}>
-          {describeLine(line, i + 1)}
-        </option>
-      ))}
-    </Select>
+    <span className="correction-line-picker">
+      {clearedValue !== null ? (
+        <span className="correction-line-picker__warning" role="status">
+          {t(
+            'invoicing.correction.lineClearedOutOfRange',
+            'Line {n} does not exist on this invoice — pick a row below.',
+          ).replace('{n}', clearedValue)}
+        </span>
+      ) : null}
+      <Select
+        className="correction-line-picker__select"
+        value={value}
+        onChange={(e) => {
+          setClearedValue(null);
+          onChange(e.target.value);
+        }}
+        aria-label={ariaLabel}
+        disabled={disabled}
+      >
+        <option value="">{t('invoicing.correction.selectLine', 'Select a line…')}</option>
+        {pickableLines.map((line, i) => (
+          // Position is the identity here: two lines of the same product are
+          // legitimately distinct rows, so index is the correct React key AND
+          // the value the server addresses.
+          <option key={i} value={String(i + 1)}>
+            {describeLine(line, i + 1, (v) => numberFormat.format(v))}
+          </option>
+        ))}
+      </Select>
+    </span>
   );
 }
