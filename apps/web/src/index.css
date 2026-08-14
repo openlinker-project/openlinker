@@ -9518,6 +9518,38 @@ a.kpi-card:focus-visible {
   max-width: 100%;
 }
 
+/* Frozen-pane budget (#2089). 1024px is the worst case by construction: the
+ * persistent sidebar appears at exactly this width (:1565) AND the tables that
+ * host this cell un-hide their Connection column there, so content width is
+ * 1024 - 240 - 64 = 720px. Shipments freezes Status + Order
+ * (`stickyLeftColumns={2}`), and on a triage page Status carries a 32ch error
+ * string — at 250px the frozen cluster leaves under 100px of scrollable window
+ * for every remaining column. Narrower only inside the frozen pane, and only
+ * below the desktop anchor: an unfrozen instance of this cell has the whole row
+ * to grow into. */
+@media (max-width: 1279px) {
+  .data-table__sticky-col .order-cell__body {
+    max-width: 11rem;
+  }
+}
+
+/* The mobile card hosts this cell in `<strong class="data-table__card-title">`
+ * (weight 600). Line 1 pins its own 500 via `.entity-label__name`, so without
+ * this the item name would render BOLDER than the order number it qualifies —
+ * inverting the hierarchy on exactly the surface where the two-line cell is the
+ * card's title. `.orders-cell-sub` is never emphasis. */
+.orders-cell-sub {
+  font-weight: 400;
+}
+
+/* At ~60px the 24px expander centres opposite the GAP between the two text
+ * lines rather than the identity it belongs to. Shipments is the first tall row
+ * with a leading toggle (#2089); listings has no `expandable`. */
+.data-table__row--expandable .data-table__expand-cell {
+  vertical-align: top;
+  padding-top: 14px;
+}
+
 /* ── ConnectionCell (#2027) ──────────────────────────────────────────
  * Two-line composition: adornment + name link on line 1, shortened id with
  * hover-Copy plus an attention-only status note on line 2. The 220px cap

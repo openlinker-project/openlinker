@@ -1,7 +1,9 @@
 /**
- * Shipment Severity + Order-Id Truncation (#1826)
+ * Shipment Severity (#1826)
  *
- * Pure view-model helpers for the `/shipments` Action column and Order column.
+ * Pure view-model helpers for the `/shipments` Action column. The order-id
+ * truncation that shared this file was an alias of `shortenId` and went with the
+ * hand-rolled Order cell it served (#2089).
  * They started life inline in `pages/shipments/shipments-page.tsx`; they are
  * pure functions of a `Shipment` with no React or router dependency, so they
  * belong in the owning feature's `lib` where they can be unit-tested directly
@@ -11,7 +13,6 @@
  */
 import type { Shipment } from '../api/shipments.types';
 import { isPreWaybill } from './shipment-action-eligibility';
-
 
 export type ShipmentSeverity = 'Fix' | 'Finish' | 'Send' | 'View';
 

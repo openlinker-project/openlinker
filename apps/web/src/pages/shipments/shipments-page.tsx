@@ -357,7 +357,8 @@ export function ShipmentsPage(): ReactElement {
     },
     ...methodColumns,
     {
-      // Rendered via `ConnectionDot` instead of `ConnectionEntityLabel` (#1826).
+      // The shared `ConnectionCell` (#2027) composes `ConnectionEntityLabel` and
+      // takes this column's long-standing `ConnectionDot` as its adornment (#2089).
       // For a carrier-dispatched shipment `connectionId` is the shipping-provider
       // connection; for an `omp`/branch-1 row it's the destination SHOP
       // connection instead (there is no OL dispatch, so no separate carrier
@@ -556,7 +557,7 @@ export function ShipmentsPage(): ReactElement {
                   key={`${group.connectionId}::${group.cause}`}
                   group={group}
                   connectionName={
-                    connections.find((c) => c.id === group.connectionId)?.name ?? null
+                    connectionsById.get(group.connectionId)?.name ?? null
                   }
                   canReviewConnection={canReviewConnection}
                 />

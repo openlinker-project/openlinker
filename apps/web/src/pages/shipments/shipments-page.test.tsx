@@ -529,7 +529,9 @@ describe('ShipmentsPage — row accordion + Order/Provider columns (#1826)', () 
 
     const table = await screen.findByRole('table');
     fireEvent.click(
-      within(table).getByRole('button', { name: 'Copy order ID 6839-2911-4402' }),
+      within(table).getByRole('button', {
+        name: 'Copy internal order ID for order 6839-2911-4402',
+      }),
     );
 
     expect(writeText).toHaveBeenCalledWith('ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9');
@@ -571,10 +573,23 @@ describe('ShipmentsPage — row accordion + Order/Provider columns (#1826)', () 
     }
   });
 
-  it('should render an empty-value placeholder in the Order column when no order summary resolves', async () => {
+  it('should link the shortened internal order id when no order summary resolves', async () => {
+    // #2089's AC asked for `–` here; the shared cell deliberately does not, and
+    // the API is why: `resolveOrderContext` degrades to an empty map on a
+    // batch-read failure (`shipment.controller.ts`), so EVERY row on the page
+    // gets `orderSummary: null` during a transient failure. A dash would erase
+    // the Order column mid-incident on a triage queue. See deviation 1 in
+    // `order-identity-cell.tsx`.
     const mockApi = createMockApiClient({
       shipments: {
-        list: vi.fn().mockResolvedValue(page([makeShipment({ orderId: '', orderSummary: null })])),
+        list: vi.fn().mockResolvedValue(
+          page([
+            makeShipment({
+              orderId: 'ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9',
+              orderSummary: null,
+            }),
+          ]),
+        ),
       },
       connections: { list: vi.fn().mockResolvedValue([]) },
     });
@@ -582,7 +597,43 @@ describe('ShipmentsPage — row accordion + Order/Provider columns (#1826)', () 
     renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
 
     const table = await screen.findByRole('table');
+    expect(within(table).getByRole('link', { name: 'ol_order_a4f3…c9' })).toHaveAttribute(
+      'href',
+      '/orders/ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9',
+    );
+    expect(within(table).queryByLabelText('No value')).toBeNull();
+    // No summary means no second line at all — not a bare item count.
+    expect(table.querySelector('.orders-items-line')).toBeNull();
+  });
+
+  it('should render the empty-value placeholder only when the row carries no order id', async () => {
+    // Defensive: `Shipment.orderId` is NOT NULL on the wire, so this branch is
+    // unreachable in production. Kept because it is the cell's dash contract.
+    const mockApi = createMockApiClient({
+      shipments: { list: vi.fn().mockResolvedValue(page([makeShipment({ orderId: '' })])) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+    const table = await screen.findByRole('table');
     expect(within(table).getByLabelText('No value')).toBeInTheDocument();
+  });
+
+  it('should show the connection loading state rather than Unknown on a cold load', async () => {
+    // `ConnectionCell` renders "Unknown" for a resolved-but-missing connection.
+    // Without the page threading `loading`, every row would read "Unknown" until
+    // the batched query settles — indistinguishable from a deleted connection.
+    const mockApi = createMockApiClient({
+      shipments: { list: vi.fn().mockResolvedValue(page([makeShipment()])) },
+      connections: { list: vi.fn().mockReturnValue(new Promise(() => {})) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+    const table = await screen.findByRole('table');
+    expect(table.querySelector('.connection-cell [aria-busy="true"]')).not.toBeNull();
+    expect(within(table).queryByText('Unknown')).toBeNull();
   });
 
   it('should issue one connections request for the whole page, never one per row', async () => {

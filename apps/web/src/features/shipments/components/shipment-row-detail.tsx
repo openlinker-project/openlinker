@@ -50,6 +50,7 @@ import {
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { CopyableId } from '../../../shared/ui/copyable-id';
+import { shortenId } from '../../../shared/ui/entity-label';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { useToast } from '../../../shared/ui/toast-provider';
 import {
@@ -157,12 +158,27 @@ export function ShipmentRowDetail({
   // the accordion is the ONLY place they can be read. The `omp` branch above
   // already surfaces its tracking number this way; this is the same treatment
   // for a carrier-dispatched row.
-  const facts: ReadonlyArray<{ label: string; value: string; mono: boolean }> = [
+  //
+  // `Order` joined them in #2089: the list's Order column now leads with the
+  // marketplace order number, so the internal id it used to show is otherwise
+  // only in the row's href and clipboard. This is a failed-label triage queue —
+  // an operator quoting an id to carrier support needs to READ it, not guess that
+  // a hover-hidden button holds it.
+  const facts: ReadonlyArray<{
+    label: string;
+    value: string;
+    mono: boolean;
+    copyable?: boolean;
+  }> = [
+    { label: 'Order', value: shipment.orderId, mono: true, copyable: true },
     { label: 'Provider', value: shipment.carrier ? carrierName : null, mono: false },
     { label: 'Method', value: SHIPPING_METHOD_LABEL[shipment.shippingMethod], mono: false },
     { label: 'Tracking', value: shipment.trackingNumber, mono: true },
     { label: 'Paczkomat', value: shipment.paczkomatId, mono: true },
-  ].filter((fact): fact is { label: string; value: string; mono: boolean } => fact.value !== null);
+  ].filter(
+    (fact): fact is { label: string; value: string; mono: boolean; copyable?: boolean } =>
+      fact.value !== null,
+  );
 
   const handleDownloadLabel = (): void => {
     void labelDownload.download(shipment.id).then((ok) => {
@@ -232,7 +248,16 @@ export function ShipmentRowDetail({
             <div className="shipment-detail-grid__field" key={fact.label}>
               <span className="shipment-detail-grid__label">{fact.label}</span>
               <p className={`shipment-detail-grid__value${fact.mono ? ' mono-text' : ''}`}>
-                {fact.value}
+                {fact.copyable === true ? (
+                  <CopyableId
+                    id={fact.value}
+                    label={shortenId(fact.value)}
+                    copyLabel={`Copy internal order ID ${shortenId(fact.value)}`}
+                    copiedLabel={`Copied internal order ID ${shortenId(fact.value)}`}
+                  />
+                ) : (
+                  fact.value
+                )}
               </p>
             </div>
           ))}

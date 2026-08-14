@@ -518,7 +518,13 @@ describe('ShipmentRowDetail — empty-content fallback (#1826)', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    // The Order fact's copy control (#2089) is the one button an actionless row
+    // still carries — it is identity, not an action, which is the distinction
+    // this test is about.
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(
+      screen.getByRole('button', { name: /^Copy internal order ID/ }),
+    ).toBeInTheDocument();
   });
 
   it('should tell a viewer it is a permission problem, not a pending status sync (#1905)', () => {
