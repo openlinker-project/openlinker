@@ -94,7 +94,11 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
 
   const classes = ['entity-label', className].filter(Boolean).join(' ');
   const resolvedName = name ?? null;
-  const resolvedTitle = nameTitle ?? resolvedName ?? id;
+  // `?? undefined` rather than `?? id`: both consumers sit inside the
+  // `resolvedName ?` branch below, so the third rung is unreachable — it exists
+  // only because `title` takes `string | undefined`, and defaulting an
+  // unreachable rung to the raw id would read as a behaviour somebody relies on.
+  const resolvedTitle = nameTitle ?? resolvedName ?? undefined;
 
   const nameNode = loading ? (
     <span className="entity-label__name entity-label__name--loading" aria-busy="true">
