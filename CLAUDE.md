@@ -22,6 +22,7 @@ Before writing or modifying code, read the relevant doc(s):
 | Frontend visual and interaction style | `docs/frontend-ui-style-guide.md` |
 | Implementation plan process | `docs/implementation-plan-generator-guide.md` |
 | Recurring gotchas / regression ledger | `docs/lessons.md` |
+| Analytics metric definitions and formulas | `docs/specs/metrics-analytics-dashboard.md` |
 
 Architecture docs define **intent and direction**, not every implementation detail. You may infer missing layers or patterns if they clearly align — but always justify them explicitly.
 
