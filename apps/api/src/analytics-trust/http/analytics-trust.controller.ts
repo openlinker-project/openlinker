@@ -60,6 +60,9 @@ export class AnalyticsTrustController {
         ? entry.lastOrderIngestedAt.toISOString()
         : null;
       connectionDto.connectionCreatedAt = entry.connectionCreatedAt.toISOString();
+      connectionDto.earliestOrderDate = entry.earliestOrderDate
+        ? entry.earliestOrderDate.toISOString()
+        : null;
       connectionDto.expectedIntervalMs = entry.expectedIntervalMs;
       connectionDto.staleAfterMs = entry.staleAfterMs;
       return connectionDto;

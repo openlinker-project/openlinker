@@ -168,6 +168,7 @@ describe('ShipmentDispatchService', () => {
       markItemResolutionFailure: jest.fn(),
       getFailedSyncValueSummary: jest.fn(),
       markCancelled: jest.fn(),
+      getEarliestOrderDateByConnection: jest.fn(),
     };
     const fulfillmentProjection = { recompute: jest.fn() };
     // Uncontended by default (#1917): every pre-existing test asserts the

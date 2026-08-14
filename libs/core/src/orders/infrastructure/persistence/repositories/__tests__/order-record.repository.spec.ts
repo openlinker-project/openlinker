@@ -187,6 +187,61 @@ describe('OrderRecordRepository', () => {
     });
   });
 
+  describe('findEarliestPlacedAtByConnection (#2083)', () => {
+    it('should return an empty Map without querying when given an empty array', async () => {
+      const result = await repository.findEarliestPlacedAtByConnection([]);
+
+      expect(result).toEqual(new Map());
+      expect(ormRepository.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('should return one Map entry per connection with the correct MIN', async () => {
+      const earliestA = new Date('2026-01-01T00:00:00.000Z');
+      const earliestB = new Date('2026-02-15T00:00:00.000Z');
+      const where = jest.fn().mockReturnThis();
+      const groupBy = jest.fn().mockReturnThis();
+      const addSelect = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect,
+        where,
+        groupBy,
+        getRawMany: jest.fn().mockResolvedValue([
+          { source_connection_id: 'conn-a', earliest_at: earliestA },
+          { source_connection_id: 'conn-b', earliest_at: earliestB },
+        ]),
+      });
+
+      const result = await repository.findEarliestPlacedAtByConnection(['conn-a', 'conn-b']);
+
+      expect(result.get('conn-a')).toEqual(earliestA);
+      expect(result.get('conn-b')).toEqual(earliestB);
+      expect(where).toHaveBeenCalledWith('rec.sourceConnectionId IN (:...connectionIds)', {
+        connectionIds: ['conn-a', 'conn-b'],
+      });
+      expect(groupBy).toHaveBeenCalledWith('rec.sourceConnectionId');
+      expect(addSelect).toHaveBeenCalledWith(
+        expect.stringContaining('COALESCE(rec."placedAt", rec."createdAt")'),
+        'earliest_at'
+      );
+    });
+
+    it('should omit a connection with zero matching rows from the returned Map', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      const result = await repository.findEarliestPlacedAtByConnection(['conn-with-no-orders']);
+
+      expect(result.has('conn-with-no-orders')).toBe(false);
+      expect(result.size).toBe(0);
+    });
+  });
+
   describe('upsert', () => {
     it('should create new order record', async () => {
       const domainEntity = createDomainEntity();

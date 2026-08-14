@@ -113,6 +113,17 @@ export interface IOrderRecordService {
   findByIds(internalOrderIds: string[]): Promise<OrderRecord[]>;
 
   /**
+   * Batch earliest-order-date lookup by source connection (#2083). The
+   * cross-context surface `analytics-trust`'s coverage-window read uses —
+   * repository ports are forbidden across context boundaries per
+   * architecture-overview.md § "Cross-context dependencies in core", so
+   * callers go through this service method instead of
+   * `OrderRecordRepositoryPort.findEarliestPlacedAtByConnection` directly.
+   * A connection absent from the returned Map has zero ingested orders.
+   */
+  getEarliestOrderDateByConnection(connectionIds: string[]): Promise<Map<string, Date>>;
+
+  /**
    * Push a per-order fulfillment rollup (#1108) onto the order record. The
    * cross-context surface the shipping context calls after a shipment-status
    * change (`shipping → orders`, via this service — never the repository port).

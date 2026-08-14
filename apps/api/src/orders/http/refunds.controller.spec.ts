@@ -43,6 +43,7 @@ describe('RefundsController', () => {
       findByIds: jest.fn(),
       updateFulfillmentState: jest.fn(),
       markCancelled: jest.fn(),
+      getEarliestOrderDateByConnection: jest.fn(),
       markItemResolutionFailure: jest.fn(),
       getFailedSyncValueSummary: jest.fn(),
     };
